@@ -386,7 +386,7 @@ class TestRunner {
 
   // Ввод текста в поле
   async type(selector, text, options = {}) {
-    await this.page.waitForSelector(selector, { visible: true });
+    await this.page.waitForSelector(selector, { visible: true, timeout: options.timeout || 10000 });
     if (options.clear) {
       await this.page.click(selector, { clickCount: 3 });
     }
@@ -530,19 +530,27 @@ class TestRunner {
     await this.type('#w_login', login, { clear: true });
     await this.type('#w_pass', password, { clear: true });
 
-    // Кликаем "Войти"
+    // Кликаем "Далее"
     await this.click('#btnDoLogin');
-    await this.page.waitForTimeout(2000);
+    await this.page.waitForTimeout(3000);
+
+    // После клика возможны разные сценарии:
+    // 1. Показывается форма PIN (#pinForm visible, #w_pin)
+    // 2. Показывается форма первичной настройки (#setupForm visible, #s_pass)
+    // 3. Сразу входим (появляется sidebar/content)
+    // 4. Ошибка (toast с ошибкой)
 
     // Проверяем, нужен ли PIN
-    if (await this.exists('#w_pin', 2000)) {
+    const hasPinForm = await this.exists('#w_pin', 3000);
+    if (hasPinForm) {
       await this.type('#w_pin', pin, { clear: true });
       await this.click('#btnVerifyPin');
       await this.page.waitForTimeout(2000);
     }
 
     // Проверяем, нужна ли первая настройка (смена пароля)
-    if (await this.exists('#s_pass', 2000)) {
+    const hasSetupForm = await this.exists('#s_pass', 2000);
+    if (hasSetupForm) {
       await this.type('#s_pass', password);
       await this.type('#s_pass2', password);
       await this.type('#s_pin', pin);
@@ -551,13 +559,18 @@ class TestRunner {
     }
 
     // Ждём загрузки приложения
-    await this.page.waitForTimeout(3000);
+    await this.page.waitForTimeout(2000);
 
     // Проверяем что вошли (должен быть контент)
-    const hasContent = await this.exists('.sidebar, .nav, [class*="dashboard"], [class*="content"]', 5000);
+    const hasContent = await this.exists('.sidebar, .nav, [class*="dashboard"], [class*="content"], #app .page', 5000);
     if (!hasContent) {
+      // Проверяем есть ли ошибка
+      const errorText = await this.page.evaluate(() => {
+        const toast = document.querySelector('.toast.err, .toast-error');
+        return toast ? toast.textContent : null;
+      });
       const url = this.page.url();
-      throw new Error(`Вход не удался. URL: ${url}`);
+      throw new Error(`Вход не удался. URL: ${url}${errorText ? ', Ошибка: ' + errorText : ''}`);
     }
 
     // Сохраняем токен
