@@ -563,7 +563,6 @@
         const panels = $$(".calc-panel");
         const p = panels.find(x=>x.dataset.tab===tab);
         if(!p) return;
-        const a = AsgardDB ? null : null;
         // rebuild with current settings
         if(tab==="x") p.innerHTML = `${renderExpensesSection(appSettings, state)}`;
       }

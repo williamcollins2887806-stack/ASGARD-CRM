@@ -54,7 +54,16 @@ async function routes(fastify, options) {
 
   fastify.get('/download/:filename', async (request, reply) => {
     const { filename } = request.params;
-    const filepath = path.join(uploadDir, filename);
+
+    // Защита от Path Traversal атак
+    const safeFilename = path.basename(filename);
+    const filepath = path.join(uploadDir, safeFilename);
+    const realPath = path.resolve(filepath);
+    const uploadDirReal = path.resolve(uploadDir);
+
+    if (!realPath.startsWith(uploadDirReal)) {
+      return reply.code(403).send({ error: 'Недопустимый путь' });
+    }
 
     try {
       await fs.access(filepath);
