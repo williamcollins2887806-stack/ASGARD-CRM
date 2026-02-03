@@ -17,6 +17,22 @@ async function routes(fastify, options) {
     return { settings };
   });
 
+  // ВАЖНО: Специфичные маршруты ДОЛЖНЫ быть ДО параметризованных
+  // References (tender_statuses, reject_reasons, etc.)
+  fastify.get('/refs/all', { preHandler: [fastify.authenticate] }, async (request) => {
+    const result = await db.query("SELECT * FROM settings WHERE key = 'refs'");
+    if (!result.rows[0]) {
+      return {
+        refs: {
+          tender_statuses: ['Новый', 'В просчёте', 'КП отправлено', 'Переговоры', 'Выиграли', 'Проиграли'],
+          reject_reasons: ['Цена', 'Сроки', 'Выбрали другого', 'Отмена тендера'],
+          expense_categories: ['ФОТ', 'Логистика', 'Проживание', 'Материалы', 'Субподряд', 'Прочее']
+        }
+      };
+    }
+    return { refs: JSON.parse(result.rows[0].value_json) };
+  });
+
   fastify.get('/:key', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const result = await db.query('SELECT * FROM settings WHERE key = $1', [request.params.key]);
     if (!result.rows[0]) return { key: request.params.key, value: null };
@@ -45,21 +61,6 @@ async function routes(fastify, options) {
     const result = await db.query('DELETE FROM settings WHERE key = $1 RETURNING key', [request.params.key]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     return { message: 'Удалено' };
-  });
-
-  // References (tender_statuses, reject_reasons, etc.)
-  fastify.get('/refs/all', { preHandler: [fastify.authenticate] }, async (request) => {
-    const result = await db.query("SELECT * FROM settings WHERE key = 'refs'");
-    if (!result.rows[0]) {
-      return {
-        refs: {
-          tender_statuses: ['Новый', 'В просчёте', 'КП отправлено', 'Переговоры', 'Выиграли', 'Проиграли'],
-          reject_reasons: ['Цена', 'Сроки', 'Выбрали другого', 'Отмена тендера'],
-          expense_categories: ['ФОТ', 'Логистика', 'Проживание', 'Материалы', 'Субподряд', 'Прочее']
-        }
-      };
-    }
-    return { refs: JSON.parse(result.rows[0].value_json) };
   });
 }
 

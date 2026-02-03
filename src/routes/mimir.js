@@ -701,9 +701,9 @@ ${restrictionsSection}
       // Ближайшие дедлайны
       const deadlines = await db.query(`
         SELECT id, work_number, work_title, customer_name, work_end_plan
-        FROM works 
-        ${whereClause || 'WHERE 1=1'} 
-          ${whereClause ? 'AND' : 'AND'} work_end_plan IS NOT NULL 
+        FROM works
+        ${whereClause || 'WHERE 1=1'}
+          AND work_end_plan IS NOT NULL
           AND work_status NOT IN ('Работы сдали', 'Отменено')
         ORDER BY work_end_plan ASC
         LIMIT 5
