@@ -398,6 +398,15 @@ a:hover {
   color: var(--text-secondary);
 }
 
+.pill.unread {
+  background: var(--gold-glow);
+  border-color: var(--gold);
+}
+
+.pill.read {
+  opacity: 0.7;
+}
+
 .pill .who {
   color: var(--text-primary);
 }
