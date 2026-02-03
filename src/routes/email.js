@@ -16,9 +16,9 @@ async function routes(fastify, options) {
     
     // Пробуем получить настройки из БД
     try {
-      const result = await db.query("SELECT value FROM settings WHERE key = 'smtp_config'");
+      const result = await db.query("SELECT value_json FROM settings WHERE key = 'smtp_config'");
       if (result.rows.length > 0) {
-        const config = JSON.parse(result.rows[0].value);
+        const config = JSON.parse(result.rows[0].value_json);
         transporter = nodemailer.createTransport(config);
         return transporter;
       }
@@ -182,17 +182,17 @@ async function routes(fastify, options) {
     
     try {
       await db.query(`
-        INSERT INTO settings (key, value, updated_at)
+        INSERT INTO settings (key, value_json, updated_at)
         VALUES ('smtp_config', $1, NOW())
-        ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()
+        ON CONFLICT (key) DO UPDATE SET value_json = $1, updated_at = NOW()
       `, [JSON.stringify(config)]);
-      
+
       if (from) {
         await db.query(`
-          INSERT INTO settings (key, value, updated_at)
+          INSERT INTO settings (key, value_json, updated_at)
           VALUES ('smtp_from', $1, NOW())
-          ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()
-        `, [from]);
+          ON CONFLICT (key) DO UPDATE SET value_json = $1, updated_at = NOW()
+        `, [JSON.stringify(from)]);
       }
       
       // Сбрасываем кэш транспорта

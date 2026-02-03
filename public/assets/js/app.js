@@ -25,8 +25,8 @@ window.generateYearOptions = function(selectedValue) {
   return options.join('');
 };
 
-var generatePeriodOptions = window.generatePeriodOptions;
-var generateYearOptions = window.generateYearOptions;
+const generatePeriodOptions = window.generatePeriodOptions;
+const generateYearOptions = window.generateYearOptions;
 console.log('[ASGARD] Global period functions loaded');
 
 
@@ -635,7 +635,7 @@ try{
     addMobileHandler($("#btnBackToLogin"), showLogin);
 
     // Шаг 1: проверка логина/пароля
-    $("#btnDoLogin").addEventListener("click", async ()=>{
+    $("#btnDoLogin")?.addEventListener("click", async ()=>{
       const login = $("#w_login").value.trim();
       const pass = $("#w_pass").value;
       const remember = $("#w_remember").checked;
@@ -670,7 +670,7 @@ try{
     });
 
     // Шаг 2a: ввод PIN
-    $("#btnVerifyPin").addEventListener("click", async ()=>{
+    $("#btnVerifyPin")?.addEventListener("click", async ()=>{
       const pin = $("#w_pin").value;
       if(!pin || pin.length !== 4){ toast("Ошибка","Введите 4 цифры PIN","err"); return; }
       
@@ -692,7 +692,7 @@ try{
     $("#w_pin")?.addEventListener("keydown", (e)=>{ if(e.key==="Enter") $("#btnVerifyPin").click(); });
 
     // Шаг 2b: первый вход - установка пароля и PIN
-    $("#btnSetupCredentials").addEventListener("click", async ()=>{
+    $("#btnSetupCredentials")?.addEventListener("click", async ()=>{
       const pass1 = $("#s_pass").value;
       const pass2 = $("#s_pass2").value;
       const pin = $("#s_pin").value;

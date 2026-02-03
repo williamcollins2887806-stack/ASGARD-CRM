@@ -73,19 +73,38 @@ async function routes(fastify, options) {
 
     const result = await db.query(sql, params);
     
-    // Get total count
-    let countSql = 'SELECT COUNT(*) FROM tenders WHERE 1=1';
+    // Get total count (с теми же фильтрами что и основной запрос)
+    let countSql = 'SELECT COUNT(*) FROM tenders t WHERE 1=1';
     const countParams = [];
     let countIdx = 1;
 
     if (period) {
-      countSql += ` AND period = $${countIdx}`;
+      countSql += ` AND t.period = $${countIdx}`;
       countParams.push(period);
       countIdx++;
     }
     if (status) {
-      countSql += ` AND tender_status = $${countIdx}`;
+      countSql += ` AND t.tender_status = $${countIdx}`;
       countParams.push(status);
+      countIdx++;
+    }
+    if (pm_id) {
+      countSql += ` AND t.responsible_pm_id = $${countIdx}`;
+      countParams.push(pm_id);
+      countIdx++;
+    }
+    if (type) {
+      countSql += ` AND t.tender_type = $${countIdx}`;
+      countParams.push(type);
+      countIdx++;
+    }
+    if (search) {
+      countSql += ` AND (
+        LOWER(t.customer) LIKE $${countIdx} OR
+        LOWER(t.tender_number) LIKE $${countIdx} OR
+        LOWER(t.tag) LIKE $${countIdx}
+      )`;
+      countParams.push(`%${search.toLowerCase()}%`);
       countIdx++;
     }
 
