@@ -332,7 +332,6 @@ window.AsgardBonusApproval = (function(){
     document.getElementById('fltStatus')?.addEventListener('change', (e) => {
       const status = e.target.value;
       document.querySelectorAll('.bonus-request-card').forEach(card => {
-      console.log('🟡 Processing card, id:', card.dataset.id);
         if (!status || card.dataset.status === status) {
           card.style.display = '';
         } else {
@@ -346,6 +345,20 @@ window.AsgardBonusApproval = (function(){
   }
 
   function renderRequestCard(request, empMap, isDirector) {
+    // Безопасно парсим bonuses (JSONB может прийти как строка из API)
+    let bonuses = [];
+    try {
+      if (typeof request.bonuses === 'string') {
+        bonuses = JSON.parse(request.bonuses);
+      } else if (Array.isArray(request.bonuses)) {
+        bonuses = request.bonuses;
+      }
+    } catch(e) {
+      console.warn('Parse bonuses error:', e);
+      bonuses = [];
+    }
+    request.bonuses = bonuses;
+    
     const status = BONUS_STATUSES[request.status] || BONUS_STATUSES.draft;
     
     return `
@@ -432,9 +445,20 @@ window.AsgardBonusApproval = (function(){
     console.log('🟣 processRequest START', {requestId, newStatus});
     const all = await getAll();
     const request = all.find(r => r.id === Number(requestId) || r.id === requestId);
+    
+    if (!request) {
+      console.error('🔴 Request not found! ID:', requestId);
+      AsgardUI.toast('Ошибка', 'Заявка не найдена', 'err');
+      return;
+    }
+    
+    // Безопасно парсим bonuses
+    if (typeof request.bonuses === 'string') {
+      try { request.bonuses = JSON.parse(request.bonuses); } catch(e) { request.bonuses = []; }
+    }
+    if (!Array.isArray(request.bonuses)) request.bonuses = [];
+    
     console.log('🟣 Found request:', request);
-    console.log('🟣 All requests:', all.map(r => ({id: r.id, type: typeof r.id})));
-    if (!request) return;
     
     const auth = await AsgardAuth.requireUser();
     
@@ -443,6 +467,11 @@ window.AsgardBonusApproval = (function(){
     request.processed_by = auth?.user?.id;
     request.processed_at = new Date().toISOString();
     request.updated_at = new Date().toISOString();
+    
+    // Сериализуем bonuses в JSON-строку для PostgreSQL JSONB
+    if (Array.isArray(request.bonuses)) {
+      request.bonuses = JSON.stringify(request.bonuses);
+    }
     
     await save(request);
     
