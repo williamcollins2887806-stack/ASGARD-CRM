@@ -535,13 +535,16 @@ class TestRunner {
     await this.page.waitForTimeout(3000);
 
     // После клика возможны разные сценарии:
-    // 1. Показывается форма PIN (#pinForm visible, #w_pin)
-    // 2. Показывается форма первичной настройки (#setupForm visible, #s_pass)
+    // 1. Показывается форма PIN (#pinForm visible)
+    // 2. Показывается форма первичной настройки (#setupForm visible)
     // 3. Сразу входим (появляется sidebar/content)
     // 4. Ошибка (toast с ошибкой)
 
-    // Проверяем, нужен ли PIN
-    const hasPinForm = await this.exists('#w_pin', 3000);
+    // Проверяем, нужен ли PIN (проверяем видимость формы, а не скрытого инпута)
+    const hasPinForm = await this.page.evaluate(() => {
+      const form = document.querySelector('#pinForm');
+      return form && form.style.display !== 'none' && form.offsetParent !== null;
+    });
     if (hasPinForm) {
       await this.type('#w_pin', pin, { clear: true });
       await this.click('#btnVerifyPin');
@@ -549,7 +552,10 @@ class TestRunner {
     }
 
     // Проверяем, нужна ли первая настройка (смена пароля)
-    const hasSetupForm = await this.exists('#s_pass', 2000);
+    const hasSetupForm = await this.page.evaluate(() => {
+      const form = document.querySelector('#setupForm');
+      return form && form.style.display !== 'none' && form.offsetParent !== null;
+    });
     if (hasSetupForm) {
       await this.type('#s_pass', password);
       await this.type('#s_pass2', password);
