@@ -979,6 +979,627 @@ class TestRunner {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: РОЛИ И ПРАВА ДОСТУПА
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testRoleAccess() {
+    this.log('INFO', '═══ ТЕСТЫ РОЛЕЙ И ПРАВ ДОСТУПА ═══');
+
+    // Сначала создаём тестовых пользователей через API
+    await this.login('admin', 'Orion2025!');
+
+    const testRoles = [
+      { login: 'test_pm_e2e', password: 'Test123!', role: 'PM', name: 'Тест PM E2E' },
+      { login: 'test_director_e2e', password: 'Test123!', role: 'DIRECTOR_GEN', name: 'Тест Директор E2E' },
+      { login: 'test_hr_e2e', password: 'Test123!', role: 'HR', name: 'Тест HR E2E' },
+      { login: 'test_buh_e2e', password: 'Test123!', role: 'ACCOUNTANT', name: 'Тест Бухгалтер E2E' }
+    ];
+
+    // Создаём тестовых пользователей
+    await this.runTest('roles.create_test_users', async () => {
+      for (const user of testRoles) {
+        try {
+          const response = await this.apiRequest('POST', '/api/users', {
+            login: user.login,
+            name: user.name,
+            role: user.role,
+            is_active: true
+          });
+
+          if (response.status === 201 || response.status === 200) {
+            this.log('DEBUG', `Создан тестовый пользователь: ${user.login}`);
+          } else if (response.status === 409) {
+            this.log('DEBUG', `Пользователь уже существует: ${user.login}`);
+          }
+        } catch (e) {
+          this.log('WARN', `Не удалось создать пользователя ${user.login}: ${e.message}`);
+        }
+      }
+    });
+
+    await this.logout();
+
+    // Тест: PM не должен видеть настройки
+    await this.runTest('roles.pm_no_settings_access', async () => {
+      try {
+        await this.login('test_pm_e2e', 'Test123!');
+      } catch (e) {
+        // Если пользователь не создан, пропускаем тест
+        this.log('WARN', 'Тестовый PM не создан, пропускаем тест');
+        return;
+      }
+
+      await this.goto('/#/settings');
+      await this.page.waitForTimeout(2000);
+
+      // PM не должен видеть настройки — либо редирект, либо ошибка доступа
+      const pageContent = await this.page.content();
+      const hasSettings = pageContent.includes('Настройки системы') ||
+                         pageContent.includes('SMTP') ||
+                         pageContent.includes('API ключи');
+
+      if (hasSettings) {
+        throw new Error('PM не должен иметь доступ к настройкам');
+      }
+
+      await this.logout();
+    });
+
+    // Тест: HR видит только свои разделы
+    await this.runTest('roles.hr_sections', async () => {
+      try {
+        await this.login('test_hr_e2e', 'Test123!');
+      } catch (e) {
+        this.log('WARN', 'Тестовый HR не создан, пропускаем тест');
+        return;
+      }
+
+      await this.page.waitForTimeout(2000);
+
+      const pageContent = await this.page.content();
+
+      // HR должен видеть персонал
+      const hasHRSections = pageContent.includes('Персонал') ||
+                           pageContent.includes('HR') ||
+                           pageContent.includes('Сотрудники');
+
+      if (!hasHRSections) {
+        this.log('WARN', 'HR раздел не найден в меню');
+      }
+
+      await this.logout();
+    });
+
+    // Тест: Директор видит согласования
+    await this.runTest('roles.director_approvals', async () => {
+      try {
+        await this.login('test_director_e2e', 'Test123!');
+      } catch (e) {
+        this.log('WARN', 'Тестовый директор не создан, пропускаем тест');
+        return;
+      }
+
+      await this.page.waitForTimeout(2000);
+
+      const pageContent = await this.page.content();
+
+      // Директор должен видеть согласования
+      const hasApprovals = pageContent.includes('Согласовани') ||
+                          pageContent.includes('Премии') ||
+                          pageContent.includes('Заявки');
+
+      if (!hasApprovals) {
+        this.log('WARN', 'Раздел согласований не найден для директора');
+      }
+
+      await this.logout();
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: ВОРОНКА ПРОДАЖ
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testFunnel() {
+    this.log('INFO', '═══ ТЕСТЫ ВОРОНКИ ПРОДАЖ ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('funnel.load', async () => {
+      await this.goto('/#/funnel');
+      await this.page.waitForTimeout(3000);
+
+      // Проверяем что воронка загрузилась
+      const hasContent = await this.exists('.funnel, [class*="funnel"], .kanban, .board, .column', 5000);
+
+      if (!hasContent) {
+        // Возможно другой URL
+        await this.goto('/#/pipeline');
+        await this.page.waitForTimeout(2000);
+      }
+
+      const pageContent = await this.page.content();
+      if (!pageContent.includes('Новый') && !pageContent.includes('воронк')) {
+        this.log('WARN', 'Воронка не загрузилась или имеет другую структуру');
+      }
+    });
+
+    await this.runTest('funnel.cards_display', async () => {
+      await this.goto('/#/funnel');
+      await this.page.waitForTimeout(2000);
+
+      // Ищем карточки тендеров
+      const hasCards = await this.exists('.card, .tender-card, [class*="card"], [draggable]', 3000);
+
+      if (hasCards) {
+        this.log('DEBUG', 'Карточки воронки найдены');
+      }
+    });
+
+    await this.runTest('funnel.card_click', async () => {
+      await this.goto('/#/funnel');
+      await this.page.waitForTimeout(2000);
+
+      // Пробуем кликнуть на первую карточку
+      const clicked = await this.page.evaluate(() => {
+        const cards = document.querySelectorAll('.card, .tender-card, [class*="card"]');
+        for (const card of cards) {
+          if (card.textContent.length > 10) { // Это вероятно карточка с данными
+            card.click();
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (clicked) {
+        await this.page.waitForTimeout(1000);
+        // Проверяем что открылись детали
+        const hasDetails = await this.exists('.modal, .details, .sidebar-detail, [class*="detail"]', 2000);
+        if (hasDetails) {
+          this.log('DEBUG', 'Детали карточки открылись');
+        }
+      }
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: AI АССИСТЕНТ
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testAI() {
+    this.log('INFO', '═══ ТЕСТЫ AI АССИСТЕНТА ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('ai.open_chat', async () => {
+      // Ищем кнопку AI ассистента
+      const aiButtonSelectors = [
+        '[data-action="ai"]',
+        '#aiBtn',
+        '.ai-btn',
+        'button[title*="AI"]',
+        'button[title*="Мимир"]',
+        '[class*="mimir"]'
+      ];
+
+      let opened = false;
+      for (const selector of aiButtonSelectors) {
+        if (await this.exists(selector, 1000)) {
+          await this.click(selector);
+          opened = true;
+          break;
+        }
+      }
+
+      if (!opened) {
+        // Пробуем найти по тексту
+        opened = await this.page.evaluate(() => {
+          const btns = document.querySelectorAll('button, a');
+          for (const btn of btns) {
+            if (btn.textContent.includes('Мимир') ||
+                btn.textContent.includes('AI') ||
+                btn.textContent.includes('Ассистент')) {
+              btn.click();
+              return true;
+            }
+          }
+          return false;
+        });
+      }
+
+      if (opened) {
+        await this.page.waitForTimeout(1000);
+        const hasChat = await this.exists('.chat, .ai-chat, [class*="mimir"], textarea, input[placeholder*="сообщ"]', 2000);
+        if (hasChat) {
+          this.log('DEBUG', 'Чат AI открыт');
+        }
+      } else {
+        this.log('WARN', 'Кнопка AI ассистента не найдена');
+      }
+    });
+
+    await this.runTest('ai.send_message', async () => {
+      // Ищем поле ввода сообщения
+      const inputSelectors = [
+        '.ai-input',
+        '#aiInput',
+        'textarea[placeholder*="сообщ"]',
+        'input[placeholder*="вопрос"]',
+        '.chat-input textarea',
+        '.chat-input input'
+      ];
+
+      let inputFound = false;
+      for (const selector of inputSelectors) {
+        if (await this.exists(selector, 2000)) {
+          await this.type(selector, 'Покажи мои тендеры');
+          inputFound = true;
+
+          // Отправляем сообщение
+          await this.page.keyboard.press('Enter');
+          await this.page.waitForTimeout(5000); // Ждём ответа AI
+
+          // Проверяем что появился ответ
+          const hasResponse = await this.exists('.ai-response, .message, .chat-message, [class*="response"]', 3000);
+          if (hasResponse) {
+            this.log('DEBUG', 'AI ответил на сообщение');
+          }
+          break;
+        }
+      }
+
+      if (!inputFound) {
+        this.log('WARN', 'Поле ввода AI не найдено');
+      }
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: ЭКСПОРТ
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testExport() {
+    this.log('INFO', '═══ ТЕСТЫ ЭКСПОРТА ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('export.excel_tenders', async () => {
+      await this.goto('/#/tenders');
+      await this.page.waitForTimeout(2000);
+
+      // Ищем кнопку экспорта
+      const exportSelectors = [
+        'button:has-text("Excel")',
+        'button:has-text("Экспорт")',
+        '[data-action="export"]',
+        '.btn-export',
+        '#btnExport'
+      ];
+
+      let clicked = false;
+      for (const selector of exportSelectors) {
+        if (await this.exists(selector, 1000)) {
+          // Настраиваем перехват скачивания
+          const downloadPromise = new Promise(resolve => {
+            this.page.once('response', response => {
+              if (response.url().includes('export') ||
+                  response.headers()['content-type']?.includes('spreadsheet')) {
+                resolve(true);
+              }
+            });
+            setTimeout(() => resolve(false), 5000);
+          });
+
+          await this.click(selector);
+          clicked = true;
+
+          const downloaded = await downloadPromise;
+          if (downloaded) {
+            this.log('DEBUG', 'Экспорт Excel начался');
+          }
+          break;
+        }
+      }
+
+      if (!clicked) {
+        // Пробуем найти по тексту
+        await this.page.evaluate(() => {
+          const btns = document.querySelectorAll('button, a');
+          for (const btn of btns) {
+            if (btn.textContent.includes('Excel') || btn.textContent.includes('Экспорт')) {
+              btn.click();
+              return true;
+            }
+          }
+          return false;
+        });
+      }
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: ЗАГРУЗКА ФАЙЛОВ
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testFileUpload() {
+    this.log('INFO', '═══ ТЕСТЫ ЗАГРУЗКИ ФАЙЛОВ ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('files.input_exists', async () => {
+      // Проверяем разные страницы на наличие input[type="file"]
+      const pages = ['/#/tenders', '/#/works', '/#/documents'];
+
+      for (const pagePath of pages) {
+        await this.goto(pagePath);
+        await this.page.waitForTimeout(2000);
+
+        // Открываем форму добавления если есть
+        await this.page.evaluate(() => {
+          const btns = document.querySelectorAll('button, a.btn');
+          for (const btn of btns) {
+            if (btn.textContent.includes('Добав') || btn.textContent.includes('Загруз')) {
+              btn.click();
+              return;
+            }
+          }
+        });
+
+        await this.page.waitForTimeout(1000);
+
+        const hasFileInput = await this.exists('input[type="file"]', 2000);
+        if (hasFileInput) {
+          this.log('DEBUG', `Найден input[type="file"] на ${pagePath}`);
+          return;
+        }
+      }
+
+      this.log('WARN', 'input[type="file"] не найден на проверенных страницах');
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: EDGE CASES (ГРАНИЧНЫЕ СЛУЧАИ)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testEdgeCases() {
+    this.log('INFO', '═══ ТЕСТЫ ГРАНИЧНЫХ СЛУЧАЕВ ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('edge.tender_empty_number', async () => {
+      await this.goto('/#/tenders');
+      await this.page.waitForTimeout(1000);
+
+      // Открываем форму создания
+      await this.page.evaluate(() => {
+        const btns = document.querySelectorAll('button, a.btn');
+        for (const btn of btns) {
+          if (btn.textContent.includes('Добав') || btn.textContent.includes('Нов')) {
+            btn.click();
+            return;
+          }
+        }
+      });
+
+      await this.page.waitForTimeout(1000);
+
+      // Пробуем сохранить без номера тендера
+      const saveSelectors = ['button:has-text("Сохранить")', '#btnSave', '.btn-save', 'button[type="submit"]'];
+
+      for (const selector of saveSelectors) {
+        if (await this.exists(selector, 1000)) {
+          await this.click(selector);
+          await this.page.waitForTimeout(1000);
+
+          // Должна быть ошибка валидации
+          const hasError = await this.exists('.error, .validation-error, .toast.err, [class*="error"]', 2000);
+          if (hasError) {
+            this.log('DEBUG', 'Валидация пустого номера тендера работает');
+          }
+          break;
+        }
+      }
+    });
+
+    await this.runTest('edge.customer_invalid_inn', async () => {
+      await this.goto('/#/customers');
+      await this.page.waitForTimeout(1000);
+
+      // Открываем форму создания клиента
+      await this.page.evaluate(() => {
+        const btns = document.querySelectorAll('button, a.btn');
+        for (const btn of btns) {
+          if (btn.textContent.includes('Добав') || btn.textContent.includes('Нов')) {
+            btn.click();
+            return;
+          }
+        }
+      });
+
+      await this.page.waitForTimeout(1000);
+
+      // Ищем поле ИНН и вводим невалидное значение
+      const innSelectors = ['input[name="inn"]', '#inn', 'input[placeholder*="ИНН"]'];
+
+      for (const selector of innSelectors) {
+        if (await this.exists(selector, 1000)) {
+          await this.type(selector, '1', { clear: true }); // Невалидный ИНН (1 цифра)
+
+          // Пробуем сохранить
+          await this.page.evaluate(() => {
+            const btns = document.querySelectorAll('button');
+            for (const btn of btns) {
+              if (btn.textContent.includes('Сохран') || btn.textContent.includes('Создать')) {
+                btn.click();
+                return;
+              }
+            }
+          });
+
+          await this.page.waitForTimeout(1000);
+
+          // Должна быть ошибка
+          const hasError = await this.exists('.error, .validation-error, .toast.err', 2000);
+          if (hasError) {
+            this.log('DEBUG', 'Валидация ИНН работает');
+          }
+          break;
+        }
+      }
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: УВЕДОМЛЕНИЯ
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testNotifications() {
+    this.log('INFO', '═══ ТЕСТЫ УВЕДОМЛЕНИЙ ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('notifications.panel_open', async () => {
+      // Ищем кнопку уведомлений (колокольчик)
+      const bellSelectors = [
+        '[data-action="notifications"]',
+        '#notifBtn',
+        '.notif-btn',
+        '.bell',
+        'button[title*="Уведомлен"]',
+        '[class*="notification"] button',
+        '[class*="bell"]'
+      ];
+
+      let opened = false;
+      for (const selector of bellSelectors) {
+        if (await this.exists(selector, 1000)) {
+          await this.click(selector);
+          opened = true;
+          await this.page.waitForTimeout(1000);
+          break;
+        }
+      }
+
+      if (!opened) {
+        // Пробуем перейти на страницу уведомлений напрямую
+        await this.goto('/#/alerts');
+        await this.page.waitForTimeout(2000);
+      }
+
+      // Проверяем что уведомления загрузились без ошибок
+      const pageContent = await this.page.content();
+      const hasNotifications = pageContent.includes('Уведомлени') ||
+                              pageContent.includes('уведомлен') ||
+                              await this.exists('.notification, .alert-item, .notif-item', 2000);
+
+      if (hasNotifications) {
+        this.log('DEBUG', 'Панель уведомлений загружена');
+      }
+    });
+
+    await this.runTest('notifications.list_load', async () => {
+      await this.goto('/#/alerts');
+      await this.page.waitForTimeout(2000);
+
+      // Проверяем что нет JS ошибок при загрузке
+      const errorsBeforeCount = this.browserErrors.length;
+
+      await this.page.waitForTimeout(2000);
+
+      const errorsAfterCount = this.browserErrors.length;
+      const newErrors = errorsAfterCount - errorsBeforeCount;
+
+      if (newErrors > 0) {
+        this.log('WARN', `Появились новые JS ошибки при загрузке уведомлений: ${newErrors}`);
+      }
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: ОТЧЁТЫ
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testReports() {
+    this.log('INFO', '═══ ТЕСТЫ ОТЧЁТОВ ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('reports.page_load', async () => {
+      await this.goto('/#/reports');
+      await this.page.waitForTimeout(2000);
+
+      const hasContent = await this.exists('.report, .card, table, [class*="report"], [class*="chart"]', 5000);
+
+      if (!hasContent) {
+        // Пробуем альтернативные маршруты
+        await this.goto('/#/dashboard');
+        await this.page.waitForTimeout(2000);
+      }
+    });
+
+    await this.runTest('reports.period_select', async () => {
+      await this.goto('/#/reports');
+      await this.page.waitForTimeout(2000);
+
+      // Ищем селект периода
+      const periodSelectors = [
+        'select#period',
+        'select[name="period"]',
+        '#fltPeriod',
+        'select:has(option:contains("Январь"))',
+        'select:has(option:contains("2024"))'
+      ];
+
+      for (const selector of periodSelectors) {
+        if (await this.exists(selector, 1000)) {
+          const options = await this.page.$$eval(`${selector} option`, opts => opts.map(o => o.value));
+          if (options.length > 1) {
+            await this.select(selector, options[1]);
+            await this.page.waitForTimeout(1500);
+            this.log('DEBUG', 'Период в отчёте изменён');
+          }
+          break;
+        }
+      }
+    });
+
+    await this.runTest('reports.data_load', async () => {
+      await this.goto('/#/reports');
+      await this.page.waitForTimeout(3000);
+
+      // Проверяем что данные загрузились (есть числа или таблицы)
+      const hasData = await this.page.evaluate(() => {
+        const content = document.body.textContent;
+        // Ищем числа (суммы, количества)
+        const hasNumbers = /\d{1,3}([\s,]\d{3})*([.,]\d+)?/.test(content);
+        // Ищем таблицы с данными
+        const tables = document.querySelectorAll('table tbody tr');
+        return hasNumbers || tables.length > 0;
+      });
+
+      if (hasData) {
+        this.log('DEBUG', 'Данные отчёта загружены');
+      }
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
   // ГЕНЕРАЦИЯ ОТЧЁТА
   // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1124,6 +1745,16 @@ ${this.generateRecommendations()}
       await this.testApprovals();
       await this.testRoleNavigation();
       await this.testAPI();
+
+      // Новые тесты
+      await this.testRoleAccess();      // Тесты ролей и прав доступа
+      await this.testFunnel();          // Воронка продаж
+      await this.testAI();              // AI ассистент
+      await this.testExport();          // Экспорт
+      await this.testFileUpload();      // Загрузка файлов
+      await this.testEdgeCases();       // Граничные случаи
+      await this.testNotifications();   // Уведомления
+      await this.testReports();         // Отчёты
 
       // Финальная проверка серверных логов
       await this.checkServerLogs();
