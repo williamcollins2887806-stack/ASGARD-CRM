@@ -635,18 +635,18 @@ try{
     addMobileHandler($("#btnBackToLogin"), showLogin);
 
     // Шаг 1: проверка логина/пароля
-    $("#btnDoLogin")?.addEventListener("click", async ()=>{
+    async function doLogin(){
       const login = $("#w_login").value.trim();
       const pass = $("#w_pass").value;
       const remember = $("#w_remember").checked;
       if(!login || !pass){ toast("Ошибка","Заполните логин и пароль","err"); return; }
-      
+
       try{
         const result = await AsgardAuth.loginStep1({login, password:pass});
         loginState.userId = result.userId;
         loginState.userName = result.userName;
         loginState.remember = remember;
-        
+
         if(result.status === 'ok'){
           // Успешный вход - показываем loading screen
           await showLoadingScreen();
@@ -661,7 +661,8 @@ try{
       }catch(e){
         toast("Ошибка", e.message||"Неверный логин или пароль", "err");
       }
-    });
+    }
+    addMobileHandler($("#btnDoLogin"), doLogin);
 
     // Enter для логина
     ["w_login","w_pass"].forEach(id=>{
@@ -670,10 +671,10 @@ try{
     });
 
     // Шаг 2a: ввод PIN
-    $("#btnVerifyPin")?.addEventListener("click", async ()=>{
+    async function verifyPin(){
       const pin = $("#w_pin").value;
       if(!pin || pin.length !== 4){ toast("Ошибка","Введите 4 цифры PIN","err"); return; }
-      
+
       try{
         await AsgardAuth.verifyPin({
           userId: loginState.userId,
@@ -686,21 +687,22 @@ try{
         $("#w_pin").value = "";
         $("#w_pin").focus();
       }
-    });
+    }
+    addMobileHandler($("#btnVerifyPin"), verifyPin);
 
     // Enter для PIN
     $("#w_pin")?.addEventListener("keydown", (e)=>{ if(e.key==="Enter") $("#btnVerifyPin").click(); });
 
     // Шаг 2b: первый вход - установка пароля и PIN
-    $("#btnSetupCredentials")?.addEventListener("click", async ()=>{
+    async function setupCredentials(){
       const pass1 = $("#s_pass").value;
       const pass2 = $("#s_pass2").value;
       const pin = $("#s_pin").value;
-      
+
       if(!pass1 || pass1.length < 6){ toast("Ошибка","Пароль минимум 6 символов","err"); return; }
       if(pass1 !== pass2){ toast("Ошибка","Пароли не совпадают","err"); return; }
       if(!pin || !/^\d{4}$/.test(pin)){ toast("Ошибка","PIN должен быть 4 цифры","err"); return; }
-      
+
       try{
         await AsgardAuth.setupCredentials({
           userId: loginState.userId,
@@ -711,7 +713,8 @@ try{
       }catch(e){
         toast("Ошибка", e.message||"Не удалось сохранить", "err");
       }
-    });
+    }
+    addMobileHandler($("#btnSetupCredentials"), setupCredentials);
   }
 
   // Загрузочный экран после успешного входа

@@ -213,7 +213,19 @@ window.AsgardStaffSchedulePage=(function(){
     let viewMonth = now.getMonth();
 
     const employees = await AsgardDB.all("employees");
-    const rows = (employees||[]).sort((a,b)=>String(a.fio||"").localeCompare(String(b.fio||""), 'ru'));
+    // Фильтруем: только полевые рабочие (без user_id - офисные сотрудники исключаются)
+    // и только активные (не удалённые, не заблокированные)
+    const rows = (employees||[])
+      .filter(e => {
+        // Исключаем офисных сотрудников (тех, у кого есть user_id - привязка к пользователю)
+        if (e.user_id) return false;
+        // Исключаем удалённых
+        if (e.deleted === true) return false;
+        // Исключаем неактивных (если поле есть и явно false)
+        if (e.is_active === false) return false;
+        return true;
+      })
+      .sort((a,b)=>String(a.fio||"").localeCompare(String(b.fio||""), 'ru'));
     const ids = rows.map(e=>e.id);
     const colors = await getColors();
     const worksMap = await getWorkTitleById();
