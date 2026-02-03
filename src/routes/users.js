@@ -4,6 +4,7 @@
  */
 
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 async function routes(fastify, options) {
   const db = fastify.db;
@@ -127,7 +128,8 @@ async function routes(fastify, options) {
     if (telegram_chat_id) {
       try {
         const telegram = require('../services/telegram');
-        await telegram.sendMessage(telegram_chat_id, 
+        // Используем sendNotification с user.id - он найдёт chat_id из базы
+        await telegram.sendNotification(user.id,
           `🔐 *Добро пожаловать в АСГАРД CRM!*\n\n` +
           `Логин: \`${login}\`\n` +
           `Временный пароль: \`${tempPassword}\`\n\n` +
@@ -145,12 +147,13 @@ async function routes(fastify, options) {
     };
   });
 
-  // Helper function
+  // Helper function - криптографически безопасная генерация пароля
   function generateTempPassword() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const randomBytes = crypto.randomBytes(8);
     let pass = '';
     for (let i = 0; i < 8; i++) {
-      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+      pass += chars.charAt(randomBytes[i] % chars.length);
     }
     return pass;
   }

@@ -314,12 +314,9 @@ ${JSON.stringify(context.data, null, 2).slice(0, 10000)}
     
     // Подсказки в зависимости от роли
     const suggestions = [];
-    if (perms.can_see_all_tenders || !perms.can_see_all_tenders) {
-      suggestions.push('Покажи мои тендеры за этот месяц');
-    }
-    if (perms.can_see_all_works || !perms.can_see_all_works) {
-      suggestions.push('Какие работы сейчас активны?');
-    }
+    // Тендеры и работы могут смотреть все (свои данные)
+    suggestions.push('Покажи мои тендеры за этот месяц');
+    suggestions.push('Какие работы сейчас активны?');
     if (perms.can_see_profits) {
       suggestions.push('Какая прибыль за этот квартал?');
     }

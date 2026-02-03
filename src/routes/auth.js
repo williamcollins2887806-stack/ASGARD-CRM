@@ -5,6 +5,7 @@
 
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 async function routes(fastify, options) {
   const db = fastify.db;
@@ -328,8 +329,8 @@ async function routes(fastify, options) {
       return reply.code(400).send({ error: 'У пользователя не привязан Telegram' });
     }
 
-    // Generate temp password
-    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+    // Generate temp password (криптографически безопасная генерация)
+    const tempPassword = crypto.randomBytes(6).toString('base64').slice(0, 8) + crypto.randomBytes(3).toString('hex').slice(0, 4).toUpperCase();
     const tempHash = await bcrypt.hash(tempPassword, 10);
     const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 

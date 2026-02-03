@@ -34,7 +34,7 @@ window.AsgardDB = (function(){
   async function apiFetch(url, options) {
     options = options || {};
     try {
-      var resp = await fetch(url, {
+      const resp = await fetch(url, {
         method: options.method || 'GET',
         headers: Object.assign({}, headers(), options.headers || {}),
         body: options.body
@@ -52,7 +52,7 @@ window.AsgardDB = (function(){
       }
       
       if (!resp.ok) {
-        var err = await resp.json().catch(function() { return { error: 'Network error' }; });
+        const err = await resp.json().catch(function() { return { error: 'Network error' }; });
         throw new Error(err.error || err.message || 'API Error');
       }
       
@@ -69,10 +69,10 @@ window.AsgardDB = (function(){
   
   async function getSettings(key) {
     try {
-      var resp = await fetch('/api/settings/' + key, { headers: headers() });
+      const resp = await fetch('/api/settings/' + key, { headers: headers() });
       if (resp.status === 401 || resp.status === 404) return null;
       if (!resp.ok) return null;
-      var data = await resp.json();
+      const data = await resp.json();
       return data.setting || data.value || data;
     } catch(e) {
       return null;
@@ -80,11 +80,11 @@ window.AsgardDB = (function(){
   }
   
   async function putSettings(val) {
-    var key = val.key;
+    const key = val.key;
     if (!key) throw new Error('settings требует key');
     
     try {
-      var resp = await fetch('/api/settings/' + key, {
+      const resp = await fetch('/api/settings/' + key, {
         method: 'PUT',
         headers: headers(),
         body: JSON.stringify({ value: val.value !== undefined ? val.value : val })
@@ -94,7 +94,7 @@ window.AsgardDB = (function(){
         return key;
       }
       // Если PUT не сработал - пробуем через data API
-      var resp2 = await fetch('/api/data/settings', {
+      const resp2 = await fetch('/api/data/settings', {
         method: 'POST',
         headers: headers(),
         body: JSON.stringify({ key: key, value_json: JSON.stringify(val.value !== undefined ? val.value : val) })
@@ -114,10 +114,10 @@ window.AsgardDB = (function(){
   
   async function getAllSettings() {
     try {
-      var resp = await fetch('/api/settings', { headers: headers() });
+      const resp = await fetch('/api/settings', { headers: headers() });
       if (resp.status === 401) return [];
       if (!resp.ok) return [];
-      var data = await resp.json();
+      const data = await resp.json();
       return data.settings || [];
     } catch(e) {
       return [];
@@ -130,9 +130,9 @@ window.AsgardDB = (function(){
   
   async function getUserCallStatus(userId) {
     try {
-      var data = await apiFetch('/api/data/user_call_status?limit=1000');
+      const data = await apiFetch('/api/data/user_call_status?limit=1000');
       if (!data) return null;
-      var items = data.user_call_status || [];
+      const items = data.user_call_status || [];
       return items.find(function(x) { return x.user_id == userId; }) || null;
     } catch(e) {
       return null;
@@ -140,11 +140,11 @@ window.AsgardDB = (function(){
   }
   
   async function putUserCallStatus(val) {
-    var userId = val.user_id;
+    const userId = val.user_id;
     if (!userId) throw new Error('user_call_status требует user_id');
     
     try {
-      var existing = await getUserCallStatus(userId);
+      const existing = await getUserCallStatus(userId);
       
       if (existing && existing.id) {
         await apiFetch('/api/data/user_call_status/' + existing.id, {
@@ -187,14 +187,14 @@ window.AsgardDB = (function(){
     }
     
     // Проверяем кэш
-    var cacheKey = store + ':' + key;
-    var cached = cache.get(cacheKey);
+    const cacheKey = store + ':' + key;
+    const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.time < CACHE_TTL) {
       return cached.data;
     }
     
     try {
-      var data = await apiFetch('/api/data/' + store + '/' + key);
+      const data = await apiFetch('/api/data/' + store + '/' + key);
       if (!data) return null;
       
       // Кэшируем
@@ -216,19 +216,19 @@ window.AsgardDB = (function(){
     }
     
     // Проверяем кэш
-    var cacheKey = store + ':all';
-    var cached = cache.get(cacheKey);
+    const cacheKey = store + ':all';
+    const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.time < CACHE_TTL) {
       return cached.data;
     }
     
     try {
-      var data = await apiFetch('/api/data/' + store + '?limit=10000');
-      
+      const data = await apiFetch('/api/data/' + store + '?limit=10000');
+
       // Если null (401/404) - возвращаем пустой массив
       if (!data) return [];
-      
-      var items = data[store] || [];
+
+      const items = data[store] || [];
       
       // Кэшируем
       cache.set(cacheKey, { data: items, time: Date.now() });
@@ -241,7 +241,7 @@ window.AsgardDB = (function(){
   }
   
   // Алиас для all
-  var getAll = all;
+  const getAll = all;
   
   /**
    * Добавить запись (INSERT)
@@ -258,7 +258,7 @@ window.AsgardDB = (function(){
     }
     
     try {
-      var data = await apiFetch('/api/data/' + store, {
+      const data = await apiFetch('/api/data/' + store, {
         method: 'POST',
         body: JSON.stringify(val)
       });
@@ -290,8 +290,8 @@ window.AsgardDB = (function(){
     }
     
     try {
-      var data;
-      
+      let data;
+
       if (val.id) {
         // UPDATE
         data = await apiFetch('/api/data/' + store + '/' + val.id, {
@@ -342,7 +342,7 @@ window.AsgardDB = (function(){
    */
   async function byIndex(store, indexName, value) {
     try {
-      var data = await apiFetch('/api/data/' + store + '/by-index', {
+      const data = await apiFetch('/api/data/' + store + '/by-index', {
         method: 'POST',
         body: JSON.stringify({ index: indexName, value: value })
       });
@@ -360,7 +360,7 @@ window.AsgardDB = (function(){
    */
   async function count(store) {
     try {
-      var data = await apiFetch('/api/data/' + store + '/count');
+      const data = await apiFetch('/api/data/' + store + '/count');
       if (!data) return 0;
       return data.count || 0;
     } catch(e) {
@@ -373,34 +373,34 @@ window.AsgardDB = (function(){
    */
   async function list(store, opts) {
     opts = opts || {};
-    var limit = opts.limit || 50;
-    var orderBy = opts.orderBy;
-    var desc = opts.desc;
-    
+    const limit = opts.limit || 50;
+    const orderBy = opts.orderBy;
+    const desc = opts.desc;
+
     try {
-      var url = '/api/data/' + store + '?limit=' + limit;
+      let url = '/api/data/' + store + '?limit=' + limit;
       if (orderBy) url += '&orderBy=' + orderBy;
       if (desc) url += '&desc=true';
       
-      var data = await apiFetch(url);
+      const data = await apiFetch(url);
       if (!data) return [];
       return data[store] || [];
     } catch(e) {
       return [];
     }
   }
-  
+
   // ─────────────────────────────────────────────────────────────────────────────
   // ЭКСПОРТ/ИМПОРТ (для совместимости)
   // ─────────────────────────────────────────────────────────────────────────────
-  
+
   async function exportJSON() {
-    var STORES = [
+    const STORES = [
       'users', 'settings', 'tenders', 'estimates', 'works',
       'customers', 'staff', 'notifications', 'audit_log'
     ];
-    
-    var out = { 
+
+    const out = { 
       __meta: { 
         exported_at: new Date().toISOString(), 
         db: DB_NAME, 
@@ -409,8 +409,8 @@ window.AsgardDB = (function(){
       } 
     };
     
-    for (var i = 0; i < STORES.length; i++) {
-      var s = STORES[i];
+    for (let i = 0; i < STORES.length; i++) {
+      const s = STORES[i];
       try {
         out[s] = await all(s);
       } catch(e) {
@@ -436,7 +436,7 @@ window.AsgardDB = (function(){
   
   function clearCache(store) {
     if (store) {
-      for (var key of cache.keys()) {
+      for (const key of cache.keys()) {
         if (key.indexOf(store + ':') === 0) {
           cache.delete(key);
         }
@@ -448,8 +448,8 @@ window.AsgardDB = (function(){
   
   // Очищаем кэш периодически
   setInterval(function() {
-    var now = Date.now();
-    for (var entry of cache.entries()) {
+    const now = Date.now();
+    for (const entry of cache.entries()) {
       if (now - entry[1].time > CACHE_TTL * 2) {
         cache.delete(entry[0]);
       }
@@ -464,7 +464,7 @@ window.AsgardDB = (function(){
     return Promise.resolve(true);
   }
   
-  var STORES = {
+  const STORES = {
     users: { keyPath: "id" },
     settings: { keyPath: "key" },
     tenders: { keyPath: "id" },

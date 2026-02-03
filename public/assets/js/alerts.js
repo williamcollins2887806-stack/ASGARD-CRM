@@ -68,7 +68,7 @@ window.AsgardAlertsPage=(function(){
 
     function card(n){
       const when = n.created_at ? new Date(n.created_at).toLocaleString("ru-RU") : "—";
-      const cls = n.is_read ? "pill" : "pill" ;
+      const cls = "pill";
       const dot = n.is_read ? `<span class="dot" style="background:#64748b"></span>` : `<span class="dot" style="background:#f59e0b"></span>`;
       const link = n.link_hash || "#/home";
       return `<div class="${cls}" style="gap:10px; align-items:flex-start">
