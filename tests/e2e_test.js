@@ -464,10 +464,10 @@ class TestRunner {
       await this.page.waitForTimeout(1000);
 
       const url = this.page.url();
-      if (!url.includes('login') && !url.includes('#/login')) {
-        // Проверяем, показывается ли форма входа
-        const hasLoginForm = await this.exists('#w_login', 2000);
-        if (!hasLoginForm) {
+      if (!url.includes('login') && !url.includes('#/login') && !url.includes('#/welcome')) {
+        // Проверяем, показывается ли страница входа (кнопка "Войти" или форма)
+        const hasWelcome = await this.exists('#btnShowLogin, #w_login', 2000);
+        if (!hasWelcome) {
           throw new Error(`Неавторизованный пользователь не перенаправлен на логин. URL: ${url}`);
         }
       }
@@ -478,7 +478,13 @@ class TestRunner {
       await this.goto('/');
       await this.page.waitForTimeout(500);
 
-      if (await this.exists('#w_login')) {
+      // Сначала кликаем "Войти" чтобы показать форму
+      if (await this.exists('#btnShowLogin', 2000)) {
+        await this.click('#btnShowLogin');
+        await this.page.waitForTimeout(500);
+      }
+
+      if (await this.exists('#w_login', 2000)) {
         await this.type('#w_login', 'admin', { clear: true });
         await this.type('#w_pass', 'wrongpassword', { clear: true });
         await this.click('#btnDoLogin');
@@ -512,7 +518,12 @@ class TestRunner {
     await this.goto('/');
     await this.page.waitForTimeout(1000);
 
-    // Ждём форму входа
+    // Ждём кнопку "Войти" на welcome-странице
+    await this.page.waitForSelector('#btnShowLogin', { timeout: 10000 });
+    await this.click('#btnShowLogin');
+    await this.page.waitForTimeout(500);
+
+    // Ждём появления формы входа
     await this.page.waitForSelector('#w_login', { timeout: 10000 });
 
     // Вводим логин и пароль
