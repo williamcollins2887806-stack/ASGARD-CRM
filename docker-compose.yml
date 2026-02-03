@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL Database
+  # ─────────────────────────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: asgard-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-asgard_crm}
+      POSTGRES_USER: ${DB_USER:-asgard}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/V001__initial_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-asgard} -d ${DB_NAME:-asgard_crm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Node.js API Server
+  # ─────────────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: asgard-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-asgard_crm}
+      DB_USER: ${DB_USER:-asgard}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    volumes:
+      - uploads_data:/app/uploads
+      - ./public:/app/public
+    ports:
+      - "3000:3000"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Nginx Reverse Proxy (optional, for production with SSL)
+  # ─────────────────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: asgard-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./public:/var/www/html:ro
+      - ssl_certs:/etc/letsencrypt:ro
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+  uploads_data:
+  ssl_certs:
+
+networks:
+  default:
+    name: asgard-network

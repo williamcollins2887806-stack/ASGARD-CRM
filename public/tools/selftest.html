@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>ASGARD • Self‑Test</title>
+  <link rel="stylesheet" href="../assets/css/app.css"/>
+  <style>
+    body{background:#070b14}
+    .st-wrap{max-width:1100px;margin:0 auto;padding:18px}
+    .st-head{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:14px}
+    .st-head h1{font-size:18px;margin:0}
+    .st-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .st-grid{display:grid;grid-template-columns: 1fr; gap:12px}
+    .st-row{display:grid;grid-template-columns: 260px 120px 1fr; gap:12px;align-items:start}
+    .st-row .k{color:rgba(184,196,231,.92);font-weight:900}
+    .st-row .v{font-weight:900}
+    .st-ok{color:#22c55e}
+    .st-bad{color:#e03a4a}
+    .st-warn{color:#f59e0b}
+    pre.st-pre{white-space:pre-wrap;word-break:break-word;background:rgba(13,20,40,.40);border:1px solid rgba(42,59,102,.85);border-radius:14px;padding:12px;margin:0}
+  </style>
+</head>
+<body>
+  <!-- Hidden app container for router/boot compatibility -->
+  <div id="app" style="display:none"></div>
+  
+  <div class="st-wrap">
+    <div class="st-head">
+      <div>
+        <h1>Self‑Test • CRM «АСГАРД‑СЕРВИС»</h1>
+        <div class="help" style="margin-top:6px">Эта страница прогоняет базовые проверки: наличие модулей, целостность настроек, маршруты и RBAC. Результат — PASS/FAIL.</div>
+      </div>
+      <div class="st-actions">
+        <button class="btn" id="btnRun">Запустить тест</button>
+        <button class="btn ghost" id="btnWipe">Сбросить базу</button>
+        <a class="btn ghost" href="../index.html#/welcome">Открыть CRM</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="st-grid" id="out"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3 style="margin:0 0 8px 0">Логи ошибок (captured)</h3>
+      <pre class="st-pre" id="errlog">(пока пусто)</pre>
+    </div>
+  </div>
+
+  <script>window.ASGARD_SELFTEST = true;</script>
+
+  <!-- Core app scripts (same order as index.html) -->
+  <script src="../assets/js/db.js"></script>
+  <script src="../assets/js/ui.js"></script>
+  <script src="../assets/js/validate.js"></script>
+  <script src="../assets/js/safe_mode.js"></script>
+  <script src="../assets/js/auth.js"></script>
+  <script src="../assets/js/router.js"></script>
+  <script src="../assets/js/sla.js"></script>
+  <script src="../assets/js/booking.js"></script>
+  <script src="../assets/js/seed.js"></script>
+  <script src="../assets/js/tenders.js"></script>
+  <script src="../assets/js/customers.js"></script>
+  <script src="../assets/js/gantt.js"></script>
+  <script src="../assets/js/calculator.js"></script>
+  <script src="../assets/js/charts.js"></script>
+  <script src="../assets/js/pm_calcs.js"></script>
+  <script src="../assets/js/approvals.js"></script>
+  <script src="../assets/js/pm_works.js"></script>
+  <script src="../assets/js/all_works.js"></script>
+  <script src="../assets/js/all_estimates.js"></script>
+  <script src="../assets/js/kpi_works.js"></script>
+  <script src="../assets/js/kpi_money.js"></script>
+  <script src="../assets/js/settings.js"></script>
+  <script src="../assets/js/hr_requests.js"></script>
+  <script src="../assets/js/proc_requests.js"></script>
+  <script src="../assets/js/personnel.js"></script>
+  <script src="../assets/js/hr_rating.js"></script>
+  <script src="../assets/js/employee.js"></script>
+  <script src="../assets/js/staff_schedule.js"></script>
+  <script src="../assets/js/office_schedule.js"></script>
+  <script src="../assets/js/alerts.js"></script>
+  <script src="../assets/js/gantt_full.js"></script>
+  <script src="../assets/js/templates.js"></script>
+  <script src="../assets/js/docs_pack.js"></script>
+  <script src="../assets/js/backup.js"></script>
+  <script src="../assets/js/birthdays.js"></script>
+  <script src="../assets/js/app.js"></script>
+
+  <script src="./selftest.js"></script>
+</body>
+</html>

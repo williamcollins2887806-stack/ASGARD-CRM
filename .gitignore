@@ -1,0 +1,25 @@
+node_modules/
+package-lock.json
+.env
+.env.*
+*.pem
+*.key
+*.log
+logs/
+*.bak
+*.bak_*
+tmp/
+temp/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+uploads/
+public/uploads/
+*.sql
+*.dump
+
+# Бэкапы (содержат секреты и дубликаты)
+public_backup_*/
+src_backup_*/
+*_backup_*/

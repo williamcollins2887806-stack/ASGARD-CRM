@@ -1,0 +1,1029 @@
+/**
+ * ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ОПЦИЙ ПЕРИОДОВ
+ */
+window.generatePeriodOptions = function(selectedValue) {
+  const months = ["Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"];
+  const options = ['<option value="">Все периоды</option>'];
+  const now = new Date();
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const label = months[d.getMonth()] + ' ' + d.getFullYear();
+    const selected = (value === selectedValue) ? ' selected' : '';
+    options.push('<option value="' + value + '"' + selected + '>' + label + '</option>');
+  }
+  return options.join('');
+};
+
+window.generateYearOptions = function(selectedValue) {
+  const options = ['<option value="">Все годы</option>'];
+  const currentYear = new Date().getFullYear();
+  for (let year = currentYear; year >= currentYear - 5; year--) {
+    const selected = (String(year) === String(selectedValue)) ? ' selected' : '';
+    options.push('<option value="' + year + '"' + selected + '>' + year + '</option>');
+  }
+  return options.join('');
+};
+
+var generatePeriodOptions = window.generatePeriodOptions;
+var generateYearOptions = window.generateYearOptions;
+console.log('[ASGARD] Global period functions loaded');
+
+
+(function(){
+  const { $, $$, esc, toast, showModal } = AsgardUI;
+  try{ if(window.AsgardTheme) AsgardTheme.init(); }catch(e){}
+
+  // Определяем базовый путь к assets (для работы из подпапок типа /tools/)
+  const ASSETS_BASE = (function(){
+    const scripts = document.querySelectorAll('script[src*="app.js"]');
+    for(const s of scripts){
+      const src = s.getAttribute('src') || '';
+      // Ищем путь к app.js и извлекаем базу
+      const match = src.match(/^(.*?)assets\/js\/app\.js/);
+      if(match) return match[1] + 'assets/';
+    }
+    return 'assets/';
+  })();
+
+  // 30 цитат в стиле викингов для загрузочного экрана
+  const LOADING_QUOTES = [
+    "Драккар готовится к походу... Асгард ждёт своих воинов.",
+    "Один видит всё. И твои дела — тоже.",
+    "Тор куёт молнии, а мы — контракты.",
+    "Путь к Вальгалле лежит через порядок в делах.",
+    "Руны складываются... Летопись загружается.",
+    "Мудрый ярл сначала считает, потом бьёт.",
+    "Фрейя благословляет тех, кто ведёт учёт честно.",
+    "Великие саги начинаются с первого клика.",
+    "Рагнарёк подождёт — сначала сдай отчёт.",
+    "Асгард-Сервис: где каждый тендер — это поход.",
+    "Локи хитёр, но наш калькулятор хитрее.",
+    "Валькирии уносят героев. CRM — уносит хаос.",
+    "Слава тому, кто закрывает работы вовремя!",
+    "Мёд победы сладок. Особенно после согласования.",
+    "Хеймдалль стережёт Биврёст. Мы стережём дедлайны.",
+    "Не буди спящего дракона. Буди спящий просчёт.",
+    "Скандинавский порядок в каждой цифре.",
+    "Слово Ярла — закон. Но дашборд — доказательство.",
+    "Дружина сильна учётом, а не криком.",
+    "Ветер наполняет паруса. Данные наполняют отчёты.",
+    "Берсерк в бою, педант в расчётах.",
+    "Фенрир грызёт цепи. Мы грызём сроки.",
+    "Иггдрасиль крепок корнями. Бизнес — цифрами.",
+    "Сегодня — CRM. Завтра — Вальгалла продаж!",
+    "Готовим руны... Загружаем мудрость предков.",
+    "Тысяча походов начинается с одного входа.",
+    "Лёд и пламя. Расходы и доходы.",
+    "Боги Асгарда смотрят на твои KPI.",
+    "Где викинг — там победа. Где CRM — там порядок.",
+    "Сага продолжается... Добро пожаловать, воин!"
+  ];
+
+  const MOTTOS={
+    "/home":"Сталь и порядок. Пусть каждый день приносит добычу.",
+    "/tenders":"Видим цель. Берём след. Ведём до победы.",
+    "/pm-calcs":"Сроки видны. Силы рассчитаны. Риск под контролем.",
+    "/approvals":"Слово Ярла — закон. Счёт должен быть чист.",
+    "/pm-works":"Клятва дана — доведи дело до конца.",
+    "/all-works":"Дело идёт по плану — пока цифры честны.",
+    "/all-estimates":"Счёт точен. Решение крепко. Ошибки не проходят.",
+    "/kpi-works":"Кто ведёт путь — тот отвечает за след.",
+    "/kpi-money":"Казна любит порядок. Долг не терпит тени.",
+    "/personnel":"В дружине сила. В учёте — порядок. В деле — честь.",
+    "/employee":"Сильна дружина, где помнят имена и дела.",
+    "/workers-schedule":"Кто где стоит — тот и держит фронт.",
+    "/settings":"Настрой верно — и путь станет прямым.",
+    "/customers":"Храни имена и печати — и договор будет крепок.",
+    "/customer":"Храни имена и печати — и договор будет крепок.",
+    "/hr-requests":"Дружина сильна, когда строем управляют руны.",
+    "/proc-requests":"Запас крепок, когда список точен.",
+    "/login":"Вход в зал. У каждого своя доля ответственности.",
+    "/register":"Пусть имя будет честным, а роль — ясной."
+  };
+
+  const DIRECTOR_ROLES = ["DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]; // legacy DIRECTOR removed in Stage 25
+  const OFFICE_ROLES = ["TO","PM","HR","BUH","OFFICE_MANAGER","WAREHOUSE",...DIRECTOR_ROLES,"ADMIN"];
+  const ALL_ROLES = [...OFFICE_ROLES,"PROC"];
+
+
+  window.__ASG_SHARED_TABLE_CSS__ = `
+<style>
+  table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
+  table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
+  table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); vertical-align:top}
+  table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
+  table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
+  .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
+  .tools .field{min-width:220px}
+  .kpi{display:grid; grid-template-columns:repeat(6,minmax(140px,1fr)); gap:12px}
+  .kpi .k{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:16px; padding:12px}
+  .kpi .k .t{font-size:11px; color:rgba(184,196,231,.85); font-weight:900}
+  .kpi .k .v{font-size:22px; font-weight:1000; margin-top:6px; color:rgba(242,208,138,.95)}
+  .kpi .k .s{font-size:12px; color:rgba(184,196,231,.85); margin-top:6px}
+  .chart{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:16px; padding:12px}
+  .barrow{display:grid; grid-template-columns: 200px 1fr 70px; gap:12px; align-items:center; margin:10px 0}
+  .bar{height:14px; border-radius:999px; background:rgba(42,59,102,.35); overflow:hidden}
+  .bar > div{height:100%}
+</style>
+`;
+
+  const NAV=[
+    {r:"/home",l:"Зал Ярла • Меню",d:"Порталы и сводка",roles:ALL_ROLES,i:"home"},
+    {r:"/dashboard",l:"Дашборд руководителя",d:"Сводная аналитика",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard"},
+    {r:"/calendar",l:"Календарь встреч",d:"Совещания и события",roles:ALL_ROLES,i:"schedule"},
+    {r:"/birthdays",l:"Дни рождения",d:"Офисный календарь ДР",roles:ALL_ROLES,i:"birthdays"},
+    {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders"},
+    {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders"},
+    {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","PM",...DIRECTOR_ROLES],i:"customers"},
+    {r:"/pm-calcs",l:"Карта Похода • Просчёты",d:"Inbox РП",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmcalcs"},
+    {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals"},
+    {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"approvals"},
+    {r:"/pm-works",l:"Карта Похода • Работы",d:"Проекты РП",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmworks"},
+    {r:"/all-works",l:"Свод Контрактов",d:"Все работы",roles:["ADMIN",...DIRECTOR_ROLES],i:"allworks"},
+    {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN",...DIRECTOR_ROLES],i:"allestimates"},
+    {r:"/finances",l:"Финансы",d:"Аналитика и реестр расходов",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances"},
+    {r:"/invoices",l:"Счета и оплаты",d:"Выставление и отслеживание",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"finances"},
+    {r:"/acts",l:"Акты выполненных работ",d:"Создание и подписание",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"buh"},
+    {r:"/warehouse",l:"Склад ТМЦ",d:"Оборудование и инструменты",roles:ALL_ROLES,i:"backup"},
+    {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks"},
+    {r:"/office-expenses",l:"Офисные расходы",d:"Управление и согласование",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"office"},
+    {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence"},
+    {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков и покупателей",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies"},
+    {r:"/seals",l:"Реестр печатей",d:"Учёт и передача печатей",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies"},
+    {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, уведомления",roles:["ADMIN","HR","TO",...DIRECTOR_ROLES],i:"workers"},
+    {r:"/warehouse",l:"Склад и ТМЦ",d:"Оборудование, инструмент, материалы",roles:ALL_ROLES,i:"backup"},
+    {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies"},
+    {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","PM",...DIRECTOR_ROLES],i:"travel"},
+    {r:"/user-requests",l:"Заявки на регистрацию",d:"Одобрение новых пользователей",roles:["ADMIN",...DIRECTOR_ROLES],i:"requests"},
+    {r:"/analytics",l:"Аналитика Ярла",d:"KPI работ и денег",roles:["ADMIN",...DIRECTOR_ROLES],i:"kpiworks"},
+    {r:"/alerts",l:"Воронья почта • Уведомления",d:"События и ответы",roles:ALL_ROLES,i:"alerts"},
+    {r:"/office-schedule",l:"График Дружины • Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule"},
+    {r:"/workers-schedule",l:"График Дружины • Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers"},
+    {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"rating"},
+    {r:"/gantt-calcs",l:"Гантт • Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttcalcs"},
+    {r:"/gantt-works",l:"Гантт • Работы",d:"План и факты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttworks"},
+    {r:"/backup",l:"Камень Хроник • Резерв",d:"Экспорт/импорт базы",roles:["ADMIN",...DIRECTOR_ROLES],i:"backup"},
+    {r:"/diag",l:"Диагностика",d:"Версия, база, self-test, логи",roles:["ADMIN"],i:"diag"},
+    {r:"/settings",l:"Кузница Настроек",d:"Справочники и цвета",roles:["ADMIN",...DIRECTOR_ROLES],i:"settings"},
+    {r:"/telegram",l:"Telegram",d:"Уведомления и SMS",roles:["ADMIN"],i:"alerts"},
+    {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup"},
+    {r:"/mango",l:"Телефония",d:"Манго Телеком",roles:["ADMIN"],i:"alerts"},
+    {r:"/chat",l:"Чат дружины",d:"Общение и согласования",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"correspondence"},
+    {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"dashboard"},
+  ];
+
+  async function layout(body,{title,motto,rightBadges=[]}={}){
+    // Сохраняем позицию скролла меню
+    const sidenav = document.querySelector('.sidenav');
+    const savedScroll = sidenav ? sidenav.scrollTop : (window.__ASG_NAV_SCROLL__ || 0);
+    
+    const auth=await AsgardAuth.requireUser();
+    const user=auth?auth.user:null;
+    const role=user?user.role:"GUEST";
+    const cur=AsgardRouter.current();
+    let unreadCount=0;
+    try{
+      const nots = await AsgardDB.byIndex("notifications","user_id", user?.id||-1);
+      unreadCount = (nots||[]).filter(n=>!n.is_read).length;
+    }catch(e){}
+// Prevent duplicate/stale global listeners between navigations / logout-login.
+try{
+  if(window.__ASG_BELL_DOC_CLICK__) document.removeEventListener("click", window.__ASG_BELL_DOC_CLICK__);
+  if(window.__ASG_BELL_DOC_ESC__) document.removeEventListener("keydown", window.__ASG_BELL_DOC_ESC__);
+  window.__ASG_BELL_DOC_CLICK__ = null;
+  window.__ASG_BELL_DOC_ESC__ = null;
+}catch(_){}
+
+
+    const roleAllowed = (need, actual)=>{
+      if(actual==="ADMIN") return true;
+      if(!Array.isArray(need)) return false;
+      if(need.includes(actual)) return true;
+      if(need.includes("DIRECTOR") && window.AsgardAuth && AsgardAuth.isDirectorRole && AsgardAuth.isDirectorRole(actual)) return true;
+      return false;
+    };
+
+    const navHtml = (role==="GUEST") ? "" : NAV.filter(n=>roleAllowed(n.roles, role)).map(n=>{
+      const a=(cur===n.r)?"active":"";
+      return `<a class="navitem ${a}" href="#${n.r}">
+        <div class="ico"><img src="assets/icons/nav/${esc(n.i)}.svg" alt="" loading="lazy"/></div>
+        <div class="lbl"><div class="name">${esc(n.l)}</div><div class="desc">${esc(n.d)}</div></div>
+      </a>`;
+    }).join("");    const switchCtl = (user && window.AsgardAuth && AsgardAuth.canSwitch) ? AsgardAuth.canSwitch(user) : null;
+    let switchHtml = "";
+    if(user && switchCtl){
+      const cur = user.role;
+      const target = (cur===switchCtl.a) ? switchCtl.b : switchCtl.a;
+      const rt = (window.AsgardAuth && AsgardAuth.roleTitle) ? AsgardAuth.roleTitle : (x=>x);
+      const lbl = `Режим: ${rt(cur)} → ${rt(target)}`;
+      switchHtml = `<button class="btn ghost" id="btnSwitchRole" data-target="${esc(target)}">${esc(lbl)}</button>`;
+    }
+
+    const authBtns = user
+      ? `<div class="pill"><div class="who">${esc(user.name)}</div><div class="role">${esc(role)}</div></div>${switchHtml}<button class="btn red" id="btnLogout">Выйти</button>`
+      : `<button class="btn" id="btnLoginGo">Войти</button><button class="btn ghost" id="btnRegGo">Регистрация</button>`;
+
+    const logo = ASSETS_BASE + "img/logo.png";
+    $("#app").innerHTML = `<div class="app">
+      <aside class="sidenav">
+        <a class="brand" href="#/welcome" aria-label="На главную">
+          <img src="${logo}" alt="АСГАРД‑СЕРВИС" onerror="this.style.display='none'"/>
+          <div>
+            <div class="h">CRM</div>
+            <div class="s">ᚠᚢᚦᚨᚱᚲ</div>
+          </div>
+        </a>
+        <nav class="nav">
+          <div class="group-title">Навигация</div>
+          ${navHtml || `<div class="help" style="padding:10px 10px">Войдите, чтобы открыть разделы.</div>`}
+        </nav>
+        <div class="sidefoot">
+          ${authBtns}
+          <button class="btn ghost" id="btnBackup">Экспорт/Импорт</button>
+        </div>
+      </aside>
+      <div class="overlay" id="navOverlay"></div>
+      <main class="main">
+        <div class="topbar">
+          <div class="mnav"><button class="iconbtn" id="btnMenu" aria-label="Меню">☰</button></div>
+          <div class="title">
+            <h1 class="page-title">${esc(title||"")}</h1>
+            <p class="page-motto">${esc(motto||MOTTOS[cur]||"")}</p>
+          </div>
+          <div class="badges">${[
+  ...(user ? [
+    `<button class="themebtn icononly" id="btnTheme" type="button" aria-label="Переключить тему"><span class="iconwrap" aria-hidden="true"><svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Zm0-16V1m0 22v-1m11-10h-1M2 12H1m18.364 6.364-.707-.707M6.343 6.343l-.707-.707m13.435-0.293-.707.707M6.343 17.657l-.707.707" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 13.5A8.5 8.5 0 1 1 10.5 3a6.8 6.8 0 0 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span></button>
+    <button class="bellbtn" id="btnBell" type="button" aria-label="Уведомления">
+      <span class="bell">🔔</span>
+      <span class="belltext">Уведомления</span>
+      ${unreadCount?`<span class="bellcount">${unreadCount}</span>`:''}
+    </button>
+    <div class="bellpop" id="bellPop" style="display:none">
+      <div class="bellpop-head">
+        <div><b>Воронья почта</b></div>
+        <button class="xbtn" id="bellClose" type="button" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="bellpop-list" id="bellList"></div>
+      <div class="bellpop-foot">
+        <a class="btn" style="padding:6px 10px" href="#/alerts" id="bellAll">Все уведомления</a>
+        <button class="btn ghost" style="padding:6px 10px" id="bellMarkAll" type="button">Прочитано</button>
+      </div>
+    </div>`
+  ] : []),
+  ...rightBadges.map(b=>`<span class="badge">${esc(b)}</span>`)
+].join("")}</div>
+        </div>
+        ${body}
+        <div class="runesep" aria-hidden="true"></div>
+        <hr class="hr"/>
+        <div class="help">Данные хранятся на сервере. Резервное копирование автоматическое.</div>
+        <div class="credit">ᚠᚹ Сей сайт выкован Androsov’ым — да служит АСГАРД-СЕРВИС ᚹᚠ</div>
+      </main>
+    </div>`;
+
+
+    // Mobile nav (burger)
+    const closeNav = ()=>document.body.classList.remove("nav-open");
+    const toggleNav = ()=>document.body.classList.toggle("nav-open");
+    if($("#btnMenu")) $("#btnMenu").addEventListener("click", toggleNav);
+    if($("#navOverlay")) $("#navOverlay").addEventListener("click", closeNav);
+    $$(".navitem").forEach(a=>a.addEventListener("click", closeNav));
+    if(window.__ASG_DOC_ESC_NAV__) document.removeEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
+    window.__ASG_DOC_ESC_NAV__ = (e)=>{ if(e.key==="Escape") closeNav(); };
+    document.addEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
+
+    if($("#btnLogout")) $("#btnLogout").addEventListener("click", ()=>{ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; });
+    if($("#btnLoginGo")) $("#btnLoginGo").addEventListener("click", ()=>location.hash="#/login");
+    if($("#btnRegGo")) $("#btnRegGo").addEventListener("click", ()=>location.hash="#/register");
+    if($("#btnBackup")) $("#btnBackup").addEventListener("click", backupModal);
+    if($("#btnSwitchRole")) $("#btnSwitchRole").addEventListener("click", async (e)=>{
+      const target = e.currentTarget.getAttribute('data-target');
+      const ok = await AsgardAuth.setActiveRole(target);
+      if(ok){ toast('Режим', 'Переключено на '+target); location.hash='#/home'; }
+      else { toast('Ошибка','Не удалось переключить режим','err'); }
+    });
+
+    
+    // Theme toggle
+    try{
+      if($("#btnTheme")){
+        const b = $("#btnTheme");
+        const ic = $("#themeIcon");
+        function syncTheme(){
+          const t = (window.AsgardTheme?AsgardTheme.get():"dark")==="light" ? "light" : "dark";
+          const msg = (t==="light") ? "Переключить на тёмную тему" : "Переключить на светлую тему";
+          b.title = msg;
+          try{ b.setAttribute("aria-label", msg); }catch(e){}
+        }
+        syncTheme();
+        b.addEventListener("click", ()=>{
+          if(window.AsgardTheme) AsgardTheme.toggle();
+          syncTheme();
+        });
+        window.addEventListener("asgard:theme", syncTheme);
+      }
+    }catch(e){}
+    // __ASG_THEME_BTN__
+// Bell popover
+    if(user && $("#btnBell") && $("#bellPop")){
+      const btn = $("#btnBell");
+      const pop = $("#bellPop");
+      const list = $("#bellList");
+      const closeBtn = $("#bellClose");
+      const markAllBtn = $("#bellMarkAll");
+
+      async function loadBell(){
+        let items=[];
+        try{ items = await AsgardDB.byIndex("notifications","user_id", user.id); }catch(e){ items=[]; }
+        items.sort((a,b)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
+        items = items.slice(0,8);
+        if(!items.length){
+          list.innerHTML = `<div class="help" style="padding:10px">Нет уведомлений.</div>`;
+          return;
+        }
+        list.innerHTML = items.map(n=>{
+          const when = n.created_at ? new Date(n.created_at).toLocaleString("ru-RU") : "—";
+          const dot = n.is_read ? `<span class="dot" style="background:#64748b"></span>` : `<span class="dot" style="background:#f59e0b"></span>`;
+          const link = n.link_hash || "#/alerts";
+          return `<a class="bellitem" href="${esc(link)}" data-nid="${n.id}">
+            <div class="belli">${dot}</div>
+            <div class="bellc">
+              <div class="belltt"><b>${esc(n.title||"Уведомление")}</b></div>
+              <div class="bellmsg">${esc(n.message||"")}</div>
+              <div class="bellwhen">${esc(when)}</div>
+            </div>
+          </a>`;
+        }).join("");
+
+        // Mark read on open
+        $$(".bellitem").forEach(a=>a.addEventListener("click", async ()=>{
+          const id = Number(a.getAttribute("data-nid"));
+          try{
+            const n = await AsgardDB.get("notifications", id);
+            if(n && !n.is_read){ n.is_read=true; await AsgardDB.put("notifications", n); }
+          }catch(e){}
+        }));
+      }
+
+      const hide = ()=>{ pop.style.display = "none"; };
+      const show = async ()=>{ await loadBell(); pop.style.display = "block"; };
+      const toggle = async ()=>{ (pop.style.display==="block") ? hide() : await show(); };
+
+      btn.addEventListener("click", async (e)=>{ e.preventDefault(); e.stopPropagation(); await toggle(); });
+      if(closeBtn) closeBtn.addEventListener("click", (e)=>{ e.preventDefault(); hide(); });
+      document.addEventListener("click", (e)=>{
+        if(pop.style.display!=="block") return;
+        if(pop.contains(e.target) || btn.contains(e.target)) return;
+        hide();
+      });
+      document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") hide(); });
+
+      if(markAllBtn) markAllBtn.addEventListener("click", async ()=>{
+        let items=[];
+        try{ items = await AsgardDB.byIndex("notifications","user_id", user.id); }catch(e){ items=[]; }
+        for(const n of items){ if(n && !n.is_read){ n.is_read=true; await AsgardDB.put("notifications", n); } }
+        await loadBell();
+        toast("Уведомления", "Отмечено как прочитано");
+      });
+    }
+    
+    // Восстанавливаем позицию скролла меню
+    requestAnimationFrame(()=>{
+      const nav = document.querySelector('.sidenav');
+      if(nav && savedScroll > 0){
+        nav.scrollTop = savedScroll;
+      }
+      // Сохраняем при скролле
+      if(nav){
+        nav.addEventListener('scroll', ()=>{
+          window.__ASG_NAV_SCROLL__ = nav.scrollTop;
+        }, {passive: true});
+      }
+    });
+    
+    // Инициализируем AI-ассистента (только для авторизованных)
+    if(window.AsgardAssistant && auth){
+      AsgardAssistant.init();
+    }
+  }
+
+  async function pageWelcome(){
+    // Public landing (no auth). If user is already logged in — show portal / home.
+    const auth = AsgardAuth.getAuth();
+    if(auth && auth.user){ location.hash = "#/home"; return; }
+
+    // SVG драккар (викингский корабль)
+    const drakkarSVG = `
+      <svg viewBox="0 0 400 200" class="drakkar-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="seaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" style="stop-color:#1e40af;stop-opacity:0.6"/>
+            <stop offset="100%" style="stop-color:#0f172a;stop-opacity:0.9"/>
+          </linearGradient>
+          <linearGradient id="hullGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" style="stop-color:#92400e"/>
+            <stop offset="100%" style="stop-color:#451a03"/>
+          </linearGradient>
+          <linearGradient id="sailGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#dc2626"/>
+            <stop offset="100%" style="stop-color:#7f1d1d"/>
+          </linearGradient>
+        </defs>
+        <!-- Море -->
+        <ellipse cx="200" cy="185" rx="180" ry="20" fill="url(#seaGrad)" opacity="0.7"/>
+        <!-- Волны -->
+        <path d="M20,175 Q60,165 100,175 T180,175 T260,175 T340,175 T380,175" stroke="#3b82f6" stroke-width="2" fill="none" opacity="0.5"/>
+        <path d="M30,180 Q70,170 110,180 T190,180 T270,180 T350,180" stroke="#60a5fa" stroke-width="1.5" fill="none" opacity="0.4"/>
+        <!-- Корпус -->
+        <path d="M60,150 Q80,170 200,175 Q320,170 340,150 L320,150 Q200,160 80,150 Z" fill="url(#hullGrad)" stroke="#78350f" stroke-width="2"/>
+        <!-- Щиты на борту -->
+        <circle cx="100" cy="152" r="8" fill="#fbbf24" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="130" cy="155" r="8" fill="#dc2626" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="160" cy="157" r="8" fill="#fbbf24" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="190" cy="158" r="8" fill="#dc2626" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="220" cy="158" r="8" fill="#fbbf24" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="250" cy="157" r="8" fill="#dc2626" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="280" cy="155" r="8" fill="#fbbf24" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="310" cy="152" r="8" fill="#dc2626" stroke="#78350f" stroke-width="1.5"/>
+        <!-- Нос корабля - голова дракона -->
+        <path d="M340,150 Q360,140 370,120 Q375,100 365,90 Q355,85 350,95 Q345,85 335,90 L340,105 Q335,115 340,130 Z" fill="#451a03" stroke="#78350f" stroke-width="2"/>
+        <circle cx="355" cy="100" r="3" fill="#fbbf24"/>
+        <!-- Корма -->
+        <path d="M60,150 Q40,140 35,120 Q30,100 45,95 L55,110 Q50,125 60,140 Z" fill="#451a03" stroke="#78350f" stroke-width="2"/>
+        <!-- Мачта -->
+        <rect x="195" y="50" width="10" height="105" fill="#78350f" stroke="#451a03" stroke-width="1"/>
+        <!-- Парус -->
+        <path d="M100,55 Q200,40 300,55 L290,130 Q200,145 110,130 Z" fill="url(#sailGrad)" stroke="#991b1b" stroke-width="2"/>
+        <!-- Полосы на парусе -->
+        <line x1="120" y1="60" x2="130" y2="128" stroke="#fbbf24" stroke-width="3"/>
+        <line x1="200" y1="48" x2="200" y2="138" stroke="#fbbf24" stroke-width="3"/>
+        <line x1="280" y1="60" x2="270" y2="128" stroke="#fbbf24" stroke-width="3"/>
+        <!-- Верёвки -->
+        <line x1="200" y1="50" x2="100" y2="55" stroke="#a16207" stroke-width="1.5"/>
+        <line x1="200" y1="50" x2="300" y2="55" stroke="#a16207" stroke-width="1.5"/>
+        <line x1="200" y1="50" x2="60" y2="140" stroke="#a16207" stroke-width="1"/>
+        <line x1="200" y1="50" x2="340" y2="140" stroke="#a16207" stroke-width="1"/>
+      </svg>
+    `;
+
+    // Полностраничный Welcome без sidebar
+    const appEl = $("#app");
+    if (!appEl) {
+      console.warn("[pageWelcome] #app element not found, skipping render");
+      return;
+    }
+    appEl.innerHTML = `
+      <div class="welcome-page">
+        <div class="welcome-bg"></div>
+        <div class="welcome-content">
+          <div class="welcome-header">
+            <img src="${ASSETS_BASE}img/logo.png" alt="АСГАРД" class="welcome-logo" onerror="this.style.display='none'"/>
+            <div class="welcome-brand">
+              <div class="welcome-title">АСГАРД‑СЕРВИС</div>
+              <div class="welcome-runes">ᚠᚢᚦᚨᚱᚲ • CRM</div>
+            </div>
+          </div>
+
+          <div class="welcome-ship">
+            ${drakkarSVG}
+          </div>
+
+          <div class="welcome-motto">
+            «Сталь и порядок. Пусть каждый день приносит добычу.»
+          </div>
+
+          <div class="welcome-desc">
+            Порядок в делах • Честный счёт • Быстрые решения
+          </div>
+
+          <div class="welcome-actions" id="welcomeActions">
+            <button class="btn welcome-btn" id="btnShowLogin">Войти</button>
+          </div>
+
+          <!-- Форма входа: Шаг 1 - логин/пароль -->
+          <div class="welcome-form" id="loginForm" style="display:none">
+            <div class="welcome-form-title">Вход в Асгард</div>
+            <div class="welcome-form-fields">
+              <div class="field">
+                <label for="w_login">Логин</label>
+                <input id="w_login" name="login" placeholder="Введите логин" autocomplete="username"/>
+              </div>
+              <div class="field">
+                <label for="w_pass">Пароль</label>
+                <input id="w_pass" name="password" type="password" placeholder="Введите пароль" autocomplete="current-password"/>
+              </div>
+              <div class="field-row">
+                <label class="checkbox-label">
+                  <input id="w_remember" type="checkbox"/>
+                  <span>Запомнить меня</span>
+                </label>
+              </div>
+            </div>
+            <div class="welcome-form-actions">
+              <button class="btn" id="btnDoLogin">Далее</button>
+              <button class="btn ghost" id="btnBackToWelcome">Назад</button>
+            </div>
+          </div>
+
+          <!-- Форма: Шаг 2 - ввод PIN -->
+          <div class="welcome-form" id="pinForm" style="display:none">
+            <div class="welcome-form-title">Введите PIN</div>
+            <div class="welcome-form-subtitle" id="pinUserName"></div>
+            <div class="welcome-form-fields">
+              <div class="field" style="text-align:center">
+                <label for="w_pin">PIN-код (4 цифры)</label>
+                <input id="w_pin" name="pin" type="password" maxlength="4" pattern="[0-9]*" inputmode="numeric" 
+                       placeholder="••••" style="text-align:center; font-size:24px; letter-spacing:8px; width:140px; margin:0 auto" autocomplete="off"/>
+              </div>
+            </div>
+            <div class="welcome-form-actions">
+              <button class="btn" id="btnVerifyPin">Войти</button>
+              <button class="btn ghost" id="btnBackToLogin">Назад</button>
+            </div>
+          </div>
+
+          <!-- Форма: Первый вход - смена пароля + PIN -->
+          <div class="welcome-form" id="setupForm" style="display:none">
+            <div class="welcome-form-title">Первый вход</div>
+            <div class="welcome-form-subtitle" id="setupUserName"></div>
+            <div class="help" style="margin-bottom:16px; color:var(--muted); text-align:center">
+              Создайте новый пароль и PIN-код для защиты вашего аккаунта
+            </div>
+            <div class="welcome-form-fields">
+              <div class="field">
+                <label for="s_pass">Новый пароль (мин. 6 символов)</label>
+                <input id="s_pass" name="new_password" type="password" placeholder="Придумайте надёжный пароль" autocomplete="new-password"/>
+              </div>
+              <div class="field">
+                <label for="s_pass2">Повторите пароль</label>
+                <input id="s_pass2" name="confirm_password" type="password" placeholder="Повторите пароль" autocomplete="new-password"/>
+              </div>
+              <div class="field">
+                <label for="s_pin">PIN-код (4 цифры)</label>
+                <input id="s_pin" name="new_pin" type="password" maxlength="4" pattern="[0-9]*" inputmode="numeric" 
+                       placeholder="0000" style="text-align:center; font-size:20px; letter-spacing:6px" autocomplete="off"/>
+              </div>
+            </div>
+            <div class="welcome-form-actions">
+              <button class="btn" id="btnSetupCredentials">Сохранить и войти</button>
+            </div>
+          </div>
+
+          <div class="welcome-footer">
+            <div class="welcome-runes-bottom">ᚠᚹ Сей сайт выкован для АСГАРД‑СЕРВИС ᚹᚠ</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // State для многошагового входа
+    let loginState = { userId: null, userName: null, remember: false };
+
+    // Обработчики
+    const loginForm = $("#loginForm");
+    const pinForm = $("#pinForm");
+    const setupForm = $("#setupForm");
+    const welcomeActions = $("#welcomeActions");
+
+    function showLogin(){
+      welcomeActions.style.display = "none";
+      pinForm.style.display = "none";
+      setupForm.style.display = "none";
+      loginForm.style.display = "block";
+      setTimeout(()=>$("#w_login")?.focus(), 100);
+    }
+
+    function showPin(){
+      welcomeActions.style.display = "none";
+      loginForm.style.display = "none";
+      setupForm.style.display = "none";
+      pinForm.style.display = "block";
+      $("#pinUserName").textContent = loginState.userName || "";
+      setTimeout(()=>$("#w_pin")?.focus(), 100);
+    }
+
+    function showSetup(){
+      welcomeActions.style.display = "none";
+      loginForm.style.display = "none";
+      pinForm.style.display = "none";
+      setupForm.style.display = "block";
+      $("#setupUserName").textContent = loginState.userName || "";
+      setTimeout(()=>$("#s_pass")?.focus(), 100);
+    }
+
+    function showWelcome(){
+      loginForm.style.display = "none";
+      pinForm.style.display = "none";
+      setupForm.style.display = "none";
+      welcomeActions.style.display = "flex";
+      loginState = { userId: null, userName: null, remember: false };
+    }
+
+    // Touch/Click обработчики для кнопок
+    function addMobileHandler(el, handler) {
+      if (!el) return;
+      el.addEventListener("click", handler);
+      el.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        handler(e);
+      }, { passive: false });
+    }
+
+    addMobileHandler($("#btnShowLogin"), showLogin);
+    addMobileHandler($("#btnBackToWelcome"), showWelcome);
+    addMobileHandler($("#btnBackToLogin"), showLogin);
+
+    // Шаг 1: проверка логина/пароля
+    $("#btnDoLogin").addEventListener("click", async ()=>{
+      const login = $("#w_login").value.trim();
+      const pass = $("#w_pass").value;
+      const remember = $("#w_remember").checked;
+      if(!login || !pass){ toast("Ошибка","Заполните логин и пароль","err"); return; }
+      
+      try{
+        const result = await AsgardAuth.loginStep1({login, password:pass});
+        loginState.userId = result.userId;
+        loginState.userName = result.userName;
+        loginState.remember = remember;
+        
+        if(result.status === 'ok'){
+          // Успешный вход - показываем loading screen
+          await showLoadingScreen();
+          return;
+        } else if(result.status === 'need_setup'){
+          // Первый вход - нужно сменить пароль и установить PIN
+          showSetup();
+        } else if(result.status === 'need_pin'){
+          // Обычный вход - нужен PIN
+          showPin();
+        }
+      }catch(e){
+        toast("Ошибка", e.message||"Неверный логин или пароль", "err");
+      }
+    });
+
+    // Enter для логина
+    ["w_login","w_pass"].forEach(id=>{
+      const el = $("#"+id);
+      if(el) el.addEventListener("keydown", (e)=>{ if(e.key==="Enter") $("#btnDoLogin").click(); });
+    });
+
+    // Шаг 2a: ввод PIN
+    $("#btnVerifyPin").addEventListener("click", async ()=>{
+      const pin = $("#w_pin").value;
+      if(!pin || pin.length !== 4){ toast("Ошибка","Введите 4 цифры PIN","err"); return; }
+      
+      try{
+        await AsgardAuth.verifyPin({
+          userId: loginState.userId,
+          pin: pin,
+          remember: loginState.remember
+        });
+        await showLoadingScreen();
+      }catch(e){
+        toast("Ошибка", e.message||"Неверный PIN", "err");
+        $("#w_pin").value = "";
+        $("#w_pin").focus();
+      }
+    });
+
+    // Enter для PIN
+    $("#w_pin")?.addEventListener("keydown", (e)=>{ if(e.key==="Enter") $("#btnVerifyPin").click(); });
+
+    // Шаг 2b: первый вход - установка пароля и PIN
+    $("#btnSetupCredentials").addEventListener("click", async ()=>{
+      const pass1 = $("#s_pass").value;
+      const pass2 = $("#s_pass2").value;
+      const pin = $("#s_pin").value;
+      
+      if(!pass1 || pass1.length < 6){ toast("Ошибка","Пароль минимум 6 символов","err"); return; }
+      if(pass1 !== pass2){ toast("Ошибка","Пароли не совпадают","err"); return; }
+      if(!pin || !/^\d{4}$/.test(pin)){ toast("Ошибка","PIN должен быть 4 цифры","err"); return; }
+      
+      try{
+        await AsgardAuth.setupCredentials({
+          userId: loginState.userId,
+          newPassword: pass1,
+          pin: pin
+        });
+        await showLoadingScreen();
+      }catch(e){
+        toast("Ошибка", e.message||"Не удалось сохранить", "err");
+      }
+    });
+  }
+
+  // Загрузочный экран после успешного входа
+  async function showLoadingScreen(){
+    const quote = LOADING_QUOTES[Math.floor(Math.random() * LOADING_QUOTES.length)];
+
+    $("#app").innerHTML = `
+      <div class="loading-screen">
+        <div class="loading-content">
+          <div class="loading-logo">
+            <img src="${ASSETS_BASE}img/logo.png" alt="АСГАРД" onerror="this.style.display='none'"/>
+          </div>
+          <div class="loading-spinner">
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+          </div>
+          <div class="loading-quote">${esc(quote)}</div>
+          <div class="loading-runes">ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ</div>
+        </div>
+      </div>
+    `;
+
+    // Ждём 2.5 секунды и переходим на главную
+    await new Promise(r => setTimeout(r, 2500));
+    location.hash = "#/home";
+  }
+
+  async function backupModal(){
+    const html = `
+      <div class="help">Экспорт и импорт работают внутри браузера. Это способ переносить данные между ПК (вручную).</div>
+      <hr class="hr"/>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <button class="btn" id="btnExport">Скачать экспорт</button>
+        <button class="btn ghost" id="btnImport">Импорт</button>
+      </div>
+      <div class="hr"></div>
+      <input type="file" id="importFile" accept="application/json"/>
+      <div class="help" style="margin-top:8px">Импорт восстановит данные из резервной копии.</div>
+    `;
+    showModal("Резервное копирование", html);
+
+    $("#btnExport").addEventListener("click", async ()=>{
+      const payload = await AsgardDB.exportJSON();
+      const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href=url;
+      a.download=`asgard_crm_backup_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast("Экспорт","Файл скачан");
+    });
+
+    $("#btnImport").addEventListener("click", async ()=>{
+      const f=$("#importFile").files[0];
+      if(!f){ toast("Импорт","Выберите файл", "err"); return; }
+      let payload=null;
+      try{ payload=JSON.parse(await f.text()); }catch(_){ toast("Импорт","Некорректный JSON","err"); return; }
+      await AsgardDB.importJSON(payload,{wipe:true});
+      toast("Импорт","Данные восстановлены. Перезагрузите страницу.");
+    });
+  }
+
+  async function pageLogin(){
+    // Redirect to welcome if not logged in - main entry point is now welcome page
+    const s = AsgardAuth.getSession();
+    if(!s || !s.user_id){
+      location.hash = "#/welcome";
+      return;
+    }
+    // If already logged in, go home
+    location.hash = "#/home";
+  }
+
+  async function pageRegister(){
+    // Redirect to welcome - registration is now on welcome page
+    location.hash = "#/welcome";
+  }
+
+  async function pageHome(){
+    const auth=await AsgardAuth.requireUser();
+    if(!auth){ location.hash="#/login"; return; }
+    const user=auth.user;
+
+    const sagas = [
+      "План — щит. Факт — сталь.",
+      "Срок не ждёт. Действие решает.",
+      "Казна любит порядок — держи цифры честными.",
+      "Клятва дана — доведи дело до конца.",
+      "Время — клинок. Береги его."
+    ];
+    const saga = sagas[Math.floor(Math.random()*sagas.length)];
+
+    const tenders=await AsgardDB.all("tenders");
+    const works=await AsgardDB.all("works");
+    const estimates=await AsgardDB.all("estimates");
+
+    const fmtRub = (v)=>{
+      const n = Number(v||0);
+      try{ return n.toLocaleString('ru-RU') + ' ₽'; }catch(_){ return String(n) + ' ₽'; }
+    };
+    const today = new Date();
+    const dayMs = 24*60*60*1000;
+
+    const myTenders = (user.role==="PM") ? tenders.filter(t=>t.responsible_pm_id===user.id) : tenders;
+    const myWorks = (user.role==="PM") ? works.filter(w=>w.pm_id===user.id) : works;
+    const myEstimates = (user.role==="PM") ? estimates.filter(e=>e.pm_id===user.id) : estimates;
+
+    // PM KPI (по завершённым контрактам)
+    let pmProfit=0, pmRevenue=0, pmDone=0, pmProfitPerDay=null;
+    if(user.role==="PM"){
+      const done = (myWorks||[]).filter(w=>String(w.work_status||"")==="Работы сдали");
+      pmDone = done.length;
+      for(const w of done){
+        const cv = Number(w.contract_value||0);
+        const cost = (w.cost_fact!=null && w.cost_fact!=='') ? Number(w.cost_fact||0) : Number(w.cost_plan||0);
+        pmRevenue += cv;
+        pmProfit += (cv - cost);
+      }
+      const emp = user.employment_date ? new Date(String(user.employment_date).slice(0,10)) : null;
+      if(emp && !isNaN(emp.getTime())){
+        const days = Math.max(1, Math.floor((today.getTime()-emp.getTime())/dayMs)+1);
+        pmProfitPerDay = pmProfit / days;
+      }
+    }
+
+    const portalsByRole = {
+      TO: [ ['#/tenders','Тендеры'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
+      PM: [ ['#/pm-calcs','Просчёты'], ['#/pm-works','Работы'], ['#/travel','Жильё/билеты'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
+      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      HR: [ ['#/personnel','Персонал'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/hr-rating','Рейтинг'], ['#/alerts','Уведомления'] ],
+      PROC: [ ['#/proc-requests','Заявки'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
+      BUH: [ ['#/buh-registry','Реестр расходов'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
+      OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/travel','Жильё/билеты'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
+      ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'], ['#/backup','Backup'] ]
+    };
+    const portals = portalsByRole[user.role] || portalsByRole.ADMIN;
+
+    const pmBlock = (user.role!=="PM") ? "" : `
+      <div class="card">
+        <h3>Моя добыча (PM)</h3>
+        <div class="help">Считается по завершённым работам (статус «Работы сдали»), прибыль = контракт − (факт если есть иначе план).</div>
+        <div class="kpi" style="grid-template-columns:repeat(4,minmax(160px,1fr)); margin-top:10px">
+          <div class="k"><div class="t">Завершено</div><div class="v">${pmDone}</div><div class="s">контрактов</div></div>
+          <div class="k"><div class="t">Выручка</div><div class="v">${fmtRub(pmRevenue)}</div><div class="s">по контрактам</div></div>
+          <div class="k"><div class="t">Прибыль</div><div class="v">${fmtRub(pmProfit)}</div><div class="s">чистая (упрощённо)</div></div>
+          <div class="k"><div class="t">Прибыль/день</div><div class="v">${pmProfitPerDay==null?'—':fmtRub(Math.round(pmProfitPerDay))}</div><div class="s">от даты трудоустройства</div></div>
+        </div>
+      </div>
+    `;
+
+    const body = `
+      <div class="panel">
+        <div class="row" style="justify-content:space-between; gap:12px; flex-wrap:wrap">
+          <div>
+            <div class="kpi"><span class="dot" style="background:#ef4444"></span>Добро пожаловать, <b>${esc(user.name||user.login)}</b></div>
+            <div class="help">Роль: <b>${esc(user.role)}</b> · Логин: <b>${esc(user.login)}</b></div>
+            <div class="help" style="margin-top:6px"><span class="badge">Сага дня</span> ${esc(saga)}</div>
+          </div>
+          <div class="row" style="gap:10px; flex-wrap:wrap">
+            ${portals.map(p=>`<a class="btn" href="${p[0]}">${esc(p[1])}</a>`).join("")}
+          </div>
+        </div>
+        <hr class="hr"/>
+        <div class="kpi" style="grid-template-columns:repeat(4,minmax(160px,1fr))">
+          <div class="k"><div class="t">Тендеров</div><div class="v">${tenders.length}</div><div class="s">в базе</div></div>
+          <div class="k"><div class="t">Просчётов</div><div class="v">${estimates.length}</div><div class="s">версий</div></div>
+          <div class="k"><div class="t">Работ</div><div class="v">${works.length}</div><div class="s">контрактов</div></div>
+          <div class="k"><div class="t">Мои объекты</div><div class="v">${(user.role==='PM')?myWorks.length:myTenders.length}</div><div class="s">по роли</div></div>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:14px">
+        ${pmBlock}
+        
+        <!-- Виджет телефонии -->
+        <div class="card span-3" id="callToggleContainer"></div>
+        
+        <!-- Виджет сканера чеков для PM -->
+        ${user.role === 'PM' ? `
+        <div class="card span-3">
+          <h3>📷 Быстрый ввод расходов</h3>
+          <p class="help">Сканируйте чеки камерой для автоматического добавления расходов по работам</p>
+          <button class="btn primary" onclick="AsgardReceiptScanner.openScanner()" style="width:100%;margin-top:10px">
+            📷 Сканировать чек
+          </button>
+        </div>
+        ` : ''}
+        
+        <div class="card span-6">
+          <h3>Порядок и дисциплина</h3>
+          <p>Данные хранятся на сервере PostgreSQL.</p>
+        </div>
+        <div class="card span-6">
+          <h3>Маршрут</h3>
+          <p>Сроки → просчёт → согласование → контракт → рейтинг дружины. Все ключевые блоки доступны по меню слева.</p>
+        </div>
+      </div>
+    `;
+    await layout(body, {title:"Зал Ярла • Меню", rightBadges:[`Роль: ${user.role}`, `Логин: ${user.login}`]});
+    
+    // Рендерим виджет телефонии после загрузки страницы
+    if(window.AsgardMango){
+      setTimeout(() => AsgardMango.renderCallToggle('callToggleContainer'), 100);
+    }
+  }
+
+  async function placeholder(title){
+    const auth=await AsgardAuth.requireUser();
+    if(!auth){ location.hash="#/login"; return; }
+    const body = `<div class="panel">
+      <div class="help">Раздел подключён и защищён ролями. Бизнес‑функции будут добавлены в следующем блоке.</div>
+      <hr class="hr"/>
+      <div class="help">Ближайшее: реестр, карточки, переходы статусов, документы (ссылки), Гантт и аналитика.</div>
+    </div>`;
+    await layout(body, {title});
+  // Export layout as a global for page modules
+  window.layout = layout;
+
+  }
+
+  async function boot({startRouter=true}={}){
+    // await AsgardSeed.ensureSeed(); // disabled - needs auth
+    try{ await AsgardTemplates.ensureDefaultDocsSettings(); }catch(e){}
+
+    AsgardRouter.add("/welcome", pageWelcome, {auth:false});
+    AsgardRouter.add("/login", pageLogin, {auth:false});
+    AsgardRouter.add("/register", pageRegister, {auth:false});
+    AsgardRouter.add("/home", pageHome, {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/dashboard", ()=>AsgardDashboardPage.render({layout, title:"Дашборд"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/calendar", ()=>AsgardCalendarPage.render({layout, title:"Календарь встреч"}), {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/birthdays", ()=>AsgardBirthdaysPage.render({layout, title:"Дни рождения"}), {auth:true, roles:ALL_ROLES});
+
+    AsgardRouter.add("/contracts", ()=>AsgardContractsPage.render({layout, title:"Реестр договоров"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/seals", ()=>AsgardSealsPage.render({layout, title:"Реестр печатей"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/permits", ()=>AsgardPermitsPage.render({layout, title:"Разрешения и допуски"}), {auth:true, roles:["ADMIN","HR","TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/funnel", ()=>AsgardFunnelPage.render({layout, title:"Воронка продаж"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/tenders", ()=>AsgardTendersPage.render({layout, title:"Сага Тендеров"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/customer", ({query})=>AsgardCustomersPage.renderCard({layout, title:"Карточка контрагента", query}), {auth:true, roles:["ADMIN","TO","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-calcs", ()=>AsgardPmCalcsPage.render({layout, title:"Карта Похода • Просчёты"}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-consents", ()=>AsgardPmConsentsPage.render({layout, title:"Согласия РП"}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/approvals", ()=>AsgardApprovalsPage.render({layout, title:"Согласование"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/bonus-approval", ()=>AsgardBonusApproval.render({layout, title:"Согласование премий"}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-works", ()=>AsgardPmWorksPage.render({layout, title:"Карта Похода • Работы"}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/all-works", ()=>AsgardAllWorksPage.render({layout, title:"Свод Контрактов"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/all-estimates", ()=>AsgardAllEstimatesPage.render({layout, title:"Свод Расчётов"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/finances", ()=>AsgardFinancesPage.render({layout, title:"Деньги • Аналитика"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/buh-registry", ()=>AsgardBuhRegistryPage.render({layout, title:"Реестр расходов • BUH"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/office-expenses", ()=>AsgardOfficeExpensesPage.render({layout, title:"Офисные расходы"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/correspondence", ()=>AsgardCorrespondencePage.render({layout, title:"Корреспонденция"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]});
+    AsgardRouter.add("/proxies", ()=>AsgardProxiesPage.render({layout, title:"Доверенности"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/travel", ()=>AsgardTravelPage.render({layout, title:"Жильё и билеты"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","HR","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/user-requests", ()=>AsgardUserRequestsPage.render({layout, title:"Заявки на регистрацию"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/analytics", ()=>{ location.hash = "#/kpi-works"; }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/kpi-works", ()=>AsgardKpiWorksPage.render({layout, title:"Аналитика Ярла • Работы"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/kpi-money", ()=>AsgardKpiMoneyPage.render({layout, title:"Аналитика Ярла • Деньги"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/settings", ()=>AsgardSettingsPage.render({layout, title:"Кузница Настроек"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/telegram", ()=>AsgardTelegram.renderSettings({layout, title:"Telegram"}), {auth:true, roles:["ADMIN"]});
+    AsgardRouter.add("/sync", ()=>AsgardSync.renderSettings({layout, title:"PostgreSQL Sync"}), {auth:true, roles:["ADMIN"]});
+    AsgardRouter.add("/mango", ()=>AsgardMango.renderSettings({layout, title:"Телефония"}), {auth:true, roles:["ADMIN"]});
+    AsgardRouter.add("/chat", ()=>AsgardChat.render({layout, title:"Чат дружины"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/my-dashboard", ()=>AsgardCustomDashboard.render({layout, title:"Мой дашборд"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/backup", ()=>AsgardBackupPage.render({layout, title:"Камень Хроник • Резерв"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+  AsgardRouter.add("/diag", ()=>AsgardDiagPage.render({layout, title:"Диагностика"}), {auth:true, roles:["ADMIN"]});
+    AsgardRouter.add("/alerts", ()=>AsgardAlertsPage.render({layout, title:"Уведомления"}), {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/personnel", ()=>AsgardPersonnelPage.render({layout, title:"Дружина • Персонал"}), {auth:true, roles:["ADMIN","HR","PROC","TO","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/hr-rating", ()=>AsgardHrRatingPage.render({layout, title:"Рейтинг Дружины"}), {auth:true, roles:["ADMIN","HR",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/employee", ()=>AsgardEmployeePage.render({layout, title:"Личное дело"}), {auth:true, roles:["ADMIN","HR","PM","TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/hr-requests", ()=>AsgardHrRequestsPage.render({layout, title:"Заявки персонала"}), {auth:true, roles:["ADMIN","HR",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/proc-requests", ()=>AsgardProcRequestsPage.render({layout, title:"Заявки закупок"}), {auth:true, roles:["ADMIN","PROC",...DIRECTOR_ROLES]});
+  AsgardRouter.add("/workers-schedule", ()=>AsgardStaffSchedulePage.render({layout, title:"График рабочих"}), {auth:true, roles:["ADMIN","HR",...DIRECTOR_ROLES]});
+  AsgardRouter.add("/office-schedule", ()=>AsgardOfficeSchedulePage.render({layout, title:"График Дружины • Офис"}), {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/gantt-calcs", ()=>AsgardGanttFullPage.renderCalcs({layout}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/gantt-works", ()=>AsgardGanttFullPage.renderWorks({layout}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    
+    // Акты и счета
+    AsgardRouter.add("/acts", ()=>AsgardActsPage.render({layout, title:"Акты выполненных работ"}), {auth:true, roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/invoices", ()=>AsgardInvoicesPage.render({layout, title:"Счета и оплаты"}), {auth:true, roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/reminders", ()=>AsgardReminders.render({layout, title:"Напоминания"}), {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/warehouse", ()=>AsgardWarehouse.render({layout, title:"Склад ТМЦ"}), {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/my-equipment", ()=>AsgardMyEquipment.render({layout, title:"Моё оборудование"}), {auth:true, roles:["PM",...DIRECTOR_ROLES,"ADMIN"]});
+    
+    // Склад и ТМЦ
+    AsgardRouter.add("/warehouse", ()=>AsgardWarehouse.render({layout, title:"Склад и ТМЦ"}), {auth:true, roles:ALL_ROLES});
+
+    // TKP Follow-up: проверка напоминаний при старте
+    if(window.AsgardTkpFollowup){
+      try { 
+        AsgardTkpFollowup.checkAndCreateReminders().catch(e => console.warn('TKP Followup check error:', e));
+      } catch(e){ console.warn('TKP Followup init error:', e); }
+    }
+
+    if(startRouter){
+      if(!location.hash) location.hash="#/welcome";
+      AsgardRouter.start();
+    }
+  }
+
+  // Expose boot for self-test harness
+  window.AsgardApp = window.AsgardApp || {};
+  window.AsgardApp.boot = boot;
+
+  if(window.ASGARD_SELFTEST) return;
+
+  boot({startRouter:true}).catch(e=>{
+    console.error(e);
+    toast("Ошибка запуска", e.message||String(e), "err", 7000);
+    $("#app").innerHTML = `<div style="padding:18px;color:#fff">Ошибка запуска: ${esc(e.message||e)}</div>`;
+  });
+})();

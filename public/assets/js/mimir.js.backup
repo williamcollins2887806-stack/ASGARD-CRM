@@ -1,0 +1,590 @@
+/**
+ * АСГАРД CRM — Мимир: Хранитель Мудрости
+ * Этап 38
+ * 
+ * Мимир — хранитель колодца мудрости у корней Иггдрасиля.
+ * Один отдал свой глаз, чтобы испить из этого колодца и обрести знания.
+ */
+
+window.AsgardMimir = (function(){
+  const { esc, toast } = AsgardUI;
+  
+  let isOpen = false;
+  let isMinimized = false;
+  let messages = [];
+  let attachedFiles = [];
+  let isLoading = false;
+  
+  const VIKING_WISDOM = [
+    "Мудрость дороже золота, ибо золото можно потерять, а мудрость — никогда.",
+    "Спрашивай — и обретёшь знание. Молчи — и останешься во тьме.",
+    "Даже Один искал совета у Мимира.",
+    "Знание — меч, который не затупится.",
+    "Лучше спросить дважды, чем ошибиться единожды.",
+    "Мудрый видит путь там, где другие видят только стену.",
+    "Руны откроют тайны тому, кто умеет читать.",
+    "Терпение — добродетель воина, знание — его сила."
+  ];
+
+  const styles = `
+    <style id="mimir-styles">
+      .mimir-widget { position:fixed; bottom:24px; right:24px; z-index:9999; font-family:var(--font-main, -apple-system, sans-serif); }
+      
+      .mimir-toggle {
+        width:64px; height:64px; border-radius:50%;
+        background:linear-gradient(135deg, #c0392b 0%, #2a3b66 100%);
+        border:3px solid #f5d78e; cursor:pointer;
+        display:flex; align-items:center; justify-content:center;
+        box-shadow:0 4px 24px rgba(192,57,43,0.5), 0 0 0 0 rgba(245,215,142,0.4);
+        transition:all 0.3s ease; position:relative;
+        animation:mimirPulse 3s infinite;
+      }
+      
+      @keyframes mimirPulse {
+        0%,100% { box-shadow:0 4px 24px rgba(192,57,43,0.5), 0 0 0 0 rgba(245,215,142,0.4); }
+        50% { box-shadow:0 4px 24px rgba(192,57,43,0.5), 0 0 0 8px rgba(245,215,142,0); }
+      }
+      
+      .mimir-toggle:hover { transform:scale(1.1) rotate(5deg); }
+      .mimir-toggle-icon { font-size:32px; }
+      
+      .mimir-toggle::before {
+        content:'ᛗ'; position:absolute; top:-6px; right:-6px;
+        width:22px; height:22px; background:#f5d78e; border-radius:50%;
+        display:flex; align-items:center; justify-content:center;
+        font-size:12px; color:#2a3b66; font-weight:bold; font-family:serif;
+      }
+      
+      .mimir-panel {
+        position:absolute; bottom:80px; right:0;
+        width:400px; max-width:calc(100vw - 48px);
+        height:550px; max-height:calc(100vh - 140px);
+        background:linear-gradient(180deg, #1a1a2e 0%, #0d1428 100%);
+        border-radius:20px; border:2px solid rgba(245,215,142,0.3);
+        box-shadow:0 10px 50px rgba(0,0,0,0.6);
+        display:none; flex-direction:column; overflow:hidden;
+      }
+      
+      .mimir-panel.open { display:flex; animation:mimirOpen 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+      .mimir-panel.minimized { height:64px; }
+      
+      @keyframes mimirOpen {
+        from { opacity:0; transform:translateY(30px) scale(0.9); }
+        to { opacity:1; transform:translateY(0) scale(1); }
+      }
+      
+      .mimir-header {
+        padding:16px 20px;
+        background:linear-gradient(135deg, rgba(192,57,43,0.3) 0%, rgba(42,59,102,0.3) 100%);
+        border-bottom:1px solid rgba(245,215,142,0.2);
+        display:flex; align-items:center; gap:14px; cursor:pointer;
+      }
+      
+      .mimir-avatar {
+        width:44px; height:44px; border-radius:50%;
+        background:linear-gradient(135deg, #c0392b, #2a3b66);
+        border:2px solid #f5d78e; display:flex;
+        align-items:center; justify-content:center;
+        font-size:24px; box-shadow:0 0 20px rgba(245,215,142,0.3);
+      }
+      
+      .mimir-header-info { flex:1; }
+      .mimir-header-title { font-weight:800; font-size:16px; color:#f5d78e; text-shadow:0 0 10px rgba(245,215,142,0.3); }
+      .mimir-header-status { font-size:12px; color:rgba(255,255,255,0.6); font-style:italic; }
+      .mimir-header-actions { display:flex; gap:8px; }
+      
+      .mimir-header-btn {
+        width:32px; height:32px; border-radius:10px;
+        border:1px solid rgba(245,215,142,0.2); background:rgba(0,0,0,0.3);
+        color:rgba(255,255,255,0.7); cursor:pointer;
+        display:flex; align-items:center; justify-content:center; transition:all 0.2s;
+      }
+      .mimir-header-btn:hover { background:rgba(245,215,142,0.2); color:#f5d78e; }
+      
+      .mimir-messages { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:14px; }
+      .mimir-messages::-webkit-scrollbar { width:6px; }
+      .mimir-messages::-webkit-scrollbar-track { background:rgba(0,0,0,0.2); border-radius:3px; }
+      .mimir-messages::-webkit-scrollbar-thumb { background:rgba(245,215,142,0.3); border-radius:3px; }
+      
+      .mimir-message {
+        max-width:85%; padding:14px 18px; border-radius:18px;
+        font-size:14px; line-height:1.6;
+        animation:mimirMsgAppear 0.4s cubic-bezier(0.34,1.56,0.64,1);
+      }
+      
+      @keyframes mimirMsgAppear {
+        from { opacity:0; transform:translateY(15px) scale(0.95); }
+        to { opacity:1; transform:translateY(0) scale(1); }
+      }
+      
+      .mimir-message.user {
+        align-self:flex-end;
+        background:linear-gradient(135deg, #c0392b, #8e2c22);
+        color:white; border-bottom-right-radius:4px;
+        box-shadow:0 4px 15px rgba(192,57,43,0.3);
+      }
+      
+      .mimir-message.assistant {
+        align-self:flex-start;
+        background:linear-gradient(135deg, rgba(42,59,102,0.8), rgba(42,59,102,0.6));
+        color:rgba(255,255,255,0.95); border-bottom-left-radius:4px;
+        border:1px solid rgba(245,215,142,0.15);
+        box-shadow:0 4px 15px rgba(0,0,0,0.3);
+        position:relative; padding-left:24px;
+      }
+      
+      .mimir-message.assistant::before {
+        content:'ᛗ'; position:absolute; top:-8px; left:-8px;
+        width:22px; height:22px;
+        background:linear-gradient(135deg, #f5d78e, #c0a040);
+        border-radius:50%; display:flex; align-items:center; justify-content:center;
+        font-size:11px; color:#2a3b66; font-family:serif; font-weight:bold;
+      }
+      
+      .mimir-message a { color:#f5d78e; text-decoration:underline; }
+      .mimir-message code { background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:4px; font-size:12px; }
+      
+      .mimir-typing {
+        display:flex; gap:6px; padding:14px 18px; align-self:flex-start;
+        background:linear-gradient(135deg, rgba(42,59,102,0.8), rgba(42,59,102,0.6));
+        border-radius:18px; border-bottom-left-radius:4px;
+        border:1px solid rgba(245,215,142,0.15);
+      }
+      
+      .mimir-typing span {
+        width:10px; height:10px;
+        background:linear-gradient(135deg, #f5d78e, #c0a040);
+        border-radius:50%; animation:mimirTyping 1.4s infinite;
+      }
+      .mimir-typing span:nth-child(2) { animation-delay:0.2s; }
+      .mimir-typing span:nth-child(3) { animation-delay:0.4s; }
+      
+      @keyframes mimirTyping {
+        0%,60%,100% { transform:translateY(0); opacity:0.4; }
+        30% { transform:translateY(-8px); opacity:1; }
+      }
+      
+      .mimir-welcome { text-align:center; padding:30px 20px; }
+      .mimir-welcome-icon {
+        width:80px; height:80px; margin:0 auto 20px;
+        background:linear-gradient(135deg, rgba(192,57,43,0.2), rgba(42,59,102,0.2));
+        border-radius:50%; display:flex; align-items:center; justify-content:center;
+        border:2px solid rgba(245,215,142,0.3); font-size:42px;
+        animation:mimirFloat 3s ease-in-out infinite;
+      }
+      
+      @keyframes mimirFloat {
+        0%,100% { transform:translateY(0); }
+        50% { transform:translateY(-8px); }
+      }
+      
+      .mimir-welcome h3 { color:#f5d78e; font-size:18px; margin-bottom:8px; }
+      .mimir-welcome p { color:rgba(255,255,255,0.6); font-size:13px; font-style:italic; margin-bottom:20px; }
+      
+      .mimir-suggestions { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+      .mimir-suggestion {
+        padding:10px 16px; background:rgba(42,59,102,0.5);
+        border:1px solid rgba(245,215,142,0.2); border-radius:20px;
+        color:rgba(255,255,255,0.8); font-size:13px; cursor:pointer; transition:all 0.2s;
+      }
+      .mimir-suggestion:hover { background:rgba(245,215,142,0.2); border-color:rgba(245,215,142,0.4); color:#f5d78e; transform:translateY(-2px); }
+      
+      .mimir-input-area { padding:16px 20px; border-top:1px solid rgba(245,215,142,0.15); background:rgba(0,0,0,0.3); }
+      .mimir-input-row { display:flex; gap:10px; align-items:flex-end; }
+      
+      .mimir-input {
+        flex:1; min-height:44px; max-height:120px; padding:12px 16px;
+        background:rgba(0,0,0,0.4); border:1px solid rgba(245,215,142,0.2);
+        border-radius:14px; color:#fff; font-size:14px; resize:none; font-family:inherit;
+      }
+      .mimir-input:focus { outline:none; border-color:rgba(245,215,142,0.5); box-shadow:0 0 15px rgba(245,215,142,0.1); }
+      .mimir-input::placeholder { color:rgba(255,255,255,0.4); font-style:italic; }
+      
+      .mimir-send-btn {
+        width:44px; height:44px; border-radius:12px;
+        background:linear-gradient(135deg, #c0392b, #8e2c22);
+        border:1px solid rgba(245,215,142,0.3); color:#f5d78e;
+        cursor:pointer; display:flex; align-items:center; justify-content:center;
+        font-size:18px; transition:all 0.2s;
+      }
+      .mimir-send-btn:hover { transform:scale(1.05); box-shadow:0 4px 15px rgba(192,57,43,0.4); }
+      
+      .mimir-wisdom {
+        font-style:italic; font-size:11px; color:rgba(245,215,142,0.5);
+        text-align:center; padding:8px 20px;
+        border-top:1px solid rgba(245,215,142,0.1);
+      }
+      
+      @media (max-width:480px) {
+        .mimir-panel { width:calc(100vw - 24px); right:-12px; bottom:76px; height:calc(100vh - 120px); }
+        .mimir-widget { bottom:16px; right:16px; }
+        .mimir-toggle { width:56px; height:56px; }
+      }
+    </style>
+  `;
+
+  function init() {
+    if (document.getElementById('mimirWidget')) return;
+    
+    if (!document.getElementById('mimir-styles')) {
+      document.head.insertAdjacentHTML('beforeend', styles);
+    }
+    
+    const widget = document.createElement('div');
+    widget.id = 'mimirWidget';
+    widget.className = 'mimir-widget';
+    widget.innerHTML = `
+      <button class="mimir-toggle" id="mimirToggle" title="Мимир — Хранитель Мудрости">
+        <span class="mimir-toggle-icon">🧙</span>
+      </button>
+      
+      <div class="mimir-panel" id="mimirPanel">
+        <div class="mimir-header" id="mimirHeader">
+          <div class="mimir-avatar">🧙</div>
+          <div class="mimir-header-info">
+            <div class="mimir-header-title">Мимир</div>
+            <div class="mimir-header-status">Хранитель Мудрости</div>
+          </div>
+          <div class="mimir-header-actions">
+            <button class="mimir-header-btn" id="mimirMinimize" title="Свернуть">—</button>
+            <button class="mimir-header-btn" id="mimirClose" title="Закрыть">✕</button>
+          </div>
+        </div>
+        
+        <div class="mimir-messages" id="mimirMessages"></div>
+        
+        <div class="mimir-input-area">
+          <div class="mimir-input-row">
+            <textarea class="mimir-input" id="mimirInput" placeholder="Спроси у Мимира..." rows="1"></textarea>
+            <button class="mimir-send-btn" id="mimirSend" title="Отправить">➤</button>
+          </div>
+        </div>
+        
+        <div class="mimir-wisdom" id="mimirWisdom"></div>
+      </div>
+    `;
+    
+    document.body.appendChild(widget);
+    bindEvents();
+    renderMessages();
+    showWisdom();
+  }
+
+  function bindEvents() {
+    const toggle = document.getElementById('mimirToggle');
+    const panel = document.getElementById('mimirPanel');
+    const header = document.getElementById('mimirHeader');
+    const closeBtn = document.getElementById('mimirClose');
+    const minimizeBtn = document.getElementById('mimirMinimize');
+    const sendBtn = document.getElementById('mimirSend');
+    const input = document.getElementById('mimirInput');
+    
+    toggle.addEventListener('click', () => {
+      isOpen = !isOpen;
+      panel.classList.toggle('open', isOpen);
+      if (isOpen) {
+        input.focus();
+        isMinimized = false;
+        panel.classList.remove('minimized');
+      }
+    });
+    
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      isOpen = false;
+      panel.classList.remove('open');
+    });
+    
+    minimizeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      isMinimized = !isMinimized;
+      panel.classList.toggle('minimized', isMinimized);
+    });
+    
+    header.addEventListener('click', () => {
+      if (isMinimized) {
+        isMinimized = false;
+        panel.classList.remove('minimized');
+      }
+    });
+    
+    sendBtn.addEventListener('click', sendMessage);
+    
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    });
+  }
+
+  function showWisdom() {
+    const el = document.getElementById('mimirWisdom');
+    if (el) {
+      const wisdom = VIKING_WISDOM[Math.floor(Math.random() * VIKING_WISDOM.length)];
+      el.textContent = `« ${wisdom} »`;
+    }
+  }
+
+  function renderMessages() {
+    const container = document.getElementById('mimirMessages');
+    if (!container) return;
+    
+    if (messages.length === 0) {
+      container.innerHTML = `
+        <div class="mimir-welcome">
+          <div class="mimir-welcome-icon">🧙</div>
+          <h3>Приветствую тебя, воин!</h3>
+          <p>Я — Мимир, хранитель колодца мудрости. Спрашивай, и я поделюсь знанием.</p>
+          <div class="mimir-suggestions">
+            <button class="mimir-suggestion" data-q="Как создать новый тендер?">⚔️ Создать тендер</button>
+            <button class="mimir-suggestion" data-q="Покажи статистику за месяц">📊 Статистика</button>
+            <button class="mimir-suggestion" data-q="Как добавить расходы по работе?">💰 Расходы</button>
+          </div>
+        </div>
+      `;
+      
+      container.querySelectorAll('.mimir-suggestion').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById('mimirInput').value = btn.dataset.q;
+          sendMessage();
+        });
+      });
+      return;
+    }
+    
+    container.innerHTML = messages.map(msg => {
+      return `<div class="mimir-message ${msg.role}">${formatMessage(msg.content)}</div>`;
+    }).join('');
+    
+    if (isLoading) {
+      container.innerHTML += `<div class="mimir-typing"><span></span><span></span><span></span></div>`;
+    }
+    
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function formatMessage(text) {
+    return esc(text)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code>$1</code>')
+      .replace(/\n/g, '<br>');
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById('mimirInput');
+    const text = input.value.trim();
+    
+    if (!text) return;
+    if (isLoading) return;
+    
+    messages.push({ role: 'user', content: text });
+    
+    input.value = '';
+    input.style.height = 'auto';
+    
+    isLoading = true;
+    renderMessages();
+    
+    try {
+      const response = await callMimir(text);
+      messages.push({ role: 'assistant', content: response });
+    } catch (err) {
+      messages.push({ role: 'assistant', content: 'Прости, воин. Колодец мудрости временно недоступен. Попробуй снова.' });
+    }
+    
+    isLoading = false;
+    renderMessages();
+    showWisdom();
+  }
+
+  async function callMimir(text) {
+    await new Promise(r => setTimeout(r, 600 + Math.random() * 600));
+    
+    const lowerText = text.toLowerCase();
+    
+    // Разговорные фразы
+    if (lowerText.match(/привет|здравствуй|здорово|хай|йо|хей|добр(ый|ое|ая)/)) {
+      return `Приветствую тебя, воин! ⚔️
+
+Я Мимир, хранитель мудрости у корней Иггдрасиля. 
+
+Чем могу помочь сегодня? Спрашивай о тендерах, работах, финансах или навигации по системе.`;
+    }
+    
+    if (lowerText.match(/как (твои )?дела|как (ты|сам)|что нового/)) {
+      return `Благодарю за заботу, воин! 
+
+Колодец мудрости полон, руны светятся ярко. Готов помогать дружине Асгарда!
+
+Есть ли у тебя вопросы по системе?`;
+    }
+    
+    if (lowerText.match(/спасибо|благодар|спс/)) {
+      return `Рад был помочь, воин! 
+
+Да прибудет с тобой мудрость Одина. Обращайся, если понадобится совет. ⚔️`;
+    }
+    
+    if (lowerText.match(/пока|до свидания|бывай|увидимся/)) {
+      return `До встречи, воин! 
+
+Пусть попутный ветер наполняет твои паруса, а путь будет ясен. Удачи в походах! 🛡️`;
+    }
+    
+    if (lowerText.match(/кто ты|что ты|расскажи о себе/)) {
+      return `Я **Мимир** — хранитель колодца мудрости у корней мирового древа Иггдрасиль.
+
+В древние времена сам Один отдал свой глаз, чтобы испить из моего колодца и обрести знания.
+
+Теперь я служу дружине Асгард-Сервис и помогаю воинам разбираться в системе CRM. Спрашивай!`;
+    }
+    
+    const responses = {
+      'тендер': `Чтобы занести новый тендер в летопись:
+
+**1.** Открой раздел **«Сага Тендеров»**
+**2.** Нажми **«+ Внести тендер»**
+**3.** Заполни сведения о заказчике и объекте
+**4.** Укажи дедлайн подачи документов
+**5.** Сохрани запись
+
+Тендер появится в реестре и воронке. Удачи в походе!`,
+      
+      'статистик': `Аналитика доступна в нескольких залах:
+
+**📊 Дашборд руководителя** — сводка по ключевым показателям
+**⚔️ Аналитика Ярла** — KPI по работам и деньгам
+**💰 Финансы** — детализация доходов и расходов
+
+Выбери то, что нужно для принятия решения.`,
+
+      'дашборд': `В системе есть несколько дашбордов:
+
+**📊 Дашборд руководителя** — общая сводка для директоров
+**🏠 Главная** — личные задачи и уведомления  
+**⚙️ Мой дашборд** — настраиваемые виджеты
+
+Каждый воин может настроить свою панель под себя!`,
+      
+      'расход': `Есть два пути занести расходы:
+
+**По работе:**
+Открой работу → вкладка «Расходы» → кнопка «+ Добавить»
+
+**Офисные:**
+Раздел «Офисные расходы» → «Новый расход»
+
+Также можно сканировать чеки камерой — нажми на главном экране кнопку 📷`,
+
+      'чек': `Сканирование чеков доступно на главной странице!
+
+**1.** Нажми кнопку **📷 Сканер чеков**
+**2.** Сфотографируй чек
+**3.** Система распознает сумму и магазин
+**4.** Выбери категорию расхода
+**5.** Сохрани
+
+Чек прикрепится к расходу автоматически.`,
+      
+      'чат': `В **Чате дружины** можно общаться:
+
+• **Общий чат** — для всех воинов
+• **Личные беседы** — один на один
+• **По тендеру/работе** — обсуждение конкретной задачи
+
+Все согласования и вопросы сохраняются в истории.`,
+
+      'работ': `Работы — это выигранные тендеры в процессе исполнения.
+
+**Где найти:**
+• **Карта Похода • Работы** — для РП (свои работы)
+• **Свод Контрактов** — для директоров (все работы)
+
+**Что можно:**
+• Вести учёт расходов
+• Отслеживать сроки и этапы
+• Формировать отчёты`,
+
+      'персонал': `Управление дружиной:
+
+**👥 Дружина** — список всех сотрудников
+**📋 Личное дело** — детальная карточка работника
+**🎖️ Рейтинг** — оценки и отзывы
+**📅 График** — планирование смен
+**📄 Разрешения** — допуски и сертификаты`,
+
+      'договор': `Реестр договоров находится в разделе **«Реестр договоров»**.
+
+Там можно:
+• Вести учёт всех контрактов
+• Отслеживать сроки действия
+• Привязывать к расходам
+• Хранить сканы документов`,
+
+      'печат': `Реестр печатей — **«Реестр печатей»**
+
+Функции:
+• Учёт всех печатей организации
+• Кто сейчас держит печать
+• История передач
+• Акты приёма-передачи`,
+
+      'телефон': `Телефония (Манго Телеком) настраивается в **Настройках → Телефония**.
+
+Возможности:
+• Входящие звонки с определением клиента
+• Исходящие звонки из карточки
+• История вызовов
+• Запись разговоров`,
+      
+      'помощь': `Я, Мимир, могу помочь с:
+
+⚔️ **Навигацией** — найти нужный раздел
+📋 **Тендерами** — создание, статусы, воронка
+💼 **Работами** — учёт, расходы, отчёты
+👥 **Персоналом** — дружина, допуски, графики
+💰 **Финансами** — доходы, расходы, аналитика
+📞 **Телефонией** — звонки, история
+📄 **Документами** — договоры, печати
+
+Спрашивай, воин!`,
+      
+      'default': `Хм, не совсем понял твой вопрос, воин.
+
+Попробуй спросить о:
+• **Тендерах** — как создать, статусы
+• **Работах** — учёт, расходы
+• **Финансах** — доходы, расходы
+• **Персонале** — дружина, графики
+• **Документах** — договоры, печати
+
+Или напиши **«помощь»** для полного списка.`
+    };
+    
+    for (const [key, response] of Object.entries(responses)) {
+      if (key !== 'default' && lowerText.includes(key)) {
+        return response;
+      }
+    }
+    
+    return responses.default;
+  }
+
+  return {
+    init,
+    open: () => { isOpen = true; document.getElementById('mimirPanel')?.classList.add('open'); },
+    close: () => { isOpen = false; document.getElementById('mimirPanel')?.classList.remove('open'); },
+    clearHistory: () => { messages = []; renderMessages(); },
+    askQuestion: (q) => { document.getElementById('mimirInput').value = q; sendMessage(); }
+  };
+})();
+
+document.addEventListener('DOMContentLoaded', () => AsgardMimir.init());
+window.addEventListener('hashchange', () => AsgardMimir.init());

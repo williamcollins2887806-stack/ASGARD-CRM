@@ -1,0 +1,350 @@
+/**
+ * ASGARD DB — Серверная версия v2.0
+ * Использует API вместо IndexedDB
+ * Интерфейс совместим со старой версией
+ */
+
+window.AsgardDB = (function(){
+  const DB_NAME = "asgard_crm";
+  const DB_VERSION = 27;
+  
+  // Кэш для уменьшения запросов
+  const cache = new Map();
+  const CACHE_TTL = 30000; // 30 секунд
+  
+  // Получить токен авторизации
+  function getToken() {
+    return localStorage.getItem('asgard_token') || '';
+  }
+  
+  // Заголовки для запросов
+  function headers() {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + getToken()
+    };
+  }
+  
+  // Базовый fetch с обработкой ошибок
+  async function apiFetch(url, options = {}) {
+    try {
+      const resp = await fetch(url, {
+        ...options,
+        headers: { ...headers(), ...options.headers }
+      });
+      
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Network error' }));
+        throw new Error(err.error || err.message || 'API Error');
+      }
+      
+      return await resp.json();
+    } catch(e) {
+      console.error('[AsgardDB] API Error:', e.message, url);
+      throw e;
+    }
+  }
+  
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ОСНОВНЫЕ МЕТОДЫ
+  // ─────────────────────────────────────────────────────────────────────────────
+  
+  /**
+   * Получить одну запись по id
+   */
+  async function get(store, key) {
+    if (!key) return null;
+    
+    // Проверяем кэш
+    const cacheKey = `${store}:${key}`;
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.time < CACHE_TTL) {
+      return cached.data;
+    }
+    
+    try {
+      const data = await apiFetch(`/api/data/${store}/${key}`);
+      
+      // Кэшируем
+      cache.set(cacheKey, { data: data.item, time: Date.now() });
+      
+      return data.item || null;
+    } catch(e) {
+      // При ошибке возвращаем null (как IndexedDB)
+      return null;
+    }
+  }
+  
+  /**
+   * Получить все записи
+   */
+  async function all(store) {
+    // Проверяем кэш
+    const cacheKey = `${store}:all`;
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.time < CACHE_TTL) {
+      return cached.data;
+    }
+    
+    try {
+      const data = await apiFetch(`/api/data/${store}?limit=10000`);
+      const items = data[store] || [];
+      
+      // Кэшируем
+      cache.set(cacheKey, { data: items, time: Date.now() });
+      
+      return items;
+    } catch(e) {
+      console.error('[AsgardDB] all() error:', store, e);
+      return [];
+    }
+  }
+  
+  // Алиас для all
+  const getAll = all;
+  
+  /**
+   * Добавить запись (INSERT)
+   */
+  async function add(store, val) {
+    try {
+      const data = await apiFetch(`/api/data/${store}`, {
+        method: 'POST',
+        body: JSON.stringify(val)
+      });
+      
+      // Очищаем кэш
+      clearCache(store);
+      
+      return data.id || data.item?.id;
+    } catch(e) {
+      console.error('[AsgardDB] add() error:', store, e);
+      throw e;
+    }
+  }
+  
+  /**
+   * Обновить или вставить запись (UPSERT)
+   */
+  async function put(store, val) {
+    try {
+      let data;
+      
+      if (val.id) {
+        // UPDATE
+        data = await apiFetch(`/api/data/${store}/${val.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(val)
+        });
+      } else {
+        // INSERT
+        data = await apiFetch(`/api/data/${store}`, {
+          method: 'POST',
+          body: JSON.stringify(val)
+        });
+      }
+      
+      // Очищаем кэш
+      clearCache(store);
+      
+      return data.id || data.item?.id || val.id;
+    } catch(e) {
+      console.error('[AsgardDB] put() error:', store, e);
+      throw e;
+    }
+  }
+  
+  /**
+   * Удалить запись
+   */
+  async function del(store, key) {
+    try {
+      await apiFetch(`/api/data/${store}/${key}`, {
+        method: 'DELETE'
+      });
+      
+      // Очищаем кэш
+      clearCache(store);
+      
+      return true;
+    } catch(e) {
+      console.error('[AsgardDB] del() error:', store, key, e);
+      return false;
+    }
+  }
+  
+  /**
+   * Поиск по индексу
+   */
+  async function byIndex(store, indexName, value) {
+    try {
+      const data = await apiFetch(`/api/data/${store}/by-index`, {
+        method: 'POST',
+        body: JSON.stringify({ index: indexName, value: value })
+      });
+      
+      return data.items || [];
+    } catch(e) {
+      console.error('[AsgardDB] byIndex() error:', store, indexName, e);
+      return [];
+    }
+  }
+  
+  /**
+   * Количество записей
+   */
+  async function count(store) {
+    try {
+      const data = await apiFetch(`/api/data/${store}/count`);
+      return data.count || 0;
+    } catch(e) {
+      return 0;
+    }
+  }
+  
+  /**
+   * Список с фильтрацией
+   */
+  async function list(store, opts = {}) {
+    const { limit = 50, orderBy, desc } = opts;
+    
+    try {
+      let url = `/api/data/${store}?limit=${limit}`;
+      if (orderBy) url += `&orderBy=${orderBy}`;
+      if (desc) url += `&desc=true`;
+      
+      const data = await apiFetch(url);
+      return data[store] || [];
+    } catch(e) {
+      return [];
+    }
+  }
+  
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ЭКСПОРТ/ИМПОРТ (для совместимости)
+  // ─────────────────────────────────────────────────────────────────────────────
+  
+  async function exportJSON() {
+    const STORES = [
+      'users', 'settings', 'tenders', 'estimates', 'works',
+      'customers', 'staff', 'notifications', 'audit_log'
+    ];
+    
+    const out = { 
+      __meta: { 
+        exported_at: new Date().toISOString(), 
+        db: DB_NAME, 
+        version: DB_VERSION,
+        source: 'server'
+      } 
+    };
+    
+    for (const s of STORES) {
+      try {
+        out[s] = await all(s);
+      } catch(e) {
+        out[s] = [];
+      }
+    }
+    
+    return out;
+  }
+  
+  async function importJSON(payload, opts = {}) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Некорректный файл импорта');
+    }
+    
+    // Импорт через API - пока заглушка
+    console.warn('[AsgardDB] importJSON не реализован для серверной версии');
+    return true;
+  }
+  
+  // ─────────────────────────────────────────────────────────────────────────────
+  // УПРАВЛЕНИЕ КЭШЕМ
+  // ─────────────────────────────────────────────────────────────────────────────
+  
+  function clearCache(store) {
+    if (store) {
+      // Очищаем кэш для конкретной таблицы
+      for (const key of cache.keys()) {
+        if (key.startsWith(store + ':')) {
+          cache.delete(key);
+        }
+      }
+    } else {
+      // Очищаем весь кэш
+      cache.clear();
+    }
+  }
+  
+  // Очищаем кэш периодически
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of cache.entries()) {
+      if (now - value.time > CACHE_TTL * 2) {
+        cache.delete(key);
+      }
+    }
+  }, 60000);
+  
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ЗАГЛУШКИ ДЛЯ СОВМЕСТИМОСТИ
+  // ─────────────────────────────────────────────────────────────────────────────
+  
+  function open() {
+    // Сервер всегда "открыт"
+    return Promise.resolve(true);
+  }
+  
+  const STORES = {
+    users: { keyPath: "id" },
+    settings: { keyPath: "key" },
+    tenders: { keyPath: "id" },
+    estimates: { keyPath: "id" },
+    works: { keyPath: "id" },
+    work_expenses: { keyPath: "id" },
+    office_expenses: { keyPath: "id" },
+    correspondence: { keyPath: "id" },
+    travel_expenses: { keyPath: "id" },
+    incomes: { keyPath: "id" },
+    calendar_events: { keyPath: "id" },
+    contracts: { keyPath: "id" },
+    seals: { keyPath: "id" },
+    seal_transfers: { keyPath: "id" },
+    employee_permits: { keyPath: "id" },
+    bonus_requests: { keyPath: "id" },
+    chats: { keyPath: "id" },
+    chat_messages: { keyPath: "id" },
+    bank_rules: { keyPath: "id" },
+    customers: { keyPath: "id" },
+    staff: { keyPath: "id" },
+    staff_plan: { keyPath: "id" },
+    employees: { keyPath: "id" },
+    employee_reviews: { keyPath: "id" },
+    staff_requests: { keyPath: "id" },
+    purchase_requests: { keyPath: "id" },
+    documents: { keyPath: "id" },
+    audit_log: { keyPath: "id" },
+    notifications: { keyPath: "id" }
+  };
+  
+  return {
+    open,
+    get,
+    all,
+    getAll,
+    add,
+    put,
+    del,
+    byIndex,
+    count,
+    list,
+    exportJSON,
+    importJSON,
+    clearCache,
+    STORES,
+    DB_NAME,
+    DB_VERSION
+  };
+})();
