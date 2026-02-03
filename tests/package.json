@@ -1,0 +1,13 @@
+{
+  "name": "asgard-crm-e2e-tests",
+  "version": "1.0.0",
+  "description": "E2E тесты для ASGARD CRM",
+  "scripts": {
+    "test": "node e2e_test.js",
+    "test:headed": "HEADLESS=false node e2e_test.js",
+    "test:debug": "DEBUG=true HEADLESS=false node e2e_test.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  }
+}
