@@ -34,6 +34,22 @@ console.log('[ASGARD] Global period functions loaded');
   const { $, $$, esc, toast, showModal } = AsgardUI;
   try{ if(window.AsgardTheme) AsgardTheme.init(); }catch(e){}
 
+  // Глобальная функция для мобильной совместимости кнопок
+  // Добавляет обработчики click + touchend для надёжной работы на мобильных устройствах
+  function addMobileClick(el, handler) {
+    if (!el) return;
+    let touchHandled = false;
+    el.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      touchHandled = true;
+      handler(e);
+      setTimeout(() => { touchHandled = false; }, 300);
+    }, { passive: false });
+    el.addEventListener("click", (e) => {
+      if (!touchHandled) handler(e);
+    });
+  }
+
   // Определяем базовый путь к assets (для работы из подпапок типа /tools/)
   const ASSETS_BASE = (function(){
     const scripts = document.querySelectorAll('script[src*="app.js"]');
@@ -283,21 +299,21 @@ try{
     </div>`;
 
 
-    // Mobile nav (burger)
+    // Mobile nav (burger) - используем addMobileClick для надёжной работы на мобильных
     const closeNav = ()=>document.body.classList.remove("nav-open");
     const toggleNav = ()=>document.body.classList.toggle("nav-open");
-    if($("#btnMenu")) $("#btnMenu").addEventListener("click", toggleNav);
-    if($("#navOverlay")) $("#navOverlay").addEventListener("click", closeNav);
-    $$(".navitem").forEach(a=>a.addEventListener("click", closeNav));
+    addMobileClick($("#btnMenu"), toggleNav);
+    addMobileClick($("#navOverlay"), closeNav);
+    $$(".navitem").forEach(a=>addMobileClick(a, closeNav));
     if(window.__ASG_DOC_ESC_NAV__) document.removeEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
     window.__ASG_DOC_ESC_NAV__ = (e)=>{ if(e.key==="Escape") closeNav(); };
     document.addEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
 
-    if($("#btnLogout")) $("#btnLogout").addEventListener("click", ()=>{ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; });
-    if($("#btnLoginGo")) $("#btnLoginGo").addEventListener("click", ()=>location.hash="#/login");
-    if($("#btnRegGo")) $("#btnRegGo").addEventListener("click", ()=>location.hash="#/register");
-    if($("#btnBackup")) $("#btnBackup").addEventListener("click", backupModal);
-    if($("#btnSwitchRole")) $("#btnSwitchRole").addEventListener("click", async (e)=>{
+    addMobileClick($("#btnLogout"), ()=>{ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; });
+    addMobileClick($("#btnLoginGo"), ()=>location.hash="#/login");
+    addMobileClick($("#btnRegGo"), ()=>location.hash="#/register");
+    addMobileClick($("#btnBackup"), backupModal);
+    addMobileClick($("#btnSwitchRole"), async (e)=>{
       const target = e.currentTarget.getAttribute('data-target');
       const ok = await AsgardAuth.setActiveRole(target);
       if(ok){ toast('Режим', 'Переключено на '+target); location.hash='#/home'; }
@@ -317,7 +333,7 @@ try{
           try{ b.setAttribute("aria-label", msg); }catch(e){}
         }
         syncTheme();
-        b.addEventListener("click", ()=>{
+        addMobileClick(b, ()=>{
           if(window.AsgardTheme) AsgardTheme.toggle();
           syncTheme();
         });
@@ -370,8 +386,8 @@ try{
       const show = async ()=>{ await loadBell(); pop.style.display = "block"; };
       const toggle = async ()=>{ (pop.style.display==="block") ? hide() : await show(); };
 
-      btn.addEventListener("click", async (e)=>{ e.preventDefault(); e.stopPropagation(); await toggle(); });
-      if(closeBtn) closeBtn.addEventListener("click", (e)=>{ e.preventDefault(); hide(); });
+      addMobileClick(btn, async (e)=>{ e.preventDefault(); e.stopPropagation(); await toggle(); });
+      addMobileClick(closeBtn, (e)=>{ e.preventDefault(); hide(); });
       document.addEventListener("click", (e)=>{
         if(pop.style.display!=="block") return;
         if(pop.contains(e.target) || btn.contains(e.target)) return;
@@ -379,7 +395,7 @@ try{
       });
       document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") hide(); });
 
-      if(markAllBtn) markAllBtn.addEventListener("click", async ()=>{
+      addMobileClick(markAllBtn, async ()=>{
         let items=[];
         try{ items = await AsgardDB.byIndex("notifications","user_id", user.id); }catch(e){ items=[]; }
         for(const n of items){ if(n && !n.is_read){ n.is_read=true; await AsgardDB.put("notifications", n); } }
@@ -620,19 +636,10 @@ try{
       loginState = { userId: null, userName: null, remember: false };
     }
 
-    // Touch/Click обработчики для кнопок
-    function addMobileHandler(el, handler) {
-      if (!el) return;
-      el.addEventListener("click", handler);
-      el.addEventListener("touchend", (e) => {
-        e.preventDefault();
-        handler(e);
-      }, { passive: false });
-    }
-
-    addMobileHandler($("#btnShowLogin"), showLogin);
-    addMobileHandler($("#btnBackToWelcome"), showWelcome);
-    addMobileHandler($("#btnBackToLogin"), showLogin);
+    // Используем глобальную addMobileClick для мобильной совместимости
+    addMobileClick($("#btnShowLogin"), showLogin);
+    addMobileClick($("#btnBackToWelcome"), showWelcome);
+    addMobileClick($("#btnBackToLogin"), showLogin);
 
     // Шаг 1: проверка логина/пароля
     async function doLogin(){
@@ -662,7 +669,7 @@ try{
         toast("Ошибка", e.message||"Неверный логин или пароль", "err");
       }
     }
-    addMobileHandler($("#btnDoLogin"), doLogin);
+    addMobileClick($("#btnDoLogin"), doLogin);
 
     // Enter для логина
     ["w_login","w_pass"].forEach(id=>{
@@ -688,7 +695,7 @@ try{
         $("#w_pin").focus();
       }
     }
-    addMobileHandler($("#btnVerifyPin"), verifyPin);
+    addMobileClick($("#btnVerifyPin"), verifyPin);
 
     // Enter для PIN
     $("#w_pin")?.addEventListener("keydown", (e)=>{ if(e.key==="Enter") $("#btnVerifyPin").click(); });
@@ -714,7 +721,7 @@ try{
         toast("Ошибка", e.message||"Не удалось сохранить", "err");
       }
     }
-    addMobileHandler($("#btnSetupCredentials"), setupCredentials);
+    addMobileClick($("#btnSetupCredentials"), setupCredentials);
   }
 
   // Загрузочный экран после успешного входа
