@@ -2603,7 +2603,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   }
   
   /* Оверлей при открытом меню */
-  .overlay {
+  .nav-overlay {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.6);
@@ -2612,8 +2612,8 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
     visibility: hidden;
     transition: all var(--transition-normal);
   }
-  
-  body.nav-open .overlay {
+
+  body.nav-open .nav-overlay {
     opacity: 1;
     visibility: visible;
   }
@@ -2933,8 +2933,8 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   .mnav {
     display: none;
   }
-  
-  .overlay {
+
+  .nav-overlay {
     display: none;
   }
   

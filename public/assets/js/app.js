@@ -282,7 +282,7 @@ try{
           <button class="btn ghost" id="btnBackup">Экспорт/Импорт</button>
         </div>
       </aside>
-      <div class="overlay" id="navOverlay"></div>
+      <div class="nav-overlay" id="navOverlay"></div>
       <main class="main">
         <div class="topbar">
           <div class="mnav"><button class="iconbtn" id="btnMenu" aria-label="Меню">☰</button></div>

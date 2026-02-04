@@ -1164,12 +1164,7 @@ class TestRunner {
     this.log('INFO', '═══ ТЕСТЫ РОЛЕЙ И ПРАВ ДОСТУПА ═══');
 
     // Сначала создаём тестовых пользователей через API
-    try {
-      await this.login('admin', 'Orion2025!');
-    } catch (e) {
-      this.log('WARN', `Не удалось войти как admin для roles тестов: ${e.message}`);
-      return; // Пропускаем все тесты ролей если админ не может войти
-    }
+    await this.login('admin', 'Orion2025!');
 
     const testRoles = [
       { login: 'test_pm_e2e', password: 'Test123!', role: 'PM', name: 'Тест PM E2E' },
@@ -2194,7 +2189,7 @@ ${this.generateRecommendations()}
         const estData = await estResp.json();
         const estimate = estData.item || {};
 
-        await fetch('/api/data/estimates/' + estimateId, {
+        const estUpdateResp = await fetch('/api/data/estimates/' + estimateId, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
           body: JSON.stringify({
@@ -2204,6 +2199,10 @@ ${this.generateRecommendations()}
             approval_comment: 'Согласовано. E2E тест.'
           })
         });
+        if (!estUpdateResp.ok) {
+          const errData = await estUpdateResp.json().catch(() => ({}));
+          return { error: `Не удалось обновить estimate: ${estUpdateResp.status} ${errData.error || ''}` };
+        }
 
         // Обновляем tender
         const tenderResp = await fetch('/api/data/tenders/' + tenderId, {
@@ -2212,11 +2211,15 @@ ${this.generateRecommendations()}
         const tenderData = await tenderResp.json();
         const tender = tenderData.item || {};
 
-        await fetch('/api/data/tenders/' + tenderId, {
+        const tenderUpdateResp = await fetch('/api/data/tenders/' + tenderId, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
           body: JSON.stringify({ ...tender, tender_status: 'ТКП согласовано' })
         });
+        if (!tenderUpdateResp.ok) {
+          const errData = await tenderUpdateResp.json().catch(() => ({}));
+          return { error: `Не удалось обновить tender: ${tenderUpdateResp.status} ${errData.error || ''}` };
+        }
 
         return { success: true };
       }, createdEstimateId, createdTenderId, token);
@@ -2245,11 +2248,15 @@ ${this.generateRecommendations()}
         const tender = tenderData.item || {};
 
         // Обновляем статус тендера
-        await fetch('/api/data/tenders/' + tenderId, {
+        const tenderUpdateResp = await fetch('/api/data/tenders/' + tenderId, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
           body: JSON.stringify({ ...tender, tender_status: 'Клиент согласился' })
         });
+        if (!tenderUpdateResp.ok) {
+          const errData = await tenderUpdateResp.json().catch(() => ({}));
+          return { error: `Не удалось обновить tender: ${tenderUpdateResp.status} ${errData.error || ''}` };
+        }
 
         const newWork = {
           tender_id: tenderId,
@@ -2381,7 +2388,7 @@ ${this.generateRecommendations()}
         const bonus = bonusData.item || {};
 
         // Обновляем статус
-        await fetch('/api/data/bonus_requests/' + bonusId, {
+        const bonusUpdateResp = await fetch('/api/data/bonus_requests/' + bonusId, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
           body: JSON.stringify({
@@ -2391,6 +2398,10 @@ ${this.generateRecommendations()}
             processed_at: new Date().toISOString()
           })
         });
+        if (!bonusUpdateResp.ok) {
+          const errData = await bonusUpdateResp.json().catch(() => ({}));
+          return { error: `Не удалось обновить bonus_request: ${bonusUpdateResp.status} ${errData.error || ''}` };
+        }
 
         // Создаём расход
         const bonuses = bonus.bonuses_json ? JSON.parse(bonus.bonuses_json) : [{ amount: 5000, employee_id: 1 }];
@@ -2563,25 +2574,54 @@ ${this.generateRecommendations()}
 
       if (verification.error) throw new Error(`Ошибка проверки: ${verification.error}`);
 
-      // Проверяем статусы после выполнения workflow
-      // tender: ТКП согласовано (после согласования директором)
-      // estimate: sent (отправлен на согласование)
-      // work: Закрыто (после закрытия) - может быть "Работы сдали" если обновление не прошло
-      // bonus: approved (после согласования) - или pending если асинхронно
-      // expenses: должен быть хотя бы 1
-      const tenderOk = verification.tender.exists && verification.tender.status;
-      const estimateOk = verification.estimate.exists && verification.estimate.status;
-      const workOk = verification.work.exists && ['Закрыто', 'Работы сдали'].includes(verification.work.status);
-      const bonusOk = verification.bonus.exists;
-      const expensesOk = verification.expenses.count > 0;
+      // СТРОГИЕ проверки статусов после выполнения workflow
+      // Ожидаемые статусы после полного цикла:
+      // - tender: 'Клиент согласился' (устанавливается в workflow.tender.07_work_created)
+      // - estimate: 'approved' (устанавливается в workflow.tender.06_director_approves)
+      // - work: 'Закрыто' (устанавливается в workflow.work.03_close)
+      // - bonus: 'approved' (устанавливается в workflow.bonus.02_director_approves)
+      // - expenses: должен быть хотя бы 1
 
-      const ok = tenderOk && estimateOk && workOk && bonusOk && expensesOk;
+      const expectedTenderStatus = 'Клиент согласился';
+      const expectedEstimateStatus = 'approved';
+      const expectedWorkStatus = 'Закрыто';
+      const expectedBonusStatus = 'approved';
 
-      if (!ok) {
-        this.log('WARN', `Проверка workflow: ${JSON.stringify(verification)}`);
+      const errors = [];
+
+      if (!verification.tender.exists) {
+        errors.push('Тендер не существует');
+      } else if (verification.tender.status !== expectedTenderStatus) {
+        errors.push(`Статус тендера: ожидалось "${expectedTenderStatus}", получено "${verification.tender.status}"`);
       }
 
-      this.log('INFO', `✓ Бизнес-процессы выполнены: ${JSON.stringify(verification)}`);
+      if (!verification.estimate.exists) {
+        errors.push('Просчёт не существует');
+      } else if (verification.estimate.status !== expectedEstimateStatus) {
+        errors.push(`Статус просчёта: ожидалось "${expectedEstimateStatus}", получено "${verification.estimate.status}"`);
+      }
+
+      if (!verification.work.exists) {
+        errors.push('Работа не существует');
+      } else if (verification.work.status !== expectedWorkStatus) {
+        errors.push(`Статус работы: ожидалось "${expectedWorkStatus}", получено "${verification.work.status}"`);
+      }
+
+      if (!verification.bonus.exists) {
+        errors.push('Заявка на премию не существует');
+      } else if (verification.bonus.status !== expectedBonusStatus) {
+        errors.push(`Статус премии: ожидалось "${expectedBonusStatus}", получено "${verification.bonus.status}"`);
+      }
+
+      if (verification.expenses.count === 0) {
+        errors.push('Расходы не созданы');
+      }
+
+      if (errors.length > 0) {
+        throw new Error(`Проверка workflow не пройдена:\n${errors.join('\n')}\nДанные: ${JSON.stringify(verification)}`);
+      }
+
+      this.log('INFO', `✓ Все бизнес-процессы выполнены корректно: ${JSON.stringify(verification)}`);
       await this.logout();
     });
 
@@ -2638,11 +2678,7 @@ ${this.generateRecommendations()}
       }, createdTenderId, createdEstimateId, createdWorkId, createdBonusRequestId, token);
 
       this.log('INFO', `Очистка: удалено ${cleaned} тестовых записей`);
-      try {
-        await this.logout();
-      } catch (e) {
-        this.log('DEBUG', 'Logout после очистки пропущен');
-      }
+      await this.logout();
     });
   }
 
@@ -2851,9 +2887,19 @@ ${this.generateRecommendations()}
         const users = await AsgardDB.getAll('users') || [];
         if (users.length === 0) return { error: 'NO_USERS' };
 
+        // Получаем работы для привязки премии
+        const worksResp = await fetch('/api/data/works?limit=1', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const worksData = await worksResp.json();
+        const works = worksData.works || [];
+
         const bonusRequest = {
-          user_id: users[0].id,
+          pm_id: users[0].id,
+          work_id: works.length > 0 ? works[0].id : null,
+          work_title: works.length > 0 ? works[0].work_title : 'E2E Test Work',
           status: 'pending',
+          total_amount: 5000,
           bonuses_json: JSON.stringify([
             { employee_id: users[0].id, amount: 5000 }
           ]),
