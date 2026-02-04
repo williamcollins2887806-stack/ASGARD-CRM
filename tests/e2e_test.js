@@ -186,6 +186,11 @@ class TestRunner {
     fs.appendFileSync(CONFIG.LOG_FILE, logLine + (data ? ' ' + JSON.stringify(data) : '') + '\n');
   }
 
+  // Задержка - заменяет устаревший page.waitForTimeout
+  async delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // СКРИНШОТЫ
   // ─────────────────────────────────────────────────────────────────────────────
@@ -255,11 +260,13 @@ class TestRunner {
     this.browser = await puppeteer.launch({
       headless: CONFIG.HEADLESS,
       slowMo: CONFIG.SLOW_MO,
+      executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--disable-software-rasterizer',
         `--window-size=${CONFIG.VIEWPORT.width},${CONFIG.VIEWPORT.height}`
       ]
     });
@@ -464,7 +471,7 @@ class TestRunner {
     // Тест: редирект неавторизованного пользователя
     await this.runTest('auth.redirect_unauthorized', async () => {
       await this.goto('/');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       const url = this.page.url();
       if (!url.includes('login') && !url.includes('#/login') && !url.includes('#/welcome')) {
@@ -479,19 +486,19 @@ class TestRunner {
     // Тест: неверный пароль
     await this.runTest('auth.invalid_password', async () => {
       await this.goto('/');
-      await this.page.waitForTimeout(500);
+      await this.delay(500);
 
       // Сначала кликаем "Войти" чтобы показать форму
       if (await this.exists('#btnShowLogin', 2000)) {
         await this.click('#btnShowLogin');
-        await this.page.waitForTimeout(500);
+        await this.delay(500);
       }
 
       if (await this.exists('#w_login', 2000)) {
         await this.type('#w_login', 'admin', { clear: true });
         await this.type('#w_pass', 'wrongpassword', { clear: true });
         await this.click('#btnDoLogin');
-        await this.page.waitForTimeout(1000);
+        await this.delay(1000);
 
         // Должно показать ошибку
         const hasError = await this.exists('.toast.err, .toast-error, [class*="error"]', 2000);
@@ -519,12 +526,12 @@ class TestRunner {
   // Метод входа в систему
   async login(login, password, pin = '1234') {
     await this.goto('/');
-    await this.page.waitForTimeout(1000);
+    await this.delay(1000);
 
     // Ждём кнопку "Войти" на welcome-странице
     await this.page.waitForSelector('#btnShowLogin', { timeout: 10000 });
     await this.click('#btnShowLogin');
-    await this.page.waitForTimeout(500);
+    await this.delay(500);
 
     // Ждём появления формы входа
     await this.page.waitForSelector('#w_login', { timeout: 10000 });
@@ -535,7 +542,7 @@ class TestRunner {
 
     // Кликаем "Далее"
     await this.click('#btnDoLogin');
-    await this.page.waitForTimeout(3000);
+    await this.delay(3000);
 
     // После клика возможны разные сценарии:
     // 1. Показывается форма PIN (#pinForm visible)
@@ -551,7 +558,7 @@ class TestRunner {
     if (hasPinForm) {
       await this.type('#w_pin', pin, { clear: true });
       await this.click('#btnVerifyPin');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
     }
 
     // Проверяем, нужна ли первая настройка (смена пароля)
@@ -564,11 +571,11 @@ class TestRunner {
       await this.type('#s_pass2', password);
       await this.type('#s_pin', pin);
       await this.click('#btnSetupCredentials');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
     }
 
     // Ждём загрузки приложения
-    await this.page.waitForTimeout(2000);
+    await this.delay(2000);
 
     // Проверяем что вошли (должен быть контент)
     const hasContent = await this.exists('.sidebar, .nav, [class*="dashboard"], [class*="content"], #app .page', 5000);
@@ -603,7 +610,7 @@ class TestRunner {
     for (const selector of logoutSelectors) {
       if (await this.exists(selector, 1000)) {
         await this.click(selector);
-        await this.page.waitForTimeout(1000);
+        await this.delay(1000);
         break;
       }
     }
@@ -615,7 +622,7 @@ class TestRunner {
     });
 
     await this.goto('/');
-    await this.page.waitForTimeout(1000);
+    await this.delay(1000);
 
     this.token = null;
     this.currentUser = null;
@@ -639,7 +646,7 @@ class TestRunner {
 
     await this.runTest('crud.tenders.list', async () => {
       await this.goto('/#/tenders');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Проверяем что страница загрузилась - ищем панель и таблицу
       const hasTable = await this.exists('.panel, #tb, tbody, table', 5000);
@@ -650,7 +657,7 @@ class TestRunner {
 
     await this.runTest('crud.tenders.create', async () => {
       await this.goto('/#/tenders');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Кликаем "Добавить"
       const addBtnSelectors = [
@@ -684,7 +691,7 @@ class TestRunner {
         });
       }
 
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Проверяем что открылась модалка или форма
       const hasForm = await this.exists('input[name="customer"], input[name="tender_number"], .modal', 3000);
@@ -699,7 +706,7 @@ class TestRunner {
 
     await this.runTest('crud.customers.list', async () => {
       await this.goto('/#/customers');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Проверяем что страница загрузилась - ищем панель и таблицу/список
       const hasContent = await this.exists('.panel, #tb, tbody, table, .card', 5000);
@@ -710,7 +717,7 @@ class TestRunner {
 
     await this.runTest('crud.customers.search', async () => {
       await this.goto('/#/customers');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Ищем поле поиска
       const searchSelectors = ['input[placeholder*="Поиск"]', 'input#search', 'input#q', '.search-input'];
@@ -718,7 +725,7 @@ class TestRunner {
       for (const selector of searchSelectors) {
         if (await this.exists(selector, 1000)) {
           await this.type(selector, 'тест', { clear: true });
-          await this.page.waitForTimeout(1000);
+          await this.delay(1000);
           break;
         }
       }
@@ -731,14 +738,14 @@ class TestRunner {
     await this.runTest('crud.works.list', async () => {
       // Роут работ - pm-works или all-works
       await this.goto('/#/pm-works');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Проверяем что страница загрузилась - ищем панель и таблицу
       const hasContent = await this.exists('.panel, #tb, tbody, table', 5000);
       if (!hasContent) {
         // Пробуем альтернативный роут
         await this.goto('/#/all-works');
-        await this.page.waitForTimeout(2000);
+        await this.delay(2000);
         const hasAlt = await this.exists('.panel, #tb, tbody, table', 3000);
         if (!hasAlt) {
           throw new Error('Список работ не загрузился');
@@ -752,14 +759,14 @@ class TestRunner {
 
     await this.runTest('crud.finances.list', async () => {
       await this.goto('/#/finances');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Финансы могут иметь разные названия маршрутов
       const hasContent = await this.exists('table, .card, [class*="finance"], [class*="expense"]', 5000);
       if (!hasContent) {
         // Пробуем другой маршрут
         await this.goto('/#/expenses');
-        await this.page.waitForTimeout(2000);
+        await this.delay(2000);
       }
     });
 
@@ -769,14 +776,14 @@ class TestRunner {
 
     await this.runTest('crud.calendar.view', async () => {
       await this.goto('/#/calendar');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Проверяем что страница загрузилась - календарь или панель
       const hasContent = await this.exists('.panel, .calendar, [class*="calendar"], .fc, table, #app', 5000);
       if (!hasContent) {
         // Пробуем офисный график
         await this.goto('/#/office-schedule');
-        await this.page.waitForTimeout(2000);
+        await this.delay(2000);
         const hasAlt = await this.exists('.panel, table, .schedule', 3000);
         if (!hasAlt) {
           throw new Error('Календарь не загрузился');
@@ -798,7 +805,7 @@ class TestRunner {
 
     await this.runTest('modals.close_on_escape', async () => {
       await this.goto('/#/tenders');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Открываем модалку
       await this.page.evaluate(() => {
@@ -811,13 +818,13 @@ class TestRunner {
         }
       });
 
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Проверяем что модалка открыта
       if (await this.exists('.modal, .modal-overlay, [class*="modal"]', 2000)) {
         // Нажимаем Escape
         await this.page.keyboard.press('Escape');
-        await this.page.waitForTimeout(500);
+        await this.delay(500);
 
         // Проверяем что модалка закрылась
         const stillOpen = await this.exists('.modal:not(.hidden), .modal-overlay:not(.hidden)', 1000);
@@ -829,7 +836,7 @@ class TestRunner {
 
     await this.runTest('modals.close_on_overlay_click', async () => {
       await this.goto('/#/tenders');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Открываем модалку
       await this.page.evaluate(() => {
@@ -842,12 +849,12 @@ class TestRunner {
         }
       });
 
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Кликаем по overlay
       if (await this.exists('.modal-overlay, .overlay', 2000)) {
         await this.page.click('.modal-overlay, .overlay');
-        await this.page.waitForTimeout(500);
+        await this.delay(500);
       }
     });
 
@@ -865,7 +872,7 @@ class TestRunner {
 
     await this.runTest('filters.tenders.by_status', async () => {
       await this.goto('/#/tenders');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Ищем селект статуса
       const statusSelectors = ['select#status', 'select[name="status"]', 'select:has(option:contains("Новый"))'];
@@ -873,7 +880,7 @@ class TestRunner {
       for (const selector of statusSelectors) {
         if (await this.exists(selector, 1000)) {
           await this.select(selector, 'Новый');
-          await this.page.waitForTimeout(1000);
+          await this.delay(1000);
           break;
         }
       }
@@ -881,7 +888,7 @@ class TestRunner {
 
     await this.runTest('filters.tenders.by_period', async () => {
       await this.goto('/#/tenders');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Ищем селект периода
       const periodSelectors = ['select#period', 'select[name="period"]', '#fltPeriod'];
@@ -892,7 +899,7 @@ class TestRunner {
           const options = await this.page.$$eval(`${selector} option`, opts => opts.map(o => o.value));
           if (options.length > 1) {
             await this.select(selector, options[1]);
-            await this.page.waitForTimeout(1000);
+            await this.delay(1000);
           }
           break;
         }
@@ -906,7 +913,7 @@ class TestRunner {
       for (const selector of globalSearchSelectors) {
         if (await this.exists(selector, 1000)) {
           await this.type(selector, 'тест', { clear: true });
-          await this.page.waitForTimeout(1000);
+          await this.delay(1000);
           break;
         }
       }
@@ -926,23 +933,23 @@ class TestRunner {
 
     await this.runTest('approvals.bonus.list', async () => {
       await this.goto('/#/approvals');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Или пробуем прямой маршрут к премиям
       if (!(await this.exists('.card, table', 2000))) {
         await this.goto('/#/bonus-approval');
-        await this.page.waitForTimeout(2000);
+        await this.delay(2000);
       }
     });
 
     await this.runTest('approvals.hr_requests.list', async () => {
       await this.goto('/#/hr-requests');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
     });
 
     await this.runTest('approvals.purchase.list', async () => {
       await this.goto('/#/proc-requests');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
     });
 
     await this.logout();
@@ -960,7 +967,7 @@ class TestRunner {
 
     await this.runTest(`navigation.admin.menu_items`, async () => {
       await this.login(adminUser.login, adminUser.password);
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Проверяем наличие ожидаемых пунктов меню
       const pageContent = await this.page.content();
@@ -1079,7 +1086,7 @@ class TestRunner {
       }
 
       await this.goto('/#/settings');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // PM не должен видеть настройки — либо редирект, либо ошибка доступа
       const pageContent = await this.page.content();
@@ -1103,7 +1110,7 @@ class TestRunner {
         return;
       }
 
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       const pageContent = await this.page.content();
 
@@ -1128,7 +1135,7 @@ class TestRunner {
         return;
       }
 
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       const pageContent = await this.page.content();
 
@@ -1156,7 +1163,7 @@ class TestRunner {
 
     await this.runTest('funnel.load', async () => {
       await this.goto('/#/funnel');
-      await this.page.waitForTimeout(3000);
+      await this.delay(3000);
 
       // Проверяем что воронка загрузилась
       const hasContent = await this.exists('.funnel, [class*="funnel"], .kanban, .board, .column', 5000);
@@ -1164,7 +1171,7 @@ class TestRunner {
       if (!hasContent) {
         // Возможно другой URL
         await this.goto('/#/pipeline');
-        await this.page.waitForTimeout(2000);
+        await this.delay(2000);
       }
 
       const pageContent = await this.page.content();
@@ -1175,7 +1182,7 @@ class TestRunner {
 
     await this.runTest('funnel.cards_display', async () => {
       await this.goto('/#/funnel');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Ищем карточки тендеров
       const hasCards = await this.exists('.card, .tender-card, [class*="card"], [draggable]', 3000);
@@ -1187,7 +1194,7 @@ class TestRunner {
 
     await this.runTest('funnel.card_click', async () => {
       await this.goto('/#/funnel');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Пробуем кликнуть на первую карточку
       const clicked = await this.page.evaluate(() => {
@@ -1202,7 +1209,7 @@ class TestRunner {
       });
 
       if (clicked) {
-        await this.page.waitForTimeout(1000);
+        await this.delay(1000);
         // Проверяем что открылись детали
         const hasDetails = await this.exists('.modal, .details, .sidebar-detail, [class*="detail"]', 2000);
         if (hasDetails) {
@@ -1260,7 +1267,7 @@ class TestRunner {
       }
 
       if (opened) {
-        await this.page.waitForTimeout(1000);
+        await this.delay(1000);
         const hasChat = await this.exists('.chat, .ai-chat, [class*="mimir"], textarea, input[placeholder*="сообщ"]', 2000);
         if (hasChat) {
           this.log('DEBUG', 'Чат AI открыт');
@@ -1289,7 +1296,7 @@ class TestRunner {
 
           // Отправляем сообщение
           await this.page.keyboard.press('Enter');
-          await this.page.waitForTimeout(5000); // Ждём ответа AI
+          await this.delay(5000); // Ждём ответа AI
 
           // Проверяем что появился ответ
           const hasResponse = await this.exists('.ai-response, .message, .chat-message, [class*="response"]', 3000);
@@ -1319,7 +1326,7 @@ class TestRunner {
 
     await this.runTest('export.excel_tenders', async () => {
       await this.goto('/#/tenders');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Ищем кнопку экспорта
       const exportSelectors = [
@@ -1388,7 +1395,7 @@ class TestRunner {
 
       for (const pagePath of pages) {
         await this.goto(pagePath);
-        await this.page.waitForTimeout(2000);
+        await this.delay(2000);
 
         // Открываем форму добавления если есть
         await this.page.evaluate(() => {
@@ -1401,7 +1408,7 @@ class TestRunner {
           }
         });
 
-        await this.page.waitForTimeout(1000);
+        await this.delay(1000);
 
         const hasFileInput = await this.exists('input[type="file"]', 2000);
         if (hasFileInput) {
@@ -1427,7 +1434,7 @@ class TestRunner {
 
     await this.runTest('edge.tender_empty_number', async () => {
       await this.goto('/#/tenders');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Открываем форму создания
       await this.page.evaluate(() => {
@@ -1440,7 +1447,7 @@ class TestRunner {
         }
       });
 
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Пробуем сохранить без номера тендера
       const saveSelectors = ['button:has-text("Сохранить")', '#btnSave', '.btn-save', 'button[type="submit"]'];
@@ -1448,7 +1455,7 @@ class TestRunner {
       for (const selector of saveSelectors) {
         if (await this.exists(selector, 1000)) {
           await this.click(selector);
-          await this.page.waitForTimeout(1000);
+          await this.delay(1000);
 
           // Должна быть ошибка валидации
           const hasError = await this.exists('.error, .validation-error, .toast.err, [class*="error"]', 2000);
@@ -1462,7 +1469,7 @@ class TestRunner {
 
     await this.runTest('edge.customer_invalid_inn', async () => {
       await this.goto('/#/customers');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Открываем форму создания клиента
       await this.page.evaluate(() => {
@@ -1475,7 +1482,7 @@ class TestRunner {
         }
       });
 
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
       // Ищем поле ИНН и вводим невалидное значение
       const innSelectors = ['input[name="inn"]', '#inn', 'input[placeholder*="ИНН"]'];
@@ -1495,7 +1502,7 @@ class TestRunner {
             }
           });
 
-          await this.page.waitForTimeout(1000);
+          await this.delay(1000);
 
           // Должна быть ошибка
           const hasError = await this.exists('.error, .validation-error, .toast.err', 2000);
@@ -1536,7 +1543,7 @@ class TestRunner {
         if (await this.exists(selector, 1000)) {
           await this.click(selector);
           opened = true;
-          await this.page.waitForTimeout(1000);
+          await this.delay(1000);
           break;
         }
       }
@@ -1544,7 +1551,7 @@ class TestRunner {
       if (!opened) {
         // Пробуем перейти на страницу уведомлений напрямую
         await this.goto('/#/alerts');
-        await this.page.waitForTimeout(2000);
+        await this.delay(2000);
       }
 
       // Проверяем что уведомления загрузились без ошибок
@@ -1560,12 +1567,12 @@ class TestRunner {
 
     await this.runTest('notifications.list_load', async () => {
       await this.goto('/#/alerts');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Проверяем что нет JS ошибок при загрузке
       const errorsBeforeCount = this.browserErrors.length;
 
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       const errorsAfterCount = this.browserErrors.length;
       const newErrors = errorsAfterCount - errorsBeforeCount;
@@ -1589,20 +1596,20 @@ class TestRunner {
 
     await this.runTest('reports.page_load', async () => {
       await this.goto('/#/reports');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       const hasContent = await this.exists('.report, .card, table, [class*="report"], [class*="chart"]', 5000);
 
       if (!hasContent) {
         // Пробуем альтернативные маршруты
         await this.goto('/#/dashboard');
-        await this.page.waitForTimeout(2000);
+        await this.delay(2000);
       }
     });
 
     await this.runTest('reports.period_select', async () => {
       await this.goto('/#/reports');
-      await this.page.waitForTimeout(2000);
+      await this.delay(2000);
 
       // Ищем селект периода
       const periodSelectors = [
@@ -1618,7 +1625,7 @@ class TestRunner {
           const options = await this.page.$$eval(`${selector} option`, opts => opts.map(o => o.value));
           if (options.length > 1) {
             await this.select(selector, options[1]);
-            await this.page.waitForTimeout(1500);
+            await this.delay(1500);
             this.log('DEBUG', 'Период в отчёте изменён');
           }
           break;
@@ -1628,7 +1635,7 @@ class TestRunner {
 
     await this.runTest('reports.data_load', async () => {
       await this.goto('/#/reports');
-      await this.page.waitForTimeout(3000);
+      await this.delay(3000);
 
       // Проверяем что данные загрузились (есть числа или таблицы)
       const hasData = await this.page.evaluate(() => {
@@ -1792,8 +1799,13 @@ ${this.generateRecommendations()}
     await this.runTest('workflow.tender.01_to_creates', async () => {
       await this.login('admin', 'Orion2025!');
 
-      // Создаём тендер через API
-      const tender = await this.page.evaluate(async (title, customer, testId) => {
+      // Создаём тендер через прямой API вызов (надёжнее чем AsgardDB.add)
+      const result = await this.page.evaluate(async (title, customer, testId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) {
+          return { error: 'NO_TOKEN', message: 'Токен отсутствует в localStorage' };
+        }
+
         const period = new Date().toISOString().slice(0, 7);
         const newTender = {
           period: period,
@@ -1808,11 +1820,34 @@ ${this.generateRecommendations()}
           work_end_plan: new Date(Date.now() + 37*24*60*60*1000).toISOString().slice(0, 10),
           created_at: new Date().toISOString()
         };
-        const id = await window.AsgardDB.add('tenders', newTender);
-        return { ...newTender, id };
+
+        try {
+          const resp = await fetch('/api/data/tenders', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify(newTender)
+          });
+
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            return { error: 'API_ERROR', status: resp.status, message: errData.error || resp.statusText };
+          }
+
+          const data = await resp.json();
+          return { success: true, tender: { ...newTender, id: data.id }, id: data.id };
+        } catch (e) {
+          return { error: 'FETCH_ERROR', message: e.message };
+        }
       }, TEST_TENDER_TITLE, TEST_CUSTOMER, testId);
 
-      createdTenderId = tender.id;
+      if (result.error) {
+        throw new Error(`Ошибка создания тендера: ${result.error} - ${result.message}`);
+      }
+
+      createdTenderId = result.id;
       this.log('INFO', `Тендер создан: ID=${createdTenderId}, "${TEST_TENDER_TITLE}"`);
       await this.logout();
     });
@@ -1823,13 +1858,29 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
 
-      await this.page.evaluate(async (tenderId) => {
-        const tender = await window.AsgardDB.get('tenders', tenderId);
-        tender.distribution_requested_at = new Date().toISOString();
-        tender.tender_status = 'На распределении';
-        await window.AsgardDB.put('tenders', tender);
+      const result = await this.page.evaluate(async (tenderId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        const tenderResp = await fetch('/api/data/tenders/' + tenderId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const tenderData = await tenderResp.json();
+        const tender = tenderData.item || {};
+
+        const resp = await fetch('/api/data/tenders/' + tenderId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            ...tender,
+            distribution_requested_at: new Date().toISOString(),
+            tender_status: 'На распределении'
+          })
+        });
+        return resp.ok ? { success: true } : { error: 'UPDATE_FAILED' };
       }, createdTenderId);
 
+      if (result.error) throw new Error(`Ошибка отправки на распределение: ${result.error}`);
       this.log('INFO', `Тендер отправлен на распределение: ID=${createdTenderId}`);
       await this.logout();
     });
@@ -1840,19 +1891,38 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
 
-      const assigned = await this.page.evaluate(async (tenderId) => {
-        const tender = await window.AsgardDB.get('tenders', tenderId);
-        const users = await window.AsgardDB.all('users') || [];
-        const pm = users.find(u => u.role === 'PM') || users[0];
+      const result = await this.page.evaluate(async (tenderId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
 
-        tender.responsible_pm_id = pm.id;
-        tender.handoff_at = new Date().toISOString();
-        tender.tender_status = 'Отправлено на просчёт';
-        await window.AsgardDB.put('tenders', tender);
-        return pm.name || pm.login;
+        const tenderResp = await fetch('/api/data/tenders/' + tenderId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const tenderData = await tenderResp.json();
+        const tender = tenderData.item || {};
+
+        const usersResp = await fetch('/api/data/users?limit=100', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const usersData = await usersResp.json();
+        const users = usersData.users || [];
+        const pm = users.find(u => u.role === 'PM') || users[0] || { id: 1, login: 'admin' };
+
+        const resp = await fetch('/api/data/tenders/' + tenderId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            ...tender,
+            responsible_pm_id: pm.id,
+            handoff_at: new Date().toISOString(),
+            tender_status: 'Отправлено на просчёт'
+          })
+        });
+        return resp.ok ? { success: true, pmName: pm.name || pm.login } : { error: 'UPDATE_FAILED' };
       }, createdTenderId);
 
-      this.log('INFO', `PM назначен: "${assigned}" для тендера ID=${createdTenderId}`);
+      if (result.error) throw new Error(`Ошибка назначения PM: ${result.error}`);
+      this.log('INFO', `PM назначен: "${result.pmName}" для тендера ID=${createdTenderId}`);
       await this.logout();
     });
 
@@ -1862,11 +1932,20 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
 
-      const estimate = await this.page.evaluate(async (tenderId, testId) => {
-        const tender = await window.AsgardDB.get('tenders', tenderId);
+      const result = await this.page.evaluate(async (tenderId, testId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        // Получаем тендер для pm_id
+        const tenderResp = await fetch('/api/data/tenders/' + tenderId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const tenderData = await tenderResp.json();
+        const tender = tenderData.item || {};
+
         const newEstimate = {
           tender_id: tenderId,
-          pm_id: tender.responsible_pm_id,
+          pm_id: tender.responsible_pm_id || 1,
           version_no: 1,
           probability_pct: 70,
           cost_plan: 800000,
@@ -1879,12 +1958,28 @@ ${this.generateRecommendations()}
           calc_summary_json: JSON.stringify({ city: 'Москва', people_count: 5, work_days: 10 }),
           created_at: new Date().toISOString()
         };
-        const id = await window.AsgardDB.add('estimates', newEstimate);
-        return { ...newEstimate, id };
+
+        try {
+          const resp = await fetch('/api/data/estimates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify(newEstimate)
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            return { error: 'API_ERROR', status: resp.status, message: err.error };
+          }
+          const data = await resp.json();
+          return { success: true, estimate: { ...newEstimate, id: data.id }, id: data.id, price_tkp: newEstimate.price_tkp };
+        } catch (e) {
+          return { error: 'FETCH_ERROR', message: e.message };
+        }
       }, createdTenderId, testId);
 
-      createdEstimateId = estimate.id;
-      this.log('INFO', `Просчёт создан: ID=${createdEstimateId}, цена=${estimate.price_tkp}₽`);
+      if (result.error) throw new Error(`Ошибка создания просчёта: ${result.error} - ${result.message || ''}`);
+
+      createdEstimateId = result.id;
+      this.log('INFO', `Просчёт создан: ID=${createdEstimateId}, цена=${result.price_tkp}₽`);
       await this.logout();
     });
 
@@ -1894,17 +1989,44 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
 
-      await this.page.evaluate(async (estimateId, tenderId) => {
-        const estimate = await window.AsgardDB.get('estimates', estimateId);
-        estimate.approval_status = 'sent';
-        estimate.sent_for_approval_at = new Date().toISOString();
-        await window.AsgardDB.put('estimates', estimate);
+      const result = await this.page.evaluate(async (estimateId, tenderId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
 
-        const tender = await window.AsgardDB.get('tenders', tenderId);
-        tender.tender_status = 'Согласование ТКП';
-        await window.AsgardDB.put('tenders', tender);
+        // Обновляем estimate
+        const estResp = await fetch('/api/data/estimates/' + estimateId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const estData = await estResp.json();
+        const estimate = estData.item || {};
+
+        await fetch('/api/data/estimates/' + estimateId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            ...estimate,
+            approval_status: 'sent',
+            sent_for_approval_at: new Date().toISOString()
+          })
+        });
+
+        // Обновляем tender
+        const tenderResp = await fetch('/api/data/tenders/' + tenderId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const tenderData = await tenderResp.json();
+        const tender = tenderData.item || {};
+
+        await fetch('/api/data/tenders/' + tenderId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ ...tender, tender_status: 'Согласование ТКП' })
+        });
+
+        return { success: true };
       }, createdEstimateId, createdTenderId);
 
+      if (result.error) throw new Error(`Ошибка отправки на согласование: ${result.error}`);
       this.log('INFO', `Просчёт отправлен на согласование: ID=${createdEstimateId}`);
       await this.logout();
     });
@@ -1915,20 +2037,47 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
       await this.goto('/#/approvals');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
-      await this.page.evaluate(async (estimateId, tenderId) => {
-        const estimate = await window.AsgardDB.get('estimates', estimateId);
-        estimate.approval_status = 'approved';
-        estimate.decided_at = new Date().toISOString();
-        estimate.approval_comment = 'Согласовано. E2E тест.';
-        await window.AsgardDB.put('estimates', estimate);
+      const result = await this.page.evaluate(async (estimateId, tenderId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
 
-        const tender = await window.AsgardDB.get('tenders', tenderId);
-        tender.tender_status = 'ТКП согласовано';
-        await window.AsgardDB.put('tenders', tender);
+        // Обновляем estimate
+        const estResp = await fetch('/api/data/estimates/' + estimateId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const estData = await estResp.json();
+        const estimate = estData.item || {};
+
+        await fetch('/api/data/estimates/' + estimateId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            ...estimate,
+            approval_status: 'approved',
+            decided_at: new Date().toISOString(),
+            approval_comment: 'Согласовано. E2E тест.'
+          })
+        });
+
+        // Обновляем tender
+        const tenderResp = await fetch('/api/data/tenders/' + tenderId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const tenderData = await tenderResp.json();
+        const tender = tenderData.item || {};
+
+        await fetch('/api/data/tenders/' + tenderId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ ...tender, tender_status: 'ТКП согласовано' })
+        });
+
+        return { success: true };
       }, createdEstimateId, createdTenderId);
 
+      if (result.error) throw new Error(`Ошибка согласования: ${result.error}`);
       this.log('INFO', `ТКП согласовано директором: ID=${createdEstimateId}`);
       await this.logout();
     });
@@ -1939,14 +2088,27 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
 
-      const work = await this.page.evaluate(async (tenderId) => {
-        const tender = await window.AsgardDB.get('tenders', tenderId);
-        tender.tender_status = 'Клиент согласился';
-        await window.AsgardDB.put('tenders', tender);
+      const result = await this.page.evaluate(async (tenderId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        // Получаем тендер
+        const tenderResp = await fetch('/api/data/tenders/' + tenderId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const tenderData = await tenderResp.json();
+        const tender = tenderData.item || {};
+
+        // Обновляем статус тендера
+        await fetch('/api/data/tenders/' + tenderId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ ...tender, tender_status: 'Клиент согласился' })
+        });
 
         const newWork = {
           tender_id: tenderId,
-          pm_id: tender.responsible_pm_id,
+          pm_id: tender.responsible_pm_id || 1,
           company: tender.customer_name,
           work_title: tender.tender_title,
           work_status: 'Подготовка',
@@ -1957,12 +2119,28 @@ ${this.generateRecommendations()}
           cost_plan: 800000,
           created_at: new Date().toISOString()
         };
-        const id = await window.AsgardDB.add('works', newWork);
-        return { ...newWork, id };
+
+        try {
+          const resp = await fetch('/api/data/works', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify(newWork)
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            return { error: 'API_ERROR', status: resp.status, message: err.error };
+          }
+          const data = await resp.json();
+          return { success: true, work: { ...newWork, id: data.id }, id: data.id, work_title: newWork.work_title };
+        } catch (e) {
+          return { error: 'FETCH_ERROR', message: e.message };
+        }
       }, createdTenderId);
 
-      createdWorkId = work.id;
-      this.log('INFO', `Работа создана: ID=${createdWorkId}, "${work.work_title}"`);
+      if (result.error) throw new Error(`Ошибка создания работы: ${result.error} - ${result.message || ''}`);
+
+      createdWorkId = result.id;
+      this.log('INFO', `Работа создана: ID=${createdWorkId}, "${result.work_title}"`);
       await this.logout();
     });
 
@@ -1976,33 +2154,63 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
 
-      const bonus = await this.page.evaluate(async (workId, testId) => {
-        const work = await window.AsgardDB.get('works', workId);
+      const result = await this.page.evaluate(async (workId, testId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        // Получаем работу
+        const workResp = await fetch('/api/data/works/' + workId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const workData = await workResp.json();
+        const work = workData.item || {};
 
         // Создаём тестового сотрудника
-        const empId = await window.AsgardDB.add('employees', {
-          fio: `Тест Работник ${testId}`,
-          role_tag: 'Слесарь',
-          is_active: true,
-          created_at: new Date().toISOString()
+        const empResp = await fetch('/api/data/employees', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            fio: `Тест Работник ${testId}`,
+            role_tag: 'Слесарь',
+            is_active: true,
+            created_at: new Date().toISOString()
+          })
         });
+        const empData = await empResp.json();
+        const empId = empData.id;
 
         const newBonus = {
           work_id: workId,
           work_title: work.work_title,
-          pm_id: work.pm_id,
-          bonuses: [{ employee_id: empId, amount: 5000 }],
+          pm_id: work.pm_id || 1,
+          bonuses_json: JSON.stringify([{ employee_id: empId, amount: 5000 }]),
           total_amount: 5000,
           comment: `Премия за качественную работу. E2E тест ${testId}`,
           status: 'pending',
           created_at: new Date().toISOString()
         };
-        const id = await window.AsgardDB.add('bonus_requests', newBonus);
-        return { ...newBonus, id, empId };
+
+        try {
+          const resp = await fetch('/api/data/bonus_requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify(newBonus)
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            return { error: 'API_ERROR', status: resp.status, message: err.error };
+          }
+          const data = await resp.json();
+          return { success: true, id: data.id, total_amount: newBonus.total_amount, empId };
+        } catch (e) {
+          return { error: 'FETCH_ERROR', message: e.message };
+        }
       }, createdWorkId, testId);
 
-      createdBonusRequestId = bonus.id;
-      this.log('INFO', `Запрос премии создан: ID=${createdBonusRequestId}, сумма=${bonus.total_amount}₽`);
+      if (result.error) throw new Error(`Ошибка создания запроса премии: ${result.error} - ${result.message || ''}`);
+
+      createdBonusRequestId = result.id;
+      this.log('INFO', `Запрос премии создан: ID=${createdBonusRequestId}, сумма=${result.total_amount}₽`);
       await this.logout();
     });
 
@@ -2012,32 +2220,57 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
       await this.goto('/#/bonus-approval');
-      await this.page.waitForTimeout(1000);
+      await this.delay(1000);
 
-      const expense = await this.page.evaluate(async (bonusId, workId) => {
-        const bonus = await window.AsgardDB.get('bonus_requests', bonusId);
-        bonus.status = 'approved';
-        bonus.director_comment = 'Согласовано. E2E тест.';
-        bonus.processed_at = new Date().toISOString();
-        await window.AsgardDB.put('bonus_requests', bonus);
+      const result = await this.page.evaluate(async (bonusId, workId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        // Получаем запрос премии
+        const bonusResp = await fetch('/api/data/bonus_requests/' + bonusId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const bonusData = await bonusResp.json();
+        const bonus = bonusData.item || {};
+
+        // Обновляем статус
+        await fetch('/api/data/bonus_requests/' + bonusId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            ...bonus,
+            status: 'approved',
+            director_comment: 'Согласовано. E2E тест.',
+            processed_at: new Date().toISOString()
+          })
+        });
 
         // Создаём расход
-        for (const b of bonus.bonuses) {
-          const expId = await window.AsgardDB.add('work_expenses', {
-            work_id: workId,
-            category: 'fot_bonus',
-            amount: b.amount,
-            date: new Date().toISOString().slice(0, 10),
-            employee_id: b.employee_id,
-            comment: `Премия: ${bonus.comment}`,
-            bonus_request_id: bonusId,
-            created_at: new Date().toISOString()
+        const bonuses = bonus.bonuses_json ? JSON.parse(bonus.bonuses_json) : [{ amount: 5000, employee_id: 1 }];
+        for (const b of bonuses) {
+          const expResp = await fetch('/api/data/work_expenses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({
+              work_id: workId,
+              category: 'fot_bonus',
+              amount: b.amount,
+              date: new Date().toISOString().slice(0, 10),
+              employee_id: b.employee_id,
+              comment: `Премия: ${bonus.comment}`,
+              bonus_request_id: bonusId,
+              created_at: new Date().toISOString()
+            })
           });
-          return expId;
+          const expData = await expResp.json();
+          return { success: true, expenseId: expData.id };
         }
+        return { success: true };
       }, createdBonusRequestId, createdWorkId);
 
-      this.log('INFO', `Премия согласована, расход создан: expenseId=${expense}`);
+      if (result.error) throw new Error(`Ошибка согласования премии: ${result.error}`);
+
+      this.log('INFO', `Премия согласована, расход создан: expenseId=${result.expenseId || 'ok'}`);
       await this.logout();
     });
 
@@ -2049,12 +2282,25 @@ ${this.generateRecommendations()}
       if (!createdWorkId) throw new Error('Работа не создана');
       await this.login('admin', 'Orion2025!');
 
-      await this.page.evaluate(async (workId) => {
-        const work = await window.AsgardDB.get('works', workId);
-        work.work_status = 'В работе';
-        await window.AsgardDB.put('works', work);
+      const result = await this.page.evaluate(async (workId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        const workResp = await fetch('/api/data/works/' + workId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const workData = await workResp.json();
+        const work = workData.item || {};
+
+        const resp = await fetch('/api/data/works/' + workId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ ...work, work_status: 'В работе' })
+        });
+        return resp.ok ? { success: true } : { error: 'UPDATE_FAILED' };
       }, createdWorkId);
 
+      if (result.error) throw new Error(`Ошибка старта работы: ${result.error}`);
       this.log('INFO', `Работа начата: ID=${createdWorkId}, статус="В работе"`);
       await this.logout();
     });
@@ -2063,14 +2309,30 @@ ${this.generateRecommendations()}
       if (!createdWorkId) throw new Error('Работа не создана');
       await this.login('admin', 'Orion2025!');
 
-      await this.page.evaluate(async (workId) => {
-        const work = await window.AsgardDB.get('works', workId);
-        work.work_status = 'Работы сдали';
-        work.end_fact = new Date().toISOString().slice(0, 10);
-        work.cost_fact = 780000;
-        await window.AsgardDB.put('works', work);
+      const result = await this.page.evaluate(async (workId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        const workResp = await fetch('/api/data/works/' + workId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const workData = await workResp.json();
+        const work = workData.item || {};
+
+        const resp = await fetch('/api/data/works/' + workId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            ...work,
+            work_status: 'Работы сдали',
+            end_fact: new Date().toISOString().slice(0, 10),
+            cost_fact: 780000
+          })
+        });
+        return resp.ok ? { success: true } : { error: 'UPDATE_FAILED' };
       }, createdWorkId);
 
+      if (result.error) throw new Error(`Ошибка завершения работы: ${result.error}`);
       this.log('INFO', `Работа завершена: ID=${createdWorkId}, статус="Работы сдали"`);
       await this.logout();
     });
@@ -2079,13 +2341,29 @@ ${this.generateRecommendations()}
       if (!createdWorkId) throw new Error('Работа не создана');
       await this.login('admin', 'Orion2025!');
 
-      await this.page.evaluate(async (workId) => {
-        const work = await window.AsgardDB.get('works', workId);
-        work.work_status = 'Закрыто';
-        work.closed_at = new Date().toISOString();
-        await window.AsgardDB.put('works', work);
+      const result = await this.page.evaluate(async (workId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        const workResp = await fetch('/api/data/works/' + workId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const workData = await workResp.json();
+        const work = workData.item || {};
+
+        const resp = await fetch('/api/data/works/' + workId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            ...work,
+            work_status: 'Закрыто',
+            closed_at: new Date().toISOString()
+          })
+        });
+        return resp.ok ? { success: true } : { error: 'UPDATE_FAILED' };
       }, createdWorkId);
 
+      if (result.error) throw new Error(`Ошибка закрытия работы: ${result.error}`);
       this.log('INFO', `Работа закрыта: ID=${createdWorkId}, статус="Закрыто"`);
       await this.logout();
     });
@@ -2098,11 +2376,30 @@ ${this.generateRecommendations()}
       await this.login('admin', 'Orion2025!');
 
       const verification = await this.page.evaluate(async (tenderId, estimateId, workId, bonusId) => {
-        const tender = await window.AsgardDB.get('tenders', tenderId);
-        const estimate = await window.AsgardDB.get('estimates', estimateId);
-        const work = await window.AsgardDB.get('works', workId);
-        const bonus = await window.AsgardDB.get('bonus_requests', bonusId);
-        const expenses = (await window.AsgardDB.all('work_expenses') || []).filter(e => e.work_id === workId);
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        const get = async (table, id) => {
+          if (!id) return null;
+          const resp = await fetch('/api/data/' + table + '/' + id, {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          if (!resp.ok) return null;
+          const data = await resp.json();
+          return data.item;
+        };
+
+        const tender = await get('tenders', tenderId);
+        const estimate = await get('estimates', estimateId);
+        const work = await get('works', workId);
+        const bonus = await get('bonus_requests', bonusId);
+
+        // Получаем расходы
+        const expResp = await fetch('/api/data/work_expenses?limit=1000', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const expData = await expResp.json();
+        const expenses = (expData.work_expenses || []).filter(e => e.work_id == workId);
 
         return {
           tender: { exists: !!tender, status: tender?.tender_status },
@@ -2112,6 +2409,8 @@ ${this.generateRecommendations()}
           expenses: { count: expenses.length }
         };
       }, createdTenderId, createdEstimateId, createdWorkId, createdBonusRequestId);
+
+      if (verification.error) throw new Error(`Ошибка проверки: ${verification.error}`);
 
       const ok = verification.tender.status === 'Клиент согласился' &&
                  verification.estimate.status === 'approved' &&
@@ -2135,30 +2434,45 @@ ${this.generateRecommendations()}
       await this.login('admin', 'Orion2025!');
 
       const cleaned = await this.page.evaluate(async (tenderId, estimateId, workId, bonusId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return 0;
+
         let count = 0;
+        const del = async (table, id) => {
+          if (!id) return false;
+          const resp = await fetch('/api/data/' + table + '/' + id, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          return resp.ok;
+        };
 
         // Удаляем расходы
-        const expenses = await window.AsgardDB.all('work_expenses') || [];
-        for (const e of expenses) {
-          if (e.work_id === workId) {
-            await window.AsgardDB.delete('work_expenses', e.id);
-            count++;
+        const expResp = await fetch('/api/data/work_expenses?limit=1000', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const expData = await expResp.json();
+        for (const e of (expData.work_expenses || [])) {
+          if (e.work_id == workId) {
+            if (await del('work_expenses', e.id)) count++;
           }
         }
 
-        // Удаляем сотрудников (тестовых)
-        const emps = await window.AsgardDB.all('employees') || [];
-        for (const e of emps) {
+        // Удаляем тестовых сотрудников
+        const empResp = await fetch('/api/data/employees?limit=1000', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const empData = await empResp.json();
+        for (const e of (empData.employees || [])) {
           if (e.fio && e.fio.includes('Тест Работник')) {
-            await window.AsgardDB.delete('employees', e.id);
-            count++;
+            if (await del('employees', e.id)) count++;
           }
         }
 
-        if (bonusId) { await window.AsgardDB.delete('bonus_requests', bonusId); count++; }
-        if (workId) { await window.AsgardDB.delete('works', workId); count++; }
-        if (estimateId) { await window.AsgardDB.delete('estimates', estimateId); count++; }
-        if (tenderId) { await window.AsgardDB.delete('tenders', tenderId); count++; }
+        if (await del('bonus_requests', bonusId)) count++;
+        if (await del('works', workId)) count++;
+        if (await del('estimates', estimateId)) count++;
+        if (await del('tenders', tenderId)) count++;
 
         return count;
       }, createdTenderId, createdEstimateId, createdWorkId, createdBonusRequestId);
