@@ -295,8 +295,8 @@ window.AsgardChat = (function(){
 
     inputEl.focus();
 
-    // Автообновление
-    const interval = setInterval(loadMessages, 5000);
+    // Автообновление (2 секунды для real-time эффекта)
+    const interval = setInterval(loadMessages, 2000);
     const modal = document.querySelector('.modal-overlay');
     if (modal) {
       modal.addEventListener('click', (e) => {
@@ -397,7 +397,7 @@ window.AsgardChat = (function(){
       await loadMessages();
 
       if (refreshInterval) clearInterval(refreshInterval);
-      refreshInterval = setInterval(loadMessages, 5000);
+      refreshInterval = setInterval(loadMessages, 2000);
     }
 
     // Загрузка сообщений
