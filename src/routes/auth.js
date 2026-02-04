@@ -64,16 +64,38 @@ async function routes(fastify, options) {
       email: user.email
     });
 
+    const userData = {
+      id: user.id,
+      login: user.login,
+      name: user.name,
+      role: user.role,
+      email: user.email,
+      must_change_password: user.must_change_password || false
+    };
+
+    // Check if user needs to set up password (first login with temp password)
+    if (user.must_change_password) {
+      return {
+        status: 'need_setup',
+        token,
+        user: userData
+      };
+    }
+
+    // Check if user has PIN set - require PIN verification
+    if (user.pin_hash) {
+      return {
+        status: 'need_pin',
+        token,
+        user: userData
+      };
+    }
+
+    // No PIN set - allow direct login
     return {
+      status: 'ok',
       token,
-      user: {
-        id: user.id,
-        login: user.login,
-        name: user.name,
-        role: user.role,
-        email: user.email,
-        must_change_password: user.must_change_password || false
-      }
+      user: userData
     };
   });
 

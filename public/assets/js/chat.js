@@ -14,19 +14,35 @@ window.AsgardChat = (function(){
   };
 
   // CRUD для сообщений
-  async function getMessages(chatType, chatId = null, limit = 50) {
+  async function getMessages(chatType, chatId = null, limit = 50, currentUserId = null) {
     try {
       let all = await AsgardDB.getAll('chat_messages') || [];
+      console.log('[Chat] Loaded messages:', all.length, 'filtering for type:', chatType, 'id:', chatId, 'currentUser:', currentUserId);
+
+      // Normalize IDs for comparison (handle string vs number)
+      const normId = chatId !== null ? String(chatId) : null;
+      const normCurrentUserId = currentUserId !== null ? String(currentUserId) : null;
 
       all = all.filter(m => {
         if (chatType === 'general') return m.chat_type === 'general';
-        if (chatType === 'direct') return m.chat_type === 'direct' && (m.chat_id === chatId || m.to_user_id === chatId);
-        return m.chat_type === chatType && m.entity_id === chatId;
+        if (chatType === 'direct') {
+          if (m.chat_type !== 'direct') return false;
+          // For direct messages between two users:
+          // Show messages where (sender=me AND recipient=other) OR (sender=other AND recipient=me)
+          const senderId = String(m.user_id);
+          const recipientId = String(m.to_user_id);
+          const isMyMessage = senderId === normCurrentUserId && recipientId === normId;
+          const isTheirMessage = senderId === normId && recipientId === normCurrentUserId;
+          return isMyMessage || isTheirMessage;
+        }
+        return m.chat_type === chatType && String(m.entity_id) === normId;
       });
 
+      console.log('[Chat] After filter:', all.length, 'messages');
       all.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       return all.slice(-limit);
     } catch(e) {
+      console.error('[Chat] getMessages error:', e);
       return [];
     }
   }
@@ -52,9 +68,11 @@ window.AsgardChat = (function(){
     };
 
     try {
+      console.log('[Chat] Sending message:', message);
       // Используем add вместо put - для создания новой записи с auto-id
       const result = await AsgardDB.add('chat_messages', message);
-      message.id = result.id || result;
+      console.log('[Chat] Add result:', result);
+      message.id = result?.id || result;
 
       if (message.mentions && message.mentions.length > 0) {
         await notifyMentions(message);
@@ -66,7 +84,7 @@ window.AsgardChat = (function(){
 
       return message;
     } catch(e) {
-      console.error('Error sending message:', e);
+      console.error('[Chat] Error sending message:', e);
       return null;
     }
   }
@@ -210,17 +228,28 @@ window.AsgardChat = (function(){
 
     // Загрузка сообщений
     async function loadMessages() {
-      const messages = await getMessages(type, entityId);
+      const messages = await getMessages(type, entityId, 50, user.id);
+
+      // Mark incoming messages as read
+      for (const m of messages) {
+        if (m.user_id !== user.id && !m.is_read) {
+          await markAsRead(m.id);
+        }
+      }
+
       messagesEl.innerHTML = messages.map(m => {
         const isOwn = m.user_id === user.id;
         const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        // Read status indicator for own messages
+        const readStatus = isOwn ? (m.is_read ? ' ✓✓' : ' ✓') : '';
+        const readColor = m.is_read ? 'var(--green)' : 'inherit';
         return `
           <div style="align-self:${isOwn ? 'flex-end' : 'flex-start'};max-width:80%">
             <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
               ${!isOwn ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${AsgardUI.esc(m.user_name || 'Аноним')}</div>` : ''}
               <div>${AsgardUI.esc(m.text || '')}</div>
             </div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;text-align:${isOwn ? 'right' : 'left'}">${time}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;text-align:${isOwn ? 'right' : 'left'}">${time}<span style="color:${readColor}">${readStatus}</span></div>
           </div>
         `;
       }).join('');
@@ -266,8 +295,8 @@ window.AsgardChat = (function(){
 
     inputEl.focus();
 
-    // Автообновление
-    const interval = setInterval(loadMessages, 5000);
+    // Автообновление (2 секунды для real-time эффекта)
+    const interval = setInterval(loadMessages, 2000);
     const modal = document.querySelector('.modal-overlay');
     if (modal) {
       modal.addEventListener('click', (e) => {
@@ -327,18 +356,44 @@ window.AsgardChat = (function(){
     let currentChat = null;
     let refreshInterval = null;
 
+    // Подсчёт непрочитанных сообщений
+    async function getUnreadCounts() {
+      const counts = { general: 0, direct: {} };
+      try {
+        const all = await AsgardDB.getAll('chat_messages') || [];
+        for (const m of all) {
+          if (m.is_read || m.user_id === user.id) continue;
+          if (m.chat_type === 'general') {
+            counts.general++;
+          } else if (m.chat_type === 'direct' && String(m.to_user_id) === String(user.id)) {
+            const senderId = m.user_id;
+            counts.direct[senderId] = (counts.direct[senderId] || 0) + 1;
+          }
+        }
+      } catch(e) {}
+      return counts;
+    }
+
     // Рендер списка чатов
-    function renderChatList() {
+    async function renderChatList() {
+      const unread = await getUnreadCounts();
+      const generalBadge = unread.general > 0
+        ? `<span style="background:var(--red);color:#fff;font-size:11px;padding:2px 6px;border-radius:10px;margin-left:8px">${unread.general > 99 ? '99+' : unread.general}</span>`
+        : '';
+
       chatList.innerHTML = `
-        <div class="chat-item ${currentChat?.type === 'general' ? 'active' : ''}" data-type="general" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'general' ? 'var(--primary-glow)' : 'transparent'}">
-          <span style="font-size:18px">💬</span> Общий чат
+        <div class="chat-item ${currentChat?.type === 'general' ? 'active' : ''}" data-type="general" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'general' ? 'var(--primary-glow)' : 'transparent'};display:flex;align-items:center;justify-content:space-between">
+          <span><span style="font-size:18px">💬</span> Общий чат</span>${generalBadge}
         </div>
         <div style="padding:8px 10px;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--line);margin:8px 0">Личные сообщения</div>
-        ${otherUsers.map(u => `
-          <div class="chat-item ${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'active' : ''}" data-type="direct" data-id="${u.id}" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'var(--primary-glow)' : 'transparent'}">
-            <span style="font-size:18px">👤</span> ${AsgardUI.esc(u.name || u.login)}
+        ${otherUsers.map(u => {
+          const cnt = unread.direct[u.id] || 0;
+          const badge = cnt > 0 ? `<span style="background:var(--red);color:#fff;font-size:11px;padding:2px 6px;border-radius:10px;margin-left:8px">${cnt > 99 ? '99+' : cnt}</span>` : '';
+          return `
+          <div class="chat-item ${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'active' : ''}" data-type="direct" data-id="${u.id}" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'var(--primary-glow)' : 'transparent'};display:flex;align-items:center;justify-content:space-between">
+            <span><span style="font-size:18px">👤</span> ${AsgardUI.esc(u.name || u.login)}</span>${badge}
           </div>
-        `).join('')}
+        `}).join('')}
       `;
 
       chatList.querySelectorAll('.chat-item').forEach(el => {
@@ -353,7 +408,7 @@ window.AsgardChat = (function(){
     // Открытие чата
     async function openChat(type, id = null) {
       currentChat = { type, id };
-      renderChatList();
+      await renderChatList();
 
       const chatInfo = CHAT_TYPES[type];
       let chatTitle = chatInfo.name;
@@ -368,26 +423,37 @@ window.AsgardChat = (function(){
       await loadMessages();
 
       if (refreshInterval) clearInterval(refreshInterval);
-      refreshInterval = setInterval(loadMessages, 5000);
+      refreshInterval = setInterval(loadMessages, 2000);
     }
 
     // Загрузка сообщений
     async function loadMessages() {
       if (!currentChat) return;
 
-      const messages = await getMessages(currentChat.type, currentChat.id);
-      chatMessages.innerHTML = messages.length === 0 
+      const messages = await getMessages(currentChat.type, currentChat.id, 50, user.id);
+
+      // Mark incoming messages as read
+      for (const m of messages) {
+        if (m.user_id !== user.id && !m.is_read) {
+          await markAsRead(m.id);
+        }
+      }
+
+      chatMessages.innerHTML = messages.length === 0
         ? '<div class="help" style="text-align:center;margin-top:50px">Сообщений пока нет</div>'
         : messages.map(m => {
             const isOwn = m.user_id === user.id;
             const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            // Read status indicator for own messages
+            const readStatus = isOwn ? (m.is_read ? ' ✓✓' : ' ✓') : '';
+            const readColor = m.is_read ? 'var(--green)' : 'inherit';
             return `
               <div style="align-self:${isOwn ? 'flex-end' : 'flex-start'};max-width:80%">
                 <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
                   ${!isOwn ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${AsgardUI.esc(m.user_name || 'Аноним')}</div>` : ''}
                   <div>${AsgardUI.esc(m.text || '')}</div>
                 </div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;text-align:${isOwn ? 'right' : 'left'}">${time}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;text-align:${isOwn ? 'right' : 'left'}">${time}<span style="color:${readColor}">${readStatus}</span></div>
               </div>
             `;
           }).join('');
@@ -430,7 +496,7 @@ window.AsgardChat = (function(){
       if (e.key === 'Enter') send();
     });
 
-    renderChatList();
+    await renderChatList();
   }
 
   return {

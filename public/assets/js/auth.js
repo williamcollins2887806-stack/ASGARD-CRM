@@ -88,12 +88,16 @@ window.AsgardAuth = (function(){
     // Сохраняем токен
     localStorage.setItem('asgard_token', data.token);
     localStorage.setItem('asgard_user', JSON.stringify(data.user));
-    
-    // Проверяем нужна ли смена пароля
-    if(data.user.must_change_password){
+
+    // Проверяем статус от сервера
+    if(data.status === 'need_setup' || data.user.must_change_password){
       return { status: 'need_setup', userId: data.user.id, userName: data.user.name };
     }
-    
+
+    if(data.status === 'need_pin'){
+      return { status: 'need_pin', userId: data.user.id, userName: data.user.name };
+    }
+
     return { status: 'ok', user: data.user, token: data.token };
   }
   

@@ -17,9 +17,15 @@ Thumbs.db
 uploads/
 public/uploads/
 *.sql
+!migrations/*.sql
 *.dump
 
 # Бэкапы (содержат секреты и дубликаты)
 public_backup_*/
 src_backup_*/
 *_backup_*/
+
+# Тестовые артефакты
+tests/screenshots/
+tests/test-report.txt
+tests/test-results.log

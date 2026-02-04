@@ -37,18 +37,41 @@ console.log('[ASGARD] Global period functions loaded');
   // Глобальная функция для мобильной совместимости кнопок
   // Добавляет обработчики click + touchend для надёжной работы на мобильных устройствах
   function addMobileClick(el, handler) {
-    if (!el) return;
+    if (!el) {
+      // Не логируем - элементы могут отсутствовать на некоторых страницах
+      return;
+    }
     let touchHandled = false;
+
+    // Touch events for mobile
+    el.addEventListener("touchstart", (e) => {
+      // Mark that touch is happening
+      touchHandled = true;
+    }, { passive: true });
+
     el.addEventListener("touchend", (e) => {
       e.preventDefault();
-      touchHandled = true;
+      e.stopPropagation();
       handler(e);
-      setTimeout(() => { touchHandled = false; }, 300);
+      setTimeout(() => { touchHandled = false; }, 400);
     }, { passive: false });
+
+    // Click event for desktop (and fallback)
     el.addEventListener("click", (e) => {
-      if (!touchHandled) handler(e);
+      if (!touchHandled) {
+        handler(e);
+      }
+      touchHandled = false;
     });
+
+    // Ensure button is clickable (fix potential CSS issues)
+    el.style.touchAction = 'manipulation';
+    el.style.cursor = 'pointer';
+    el.style.pointerEvents = 'auto';
   }
+
+  // Make it globally available
+  window.addMobileClick = addMobileClick;
 
   // Определяем базовый путь к assets (для работы из подпапок типа /tools/)
   const ASSETS_BASE = (function(){
@@ -259,7 +282,7 @@ try{
           <button class="btn ghost" id="btnBackup">Экспорт/Импорт</button>
         </div>
       </aside>
-      <div class="overlay" id="navOverlay"></div>
+      <div class="nav-overlay" id="navOverlay"></div>
       <main class="main">
         <div class="topbar">
           <div class="mnav"><button class="iconbtn" id="btnMenu" aria-label="Меню">☰</button></div>
@@ -361,7 +384,7 @@ try{
         list.innerHTML = items.map(n=>{
           const when = n.created_at ? new Date(n.created_at).toLocaleString("ru-RU") : "—";
           const dot = n.is_read ? `<span class="dot" style="background:#64748b"></span>` : `<span class="dot" style="background:#f59e0b"></span>`;
-          const link = n.link_hash || "#/alerts";
+          const link = n.link || n.link_hash || "#/alerts";
           return `<a class="bellitem" href="${esc(link)}" data-nid="${n.id}">
             <div class="belli">${dot}</div>
             <div class="bellc">
@@ -514,7 +537,7 @@ try{
           </div>
 
           <div class="welcome-actions" id="welcomeActions">
-            <button class="btn welcome-btn" id="btnShowLogin">Войти</button>
+            <button class="btn welcome-btn" id="btnShowLogin" type="button" style="touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;position:relative;z-index:10">Войти</button>
           </div>
 
           <!-- Форма входа: Шаг 1 - логин/пароль -->
@@ -637,7 +660,12 @@ try{
     }
 
     // Используем глобальную addMobileClick для мобильной совместимости
-    addMobileClick($("#btnShowLogin"), showLogin);
+    const btnShowLogin = $("#btnShowLogin");
+    if (btnShowLogin) {
+      addMobileClick(btnShowLogin, showLogin);
+      // Direct onclick as fallback for mobile
+      btnShowLogin.onclick = function(e) { e.preventDefault(); showLogin(); };
+    }
     addMobileClick($("#btnBackToWelcome"), showWelcome);
     addMobileClick($("#btnBackToLogin"), showLogin);
 

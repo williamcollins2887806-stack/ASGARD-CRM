@@ -75,11 +75,15 @@ window.AsgardOfficeSchedulePage=(function(){
   }
 
   async function ensureStaffSeed(){
-    const staff = await AsgardDB.all("staff");
-    if(staff && staff.length>0) return;
-    const users = await AsgardDB.all("users");
-    for(const u of (users||[])){
+    const staff = await AsgardDB.all("staff") || [];
+    const users = await AsgardDB.all("users") || [];
+    // Получаем user_id уже существующих записей в staff
+    const existingUserIds = new Set(staff.map(s => s.user_id));
+
+    // Добавляем всех активных пользователей, которых нет в staff
+    for(const u of users){
       if(!u.is_active) continue;
+      if(existingUserIds.has(u.id)) continue;
       await AsgardDB.add("staff", {
         user_id: u.id,
         name: u.name || u.login,

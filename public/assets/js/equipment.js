@@ -959,7 +959,97 @@ window.AsgardWarehouse = (function(){
       }
     });
   }
-  
+
+  // Форма запроса оборудования
+  async function openRequestForm() {
+    const categoryOptions = categories.map(c =>
+      `<option value="${c.id}">${c.icon || ''} ${esc(c.name)}</option>`
+    ).join('');
+
+    const workOptions = worksList.filter(w => w.work_status !== 'Завершена').map(w =>
+      `<option value="${w.id}">${esc(w.work_number || '')} — ${esc(w.work_title || w.customer_name)}</option>`
+    ).join('');
+
+    const objectOptions = objects.map(o =>
+      `<option value="${o.id}">${esc(o.name)}</option>`
+    ).join('');
+
+    const html = `
+      <form id="requestEquipmentForm">
+        <div class="form-group">
+          <label>Категория оборудования *</label>
+          <select name="category_id" class="inp">
+            <option value="">Любая категория</option>
+            ${categoryOptions}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Для какой работы *</label>
+          <select name="work_id" class="inp" required>
+            <option value="">Выберите работу...</option>
+            ${workOptions}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Объект</label>
+          <select name="object_id" class="inp">
+            <option value="">Выберите объект...</option>
+            ${objectOptions}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Описание запроса *</label>
+          <textarea name="notes" class="inp" rows="3" required placeholder="Укажите что именно нужно..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-full">📝 Отправить заявку</button>
+      </form>
+    `;
+
+    showModal('📋 Запрос оборудования', html);
+
+    $('#requestEquipmentForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const form = e.target;
+      const formData = new FormData(form);
+      const auth = await AsgardAuth.getAuth();
+
+      const data = {
+        request_type: 'equipment',
+        requester_id: auth.user.id,
+        work_id: formData.get('work_id'),
+        object_id: formData.get('object_id') || null,
+        notes: formData.get('notes'),
+        status: 'pending'
+      };
+
+      try {
+        const resp = await fetch('/api/data/equipment_requests', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + auth.token
+          },
+          body: JSON.stringify(data)
+        });
+
+        if (resp.ok) {
+          closeModal();
+          toast('Успех', 'Заявка на оборудование отправлена', 'ok');
+        } else {
+          const err = await resp.json();
+          toast('Ошибка', err.error || 'Не удалось отправить заявку', 'err');
+        }
+      } catch(e) {
+        toast('Ошибка', e.message, 'err');
+      }
+    });
+  }
+
   // Форма выдачи
   async function openIssueForm(equipmentId) {
     const pmOptions = pmList.map(p => 
