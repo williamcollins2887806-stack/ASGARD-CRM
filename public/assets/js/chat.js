@@ -14,20 +14,26 @@ window.AsgardChat = (function(){
   };
 
   // CRUD для сообщений
-  async function getMessages(chatType, chatId = null, limit = 50) {
+  async function getMessages(chatType, chatId = null, limit = 50, currentUserId = null) {
     try {
       let all = await AsgardDB.getAll('chat_messages') || [];
-      console.log('[Chat] Loaded messages:', all.length, 'filtering for type:', chatType, 'id:', chatId);
+      console.log('[Chat] Loaded messages:', all.length, 'filtering for type:', chatType, 'id:', chatId, 'currentUser:', currentUserId);
 
-      // Normalize chatId for comparison (handle string vs number)
+      // Normalize IDs for comparison (handle string vs number)
       const normId = chatId !== null ? String(chatId) : null;
+      const normCurrentUserId = currentUserId !== null ? String(currentUserId) : null;
 
       all = all.filter(m => {
         if (chatType === 'general') return m.chat_type === 'general';
         if (chatType === 'direct') {
           if (m.chat_type !== 'direct') return false;
-          // Compare as strings to handle type mismatches
-          return String(m.chat_id) === normId || String(m.to_user_id) === normId;
+          // For direct messages between two users:
+          // Show messages where (sender=me AND recipient=other) OR (sender=other AND recipient=me)
+          const senderId = String(m.user_id);
+          const recipientId = String(m.to_user_id);
+          const isMyMessage = senderId === normCurrentUserId && recipientId === normId;
+          const isTheirMessage = senderId === normId && recipientId === normCurrentUserId;
+          return isMyMessage || isTheirMessage;
         }
         return m.chat_type === chatType && String(m.entity_id) === normId;
       });
@@ -222,7 +228,7 @@ window.AsgardChat = (function(){
 
     // Загрузка сообщений
     async function loadMessages() {
-      const messages = await getMessages(type, entityId);
+      const messages = await getMessages(type, entityId, 50, user.id);
       messagesEl.innerHTML = messages.map(m => {
         const isOwn = m.user_id === user.id;
         const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -387,7 +393,7 @@ window.AsgardChat = (function(){
     async function loadMessages() {
       if (!currentChat) return;
 
-      const messages = await getMessages(currentChat.type, currentChat.id);
+      const messages = await getMessages(currentChat.type, currentChat.id, 50, user.id);
       chatMessages.innerHTML = messages.length === 0 
         ? '<div class="help" style="text-align:center;margin-top:50px">Сообщений пока нет</div>'
         : messages.map(m => {
