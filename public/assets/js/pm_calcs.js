@@ -411,7 +411,7 @@ window.AsgardPmCalcsPage = (function(){
     const byId = new Map(users.map(u=>[u.id,u]));
     const tendersAll = await AsgardDB.all("tenders");
 
-    const isPM = user.role==="PM";
+    const isPM = user.role==="PM" || user.role==="ADMIN";
     const isDir = isDirRole(user.role) || user.role==="ADMIN";
 
     // PM sees only own; Director/Admin can see all handed-off
