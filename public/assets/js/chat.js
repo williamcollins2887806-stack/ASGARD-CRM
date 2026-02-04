@@ -229,16 +229,27 @@ window.AsgardChat = (function(){
     // Загрузка сообщений
     async function loadMessages() {
       const messages = await getMessages(type, entityId, 50, user.id);
+
+      // Mark incoming messages as read
+      for (const m of messages) {
+        if (m.user_id !== user.id && !m.is_read) {
+          await markAsRead(m.id);
+        }
+      }
+
       messagesEl.innerHTML = messages.map(m => {
         const isOwn = m.user_id === user.id;
         const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        // Read status indicator for own messages
+        const readStatus = isOwn ? (m.is_read ? ' ✓✓' : ' ✓') : '';
+        const readColor = m.is_read ? 'var(--green)' : 'inherit';
         return `
           <div style="align-self:${isOwn ? 'flex-end' : 'flex-start'};max-width:80%">
             <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
               ${!isOwn ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${AsgardUI.esc(m.user_name || 'Аноним')}</div>` : ''}
               <div>${AsgardUI.esc(m.text || '')}</div>
             </div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;text-align:${isOwn ? 'right' : 'left'}">${time}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;text-align:${isOwn ? 'right' : 'left'}">${time}<span style="color:${readColor}">${readStatus}</span></div>
           </div>
         `;
       }).join('');
@@ -394,18 +405,29 @@ window.AsgardChat = (function(){
       if (!currentChat) return;
 
       const messages = await getMessages(currentChat.type, currentChat.id, 50, user.id);
-      chatMessages.innerHTML = messages.length === 0 
+
+      // Mark incoming messages as read
+      for (const m of messages) {
+        if (m.user_id !== user.id && !m.is_read) {
+          await markAsRead(m.id);
+        }
+      }
+
+      chatMessages.innerHTML = messages.length === 0
         ? '<div class="help" style="text-align:center;margin-top:50px">Сообщений пока нет</div>'
         : messages.map(m => {
             const isOwn = m.user_id === user.id;
             const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            // Read status indicator for own messages
+            const readStatus = isOwn ? (m.is_read ? ' ✓✓' : ' ✓') : '';
+            const readColor = m.is_read ? 'var(--green)' : 'inherit';
             return `
               <div style="align-self:${isOwn ? 'flex-end' : 'flex-start'};max-width:80%">
                 <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
                   ${!isOwn ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${AsgardUI.esc(m.user_name || 'Аноним')}</div>` : ''}
                   <div>${AsgardUI.esc(m.text || '')}</div>
                 </div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;text-align:${isOwn ? 'right' : 'left'}">${time}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;text-align:${isOwn ? 'right' : 'left'}">${time}<span style="color:${readColor}">${readStatus}</span></div>
               </div>
             `;
           }).join('');
