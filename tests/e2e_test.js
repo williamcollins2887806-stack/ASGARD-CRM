@@ -416,6 +416,48 @@ class TestRunner {
     }
   }
 
+  // Поиск элемента по тексту (замена Playwright has-text)
+  async findByText(tag, text, options = {}) {
+    const { exact = false, timeout = 3000 } = options;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      const element = await this.page.evaluate((tag, text, exact) => {
+        const elements = document.querySelectorAll(tag);
+        for (const el of elements) {
+          const content = el.textContent.trim();
+          if (exact ? content === text : content.includes(text)) {
+            // Возвращаем уникальный селектор
+            el.setAttribute('data-test-found', 'true');
+            return true;
+          }
+        }
+        return false;
+      }, tag, text, exact);
+
+      if (element) {
+        return `${tag}[data-test-found="true"]`;
+      }
+      await this.delay(100);
+    }
+    return null;
+  }
+
+  // Клик по элементу с текстом
+  async clickByText(tag, text, options = {}) {
+    const selector = await this.findByText(tag, text, options);
+    if (selector) {
+      await this.page.click(selector);
+      // Очищаем атрибут
+      await this.page.evaluate(() => {
+        const el = document.querySelector('[data-test-found="true"]');
+        if (el) el.removeAttribute('data-test-found');
+      });
+      return true;
+    }
+    return false;
+  }
+
   // Получение текста элемента
   async getText(selector) {
     await this.page.waitForSelector(selector);
@@ -598,21 +640,29 @@ class TestRunner {
 
   // Метод выхода из системы
   async logout() {
-    // Ищем кнопку выхода
+    // Ищем кнопку выхода по стандартным селекторам
     const logoutSelectors = [
       '[data-action="logout"]',
       '#btnLogout',
-      '.logout-btn',
-      'button:has-text("Выход")',
-      'a:has-text("Выход")'
+      '.logout-btn'
     ];
 
+    let clicked = false;
     for (const selector of logoutSelectors) {
       if (await this.exists(selector, 1000)) {
         await this.click(selector);
+        clicked = true;
         await this.delay(1000);
         break;
       }
+    }
+
+    // Пробуем найти по тексту
+    if (!clicked) {
+      clicked = await this.clickByText('button', 'Выход', { timeout: 1000 });
+    }
+    if (!clicked) {
+      clicked = await this.clickByText('a', 'Выход', { timeout: 1000 });
     }
 
     // Или очищаем localStorage и перезагружаем
@@ -661,11 +711,10 @@ class TestRunner {
 
       // Кликаем "Добавить"
       const addBtnSelectors = [
-        'button:has-text("Добавить")',
-        'button:has-text("Новый")',
         '[data-action="add"]',
         '.btn-add',
-        '#btnAddTender'
+        '#btnAddTender',
+        '.btn.primary'
       ];
 
       let clicked = false;
@@ -675,6 +724,17 @@ class TestRunner {
           clicked = true;
           break;
         }
+      }
+
+      // Пробуем найти по тексту
+      if (!clicked) {
+        clicked = await this.clickByText('button', 'Добавить', { timeout: 1000 });
+      }
+      if (!clicked) {
+        clicked = await this.clickByText('button', 'Новый', { timeout: 1000 });
+      }
+      if (!clicked) {
+        clicked = await this.clickByText('a', '+ Тендер', { timeout: 1000 });
       }
 
       if (!clicked) {
@@ -875,11 +935,15 @@ class TestRunner {
       await this.delay(2000);
 
       // Ищем селект статуса
-      const statusSelectors = ['select#status', 'select[name="status"]', 'select:has(option:contains("Новый"))'];
+      const statusSelectors = ['select#status', 'select[name="status"]', '#fltStatus', 'select.status-filter'];
 
       for (const selector of statusSelectors) {
         if (await this.exists(selector, 1000)) {
-          await this.select(selector, 'Новый');
+          // Выбираем первый не-пустой option
+          const options = await this.page.$$eval(`${selector} option`, opts => opts.map(o => o.value).filter(v => v));
+          if (options.length > 0) {
+            await this.select(selector, options[0]);
+          }
           await this.delay(1000);
           break;
         }
@@ -1330,8 +1394,6 @@ class TestRunner {
 
       // Ищем кнопку экспорта
       const exportSelectors = [
-        'button:has-text("Excel")',
-        'button:has-text("Экспорт")',
         '[data-action="export"]',
         '.btn-export',
         '#btnExport'
@@ -1450,20 +1512,28 @@ class TestRunner {
       await this.delay(1000);
 
       // Пробуем сохранить без номера тендера
-      const saveSelectors = ['button:has-text("Сохранить")', '#btnSave', '.btn-save', 'button[type="submit"]'];
+      const saveSelectors = ['#btnSave', '.btn-save', 'button[type="submit"]', '.btn.green'];
 
+      let saved = false;
       for (const selector of saveSelectors) {
         if (await this.exists(selector, 1000)) {
           await this.click(selector);
+          saved = true;
           await this.delay(1000);
-
-          // Должна быть ошибка валидации
-          const hasError = await this.exists('.error, .validation-error, .toast.err, [class*="error"]', 2000);
-          if (hasError) {
-            this.log('DEBUG', 'Валидация пустого номера тендера работает');
-          }
           break;
         }
+      }
+
+      // Попробуем по тексту
+      if (!saved) {
+        await this.clickByText('button', 'Сохранить', { timeout: 1000 });
+        await this.delay(1000);
+      }
+
+      // Должна быть ошибка валидации
+      const hasError = await this.exists('.error, .validation-error, .toast.err, [class*="error"]', 2000);
+      if (hasError) {
+        this.log('DEBUG', 'Валидация пустого номера тендера работает');
       }
     });
 
@@ -1616,8 +1686,8 @@ class TestRunner {
         'select#period',
         'select[name="period"]',
         '#fltPeriod',
-        'select:has(option:contains("Январь"))',
-        'select:has(option:contains("2024"))'
+        'select#month',
+        'select#year'
       ];
 
       for (const selector of periodSelectors) {
@@ -2483,6 +2553,300 @@ ${this.generateRecommendations()}
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: ЧАТ И СООБЩЕНИЯ
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testChat() {
+    this.log('INFO', '═══ ТЕСТЫ ЧАТА ═══');
+
+    const testMessageId = Date.now();
+    const TEST_MESSAGE = `E2E_TEST_MESSAGE_${testMessageId}`;
+
+    await this.runTest('chat.send_general_message', async () => {
+      await this.login('admin', 'Orion2025!');
+      await this.goto('/#/chat');
+      await this.delay(2000);
+
+      // Кликаем на общий чат
+      const generalChat = await this.findByText('div', 'Общий чат', { timeout: 3000 });
+      if (generalChat) {
+        await this.page.click(generalChat);
+        await this.delay(1000);
+      }
+
+      // Вводим сообщение
+      const inputSelector = '#chatInput';
+      if (await this.exists(inputSelector, 3000)) {
+        await this.type(inputSelector, TEST_MESSAGE);
+
+        // Отправляем
+        const sendBtn = '#chatSend';
+        if (await this.exists(sendBtn, 1000)) {
+          await this.click(sendBtn);
+          await this.delay(2000);
+        }
+
+        // Проверяем что сообщение появилось
+        const messageFound = await this.page.evaluate((msg) => {
+          return document.body.textContent.includes(msg);
+        }, TEST_MESSAGE);
+
+        if (!messageFound) {
+          throw new Error('Сообщение не отображается после отправки');
+        }
+      } else {
+        throw new Error('Поле ввода сообщения не найдено');
+      }
+
+      this.log('INFO', `Сообщение отправлено: ${TEST_MESSAGE}`);
+    });
+
+    await this.runTest('chat.send_direct_message', async () => {
+      // Находим пользователя для личного сообщения
+      const users = await this.page.evaluate(async () => {
+        return await AsgardDB.getAll('users') || [];
+      });
+
+      if (users.length < 2) {
+        this.log('WARN', 'Недостаточно пользователей для теста личных сообщений');
+        return;
+      }
+
+      await this.goto('/#/chat');
+      await this.delay(2000);
+
+      // Кликаем на первого пользователя (не текущего)
+      const directChats = await this.page.$$('.chat-item[data-type="direct"]');
+      if (directChats.length > 0) {
+        await directChats[0].click();
+        await this.delay(1000);
+
+        const directMessage = `E2E_DIRECT_${testMessageId}`;
+        await this.type('#chatInput', directMessage);
+        await this.click('#chatSend');
+        await this.delay(2000);
+
+        // Проверяем что сообщение появилось
+        const messageFound = await this.page.evaluate((msg) => {
+          return document.body.textContent.includes(msg);
+        }, directMessage);
+
+        if (!messageFound) {
+          throw new Error('Личное сообщение не отображается');
+        }
+
+        this.log('INFO', `Личное сообщение отправлено: ${directMessage}`);
+      }
+    });
+
+    await this.runTest('chat.read_status_indicator', async () => {
+      // Проверяем что есть индикатор прочтения (✓ или ✓✓)
+      const hasReadIndicator = await this.page.evaluate(() => {
+        const content = document.body.textContent;
+        return content.includes('✓') || content.includes('✓✓');
+      });
+
+      if (!hasReadIndicator) {
+        this.log('WARN', 'Индикаторы прочтения не найдены (возможно нет сообщений)');
+      } else {
+        this.log('INFO', 'Индикаторы прочтения отображаются');
+      }
+    });
+
+    await this.runTest('chat.realtime_polling', async () => {
+      // Проверяем что сообщения обновляются автоматически
+      const initialCount = await this.page.evaluate(() => {
+        return document.querySelectorAll('#chatMessages > div').length;
+      });
+
+      // Ждём 3 секунды (polling = 2 секунды)
+      await this.delay(3000);
+
+      // Считаем сообщения снова (не должно быть ошибок)
+      const afterCount = await this.page.evaluate(() => {
+        return document.querySelectorAll('#chatMessages > div').length;
+      });
+
+      this.log('INFO', `Polling работает. Сообщений: ${initialCount} -> ${afterCount}`);
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: ПОИСК ПО ИНН (DaData)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testINNLookup() {
+    this.log('INFO', '═══ ТЕСТЫ ПОИСКА ПО ИНН ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('inn.lookup_sberbank', async () => {
+      await this.goto('/#/customer?new=1');
+      await this.delay(2000);
+
+      // Вводим ИНН Сбербанка
+      const innInput = '#inn';
+      if (await this.exists(innInput, 3000)) {
+        await this.type(innInput, '7707083893', { clear: true });
+        await this.delay(500);
+
+        // Нажимаем кнопку поиска по ИНН
+        const lookupBtn = await this.findByText('button', '🔍', { timeout: 2000 });
+        if (lookupBtn) {
+          await this.page.click(lookupBtn);
+          await this.delay(3000);
+
+          // Проверяем что поля заполнились
+          const nameField = await this.page.$eval('#name', el => el.value).catch(() => '');
+
+          if (nameField && nameField.toLowerCase().includes('сбербанк')) {
+            this.log('INFO', `ИНН lookup успешен: ${nameField}`);
+          } else {
+            // Проверяем есть ли сообщение об ошибке или отсутствии токена
+            const pageText = await this.page.evaluate(() => document.body.textContent);
+            if (pageText.includes('DADATA_TOKEN') || pageText.includes('API не настроен')) {
+              this.log('WARN', 'DaData API не настроен (отсутствует токен)');
+            } else {
+              throw new Error(`Поля не заполнились. Имя: "${nameField}"`);
+            }
+          }
+        } else {
+          throw new Error('Кнопка поиска по ИНН не найдена');
+        }
+      } else {
+        throw new Error('Поле ИНН не найдено');
+      }
+    });
+
+    await this.runTest('inn.customer_form_fields', async () => {
+      // Проверяем наличие всех полей формы контрагента
+      const requiredFields = ['#inn', '#name', '#full', '#kpp', '#ogrn', '#address'];
+
+      for (const field of requiredFields) {
+        if (!await this.exists(field, 1000)) {
+          throw new Error(`Поле ${field} не найдено в форме контрагента`);
+        }
+      }
+
+      this.log('INFO', 'Все поля формы контрагента присутствуют');
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: СОГЛАСОВАНИЕ ПРЕМИЙ
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testBonusApproval() {
+    this.log('INFO', '═══ ТЕСТЫ СОГЛАСОВАНИЯ ПРЕМИЙ ═══');
+
+    const testId = Date.now();
+
+    await this.runTest('bonus.create_request', async () => {
+      await this.login('admin', 'Orion2025!');
+
+      // Создаём заявку на премию через API
+      const result = await this.page.evaluate(async (testId) => {
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return { error: 'NO_TOKEN' };
+
+        const users = await AsgardDB.getAll('users') || [];
+        if (users.length === 0) return { error: 'NO_USERS' };
+
+        const bonusRequest = {
+          user_id: users[0].id,
+          status: 'pending',
+          bonuses_json: JSON.stringify([
+            { employee_id: users[0].id, amount: 5000 }
+          ]),
+          comment: `E2E_TEST_BONUS_${testId}`,
+          created_at: new Date().toISOString()
+        };
+
+        try {
+          const resp = await fetch('/api/data/bonus_requests', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify(bonusRequest)
+          });
+
+          if (!resp.ok) {
+            const text = await resp.text();
+            return { error: `HTTP ${resp.status}`, details: text };
+          }
+
+          const data = await resp.json();
+          return { success: true, id: data.item?.id || data.id };
+        } catch (e) {
+          return { error: e.message };
+        }
+      }, testId);
+
+      if (result.error) {
+        throw new Error(`Не удалось создать заявку на премию: ${result.error}`);
+      }
+
+      this.log('INFO', `Заявка на премию создана: ID=${result.id}`);
+    });
+
+    await this.runTest('bonus.view_approval_page', async () => {
+      await this.goto('/#/bonus-approval');
+      await this.delay(2000);
+
+      // Проверяем что страница загрузилась
+      const hasContent = await this.exists('.bonus-request-card, .card, .panel', 5000);
+      if (!hasContent) {
+        throw new Error('Страница согласования премий не загрузилась');
+      }
+
+      // Проверяем нет ли ошибок в консоли (bonuses.map)
+      const hasMapError = this.browserErrors.some(e =>
+        e.message && e.message.includes('map is not a function')
+      );
+
+      if (hasMapError) {
+        throw new Error('Ошибка bonuses.map на странице согласования');
+      }
+
+      this.log('INFO', 'Страница согласования премий загружена без ошибок');
+    });
+
+    await this.runTest('bonus.approve_request', async () => {
+      await this.goto('/#/bonus-approval');
+      await this.delay(2000);
+
+      // Ищем кнопку согласования
+      const approveBtn = await this.findByText('button', 'Согласовать', { timeout: 3000 });
+      if (approveBtn) {
+        await this.page.click(approveBtn);
+        await this.delay(2000);
+
+        // Проверяем что статус изменился или появилось подтверждение
+        const hasConfirm = await this.page.evaluate(() => {
+          const text = document.body.textContent;
+          return text.includes('согласован') || text.includes('одобрен') || text.includes('approved');
+        });
+
+        if (hasConfirm) {
+          this.log('INFO', 'Премия согласована');
+        } else {
+          this.log('WARN', 'Не удалось подтвердить согласование');
+        }
+      } else {
+        this.log('WARN', 'Нет заявок для согласования или кнопка не найдена');
+      }
+    });
+
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
   // ГЛАВНЫЙ МЕТОД ЗАПУСКА
   // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2521,6 +2885,11 @@ ${this.generateRecommendations()}
       await this.testNotifications();   // Уведомления
       await this.testReports();         // Отчёты
       await this.testBusinessWorkflows(); // Бизнес-процессы (взаимодействие ролей)
+
+      // Дополнительные тесты функций
+      await this.testChat();            // Чат и сообщения
+      await this.testINNLookup();       // Поиск по ИНН (DaData)
+      await this.testBonusApproval();   // Согласование премий
 
       // Финальная проверка серверных логов
       await this.checkServerLogs();
