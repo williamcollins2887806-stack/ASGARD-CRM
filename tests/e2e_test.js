@@ -324,6 +324,72 @@ class TestRunner {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // ВОССТАНОВЛЕНИЕ СТРАНИЦЫ ПОСЛЕ КРАША
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async recoverPage() {
+    try {
+      this.log('WARN', 'Восстановление страницы после краша...');
+
+      // Закрываем старую страницу если она еще существует
+      if (this.page) {
+        try {
+          await this.page.close().catch(() => {});
+        } catch (e) {}
+      }
+
+      // Создаём новую страницу
+      this.page = await this.browser.newPage();
+      await this.page.setViewport({
+        width: CONFIG.VIEWPORT.width,
+        height: CONFIG.VIEWPORT.height
+      });
+
+      // Перенаправляем логи консоли
+      this.page.on('console', msg => {
+        const type = msg.type();
+        if (type === 'error' || type === 'warning') {
+          this.consoleMessages.push({
+            type,
+            text: msg.text(),
+            time: new Date().toISOString()
+          });
+        }
+      });
+
+      // Сбрасываем состояние
+      this.token = null;
+      this.currentUser = null;
+
+      // Переходим на страницу входа
+      await this.page.goto(`${CONFIG.BASE_URL}/#/login`, {
+        waitUntil: 'networkidle2',
+        timeout: 10000
+      });
+
+      this.log('INFO', 'Страница успешно восстановлена');
+      return true;
+    } catch (err) {
+      this.log('FAIL', `Не удалось восстановить страницу: ${err.message}`);
+      return false;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ПРОВЕРКА СОСТОЯНИЯ СТРАНИЦЫ
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async isPageHealthy() {
+    try {
+      // Проверяем что страница существует и отвечает
+      await this.page.evaluate(() => true);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // ВЫПОЛНЕНИЕ ОДНОГО ТЕСТА
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -332,6 +398,23 @@ class TestRunner {
     const testStart = Date.now();
 
     this.log('INFO', `▶ Тест: ${name}`);
+
+    // Проверяем здоровье страницы перед тестом
+    if (!await this.isPageHealthy()) {
+      this.log('WARN', 'Страница недоступна, пытаемся восстановить...');
+      const recovered = await this.recoverPage();
+      if (!recovered) {
+        this.results.failed++;
+        this.results.tests.push({
+          name,
+          status: 'FAIL',
+          duration: 0,
+          error: 'Не удалось восстановить страницу'
+        });
+        this.log('FAIL', `✗ ${name}: Не удалось восстановить страницу`);
+        return false;
+      }
+    }
 
     try {
       await testFn();
@@ -350,10 +433,25 @@ class TestRunner {
 
     } catch (error) {
       const duration = Date.now() - testStart;
+
+      // Проверяем, не связана ли ошибка с крашем страницы
+      const isPageCrash = error.message.includes('detached Frame') ||
+                          error.message.includes('Session closed') ||
+                          error.message.includes('Target closed') ||
+                          error.message.includes('Protocol error');
+
+      if (isPageCrash) {
+        this.log('WARN', `Страница упала во время теста: ${error.message}`);
+        await this.recoverPage();
+      }
+
       this.results.failed++;
 
-      // Делаем скриншот при ошибке
-      const screenshotPath = await this.screenshot(name);
+      // Делаем скриншот при ошибке (только если страница жива)
+      let screenshotPath = null;
+      if (await this.isPageHealthy()) {
+        screenshotPath = await this.screenshot(name);
+      }
 
       // Проверяем серверные логи
       await this.checkServerLogs();
@@ -678,44 +776,35 @@ class TestRunner {
 
   // Метод выхода из системы
   async logout() {
-    // Ищем кнопку выхода по стандартным селекторам
-    const logoutSelectors = [
-      '[data-action="logout"]',
-      '#btnLogout',
-      '.logout-btn'
-    ];
+    try {
+      // Очищаем localStorage
+      await this.page.evaluate(() => {
+        localStorage.removeItem('asgard_token');
+        localStorage.removeItem('asgard_user');
+      });
 
-    let clicked = false;
-    for (const selector of logoutSelectors) {
-      if (await this.exists(selector, 1000)) {
-        await this.click(selector);
-        clicked = true;
-        await this.delay(1000);
-        break;
-      }
+      // Простой переход на страницу входа без сложной логики кликов
+      await this.page.goto(`${CONFIG.BASE_URL}/#/login`, {
+        waitUntil: 'networkidle2',
+        timeout: 10000
+      });
+
+      // Ждём пока страница стабилизируется
+      await this.delay(1000);
+
+      // Ждём появления формы логина
+      await this.page.waitForSelector('input[name="login"]', { timeout: 5000 }).catch(() => {});
+
+      this.token = null;
+      this.currentUser = null;
+
+      this.log('INFO', 'Выполнен выход');
+    } catch (err) {
+      // Если что-то пошло не так, просто очищаем состояние
+      this.token = null;
+      this.currentUser = null;
+      this.log('WARN', `Ошибка при выходе: ${err.message}`);
     }
-
-    // Пробуем найти по тексту
-    if (!clicked) {
-      clicked = await this.clickByText('button', 'Выход', { timeout: 1000 });
-    }
-    if (!clicked) {
-      clicked = await this.clickByText('a', 'Выход', { timeout: 1000 });
-    }
-
-    // Или очищаем localStorage и перезагружаем
-    await this.page.evaluate(() => {
-      localStorage.removeItem('asgard_token');
-      localStorage.removeItem('asgard_user');
-    });
-
-    await this.goto('/');
-    await this.delay(1000);
-
-    this.token = null;
-    this.currentUser = null;
-
-    this.log('INFO', 'Выполнен выход');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
