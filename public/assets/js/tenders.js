@@ -1466,14 +1466,20 @@ ${docsHtml}</div>
           await AsgardDB.put("tenders", cur);
           await audit(user.id, "tender", id, "request_distribution", {});
 
-          // notify all directors
+          // notify all directors and admins
           try{
             const allU = await getUsers();
-            const dirs = (allU||[]).filter(u=> Array.isArray(u.roles) && u.roles.some(r=>isDirRole(r)) );
+            const dirs = (allU||[]).filter(u=> {
+              // Check singular role field
+              if (u.role && (isDirRole(u.role) || u.role === 'ADMIN')) return true;
+              // Check roles array if exists
+              if (Array.isArray(u.roles) && u.roles.some(r => isDirRole(r) || r === 'ADMIN')) return true;
+              return false;
+            });
             for(const d of dirs){
               await notify(d.id, "На распределение", `${cur.customer_name} — ${cur.tender_title}\nДедлайн: ${cur.docs_deadline||"—"}\nТип: ${cur.tender_type||"—"}`, "#/tenders");
             }
-          }catch(e){}
+          }catch(e){ console.error('Distribution notify error:', e); }
 
           toast("Распределение","Отправлено директору");
           await render({layout, title});

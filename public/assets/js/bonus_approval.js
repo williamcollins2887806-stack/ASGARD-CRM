@@ -369,10 +369,19 @@ window.AsgardBonusApproval = (function(){
         <div style="margin-top:12px">
           <div class="help" style="margin-bottom:8px">Распределение:</div>
           <div style="display:flex;flex-wrap:wrap;gap:8px">
-            ${(request.bonuses || []).map(b => {
-              const emp = empMap.get(b.employee_id);
-              return `<span class="badge" style="background:var(--bg-elevated)">${esc(emp?.fio || emp?.full_name || 'ID:' + b.employee_id)}: ${formatMoney(b.amount)}</span>`;
-            }).join('')}
+            ${(() => {
+              let bonuses = request.bonuses;
+              if (!bonuses && request.bonuses_json) {
+                try { bonuses = JSON.parse(request.bonuses_json); } catch(e) { bonuses = []; }
+              }
+              if (typeof bonuses === 'string') {
+                try { bonuses = JSON.parse(bonuses); } catch(e) { bonuses = []; }
+              }
+              return (bonuses || []).map(b => {
+                const emp = empMap.get(b.employee_id);
+                return `<span class="badge" style="background:var(--bg-elevated)">${esc(emp?.fio || emp?.full_name || 'ID:' + b.employee_id)}: ${formatMoney(b.amount)}</span>`;
+              }).join('');
+            })()}
           </div>
         </div>
         
