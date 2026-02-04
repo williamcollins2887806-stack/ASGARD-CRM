@@ -4,6 +4,63 @@
 async function routes(fastify, options) {
   const db = fastify.db;
 
+  // Lookup company info by INN (using DaData API)
+  fastify.get('/lookup/:inn', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const inn = String(request.params.inn || '').replace(/\D/g, '');
+    if (inn.length !== 10 && inn.length !== 12) {
+      return reply.code(400).send({ error: 'ИНН должен быть 10 или 12 цифр' });
+    }
+
+    const DADATA_TOKEN = process.env.DADATA_TOKEN;
+    if (!DADATA_TOKEN) {
+      // Fallback: return basic structure without real lookup
+      return {
+        found: false,
+        message: 'DaData API не настроен. Добавьте DADATA_TOKEN в переменные окружения.',
+        suggestion: { inn, name: '', full_name: '', kpp: '', ogrn: '', address: '' }
+      };
+    }
+
+    try {
+      const response = await fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Token ${DADATA_TOKEN}`
+        },
+        body: JSON.stringify({ query: inn, count: 1 })
+      });
+
+      if (!response.ok) {
+        throw new Error(`DaData API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.suggestions && data.suggestions.length > 0) {
+        const s = data.suggestions[0];
+        const d = s.data || {};
+        return {
+          found: true,
+          suggestion: {
+            inn: d.inn || inn,
+            name: d.name?.short_with_opf || s.value || '',
+            full_name: d.name?.full_with_opf || '',
+            kpp: d.kpp || '',
+            ogrn: d.ogrn || '',
+            address: d.address?.unrestricted_value || d.address?.value || ''
+          }
+        };
+      }
+
+      return { found: false, message: 'Организация не найдена', suggestion: { inn } };
+    } catch (e) {
+      fastify.log.error('DaData lookup error:', e);
+      return reply.code(500).send({ error: 'Ошибка поиска по ИНН: ' + e.message });
+    }
+  });
+
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { search, limit = 100, offset = 0 } = request.query;
     let sql = 'SELECT * FROM customers WHERE 1=1';
@@ -30,12 +87,19 @@ async function routes(fastify, options) {
   fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { inn, name, ...rest } = request.body;
     if (!inn || !name) return reply.code(400).send({ error: 'ИНН и наименование обязательны' });
-    const existing = await db.query('SELECT inn FROM customers WHERE inn = $1', [inn]);
-    if (existing.rows.length) return reply.code(409).send({ error: 'Контрагент с таким ИНН уже существует' });
-    const data = { inn, name, ...rest, created_at: new Date().toISOString() };
+
+    const data = { inn, name, ...rest, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
     const keys = Object.keys(data);
     const values = Object.values(data);
-    const sql = `INSERT INTO customers (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+
+    // Use upsert to handle re-adding deleted customers
+    const updateParts = keys.filter(k => k !== 'inn' && k !== 'created_at').map((k, i) => `${k} = EXCLUDED.${k}`);
+    const sql = `
+      INSERT INTO customers (${keys.join(', ')})
+      VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')})
+      ON CONFLICT (inn) DO UPDATE SET ${updateParts.join(', ')}
+      RETURNING *
+    `;
     const result = await db.query(sql, values);
     return { customer: result.rows[0] };
   });

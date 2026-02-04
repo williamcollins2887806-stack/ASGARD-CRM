@@ -17,16 +17,26 @@ window.AsgardChat = (function(){
   async function getMessages(chatType, chatId = null, limit = 50) {
     try {
       let all = await AsgardDB.getAll('chat_messages') || [];
+      console.log('[Chat] Loaded messages:', all.length, 'filtering for type:', chatType, 'id:', chatId);
+
+      // Normalize chatId for comparison (handle string vs number)
+      const normId = chatId !== null ? String(chatId) : null;
 
       all = all.filter(m => {
         if (chatType === 'general') return m.chat_type === 'general';
-        if (chatType === 'direct') return m.chat_type === 'direct' && (m.chat_id === chatId || m.to_user_id === chatId);
-        return m.chat_type === chatType && m.entity_id === chatId;
+        if (chatType === 'direct') {
+          if (m.chat_type !== 'direct') return false;
+          // Compare as strings to handle type mismatches
+          return String(m.chat_id) === normId || String(m.to_user_id) === normId;
+        }
+        return m.chat_type === chatType && String(m.entity_id) === normId;
       });
 
+      console.log('[Chat] After filter:', all.length, 'messages');
       all.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       return all.slice(-limit);
     } catch(e) {
+      console.error('[Chat] getMessages error:', e);
       return [];
     }
   }
@@ -52,9 +62,11 @@ window.AsgardChat = (function(){
     };
 
     try {
+      console.log('[Chat] Sending message:', message);
       // Используем add вместо put - для создания новой записи с auto-id
       const result = await AsgardDB.add('chat_messages', message);
-      message.id = result.id || result;
+      console.log('[Chat] Add result:', result);
+      message.id = result?.id || result;
 
       if (message.mentions && message.mentions.length > 0) {
         await notifyMentions(message);
@@ -66,7 +78,7 @@ window.AsgardChat = (function(){
 
       return message;
     } catch(e) {
-      console.error('Error sending message:', e);
+      console.error('[Chat] Error sending message:', e);
       return null;
     }
   }
