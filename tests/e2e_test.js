@@ -1767,6 +1767,408 @@ ${this.generateRecommendations()}
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: БИЗНЕС-ПРОЦЕССЫ (ВЗАИМОДЕЙСТВИЕ РОЛЕЙ)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testBusinessWorkflows() {
+    this.log('INFO', '═══ ТЕСТЫ БИЗНЕС-ПРОЦЕССОВ (ВЗАИМОДЕЙСТВИЕ РОЛЕЙ) ═══');
+
+    // Уникальный идентификатор для тестовых данных
+    const testId = Date.now();
+    const TEST_TENDER_TITLE = `E2E_TEST_TENDER_${testId}`;
+    const TEST_CUSTOMER = `E2E_TEST_CUSTOMER_${testId}`;
+
+    // Сохраняем ID созданных сущностей для использования между тестами
+    let createdTenderId = null;
+    let createdEstimateId = null;
+    let createdWorkId = null;
+    let createdBonusRequestId = null;
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // WORKFLOW 1: ПОЛНЫЙ ЦИКЛ ТЕНДЕРА (TO → DIRECTOR → PM → DIRECTOR → WORK)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    // Шаг 1: ТО создаёт тендер
+    await this.runTest('workflow.tender.01_to_creates', async () => {
+      await this.login('admin', 'Orion2025!');
+
+      // Создаём тендер через API
+      const tender = await this.page.evaluate(async (title, customer, testId) => {
+        const period = new Date().toISOString().slice(0, 7);
+        const newTender = {
+          period: period,
+          customer_name: customer,
+          customer_inn: '9999' + String(testId).slice(-6),
+          tender_title: title,
+          tender_type: 'Тендер',
+          tender_status: 'Новый',
+          docs_deadline: new Date(Date.now() + 30*24*60*60*1000).toISOString().slice(0, 10),
+          tender_price: 1000000,
+          work_start_plan: new Date(Date.now() + 7*24*60*60*1000).toISOString().slice(0, 10),
+          work_end_plan: new Date(Date.now() + 37*24*60*60*1000).toISOString().slice(0, 10),
+          created_at: new Date().toISOString()
+        };
+        const id = await window.AsgardDB.add('tenders', newTender);
+        return { ...newTender, id };
+      }, TEST_TENDER_TITLE, TEST_CUSTOMER, testId);
+
+      createdTenderId = tender.id;
+      this.log('INFO', `Тендер создан: ID=${createdTenderId}, "${TEST_TENDER_TITLE}"`);
+      await this.logout();
+    });
+
+    // Шаг 2: ТО отправляет на распределение
+    await this.runTest('workflow.tender.02_to_distribution', async () => {
+      if (!createdTenderId) throw new Error('Тендер не создан');
+
+      await this.login('admin', 'Orion2025!');
+
+      await this.page.evaluate(async (tenderId) => {
+        const tender = await window.AsgardDB.get('tenders', tenderId);
+        tender.distribution_requested_at = new Date().toISOString();
+        tender.tender_status = 'На распределении';
+        await window.AsgardDB.put('tenders', tender);
+      }, createdTenderId);
+
+      this.log('INFO', `Тендер отправлен на распределение: ID=${createdTenderId}`);
+      await this.logout();
+    });
+
+    // Шаг 3: Директор назначает PM
+    await this.runTest('workflow.tender.03_director_assigns_pm', async () => {
+      if (!createdTenderId) throw new Error('Тендер не создан');
+
+      await this.login('admin', 'Orion2025!');
+
+      const assigned = await this.page.evaluate(async (tenderId) => {
+        const tender = await window.AsgardDB.get('tenders', tenderId);
+        const users = await window.AsgardDB.all('users') || [];
+        const pm = users.find(u => u.role === 'PM') || users[0];
+
+        tender.responsible_pm_id = pm.id;
+        tender.handoff_at = new Date().toISOString();
+        tender.tender_status = 'Отправлено на просчёт';
+        await window.AsgardDB.put('tenders', tender);
+        return pm.name || pm.login;
+      }, createdTenderId);
+
+      this.log('INFO', `PM назначен: "${assigned}" для тендера ID=${createdTenderId}`);
+      await this.logout();
+    });
+
+    // Шаг 4: PM создаёт просчёт
+    await this.runTest('workflow.tender.04_pm_creates_estimate', async () => {
+      if (!createdTenderId) throw new Error('Тендер не создан');
+
+      await this.login('admin', 'Orion2025!');
+
+      const estimate = await this.page.evaluate(async (tenderId, testId) => {
+        const tender = await window.AsgardDB.get('tenders', tenderId);
+        const newEstimate = {
+          tender_id: tenderId,
+          pm_id: tender.responsible_pm_id,
+          version_no: 1,
+          probability_pct: 70,
+          cost_plan: 800000,
+          price_tkp: 1200000,
+          payment_terms: '50% аванс, 50% по факту',
+          comment: `E2E Test ${testId}`,
+          cover_letter: 'Тестовое сопроводительное письмо. Работы по очистке системы отопления.',
+          assumptions: 'Доступ к объекту обеспечен заказчиком',
+          approval_status: 'draft',
+          calc_summary_json: JSON.stringify({ city: 'Москва', people_count: 5, work_days: 10 }),
+          created_at: new Date().toISOString()
+        };
+        const id = await window.AsgardDB.add('estimates', newEstimate);
+        return { ...newEstimate, id };
+      }, createdTenderId, testId);
+
+      createdEstimateId = estimate.id;
+      this.log('INFO', `Просчёт создан: ID=${createdEstimateId}, цена=${estimate.price_tkp}₽`);
+      await this.logout();
+    });
+
+    // Шаг 5: PM отправляет на согласование
+    await this.runTest('workflow.tender.05_pm_sends_approval', async () => {
+      if (!createdEstimateId) throw new Error('Просчёт не создан');
+
+      await this.login('admin', 'Orion2025!');
+
+      await this.page.evaluate(async (estimateId, tenderId) => {
+        const estimate = await window.AsgardDB.get('estimates', estimateId);
+        estimate.approval_status = 'sent';
+        estimate.sent_for_approval_at = new Date().toISOString();
+        await window.AsgardDB.put('estimates', estimate);
+
+        const tender = await window.AsgardDB.get('tenders', tenderId);
+        tender.tender_status = 'Согласование ТКП';
+        await window.AsgardDB.put('tenders', tender);
+      }, createdEstimateId, createdTenderId);
+
+      this.log('INFO', `Просчёт отправлен на согласование: ID=${createdEstimateId}`);
+      await this.logout();
+    });
+
+    // Шаг 6: Директор согласует ТКП
+    await this.runTest('workflow.tender.06_director_approves', async () => {
+      if (!createdEstimateId) throw new Error('Просчёт не создан');
+
+      await this.login('admin', 'Orion2025!');
+      await this.goto('/#/approvals');
+      await this.page.waitForTimeout(1000);
+
+      await this.page.evaluate(async (estimateId, tenderId) => {
+        const estimate = await window.AsgardDB.get('estimates', estimateId);
+        estimate.approval_status = 'approved';
+        estimate.decided_at = new Date().toISOString();
+        estimate.approval_comment = 'Согласовано. E2E тест.';
+        await window.AsgardDB.put('estimates', estimate);
+
+        const tender = await window.AsgardDB.get('tenders', tenderId);
+        tender.tender_status = 'ТКП согласовано';
+        await window.AsgardDB.put('tenders', tender);
+      }, createdEstimateId, createdTenderId);
+
+      this.log('INFO', `ТКП согласовано директором: ID=${createdEstimateId}`);
+      await this.logout();
+    });
+
+    // Шаг 7: Клиент соглашается → создаётся работа
+    await this.runTest('workflow.tender.07_work_created', async () => {
+      if (!createdTenderId) throw new Error('Тендер не создан');
+
+      await this.login('admin', 'Orion2025!');
+
+      const work = await this.page.evaluate(async (tenderId) => {
+        const tender = await window.AsgardDB.get('tenders', tenderId);
+        tender.tender_status = 'Клиент согласился';
+        await window.AsgardDB.put('tenders', tender);
+
+        const newWork = {
+          tender_id: tenderId,
+          pm_id: tender.responsible_pm_id,
+          company: tender.customer_name,
+          work_title: tender.tender_title,
+          work_status: 'Подготовка',
+          start_in_work_date: tender.work_start_plan,
+          end_plan: tender.work_end_plan,
+          contract_value: tender.tender_price,
+          advance_pct: 30,
+          cost_plan: 800000,
+          created_at: new Date().toISOString()
+        };
+        const id = await window.AsgardDB.add('works', newWork);
+        return { ...newWork, id };
+      }, createdTenderId);
+
+      createdWorkId = work.id;
+      this.log('INFO', `Работа создана: ID=${createdWorkId}, "${work.work_title}"`);
+      await this.logout();
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // WORKFLOW 2: ПРЕМИИ (PM создаёт → DIRECTOR согласует → расход создаётся)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    // Шаг 1: PM создаёт запрос на премию
+    await this.runTest('workflow.bonus.01_pm_creates', async () => {
+      if (!createdWorkId) throw new Error('Работа не создана');
+
+      await this.login('admin', 'Orion2025!');
+
+      const bonus = await this.page.evaluate(async (workId, testId) => {
+        const work = await window.AsgardDB.get('works', workId);
+
+        // Создаём тестового сотрудника
+        const empId = await window.AsgardDB.add('employees', {
+          fio: `Тест Работник ${testId}`,
+          role_tag: 'Слесарь',
+          is_active: true,
+          created_at: new Date().toISOString()
+        });
+
+        const newBonus = {
+          work_id: workId,
+          work_title: work.work_title,
+          pm_id: work.pm_id,
+          bonuses: [{ employee_id: empId, amount: 5000 }],
+          total_amount: 5000,
+          comment: `Премия за качественную работу. E2E тест ${testId}`,
+          status: 'pending',
+          created_at: new Date().toISOString()
+        };
+        const id = await window.AsgardDB.add('bonus_requests', newBonus);
+        return { ...newBonus, id, empId };
+      }, createdWorkId, testId);
+
+      createdBonusRequestId = bonus.id;
+      this.log('INFO', `Запрос премии создан: ID=${createdBonusRequestId}, сумма=${bonus.total_amount}₽`);
+      await this.logout();
+    });
+
+    // Шаг 2: Директор согласует премию
+    await this.runTest('workflow.bonus.02_director_approves', async () => {
+      if (!createdBonusRequestId) throw new Error('Запрос премии не создан');
+
+      await this.login('admin', 'Orion2025!');
+      await this.goto('/#/bonus-approval');
+      await this.page.waitForTimeout(1000);
+
+      const expense = await this.page.evaluate(async (bonusId, workId) => {
+        const bonus = await window.AsgardDB.get('bonus_requests', bonusId);
+        bonus.status = 'approved';
+        bonus.director_comment = 'Согласовано. E2E тест.';
+        bonus.processed_at = new Date().toISOString();
+        await window.AsgardDB.put('bonus_requests', bonus);
+
+        // Создаём расход
+        for (const b of bonus.bonuses) {
+          const expId = await window.AsgardDB.add('work_expenses', {
+            work_id: workId,
+            category: 'fot_bonus',
+            amount: b.amount,
+            date: new Date().toISOString().slice(0, 10),
+            employee_id: b.employee_id,
+            comment: `Премия: ${bonus.comment}`,
+            bonus_request_id: bonusId,
+            created_at: new Date().toISOString()
+          });
+          return expId;
+        }
+      }, createdBonusRequestId, createdWorkId);
+
+      this.log('INFO', `Премия согласована, расход создан: expenseId=${expense}`);
+      await this.logout();
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // WORKFLOW 3: ЖИЗНЕННЫЙ ЦИКЛ РАБОТЫ
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    await this.runTest('workflow.work.01_start', async () => {
+      if (!createdWorkId) throw new Error('Работа не создана');
+      await this.login('admin', 'Orion2025!');
+
+      await this.page.evaluate(async (workId) => {
+        const work = await window.AsgardDB.get('works', workId);
+        work.work_status = 'В работе';
+        await window.AsgardDB.put('works', work);
+      }, createdWorkId);
+
+      this.log('INFO', `Работа начата: ID=${createdWorkId}, статус="В работе"`);
+      await this.logout();
+    });
+
+    await this.runTest('workflow.work.02_complete', async () => {
+      if (!createdWorkId) throw new Error('Работа не создана');
+      await this.login('admin', 'Orion2025!');
+
+      await this.page.evaluate(async (workId) => {
+        const work = await window.AsgardDB.get('works', workId);
+        work.work_status = 'Работы сдали';
+        work.end_fact = new Date().toISOString().slice(0, 10);
+        work.cost_fact = 780000;
+        await window.AsgardDB.put('works', work);
+      }, createdWorkId);
+
+      this.log('INFO', `Работа завершена: ID=${createdWorkId}, статус="Работы сдали"`);
+      await this.logout();
+    });
+
+    await this.runTest('workflow.work.03_close', async () => {
+      if (!createdWorkId) throw new Error('Работа не создана');
+      await this.login('admin', 'Orion2025!');
+
+      await this.page.evaluate(async (workId) => {
+        const work = await window.AsgardDB.get('works', workId);
+        work.work_status = 'Закрыто';
+        work.closed_at = new Date().toISOString();
+        await window.AsgardDB.put('works', work);
+      }, createdWorkId);
+
+      this.log('INFO', `Работа закрыта: ID=${createdWorkId}, статус="Закрыто"`);
+      await this.logout();
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ПРОВЕРКА: Все данные созданы корректно
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    await this.runTest('workflow.verify_all', async () => {
+      await this.login('admin', 'Orion2025!');
+
+      const verification = await this.page.evaluate(async (tenderId, estimateId, workId, bonusId) => {
+        const tender = await window.AsgardDB.get('tenders', tenderId);
+        const estimate = await window.AsgardDB.get('estimates', estimateId);
+        const work = await window.AsgardDB.get('works', workId);
+        const bonus = await window.AsgardDB.get('bonus_requests', bonusId);
+        const expenses = (await window.AsgardDB.all('work_expenses') || []).filter(e => e.work_id === workId);
+
+        return {
+          tender: { exists: !!tender, status: tender?.tender_status },
+          estimate: { exists: !!estimate, status: estimate?.approval_status },
+          work: { exists: !!work, status: work?.work_status },
+          bonus: { exists: !!bonus, status: bonus?.status },
+          expenses: { count: expenses.length }
+        };
+      }, createdTenderId, createdEstimateId, createdWorkId, createdBonusRequestId);
+
+      const ok = verification.tender.status === 'Клиент согласился' &&
+                 verification.estimate.status === 'approved' &&
+                 verification.work.status === 'Закрыто' &&
+                 verification.bonus.status === 'approved' &&
+                 verification.expenses.count > 0;
+
+      if (!ok) {
+        throw new Error(`Проверка не пройдена: ${JSON.stringify(verification)}`);
+      }
+
+      this.log('INFO', `✓ Все бизнес-процессы выполнены корректно: ${JSON.stringify(verification)}`);
+      await this.logout();
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ОЧИСТКА тестовых данных
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    await this.runTest('workflow.cleanup', async () => {
+      await this.login('admin', 'Orion2025!');
+
+      const cleaned = await this.page.evaluate(async (tenderId, estimateId, workId, bonusId) => {
+        let count = 0;
+
+        // Удаляем расходы
+        const expenses = await window.AsgardDB.all('work_expenses') || [];
+        for (const e of expenses) {
+          if (e.work_id === workId) {
+            await window.AsgardDB.delete('work_expenses', e.id);
+            count++;
+          }
+        }
+
+        // Удаляем сотрудников (тестовых)
+        const emps = await window.AsgardDB.all('employees') || [];
+        for (const e of emps) {
+          if (e.fio && e.fio.includes('Тест Работник')) {
+            await window.AsgardDB.delete('employees', e.id);
+            count++;
+          }
+        }
+
+        if (bonusId) { await window.AsgardDB.delete('bonus_requests', bonusId); count++; }
+        if (workId) { await window.AsgardDB.delete('works', workId); count++; }
+        if (estimateId) { await window.AsgardDB.delete('estimates', estimateId); count++; }
+        if (tenderId) { await window.AsgardDB.delete('tenders', tenderId); count++; }
+
+        return count;
+      }, createdTenderId, createdEstimateId, createdWorkId, createdBonusRequestId);
+
+      this.log('INFO', `Очистка: удалено ${cleaned} тестовых записей`);
+      await this.logout();
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
   // ГЛАВНЫЙ МЕТОД ЗАПУСКА
   // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1804,6 +2206,7 @@ ${this.generateRecommendations()}
       await this.testEdgeCases();       // Граничные случаи
       await this.testNotifications();   // Уведомления
       await this.testReports();         // Отчёты
+      await this.testBusinessWorkflows(); // Бизнес-процессы (взаимодействие ролей)
 
       // Финальная проверка серверных логов
       await this.checkServerLogs();
