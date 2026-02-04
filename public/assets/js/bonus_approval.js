@@ -24,7 +24,12 @@ window.AsgardBonusApproval = (function(){
   // CRUD
   async function getAll() {
     try {
-      return await AsgardDB.getAll('bonus_requests') || [];
+      const requests = await AsgardDB.getAll('bonus_requests') || [];
+      // Parse bonuses_json into bonuses array if needed
+      return requests.map(r => ({
+        ...r,
+        bonuses: r.bonuses || (r.bonuses_json ? JSON.parse(r.bonuses_json) : [])
+      }));
     } catch(e) {
       const data = localStorage.getItem('asgard_bonus_requests');
       return data ? JSON.parse(data) : [];

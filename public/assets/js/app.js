@@ -37,18 +37,41 @@ console.log('[ASGARD] Global period functions loaded');
   // Глобальная функция для мобильной совместимости кнопок
   // Добавляет обработчики click + touchend для надёжной работы на мобильных устройствах
   function addMobileClick(el, handler) {
-    if (!el) return;
+    if (!el) {
+      console.warn('[addMobileClick] Element not found');
+      return;
+    }
     let touchHandled = false;
+
+    // Touch events for mobile
+    el.addEventListener("touchstart", (e) => {
+      // Mark that touch is happening
+      touchHandled = true;
+    }, { passive: true });
+
     el.addEventListener("touchend", (e) => {
       e.preventDefault();
-      touchHandled = true;
+      e.stopPropagation();
       handler(e);
-      setTimeout(() => { touchHandled = false; }, 300);
+      setTimeout(() => { touchHandled = false; }, 400);
     }, { passive: false });
+
+    // Click event for desktop (and fallback)
     el.addEventListener("click", (e) => {
-      if (!touchHandled) handler(e);
+      if (!touchHandled) {
+        handler(e);
+      }
+      touchHandled = false;
     });
+
+    // Ensure button is clickable (fix potential CSS issues)
+    el.style.touchAction = 'manipulation';
+    el.style.cursor = 'pointer';
+    el.style.pointerEvents = 'auto';
   }
+
+  // Make it globally available
+  window.addMobileClick = addMobileClick;
 
   // Определяем базовый путь к assets (для работы из подпапок типа /tools/)
   const ASSETS_BASE = (function(){
@@ -514,7 +537,7 @@ try{
           </div>
 
           <div class="welcome-actions" id="welcomeActions">
-            <button class="btn welcome-btn" id="btnShowLogin">Войти</button>
+            <button class="btn welcome-btn" id="btnShowLogin" ontouchend="this.click()" style="touch-action:manipulation;-webkit-tap-highlight-color:transparent">Войти</button>
           </div>
 
           <!-- Форма входа: Шаг 1 - логин/пароль -->

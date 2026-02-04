@@ -167,6 +167,90 @@ fastify.setErrorHandler((error, request, reply) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Ensure Required Tables Exist
+// ─────────────────────────────────────────────────────────────────────────────
+async function ensureTables() {
+  // Chat messages table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id SERIAL PRIMARY KEY,
+      chat_type VARCHAR(50) DEFAULT 'general',
+      entity_id INTEGER,
+      entity_title VARCHAR(255),
+      chat_id INTEGER,
+      to_user_id INTEGER,
+      user_id INTEGER,
+      user_name VARCHAR(255),
+      user_role VARCHAR(50),
+      text TEXT,
+      attachments TEXT,
+      mentions TEXT,
+      is_system BOOLEAN DEFAULT false,
+      is_read BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // Chats table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chats (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255),
+      chat_type VARCHAR(50) DEFAULT 'direct',
+      participants TEXT,
+      created_by INTEGER,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // Staff plan table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS staff_plan (
+      id SERIAL PRIMARY KEY,
+      staff_id INTEGER,
+      date DATE,
+      status_code VARCHAR(10),
+      updated_at TIMESTAMP DEFAULT NOW(),
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // Add user_id column to staff if not exists
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='staff' AND column_name='user_id') THEN
+        ALTER TABLE staff ADD COLUMN user_id INTEGER;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='staff' AND column_name='role_tag') THEN
+        ALTER TABLE staff ADD COLUMN role_tag VARCHAR(50);
+      END IF;
+    END $$;
+  `);
+
+  // Add PIN hash column to users if not exists
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='pin_hash') THEN
+        ALTER TABLE users ADD COLUMN pin_hash VARCHAR(255);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='must_change_password') THEN
+        ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT false;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='last_login_at') THEN
+        ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='telegram_chat_id') THEN
+        ALTER TABLE users ADD COLUMN telegram_chat_id BIGINT;
+      END IF;
+    END $$;
+  `);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Start Server
 // ─────────────────────────────────────────────────────────────────────────────
 const start = async () => {
@@ -174,6 +258,10 @@ const start = async () => {
     // Test database connection
     await db.query('SELECT NOW()');
     fastify.log.info('Database connected');
+
+    // Ensure required tables exist
+    await ensureTables();
+    fastify.log.info('Database tables verified');
     
     // Initialize Telegram bot if token provided
     if (process.env.TELEGRAM_BOT_TOKEN) {
