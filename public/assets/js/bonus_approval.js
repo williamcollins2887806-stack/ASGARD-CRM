@@ -377,7 +377,8 @@ window.AsgardBonusApproval = (function(){
               if (typeof bonuses === 'string') {
                 try { bonuses = JSON.parse(bonuses); } catch(e) { bonuses = []; }
               }
-              return (bonuses || []).map(b => {
+              if (!Array.isArray(bonuses)) bonuses = [];
+              return bonuses.map(b => {
                 const emp = empMap.get(b.employee_id);
                 return `<span class="badge" style="background:var(--bg-elevated)">${esc(emp?.fio || emp?.full_name || 'ID:' + b.employee_id)}: ${formatMoney(b.amount)}</span>`;
               }).join('');
