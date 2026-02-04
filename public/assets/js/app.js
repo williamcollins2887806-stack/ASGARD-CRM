@@ -537,7 +537,7 @@ try{
           </div>
 
           <div class="welcome-actions" id="welcomeActions">
-            <button class="btn welcome-btn" id="btnShowLogin" ontouchend="this.click()" style="touch-action:manipulation;-webkit-tap-highlight-color:transparent">Войти</button>
+            <button class="btn welcome-btn" id="btnShowLogin" type="button" style="touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;position:relative;z-index:10">Войти</button>
           </div>
 
           <!-- Форма входа: Шаг 1 - логин/пароль -->
@@ -660,7 +660,12 @@ try{
     }
 
     // Используем глобальную addMobileClick для мобильной совместимости
-    addMobileClick($("#btnShowLogin"), showLogin);
+    const btnShowLogin = $("#btnShowLogin");
+    if (btnShowLogin) {
+      addMobileClick(btnShowLogin, showLogin);
+      // Direct onclick as fallback for mobile
+      btnShowLogin.onclick = function(e) { e.preventDefault(); showLogin(); };
+    }
     addMobileClick($("#btnBackToWelcome"), showWelcome);
     addMobileClick($("#btnBackToLogin"), showLogin);
 
