@@ -356,18 +356,44 @@ window.AsgardChat = (function(){
     let currentChat = null;
     let refreshInterval = null;
 
+    // Подсчёт непрочитанных сообщений
+    async function getUnreadCounts() {
+      const counts = { general: 0, direct: {} };
+      try {
+        const all = await AsgardDB.getAll('chat_messages') || [];
+        for (const m of all) {
+          if (m.is_read || m.user_id === user.id) continue;
+          if (m.chat_type === 'general') {
+            counts.general++;
+          } else if (m.chat_type === 'direct' && String(m.to_user_id) === String(user.id)) {
+            const senderId = m.user_id;
+            counts.direct[senderId] = (counts.direct[senderId] || 0) + 1;
+          }
+        }
+      } catch(e) {}
+      return counts;
+    }
+
     // Рендер списка чатов
-    function renderChatList() {
+    async function renderChatList() {
+      const unread = await getUnreadCounts();
+      const generalBadge = unread.general > 0
+        ? `<span style="background:var(--red);color:#fff;font-size:11px;padding:2px 6px;border-radius:10px;margin-left:8px">${unread.general > 99 ? '99+' : unread.general}</span>`
+        : '';
+
       chatList.innerHTML = `
-        <div class="chat-item ${currentChat?.type === 'general' ? 'active' : ''}" data-type="general" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'general' ? 'var(--primary-glow)' : 'transparent'}">
-          <span style="font-size:18px">💬</span> Общий чат
+        <div class="chat-item ${currentChat?.type === 'general' ? 'active' : ''}" data-type="general" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'general' ? 'var(--primary-glow)' : 'transparent'};display:flex;align-items:center;justify-content:space-between">
+          <span><span style="font-size:18px">💬</span> Общий чат</span>${generalBadge}
         </div>
         <div style="padding:8px 10px;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--line);margin:8px 0">Личные сообщения</div>
-        ${otherUsers.map(u => `
-          <div class="chat-item ${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'active' : ''}" data-type="direct" data-id="${u.id}" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'var(--primary-glow)' : 'transparent'}">
-            <span style="font-size:18px">👤</span> ${AsgardUI.esc(u.name || u.login)}
+        ${otherUsers.map(u => {
+          const cnt = unread.direct[u.id] || 0;
+          const badge = cnt > 0 ? `<span style="background:var(--red);color:#fff;font-size:11px;padding:2px 6px;border-radius:10px;margin-left:8px">${cnt > 99 ? '99+' : cnt}</span>` : '';
+          return `
+          <div class="chat-item ${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'active' : ''}" data-type="direct" data-id="${u.id}" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'var(--primary-glow)' : 'transparent'};display:flex;align-items:center;justify-content:space-between">
+            <span><span style="font-size:18px">👤</span> ${AsgardUI.esc(u.name || u.login)}</span>${badge}
           </div>
-        `).join('')}
+        `}).join('')}
       `;
 
       chatList.querySelectorAll('.chat-item').forEach(el => {
@@ -382,7 +408,7 @@ window.AsgardChat = (function(){
     // Открытие чата
     async function openChat(type, id = null) {
       currentChat = { type, id };
-      renderChatList();
+      await renderChatList();
 
       const chatInfo = CHAT_TYPES[type];
       let chatTitle = chatInfo.name;
@@ -470,7 +496,7 @@ window.AsgardChat = (function(){
       if (e.key === 'Enter') send();
     });
 
-    renderChatList();
+    await renderChatList();
   }
 
   return {

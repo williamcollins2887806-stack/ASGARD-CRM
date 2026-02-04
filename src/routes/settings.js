@@ -43,10 +43,21 @@ async function routes(fastify, options) {
     }
   });
 
-  fastify.put('/:key', { preHandler: [fastify.requireRoles(['ADMIN'])] }, async (request) => {
+  fastify.put('/:key', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { key } = request.params;
     const { value } = request.body;
     const valueJson = JSON.stringify(value);
+    const userId = request.user.id;
+    const userRole = request.user.role;
+
+    // Разрешаем пользователям сохранять только свои dash_layout настройки
+    // Остальные настройки могут менять только админы
+    const isUserOwnDashLayout = key.startsWith('dash_layout_') && key === `dash_layout_${userId}`;
+    const isAdmin = userRole === 'ADMIN';
+
+    if (!isUserOwnDashLayout && !isAdmin) {
+      return reply.code(403).send({ error: 'Доступ запрещён' });
+    }
 
     await db.query(`
       INSERT INTO settings (key, value_json, updated_at)

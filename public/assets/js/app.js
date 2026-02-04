@@ -38,7 +38,7 @@ console.log('[ASGARD] Global period functions loaded');
   // Добавляет обработчики click + touchend для надёжной работы на мобильных устройствах
   function addMobileClick(el, handler) {
     if (!el) {
-      console.warn('[addMobileClick] Element not found');
+      // Не логируем - элементы могут отсутствовать на некоторых страницах
       return;
     }
     let touchHandled = false;
@@ -384,7 +384,7 @@ try{
         list.innerHTML = items.map(n=>{
           const when = n.created_at ? new Date(n.created_at).toLocaleString("ru-RU") : "—";
           const dot = n.is_read ? `<span class="dot" style="background:#64748b"></span>` : `<span class="dot" style="background:#f59e0b"></span>`;
-          const link = n.link_hash || "#/alerts";
+          const link = n.link || n.link_hash || "#/alerts";
           return `<a class="bellitem" href="${esc(link)}" data-nid="${n.id}">
             <div class="belli">${dot}</div>
             <div class="bellc">
