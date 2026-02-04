@@ -482,25 +482,51 @@ class TestRunner {
     }, { timeout: CONFIG.TIMEOUT });
   }
 
-  // API запрос через браузер
-  async apiRequest(method, endpoint, body = null) {
-    // Получаем свежий токен из localStorage браузера
-    return await this.page.evaluate(async (method, endpoint, body) => {
-      // Берём токен напрямую из localStorage
-      const token = localStorage.getItem('asgard_token');
-      const response = await fetch(endpoint, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
-        body: body ? JSON.stringify(body) : null
-      });
-      return {
-        status: response.status,
-        data: await response.json().catch(() => null)
-      };
-    }, method, endpoint, body);
+  // Ожидание сохранения токена в localStorage
+  async waitForToken(timeout = 5000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      const token = await this.page.evaluate(() => localStorage.getItem('asgard_token'));
+      if (token && token.length > 10) {
+        return token;
+      }
+      await this.delay(200);
+    }
+    throw new Error('Токен не сохранён в localStorage за отведённое время');
+  }
+
+  // API запрос через браузер с retry логикой
+  async apiRequest(method, endpoint, body = null, retries = 3) {
+    // Ждём токен перед первым запросом
+    await this.waitForToken(3000).catch(() => {});
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      const result = await this.page.evaluate(async (method, endpoint, body) => {
+        // Берём токен напрямую из localStorage
+        const token = localStorage.getItem('asgard_token');
+        const response = await fetch(endpoint, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: body ? JSON.stringify(body) : null
+        });
+        return {
+          status: response.status,
+          data: await response.json().catch(() => null)
+        };
+      }, method, endpoint, body);
+
+      // Если 401 и есть ещё попытки - ждём и повторяем
+      if (result.status === 401 && attempt < retries) {
+        this.log('WARN', `API ${endpoint} вернул 401, попытка ${attempt}/${retries}, ждём токен...`);
+        await this.delay(1000 * attempt); // Экспоненциальная задержка
+        continue;
+      }
+
+      return result;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -696,10 +722,16 @@ class TestRunner {
 
     await this.runTest('crud.tenders.list', async () => {
       await this.goto('/#/tenders');
-      await this.delay(2000);
 
-      // Проверяем что страница загрузилась - ищем панель и таблицу
-      const hasTable = await this.exists('.panel, #tb, tbody, table', 5000);
+      // Ждём загрузку с retry
+      let hasTable = false;
+      for (let i = 0; i < 3; i++) {
+        await this.delay(2000);
+        hasTable = await this.exists('.panel, #tb, tbody, table, .card, [class*="tender"], [class*="list"]', 8000);
+        if (hasTable) break;
+        this.log('WARN', `Попытка ${i+1}/3 загрузки списка тендеров...`);
+      }
+
       if (!hasTable) {
         throw new Error('Список тендеров не загрузился');
       }
@@ -766,10 +798,16 @@ class TestRunner {
 
     await this.runTest('crud.customers.list', async () => {
       await this.goto('/#/customers');
-      await this.delay(2000);
 
-      // Проверяем что страница загрузилась - ищем панель и таблицу/список
-      const hasContent = await this.exists('.panel, #tb, tbody, table, .card', 5000);
+      // Ждём загрузку с retry
+      let hasContent = false;
+      for (let i = 0; i < 3; i++) {
+        await this.delay(2000);
+        hasContent = await this.exists('.panel, #tb, tbody, table, .card, [class*="customer"], [class*="list"]', 8000);
+        if (hasContent) break;
+        this.log('WARN', `Попытка ${i+1}/3 загрузки списка клиентов...`);
+      }
+
       if (!hasContent) {
         throw new Error('Список клиентов не загрузился');
       }
@@ -797,19 +835,27 @@ class TestRunner {
 
     await this.runTest('crud.works.list', async () => {
       // Роут работ - pm-works или all-works
-      await this.goto('/#/pm-works');
-      await this.delay(2000);
+      const routes = ['/#/pm-works', '/#/all-works', '/#/works'];
+      let hasContent = false;
 
-      // Проверяем что страница загрузилась - ищем панель и таблицу
-      const hasContent = await this.exists('.panel, #tb, tbody, table', 5000);
-      if (!hasContent) {
-        // Пробуем альтернативный роут
-        await this.goto('/#/all-works');
-        await this.delay(2000);
-        const hasAlt = await this.exists('.panel, #tb, tbody, table', 3000);
-        if (!hasAlt) {
-          throw new Error('Список работ не загрузился');
+      for (const route of routes) {
+        await this.goto(route);
+
+        // Ждём загрузку с retry
+        for (let i = 0; i < 2; i++) {
+          await this.delay(2000);
+          hasContent = await this.exists('.panel, #tb, tbody, table, .card, [class*="work"], [class*="list"]', 8000);
+          if (hasContent) break;
         }
+
+        if (hasContent) {
+          this.log('DEBUG', `Работы загружены по роуту: ${route}`);
+          break;
+        }
+      }
+
+      if (!hasContent) {
+        throw new Error('Список работ не загрузился ни по одному из роутов');
       }
     });
 

@@ -17,6 +17,7 @@ Thumbs.db
 uploads/
 public/uploads/
 *.sql
+!migrations/*.sql
 *.dump
 
 # Бэкапы (содержат секреты и дубликаты)
