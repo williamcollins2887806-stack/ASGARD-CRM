@@ -844,6 +844,44 @@ try{
     ];
     const saga = sagas[Math.floor(Math.random()*sagas.length)];
 
+    // Viking greetings based on time of day
+    const hour = new Date().getHours();
+    const vikingGreetings = {
+      morning: [ // 6-12
+        "Вель комен, {name}! Солнце встаёт — и твоя слава.",
+        "Хайль, {name}! Утро несёт новые битвы.",
+        "Слава Одину, {name} здесь! Да будет день богатым.",
+        "Восход приветствует тебя, {name}! К делам!"
+      ],
+      day: [ // 12-18
+        "Хайль, воин {name}! Путь до Вальгаллы идёт через дела.",
+        "Тор благословляет, {name}! Продолжай свой поход.",
+        "Дружина сильна, {name} на посту! За работу.",
+        "{name}, день в разгаре — время крепить славу!"
+      ],
+      evening: [ // 18-22
+        "Вечер, {name}! Время считать добычу дня.",
+        "Хайль, {name}! Сумерки близки, но дела не ждут.",
+        "{name}, закат зовёт — заверши начатое.",
+        "Валькирии поют, {name}. Заканчивай достойно."
+      ],
+      night: [ // 22-6
+        "Поздний час, {name}! Истинные воины не спят.",
+        "Ночь тиха, {name}. Время для мудрых решений.",
+        "{name} бодрствует! Один тоже не дремлет.",
+        "Звёзды смотрят, {name}. Работай во славу!"
+      ]
+    };
+
+    let greetingPool;
+    if (hour >= 6 && hour < 12) greetingPool = vikingGreetings.morning;
+    else if (hour >= 12 && hour < 18) greetingPool = vikingGreetings.day;
+    else if (hour >= 18 && hour < 22) greetingPool = vikingGreetings.evening;
+    else greetingPool = vikingGreetings.night;
+
+    const vikingGreeting = greetingPool[Math.floor(Math.random() * greetingPool.length)]
+      .replace('{name}', user.name || user.login);
+
     const tenders=await AsgardDB.all("tenders");
     const works=await AsgardDB.all("works");
     const estimates=await AsgardDB.all("estimates");
@@ -909,9 +947,12 @@ try{
       <div class="panel">
         <div class="row" style="justify-content:space-between; gap:12px; flex-wrap:wrap">
           <div>
-            <div class="kpi"><span class="dot" style="background:#ef4444"></span>Добро пожаловать, <b>${esc(user.name||user.login)}</b></div>
-            <div class="help">Роль: <b>${esc(user.role)}</b> · Логин: <b>${esc(user.login)}</b></div>
-            <div class="help" style="margin-top:6px"><span class="badge">Сага дня</span> ${esc(saga)}</div>
+            <div class="viking-greeting">
+              <span class="rune-icon">ᛟ</span>
+              <span class="greeting-text">${esc(vikingGreeting)}</span>
+            </div>
+            <div class="help" style="margin-top:4px">Роль: <b>${esc(user.role)}</b> · Логин: <b>${esc(user.login)}</b></div>
+            <div class="saga-line" style="margin-top:8px"><span class="saga-badge">Сага дня</span> ${esc(saga)}</div>
           </div>
           <div class="row" style="gap:10px; flex-wrap:wrap">
             ${portals.map(p=>`<a class="btn" href="${p[0]}">${esc(p[1])}</a>`).join("")}

@@ -49,12 +49,13 @@ window.AsgardGanttFullPage=(function(){
     return s ? JSON.parse(s.value_json||"{}") : {vat_pct:20, gantt_start_iso:"2026-01-01T00:00:00Z", status_colors:{tender:{}, work:{}}};
   }
   function renderSafeList(items, title){
+    const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const rows = (items||[]).map(it=>{
       const name = it.title || it.work_title || it.tender_title || ("ID "+it.id);
-      const start = it.start || it.start_in_work_date || it.work_start_plan || "—";
-      const end = it.end || it.end_plan || it.work_end_plan || "—";
+      const start = fmtDate(it.start || it.start_in_work_date || it.work_start_plan);
+      const end = fmtDate(it.end || it.end_plan || it.work_end_plan);
       const st = it.status || it.work_status || it.tender_status || "";
-      return `<tr><td>${esc(name)}</td><td class="mono">${esc(start)}</td><td class="mono">${esc(end)}</td><td>${esc(st)}</td></tr>`;
+      return `<tr><td>${esc(name)}</td><td class="mono">${start}</td><td class="mono">${end}</td><td>${esc(st)}</td></tr>`;
     }).join("");
     return `
       <div class="card">

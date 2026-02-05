@@ -241,11 +241,19 @@ window.AsgardCalendarPage = (function(){
     let viewMonth = now.getMonth();
     
     async function renderCalendar() {
-      const events = await loadEvents(viewYear, viewMonth);
+      let events = await loadEvents(viewYear, viewMonth);
+
+      // Apply participant filter
+      if (filterParticipant) {
+        events = events.filter(e =>
+          (e.participants || '').toLowerCase().includes(filterParticipant.toLowerCase())
+        );
+      }
+
       const numDays = daysInMonth(viewYear, viewMonth);
       const firstDay = firstDayOfWeek(viewYear, viewMonth);
       const todayYmd = ymd(now);
-      
+
       // Группируем события по датам
       const eventsByDate = {};
       events.forEach(e => {
@@ -300,9 +308,16 @@ window.AsgardCalendarPage = (function(){
     }
     
     async function renderUpcoming() {
-      const events = await loadAllEvents();
+      let events = await loadAllEvents();
       const todayYmd = ymd(now);
-      
+
+      // Apply participant filter
+      if (filterParticipant) {
+        events = events.filter(e =>
+          (e.participants || '').toLowerCase().includes(filterParticipant.toLowerCase())
+        );
+      }
+
       const upcoming = events
         .filter(e => e.date >= todayYmd)
         .sort((a, b) => {
@@ -335,12 +350,21 @@ window.AsgardCalendarPage = (function(){
     const calendarHtml = await renderCalendar();
     const upcomingHtml = await renderUpcoming();
     
+    // Load users for filter
+    const allUsers = await AsgardDB.all('users') || [];
+    const activeUsers = allUsers.filter(u => u.is_active !== false);
+    let filterParticipant = '';
+
+    const userOptions = activeUsers.map(u =>
+      `<option value="${esc(u.name || u.login)}">${esc(u.name || u.login)}</option>`
+    ).join('');
+
     const html = `
       <div class="page-head">
         <h1>Календарь встреч</h1>
         <div class="motto">Время — главный ресурс.</div>
       </div>
-      
+
       <div class="cal-layout">
         <div class="cal-main">
           <div class="card">
@@ -349,6 +373,12 @@ window.AsgardCalendarPage = (function(){
               <div class="cal-title" id="calTitle">${MONTHS_RU[viewMonth]} ${viewYear}</div>
               <button class="btn ghost" id="btnNextMonth">→</button>
               <button class="btn ghost" id="btnToday">Сегодня</button>
+              <div class="cal-filter">
+                <select id="filterParticipant" class="inp" style="min-width:150px">
+                  <option value="">Все участники</option>
+                  ${userOptions}
+                </select>
+              </div>
               <button class="btn primary" id="btnAddEvent">+ Событие</button>
             </div>
             <div class="cal-weekdays">

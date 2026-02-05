@@ -4081,3 +4081,416 @@ html[data-theme="light"] .watermark {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   VIKING GREETING STYLES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.viking-greeting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, var(--primary-glow), var(--secondary-glow));
+  border: 1px solid var(--primary-border);
+  border-radius: 14px;
+  margin-bottom: 8px;
+}
+
+.viking-greeting .rune-icon {
+  font-size: 28px;
+  color: var(--gold);
+  text-shadow: 0 0 12px var(--gold-glow);
+  animation: rune-pulse 3s ease-in-out infinite;
+}
+
+@keyframes rune-pulse {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.viking-greeting .greeting-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.saga-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.saga-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, var(--gold-glow), var(--secondary-glow));
+  border: 1px solid var(--gold-border);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Light theme Viking greeting */
+html[data-theme="light"] .viking-greeting {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.08), rgba(37, 99, 235, 0.06));
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
+html[data-theme="light"] .viking-greeting .rune-icon {
+  color: var(--primary);
+  text-shadow: 0 0 8px rgba(220, 38, 38, 0.3);
+}
+
+html[data-theme="light"] .viking-greeting .greeting-text {
+  color: #1e293b;
+}
+
+html[data-theme="light"] .saga-badge {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.2);
+  color: var(--primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   UNIFIED STATUS BADGE STYLES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+/* Status types */
+.status-badge.new,
+.status-badge.pending {
+  background: rgba(37, 99, 235, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+}
+
+.status-badge.in-progress,
+.status-badge.working {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.status-badge.approved,
+.status-badge.success,
+.status-badge.done,
+.status-badge.completed {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.status-badge.rejected,
+.status-badge.error,
+.status-badge.problem,
+.status-badge.failed {
+  background: rgba(220, 38, 38, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+.status-badge.draft {
+  background: rgba(100, 116, 139, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+.status-badge.urgent,
+.status-badge.critical {
+  background: rgba(220, 38, 38, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  animation: urgent-pulse 2s ease-in-out infinite;
+}
+
+@keyframes urgent-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+/* Status dot before text */
+.status-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Light theme status badges */
+html[data-theme="light"] .status-badge.new,
+html[data-theme="light"] .status-badge.pending {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+html[data-theme="light"] .status-badge.in-progress,
+html[data-theme="light"] .status-badge.working {
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+}
+
+html[data-theme="light"] .status-badge.approved,
+html[data-theme="light"] .status-badge.success,
+html[data-theme="light"] .status-badge.done,
+html[data-theme="light"] .status-badge.completed {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+
+html[data-theme="light"] .status-badge.rejected,
+html[data-theme="light"] .status-badge.error,
+html[data-theme="light"] .status-badge.problem,
+html[data-theme="light"] .status-badge.failed {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   LIGHT THEME IMPROVEMENTS — Softer, Rounded, Better Spacing
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Softer background gradient */
+html[data-theme="light"] body {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 50%, #f1f5f9 100%);
+  background-attachment: fixed;
+}
+
+/* Increase border radius globally */
+html[data-theme="light"] .card,
+html[data-theme="light"] .panel {
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.02);
+}
+
+html[data-theme="light"] .btn {
+  border-radius: 10px;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] .inp {
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+/* Fix border spacing issues */
+html[data-theme="light"] table.asg td {
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="light"] table.asg tr td:first-child {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+  border-left-width: 1px;
+}
+
+html[data-theme="light"] table.asg tr td:last-child {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+  border-right-width: 1px;
+}
+
+/* Better modal styling for light theme */
+html[data-theme="light"] .modalback {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+}
+
+html[data-theme="light"] .modal {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+}
+
+html[data-theme="light"] .modal .mh {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.04), rgba(37, 99, 235, 0.03));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 20px 20px 0 0;
+}
+
+html[data-theme="light"] .modal .mc {
+  color: #1e293b;
+}
+
+/* Softer KPI cards */
+html[data-theme="light"] .kpi .k {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+html[data-theme="light"] .kpi .k .t {
+  color: #64748b;
+}
+
+html[data-theme="light"] .kpi .k .v {
+  color: var(--primary);
+}
+
+html[data-theme="light"] .kpi .k .s {
+  color: #94a3b8;
+}
+
+/* Better sidebar for light theme */
+html[data-theme="light"] .sidenav {
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="light"] .sidenav::before {
+  background: none;
+}
+
+/* Better navitem styling */
+html[data-theme="light"] .navitem {
+  border-radius: 12px;
+}
+
+html[data-theme="light"] .navitem .lbl .name {
+  color: #334155;
+}
+
+html[data-theme="light"] .navitem .lbl .desc {
+  color: #94a3b8;
+}
+
+html[data-theme="light"] .navitem:hover .lbl .name,
+html[data-theme="light"] .navitem.active .lbl .name {
+  color: var(--primary);
+}
+
+/* Better pill styling */
+html[data-theme="light"] .pill {
+  border-radius: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #f8fafc;
+}
+
+html[data-theme="light"] .pill .who {
+  color: #1e293b;
+}
+
+html[data-theme="light"] .pill .role {
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--primary);
+}
+
+/* Better buttons */
+html[data-theme="light"] .btn.red {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+}
+
+html[data-theme="light"] .btn.red:hover {
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35);
+  transform: translateY(-1px);
+}
+
+/* Bell button */
+html[data-theme="light"] .bellbtn {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #475569;
+  border-radius: 12px;
+}
+
+html[data-theme="light"] .bellbtn:hover {
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
+html[data-theme="light"] .bellcount {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+/* Bell popup */
+html[data-theme="light"] .bellpop {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+html[data-theme="light"] .bellpop-head {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.04), rgba(37, 99, 235, 0.02));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  color: #1e293b;
+}
+
+html[data-theme="light"] .bellitem {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  color: #1e293b;
+}
+
+html[data-theme="light"] .bellitem:hover {
+  background: rgba(220, 38, 38, 0.04);
+}
+
+/* Better tools/filters area */
+html[data-theme="light"] .tools {
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+/* Chart areas */
+html[data-theme="light"] .chart {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+}
+
+/* Grid cards */
+html[data-theme="light"] .grid .card {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+}
+
+html[data-theme="light"] .grid .card h3 {
+  color: #1e293b;
+}
+
+html[data-theme="light"] .grid .card p {
+  color: #64748b;
+}
+
+/* Main content area */
+html[data-theme="light"] .main::before {
+  background: radial-gradient(ellipse at 80% 0%, rgba(220, 38, 38, 0.03), transparent 60%);
+}
+
+/* Form labels */
+html[data-theme="light"] label {
+  color: #475569;
+}
+
+html[data-theme="light"] .field label {
+  color: #64748b;
+  font-weight: 600;
+}

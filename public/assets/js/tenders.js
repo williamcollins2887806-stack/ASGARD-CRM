@@ -303,10 +303,11 @@ async function getRefs(){
   function norm(s){ return String(s||"").toLowerCase().trim(); }
 
   function tenderRow(t, pmName, createdByName){
-    const ds = t.work_start_plan ? esc(t.work_start_plan) : "—";
-    const de = t.work_end_plan ? esc(t.work_end_plan) : "—";
+    const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+    const ds = fmtDate(t.work_start_plan);
+    const de = fmtDate(t.work_end_plan);
     const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Ссылка</a>` : "—";
-    const ddl = t.docs_deadline ? esc(t.docs_deadline) : "—";
+    const ddl = fmtDate(t.docs_deadline);
     return `<tr data-id="${t.id}">
       <td>${esc(t.period||"")}</td>
       <td>
@@ -1064,6 +1065,7 @@ async function getRefs(){
         <div id="docsBox" style="display:flex; flex-direction:column; gap:10px"><div class="row" style="gap:8px; flex-wrap:wrap; margin:8px 0 10px 0">
   <button class="btn" id="copyAllDocs">Скопировать все ссылки</button>
   <button class="btn ghost" id="openAllDocs">Открыть все</button>
+  <button class="btn primary" id="downloadAllDocs">📥 Скачать все документы</button>
   <button class="btn ghost" id="btnPackExport">Экспорт комплекта (JSON)</button>
   <button class="btn ghost" id="btnPackImport">Импорт в комплект</button>
 </div>
@@ -1309,6 +1311,47 @@ ${docsHtml}</div>
       const bOpenAll = document.getElementById("openAllDocs");
       if(bOpenAll) bOpenAll.addEventListener("click", ()=>{
         (docs||[]).forEach(d=>{ if(d.data_url) window.open(d.data_url, "_blank"); });
+      });
+
+      // Download All Documents handler
+      const bDownloadAll = document.getElementById("downloadAllDocs");
+      if(bDownloadAll) bDownloadAll.addEventListener("click", async ()=>{
+        if(!docs || docs.length === 0) {
+          toast("Документы", "Нет документов для скачивания", "err");
+          return;
+        }
+
+        toast("Скачивание", `Начинаю загрузку ${docs.length} документов...`, "ok");
+
+        // Download each document with a small delay to avoid browser blocking
+        let downloadCount = 0;
+        for(const d of docs) {
+          if(d.data_url) {
+            try {
+              const a = document.createElement('a');
+              a.href = d.data_url;
+              a.download = d.name || d.type || 'document';
+              a.target = '_blank';
+
+              // For data URLs, use direct download
+              if(d.data_url.startsWith('data:')) {
+                a.click();
+                downloadCount++;
+              } else {
+                // For external URLs, open in new tab (browser security restriction)
+                window.open(d.data_url, '_blank');
+                downloadCount++;
+              }
+
+              // Small delay between downloads
+              await new Promise(r => setTimeout(r, 300));
+            } catch(e) {
+              console.warn('[Tender] Download failed for:', d.name, e);
+            }
+          }
+        }
+
+        toast("Скачивание", `Открыто ${downloadCount} документов`, "ok");
       });
 
       const bPackExp = document.getElementById("btnPackExport");

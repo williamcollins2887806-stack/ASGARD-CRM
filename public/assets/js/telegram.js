@@ -138,9 +138,22 @@ window.AsgardTelegram = (function(){
     const template = MESSAGE_TEMPLATES[templateKey];
     if (!template) return false;
 
+    // Функция форматирования даты
+    const fmtDate = (d) => {
+      if (!d) return '—';
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return d;
+      return date.toLocaleDateString('ru-RU');
+    };
+
+    // Поля с датами
+    const dateFields = ['docs_deadline', 'expiry_date', 'end_date', 'start_date', 'work_start_plan', 'work_end_plan', 'created_at'];
+
     let text = template.template;
     for (const [key, value] of Object.entries(data || {})) {
-      text = text.replace(new RegExp(`\\{${key}\\}`, 'g'), value || '—');
+      // Форматируем даты
+      const formattedValue = dateFields.includes(key) ? fmtDate(value) : (value || '—');
+      text = text.replace(new RegExp(`\\{${key}\\}`, 'g'), formattedValue);
     }
 
     return await sendMessage(user.telegram_chat_id, text);
