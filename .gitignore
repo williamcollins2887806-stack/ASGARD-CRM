@@ -29,3 +29,4 @@ src_backup_*/
 tests/screenshots/
 tests/test-report.txt
 tests/test-results.log
+backups/
