@@ -4494,3 +4494,185 @@ html[data-theme="light"] .field label {
   color: #64748b;
   font-weight: 600;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   CALENDAR FILTER AND POLISH
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.cal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.cal-filter {
+  margin-left: auto;
+}
+
+.cal-filter select {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--glass);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+html[data-theme="light"] .cal-filter select {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: #1e293b;
+}
+
+/* Calendar day events improvements */
+.cal-day-events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.cal-event {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--event-color) 20%, transparent);
+  border-left: 3px solid var(--event-color);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  overflow: hidden;
+}
+
+.cal-event:hover {
+  background: color-mix(in srgb, var(--event-color) 30%, transparent);
+  transform: translateX(2px);
+}
+
+.cal-event-time {
+  font-weight: 600;
+  color: var(--event-color);
+  flex-shrink: 0;
+}
+
+.cal-event-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-more {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 2px 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FINAL UI POLISH — Micro-improvements
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Better focus states */
+input:focus,
+select:focus,
+textarea:focus,
+.inp:focus {
+  outline: none;
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 3px var(--secondary-glow);
+}
+
+html[data-theme="light"] input:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] textarea:focus,
+html[data-theme="light"] .inp:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+/* Smoother button hover */
+.btn {
+  transition: all var(--transition-normal);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+/* Better card hover effect */
+.card {
+  transition: all var(--transition-normal);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+html[data-theme="light"] .card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* Improved table row hover */
+table.asg tr:hover td {
+  background: var(--bg-hover);
+}
+
+html[data-theme="light"] table.asg tr:hover td {
+  background: rgba(220, 38, 38, 0.04);
+}
+
+/* Better scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary-dim);
+}
+
+/* Smooth page transitions */
+.main {
+  animation: pageEnter 0.3s ease-out;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Better empty state styling */
+.empty-state,
+.muted {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Improved pill/badge spacing */
+.pill, .badge {
+  transition: all var(--transition-fast);
+}
+
+.pill:hover, .badge:hover {
+  transform: translateY(-1px);
+}

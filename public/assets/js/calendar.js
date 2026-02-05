@@ -507,7 +507,13 @@ window.AsgardCalendarPage = (function(){
         await refresh();
       }
     });
-    
+
+    // Participant filter handler
+    $('#filterParticipant')?.addEventListener('change', async (e) => {
+      filterParticipant = e.target.value;
+      await refresh();
+    });
+
     bindDayClicks();
   }
   
