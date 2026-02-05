@@ -338,6 +338,27 @@ class TestRunner {
         } catch (e) {}
       }
 
+      // Проверяем что браузер еще жив
+      let browserAlive = false;
+      try {
+        const pages = await this.browser.pages();
+        browserAlive = true;
+      } catch (e) {
+        this.log('WARN', 'Браузер не отвечает, перезапускаем...');
+      }
+
+      if (!browserAlive) {
+        // Перезапускаем браузер полностью
+        try {
+          await this.browser.close().catch(() => {});
+        } catch (e) {}
+
+        this.browser = await puppeteer.launch({
+          headless: CONFIG.HEADLESS,
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        });
+      }
+
       // Создаём новую страницу
       this.page = await this.browser.newPage();
       await this.page.setViewport({
@@ -364,7 +385,7 @@ class TestRunner {
       // Переходим на страницу входа
       await this.page.goto(`${CONFIG.BASE_URL}/#/login`, {
         waitUntil: 'networkidle2',
-        timeout: 10000
+        timeout: 15000
       });
 
       this.log('INFO', 'Страница успешно восстановлена');
@@ -1997,6 +2018,30 @@ ${this.generateRecommendations()}
   async testBusinessWorkflows() {
     this.log('INFO', '═══ ТЕСТЫ БИЗНЕС-ПРОЦЕССОВ (ВЗАИМОДЕЙСТВИЕ РОЛЕЙ) ═══');
 
+    // Создаём чистую страницу для workflow тестов (без перезапуска браузера)
+    this.log('INFO', 'Создание чистой страницы для workflow тестов...');
+    try {
+      // Закрываем все лишние страницы
+      const pages = await this.browser.pages();
+      for (const p of pages) {
+        if (p !== this.page) {
+          await p.close().catch(() => {});
+        }
+      }
+      // Очищаем storage
+      await this.page.evaluate(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+      }).catch(() => {});
+      // Переходим на логин
+      await this.page.goto(`${CONFIG.BASE_URL}/#/login`, { waitUntil: 'networkidle2', timeout: 15000 });
+      this.token = null;
+      this.currentUser = null;
+      this.log('INFO', 'Страница готова к workflow тестам');
+    } catch (e) {
+      this.log('WARN', 'Не удалось подготовить страницу: ' + e.message);
+    }
+
     // Уникальный идентификатор для тестовых данных
     const testId = Date.now();
     const TEST_TENDER_TITLE = `E2E_TEST_TENDER_${testId}`;
@@ -2400,6 +2445,16 @@ ${this.generateRecommendations()}
         const token = authToken || localStorage.getItem('asgard_token');
         if (!token) return { error: 'NO_TOKEN' };
 
+        // Проверяем, есть ли уже запрос премии для этой работы (идемпотентность)
+        const existingResp = await fetch('/api/data/bonus_requests?limit=1000', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const existingData = await existingResp.json();
+        const existing = (existingData.bonus_requests || []).find(b => b.work_id == workId);
+        if (existing) {
+          return { success: true, id: existing.id, total_amount: existing.total_amount, existing: true };
+        }
+
         // Получаем работу
         const workResp = await fetch('/api/data/works/' + workId, {
           headers: { 'Authorization': 'Bearer ' + token }
@@ -2452,7 +2507,8 @@ ${this.generateRecommendations()}
       if (result.error) throw new Error(`Ошибка создания запроса премии: ${result.error} - ${result.message || ''}`);
 
       createdBonusRequestId = result.id;
-      this.log('INFO', `Запрос премии создан: ID=${createdBonusRequestId}, сумма=${result.total_amount}₽`);
+      const existingNote = result.existing ? ' (использован существующий)' : '';
+      this.log('INFO', `Запрос премии: ID=${createdBonusRequestId}, сумма=${result.total_amount}₽${existingNote}`);
       await this.logout();
     });
 
@@ -2476,6 +2532,11 @@ ${this.generateRecommendations()}
         const bonusData = await bonusResp.json();
         const bonus = bonusData.item || {};
 
+        // Если уже approved - пропускаем (идемпотентность)
+        if (bonus.status === 'approved') {
+          return { success: true, alreadyApproved: true };
+        }
+
         // Обновляем статус
         const bonusUpdateResp = await fetch('/api/data/bonus_requests/' + bonusId, {
           method: 'PUT',
@@ -2490,6 +2551,16 @@ ${this.generateRecommendations()}
         if (!bonusUpdateResp.ok) {
           const errData = await bonusUpdateResp.json().catch(() => ({}));
           return { error: `Не удалось обновить bonus_request: ${bonusUpdateResp.status} ${errData.error || ''}` };
+        }
+
+        // Создаём расход (только если ещё не создан)
+        const expenseCheckResp = await fetch('/api/data/work_expenses?limit=1000', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const expenseCheckData = await expenseCheckResp.json();
+        const existingExpense = (expenseCheckData.work_expenses || []).find(e => e.bonus_request_id == bonusId);
+        if (existingExpense) {
+          return { success: true, expenseId: existingExpense.id, existingExpense: true };
         }
 
         // Создаём расход
