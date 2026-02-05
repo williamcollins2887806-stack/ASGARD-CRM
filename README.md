@@ -146,6 +146,25 @@ tail -f /var/log/nginx/access.log
 tail -f /var/log/nginx/error.log
 ```
 
+## Диагностика 401 Unauthorized в браузере
+
+Если в консоли появляются ошибки вида `401 (Unauthorized)` для `/api/...`, это означает,
+что фронтенд не авторизован и сервер отклоняет запросы.
+
+Проверьте:
+
+1. **Вы действительно вошли в систему.**  
+   Откройте страницу входа и выполните логин, затем проверьте запросы снова.
+2. **JWT секрет и настройки окружения.**  
+   Убедитесь, что в `.env` задан `JWT_SECRET`, а также корректные `DB_*`.
+3. **Куки/LocalStorage не очищены.**  
+   Если вы чистили кеш или cookies — нужно перелогиниться.
+4. **API доступен и отвечает.**  
+   ```bash
+   curl -v http://localhost:3000/api/health
+   ```
+   Ответ `200 OK` означает, что backend жив, а 401 — это именно авторизация.
+
 ## Бэкап базы
 
 ```bash
@@ -154,6 +173,31 @@ pg_dump -U asgard asgard_crm > backup_$(date +%Y%m%d).sql
 
 # Восстановить
 psql -U asgard asgard_crm < backup_20240101.sql
+```
+
+## Решение частых ошибок при бэкапе и миграциях
+
+### Ошибка: `Peer authentication failed for user "asgard"`
+Это означает, что PostgreSQL требует локальную аутентификацию через peer для пользователя `asgard`.
+Запускайте команды под пользователем `postgres`:
+
+```bash
+sudo -u postgres pg_dump -Fc asgard_crm > backup_$(date +%Y%m%d_%H%M%S).dump
+```
+
+### Ошибка миграции: `must be owner of table ...`
+Миграции нужно выполнять пользователем‑владельцем таблиц. Обычно это `postgres`.
+
+```bash
+sudo -u postgres node migrations/run.js
+```
+
+Если ошибка повторяется для конкретной таблицы (например, `chat_messages`),
+нужно сменить владельца таблицы и повторить миграцию:
+
+```bash
+sudo -u postgres psql -d asgard_crm -c "ALTER TABLE chat_messages OWNER TO postgres;"
+sudo -u postgres node migrations/run.js
 ```
 
 ---

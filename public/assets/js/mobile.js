@@ -47,7 +47,10 @@ window.AsgardMobile = (function(){
       const overlay = document.createElement('div');
       overlay.id = 'mobileOverlay';
       overlay.className = 'mobile-overlay';
+      overlay.style.pointerEvents = 'none';
       document.body.appendChild(overlay);
+    } else {
+      $('#mobileOverlay').style.pointerEvents = 'none';
     }
     
     // Обработчики
@@ -87,6 +90,7 @@ window.AsgardMobile = (function(){
     }
     if (overlay) {
       overlay.classList.toggle('active', isMenuOpen);
+      overlay.style.pointerEvents = isMenuOpen ? 'auto' : 'none';
     }
     if (btn) {
       btn.innerHTML = isMenuOpen ? '✕' : '☰';
