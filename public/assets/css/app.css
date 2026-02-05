@@ -128,6 +128,7 @@ body::before {
   background-size: 200% 100%;
   animation: gradient-flow 4s linear infinite;
   z-index: 9999;
+  pointer-events: none; /* КРИТИЧНО: не блокировать тапы на мобильных */
 }
 
 @keyframes gradient-flow {
@@ -2610,12 +2611,14 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
     z-index: 999;
     opacity: 0;
     visibility: hidden;
+    pointer-events: none; /* КРИТИЧНО: не блокировать тапы когда скрыт */
     transition: all var(--transition-normal);
   }
 
   body.nav-open .nav-overlay {
     opacity: 1;
     visibility: visible;
+    pointer-events: auto; /* Включаем только когда виден */
   }
   
   /* Основной контент */
@@ -2787,7 +2790,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   }
   
   /* Тосты */
-  .toast-wrap {
+  .toastwrap {
     left: 12px;
     right: 12px;
     bottom: 80px; /* Над кнопкой меню */
@@ -2801,8 +2804,18 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   .welcome-page {
     padding: 20px;
   }
-  
+
+  .welcome-header {
+    flex-direction: column;
+    flex-wrap: wrap;
+    text-align: center;
+    gap: 12px;
+  }
+
+  img.welcome-logo,
   .welcome-logo img {
+    max-width: 80px;
+    max-height: 80px;
     width: 80px;
     height: 80px;
   }
