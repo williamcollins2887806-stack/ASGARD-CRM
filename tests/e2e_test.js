@@ -2309,8 +2309,8 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
       const token = await this.waitForToken(10000);
-      await this.goto('/#/approvals');
-      await this.delay(1000);
+      // НЕ переходим на другую страницу - делаем API вызовы с текущей
+      await this.delay(500);
 
       const result = await this.page.evaluate(async (estimateId, tenderId, authToken) => {
         const token = authToken || localStorage.getItem('asgard_token');
@@ -2518,8 +2518,8 @@ ${this.generateRecommendations()}
 
       await this.login('admin', 'Orion2025!');
       const token = await this.waitForToken(10000);
-      await this.goto('/#/bonus-approval');
-      await this.delay(1000);
+      // НЕ переходим на другую страницу - делаем API вызовы напрямую
+      await this.delay(500);
 
       const result = await this.page.evaluate(async (bonusId, workId, authToken) => {
         const token = authToken || localStorage.getItem('asgard_token');
@@ -2694,6 +2694,12 @@ ${this.generateRecommendations()}
     // ─────────────────────────────────────────────────────────────────────────────
 
     await this.runTest('workflow.verify_all', async () => {
+      // DEBUG: логируем ID для проверки
+      this.log('DEBUG', `verify_all IDs: tender=${createdTenderId}, estimate=${createdEstimateId}, work=${createdWorkId}, bonus=${createdBonusRequestId}`);
+
+      // Ждём чтобы все обновления точно зафиксировались в БД
+      await this.delay(2000);
+
       await this.login('admin', 'Orion2025!');
       const token = await this.waitForToken(10000);
 
@@ -2701,10 +2707,14 @@ ${this.generateRecommendations()}
         const token = authToken || localStorage.getItem('asgard_token');
         if (!token) return { error: 'NO_TOKEN' };
 
+        // DEBUG: выводим полученные ID в консоль
+        console.log('verify_all evaluate IDs:', { tenderId, estimateId, workId, bonusId });
+
         const get = async (table, id) => {
           if (!id) return null;
-          const resp = await fetch('/api/data/' + table + '/' + id, {
-            headers: { 'Authorization': 'Bearer ' + token }
+          const resp = await fetch('/api/data/' + table + '/' + id + '?_=' + Date.now(), {
+            headers: { 'Authorization': 'Bearer ' + token },
+            cache: 'no-store'
           });
           if (!resp.ok) return null;
           const data = await resp.json();
@@ -2716,11 +2726,13 @@ ${this.generateRecommendations()}
         const work = await get('works', workId);
         const bonus = await get('bonus_requests', bonusId);
 
-        // Получаем расходы
-        const expResp = await fetch('/api/data/work_expenses?limit=1000', {
-          headers: { 'Authorization': 'Bearer ' + token }
+        // Получаем расходы (с cache-busting)
+        const expResp = await fetch('/api/data/work_expenses?limit=1000&_=' + Date.now(), {
+          headers: { 'Authorization': 'Bearer ' + token },
+          cache: 'no-store'
         });
         const expData = await expResp.json();
+        console.log('work_expenses response:', expData.work_expenses?.length || 0, 'items, filtering by work_id=' + workId);
         const expenses = (expData.work_expenses || []).filter(e => e.work_id == workId);
 
         return {
