@@ -241,6 +241,10 @@ try{
       : `<button class="btn" id="btnLoginGo">Войти</button><button class="btn ghost" id="btnRegGo">Регистрация</button>`;
 
     const logo = ASSETS_BASE + "img/logo.png";
+    const overlayMarkup = $("#mobileOverlay")
+      ? ""
+      : `<div class="overlay mobile-overlay" id="mobileOverlay"></div>`;
+
     $("#app").innerHTML = `<div class="app">
       <aside class="sidenav">
         <a class="brand" href="#/welcome" aria-label="На главную">
@@ -259,7 +263,7 @@ try{
           <button class="btn ghost" id="btnBackup">Экспорт/Импорт</button>
         </div>
       </aside>
-      <div class="overlay" id="navOverlay"></div>
+      ${overlayMarkup}
       <main class="main">
         <div class="topbar">
           <div class="mnav"><button class="iconbtn" id="btnMenu" aria-label="Меню">☰</button></div>
@@ -302,8 +306,9 @@ try{
     // Mobile nav (burger) - используем addMobileClick для надёжной работы на мобильных
     const closeNav = ()=>document.body.classList.remove("nav-open");
     const toggleNav = ()=>document.body.classList.toggle("nav-open");
+    $("#mobileOverlay")?.classList.add("overlay", "mobile-overlay");
     addMobileClick($("#btnMenu"), toggleNav);
-    addMobileClick($("#navOverlay"), closeNav);
+    addMobileClick($("#mobileOverlay"), closeNav);
     $$(".navitem").forEach(a=>addMobileClick(a, closeNav));
     if(window.__ASG_DOC_ESC_NAV__) document.removeEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
     window.__ASG_DOC_ESC_NAV__ = (e)=>{ if(e.key==="Escape") closeNav(); };
