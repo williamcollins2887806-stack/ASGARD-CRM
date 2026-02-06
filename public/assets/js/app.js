@@ -138,7 +138,9 @@ console.log('[ASGARD] Global period functions loaded');
     "/hr-requests":"Дружина сильна, когда строем управляют руны.",
     "/proc-requests":"Запас крепок, когда список точен.",
     "/login":"Вход в зал. У каждого своя доля ответственности.",
-    "/register":"Пусть имя будет честным, а роль — ясной."
+    "/register":"Пусть имя будет честным, а роль — ясной.",
+    "/cash":"Деньги любят счёт. Каждый рубль — на виду.",
+    "/cash-admin":"Контроль — залог доверия. Считай и подтверждай."
   };
 
   const DIRECTOR_ROLES = ["DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]; // legacy DIRECTOR removed in Stage 25
@@ -214,6 +216,8 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"hr_requests"},
     {r:"/proc-requests",l:"Заявки закупок",d:"Закупки",roles:["ADMIN","PROC",...DIRECTOR_ROLES],i:"approvals",p:"proc_requests"},
     {r:"/buh-registry",l:"Реестр расходов",d:"Бухгалтерский реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"buh_registry"},
+    {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"finances",p:"cash"},
+    {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN",...DIRECTOR_ROLES],i:"finances",p:"cash_admin"},
   ];
 
   async function layout(body,{title,motto,rightBadges=[]}={}){
@@ -936,11 +940,11 @@ try{
 
     const portalsByRole = {
       TO: [ ['#/tenders','Тендеры'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      PM: [ ['#/pm-calcs','Просчёты'], ['#/pm-works','Работы'], ['#/travel','Жильё/билеты'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
-      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      PM: [ ['#/pm-calcs','Просчёты'], ['#/pm-works','Работы'], ['#/cash','Касса'], ['#/travel','Жильё/билеты'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
+      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
       HR: [ ['#/personnel','Персонал'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/hr-rating','Рейтинг'], ['#/alerts','Уведомления'] ],
       PROC: [ ['#/proc-requests','Заявки'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
       BUH: [ ['#/buh-registry','Реестр расходов'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
@@ -961,6 +965,23 @@ try{
         </div>
       </div>
     `;
+
+    // Виджет баланса кассы для PM
+    let cashWidgetHtml = "";
+    if (user.role === "PM" && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('cash', 'read')) {
+      cashWidgetHtml = `
+        <div class="card" id="cashBalanceWidget">
+          <h3>Касса — мой баланс</h3>
+          <div class="help">Средства на руках по активным авансам</div>
+          <div id="cashBalanceData" style="margin-top:10px">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+          <div style="margin-top:10px">
+            <a href="#/cash" class="btn">Открыть кассу</a>
+          </div>
+        </div>
+      `;
+    }
 
     const body = `
       <div class="panel">
@@ -988,7 +1009,8 @@ try{
 
       <div class="grid" style="margin-top:14px">
         ${pmBlock}
-        
+        ${cashWidgetHtml}
+
         <!-- Виджет телефонии -->
         <div class="card span-3" id="callToggleContainer"></div>
         
@@ -1018,6 +1040,32 @@ try{
     // Рендерим виджет телефонии после загрузки страницы
     if(window.AsgardMango){
       setTimeout(() => AsgardMango.renderCallToggle('callToggleContainer'), 100);
+    }
+
+    // Загружаем баланс кассы для PM
+    if (user.role === "PM" && document.getElementById('cashBalanceData')) {
+      (async () => {
+        try {
+          const auth = AsgardAuth.getAuth();
+          const resp = await fetch('/api/cash/my-balance', {
+            headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            const formatMoney = (v) => (parseFloat(v) || 0).toLocaleString('ru-RU', {minimumFractionDigits: 2}) + ' руб.';
+            document.getElementById('cashBalanceData').innerHTML = `
+              <div class="kpi" style="grid-template-columns:repeat(2,1fr)">
+                <div class="k"><div class="t">На руках</div><div class="v" style="color:${data.balance > 0 ? '#ef4444' : '#22c55e'}">${formatMoney(data.balance)}</div></div>
+                <div class="k"><div class="t">Активных заявок</div><div class="v">${data.active_requests}</div></div>
+              </div>
+            `;
+          } else {
+            document.getElementById('cashBalanceData').innerHTML = '<div class="text-muted">Не удалось загрузить</div>';
+          }
+        } catch (e) {
+          document.getElementById('cashBalanceData').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+        }
+      })();
     }
   }
 
@@ -1145,6 +1193,26 @@ try{
     AsgardRouter.add("/reminders", ()=>AsgardReminders.render({layout, title:"Напоминания"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/warehouse", ()=>AsgardWarehouse.render({layout, title:"Склад ТМЦ"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/my-equipment", ()=>AsgardMyEquipment.render({layout, title:"Моё оборудование"}), {auth:true, roles:["PM",...DIRECTOR_ROLES,"ADMIN"]});
+
+    // Касса (M2)
+    AsgardRouter.add("/cash", async ()=>{
+      if (!AsgardAuth.hasPermission('cash', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await layout('<div id="cash-page"></div>', {title:"Касса"});
+      CashPage.render(document.getElementById('cash-page'));
+    }, {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/cash-admin", async ()=>{
+      if (!AsgardAuth.hasPermission('cash_admin', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await layout('<div id="cash-admin-page"></div>', {title:"Касса (управление)"});
+      CashAdminPage.render(document.getElementById('cash-admin-page'));
+    }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
 
     // TKP Follow-up: проверка напоминаний при старте
     if(window.AsgardTkpFollowup){
