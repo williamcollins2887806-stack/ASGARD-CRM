@@ -110,6 +110,39 @@ fastify.decorate('requireRoles', function(roles) {
   };
 });
 
+// Permission check decorator (модульные роли M1)
+// Использование: preHandler: [fastify.requirePermission('tenders', 'read')]
+// ADMIN всегда проходит. Для остальных проверяет user_permissions.
+fastify.decorate('requirePermission', function(moduleKey, operation = 'read') {
+  return async function(request, reply) {
+    await fastify.authenticate(request, reply);
+    if (reply.sent) return; // authenticate уже отправил 401
+
+    // ADMIN bypass
+    if (request.user.role === 'ADMIN') return;
+
+    const { rows } = await db.query(
+      `SELECT can_read, can_write, can_delete FROM user_permissions
+       WHERE user_id = $1 AND module_key = $2`,
+      [request.user.id, moduleKey]
+    );
+
+    if (rows.length === 0) {
+      return reply.code(403).send({ error: 'Forbidden', message: 'Нет доступа к модулю' });
+    }
+
+    const perm = rows[0];
+    const allowed =
+      (operation === 'read' && perm.can_read) ||
+      (operation === 'write' && perm.can_write) ||
+      (operation === 'delete' && perm.can_delete);
+
+    if (!allowed) {
+      return reply.code(403).send({ error: 'Forbidden', message: `Нет права "${operation}" на модуль "${moduleKey}"` });
+    }
+  };
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
@@ -134,6 +167,7 @@ fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
 fastify.register(require('./routes/invoices'), { prefix: '/api/invoices' });
 fastify.register(require('./routes/equipment'), { prefix: '/api/equipment' });
 fastify.register(require('./routes/data'), { prefix: '/api/data' });
+fastify.register(require('./routes/permissions'), { prefix: '/api/permissions' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check

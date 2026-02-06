@@ -11,6 +11,40 @@ async function routes(fastify, options) {
   const db = fastify.db;
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Helper: Загрузка пермишенов пользователя (M1 - Модульные роли)
+  // ─────────────────────────────────────────────────────────────────────────────
+  async function loadUserPermissions(userId, role) {
+    let permissions = {};
+
+    // ADMIN получает всё
+    if (role === 'ADMIN') {
+      const { rows: mods } = await db.query('SELECT key FROM modules WHERE is_active = true');
+      for (const m of mods) {
+        permissions[m.key] = { read: true, write: true, delete: true };
+      }
+    } else {
+      const { rows: perms } = await db.query(
+        'SELECT module_key, can_read, can_write, can_delete FROM user_permissions WHERE user_id = $1',
+        [userId]
+      );
+      for (const p of perms) {
+        permissions[p.module_key] = { read: p.can_read, write: p.can_write, delete: p.can_delete };
+      }
+    }
+
+    return permissions;
+  }
+
+  // Helper: Загрузка настроек меню пользователя
+  async function loadMenuSettings(userId) {
+    const { rows } = await db.query(
+      'SELECT hidden_routes, route_order FROM user_menu_settings WHERE user_id = $1',
+      [userId]
+    );
+    return rows[0] || { hidden_routes: [], route_order: [] };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // POST /api/auth/login
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/login', {
@@ -111,10 +145,14 @@ async function routes(fastify, options) {
       pinVerified: true
     });
 
+    // M1: Загрузка пермишенов и настроек меню
+    const permissions = await loadUserPermissions(user.id, user.role);
+    const menu_settings = await loadMenuSettings(user.id);
+
     return {
       status: 'ok',
       token,
-      user: userData
+      user: { ...userData, permissions, menu_settings }
     };
   });
 
@@ -184,7 +222,13 @@ async function routes(fastify, options) {
       return reply.code(404).send({ error: 'Пользователь не найден' });
     }
 
-    return { user: result.rows[0] };
+    const user = result.rows[0];
+
+    // M1: Загрузка пермишенов и настроек меню
+    const permissions = await loadUserPermissions(user.id, user.role);
+    const menu_settings = await loadMenuSettings(user.id);
+
+    return { user: { ...user, permissions, menu_settings } };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -436,6 +480,10 @@ async function routes(fastify, options) {
       pinVerified: true
     });
 
+    // M1: Загрузка пермишенов и настроек меню
+    const permissions = await loadUserPermissions(user.id, user.role);
+    const menu_settings = await loadMenuSettings(user.id);
+
     return {
       success: true,
       token,
@@ -445,7 +493,9 @@ async function routes(fastify, options) {
         name: user.name,
         role: user.role,
         email: user.email,
-        must_change_password: false
+        must_change_password: false,
+        permissions,
+        menu_settings
       }
     };
   });
@@ -498,7 +548,23 @@ async function routes(fastify, options) {
       pinVerified: true
     });
 
-    return { success: true, token: newToken };
+    // M1: Загрузка пермишенов и настроек меню
+    const permissions = await loadUserPermissions(user.id, user.role);
+    const menu_settings = await loadMenuSettings(user.id);
+
+    return {
+      success: true,
+      token: newToken,
+      user: {
+        id: user.id,
+        login: user.login,
+        name: user.name,
+        role: user.role,
+        email: user.email,
+        permissions,
+        menu_settings
+      }
+    };
   });
 }
 
