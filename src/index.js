@@ -15,13 +15,15 @@ const path = require('path');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
+// SECURITY: JWT_SECRET обязателен (CRIT-4)
 // ─────────────────────────────────────────────────────────────────────────────
 const config = {
   port: parseInt(process.env.PORT || '3000', 10),
   host: process.env.HOST || '0.0.0.0',
-  jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+  jwtSecret: process.env.JWT_SECRET, // SECURITY: Без fallback (CRIT-4)
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  corsOrigin: process.env.CORS_ORIGIN || '*',
+  // SECURITY: В production нельзя использовать * (CRIT-6)
+  corsOrigin: process.env.CORS_ORIGIN || (process.env.NODE_ENV === 'production' ? 'https://asgard-crm.ru' : '*'),
   uploadDir: process.env.UPLOAD_DIR || './uploads'
 };
 
@@ -72,12 +74,29 @@ fastify.decorate('db', db);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Authentication Decorator
+// SECURITY: Проверка pinVerified и mustChangePassword (HIGH-7, MED-4)
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.decorate('authenticate', async function(request, reply) {
   try {
     await request.jwtVerify();
+
+    // SECURITY: Проверка PIN-верификации (HIGH-7)
+    if (request.user.pinVerified === false) {
+      const allowedPaths = ['/api/auth/verify-pin', '/api/auth/setup-credentials', '/api/auth/me'];
+      if (!allowedPaths.some(p => request.url.startsWith(p))) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Требуется подтверждение PIN' });
+      }
+    }
+
+    // SECURITY: Проверка обязательной смены пароля (MED-4)
+    if (request.user.mustChangePassword) {
+      const allowedPaths = ['/api/auth/setup-credentials', '/api/auth/change-password', '/api/auth/me'];
+      if (!allowedPaths.some(p => request.url.startsWith(p))) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Требуется смена пароля' });
+      }
+    }
   } catch (err) {
-    reply.code(401).send({ error: 'Unauthorized', message: 'Требуется авторизация' });
+    return reply.code(401).send({ error: 'Unauthorized', message: 'Требуется авторизация' });
   }
 });
 
@@ -252,9 +271,27 @@ async function ensureTables() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Start Server
+// SECURITY: Проверка обязательных переменных окружения (CRIT-4, CRIT-5)
 // ─────────────────────────────────────────────────────────────────────────────
 const start = async () => {
   try {
+    // SECURITY: Проверка JWT_SECRET (CRIT-4)
+    if (!process.env.JWT_SECRET) {
+      fastify.log.error('FATAL: JWT_SECRET environment variable is required');
+      process.exit(1);
+    }
+
+    // SECURITY: Предупреждение о слабом пароле БД (CRIT-5)
+    const weakPasswords = ['password', 'changeme', '123456', 'postgres', 'admin'];
+    if (!process.env.DB_PASSWORD || weakPasswords.includes(process.env.DB_PASSWORD)) {
+      fastify.log.warn('WARNING: Using weak database password. Change DB_PASSWORD in production!');
+    }
+
+    // SECURITY: Предупреждение о CORS в production
+    if (process.env.NODE_ENV === 'production' && config.corsOrigin === '*') {
+      fastify.log.warn('WARNING: CORS origin is set to *. This is not recommended for production!');
+    }
+
     // Test database connection
     await db.query('SELECT NOW()');
     fastify.log.info('Database connected');

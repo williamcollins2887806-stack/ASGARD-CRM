@@ -13,9 +13,12 @@ const path = require('path');
 const fs = require('fs');
 
 async function mimirRoutes(fastify, options) {
-  
-  const YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID || 'b1gunu8t45scpkejj3u8';
-  const YANDEX_API_KEY = process.env.YANDEX_API_KEY || 'REPLACE_WITH_YOUR_YANDEX_API_KEY';
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SECURITY: Убраны хардкод-значения, все из env (HIGH-14)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID;
+  const YANDEX_API_KEY = process.env.YANDEX_API_KEY;
   const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
   
   // Роли с полным доступом
@@ -574,8 +577,17 @@ ${restrictionsSection}
   });
   
   // Health check
-  fastify.get('/health', async () => {
-    return { status: 'ok', service: 'Mimir AI v2', timestamp: new Date().toISOString() };
+  // SECURITY: Добавлена аутентификация (HIGH-13)
+  fastify.get('/health', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
+    // SECURITY: Не раскрываем наличие API ключей
+    const isConfigured = !!(YANDEX_FOLDER_ID && YANDEX_API_KEY);
+    return {
+      status: isConfigured ? 'ok' : 'not_configured',
+      service: 'Mimir AI v2',
+      timestamp: new Date().toISOString()
+    };
   });
   
   // Статистика

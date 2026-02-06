@@ -1,5 +1,7 @@
 /**
  * Files Routes - Upload/Download
+ * SECURITY: Добавлена валидация типов файлов (MED-3)
+ * SECURITY: Добавлен auth к download (HIGH-2)
  */
 const path = require('path');
 const fs = require('fs').promises;
@@ -8,6 +10,14 @@ const { v4: uuidv4 } = require('uuid');
 async function routes(fastify, options) {
   const db = fastify.db;
   const uploadDir = process.env.UPLOAD_DIR || './uploads';
+
+  // SECURITY: Белый список расширений файлов (MED-3)
+  const ALLOWED_EXTENSIONS = [
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg',
+    '.zip', '.rar', '.7z', '.tar', '.gz',
+    '.txt', '.csv', '.rtf', '.odt', '.ods'
+  ];
 
   // Ensure upload directory exists
   try {
@@ -20,7 +30,7 @@ async function routes(fastify, options) {
     let tenderId = null;
     let workId = null;
     let docType = 'Документ';
-    
+
     for await (const part of parts) {
       if (part.file) {
         file = {
@@ -34,10 +44,15 @@ async function routes(fastify, options) {
         if (part.fieldname === 'type') docType = part.value || 'Документ';
       }
     }
-    
+
     if (!file) return reply.code(400).send({ error: 'Файл не передан' });
 
-    const ext = path.extname(file.filename) || '';
+    // SECURITY: Проверка расширения файла (MED-3)
+    const ext = path.extname(file.filename).toLowerCase() || '';
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      return reply.code(400).send({ error: 'Недопустимый тип файла: ' + ext });
+    }
+
     const filename = `${uuidv4()}${ext}`;
     const filepath = path.join(uploadDir, filename);
 
@@ -52,7 +67,10 @@ async function routes(fastify, options) {
     return { success: true, file: result.rows[0], download_url: `/api/files/download/${filename}` };
   });
 
-  fastify.get('/download/:filename', async (request, reply) => {
+  // SECURITY: Добавлен auth к download (HIGH-2)
+  fastify.get('/download/:filename', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
     const { filename } = request.params;
 
     // Защита от Path Traversal атак

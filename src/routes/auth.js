@@ -55,15 +55,6 @@ async function routes(fastify, options) {
       [user.id]
     );
 
-    // Generate JWT
-    const token = fastify.jwt.sign({
-      id: user.id,
-      login: user.login,
-      name: user.name,
-      role: user.role,
-      email: user.email
-    });
-
     const userData = {
       id: user.id,
       login: user.login,
@@ -75,6 +66,16 @@ async function routes(fastify, options) {
 
     // Check if user needs to set up password (first login with temp password)
     if (user.must_change_password) {
+      // SECURITY: Ограниченный токен до смены пароля (HIGH-7)
+      const token = fastify.jwt.sign({
+        id: user.id,
+        login: user.login,
+        name: user.name,
+        role: user.role,
+        email: user.email,
+        pinVerified: false,
+        mustChangePassword: true
+      });
       return {
         status: 'need_setup',
         token,
@@ -84,6 +85,15 @@ async function routes(fastify, options) {
 
     // Check if user has PIN set - require PIN verification
     if (user.pin_hash) {
+      // SECURITY: Ограниченный токен до ввода PIN (HIGH-7)
+      const token = fastify.jwt.sign({
+        id: user.id,
+        login: user.login,
+        name: user.name,
+        role: user.role,
+        email: user.email,
+        pinVerified: false
+      });
       return {
         status: 'need_pin',
         token,
@@ -91,7 +101,16 @@ async function routes(fastify, options) {
       };
     }
 
-    // No PIN set - allow direct login
+    // No PIN set - allow direct login with full access
+    const token = fastify.jwt.sign({
+      id: user.id,
+      login: user.login,
+      name: user.name,
+      role: user.role,
+      email: user.email,
+      pinVerified: true
+    });
+
     return {
       status: 'ok',
       token,
@@ -375,41 +394,48 @@ async function routes(fastify, options) {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // POST /api/auth/setup-credentials (первый вход - смена пароля и PIN)
+  // SECURITY FIX: userId берётся из JWT токена, не из body (CRIT-1)
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/setup-credentials', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { userId, newPassword, pin } = request.body;
-    
+    // SECURITY: userId из JWT, не из body — предотвращение IDOR
+    const userId = request.user.id;
+    const { newPassword, pin } = request.body;
+
     if (!newPassword || newPassword.length < 6) {
       return reply.code(400).send({ error: 'Пароль минимум 6 символов' });
     }
     if (!pin || !/^\d{4}$/.test(pin)) {
       return reply.code(400).send({ error: 'PIN должен быть 4 цифры' });
     }
-    
+
     const newHash = await bcrypt.hash(newPassword, 10);
     const pinHash = await bcrypt.hash(pin, 10);
-    
+
     await db.query(`
-      UPDATE users 
+      UPDATE users
       SET password_hash = $1, pin_hash = $2, must_change_password = false, updated_at = NOW()
       WHERE id = $3
     `, [newHash, pinHash, userId]);
-    
-    // Получаем обновленного пользователя
-    const result = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
+
+    // SECURITY FIX: Не возвращаем password_hash (HIGH-5)
+    const result = await db.query(
+      'SELECT id, login, name, role, email FROM users WHERE id = $1',
+      [userId]
+    );
     const user = result.rows[0];
-    
-    // Генерируем новый токен
+
+    // Генерируем новый токен с pinVerified: true
     const token = fastify.jwt.sign({
       id: user.id,
       login: user.login,
       name: user.name,
       role: user.role,
-      email: user.email
+      email: user.email,
+      pinVerified: true
     });
-    
+
     return {
       success: true,
       token,
@@ -426,23 +452,53 @@ async function routes(fastify, options) {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // POST /api/auth/verify-pin
+  // SECURITY FIX: userId из JWT + rate limit 5/min (CRIT-2, HIGH-6)
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/verify-pin', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.authenticate],
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: '1 minute',
+        keyGenerator: (request) => request.user?.id || request.ip
+      }
+    }
   }, async (request, reply) => {
-    const { userId, pin } = request.body;
-    
+    // SECURITY: userId из JWT, не из body — предотвращение IDOR
+    const userId = request.user.id;
+    const { pin } = request.body;
+
+    if (!pin) {
+      return reply.code(400).send({ error: 'PIN обязателен' });
+    }
+
     const result = await db.query('SELECT pin_hash FROM users WHERE id = $1', [userId]);
     if (!result.rows[0]) {
       return reply.code(404).send({ error: 'Пользователь не найден' });
     }
-    
+
     const validPin = await bcrypt.compare(pin, result.rows[0].pin_hash);
     if (!validPin) {
       return reply.code(401).send({ error: 'Неверный PIN' });
     }
-    
-    return { success: true };
+
+    // SECURITY: Генерируем новый токен с pinVerified: true (HIGH-7)
+    const userResult = await db.query(
+      'SELECT id, login, name, role, email FROM users WHERE id = $1',
+      [userId]
+    );
+    const user = userResult.rows[0];
+
+    const newToken = fastify.jwt.sign({
+      id: user.id,
+      login: user.login,
+      name: user.name,
+      role: user.role,
+      email: user.email,
+      pinVerified: true
+    });
+
+    return { success: true, token: newToken };
   });
 }
 

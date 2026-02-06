@@ -24,31 +24,40 @@ async function equipmentRoutes(fastify, options) {
   
   // ============================================
   // КАТЕГОРИИ
+  // SECURITY: Добавлен auth (HIGH-1)
   // ============================================
-  
-  fastify.get('/categories', async () => {
+
+  fastify.get('/categories', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
     const result = await db.query(`
       SELECT * FROM equipment_categories ORDER BY sort_order, name
     `);
     return { success: true, categories: result.rows };
   });
-  
+
   // ============================================
   // ОБЪЕКТЫ
+  // SECURITY: Добавлен auth (HIGH-1)
   // ============================================
-  
-  fastify.get('/objects', async () => {
+
+  fastify.get('/objects', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
     const result = await db.query(`
       SELECT * FROM objects WHERE is_active = true ORDER BY name
     `);
     return { success: true, objects: result.rows };
   });
-  
+
   // ============================================
   // СКЛАДЫ
+  // SECURITY: Добавлен auth (HIGH-1)
   // ============================================
-  
-  fastify.get('/warehouses', async () => {
+
+  fastify.get('/warehouses', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
     const result = await db.query(`
       SELECT w.*, u.name as responsible_name
       FROM warehouses w

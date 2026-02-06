@@ -1,13 +1,26 @@
 /**
  * Settings Routes
  */
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECURITY: Скрытие чувствительных настроек от не-админов (HIGH-11)
+// ═══════════════════════════════════════════════════════════════════════════
+const SENSITIVE_KEYS = ['smtp_config', 'smtp_from', 'smtp_password', 'api_keys', 'telegram_bot_token'];
+
 async function routes(fastify, options) {
   const db = fastify.db;
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const result = await db.query('SELECT * FROM settings');
     const settings = {};
+    const isAdmin = request.user.role === 'ADMIN';
+
     for (const row of result.rows) {
+      // SECURITY: Скрываем чувствительные настройки от не-админов (HIGH-11)
+      if (!isAdmin && SENSITIVE_KEYS.includes(row.key)) {
+        continue;
+      }
+
       try {
         settings[row.key] = JSON.parse(row.value_json);
       } catch (e) {
@@ -34,8 +47,16 @@ async function routes(fastify, options) {
   });
 
   fastify.get('/:key', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const result = await db.query('SELECT * FROM settings WHERE key = $1', [request.params.key]);
-    if (!result.rows[0]) return { key: request.params.key, value: null };
+    const { key } = request.params;
+    const isAdmin = request.user.role === 'ADMIN';
+
+    // SECURITY: Блокируем доступ к чувствительным настройкам для не-админов (HIGH-11)
+    if (!isAdmin && SENSITIVE_KEYS.includes(key)) {
+      return reply.code(403).send({ error: 'Forbidden', message: 'Доступ к этой настройке запрещён' });
+    }
+
+    const result = await db.query('SELECT * FROM settings WHERE key = $1', [key]);
+    if (!result.rows[0]) return { key, value: null };
     try {
       return { key: result.rows[0].key, value: JSON.parse(result.rows[0].value_json) };
     } catch (e) {

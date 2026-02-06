@@ -1,16 +1,23 @@
 /**
  * Database Service - PostgreSQL Connection Pool
  * ═══════════════════════════════════════════════════════════════════════════
+ * SECURITY: Требуется DB_PASSWORD (CRIT-5)
  */
 
 const { Pool } = require('pg');
+
+// SECURITY: Проверка обязательных переменных окружения (CRIT-5)
+if (!process.env.DB_PASSWORD) {
+  console.error('FATAL: DB_PASSWORD environment variable is required');
+  process.exit(1);
+}
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
   database: process.env.DB_NAME || 'asgard_crm',
   user: process.env.DB_USER || 'asgard',
-  password: process.env.DB_PASSWORD || 'password',
+  password: process.env.DB_PASSWORD, // SECURITY: Без fallback (CRIT-5)
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
