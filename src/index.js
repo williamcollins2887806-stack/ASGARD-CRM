@@ -171,6 +171,8 @@ fastify.register(require('./routes/permissions'), { prefix: '/api/permissions' }
 fastify.register(require('./routes/cash'), { prefix: '/api/cash' });
 fastify.register(require('./routes/tasks'), { prefix: '/api/tasks' });
 fastify.register(require('./routes/permits'), { prefix: '/api/permits' });
+fastify.register(require('./routes/chat_groups'), { prefix: '/api/chat-groups' });
+fastify.register(require('./routes/meetings'), { prefix: '/api/meetings' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check

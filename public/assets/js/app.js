@@ -212,6 +212,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/gantt-calcs",l:"Гантт: Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttcalcs",p:"gantt",g:"works"},
     {r:"/gantt-works",l:"Гантт: Работы",d:"План и факты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttworks",p:"gantt",g:"works"},
     {r:"/tasks-admin",l:"Управление задачами",d:"Контроль задач",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"tasks_admin",g:"works"},
+    {r:"/kanban",l:"Канбан-доска",d:"Визуальное управление задачами",roles:ALL_ROLES,i:"approvals",p:"kanban",g:"works"},
 
     // ── ФИНАНСЫ ──
     {r:"/finances",l:"Финансы",d:"Аналитика и реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"finances",g:"finance"},
@@ -242,6 +243,8 @@ console.log('[ASGARD] Global period functions loaded');
 
     // ── КОММУНИКАЦИИ ──
     {r:"/chat",l:"Чат дружины",d:"Общение и согласования",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"correspondence",p:"chat",g:"comm"},
+    {r:"/chat-groups",l:"Групповые чаты",d:"Командная коммуникация",roles:ALL_ROLES,i:"correspondence",p:"chat_groups",g:"comm"},
+    {r:"/meetings",l:"Совещания",d:"Планирование и протоколы",roles:ALL_ROLES,i:"schedule",p:"meetings",g:"comm"},
     {r:"/alerts",l:"Уведомления",d:"Воронья почта",roles:ALL_ROLES,i:"alerts",p:"alerts",g:"comm"},
     {r:"/telegram",l:"Telegram",d:"Уведомления и SMS",roles:["ADMIN"],i:"alerts",p:"telegram_admin",g:"comm"},
     {r:"/mango",l:"Телефония",d:"Манго Телеком",roles:["ADMIN"],i:"alerts",p:"telegram_admin",g:"comm"},
@@ -1156,6 +1159,17 @@ try{
           </div>
         </div>
 
+        <!-- Виджет совещаний (Phase 2) -->
+        <div class="card span-6" id="meetingsWidget">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <h3 style="margin:0">📅 Ближайшие совещания</h3>
+            <a href="#/meetings" class="btn" style="padding:4px 12px; font-size:12px">Все</a>
+          </div>
+          <div id="meetingsWidgetContent">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+        </div>
+
         <!-- Виджет телефонии -->
         <div class="card span-3" id="callToggleContainer"></div>
         
@@ -1316,6 +1330,18 @@ try{
           }
         })();
       }
+    }
+
+    // Загружаем виджет совещаний (Phase 2)
+    if (document.getElementById('meetingsWidgetContent') && window.AsgardMeetings) {
+      (async () => {
+        try {
+          const html = await AsgardMeetings.renderWidget();
+          document.getElementById('meetingsWidgetContent').innerHTML = html;
+        } catch (e) {
+          document.getElementById('meetingsWidgetContent').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+        }
+      })();
     }
   }
 
@@ -1490,6 +1516,34 @@ try{
       await layout('<div id="tasks-admin-page"></div>', {title:"Управление задачами"});
       AsgardTasksAdminPage.render(document.getElementById('tasks-admin-page'));
     }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+
+    // ── Phase 2: Kanban, Chat Groups, Meetings ──
+    AsgardRouter.add("/kanban", async ()=>{
+      if (!AsgardAuth.hasPermission('kanban', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await AsgardKanban.render({layout});
+    }, {auth:true, roles:ALL_ROLES});
+
+    AsgardRouter.add("/chat-groups", async ()=>{
+      if (!AsgardAuth.hasPermission('chat_groups', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await AsgardChatGroups.render({layout});
+    }, {auth:true, roles:ALL_ROLES});
+
+    AsgardRouter.add("/meetings", async ()=>{
+      if (!AsgardAuth.hasPermission('meetings', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await AsgardMeetings.render({layout});
+    }, {auth:true, roles:ALL_ROLES});
 
     // TKP Follow-up: проверка напоминаний при старте
     if(window.AsgardTkpFollowup){

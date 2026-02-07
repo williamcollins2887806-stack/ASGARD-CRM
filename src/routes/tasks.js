@@ -645,4 +645,347 @@ module.exports = async function(fastify) {
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     return { success: true };
   });
+
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║                    КАНБАН-ДОСКА (M4)                         ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  const KANBAN_COLUMNS = ['new', 'in_progress', 'review', 'done'];
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/tasks/kanban — Получить задачи для Канбан-доски
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/kanban', {
+    preHandler: [fastify.requirePermission('kanban', 'read')]
+  }, async (request) => {
+    const userId = request.user.id;
+    const { assignee_id, creator_id, priority, work_id, tender_id } = request.query;
+    const isDirector = DIRECTOR_ROLES.includes(request.user.role);
+
+    let sql = `
+      SELECT t.*,
+        u_creator.name as creator_name,
+        u_assignee.name as assignee_name, u_assignee.role as assignee_role,
+        (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count,
+        (SELECT COUNT(*) FROM task_watchers WHERE task_id = t.id) as watcher_count
+      FROM tasks t
+      JOIN users u_creator ON t.creator_id = u_creator.id
+      JOIN users u_assignee ON t.assignee_id = u_assignee.id
+      WHERE t.status != 'done' OR t.completed_at > NOW() - INTERVAL '7 days'
+    `;
+    const params = [];
+    let idx = 1;
+
+    // Фильтры
+    if (!isDirector) {
+      // Обычные пользователи видят только свои задачи или где они наблюдатели
+      sql += ` AND (t.assignee_id = $${idx} OR t.creator_id = $${idx} OR EXISTS (SELECT 1 FROM task_watchers WHERE task_id = t.id AND user_id = $${idx}))`;
+      params.push(userId);
+      idx++;
+    }
+
+    if (assignee_id) { sql += ` AND t.assignee_id = $${idx}`; params.push(parseInt(assignee_id)); idx++; }
+    if (creator_id) { sql += ` AND t.creator_id = $${idx}`; params.push(parseInt(creator_id)); idx++; }
+    if (priority) { sql += ` AND t.priority = $${idx}`; params.push(priority); idx++; }
+    if (work_id) { sql += ` AND t.work_id = $${idx}`; params.push(parseInt(work_id)); idx++; }
+    if (tender_id) { sql += ` AND t.tender_id = $${idx}`; params.push(parseInt(tender_id)); idx++; }
+
+    sql += ` ORDER BY t.kanban_position ASC, t.created_at DESC`;
+
+    const { rows } = await db.query(sql, params);
+
+    // Группировка по колонкам
+    const columns = {};
+    for (const col of KANBAN_COLUMNS) {
+      columns[col] = [];
+    }
+    for (const task of rows) {
+      const col = KANBAN_COLUMNS.includes(task.kanban_column) ? task.kanban_column : 'new';
+      columns[col].push(task);
+    }
+
+    return { columns, tasks: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/tasks/:id/move — Переместить задачу в другую колонку
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/move', {
+    preHandler: [fastify.requirePermission('kanban', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const { column, position } = request.body;
+    const userId = request.user.id;
+
+    if (!KANBAN_COLUMNS.includes(column)) {
+      return reply.code(400).send({ error: 'Недопустимая колонка' });
+    }
+
+    const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+
+    // Проверить права: исполнитель, создатель или директор
+    const canMove = task.assignee_id === userId
+      || task.creator_id === userId
+      || DIRECTOR_ROLES.includes(request.user.role);
+
+    if (!canMove) {
+      return reply.code(403).send({ error: 'Нет прав на перемещение' });
+    }
+
+    const oldColumn = task.kanban_column;
+    const oldStatus = task.status;
+
+    // Маппинг колонки → статус
+    const columnToStatus = {
+      'new': 'new',
+      'in_progress': 'in_progress',
+      'review': 'in_progress',
+      'done': 'done'
+    };
+
+    const newStatus = columnToStatus[column];
+    const updates = [
+      'kanban_column = $1',
+      'kanban_position = $2',
+      'status = $3',
+      'updated_at = NOW()'
+    ];
+    const values = [column, position || 0, newStatus];
+    let paramIdx = 4;
+
+    // Автоматическое проставление дат
+    if (column === 'in_progress' && !task.accepted_at) {
+      updates.push(`accepted_at = NOW()`);
+    }
+    if (column === 'done' && !task.completed_at) {
+      updates.push(`completed_at = NOW()`);
+    }
+
+    values.push(id);
+    await db.query(
+      `UPDATE tasks SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
+      values
+    );
+
+    // Добавить системный комментарий
+    if (oldColumn !== column) {
+      const columnNames = { new: 'Новые', in_progress: 'В работе', review: 'На проверке', done: 'Готово' };
+      await db.query(`
+        INSERT INTO task_comments (task_id, user_id, text, is_system, created_at, updated_at)
+        VALUES ($1, $2, $3, true, NOW(), NOW())
+      `, [id, userId, `Перемещено: ${columnNames[oldColumn] || oldColumn} → ${columnNames[column]}`]);
+    }
+
+    // Уведомления
+    if (column === 'done' && oldStatus !== 'done') {
+      await notify(
+        task.creator_id,
+        '✅ Задача выполнена',
+        `${request.user.name || request.user.login} завершил задачу «${task.title}»`,
+        `#/kanban?id=${id}`
+      );
+    }
+
+    return { success: true, newStatus };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/tasks/:id/acknowledge — Подтвердить ознакомление
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/acknowledge', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const userId = request.user.id;
+
+    const { rows: [task] } = await db.query(
+      'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2',
+      [id, userId]
+    );
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+
+    if (task.acknowledged_at) {
+      return reply.code(400).send({ error: 'Уже подтверждено' });
+    }
+
+    await db.query(`
+      UPDATE tasks SET acknowledged_at = NOW(), acknowledged_by = $1, updated_at = NOW()
+      WHERE id = $2
+    `, [userId, id]);
+
+    // Уведомить создателя
+    await notify(
+      task.creator_id,
+      '👁️ Задача просмотрена',
+      `${request.user.name || request.user.login} ознакомился с задачей «${task.title}»`,
+      `#/kanban?id=${id}`
+    );
+
+    return { success: true };
+  });
+
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║                    КОММЕНТАРИИ К ЗАДАЧАМ                     ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/tasks/:id/comments — Получить комментарии
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/:id/comments', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+
+    const { rows: [task] } = await db.query('SELECT id FROM tasks WHERE id = $1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+
+    const { rows } = await db.query(`
+      SELECT c.*, u.name as user_name, u.role as user_role
+      FROM task_comments c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.task_id = $1
+      ORDER BY c.created_at ASC
+    `, [id]);
+
+    return { comments: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/tasks/:id/comments — Добавить комментарий
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/comments', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const userId = request.user.id;
+    const { text } = request.body;
+
+    if (!text || !text.trim()) {
+      return reply.code(400).send({ error: 'Текст обязателен' });
+    }
+
+    const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+
+    const { rows: [comment] } = await db.query(`
+      INSERT INTO task_comments (task_id, user_id, text, created_at, updated_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      RETURNING *
+    `, [id, userId, text.trim()]);
+
+    // Уведомить участников (создателя, исполнителя, наблюдателей)
+    const usersToNotify = new Set([task.creator_id, task.assignee_id]);
+
+    const { rows: watchers } = await db.query('SELECT user_id FROM task_watchers WHERE task_id = $1', [id]);
+    for (const w of watchers) usersToNotify.add(w.user_id);
+
+    usersToNotify.delete(userId); // Не уведомлять автора комментария
+
+    const userName = request.user.name || request.user.login;
+    for (const uid of usersToNotify) {
+      await notify(
+        uid,
+        '💬 Новый комментарий',
+        `${userName} прокомментировал задачу «${task.title}»:\n${text.trim().substring(0, 100)}`,
+        `#/kanban?id=${id}`
+      );
+    }
+
+    return { comment };
+  });
+
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║                    НАБЛЮДАТЕЛИ                               ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/tasks/:id/watchers — Получить наблюдателей
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/:id/watchers', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+
+    const { rows } = await db.query(`
+      SELECT w.*, u.name, u.role
+      FROM task_watchers w
+      JOIN users u ON w.user_id = u.id
+      WHERE w.task_id = $1
+    `, [id]);
+
+    return { watchers: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/tasks/:id/watchers — Добавить наблюдателя
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/watchers', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const { user_id } = request.body;
+
+    if (!user_id) return reply.code(400).send({ error: 'user_id обязателен' });
+
+    await db.query(`
+      INSERT INTO task_watchers (task_id, user_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (task_id, user_id) DO NOTHING
+    `, [id, parseInt(user_id)]);
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // DELETE /api/tasks/:id/watchers/:userId — Удалить наблюдателя
+  // ───────────────────────────────────────────────────────────────
+  fastify.delete('/:id/watchers/:userId', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const watcherId = parseInt(request.params.userId);
+
+    await db.query(
+      'DELETE FROM task_watchers WHERE task_id = $1 AND user_id = $2',
+      [id, watcherId]
+    );
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/tasks/:id/watch — Подписаться на задачу (самому)
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/watch', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const userId = request.user.id;
+
+    await db.query(`
+      INSERT INTO task_watchers (task_id, user_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (task_id, user_id) DO NOTHING
+    `, [id, userId]);
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // DELETE /api/tasks/:id/watch — Отписаться от задачи
+  // ───────────────────────────────────────────────────────────────
+  fastify.delete('/:id/watch', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const userId = request.user.id;
+
+    await db.query(
+      'DELETE FROM task_watchers WHERE task_id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    return { success: true };
+  });
 };
