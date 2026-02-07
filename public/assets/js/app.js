@@ -171,57 +171,90 @@ console.log('[ASGARD] Global period functions loaded');
 </style>
 `;
 
-  // M1: Добавлено поле p (permission key) для модульных ролей
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NAVIGATION GROUPS — Business Viking 2026 Design System
+  // 9 групп навигации с иконками и раскрывающимися секциями
+  // ═══════════════════════════════════════════════════════════════════════════
+  const NAV_GROUPS = [
+    { id: "home",     label: "Главная",       icon: "🏠", defaultExpanded: true },
+    { id: "tenders",  label: "Тендеры",       icon: "📋", defaultExpanded: true },
+    { id: "works",    label: "Работы",        icon: "⚒️", defaultExpanded: true },
+    { id: "finance",  label: "Финансы",       icon: "💰", defaultExpanded: false },
+    { id: "resources",label: "Ресурсы",       icon: "📦", defaultExpanded: false },
+    { id: "personnel",label: "Персонал",      icon: "👥", defaultExpanded: false },
+    { id: "comm",     label: "Коммуникации",  icon: "💬", defaultExpanded: false },
+    { id: "analytics",label: "Аналитика",     icon: "📊", defaultExpanded: false },
+    { id: "system",   label: "Система",       icon: "⚙️", defaultExpanded: false }
+  ];
+
+  // M1: Добавлено поле p (permission key) и g (group id) для модульных ролей
   const NAV=[
-    {r:"/home",l:"Зал Ярла • Меню",d:"Порталы и сводка",roles:ALL_ROLES,i:"home",p:"home"},
-    {r:"/dashboard",l:"Дашборд руководителя",d:"Сводная аналитика",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard",p:"dashboard"},
-    {r:"/calendar",l:"Календарь встреч",d:"Совещания и события",roles:ALL_ROLES,i:"schedule",p:"calendar"},
-    {r:"/birthdays",l:"Дни рождения",d:"Офисный календарь ДР",roles:ALL_ROLES,i:"birthdays",p:"birthdays"},
-    {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders",p:"funnel"},
-    {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders",p:"tenders"},
-    {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","PM",...DIRECTOR_ROLES],i:"customers",p:"customers"},
-    {r:"/pm-calcs",l:"Карта Похода • Просчёты",d:"Inbox РП",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_calcs"},
-    {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"approvals"},
-    {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"approvals",p:"bonus_approval"},
-    {r:"/pm-works",l:"Карта Похода • Работы",d:"Проекты РП",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmworks",p:"pm_works"},
-    {r:"/all-works",l:"Свод Контрактов",d:"Все работы",roles:["ADMIN",...DIRECTOR_ROLES],i:"allworks",p:"all_works"},
-    {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN",...DIRECTOR_ROLES],i:"allestimates",p:"all_estimates"},
-    {r:"/finances",l:"Финансы",d:"Аналитика и реестр расходов",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"finances"},
-    {r:"/invoices",l:"Счета и оплаты",d:"Выставление и отслеживание",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"invoices"},
-    {r:"/acts",l:"Акты выполненных работ",d:"Создание и подписание",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"buh",p:"acts"},
-    {r:"/warehouse",l:"Склад ТМЦ",d:"Оборудование и инструменты",roles:ALL_ROLES,i:"backup",p:"warehouse"},
-    {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment"},
-    {r:"/office-expenses",l:"Офисные расходы",d:"Управление и согласование",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"office",p:"office_expenses"},
-    {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence",p:"correspondence"},
-    {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков и покупателей",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies",p:"contracts"},
-    {r:"/seals",l:"Реестр печатей",d:"Учёт и передача печатей",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"seals"},
-    {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица, уведомления",roles:["ADMIN","HR","TO","PM",...DIRECTOR_ROLES],i:"workers",p:"permits"},
-    {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"proxies"},
-    {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","PM",...DIRECTOR_ROLES],i:"travel",p:"travel"},
-    {r:"/user-requests",l:"Заявки на регистрацию",d:"Одобрение новых пользователей",roles:["ADMIN",...DIRECTOR_ROLES],i:"requests",p:"users_admin"},
-    {r:"/analytics",l:"Аналитика Ярла",d:"KPI работ и денег",roles:["ADMIN",...DIRECTOR_ROLES],i:"kpiworks",p:"analytics"},
-    {r:"/alerts",l:"Воронья почта • Уведомления",d:"События и ответы",roles:ALL_ROLES,i:"alerts",p:"alerts"},
-    {r:"/office-schedule",l:"График Дружины • Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule",p:"office_schedule"},
-    {r:"/workers-schedule",l:"График Дружины • Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule"},
-    {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"rating",p:"hr_rating"},
-    {r:"/gantt-calcs",l:"Гантт • Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttcalcs",p:"gantt"},
-    {r:"/gantt-works",l:"Гантт • Работы",d:"План и факты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttworks",p:"gantt"},
-    {r:"/backup",l:"Камень Хроник • Резерв",d:"Экспорт/импорт базы",roles:["ADMIN",...DIRECTOR_ROLES],i:"backup",p:"backup"},
-    {r:"/diag",l:"Диагностика",d:"Версия, база, self-test, логи",roles:["ADMIN"],i:"diag",p:"diag"},
-    {r:"/settings",l:"Кузница Настроек",d:"Справочники и цвета",roles:["ADMIN",...DIRECTOR_ROLES],i:"settings",p:"settings"},
-    {r:"/telegram",l:"Telegram",d:"Уведомления и SMS",roles:["ADMIN"],i:"alerts",p:"telegram_admin"},
-    {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup",p:"sync"},
-    {r:"/mango",l:"Телефония",d:"Манго Телеком",roles:["ADMIN"],i:"alerts",p:"telegram_admin"},
-    {r:"/chat",l:"Чат дружины",d:"Общение и согласования",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"correspondence",p:"chat"},
-    {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"dashboard",p:"my_dashboard"},
-    {r:"/personnel",l:"Персонал",d:"Дружина — сотрудники",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"personnel"},
-    {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"hr_requests"},
-    {r:"/proc-requests",l:"Заявки закупок",d:"Закупки",roles:["ADMIN","PROC",...DIRECTOR_ROLES],i:"approvals",p:"proc_requests"},
-    {r:"/buh-registry",l:"Реестр расходов",d:"Бухгалтерский реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"buh_registry"},
-    {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"finances",p:"cash"},
-    {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN",...DIRECTOR_ROLES],i:"finances",p:"cash_admin"},
-    {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks"},
-    {r:"/tasks-admin",l:"Управление задачами",d:"Контроль задач сотрудников",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"tasks_admin"},
+    // ── ГЛАВНАЯ ──
+    {r:"/home",l:"Зал Ярла",d:"Порталы и сводка",roles:ALL_ROLES,i:"home",p:"home",g:"home"},
+    {r:"/dashboard",l:"Дашборд руководителя",d:"Сводная аналитика",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard",p:"dashboard",g:"home"},
+    {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"dashboard",p:"my_dashboard",g:"home"},
+    {r:"/calendar",l:"Календарь встреч",d:"Совещания и события",roles:ALL_ROLES,i:"schedule",p:"calendar",g:"home"},
+    {r:"/birthdays",l:"Дни рождения",d:"Офисный календарь ДР",roles:ALL_ROLES,i:"birthdays",p:"birthdays",g:"home"},
+    {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"home"},
+
+    // ── ТЕНДЕРЫ ──
+    {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders",p:"funnel",g:"tenders"},
+    {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders",p:"tenders",g:"tenders"},
+    {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","PM",...DIRECTOR_ROLES],i:"customers",p:"customers",g:"tenders"},
+
+    // ── РАБОТЫ ──
+    {r:"/pm-calcs",l:"Просчёты (inbox)",d:"Входящие от ТО",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_calcs",g:"works"},
+    {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"approvals",g:"works"},
+    {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"approvals",p:"bonus_approval",g:"works"},
+    {r:"/pm-works",l:"Мои работы (РП)",d:"Проекты РП",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmworks",p:"pm_works",g:"works"},
+    {r:"/all-works",l:"Свод Контрактов",d:"Все работы",roles:["ADMIN",...DIRECTOR_ROLES],i:"allworks",p:"all_works",g:"works"},
+    {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN",...DIRECTOR_ROLES],i:"allestimates",p:"all_estimates",g:"works"},
+    {r:"/gantt-calcs",l:"Гантт: Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttcalcs",p:"gantt",g:"works"},
+    {r:"/gantt-works",l:"Гантт: Работы",d:"План и факты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttworks",p:"gantt",g:"works"},
+    {r:"/tasks-admin",l:"Управление задачами",d:"Контроль задач",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"tasks_admin",g:"works"},
+
+    // ── ФИНАНСЫ ──
+    {r:"/finances",l:"Финансы",d:"Аналитика и реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"finances",g:"finance"},
+    {r:"/invoices",l:"Счета и оплаты",d:"Выставление и отслеживание",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"invoices",g:"finance"},
+    {r:"/acts",l:"Акты",d:"Акты выполненных работ",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"buh",p:"acts",g:"finance"},
+    {r:"/buh-registry",l:"Реестр расходов",d:"Бухгалтерский реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"buh_registry",g:"finance"},
+    {r:"/office-expenses",l:"Офисные расходы",d:"Управление и согласование",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"office",p:"office_expenses",g:"finance"},
+    {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"finances",p:"cash",g:"finance"},
+    {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN",...DIRECTOR_ROLES],i:"finances",p:"cash_admin",g:"finance"},
+
+    // ── РЕСУРСЫ ──
+    {r:"/warehouse",l:"Склад ТМЦ",d:"Оборудование и инструменты",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
+    {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment",g:"resources"},
+    {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence",p:"correspondence",g:"resources"},
+    {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies",p:"contracts",g:"resources"},
+    {r:"/seals",l:"Реестр печатей",d:"Учёт и передача",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"seals",g:"resources"},
+    {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"proxies",g:"resources"},
+    {r:"/proc-requests",l:"Заявки закупок",d:"Закупки",roles:["ADMIN","PROC",...DIRECTOR_ROLES],i:"approvals",p:"proc_requests",g:"resources"},
+
+    // ── ПЕРСОНАЛ ──
+    {r:"/personnel",l:"Дружина",d:"Сотрудники",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
+    {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"hr_requests",g:"personnel"},
+    {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица",roles:["ADMIN","HR","TO","PM",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},
+    {r:"/office-schedule",l:"График: Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule",p:"office_schedule",g:"personnel"},
+    {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
+    {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
+    {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
+
+    // ── КОММУНИКАЦИИ ──
+    {r:"/chat",l:"Чат дружины",d:"Общение и согласования",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"correspondence",p:"chat",g:"comm"},
+    {r:"/alerts",l:"Уведомления",d:"Воронья почта",roles:ALL_ROLES,i:"alerts",p:"alerts",g:"comm"},
+    {r:"/telegram",l:"Telegram",d:"Уведомления и SMS",roles:["ADMIN"],i:"alerts",p:"telegram_admin",g:"comm"},
+    {r:"/mango",l:"Телефония",d:"Манго Телеком",roles:["ADMIN"],i:"alerts",p:"telegram_admin",g:"comm"},
+
+    // ── АНАЛИТИКА ──
+    {r:"/analytics",l:"Аналитика Ярла",d:"KPI работ и денег",roles:["ADMIN",...DIRECTOR_ROLES],i:"kpiworks",p:"analytics",g:"analytics"},
+    {r:"/user-requests",l:"Заявки пользователей",d:"Одобрение регистраций",roles:["ADMIN",...DIRECTOR_ROLES],i:"requests",p:"users_admin",g:"analytics"},
+
+    // ── СИСТЕМА ──
+    {r:"/settings",l:"Настройки",d:"Справочники и цвета",roles:["ADMIN",...DIRECTOR_ROLES],i:"settings",p:"settings",g:"system"},
+    {r:"/backup",l:"Резервные копии",d:"Экспорт/импорт базы",roles:["ADMIN",...DIRECTOR_ROLES],i:"backup",p:"backup",g:"system"},
+    {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup",p:"sync",g:"system"},
+    {r:"/diag",l:"Диагностика",d:"Версия, база, self-test",roles:["ADMIN"],i:"diag",p:"diag",g:"system"},
   ];
 
   async function layout(body,{title,motto,rightBadges=[]}={}){
@@ -260,7 +293,8 @@ try{
     const menuSettings = (window.AsgardAuth && AsgardAuth.getMenuSettings) ? AsgardAuth.getMenuSettings() : {};
     const hiddenRoutes = menuSettings.hidden_routes || [];
 
-    const navHtml = (role==="GUEST") ? "" : NAV.filter(n => {
+    // Фильтруем NAV по правам
+    const filteredNav = (role==="GUEST") ? [] : NAV.filter(n => {
       // 1. Старая проверка по ролям (обратная совместимость)
       if (!roleAllowed(n.roles, role)) return false;
       // 2. Новая проверка по пермишенам (если поле p задано)
@@ -270,13 +304,49 @@ try{
       // 3. Скрытые пользователем вкладки
       if (hiddenRoutes.includes('#' + n.r)) return false;
       return true;
-    }).map(n=>{
-      const a=(cur===n.r)?"active":"";
-      return `<a class="navitem ${a}" href="#${n.r}">
-        <div class="ico"><img src="assets/icons/nav/${esc(n.i)}.svg" alt="" loading="lazy"/></div>
-        <div class="lbl"><div class="name">${esc(n.l)}</div><div class="desc">${esc(n.d)}</div></div>
-      </a>`;
-    }).join("");    const switchCtl = (user && window.AsgardAuth && AsgardAuth.canSwitch) ? AsgardAuth.canSwitch(user) : null;
+    });
+
+    // Группируем по g (group id)
+    const groupedNav = {};
+    for (const n of filteredNav) {
+      const gid = n.g || "home";
+      if (!groupedNav[gid]) groupedNav[gid] = [];
+      groupedNav[gid].push(n);
+    }
+
+    // Рендерим группы
+    let navHtml = "";
+    if (role !== "GUEST") {
+      for (const group of NAV_GROUPS) {
+        const items = groupedNav[group.id];
+        if (!items || items.length === 0) continue;
+
+        const isExpanded = window.AsgardTheme && AsgardTheme.isNavGroupExpanded
+          ? AsgardTheme.isNavGroupExpanded(group.id, group.defaultExpanded)
+          : group.defaultExpanded;
+
+        const hasActiveItem = items.some(n => cur === n.r);
+        const expandedClass = isExpanded || hasActiveItem ? "expanded" : "";
+
+        navHtml += `<div class="nav-group ${expandedClass}" data-group="${esc(group.id)}">
+          <button class="nav-group-header" type="button" aria-expanded="${isExpanded || hasActiveItem}">
+            <span class="nav-group-icon">${group.icon}</span>
+            <span class="nav-group-label">${esc(group.label)}</span>
+            <span class="nav-group-count">${items.length}</span>
+            <span class="nav-group-chevron">▾</span>
+          </button>
+          <div class="nav-group-items">
+            ${items.map(n => {
+              const a = (cur === n.r) ? "active" : "";
+              return `<a class="navitem ${a}" href="#${n.r}">
+                <div class="ico"><img src="assets/icons/nav/${esc(n.i)}.svg" alt="" loading="lazy"/></div>
+                <div class="lbl"><div class="name">${esc(n.l)}</div><div class="desc">${esc(n.d)}</div></div>
+              </a>`;
+            }).join("")}
+          </div>
+        </div>`;
+      }
+    }    const switchCtl = (user && window.AsgardAuth && AsgardAuth.canSwitch) ? AsgardAuth.canSwitch(user) : null;
     let switchHtml = "";
     if(user && switchCtl){
       const cur = user.role;
@@ -291,22 +361,31 @@ try{
       : `<button class="btn" id="btnLoginGo">Войти</button><button class="btn ghost" id="btnRegGo">Регистрация</button>`;
 
     const logo = ASSETS_BASE + "img/logo.png";
-    $("#app").innerHTML = `<div class="app">
+    const sidebarCollapsed = window.AsgardTheme && AsgardTheme.getSidebarCollapsed ? AsgardTheme.getSidebarCollapsed() : false;
+
+    $("#app").innerHTML = `<div class="app${sidebarCollapsed ? ' sidebar-collapsed' : ''}">
       <aside class="sidenav">
-        <a class="brand" href="#/welcome" aria-label="На главную">
-          <img src="${logo}" alt="АСГАРД‑СЕРВИС" onerror="this.style.display='none'"/>
-          <div>
-            <div class="h">CRM</div>
-            <div class="s">ᚠᚢᚦᚨᚱᚲ</div>
-          </div>
-        </a>
+        <div class="sidebar-header">
+          <a class="brand" href="#/welcome" aria-label="На главную">
+            <img src="${logo}" alt="АСГАРД‑СЕРВИС" onerror="this.style.display='none'"/>
+            <div class="brand-text">
+              <div class="h">АСГАРД</div>
+              <div class="s">CRM • ᚠᚢᚦᚨᚱᚲ</div>
+            </div>
+          </a>
+          <button class="sidebar-toggle" id="btnSidebarToggle" type="button" aria-label="Свернуть меню" title="Свернуть/развернуть меню">
+            <span class="toggle-icon">◀</span>
+          </button>
+        </div>
         <nav class="nav">
-          <div class="group-title">Навигация</div>
-          ${navHtml || `<div class="help" style="padding:10px 10px">Войдите, чтобы открыть разделы.</div>`}
+          ${navHtml || `<div class="help" style="padding:16px">Войдите, чтобы открыть разделы.</div>`}
         </nav>
         <div class="sidefoot">
           ${authBtns}
-          <button class="btn ghost" id="btnBackup">Экспорт/Импорт</button>
+          <button class="btn ghost" id="btnBackup">
+            <span class="btn-icon">💾</span>
+            <span class="btn-text">Экспорт/Импорт</span>
+          </button>
         </div>
       </aside>
       <div class="nav-overlay" id="navOverlay"></div>
@@ -358,6 +437,35 @@ try{
     if(window.__ASG_DOC_ESC_NAV__) document.removeEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
     window.__ASG_DOC_ESC_NAV__ = (e)=>{ if(e.key==="Escape") closeNav(); };
     document.addEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
+
+    // Sidebar toggle (collapse/expand)
+    const sidebarToggle = $("#btnSidebarToggle");
+    if (sidebarToggle) {
+      addMobileClick(sidebarToggle, () => {
+        const app = document.querySelector('.app');
+        if (app) {
+          const isCollapsed = app.classList.toggle('sidebar-collapsed');
+          if (window.AsgardTheme && AsgardTheme.setSidebarCollapsed) {
+            AsgardTheme.setSidebarCollapsed(isCollapsed);
+          }
+        }
+      });
+    }
+
+    // Nav group toggles
+    $$(".nav-group-header").forEach(header => {
+      addMobileClick(header, (e) => {
+        e.preventDefault();
+        const group = header.closest(".nav-group");
+        if (!group) return;
+        const groupId = group.dataset.group;
+        const isExpanded = group.classList.toggle("expanded");
+        header.setAttribute("aria-expanded", isExpanded);
+        if (window.AsgardTheme && AsgardTheme.setNavGroupState) {
+          AsgardTheme.setNavGroupState(groupId, isExpanded);
+        }
+      });
+    });
 
     addMobileClick($("#btnLogout"), ()=>{ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; });
     addMobileClick($("#btnLoginGo"), ()=>location.hash="#/login");

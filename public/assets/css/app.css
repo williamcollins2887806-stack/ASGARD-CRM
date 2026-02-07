@@ -5517,3 +5517,357 @@ html[data-theme="light"] [data-tooltip]::after {
 html[data-theme="light"] [data-tooltip]::before {
   border-top-color: rgba(255, 255, 255, 0.98);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   NAVIGATION GROUPS — Business Viking 2026 Design System
+   Группируемая навигация с раскрывающимися секциями
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Sidebar header with toggle */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar-header .brand {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.sidebar-header .brand-text {
+  overflow: hidden;
+  transition: opacity var(--transition-normal), width var(--transition-normal);
+}
+
+.sidebar-toggle {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--glass);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.sidebar-toggle:hover {
+  border-color: var(--gold-border);
+  background: var(--gold-glow);
+  color: var(--gold);
+}
+
+.sidebar-toggle .toggle-icon {
+  font-size: 12px;
+  transition: transform var(--transition-normal);
+}
+
+/* Navigation group styles */
+.nav-group {
+  margin-bottom: 4px;
+}
+
+.nav-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+
+.nav-group-header:hover {
+  background: var(--gold-glow);
+  color: var(--text-primary);
+}
+
+.nav-group-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.nav-group-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-group-count {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.nav-group-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform var(--transition-normal);
+  flex-shrink: 0;
+}
+
+/* Items container */
+.nav-group-items {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height var(--transition-normal);
+  padding-left: 8px;
+}
+
+/* Expanded state */
+.nav-group.expanded .nav-group-header {
+  color: var(--gold);
+}
+
+.nav-group.expanded .nav-group-count {
+  background: var(--gold-glow);
+  border-color: var(--gold-border);
+  color: var(--gold);
+}
+
+.nav-group.expanded .nav-group-chevron {
+  transform: rotate(180deg);
+}
+
+.nav-group.expanded .nav-group-items {
+  max-height: 1000px;
+}
+
+/* Active group (has active item) */
+.nav-group:has(.navitem.active) .nav-group-header {
+  color: var(--gold);
+}
+
+.nav-group:has(.navitem.active) .nav-group-items {
+  max-height: 1000px;
+}
+
+/* Navitem inside group */
+.nav-group .navitem {
+  padding: 8px 12px;
+  margin: 2px 0;
+}
+
+.nav-group .navitem .ico {
+  width: 32px;
+  height: 32px;
+}
+
+.nav-group .navitem .ico img {
+  width: 16px;
+  height: 16px;
+}
+
+.nav-group .navitem .lbl .name {
+  font-size: 12px;
+}
+
+.nav-group .navitem .lbl .desc {
+  font-size: 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SIDEBAR COLLAPSED STATE
+   Свёрнутый режим сайдбара (только иконки)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Collapsed sidebar */
+.app.sidebar-collapsed .sidenav {
+  width: 72px;
+}
+
+.app.sidebar-collapsed .main {
+  margin-left: 0;
+}
+
+/* Hide text in collapsed mode */
+.app.sidebar-collapsed .brand-text,
+.app.sidebar-collapsed .nav-group-label,
+.app.sidebar-collapsed .nav-group-count,
+.app.sidebar-collapsed .nav-group-chevron,
+.app.sidebar-collapsed .navitem .lbl,
+.app.sidebar-collapsed .sidefoot .btn-text,
+.app.sidebar-collapsed .pill .who,
+.app.sidebar-collapsed .pill .role {
+  display: none;
+}
+
+/* Adjust toggle icon */
+.app.sidebar-collapsed .sidebar-toggle .toggle-icon {
+  transform: rotate(180deg);
+}
+
+/* Adjust sidebar header */
+.app.sidebar-collapsed .sidebar-header {
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 8px;
+}
+
+.app.sidebar-collapsed .sidebar-header .brand {
+  padding: 8px;
+}
+
+.app.sidebar-collapsed .sidebar-header .brand img {
+  width: 40px;
+  height: 40px;
+}
+
+/* Adjust nav group header */
+.app.sidebar-collapsed .nav-group-header {
+  justify-content: center;
+  padding: 12px 8px;
+}
+
+.app.sidebar-collapsed .nav-group-icon {
+  font-size: 20px;
+}
+
+/* Adjust navitems */
+.app.sidebar-collapsed .navitem {
+  justify-content: center;
+  padding: 10px 8px;
+}
+
+.app.sidebar-collapsed .navitem .ico {
+  width: 36px;
+  height: 36px;
+}
+
+/* Footer adjustments */
+.app.sidebar-collapsed .sidefoot {
+  padding: 12px 8px;
+}
+
+.app.sidebar-collapsed .sidefoot .btn {
+  padding: 10px;
+  justify-content: center;
+}
+
+.app.sidebar-collapsed .sidefoot .btn-icon {
+  font-size: 18px;
+}
+
+.app.sidebar-collapsed .pill {
+  padding: 8px;
+  justify-content: center;
+}
+
+/* Tooltip on hover in collapsed mode */
+.app.sidebar-collapsed .nav-group-header,
+.app.sidebar-collapsed .navitem {
+  position: relative;
+}
+
+.app.sidebar-collapsed .nav-group-header::after,
+.app.sidebar-collapsed .navitem::after {
+  content: attr(title);
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 8px 12px;
+  margin-left: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: all var(--transition-fast);
+  z-index: 100;
+}
+
+.app.sidebar-collapsed .nav-group-header:hover::after,
+.app.sidebar-collapsed .navitem:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Grid update for collapsed sidebar */
+@media (min-width: 901px) {
+  .app {
+    grid-template-columns: 280px 1fr;
+    transition: grid-template-columns var(--transition-normal);
+  }
+
+  .app.sidebar-collapsed {
+    grid-template-columns: 72px 1fr;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   LIGHT THEME — Navigation Groups
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .nav-group-header {
+  color: #475569;
+}
+
+html[data-theme="light"] .nav-group-header:hover {
+  background: rgba(220, 38, 38, 0.08);
+  color: #1e293b;
+}
+
+html[data-theme="light"] .nav-group.expanded .nav-group-header {
+  color: var(--primary);
+}
+
+html[data-theme="light"] .nav-group-count {
+  background: #f8fafc;
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #64748b;
+}
+
+html[data-theme="light"] .nav-group.expanded .nav-group-count {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.2);
+  color: var(--primary);
+}
+
+html[data-theme="light"] .sidebar-toggle {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #64748b;
+}
+
+html[data-theme="light"] .sidebar-toggle:hover {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.2);
+  color: var(--primary);
+}
+
+html[data-theme="light"] .app.sidebar-collapsed .nav-group-header::after,
+html[data-theme="light"] .app.sidebar-collapsed .navitem::after {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  color: #1e293b;
+}
