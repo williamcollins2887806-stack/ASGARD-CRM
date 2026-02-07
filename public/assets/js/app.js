@@ -195,7 +195,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence",p:"correspondence"},
     {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков и покупателей",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies",p:"contracts"},
     {r:"/seals",l:"Реестр печатей",d:"Учёт и передача печатей",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"seals"},
-    {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, уведомления",roles:["ADMIN","HR","TO",...DIRECTOR_ROLES],i:"workers",p:"permits"},
+    {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица, уведомления",roles:["ADMIN","HR","TO","PM",...DIRECTOR_ROLES],i:"workers",p:"permits"},
     {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"proxies"},
     {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","PM",...DIRECTOR_ROLES],i:"travel",p:"travel"},
     {r:"/user-requests",l:"Заявки на регистрацию",d:"Одобрение новых пользователей",roles:["ADMIN",...DIRECTOR_ROLES],i:"requests",p:"users_admin"},
@@ -1037,6 +1037,17 @@ try{
           </div>
         </div>
 
+        <!-- Виджет допусков для HR/TO -->
+        <div class="card span-6" id="permitsWidget" style="display:none">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <h3 style="margin:0">Допуски сотрудников</h3>
+            <a href="#/permits" class="btn" style="padding:4px 12px; font-size:12px">Открыть</a>
+          </div>
+          <div id="permitsWidgetContent">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+        </div>
+
         <!-- Виджет телефонии -->
         <div class="card span-3" id="callToggleContainer"></div>
         
@@ -1164,6 +1175,40 @@ try{
     } else if (document.getElementById('todoWidgetContent')) {
       document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Нет доступа</div>';
     }
+
+    // Загружаем виджет допусков для HR/TO/ADMIN
+    if (document.getElementById('permitsWidget') && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('permits', 'read')) {
+      const showWidget = ['HR', 'TO', 'ADMIN'].includes(user.role) || DIRECTOR_ROLES.includes(user.role);
+      if (showWidget) {
+        document.getElementById('permitsWidget').style.display = 'block';
+        (async () => {
+          try {
+            const auth = AsgardAuth.getAuth();
+            const resp = await fetch('/api/permits/stats', {
+              headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+            });
+            if (resp.ok) {
+              const stats = await resp.json();
+              if (stats.expired > 0 || stats.expiring_14 > 0 || stats.expiring_30 > 0) {
+                document.getElementById('permitsWidgetContent').innerHTML = `
+                  <div class="kpi" style="grid-template-columns:repeat(3,1fr); margin-top:8px">
+                    <div class="k"><div class="t">Истекли</div><div class="v" style="color:var(--red)">${stats.expired || 0}</div></div>
+                    <div class="k"><div class="t">14 дн.</div><div class="v" style="color:var(--amber)">${stats.expiring_14 || 0}</div></div>
+                    <div class="k"><div class="t">30 дн.</div><div class="v" style="color:var(--yellow,var(--amber))">${stats.expiring_30 || 0}</div></div>
+                  </div>
+                `;
+              } else {
+                document.getElementById('permitsWidgetContent').innerHTML = '<div class="text-muted" style="color:var(--green)">Все допуски в норме</div>';
+              }
+            } else {
+              document.getElementById('permitsWidgetContent').innerHTML = '<div class="text-muted">Не удалось загрузить</div>';
+            }
+          } catch (e) {
+            document.getElementById('permitsWidgetContent').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+          }
+        })();
+      }
+    }
   }
 
   async function placeholder(title){
@@ -1194,7 +1239,14 @@ try{
 
     AsgardRouter.add("/contracts", ()=>AsgardContractsPage.render({layout, title:"Реестр договоров"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/seals", ()=>AsgardSealsPage.render({layout, title:"Реестр печатей"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/permits", ()=>AsgardPermitsPage.render({layout, title:"Разрешения и допуски"}), {auth:true, roles:["ADMIN","HR","TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/permits", () => {
+      if (!AsgardAuth.hasPermission('permits', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      AsgardPermitsPage.render({layout, title:"Разрешения и допуски"});
+    }, {auth:true, roles:["ADMIN","HR","TO","PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/funnel", ()=>AsgardFunnelPage.render({layout, title:"Воронка продаж"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/tenders", ()=>AsgardTendersPage.render({layout, title:"Сага Тендеров"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","PM",...DIRECTOR_ROLES]});

@@ -1,10 +1,11 @@
 /**
- * АСГАРД CRM — Разрешения и допуски
- * Этап 32
+ * АСГАРД CRM — Разрешения и допуски (M6)
+ *
+ * Обновлённая версия с API, матрицей, проектами и уведомлениями
  */
 window.AsgardPermitsPage = (function(){
-  
-  // 20 стандартных типов разрешений
+
+  // Fallback статические данные (до загрузки с сервера)
   const PERMIT_TYPES = [
     { id: 'height_1', name: 'Допуск к работам на высоте (1 группа)', category: 'safety' },
     { id: 'height_2', name: 'Допуск к работам на высоте (2 группа)', category: 'safety' },
@@ -36,11 +37,74 @@ window.AsgardPermitsPage = (function(){
     attest: { name: 'Аттестация', color: '#8b5cf6' }
   };
 
-  // CRUD
+  // Кэш типов с сервера
+  let serverTypes = null;
+  let currentTab = 'list';
+  let selectedPermits = new Set();
+
+  // ═══════════════════════════════════════════════════════════════
+  // HELPERS
+  // ═══════════════════════════════════════════════════════════════
+  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function formatDate(d) { return d ? new Date(d).toLocaleDateString('ru-RU') : ''; }
+
+  function getToken() {
+    const auth = window.AsgardAuth?.getAuth?.();
+    return auth?.token || '';
+  }
+
+  async function api(endpoint, options = {}) {
+    const token = getToken();
+    const headers = { ...options.headers };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    if (options.body && !(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(options.body);
+    }
+    const resp = await fetch('/api/permits' + endpoint, { ...options, headers });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: 'Ошибка сервера' }));
+      throw new Error(err.error || err.message || 'Ошибка');
+    }
+    return resp.json();
+  }
+
+  // Получить типы (с сервера или fallback)
+  async function getTypes() {
+    if (serverTypes) return serverTypes;
+    try {
+      const { types } = await api('/types');
+      serverTypes = types;
+      return types;
+    } catch(e) {
+      return PERMIT_TYPES;
+    }
+  }
+
+  function getTypeById(types, id) {
+    return types.find(t => t.id === id) || { id, name: id, category: 'safety' };
+  }
+
+  function getStatusBadge(status, daysLeft) {
+    const map = {
+      expired: { label: 'Истёк', color: 'var(--red)' },
+      expiring_14: { label: `${daysLeft} дн.`, color: 'var(--red)' },
+      expiring_30: { label: `${daysLeft} дн.`, color: 'var(--amber)' },
+      active: { label: 'Действует', color: 'var(--green)' }
+    };
+    const s = map[status] || map.active;
+    return `<span class="badge" style="background:${s.color}20;color:${s.color}">${s.label}</span>`;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // API WRAPPERS (для обратной совместимости)
+  // ═══════════════════════════════════════════════════════════════
   async function getAll() {
     try {
-      return await AsgardDB.getAll('employee_permits') || [];
+      const { permits } = await api('/');
+      return permits || [];
     } catch(e) {
+      // Fallback to old localStorage method
       const data = localStorage.getItem('asgard_employee_permits');
       return data ? JSON.parse(data) : [];
     }
@@ -48,128 +112,152 @@ window.AsgardPermitsPage = (function(){
 
   async function save(permit) {
     try {
-      await AsgardDB.put('employee_permits', permit);
+      if (permit.id) {
+        await api('/' + permit.id, { method: 'PUT', body: permit });
+      } else {
+        await api('/', { method: 'POST', body: permit });
+      }
     } catch(e) {
+      // Fallback to localStorage
       const all = await getAll();
       const idx = all.findIndex(p => p.id === permit.id);
       if (idx >= 0) all[idx] = permit;
-      else all.push(permit);
+      else all.push({ ...permit, id: Date.now() });
       localStorage.setItem('asgard_employee_permits', JSON.stringify(all));
     }
   }
 
   async function remove(id) {
     try {
-      await AsgardDB.delete('employee_permits', id);
+      await api('/' + id, { method: 'DELETE' });
     } catch(e) {
       const all = await getAll();
       localStorage.setItem('asgard_employee_permits', JSON.stringify(all.filter(p => p.id !== id)));
     }
   }
 
-  // Вычислить статус разрешения
+  // Вычислить статус разрешения (legacy)
   function computeStatus(permit) {
     if (!permit.expiry_date) return { status: 'active', label: 'Действует', color: 'var(--green)' };
-    
     const today = new Date();
     const expiry = new Date(permit.expiry_date);
     const daysLeft = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-    
     if (daysLeft < 0) return { status: 'expired', label: 'Истёк', color: 'var(--red)' };
     if (daysLeft <= 30) return { status: 'expiring', label: `Истекает через ${daysLeft} дн.`, color: 'var(--amber)' };
     return { status: 'active', label: 'Действует', color: 'var(--green)' };
   }
 
-  // Получить истекающие разрешения (для уведомлений)
   async function getExpiringPermits(daysAhead = 30) {
-    const all = await getAll();
-    const today = new Date();
-    const threshold = new Date(today.getTime() + daysAhead * 24 * 60 * 60 * 1000);
-    
-    return all.filter(p => {
-      if (!p.expiry_date) return false;
-      const expiry = new Date(p.expiry_date);
-      return expiry <= threshold && expiry >= today;
-    });
+    try {
+      const { permits } = await api('/?status=expiring_30');
+      return permits || [];
+    } catch(e) {
+      const all = await getAll();
+      const today = new Date();
+      const threshold = new Date(today.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+      return all.filter(p => {
+        if (!p.expiry_date) return false;
+        const expiry = new Date(p.expiry_date);
+        return expiry <= threshold && expiry >= today;
+      });
+    }
   }
 
-  // Рендер страницы разрешений сотрудника
+  // ═══════════════════════════════════════════════════════════════
+  // РЕНДЕР ДОПУСКОВ СОТРУДНИКА (для employee page)
+  // ═══════════════════════════════════════════════════════════════
   async function renderEmployeePermits(employeeId, canEdit = false) {
-    const all = await getAll();
-    const permits = all.filter(p => p.employee_id === employeeId);
-    
+    const types = await getTypes();
+    let permits = [];
+    try {
+      const resp = await api('/?employee_id=' + employeeId);
+      permits = resp.permits || [];
+    } catch(e) {
+      const all = await getAll();
+      permits = all.filter(p => p.employee_id === employeeId);
+    }
+
     let html = `
       <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
         <span class="help">Всего: ${permits.length}</span>
-        ${canEdit ? `<button class="btn mini" id="btnAddPermit">+ Добавить разрешение</button>` : ''}
+        ${canEdit ? `<button class="btn mini" id="btnAddPermit" data-employee="${employeeId}">+ Добавить разрешение</button>` : ''}
       </div>
     `;
-    
+
     if (permits.length === 0) {
       html += '<div class="help">Разрешений не добавлено</div>';
     } else {
       html += '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Тип</th><th>Номер</th><th>Выдано</th><th>Действует до</th><th>Статус</th><th></th></tr></thead><tbody>';
-      
+
       permits.forEach(p => {
-        const type = PERMIT_TYPES.find(t => t.id === p.type_id) || { name: p.type_id };
+        const type = getTypeById(types, p.type_id);
         const cat = CATEGORIES[type.category] || { color: '#94a3b8' };
-        const status = computeStatus(p);
-        
+        const status = p.computed_status || computeStatus(p).status;
+        const daysLeft = p.days_left;
+
         html += `
           <tr data-id="${p.id}">
             <td><span style="border-left:3px solid ${cat.color};padding-left:8px">${esc(type.name)}</span></td>
             <td>${esc(p.doc_number || '—')}</td>
             <td>${p.issue_date ? formatDate(p.issue_date) : '—'}</td>
             <td>${p.expiry_date ? formatDate(p.expiry_date) : 'Бессрочно'}</td>
-            <td><span class="badge" style="background:${status.color}20;color:${status.color}">${status.label}</span></td>
+            <td>${getStatusBadge(status, daysLeft)}</td>
             <td>
               ${canEdit ? `
                 <div style="display:flex;gap:4px">
-                  <button class="btn mini ghost btnEditPermit">✏️</button>
-                  <button class="btn mini ghost btnDelPermit">🗑️</button>
+                  <button class="btn mini ghost btnEditPermit" data-id="${p.id}">Изм.</button>
+                  <button class="btn mini ghost btnDelPermit" data-id="${p.id}">Уд.</button>
                 </div>
               ` : ''}
             </td>
           </tr>
         `;
       });
-      
+
       html += '</tbody></table></div>';
     }
-    
+
     return html;
   }
 
-  // Модалка добавления/редактирования
+  // ═══════════════════════════════════════════════════════════════
+  // МОДАЛКА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ
+  // ═══════════════════════════════════════════════════════════════
   async function openPermitModal(employeeId, permit = null, onSave = null) {
     const isEdit = !!permit;
-    const employees = await AsgardDB.getAll('employees') || [];
-    const emp = employees.find(e => e.id === employeeId);
-    
+    const types = await getTypes();
+
+    let empName = 'ID:' + employeeId;
+    try {
+      const employees = await AsgardDB.getAll('employees');
+      const emp = employees?.find(e => e.id === employeeId);
+      if (emp) empName = emp.fio;
+    } catch(e) {}
+
     const html = `
       <div class="modal-overlay" id="permitModal">
-        <div class="modal-content" style="max-width:500px">
+        <div class="modal-content" style="max-width:560px">
           <div class="modal-header">
-            <h3>${isEdit ? 'Редактирование' : 'Новое разрешение'}</h3>
-            <button class="btn ghost btnClose">✕</button>
+            <h3>${isEdit ? 'Редактирование допуска' : 'Новый допуск'}</h3>
+            <button class="btn ghost btnClose">&times;</button>
           </div>
           <div class="modal-body">
-            <p style="margin-bottom:16px">Сотрудник: <strong>${esc(emp?.fio || 'ID:' + employeeId)}</strong></p>
-            
+            <p style="margin-bottom:16px">Сотрудник: <strong>${esc(empName)}</strong></p>
+
             <div class="field">
               <label>Тип разрешения *</label>
               <select id="permitType" class="inp">
                 <option value="">— Выберите —</option>
                 ${Object.entries(CATEGORIES).map(([catId, cat]) => `
                   <optgroup label="${cat.name}">
-                    ${PERMIT_TYPES.filter(t => t.category === catId).map(t => `
+                    ${types.filter(t => t.category === catId).map(t => `
                       <option value="${t.id}" ${permit?.type_id === t.id ? 'selected' : ''}>${t.name}</option>
                     `).join('')}
                   </optgroup>
                 `).join('')}
               </select>
             </div>
-            
+
             <div class="formrow" style="margin-top:12px">
               <div>
                 <label>Номер документа</label>
@@ -180,21 +268,27 @@ window.AsgardPermitsPage = (function(){
                 <input id="permitIssuer" class="inp" value="${esc(permit?.issuer || '')}"/>
               </div>
             </div>
-            
+
             <div class="formrow" style="margin-top:12px">
               <div>
                 <label>Дата получения</label>
-                <input id="permitIssue" type="date" class="inp" value="${permit?.issue_date || ''}"/>
+                <input id="permitIssue" type="date" class="inp" value="${permit?.issue_date?.slice(0,10) || ''}"/>
               </div>
               <div>
                 <label>Действует до</label>
-                <input id="permitExpiry" type="date" class="inp" value="${permit?.expiry_date || ''}"/>
+                <input id="permitExpiry" type="date" class="inp" value="${permit?.expiry_date?.slice(0,10) || ''}"/>
               </div>
             </div>
-            
+
             <div class="field" style="margin-top:12px">
-              <label>Ссылка на скан</label>
-              <input id="permitFile" class="inp" placeholder="https://..." value="${esc(permit?.file_url || '')}"/>
+              <label>Скан документа</label>
+              <input id="permitScanFile" type="file" class="inp" accept=".pdf,.jpg,.jpeg,.png"/>
+              ${permit?.scan_file ? `<div class="help" style="margin-top:4px">Текущий файл: ${esc(permit.scan_original_name || permit.scan_file)}</div>` : ''}
+            </div>
+
+            <div class="field" style="margin-top:12px">
+              <label>Примечания</label>
+              <textarea id="permitNotes" class="inp" rows="2">${esc(permit?.notes || '')}</textarea>
             </div>
           </div>
           <div class="modal-footer" style="display:flex;gap:12px;justify-content:flex-end;padding:16px">
@@ -204,169 +298,785 @@ window.AsgardPermitsPage = (function(){
         </div>
       </div>
     `;
-    
+
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('permitModal');
-    
+
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
     modal.onclick = e => { if (e.target === modal) modal.remove(); };
-    
+
     document.getElementById('btnSavePermit').onclick = async () => {
       const typeId = document.getElementById('permitType').value;
       if (!typeId) { AsgardUI.toast('Ошибка', 'Выберите тип', 'err'); return; }
-      
-      const data = {
-        id: permit?.id || undefined,
-        employee_id: employeeId,
-        type_id: typeId,
-        doc_number: document.getElementById('permitNum').value.trim(),
-        issuer: document.getElementById('permitIssuer').value.trim(),
-        issue_date: document.getElementById('permitIssue').value || null,
-        expiry_date: document.getElementById('permitExpiry').value || null,
-        file_url: document.getElementById('permitFile').value.trim(),
-        created_at: permit?.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      await save(data);
-      modal.remove();
-      AsgardUI.toast('Сохранено', isEdit ? 'Разрешение обновлено' : 'Разрешение добавлено', 'ok');
-      if (onSave) onSave();
+
+      const scanInput = document.getElementById('permitScanFile');
+      const scanFile = scanInput.files?.[0];
+
+      try {
+        if (isEdit) {
+          // Update existing
+          await api('/' + permit.id, {
+            method: 'PUT',
+            body: {
+              type_id: typeId,
+              doc_number: document.getElementById('permitNum').value.trim(),
+              issuer: document.getElementById('permitIssuer').value.trim(),
+              issue_date: document.getElementById('permitIssue').value || null,
+              expiry_date: document.getElementById('permitExpiry').value || null,
+              notes: document.getElementById('permitNotes').value.trim()
+            }
+          });
+
+          // Upload scan if provided
+          if (scanFile) {
+            const formData = new FormData();
+            formData.append('file', scanFile);
+            await api('/' + permit.id + '/scan', { method: 'POST', body: formData });
+          }
+        } else {
+          // Create new
+          const formData = new FormData();
+          formData.append('employee_id', employeeId);
+          formData.append('type_id', typeId);
+          formData.append('doc_number', document.getElementById('permitNum').value.trim());
+          formData.append('issuer', document.getElementById('permitIssuer').value.trim());
+          formData.append('issue_date', document.getElementById('permitIssue').value || '');
+          formData.append('expiry_date', document.getElementById('permitExpiry').value || '');
+          formData.append('notes', document.getElementById('permitNotes').value.trim());
+          if (scanFile) formData.append('file', scanFile);
+
+          await api('/', { method: 'POST', body: formData });
+        }
+
+        modal.remove();
+        AsgardUI.toast('Сохранено', isEdit ? 'Допуск обновлён' : 'Допуск добавлен', 'ok');
+        if (onSave) onSave();
+      } catch(e) {
+        AsgardUI.toast('Ошибка', e.message, 'err');
+      }
     };
   }
 
-  // Рендер сводного отчёта
+  // ═══════════════════════════════════════════════════════════════
+  // МОДАЛКА ПРОДЛЕНИЯ
+  // ═══════════════════════════════════════════════════════════════
+  async function openRenewModal(permit, onSave = null) {
+    const types = await getTypes();
+    const type = getTypeById(types, permit.type_id);
+
+    // Рассчитать новую дату по validity_months
+    let suggestedExpiry = '';
+    if (type.validity_months) {
+      const d = new Date();
+      d.setMonth(d.getMonth() + type.validity_months);
+      suggestedExpiry = d.toISOString().slice(0, 10);
+    }
+
+    const html = `
+      <div class="modal-overlay" id="renewModal">
+        <div class="modal-content" style="max-width:450px">
+          <div class="modal-header">
+            <h3>Продление допуска</h3>
+            <button class="btn ghost btnClose">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p><strong>${esc(permit.employee_name || 'Сотрудник')}</strong></p>
+            <p class="help">${esc(type.name)}</p>
+
+            <div class="formrow" style="margin-top:16px">
+              <div>
+                <label>Дата выдачи нового</label>
+                <input id="renewIssue" type="date" class="inp" value="${new Date().toISOString().slice(0,10)}"/>
+              </div>
+              <div>
+                <label>Действует до *</label>
+                <input id="renewExpiry" type="date" class="inp" value="${suggestedExpiry}"/>
+              </div>
+            </div>
+
+            <div class="formrow" style="margin-top:12px">
+              <div>
+                <label>Новый номер</label>
+                <input id="renewNum" class="inp" value="${esc(permit.doc_number || '')}"/>
+              </div>
+              <div>
+                <label>Кем выдано</label>
+                <input id="renewIssuer" class="inp" value="${esc(permit.issuer || '')}"/>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="display:flex;gap:12px;justify-content:flex-end;padding:16px">
+            <button class="btn ghost btnClose">Отмена</button>
+            <button class="btn primary" id="btnDoRenew">Продлить</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', html);
+    const modal = document.getElementById('renewModal');
+
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+
+    document.getElementById('btnDoRenew').onclick = async () => {
+      const expiry = document.getElementById('renewExpiry').value;
+      if (!expiry) { AsgardUI.toast('Ошибка', 'Укажите дату окончания', 'err'); return; }
+
+      try {
+        await api('/' + permit.id + '/renew', {
+          method: 'POST',
+          body: {
+            issue_date: document.getElementById('renewIssue').value,
+            expiry_date: expiry,
+            doc_number: document.getElementById('renewNum').value.trim(),
+            issuer: document.getElementById('renewIssuer').value.trim()
+          }
+        });
+        modal.remove();
+        AsgardUI.toast('Продлено', 'Создан новый допуск', 'ok');
+        if (onSave) onSave();
+      } catch(e) {
+        AsgardUI.toast('Ошибка', e.message, 'err');
+      }
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // МАССОВОЕ ПРОДЛЕНИЕ
+  // ═══════════════════════════════════════════════════════════════
+  async function openBulkRenewModal(permitIds, onSave = null) {
+    const html = `
+      <div class="modal-overlay" id="bulkRenewModal">
+        <div class="modal-content" style="max-width:400px">
+          <div class="modal-header">
+            <h3>Массовое продление</h3>
+            <button class="btn ghost btnClose">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p>Выбрано допусков: <strong>${permitIds.length}</strong></p>
+
+            <div class="field" style="margin-top:16px">
+              <label>Дата выдачи</label>
+              <input id="bulkIssue" type="date" class="inp" value="${new Date().toISOString().slice(0,10)}"/>
+            </div>
+
+            <div class="field" style="margin-top:12px">
+              <label>Действует до *</label>
+              <input id="bulkExpiry" type="date" class="inp"/>
+            </div>
+          </div>
+          <div class="modal-footer" style="display:flex;gap:12px;justify-content:flex-end;padding:16px">
+            <button class="btn ghost btnClose">Отмена</button>
+            <button class="btn primary" id="btnDoBulkRenew">Продлить все</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', html);
+    const modal = document.getElementById('bulkRenewModal');
+
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+
+    document.getElementById('btnDoBulkRenew').onclick = async () => {
+      const expiry = document.getElementById('bulkExpiry').value;
+      if (!expiry) { AsgardUI.toast('Ошибка', 'Укажите дату окончания', 'err'); return; }
+
+      try {
+        const result = await api('/bulk-renew', {
+          method: 'POST',
+          body: {
+            permit_ids: permitIds,
+            issue_date: document.getElementById('bulkIssue').value,
+            expiry_date: expiry
+          }
+        });
+        modal.remove();
+        AsgardUI.toast('Продлено', `Обновлено ${result.renewed} из ${result.total}`, 'ok');
+        if (onSave) onSave();
+      } catch(e) {
+        AsgardUI.toast('Ошибка', e.message, 'err');
+      }
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // РЕНДЕР ВКЛАДКИ СПИСОК
+  // ═══════════════════════════════════════════════════════════════
+  async function renderListTab(container) {
+    const types = await getTypes();
+    const canWrite = AsgardAuth.hasPermission?.('permits', 'write');
+    const canDelete = AsgardAuth.hasPermission?.('permits', 'delete');
+
+    // Загрузить сотрудников для фильтра
+    let employees = [];
+    try { employees = await AsgardDB.getAll('employees') || []; } catch(e) {}
+
+    container.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
+        <div class="field" style="margin:0">
+          <label>Статус</label>
+          <select id="filterStatus" class="inp" style="min-width:150px">
+            <option value="">Все</option>
+            <option value="expired">Истёкшие</option>
+            <option value="expiring_14">Истекают (&le;14 дн.)</option>
+            <option value="expiring_30">Истекают (&le;30 дн.)</option>
+            <option value="active">Действующие</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label>Категория</label>
+          <select id="filterCategory" class="inp" style="min-width:150px">
+            <option value="">Все</option>
+            ${Object.entries(CATEGORIES).map(([id, c]) => `<option value="${id}">${c.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label>Сотрудник</label>
+          <select id="filterEmployee" class="inp" style="min-width:200px">
+            <option value="">Все</option>
+            ${employees.filter(e => e.is_active).map(e => `<option value="${e.id}">${esc(e.fio)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn" id="btnApplyFilters">Применить</button>
+        ${canWrite ? `<button class="btn primary" id="btnAddNewPermit" style="margin-left:auto">+ Добавить</button>` : ''}
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn mini ghost" id="btnSelectAll">Выбрать все</button>
+        <button class="btn mini ghost" id="btnDeselectAll">Снять выбор</button>
+        <button class="btn mini" id="btnBulkRenew" disabled>Продлить выбранные</button>
+      </div>
+
+      <div id="permitsListContent">
+        <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+      </div>
+    `;
+
+    const loadList = async () => {
+      const status = document.getElementById('filterStatus').value;
+      const category = document.getElementById('filterCategory').value;
+      const employee_id = document.getElementById('filterEmployee').value;
+
+      let url = '/?';
+      if (status) url += `status=${status}&`;
+      if (category) url += `category=${category}&`;
+      if (employee_id) url += `employee_id=${employee_id}&`;
+
+      try {
+        const { permits } = await api(url);
+        renderPermitsList(permits, types, canWrite, canDelete);
+      } catch(e) {
+        document.getElementById('permitsListContent').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`;
+      }
+    };
+
+    const renderPermitsList = (permits, types, canWrite, canDelete) => {
+      selectedPermits.clear();
+      updateBulkButton();
+
+      if (!permits.length) {
+        document.getElementById('permitsListContent').innerHTML = '<div class="help">Нет данных по заданным фильтрам</div>';
+        return;
+      }
+
+      let html = '<div class="tbl-wrap"><table class="tbl"><thead><tr>';
+      html += '<th style="width:30px"><input type="checkbox" id="checkAll"/></th>';
+      html += '<th>Сотрудник</th><th>Тип допуска</th><th>Номер</th><th>Выдано</th><th>До</th><th>Статус</th>';
+      if (canWrite || canDelete) html += '<th></th>';
+      html += '</tr></thead><tbody>';
+
+      permits.forEach(p => {
+        const type = getTypeById(types, p.type_id);
+        const cat = CATEGORIES[type.category] || { color: '#94a3b8' };
+
+        html += `
+          <tr data-id="${p.id}">
+            <td><input type="checkbox" class="permitCheck" data-id="${p.id}"/></td>
+            <td>${esc(p.employee_name || '—')}</td>
+            <td><span style="border-left:3px solid ${cat.color};padding-left:8px">${esc(p.type_name || type.name)}</span></td>
+            <td>${esc(p.doc_number || '—')}</td>
+            <td>${p.issue_date ? formatDate(p.issue_date) : '—'}</td>
+            <td>${p.expiry_date ? formatDate(p.expiry_date) : 'Бессрочно'}</td>
+            <td>${getStatusBadge(p.computed_status, p.days_left)}</td>
+            ${canWrite || canDelete ? `
+              <td>
+                <div style="display:flex;gap:4px">
+                  ${p.scan_file ? `<a href="/api/files/download/${p.scan_file}" target="_blank" class="btn mini ghost" title="Скан">Скан</a>` : ''}
+                  ${canWrite ? `<button class="btn mini ghost btnRenewPermit" data-permit='${JSON.stringify(p).replace(/'/g, "\\'")}'>Продл.</button>` : ''}
+                  ${canWrite ? `<button class="btn mini ghost btnEditPermit" data-id="${p.id}" data-employee="${p.employee_id}">Изм.</button>` : ''}
+                  ${canDelete ? `<button class="btn mini ghost btnDelPermit" data-id="${p.id}">Уд.</button>` : ''}
+                </div>
+              </td>
+            ` : ''}
+          </tr>
+        `;
+      });
+
+      html += '</tbody></table></div>';
+      document.getElementById('permitsListContent').innerHTML = html;
+
+      // Bind events
+      document.getElementById('checkAll').onchange = function() {
+        document.querySelectorAll('.permitCheck').forEach(c => {
+          c.checked = this.checked;
+          if (this.checked) selectedPermits.add(parseInt(c.dataset.id));
+          else selectedPermits.delete(parseInt(c.dataset.id));
+        });
+        updateBulkButton();
+      };
+
+      document.querySelectorAll('.permitCheck').forEach(c => {
+        c.onchange = function() {
+          if (this.checked) selectedPermits.add(parseInt(this.dataset.id));
+          else selectedPermits.delete(parseInt(this.dataset.id));
+          updateBulkButton();
+        };
+      });
+
+      document.querySelectorAll('.btnRenewPermit').forEach(b => {
+        b.onclick = () => openRenewModal(JSON.parse(b.dataset.permit), loadList);
+      });
+
+      document.querySelectorAll('.btnEditPermit').forEach(b => {
+        b.onclick = async () => {
+          const { permit } = await api('/' + b.dataset.id);
+          openPermitModal(parseInt(b.dataset.employee), permit, loadList);
+        };
+      });
+
+      document.querySelectorAll('.btnDelPermit').forEach(b => {
+        b.onclick = async () => {
+          if (!confirm('Удалить допуск?')) return;
+          try {
+            await api('/' + b.dataset.id, { method: 'DELETE' });
+            AsgardUI.toast('Удалено', '', 'ok');
+            loadList();
+          } catch(e) {
+            AsgardUI.toast('Ошибка', e.message, 'err');
+          }
+        };
+      });
+    };
+
+    const updateBulkButton = () => {
+      const btn = document.getElementById('btnBulkRenew');
+      btn.disabled = selectedPermits.size === 0;
+      btn.textContent = selectedPermits.size > 0 ? `Продлить выбранные (${selectedPermits.size})` : 'Продлить выбранные';
+    };
+
+    document.getElementById('btnApplyFilters').onclick = loadList;
+    document.getElementById('btnSelectAll').onclick = () => {
+      document.querySelectorAll('.permitCheck').forEach(c => {
+        c.checked = true;
+        selectedPermits.add(parseInt(c.dataset.id));
+      });
+      updateBulkButton();
+    };
+    document.getElementById('btnDeselectAll').onclick = () => {
+      document.querySelectorAll('.permitCheck').forEach(c => c.checked = false);
+      selectedPermits.clear();
+      updateBulkButton();
+    };
+    document.getElementById('btnBulkRenew').onclick = () => {
+      if (selectedPermits.size === 0) return;
+      openBulkRenewModal([...selectedPermits], loadList);
+    };
+
+    if (canWrite) {
+      document.getElementById('btnAddNewPermit').onclick = async () => {
+        // Выбор сотрудника
+        let employees = [];
+        try { employees = await AsgardDB.getAll('employees') || []; } catch(e) {}
+        const active = employees.filter(e => e.is_active);
+
+        const selectHtml = `
+          <div class="modal-overlay" id="selectEmployeeModal">
+            <div class="modal-content" style="max-width:400px">
+              <div class="modal-header">
+                <h3>Выберите сотрудника</h3>
+                <button class="btn ghost btnClose">&times;</button>
+              </div>
+              <div class="modal-body">
+                <select id="empSelect" class="inp">
+                  <option value="">— Выберите —</option>
+                  ${active.map(e => `<option value="${e.id}">${esc(e.fio)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="modal-footer">
+                <button class="btn ghost btnClose">Отмена</button>
+                <button class="btn primary" id="btnConfirmEmp">Далее</button>
+              </div>
+            </div>
+          </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', selectHtml);
+        const modal = document.getElementById('selectEmployeeModal');
+        modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+        modal.onclick = e => { if (e.target === modal) modal.remove(); };
+
+        document.getElementById('btnConfirmEmp').onclick = () => {
+          const empId = parseInt(document.getElementById('empSelect').value);
+          if (!empId) { AsgardUI.toast('Ошибка', 'Выберите сотрудника', 'err'); return; }
+          modal.remove();
+          openPermitModal(empId, null, loadList);
+        };
+      };
+    }
+
+    loadList();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // РЕНДЕР ВКЛАДКИ МАТРИЦА
+  // ═══════════════════════════════════════════════════════════════
+  async function renderMatrixTab(container) {
+    // Загрузить проекты для фильтра
+    let works = [];
+    try { works = await AsgardDB.getAll('works') || []; } catch(e) {}
+
+    container.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
+        <div class="field" style="margin:0">
+          <label>Категория</label>
+          <select id="matrixCategory" class="inp" style="min-width:150px">
+            <option value="">Все</option>
+            ${Object.entries(CATEGORIES).map(([id, c]) => `<option value="${id}">${c.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label>Проект (для требований)</label>
+          <select id="matrixWork" class="inp" style="min-width:250px">
+            <option value="">Все типы</option>
+            ${works.filter(w => w.work_status !== 'Завершён').map(w => `<option value="${w.id}">${esc(w.object_name || w.name || 'ID:' + w.id)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn" id="btnLoadMatrix">Показать</button>
+      </div>
+
+      <div id="matrixContent">
+        <div class="help">Выберите параметры и нажмите "Показать"</div>
+      </div>
+    `;
+
+    document.getElementById('btnLoadMatrix').onclick = async () => {
+      const category = document.getElementById('matrixCategory').value;
+      const work_id = document.getElementById('matrixWork').value;
+
+      let url = '/matrix?';
+      if (category) url += `category=${category}&`;
+      if (work_id) url += `work_id=${work_id}&`;
+
+      document.getElementById('matrixContent').innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>';
+
+      try {
+        const { employees, types, matrix, required } = await api(url);
+
+        if (!types.length) {
+          document.getElementById('matrixContent').innerHTML = '<div class="help">Нет типов допусков по заданным фильтрам</div>';
+          return;
+        }
+
+        let html = '<div class="tbl-wrap"><table class="tbl" style="font-size:12px"><thead><tr><th style="position:sticky;left:0;background:var(--bg-card);z-index:2">Сотрудник</th>';
+        types.forEach(t => {
+          const cat = CATEGORIES[t.category] || {};
+          const mandatory = required && required[t.id] === true;
+          html += `<th style="writing-mode:vertical-rl;text-orientation:mixed;padding:8px 4px;border-left:3px solid ${cat.color || '#94a3b8'}" title="${esc(t.name)}">${mandatory ? '<strong>*</strong>' : ''}${esc(t.name.substring(0, 20))}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        employees.forEach(emp => {
+          html += `<tr><td style="position:sticky;left:0;background:var(--bg-card);z-index:1;white-space:nowrap">${esc(emp.fio)}</td>`;
+          types.forEach(t => {
+            const key = `${emp.id}_${t.id}`;
+            const cell = matrix[key];
+            let icon = '—';
+            let bg = '';
+            let title = 'Нет допуска';
+            if (cell) {
+              if (cell.status === 'expired') { icon = '<span style="color:var(--red)">&#10060;</span>'; bg = 'rgba(239,68,68,0.1)'; title = 'Истёк'; }
+              else if (cell.status === 'expiring_14') { icon = '<span style="color:var(--red)">&#9888;</span>'; bg = 'rgba(239,68,68,0.1)'; title = `${cell.days_left} дн.`; }
+              else if (cell.status === 'expiring_30') { icon = '<span style="color:var(--amber)">&#9888;</span>'; bg = 'rgba(245,158,11,0.1)'; title = `${cell.days_left} дн.`; }
+              else { icon = '<span style="color:var(--green)">&#10004;</span>'; bg = 'rgba(34,197,94,0.1)'; title = 'Действует'; }
+            }
+            html += `<td style="text-align:center;background:${bg}" title="${title}">${icon}</td>`;
+          });
+          html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+
+        if (required) {
+          html += '<div class="help" style="margin-top:12px"><strong>*</strong> — обязательные допуски для проекта</div>';
+        }
+
+        document.getElementById('matrixContent').innerHTML = html;
+      } catch(e) {
+        document.getElementById('matrixContent').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`;
+      }
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // РЕНДЕР ВКЛАДКИ ПРОЕКТЫ
+  // ═══════════════════════════════════════════════════════════════
+  async function renderProjectsTab(container) {
+    let works = [];
+    try { works = await AsgardDB.getAll('works') || []; } catch(e) {}
+    const types = await getTypes();
+    const canWrite = AsgardAuth.hasPermission?.('permits', 'write');
+
+    container.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
+        <div class="field" style="margin:0;flex:1;min-width:300px">
+          <label>Выберите проект</label>
+          <select id="projectSelect" class="inp">
+            <option value="">— Выберите —</option>
+            ${works.filter(w => w.work_status !== 'Завершён').map(w => `<option value="${w.id}">${esc(w.object_name || w.name || 'Проект #' + w.id)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div id="projectContent">
+        <div class="help">Выберите проект для просмотра требований и проверки команды</div>
+      </div>
+    `;
+
+    document.getElementById('projectSelect').onchange = async function() {
+      const workId = this.value;
+      if (!workId) {
+        document.getElementById('projectContent').innerHTML = '<div class="help">Выберите проект</div>';
+        return;
+      }
+
+      document.getElementById('projectContent').innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>';
+
+      try {
+        const [reqResp, compResp] = await Promise.all([
+          api(`/work/${workId}/requirements`),
+          api(`/work/${workId}/compliance`)
+        ]);
+
+        const requirements = reqResp.requirements || [];
+        const { compliance, team_ready } = compResp;
+
+        let html = `<div class="card" style="margin-bottom:16px">
+          <h4>Требуемые допуски</h4>
+          ${canWrite ? `
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+              <select id="addReqType" class="inp" style="flex:1;min-width:200px">
+                <option value="">— Добавить тип —</option>
+                ${Object.entries(CATEGORIES).map(([catId, cat]) => `
+                  <optgroup label="${cat.name}">
+                    ${types.filter(t => t.category === catId).map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                  </optgroup>
+                `).join('')}
+              </select>
+              <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="addReqMandatory" checked/> Обязательный</label>
+              <button class="btn mini" id="btnAddReq">Добавить</button>
+            </div>
+          ` : ''}
+
+          ${requirements.length === 0 ? '<div class="help">Требования не заданы</div>' : `
+            <table class="tbl">
+              <thead><tr><th>Тип допуска</th><th>Обязательный</th>${canWrite ? '<th></th>' : ''}</tr></thead>
+              <tbody>
+                ${requirements.map(r => `
+                  <tr>
+                    <td>${esc(r.type_name)}</td>
+                    <td>${r.is_mandatory ? '<span style="color:var(--green)">Да</span>' : 'Нет'}</td>
+                    ${canWrite ? `<td><button class="btn mini ghost btnDelReq" data-id="${r.id}">Удалить</button></td>` : ''}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>`;
+
+        html += `<div class="card">
+          <h4>Готовность команды
+            ${team_ready
+              ? '<span class="badge" style="background:var(--green)20;color:var(--green)">Готова</span>'
+              : '<span class="badge" style="background:var(--red)20;color:var(--red)">Не готова</span>'}
+          </h4>
+          ${compliance.length === 0 ? '<div class="help">В команде проекта нет назначенных сотрудников</div>' : `
+            <table class="tbl">
+              <thead><tr><th>Сотрудник</th><th>Допуски</th><th>Статус</th></tr></thead>
+              <tbody>
+                ${compliance.map(c => `
+                  <tr>
+                    <td>${esc(c.employee_name)}</td>
+                    <td>
+                      ${c.checks.map(ch => {
+                        const t = types.find(t => t.id === ch.type_id) || { name: ch.type_id };
+                        return `<span class="badge" style="background:${ch.has ? 'var(--green)' : 'var(--red)'}20;color:${ch.has ? 'var(--green)' : 'var(--red)'}${ch.mandatory ? ';font-weight:bold' : ''}" title="${esc(t.name)}">${ch.has ? '+' : '-'} ${esc(t.name.substring(0, 15))}</span> `;
+                      }).join('')}
+                    </td>
+                    <td>${c.mandatory_ok
+                      ? '<span style="color:var(--green)">OK</span>'
+                      : '<span style="color:var(--red)">Не хватает</span>'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>`;
+
+        document.getElementById('projectContent').innerHTML = html;
+
+        // Bind events
+        if (canWrite) {
+          document.getElementById('btnAddReq')?.addEventListener('click', async () => {
+            const typeId = document.getElementById('addReqType').value;
+            if (!typeId) { AsgardUI.toast('Ошибка', 'Выберите тип', 'err'); return; }
+            const mandatory = document.getElementById('addReqMandatory').checked;
+            try {
+              await api(`/work/${workId}/requirements`, {
+                method: 'POST',
+                body: { permit_type_id: typeId, is_mandatory: mandatory }
+              });
+              AsgardUI.toast('Добавлено', '', 'ok');
+              document.getElementById('projectSelect').dispatchEvent(new Event('change'));
+            } catch(e) {
+              AsgardUI.toast('Ошибка', e.message, 'err');
+            }
+          });
+
+          document.querySelectorAll('.btnDelReq').forEach(b => {
+            b.onclick = async () => {
+              if (!confirm('Удалить требование?')) return;
+              try {
+                await api(`/work/${workId}/requirements/${b.dataset.id}`, { method: 'DELETE' });
+                AsgardUI.toast('Удалено', '', 'ok');
+                document.getElementById('projectSelect').dispatchEvent(new Event('change'));
+              } catch(e) {
+                AsgardUI.toast('Ошибка', e.message, 'err');
+              }
+            };
+          });
+        }
+      } catch(e) {
+        document.getElementById('projectContent').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`;
+      }
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ГЛАВНЫЙ РЕНДЕР СТРАНИЦЫ
+  // ═══════════════════════════════════════════════════════════════
   async function render({ layout, title }) {
     const auth = await AsgardAuth.requireUser();
     if (!auth) { location.hash = "#/login"; return; }
-    
-    const user = auth.user;
-    const allowedRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HR', 'TO'];
-    if (!allowedRoles.includes(user.role)) {
+
+    // Проверка прав
+    if (!AsgardAuth.hasPermission?.('permits', 'read') && auth.user.role !== 'ADMIN') {
       AsgardUI.toast('Доступ', 'Недостаточно прав', 'err');
       location.hash = '#/home';
       return;
     }
 
-    const permits = await getAll();
-    const employees = await AsgardDB.getAll('employees') || [];
-    const empMap = new Map(employees.map(e => [e.id, e]));
-    
-    // Группировка по статусу
-    const expired = [];
-    const expiring = [];
-    const active = [];
-    
-    permits.forEach(p => {
-      const status = computeStatus(p);
-      p._status = status;
-      p._employee = empMap.get(p.employee_id);
-      if (status.status === 'expired') expired.push(p);
-      else if (status.status === 'expiring') expiring.push(p);
-      else active.push(p);
-    });
+    // Автопроверка уведомлений (раз в день)
+    const lastCheck = localStorage.getItem('permits_last_check');
+    const today = new Date().toISOString().slice(0, 10);
+    if (lastCheck !== today) {
+      try {
+        await api('/check-expiry');
+        localStorage.setItem('permits_last_check', today);
+      } catch(e) { /* ignore */ }
+    }
 
-    const renderTable = (list, showEmployee = true) => {
-      if (!list.length) return '<div class="help">Нет данных</div>';
-      return `
-        <table class="tbl">
-          <thead><tr>${showEmployee ? '<th>Сотрудник</th>' : ''}<th>Тип</th><th>Действует до</th><th>Статус</th></tr></thead>
-          <tbody>
-            ${list.map(p => {
-              const type = PERMIT_TYPES.find(t => t.id === p.type_id) || { name: p.type_id };
-              return `
-                <tr>
-                  ${showEmployee ? `<td>${esc(p._employee?.fio || '—')}</td>` : ''}
-                  <td>${esc(type.name)}</td>
-                  <td>${p.expiry_date ? formatDate(p.expiry_date) : '—'}</td>
-                  <td><span class="badge" style="background:${p._status.color}20;color:${p._status.color}">${p._status.label}</span></td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      `;
-    };
+    // Загрузить статистику
+    let stats = { total: 0, active: 0, expired: 0, expiring_14: 0, expiring_30: 0 };
+    try {
+      stats = await api('/stats');
+    } catch(e) {}
 
     const html = `
       <div class="panel">
         <div class="row" style="gap:16px;flex-wrap:wrap;margin-bottom:16px">
-          <div class="card" style="flex:1;min-width:150px;text-align:center;padding:16px;border-left:4px solid var(--red)">
-            <div style="font-size:24px;font-weight:bold">${expired.length}</div>
-            <div class="help">Истекли</div>
+          <div class="card" style="flex:1;min-width:120px;text-align:center;padding:16px;border-left:4px solid var(--blue)">
+            <div style="font-size:24px;font-weight:bold">${stats.total || 0}</div>
+            <div class="help">Всего</div>
           </div>
-          <div class="card" style="flex:1;min-width:150px;text-align:center;padding:16px;border-left:4px solid var(--amber)">
-            <div style="font-size:24px;font-weight:bold">${expiring.length}</div>
+          <div class="card" style="flex:1;min-width:120px;text-align:center;padding:16px;border-left:4px solid var(--green)">
+            <div style="font-size:24px;font-weight:bold">${stats.active || 0}</div>
+            <div class="help">Действующих</div>
+          </div>
+          <div class="card" style="flex:1;min-width:120px;text-align:center;padding:16px;border-left:4px solid var(--amber)">
+            <div style="font-size:24px;font-weight:bold">${stats.expiring_30 || 0}</div>
             <div class="help">Истекают (30 дн.)</div>
           </div>
-          <div class="card" style="flex:1;min-width:150px;text-align:center;padding:16px;border-left:4px solid var(--green)">
-            <div style="font-size:24px;font-weight:bold">${active.length}</div>
-            <div class="help">Действуют</div>
+          <div class="card" style="flex:1;min-width:120px;text-align:center;padding:16px;border-left:4px solid var(--red)">
+            <div style="font-size:24px;font-weight:bold">${stats.expiring_14 || 0}</div>
+            <div class="help">Истекают (14 дн.)</div>
+          </div>
+          <div class="card" style="flex:1;min-width:120px;text-align:center;padding:16px;border-left:4px solid var(--red)">
+            <div style="font-size:24px;font-weight:bold;color:var(--red)">${stats.expired || 0}</div>
+            <div class="help">Истекли</div>
           </div>
         </div>
 
-        ${expired.length > 0 ? `
-          <details open style="margin-bottom:16px">
-            <summary class="kpi" style="cursor:pointer;color:var(--red)"><span class="dot" style="background:var(--red)"></span> Истёкшие (${expired.length})</summary>
-            <div class="tbl-wrap" style="margin-top:12px">${renderTable(expired)}</div>
-          </details>
-        ` : ''}
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+          <button class="btn ${currentTab === 'list' ? 'primary' : ''}" data-tab="list">Список</button>
+          <button class="btn ${currentTab === 'matrix' ? 'primary' : ''}" data-tab="matrix">Матрица</button>
+          <button class="btn ${currentTab === 'projects' ? 'primary' : ''}" data-tab="projects">Проекты</button>
+          <button class="btn ghost" id="btnCheckNotify" style="margin-left:auto">Проверить уведомления</button>
+        </div>
 
-        ${expiring.length > 0 ? `
-          <details open style="margin-bottom:16px">
-            <summary class="kpi" style="cursor:pointer;color:var(--amber)"><span class="dot" style="background:var(--amber)"></span> Истекают скоро (${expiring.length})</summary>
-            <div class="tbl-wrap" style="margin-top:12px">${renderTable(expiring)}</div>
-          </details>
-        ` : ''}
-
-        <details>
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--green)"></span> Все действующие (${active.length})</summary>
-          <div class="tbl-wrap" style="margin-top:12px">${renderTable(active)}</div>
-        </details>
+        <div id="tabContent"></div>
       </div>
     `;
 
     await layout(html, { title: title || 'Разрешения и допуски' });
+
+    // Tab switching
+    const tabContainer = document.getElementById('tabContent');
+
+    const switchTab = async (tab) => {
+      currentTab = tab;
+      document.querySelectorAll('[data-tab]').forEach(b => {
+        b.classList.toggle('primary', b.dataset.tab === tab);
+      });
+
+      if (tab === 'list') await renderListTab(tabContainer);
+      else if (tab === 'matrix') await renderMatrixTab(tabContainer);
+      else if (tab === 'projects') await renderProjectsTab(tabContainer);
+    };
+
+    document.querySelectorAll('[data-tab]').forEach(b => {
+      b.onclick = () => switchTab(b.dataset.tab);
+    });
+
+    document.getElementById('btnCheckNotify').onclick = async () => {
+      try {
+        const result = await api('/check-expiry');
+        AsgardUI.toast('Проверено', `Отправлено уведомлений: ${result.sent}`, 'ok');
+        localStorage.setItem('permits_last_check', today);
+      } catch(e) {
+        AsgardUI.toast('Ошибка', e.message, 'err');
+      }
+    };
+
+    // Initial tab
+    switchTab(currentTab);
   }
 
-  // Проверка уведомлений (вызывается из SLA)
+  // ═══════════════════════════════════════════════════════════════
+  // ПРОВЕРКА УВЕДОМЛЕНИЙ (legacy)
+  // ═══════════════════════════════════════════════════════════════
   async function checkAndNotify() {
-    const expiring = await getExpiringPermits(30);
-    const employees = await AsgardDB.getAll('employees') || [];
-    const empMap = new Map(employees.map(e => [e.id, e]));
-    
-    for (const p of expiring) {
-      const emp = empMap.get(p.employee_id);
-      const type = PERMIT_TYPES.find(t => t.id === p.type_id) || { name: p.type_id };
-      const daysLeft = Math.ceil((new Date(p.expiry_date) - new Date()) / (1000 * 60 * 60 * 24));
-      
-      // Уведомление TO и HR
-      const users = await AsgardDB.getAll('users') || [];
-      const toNotify = users.filter(u => u.role === 'TO' || u.role === 'HR');
-      
-      for (const u of toNotify) {
-        const key = `permit_notify_${p.id}_${daysLeft <= 14 ? '14' : '30'}`;
-        const existing = await AsgardDB.get('notifications', key);
-        if (!existing) {
-          await AsgardDB.put('notifications', {
-            id: key,
-            user_id: u.id,
-            title: 'Истекает разрешение',
-            message: `У сотрудника ${emp?.fio || 'ID:' + p.employee_id} истекает "${type.name}" через ${daysLeft} дн.`,
-            type: 'permit_expiry',
-            entity_id: p.id,
-            is_read: false,
-            created_at: new Date().toISOString()
-          });
-        }
-      }
+    try {
+      await api('/check-expiry');
+    } catch(e) {
+      console.error('checkAndNotify error:', e);
     }
   }
 
-  // Helpers
-  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-  function formatDate(d) { return d ? new Date(d).toLocaleDateString('ru-RU') : ''; }
-
+  // ═══════════════════════════════════════════════════════════════
+  // EXPORTS
+  // ═══════════════════════════════════════════════════════════════
   return {
     render,
     renderEmployeePermits,
