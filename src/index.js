@@ -169,6 +169,7 @@ fastify.register(require('./routes/equipment'), { prefix: '/api/equipment' });
 fastify.register(require('./routes/data'), { prefix: '/api/data' });
 fastify.register(require('./routes/permissions'), { prefix: '/api/permissions' });
 fastify.register(require('./routes/cash'), { prefix: '/api/cash' });
+fastify.register(require('./routes/tasks'), { prefix: '/api/tasks' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check

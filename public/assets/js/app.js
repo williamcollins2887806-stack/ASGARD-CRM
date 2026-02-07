@@ -140,7 +140,9 @@ console.log('[ASGARD] Global period functions loaded');
     "/login":"Вход в зал. У каждого своя доля ответственности.",
     "/register":"Пусть имя будет честным, а роль — ясной.",
     "/cash":"Деньги любят счёт. Каждый рубль — на виду.",
-    "/cash-admin":"Контроль — залог доверия. Считай и подтверждай."
+    "/cash-admin":"Контроль — залог доверия. Считай и подтверждай.",
+    "/tasks":"Дело назначено — доведи до конца.",
+    "/tasks-admin":"Ярл видит все задачи. Порядок в дружине."
   };
 
   const DIRECTOR_ROLES = ["DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]; // legacy DIRECTOR removed in Stage 25
@@ -218,6 +220,8 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/buh-registry",l:"Реестр расходов",d:"Бухгалтерский реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"buh_registry"},
     {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"finances",p:"cash"},
     {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN",...DIRECTOR_ROLES],i:"finances",p:"cash_admin"},
+    {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks"},
+    {r:"/tasks-admin",l:"Управление задачами",d:"Контроль задач сотрудников",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"tasks_admin"},
   ];
 
   async function layout(body,{title,motto,rightBadges=[]}={}){
@@ -939,16 +943,16 @@ try{
     }
 
     const portalsByRole = {
-      TO: [ ['#/tenders','Тендеры'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      PM: [ ['#/pm-calcs','Просчёты'], ['#/pm-works','Работы'], ['#/cash','Касса'], ['#/travel','Жильё/билеты'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
-      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      HR: [ ['#/personnel','Персонал'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/hr-rating','Рейтинг'], ['#/alerts','Уведомления'] ],
+      TO: [ ['#/tenders','Тендеры'], ['#/tasks','Задачи'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
+      PM: [ ['#/pm-calcs','Просчёты'], ['#/pm-works','Работы'], ['#/tasks','Задачи'], ['#/cash','Касса'], ['#/travel','Жильё/билеты'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
+      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      HR: [ ['#/personnel','Персонал'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/hr-rating','Рейтинг'], ['#/alerts','Уведомления'] ],
       PROC: [ ['#/proc-requests','Заявки'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      BUH: [ ['#/buh-registry','Реестр расходов'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/travel','Жильё/билеты'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
+      BUH: [ ['#/buh-registry','Реестр расходов'], ['#/tasks','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
+      OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
       ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'], ['#/backup','Backup'] ]
     };
     const portals = portalsByRole[user.role] || portalsByRole.ADMIN;
@@ -1011,6 +1015,28 @@ try{
         ${pmBlock}
         ${cashWidgetHtml}
 
+        <!-- Виджет задач от руководства -->
+        <div class="card span-6" id="tasksWidget">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <h3 style="margin:0">Мои задачи</h3>
+            <a href="#/tasks" class="btn" style="padding:4px 12px; font-size:12px">Все задачи</a>
+          </div>
+          <div id="tasksWidgetContent">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+        </div>
+
+        <!-- Виджет Todo-список -->
+        <div class="card span-6" id="todoWidget">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <h3 style="margin:0">Мой список дел</h3>
+            <a href="#/tasks" class="btn" style="padding:4px 12px; font-size:12px">Открыть</a>
+          </div>
+          <div id="todoWidgetContent">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+        </div>
+
         <!-- Виджет телефонии -->
         <div class="card span-3" id="callToggleContainer"></div>
         
@@ -1066,6 +1092,77 @@ try{
           document.getElementById('cashBalanceData').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
         }
       })();
+    }
+
+    // Загружаем виджет задач
+    if (document.getElementById('tasksWidgetContent') && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('tasks', 'read')) {
+      (async () => {
+        try {
+          const auth = AsgardAuth.getAuth();
+          const resp = await fetch('/api/tasks/my', {
+            headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+          });
+          if (resp.ok) {
+            const tasks = await resp.json();
+            const activeTasks = tasks.filter(t => t.status !== 'done').slice(0, 4);
+            if (activeTasks.length === 0) {
+              document.getElementById('tasksWidgetContent').innerHTML = '<div class="text-muted">Нет активных задач</div>';
+            } else {
+              const priorityColors = {urgent: '#ef4444', high: '#f97316', normal: '#3b82f6', low: '#6b7280'};
+              const statusLabels = {new: 'Новая', accepted: 'Принята', in_progress: 'В работе'};
+              document.getElementById('tasksWidgetContent').innerHTML = activeTasks.map(t => {
+                const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleDateString('ru-RU') : '';
+                const isOverdue = t.deadline && new Date(t.deadline) < new Date();
+                return `<div style="padding:8px 10px; margin-bottom:8px; background:rgba(42,59,102,.35); border-left:3px solid ${priorityColors[t.priority] || '#3b82f6'}; border-radius:6px">
+                  <div style="font-weight:600">${esc(t.title)}</div>
+                  <div style="font-size:12px; color:rgba(184,196,231,.85); margin-top:4px">
+                    <span style="background:${priorityColors[t.priority]}; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px">${statusLabels[t.status] || t.status}</span>
+                    ${deadlineStr ? `<span style="margin-left:8px; ${isOverdue ? 'color:#ef4444' : ''}">${deadlineStr}</span>` : ''}
+                  </div>
+                </div>`;
+              }).join('');
+            }
+          } else {
+            document.getElementById('tasksWidgetContent').innerHTML = '<div class="text-muted">Не удалось загрузить</div>';
+          }
+        } catch (e) {
+          document.getElementById('tasksWidgetContent').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+        }
+      })();
+    } else if (document.getElementById('tasksWidgetContent')) {
+      document.getElementById('tasksWidgetContent').innerHTML = '<div class="text-muted">Нет доступа</div>';
+    }
+
+    // Загружаем виджет todo
+    if (document.getElementById('todoWidgetContent') && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('todo', 'read')) {
+      (async () => {
+        try {
+          const auth = AsgardAuth.getAuth();
+          const resp = await fetch('/api/tasks/todo', {
+            headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+          });
+          if (resp.ok) {
+            const todos = await resp.json();
+            const activeTodos = todos.filter(t => !t.done).slice(0, 5);
+            if (activeTodos.length === 0) {
+              document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Список дел пуст</div>';
+            } else {
+              document.getElementById('todoWidgetContent').innerHTML = activeTodos.map(t =>
+                `<div style="padding:6px 10px; margin-bottom:6px; background:rgba(42,59,102,.25); border-radius:4px; display:flex; align-items:center; gap:8px">
+                  <span style="color:#3b82f6">○</span>
+                  <span>${esc(t.text)}</span>
+                </div>`
+              ).join('');
+            }
+          } else {
+            document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Не удалось загрузить</div>';
+          }
+        } catch (e) {
+          document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+        }
+      })();
+    } else if (document.getElementById('todoWidgetContent')) {
+      document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Нет доступа</div>';
     }
   }
 
@@ -1212,6 +1309,26 @@ try{
       }
       await layout('<div id="cash-admin-page"></div>', {title:"Касса (управление)"});
       CashAdminPage.render(document.getElementById('cash-admin-page'));
+    }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+
+    // Задачи (M3)
+    AsgardRouter.add("/tasks", async ()=>{
+      if (!AsgardAuth.hasPermission('tasks', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await layout('<div id="tasks-page"></div>', {title:"Мои задачи"});
+      AsgardTasksPage.render(document.getElementById('tasks-page'));
+    }, {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/tasks-admin", async ()=>{
+      if (!AsgardAuth.hasPermission('tasks_admin', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await layout('<div id="tasks-admin-page"></div>', {title:"Управление задачами"});
+      AsgardTasksAdminPage.render(document.getElementById('tasks-admin-page'));
     }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
 
     // TKP Follow-up: проверка напоминаний при старте
