@@ -193,7 +193,8 @@ console.log('[ASGARD] Global period functions loaded');
     // ── ГЛАВНАЯ ──
     {r:"/home",l:"Зал Ярла",d:"Порталы и сводка",roles:ALL_ROLES,i:"home",p:"home",g:"home"},
     {r:"/dashboard",l:"Дашборд руководителя",d:"Сводная аналитика",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard",p:"dashboard",g:"home"},
-    {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"dashboard",p:"my_dashboard",g:"home"},
+    {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"my_dashboard",g:"home"},
+    {r:"/big-screen",l:"Большой Экран",d:"Авто-ротация KPI для монитора",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"big_screen",g:"home"},
     {r:"/calendar",l:"Календарь встреч",d:"Совещания и события",roles:ALL_ROLES,i:"schedule",p:"calendar",g:"home"},
     {r:"/birthdays",l:"Дни рождения",d:"Офисный календарь ДР",roles:ALL_ROLES,i:"birthdays",p:"birthdays",g:"home"},
     {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"home"},
@@ -395,6 +396,7 @@ try{
             <span class="btn-icon">💾</span>
             <span class="btn-text">Экспорт/Импорт</span>
           </button>
+          ${user ? '<button class="btn ghost" id="btnNavCustomize" style="font-size:11px;padding:6px 10px"><span class="btn-icon">⚙️</span><span class="btn-text">Настроить меню</span></button>' : ''}
         </div>
       </aside>
       <div class="nav-overlay" id="navOverlay"></div>
@@ -480,6 +482,104 @@ try{
     addMobileClick($("#btnLoginGo"), ()=>location.hash="#/login");
     addMobileClick($("#btnRegGo"), ()=>location.hash="#/register");
     addMobileClick($("#btnBackup"), backupModal);
+
+    // M16: Nav customization button
+    const btnNavCust = document.getElementById('btnNavCustomize');
+    if (btnNavCust && user) {
+      addMobileClick(btnNavCust, async () => {
+        // Load current nav prefs
+        let navPrefs = { hidden: [], order: [] };
+        try {
+          const np = await AsgardDB.get('settings', 'nav_prefs_' + user.id);
+          if (np?.value_json) navPrefs = JSON.parse(np.value_json);
+        } catch(e) {}
+
+        const allAllowed = NAV.filter(n => roleAllowed(n.roles, role));
+        const hidSet = new Set(navPrefs.hidden || []);
+
+        // Sort by current order
+        const ordered = [...allAllowed];
+        const oMap = new Map((navPrefs.order || []).map((r, i) => [r, i]));
+        ordered.sort((a, b) => {
+          const ai = oMap.has(a.r) ? oMap.get(a.r) : 999;
+          const bi = oMap.has(b.r) ? oMap.get(b.r) : 999;
+          return ai - bi;
+        });
+
+        let modalHtml = '<div style="max-height:60vh;overflow-y:auto">';
+        modalHtml += '<div class="help" style="margin-bottom:12px">Снимите галочку чтобы скрыть пункт. Перетаскивайте для изменения порядка.</div>';
+        modalHtml += '<div id="navCustList">';
+
+        ordered.forEach(n => {
+          const checked = !hidSet.has(n.r) ? 'checked' : '';
+          modalHtml += '<div class="nav-cust-item" data-route="' + esc(n.r) + '" draggable="true" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:4px;cursor:grab;background:var(--bg-card)">';
+          modalHtml += '<span style="color:var(--text-muted);cursor:grab">☰</span>';
+          modalHtml += '<input type="checkbox" ' + checked + ' data-route="' + esc(n.r) + '" class="nav-vis-cb"/>';
+          modalHtml += '<span style="flex:1;font-size:13px">' + esc(n.l) + '</span>';
+          modalHtml += '</div>';
+        });
+
+        modalHtml += '</div>';
+        modalHtml += '<div style="margin-top:12px;display:flex;gap:8px">';
+        modalHtml += '<button class="btn primary" id="navCustSave">Сохранить</button>';
+        modalHtml += '<button class="btn ghost" id="navCustReset">Сброс</button>';
+        modalHtml += '</div></div>';
+
+        showModal('Настройка меню', modalHtml);
+
+        // Drag & Drop для порядка
+        const list = document.getElementById('navCustList');
+        if (list) {
+          let dragItem = null;
+          list.querySelectorAll('.nav-cust-item').forEach(item => {
+            item.addEventListener('dragstart', e => { dragItem = item; item.style.opacity = '0.4'; });
+            item.addEventListener('dragend', () => { item.style.opacity = '1'; });
+            item.addEventListener('dragover', e => { e.preventDefault(); item.style.borderColor = 'var(--gold)'; });
+            item.addEventListener('dragleave', () => { item.style.borderColor = 'var(--line)'; });
+            item.addEventListener('drop', e => {
+              e.preventDefault();
+              item.style.borderColor = 'var(--line)';
+              if (dragItem && dragItem !== item) {
+                const parent = item.parentNode;
+                const items = [...parent.children];
+                const fromIdx = items.indexOf(dragItem);
+                const toIdx = items.indexOf(item);
+                if (fromIdx < toIdx) parent.insertBefore(dragItem, item.nextSibling);
+                else parent.insertBefore(dragItem, item);
+              }
+            });
+          });
+        }
+
+        // Save
+        document.getElementById('navCustSave')?.addEventListener('click', async () => {
+          const items = document.querySelectorAll('.nav-cust-item');
+          const newOrder = [...items].map(i => i.dataset.route);
+          const newHidden = [];
+          document.querySelectorAll('.nav-vis-cb').forEach(cb => {
+            if (!cb.checked) newHidden.push(cb.dataset.route);
+          });
+          await AsgardDB.put('settings', {
+            key: 'nav_prefs_' + user.id,
+            value_json: JSON.stringify({ order: newOrder, hidden: newHidden })
+          });
+          AsgardUI.hideModal();
+          toast('Меню', 'Настройки сохранены. Обновите страницу.');
+          location.reload();
+        });
+
+        // Reset
+        document.getElementById('navCustReset')?.addEventListener('click', async () => {
+          await AsgardDB.put('settings', {
+            key: 'nav_prefs_' + user.id,
+            value_json: JSON.stringify({ order: [], hidden: [] })
+          });
+          AsgardUI.hideModal();
+          location.reload();
+        });
+      });
+    }
+
     addMobileClick($("#btnSwitchRole"), async (e)=>{
       const target = e.currentTarget.getAttribute('data-target');
       const ok = await AsgardAuth.setActiveRole(target);
@@ -1062,18 +1162,18 @@ try{
     const portalsByRole = {
       TO: [ ['#/tenders','Тендеры'], ['#/tasks','Задачи'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
       PM: [ ['#/pm-calcs','Просчёты'], ['#/pm-works','Работы'], ['#/tasks','Задачи'], ['#/cash','Касса'], ['#/travel','Жильё/билеты'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
-      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/cash-admin','Касса'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/big-screen','📺 Big Screen'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/big-screen','📺 Big Screen'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/big-screen','📺 Big Screen'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/big-screen','📺 Big Screen'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
       HR: [ ['#/personnel','Персонал'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/hr-rating','Рейтинг'], ['#/alerts','Уведомления'] ],
       PROC: [ ['#/proc-requests','Заявки'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
       BUH: [ ['#/buh-registry','Реестр расходов'], ['#/tasks','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
       OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
-      ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'], ['#/backup','Backup'] ],
-      // M15: Новые роли
-      HEAD_TO: [ ['#/tenders','Тендеры'], ['#/to-analytics','Аналитика отдела'], ['#/funnel','Воронка'], ['#/alerts','Уведомления'] ],
-      HEAD_PM: [ ['#/all-works','Свод работ'], ['#/pm-analytics','Аналитика РП'], ['#/approvals','Согласование'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
+      ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/big-screen','📺 Big Screen'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'] ],
+      // M15: Новые роли + M16: Big Screen
+      HEAD_TO: [ ['#/tenders','Тендеры'], ['#/big-screen','📺 Big Screen'], ['#/to-analytics','Аналитика отдела'], ['#/funnel','Воронка'], ['#/alerts','Уведомления'] ],
+      HEAD_PM: [ ['#/all-works','Свод работ'], ['#/big-screen','📺 Big Screen'], ['#/pm-analytics','Аналитика РП'], ['#/approvals','Согласование'], ['#/gantt-works','Гантт'] ],
       CHIEF_ENGINEER: [ ['#/warehouse','Склад'], ['#/engineer-dashboard','Аналитика склада'], ['#/my-equipment','Моё оборудование'], ['#/alerts','Уведомления'] ],
       HR_MANAGER: [ ['#/personnel','Персонал'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/permits','Допуски'], ['#/hr-rating','Рейтинг'] ]
     };
@@ -1378,7 +1478,7 @@ try{
     AsgardRouter.add("/login", pageLogin, {auth:false});
     AsgardRouter.add("/register", pageRegister, {auth:false});
     AsgardRouter.add("/home", pageHome, {auth:true, roles:ALL_ROLES});
-    AsgardRouter.add("/dashboard", ()=>AsgardDashboardPage.render({layout, title:"Дашборд"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/dashboard", ()=>AsgardDashboardPage.render({layout, title:"Дашборд руководителя"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/calendar", ()=>AsgardCalendarPage.render({layout, title:"Календарь встреч"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/birthdays", ()=>AsgardBirthdaysPage.render({layout, title:"Дни рождения"}), {auth:true, roles:ALL_ROLES});
 
@@ -1439,7 +1539,8 @@ try{
     AsgardRouter.add("/sync", ()=>AsgardSync.renderSettings({layout, title:"PostgreSQL Sync"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/mango", ()=>AsgardMango.renderSettings({layout, title:"Телефония"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/chat", ()=>AsgardChat.render({layout, title:"Чат дружины"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/my-dashboard", ()=>AsgardCustomDashboard.render({layout, title:"Мой дашборд"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/my-dashboard", ()=>AsgardCustomDashboard.render({layout, title:"Мой дашборд"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES]});
+    AsgardRouter.add("/big-screen", ()=>AsgardBigScreen.render({layout, title:"Big Screen"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/backup", ()=>AsgardBackupPage.render({layout, title:"Камень Хроник • Резерв"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
   AsgardRouter.add("/diag", ()=>AsgardDiagPage.render({layout, title:"Диагностика"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/alerts", ()=>AsgardAlertsPage.render({layout, title:"Уведомления"}), {auth:true, roles:ALL_ROLES});

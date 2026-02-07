@@ -5,23 +5,63 @@
 window.AsgardCustomDashboard = (function(){
   
   const WIDGET_TYPES = {
-    welcome: { name: 'Приветствие', icon: '👋', roles: ['*'], render: renderWelcome },
-    notifications: { name: 'Уведомления', icon: '🔔', roles: ['*'], render: renderNotifications },
-    my_works: { name: 'Мои работы', icon: '🔧', roles: ['PM'], render: renderMyWorks },
-    tenders_funnel: { name: 'Воронка', icon: '📊', roles: ['ADMIN','TO','PM','DIRECTOR_*'], render: renderFunnel },
-    money_summary: { name: 'Финансы', icon: '💰', roles: ['ADMIN','DIRECTOR_*'], render: renderMoney },
-    equipment_value: { name: 'Стоимость ТМЦ', icon: '📦', roles: ['ADMIN','DIRECTOR_*'], render: renderEquipmentValue },
-    birthdays: { name: 'Дни рождения', icon: '🎂', roles: ['*'], render: renderBirthdays },
-    approvals: { name: 'Согласования', icon: '✅', roles: ['ADMIN','DIRECTOR_*'], render: renderApprovals },
-    calendar: { name: 'Календарь', icon: '📅', roles: ['*'], render: renderCalendar },
-    quick_actions: { name: 'Быстрые действия', icon: '⚡', roles: ['*'], render: renderQuickActions },
-    receipt_scanner: { name: 'Сканер чеков', icon: '📷', roles: ['PM'], render: renderReceiptScanner },
-    call_toggle: { name: 'Приём звонков', icon: '📞', roles: ['*'], render: renderCallToggle }
+    welcome: { name: 'Приветствие', icon: '👋', size: 'normal', roles: ['*'], render: renderWelcome },
+    notifications: { name: 'Уведомления', icon: '🔔', size: 'normal', roles: ['*'], render: renderNotifications },
+    my_works: { name: 'Мои работы', icon: '🔧', size: 'normal', roles: ['PM','HEAD_PM'], render: renderMyWorks },
+    tenders_funnel: { name: 'Воронка', icon: '📊', size: 'normal', roles: ['ADMIN','TO','HEAD_TO','PM','DIRECTOR_*'], render: renderFunnel },
+    money_summary: { name: 'Финансы', icon: '💰', size: 'normal', roles: ['ADMIN','DIRECTOR_*'], render: renderMoney },
+    equipment_value: { name: 'Стоимость ТМЦ', icon: '📦', size: 'normal', roles: ['ADMIN','CHIEF_ENGINEER','DIRECTOR_*'], render: renderEquipmentValue },
+    birthdays: { name: 'Дни рождения', icon: '🎂', size: 'normal', roles: ['*'], render: renderBirthdays },
+    approvals: { name: 'Согласования', icon: '✅', size: 'normal', roles: ['ADMIN','HEAD_PM','DIRECTOR_*'], render: renderApprovals },
+    calendar: { name: 'Календарь', icon: '📅', size: 'normal', roles: ['*'], render: renderCalendar },
+    quick_actions: { name: 'Быстрые действия', icon: '⚡', size: 'normal', roles: ['*'], render: renderQuickActions },
+    receipt_scanner: { name: 'Сканер чеков', icon: '📷', size: 'normal', roles: ['PM','HEAD_PM'], render: renderReceiptScanner },
+    call_toggle: { name: 'Приём звонков', icon: '📞', size: 'normal', roles: ['*'], render: renderCallToggle },
+    // ─── M16: Новые виджеты ───
+    overdue_works: {
+      name: 'Просроченные работы', icon: '⚠️', size: 'wide',
+      roles: ['ADMIN','PM','HEAD_PM','DIRECTOR_*'], render: renderOverdueWorks
+    },
+    permits_expiry: {
+      name: 'Истекающие допуски', icon: '🛡️', size: 'normal',
+      roles: ['ADMIN','HR','HR_MANAGER','HEAD_TO','CHIEF_ENGINEER','DIRECTOR_*'], render: renderPermitsExpiry
+    },
+    team_workload: {
+      name: 'Загрузка РП', icon: '📊', size: 'wide',
+      roles: ['ADMIN','HEAD_PM','DIRECTOR_*'], render: renderTeamWorkload
+    },
+    tender_dynamics: {
+      name: 'Динамика тендеров', icon: '📈', size: 'wide',
+      roles: ['ADMIN','TO','HEAD_TO','DIRECTOR_*'], render: renderTenderDynamics
+    },
+    kpi_summary: {
+      name: 'KPI сводка', icon: '🎯', size: 'wide',
+      roles: ['ADMIN','DIRECTOR_*'], render: renderKpiSummary
+    },
+    gantt_mini: {
+      name: 'Ближайшие дедлайны', icon: '⏰', size: 'normal',
+      roles: ['ADMIN','PM','HEAD_PM','DIRECTOR_*'], render: renderGanttMini
+    },
+    cash_balance: {
+      name: 'Баланс КАССА', icon: '💵', size: 'normal',
+      roles: ['ADMIN','BUH','DIRECTOR_*'], render: renderCashBalance
+    },
+    equipment_alerts: {
+      name: 'Оборудование • Алерты', icon: '🔧', size: 'normal',
+      roles: ['ADMIN','CHIEF_ENGINEER','WAREHOUSE','DIRECTOR_*'], render: renderEquipmentAlerts
+    }
   };
 
   const DEFAULT_LAYOUTS = {
-    ADMIN: ['welcome','quick_actions','money_summary','approvals','tenders_funnel','notifications'],
-    PM: ['welcome','quick_actions','my_works','notifications','birthdays'],
+    ADMIN: ['welcome','kpi_summary','quick_actions','overdue_works','tenders_funnel','notifications'],
+    PM: ['welcome','quick_actions','my_works','gantt_mini','notifications','birthdays'],
+    TO: ['welcome','quick_actions','tenders_funnel','tender_dynamics','notifications'],
+    HEAD_TO: ['welcome','tender_dynamics','tenders_funnel','notifications'],
+    HEAD_PM: ['welcome','team_workload','overdue_works','gantt_mini','notifications'],
+    CHIEF_ENGINEER: ['welcome','equipment_value','equipment_alerts','notifications'],
+    HR: ['welcome','permits_expiry','birthdays','notifications','calendar'],
+    HR_MANAGER: ['welcome','permits_expiry','birthdays','team_workload','notifications'],
+    BUH: ['welcome','cash_balance','money_summary','notifications'],
     DEFAULT: ['welcome','notifications','calendar','birthdays']
   };
 
@@ -31,7 +71,9 @@ window.AsgardCustomDashboard = (function(){
       if (s?.value_json) return JSON.parse(s.value_json);
     } catch(e) {}
     if (role?.startsWith('DIRECTOR')) return DEFAULT_LAYOUTS.ADMIN;
-    return DEFAULT_LAYOUTS[role] || DEFAULT_LAYOUTS.DEFAULT;
+    // M16: Поддержка новых ролей
+    if (DEFAULT_LAYOUTS[role]) return DEFAULT_LAYOUTS[role];
+    return DEFAULT_LAYOUTS.DEFAULT;
   }
 
   async function saveUserLayout(userId, layout) {
@@ -42,10 +84,22 @@ window.AsgardCustomDashboard = (function(){
     const auth = await AsgardAuth.requireUser();
     if (!auth) { location.hash = "#/login"; return; }
     const user = auth.user;
-    const userLayout = await getUserLayout(user.id, user.role);
-    const available = Object.entries(WIDGET_TYPES).filter(([id, w]) => 
-      w.roles.includes('*') || w.roles.some(r => r.endsWith('*') ? user.role?.startsWith(r.slice(0,-1)) : r === user.role)
-    );
+    let userLayout = await getUserLayout(user.id, user.role);
+    // M16: Расширенная проверка ролей (HEAD_* наследуют виджеты базовых ролей)
+    const available = Object.entries(WIDGET_TYPES).filter(([id, w]) => {
+      if (w.roles.includes('*')) return true;
+      const r = user.role || '';
+      return w.roles.some(wr => {
+        if (wr.endsWith('*')) return r.startsWith(wr.slice(0, -1));
+        if (wr === r) return true;
+        // HEAD_TO наследует TO виджеты
+        if (r === 'HEAD_TO' && wr === 'TO') return true;
+        if (r === 'HEAD_PM' && wr === 'PM') return true;
+        if (r === 'HR_MANAGER' && wr === 'HR') return true;
+        if (r === 'CHIEF_ENGINEER' && wr === 'WAREHOUSE') return true;
+        return false;
+      });
+    });
 
     const html = '<div class="custom-dash">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">' +
@@ -55,12 +109,15 @@ window.AsgardCustomDashboard = (function(){
           '<button class="btn ghost" id="btnResetW">↺ Сброс</button>' +
         '</div>' +
       '</div>' +
+      '<div class="help" style="margin-bottom:16px;font-size:12px">Перетаскивайте виджеты для изменения порядка</div>' +
       '<div class="dash-grid" id="dashGrid">' +
         userLayout.map(id => {
           const w = WIDGET_TYPES[id];
           if (!w) return '';
-          return '<div class="dash-widget" data-id="' + id + '">' +
+          const sizeClass = (w.size === 'wide') ? ' wide' : '';
+          return '<div class="dash-widget' + sizeClass + '" data-id="' + id + '" draggable="true">' +
             '<div class="dash-widget-header">' +
+              '<span class="drag-handle">☰</span>' +
               '<span>' + w.icon + '</span>' +
               '<span style="flex:1;font-weight:600">' + w.name + '</span>' +
               '<button class="btn-remove" data-id="' + id + '">✕</button>' +
@@ -72,12 +129,19 @@ window.AsgardCustomDashboard = (function(){
     '</div>' +
     '<style>' +
       '.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}' +
-      '.dash-widget{background:var(--bg-card);border-radius:16px;border:1px solid var(--line);overflow:hidden}' +
+      '.dash-widget{background:var(--bg-card);border-radius:16px;border:1px solid var(--line);overflow:hidden;transition:border-color .2s,box-shadow .2s,opacity .2s}' +
       '.dash-widget:hover{border-color:var(--gold)}' +
+      '.dash-widget.wide{grid-column:span 2}' +
+      '@media(max-width:700px){.dash-widget.wide{grid-column:span 1}}' +
       '.dash-widget-header{padding:12px 16px;background:var(--bg-elevated);display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}' +
       '.dash-widget-content{padding:16px;min-height:100px}' +
       '.btn-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px}' +
       '.btn-remove:hover{color:var(--red)}' +
+      '.drag-handle{cursor:grab;color:var(--text-muted);font-size:14px}' +
+      '.dash-widget[draggable]{cursor:grab}' +
+      '.dash-widget[draggable]:active{cursor:grabbing}' +
+      '.dash-widget.drag-over{border-color:var(--gold);box-shadow:0 0 20px rgba(242,208,138,.3)}' +
+      '.dash-widget.dragging{opacity:0.4}' +
     '</style>';
 
     await pageLayout(html, { title: title || 'Мой дашборд' });
@@ -89,6 +153,42 @@ window.AsgardCustomDashboard = (function(){
         if (el) try { await w.render(el, user); } catch(e) { el.innerHTML = 'Ошибка'; }
       }
     }
+
+    // === M16: Drag & Drop ===
+    let dragSrc = null;
+    document.querySelectorAll('.dash-widget').forEach(w => {
+      w.addEventListener('dragstart', e => {
+        dragSrc = w;
+        w.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', w.dataset.id);
+      });
+      w.addEventListener('dragend', () => {
+        w.classList.remove('dragging');
+        document.querySelectorAll('.dash-widget').forEach(x => x.classList.remove('drag-over'));
+      });
+      w.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (w !== dragSrc) w.classList.add('drag-over');
+      });
+      w.addEventListener('dragleave', () => w.classList.remove('drag-over'));
+      w.addEventListener('drop', async e => {
+        e.preventDefault();
+        w.classList.remove('drag-over');
+        if (!dragSrc || dragSrc === w) return;
+        const fromId = dragSrc.dataset.id;
+        const toId = w.dataset.id;
+        const fromIdx = userLayout.indexOf(fromId);
+        const toIdx = userLayout.indexOf(toId);
+        if (fromIdx < 0 || toIdx < 0) return;
+        // Swap positions
+        userLayout.splice(fromIdx, 1);
+        userLayout.splice(toIdx, 0, fromId);
+        await saveUserLayout(user.id, userLayout);
+        render({ layout: pageLayout, title });
+      });
+    });
 
     document.querySelectorAll('.btn-remove').forEach(btn => {
       btn.onclick = async () => {
@@ -103,10 +203,11 @@ window.AsgardCustomDashboard = (function(){
       const curr = new Set(userLayout);
       const avail = available.filter(([id]) => !curr.has(id));
       const html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">' +
-        avail.map(([id, w]) => 
+        avail.map(([id, w]) =>
           '<div class="widget-pick" data-id="' + id + '" style="padding:16px;border:1px solid var(--line);border-radius:12px;text-align:center;cursor:pointer">' +
             '<div style="font-size:32px">' + w.icon + '</div>' +
             '<div style="font-size:13px;font-weight:600">' + w.name + '</div>' +
+            (w.size === 'wide' ? '<div style="font-size:10px;color:var(--text-muted);margin-top:4px">широкий</div>' : '') +
           '</div>'
         ).join('') +
         (avail.length === 0 ? '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted)">Все виджеты добавлены</div>' : '') +
@@ -123,7 +224,7 @@ window.AsgardCustomDashboard = (function(){
     });
 
     document.getElementById('btnResetW')?.addEventListener('click', async () => {
-      if (!confirm('Сбросить?')) return;
+      if (!confirm('Сбросить раскладку на стандартную?')) return;
       const def = user.role?.startsWith('DIRECTOR') ? DEFAULT_LAYOUTS.ADMIN : (DEFAULT_LAYOUTS[user.role] || DEFAULT_LAYOUTS.DEFAULT);
       await saveUserLayout(user.id, def);
       render({ layout: pageLayout, title });
@@ -278,6 +379,210 @@ window.AsgardCustomDashboard = (function(){
       `;
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center;color:var(--red)">Ошибка загрузки</div>';
+    }
+  }
+
+  // ─── M16: Рендер новых виджетов ───
+
+  async function renderOverdueWorks(el, user) {
+    const works = await AsgardDB.getAll('works') || [];
+    const now = new Date();
+    const overdue = works.filter(w => {
+      if (!w.end_plan) return false;
+      if (['Работы сдали','Закрыт'].includes(w.work_status)) return false;
+      return new Date(w.end_plan) < now;
+    }).sort((a,b) => new Date(a.end_plan) - new Date(b.end_plan)).slice(0, 8);
+
+    if (!overdue.length) {
+      el.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:40px;margin-bottom:8px">✅</div><div class="help">Просроченных работ нет</div></div>';
+      return;
+    }
+    el.innerHTML = '<div style="font-size:12px;color:var(--red);font-weight:700;margin-bottom:8px">⚠️ ' + overdue.length + ' просроченных</div>' +
+      overdue.map(w => {
+        const days = Math.round((now - new Date(w.end_plan)) / 86400000);
+        return '<div style="padding:6px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px">' +
+          '<div style="font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || w.work_name || ('ID ' + w.id)) + '</div>' +
+          '<div style="font-size:11px;color:var(--red);white-space:nowrap">+' + days + ' дн.</div>' +
+        '</div>';
+      }).join('') +
+      '<a href="#/all-works" class="btn mini ghost" style="margin-top:8px;font-size:11px">Все работы →</a>';
+  }
+
+  async function renderPermitsExpiry(el, user) {
+    const permits = await AsgardDB.getAll('permits') || [];
+    const now = new Date();
+    const soon = permits.filter(p => {
+      if (!p.expiry_date) return false;
+      const exp = new Date(p.expiry_date);
+      const days = Math.round((exp - now) / 86400000);
+      return days >= 0 && days <= 30;
+    }).sort((a,b) => new Date(a.expiry_date) - new Date(b.expiry_date)).slice(0, 8);
+
+    if (!soon.length) {
+      el.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:40px;margin-bottom:8px">🛡️</div><div class="help">Все допуски в порядке</div></div>';
+      return;
+    }
+    el.innerHTML = '<div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:8px">🛡️ ' + soon.length + ' истекают в ближайшие 30 дней</div>' +
+      soon.map(p => {
+        const days = Math.round((new Date(p.expiry_date) - now) / 86400000);
+        const color = days <= 7 ? 'var(--red)' : 'var(--amber)';
+        return '<div style="padding:6px 0;border-bottom:1px solid var(--line)">' +
+          '<div style="font-size:12px;font-weight:600">' + esc(p.employee_name || p.fio || '') + '</div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:11px">' +
+            '<span class="help">' + esc(p.permit_type || p.type || '') + '</span>' +
+            '<span style="color:' + color + '">' + (days === 0 ? 'Сегодня!' : days + ' дн.') + '</span>' +
+          '</div></div>';
+      }).join('') +
+      '<a href="#/permits" class="btn mini ghost" style="margin-top:8px;font-size:11px">Все допуски →</a>';
+  }
+
+  async function renderTeamWorkload(el, user) {
+    const works = await AsgardDB.getAll('works') || [];
+    const users = await AsgardDB.getAll('users') || [];
+    const pms = users.filter(u => u.is_active && (u.role === 'PM' || u.role === 'HEAD_PM'));
+    const activeStatuses = ['В работе', 'Мобилизация', 'Подготовка', 'На объекте'];
+
+    const data = pms.map(pm => {
+      const pmWorks = works.filter(w => w.pm_id === pm.id && activeStatuses.includes(w.work_status));
+      return { name: pm.name, count: pmWorks.length, id: pm.id };
+    }).filter(d => d.count > 0).sort((a,b) => b.count - a.count);
+
+    if (!data.length) {
+      el.innerHTML = '<div class="help" style="text-align:center;padding:20px">Нет активных работ</div>';
+      return;
+    }
+    const max = Math.max(...data.map(d => d.count), 1);
+    el.innerHTML = data.map(d => {
+      const pct = Math.round((d.count / max) * 100);
+      const color = d.count > 5 ? '#f44336' : d.count > 3 ? '#ff9800' : '#4caf50';
+      return '<div style="display:flex;align-items:center;gap:10px;margin:6px 0">' +
+        '<div style="width:90px;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc((d.name || '').split(' ')[0]) + '</div>' +
+        '<div style="flex:1;background:var(--bg-elevated);border-radius:4px;height:16px;overflow:hidden">' +
+          '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:4px;transition:width .3s"></div>' +
+        '</div>' +
+        '<div style="width:24px;text-align:right;font-weight:700;font-size:13px">' + d.count + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  async function renderTenderDynamics(el, user) {
+    const tenders = await AsgardDB.getAll('tenders') || [];
+    const now = new Date();
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      const label = d.toLocaleDateString('ru-RU', { month: 'short' });
+      const mTenders = tenders.filter(t => (t.period || '').startsWith(key) || (t.created_at || '').startsWith(key));
+      const won = mTenders.filter(t => ['Выиграли','Контракт','Клиент согласился'].includes(t.tender_status)).length;
+      months.push({ label, total: mTenders.length, won });
+    }
+    const max = Math.max(...months.map(m => m.total), 1);
+    el.innerHTML = '<div style="display:flex;align-items:flex-end;gap:6px;height:100px;padding-top:8px">' +
+      months.map(m => {
+        const h = Math.max(4, Math.round((m.total / max) * 80));
+        const wh = m.total > 0 ? Math.round((m.won / m.total) * h) : 0;
+        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">' +
+          '<div style="font-size:10px;font-weight:700">' + m.total + '</div>' +
+          '<div style="width:100%;height:' + h + 'px;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">' +
+            '<div style="height:' + (h - wh) + 'px;background:#5c6bc0"></div>' +
+            '<div style="height:' + wh + 'px;background:#4caf50"></div>' +
+          '</div>' +
+          '<div style="font-size:10px;color:var(--text-muted)">' + esc(m.label) + '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div style="display:flex;gap:12px;margin-top:8px;font-size:10px">' +
+      '<span><span style="display:inline-block;width:8px;height:8px;background:#5c6bc0;border-radius:2px;margin-right:4px"></span>Всего</span>' +
+      '<span><span style="display:inline-block;width:8px;height:8px;background:#4caf50;border-radius:2px;margin-right:4px"></span>Выиграно</span>' +
+    '</div>';
+  }
+
+  async function renderKpiSummary(el, user) {
+    const [tenders, works] = await Promise.all([
+      AsgardDB.getAll('tenders') || [],
+      AsgardDB.getAll('works') || []
+    ]);
+    const y = new Date().getFullYear();
+    const yTenders = tenders.filter(t => String(t.year) === String(y) || (t.period || '').startsWith(y));
+    const yWorks = works.filter(w => {
+      const d = w.work_start_fact || w.work_start_plan || w.created_at;
+      return d && new Date(d).getFullYear() === y;
+    });
+    const won = yTenders.filter(t => ['Выиграли','Контракт','Клиент согласился'].includes(t.tender_status)).length;
+    const conv = yTenders.length > 0 ? Math.round((won / yTenders.length) * 100) : 0;
+    const revenue = yWorks.reduce((s, w) => s + (Number(w.contract_sum) || Number(w.contract_value) || 0), 0);
+    const done = yWorks.filter(w => w.work_status === 'Работы сдали').length;
+
+    el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+      '<div style="text-align:center;padding:8px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Тендеров</div><div style="font-size:24px;font-weight:900;color:#60a5fa">' + yTenders.length + '</div></div>' +
+      '<div style="text-align:center;padding:8px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Конверсия</div><div style="font-size:24px;font-weight:900;color:#4caf50">' + conv + '%</div></div>' +
+      '<div style="text-align:center;padding:8px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Выручка</div><div style="font-size:18px;font-weight:900;color:var(--gold)">' + formatMoney(revenue) + '</div></div>' +
+      '<div style="text-align:center;padding:8px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Сдано работ</div><div style="font-size:24px;font-weight:900;color:#22c55e">' + done + '/' + yWorks.length + '</div></div>' +
+    '</div>';
+  }
+
+  async function renderGanttMini(el, user) {
+    const works = await AsgardDB.getAll('works') || [];
+    const now = new Date();
+    const soon = works.filter(w => {
+      if (!w.end_plan) return false;
+      if (['Работы сдали','Закрыт'].includes(w.work_status)) return false;
+      const d = new Date(w.end_plan);
+      const days = Math.round((d - now) / 86400000);
+      return days >= 0 && days <= 30;
+    }).sort((a, b) => new Date(a.end_plan) - new Date(b.end_plan)).slice(0, 6);
+
+    if (!soon.length) {
+      el.innerHTML = '<div class="help" style="text-align:center;padding:20px">Нет дедлайнов в ближайшие 30 дней</div>';
+      return;
+    }
+    el.innerHTML = soon.map(w => {
+      const days = Math.round((new Date(w.end_plan) - now) / 86400000);
+      const color = days <= 3 ? 'var(--red)' : days <= 7 ? 'var(--amber)' : 'var(--text-muted)';
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px">' +
+        '<div style="font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || w.work_name || '') + '</div>' +
+        '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap">' + days + ' дн.</div>' +
+      '</div>';
+    }).join('') +
+    '<a href="#/gantt-works" class="btn mini ghost" style="margin-top:8px;font-size:11px">Гантт →</a>';
+  }
+
+  async function renderCashBalance(el, user) {
+    try {
+      const cashRecords = await AsgardDB.getAll('cash_advances') || [];
+      const pending = cashRecords.filter(r => r.status === 'pending' || r.status === 'issued').length;
+      const totalIssued = cashRecords.filter(r => r.status === 'issued').reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      el.innerHTML = '<div style="text-align:center">' +
+        '<div style="font-size:28px;font-weight:700;color:var(--gold)">' + formatMoney(totalIssued) + '</div>' +
+        '<div class="help">Выдано (не закрыто)</div>' +
+        '<div style="margin-top:12px;font-size:13px;color:var(--amber);font-weight:600">' + pending + ' заявок в обработке</div>' +
+      '</div>';
+    } catch(e) {
+      el.innerHTML = '<div class="help" style="text-align:center">Нет данных КАССА</div>';
+    }
+  }
+
+  async function renderEquipmentAlerts(el, user) {
+    try {
+      const auth = AsgardAuth.getAuth();
+      const resp = await fetch('/api/equipment/maintenance/upcoming', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
+      const data = await resp.json();
+      const items = (data.items || data.equipment || data || []).slice(0, 5);
+      if (!items.length) {
+        el.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:40px;margin-bottom:8px">✅</div><div class="help">Всё обслужено</div></div>';
+        return;
+      }
+      el.innerHTML = '<div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:8px">🔧 Требуется ТО</div>' +
+        items.map(i => '<div style="padding:5px 0;border-bottom:1px solid var(--line);font-size:12px">' +
+          '<div style="font-weight:600">' + esc(i.name || i.equipment_name || '') + '</div>' +
+          '<div class="help">' + esc(i.next_maintenance_date ? new Date(i.next_maintenance_date).toLocaleDateString('ru-RU') : '—') + '</div>' +
+        '</div>').join('') +
+        '<a href="#/warehouse" class="btn mini ghost" style="margin-top:8px;font-size:11px">Склад →</a>';
+    } catch(e) {
+      el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }
   }
 
