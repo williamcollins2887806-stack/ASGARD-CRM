@@ -1791,3 +1791,322 @@ details > *:not(summary) {
 @media (min-width: 769px) {
   .show-mobile { display: none !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ENHANCED ANIMATIONS & MICRO-INTERACTIONS
+   Business Viking 2026 Design System
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Page Transition Animation */
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.main,
+.panel,
+.page-content {
+  animation: page-fade-in 0.3s ease-out;
+}
+
+/* Card Entrance Animation */
+@keyframes card-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card {
+  animation: card-slide-up 0.4s ease-out;
+  animation-fill-mode: both;
+}
+
+.card:nth-child(1) { animation-delay: 0.05s; }
+.card:nth-child(2) { animation-delay: 0.1s; }
+.card:nth-child(3) { animation-delay: 0.15s; }
+.card:nth-child(4) { animation-delay: 0.2s; }
+.card:nth-child(5) { animation-delay: 0.25s; }
+.card:nth-child(6) { animation-delay: 0.3s; }
+
+/* KPI Card Value Animation */
+@keyframes kpi-value-pop {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.kpi .k .v,
+.stat-value,
+.kpi-value {
+  animation: kpi-value-pop 0.5s ease-out 0.2s;
+  animation-fill-mode: both;
+}
+
+/* Button Hover Effects */
+.btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+}
+
+.btn:hover::after {
+  transform: translateX(100%);
+}
+
+/* Button Press Effect */
+.btn:active {
+  transform: scale(0.98);
+}
+
+/* Gold Shimmer Effect for Active Elements */
+@keyframes gold-shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.navitem.active::after,
+.btn.primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(212, 168, 70, 0.15),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: gold-shimmer 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Pulse Animation for Notifications */
+@keyframes notification-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+.bellcount,
+.notification-badge {
+  animation: notification-pulse 2s ease-in-out infinite;
+}
+
+/* Floating Action Button Animation */
+@keyframes fab-entrance {
+  from {
+    opacity: 0;
+    transform: scale(0) rotate(-180deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+
+.fab,
+.iconbtn {
+  animation: fab-entrance 0.4s ease-out;
+}
+
+/* Skeleton Loading Animation */
+@keyframes skeleton-wave {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.skeleton,
+.loading-placeholder {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    var(--bg-hover) 50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-wave 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Smooth Expand/Collapse for Nav Groups */
+.nav-group-items {
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.25s ease,
+              padding 0.25s ease;
+}
+
+.nav-group:not(.expanded) .nav-group-items {
+  opacity: 0;
+}
+
+.nav-group.expanded .nav-group-items {
+  opacity: 1;
+}
+
+/* Focus Ring Animation */
+@keyframes focus-ring-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px var(--gold-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--gold-glow);
+  }
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  animation: focus-ring-pulse 2s ease-in-out infinite;
+}
+
+/* Table Row Hover Effect */
+.tbl tbody tr {
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.tbl tbody tr:hover {
+  transform: translateX(2px);
+}
+
+/* Success/Error State Animations */
+@keyframes success-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+@keyframes success-check {
+  0% {
+    transform: scale(0) rotate(-45deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2) rotate(-45deg);
+  }
+  100% {
+    transform: scale(1) rotate(-45deg);
+    opacity: 1;
+  }
+}
+
+.success-animation {
+  animation: success-check 0.4s ease-out;
+}
+
+.error-animation {
+  animation: success-shake 0.4s ease-out;
+}
+
+/* Tooltip Fade Animation */
+@keyframes tooltip-fade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:hover::before {
+  animation: tooltip-fade 0.2s ease-out;
+}
+
+/* Badge Count Update Animation */
+@keyframes badge-bump {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+.badge-animate {
+  animation: badge-bump 0.3s ease-out;
+}
+
+/* Dropdown Menu Animation */
+@keyframes dropdown-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dropdown-menu,
+.context-menu,
+.popover {
+  animation: dropdown-slide 0.2s ease-out;
+  transform-origin: top center;
+}
+
+/* Progress Bar Animation */
+@keyframes progress-fill {
+  from { width: 0; }
+}
+
+.progress-bar,
+.progress-fill {
+  animation: progress-fill 0.8s ease-out;
+}
+
+/* Stagger Animation Helper Classes */
+.stagger-1 { animation-delay: 0.05s !important; }
+.stagger-2 { animation-delay: 0.1s !important; }
+.stagger-3 { animation-delay: 0.15s !important; }
+.stagger-4 { animation-delay: 0.2s !important; }
+.stagger-5 { animation-delay: 0.25s !important; }
+.stagger-6 { animation-delay: 0.3s !important; }
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
