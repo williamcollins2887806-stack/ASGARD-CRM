@@ -319,8 +319,8 @@ async function dataRoutes(fastify, options) {
 
       return { success: true, item: result.rows[0], id: result.rows[0][pk] };
     } catch(err) {
-      fastify.log.error(`Data API POST [${table}]:`, err.message);
-      return reply.code(500).send({ error: 'Ошибка обработки запроса' });
+      fastify.log.error(`Data API POST [${table}]: ${err.message}`, { stack: err.stack, code: err.code });
+      return reply.code(500).send({ error: 'Ошибка обработки запроса', details: err.message });
     }
   });
 
