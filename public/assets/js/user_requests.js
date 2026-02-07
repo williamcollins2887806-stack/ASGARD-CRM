@@ -14,7 +14,12 @@ window.AsgardUserRequestsPage = (function(){
     { key: 'PROC', label: 'PROC — Закупки' },
     { key: 'DIRECTOR_COMM', label: 'DIRECTOR_COMM — Коммерческий директор' },
     { key: 'DIRECTOR_GEN', label: 'DIRECTOR_GEN — Генеральный директор' },
-    { key: 'DIRECTOR_DEV', label: 'DIRECTOR_DEV — Директор разработки + PM' }
+    { key: 'DIRECTOR_DEV', label: 'DIRECTOR_DEV — Директор разработки + PM' },
+    // M15: Новые роли
+    { key: 'HEAD_TO', label: 'HEAD_TO — Рук. тендерного отдела' },
+    { key: 'HEAD_PM', label: 'HEAD_PM — Рук. технического отдела' },
+    { key: 'CHIEF_ENGINEER', label: 'CHIEF_ENGINEER — Главный инженер' },
+    { key: 'HR_MANAGER', label: 'HR_MANAGER — HR-менеджер' }
   ];
 
   function today(){ return new Date().toISOString().slice(0,10); }

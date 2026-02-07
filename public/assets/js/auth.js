@@ -8,7 +8,8 @@ window.AsgardAuth = (function(){
   
   const ROLES = {
     ADMIN:1, TO:1, PM:1, HR:1, BUH:1, OFFICE_MANAGER:1,
-    DIRECTOR_COMM:1, DIRECTOR_GEN:1, DIRECTOR_DEV:1, PROC:1, WAREHOUSE:1
+    DIRECTOR_COMM:1, DIRECTOR_GEN:1, DIRECTOR_DEV:1, PROC:1, WAREHOUSE:1,
+    HEAD_TO:1, HEAD_PM:1, CHIEF_ENGINEER:1, HR_MANAGER:1
   };
   
   const DIRECTOR_ROLES = ["DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"];
@@ -22,8 +23,13 @@ window.AsgardAuth = (function(){
     const primary = String(user?.role||"");
     let roles = Array.isArray(user?.roles) ? user.roles.slice() : (primary ? [primary] : []);
     if(primary && !roles.includes(primary)) roles.push(primary);
+    // Наследование ролей (M15)
     if(primary==="DIRECTOR_DEV" && !roles.includes("PM")) roles.push("PM");
     if(primary==="HR" && !roles.includes("PM")) roles.push("PM");
+    if(primary==="HEAD_TO" && !roles.includes("TO")) roles.push("TO");
+    if(primary==="HEAD_PM" && !roles.includes("PM")) roles.push("PM");
+    if(primary==="HR_MANAGER" && !roles.includes("HR")) roles.push("HR");
+    if(primary==="CHIEF_ENGINEER" && !roles.includes("WAREHOUSE")) roles.push("WAREHOUSE");
     return [...new Set(roles)];
   }
   
@@ -32,7 +38,9 @@ window.AsgardAuth = (function(){
       ADMIN:"Администратор", TO:"ТО", PM:"РП", HR:"HR", BUH:"Бухгалтер",
       OFFICE_MANAGER:"Офис-менеджер", WAREHOUSE:"Кладовщик",
       DIRECTOR_COMM:"Ком. директор", DIRECTOR_GEN:"Ген. директор",
-      DIRECTOR_DEV:"Тех. директор", PROC:"Закупщик"
+      DIRECTOR_DEV:"Тех. директор", PROC:"Закупщик",
+      HEAD_TO:"Рук. тендерного отдела", HEAD_PM:"Рук. ТО",
+      CHIEF_ENGINEER:"Главный инженер", HR_MANAGER:"HR-менеджер"
     };
     return map[role] || role;
   }

@@ -6,8 +6,8 @@
 async function equipmentRoutes(fastify, options) {
   const db = fastify.db;
   
-  // Роли с полным доступом к складу
-  const WAREHOUSE_ADMINS = ['ADMIN', 'WAREHOUSE', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+  // Роли с полным доступом к складу (M15: добавлен CHIEF_ENGINEER)
+  const WAREHOUSE_ADMINS = ['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
   const PM_ROLES = ['PM', 'MANAGER'];
   
   function canManageEquipment(role) {
@@ -19,7 +19,7 @@ async function equipmentRoutes(fastify, options) {
   }
   
   function hasFullAccess(role) {
-    return ['ADMIN', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
+    return ['ADMIN', 'CHIEF_ENGINEER', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
   }
   
   // ============================================
@@ -1291,6 +1291,72 @@ async function equipmentRoutes(fastify, options) {
     `, [warehouseId, condition_after, equipment_id]);
     
     return { success: true, message: 'Ремонт завершён, оборудование на складе' };
+  });
+}
+
+  // ═══════════════════════════════════════════════════════════════
+  // M15: Аналитика склада для главного инженера
+  // ═══════════════════════════════════════════════════════════════
+
+  fastify.get('/analytics/by-pm', {
+    preHandler: [fastify.requireRoles(['CHIEF_ENGINEER', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    // Оборудование по каждому РП (current_holder_id)
+    const byPm = await db.query(`
+      SELECT
+        u.id as pm_id,
+        u.name as pm_name,
+        COUNT(e.id) as equipment_count,
+        COALESCE(SUM(e.book_value), 0) as total_value,
+        COUNT(e.id) FILTER (WHERE e.status = 'issued') as issued,
+        COUNT(e.id) FILTER (WHERE e.status = 'repair') as in_repair,
+        json_agg(json_build_object(
+          'id', e.id,
+          'name', e.name,
+          'inventory_number', e.inventory_number,
+          'category_id', e.category_id,
+          'status', e.status,
+          'book_value', e.book_value,
+          'serial_number', e.serial_number
+        ) ORDER BY e.name) FILTER (WHERE e.id IS NOT NULL) as equipment_list
+      FROM users u
+      LEFT JOIN equipment e ON e.current_holder_id = u.id AND e.status IN ('issued', 'repair')
+      WHERE u.role IN ('PM', 'HEAD_PM') AND u.is_active = true
+      GROUP BY u.id, u.name
+      HAVING COUNT(e.id) > 0
+      ORDER BY total_value DESC
+    `);
+
+    // Движение за последние 30 дней
+    const movements = await db.query(`
+      SELECT
+        em.movement_type,
+        COUNT(*) as count,
+        TO_CHAR(em.created_at, 'YYYY-MM-DD') as date
+      FROM equipment_movements em
+      WHERE em.created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY em.movement_type, TO_CHAR(em.created_at, 'YYYY-MM-DD')
+      ORDER BY date
+    `);
+
+    // Оборудование требующее ТО
+    const needsMaintenance = await db.query(`
+      SELECT e.id, e.name, e.inventory_number, e.next_maintenance_date,
+        u.name as holder_name
+      FROM equipment e
+      LEFT JOIN users u ON e.current_holder_id = u.id
+      WHERE e.next_maintenance IS NOT NULL
+        AND e.next_maintenance <= NOW() + INTERVAL '30 days'
+        AND e.status != 'written_off'
+      ORDER BY e.next_maintenance
+      LIMIT 50
+    `);
+
+    return {
+      byPm: byPm.rows,
+      movements: movements.rows,
+      needsMaintenance: needsMaintenance.rows
+    };
   });
 }
 

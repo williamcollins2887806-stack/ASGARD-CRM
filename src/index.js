@@ -100,13 +100,25 @@ fastify.decorate('authenticate', async function(request, reply) {
   }
 });
 
-// Role check decorator
+// Role check decorator — поддержка групп ролей (M15)
 fastify.decorate('requireRoles', function(roles) {
   return async function(request, reply) {
     await fastify.authenticate(request, reply);
-    if (!roles.includes(request.user.role) && request.user.role !== 'ADMIN') {
-      reply.code(403).send({ error: 'Forbidden', message: 'Недостаточно прав' });
-    }
+    if (reply.sent) return; // authenticate уже отправил ошибку
+
+    const userRole = request.user.role;
+    if (userRole === 'ADMIN') return; // ADMIN всегда проходит
+    if (roles.includes(userRole)) return;
+    // HEAD_TO наследует доступы TO
+    if (userRole === 'HEAD_TO' && roles.includes('TO')) return;
+    // HEAD_PM наследует доступы PM
+    if (userRole === 'HEAD_PM' && roles.includes('PM')) return;
+    // HR_MANAGER наследует доступы HR
+    if (userRole === 'HR_MANAGER' && roles.includes('HR')) return;
+    // CHIEF_ENGINEER наследует доступы WAREHOUSE
+    if (userRole === 'CHIEF_ENGINEER' && roles.includes('WAREHOUSE')) return;
+
+    reply.code(403).send({ error: 'Forbidden', message: 'Недостаточно прав' });
   };
 });
 

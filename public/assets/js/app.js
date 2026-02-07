@@ -146,7 +146,8 @@ console.log('[ASGARD] Global period functions loaded');
   };
 
   const DIRECTOR_ROLES = ["DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]; // legacy DIRECTOR removed in Stage 25
-  const OFFICE_ROLES = ["TO","PM","HR","BUH","OFFICE_MANAGER","WAREHOUSE",...DIRECTOR_ROLES,"ADMIN"];
+  const HEAD_ROLES = ["HEAD_TO","HEAD_PM"]; // M15: Руководители отделов
+  const OFFICE_ROLES = ["TO","PM","HR","HR_MANAGER","BUH","OFFICE_MANAGER","WAREHOUSE","CHIEF_ENGINEER",...HEAD_ROLES,...DIRECTOR_ROLES,"ADMIN"];
   const ALL_ROLES = [...OFFICE_ROLES,"PROC"];
 
 
@@ -198,19 +199,19 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"home"},
 
     // ── ТЕНДЕРЫ ──
-    {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders",p:"funnel",g:"tenders"},
-    {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders",p:"tenders",g:"tenders"},
-    {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","PM",...DIRECTOR_ROLES],i:"customers",p:"customers",g:"tenders"},
+    {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"funnel",g:"tenders"},
+    {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"tenders",g:"tenders"},
+    {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM",...DIRECTOR_ROLES],i:"customers",p:"customers",g:"tenders"},
 
     // ── РАБОТЫ ──
-    {r:"/pm-calcs",l:"Просчёты (inbox)",d:"Входящие от ТО",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_calcs",g:"works"},
-    {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"approvals",g:"works"},
-    {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"approvals",p:"bonus_approval",g:"works"},
-    {r:"/pm-works",l:"Мои работы (РП)",d:"Проекты РП",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmworks",p:"pm_works",g:"works"},
-    {r:"/all-works",l:"Свод Контрактов",d:"Все работы",roles:["ADMIN",...DIRECTOR_ROLES],i:"allworks",p:"all_works",g:"works"},
-    {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN",...DIRECTOR_ROLES],i:"allestimates",p:"all_estimates",g:"works"},
-    {r:"/gantt-calcs",l:"Гантт: Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttcalcs",p:"gantt",g:"works"},
-    {r:"/gantt-works",l:"Гантт: Работы",d:"План и факты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttworks",p:"gantt",g:"works"},
+    {r:"/pm-calcs",l:"Просчёты (inbox)",d:"Входящие от ТО",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_calcs",g:"works"},
+    {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"approvals",g:"works"},
+    {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"bonus_approval",g:"works"},
+    {r:"/pm-works",l:"Мои работы (РП)",d:"Проекты РП",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmworks",p:"pm_works",g:"works"},
+    {r:"/all-works",l:"Свод Контрактов",d:"Все работы",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"allworks",p:"all_works",g:"works"},
+    {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"allestimates",p:"all_estimates",g:"works"},
+    {r:"/gantt-calcs",l:"Гантт: Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"ganttcalcs",p:"gantt",g:"works"},
+    {r:"/gantt-works",l:"Гантт: Работы",d:"План и факты",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"ganttworks",p:"gantt",g:"works"},
     {r:"/tasks-admin",l:"Управление задачами",d:"Контроль задач",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"tasks_admin",g:"works"},
     {r:"/kanban",l:"Канбан-доска",d:"Визуальное управление задачами",roles:ALL_ROLES,i:"approvals",p:"kanban",g:"works"},
 
@@ -225,7 +226,7 @@ console.log('[ASGARD] Global period functions loaded');
 
     // ── РЕСУРСЫ ──
     {r:"/warehouse",l:"Склад ТМЦ",d:"Оборудование и инструменты",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
-    {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment",g:"resources"},
+    {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment",g:"resources"},
     {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence",p:"correspondence",g:"resources"},
     {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies",p:"contracts",g:"resources"},
     {r:"/seals",l:"Реестр печатей",d:"Учёт и передача",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"seals",g:"resources"},
@@ -233,13 +234,13 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/proc-requests",l:"Заявки закупок",d:"Закупки",roles:["ADMIN","PROC",...DIRECTOR_ROLES],i:"approvals",p:"proc_requests",g:"resources"},
 
     // ── ПЕРСОНАЛ ──
-    {r:"/personnel",l:"Дружина",d:"Сотрудники",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
-    {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"hr_requests",g:"personnel"},
-    {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица",roles:["ADMIN","HR","TO","PM",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},
+    {r:"/personnel",l:"Дружина",d:"Сотрудники",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
+    {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"hr_requests",g:"personnel"},
+    {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},
     {r:"/office-schedule",l:"График: Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule",p:"office_schedule",g:"personnel"},
-    {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
-    {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
-    {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
+    {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
+    {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
+    {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","HR_MANAGER","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
 
     // ── КОММУНИКАЦИИ ──
     {r:"/chat",l:"Чат дружины",d:"Общение и согласования",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"correspondence",p:"chat",g:"comm"},
@@ -258,6 +259,11 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/backup",l:"Резервные копии",d:"Экспорт/импорт базы",roles:["ADMIN",...DIRECTOR_ROLES],i:"backup",p:"backup",g:"system"},
     {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup",p:"sync",g:"system"},
     {r:"/diag",l:"Диагностика",d:"Версия, база, self-test",roles:["ADMIN"],i:"diag",p:"diag",g:"system"},
+
+    // M15: Аналитика для руководителей отделов
+    {r:"/to-analytics",l:"Хроники Тендерного Отдела",d:"KPI тендерных специалистов",roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES],i:"kpiworks",p:"to_analytics",g:"analytics"},
+    {r:"/pm-analytics",l:"Хроники Руководителей Проектов",d:"KPI и загрузка РП",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"kpiworks",p:"pm_analytics",g:"analytics"},
+    {r:"/engineer-dashboard",l:"Кузница Инженера",d:"Склад, оборудование, ТО",roles:["ADMIN","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"backup",p:"engineer_dashboard",g:"analytics"},
   ];
 
   async function layout(body,{title,motto,rightBadges=[]}={}){
@@ -1064,7 +1070,12 @@ try{
       PROC: [ ['#/proc-requests','Заявки'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
       BUH: [ ['#/buh-registry','Реестр расходов'], ['#/tasks','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
       OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
-      ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'], ['#/backup','Backup'] ]
+      ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'], ['#/backup','Backup'] ],
+      // M15: Новые роли
+      HEAD_TO: [ ['#/tenders','Тендеры'], ['#/to-analytics','Аналитика отдела'], ['#/funnel','Воронка'], ['#/alerts','Уведомления'] ],
+      HEAD_PM: [ ['#/all-works','Свод работ'], ['#/pm-analytics','Аналитика РП'], ['#/approvals','Согласование'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
+      CHIEF_ENGINEER: [ ['#/warehouse','Склад'], ['#/engineer-dashboard','Аналитика склада'], ['#/my-equipment','Моё оборудование'], ['#/alerts','Уведомления'] ],
+      HR_MANAGER: [ ['#/personnel','Персонал'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/permits','Допуски'], ['#/hr-rating','Рейтинг'] ]
     };
     const portals = portalsByRole[user.role] || portalsByRole.ADMIN;
 
@@ -1544,6 +1555,11 @@ try{
       }
       await AsgardMeetings.render({layout});
     }, {auth:true, roles:ALL_ROLES});
+
+    // M15: Аналитика для руководителей отделов
+    AsgardRouter.add("/to-analytics", ()=>AsgardTOAnalytics.render({layout, title:"Хроники Тендерного Отдела"}), {auth:true, roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-analytics", ()=>AsgardPMAnalytics.render({layout, title:"Хроники Руководителей Проектов"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/engineer-dashboard", ()=>AsgardEngineerDashboard.render({layout, title:"Кузница Инженера"}), {auth:true, roles:["ADMIN","CHIEF_ENGINEER",...DIRECTOR_ROLES]});
 
     // TKP Follow-up: проверка напоминаний при старте
     if(window.AsgardTkpFollowup){
