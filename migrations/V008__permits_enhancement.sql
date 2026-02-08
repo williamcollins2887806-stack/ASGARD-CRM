@@ -63,6 +63,11 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Ensure id has auto-increment (table may pre-exist without SERIAL)
+CREATE SEQUENCE IF NOT EXISTS permit_types_id_seq OWNED BY permit_types.id;
+SELECT setval('permit_types_id_seq', COALESCE((SELECT MAX(id) FROM permit_types), 0));
+ALTER TABLE permit_types ALTER COLUMN id SET DEFAULT nextval('permit_types_id_seq');
+
 -- Заполнить справочник из 20 типов
 INSERT INTO permit_types (code, name, category, validity_months, sort_order) VALUES
   ('height_1', 'Допуск к работам на высоте (1 группа)', 'safety', 36, 1),
