@@ -896,6 +896,7 @@ window.AsgardPmWorksPage=(function(){
           ${(user.role==="PM" && String(w.work_status||"")===triggerStatus) ? `<button class="btn" id="btnCloseout" style="background:#ef4444">Работы завершены</button>` : ``}
           <button class="btn" id="btnSaveWork">Сохранить</button>
           <button class="btn ghost" id="btnExpenses">💰 Расходы</button>
+          <button class="btn ghost" id="btnPayroll">💰 Ведомость</button>
           <button class="btn ghost" id="btnHistory">История</button>
           <button class="btn ghost" id="btnFullGantt">Открыть Гантт</button>
         </div>
@@ -935,6 +936,15 @@ window.AsgardPmWorksPage=(function(){
           } else {
             toast("Расходы", "Модуль расходов не загружен", "err");
           }
+        });
+      }
+
+      // Кнопка "Ведомость" — переход в модуль расчётов
+      const btnPayroll = $("#btnPayroll");
+      if(btnPayroll){
+        btnPayroll.addEventListener("click", ()=>{
+          hideModal();
+          location.hash = '#/payroll-sheet?work_id=' + w.id;
         });
       }
 
