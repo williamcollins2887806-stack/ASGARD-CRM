@@ -446,11 +446,131 @@
       };
       const exportBtn = $('#exportBtn'); if(exportBtn) exportBtn.onclick = () => {
         const sum = compute(st, s);
-        const txt = `КАЛЬКУЛЯТОР v2\n==============\nЗаказчик: ${st.customer_name}\nОбъект: ${st.tender_title}\nГород: ${st.city} (${st.distance_km} км)\nБригада: ${sum.people_count} чел\nСроки: ${sum.work_days} дней\nСебестоимость: ${money(sum.cost_total)}\nЦена с НДС: ${money(sum.price_with_vat)}\nЧистая прибыль: ${money(sum.net_profit)}\nПрибыль/чел-день: ${money(sum.profit_per_day)} (${sum.status.toUpperCase()})\nДата: ${new Date().toLocaleDateString('ru-RU')}`;
-        const blob = new Blob([txt], { type: 'text/plain' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `calc_${st.tender_id||'new'}.txt`; a.click();
-        toast("Экспорт", "Файл скачан");
+
+        // Проверяем наличие SheetJS (XLSX)
+        if (typeof XLSX === 'undefined') {
+          // Fallback на txt если xlsx не загружен
+          const txt = `КАЛЬКУЛЯТОР v2\n==============\nЗаказчик: ${st.customer_name}\nОбъект: ${st.tender_title}\nГород: ${st.city} (${st.distance_km} км)\nБригада: ${sum.people_count} чел\nСроки: ${sum.work_days} дней\nСебестоимость: ${money(sum.cost_total)}\nЦена с НДС: ${money(sum.price_with_vat)}\nЧистая прибыль: ${money(sum.net_profit)}\nПрибыль/чел-день: ${money(sum.profit_per_day)} (${sum.status.toUpperCase()})\nДата: ${new Date().toLocaleDateString('ru-RU')}`;
+          const blob = new Blob([txt], { type: 'text/plain' });
+          const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+          a.download = `calc_${st.tender_id||'new'}.txt`; a.click();
+          toast("Экспорт", "Файл скачан (TXT)");
+          return;
+        }
+
+        // Excel-экспорт через SheetJS
+        try {
+          const wb = XLSX.utils.book_new();
+          const dateNow = new Date().toLocaleDateString('ru-RU');
+          const wt = s.work_types?.find(w => w.id === st.work_type_id);
+
+          // Лист 1: Сводка
+          const summaryData = [
+            ['АСГАРД СЕРВИС — Рунический Калькулятор ᚱ'],
+            [],
+            ['Заказчик:', st.customer_name || '—'],
+            ['Объект:', st.tender_title || '—'],
+            ['Вид работ:', wt?.name || st.work_type_id || '—'],
+            ['Город:', st.city || '—'],
+            ['Расстояние:', `${st.distance_km || 0} км`],
+            [],
+            ['СРОКИ И ПЕРСОНАЛ'],
+            ['Подготовка:', `${sum.prep_days} дней`],
+            ['Работы:', `${sum.work_days} дней`],
+            ['Демобилизация:', `${sum.demob_days} дней`],
+            ['Всего дней:', `${sum.total_days} дней`],
+            ['Бригада:', `${sum.people_count} чел`],
+            [],
+            ['ИТОГИ РАСЧЁТА'],
+            ['Себестоимость (без НДС):', sum.cost_total],
+            ['Цена клиенту (без НДС):', sum.price_no_vat],
+            ['НДС:', `${sum.vat_pct}%`],
+            ['Цена клиенту (с НДС):', sum.price_with_vat],
+            ['Чистая прибыль:', sum.net_profit],
+            ['Прибыль/чел-день:', sum.profit_per_day],
+            ['Статус:', sum.status === 'green' ? 'НОРМА' : sum.status === 'yellow' ? 'ВНИМАНИЕ' : 'НИЗКАЯ'],
+            [],
+            ['Дата расчёта:', dateNow],
+            ['Версия:', `v${st.version || 1}`]
+          ];
+          const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+          wsSummary['!cols'] = [{ wch: 28 }, { wch: 35 }];
+          XLSX.utils.book_append_sheet(wb, wsSummary, 'Сводка');
+
+          // Лист 2: Детали (статьи расходов)
+          const detailsData = [
+            ['Статья расходов', 'Сумма, руб', 'Примечание'],
+            ['ФОТ (работа + подготовка + демоб.)', sum.payroll_total, `${sum.people_count} чел x ${sum.work_days} дней работы`],
+            ['Налоги на ФОТ', sum.fot_tax, `${s.fot_tax_pct || 50}%`],
+            ['Суточные', sum.per_diem_total, `${sum.total_days} дней`],
+            ['Проживание', sum.lodging_total, st.lodging_type],
+            ['Мобилизация', sum.mobilization_total, sum.mobilization_type],
+            ['Химия', sum.chem_total, `${st.chemicals?.length || 0} позиций`],
+            ['Расходные материалы', sum.consumables, `${s.consumables_pct || 5}%`],
+            ['Оборудование', sum.equip_total, `${st.equipment?.length || 0} позиций`],
+            ['Логистика', sum.logistics_total, `${sum.transport?.name || 'авто'}, ${st.distance_km * 2} км`],
+            ['СИЗ', sum.ppe_total, `${sum.people_count} чел`],
+            ['Накладные', sum.overhead, `${sum.overhead_pct}%`],
+            [],
+            ['ИТОГО себестоимость:', sum.cost_total, ''],
+            ['Маржа:', sum.margin_pct + '%', ''],
+            ['Цена без НДС:', sum.price_no_vat, ''],
+            ['НДС:', sum.price_with_vat - sum.price_no_vat, `${sum.vat_pct}%`],
+            ['ЦЕНА С НДС:', sum.price_with_vat, '']
+          ];
+          const wsDetails = XLSX.utils.aoa_to_sheet(detailsData);
+          wsDetails['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 30 }];
+          XLSX.utils.book_append_sheet(wb, wsDetails, 'Детали');
+
+          // Лист 3: Бригада
+          const crewData = [['Роль', 'Кол-во', 'Ставка/день', 'Суточные', 'Итого за работу']];
+          for (const c of (st.crew || [])) {
+            const role = s.roles?.find(r => r.id === c.role_id);
+            if (!role) continue;
+            const rate = window.calcRateWithSurcharges ? window.calcRateWithSurcharges(c.role_id, st.surcharges, s) : (s.base_rate * role.coef);
+            const perDiem = role.per_diem || 1000;
+            const total = rate * c.count * sum.work_days + perDiem * c.count * sum.total_days;
+            crewData.push([role.name || c.role_id, c.count, rate, perDiem, total]);
+          }
+          if (crewData.length > 1) {
+            const wsCrew = XLSX.utils.aoa_to_sheet(crewData);
+            wsCrew['!cols'] = [{ wch: 25 }, { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 18 }];
+            XLSX.utils.book_append_sheet(wb, wsCrew, 'Бригада');
+          }
+
+          // Лист 4: Параметры
+          const paramsData = [['Параметр', 'Значение']];
+          if (st.params) {
+            for (const [key, val] of Object.entries(st.params)) {
+              if (val !== null && val !== undefined && val !== '') {
+                paramsData.push([key, val]);
+              }
+            }
+          }
+          paramsData.push(['margin_pct', st.margin_pct]);
+          paramsData.push(['prep_days', st.prep_days]);
+          paramsData.push(['work_days', st.work_days]);
+          paramsData.push(['demob_days', st.demob_days]);
+          paramsData.push(['distance_km', st.distance_km]);
+          paramsData.push(['transport_id', st.transport_id]);
+          paramsData.push(['lodging_type', st.lodging_type]);
+          if (st.assumptions) paramsData.push(['assumptions', st.assumptions]);
+
+          const wsParams = XLSX.utils.aoa_to_sheet(paramsData);
+          wsParams['!cols'] = [{ wch: 25 }, { wch: 30 }];
+          XLSX.utils.book_append_sheet(wb, wsParams, 'Параметры');
+
+          // Генерация имени файла
+          const objName = (st.tender_title || 'объект').replace(/[^\w\u0400-\u04FF\s-]/g, '').substring(0, 30).trim();
+          const filename = `Расчёт_${objName}_${dateNow.replace(/\./g, '-')}.xlsx`;
+
+          // Скачивание
+          XLSX.writeFile(wb, filename);
+          toast("Экспорт", "Excel-файл скачан");
+        } catch (err) {
+          console.error('Excel export error:', err);
+          toast("Ошибка", "Не удалось экспортировать в Excel", "err");
+        }
       };
     }
     
