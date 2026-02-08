@@ -1,517 +1,479 @@
 /**
- * ASGARD CRM - Mimir AI Assistant Routes v2.0
- * 
+ * ASGARD CRM - Mimir AI Assistant Routes v3.0
+ *
  * Полный функционал:
- * - Вопросы по тендерам, работам, финансам
- * - Загрузка и анализ файлов
+ * - Чат с AI (Claude / OpenAI)
+ * - Стриминг ответов (SSE)
+ * - История диалогов
+ * - Загрузка и анализ файлов (PDF, DOCX, XLSX, изображения)
  * - Генерация ТКП
  * - Умные рекомендации
  * - Ограничения по ролям
  */
 
+'use strict';
+
 const path = require('path');
 const fs = require('fs');
+const { Readable } = require('stream');
+
+// Сервисы
+const aiProvider = require('../services/ai-provider');
+const mimirData = require('../services/mimir-data');
 
 async function mimirRoutes(fastify, options) {
+  const db = fastify.db;
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // SECURITY: Убраны хардкод-значения, все из env (HIGH-14)
+  // БЛОК 1: УПРАВЛЕНИЕ ДИАЛОГАМИ (CRUD)
   // ═══════════════════════════════════════════════════════════════════════════
-  const YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID;
-  const YANDEX_API_KEY = process.env.YANDEX_API_KEY;
-  const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
-  
-  // Роли с полным доступом
-  const FULL_ACCESS_ROLES = ['ADMIN', 'DIR', 'FIN_DIR', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-  
-  function hasFullAccess(role) { return FULL_ACCESS_ROLES.includes(role); }
-  function isPM(role) { return role === 'PM' || role === 'MANAGER'; }
-  function isTO(role) { return role === 'TO'; }
-  function isHR(role) { return role === 'HR'; }
-  function isBUH(role) { return role === 'BUH' || role === 'ACCOUNTANT'; }
-  
-  // ============================================
-  // ПОЛУЧЕНИЕ ДАННЫХ ИЗ БД С УЧЁТОМ РОЛЕЙ
-  // ============================================
-  
-  async function getDbStats(user) {
-    const db = fastify.db;
-    const stats = {};
-    const role = user?.role || 'USER';
-    const userId = user?.id;
-    
+
+  // Получить список диалогов пользователя
+  fastify.get('/conversations', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const user = request.user;
+    const { limit = 30, archived = 'false' } = request.query;
+
     try {
-      // ТЕНДЕРЫ
-      if (hasFullAccess(role) || isPM(role) || isTO(role)) {
-        let tenderQuery = 'SELECT tender_status, COUNT(*) as cnt FROM tenders';
-        let params = [];
-        
-        if (isPM(role) && !hasFullAccess(role)) {
-          tenderQuery += ' WHERE pm_id = $1';
-          params.push(userId);
-        }
-        tenderQuery += ' GROUP BY tender_status';
-        
-        const tenders = await db.query(tenderQuery, params);
-        stats.tendersTotal = 0;
-        stats.tendersByStatus = {};
-        tenders.rows.forEach(r => {
-          stats.tendersByStatus[r.tender_status || 'Без статуса'] = parseInt(r.cnt);
-          stats.tendersTotal += parseInt(r.cnt);
-        });
-        
-        // За месяц
-        let recentQuery = 'SELECT COUNT(*) as cnt FROM tenders WHERE created_at > NOW() - INTERVAL \'30 days\'';
-        if (isPM(role) && !hasFullAccess(role)) {
-          recentQuery += ' AND pm_id = $1';
-          const recent = await db.query(recentQuery, [userId]);
-          stats.tendersLastMonth = parseInt(recent.rows[0].cnt || 0);
-        } else {
-          const recent = await db.query(recentQuery);
-          stats.tendersLastMonth = parseInt(recent.rows[0].cnt || 0);
-        }
-      }
-      
-      // РАБОТЫ
-      if (hasFullAccess(role) || isPM(role)) {
-        let worksQuery = 'SELECT COUNT(*) as total, COALESCE(SUM(contract_sum), 0) as sum FROM works';
-        let params = [];
-        
-        if (isPM(role) && !hasFullAccess(role)) {
-          worksQuery += ' WHERE pm_id = $1';
-          params.push(userId);
-        }
-        
-        const works = await db.query(worksQuery, params);
-        stats.worksTotal = parseInt(works.rows[0].total);
-        stats.worksSum = parseFloat(works.rows[0].sum || 0);
-      }
-      
-      // СОТРУДНИКИ (только HR и директора)
-      if (hasFullAccess(role) || isHR(role)) {
-        const employees = await db.query('SELECT COUNT(*) as total FROM employees');
-        stats.employeesTotal = parseInt(employees.rows[0].total);
-      }
-      
-      // ФИНАНСЫ (только директора и бухгалтерия)
-      if (hasFullAccess(role) || isBUH(role)) {
-        try {
-          const incomes = await db.query('SELECT COALESCE(SUM(amount), 0) as total FROM incomes');
-          const expenses = await db.query('SELECT COALESCE(SUM(amount), 0) as total FROM work_expenses');
-          stats.totalIncome = parseFloat(incomes.rows[0].total || 0);
-          stats.totalExpenses = parseFloat(expenses.rows[0].total || 0);
-          stats.profit = stats.totalIncome - stats.totalExpenses;
-        } catch(e) {}
-        
-        // Просроченные счета
-        try {
-          const overdue = await db.query(`
-            SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount - paid_amount), 0) as sum 
-            FROM invoices 
-            WHERE status NOT IN ('paid', 'cancelled') AND due_date < CURRENT_DATE
-          `);
-          stats.overdueInvoices = parseInt(overdue.rows[0].cnt || 0);
-          stats.overdueSum = parseFloat(overdue.rows[0].sum || 0);
-        } catch(e) {}
-      }
-      
+      const isArchived = archived === 'true';
+      const result = await db.query(`
+        SELECT id, title, is_pinned, is_archived, message_count, last_message_at,
+               last_message_preview, created_at, updated_at
+        FROM mimir_conversations
+        WHERE user_id = $1 AND is_archived = $2
+        ORDER BY is_pinned DESC, updated_at DESC
+        LIMIT $3
+      `, [user.id, isArchived, parseInt(limit)]);
+
+      return { success: true, conversations: result.rows };
     } catch (e) {
-      fastify.log.error('DB stats error:', e.message);
+      fastify.log.error('Get conversations error:', e.message);
+      return reply.code(500).send({ success: false, message: 'Ошибка получения диалогов' });
     }
-    
-    return stats;
-  }
-  
-  // Поиск тендеров
-  async function searchTenders(query, user) {
-    const db = fastify.db;
-    const role = user?.role || 'USER';
-    const userId = user?.id;
-    
+  });
+
+  // Создать новый диалог
+  fastify.post('/conversations', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const user = request.user;
+    const { title } = request.body || {};
+
     try {
-      let sql = `SELECT id, customer_name, tender_title, tender_status, period FROM tenders 
-                 WHERE (customer_name ILIKE $1 OR tender_title ILIKE $1)`;
-      let params = ['%' + query + '%'];
-      
-      if (isPM(role) && !hasFullAccess(role)) {
-        sql += ' AND pm_id = $2';
-        params.push(userId);
-      }
-      
-      sql += ' ORDER BY id DESC LIMIT 10';
-      const results = await db.query(sql, params);
-      return results.rows;
+      const result = await db.query(`
+        INSERT INTO mimir_conversations (user_id, title)
+        VALUES ($1, $2)
+        RETURNING id, title, created_at
+      `, [user.id, title || 'Новый диалог']);
+
+      return { success: true, conversation: result.rows[0] };
     } catch (e) {
-      return [];
+      fastify.log.error('Create conversation error:', e.message);
+      return reply.code(500).send({ success: false, message: 'Ошибка создания диалога' });
     }
-  }
-  
-  // Поиск работ
-  async function searchWorks(query, user) {
-    const db = fastify.db;
-    const role = user?.role || 'USER';
-    const userId = user?.id;
-    
-    if (!hasFullAccess(role) && !isPM(role)) return [];
-    
+  });
+
+  // Получить диалог с историей сообщений
+  fastify.get('/conversations/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const user = request.user;
+    const convId = parseInt(request.params.id);
+
     try {
-      let sql = `SELECT id, work_number, work_title, customer_name, work_status, contract_sum FROM works 
-                 WHERE (work_title ILIKE $1 OR customer_name ILIKE $1 OR work_number ILIKE $1)`;
-      let params = ['%' + query + '%'];
-      
-      if (isPM(role) && !hasFullAccess(role)) {
-        sql += ' AND pm_id = $2';
-        params.push(userId);
+      // Проверяем принадлежность диалога
+      const conv = await db.query(
+        'SELECT * FROM mimir_conversations WHERE id = $1 AND user_id = $2',
+        [convId, user.id]
+      );
+
+      if (conv.rows.length === 0) {
+        return reply.code(404).send({ success: false, message: 'Диалог не найден' });
       }
-      
-      sql += ' ORDER BY id DESC LIMIT 10';
-      const results = await db.query(sql, params);
-      return results.rows;
+
+      // Получаем сообщения
+      const messages = await db.query(`
+        SELECT id, role, content, content_type, has_files, file_names,
+               search_results, tokens_input, tokens_output, model_used, created_at
+        FROM mimir_messages
+        WHERE conversation_id = $1
+        ORDER BY created_at ASC
+      `, [convId]);
+
+      return {
+        success: true,
+        conversation: conv.rows[0],
+        messages: messages.rows
+      };
     } catch (e) {
-      return [];
+      fastify.log.error('Get conversation error:', e.message);
+      return reply.code(500).send({ success: false, message: 'Ошибка получения диалога' });
     }
-  }
-  
-  // Поиск сотрудников
-  async function searchEmployees(query, user) {
-    const db = fastify.db;
-    const role = user?.role || 'USER';
-    
-    if (!hasFullAccess(role) && !isHR(role)) return [];
-    
+  });
+
+  // Обновить диалог (title, is_pinned)
+  fastify.patch('/conversations/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const user = request.user;
+    const convId = parseInt(request.params.id);
+    const { title, is_pinned } = request.body || {};
+
     try {
-      const results = await db.query(`
-        SELECT id, full_name, position, phone FROM employees 
-        WHERE full_name ILIKE $1 OR position ILIKE $1
-        ORDER BY full_name LIMIT 10
-      `, ['%' + query + '%']);
-      return results.rows;
+      const updates = [];
+      const params = [];
+      let paramIndex = 1;
+
+      if (title !== undefined) {
+        updates.push(`title = $${paramIndex++}`);
+        params.push(title);
+      }
+      if (is_pinned !== undefined) {
+        updates.push(`is_pinned = $${paramIndex++}`);
+        params.push(is_pinned);
+      }
+
+      if (updates.length === 0) {
+        return { success: true, message: 'Нет изменений' };
+      }
+
+      params.push(convId, user.id);
+      const result = await db.query(`
+        UPDATE mimir_conversations
+        SET ${updates.join(', ')}
+        WHERE id = $${paramIndex++} AND user_id = $${paramIndex}
+        RETURNING *
+      `, params);
+
+      if (result.rows.length === 0) {
+        return reply.code(404).send({ success: false, message: 'Диалог не найден' });
+      }
+
+      return { success: true, conversation: result.rows[0] };
     } catch (e) {
-      return [];
+      fastify.log.error('Update conversation error:', e.message);
+      return reply.code(500).send({ success: false, message: 'Ошибка обновления диалога' });
     }
-  }
-  
-  // Получить просроченные счета
-  async function getOverdueInvoices(user) {
-    const db = fastify.db;
-    const role = user?.role || 'USER';
-    
-    if (!hasFullAccess(role) && !isBUH(role) && !isPM(role)) return [];
-    
+  });
+
+  // Удалить диалог (мягкое удаление — архивация)
+  fastify.delete('/conversations/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const user = request.user;
+    const convId = parseInt(request.params.id);
+
     try {
-      let sql = `SELECT id, invoice_number, customer_name, total_amount, paid_amount, due_date 
-                 FROM invoices WHERE status NOT IN ('paid', 'cancelled') AND due_date < CURRENT_DATE`;
-      
-      if (isPM(role) && !hasFullAccess(role)) {
-        sql += ` AND work_id IN (SELECT id FROM works WHERE pm_id = $1)`;
-        const results = await db.query(sql, [user.id]);
-        return results.rows;
+      const result = await db.query(`
+        UPDATE mimir_conversations
+        SET is_archived = TRUE
+        WHERE id = $1 AND user_id = $2
+        RETURNING id
+      `, [convId, user.id]);
+
+      if (result.rows.length === 0) {
+        return reply.code(404).send({ success: false, message: 'Диалог не найден' });
       }
-      
-      const results = await db.query(sql + ' ORDER BY due_date LIMIT 10');
-      return results.rows;
+
+      return { success: true, message: 'Диалог архивирован' };
     } catch (e) {
-      return [];
+      fastify.log.error('Delete conversation error:', e.message);
+      return reply.code(500).send({ success: false, message: 'Ошибка удаления диалога' });
     }
-  }
-  
-  // Получить ближайшие дедлайны
-  async function getUpcomingDeadlines(user) {
-    const db = fastify.db;
-    const role = user?.role || 'USER';
-    
-    if (!hasFullAccess(role) && !isPM(role)) return [];
-    
-    try {
-      let sql = `SELECT id, work_number, work_title, customer_name, work_end_plan 
-                 FROM works WHERE work_status NOT IN ('Работы сдали', 'Отменено')
-                 AND work_end_plan >= CURRENT_DATE AND work_end_plan <= CURRENT_DATE + INTERVAL '14 days'`;
-      
-      if (isPM(role) && !hasFullAccess(role)) {
-        sql += ' AND pm_id = $1';
-        const results = await db.query(sql + ' ORDER BY work_end_plan LIMIT 10', [user.id]);
-        return results.rows;
-      }
-      
-      const results = await db.query(sql + ' ORDER BY work_end_plan LIMIT 10');
-      return results.rows;
-    } catch (e) {
-      return [];
-    }
-  }
-  
-  // ============================================
-  // СИСТЕМНЫЙ ПРОМПТ
-  // ============================================
-  
-  async function buildSystemPrompt(user) {
-    const stats = await getDbStats(user);
-    const role = user?.role || 'USER';
-    const userName = user?.name || user?.login || 'Воин';
-    
-    const today = new Date().toLocaleDateString('ru-RU', { 
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-    });
-    
-    let dataSection = '';
-    let restrictionsSection = '';
-    
-    if (hasFullAccess(role)) {
-      const statusList = Object.entries(stats.tendersByStatus || {})
-        .map(([k,v]) => '  • ' + k + ': ' + v)
-        .join('\n') || '  Нет данных';
-      
-      dataSection = `
-📊 ТЕНДЕРЫ: ${stats.tendersTotal || 0} всего
-По статусам:
-${statusList}
+  });
 
-👥 СОТРУДНИКОВ: ${stats.employeesTotal || 0}
-📋 РАБОТ: ${stats.worksTotal || 0} (сумма: ${((stats.worksSum || 0) / 1000000).toFixed(1)} млн ₽)
-📈 За месяц: ${stats.tendersLastMonth || 0} новых тендеров
-${stats.profit !== undefined ? `
-💰 ФИНАНСЫ:
-  Доходы: ${((stats.totalIncome || 0) / 1000000).toFixed(1)} млн ₽
-  Расходы: ${((stats.totalExpenses || 0) / 1000000).toFixed(1)} млн ₽
-  Прибыль: ${((stats.profit || 0) / 1000000).toFixed(1)} млн ₽
-  ⚠️ Просрочено счетов: ${stats.overdueInvoices || 0} на ${((stats.overdueSum || 0) / 1000).toFixed(0)} тыс ₽` : ''}`;
-      
-      restrictionsSection = 'У тебя ПОЛНЫЙ доступ ко всем данным системы.';
-      
-    } else if (isPM(role)) {
-      const statusList = Object.entries(stats.tendersByStatus || {})
-        .map(([k,v]) => '  • ' + k + ': ' + v)
-        .join('\n') || '  Нет данных';
-      
-      dataSection = `
-📊 ТВОИ ТЕНДЕРЫ: ${stats.tendersTotal || 0}
-${statusList}
-📋 ТВОИХ РАБОТ: ${stats.worksTotal || 0}`;
-      
-      restrictionsSection = `ВАЖНО: Показываешь только данные РП "${userName}".
-НЕ раскрывай: тендеры/работы других РП, зарплаты, общую прибыль.`;
-      
-    } else if (isTO(role)) {
-      const statusList = Object.entries(stats.tendersByStatus || {})
-        .map(([k,v]) => '  • ' + k + ': ' + v)
-        .join('\n') || '  Нет данных';
-      
-      dataSection = `📊 ТЕНДЕРЫ: ${stats.tendersTotal || 0}\n${statusList}`;
-      restrictionsSection = 'Показываешь только тендеры. НЕ раскрывай финансы и персонал.';
-      
-    } else if (isHR(role)) {
-      dataSection = `👥 СОТРУДНИКОВ: ${stats.employeesTotal || 0}`;
-      restrictionsSection = 'Показываешь только персонал. НЕ раскрывай финансы и тендеры.';
-      
-    } else if (isBUH(role)) {
-      dataSection = `💰 Доходы: ${((stats.totalIncome || 0) / 1000000).toFixed(1)} млн ₽
-Расходы: ${((stats.totalExpenses || 0) / 1000000).toFixed(1)} млн ₽
-Просрочено: ${stats.overdueInvoices || 0} счетов`;
-      restrictionsSection = 'Показываешь только финансы.';
-    } else {
-      dataSection = 'Ограниченный доступ.';
-      restrictionsSection = 'Отвечаешь только на общие вопросы.';
-    }
-    
-    return `Сегодня: ${today}.
-Пользователь: ${userName} (роль: ${role})
+  // ═══════════════════════════════════════════════════════════════════════════
+  // БЛОК 2: ОСНОВНОЙ ЧАТ
+  // ═══════════════════════════════════════════════════════════════════════════
 
-Ты — Мимир, ИИ-помощник CRM "АСГАРД" (ООО «Асгард Сервис»).
-
-═══════════════════════════════════════
-ДОСТУПНЫЕ ДАННЫЕ:
-═══════════════════════════════════════
-${dataSection}
-═══════════════════════════════════════
-
-${restrictionsSection}
-
-Компания: обслуживание нефтегазовых платформ, основной объект — "Приразломная" (Арктика).
-
-Модули: Дашборд, Тендеры, Сметы, Работы, Персонал, Договоры, Финансы, Счета, Акты, Календарь.
-
-КОМАНДЫ:
-- "найди тендер X" → поиск тендеров
-- "найди работу X" → поиск работ  
-- "просроченные счета" → список неоплаченных
-- "дедлайны" → ближайшие сроки
-- "помоги с ТКП" → шаблон предложения
-
-Правила: кратко (2-4 предложения), точные цифры, уважай ограничения ролей, викингский стиль уместно.`;
-  }
-
-  // ============================================
-  // ОБРАБОТКА ЗАПРОСОВ
-  // ============================================
-  
-  async function processQuery(message, user) {
-    const lowerMsg = (message || '').toLowerCase();
-    let additionalData = '';
-    let results = null;
-    
-    // Поиск тендеров
-    if (lowerMsg.match(/найди|поиск|покажи.*тендер/i)) {
-      const searchQuery = message.replace(/найди|поиск|покажи|тендер|тендеры|по|на|у|от/gi, '').trim();
-      if (searchQuery.length >= 2) {
-        const found = await searchTenders(searchQuery, user);
-        if (found.length > 0) {
-          results = found;
-          additionalData = '\n[Найдено тендеров: ' + found.length + ']';
-        } else {
-          additionalData = '\n[Тендеры по "' + searchQuery + '" не найдены]';
-        }
-      }
-    }
-    
-    // Поиск работ
-    if (lowerMsg.match(/найди|поиск|покажи.*работ/i)) {
-      const searchQuery = message.replace(/найди|поиск|покажи|работ|работу|работы|по|на|у|от/gi, '').trim();
-      if (searchQuery.length >= 2) {
-        const found = await searchWorks(searchQuery, user);
-        if (found.length > 0) {
-          results = found;
-          additionalData = '\n[Найдено работ: ' + found.length + ']';
-        } else {
-          additionalData = '\n[Работы по "' + searchQuery + '" не найдены]';
-        }
-      }
-    }
-    
-    // Поиск сотрудников
-    if (lowerMsg.match(/найди|поиск.*сотрудник|персонал/i)) {
-      const searchQuery = message.replace(/найди|поиск|покажи|сотрудник|сотрудника|персонал|по|на|у|от/gi, '').trim();
-      if (searchQuery.length >= 2) {
-        const found = await searchEmployees(searchQuery, user);
-        if (found.length > 0) {
-          results = found;
-          additionalData = '\n[Найдено сотрудников: ' + found.length + ']';
-        } else if (hasFullAccess(user?.role) || isHR(user?.role)) {
-          additionalData = '\n[Сотрудники по "' + searchQuery + '" не найдены]';
-        } else {
-          additionalData = '\n[Нет доступа к персоналу]';
-        }
-      }
-    }
-    
-    // Просроченные счета
-    if (lowerMsg.match(/просроч|неоплач|долг|задолжен/i)) {
-      const overdue = await getOverdueInvoices(user);
-      if (overdue.length > 0) {
-        results = overdue;
-        additionalData = '\n[Просроченных счетов: ' + overdue.length + ']';
-      } else {
-        additionalData = '\n[Просроченных счетов нет]';
-      }
-    }
-    
-    // Дедлайны
-    if (lowerMsg.match(/дедлайн|срок|заканчива|ближайш/i)) {
-      const deadlines = await getUpcomingDeadlines(user);
-      if (deadlines.length > 0) {
-        results = deadlines;
-        additionalData = '\n[Ближайших дедлайнов: ' + deadlines.length + ']';
-      } else {
-        additionalData = '\n[Ближайших дедлайнов нет]';
-      }
-    }
-    
-    // ТКП / коммерческое предложение
-    if (lowerMsg.match(/ткп|коммерческ|предложени/i)) {
-      additionalData = `\n[Запрос на ТКП]
-Шаблон ТКП:
-1. Заголовок: "Коммерческое предложение на [услуги]"
-2. Описание работ
-3. Сроки выполнения  
-4. Стоимость (с НДС и без)
-5. Условия оплаты
-6. Срок действия предложения
-7. Контакты`;
-    }
-    
-    return { additionalData, results };
-  }
-
-  // ============================================
-  // ЭНДПОИНТЫ
-  // ============================================
-  
-  // Главный чат
+  // Главный чат (обратно совместимый)
   fastify.post('/chat', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { message, context } = request.body;
+    const { message, context, conversation_id } = request.body;
     const user = request.user;
-    
+
     if (!message || message.length < 1) {
       return reply.code(400).send({ success: false, message: 'Пустое сообщение' });
     }
-    
+
+    const startTime = Date.now();
+
     try {
-      // Обработка запроса
-      const { additionalData, results } = await processQuery(message, user);
-      
+      let convId = conversation_id;
+
+      // Создаём диалог если не передан
+      if (!convId) {
+        const newConv = await db.query(`
+          INSERT INTO mimir_conversations (user_id, title)
+          VALUES ($1, $2)
+          RETURNING id
+        `, [user.id, 'Новый диалог']);
+        convId = newConv.rows[0].id;
+      }
+
+      // Загружаем историю (последние 20 сообщений)
+      const history = await db.query(`
+        SELECT role, content FROM mimir_messages
+        WHERE conversation_id = $1
+        ORDER BY created_at DESC
+        LIMIT 20
+      `, [convId]);
+
+      const historyMessages = history.rows.reverse();
+
+      // Обработка запроса — поиск данных
+      const { additionalData, results } = await mimirData.processQuery(db, message, user);
+
       let userMessage = message;
       if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
       if (additionalData) userMessage += additionalData;
-      
-      const systemPrompt = await buildSystemPrompt(user);
-      
-      const response = await fetch(YANDEX_GPT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Api-Key ' + YANDEX_API_KEY,
-          'x-folder-id': YANDEX_FOLDER_ID
-        },
-        body: JSON.stringify({
-          modelUri: 'gpt://' + YANDEX_FOLDER_ID + '/yandexgpt-lite/latest',
-          completionOptions: { stream: false, temperature: 0.6, maxTokens: 600 },
-          messages: [
-            { role: 'system', text: systemPrompt },
-            { role: 'user', text: userMessage }
-          ]
-        })
+
+      // Строим системный промпт
+      const systemPrompt = await mimirData.buildSystemPrompt(db, user);
+
+      // Формируем массив сообщений для AI
+      const aiMessages = [
+        ...historyMessages.map(m => ({ role: m.role, content: m.content })),
+        { role: 'user', content: userMessage }
+      ];
+
+      // Вызов AI
+      const aiResult = await aiProvider.complete({
+        system: systemPrompt,
+        messages: aiMessages,
+        maxTokens: 4096,
+        temperature: 0.6
       });
-      
-      if (!response.ok) {
-        fastify.log.error('Yandex GPT error: ' + response.status);
-        return reply.code(502).send({
-          success: false,
-          message: 'Колодец мудрости временно недоступен.'
+
+      const durationMs = Date.now() - startTime;
+      const aiResponse = aiResult.text || 'Руны молчат. Попробуй перефразировать.';
+
+      // Сохраняем сообщение пользователя
+      await db.query(`
+        INSERT INTO mimir_messages (conversation_id, role, content, search_results)
+        VALUES ($1, 'user', $2, $3)
+      `, [convId, message, results ? JSON.stringify(results) : null]);
+
+      // Сохраняем ответ ассистента
+      await db.query(`
+        INSERT INTO mimir_messages (conversation_id, role, content, tokens_input, tokens_output, model_used, duration_ms)
+        VALUES ($1, 'assistant', $2, $3, $4, $5, $6)
+      `, [convId, aiResponse, aiResult.usage?.inputTokens || 0, aiResult.usage?.outputTokens || 0, aiResult.model, durationMs]);
+
+      // Обновляем метаданные диалога
+      const preview = aiResponse.substring(0, 100);
+      await db.query(`
+        UPDATE mimir_conversations
+        SET message_count = message_count + 2,
+            total_tokens = total_tokens + $1,
+            last_message_at = NOW(),
+            last_message_preview = $2
+        WHERE id = $3
+      `, [(aiResult.usage?.inputTokens || 0) + (aiResult.usage?.outputTokens || 0), preview, convId]);
+
+      // Автогенерация заголовка для нового диалога
+      if (!conversation_id && historyMessages.length === 0) {
+        generateTitle(db, convId, message, aiResponse).catch(e => {
+          fastify.log.warn('Title generation failed:', e.message);
         });
       }
-      
-      const data = await response.json();
-      const aiResponse = data.result?.alternatives?.[0]?.message?.text 
-        || 'Руны молчат. Попробуй перефразировать.';
-      
+
+      // Логируем использование
+      await logUsage(db, user.id, convId, aiResult);
+
       return {
         success: true,
         response: aiResponse,
         results: results,
-        userRole: user?.role
+        conversation_id: convId,
+        userRole: user?.role,
+        tokens: aiResult.usage
       };
-      
+
     } catch (error) {
       fastify.log.error('Mimir error: ' + error.message);
+
+      // Логируем ошибку
+      try {
+        await db.query(`
+          INSERT INTO mimir_usage_log (user_id, provider, model, success, error_message)
+          VALUES ($1, $2, $3, FALSE, $4)
+        `, [user.id, aiProvider.getProvider(), aiProvider.getConfig().model, error.message]);
+      } catch (e) { /* ignore */ }
+
       return reply.code(500).send({
         success: false,
         message: 'Ошибка. Один из воронов заблудился...'
       });
     }
   });
-  
-  // Анализ файлов
+
+  // Чат со стримингом (SSE)
+  fastify.post('/chat-stream', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { message, context, conversation_id } = request.body;
+    const user = request.user;
+
+    if (!message || message.length < 1) {
+      return reply.code(400).send({ success: false, message: 'Пустое сообщение' });
+    }
+
+    // Устанавливаем SSE headers
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+
+    const sendEvent = (data) => {
+      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const startTime = Date.now();
+    let convId = conversation_id;
+    let fullResponse = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    try {
+      // Создаём диалог если не передан
+      if (!convId) {
+        const newConv = await db.query(`
+          INSERT INTO mimir_conversations (user_id, title)
+          VALUES ($1, $2)
+          RETURNING id
+        `, [user.id, 'Новый диалог']);
+        convId = newConv.rows[0].id;
+      }
+
+      sendEvent({ type: 'start', conversation_id: convId });
+
+      // Загружаем историю
+      const history = await db.query(`
+        SELECT role, content FROM mimir_messages
+        WHERE conversation_id = $1
+        ORDER BY created_at DESC
+        LIMIT 20
+      `, [convId]);
+
+      const historyMessages = history.rows.reverse();
+
+      // Обработка запроса
+      const { additionalData, results } = await mimirData.processQuery(db, message, user);
+
+      if (results) {
+        sendEvent({ type: 'results', data: results });
+      }
+
+      let userMessage = message;
+      if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
+      if (additionalData) userMessage += additionalData;
+
+      const systemPrompt = await mimirData.buildSystemPrompt(db, user);
+
+      const aiMessages = [
+        ...historyMessages.map(m => ({ role: m.role, content: m.content })),
+        { role: 'user', content: userMessage }
+      ];
+
+      // Запускаем стриминг
+      const streamResponse = await aiProvider.stream({
+        system: systemPrompt,
+        messages: aiMessages,
+        maxTokens: 4096,
+        temperature: 0.6
+      });
+
+      // Парсим поток
+      const streamParser = aiProvider.parseStream(streamResponse, aiProvider.getProvider());
+
+      for await (const event of streamParser) {
+        // Проверяем, не отключился ли клиент
+        if (request.raw.destroyed) {
+          break;
+        }
+
+        if (event.type === 'text') {
+          fullResponse += event.content;
+          sendEvent({ type: 'text', content: event.content });
+        } else if (event.type === 'done') {
+          inputTokens = event.usage?.inputTokens || 0;
+          outputTokens = event.usage?.outputTokens || 0;
+        } else if (event.type === 'error') {
+          sendEvent({ type: 'error', message: event.message });
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+
+      // Сохраняем сообщения
+      await db.query(`
+        INSERT INTO mimir_messages (conversation_id, role, content, search_results)
+        VALUES ($1, 'user', $2, $3)
+      `, [convId, message, results ? JSON.stringify(results) : null]);
+
+      await db.query(`
+        INSERT INTO mimir_messages (conversation_id, role, content, tokens_input, tokens_output, model_used, duration_ms)
+        VALUES ($1, 'assistant', $2, $3, $4, $5, $6)
+      `, [convId, fullResponse, inputTokens, outputTokens, aiProvider.getConfig().model, durationMs]);
+
+      // Обновляем диалог
+      const preview = fullResponse.substring(0, 100);
+      await db.query(`
+        UPDATE mimir_conversations
+        SET message_count = message_count + 2,
+            total_tokens = total_tokens + $1,
+            last_message_at = NOW(),
+            last_message_preview = $2
+        WHERE id = $3
+      `, [inputTokens + outputTokens, preview, convId]);
+
+      // Автогенерация заголовка
+      if (!conversation_id && historyMessages.length === 0) {
+        generateTitle(db, convId, message, fullResponse).catch(() => {});
+      }
+
+      // Логируем
+      await logUsage(db, user.id, convId, {
+        provider: aiProvider.getProvider(),
+        model: aiProvider.getConfig().model,
+        usage: { inputTokens, outputTokens },
+        durationMs
+      });
+
+      sendEvent({
+        type: 'done',
+        tokens: { input: inputTokens, output: outputTokens },
+        duration_ms: durationMs
+      });
+
+    } catch (error) {
+      fastify.log.error('Stream error:', error.message);
+      sendEvent({ type: 'error', message: 'Ошибка стриминга' });
+    }
+
+    reply.raw.end();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // БЛОК 3: АНАЛИЗ ФАЙЛОВ
+  // ═══════════════════════════════════════════════════════════════════════════
+
   fastify.post('/analyze', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const user = request.user;
     const parts = request.parts ? request.parts() : null;
-    
+
     let message = '';
     let context = '';
-    let fileInfo = [];
-    
+    let conversationId = null;
+    const filesData = [];
+
     try {
       if (parts) {
         for await (const part of parts) {
@@ -521,130 +483,216 @@ ${restrictionsSection}
               chunks.push(chunk);
             }
             const buffer = Buffer.concat(chunks);
-            fileInfo.push({
+
+            // Ограничение размера
+            if (buffer.length > 20 * 1024 * 1024) {
+              continue; // Skip files > 20MB
+            }
+
+            const fileData = await extractFileContent(buffer, part.filename, part.mimetype);
+            filesData.push({
               name: part.filename,
               size: buffer.length,
-              type: part.mimetype
+              type: part.mimetype,
+              data: fileData
             });
           } else {
             if (part.fieldname === 'message') message = part.value;
             if (part.fieldname === 'context') context = part.value;
+            if (part.fieldname === 'conversation_id') conversationId = parseInt(part.value) || null;
           }
         }
       }
-    } catch(e) {
+    } catch (e) {
       fastify.log.error('File parse error:', e.message);
     }
-    
-    const fileDesc = fileInfo.length > 0 
-      ? 'Получены файлы: ' + fileInfo.map(f => f.name + ' (' + (f.size/1024).toFixed(1) + ' КБ)').join(', ')
-      : '';
-    
-    const systemPrompt = await buildSystemPrompt(user);
-    const userMessage = (message || 'Проанализируй файл') + '\n\n' + fileDesc;
-    
+
+    if (filesData.length === 0) {
+      return reply.code(400).send({ success: false, message: 'Файлы не загружены' });
+    }
+
+    const startTime = Date.now();
+
     try {
-      const response = await fetch(YANDEX_GPT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Api-Key ' + YANDEX_API_KEY,
-          'x-folder-id': YANDEX_FOLDER_ID
-        },
-        body: JSON.stringify({
-          modelUri: 'gpt://' + YANDEX_FOLDER_ID + '/yandexgpt-lite/latest',
-          completionOptions: { stream: false, temperature: 0.5, maxTokens: 600 },
-          messages: [
-            { role: 'system', text: systemPrompt + '\n\nПользователь загрузил файлы. Опиши что можно сделать с этими файлами в CRM.' },
-            { role: 'user', text: userMessage }
-          ]
-        })
-      });
-      
-      if (!response.ok) {
-        return { success: true, response: 'Файлы получены: ' + fileInfo.map(f => f.name).join(', ') + '. Что с ними сделать?' };
+      // Создаём диалог если нужно
+      if (!conversationId) {
+        const newConv = await db.query(`
+          INSERT INTO mimir_conversations (user_id, title)
+          VALUES ($1, $2)
+          RETURNING id
+        `, [user.id, 'Анализ файлов']);
+        conversationId = newConv.rows[0].id;
       }
-      
-      const data = await response.json();
+
+      const systemPrompt = await mimirData.buildSystemPrompt(db, user);
+
+      // Формируем контент для AI
+      const aiMessages = [];
+      const fileNames = filesData.map(f => f.name);
+
+      // Для текстовых файлов — добавляем содержимое
+      // Для изображений — multimodal content
+      const hasImages = filesData.some(f => f.data.type === 'image');
+
+      if (hasImages) {
+        // Multimodal запрос с изображениями
+        const content = [];
+
+        for (const file of filesData) {
+          if (file.data.type === 'image') {
+            content.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: file.data.media_type,
+                data: file.data.data
+              }
+            });
+          } else if (file.data.type === 'text') {
+            content.push({
+              type: 'text',
+              text: `\n=== Файл: ${file.name} ===\n${file.data.content}\n`
+            });
+          }
+        }
+
+        content.push({
+          type: 'text',
+          text: message || 'Проанализируй эти документы. Дай подробный структурированный отчёт.'
+        });
+
+        aiMessages.push({ role: 'user', content });
+      } else {
+        // Только текстовые файлы
+        let combinedContent = '';
+        for (const file of filesData) {
+          if (file.data.type === 'text') {
+            combinedContent += `\n=== Файл: ${file.name} (${(file.size / 1024).toFixed(1)} КБ) ===\n`;
+            combinedContent += file.data.content + '\n';
+          }
+        }
+
+        combinedContent += '\n' + (message || 'Проанализируй эти документы. Дай подробный структурированный отчёт.');
+
+        aiMessages.push({ role: 'user', content: combinedContent });
+      }
+
+      // Вызов AI
+      const aiResult = await aiProvider.complete({
+        system: systemPrompt + '\n\nПользователь загрузил файлы для анализа. Проанализируй содержимое и дай развёрнутый структурированный ответ.',
+        messages: aiMessages,
+        maxTokens: 4096,
+        temperature: 0.5
+      });
+
+      const durationMs = Date.now() - startTime;
+      const aiResponse = aiResult.text || 'Не удалось проанализировать файлы.';
+
+      // Сохраняем сообщение пользователя
+      await db.query(`
+        INSERT INTO mimir_messages (conversation_id, role, content, content_type, has_files, file_names)
+        VALUES ($1, 'user', $2, 'file_analysis', TRUE, $3)
+      `, [conversationId, message || 'Анализ файлов', fileNames]);
+
+      // Сохраняем ответ
+      await db.query(`
+        INSERT INTO mimir_messages (conversation_id, role, content, content_type, tokens_input, tokens_output, model_used, duration_ms)
+        VALUES ($1, 'assistant', $2, 'file_analysis', $3, $4, $5, $6)
+      `, [conversationId, aiResponse, aiResult.usage?.inputTokens || 0, aiResult.usage?.outputTokens || 0, aiResult.model, durationMs]);
+
+      // Обновляем диалог
+      await db.query(`
+        UPDATE mimir_conversations
+        SET message_count = message_count + 2,
+            total_tokens = total_tokens + $1,
+            last_message_at = NOW(),
+            last_message_preview = $2
+        WHERE id = $3
+      `, [(aiResult.usage?.inputTokens || 0) + (aiResult.usage?.outputTokens || 0), aiResponse.substring(0, 100), conversationId]);
+
+      // Логируем
+      await logUsage(db, user.id, conversationId, aiResult);
+
       return {
         success: true,
-        response: data.result?.alternatives?.[0]?.message?.text || 'Файлы получены. Чем помочь?',
-        files: fileInfo
+        response: aiResponse,
+        files: filesData.map(f => ({ name: f.name, size: f.size, type: f.type })),
+        conversation_id: conversationId,
+        tokens: aiResult.usage
       };
-    } catch(e) {
-      return { success: true, response: 'Файлы получены. Задай вопрос по ним.' };
+
+    } catch (error) {
+      fastify.log.error('Analyze error:', error.message);
+      return reply.code(500).send({
+        success: false,
+        message: 'Ошибка анализа файлов'
+      });
     }
   });
-  
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // БЛОК 4: АНАЛИТИКА (сохранено из старой версии)
+  // ═══════════════════════════════════════════════════════════════════════════
+
   // Health check
-  // SECURITY: Добавлена аутентификация (HIGH-13)
   fastify.get('/health', {
     preHandler: [fastify.authenticate]
   }, async () => {
-    // SECURITY: Не раскрываем наличие API ключей
-    const isConfigured = !!(YANDEX_FOLDER_ID && YANDEX_API_KEY);
+    const config = aiProvider.getConfig();
     return {
-      status: isConfigured ? 'ok' : 'not_configured',
-      service: 'Mimir AI v2',
+      status: config.hasAnthropicKey || config.hasOpenAIKey ? 'ok' : 'not_configured',
+      service: 'Mimir AI v3',
+      provider: config.provider,
+      model: config.model,
       timestamp: new Date().toISOString()
     };
   });
-  
+
   // Статистика
   fastify.get('/stats', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
-    const stats = await getDbStats(request.user);
+    const stats = await mimirData.getDbStats(db, request.user);
     return { success: true, userRole: request.user?.role, stats };
   });
-  
+
   // Поиск
   fastify.get('/search', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
     const { q, type } = request.query;
     if (!q || q.length < 2) return { success: false, results: [] };
-    
+
     let results = [];
-    if (type === 'works') results = await searchWorks(q, request.user);
-    else if (type === 'employees') results = await searchEmployees(q, request.user);
-    else results = await searchTenders(q, request.user);
-    
+    if (type === 'works') {
+      results = await mimirData.searchWorks(db, q, request.user);
+    } else if (type === 'employees') {
+      results = await mimirData.searchEmployees(db, q, request.user);
+    } else {
+      results = await mimirData.searchTenders(db, q, request.user);
+    }
+
     return { success: true, count: results.length, results };
   });
-  
-  // ============================================
-  // ФИНАНСОВАЯ АНАЛИТИКА
-  // ============================================
-  
+
+  // Финансовая статистика
   fastify.get('/finance-stats', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
     const user = request.user;
     const role = user?.role || 'USER';
-    
-    // Проверка доступа
-    const FULL_ACCESS = ['ADMIN', 'DIR', 'FIN_DIR', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-    if (!FULL_ACCESS.includes(role) && role !== 'BUH' && role !== 'ACCOUNTANT') {
+
+    if (!mimirData.hasFullAccess(role) && !mimirData.isBUH(role)) {
       return { success: false, message: 'Нет доступа к финансовой информации' };
     }
-    
-    const db = fastify.db;
-    const stats = {};
-    
+
     try {
-      // Просроченные счета
       const overdue = await db.query(`
         SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount - COALESCE(paid_amount, 0)), 0) as sum
         FROM invoices
         WHERE status NOT IN ('paid', 'cancelled') AND due_date < CURRENT_DATE
       `);
-      stats.overdueInvoices = {
-        count: parseInt(overdue.rows[0]?.cnt || 0),
-        sum: parseFloat(overdue.rows[0]?.sum || 0)
-      };
-      
-      // Топ должников
+
       const debtors = await db.query(`
         SELECT customer_name, COALESCE(SUM(total_amount - COALESCE(paid_amount, 0)), 0) as debt
         FROM invoices
@@ -654,63 +702,58 @@ ${restrictionsSection}
         ORDER BY debt DESC
         LIMIT 5
       `);
-      stats.topDebtors = debtors.rows;
-      
-      // Ожидаемые поступления (на этой неделе)
+
       const expected = await db.query(`
         SELECT COALESCE(SUM(total_amount - COALESCE(paid_amount, 0)), 0) as sum
         FROM invoices
         WHERE status NOT IN ('paid', 'cancelled')
           AND due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
       `);
-      stats.expectedThisWeek = parseFloat(expected.rows[0]?.sum || 0);
-      
-      return { success: true, stats };
-    } catch(e) {
+
+      return {
+        success: true,
+        stats: {
+          overdueInvoices: {
+            count: parseInt(overdue.rows[0]?.cnt || 0),
+            sum: parseFloat(overdue.rows[0]?.sum || 0)
+          },
+          topDebtors: debtors.rows,
+          expectedThisWeek: parseFloat(expected.rows[0]?.sum || 0)
+        }
+      };
+    } catch (e) {
       fastify.log.error('Finance stats error:', e.message);
       return { success: false, message: 'Ошибка получения данных' };
     }
   });
-  
-  // ============================================
-  // АНАЛИТИКА РАБОТ
-  // ============================================
-  
+
+  // Аналитика работ
   fastify.get('/works-analytics', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
     const user = request.user;
     const role = user?.role || 'USER';
     const userId = user?.id;
-    
-    const FULL_ACCESS = ['ADMIN', 'DIR', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-    const isPM = role === 'PM' || role === 'MANAGER';
-    
-    if (!FULL_ACCESS.includes(role) && !isPM) {
+
+    if (!mimirData.hasFullAccess(role) && !mimirData.isPM(role)) {
       return { success: false, message: 'Нет доступа к аналитике работ' };
     }
-    
-    const db = fastify.db;
-    const stats = {};
-    
+
     try {
       let whereClause = '';
       let params = [];
-      
-      if (isPM && !FULL_ACCESS.includes(role)) {
+
+      if (mimirData.isPM(role) && !mimirData.hasFullAccess(role)) {
         params.push(userId);
         whereClause = ` WHERE pm_id = $${params.length}`;
       }
-      
-      // Работы по статусам
+
       const byStatus = await db.query(`
         SELECT work_status, COUNT(*) as cnt
         FROM works ${whereClause || 'WHERE 1=1'}
         GROUP BY work_status
       `, params);
-      stats.byStatus = byStatus.rows;
-      
-      // Ближайшие дедлайны
+
       const deadlines = await db.query(`
         SELECT id, work_number, work_title, customer_name, work_end_plan
         FROM works
@@ -720,62 +763,61 @@ ${restrictionsSection}
         ORDER BY work_end_plan ASC
         LIMIT 5
       `, params);
-      stats.upcomingDeadlines = deadlines.rows;
-      
-      return { success: true, stats };
-    } catch(e) {
+
+      return {
+        success: true,
+        stats: {
+          byStatus: byStatus.rows,
+          upcomingDeadlines: deadlines.rows
+        }
+      };
+    } catch (e) {
       fastify.log.error('Works analytics error:', e.message);
       return { success: false, message: 'Ошибка получения данных' };
     }
   });
-  
-  // ============================================
-  // РЕКОМЕНДАЦИЯ ПО ТЕНДЕРУ
-  // ============================================
-  
+
+  // Рекомендация по тендеру
   fastify.get('/tender-recommendation/:id', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
-    const db = fastify.db;
     const tenderId = request.params.id;
-    
+
     try {
       const tender = await db.query('SELECT * FROM tenders WHERE id = $1', [tenderId]);
       if (tender.rows.length === 0) {
         return { success: false, message: 'Тендер не найден' };
       }
-      
+
       const t = tender.rows[0];
-      
-      // История с этим заказчиком
+
       const history = await db.query(`
         SELECT tender_status, COUNT(*) as cnt
         FROM tenders WHERE customer_name = $1
         GROUP BY tender_status
       `, [t.customer_name]);
-      
+
       const wonCount = parseInt(history.rows.find(r => r.tender_status === 'Клиент согласился')?.cnt || 0);
       const totalCount = history.rows.reduce((s, r) => s + parseInt(r.cnt), 0);
       const winRate = totalCount > 0 ? Math.round((wonCount / totalCount) * 100) : 0;
-      
-      // Рекомендация
+
       let recommendation = '';
       let score = 0;
-      
+
       if (totalCount === 0) {
-        recommendation = '🆕 Новый клиент. Требуется качественное КП.';
+        recommendation = 'Новый клиент. Требуется качественное КП.';
         score = 50;
       } else if (winRate >= 60) {
-        recommendation = '🟢 Высокие шансы! Клиент лоялен, конверсия ' + winRate + '%';
+        recommendation = 'Высокие шансы! Клиент лоялен, конверсия ' + winRate + '%';
         score = 85;
       } else if (winRate >= 30) {
-        recommendation = '🟡 Средние шансы. Конверсия ' + winRate + '%. Подготовь конкурентное КП.';
+        recommendation = 'Средние шансы. Конверсия ' + winRate + '%. Подготовь конкурентное КП.';
         score = 60;
       } else {
-        recommendation = '🔴 Низкие шансы. Конверсия ' + winRate + '%. Оцени целесообразность участия.';
+        recommendation = 'Низкие шансы. Конверсия ' + winRate + '%. Оцени целесообразность участия.';
         score = 30;
       }
-      
+
       return {
         success: true,
         tender: { id: t.id, customer_name: t.customer_name, tender_title: t.tender_title },
@@ -783,22 +825,19 @@ ${restrictionsSection}
         recommendation,
         score
       };
-    } catch(e) {
+    } catch (e) {
       return { success: false, message: 'Ошибка анализа' };
     }
   });
-  
-  // ============================================
-  // ГЕНЕРАЦИЯ ТКП
-  // ============================================
-  
+
+  // Генерация ТКП
   fastify.post('/generate-tkp', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { tender_id, work_title, customer_name, services, total_sum, deadline } = request.body;
-    
+
     try {
-      const prompt = `Составь краткое коммерческое предложение (ТКП) для заказчика.
+      const prompt = `Составь профессиональное коммерческое предложение (ТКП) для заказчика.
 
 Заказчик: ${customer_name || 'Не указан'}
 Название работ: ${work_title || 'Не указано'}
@@ -807,47 +846,253 @@ ${restrictionsSection}
 Срок выполнения: ${deadline || 'По согласованию'}
 
 О компании:
-- ООО «Асгард Сервис» — российская сервисная компания
+- ООО «Асгард Сервис» — российская сервисная компания нефтегазового сектора
 - Опыт работы на платформе «Приразломная» в Арктике
-- Квалифицированные специалисты с допусками
+- Квалифицированные специалисты с допусками (НАКС, газоопасные работы, высота)
 - Собственное оборудование
 
 Формат:
-1. Приветствие (1-2 предложения)
-2. Описание услуг (2-3 предложения)
-3. Преимущества (3-4 пункта кратко)
-4. Условия и стоимость
-5. Контакты
+1. Заголовок и обращение (1-2 предложения)
+2. Описание предлагаемых услуг (2-3 абзаца)
+3. Наши преимущества (4-5 пунктов)
+4. Условия, стоимость и сроки
+5. Контактная информация
 
-Пиши кратко, деловым стилем.`;
+Пиши профессионально, развёрнуто, но без воды.`;
 
-      const response = await fetch(YANDEX_GPT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Api-Key ' + YANDEX_API_KEY,
-          'x-folder-id': YANDEX_FOLDER_ID
-        },
-        body: JSON.stringify({
-          modelUri: 'gpt://' + YANDEX_FOLDER_ID + '/yandexgpt-lite/latest',
-          completionOptions: { stream: false, temperature: 0.7, maxTokens: 1500 },
-          messages: [{ role: 'user', text: prompt }]
-        })
+      const aiResult = await aiProvider.complete({
+        system: 'Ты — профессиональный менеджер по продажам сервисной компании. Составляешь коммерческие предложения.',
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 2000,
+        temperature: 0.7
       });
-      
-      if (!response.ok) {
-        return reply.code(502).send({ success: false, message: 'Ошибка генерации' });
-      }
-      
-      const data = await response.json();
-      const tkpText = data.result?.alternatives?.[0]?.message?.text || '';
-      
+
+      const tkpText = aiResult.text || '';
+
+      await logUsage(db, request.user.id, null, aiResult);
+
       return { success: true, tkp: tkpText };
     } catch (error) {
       fastify.log.error('TKP generation error:', error.message);
       return reply.code(500).send({ success: false, message: 'Ошибка генерации ТКП' });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // БЛОК 5: АДМИН-ПАНЕЛЬ AI
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Статистика использования AI
+  fastify.get('/admin/usage', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const user = request.user;
+
+    if (!mimirData.hasFullAccess(user?.role)) {
+      return reply.code(403).send({ success: false, message: 'Нет доступа' });
+    }
+
+    try {
+      // Общая статистика
+      const total = await db.query(`
+        SELECT
+          COUNT(*) as total_requests,
+          SUM(tokens_input) as total_input_tokens,
+          SUM(tokens_output) as total_output_tokens,
+          AVG(duration_ms) as avg_duration_ms,
+          COUNT(CASE WHEN success = FALSE THEN 1 END) as failed_requests
+        FROM mimir_usage_log
+        WHERE created_at > NOW() - INTERVAL '30 days'
+      `);
+
+      // По дням
+      const byDay = await db.query(`
+        SELECT
+          DATE(created_at) as date,
+          COUNT(*) as requests,
+          SUM(tokens_input + tokens_output) as tokens
+        FROM mimir_usage_log
+        WHERE created_at > NOW() - INTERVAL '7 days'
+        GROUP BY DATE(created_at)
+        ORDER BY date DESC
+      `);
+
+      // Топ пользователей
+      const topUsers = await db.query(`
+        SELECT
+          u.name as user_name,
+          COUNT(*) as requests,
+          SUM(l.tokens_input + l.tokens_output) as tokens
+        FROM mimir_usage_log l
+        JOIN users u ON l.user_id = u.id
+        WHERE l.created_at > NOW() - INTERVAL '30 days'
+        GROUP BY u.id, u.name
+        ORDER BY tokens DESC
+        LIMIT 10
+      `);
+
+      return {
+        success: true,
+        usage: {
+          summary: total.rows[0],
+          byDay: byDay.rows,
+          topUsers: topUsers.rows
+        }
+      };
+    } catch (e) {
+      fastify.log.error('Usage stats error:', e.message);
+      return { success: false, message: 'Ошибка получения статистики' };
+    }
+  });
+
+  // Текущая конфигурация AI
+  fastify.get('/admin/config', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const user = request.user;
+
+    if (!mimirData.hasFullAccess(user?.role)) {
+      return reply.code(403).send({ success: false, message: 'Нет доступа' });
+    }
+
+    const config = aiProvider.getConfig();
+
+    // Маскируем ключи
+    return {
+      success: true,
+      config: {
+        provider: config.provider,
+        model: config.model,
+        maxTokens: config.maxTokens,
+        temperature: config.temperature,
+        hasAnthropicKey: config.hasAnthropicKey,
+        hasOpenAIKey: config.hasOpenAIKey
+      }
+    };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Извлечение содержимого файла
+   */
+  async function extractFileContent(buffer, filename, mimetype) {
+    const ext = path.extname(filename).toLowerCase();
+
+    try {
+      // PDF → текст
+      if (ext === '.pdf') {
+        const pdfParse = require('pdf-parse');
+        const data = await pdfParse(buffer);
+        return { type: 'text', content: data.text.substring(0, 100000), pages: data.numpages };
+      }
+
+      // DOCX → текст
+      if (ext === '.docx') {
+        const mammoth = require('mammoth');
+        const result = await mammoth.extractRawText({ buffer });
+        return { type: 'text', content: result.value.substring(0, 100000) };
+      }
+
+      // Excel → текст
+      if (['.xlsx', '.xls'].includes(ext)) {
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+
+        let text = '';
+        workbook.eachSheet((sheet, sheetId) => {
+          text += `\n=== Лист: ${sheet.name} ===\n`;
+          sheet.eachRow((row, rowNum) => {
+            const vals = [];
+            row.eachCell((cell, colNum) => {
+              vals.push(String(cell.value ?? ''));
+            });
+            text += vals.join(' | ') + '\n';
+          });
+        });
+        return { type: 'text', content: text.substring(0, 100000) };
+      }
+
+      // CSV
+      if (ext === '.csv') {
+        return { type: 'text', content: buffer.toString('utf8').substring(0, 100000) };
+      }
+
+      // Изображения → base64 для Claude Vision
+      if (mimetype?.startsWith('image/')) {
+        const supportedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!supportedTypes.includes(mimetype)) {
+          return { type: 'text', content: `[Неподдерживаемый формат изображения: ${mimetype}]` };
+        }
+        return {
+          type: 'image',
+          media_type: mimetype,
+          data: buffer.toString('base64')
+        };
+      }
+
+      // TXT и прочие текстовые
+      return { type: 'text', content: buffer.toString('utf8').substring(0, 100000) };
+
+    } catch (e) {
+      fastify.log.error('File extraction error:', e.message);
+      return { type: 'text', content: `[Ошибка чтения файла: ${e.message}]` };
+    }
+  }
+
+  /**
+   * Автогенерация заголовка диалога
+   */
+  async function generateTitle(db, conversationId, userMessage, assistantResponse) {
+    try {
+      const result = await aiProvider.complete({
+        system: 'Придумай короткий заголовок (3-7 слов) для диалога на русском языке. Отвечай ТОЛЬКО заголовком, без кавычек и пояснений.',
+        messages: [{
+          role: 'user',
+          content: `Вопрос: ${userMessage.substring(0, 200)}\nОтвет: ${assistantResponse.substring(0, 300)}`
+        }],
+        maxTokens: 30,
+        temperature: 0.3
+      });
+
+      const title = result.text.trim().substring(0, 100);
+
+      await db.query(
+        'UPDATE mimir_conversations SET title = $1 WHERE id = $2',
+        [title, conversationId]
+      );
+
+      return title;
+    } catch (e) {
+      // Ignore errors
+      return null;
+    }
+  }
+
+  /**
+   * Логирование использования AI
+   */
+  async function logUsage(db, userId, conversationId, aiResult) {
+    try {
+      await db.query(`
+        INSERT INTO mimir_usage_log (user_id, conversation_id, provider, model, tokens_input, tokens_output, duration_ms, success)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+      `, [
+        userId,
+        conversationId,
+        aiResult.provider || aiProvider.getProvider(),
+        aiResult.model || aiProvider.getConfig().model,
+        aiResult.usage?.inputTokens || 0,
+        aiResult.usage?.outputTokens || 0,
+        aiResult.durationMs || 0
+      ]);
+    } catch (e) {
+      // Ignore logging errors
+    }
+  }
 }
 
 module.exports = mimirRoutes;
