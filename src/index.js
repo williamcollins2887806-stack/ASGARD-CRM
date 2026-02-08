@@ -188,6 +188,7 @@ fastify.register(require('./routes/meetings'), { prefix: '/api/meetings' });
 fastify.register(require('./routes/payroll'), { prefix: '/api/payroll' });
 fastify.register(require('./routes/permit_applications'), { prefix: '/api/permit-applications' });
 fastify.register(require('./routes/mailbox'), { prefix: '/api/mailbox' });
+fastify.register(require('./routes/inbox_applications_ai'), { prefix: '/api/inbox-applications' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check

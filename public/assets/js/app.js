@@ -273,6 +273,8 @@ console.log('[ASGARD] Global period functions loaded');
     // Фаза 8: Почта
     {r:"/mailbox",l:"Почтовый ящик",d:"Входящие / исходящие письма",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"workers",p:"mailbox",g:"communications"},
     {r:"/mail-settings",l:"Настройки почты",d:"Аккаунты, правила, шаблоны",roles:["ADMIN","DIRECTOR_GEN"],i:"backup",p:"mail_settings",g:"communications"},
+    // Фаза 9: AI-анализ входящих заявок
+    {r:"/inbox-applications",l:"Входящие заявки (AI)",d:"AI-анализ и классификация писем",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"alerts",p:"inbox_applications",g:"communications"},
   ];
 
   async function layout(body,{title,motto,rightBadges=[]}={}){
@@ -1682,6 +1684,9 @@ try{
     // Фаза 8: Почта
     AsgardRouter.add("/mailbox", ()=>AsgardMailboxPage.render({layout, title:"Почтовый ящик"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"]});
     AsgardRouter.add("/mail-settings", ()=>AsgardMailSettingsPage.render({layout, title:"Настройки почты"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN"]});
+
+    // Фаза 9: AI входящие заявки
+    AsgardRouter.add("/inbox-applications", ()=>AsgardInboxApplicationsPage.render({layout, title:"Входящие заявки (AI)"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"]});
 
     // TKP Follow-up: проверка напоминаний при старте
     if(window.AsgardTkpFollowup){

@@ -11,6 +11,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./db');
 const classifier = require('./email-classifier');
+const aiAnalyzer = require('./ai-email-analyzer');
 
 // ── Encryption helpers (AES-256-CBC, key from ENV) ──────────────────────
 const ENC_ALGO = 'aes-256-cbc';
@@ -366,6 +367,52 @@ async function saveEmail(account, msg, parsed) {
       } catch (attErr) {
         console.error(`[IMAP] Attachment save error: ${att.filename}`, attErr.message);
       }
+    }
+  }
+
+  // ── AI auto-analysis hook (Phase 9) ──
+  // Для прямых запросов и тендеров автоматически создаём входящую заявку
+  if (['direct_request', 'platform_tender'].includes(emailType)) {
+    try {
+      const attNames = attachments.map(a => a.filename || 'file');
+      const analysis = await aiAnalyzer.analyzeEmail({
+        emailId: emailId,
+        subject: parsed.subject,
+        bodyText: bodyText,
+        fromEmail: fromAddr.address,
+        fromName: fromAddr.name,
+        attachmentNames: attNames
+      });
+
+      const workload = await aiAnalyzer.getWorkloadData();
+
+      await db.query(`
+        INSERT INTO inbox_applications (
+          email_id, source, source_email, source_name, subject, body_preview,
+          ai_classification, ai_color, ai_summary, ai_recommendation,
+          ai_work_type, ai_estimated_budget, ai_estimated_days,
+          ai_keywords, ai_confidence, ai_raw_json, ai_analyzed_at, ai_model,
+          workload_snapshot, attachment_count, status
+        ) VALUES (
+          $1, 'email', $2, $3, $4, $5,
+          $6, $7, $8, $9,
+          $10, $11, $12,
+          $13, $14, $15, NOW(), $16,
+          $17, $18, 'ai_processed'
+        ) ON CONFLICT DO NOTHING
+      `, [
+        emailId,
+        fromAddr.address || '', fromAddr.name || '',
+        parsed.subject || '(без темы)', (bodyText || '').slice(0, 500),
+        analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
+        analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
+        analysis.keywords, analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
+        JSON.stringify(workload), attachmentCount
+      ]);
+
+      console.log(`[IMAP] AI auto-application created for email #${emailId}: ${analysis.color} / ${analysis.classification}`);
+    } catch (aiErr) {
+      console.error('[IMAP] AI auto-analysis error:', aiErr.message);
     }
   }
 

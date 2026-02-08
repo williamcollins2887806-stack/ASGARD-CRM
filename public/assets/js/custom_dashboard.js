@@ -53,12 +53,16 @@ window.AsgardCustomDashboard = (function(){
     payroll_pending: {
       name: 'Ведомости (ожидание)', icon: '💰', size: 'normal',
       roles: ['ADMIN','BUH','PM','HEAD_PM','DIRECTOR_*'], render: renderPayrollPending
+    },
+    todo: {
+      name: 'Мои задачи', icon: '✅', size: 'normal',
+      roles: ['*'], render: renderTodo
     }
   };
 
   const DEFAULT_LAYOUTS = {
     ADMIN: ['welcome','kpi_summary','quick_actions','overdue_works','tenders_funnel','notifications'],
-    PM: ['welcome','quick_actions','my_works','gantt_mini','notifications','birthdays'],
+    PM: ['welcome','quick_actions','my_works','gantt_mini','todo','notifications','birthdays'],
     TO: ['welcome','quick_actions','tenders_funnel','tender_dynamics','notifications'],
     HEAD_TO: ['welcome','tender_dynamics','tenders_funnel','notifications'],
     HEAD_PM: ['welcome','team_workload','overdue_works','gantt_mini','notifications'],
@@ -66,7 +70,7 @@ window.AsgardCustomDashboard = (function(){
     HR: ['welcome','permits_expiry','birthdays','notifications','calendar'],
     HR_MANAGER: ['welcome','permits_expiry','birthdays','team_workload','notifications'],
     BUH: ['welcome','cash_balance','money_summary','notifications'],
-    DEFAULT: ['welcome','notifications','calendar','birthdays']
+    DEFAULT: ['welcome','notifications','todo','calendar','birthdays']
   };
 
   async function getUserLayout(userId, role) {
@@ -601,6 +605,34 @@ window.AsgardCustomDashboard = (function(){
         ${sheets.length ? '<a href="#/payroll" style="color:var(--blue);font-size:13px">Ведомости →</a>' : ''}
         ${oneTime.length ? ' <a href="#/one-time-pay" style="color:var(--blue);font-size:13px;margin-left:8px">Разовые →</a>' : ''}
       `;
+    } catch(e) {
+      el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
+    }
+  }
+
+  async function renderTodo(el, user) {
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch('/api/tasks/todo', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
+      const data = await resp.json();
+      const items = (data.items || data || []).slice(0, 8);
+      if (!items.length) {
+        el.innerHTML = '<div style="text-align:center;padding:16px"><div style="font-size:32px;margin-bottom:8px">✅</div><div class="help">Нет задач</div><a href="#/todo" class="btn mini ghost" style="margin-top:8px">Открыть</a></div>';
+        return;
+      }
+      const pending = items.filter(i => !i.done);
+      const done = items.filter(i => i.done);
+      el.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:8px">' + pending.length + ' активных</div>' +
+        pending.slice(0, 5).map(i =>
+          '<div style="padding:5px 0;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center">' +
+            '<span style="color:var(--amber);font-size:14px">○</span>' +
+            '<span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(i.text || i.title || '') + '</span>' +
+          '</div>'
+        ).join('') +
+        (done.length ? '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">' + done.length + ' выполнено</div>' : '') +
+        '<a href="#/todo" class="btn mini ghost" style="margin-top:8px;font-size:11px">Все задачи →</a>';
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }
