@@ -105,7 +105,14 @@ window.AsgardSLA = (function(){
     return Math.floor(ms/(24*3600*1000));
   }
 
+  let lastTickTime = 0;
+  const TICK_COOLDOWN = 5 * 60 * 1000; // 5 minutes
+
   async function tick(currentUser){
+    const now = Date.now();
+    if (now - lastTickTime < TICK_COOLDOWN) return;
+    lastTickTime = now;
+
     if(!currentUser || !currentUser.id) return;
 
     const app = await getApp();

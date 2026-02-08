@@ -48,12 +48,7 @@ window.AsgardRouter=(function(){
         return;
       }
 
-      // SLA tick (best-effort): notifications without blocking navigation.
-      try{
-        if(window.AsgardSLA && typeof AsgardSLA.tick === 'function'){
-          await AsgardSLA.tick(u.user);
-        }
-      }catch(_){ /* non-fatal */ }
+      // SLA tick moved to background interval (see below)
     }
 
     try{
@@ -72,7 +67,19 @@ window.AsgardRouter=(function(){
     }
   }
 
-  function start(){ window.addEventListener("hashchange", render); render(); }
+  function start(){
+    window.addEventListener("hashchange", render);
+    render();
+    // SLA tick as background interval instead of per-navigation
+    setInterval(async () => {
+      try {
+        const auth = window.AsgardAuth && AsgardAuth.getAuth();
+        if (auth && auth.user && window.AsgardSLA) {
+          await AsgardSLA.tick(auth.user);
+        }
+      } catch(_) {}
+    }, 5 * 60 * 1000);
+  }
 
   return { add, start, current };
 })();

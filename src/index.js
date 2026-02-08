@@ -61,7 +61,7 @@ fastify.register(require('@fastify/static'), {
 
 // Rate limiting
 fastify.register(require('@fastify/rate-limit'), {
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
+  max: parseInt(process.env.RATE_LIMIT_MAX || '300', 10),
   timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10)
 });
 

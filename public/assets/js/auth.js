@@ -299,6 +299,8 @@ window.AsgardAuth = (function(){
     localStorage.removeItem('asgard_permissions');
     localStorage.removeItem('asgard_menu_settings');
     sessionStorage.clear();
+    _cachedAuth = null;
+    _cachedAuthTime = 0;
   }
 
   // ============================================
@@ -330,22 +332,32 @@ window.AsgardAuth = (function(){
   }
   
   // ============================================
-  // ПРОВЕРКА СЕССИИ
+  // ПРОВЕРКА СЕССИИ (с кэшированием на 30 сек)
   // ============================================
+  let _cachedAuth = null;
+  let _cachedAuthTime = 0;
+  const AUTH_CACHE_TTL = 30000;
+
   async function requireUser(){
+    const now = Date.now();
+    if (_cachedAuth && (now - _cachedAuthTime < AUTH_CACHE_TTL)) {
+      return _cachedAuth;
+    }
+
     const auth = getAuth();
-    if(!auth || !auth.token || !auth.user) return null;
-    
+    if(!auth || !auth.token || !auth.user) { _cachedAuth = null; return null; }
+
     try {
       const resp = await fetch('/api/auth/me', {
         headers: { 'Authorization': 'Bearer ' + auth.token }
       });
-      
+
       if(!resp.ok){
         logout();
+        _cachedAuth = null;
         return null;
       }
-      
+
       const data = await resp.json();
       const user = data.user || auth.user;
       user.roles = normalizeUserRoles(user);
@@ -361,13 +373,19 @@ window.AsgardAuth = (function(){
         localStorage.setItem('asgard_menu_settings', JSON.stringify(user.menu_settings));
       }
 
-      return { session: { user_id: user.id, token: auth.token }, user, token: auth.token };
+      const result = { session: { user_id: user.id, token: auth.token }, user, token: auth.token };
+      _cachedAuth = result;
+      _cachedAuthTime = now;
+      return result;
     } catch(e) {
       // При ошибке сети - используем кэш
       const user = auth.user;
       user.roles = normalizeUserRoles(user);
       user.active_role = user.role;
-      return { session: { user_id: user.id, token: auth.token }, user, token: auth.token };
+      const result = { session: { user_id: user.id, token: auth.token }, user, token: auth.token };
+      _cachedAuth = result;
+      _cachedAuthTime = now;
+      return result;
     }
   }
   
