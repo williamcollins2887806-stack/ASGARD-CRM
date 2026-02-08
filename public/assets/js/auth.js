@@ -8,7 +8,8 @@ window.AsgardAuth = (function(){
   
   const ROLES = {
     ADMIN:1, TO:1, PM:1, HR:1, BUH:1, OFFICE_MANAGER:1,
-    DIRECTOR_COMM:1, DIRECTOR_GEN:1, DIRECTOR_DEV:1, PROC:1, WAREHOUSE:1
+    DIRECTOR_COMM:1, DIRECTOR_GEN:1, DIRECTOR_DEV:1, PROC:1, WAREHOUSE:1,
+    HEAD_TO:1, HEAD_PM:1, CHIEF_ENGINEER:1, HR_MANAGER:1
   };
   
   const DIRECTOR_ROLES = ["DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"];
@@ -22,8 +23,13 @@ window.AsgardAuth = (function(){
     const primary = String(user?.role||"");
     let roles = Array.isArray(user?.roles) ? user.roles.slice() : (primary ? [primary] : []);
     if(primary && !roles.includes(primary)) roles.push(primary);
+    // Наследование ролей (M15)
     if(primary==="DIRECTOR_DEV" && !roles.includes("PM")) roles.push("PM");
     if(primary==="HR" && !roles.includes("PM")) roles.push("PM");
+    if(primary==="HEAD_TO" && !roles.includes("TO")) roles.push("TO");
+    if(primary==="HEAD_PM" && !roles.includes("PM")) roles.push("PM");
+    if(primary==="HR_MANAGER" && !roles.includes("HR")) roles.push("HR");
+    if(primary==="CHIEF_ENGINEER" && !roles.includes("WAREHOUSE")) roles.push("WAREHOUSE");
     return [...new Set(roles)];
   }
   
@@ -32,7 +38,9 @@ window.AsgardAuth = (function(){
       ADMIN:"Администратор", TO:"ТО", PM:"РП", HR:"HR", BUH:"Бухгалтер",
       OFFICE_MANAGER:"Офис-менеджер", WAREHOUSE:"Кладовщик",
       DIRECTOR_COMM:"Ком. директор", DIRECTOR_GEN:"Ген. директор",
-      DIRECTOR_DEV:"Тех. директор", PROC:"Закупщик"
+      DIRECTOR_DEV:"Тех. директор", PROC:"Закупщик",
+      HEAD_TO:"Рук. тендерного отдела", HEAD_PM:"Рук. ТО",
+      CHIEF_ENGINEER:"Главный инженер", HR_MANAGER:"HR-менеджер"
     };
     return map[role] || role;
   }
@@ -88,12 +96,24 @@ window.AsgardAuth = (function(){
     // Сохраняем токен
     localStorage.setItem('asgard_token', data.token);
     localStorage.setItem('asgard_user', JSON.stringify(data.user));
-    
-    // Проверяем нужна ли смена пароля
-    if(data.user.must_change_password){
+
+    // M1: Сохраняем пермишены и настройки меню
+    if (data.user.permissions) {
+      localStorage.setItem('asgard_permissions', JSON.stringify(data.user.permissions));
+    }
+    if (data.user.menu_settings) {
+      localStorage.setItem('asgard_menu_settings', JSON.stringify(data.user.menu_settings));
+    }
+
+    // Проверяем статус от сервера
+    if(data.status === 'need_setup' || data.user.must_change_password){
       return { status: 'need_setup', userId: data.user.id, userName: data.user.name };
     }
-    
+
+    if(data.status === 'need_pin'){
+      return { status: 'need_pin', userId: data.user.id, userName: data.user.name };
+    }
+
     return { status: 'ok', user: data.user, token: data.token };
   }
   
@@ -120,11 +140,20 @@ window.AsgardAuth = (function(){
     }
     
     if(data.token) localStorage.setItem('asgard_token', data.token);
-    if(data.user) localStorage.setItem('asgard_user', JSON.stringify(data.user));
-    
+    if(data.user) {
+      localStorage.setItem('asgard_user', JSON.stringify(data.user));
+      // M1: Сохраняем пермишены и настройки меню
+      if (data.user.permissions) {
+        localStorage.setItem('asgard_permissions', JSON.stringify(data.user.permissions));
+      }
+      if (data.user.menu_settings) {
+        localStorage.setItem('asgard_menu_settings', JSON.stringify(data.user.menu_settings));
+      }
+    }
+
     return data;
   }
-  
+
   // ============================================
   // ПРОВЕРКА PIN
   // ============================================
@@ -143,9 +172,22 @@ window.AsgardAuth = (function(){
     
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || data.message || 'Неверный PIN');
+
+    // M1: Сохраняем токен, пермишены и настройки меню после верификации PIN
+    if(data.token) localStorage.setItem('asgard_token', data.token);
+    if(data.user) {
+      localStorage.setItem('asgard_user', JSON.stringify(data.user));
+      if (data.user.permissions) {
+        localStorage.setItem('asgard_permissions', JSON.stringify(data.user.permissions));
+      }
+      if (data.user.menu_settings) {
+        localStorage.setItem('asgard_menu_settings', JSON.stringify(data.user.menu_settings));
+      }
+    }
+
     return data;
   }
-  
+
   // ============================================
   // СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ
   // ============================================
@@ -254,7 +296,37 @@ window.AsgardAuth = (function(){
   function logout(){
     localStorage.removeItem('asgard_token');
     localStorage.removeItem('asgard_user');
+    localStorage.removeItem('asgard_permissions');
+    localStorage.removeItem('asgard_menu_settings');
     sessionStorage.clear();
+  }
+
+  // ============================================
+  // M1: ПЕРМИШЕНЫ — МОДУЛЬНЫЕ РОЛИ
+  // ============================================
+  function getPermissions() {
+    try {
+      return JSON.parse(localStorage.getItem('asgard_permissions') || '{}');
+    } catch(e) { return {}; }
+  }
+
+  function hasPermission(moduleKey, operation = 'read') {
+    const auth = getAuth();
+    if (!auth || !auth.user) return false;
+    if (auth.user.role === 'ADMIN') return true;
+    const perms = getPermissions();
+    const p = perms[moduleKey];
+    if (!p) return false;
+    if (operation === 'read') return p.read;
+    if (operation === 'write') return p.write;
+    if (operation === 'delete') return p.delete;
+    return false;
+  }
+
+  function getMenuSettings() {
+    try {
+      return JSON.parse(localStorage.getItem('asgard_menu_settings') || '{}');
+    } catch(e) { return {}; }
   }
   
   // ============================================
@@ -278,9 +350,17 @@ window.AsgardAuth = (function(){
       const user = data.user || auth.user;
       user.roles = normalizeUserRoles(user);
       user.active_role = user.role;
-      
+
       localStorage.setItem('asgard_user', JSON.stringify(user));
-      
+
+      // M1: Обновляем пермишены и настройки меню
+      if (user.permissions) {
+        localStorage.setItem('asgard_permissions', JSON.stringify(user.permissions));
+      }
+      if (user.menu_settings) {
+        localStorage.setItem('asgard_menu_settings', JSON.stringify(user.menu_settings));
+      }
+
       return { session: { user_id: user.id, token: auth.token }, user, token: auth.token };
     } catch(e) {
       // При ошибке сети - используем кэш
@@ -354,6 +434,9 @@ window.AsgardAuth = (function(){
     getActiveRole,
     getMyRoles,
     canSwitch,
+    getPermissions,
+    hasPermission,
+    getMenuSettings,
     _testLogin
   };
 })();

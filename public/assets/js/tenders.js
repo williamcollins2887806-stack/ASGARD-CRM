@@ -13,6 +13,82 @@ window.AsgardTendersPage = (function(){
 
   const TENDER_TYPES = ["Тендер","Запрос предложений","Оценка рынка","Прямой запрос","Доп. объём"];
 
+  // === ЧЕРНОВИКИ ТЕНДЕРОВ ===
+  const DRAFT_KEY = 'asgard_tender_draft';
+
+  function saveDraft(data) {
+    try {
+      const draft = { ...data, saved_at: isoNow() };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      return true;
+    } catch(e) {
+      console.warn('[Tender] Draft save failed:', e);
+      return false;
+    }
+  }
+
+  function loadDraft() {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return null;
+      const draft = JSON.parse(raw);
+      // Check if draft is less than 7 days old
+      if (draft.saved_at) {
+        const age = Date.now() - new Date(draft.saved_at).getTime();
+        if (age > 7 * 24 * 60 * 60 * 1000) {
+          clearDraft();
+          return null;
+        }
+      }
+      return draft;
+    } catch(e) {
+      return null;
+    }
+  }
+
+  function clearDraft() {
+    localStorage.removeItem(DRAFT_KEY);
+  }
+
+  function getDraftFormData() {
+    return {
+      period: document.getElementById("e_period")?.value || '',
+      customer_inn: document.getElementById("e_inn")?.value || '',
+      customer_name: document.getElementById("e_customer")?.value || '',
+      tender_title: document.getElementById("e_title")?.value || '',
+      tender_type: document.getElementById("e_type")?.value || '',
+      tender_price: document.getElementById("e_price")?.value || '',
+      group_tag: document.getElementById("e_tag")?.value || '',
+      work_start_plan: document.getElementById("e_ws")?.value || '',
+      work_end_plan: document.getElementById("e_we")?.value || '',
+      purchase_url: document.getElementById("e_url")?.value || '',
+      docs_deadline: document.getElementById("e_docs_deadline")?.value || '',
+      tender_comment_to: document.getElementById("e_c_to")?.value || ''
+    };
+  }
+
+  function restoreDraftToForm(draft) {
+    if (!draft) return;
+    const fields = {
+      'e_period': draft.period,
+      'e_inn': draft.customer_inn,
+      'e_customer': draft.customer_name,
+      'e_title': draft.tender_title,
+      'e_type': draft.tender_type,
+      'e_price': draft.tender_price,
+      'e_tag': draft.group_tag,
+      'e_ws': draft.work_start_plan,
+      'e_we': draft.work_end_plan,
+      'e_url': draft.purchase_url,
+      'e_docs_deadline': draft.docs_deadline,
+      'e_c_to': draft.tender_comment_to
+    };
+    for (const [id, value] of Object.entries(fields)) {
+      const el = document.getElementById(id);
+      if (el && value) el.value = value;
+    }
+  }
+
   // === ПРОВЕРКА ДУБЛИКАТОВ (Этап 34) ===
   
   // Fuzzy match - вычисляет схожесть строк (0..1)
@@ -227,10 +303,11 @@ async function getRefs(){
   function norm(s){ return String(s||"").toLowerCase().trim(); }
 
   function tenderRow(t, pmName, createdByName){
-    const ds = t.work_start_plan ? esc(t.work_start_plan) : "—";
-    const de = t.work_end_plan ? esc(t.work_end_plan) : "—";
+    const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+    const ds = fmtDate(t.work_start_plan);
+    const de = fmtDate(t.work_end_plan);
     const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Ссылка</a>` : "—";
-    const ddl = t.docs_deadline ? esc(t.docs_deadline) : "—";
+    const ddl = fmtDate(t.docs_deadline);
     return `<tr data-id="${t.id}">
       <td>${esc(t.period||"")}</td>
       <td>
@@ -952,11 +1029,11 @@ async function getRefs(){
           </div>
           <div>
             <label>План: начало работ</label>
-            <input id="e_ws" value="${esc((t&&t.work_start_plan)||"")}" ${full?"":"disabled"} placeholder="YYYY-MM-DD"/>
+            <input id="e_ws" value="${esc((t&&t.work_start_plan)||"")}" ${full?"":"disabled"} placeholder="ДД.ММ.ГГГГ"/>
           </div>
           <div>
             <label>План: окончание работ</label>
-            <input id="e_we" value="${esc((t&&t.work_end_plan)||"")}" ${full?"":"disabled"} placeholder="YYYY-MM-DD"/>
+            <input id="e_we" value="${esc((t&&t.work_end_plan)||"")}" ${full?"":"disabled"} placeholder="ДД.ММ.ГГГГ"/>
           </div>
           <div style="grid-column: 1 / -1">
             <label>Ссылка на комплект документов (Я.Диск/площадка)</label>
@@ -964,8 +1041,8 @@ async function getRefs(){
           </div>
           <div>
             <label>Дедлайн (окончание приема заявок)</label>
-            <input id="e_docs_deadline" value="${esc((t&&t.docs_deadline)||"")}" ${(full||limited)?"":"disabled"} placeholder="YYYY-MM-DD"/>
-            <div class="help">Напоминания формируются ежедневно (в офлайне — при входе) за N дней до дедлайна. Для типа «Прямой запрос» дедлайн = +N дней автоматически (N в настройках), если не задан.</div>
+            <input id="e_docs_deadline" value="${esc((t&&t.docs_deadline)||"")}" ${(full||limited)?"":"disabled"} placeholder="ДД.ММ.ГГГГ или ГГГГ-ММ-ДД"/>
+            <div class="help">Формат: ДД.ММ.ГГГГ или ГГГГ-ММ-ДД. Напоминания формируются ежедневно за N дней до дедлайна.</div>
           </div>
           <div style="grid-column: 1 / -1">
             <label>Комментарий ТО</label>
@@ -988,6 +1065,7 @@ async function getRefs(){
         <div id="docsBox" style="display:flex; flex-direction:column; gap:10px"><div class="row" style="gap:8px; flex-wrap:wrap; margin:8px 0 10px 0">
   <button class="btn" id="copyAllDocs">Скопировать все ссылки</button>
   <button class="btn ghost" id="openAllDocs">Открыть все</button>
+  <button class="btn primary" id="downloadAllDocs">📥 Скачать все документы</button>
   <button class="btn ghost" id="btnPackExport">Экспорт комплекта (JSON)</button>
   <button class="btn ghost" id="btnPackImport">Импорт в комплект</button>
 </div>
@@ -1004,12 +1082,40 @@ ${docsHtml}</div>
         <hr class="hr"/>
         <div style="display:flex; gap:10px; flex-wrap:wrap">
           <button class="btn" id="btnSave">${isNew?"Создать":"Сохранить"}</button>
+          ${isNew ? `<button class="btn ghost" id="btnSaveDraft">💾 Черновик</button>` : ``}
           ${(t && !t.handoff_at && !t.distribution_requested_at && user.role==="TO") ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
           ${(t && !t.handoff_at && (user.role==="ADMIN"||isDirRole(user.role))) ? `<button class="btn red" id="btnHandoff">Передать в просчёт</button>` : ``}
         </div>
       `;
 
       showModal(isNew ? "Новый тендер" : `Тендер #${t.id}`, html);
+
+      // Restore draft for new tenders
+      if (isNew) {
+        const draft = loadDraft();
+        if (draft && (draft.customer_name || draft.tender_title || draft.customer_inn)) {
+          const draftAge = draft.saved_at ? new Date(draft.saved_at).toLocaleString('ru-RU') : 'неизвестно';
+          const useIt = confirm(`Найден черновик от ${draftAge}.\n\nЗаказчик: ${draft.customer_name || '—'}\nТендер: ${draft.tender_title || '—'}\n\nВосстановить?`);
+          if (useIt) {
+            setTimeout(() => restoreDraftToForm(draft), 50);
+          } else {
+            clearDraft();
+          }
+        }
+      }
+
+      // Draft save button handler
+      const btnSaveDraft = document.getElementById("btnSaveDraft");
+      if (btnSaveDraft) {
+        btnSaveDraft.addEventListener("click", () => {
+          const data = getDraftFormData();
+          if (saveDraft(data)) {
+            toast("Черновик", "Сохранён. Будет доступен при создании нового тендера", "ok");
+          } else {
+            toast("Черновик", "Ошибка сохранения", "err");
+          }
+        });
+      }
 
       // Customers directory (INN -> name)
       const normInn = (v)=>String(v||"").replace(/\D/g, "");
@@ -1207,6 +1313,47 @@ ${docsHtml}</div>
         (docs||[]).forEach(d=>{ if(d.data_url) window.open(d.data_url, "_blank"); });
       });
 
+      // Download All Documents handler
+      const bDownloadAll = document.getElementById("downloadAllDocs");
+      if(bDownloadAll) bDownloadAll.addEventListener("click", async ()=>{
+        if(!docs || docs.length === 0) {
+          toast("Документы", "Нет документов для скачивания", "err");
+          return;
+        }
+
+        toast("Скачивание", `Начинаю загрузку ${docs.length} документов...`, "ok");
+
+        // Download each document with a small delay to avoid browser blocking
+        let downloadCount = 0;
+        for(const d of docs) {
+          if(d.data_url) {
+            try {
+              const a = document.createElement('a');
+              a.href = d.data_url;
+              a.download = d.name || d.type || 'document';
+              a.target = '_blank';
+
+              // For data URLs, use direct download
+              if(d.data_url.startsWith('data:')) {
+                a.click();
+                downloadCount++;
+              } else {
+                // For external URLs, open in new tab (browser security restriction)
+                window.open(d.data_url, '_blank');
+                downloadCount++;
+              }
+
+              // Small delay between downloads
+              await new Promise(r => setTimeout(r, 300));
+            } catch(e) {
+              console.warn('[Tender] Download failed for:', d.name, e);
+            }
+          }
+        }
+
+        toast("Скачивание", `Открыто ${downloadCount} документов`, "ok");
+      });
+
       const bPackExp = document.getElementById("btnPackExport");
       if(bPackExp) bPackExp.addEventListener("click", async ()=>{
         if(!tenderId){ toast("Комплект","Сначала сохраните тендер","err"); return; }
@@ -1334,9 +1481,18 @@ ${docsHtml}</div>
 
         if(!pmId && status!=="Новый"){ toast("Проверка","Назначьте ответственного РП","err"); return null; }
         if(status==="Клиент отказался" && !reject){ toast("Проверка","Для отказа нужна причина","err"); return null; }
-        if(docsDeadline && !/^\d{4}-\d{2}-\d{2}$/.test(docsDeadline)){
-          toast("Проверка","Срок подачи документов должен быть YYYY-MM-DD","err");
-          return null;
+        // Accept both DD.MM.YYYY and YYYY-MM-DD formats, convert to ISO
+        if(docsDeadline){
+          // Try to parse and normalize to YYYY-MM-DD
+          const isoDate = V.dateISO ? V.dateISO(docsDeadline) : null;
+          if(isoDate){
+            docsDeadline = isoDate;
+            const inp = document.getElementById("e_docs_deadline");
+            if(inp) inp.value = isoDate;
+          } else if(!/^\d{4}-\d{2}-\d{2}$/.test(docsDeadline)){
+            toast("Проверка","Дата должна быть в формате ДД.ММ.ГГГГ или ГГГГ-ММ-ДД","err");
+            return null;
+          }
         }
 
         if(isNew){
@@ -1377,6 +1533,7 @@ ${docsHtml}</div>
           }
           const id = await AsgardDB.add("tenders", obj);
           await audit(user.id,"tender",id,"create",{period,customer,title,pmId});
+          clearDraft(); // Clear draft after successful save
           toast("Тендер","Создан");
           return id;
         }else{
@@ -1466,14 +1623,20 @@ ${docsHtml}</div>
           await AsgardDB.put("tenders", cur);
           await audit(user.id, "tender", id, "request_distribution", {});
 
-          // notify all directors
+          // notify all directors and admins
           try{
             const allU = await getUsers();
-            const dirs = (allU||[]).filter(u=> Array.isArray(u.roles) && u.roles.some(r=>isDirRole(r)) );
+            const dirs = (allU||[]).filter(u=> {
+              // Check singular role field
+              if (u.role && (isDirRole(u.role) || u.role === 'ADMIN')) return true;
+              // Check roles array if exists
+              if (Array.isArray(u.roles) && u.roles.some(r => isDirRole(r) || r === 'ADMIN')) return true;
+              return false;
+            });
             for(const d of dirs){
               await notify(d.id, "На распределение", `${cur.customer_name} — ${cur.tender_title}\nДедлайн: ${cur.docs_deadline||"—"}\nТип: ${cur.tender_type||"—"}`, "#/tenders");
             }
-          }catch(e){}
+          }catch(e){ console.error('Distribution notify error:', e); }
 
           toast("Распределение","Отправлено директору");
           await render({layout, title});

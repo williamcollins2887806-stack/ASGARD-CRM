@@ -9,6 +9,28 @@
  */
 window.AsgardReminders = (function(){
   const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
+
+  // Загружаем настройку автоудаления при инициализации модуля
+  (async () => {
+    try {
+      const s = await AsgardDB.get('settings', 'app');
+      const cfg = s ? JSON.parse(s.value_json || '{}') : {};
+      window._asg_reminder_hours = cfg.reminder_auto_delete_hours || 48;
+    } catch (_) {
+      window._asg_reminder_hours = 48;
+    }
+  })();
+
+  // Функция расчёта оставшегося времени до удаления
+  function timeLeft(completedAt) {
+    const hours = window._asg_reminder_hours || 48;
+    const deadline = new Date(new Date(completedAt).getTime() + hours * 3600000);
+    const diff = deadline - Date.now();
+    if (diff <= 0) return '<span style="color:var(--red)">Удаляется...</span>';
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    return `<span style="color:var(--text-muted)">удалится через ${h}ч ${m}м</span>`;
+  }
   
   const REMINDER_TYPES = {
     deadline: { label: 'Дедлайн', icon: '⏰', color: '#f59e0b' },
@@ -388,24 +410,26 @@ window.AsgardReminders = (function(){
     const active = reminders.filter(r => !r.completed && !r.dismissed);
     const completed = reminders.filter(r => r.completed);
     
-    function renderList(list, showActions = true) {
+    function renderList(list, showActions = true, isCompleted = false) {
       if (list.length === 0) {
         return '<div class="muted" style="padding:20px;text-align:center">Нет напоминаний</div>';
       }
-      
+
       return list.map(r => {
         const type = REMINDER_TYPES[r.type] || REMINDER_TYPES.custom;
         const priority = REMINDER_PRIORITIES[r.priority] || REMINDER_PRIORITIES.normal;
-        
+
         return `
-          <div class="card" style="border-left:4px solid ${priority.color};padding:16px;margin-bottom:12px">
+          <div class="card" style="border-left:4px solid ${isCompleted ? 'var(--text-muted)' : priority.color};padding:16px;margin-bottom:12px;${isCompleted ? 'opacity:0.8;' : ''}">
             <div class="row" style="justify-content:space-between;align-items:flex-start">
               <div>
                 <div style="font-weight:600;margin-bottom:4px">
                   <span style="color:${type.color}">${type.icon}</span> ${esc(r.title)}
+                  ${isCompleted ? '<span style="margin-left:8px;color:var(--green)">✓</span>' : ''}
                 </div>
                 <div class="muted" style="font-size:14px">${esc(r.message || '')}</div>
                 ${r.due_date ? `<div style="margin-top:8px;font-size:13px">📅 ${new Date(r.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
+                ${isCompleted && r.completed_at ? `<div style="margin-top:6px;font-size:12px">${timeLeft(r.completed_at)}</div>` : ''}
               </div>
               ${showActions ? `
                 <div class="row" style="gap:4px">
@@ -431,7 +455,7 @@ window.AsgardReminders = (function(){
       </div>
       
       <div id="tab_active">${renderList(active)}</div>
-      <div id="tab_completed" style="display:none">${renderList(completed, false)}</div>
+      <div id="tab_completed" style="display:none">${renderList(completed, false, true)}</div>
     `;
     
     layout.setMain(html);

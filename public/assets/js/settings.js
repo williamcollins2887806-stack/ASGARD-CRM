@@ -224,6 +224,11 @@ window.AsgardSettingsPage = (function(){
                 <input id="sla_rework" type="number" min="0" step="1" value="${esc(String(sla.pm_rework_due_workdays ?? 1))}"/>
               </div>
               <div>
+                <label for="sla_reminder_del">Автоудаление напоминаний, часов</label>
+                <input id="sla_reminder_del" type="number" min="1" step="1" value="${esc(String(app.reminder_auto_delete_hours ?? 48))}"/>
+                <div class="help">Завершённые напоминания удаляются через N часов</div>
+              </div>
+              <div>
                 <label for="lim_pm">Лимит активных просчётов на 1 РП</label>
                 <input id="lim_pm" type="number" min="1" step="1" value="${esc(String(limits.pm_active_calcs_limit ?? 5))}"/>
               </div>
@@ -621,6 +626,9 @@ window.AsgardSettingsPage = (function(){
         pm_rework_due_workdays: Math.max(0, Math.round(num($("#sla_rework").value, 1))),
         tkp_followup_first_delay_days: Math.max(1, Math.round(num($("#tkp_followup_days")?.value, 3))),
       });
+
+      // Автоудаление напоминаний (часы)
+      nextApp.reminder_auto_delete_hours = Math.max(1, Math.round(num($("#sla_reminder_del")?.value, 48)));
 
       nextApp.limits = Object.assign({}, limits, {
         pm_active_calcs_limit: Math.max(1, Math.round(num($("#lim_pm").value, 6)))

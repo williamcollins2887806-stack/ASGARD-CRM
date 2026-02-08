@@ -411,7 +411,7 @@ window.AsgardPmCalcsPage = (function(){
     const byId = new Map(users.map(u=>[u.id,u]));
     const tendersAll = await AsgardDB.all("tenders");
 
-    const isPM = user.role==="PM";
+    const isPM = user.role==="PM" || user.role==="ADMIN";
     const isDir = isDirRole(user.role) || user.role==="ADMIN";
 
     // PM sees only own; Director/Admin can see all handed-off
@@ -512,8 +512,9 @@ window.AsgardPmCalcsPage = (function(){
     }
 
     function row(t){
-      const ds = t.work_start_plan ? esc(t.work_start_plan) : "—";
-      const de = t.work_end_plan ? esc(t.work_end_plan) : "—";
+      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+      const ds = fmtDate(t.work_start_plan);
+      const de = fmtDate(t.work_end_plan);
       const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Площадка</a>` : "";
       const pmName = (byId.get(t.responsible_pm_id)||{}).name || "—";
       return `<tr data-id="${t.id}">

@@ -47,6 +47,7 @@ window.AsgardMobile = (function(){
       const overlay = document.createElement('div');
       overlay.id = 'mobileOverlay';
       overlay.className = 'mobile-overlay';
+      overlay.style.pointerEvents = 'none'; // ВАЖНО: не блокировать тапы когда меню закрыто
       document.body.appendChild(overlay);
     }
     
@@ -81,17 +82,19 @@ window.AsgardMobile = (function(){
     const sidebar = $('.sidebar') || $('nav');
     const overlay = $('#mobileOverlay');
     const btn = $('#mobileMenuBtn');
-    
+
     if (sidebar) {
       sidebar.classList.toggle('open', isMenuOpen);
     }
     if (overlay) {
       overlay.classList.toggle('active', isMenuOpen);
+      // КРИТИЧНО: pointer-events только когда меню открыто
+      overlay.style.pointerEvents = isMenuOpen ? 'auto' : 'none';
     }
     if (btn) {
       btn.innerHTML = isMenuOpen ? '✕' : '☰';
     }
-    
+
     document.body.classList.toggle('menu-open', isMenuOpen);
   }
   
@@ -262,11 +265,14 @@ window.AsgardMobile = (function(){
       background: rgba(0, 0, 0, 0.5);
       z-index: 999;
       opacity: 0;
+      pointer-events: none; /* КРИТИЧНО: не блокировать тапы */
       transition: opacity 0.3s;
     }
-    
+
     .mobile-overlay.active {
+      display: block;
       opacity: 1;
+      pointer-events: auto; /* Включаем только когда активен */
     }
     
     .offline-indicator {

@@ -4,27 +4,41 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>АСГАРД CRM</title>
-  
+
   <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="assets/img/favicon.ico"/>
   <link rel="icon" type="image/png" sizes="32x32" href="assets/img/icon-32.png"/>
   <link rel="icon" type="image/png" sizes="16x16" href="assets/img/icon-16.png"/>
-  
+
   <!-- PWA -->
   <link rel="manifest" href="manifest.json"/>
-  <meta name="theme-color" content="#c41e3a"/>
+  <meta name="theme-color" content="#C62828"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="АСГАРД CRM"/>
   <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png"/>
   <link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png"/>
   <link rel="apple-touch-icon" sizes="192x192" href="assets/img/icon-192.png"/>
-  
+
   <!-- Описание -->
   <meta name="description" content="CRM система АСГАРД-СЕРВИС для управления тендерами, работами и персоналом"/>
-  
+
+  <!-- Google Fonts: Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+  <!-- Design System CSS -->
+  <link rel="stylesheet" href="assets/css/design-tokens.css"/>
+  <link rel="stylesheet" href="assets/css/components.css"/>
+  <link rel="stylesheet" href="assets/css/layout.css"/>
   <link rel="stylesheet" href="assets/css/app.css"/>
+
+  <!-- Theme initialization (before render) -->
   <script>(function(){try{var t=localStorage.getItem("asgard_theme")||"dark";document.documentElement.dataset.theme=t==="light"?"light":"dark";}catch(e){}})();</script>
+
+  <!-- SheetJS (xlsx) для экспорта в Excel -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body>
   <div id="app"><noscript>Для работы требуется JavaScript.</noscript></div>
@@ -84,7 +98,6 @@
   <script src="assets/js/reminders.js"></script>
   <script src="assets/js/global_search.js"></script>
   <script src="assets/js/mobile.js"></script>
-  <script src="assets/js/mimir_ai.js"></script>
   <script src="assets/js/settings.js"></script>
   <script src="assets/js/hr_requests.js"></script>
   <script src="assets/js/proc_requests.js"></script>
@@ -106,12 +119,23 @@
   <script src="assets/js/mimir.js"></script>
   <script src="assets/js/receipt_scanner.js"></script>
   <script src="assets/js/custom_dashboard.js"></script>
+  <script src="assets/js/big_screen.js"></script>
   <script src="assets/js/qr_codes.js"></script>
   <script src="assets/js/fx.js"></script>
   <script src="assets/js/mango.js"></script>
   <script src="assets/js/pm_consents.js"></script>
+  <script src="assets/js/cash.js"></script>
+  <script src="assets/js/cash_admin.js"></script>
+  <script src="assets/js/tasks.js"></script>
+  <script src="assets/js/tasks_admin.js"></script>
+  <script src="assets/js/kanban.js"></script>
+  <script src="assets/js/chat_groups.js"></script>
+  <script src="assets/js/meetings_page.js"></script>
   <script src="assets/js/diag.js"></script>
   <script src="assets/js/theme.js"></script>
+  <script src="assets/js/to_analytics.js"></script>
+  <script src="assets/js/pm_analytics.js"></script>
+  <script src="assets/js/engineer_dashboard.js"></script>
   <script src="assets/js/app.js"></script>
   
   <!-- PWA Service Worker Registration -->

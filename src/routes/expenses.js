@@ -1,6 +1,12 @@
 /**
  * Expenses Routes (work_expenses + office_expenses)
  */
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECURITY: Ролевой контроль для финансовых операций (HIGH-9)
+// ═══════════════════════════════════════════════════════════════════════════
+const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
+
 async function routes(fastify, options) {
   const db = fastify.db;
 
@@ -20,7 +26,8 @@ async function routes(fastify, options) {
     return { expenses: result.rows };
   });
 
-  fastify.post('/work', { preHandler: [fastify.authenticate] }, async (request) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.post('/work', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
     const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString() };
     const keys = Object.keys(data);
     const values = Object.values(data);
@@ -45,7 +52,8 @@ async function routes(fastify, options) {
     return { expenses: result.rows };
   });
 
-  fastify.post('/office', { preHandler: [fastify.authenticate] }, async (request) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.post('/office', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
     const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString(), status: 'pending' };
     const keys = Object.keys(data);
     const values = Object.values(data);
@@ -55,7 +63,8 @@ async function routes(fastify, options) {
   });
 
   // Generic update/delete
-  fastify.put('/:type/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.put('/:type/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const { type, id } = request.params;
     const table = type === 'work' ? 'work_expenses' : 'office_expenses';
     const data = request.body;
@@ -74,7 +83,8 @@ async function routes(fastify, options) {
     return { expense: result.rows[0] };
   });
 
-  fastify.delete('/:type/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.delete('/:type/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const { type, id } = request.params;
     const table = type === 'work' ? 'work_expenses' : 'office_expenses';
     const result = await db.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]);

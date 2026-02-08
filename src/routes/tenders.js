@@ -354,4 +354,90 @@ async function routes(fastify, options) {
   });
 }
 
+  // ═══════════════════════════════════════════════════════════════
+  // M15: Аналитика тендерного отдела (для HEAD_TO)
+  // ═══════════════════════════════════════════════════════════════
+
+  fastify.get('/analytics/team', {
+    preHandler: [fastify.requireRoles(['HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const { year, period } = request.query;
+
+    let whereClause = '1=1';
+    const params = [];
+    let idx = 1;
+
+    if (year) {
+      whereClause += ` AND EXTRACT(YEAR FROM t.created_at) = $${idx}`;
+      params.push(parseInt(year));
+      idx++;
+    }
+    if (period) {
+      whereClause += ` AND t.period = $${idx}`;
+      params.push(period);
+      idx++;
+    }
+
+    // KPI по каждому тендерному специалисту
+    const teamKpi = await db.query(`
+      SELECT
+        u.id,
+        u.name,
+        u.role,
+        COUNT(t.id) as total_tenders,
+        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
+        COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Контракт', 'Клиент согласился', 'Проиграли', 'Отказ', 'Клиент отказался', 'Отменён', 'Другое')) as active,
+        COALESCE(SUM(t.estimated_sum) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COALESCE(SUM(t.estimated_sum), 0) as total_sum,
+        COUNT(DISTINCT t.customer_inn) as unique_customers,
+        MAX(t.created_at) as last_tender_at
+      FROM users u
+      LEFT JOIN tenders t ON (t.created_by = u.id) AND ${whereClause.replace(/t\./g, '')}
+      WHERE u.role IN ('TO', 'HEAD_TO') AND u.is_active = true
+      GROUP BY u.id, u.name, u.role
+      ORDER BY won_sum DESC
+    `, params);
+
+    // Общая сводка отдела
+    const deptTotal = await db.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
+        COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COALESCE(SUM(estimated_sum), 0) as total_sum
+      FROM tenders
+      WHERE ${whereClause.replace(/t\./g, '')}
+    `, params);
+
+    // По статусам
+    const byStatus = await db.query(`
+      SELECT tender_status, COUNT(*) as count, COALESCE(SUM(estimated_sum), 0) as sum
+      FROM tenders WHERE ${whereClause.replace(/t\./g, '')}
+      GROUP BY tender_status ORDER BY count DESC
+    `, params);
+
+    // По месяцам (динамика за последние 12 мес)
+    const byMonth = await db.query(`
+      SELECT
+        TO_CHAR(created_at, 'YYYY-MM') as month,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+        COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+      FROM tenders
+      WHERE created_at >= NOW() - INTERVAL '12 months'
+      GROUP BY TO_CHAR(created_at, 'YYYY-MM')
+      ORDER BY month
+    `);
+
+    return {
+      team: teamKpi.rows,
+      department: deptTotal.rows[0],
+      byStatus: byStatus.rows,
+      byMonth: byMonth.rows
+    };
+  });
+}
+
 module.exports = routes;

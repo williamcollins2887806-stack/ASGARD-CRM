@@ -147,10 +147,11 @@ window.AsgardNotify = (function(){
   
   // Передача тендера в просчёт
   async function notifyTenderHandoff(tender, pmId) {
+    const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : 'Не указан');
     await notifyUser(
       pmId,
       '📋 Новый тендер на просчёт',
-      `Вам передан тендер: ${tender.customer || tender.customer_name || 'Без названия'}\nДедлайн: ${tender.docs_deadline || 'Не указан'}`,
+      `Вам передан тендер: ${tender.customer || tender.customer_name || 'Без названия'}\nДедлайн: ${fmtDate(tender.docs_deadline)}`,
       '#/tenders/' + tender.id
     );
   }

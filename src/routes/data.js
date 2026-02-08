@@ -1,7 +1,7 @@
 /**
- * ASGARD CRM - Universal Data API v2.2
+ * ASGARD CRM - Universal Data API v2.3
  * Единый CRUD endpoint для всех таблиц
- * ИСПРАВЛЕНО: добавлен employee_plan
+ * SECURITY: Добавлена ролевая матрица доступа (CRIT-3)
  */
 
 async function dataRoutes(fastify, options) {
@@ -23,6 +23,115 @@ async function dataRoutes(fastify, options) {
     'equipment_requests', 'equipment_maintenance', 'equipment_reservations',
     'equipment_categories', 'warehouses', 'objects'
   ];
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SECURITY: Ролевая матрица доступа (CRIT-3)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ACCESS_MATRIX = {
+    ADMIN: { tables: 'all', ops: ['read', 'create', 'update', 'delete'] },
+    DIRECTOR_GEN: { tables: 'all', ops: ['read', 'create', 'update', 'delete'] },
+    DIRECTOR_COMM: { tables: 'all', ops: ['read', 'create', 'update'] },
+    DIRECTOR_DEV: { tables: 'all', ops: ['read', 'create', 'update'] },
+    PM: {
+      tables: [
+        'tenders', 'estimates', 'works', 'work_expenses', 'work_assign_requests',
+        'pm_consents', 'correspondence', 'travel_expenses', 'contracts',
+        'calendar_events', 'customers', 'documents', 'chats', 'chat_messages',
+        'equipment', 'equipment_movements', 'equipment_requests',
+        'equipment_reservations', 'acts', 'invoices', 'notifications',
+        'sync_meta', 'employee_assignments', 'employee_plan', 'reminders',
+        'bonus_requests', 'doc_sets', 'qa_messages', 'user_dashboard'
+      ],
+      ops: ['read', 'create', 'update']
+    },
+    TO: {
+      tables: [
+        'tenders', 'estimates', 'customers', 'calendar_events', 'documents',
+        'correspondence', 'chats', 'chat_messages', 'notifications',
+        'sync_meta', 'reminders', 'doc_sets', 'user_dashboard'
+      ],
+      ops: ['read', 'create', 'update']
+    },
+    BUH: {
+      tables: [
+        'tenders', 'works', 'work_expenses', 'office_expenses', 'incomes',
+        'invoices', 'invoice_payments', 'acts', 'contracts', 'customers',
+        'bank_rules', 'calendar_events', 'chats', 'chat_messages',
+        'notifications', 'sync_meta', 'reminders', 'user_dashboard'
+      ],
+      ops: ['read', 'create', 'update']
+    },
+    HR: {
+      tables: [
+        'employees', 'employee_reviews', 'employee_assignments', 'employee_plan',
+        'staff', 'staff_plan', 'staff_requests', 'staff_request_messages',
+        'staff_replacements', 'employee_permits', 'calendar_events',
+        'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
+        'travel_expenses', 'user_dashboard'
+      ],
+      ops: ['read', 'create', 'update']
+    },
+    OFFICE_MANAGER: {
+      tables: [
+        'office_expenses', 'calendar_events', 'correspondence', 'documents',
+        'chats', 'chat_messages', 'notifications', 'seals', 'seal_transfers',
+        'purchase_requests', 'sync_meta', 'reminders', 'contracts',
+        'travel_expenses', 'doc_sets', 'user_dashboard'
+      ],
+      ops: ['read', 'create', 'update']
+    },
+    WAREHOUSE: {
+      tables: [
+        'equipment', 'equipment_categories', 'equipment_movements',
+        'equipment_requests', 'equipment_maintenance', 'equipment_reservations',
+        'warehouses', 'objects', 'chats', 'chat_messages', 'notifications',
+        'sync_meta', 'reminders', 'user_dashboard'
+      ],
+      ops: ['read', 'create', 'update']
+    },
+    PROC: {
+      tables: [
+        'purchase_requests', 'equipment', 'equipment_categories',
+        'invoices', 'invoice_payments', 'documents', 'calendar_events',
+        'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
+        'user_dashboard'
+      ],
+      ops: ['read', 'create', 'update']
+    }
+  };
+
+  // Таблицы, запрещённые для записи через data API (всегда)
+  const WRITE_PROTECTED_TABLES = ['audit_log', 'users'];
+
+  // Таблицы, запрещённые для чтения через data API (кроме ADMIN/DIRECTOR)
+  const READ_SENSITIVE_TABLES = ['users', 'audit_log'];
+
+  function checkAccess(role, table, operation) {
+    // ADMIN и DIRECTOR_GEN имеют полный доступ
+    if (role === 'ADMIN' || role === 'DIRECTOR_GEN') {
+      return true;
+    }
+
+    // Защита от записи в критичные таблицы
+    if (WRITE_PROTECTED_TABLES.includes(table) && operation !== 'read') {
+      return false;
+    }
+
+    // Защита чувствительных таблиц от чтения
+    if (READ_SENSITIVE_TABLES.includes(table) && !['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role)) {
+      return false;
+    }
+
+    const matrix = ACCESS_MATRIX[role];
+    if (!matrix) return false;
+
+    const tablesAllowed = matrix.tables === 'all' || matrix.tables.includes(table);
+    const opsAllowed = matrix.ops.includes(operation);
+
+    return tablesAllowed && opsAllowed;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
 
   // Таблицы с особыми первичными ключами
   const SPECIAL_KEYS = {
@@ -53,6 +162,7 @@ async function dataRoutes(fastify, options) {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/data/:table - Получить все записи
+  // SECURITY: Проверка ролевого доступа (CRIT-3)
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.get('/:table', {
     preHandler: [fastify.authenticate]
@@ -64,15 +174,21 @@ async function dataRoutes(fastify, options) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
     }
 
+    // SECURITY: Проверка ролевого доступа
+    const userRole = request.user.role;
+    if (!checkAccess(userRole, table, 'read')) {
+      return reply.code(403).send({ error: 'Нет доступа к таблице ' + table });
+    }
+
     try {
       let query = `SELECT * FROM ${table}`;
       const params = [];
+      let whereParts = [];
 
       // WHERE условие (простое)
       if (where) {
         try {
           const conditions = JSON.parse(where);
-          const whereParts = [];
           Object.entries(conditions).forEach(([key, value], i) => {
             if (/^[a-z_]+$/i.test(key)) {
               whereParts.push(`${key} = $${params.length + 1}`);
@@ -94,13 +210,16 @@ async function dataRoutes(fastify, options) {
 
       // LIMIT/OFFSET
       query += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-      params.push(parseInt(limit), parseInt(offset));
+      const dataParams = [...params, parseInt(limit), parseInt(offset)];
 
-      const result = await db.query(query, params);
+      const result = await db.query(query, dataParams);
 
-      // Считаем общее количество
+      // SECURITY FIX (MED-7): COUNT с теми же WHERE-условиями
       let countQuery = `SELECT COUNT(*) as total FROM ${table}`;
-      const countResult = await db.query(countQuery);
+      if (whereParts.length > 0) {
+        countQuery += ' WHERE ' + whereParts.join(' AND ');
+      }
+      const countResult = await db.query(countQuery, params);
 
       return {
         [table]: result.rows,
@@ -109,13 +228,15 @@ async function dataRoutes(fastify, options) {
         offset: parseInt(offset)
       };
     } catch(err) {
-      fastify.log.error(err);
-      return reply.code(500).send({ error: err.message });
+      // SECURITY FIX (HIGH-4): Не утекает err.message
+      fastify.log.error(`Data API GET [${table}]:`, err.message);
+      return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/data/:table/:id - Получить одну запись
+  // SECURITY: Проверка ролевого доступа (CRIT-3)
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.get('/:table/:id', {
     preHandler: [fastify.authenticate]
@@ -124,6 +245,12 @@ async function dataRoutes(fastify, options) {
 
     if (!isAllowed(table)) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
+    }
+
+    // SECURITY: Проверка ролевого доступа
+    const userRole = request.user.role;
+    if (!checkAccess(userRole, table, 'read')) {
+      return reply.code(403).send({ error: 'Нет доступа к таблице ' + table });
     }
 
     const pk = getPrimaryKey(table);
@@ -137,13 +264,14 @@ async function dataRoutes(fastify, options) {
 
       return { item: result.rows[0] };
     } catch(err) {
-      fastify.log.error(err);
-      return reply.code(500).send({ error: err.message });
+      fastify.log.error(`Data API GET/:id [${table}]:`, err.message);
+      return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // POST /api/data/:table - Создать запись
+  // SECURITY: Проверка ролевого доступа (CRIT-3)
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/:table', {
     preHandler: [fastify.authenticate]
@@ -155,12 +283,22 @@ async function dataRoutes(fastify, options) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
     }
 
+    // SECURITY: Проверка ролевого доступа
+    const userRole = request.user.role;
+    if (!checkAccess(userRole, table, 'create')) {
+      return reply.code(403).send({ error: 'Нет прав на создание записей в таблице ' + table });
+    }
+
     const pk = getPrimaryKey(table);
 
     try {
       // Добавляем метаданные
       data.created_at = data.created_at || new Date().toISOString();
       data.updated_at = new Date().toISOString();
+      // SECURITY: Добавляем created_by если не указан
+      if (!data.created_by && request.user.id) {
+        data.created_by = request.user.id;
+      }
 
       // Удаляем id только если это autoincrement таблица
       if (pk === 'id') {
@@ -181,13 +319,14 @@ async function dataRoutes(fastify, options) {
 
       return { success: true, item: result.rows[0], id: result.rows[0][pk] };
     } catch(err) {
-      fastify.log.error(err);
-      return reply.code(500).send({ error: err.message });
+      fastify.log.error(`Data API POST [${table}]: ${err.message}`, { stack: err.stack, code: err.code });
+      return reply.code(500).send({ error: 'Ошибка обработки запроса', details: err.message });
     }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // PUT /api/data/:table/:id - Обновить запись
+  // SECURITY: Проверка ролевого доступа (CRIT-3)
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.put('/:table/:id', {
     preHandler: [fastify.authenticate]
@@ -199,12 +338,20 @@ async function dataRoutes(fastify, options) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
     }
 
+    // SECURITY: Проверка ролевого доступа
+    const userRole = request.user.role;
+    if (!checkAccess(userRole, table, 'update')) {
+      return reply.code(403).send({ error: 'Нет прав на обновление записей в таблице ' + table });
+    }
+
     const pk = getPrimaryKey(table);
 
     try {
       data.updated_at = new Date().toISOString();
       delete data[pk]; // Не обновляем первичный ключ
       delete data.id;  // И id тоже
+      delete data.created_at; // Не меняем дату создания
+      delete data.created_by; // Не меняем автора
 
       const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k));
       const values = keys.map(k => data[k]);
@@ -226,13 +373,14 @@ async function dataRoutes(fastify, options) {
 
       return { success: true, item: result.rows[0] };
     } catch(err) {
-      fastify.log.error(err);
-      return reply.code(500).send({ error: err.message });
+      fastify.log.error(`Data API PUT [${table}]:`, err.message);
+      return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // DELETE /api/data/:table/:id - Удалить запись
+  // SECURITY: Проверка ролевого доступа (CRIT-3)
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.delete('/:table/:id', {
     preHandler: [fastify.authenticate]
@@ -241,6 +389,12 @@ async function dataRoutes(fastify, options) {
 
     if (!isAllowed(table)) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
+    }
+
+    // SECURITY: Проверка ролевого доступа (только ADMIN и DIRECTOR_GEN могут удалять)
+    const userRole = request.user.role;
+    if (!checkAccess(userRole, table, 'delete')) {
+      return reply.code(403).send({ error: 'Нет прав на удаление записей в таблице ' + table });
     }
 
     const pk = getPrimaryKey(table);
@@ -254,13 +408,14 @@ async function dataRoutes(fastify, options) {
 
       return { success: true, deleted: true };
     } catch(err) {
-      fastify.log.error(err);
-      return reply.code(500).send({ error: err.message });
+      fastify.log.error(`Data API DELETE [${table}]:`, err.message);
+      return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // POST /api/data/:table/by-index - Поиск по индексу
+  // SECURITY: Проверка ролевого доступа (CRIT-3)
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/:table/by-index', {
     preHandler: [fastify.authenticate]
@@ -270,6 +425,12 @@ async function dataRoutes(fastify, options) {
 
     if (!isAllowed(table)) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
+    }
+
+    // SECURITY: Проверка ролевого доступа
+    const userRole = request.user.role;
+    if (!checkAccess(userRole, table, 'read')) {
+      return reply.code(403).send({ error: 'Нет доступа к таблице ' + table });
     }
 
     if (!index || !/^[a-z_]+$/i.test(index)) {
@@ -284,13 +445,14 @@ async function dataRoutes(fastify, options) {
 
       return { items: result.rows };
     } catch(err) {
-      fastify.log.error(err);
-      return reply.code(500).send({ error: err.message });
+      fastify.log.error(`Data API by-index [${table}]:`, err.message);
+      return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/data/:table/count - Количество записей
+  // SECURITY: Проверка ролевого доступа (CRIT-3)
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.get('/:table/count', {
     preHandler: [fastify.authenticate]
@@ -301,12 +463,18 @@ async function dataRoutes(fastify, options) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
     }
 
+    // SECURITY: Проверка ролевого доступа
+    const userRole = request.user.role;
+    if (!checkAccess(userRole, table, 'read')) {
+      return reply.code(403).send({ error: 'Нет доступа к таблице ' + table });
+    }
+
     try {
       const result = await db.query(`SELECT COUNT(*) as count FROM ${table}`);
       return { count: parseInt(result.rows[0].count) };
     } catch(err) {
-      fastify.log.error(err);
-      return reply.code(500).send({ error: err.message });
+      fastify.log.error(`Data API count [${table}]:`, err.message);
+      return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }
   });
 }

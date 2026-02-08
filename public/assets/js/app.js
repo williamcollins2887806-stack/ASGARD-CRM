@@ -37,18 +37,41 @@ console.log('[ASGARD] Global period functions loaded');
   // Глобальная функция для мобильной совместимости кнопок
   // Добавляет обработчики click + touchend для надёжной работы на мобильных устройствах
   function addMobileClick(el, handler) {
-    if (!el) return;
+    if (!el) {
+      // Не логируем - элементы могут отсутствовать на некоторых страницах
+      return;
+    }
     let touchHandled = false;
+
+    // Touch events for mobile
+    el.addEventListener("touchstart", (e) => {
+      // Mark that touch is happening
+      touchHandled = true;
+    }, { passive: true });
+
     el.addEventListener("touchend", (e) => {
       e.preventDefault();
-      touchHandled = true;
+      e.stopPropagation();
       handler(e);
-      setTimeout(() => { touchHandled = false; }, 300);
+      setTimeout(() => { touchHandled = false; }, 400);
     }, { passive: false });
+
+    // Click event for desktop (and fallback)
     el.addEventListener("click", (e) => {
-      if (!touchHandled) handler(e);
+      if (!touchHandled) {
+        handler(e);
+      }
+      touchHandled = false;
     });
+
+    // Ensure button is clickable (fix potential CSS issues)
+    el.style.touchAction = 'manipulation';
+    el.style.cursor = 'pointer';
+    el.style.pointerEvents = 'auto';
   }
+
+  // Make it globally available
+  window.addMobileClick = addMobileClick;
 
   // Определяем базовый путь к assets (для работы из подпапок типа /tools/)
   const ASSETS_BASE = (function(){
@@ -115,11 +138,16 @@ console.log('[ASGARD] Global period functions loaded');
     "/hr-requests":"Дружина сильна, когда строем управляют руны.",
     "/proc-requests":"Запас крепок, когда список точен.",
     "/login":"Вход в зал. У каждого своя доля ответственности.",
-    "/register":"Пусть имя будет честным, а роль — ясной."
+    "/register":"Пусть имя будет честным, а роль — ясной.",
+    "/cash":"Деньги любят счёт. Каждый рубль — на виду.",
+    "/cash-admin":"Контроль — залог доверия. Считай и подтверждай.",
+    "/tasks":"Дело назначено — доведи до конца.",
+    "/tasks-admin":"Ярл видит все задачи. Порядок в дружине."
   };
 
   const DIRECTOR_ROLES = ["DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]; // legacy DIRECTOR removed in Stage 25
-  const OFFICE_ROLES = ["TO","PM","HR","BUH","OFFICE_MANAGER","WAREHOUSE",...DIRECTOR_ROLES,"ADMIN"];
+  const HEAD_ROLES = ["HEAD_TO","HEAD_PM"]; // M15: Руководители отделов
+  const OFFICE_ROLES = ["TO","PM","HR","HR_MANAGER","BUH","OFFICE_MANAGER","WAREHOUSE","CHIEF_ENGINEER",...HEAD_ROLES,...DIRECTOR_ROLES,"ADMIN"];
   const ALL_ROLES = [...OFFICE_ROLES,"PROC"];
 
 
@@ -144,49 +172,99 @@ console.log('[ASGARD] Global period functions loaded');
 </style>
 `;
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NAVIGATION GROUPS — Business Viking 2026 Design System
+  // 9 групп навигации с иконками и раскрывающимися секциями
+  // ═══════════════════════════════════════════════════════════════════════════
+  const NAV_GROUPS = [
+    { id: "home",     label: "Главная",       icon: "🏠", defaultExpanded: true },
+    { id: "tenders",  label: "Тендеры",       icon: "📋", defaultExpanded: true },
+    { id: "works",    label: "Работы",        icon: "⚒️", defaultExpanded: true },
+    { id: "finance",  label: "Финансы",       icon: "💰", defaultExpanded: false },
+    { id: "resources",label: "Ресурсы",       icon: "📦", defaultExpanded: false },
+    { id: "personnel",label: "Персонал",      icon: "👥", defaultExpanded: false },
+    { id: "comm",     label: "Коммуникации",  icon: "💬", defaultExpanded: false },
+    { id: "analytics",label: "Аналитика",     icon: "📊", defaultExpanded: false },
+    { id: "system",   label: "Система",       icon: "⚙️", defaultExpanded: false }
+  ];
+
+  // M1: Добавлено поле p (permission key) и g (group id) для модульных ролей
   const NAV=[
-    {r:"/home",l:"Зал Ярла • Меню",d:"Порталы и сводка",roles:ALL_ROLES,i:"home"},
-    {r:"/dashboard",l:"Дашборд руководителя",d:"Сводная аналитика",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard"},
-    {r:"/calendar",l:"Календарь встреч",d:"Совещания и события",roles:ALL_ROLES,i:"schedule"},
-    {r:"/birthdays",l:"Дни рождения",d:"Офисный календарь ДР",roles:ALL_ROLES,i:"birthdays"},
-    {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders"},
-    {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO",...DIRECTOR_ROLES],i:"tenders"},
-    {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","PM",...DIRECTOR_ROLES],i:"customers"},
-    {r:"/pm-calcs",l:"Карта Похода • Просчёты",d:"Inbox РП",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmcalcs"},
-    {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals"},
-    {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"approvals"},
-    {r:"/pm-works",l:"Карта Похода • Работы",d:"Проекты РП",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"pmworks"},
-    {r:"/all-works",l:"Свод Контрактов",d:"Все работы",roles:["ADMIN",...DIRECTOR_ROLES],i:"allworks"},
-    {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN",...DIRECTOR_ROLES],i:"allestimates"},
-    {r:"/finances",l:"Финансы",d:"Аналитика и реестр расходов",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances"},
-    {r:"/invoices",l:"Счета и оплаты",d:"Выставление и отслеживание",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"finances"},
-    {r:"/acts",l:"Акты выполненных работ",d:"Создание и подписание",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"buh"},
-    {r:"/warehouse",l:"Склад ТМЦ",d:"Оборудование и инструменты",roles:ALL_ROLES,i:"backup"},
-    {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks"},
-    {r:"/office-expenses",l:"Офисные расходы",d:"Управление и согласование",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"office"},
-    {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence"},
-    {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков и покупателей",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies"},
-    {r:"/seals",l:"Реестр печатей",d:"Учёт и передача печатей",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies"},
-    {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, уведомления",roles:["ADMIN","HR","TO",...DIRECTOR_ROLES],i:"workers"},
-    {r:"/warehouse",l:"Склад и ТМЦ",d:"Оборудование, инструмент, материалы",roles:ALL_ROLES,i:"backup"},
-    {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies"},
-    {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","PM",...DIRECTOR_ROLES],i:"travel"},
-    {r:"/user-requests",l:"Заявки на регистрацию",d:"Одобрение новых пользователей",roles:["ADMIN",...DIRECTOR_ROLES],i:"requests"},
-    {r:"/analytics",l:"Аналитика Ярла",d:"KPI работ и денег",roles:["ADMIN",...DIRECTOR_ROLES],i:"kpiworks"},
-    {r:"/alerts",l:"Воронья почта • Уведомления",d:"События и ответы",roles:ALL_ROLES,i:"alerts"},
-    {r:"/office-schedule",l:"График Дружины • Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule"},
-    {r:"/workers-schedule",l:"График Дружины • Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers"},
-    {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"rating"},
-    {r:"/gantt-calcs",l:"Гантт • Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttcalcs"},
-    {r:"/gantt-works",l:"Гантт • Работы",d:"План и факты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"ganttworks"},
-    {r:"/backup",l:"Камень Хроник • Резерв",d:"Экспорт/импорт базы",roles:["ADMIN",...DIRECTOR_ROLES],i:"backup"},
-    {r:"/diag",l:"Диагностика",d:"Версия, база, self-test, логи",roles:["ADMIN"],i:"diag"},
-    {r:"/settings",l:"Кузница Настроек",d:"Справочники и цвета",roles:["ADMIN",...DIRECTOR_ROLES],i:"settings"},
-    {r:"/telegram",l:"Telegram",d:"Уведомления и SMS",roles:["ADMIN"],i:"alerts"},
-    {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup"},
-    {r:"/mango",l:"Телефония",d:"Манго Телеком",roles:["ADMIN"],i:"alerts"},
-    {r:"/chat",l:"Чат дружины",d:"Общение и согласования",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"correspondence"},
-    {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"dashboard"},
+    // ── ГЛАВНАЯ ──
+    {r:"/home",l:"Зал Ярла",d:"Порталы и сводка",roles:ALL_ROLES,i:"home",p:"home",g:"home"},
+    {r:"/dashboard",l:"Дашборд руководителя",d:"Сводная аналитика",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard",p:"dashboard",g:"home"},
+    {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"my_dashboard",g:"home"},
+    {r:"/big-screen",l:"Большой Экран",d:"Авто-ротация KPI для монитора",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"big_screen",g:"home"},
+    {r:"/calendar",l:"Календарь встреч",d:"Совещания и события",roles:ALL_ROLES,i:"schedule",p:"calendar",g:"home"},
+    {r:"/birthdays",l:"Дни рождения",d:"Офисный календарь ДР",roles:ALL_ROLES,i:"birthdays",p:"birthdays",g:"home"},
+    {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"home"},
+
+    // ── ТЕНДЕРЫ ──
+    {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"funnel",g:"tenders"},
+    {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"tenders",g:"tenders"},
+    {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM",...DIRECTOR_ROLES],i:"customers",p:"customers",g:"tenders"},
+
+    // ── РАБОТЫ ──
+    {r:"/pm-calcs",l:"Просчёты (inbox)",d:"Входящие от ТО",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_calcs",g:"works"},
+    {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"approvals",g:"works"},
+    {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"bonus_approval",g:"works"},
+    {r:"/pm-works",l:"Мои работы (РП)",d:"Проекты РП",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmworks",p:"pm_works",g:"works"},
+    {r:"/all-works",l:"Свод Контрактов",d:"Все работы",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"allworks",p:"all_works",g:"works"},
+    {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"allestimates",p:"all_estimates",g:"works"},
+    {r:"/gantt-calcs",l:"Гантт: Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"ganttcalcs",p:"gantt",g:"works"},
+    {r:"/gantt-works",l:"Гантт: Работы",d:"План и факты",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"ganttworks",p:"gantt",g:"works"},
+    {r:"/tasks-admin",l:"Управление задачами",d:"Контроль задач",roles:["ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"tasks_admin",g:"works"},
+    {r:"/kanban",l:"Канбан-доска",d:"Визуальное управление задачами",roles:ALL_ROLES,i:"approvals",p:"kanban",g:"works"},
+
+    // ── ФИНАНСЫ ──
+    {r:"/finances",l:"Финансы",d:"Аналитика и реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"finances",g:"finance"},
+    {r:"/invoices",l:"Счета и оплаты",d:"Выставление и отслеживание",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"invoices",g:"finance"},
+    {r:"/acts",l:"Акты",d:"Акты выполненных работ",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"buh",p:"acts",g:"finance"},
+    {r:"/buh-registry",l:"Реестр расходов",d:"Бухгалтерский реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"buh_registry",g:"finance"},
+    {r:"/office-expenses",l:"Офисные расходы",d:"Управление и согласование",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"office",p:"office_expenses",g:"finance"},
+    {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"finances",p:"cash",g:"finance"},
+    {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN",...DIRECTOR_ROLES],i:"finances",p:"cash_admin",g:"finance"},
+
+    // ── РЕСУРСЫ ──
+    {r:"/warehouse",l:"Склад ТМЦ",d:"Оборудование и инструменты",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
+    {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment",g:"resources"},
+    {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence",p:"correspondence",g:"resources"},
+    {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies",p:"contracts",g:"resources"},
+    {r:"/seals",l:"Реестр печатей",d:"Учёт и передача",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"seals",g:"resources"},
+    {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"proxies",g:"resources"},
+    {r:"/proc-requests",l:"Заявки закупок",d:"Закупки",roles:["ADMIN","PROC",...DIRECTOR_ROLES],i:"approvals",p:"proc_requests",g:"resources"},
+
+    // ── ПЕРСОНАЛ ──
+    {r:"/personnel",l:"Дружина",d:"Сотрудники",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
+    {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"hr_requests",g:"personnel"},
+    {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},
+    {r:"/office-schedule",l:"График: Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule",p:"office_schedule",g:"personnel"},
+    {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
+    {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
+    {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","HR_MANAGER","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
+
+    // ── КОММУНИКАЦИИ ──
+    {r:"/chat",l:"Чат дружины",d:"Общение и согласования",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"correspondence",p:"chat",g:"comm"},
+    {r:"/chat-groups",l:"Групповые чаты",d:"Командная коммуникация",roles:ALL_ROLES,i:"correspondence",p:"chat_groups",g:"comm"},
+    {r:"/meetings",l:"Совещания",d:"Планирование и протоколы",roles:ALL_ROLES,i:"schedule",p:"meetings",g:"comm"},
+    {r:"/alerts",l:"Уведомления",d:"Воронья почта",roles:ALL_ROLES,i:"alerts",p:"alerts",g:"comm"},
+    {r:"/telegram",l:"Telegram",d:"Уведомления и SMS",roles:["ADMIN"],i:"alerts",p:"telegram_admin",g:"comm"},
+    {r:"/mango",l:"Телефония",d:"Манго Телеком",roles:["ADMIN"],i:"alerts",p:"telegram_admin",g:"comm"},
+
+    // ── АНАЛИТИКА ──
+    {r:"/analytics",l:"Аналитика Ярла",d:"KPI работ и денег",roles:["ADMIN",...DIRECTOR_ROLES],i:"kpiworks",p:"analytics",g:"analytics"},
+    {r:"/user-requests",l:"Заявки пользователей",d:"Одобрение регистраций",roles:["ADMIN",...DIRECTOR_ROLES],i:"requests",p:"users_admin",g:"analytics"},
+
+    // ── СИСТЕМА ──
+    {r:"/settings",l:"Настройки",d:"Справочники и цвета",roles:["ADMIN",...DIRECTOR_ROLES],i:"settings",p:"settings",g:"system"},
+    {r:"/backup",l:"Резервные копии",d:"Экспорт/импорт базы",roles:["ADMIN",...DIRECTOR_ROLES],i:"backup",p:"backup",g:"system"},
+    {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup",p:"sync",g:"system"},
+    {r:"/diag",l:"Диагностика",d:"Версия, база, self-test",roles:["ADMIN"],i:"diag",p:"diag",g:"system"},
+
+    // M15: Аналитика для руководителей отделов
+    {r:"/to-analytics",l:"Хроники Тендерного Отдела",d:"KPI тендерных специалистов",roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES],i:"kpiworks",p:"to_analytics",g:"analytics"},
+    {r:"/pm-analytics",l:"Хроники Руководителей Проектов",d:"KPI и загрузка РП",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"kpiworks",p:"pm_analytics",g:"analytics"},
+    {r:"/engineer-dashboard",l:"Кузница Инженера",d:"Склад, оборудование, ТО",roles:["ADMIN","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"backup",p:"engineer_dashboard",g:"analytics"},
   ];
 
   async function layout(body,{title,motto,rightBadges=[]}={}){
@@ -220,13 +298,65 @@ try{
       return false;
     };
 
-    const navHtml = (role==="GUEST") ? "" : NAV.filter(n=>roleAllowed(n.roles, role)).map(n=>{
-      const a=(cur===n.r)?"active":"";
-      return `<a class="navitem ${a}" href="#${n.r}">
-        <div class="ico"><img src="assets/icons/nav/${esc(n.i)}.svg" alt="" loading="lazy"/></div>
-        <div class="lbl"><div class="name">${esc(n.l)}</div><div class="desc">${esc(n.d)}</div></div>
-      </a>`;
-    }).join("");    const switchCtl = (user && window.AsgardAuth && AsgardAuth.canSwitch) ? AsgardAuth.canSwitch(user) : null;
+    // M1: Получаем пермишены и настройки меню для фильтрации навигации
+    const permissions = (window.AsgardAuth && AsgardAuth.getPermissions) ? AsgardAuth.getPermissions() : {};
+    const menuSettings = (window.AsgardAuth && AsgardAuth.getMenuSettings) ? AsgardAuth.getMenuSettings() : {};
+    const hiddenRoutes = menuSettings.hidden_routes || [];
+
+    // Фильтруем NAV по правам
+    const filteredNav = (role==="GUEST") ? [] : NAV.filter(n => {
+      // 1. Старая проверка по ролям (обратная совместимость)
+      if (!roleAllowed(n.roles, role)) return false;
+      // 2. Новая проверка по пермишенам (если поле p задано)
+      if (n.p && role !== 'ADMIN') {
+        if (!permissions[n.p] || !permissions[n.p].read) return false;
+      }
+      // 3. Скрытые пользователем вкладки
+      if (hiddenRoutes.includes('#' + n.r)) return false;
+      return true;
+    });
+
+    // Группируем по g (group id)
+    const groupedNav = {};
+    for (const n of filteredNav) {
+      const gid = n.g || "home";
+      if (!groupedNav[gid]) groupedNav[gid] = [];
+      groupedNav[gid].push(n);
+    }
+
+    // Рендерим группы
+    let navHtml = "";
+    if (role !== "GUEST") {
+      for (const group of NAV_GROUPS) {
+        const items = groupedNav[group.id];
+        if (!items || items.length === 0) continue;
+
+        const isExpanded = window.AsgardTheme && AsgardTheme.isNavGroupExpanded
+          ? AsgardTheme.isNavGroupExpanded(group.id, group.defaultExpanded)
+          : group.defaultExpanded;
+
+        const hasActiveItem = items.some(n => cur === n.r);
+        const expandedClass = isExpanded || hasActiveItem ? "expanded" : "";
+
+        navHtml += `<div class="nav-group ${expandedClass}" data-group="${esc(group.id)}">
+          <button class="nav-group-header" type="button" aria-expanded="${isExpanded || hasActiveItem}">
+            <span class="nav-group-icon">${group.icon}</span>
+            <span class="nav-group-label">${esc(group.label)}</span>
+            <span class="nav-group-count">${items.length}</span>
+            <span class="nav-group-chevron">▾</span>
+          </button>
+          <div class="nav-group-items">
+            ${items.map(n => {
+              const a = (cur === n.r) ? "active" : "";
+              return `<a class="navitem ${a}" href="#${n.r}">
+                <div class="ico"><img src="assets/icons/nav/${esc(n.i)}.svg" alt="" loading="lazy"/></div>
+                <div class="lbl"><div class="name">${esc(n.l)}</div><div class="desc">${esc(n.d)}</div></div>
+              </a>`;
+            }).join("")}
+          </div>
+        </div>`;
+      }
+    }    const switchCtl = (user && window.AsgardAuth && AsgardAuth.canSwitch) ? AsgardAuth.canSwitch(user) : null;
     let switchHtml = "";
     if(user && switchCtl){
       const cur = user.role;
@@ -241,25 +371,35 @@ try{
       : `<button class="btn" id="btnLoginGo">Войти</button><button class="btn ghost" id="btnRegGo">Регистрация</button>`;
 
     const logo = ASSETS_BASE + "img/logo.png";
-    $("#app").innerHTML = `<div class="app">
+    const sidebarCollapsed = window.AsgardTheme && AsgardTheme.getSidebarCollapsed ? AsgardTheme.getSidebarCollapsed() : false;
+
+    $("#app").innerHTML = `<div class="app${sidebarCollapsed ? ' sidebar-collapsed' : ''}">
       <aside class="sidenav">
-        <a class="brand" href="#/welcome" aria-label="На главную">
-          <img src="${logo}" alt="АСГАРД‑СЕРВИС" onerror="this.style.display='none'"/>
-          <div>
-            <div class="h">CRM</div>
-            <div class="s">ᚠᚢᚦᚨᚱᚲ</div>
-          </div>
-        </a>
+        <div class="sidebar-header">
+          <a class="brand" href="#/welcome" aria-label="На главную">
+            <img src="${logo}" alt="АСГАРД‑СЕРВИС" onerror="this.style.display='none'"/>
+            <div class="brand-text">
+              <div class="h">АСГАРД</div>
+              <div class="s">CRM • ᚠᚢᚦᚨᚱᚲ</div>
+            </div>
+          </a>
+          <button class="sidebar-toggle" id="btnSidebarToggle" type="button" aria-label="Свернуть меню" title="Свернуть/развернуть меню">
+            <span class="toggle-icon">◀</span>
+          </button>
+        </div>
         <nav class="nav">
-          <div class="group-title">Навигация</div>
-          ${navHtml || `<div class="help" style="padding:10px 10px">Войдите, чтобы открыть разделы.</div>`}
+          ${navHtml || `<div class="help" style="padding:16px">Войдите, чтобы открыть разделы.</div>`}
         </nav>
         <div class="sidefoot">
           ${authBtns}
-          <button class="btn ghost" id="btnBackup">Экспорт/Импорт</button>
+          <button class="btn ghost" id="btnBackup">
+            <span class="btn-icon">💾</span>
+            <span class="btn-text">Экспорт/Импорт</span>
+          </button>
+          ${user ? '<button class="btn ghost" id="btnNavCustomize" style="font-size:11px;padding:6px 10px"><span class="btn-icon">⚙️</span><span class="btn-text">Настроить меню</span></button>' : ''}
         </div>
       </aside>
-      <div class="overlay" id="navOverlay"></div>
+      <div class="nav-overlay" id="navOverlay"></div>
       <main class="main">
         <div class="topbar">
           <div class="mnav"><button class="iconbtn" id="btnMenu" aria-label="Меню">☰</button></div>
@@ -309,10 +449,137 @@ try{
     window.__ASG_DOC_ESC_NAV__ = (e)=>{ if(e.key==="Escape") closeNav(); };
     document.addEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
 
+    // Sidebar toggle (collapse/expand)
+    const sidebarToggle = $("#btnSidebarToggle");
+    if (sidebarToggle) {
+      addMobileClick(sidebarToggle, () => {
+        const app = document.querySelector('.app');
+        if (app) {
+          const isCollapsed = app.classList.toggle('sidebar-collapsed');
+          if (window.AsgardTheme && AsgardTheme.setSidebarCollapsed) {
+            AsgardTheme.setSidebarCollapsed(isCollapsed);
+          }
+        }
+      });
+    }
+
+    // Nav group toggles
+    $$(".nav-group-header").forEach(header => {
+      addMobileClick(header, (e) => {
+        e.preventDefault();
+        const group = header.closest(".nav-group");
+        if (!group) return;
+        const groupId = group.dataset.group;
+        const isExpanded = group.classList.toggle("expanded");
+        header.setAttribute("aria-expanded", isExpanded);
+        if (window.AsgardTheme && AsgardTheme.setNavGroupState) {
+          AsgardTheme.setNavGroupState(groupId, isExpanded);
+        }
+      });
+    });
+
     addMobileClick($("#btnLogout"), ()=>{ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; });
     addMobileClick($("#btnLoginGo"), ()=>location.hash="#/login");
     addMobileClick($("#btnRegGo"), ()=>location.hash="#/register");
     addMobileClick($("#btnBackup"), backupModal);
+
+    // M16: Nav customization button
+    const btnNavCust = document.getElementById('btnNavCustomize');
+    if (btnNavCust && user) {
+      addMobileClick(btnNavCust, async () => {
+        // Load current nav prefs
+        let navPrefs = { hidden: [], order: [] };
+        try {
+          const np = await AsgardDB.get('settings', 'nav_prefs_' + user.id);
+          if (np?.value_json) navPrefs = JSON.parse(np.value_json);
+        } catch(e) {}
+
+        const allAllowed = NAV.filter(n => roleAllowed(n.roles, role));
+        const hidSet = new Set(navPrefs.hidden || []);
+
+        // Sort by current order
+        const ordered = [...allAllowed];
+        const oMap = new Map((navPrefs.order || []).map((r, i) => [r, i]));
+        ordered.sort((a, b) => {
+          const ai = oMap.has(a.r) ? oMap.get(a.r) : 999;
+          const bi = oMap.has(b.r) ? oMap.get(b.r) : 999;
+          return ai - bi;
+        });
+
+        let modalHtml = '<div style="max-height:60vh;overflow-y:auto">';
+        modalHtml += '<div class="help" style="margin-bottom:12px">Снимите галочку чтобы скрыть пункт. Перетаскивайте для изменения порядка.</div>';
+        modalHtml += '<div id="navCustList">';
+
+        ordered.forEach(n => {
+          const checked = !hidSet.has(n.r) ? 'checked' : '';
+          modalHtml += '<div class="nav-cust-item" data-route="' + esc(n.r) + '" draggable="true" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:4px;cursor:grab;background:var(--bg-card)">';
+          modalHtml += '<span style="color:var(--text-muted);cursor:grab">☰</span>';
+          modalHtml += '<input type="checkbox" ' + checked + ' data-route="' + esc(n.r) + '" class="nav-vis-cb"/>';
+          modalHtml += '<span style="flex:1;font-size:13px">' + esc(n.l) + '</span>';
+          modalHtml += '</div>';
+        });
+
+        modalHtml += '</div>';
+        modalHtml += '<div style="margin-top:12px;display:flex;gap:8px">';
+        modalHtml += '<button class="btn primary" id="navCustSave">Сохранить</button>';
+        modalHtml += '<button class="btn ghost" id="navCustReset">Сброс</button>';
+        modalHtml += '</div></div>';
+
+        showModal('Настройка меню', modalHtml);
+
+        // Drag & Drop для порядка
+        const list = document.getElementById('navCustList');
+        if (list) {
+          let dragItem = null;
+          list.querySelectorAll('.nav-cust-item').forEach(item => {
+            item.addEventListener('dragstart', e => { dragItem = item; item.style.opacity = '0.4'; });
+            item.addEventListener('dragend', () => { item.style.opacity = '1'; });
+            item.addEventListener('dragover', e => { e.preventDefault(); item.style.borderColor = 'var(--gold)'; });
+            item.addEventListener('dragleave', () => { item.style.borderColor = 'var(--line)'; });
+            item.addEventListener('drop', e => {
+              e.preventDefault();
+              item.style.borderColor = 'var(--line)';
+              if (dragItem && dragItem !== item) {
+                const parent = item.parentNode;
+                const items = [...parent.children];
+                const fromIdx = items.indexOf(dragItem);
+                const toIdx = items.indexOf(item);
+                if (fromIdx < toIdx) parent.insertBefore(dragItem, item.nextSibling);
+                else parent.insertBefore(dragItem, item);
+              }
+            });
+          });
+        }
+
+        // Save
+        document.getElementById('navCustSave')?.addEventListener('click', async () => {
+          const items = document.querySelectorAll('.nav-cust-item');
+          const newOrder = [...items].map(i => i.dataset.route);
+          const newHidden = [];
+          document.querySelectorAll('.nav-vis-cb').forEach(cb => {
+            if (!cb.checked) newHidden.push(cb.dataset.route);
+          });
+          await AsgardDB.put('settings', {
+            key: 'nav_prefs_' + user.id,
+            value_json: JSON.stringify({ order: newOrder, hidden: newHidden })
+          });
+          AsgardUI.hideModal();
+          toast('Меню', 'Настройки сохранены. Обновите страницу.');
+          location.reload();
+        });
+
+        // Reset
+        document.getElementById('navCustReset')?.addEventListener('click', async () => {
+          await AsgardDB.put('settings', {
+            key: 'nav_prefs_' + user.id,
+            value_json: JSON.stringify({ order: [], hidden: [] })
+          });
+          AsgardUI.hideModal();
+          location.reload();
+        });
+      });
+    }
+
     addMobileClick($("#btnSwitchRole"), async (e)=>{
       const target = e.currentTarget.getAttribute('data-target');
       const ok = await AsgardAuth.setActiveRole(target);
@@ -361,7 +628,7 @@ try{
         list.innerHTML = items.map(n=>{
           const when = n.created_at ? new Date(n.created_at).toLocaleString("ru-RU") : "—";
           const dot = n.is_read ? `<span class="dot" style="background:#64748b"></span>` : `<span class="dot" style="background:#f59e0b"></span>`;
-          const link = n.link_hash || "#/alerts";
+          const link = n.link || n.link_hash || "#/alerts";
           return `<a class="bellitem" href="${esc(link)}" data-nid="${n.id}">
             <div class="belli">${dot}</div>
             <div class="bellc">
@@ -514,7 +781,7 @@ try{
           </div>
 
           <div class="welcome-actions" id="welcomeActions">
-            <button class="btn welcome-btn" id="btnShowLogin">Войти</button>
+            <button class="btn welcome-btn" id="btnShowLogin" type="button" style="touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;position:relative;z-index:10">Войти</button>
           </div>
 
           <!-- Форма входа: Шаг 1 - логин/пароль -->
@@ -637,7 +904,12 @@ try{
     }
 
     // Используем глобальную addMobileClick для мобильной совместимости
-    addMobileClick($("#btnShowLogin"), showLogin);
+    const btnShowLogin = $("#btnShowLogin");
+    if (btnShowLogin) {
+      addMobileClick(btnShowLogin, showLogin);
+      // Direct onclick as fallback for mobile
+      btnShowLogin.onclick = function(e) { e.preventDefault(); showLogin(); };
+    }
     addMobileClick($("#btnBackToWelcome"), showWelcome);
     addMobileClick($("#btnBackToLogin"), showLogin);
 
@@ -816,6 +1088,44 @@ try{
     ];
     const saga = sagas[Math.floor(Math.random()*sagas.length)];
 
+    // Viking greetings based on time of day
+    const hour = new Date().getHours();
+    const vikingGreetings = {
+      morning: [ // 6-12
+        "Вель комен, {name}! Солнце встаёт — и твоя слава.",
+        "Хайль, {name}! Утро несёт новые битвы.",
+        "Слава Одину, {name} здесь! Да будет день богатым.",
+        "Восход приветствует тебя, {name}! К делам!"
+      ],
+      day: [ // 12-18
+        "Хайль, воин {name}! Путь до Вальгаллы идёт через дела.",
+        "Тор благословляет, {name}! Продолжай свой поход.",
+        "Дружина сильна, {name} на посту! За работу.",
+        "{name}, день в разгаре — время крепить славу!"
+      ],
+      evening: [ // 18-22
+        "Вечер, {name}! Время считать добычу дня.",
+        "Хайль, {name}! Сумерки близки, но дела не ждут.",
+        "{name}, закат зовёт — заверши начатое.",
+        "Валькирии поют, {name}. Заканчивай достойно."
+      ],
+      night: [ // 22-6
+        "Поздний час, {name}! Истинные воины не спят.",
+        "Ночь тиха, {name}. Время для мудрых решений.",
+        "{name} бодрствует! Один тоже не дремлет.",
+        "Звёзды смотрят, {name}. Работай во славу!"
+      ]
+    };
+
+    let greetingPool;
+    if (hour >= 6 && hour < 12) greetingPool = vikingGreetings.morning;
+    else if (hour >= 12 && hour < 18) greetingPool = vikingGreetings.day;
+    else if (hour >= 18 && hour < 22) greetingPool = vikingGreetings.evening;
+    else greetingPool = vikingGreetings.night;
+
+    const vikingGreeting = greetingPool[Math.floor(Math.random() * greetingPool.length)]
+      .replace('{name}', user.name || user.login);
+
     const tenders=await AsgardDB.all("tenders");
     const works=await AsgardDB.all("works");
     const estimates=await AsgardDB.all("estimates");
@@ -850,17 +1160,22 @@ try{
     }
 
     const portalsByRole = {
-      TO: [ ['#/tenders','Тендеры'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      PM: [ ['#/pm-calcs','Просчёты'], ['#/pm-works','Работы'], ['#/travel','Жильё/билеты'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
-      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/approvals','Согласование'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      HR: [ ['#/personnel','Персонал'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/hr-rating','Рейтинг'], ['#/alerts','Уведомления'] ],
+      TO: [ ['#/tenders','Тендеры'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/tasks','Задачи'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
+      PM: [ ['#/pm-calcs','ᚱ Калькулятор'], ['#/pm-works','Работы'], ['#/tasks','Задачи'], ['#/cash','Касса'], ['#/travel','Жильё/билеты'], ['#/gantt','📊 Гантт'], ['#/alerts','Уведомления'] ],
+      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      HR: [ ['#/personnel','Персонал'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/hr-rating','Рейтинг'], ['#/alerts','Уведомления'] ],
       PROC: [ ['#/proc-requests','Заявки'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      BUH: [ ['#/buh-registry','Реестр расходов'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/travel','Жильё/билеты'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
-      ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'], ['#/backup','Backup'] ]
+      BUH: [ ['#/buh-registry','Реестр расходов'], ['#/tasks','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
+      OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
+      ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'] ],
+      // M15: Новые роли + M16: Big Screen
+      HEAD_TO: [ ['#/tenders','Тендеры'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/to-analytics','Аналитика отдела'], ['#/funnel','Воронка'], ['#/alerts','Уведомления'] ],
+      HEAD_PM: [ ['#/all-works','Свод работ'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/pm-analytics','Аналитика РП'], ['#/approvals','Согласование'], ['#/gantt','📊 Гантт'] ],
+      CHIEF_ENGINEER: [ ['#/warehouse','Склад'], ['#/engineer-dashboard','Аналитика склада'], ['#/my-equipment','Моё оборудование'], ['#/alerts','Уведомления'] ],
+      HR_MANAGER: [ ['#/personnel','Персонал'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/permits','Допуски'], ['#/hr-rating','Рейтинг'] ]
     };
     const portals = portalsByRole[user.role] || portalsByRole.ADMIN;
 
@@ -877,13 +1192,33 @@ try{
       </div>
     `;
 
+    // Виджет баланса кассы для PM
+    let cashWidgetHtml = "";
+    if (user.role === "PM" && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('cash', 'read')) {
+      cashWidgetHtml = `
+        <div class="card" id="cashBalanceWidget">
+          <h3>Касса — мой баланс</h3>
+          <div class="help">Средства на руках по активным авансам</div>
+          <div id="cashBalanceData" style="margin-top:10px">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+          <div style="margin-top:10px">
+            <a href="#/cash" class="btn">Открыть кассу</a>
+          </div>
+        </div>
+      `;
+    }
+
     const body = `
       <div class="panel">
         <div class="row" style="justify-content:space-between; gap:12px; flex-wrap:wrap">
           <div>
-            <div class="kpi"><span class="dot" style="background:#ef4444"></span>Добро пожаловать, <b>${esc(user.name||user.login)}</b></div>
-            <div class="help">Роль: <b>${esc(user.role)}</b> · Логин: <b>${esc(user.login)}</b></div>
-            <div class="help" style="margin-top:6px"><span class="badge">Сага дня</span> ${esc(saga)}</div>
+            <div class="viking-greeting">
+              <span class="rune-icon">ᛟ</span>
+              <span class="greeting-text">${esc(vikingGreeting)}</span>
+            </div>
+            <div class="help" style="margin-top:4px">Роль: <b>${esc(user.role)}</b> · Логин: <b>${esc(user.login)}</b></div>
+            <div class="saga-line" style="margin-top:8px"><span class="saga-badge">Сага дня</span> ${esc(saga)}</div>
           </div>
           <div class="row" style="gap:10px; flex-wrap:wrap">
             ${portals.map(p=>`<a class="btn" href="${p[0]}">${esc(p[1])}</a>`).join("")}
@@ -900,7 +1235,52 @@ try{
 
       <div class="grid" style="margin-top:14px">
         ${pmBlock}
-        
+        ${cashWidgetHtml}
+
+        <!-- Виджет задач от руководства -->
+        <div class="card span-6" id="tasksWidget">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <h3 style="margin:0">Мои задачи</h3>
+            <a href="#/tasks" class="btn" style="padding:4px 12px; font-size:12px">Все задачи</a>
+          </div>
+          <div id="tasksWidgetContent">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+        </div>
+
+        <!-- Виджет Todo-список -->
+        <div class="card span-6" id="todoWidget">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <h3 style="margin:0">Мой список дел</h3>
+            <a href="#/tasks" class="btn" style="padding:4px 12px; font-size:12px">Открыть</a>
+          </div>
+          <div id="todoWidgetContent">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+        </div>
+
+        <!-- Виджет допусков для HR/TO -->
+        <div class="card span-6" id="permitsWidget" style="display:none">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <h3 style="margin:0">Допуски сотрудников</h3>
+            <a href="#/permits" class="btn" style="padding:4px 12px; font-size:12px">Открыть</a>
+          </div>
+          <div id="permitsWidgetContent">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+        </div>
+
+        <!-- Виджет совещаний (Phase 2) -->
+        <div class="card span-6" id="meetingsWidget">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <h3 style="margin:0">📅 Ближайшие совещания</h3>
+            <a href="#/meetings" class="btn" style="padding:4px 12px; font-size:12px">Все</a>
+          </div>
+          <div id="meetingsWidgetContent">
+            <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
+          </div>
+        </div>
+
         <!-- Виджет телефонии -->
         <div class="card span-3" id="callToggleContainer"></div>
         
@@ -931,6 +1311,149 @@ try{
     if(window.AsgardMango){
       setTimeout(() => AsgardMango.renderCallToggle('callToggleContainer'), 100);
     }
+
+    // Загружаем баланс кассы для PM
+    if (user.role === "PM" && document.getElementById('cashBalanceData')) {
+      (async () => {
+        try {
+          const auth = AsgardAuth.getAuth();
+          const resp = await fetch('/api/cash/my-balance', {
+            headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            const formatMoney = (v) => (parseFloat(v) || 0).toLocaleString('ru-RU', {minimumFractionDigits: 2}) + ' руб.';
+            document.getElementById('cashBalanceData').innerHTML = `
+              <div class="kpi" style="grid-template-columns:repeat(2,1fr)">
+                <div class="k"><div class="t">На руках</div><div class="v" style="color:${data.balance > 0 ? '#ef4444' : '#22c55e'}">${formatMoney(data.balance)}</div></div>
+                <div class="k"><div class="t">Активных заявок</div><div class="v">${data.active_requests}</div></div>
+              </div>
+            `;
+          } else {
+            document.getElementById('cashBalanceData').innerHTML = '<div class="text-muted">Не удалось загрузить</div>';
+          }
+        } catch (e) {
+          document.getElementById('cashBalanceData').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+        }
+      })();
+    }
+
+    // Загружаем виджет задач
+    if (document.getElementById('tasksWidgetContent') && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('tasks', 'read')) {
+      (async () => {
+        try {
+          const auth = AsgardAuth.getAuth();
+          const resp = await fetch('/api/tasks/my', {
+            headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+          });
+          if (resp.ok) {
+            const tasks = await resp.json();
+            const activeTasks = tasks.filter(t => t.status !== 'done').slice(0, 4);
+            if (activeTasks.length === 0) {
+              document.getElementById('tasksWidgetContent').innerHTML = '<div class="text-muted">Нет активных задач</div>';
+            } else {
+              const priorityColors = {urgent: '#ef4444', high: '#f97316', normal: '#3b82f6', low: '#6b7280'};
+              const statusLabels = {new: 'Новая', accepted: 'Принята', in_progress: 'В работе'};
+              document.getElementById('tasksWidgetContent').innerHTML = activeTasks.map(t => {
+                const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleDateString('ru-RU') : '';
+                const isOverdue = t.deadline && new Date(t.deadline) < new Date();
+                return `<div style="padding:8px 10px; margin-bottom:8px; background:rgba(42,59,102,.35); border-left:3px solid ${priorityColors[t.priority] || '#3b82f6'}; border-radius:6px">
+                  <div style="font-weight:600">${esc(t.title)}</div>
+                  <div style="font-size:12px; color:rgba(184,196,231,.85); margin-top:4px">
+                    <span style="background:${priorityColors[t.priority]}; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px">${statusLabels[t.status] || t.status}</span>
+                    ${deadlineStr ? `<span style="margin-left:8px; ${isOverdue ? 'color:#ef4444' : ''}">${deadlineStr}</span>` : ''}
+                  </div>
+                </div>`;
+              }).join('');
+            }
+          } else {
+            document.getElementById('tasksWidgetContent').innerHTML = '<div class="text-muted">Не удалось загрузить</div>';
+          }
+        } catch (e) {
+          document.getElementById('tasksWidgetContent').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+        }
+      })();
+    } else if (document.getElementById('tasksWidgetContent')) {
+      document.getElementById('tasksWidgetContent').innerHTML = '<div class="text-muted">Нет доступа</div>';
+    }
+
+    // Загружаем виджет todo
+    if (document.getElementById('todoWidgetContent') && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('todo', 'read')) {
+      (async () => {
+        try {
+          const auth = AsgardAuth.getAuth();
+          const resp = await fetch('/api/tasks/todo', {
+            headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+          });
+          if (resp.ok) {
+            const todos = await resp.json();
+            const activeTodos = todos.filter(t => !t.done).slice(0, 5);
+            if (activeTodos.length === 0) {
+              document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Список дел пуст</div>';
+            } else {
+              document.getElementById('todoWidgetContent').innerHTML = activeTodos.map(t =>
+                `<div style="padding:6px 10px; margin-bottom:6px; background:rgba(42,59,102,.25); border-radius:4px; display:flex; align-items:center; gap:8px">
+                  <span style="color:#3b82f6">○</span>
+                  <span>${esc(t.text)}</span>
+                </div>`
+              ).join('');
+            }
+          } else {
+            document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Не удалось загрузить</div>';
+          }
+        } catch (e) {
+          document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+        }
+      })();
+    } else if (document.getElementById('todoWidgetContent')) {
+      document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Нет доступа</div>';
+    }
+
+    // Загружаем виджет допусков для HR/TO/ADMIN
+    if (document.getElementById('permitsWidget') && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('permits', 'read')) {
+      const showWidget = ['HR', 'TO', 'ADMIN'].includes(user.role) || DIRECTOR_ROLES.includes(user.role);
+      if (showWidget) {
+        document.getElementById('permitsWidget').style.display = 'block';
+        (async () => {
+          try {
+            const auth = AsgardAuth.getAuth();
+            const resp = await fetch('/api/permits/stats', {
+              headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+            });
+            if (resp.ok) {
+              const stats = await resp.json();
+              if (stats.expired > 0 || stats.expiring_14 > 0 || stats.expiring_30 > 0) {
+                document.getElementById('permitsWidgetContent').innerHTML = `
+                  <div class="kpi" style="grid-template-columns:repeat(3,1fr); margin-top:8px">
+                    <div class="k"><div class="t">Истекли</div><div class="v" style="color:var(--red)">${stats.expired || 0}</div></div>
+                    <div class="k"><div class="t">14 дн.</div><div class="v" style="color:var(--amber)">${stats.expiring_14 || 0}</div></div>
+                    <div class="k"><div class="t">30 дн.</div><div class="v" style="color:var(--yellow,var(--amber))">${stats.expiring_30 || 0}</div></div>
+                  </div>
+                `;
+              } else {
+                document.getElementById('permitsWidgetContent').innerHTML = '<div class="text-muted" style="color:var(--green)">Все допуски в норме</div>';
+              }
+            } else {
+              document.getElementById('permitsWidgetContent').innerHTML = '<div class="text-muted">Не удалось загрузить</div>';
+            }
+          } catch (e) {
+            document.getElementById('permitsWidgetContent').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+          }
+        })();
+      }
+    }
+
+    // Загружаем виджет совещаний (Phase 2)
+    if (document.getElementById('meetingsWidgetContent') && window.AsgardMeetings) {
+      (async () => {
+        try {
+          const html = await AsgardMeetings.renderWidget();
+          document.getElementById('meetingsWidgetContent').innerHTML = html;
+        } catch (e) {
+          document.getElementById('meetingsWidgetContent').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+        }
+      })();
+    }
   }
 
   async function placeholder(title){
@@ -955,13 +1478,20 @@ try{
     AsgardRouter.add("/login", pageLogin, {auth:false});
     AsgardRouter.add("/register", pageRegister, {auth:false});
     AsgardRouter.add("/home", pageHome, {auth:true, roles:ALL_ROLES});
-    AsgardRouter.add("/dashboard", ()=>AsgardDashboardPage.render({layout, title:"Дашборд"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/dashboard", ()=>AsgardDashboardPage.render({layout, title:"Дашборд руководителя"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/calendar", ()=>AsgardCalendarPage.render({layout, title:"Календарь встреч"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/birthdays", ()=>AsgardBirthdaysPage.render({layout, title:"Дни рождения"}), {auth:true, roles:ALL_ROLES});
 
     AsgardRouter.add("/contracts", ()=>AsgardContractsPage.render({layout, title:"Реестр договоров"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/seals", ()=>AsgardSealsPage.render({layout, title:"Реестр печатей"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/permits", ()=>AsgardPermitsPage.render({layout, title:"Разрешения и допуски"}), {auth:true, roles:["ADMIN","HR","TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/permits", () => {
+      if (!AsgardAuth.hasPermission('permits', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      AsgardPermitsPage.render({layout, title:"Разрешения и допуски"});
+    }, {auth:true, roles:["ADMIN","HR","TO","PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/funnel", ()=>AsgardFunnelPage.render({layout, title:"Воронка продаж"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/tenders", ()=>AsgardTendersPage.render({layout, title:"Сага Тендеров"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","PM",...DIRECTOR_ROLES]});
@@ -974,33 +1504,84 @@ try{
     AsgardRouter.add("/all-works", ()=>AsgardAllWorksPage.render({layout, title:"Свод Контрактов"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/all-estimates", ()=>AsgardAllEstimatesPage.render({layout, title:"Свод Расчётов"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/finances", ()=>AsgardFinancesPage.render({layout, title:"Деньги • Аналитика"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/buh-registry", ()=>AsgardBuhRegistryPage.render({layout, title:"Реестр расходов • BUH"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/buh-registry", () => {
+      if (!AsgardAuth.hasPermission('buh_registry', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      AsgardBuhRegistryPage.render({layout, title:"Реестр расходов • BUH"});
+    }, {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/office-expenses", ()=>AsgardOfficeExpensesPage.render({layout, title:"Офисные расходы"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/correspondence", ()=>AsgardCorrespondencePage.render({layout, title:"Корреспонденция"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]});
     AsgardRouter.add("/proxies", ()=>AsgardProxiesPage.render({layout, title:"Доверенности"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/travel", ()=>AsgardTravelPage.render({layout, title:"Жильё и билеты"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","HR","PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/user-requests", ()=>AsgardUserRequestsPage.render({layout, title:"Заявки на регистрацию"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/analytics", ()=>{ location.hash = "#/kpi-works"; }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/kpi-works", ()=>AsgardKpiWorksPage.render({layout, title:"Аналитика Ярла • Работы"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/kpi-money", ()=>AsgardKpiMoneyPage.render({layout, title:"Аналитика Ярла • Деньги"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/kpi-works", () => {
+      if (!AsgardAuth.hasPermission('analytics', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      AsgardKpiWorksPage.render({layout, title:"Аналитика Ярла • Работы"});
+    }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/kpi-money", () => {
+      if (!AsgardAuth.hasPermission('analytics', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      AsgardKpiMoneyPage.render({layout, title:"Аналитика Ярла • Деньги"});
+    }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/settings", ()=>AsgardSettingsPage.render({layout, title:"Кузница Настроек"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/telegram", ()=>AsgardTelegram.renderSettings({layout, title:"Telegram"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/sync", ()=>AsgardSync.renderSettings({layout, title:"PostgreSQL Sync"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/mango", ()=>AsgardMango.renderSettings({layout, title:"Телефония"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/chat", ()=>AsgardChat.render({layout, title:"Чат дружины"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/my-dashboard", ()=>AsgardCustomDashboard.render({layout, title:"Мой дашборд"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/my-dashboard", ()=>AsgardCustomDashboard.render({layout, title:"Мой дашборд"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES]});
+    AsgardRouter.add("/big-screen", ()=>AsgardBigScreen.render({layout, title:"Big Screen"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/backup", ()=>AsgardBackupPage.render({layout, title:"Камень Хроник • Резерв"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
   AsgardRouter.add("/diag", ()=>AsgardDiagPage.render({layout, title:"Диагностика"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/alerts", ()=>AsgardAlertsPage.render({layout, title:"Уведомления"}), {auth:true, roles:ALL_ROLES});
-    AsgardRouter.add("/personnel", ()=>AsgardPersonnelPage.render({layout, title:"Дружина • Персонал"}), {auth:true, roles:["ADMIN","HR","PROC","TO","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/personnel", () => {
+      if (!AsgardAuth.hasPermission('personnel', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      AsgardPersonnelPage.render({layout, title:"Дружина • Персонал"});
+    }, {auth:true, roles:["ADMIN","HR","PROC","TO","PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/hr-rating", ()=>AsgardHrRatingPage.render({layout, title:"Рейтинг Дружины"}), {auth:true, roles:["ADMIN","HR",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/employee", ()=>AsgardEmployeePage.render({layout, title:"Личное дело"}), {auth:true, roles:["ADMIN","HR","PM","TO",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/hr-requests", ()=>AsgardHrRequestsPage.render({layout, title:"Заявки персонала"}), {auth:true, roles:["ADMIN","HR",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/proc-requests", ()=>AsgardProcRequestsPage.render({layout, title:"Заявки закупок"}), {auth:true, roles:["ADMIN","PROC",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/employee", () => {
+      if (!AsgardAuth.hasPermission('personnel', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      AsgardEmployeePage.render({layout, title:"Личное дело"});
+    }, {auth:true, roles:["ADMIN","HR","PM","TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/hr-requests", () => {
+      if (!AsgardAuth.hasPermission('hr_requests', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      AsgardHrRequestsPage.render({layout, title:"Заявки персонала"});
+    }, {auth:true, roles:["ADMIN","HR",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/proc-requests", () => {
+      if (!AsgardAuth.hasPermission('proc_requests', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      AsgardProcRequestsPage.render({layout, title:"Заявки закупок"});
+    }, {auth:true, roles:["ADMIN","PROC",...DIRECTOR_ROLES]});
   AsgardRouter.add("/workers-schedule", ()=>AsgardStaffSchedulePage.render({layout, title:"График рабочих"}), {auth:true, roles:["ADMIN","HR",...DIRECTOR_ROLES]});
   AsgardRouter.add("/office-schedule", ()=>AsgardOfficeSchedulePage.render({layout, title:"График Дружины • Офис"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/gantt-calcs", ()=>AsgardGanttFullPage.renderCalcs({layout}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/gantt-works", ()=>AsgardGanttFullPage.renderWorks({layout}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/gantt", ()=>AsgardGanttFullPage.renderCombined({layout}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
     
     // Акты и счета
     AsgardRouter.add("/acts", ()=>AsgardActsPage.render({layout, title:"Акты выполненных работ"}), {auth:true, roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES]});
@@ -1008,9 +1589,79 @@ try{
     AsgardRouter.add("/reminders", ()=>AsgardReminders.render({layout, title:"Напоминания"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/warehouse", ()=>AsgardWarehouse.render({layout, title:"Склад ТМЦ"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/my-equipment", ()=>AsgardMyEquipment.render({layout, title:"Моё оборудование"}), {auth:true, roles:["PM",...DIRECTOR_ROLES,"ADMIN"]});
-    
-    // Склад и ТМЦ
-    AsgardRouter.add("/warehouse", ()=>AsgardWarehouse.render({layout, title:"Склад и ТМЦ"}), {auth:true, roles:ALL_ROLES});
+
+    // Касса (M2)
+    AsgardRouter.add("/cash", async ()=>{
+      if (!AsgardAuth.hasPermission('cash', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await layout('<div id="cash-page"></div>', {title:"Касса"});
+      CashPage.render(document.getElementById('cash-page'));
+    }, {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/cash-admin", async ()=>{
+      if (!AsgardAuth.hasPermission('cash_admin', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await layout('<div id="cash-admin-page"></div>', {title:"Касса (управление)"});
+      CashAdminPage.render(document.getElementById('cash-admin-page'));
+    }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+
+    // Задачи (M3)
+    AsgardRouter.add("/tasks", async ()=>{
+      if (!AsgardAuth.hasPermission('tasks', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await layout('<div id="tasks-page"></div>', {title:"Мои задачи"});
+      AsgardTasksPage.render(document.getElementById('tasks-page'));
+    }, {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/tasks-admin", async ()=>{
+      if (!AsgardAuth.hasPermission('tasks_admin', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await layout('<div id="tasks-admin-page"></div>', {title:"Управление задачами"});
+      AsgardTasksAdminPage.render(document.getElementById('tasks-admin-page'));
+    }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+
+    // ── Phase 2: Kanban, Chat Groups, Meetings ──
+    AsgardRouter.add("/kanban", async ()=>{
+      if (!AsgardAuth.hasPermission('kanban', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await AsgardKanban.render({layout});
+    }, {auth:true, roles:ALL_ROLES});
+
+    AsgardRouter.add("/chat-groups", async ()=>{
+      if (!AsgardAuth.hasPermission('chat_groups', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await AsgardChatGroups.render({layout});
+    }, {auth:true, roles:ALL_ROLES});
+
+    AsgardRouter.add("/meetings", async ()=>{
+      if (!AsgardAuth.hasPermission('meetings', 'read')) {
+        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
+        location.hash = '#/home';
+        return;
+      }
+      await AsgardMeetings.render({layout});
+    }, {auth:true, roles:ALL_ROLES});
+
+    // M15: Аналитика для руководителей отделов
+    AsgardRouter.add("/to-analytics", ()=>AsgardTOAnalytics.render({layout, title:"Хроники Тендерного Отдела"}), {auth:true, roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-analytics", ()=>AsgardPMAnalytics.render({layout, title:"Хроники Руководителей Проектов"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/engineer-dashboard", ()=>AsgardEngineerDashboard.render({layout, title:"Кузница Инженера"}), {auth:true, roles:["ADMIN","CHIEF_ENGINEER",...DIRECTOR_ROLES]});
 
     // TKP Follow-up: проверка напоминаний при старте
     if(window.AsgardTkpFollowup){
