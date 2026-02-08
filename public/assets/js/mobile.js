@@ -28,35 +28,21 @@ window.AsgardMobile = (function(){
   
   // Инициализация мобильного меню
   function initMobileMenu() {
-    // Создаём кнопку бургера если её нет
-    if (!$('#mobileMenuBtn')) {
-      const btn = document.createElement('button');
-      btn.id = 'mobileMenuBtn';
-      btn.className = 'mobile-menu-btn';
-      btn.innerHTML = '☰';
-      btn.setAttribute('aria-label', 'Меню');
-      
-      const header = $('header') || $('.topbar');
-      if (header) {
-        header.insertBefore(btn, header.firstChild);
-      }
-    }
-    
-    // Создаём оверлей
+    // Используем существующую кнопку #btnMenu из app.js (не создаём дубль)
+    // Создаём оверлей если его нет
     if (!$('#mobileOverlay')) {
       const overlay = document.createElement('div');
       overlay.id = 'mobileOverlay';
       overlay.className = 'mobile-overlay';
-      overlay.style.pointerEvents = 'none'; // ВАЖНО: не блокировать тапы когда меню закрыто
+      overlay.style.pointerEvents = 'none';
       document.body.appendChild(overlay);
     }
-    
-    // Обработчики
-    $('#mobileMenuBtn')?.addEventListener('click', toggleMenu);
+
+    // Обработчики (btnMenu уже обработан в app.js через toggleNav)
     $('#mobileOverlay')?.addEventListener('click', closeMenu);
-    
+
     // Закрытие при клике на пункт меню
-    $$('.nav a, .sidebar a').forEach(link => {
+    $$('.nav a, .sidenav a').forEach(link => {
       link.addEventListener('click', () => {
         if (isMobile) closeMenu();
       });
@@ -79,23 +65,18 @@ window.AsgardMobile = (function(){
   }
   
   function updateMenuState() {
-    const sidebar = $('.sidebar') || $('nav');
+    const sidebar = $('.sidenav') || $('nav');
     const overlay = $('#mobileOverlay');
-    const btn = $('#mobileMenuBtn');
 
     if (sidebar) {
       sidebar.classList.toggle('open', isMenuOpen);
     }
     if (overlay) {
       overlay.classList.toggle('active', isMenuOpen);
-      // КРИТИЧНО: pointer-events только когда меню открыто
       overlay.style.pointerEvents = isMenuOpen ? 'auto' : 'none';
     }
-    if (btn) {
-      btn.innerHTML = isMenuOpen ? '✕' : '☰';
-    }
 
-    document.body.classList.toggle('menu-open', isMenuOpen);
+    document.body.classList.toggle('nav-open', isMenuOpen);
   }
   
   // Свайп для открытия/закрытия меню
@@ -304,7 +285,7 @@ window.AsgardMobile = (function(){
         display: block;
       }
       
-      .sidebar {
+      .sidenav {
         position: fixed;
         left: -280px;
         top: 0;
@@ -314,8 +295,8 @@ window.AsgardMobile = (function(){
         transition: left 0.3s ease;
         overflow-y: auto;
       }
-      
-      .sidebar.open {
+
+      .sidenav.open {
         left: 0;
       }
       
@@ -418,11 +399,11 @@ window.AsgardMobile = (function(){
     
     /* Tablet */
     @media (min-width: 769px) and (max-width: 1024px) {
-      .sidebar {
+      .sidenav {
         width: 60px;
       }
-      
-      .sidebar .nav-text {
+
+      .sidenav .nav-text {
         display: none;
       }
       
@@ -448,7 +429,7 @@ window.AsgardMobile = (function(){
     
     /* Safe areas (iPhone X+) */
     @supports (padding: env(safe-area-inset-bottom)) {
-      .sidebar {
+      .sidenav {
         padding-bottom: env(safe-area-inset-bottom);
       }
       
