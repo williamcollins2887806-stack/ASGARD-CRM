@@ -1,11 +1,14 @@
 // ASGARD CRM Service Worker
 // Stage 20: PWA + Stage 22: Offline
 
-const CACHE_NAME = 'asgard-crm-v19';
+const CACHE_NAME = 'asgard-crm-v20';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './assets/css/design-tokens.css',
+  './assets/css/components.css',
+  './assets/css/layout.css',
   './assets/css/app.css',
   './assets/img/logo.png',
   './assets/img/asgard_logo.png',
@@ -69,7 +72,56 @@ const JS_ASSETS = [
   './assets/js/diag.js',
   './assets/js/safe_mode.js',
   './assets/js/theme.js',
-  './assets/js/build_info.js'
+  './assets/js/build_info.js',
+  './assets/js/acts.js',
+  './assets/js/ai_assistant.js',
+  './assets/js/auto_reports.js',
+  './assets/js/bank_import.js',
+  './assets/js/big_screen.js',
+  './assets/js/bonus_approval.js',
+  './assets/js/calendar.js',
+  './assets/js/cash.js',
+  './assets/js/cash_admin.js',
+  './assets/js/chat.js',
+  './assets/js/chat_groups.js',
+  './assets/js/contracts.js',
+  './assets/js/custom_dashboard.js',
+  './assets/js/email.js',
+  './assets/js/email_compose.js',
+  './assets/js/engineer_dashboard.js',
+  './assets/js/export.js',
+  './assets/js/funnel.js',
+  './assets/js/fx.js',
+  './assets/js/geo_score.js',
+  './assets/js/global_search.js',
+  './assets/js/inbox_applications.js',
+  './assets/js/integrations.js',
+  './assets/js/invoices.js',
+  './assets/js/kanban.js',
+  './assets/js/mail_settings.js',
+  './assets/js/mailbox.js',
+  './assets/js/mango.js',
+  './assets/js/meetings_page.js',
+  './assets/js/mimir.js',
+  './assets/js/mobile.js',
+  './assets/js/my_equipment.js',
+  './assets/js/notifications_helper.js',
+  './assets/js/payroll.js',
+  './assets/js/permit_applications.js',
+  './assets/js/permits.js',
+  './assets/js/pm_analytics.js',
+  './assets/js/pre_tenders.js',
+  './assets/js/qr_codes.js',
+  './assets/js/receipt_scanner.js',
+  './assets/js/reminders.js',
+  './assets/js/seals.js',
+  './assets/js/sync.js',
+  './assets/js/tasks.js',
+  './assets/js/tasks_admin.js',
+  './assets/js/telegram.js',
+  './assets/js/tkp_followup.js',
+  './assets/js/to_analytics.js',
+  './assets/js/warehouse.js'
 ];
 
 // Иконки навигации
@@ -150,7 +202,10 @@ self.addEventListener('fetch', (event) => {
   
   // Игнорируем внешние запросы
   if (url.origin !== location.origin) return;
-  
+
+  // Не кэшируем API-запросы — они всегда должны идти на сервер
+  if (url.pathname.startsWith('/api/')) return;
+
   event.respondWith(
     caches.match(event.request)
       .then((cachedResponse) => {
