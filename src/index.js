@@ -350,7 +350,46 @@ const start = async () => {
     // Ensure required tables exist
     await ensureTables();
     fastify.log.info('Database tables verified');
-    
+
+    // ── Cron: автоудаление завершённых напоминаний ─────────────────────
+    async function cleanupCompletedReminders() {
+      try {
+        // Получаем настройку (по умолчанию 48 часов)
+        let hours = 48;
+        try {
+          const res = await db.query(
+            `SELECT value_json FROM settings WHERE key = 'app' LIMIT 1`
+          );
+          if (res.rows[0]?.value_json) {
+            const cfg = JSON.parse(res.rows[0].value_json);
+            if (cfg.reminder_auto_delete_hours != null) {
+              hours = Math.max(1, Number(cfg.reminder_auto_delete_hours) || 48);
+            }
+          }
+        } catch (_) {}
+
+        const result = await db.query(
+          `DELETE FROM reminders
+           WHERE completed = true
+             AND completed_at IS NOT NULL
+             AND completed_at < NOW() - INTERVAL '1 hour' * $1
+           RETURNING id`,
+          [hours]
+        );
+        if (result.rowCount > 0) {
+          fastify.log.info(`[Cron] Удалено ${result.rowCount} завершённых напоминаний (порог: ${hours}ч)`);
+        }
+      } catch (err) {
+        fastify.log.error('[Cron] Ошибка очистки напоминаний: ' + err.message);
+      }
+    }
+
+    // Запуск каждый час
+    setInterval(cleanupCompletedReminders, 60 * 60 * 1000);
+    // Первый запуск через 10 секунд после старта
+    setTimeout(cleanupCompletedReminders, 10_000);
+    fastify.log.info('[Cron] Автоочистка напоминаний запланирована');
+
     // Initialize Telegram bot if token provided
     if (process.env.TELEGRAM_BOT_TOKEN) {
       const telegram = require('./services/telegram');
