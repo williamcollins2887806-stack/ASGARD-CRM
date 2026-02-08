@@ -2560,7 +2560,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
     bottom: 20px;
     left: 20px;
     right: auto;
-    z-index: 998;
+    z-index: var(--z-overlay);
   }
   
   .iconbtn {
