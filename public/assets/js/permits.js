@@ -34,7 +34,10 @@ window.AsgardPermitsPage = (function(){
     electric: { name: 'Электрика', color: '#f59e0b' },
     special: { name: 'Спецработы', color: '#3b82f6' },
     medical: { name: 'Медицина', color: '#ef4444' },
-    attest: { name: 'Аттестация', color: '#8b5cf6' }
+    attest: { name: 'Аттестация', color: '#8b5cf6' },
+    offshore: { name: 'Шельф / Морские', color: '#06b6d4' },
+    gas: { name: 'Газоопасные', color: '#f97316' },
+    transport: { name: 'Транспорт', color: '#64748b' }
   };
 
   // Кэш типов с сервера
@@ -1023,6 +1026,8 @@ window.AsgardPermitsPage = (function(){
           <button class="btn ${currentTab === 'matrix' ? 'primary' : ''}" data-tab="matrix">Матрица</button>
           <button class="btn ${currentTab === 'projects' ? 'primary' : ''}" data-tab="projects">Проекты</button>
           <button class="btn ghost" id="btnCheckNotify" style="margin-left:auto">Проверить уведомления</button>
+          ${(['ADMIN','HR','TO','HEAD_TO','HR_MANAGER'].includes(auth.user.role)) ?
+            '<button class="btn ghost" id="btnManageTypes">Управление типами</button>' : ''}
         </div>
 
         <div id="tabContent"></div>
@@ -1059,6 +1064,9 @@ window.AsgardPermitsPage = (function(){
       }
     };
 
+    const btnManageTypes = document.getElementById('btnManageTypes');
+    if (btnManageTypes) btnManageTypes.onclick = () => openManageTypesModal();
+
     // Initial tab
     switchTab(currentTab);
   }
@@ -1072,6 +1080,110 @@ window.AsgardPermitsPage = (function(){
     } catch(e) {
       console.error('checkAndNotify error:', e);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // УПРАВЛЕНИЕ ТИПАМИ РАЗРЕШЕНИЙ (модалка)
+  // ═══════════════════════════════════════════════════════════════
+  async function openManageTypesModal() {
+    let types = [];
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch('/api/permit-applications/types', {
+        headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        types = data.types || [];
+      }
+    } catch(e) {
+      AsgardUI.toast('Ошибка', 'Не удалось загрузить типы', 'err');
+      return;
+    }
+
+    function renderTypesList() {
+      return types.map(t => `
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border)">
+          <span class="dot" style="background:${(CATEGORIES[t.category]||{}).color||'#888'}"></span>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:500">${esc(t.name)}</div>
+            <div class="help" style="font-size:11px">${esc(t.code)} &middot; ${(CATEGORIES[t.category]||{}).name||t.category}</div>
+          </div>
+          ${t.is_system ? '<span class="badge" style="font-size:10px;opacity:0.5">системный</span>' :
+            `<button class="btn mini ghost btnDeleteType" data-id="${t.id}" title="Деактивировать">&#10005;</button>`}
+        </div>
+      `).join('');
+    }
+
+    const catOptions = Object.entries(CATEGORIES).map(([k,v]) =>
+      `<option value="${k}">${v.name}</option>`
+    ).join('');
+
+    const html = `
+      <div class="modal-overlay" id="manageTypesModal">
+        <div class="modal-content" style="max-width:700px">
+          <div class="modal-header">
+            <h3>Управление типами разрешений</h3>
+            <button class="btn ghost btnClose">&times;</button>
+          </div>
+          <div class="modal-body" style="max-height:60vh;overflow-y:auto">
+            <div style="display:flex;gap:8px;margin-bottom:16px">
+              <input id="newTypeName" class="inp" placeholder="Название нового типа..." style="flex:1"/>
+              <select id="newTypeCat" class="inp" style="width:180px">${catOptions}</select>
+              <button class="btn primary" id="btnAddType">+ Добавить</button>
+            </div>
+            <div id="typesList">${renderTypesList()}</div>
+          </div>
+          <div class="modal-footer" style="padding:16px;text-align:right">
+            <button class="btn ghost btnClose">Закрыть</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', html);
+    const modal = document.getElementById('manageTypesModal');
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+
+    document.getElementById('btnAddType').onclick = async () => {
+      const name = document.getElementById('newTypeName').value.trim();
+      const category = document.getElementById('newTypeCat').value;
+      if (!name || name.length < 3) { AsgardUI.toast('Ошибка','Название мин. 3 символа','err'); return; }
+      try {
+        const auth = await AsgardAuth.getAuth();
+        const resp = await fetch('/api/permit-applications/types', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (auth?.token||'') },
+          body: JSON.stringify({ name, category })
+        });
+        if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+        const data = await resp.json();
+        types.push(data.type);
+        document.getElementById('typesList').innerHTML = renderTypesList();
+        document.getElementById('newTypeName').value = '';
+        serverTypes = null; // invalidate cache
+        AsgardUI.toast('Готово','Тип добавлен','ok');
+      } catch(e) { AsgardUI.toast('Ошибка', e.message, 'err'); }
+    };
+
+    document.getElementById('typesList').addEventListener('click', async (e) => {
+      const btn = e.target.closest('.btnDeleteType');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (!confirm('Деактивировать этот тип?')) return;
+      try {
+        const auth = await AsgardAuth.getAuth();
+        const resp = await fetch('/api/permit-applications/types/' + id, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + (auth?.token||'') }
+        });
+        if (!resp.ok) { const e = await resp.json(); throw new Error(e.error); }
+        types = types.filter(t => String(t.id) !== String(id));
+        document.getElementById('typesList').innerHTML = renderTypesList();
+        serverTypes = null;
+        AsgardUI.toast('Готово','Тип деактивирован','ok');
+      } catch(e) { AsgardUI.toast('Ошибка', e.message, 'err'); }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════

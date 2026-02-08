@@ -23,7 +23,8 @@ async function dataRoutes(fastify, options) {
     'equipment_requests', 'equipment_maintenance', 'equipment_reservations',
     'equipment_categories', 'warehouses', 'objects',
     'employee_rates', 'payroll_sheets', 'payroll_items',
-    'payment_registry', 'self_employed', 'one_time_payments'
+    'payment_registry', 'self_employed', 'one_time_payments',
+    'permit_types', 'permit_applications', 'permit_application_items', 'permit_application_history'
   ];
 
   // ═══════════════════════════════════════════════════════════════════════════

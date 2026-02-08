@@ -241,6 +241,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/personnel",l:"Дружина",d:"Сотрудники",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
     {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"hr_requests",g:"personnel"},
     {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},
+    {r:"/permit-applications",l:"Заявки на оформление",d:"Реестры разрешений подрядчикам",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO",...DIRECTOR_ROLES],i:"workers",p:"permit_applications",g:"personnel"},
     {r:"/office-schedule",l:"График: Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule",p:"office_schedule",g:"personnel"},
     {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
     {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
@@ -1495,6 +1496,8 @@ try{
       }
       AsgardPermitsPage.render({layout, title:"Разрешения и допуски"});
     }, {auth:true, roles:["ADMIN","HR","TO","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/permit-applications", ()=>AsgardPermitApplications.render({layout, title:"Заявки на оформление разрешений"}), {auth:true, roles:["ADMIN","HR","TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/permit-application-form", ({query})=>AsgardPermitApplications.renderForm({layout, title: query?.id ? "Редактирование заявки" : "Новая заявка", query}), {auth:true, roles:["ADMIN","HR","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/funnel", ()=>AsgardFunnelPage.render({layout, title:"Воронка продаж"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/tenders", ()=>AsgardTendersPage.render({layout, title:"Сага Тендеров"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","PM",...DIRECTOR_ROLES]});
