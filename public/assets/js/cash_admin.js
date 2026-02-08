@@ -28,7 +28,13 @@ window.CashAdminPage = (function() {
 
   const TYPE_LABELS = {
     advance: 'Аванс',
-    loan: 'Долг'
+    loan: 'Долг до ЗП'
+  };
+
+  // Цвета типов запросов (Доработка 1)
+  const TYPE_COLORS = {
+    advance: '#3b82f6', // синий — целевой аванс
+    loan: '#f59e0b'     // жёлтый — личный долг
   };
 
   let currentRequests = [];
@@ -265,21 +271,29 @@ window.CashAdminPage = (function() {
               <th>Проект</th>
               <th>Сумма</th>
               <th>Статус</th>
-              <th>Остаток</th>
+              <th>Баланс</th>
               <th>Дата</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            ${currentRequests.map(r => `
+            ${currentRequests.map(r => {
+              // Для loan (долг) баланс показываем как отрицательный (долг сотрудника)
+              const isLoan = r.type === 'loan';
+              const balanceVal = r.balance ? r.balance.remainder : 0;
+              const balanceDisplay = isLoan && balanceVal > 0 ? `-${formatMoney(balanceVal)}` : formatMoney(balanceVal);
+              const balanceColor = isLoan ? (balanceVal > 0 ? '#ef4444' : '#22c55e') : (balanceVal > 0 ? '#f59e0b' : '#22c55e');
+              const typeColor = TYPE_COLORS[r.type] || '#6b7280';
+
+              return `
               <tr class="${r.status === 'requested' ? 'table-warning' : ''}">
                 <td>${r.id}</td>
                 <td><strong>${escapeHtml(r.user_name)}</strong><br><small class="text-muted">${r.user_role}</small></td>
-                <td>${TYPE_LABELS[r.type] || r.type}</td>
-                <td>${r.work_title || r.work_object || (r.work_id ? '#' + r.work_id : '-')}</td>
+                <td><span style="display:inline-block;padding:2px 8px;border-radius:4px;background:${typeColor};color:#fff;font-size:0.85em">${TYPE_LABELS[r.type] || r.type}</span></td>
+                <td>${r.work_title || r.work_object || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные' : '-'))}</td>
                 <td><strong>${formatMoney(r.amount)}</strong></td>
                 <td><span class="badge bg-${STATUS_COLORS[r.status]}">${STATUS_LABELS[r.status]}</span></td>
-                <td class="${r.balance?.remainder > 0 ? 'text-danger' : ''}">${r.balance ? formatMoney(r.balance.remainder) : '-'}</td>
+                <td><span style="color:${balanceColor};font-weight:600">${r.balance ? balanceDisplay : '-'}</span></td>
                 <td>${formatDate(r.created_at)}</td>
                 <td>
                   <button class="btn btn-sm btn-outline-primary" onclick="CashAdminPage.showDetail(${r.id})">
@@ -287,7 +301,7 @@ window.CashAdminPage = (function() {
                   </button>
                 </td>
               </tr>
-            `).join('')}
+            `;}).join('')}
           </tbody>
         </table>
       </div>
