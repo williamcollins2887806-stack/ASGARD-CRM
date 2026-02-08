@@ -1,0 +1,103 @@
+name: ASGARD CRM — CI
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '20'
+  DB_HOST: localhost
+  DB_PORT: 5432
+  DB_NAME: asgard_test
+  DB_USER: asgard_test
+  DB_PASSWORD: test_password
+  JWT_SECRET: test-jwt-secret-ci
+
+jobs:
+  # ── Линтинг ──────────────────────────────────────────────
+  lint:
+    name: "\U0001F50D Линтинг"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npx eslint src/ --ext .js --max-warnings 50
+      - run: npx eslint public/assets/js/ --ext .js --max-warnings 100 --config .eslintrc.frontend.json
+
+  # ── Unit-тесты ────────────────────────────────────────────
+  unit-tests:
+    name: "\U0001F9EA Unit-тесты"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test -- --coverage --testPathPattern='tests/unit/'
+        env:
+          DB_PASSWORD: test_password
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+
+  # ── Integration-тесты (с PostgreSQL) ──────────────────────
+  integration-tests:
+    name: "\U0001F517 Интеграционные тесты"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: asgard_test
+          POSTGRES_USER: asgard_test
+          POSTGRES_PASSWORD: test_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Прогон миграций
+        run: node migrations/run.js
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: asgard_test
+          DB_USER: asgard_test
+          DB_PASSWORD: test_password
+      - name: Запуск интеграционных тестов
+        run: npm test -- --testPathPattern='tests/integration/'
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: asgard_test
+          DB_USER: asgard_test
+          DB_PASSWORD: test_password
+          JWT_SECRET: test-jwt-secret-ci
+
+  # ── Docker Build ──────────────────────────────────────────
+  docker-build:
+    name: "\U0001F433 Docker Build"
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t asgard-crm:${{ github.sha }} .
+      - run: docker images asgard-crm

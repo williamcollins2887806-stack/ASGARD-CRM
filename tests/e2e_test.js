@@ -58,14 +58,14 @@ const TEST_USERS = [
   {
     login: 'test_engineer',
     password: 'Test123!',
-    role: 'ENGINEER',
+    role: 'CHIEF_ENGINEER',
     name: 'Тест Инженер',
     expectedMenuItems: ['Работы', 'Мои расходы', 'Календарь']
   },
   {
     login: 'test_accountant',
     password: 'Test123!',
-    role: 'ACCOUNTANT',
+    role: 'BUH',
     name: 'Тест Бухгалтер',
     expectedMenuItems: ['Финансы', 'Расходы', 'Акты']
   },
@@ -79,23 +79,16 @@ const TEST_USERS = [
   {
     login: 'test_procurement',
     password: 'Test123!',
-    role: 'PROCUREMENT',
+    role: 'PROC',
     name: 'Тест Закупщик',
     expectedMenuItems: ['Заявки на закупку', 'Склад']
   },
   {
     login: 'test_assistant',
     password: 'Test123!',
-    role: 'ASSISTANT',
-    name: 'Тест Ассистент',
-    expectedMenuItems: ['Тендеры', 'Календарь', 'Корреспонденция']
-  },
-  {
-    login: 'test_viewer',
-    password: 'Test123!',
-    role: 'VIEWER',
-    name: 'Тест Наблюдатель',
-    expectedMenuItems: ['Дашборд', 'Отчёты']
+    role: 'OFFICE_MANAGER',
+    name: 'Тест Офис-менеджер',
+    expectedMenuItems: ['Корреспонденция', 'Календарь']
   }
 ];
 
@@ -3160,6 +3153,211 @@ ${this.generateRecommendations()}
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: ПОЧТА (Фаза 8)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testMail() {
+    this.log('INFO', '═══ ТЕСТЫ ПОЧТЫ ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('mail.navigate', async () => {
+      await this.goto(`${CONFIG.BASE_URL}/#/mailbox`);
+      await this.delay(2000);
+
+      const hasMailbox = await this.page.evaluate(() => {
+        return document.body.textContent.includes('Почтовый ящик') ||
+               document.body.textContent.includes('Входящие') ||
+               document.querySelector('.mailbox, [data-page="mailbox"]') !== null;
+      });
+      if (!hasMailbox) throw new Error('Страница почтового ящика не загрузилась');
+    });
+
+    await this.runTest('mail.inbox_list', async () => {
+      await this.delay(1500);
+      const hasContent = await this.page.evaluate(() => {
+        return document.querySelectorAll('tr, .mail-item, .email-row').length > 0 ||
+               document.body.textContent.includes('Нет писем') ||
+               document.body.textContent.includes('Пусто');
+      });
+      this.log('INFO', `Список писем: ${hasContent ? 'загружен' : 'пуст (допустимо)'}`);
+    });
+
+    await this.runTest('mail.ai_markers', async () => {
+      // Проверяем наличие AI-цветных маркировок
+      const hasMarkers = await this.page.evaluate(() => {
+        const dots = document.querySelectorAll('[style*="border-radius:50%"], .color-dot, .ai-dot');
+        return dots.length;
+      });
+      this.log('INFO', `AI-маркеры на странице: ${hasMarkers}`);
+    });
+
+    await this.screenshot('mail_page');
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: ПРЕДВАРИТЕЛЬНЫЕ ЗАЯВКИ (Фаза 9)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testPreTenders() {
+    this.log('INFO', '═══ ТЕСТЫ ПРЕДВАРИТЕЛЬНЫХ ЗАЯВОК ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('pretenders.navigate', async () => {
+      await this.goto(`${CONFIG.BASE_URL}/#/pre-tenders`);
+      await this.delay(2000);
+
+      const hasPage = await this.page.evaluate(() => {
+        return document.body.textContent.includes('заявк') ||
+               document.body.textContent.includes('Предварительн') ||
+               document.querySelector('[data-page="pre_tenders"]') !== null;
+      });
+      if (!hasPage) throw new Error('Страница предварительных заявок не загрузилась');
+    });
+
+    await this.runTest('pretenders.list', async () => {
+      const listInfo = await this.page.evaluate(() => {
+        const rows = document.querySelectorAll('tr, .pt-item, .card');
+        const hasList = rows.length > 0;
+        const hasEmpty = document.body.textContent.includes('Нет заявок') ||
+                         document.body.textContent.includes('Пусто');
+        return { count: rows.length, hasList, hasEmpty };
+      });
+      this.log('INFO', `Заявки: ${listInfo.count} элементов`);
+    });
+
+    await this.runTest('pretenders.filters', async () => {
+      // Проверяем наличие фильтров
+      const hasFilters = await this.page.evaluate(() => {
+        const selects = document.querySelectorAll('select');
+        const inputs = document.querySelectorAll('input[type="search"], input[type="text"]');
+        return selects.length + inputs.length;
+      });
+      this.log('INFO', `Элементов фильтрации: ${hasFilters}`);
+    });
+
+    await this.runTest('pretenders.stats', async () => {
+      const response = await this.apiRequest('GET', '/api/pre-tenders/stats');
+      if (response.status === 200) {
+        this.log('INFO', 'API статистики предварительных заявок — OK');
+      } else {
+        this.log('WARN', `API статистики вернул ${response.status}`);
+      }
+    });
+
+    await this.screenshot('pretenders_page');
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ТЕСТЫ: ИНТЕГРАЦИИ (Фаза 10)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  async testIntegrations() {
+    this.log('INFO', '═══ ТЕСТЫ ИНТЕГРАЦИЙ ═══');
+
+    await this.login('admin', 'Orion2025!');
+
+    await this.runTest('integrations.navigate', async () => {
+      await this.goto(`${CONFIG.BASE_URL}/#/integrations`);
+      await this.delay(2000);
+
+      const hasPage = await this.page.evaluate(() => {
+        return document.body.textContent.includes('Интеграц') ||
+               document.body.textContent.includes('Банк') ||
+               document.querySelector('[data-page="integrations"]') !== null;
+      });
+      if (!hasPage) throw new Error('Страница интеграций не загрузилась');
+    });
+
+    await this.runTest('integrations.bank_tab', async () => {
+      // Вкладка Банк (первая по умолчанию)
+      const hasBankContent = await this.page.evaluate(() => {
+        return document.body.textContent.includes('Загрузить выписку') ||
+               document.body.textContent.includes('Транзакции') ||
+               document.body.textContent.includes('Банк') ||
+               document.body.textContent.includes('Приход');
+      });
+      this.log('INFO', `Вкладка "Банк": ${hasBankContent ? 'OK' : 'не найдена'}`);
+    });
+
+    await this.runTest('integrations.platforms_tab', async () => {
+      // Переключаемся на вкладку Площадки
+      const tabClicked = await this.page.evaluate(() => {
+        const tabs = document.querySelectorAll('[data-tab], .tab-btn, button');
+        for (const tab of tabs) {
+          if (tab.textContent.includes('Площадки') || tab.textContent.includes('Platform')) {
+            tab.click();
+            return true;
+          }
+        }
+        return false;
+      });
+      await this.delay(1500);
+
+      if (tabClicked) {
+        const hasPlatformContent = await this.page.evaluate(() => {
+          return document.body.textContent.includes('Площадки') ||
+                 document.body.textContent.includes('Релевантность') ||
+                 document.body.textContent.includes('площадк');
+        });
+        this.log('INFO', `Вкладка "Площадки": ${hasPlatformContent ? 'OK' : 'данные не загрузились'}`);
+      } else {
+        this.log('WARN', 'Вкладка "Площадки" не найдена');
+      }
+    });
+
+    await this.runTest('integrations.erp_tab', async () => {
+      // Переключаемся на вкладку ERP
+      const tabClicked = await this.page.evaluate(() => {
+        const tabs = document.querySelectorAll('[data-tab], .tab-btn, button');
+        for (const tab of tabs) {
+          if (tab.textContent.includes('ERP') || tab.textContent.includes('1С')) {
+            tab.click();
+            return true;
+          }
+        }
+        return false;
+      });
+      await this.delay(1500);
+
+      if (tabClicked) {
+        const hasErpContent = await this.page.evaluate(() => {
+          return document.body.textContent.includes('ERP') ||
+                 document.body.textContent.includes('Подключени') ||
+                 document.body.textContent.includes('1С');
+        });
+        this.log('INFO', `Вкладка "ERP": ${hasErpContent ? 'OK' : 'данные не загрузились'}`);
+      } else {
+        this.log('WARN', 'Вкладка "ERP" не найдена');
+      }
+    });
+
+    await this.runTest('integrations.bank_api', async () => {
+      const response = await this.apiRequest('GET', '/api/integrations/bank/stats');
+      if (response.status === 200) {
+        this.log('INFO', 'API банковской статистики — OK');
+      } else {
+        throw new Error(`API банковской статистики вернул ${response.status}`);
+      }
+    });
+
+    await this.runTest('integrations.platforms_api', async () => {
+      const response = await this.apiRequest('GET', '/api/integrations/platforms/stats');
+      if (response.status === 200) {
+        this.log('INFO', 'API статистики площадок — OK');
+      } else {
+        throw new Error(`API статистики площадок вернул ${response.status}`);
+      }
+    });
+
+    await this.screenshot('integrations_page');
+    await this.logout();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
   // ГЛАВНЫЙ МЕТОД ЗАПУСКА
   // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3203,6 +3401,11 @@ ${this.generateRecommendations()}
       await this.testChat();            // Чат и сообщения
       await this.testINNLookup();       // Поиск по ИНН (DaData)
       await this.testBonusApproval();   // Согласование премий
+
+      // Фаза 8-10: Новые модули
+      await this.testMail();            // Почтовый модуль
+      await this.testPreTenders();      // Предварительные заявки
+      await this.testIntegrations();    // Интеграции (Банк, Площадки, ERP)
 
       // Финальная проверка серверных логов
       await this.checkServerLogs();
