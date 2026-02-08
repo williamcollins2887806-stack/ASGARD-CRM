@@ -261,7 +261,7 @@ CREATE INDEX IF NOT EXISTS idx_erp_field_map ON erp_field_mappings(connection_id
 -- РАЗДЕЛ 4: Регистрация модулей
 -- ─────────────────────────────────────────────────────────────────────────
 
-INSERT INTO modules (key, name, description, icon, sort_order, is_active) VALUES
+INSERT INTO modules (key, label, description, icon, sort_order, is_active) VALUES
   ('bank_integration', 'Банк/1С интеграция', 'Импорт выписок, классификация, экспорт в 1С', '🏦', 410, true),
   ('platforms', 'Тендерные площадки', 'Парсинг уведомлений с тендерных площадок', '🏗️', 420, true),
   ('erp', 'ERP-интеграции', 'Обмен данными с 1С, SAP, Галактика', '🔗', 430, true)
