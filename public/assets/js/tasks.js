@@ -518,13 +518,34 @@ window.AsgardTasksPage = (function() {
       return;
     }
 
-    container.innerHTML = currentTodo.map(item => `
-      <div class="todo-item" style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); ${item.done ? 'opacity:0.5' : ''}">
-        <input type="checkbox" ${item.done ? 'checked' : ''} onchange="AsgardTasksPage.toggleTodo(${item.id})" style="cursor:pointer"/>
-        <span ondblclick="AsgardTasksPage.editTodo(${item.id})" style="flex:1; cursor:pointer; ${item.done ? 'text-decoration:line-through; color:var(--dim)' : ''}">${escapeHtml(item.text)}</span>
-        <button class="btn ghost btn-sm" onclick="AsgardTasksPage.deleteTodo(${item.id})" style="padding:2px 6px; opacity:0.5" title="Удалить">×</button>
-      </div>
-    `).join('');
+    // Вычисление оставшегося времени до автоудаления
+    function getRemainingTime(item) {
+      if (!item.done || !item.done_at) return null;
+      const doneAt = new Date(item.done_at);
+      const deleteHours = item.auto_delete_hours || 48;
+      const deleteAt = new Date(doneAt.getTime() + deleteHours * 60 * 60 * 1000);
+      const now = new Date();
+      const remainingMs = deleteAt.getTime() - now.getTime();
+      if (remainingMs <= 0) return null;
+      const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
+      const remainingMins = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+      if (remainingHours > 0) {
+        return `${remainingHours} ч`;
+      }
+      return `${remainingMins} мин`;
+    }
+
+    container.innerHTML = currentTodo.map(item => {
+      const remaining = getRemainingTime(item);
+      const timerHtml = remaining ? `<span style="font-size:0.75em; color:var(--amber); margin-left:8px" title="До автоудаления">⏳ ${remaining}</span>` : '';
+      return `
+        <div class="todo-item" style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); ${item.done ? 'opacity:0.6' : ''}">
+          <input type="checkbox" ${item.done ? 'checked' : ''} onchange="AsgardTasksPage.toggleTodo(${item.id})" style="cursor:pointer"/>
+          <span ondblclick="AsgardTasksPage.editTodo(${item.id})" style="flex:1; cursor:pointer; ${item.done ? 'text-decoration:line-through; color:var(--dim)' : ''}">${escapeHtml(item.text)}${timerHtml}</span>
+          <button class="btn ghost btn-sm" onclick="AsgardTasksPage.deleteTodo(${item.id})" style="padding:2px 6px; opacity:0.5" title="Удалить">×</button>
+        </div>
+      `;
+    }).join('');
   }
 
   async function addTodo() {
