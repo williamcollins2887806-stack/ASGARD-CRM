@@ -548,14 +548,16 @@ module.exports = async function(fastify) {
     let employeeMap = {};
     assignments.forEach(a => { employeeMap[a.employee_id] = a.employee_name; });
 
-    // Fallback: если нет assignments, получим из works.team
+    // Fallback: если нет assignments, получим из works.staff_ids_json
     if (employeeIds.length === 0) {
-      const { rows: [work] } = await db.query('SELECT team FROM works WHERE id = $1', [workId]);
-      if (work?.team && Array.isArray(work.team)) {
-        employeeIds = work.team.map(t => t.employee_id || t.id).filter(Boolean);
-        work.team.forEach(t => {
-          if (t.employee_id || t.id) employeeMap[t.employee_id || t.id] = t.fio || t.name || 'Unknown';
-        });
+      const { rows: [work] } = await db.query('SELECT staff_ids_json FROM works WHERE id = $1', [workId]);
+      const staffIds = work?.staff_ids_json;
+      if (staffIds && Array.isArray(staffIds)) {
+        employeeIds = staffIds.filter(Boolean);
+        if (employeeIds.length > 0) {
+          const { rows: emps } = await db.query('SELECT id, fio FROM employees WHERE id = ANY($1)', [employeeIds]);
+          emps.forEach(e => { employeeMap[e.id] = e.fio || 'Unknown'; });
+        }
       }
     }
 

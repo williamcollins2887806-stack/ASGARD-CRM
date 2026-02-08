@@ -947,7 +947,7 @@ window.AsgardPayrollPage = (function(){
             <label>Работа</label>
             <select id="otpWork" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)">
               <option value="">Без привязки</option>
-              ${myWorks.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' \u2014 '+(w.title||''))}</option>`).join('')}
+              ${myWorks.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' \u2014 '+(w.work_title||''))}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow"><div>
