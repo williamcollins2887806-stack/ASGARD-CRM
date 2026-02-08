@@ -45,6 +45,24 @@ CREATE TABLE IF NOT EXISTS permit_types (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Ensure all columns exist (table may pre-exist with fewer columns)
+ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS code VARCHAR(50);
+ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS validity_months INTEGER;
+ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT FALSE;
+ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS created_by INTEGER;
+ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+ALTER TABLE permit_types ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+-- Add UNIQUE constraint on code if not exists
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'permit_types_code_key') THEN
+    ALTER TABLE permit_types ADD CONSTRAINT permit_types_code_key UNIQUE (code);
+  END IF;
+END $$;
+
 -- Заполнить справочник из 20 типов
 INSERT INTO permit_types (code, name, category, validity_months, sort_order) VALUES
   ('height_1', 'Допуск к работам на высоте (1 группа)', 'safety', 36, 1),
