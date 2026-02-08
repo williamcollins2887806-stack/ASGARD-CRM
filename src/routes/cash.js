@@ -65,8 +65,7 @@ module.exports = async function(fastify) {
 
     const { rows } = await db.query(`
       SELECT cr.*,
-             w.title as work_title,
-             w.object as work_object,
+             w.work_title,
              u.name as director_name
       FROM cash_requests cr
       LEFT JOIN works w ON w.id = cr.work_id
@@ -94,8 +93,7 @@ module.exports = async function(fastify) {
 
     let sql = `
       SELECT cr.*,
-             w.title as work_title,
-             w.object as work_object,
+             w.work_title,
              u.name as user_name,
              u.role as user_role,
              d.name as director_name
@@ -259,8 +257,7 @@ module.exports = async function(fastify) {
 
     const { rows } = await db.query(`
       SELECT cr.*,
-             w.title as work_title,
-             w.object as work_object,
+             w.work_title,
              u.name as user_name,
              u.role as user_role,
              d.name as director_name

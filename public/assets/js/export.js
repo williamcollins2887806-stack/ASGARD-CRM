@@ -100,7 +100,7 @@ window.AsgardExport = (function(){
 
     const headers = ['Название', 'Статус', 'PM', 'Старт (план)', 'Старт (факт)', 'Окончание (план)', 'Окончание (факт)', 'Контракт', 'План', 'Факт'];
     const rows = filtered.map(w => [
-      w.name || '',
+      w.work_title || '',
       w.work_status || '',
       usersMap.get(w.pm_id) || '',
       fmtDate(w.work_start_plan),
@@ -128,7 +128,7 @@ window.AsgardExport = (function(){
     
     const works = await AsgardDB.all('works');
     const users = await AsgardDB.all('users');
-    const worksMap = new Map(works.map(w => [w.id, w.name || `Работа #${w.id}`]));
+    const worksMap = new Map(works.map(w => [w.id, w.work_title || `Работа #${w.id}`]));
     const usersMap = new Map(users.map(u => [u.id, u.name || u.login]));
 
     let filtered = expenses;
@@ -202,7 +202,7 @@ window.AsgardExport = (function(){
     const works = await AsgardDB.all('works');
     const employees = await AsgardDB.all('employees');
     const users = await AsgardDB.all('users');
-    const worksMap = new Map(works.map(w => [w.id, w.name || `Работа #${w.id}`]));
+    const worksMap = new Map(works.map(w => [w.id, w.work_title || `Работа #${w.id}`]));
     const employeesMap = new Map(employees.map(e => [e.id, e.fio || `Сотрудник #${e.id}`]));
     const usersMap = new Map(users.map(u => [u.id, u.name || u.login]));
 

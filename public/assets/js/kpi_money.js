@@ -116,7 +116,7 @@ window.AsgardKpiMoneyPage = (function(){
         amount: Number(exp.amount) || 0,
         counterparty: work?.customer_name || '—',
         work_id: exp.work_id,
-        work_name: work ? `${work.customer_name} — ${work.title || ''}` : `Работа #${exp.work_id}`,
+        work_name: work ? `${work.customer_name} — ${work.work_title || ''}` : `Работа #${exp.work_id}`,
         comment: exp.comment || '',
         status: exp.approval_status || exp.status || 'approved',
         created_by: exp.created_by
@@ -198,7 +198,7 @@ window.AsgardKpiMoneyPage = (function(){
         amount: Number(inc.amount) || 0,
         counterparty: inc.counterparty || work?.customer_name || '—',
         work_id: inc.work_id,
-        work_name: work ? `${work.customer_name} — ${work.title || ''}` : (inc.counterparty || '—'),
+        work_name: work ? `${work.customer_name} — ${work.work_title || ''}` : (inc.counterparty || '—'),
         comment: inc.comment || '',
         confirmed: inc.confirmed !== false,
         created_by: inc.created_by
@@ -521,7 +521,7 @@ window.AsgardKpiMoneyPage = (function(){
         works.forEach(w => {
           const opt = document.createElement('option');
           opt.value = w.id;
-          opt.textContent = `#${w.id} ${w.customer_name || ''} — ${w.title || ''}`.slice(0, 60);
+          opt.textContent = `#${w.id} ${w.customer_name || ''} — ${w.work_title || ''}`.slice(0, 60);
           select.appendChild(opt);
         });
       });

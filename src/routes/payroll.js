@@ -113,7 +113,7 @@ async function routes(fastify, options) {
     params.push(Number(limit), Number(offset));
     const q = await db.query(`
       SELECT ps.*,
-        w.title as work_title, w.customer_name,
+        w.work_title, w.customer_name,
         u.name as creator_name
       FROM payroll_sheets ps
       LEFT JOIN works w ON ps.work_id = w.id
@@ -133,7 +133,7 @@ async function routes(fastify, options) {
 
     const { id } = req.params;
     const sheetQ = await db.query(`
-      SELECT ps.*, w.title as work_title, w.customer_name, w.pm_id,
+      SELECT ps.*, w.work_title, w.customer_name, w.pm_id,
         u1.name as creator_name, u2.name as approver_name
       FROM payroll_sheets ps
       LEFT JOIN works w ON ps.work_id = w.id
@@ -186,11 +186,11 @@ async function routes(fastify, options) {
     // Автогенерация заголовка
     let autoTitle = title;
     if (!autoTitle && work_id) {
-      const wk = await db.query('SELECT title, customer_name FROM works WHERE id = $1', [work_id]);
+      const wk = await db.query('SELECT work_title, customer_name FROM works WHERE id = $1', [work_id]);
       if (wk.rows.length) {
         const d = new Date(period_from);
         const months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-        autoTitle = `Ведомость ${months[d.getMonth()]} ${d.getFullYear()} — ${wk.rows[0].customer_name || wk.rows[0].title}`;
+        autoTitle = `Ведомость ${months[d.getMonth()]} ${d.getFullYear()} — ${wk.rows[0].customer_name || wk.rows[0].work_title}`;
       }
     }
     if (!autoTitle) autoTitle = `Ведомость ${period_from} — ${period_to}`;
@@ -1085,7 +1085,7 @@ async function routes(fastify, options) {
 
     params.push(Number(limit), Number(offset));
     const q = await db.query(`
-      SELECT otp.*, w.title as work_title, u.name as requester_name
+      SELECT otp.*, w.work_title, u.name as requester_name
       FROM one_time_payments otp
       LEFT JOIN works w ON otp.work_id = w.id
       LEFT JOIN users u ON otp.requested_by = u.id
@@ -1270,13 +1270,13 @@ async function routes(fastify, options) {
 
     // По работам (топ-10)
     const byWork = await db.query(`
-      SELECT ps.work_id, w.title, w.customer_name,
+      SELECT ps.work_id, w.work_title, w.customer_name,
         SUM(ps.total_accrued) as accrued,
         SUM(CASE WHEN ps.status = 'paid' THEN ps.total_payout ELSE 0 END) as paid
       FROM payroll_sheets ps
       LEFT JOIN works w ON ps.work_id = w.id
       WHERE ps.work_id IS NOT NULL AND EXTRACT(YEAR FROM ps.period_from) = $1
-      GROUP BY ps.work_id, w.title, w.customer_name
+      GROUP BY ps.work_id, w.work_title, w.customer_name
       ORDER BY accrued DESC LIMIT 10
     `, [currentYear]);
 

@@ -67,7 +67,7 @@ window.AsgardTravelPage = (function(){
           const match = 
             (item.description || '').toLowerCase().includes(s) ||
             (item.supplier || '').toLowerCase().includes(s) ||
-            (work?.name || '').toLowerCase().includes(s) ||
+            (work?.work_title || '').toLowerCase().includes(s) ||
             (emp?.fio || '').toLowerCase().includes(s);
           if(!match) return false;
         }
@@ -271,7 +271,7 @@ window.AsgardTravelPage = (function(){
                       <td>${item.date || '—'}</td>
                       <td class="travel-amount">${fmtMoney(item.amount)}</td>
                       <td>
-                        ${work ? `<a class="travel-link" href="#/pm-works?id=${work.id}">${esc(work.name || 'Проект #'+work.id)}</a>` : ''}
+                        ${work ? `<a class="travel-link" href="#/pm-works?id=${work.id}">${esc(work.work_title || 'Проект #'+work.id)}</a>` : ''}
                         ${emp ? `<div style="font-size:12px; color:var(--muted)">${esc(emp.fio || '')}</div>` : ''}
                         ${!work && !emp ? '<span style="color:var(--muted)">—</span>' : ''}
                       </td>
@@ -357,7 +357,7 @@ window.AsgardTravelPage = (function(){
             <select id="te_work">
               <option value="">— Не привязано —</option>
               ${works.filter(w => w.work_status !== 'Работы сдали').map(w => 
-                `<option value="${w.id}" ${item?.work_id === w.id ? 'selected' : ''}>${esc(w.name || 'Проект #'+w.id)}</option>`
+                `<option value="${w.id}" ${item?.work_id === w.id ? 'selected' : ''}>${esc(w.work_title || 'Проект #'+w.id)}</option>`
               ).join('')}
             </select>
           </div>

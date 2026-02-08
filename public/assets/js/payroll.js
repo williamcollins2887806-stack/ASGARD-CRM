@@ -180,7 +180,7 @@ window.AsgardPayrollPage = (function(){
         <div class="payroll-filters">
           <select id="filterWork" style="min-width:200px">
             <option value="">Все работы</option>
-            ${myWorks.map(w=>`<option value="${w.id}" ${filterWorkId==w.id?'selected':''}>${esc((w.customer_name||'')+ ' — '+(w.title||''))}</option>`).join('')}
+            ${myWorks.map(w=>`<option value="${w.id}" ${filterWorkId==w.id?'selected':''}>${esc((w.customer_name||'')+ ' — '+(w.work_title||''))}</option>`).join('')}
           </select>
         </div>
 
@@ -249,7 +249,7 @@ window.AsgardPayrollPage = (function(){
             <label>Работа *</label>
             <select id="ps_work" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)">
               <option value="">— Общая (без работы) —</option>
-              ${myWorks2.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' — '+(w.title||''))}</option>`).join('')}
+              ${myWorks2.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' — '+(w.work_title||''))}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">

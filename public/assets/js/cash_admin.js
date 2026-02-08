@@ -290,7 +290,7 @@ window.CashAdminPage = (function() {
                 <td>${r.id}</td>
                 <td><strong>${escapeHtml(r.user_name)}</strong><br><small class="text-muted">${r.user_role}</small></td>
                 <td><span style="display:inline-block;padding:2px 8px;border-radius:4px;background:${typeColor};color:#fff;font-size:0.85em">${TYPE_LABELS[r.type] || r.type}</span></td>
-                <td>${r.work_title || r.work_object || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные' : '-'))}</td>
+                <td>${r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные' : '-'))}</td>
                 <td><strong>${formatMoney(r.amount)}</strong></td>
                 <td><span class="badge bg-${STATUS_COLORS[r.status]}">${STATUS_LABELS[r.status]}</span></td>
                 <td><span style="color:${balanceColor};font-weight:600">${r.balance ? balanceDisplay : '-'}</span></td>
@@ -394,7 +394,7 @@ window.CashAdminPage = (function() {
         <div class="col-md-6">
           <p><strong>Сотрудник:</strong> ${escapeHtml(req.user_name)} (${req.user_role})</p>
           <p><strong>Тип:</strong> ${TYPE_LABELS[req.type] || req.type}</p>
-          <p><strong>Проект:</strong> ${req.work_title || req.work_object || (req.work_id ? '#' + req.work_id : '-')}</p>
+          <p><strong>Проект:</strong> ${req.work_title || (req.work_id ? '#' + req.work_id : '-')}</p>
           <p><strong>Сумма:</strong> ${formatMoney(req.amount)}</p>
           <p><strong>Цель:</strong> ${escapeHtml(req.purpose)}</p>
           ${req.cover_letter ? `<p><strong>Письмо:</strong> ${escapeHtml(req.cover_letter)}</p>` : ''}
