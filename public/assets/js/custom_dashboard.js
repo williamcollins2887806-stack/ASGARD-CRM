@@ -49,6 +49,10 @@ window.AsgardCustomDashboard = (function(){
     equipment_alerts: {
       name: 'Оборудование • Алерты', icon: '🔧', size: 'normal',
       roles: ['ADMIN','CHIEF_ENGINEER','WAREHOUSE','DIRECTOR_*'], render: renderEquipmentAlerts
+    },
+    payroll_pending: {
+      name: 'Ведомости (ожидание)', icon: '💰', size: 'normal',
+      roles: ['ADMIN','BUH','PM','HEAD_PM','DIRECTOR_*'], render: renderPayrollPending
     }
   };
 
@@ -581,6 +585,22 @@ window.AsgardCustomDashboard = (function(){
           '<div class="help">' + esc(i.next_maintenance_date ? new Date(i.next_maintenance_date).toLocaleDateString('ru-RU') : '—') + '</div>' +
         '</div>').join('') +
         '<a href="#/warehouse" class="btn mini ghost" style="margin-top:8px;font-size:11px">Склад →</a>';
+    } catch(e) {
+      el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
+    }
+  }
+
+  async function renderPayrollPending(el, user) {
+    try {
+      const sheets = (await AsgardDB.all('payroll_sheets') || []).filter(s => s.status === 'pending');
+      const oneTime = (await AsgardDB.all('one_time_payments') || []).filter(s => s.status === 'pending');
+      const total = sheets.length + oneTime.length;
+      el.innerHTML = `
+        <div style="font-size:28px;font-weight:900;color:${total > 0 ? 'var(--gold)' : 'var(--green)'}">${total}</div>
+        <div class="help">ведомостей / разовых на согласовании</div>
+        ${sheets.length ? '<a href="#/payroll" style="color:var(--blue);font-size:13px">Ведомости →</a>' : ''}
+        ${oneTime.length ? ' <a href="#/one-time-pay" style="color:var(--blue);font-size:13px;margin-left:8px">Разовые →</a>' : ''}
+      `;
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }

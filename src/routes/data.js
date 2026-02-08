@@ -21,7 +21,9 @@ async function dataRoutes(fastify, options) {
     'notifications', 'acts', 'invoices', 'invoice_payments', 'email_history',
     'email_queue', 'reminders', 'equipment', 'equipment_movements',
     'equipment_requests', 'equipment_maintenance', 'equipment_reservations',
-    'equipment_categories', 'warehouses', 'objects'
+    'equipment_categories', 'warehouses', 'objects',
+    'employee_rates', 'payroll_sheets', 'payroll_items',
+    'payment_registry', 'self_employed', 'one_time_payments'
   ];
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -40,7 +42,8 @@ async function dataRoutes(fastify, options) {
         'equipment', 'equipment_movements', 'equipment_requests',
         'equipment_reservations', 'acts', 'invoices', 'notifications',
         'sync_meta', 'employee_assignments', 'employee_plan', 'reminders',
-        'bonus_requests', 'doc_sets', 'qa_messages', 'user_dashboard'
+        'bonus_requests', 'doc_sets', 'qa_messages', 'user_dashboard',
+        'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -57,7 +60,9 @@ async function dataRoutes(fastify, options) {
         'tenders', 'works', 'work_expenses', 'office_expenses', 'incomes',
         'invoices', 'invoice_payments', 'acts', 'contracts', 'customers',
         'bank_rules', 'calendar_events', 'chats', 'chat_messages',
-        'notifications', 'sync_meta', 'reminders', 'user_dashboard'
+        'notifications', 'sync_meta', 'reminders', 'user_dashboard',
+        'employee_rates', 'payroll_sheets', 'payroll_items',
+        'payment_registry', 'self_employed', 'one_time_payments'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -67,7 +72,8 @@ async function dataRoutes(fastify, options) {
         'staff', 'staff_plan', 'staff_requests', 'staff_request_messages',
         'staff_replacements', 'employee_permits', 'calendar_events',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
-        'travel_expenses', 'user_dashboard'
+        'travel_expenses', 'user_dashboard',
+        'employee_rates', 'payroll_sheets', 'payroll_items'
       ],
       ops: ['read', 'create', 'update']
     },

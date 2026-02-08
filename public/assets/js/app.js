@@ -224,6 +224,9 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/office-expenses",l:"Офисные расходы",d:"Управление и согласование",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"office",p:"office_expenses",g:"finance"},
     {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"finances",p:"cash",g:"finance"},
     {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN",...DIRECTOR_ROLES],i:"finances",p:"cash_admin",g:"finance"},
+    {r:"/payroll",l:"Расчёты с рабочими",d:"Ведомости и выплаты",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
+    {r:"/self-employed",l:"Самозанятые",d:"Реестр СЗ и договора",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
+    {r:"/one-time-pay",l:"Разовые оплаты",d:"Такси, топливо, разовые",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
 
     // ── РЕСУРСЫ ──
     {r:"/warehouse",l:"Склад ТМЦ",d:"Оборудование и инструменты",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
@@ -1161,14 +1164,14 @@ try{
 
     const portalsByRole = {
       TO: [ ['#/tenders','Тендеры'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/tasks','Задачи'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      PM: [ ['#/pm-calcs','ᚱ Калькулятор'], ['#/pm-works','Работы'], ['#/tasks','Задачи'], ['#/cash','Касса'], ['#/travel','Жильё/билеты'], ['#/gantt','📊 Гантт'], ['#/alerts','Уведомления'] ],
-      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      PM: [ ['#/pm-calcs','ᚱ Калькулятор'], ['#/pm-works','Работы'], ['#/payroll','Расчёты'], ['#/tasks','Задачи'], ['#/cash','Касса'], ['#/travel','Жильё/билеты'], ['#/gantt','📊 Гантт'], ['#/alerts','Уведомления'] ],
+      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/payroll','Расчёты'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/payroll','Расчёты'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/payroll','Расчёты'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
       DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
       HR: [ ['#/personnel','Персонал'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/hr-rating','Рейтинг'], ['#/alerts','Уведомления'] ],
       PROC: [ ['#/proc-requests','Заявки'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      BUH: [ ['#/buh-registry','Реестр расходов'], ['#/tasks','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
+      BUH: [ ['#/buh-registry','Реестр расходов'], ['#/payroll','Расчёты'], ['#/tasks','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
       OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
       ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'] ],
       // M15: Новые роли + M16: Big Screen
@@ -1609,6 +1612,12 @@ try{
       await layout('<div id="cash-admin-page"></div>', {title:"Касса (управление)"});
       CashAdminPage.render(document.getElementById('cash-admin-page'));
     }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+
+    // Расчёты с рабочими (Фаза 4)
+    AsgardRouter.add("/payroll", ()=>AsgardPayrollPage.render({layout, title:"Расчёты с рабочими"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/payroll-sheet", ({query})=>AsgardPayrollPage.renderSheet({layout, title:"Ведомость", query}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/self-employed", ()=>AsgardPayrollPage.renderSelfEmployed({layout, title:"Самозанятые"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/one-time-pay", ()=>AsgardPayrollPage.renderOneTimePay({layout, title:"Разовые оплаты"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
 
     // Задачи (M3)
     AsgardRouter.add("/tasks", async ()=>{

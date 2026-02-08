@@ -34,7 +34,13 @@ window.AsgardSync = (function(){
     'calendar_events',
     'notifications',
     'documents',
-    'audit_log'
+    'audit_log',
+    'employee_rates',
+    'payroll_sheets',
+    'payroll_items',
+    'payment_registry',
+    'self_employed',
+    'one_time_payments'
   ];
 
   // Статусы синхронизации

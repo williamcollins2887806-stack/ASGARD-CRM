@@ -185,6 +185,7 @@ fastify.register(require('./routes/tasks'), { prefix: '/api/tasks' });
 fastify.register(require('./routes/permits'), { prefix: '/api/permits' });
 fastify.register(require('./routes/chat_groups'), { prefix: '/api/chat-groups' });
 fastify.register(require('./routes/meetings'), { prefix: '/api/meetings' });
+fastify.register(require('./routes/payroll'), { prefix: '/api/payroll' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check
