@@ -1,9 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════
 -- V008: Допуски и разрешения — расширение (M6)
+-- Unified schema: permit_types uses SERIAL id + code VARCHAR
+-- Compatible with V012 and V017
 -- ═══════════════════════════════════════════════════════════════
 
--- 1. Расширить таблицу employee_permits
-ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS type_id VARCHAR(50);
+-- 1. Расширить таблицу employee_permits (type_id as INTEGER for FK to permit_types)
+ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS type_id INTEGER;
 ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS category VARCHAR(30);
 ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS doc_number VARCHAR(100);
 ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS issuer VARCHAR(255);
@@ -15,30 +17,36 @@ ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS notify_14_sent BOOLEAN DEF
 ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS notify_expired_sent BOOLEAN DEFAULT false;
 ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS created_by INTEGER;
-ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS renewal_of INTEGER;  -- ссылка на предыдущий допуск (при продлении)
+ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS renewal_of INTEGER;
 
--- 2. Требования проектов — какие допуски нужны для конкретного проекта
+-- 2. Требования проектов
 CREATE TABLE IF NOT EXISTS work_permit_requirements (
   id SERIAL PRIMARY KEY,
   work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
-  permit_type_id VARCHAR(50) NOT NULL,                   -- из PERMIT_TYPES (height_1, electro_3 и т.д.)
-  is_mandatory BOOLEAN DEFAULT true,                      -- обязательный или желательный
+  permit_type_id INTEGER NOT NULL,
+  is_mandatory BOOLEAN DEFAULT true,
   notes TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- 3. Справочник типов допусков (серверный, вместо хардкода на фронте)
+-- 3. Справочник типов допусков (SERIAL id + code — unified for V008/V012/V017)
 CREATE TABLE IF NOT EXISTS permit_types (
-  id VARCHAR(50) PRIMARY KEY,                              -- 'height_1', 'electro_3' и т.д.
+  id SERIAL PRIMARY KEY,
+  code VARCHAR(50) UNIQUE,
   name VARCHAR(255) NOT NULL,
-  category VARCHAR(30) NOT NULL,                           -- 'safety', 'electric', 'special', 'medical', 'attest'
-  validity_months INTEGER,                                 -- стандартный срок действия (для автозаполнения)
+  category VARCHAR(100),
+  description TEXT,
+  validity_months INTEGER,
   sort_order INTEGER DEFAULT 0,
-  is_active BOOLEAN DEFAULT true
+  is_system BOOLEAN DEFAULT FALSE,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_by INTEGER,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Заполнить справочник из 20 типов, которые уже есть во фронтенде
-INSERT INTO permit_types (id, name, category, validity_months, sort_order) VALUES
+-- Заполнить справочник из 20 типов
+INSERT INTO permit_types (code, name, category, validity_months, sort_order) VALUES
   ('height_1', 'Допуск к работам на высоте (1 группа)', 'safety', 36, 1),
   ('height_2', 'Допуск к работам на высоте (2 группа)', 'safety', 36, 2),
   ('height_3', 'Допуск к работам на высоте (3 группа)', 'safety', 60, 3),
@@ -59,7 +67,7 @@ INSERT INTO permit_types (id, name, category, validity_months, sort_order) VALUE
   ('attest_a1', 'Аттестация промбезопасность А1', 'attest', 60, 50),
   ('attest_b', 'Аттестация промбезопасность Б', 'attest', 60, 51),
   ('first_aid', 'Первая помощь пострадавшим', 'safety', 36, 23)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (code) DO NOTHING;
 
 -- Индексы
 CREATE INDEX IF NOT EXISTS idx_permits_employee ON employee_permits(employee_id);
@@ -68,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_permits_expiry ON employee_permits(expiry_date);
 CREATE INDEX IF NOT EXISTS idx_permits_active ON employee_permits(is_active);
 CREATE INDEX IF NOT EXISTS idx_work_permit_req_work ON work_permit_requirements(work_id);
 
--- 4. Регистрация модулей в M1
+-- 4. Регистрация модулей
 INSERT INTO modules (key, label, description, category, icon, sort_order)
 VALUES
   ('permits',       'Допуски и разрешения', 'Учёт допусков сотрудников',          'hr',   'workers', 42),
@@ -98,6 +106,10 @@ WHERE u.is_active = true
   AND rp.module_key IN ('permits', 'permits_admin')
 ON CONFLICT (user_id, module_key) DO NOTHING;
 
--- 7. Мигрировать данные из старого формата в новый
--- Старые записи используют permit_type (VARCHAR), новые — type_id (VARCHAR(50))
-UPDATE employee_permits SET type_id = permit_type WHERE type_id IS NULL AND permit_type IS NOT NULL;
+-- 7. Мигрировать данные из старого формата (permit_type varchar → type_id integer via lookup)
+UPDATE employee_permits ep
+SET type_id = pt.id
+FROM permit_types pt
+WHERE ep.type_id IS NULL
+  AND ep.permit_type IS NOT NULL
+  AND pt.code = ep.permit_type;
