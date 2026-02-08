@@ -206,6 +206,22 @@ window.AsgardPreTendersPage = (function(){
     const st = STATUS[it.status] || STATUS.new;
     const score = it.ai_work_match_score || 0;
     const scoreColor = score >= 70 ? '#22c55e' : score >= 30 ? '#eab308' : '#ef4444';
+    const canEdit = ['new','in_review','need_docs'].includes(it.status);
+
+    // Вспомогательная функция для редактируемого поля
+    function editField(label, field, val, type) {
+      if (!canEdit) return `<div><b>${label}:</b> ${esc(val || '—')}</div>`;
+      const inputType = type === 'date' ? 'date' : type === 'number' ? 'number' : 'text';
+      const displayVal = type === 'date' && val ? val.slice(0, 10) : (val || '');
+      return `<div class="pt-edit-field" style="position:relative">
+        <b>${label}:</b> <span class="pt-edit-val" data-field="${field}" style="cursor:pointer;border-bottom:1px dashed var(--text-muted)">${esc(val || '—')}</span>
+        <input class="inp pt-edit-input" data-field="${field}" type="${inputType}" value="${esc(displayVal)}" style="display:none;font-size:12px;padding:2px 6px;width:120px"/>
+      </div>`;
+    }
+
+    // Подготавливаем список загруженных вручную документов
+    const manualDocs = it.manual_documents || [];
+    const allDocsCount = (d.attachments?.length || 0) + manualDocs.length;
 
     const html = `<div style="max-width:750px">
       <!-- Шапка -->
@@ -214,18 +230,21 @@ window.AsgardPreTendersPage = (function(){
         <span style="color:var(--text-muted);font-size:12px">#${it.id}</span>
       </div>
 
-      <!-- Блок 1: Информация о заказчике -->
+      <!-- Блок 1: Информация о заказчике (inline editing) -->
       <div style="background:var(--bg-elevated);border-radius:12px;padding:16px;margin-bottom:12px">
-        <div style="font-weight:700;margin-bottom:8px">Заказчик</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-weight:700">Заказчик</span>
+          ${canEdit ? '<span style="font-size:10px;color:var(--text-muted)">Нажмите на значение для редактирования</span>' : ''}
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
-          <div><b>Компания:</b> ${esc(it.customer_name || '—')}</div>
-          <div><b>ИНН:</b> ${esc(it.customer_inn || '—')}</div>
-          <div><b>Email:</b> ${esc(it.customer_email || '—')}</div>
-          <div><b>Контакт:</b> ${esc(it.contact_person || '—')}</div>
-          <div><b>Телефон:</b> ${esc(it.contact_phone || '—')}</div>
-          <div><b>Место:</b> ${esc(it.work_location || '—')}</div>
-          <div><b>Дедлайн:</b> ${it.work_deadline ? new Date(it.work_deadline).toLocaleDateString('ru-RU') : '—'}</div>
-          <div><b>Сумма:</b> ${it.estimated_sum ? money(it.estimated_sum) : '—'}</div>
+          ${editField('Компания', 'customer_name', it.customer_name)}
+          ${editField('ИНН', 'customer_inn', it.customer_inn)}
+          ${editField('Email', 'customer_email', it.customer_email)}
+          ${editField('Контакт', 'contact_person', it.contact_person)}
+          ${editField('Телефон', 'contact_phone', it.contact_phone)}
+          ${editField('Место', 'work_location', it.work_location)}
+          ${editField('Дедлайн', 'work_deadline', it.work_deadline, 'date')}
+          ${editField('Сумма', 'estimated_sum', it.estimated_sum, 'number')}
         </div>
         ${it.work_description ? `<div style="margin-top:8px;font-size:12px"><b>Описание:</b> ${esc(it.work_description.slice(0, 300))}${it.work_description.length > 300 ? '...' : ''}</div>` : ''}
       </div>
@@ -260,17 +279,27 @@ window.AsgardPreTendersPage = (function(){
             <b>Дата:</b> ${it.email_date ? new Date(it.email_date).toLocaleString('ru-RU') : '—'}
           </div>
           <div style="font-size:12px;max-height:300px;overflow:auto;white-space:pre-wrap;border-top:1px solid var(--line);padding-top:8px">${esc(it.email_body_text || '(пусто)')}</div>
+          <div style="margin-top:8px;text-align:right">
+            <a href="#/mailbox?email=${it.email_id}" class="btn ghost mini" style="font-size:11px">📬 Открыть в почте</a>
+          </div>
         </div>
       </details>` : ''}
 
-      <!-- Блок 4: Вложения -->
-      ${(d.attachments?.length || it.has_documents) ? `
-      <details style="margin-bottom:12px">
-        <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:8px 0">📎 Документы (${d.attachments?.length || 0})</summary>
+      <!-- Блок 4: Документы + Загрузка -->
+      <details style="margin-bottom:12px" ${allDocsCount > 0 || canEdit ? 'open' : ''}>
+        <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:8px 0">📎 Документы (${allDocsCount})</summary>
         <div style="margin-top:4px">
           ${(d.attachments || []).map(a => `<div style="padding:4px 0;font-size:12px">📄 ${esc(a.original_filename)} <span class="help">(${Math.round((a.size||0)/1024)} КБ)</span></div>`).join('')}
+          ${manualDocs.map(a => `<div style="padding:4px 0;font-size:12px">📎 ${esc(a.original_name || a.filename)} <span class="help">(${Math.round((a.size||0)/1024)} КБ, загружено вручную)</span></div>`).join('')}
+          ${canEdit ? `
+          <div id="ptUploadZone" style="margin-top:10px;padding:20px;border:2px dashed var(--line);border-radius:10px;text-align:center;cursor:pointer;transition:border-color .2s">
+            <div style="font-size:24px;margin-bottom:4px">📎</div>
+            <div style="font-size:12px;color:var(--text-muted)">Перетащите файлы сюда или нажмите для загрузки</div>
+            <input type="file" id="ptFileInput" multiple style="display:none"/>
+          </div>
+          <button class="btn ghost mini" id="btnReanalyzeAfterUpload" style="margin-top:8px;display:none">🤖 Анализировать (после загрузки)</button>` : ''}
         </div>
-      </details>` : ''}
+      </details>
 
       <!-- Решение (если есть) -->
       ${it.decision_by_name ? `
@@ -282,7 +311,7 @@ window.AsgardPreTendersPage = (function(){
       </div>` : ''}
 
       <!-- Блок 5: Действия -->
-      ${['new','in_review','need_docs'].includes(it.status) ? `
+      ${canEdit ? `
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
         <button class="btn" id="btnAcceptPT" style="background:#22c55e;color:#000;font-weight:800;flex:1;min-width:160px;font-size:14px;padding:12px">🟢 ПРИНЯТЬ В РАБОТУ</button>
         <button class="btn" id="btnRejectPT" style="background:#ef4444;flex:1;min-width:140px;font-size:14px;padding:12px">🔴 ОТКЛОНИТЬ</button>
@@ -304,7 +333,31 @@ window.AsgardPreTendersPage = (function(){
     </div>`;
 
     showModal({ title: 'Заявка #' + id, html, wide: true, onMount: () => {
-      // AI анализ
+      // ── Inline editing ───────────────────────────────────────────
+      document.querySelectorAll('.pt-edit-val').forEach(span => {
+        span.addEventListener('click', () => {
+          const field = span.dataset.field;
+          const input = span.parentElement.querySelector('.pt-edit-input');
+          if (!input) return;
+          span.style.display = 'none';
+          input.style.display = 'inline-block';
+          input.focus();
+
+          const save = async () => {
+            let val = input.value;
+            if (input.type === 'number') val = val ? Number(val) : null;
+            if (input.type === 'date') val = val || null;
+            input.style.display = 'none';
+            span.style.display = '';
+            span.textContent = val || '—';
+            await api('/' + id, { method: 'PUT', body: { [field]: val } });
+          };
+          input.addEventListener('blur', save, { once: true });
+          input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.style.display = 'none'; span.style.display = ''; }});
+        });
+      });
+
+      // ── AI анализ ────────────────────────────────────────────────
       const btnAI = document.getElementById('btnReanalyze') || document.getElementById('btnRunAnalysis');
       if (btnAI) btnAI.addEventListener('click', async () => {
         btnAI.disabled = true; btnAI.textContent = '⏳ Анализ...';
@@ -313,15 +366,60 @@ window.AsgardPreTendersPage = (function(){
         else { toast('Ошибка', r.error || '', 'err'); btnAI.disabled = false; btnAI.textContent = '🔄 Перезапросить'; }
       });
 
-      // Принять
+      // ── Загрузка документов (drag & drop + click) ────────────────
+      const uploadZone = document.getElementById('ptUploadZone');
+      const fileInput = document.getElementById('ptFileInput');
+      const btnReUp = document.getElementById('btnReanalyzeAfterUpload');
+      if (uploadZone && fileInput) {
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.style.borderColor = 'var(--gold)'; });
+        uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = 'var(--line)'; });
+        uploadZone.addEventListener('drop', e => {
+          e.preventDefault(); uploadZone.style.borderColor = 'var(--line)';
+          if (e.dataTransfer.files.length) doUpload(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', () => { if (fileInput.files.length) doUpload(fileInput.files); });
+
+        async function doUpload(files) {
+          uploadZone.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">⏳ Загрузка ' + files.length + ' файл(ов)...</div>';
+          const auth = await AsgardAuth.getAuth();
+          const fd = new FormData();
+          for (const f of files) fd.append('files', f);
+          try {
+            const resp = await fetch('/api/pre-tenders/' + id + '/upload-docs', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + auth.token },
+              body: fd
+            });
+            const r = await resp.json();
+            if (r.success) {
+              toast('Загружено', r.uploaded.length + ' файл(ов)');
+              if (btnReUp) btnReUp.style.display = '';
+              hideModal(); openDetail(id);
+            } else {
+              toast('Ошибка', r.error || '', 'err');
+              uploadZone.innerHTML = '<div style="font-size:12px;color:var(--red)">Ошибка загрузки</div>';
+            }
+          } catch(err) {
+            toast('Ошибка', 'Сбой загрузки', 'err');
+          }
+        }
+      }
+      if (btnReUp) btnReUp.addEventListener('click', async () => {
+        btnReUp.disabled = true; btnReUp.textContent = '⏳ Анализ...';
+        const r = await api('/' + id + '/analyze', { method: 'POST' });
+        if (r.success) { toast('AI', 'Анализ обновлён'); hideModal(); openDetail(id); loadStats(); loadList(); }
+      });
+
+      // ── Принять ──────────────────────────────────────────────────
       const btnAcc = document.getElementById('btnAcceptPT');
       if (btnAcc) btnAcc.addEventListener('click', () => openAcceptModal(id, it));
 
-      // Отклонить
+      // ── Отклонить ────────────────────────────────────────────────
       const btnRej = document.getElementById('btnRejectPT');
       if (btnRej) btnRej.addEventListener('click', () => openRejectModal(id, it));
 
-      // Запросить документы
+      // ── Запросить документы ──────────────────────────────────────
       const btnDocs = document.getElementById('btnRequestDocs');
       if (btnDocs) btnDocs.addEventListener('click', async () => {
         const comment = prompt('Комментарий для запроса документов:');
@@ -347,8 +445,10 @@ window.AsgardPreTendersPage = (function(){
       pmOptions += pms.map(u => `<option value="${u.id}">${esc(u.name || u.fio || '')}</option>`).join('');
     } catch(e) {}
 
+    const emailSubject = 'Re: ' + esc(pt.email_subject || pt.work_description?.slice(0, 50) || 'заявка');
+
     const mHtml = `
-      <div style="max-width:500px">
+      <div style="max-width:550px">
         <div style="margin-bottom:12px;font-size:13px;color:var(--text-muted)">
           Заявка от <b>${esc(pt.customer_name || pt.customer_email || '—')}</b> будет принята.<br>
           Автоматически создаётся тендер.
@@ -379,6 +479,20 @@ window.AsgardPreTendersPage = (function(){
           </div>
         </div>
 
+        <!-- Превью письма -->
+        <div id="accEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:8px;border-left:3px solid #22c55e;font-size:12px">
+          <div style="font-weight:700;margin-bottom:6px">Превью письма:</div>
+          <div style="color:var(--text-muted);margin-bottom:4px"><b>Кому:</b> ${esc(pt.customer_email || '—')}</div>
+          <div style="color:var(--text-muted);margin-bottom:4px"><b>Тема:</b> ${emailSubject}</div>
+          <div style="border-top:1px solid var(--line);padding-top:6px;margin-top:4px;line-height:1.5" id="accPreviewBody">
+            Здравствуйте!<br><br>
+            Благодарим вас за обращение. Мы рассмотрели вашу заявку и готовы принять её в работу.<br><br>
+            Ваш контактный менеджер: <b id="accPreviewContact">${esc(pt.contact_person || 'менеджер')}</b><br>
+            Телефон: <b id="accPreviewPhone">${esc(pt.contact_phone || '')}</b><br><br>
+            С уважением,<br>ООО "Асгард Сервис"
+          </div>
+        </div>
+
         <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
           <button class="btn ghost" id="accCancelBtn">Отмена</button>
           <button class="btn" id="accConfirmBtn" style="background:#22c55e;color:#000;font-weight:800;padding:10px 24px">✅ Подтвердить</button>
@@ -387,6 +501,18 @@ window.AsgardPreTendersPage = (function(){
     `;
 
     showModal({ title: '🟢 Принять заявку #' + id, html: mHtml, onMount: () => {
+      // Обновление превью при изменении контакта/телефона
+      const contactInp = document.getElementById('accContact');
+      const phoneInp = document.getElementById('accPhone');
+      const prevContact = document.getElementById('accPreviewContact');
+      const prevPhone = document.getElementById('accPreviewPhone');
+      const previewDiv = document.getElementById('accEmailPreview');
+      const sendCb = document.getElementById('accSendEmail');
+
+      if (contactInp && prevContact) contactInp.addEventListener('input', () => { prevContact.textContent = contactInp.value || 'менеджер'; });
+      if (phoneInp && prevPhone) phoneInp.addEventListener('input', () => { prevPhone.textContent = phoneInp.value || ''; });
+      if (sendCb && previewDiv) sendCb.addEventListener('change', () => { previewDiv.style.display = sendCb.checked ? '' : 'none'; });
+
       document.getElementById('accCancelBtn').addEventListener('click', () => { hideModal(); openDetail(id); });
       document.getElementById('accConfirmBtn').addEventListener('click', async () => {
         const btn = document.getElementById('accConfirmBtn');
@@ -418,9 +544,10 @@ window.AsgardPreTendersPage = (function(){
 
   function openRejectModal(id, pt) {
     const reasonOpts = REJECT_REASONS.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('');
+    const emailSubject = 'Re: ' + esc(pt.email_subject || 'заявка');
 
     const mHtml = `
-      <div style="max-width:500px">
+      <div style="max-width:550px">
         <div style="margin-bottom:12px;font-size:13px;color:var(--text-muted)">
           Заявка от <b>${esc(pt.customer_name || pt.customer_email || '—')}</b> будет отклонена.
         </div>
@@ -442,6 +569,18 @@ window.AsgardPreTendersPage = (function(){
           </div>
         </div>
 
+        <!-- Превью письма -->
+        <div id="rejEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:8px;border-left:3px solid #ef4444;font-size:12px">
+          <div style="font-weight:700;margin-bottom:6px">Превью письма:</div>
+          <div style="color:var(--text-muted);margin-bottom:4px"><b>Кому:</b> ${esc(pt.customer_email || '—')}</div>
+          <div style="color:var(--text-muted);margin-bottom:4px"><b>Тема:</b> ${emailSubject}</div>
+          <div style="border-top:1px solid var(--line);padding-top:6px;margin-top:4px;line-height:1.5">
+            Здравствуйте!<br><br>
+            Благодарим вас за обращение. К сожалению, мы вынуждены отклонить данную заявку<span id="rejPreviewReason">, в связи с: ${esc(REJECT_REASONS[0])}</span>.<br><br>
+            С уважением,<br>ООО "Асгард Сервис"
+          </div>
+        </div>
+
         <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
           <button class="btn ghost" id="rejCancelBtn">Отмена</button>
           <button class="btn" id="rejConfirmBtn" style="background:#ef4444;padding:10px 24px;font-weight:800">❌ Подтвердить отказ</button>
@@ -450,6 +589,24 @@ window.AsgardPreTendersPage = (function(){
     `;
 
     showModal({ title: '🔴 Отклонить заявку #' + id, html: mHtml, onMount: () => {
+      // Обновление превью при смене причины
+      const reasonSel = document.getElementById('rejReason');
+      const commentInp = document.getElementById('rejComment');
+      const prevReason = document.getElementById('rejPreviewReason');
+      const previewDiv = document.getElementById('rejEmailPreview');
+      const sendCb = document.getElementById('rejSendEmail');
+
+      function updateRejectPreview() {
+        if (!prevReason) return;
+        const reason = reasonSel.value;
+        const comment = commentInp.value;
+        const full = comment ? reason + '. ' + comment : reason;
+        prevReason.textContent = ', в связи с: ' + full;
+      }
+      if (reasonSel) reasonSel.addEventListener('change', updateRejectPreview);
+      if (commentInp) commentInp.addEventListener('input', updateRejectPreview);
+      if (sendCb && previewDiv) sendCb.addEventListener('change', () => { previewDiv.style.display = sendCb.checked ? '' : 'none'; });
+
       document.getElementById('rejCancelBtn').addEventListener('click', () => { hideModal(); openDetail(id); });
       document.getElementById('rejConfirmBtn').addEventListener('click', async () => {
         const btn = document.getElementById('rejConfirmBtn');

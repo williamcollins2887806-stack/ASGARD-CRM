@@ -277,6 +277,56 @@ module.exports = async function (fastify) {
   });
 
   // ═══════════════════════════════════════════════════════════════════
+  // 7.5 POST /:id/upload-docs — Загрузка документов
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/:id/upload-docs', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params;
+
+    // Проверяем заявку
+    const ptRes = await db.query('SELECT id, manual_documents FROM pre_tender_requests WHERE id = $1', [id]);
+    if (!ptRes.rows.length) return reply.code(404).send({ error: 'Заявка не найдена' });
+
+    const parts = request.parts();
+    const uploadDir = path.join(__dirname, '..', '..', 'uploads', 'pre_tenders', String(id));
+    fs.mkdirSync(uploadDir, { recursive: true });
+
+    const existingDocs = ptRes.rows[0].manual_documents || [];
+    const uploaded = [];
+
+    for await (const part of parts) {
+      if (part.type !== 'file') continue;
+      const safeName = (part.filename || 'file').replace(/[^\w.\-а-яА-ЯёЁ ]/gi, '_').slice(0, 200);
+      const filePath = path.join(uploadDir, safeName);
+      const chunks = [];
+      for await (const chunk of part.file) chunks.push(chunk);
+      const buf = Buffer.concat(chunks);
+      fs.writeFileSync(filePath, buf);
+
+      const doc = {
+        filename: safeName,
+        original_name: part.filename || safeName,
+        mime_type: part.mimetype || 'application/octet-stream',
+        size: buf.length,
+        path: `uploads/pre_tenders/${id}/${safeName}`,
+        uploaded_at: new Date().toISOString()
+      };
+      existingDocs.push(doc);
+      uploaded.push(doc);
+    }
+
+    if (!uploaded.length) return reply.code(400).send({ error: 'Файлы не загружены' });
+
+    await db.query(
+      'UPDATE pre_tender_requests SET manual_documents = $1, has_documents = true, updated_at = NOW() WHERE id = $2',
+      [JSON.stringify(existingDocs), id]
+    );
+
+    return { success: true, uploaded, total_docs: existingDocs.length };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
   // 8. POST /:id/analyze — AI-анализ
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/:id/analyze', {
@@ -304,7 +354,7 @@ module.exports = async function (fastify) {
 
     // Получаем заявку
     const ptRes = await db.query(`
-      SELECT pt.*, e.subject as email_subject, e.from_email, e.from_name, e.id as eid
+      SELECT pt.*, e.subject as email_subject, e.from_email, e.from_name, e.email_type, e.id as eid
       FROM pre_tender_requests pt
       LEFT JOIN emails e ON e.id = pt.email_id
       WHERE pt.id = $1
