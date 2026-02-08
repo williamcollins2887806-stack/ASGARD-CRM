@@ -160,6 +160,7 @@ fastify.decorate('requirePermission', function(moduleKey, operation = 'read') {
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
+fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });
 fastify.register(require('./routes/tenders'), { prefix: '/api/tenders' });
 fastify.register(require('./routes/estimates'), { prefix: '/api/estimates' });
 fastify.register(require('./routes/works'), { prefix: '/api/works' });

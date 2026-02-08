@@ -57,14 +57,18 @@ window.AsgardCustomDashboard = (function(){
     todo: {
       name: 'Мои задачи', icon: '✅', size: 'normal',
       roles: ['*'], render: renderTodo
+    },
+    pre_tenders: {
+      name: 'Заявки', icon: '📨', size: 'normal',
+      roles: ['ADMIN','HEAD_TO','DIRECTOR_*'], render: renderPreTenders
     }
   };
 
   const DEFAULT_LAYOUTS = {
-    ADMIN: ['welcome','kpi_summary','quick_actions','overdue_works','tenders_funnel','notifications'],
+    ADMIN: ['welcome','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','notifications'],
     PM: ['welcome','quick_actions','my_works','gantt_mini','todo','notifications','birthdays'],
     TO: ['welcome','quick_actions','tenders_funnel','tender_dynamics','notifications'],
-    HEAD_TO: ['welcome','tender_dynamics','tenders_funnel','notifications'],
+    HEAD_TO: ['welcome','pre_tenders','tender_dynamics','tenders_funnel','notifications'],
     HEAD_PM: ['welcome','team_workload','overdue_works','gantt_mini','notifications'],
     CHIEF_ENGINEER: ['welcome','equipment_value','equipment_alerts','notifications'],
     HR: ['welcome','permits_expiry','birthdays','notifications','calendar'],
@@ -633,6 +637,47 @@ window.AsgardCustomDashboard = (function(){
         ).join('') +
         (done.length ? '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">' + done.length + ' выполнено</div>' : '') +
         '<a href="#/todo" class="btn mini ghost" style="margin-top:8px;font-size:11px">Все задачи →</a>';
+    } catch(e) {
+      el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
+    }
+  }
+
+  async function renderPreTenders(el, user) {
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch('/api/pre-tenders/stats', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
+      const data = await resp.json();
+      if (!data.success) { el.innerHTML = '<div class="help" style="text-align:center">Нет данных</div>'; return; }
+
+      const total = (data.total_new || 0) + (data.total_in_review || 0) + (data.total_need_docs || 0);
+      el.innerHTML = '<div style="display:flex;gap:16px;justify-content:center;margin-bottom:12px">' +
+        '<div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#3b82f6">' + (data.total_new || 0) + '</div><div style="font-size:10px;color:var(--text-muted)">Новых</div></div>' +
+        '<div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#eab308">' + (data.total_in_review || 0) + '</div><div style="font-size:10px;color:var(--text-muted)">На рассмотрении</div></div>' +
+        '<div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#94a3b8">' + (data.total_need_docs || 0) + '</div><div style="font-size:10px;color:var(--text-muted)">Нужны документы</div></div>' +
+      '</div>';
+
+      // Мини-список последних 5
+      try {
+        const listResp = await fetch('/api/pre-tenders/?status=new&limit=5', {
+          headers: { 'Authorization': 'Bearer ' + auth.token }
+        });
+        const listData = await listResp.json();
+        if (listData.items?.length) {
+          const colorDots = { green: '#22c55e', yellow: '#eab308', red: '#ef4444', gray: '#94a3b8' };
+          el.innerHTML += listData.items.map(function(i) {
+            var dot = colorDots[i.ai_color] || colorDots.gray;
+            return '<div style="padding:4px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:12px">' +
+              '<div style="width:10px;height:10px;border-radius:50%;background:' + dot + ';flex-shrink:0"></div>' +
+              '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(i.customer_name || i.email_from_name || '-') + '</div>' +
+              '<div style="color:var(--text-muted);font-size:10px">' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '') + '</div>' +
+            '</div>';
+          }).join('');
+        }
+      } catch(e2) {}
+
+      el.innerHTML += '<a href="#/pre-tenders" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Все заявки →</a>';
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }

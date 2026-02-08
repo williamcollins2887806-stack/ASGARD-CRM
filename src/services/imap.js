@@ -12,6 +12,7 @@ const fs = require('fs');
 const db = require('./db');
 const classifier = require('./email-classifier');
 const aiAnalyzer = require('./ai-email-analyzer');
+const preTenderService = require('./pre-tender-service');
 
 // ── Encryption helpers (AES-256-CBC, key from ENV) ──────────────────────
 const ENC_ALGO = 'aes-256-cbc';
@@ -411,6 +412,13 @@ async function saveEmail(account, msg, parsed) {
       ]);
 
       console.log(`[IMAP] AI auto-application created for email #${emailId}: ${analysis.color} / ${analysis.classification}`);
+
+      // Также создаём предварительную заявку (pre_tender_requests)
+      try {
+        await preTenderService.createPreTenderFromEmail(emailId);
+      } catch (ptErr) {
+        console.error('[IMAP] Pre-tender auto-creation error:', ptErr.message);
+      }
     } catch (aiErr) {
       console.error('[IMAP] AI auto-analysis error:', aiErr.message);
     }

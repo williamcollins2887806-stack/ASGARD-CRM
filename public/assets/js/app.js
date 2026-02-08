@@ -200,6 +200,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"home"},
 
     // ── ТЕНДЕРЫ ──
+    {r:"/pre-tenders",l:"Заявки",d:"Предварительные заявки (AI)",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"alerts",p:"pre_tenders",g:"tenders"},
     {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"funnel",g:"tenders"},
     {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"tenders",g:"tenders"},
     {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM",...DIRECTOR_ROLES],i:"customers",p:"customers",g:"tenders"},
@@ -1504,6 +1505,7 @@ try{
     }, {auth:true, roles:["ADMIN","HR","TO","PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/permit-applications", ()=>AsgardPermitApplications.render({layout, title:"Заявки на оформление разрешений"}), {auth:true, roles:["ADMIN","HR","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/permit-application-form", ({query})=>AsgardPermitApplications.renderForm({layout, title: query?.id ? "Редактирование заявки" : "Новая заявка", query}), {auth:true, roles:["ADMIN","HR","TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pre-tenders", ()=>AsgardPreTendersPage.render({layout, title:"Предварительные заявки"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/funnel", ()=>AsgardFunnelPage.render({layout, title:"Воронка продаж"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/tenders", ()=>AsgardTendersPage.render({layout, title:"Сага Тендеров"}), {auth:true, roles:["ADMIN","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","PM",...DIRECTOR_ROLES]});
