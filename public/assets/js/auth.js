@@ -424,10 +424,6 @@ window.AsgardAuth = (function(){
     return null;
   }
   
-  async function _testLogin(login){
-    return await loginStep1({ login, password: 'admin123' });
-  }
-  
   return {
     ROLES,
     DIRECTOR_ROLES,
@@ -454,7 +450,6 @@ window.AsgardAuth = (function(){
     canSwitch,
     getPermissions,
     hasPermission,
-    getMenuSettings,
-    _testLogin
+    getMenuSettings
   };
 })();
