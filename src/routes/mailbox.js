@@ -92,22 +92,35 @@ async function routes(fastify, options) {
     if (!checkMailboxAccess(request, reply)) return;
 
     const {
-      direction, type, is_read, is_starred, is_archived, is_deleted,
+      direction, type, is_read, is_starred, is_archived, is_deleted, is_draft,
       search, account_id, folder,
       sort = 'email_date', order = 'DESC',
       limit = 50, offset = 0
     } = request.query;
 
-    const conditions = ['e.is_deleted = false'];
+    const conditions = [];
     const params = [];
     let idx = 1;
+
+    // По умолчанию не показываем удалённые, кроме папки Корзина
+    if (is_deleted !== undefined) {
+      conditions.push(`e.is_deleted = $${idx++}`); params.push(is_deleted === 'true');
+    } else {
+      conditions.push('e.is_deleted = false');
+    }
+
+    // По умолчанию не показываем черновики в обычных папках
+    if (is_draft !== undefined) {
+      conditions.push(`e.is_draft = $${idx++}`); params.push(is_draft === 'true');
+    } else {
+      conditions.push('e.is_draft = false');
+    }
 
     if (direction) { conditions.push(`e.direction = $${idx++}`); params.push(direction); }
     if (type) { conditions.push(`e.email_type = $${idx++}`); params.push(type); }
     if (is_read !== undefined) { conditions.push(`e.is_read = $${idx++}`); params.push(is_read === 'true'); }
     if (is_starred !== undefined) { conditions.push(`e.is_starred = $${idx++}`); params.push(is_starred === 'true'); }
     if (is_archived !== undefined) { conditions.push(`e.is_archived = $${idx++}`); params.push(is_archived === 'true'); }
-    if (is_deleted !== undefined) { conditions.push(`e.is_deleted = $${idx++}`); params.push(is_deleted === 'true'); }
     if (account_id) { conditions.push(`e.account_id = $${idx++}`); params.push(parseInt(account_id)); }
     if (folder) { conditions.push(`e.imap_folder = $${idx++}`); params.push(folder); }
 

@@ -25,7 +25,7 @@ window.AsgardMailboxPage = (function(){
     { key: 'inbox',    name: 'Входящие',   icon: '\u{1F4E8}', filter: { direction: 'inbound', is_archived: 'false' } },
     { key: 'starred',  name: 'Избранное',  icon: '\u{2B50}',   filter: { is_starred: 'true' } },
     { key: 'sent',     name: 'Отправленные', icon: '\u{1F4E4}', filter: { direction: 'outbound' } },
-    { key: 'drafts',   name: 'Черновики',  icon: '\u{1F4DD}',   filter: { direction: 'outbound' } },
+    { key: 'drafts',   name: 'Черновики',  icon: '\u{1F4DD}',   filter: { is_draft: 'true' } },
     { key: 'archive',  name: 'Архив',      icon: '\u{1F4E6}',   filter: { is_archived: 'true' } },
     { key: 'trash',    name: 'Корзина',    icon: '\u{1F5D1}',   filter: { is_deleted: 'true' } }
   ];
@@ -205,11 +205,9 @@ window.AsgardMailboxPage = (function(){
       }
     }
 
-    // Special: drafts filter
-    if (state.folder === 'drafts') {
-      // Drafts are outbound + is_draft
-      params.delete('direction');
-      params.set('is_read', 'true'); // drafts are always "read"
+    // Special: trash folder — show deleted
+    if (state.folder === 'trash') {
+      params.delete('is_deleted'); // already set from FOLDERS filter
     }
 
     if (state.search) params.set('search', state.search);
