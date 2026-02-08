@@ -81,13 +81,12 @@ window.AsgardTasksPage = (function() {
   // ─────────────────────────────────────────────────────────────────
   // RENDER PAGE
   // ─────────────────────────────────────────────────────────────────
-  async function render(opts) {
-    const { layout, title } = opts;
+  async function render(container) {
     const auth = AsgardAuth.getAuth();
     const role = auth?.user?.role || '';
     isDirector = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
 
-    const body = `
+    container.innerHTML = `
       <div class="tasks-page" style="display:grid; grid-template-columns:1fr 350px; gap:20px; min-height:60vh">
         <!-- Левая панель: Задачи от руководства -->
         <div>
@@ -208,8 +207,6 @@ window.AsgardTasksPage = (function() {
         </div>
       </div>
     `;
-
-    await layout(body, { title });
 
     // Загружаем данные
     await Promise.all([loadTasks(), loadTodo(), loadUsers()]);
