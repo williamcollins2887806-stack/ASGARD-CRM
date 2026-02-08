@@ -57,7 +57,6 @@ async function routes(fastify, options) {
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
     return { message: 'Удалено' };
   });
-}
 
   // ═══════════════════════════════════════════════════════════════
   // M15: Аналитика РП (для HEAD_PM)

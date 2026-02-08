@@ -352,7 +352,6 @@ async function routes(fastify, options) {
       byStatus: byStatus.rows
     };
   });
-}
 
   // ═══════════════════════════════════════════════════════════════
   // M15: Аналитика тендерного отдела (для HEAD_TO)
