@@ -24,6 +24,7 @@
     "dotenv": "^16.3.1",
     "exceljs": "^4.4.0",
     "fastify": "^4.25.0",
+    "iconv-lite": "^0.7.2",
     "imapflow": "^1.2.9",
     "mailparser": "^3.9.3",
     "mammoth": "^1.8.0",

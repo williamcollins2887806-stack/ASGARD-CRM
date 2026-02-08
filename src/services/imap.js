@@ -13,6 +13,7 @@ const db = require('./db');
 const classifier = require('./email-classifier');
 const aiAnalyzer = require('./ai-email-analyzer');
 const preTenderService = require('./pre-tender-service');
+const platformParser = require('./platform-parser');
 
 // ── Encryption helpers (AES-256-CBC, key from ENV) ──────────────────────
 const ENC_ALGO = 'aes-256-cbc';
@@ -418,6 +419,16 @@ async function saveEmail(account, msg, parsed) {
         await preTenderService.createPreTenderFromEmail(emailId);
       } catch (ptErr) {
         console.error('[IMAP] Pre-tender auto-creation error:', ptErr.message);
+      }
+
+      // Фаза 10: Парсинг тендерных площадок
+      if (emailType === 'platform_tender') {
+        try {
+          await platformParser.parseAndSave(emailId);
+          console.log(`[IMAP] Platform parse completed for email #${emailId}`);
+        } catch (ppErr) {
+          console.error('[IMAP] Platform parse error:', ppErr.message);
+        }
       }
     } catch (aiErr) {
       console.error('[IMAP] AI auto-analysis error:', aiErr.message);

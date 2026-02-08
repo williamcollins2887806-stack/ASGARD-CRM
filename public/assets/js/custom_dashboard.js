@@ -61,6 +61,15 @@ window.AsgardCustomDashboard = (function(){
     pre_tenders: {
       name: 'Заявки', icon: '📨', size: 'normal',
       roles: ['ADMIN','HEAD_TO','DIRECTOR_*'], render: renderPreTenders
+    },
+    // ─── Phase 10: Интеграции ───
+    bank_summary: {
+      name: 'Банковская сводка', icon: '🏦', size: 'normal',
+      roles: ['ADMIN','BUH','DIRECTOR_*'], render: renderBankSummary
+    },
+    platform_alerts: {
+      name: 'Тендерные площадки', icon: '🏗️', size: 'normal',
+      roles: ['ADMIN','TO','HEAD_TO','DIRECTOR_*'], render: renderPlatformAlerts
     }
   };
 
@@ -68,12 +77,12 @@ window.AsgardCustomDashboard = (function(){
     ADMIN: ['welcome','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','notifications'],
     PM: ['welcome','quick_actions','my_works','gantt_mini','todo','notifications','birthdays'],
     TO: ['welcome','quick_actions','tenders_funnel','tender_dynamics','notifications'],
-    HEAD_TO: ['welcome','pre_tenders','tender_dynamics','tenders_funnel','notifications'],
+    HEAD_TO: ['welcome','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','notifications'],
     HEAD_PM: ['welcome','team_workload','overdue_works','gantt_mini','notifications'],
     CHIEF_ENGINEER: ['welcome','equipment_value','equipment_alerts','notifications'],
     HR: ['welcome','permits_expiry','birthdays','notifications','calendar'],
     HR_MANAGER: ['welcome','permits_expiry','birthdays','team_workload','notifications'],
-    BUH: ['welcome','cash_balance','money_summary','notifications'],
+    BUH: ['welcome','cash_balance','bank_summary','money_summary','notifications'],
     DEFAULT: ['welcome','notifications','todo','calendar','birthdays']
   };
 
@@ -678,6 +687,93 @@ window.AsgardCustomDashboard = (function(){
       } catch(e2) {}
 
       el.innerHTML += '<a href="#/pre-tenders" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Все заявки →</a>';
+    } catch(e) {
+      el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
+    }
+  }
+
+  // ─── Phase 10: Банковская сводка ───
+  async function renderBankSummary(el, user) {
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch('/api/integrations/bank/stats', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
+      const data = await resp.json();
+      if (!data.success) { el.innerHTML = '<div class="help" style="text-align:center">Нет данных</div>'; return; }
+
+      const s = data.stats || {};
+      el.innerHTML = '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:8px">' +
+        '<div style="text-align:center"><div style="font-size:20px;font-weight:900;color:#22c55e">' + formatMoney(s.total_income || 0) + '</div><div style="font-size:10px;color:var(--text-muted)">Приход</div></div>' +
+        '<div style="text-align:center"><div style="font-size:20px;font-weight:900;color:#ef4444">' + formatMoney(s.total_expense || 0) + '</div><div style="font-size:10px;color:var(--text-muted)">Расход</div></div>' +
+      '</div>' +
+      '<div style="text-align:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text-muted)">Нераспред.: </span><span style="font-weight:700;color:#eab308">' + (s.unclassified || 0) + '</span></div>';
+
+      // Последние 5 транзакций
+      try {
+        const txResp = await fetch('/api/integrations/bank/transactions?limit=5&sort=transaction_date&order=desc', {
+          headers: { 'Authorization': 'Bearer ' + auth.token }
+        });
+        const txData = await txResp.json();
+        if (txData.items?.length) {
+          el.innerHTML += txData.items.map(function(t) {
+            var color = t.direction === 'income' ? '#22c55e' : '#ef4444';
+            var sign = t.direction === 'income' ? '+' : '-';
+            return '<div style="padding:3px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;font-size:11px">' +
+              '<div style="color:' + color + ';font-weight:700;white-space:nowrap">' + sign + formatMoney(Math.abs(t.amount)) + '</div>' +
+              '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + esc(t.counterparty_name || t.payment_purpose || '-') + '</div>' +
+            '</div>';
+          }).join('');
+        }
+      } catch(e2) {}
+
+      el.innerHTML += '<a href="#/integrations" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Банк / 1С →</a>';
+    } catch(e) {
+      el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
+    }
+  }
+
+  // ─── Phase 10: Тендерные площадки ───
+  async function renderPlatformAlerts(el, user) {
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch('/api/integrations/platforms/stats', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
+      const data = await resp.json();
+      if (!data.success) { el.innerHTML = '<div class="help" style="text-align:center">Нет данных</div>'; return; }
+
+      const s = data.stats || {};
+      el.innerHTML = '<div style="display:flex;gap:14px;justify-content:center;margin-bottom:10px">' +
+        '<div style="text-align:center"><div style="font-size:20px;font-weight:900;color:#3b82f6">' + (s.total || 0) + '</div><div style="font-size:10px;color:var(--text-muted)">Всего</div></div>' +
+        '<div style="text-align:center"><div style="font-size:20px;font-weight:900;color:#22c55e">' + (s.completed || 0) + '</div><div style="font-size:10px;color:var(--text-muted)">Разобрано</div></div>' +
+        '<div style="text-align:center"><div style="font-size:20px;font-weight:900;color:#eab308">' + (s.pending || 0) + '</div><div style="font-size:10px;color:var(--text-muted)">Ожидают</div></div>' +
+      '</div>';
+
+      // Ближайшие дедлайны
+      try {
+        var dlResp = await fetch('/api/integrations/platforms?parse_status=completed&sort=application_deadline&order=asc&limit=5', {
+          headers: { 'Authorization': 'Bearer ' + auth.token }
+        });
+        var dlData = await dlResp.json();
+        if (dlData.items?.length) {
+          var now = Date.now();
+          el.innerHTML += dlData.items.filter(function(p) {
+            return p.application_deadline && new Date(p.application_deadline) > new Date();
+          }).slice(0, 4).map(function(p) {
+            var dl = new Date(p.application_deadline);
+            var daysLeft = Math.ceil((dl - now) / 86400000);
+            var urgColor = daysLeft <= 2 ? '#ef4444' : daysLeft <= 5 ? '#eab308' : '#22c55e';
+            return '<div style="padding:3px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;font-size:11px">' +
+              '<div style="width:8px;height:8px;border-radius:50%;background:' + urgColor + ';flex-shrink:0"></div>' +
+              '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.customer_name || p.purchase_number || '-') + '</div>' +
+              '<div style="color:' + urgColor + ';font-size:10px;font-weight:700;white-space:nowrap">' + daysLeft + 'д</div>' +
+            '</div>';
+          }).join('');
+        }
+      } catch(e2) {}
+
+      el.innerHTML += '<a href="#/integrations" class="btn mini ghost" style="margin-top:8px;font-size:11px;display:block;text-align:center">Все площадки →</a>';
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }
