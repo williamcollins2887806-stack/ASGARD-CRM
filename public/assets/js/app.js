@@ -1161,19 +1161,19 @@ try{
 
     const portalsByRole = {
       TO: [ ['#/tenders','Тендеры'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/tasks','Задачи'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
-      PM: [ ['#/pm-calcs','ᚱ Калькулятор'], ['#/pm-works','Работы'], ['#/tasks','Задачи'], ['#/cash','Касса'], ['#/travel','Жильё/билеты'], ['#/gantt-works','Гантт'], ['#/alerts','Уведомления'] ],
-      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
-      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      PM: [ ['#/pm-calcs','ᚱ Калькулятор'], ['#/pm-works','Работы'], ['#/tasks','Задачи'], ['#/cash','Касса'], ['#/travel','Жильё/билеты'], ['#/gantt','📊 Гантт'], ['#/alerts','Уведомления'] ],
+      DIRECTOR_COMM: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_GEN: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR_DEV: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
+      DIRECTOR: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/approvals','Согласование'], ['#/tasks-admin','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'] ],
       HR: [ ['#/personnel','Персонал'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/hr-rating','Рейтинг'], ['#/alerts','Уведомления'] ],
       PROC: [ ['#/proc-requests','Заявки'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
       BUH: [ ['#/buh-registry','Реестр расходов'], ['#/tasks','Задачи'], ['#/finances','Деньги'], ['#/birthdays','ДР'], ['#/alerts','Уведомления'] ],
       OFFICE_MANAGER: [ ['#/office-expenses','Офис.расходы'], ['#/tasks','Задачи'], ['#/travel','Жильё/билеты'], ['#/proxies','Доверенности'], ['#/correspondence','Корреспонденция'] ],
-      ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'] ],
+      ADMIN: [ ['#/dashboard','📊 Дашборд'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/gantt','📊 Гантт'], ['#/user-requests','Пользователи'], ['#/finances','Деньги'], ['#/settings','Настройки'] ],
       // M15: Новые роли + M16: Big Screen
       HEAD_TO: [ ['#/tenders','Тендеры'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/to-analytics','Аналитика отдела'], ['#/funnel','Воронка'], ['#/alerts','Уведомления'] ],
-      HEAD_PM: [ ['#/all-works','Свод работ'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/pm-analytics','Аналитика РП'], ['#/approvals','Согласование'], ['#/gantt-works','Гантт'] ],
+      HEAD_PM: [ ['#/all-works','Свод работ'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/big-screen','📺 Big Screen'], ['#/pm-analytics','Аналитика РП'], ['#/approvals','Согласование'], ['#/gantt','📊 Гантт'] ],
       CHIEF_ENGINEER: [ ['#/warehouse','Склад'], ['#/engineer-dashboard','Аналитика склада'], ['#/my-equipment','Моё оборудование'], ['#/alerts','Уведомления'] ],
       HR_MANAGER: [ ['#/personnel','Персонал'], ['#/pm-calcs','ᚱ Калькулятор'], ['#/travel','Жильё/билеты'], ['#/workers-schedule','График'], ['#/permits','Допуски'], ['#/hr-rating','Рейтинг'] ]
     };
@@ -1581,6 +1581,7 @@ try{
   AsgardRouter.add("/office-schedule", ()=>AsgardOfficeSchedulePage.render({layout, title:"График Дружины • Офис"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/gantt-calcs", ()=>AsgardGanttFullPage.renderCalcs({layout}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/gantt-works", ()=>AsgardGanttFullPage.renderWorks({layout}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/gantt", ()=>AsgardGanttFullPage.renderCombined({layout}), {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
     
     // Акты и счета
     AsgardRouter.add("/acts", ()=>AsgardActsPage.render({layout, title:"Акты выполненных работ"}), {auth:true, roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES]});
