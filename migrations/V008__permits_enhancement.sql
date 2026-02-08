@@ -63,10 +63,31 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Ensure id has auto-increment (table may pre-exist without SERIAL)
-CREATE SEQUENCE IF NOT EXISTS permit_types_id_seq OWNED BY permit_types.id;
-SELECT setval('permit_types_id_seq', COALESCE((SELECT MAX(id) FROM permit_types), 0));
-ALTER TABLE permit_types ALTER COLUMN id SET DEFAULT nextval('permit_types_id_seq');
+-- Ensure id has auto-increment (table may pre-exist without SERIAL, id may be TEXT)
+DO $$ DECLARE max_id bigint; col_type text;
+BEGIN
+  -- Check column type and convert to integer if needed
+  SELECT data_type INTO col_type FROM information_schema.columns
+    WHERE table_name = 'permit_types' AND column_name = 'id' AND table_schema = 'public';
+  IF col_type IS NOT NULL AND col_type NOT IN ('integer', 'bigint', 'smallint') THEN
+    -- Delete non-numeric rows if any
+    EXECUTE 'DELETE FROM permit_types WHERE id IS NOT NULL AND id !~ ''^[0-9]+$''';
+    EXECUTE 'ALTER TABLE permit_types ALTER COLUMN id TYPE integer USING id::integer';
+  END IF;
+  -- Get max id
+  BEGIN
+    SELECT COALESCE(MAX(id::bigint), 0) INTO max_id FROM permit_types;
+  EXCEPTION WHEN OTHERS THEN
+    max_id := 0;
+  END;
+  -- Setup sequence
+  IF NOT EXISTS (SELECT 1 FROM pg_sequences WHERE sequencename = 'permit_types_id_seq') THEN
+    EXECUTE 'CREATE SEQUENCE permit_types_id_seq';
+  END IF;
+  PERFORM setval('permit_types_id_seq', GREATEST(max_id, 1));
+  EXECUTE 'ALTER TABLE permit_types ALTER COLUMN id SET DEFAULT nextval(''permit_types_id_seq'')';
+  EXECUTE 'ALTER SEQUENCE permit_types_id_seq OWNED BY permit_types.id';
+END $$;
 
 -- Заполнить справочник из 20 типов
 INSERT INTO permit_types (code, name, category, validity_months, sort_order) VALUES
