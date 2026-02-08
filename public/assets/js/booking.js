@@ -201,12 +201,115 @@ window.AsgardBooking = (function(){
     return { ok:true, start, end, written };
   }
 
+  /**
+   * Перебронирование при изменении дат работы (Доработка 3)
+   * @param {Object} params - {work, oldStart, oldEnd, newStart, newEnd, actor_user_id}
+   * @returns {Object} - {ok, message, written, conflicts}
+   */
+  async function rebookWorkDates({ work, oldStart, oldEnd, newStart, newEnd, actor_user_id }) {
+    if (!work || !work.id) return { ok: false, error: 'NO_WORK' };
+    if (!newStart || !newEnd) return { ok: false, error: 'NO_DATES', message: 'Не заданы новые даты' };
+
+    // Проверяем, есть ли утверждённые заявки персонала
+    const staffRequests = await AsgardDB.all('staff_requests');
+    const approvedRequests = (staffRequests || []).filter(sr =>
+      sr.work_id === work.id && sr.status === 'approved'
+    );
+
+    if (!approvedRequests.length) {
+      // Нет утверждённых заявок — нечего перебронировать
+      return { ok: true, message: 'Нет утверждённых заявок персонала', written: 0 };
+    }
+
+    // Собираем всех сотрудников из утверждённых заявок
+    const allEmployeeIds = new Set();
+    for (const sr of approvedRequests) {
+      try {
+        const ids = JSON.parse(sr.approved_staff_ids_json || '[]');
+        ids.forEach(id => allEmployeeIds.add(id));
+      } catch (_) { }
+      // Для вахты
+      try {
+        const idsA = JSON.parse(sr.approved_staff_ids_a_json || '[]');
+        const idsB = JSON.parse(sr.approved_staff_ids_b_json || '[]');
+        idsA.forEach(id => allEmployeeIds.add(id));
+        idsB.forEach(id => allEmployeeIds.add(id));
+      } catch (_) { }
+    }
+
+    const employeeIds = Array.from(allEmployeeIds);
+    if (!employeeIds.length) {
+      return { ok: true, message: 'Нет забронированных сотрудников', written: 0 };
+    }
+
+    const newDates = listDates(newStart, newEnd);
+    if (!newDates.length) {
+      return { ok: false, error: 'INVALID_DATES', message: 'Некорректный период' };
+    }
+
+    // Проверяем конфликты на новый период
+    const app = await getAppSettings();
+    const blockOnConflict = (app.schedules && app.schedules.block_on_conflict !== false);
+    const conflicts = await findConflictsForEmployees(employeeIds, newDates, work.id);
+
+    if (blockOnConflict && conflicts.length) {
+      return { ok: false, error: 'CONFLICT', conflicts, message: 'Конфликт брони на новый период' };
+    }
+
+    // Удаляем старые записи для этой работы
+    const allPlans = await AsgardDB.all('employee_plan');
+    const toDelete = (allPlans || []).filter(p =>
+      p.work_id === work.id && employeeIds.includes(p.employee_id)
+    );
+    for (const p of toDelete) {
+      await AsgardDB.del('employee_plan', p.id);
+    }
+
+    // Создаём новые записи
+    let written = 0;
+    for (const empId of employeeIds) {
+      for (const d of newDates) {
+        await AsgardDB.add('employee_plan', {
+          employee_id: empId,
+          date: d,
+          kind: 'work',
+          work_id: work.id,
+          note: 'rebook',
+          source: 'date_change',
+          locked: true,
+          updated_at: new Date().toISOString()
+        });
+        written++;
+      }
+    }
+
+    // Аудит
+    try {
+      await AsgardDB.add('audit_log', {
+        actor_user_id: actor_user_id || null,
+        entity_type: 'work',
+        entity_id: work.id,
+        action: 'rebook_dates',
+        payload_json: JSON.stringify({
+          old_period: { start: oldStart, end: oldEnd },
+          new_period: { start: newStart, end: newEnd },
+          employees: employeeIds,
+          written
+        }),
+        created_at: new Date().toISOString()
+      });
+    } catch (_) { }
+
+    return { ok: true, written, employees: employeeIds.length, message: `Перебронировано ${written} записей для ${employeeIds.length} сотрудников` };
+  }
+
   return {
     ymd,
     listDates,
     getWorkDateRange,
     findConflictsForEmployees,
     bookEmployeesForWork,
-    bookEmployeesForDates
+    bookEmployeesForDates,
+    rebookWorkDates
   };
 })();
