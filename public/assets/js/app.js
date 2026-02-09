@@ -178,8 +178,8 @@ console.log('[ASGARD] Global period functions loaded');
   // ═══════════════════════════════════════════════════════════════════════════
   const NAV_GROUPS = [
     { id: "home",     label: "Главная",       icon: "🏠", defaultExpanded: true },
-    { id: "tenders",  label: "Тендеры",       icon: "📋", defaultExpanded: true },
-    { id: "works",    label: "Работы",        icon: "⚒️", defaultExpanded: true },
+    { id: "tenders",  label: "Тендеры",       icon: "📋", defaultExpanded: false },
+    { id: "works",    label: "Работы",        icon: "⚒️", defaultExpanded: false },
     { id: "finance",  label: "Финансы",       icon: "💰", defaultExpanded: false },
     { id: "resources",label: "Ресурсы",       icon: "📦", defaultExpanded: false },
     { id: "personnel",label: "Персонал",      icon: "👥", defaultExpanded: false },
