@@ -2484,45 +2484,65 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   
   /* Топбар */
   .topbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    padding: 12px;
-  }
-  
-  .topbar h1 {
-    font-size: 18px;
-  }
-  
-  .badges {
-    width: 100%;
-    justify-content: flex-start;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
     flex-wrap: wrap;
   }
-  
-  /* Кнопка меню */
+
+  .topbar .title {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .topbar h1 {
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar .page-motto {
+    display: none;
+  }
+
+  .badges {
+    width: auto;
+    gap: 6px;
+  }
+
+  .bellbtn {
+    padding: 6px 10px;
+    gap: 4px;
+  }
+
+  .bellbtn .belltext {
+    display: none;
+  }
+
+  .bellbtn .bellcount {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+
+  /* Кнопка меню — компактная в topbar (не FAB) */
   .mnav {
     display: flex;
-    position: fixed;
-    bottom: 20px;
-    left: 20px;
-    right: auto;
-    z-index: var(--z-overlay);
   }
-  
+
   .iconbtn {
-    width: 56px;
-    height: 56px;
+    width: 40px;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
-    border: 2px solid var(--gold-border);
-    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-    color: #fff;
-    font-size: 24px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--glass);
+    color: var(--text-primary);
+    font-size: 20px;
     cursor: pointer;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
   }
   
   /* Карточки */
@@ -2553,9 +2573,44 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .kpi-row .k {
     flex: 1 1 100%;
+  }
+
+  .kpi {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px;
+  }
+
+  .kpi .k {
+    padding: 10px;
+  }
+
+  .kpi .k .v {
+    font-size: 16px;
+  }
+
+  /* Виджеты домашней страницы */
+  .home-widgets,
+  .home-grid {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Quicklinks — горизонтальный скролл */
+  .quick-links {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+
+  .quick-links .btn {
+    flex-shrink: 0;
+    font-size: 12px;
+    padding: 6px 12px;
   }
   
   /* Таблицы - горизонтальный скролл */
@@ -2648,7 +2703,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   .toastwrap {
     left: 12px;
     right: 12px;
-    bottom: 80px; /* Над кнопкой меню */
+    bottom: 12px;
   }
   
   .toast {
