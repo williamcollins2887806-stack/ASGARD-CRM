@@ -254,6 +254,14 @@
   --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
 
+  /* Typography Scale (Manrope) */
+  --text-page-title: 22px;
+  --text-section: 16px;
+  --text-subsection: 14px;
+  --text-body: 13px;
+  --text-caption: 11px;
+  --text-micro: 10px;
+
   /* Font Sizes */
   --text-xs: 11px;
   --text-sm: 12px;
@@ -302,8 +310,9 @@
   /* ═══════════════════════════════════════════════════════════════════════════
      LAYOUT
      ═══════════════════════════════════════════════════════════════════════════ */
-  --sidebar-width: 280px;
-  --sidebar-collapsed: 72px;
+  --sidebar-width: 60px;
+  --sidebar-collapsed: 60px;
+  --sidebar-flyout: 240px;
   --header-height: 60px;
   --content-max-width: 1400px;
   --mobile-breakpoint: 768px;

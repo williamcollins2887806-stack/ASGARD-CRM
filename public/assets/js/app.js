@@ -374,7 +374,7 @@ try{
           : group.defaultExpanded;
 
         const hasActiveItem = items.some(n => cur === n.r);
-        const expandedClass = isExpanded || hasActiveItem ? "expanded" : "";
+        const expandedClass = hasActiveItem ? "has-active" : "";
 
         navHtml += `<div class="nav-group ${expandedClass}" data-group="${esc(group.id)}">
           <button class="nav-group-header" type="button" aria-expanded="${isExpanded || hasActiveItem}">
@@ -383,7 +383,7 @@ try{
             <span class="nav-group-count">${items.length}</span>
             <span class="nav-group-chevron">▾</span>
           </button>
-          <div class="nav-group-items">
+          <div class="nav-group-items" data-group-label="${esc(group.label)}">
             ${items.map(n => {
               const a = (cur === n.r) ? "active" : "";
               return `<a class="navitem ${a}" href="#${n.r}">
@@ -409,9 +409,7 @@ try{
       : `<button class="btn" id="btnLoginGo">Войти</button><button class="btn ghost" id="btnRegGo">Регистрация</button>`;
 
     const logo = ASSETS_BASE + "img/logo.png";
-    const sidebarCollapsed = window.AsgardTheme && AsgardTheme.getSidebarCollapsed ? AsgardTheme.getSidebarCollapsed() : false;
-
-    $("#app").innerHTML = `<div class="app${sidebarCollapsed ? ' sidebar-collapsed' : ''}">
+    $("#app").innerHTML = `<div class="app">
       <aside class="sidenav">
         <div class="sidebar-header">
           <a class="brand" href="#/welcome" aria-label="На главную">
@@ -421,20 +419,19 @@ try{
               <div class="s">CRM • ᚠᚢᚦᚨᚱᚲ</div>
             </div>
           </a>
-          <button class="sidebar-toggle" id="btnSidebarToggle" type="button" aria-label="Свернуть меню" title="Свернуть/развернуть меню">
-            <span class="toggle-icon">◀</span>
-          </button>
+          <!-- sidebar-toggle removed: icon rail is always 60px -->
         </div>
         <nav class="nav">
           ${navHtml || `<div class="help" style="padding:16px">Войдите, чтобы открыть разделы.</div>`}
         </nav>
         <div class="sidefoot">
+          ${user ? '<button class="sidebar-search-btn" id="btnSidebarSearch" type="button" aria-label="Поиск" title="Поиск (Ctrl+K)">🔍</button>' : ''}
           ${authBtns}
-          <button class="btn ghost" id="btnBackup">
+          <button class="btn ghost" id="btnBackup" style="display:none">
             <span class="btn-icon">💾</span>
             <span class="btn-text">Экспорт/Импорт</span>
           </button>
-          ${user ? '<button class="btn ghost" id="btnNavCustomize" style="font-size:11px;padding:6px 10px"><span class="btn-icon">⚙️</span><span class="btn-text">Настроить меню</span></button>' : ''}
+          ${user ? '<button class="btn ghost" id="btnNavCustomize" style="display:none"><span class="btn-icon">⚙️</span><span class="btn-text">Настроить меню</span></button>' : ''}
         </div>
       </aside>
       <div class="nav-overlay" id="navOverlay"></div>
@@ -510,32 +507,18 @@ try{
     window.__ASG_DOC_ESC_NAV__ = (e)=>{ if(e.key==="Escape") closeNav(); };
     document.addEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
 
-    // Sidebar toggle (collapse/expand)
-    const sidebarToggle = $("#btnSidebarToggle");
-    if (sidebarToggle) {
-      addMobileClick(sidebarToggle, () => {
-        const app = document.querySelector('.app');
-        if (app) {
-          const isCollapsed = app.classList.toggle('sidebar-collapsed');
-          if (window.AsgardTheme && AsgardTheme.setSidebarCollapsed) {
-            AsgardTheme.setSidebarCollapsed(isCollapsed);
-          }
-        }
-      });
-    }
+    // Sidebar toggle — disabled (icon rail is always 60px)
+    // const sidebarToggle = $("#btnSidebarToggle");
+    // if (sidebarToggle) { ... }
 
-    // Nav group toggles
+    // Nav group click → navigate to first item in that group
     $$(".nav-group-header").forEach(header => {
       addMobileClick(header, (e) => {
         e.preventDefault();
         const group = header.closest(".nav-group");
         if (!group) return;
-        const groupId = group.dataset.group;
-        const isExpanded = group.classList.toggle("expanded");
-        header.setAttribute("aria-expanded", isExpanded);
-        if (window.AsgardTheme && AsgardTheme.setNavGroupState) {
-          AsgardTheme.setNavGroupState(groupId, isExpanded);
-        }
+        const firstLink = group.querySelector(".nav-group-items .navitem");
+        if (firstLink) location.hash = firstLink.getAttribute("href").replace('#','');
       });
     });
 
@@ -543,6 +526,14 @@ try{
     addMobileClick($("#btnLoginGo"), ()=>location.hash="#/login");
     addMobileClick($("#btnRegGo"), ()=>location.hash="#/register");
     addMobileClick($("#btnBackup"), backupModal);
+
+    // Sidebar search button → open global search
+    const btnSideSearch = $("#btnSidebarSearch");
+    if (btnSideSearch) {
+      addMobileClick(btnSideSearch, () => {
+        if (window.AsgardSearch && AsgardSearch.open) AsgardSearch.open();
+      });
+    }
 
     // M16: Nav customization button
     const btnNavCust = document.getElementById('btnNavCustomize');
