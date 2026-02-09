@@ -160,5 +160,16 @@ window.AsgardUI = (function(){
     }
   }
 
-  return { $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime };
+  // Skeleton loading helpers
+  function skeleton(type = 'card', count = 3) {
+    const templates = {
+      card: '<div class="skeleton skeleton-card"></div>',
+      text: '<div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text medium"></div><div class="skeleton skeleton-text short"></div>',
+      row: '<div class="skeleton skeleton-row"></div>'
+    };
+    const tpl = templates[type] || templates.card;
+    return Array(count).fill(tpl).join('');
+  }
+
+  return { $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton };
 })();

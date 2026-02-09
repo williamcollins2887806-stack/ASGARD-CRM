@@ -1570,7 +1570,11 @@ details > *:not(summary) {
 .skeleton-text {
   height: 14px;
   margin-bottom: 8px;
+  width: 100%;
 }
+
+.skeleton-text.short { width: 60%; }
+.skeleton-text.medium { width: 80%; }
 
 .skeleton-title {
   height: 24px;
@@ -1585,8 +1589,15 @@ details > *:not(summary) {
 }
 
 .skeleton-card {
-  height: 120px;
+  height: 80px;
   border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+
+.skeleton-row {
+  height: 44px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-sm);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -1979,6 +1990,41 @@ details > *:not(summary) {
 
 .nav-group.expanded .nav-group-items {
   opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FADE-IN ANIMATIONS (Stage 7)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fade-up 300ms ease forwards;
+  opacity: 0;
+}
+
+/* Staggered delay for lists */
+.fade-in:nth-child(1) { animation-delay: 0ms; }
+.fade-in:nth-child(2) { animation-delay: 40ms; }
+.fade-in:nth-child(3) { animation-delay: 80ms; }
+.fade-in:nth-child(4) { animation-delay: 120ms; }
+.fade-in:nth-child(5) { animation-delay: 160ms; }
+.fade-in:nth-child(6) { animation-delay: 200ms; }
+.fade-in:nth-child(7) { animation-delay: 240ms; }
+.fade-in:nth-child(8) { animation-delay: 280ms; }
+.fade-in:nth-child(9) { animation-delay: 320ms; }
+.fade-in:nth-child(10) { animation-delay: 360ms; }
+
+/* Card hover lift */
+.card {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
 }
 
 /* Focus Ring Animation */
