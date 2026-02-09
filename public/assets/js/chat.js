@@ -4,6 +4,9 @@
  */
 window.AsgardChat = (function(){
 
+  let _refreshInterval = null;
+  let _dmInterval = null;
+
   const CHAT_TYPES = {
     general: { name: 'Общий чат', icon: '💬', color: 'var(--blue)' },
     direct: { name: 'Личное сообщение', icon: '👤', color: 'var(--green)' },
@@ -296,17 +299,22 @@ window.AsgardChat = (function(){
     inputEl.focus();
 
     // Автообновление (2 секунды для real-time эффекта)
-    const interval = setInterval(loadMessages, 2000);
+    if (_dmInterval) clearInterval(_dmInterval);
+    _dmInterval = setInterval(loadMessages, 2000);
     const modal = document.querySelector('.modal-overlay');
     if (modal) {
       modal.addEventListener('click', (e) => {
-        if (e.target === modal) clearInterval(interval);
+        if (e.target === modal) { clearInterval(_dmInterval); _dmInterval = null; }
       });
     }
   }
 
   // Страница чата
   async function render({ layout, title }) {
+    // Очистка предыдущих интервалов при повторном рендере
+    if (_refreshInterval) { clearInterval(_refreshInterval); _refreshInterval = null; }
+    if (_dmInterval) { clearInterval(_dmInterval); _dmInterval = null; }
+
     const auth = await AsgardAuth.requireUser();
     if (!auth) return;
 
@@ -354,7 +362,6 @@ window.AsgardChat = (function(){
     const chatSend = document.getElementById('chatSend');
 
     let currentChat = null;
-    let refreshInterval = null;
 
     // Подсчёт непрочитанных сообщений
     async function getUnreadCounts() {
@@ -422,8 +429,8 @@ window.AsgardChat = (function(){
 
       await loadMessages();
 
-      if (refreshInterval) clearInterval(refreshInterval);
-      refreshInterval = setInterval(loadMessages, 2000);
+      if (_refreshInterval) clearInterval(_refreshInterval);
+      _refreshInterval = setInterval(loadMessages, 2000);
     }
 
     // Загрузка сообщений
@@ -498,6 +505,14 @@ window.AsgardChat = (function(){
 
     await renderChatList();
   }
+
+  // Очистка интервалов при навигации
+  window.addEventListener('hashchange', () => {
+    if (!location.hash.includes('/chat')) {
+      if (_refreshInterval) { clearInterval(_refreshInterval); _refreshInterval = null; }
+      if (_dmInterval) { clearInterval(_dmInterval); _dmInterval = null; }
+    }
+  });
 
   return {
     CHAT_TYPES,

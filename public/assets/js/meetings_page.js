@@ -9,6 +9,7 @@
  */
 window.AsgardMeetings = (function(){
   const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
+  let _savedLayout = null;
 
   // ═══════════════════════════════════════════════════════════════
   // API
@@ -118,6 +119,7 @@ window.AsgardMeetings = (function(){
   // ═══════════════════════════════════════════════════════════════
 
   async function render({ layout }) {
+    if (layout) _savedLayout = layout;
     const auth = await AsgardAuth.requireUser();
     if (!auth) { location.hash = '#/login'; return; }
 
@@ -544,8 +546,7 @@ window.AsgardMeetings = (function(){
   }
 
   async function refresh() {
-    const ctx = AsgardRouter.getContext?.() || {};
-    await render(ctx);
+    await render({ layout: _savedLayout });
   }
 
   // ═══════════════════════════════════════════════════════════════

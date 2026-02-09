@@ -1,7 +1,7 @@
 // ASGARD CRM Service Worker
 // Stage 20: PWA + Stage 22: Offline
 
-const CACHE_NAME = 'asgard-crm-v20';
+const CACHE_NAME = 'asgard-crm-v21';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -89,6 +89,7 @@ const JS_ASSETS = [
   './assets/js/email.js',
   './assets/js/email_compose.js',
   './assets/js/engineer_dashboard.js',
+  './assets/js/equipment.js',
   './assets/js/export.js',
   './assets/js/funnel.js',
   './assets/js/fx.js',

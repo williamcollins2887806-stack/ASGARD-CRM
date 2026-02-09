@@ -12,6 +12,7 @@ window.AsgardChatGroups = (function(){
 
   let currentChatId = null;
   let pollingInterval = null;
+  let _savedLayout = null;
 
   // ═══════════════════════════════════════════════════════════════
   // API
@@ -116,6 +117,7 @@ window.AsgardChatGroups = (function(){
   // ═══════════════════════════════════════════════════════════════
 
   async function render({ layout }) {
+    if (layout) _savedLayout = layout;
     const auth = await AsgardAuth.requireUser();
     if (!auth) { location.hash = '#/login'; return; }
 
@@ -467,9 +469,13 @@ window.AsgardChatGroups = (function(){
   }
 
   async function refresh() {
-    const ctx = AsgardRouter.getContext?.() || {};
-    await render(ctx);
+    await render({ layout: _savedLayout });
   }
+
+  // Очистка polling при навигации (hashchange)
+  window.addEventListener('hashchange', () => {
+    if (!location.hash.includes('/chat-groups')) stopPolling();
+  });
 
   // ═══════════════════════════════════════════════════════════════
   // Export

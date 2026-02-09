@@ -4217,11 +4217,7 @@ html[data-theme="light"] table.asg tr td:last-child {
   border-right-width: 1px;
 }
 
-/* Better modal styling for light theme */
-html[data-theme="light"] .modalback {
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(4px);
-}
+/* Modal styling handled by components.css + design-tokens.css */
 
 html[data-theme="light"] .modal {
   background: #ffffff;
@@ -5118,13 +5114,8 @@ table.asg tr:hover td:first-child {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   MODERN MODAL STYLING
+   MODERN MODAL STYLING (modalback handled by components.css)
    ───────────────────────────────────────────────────────────────────────────── */
-.modalback {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  background: rgba(5, 10, 20, 0.7);
-}
 
 .modal {
   background: linear-gradient(
@@ -5383,9 +5374,7 @@ html[data-theme="light"] .modal {
     0 1px 0 rgba(255, 255, 255, 0.8) inset;
 }
 
-html[data-theme="light"] .modalback {
-  background: rgba(255, 255, 255, 0.5);
-}
+
 
 html[data-theme="light"] .kpi .k {
   background: linear-gradient(

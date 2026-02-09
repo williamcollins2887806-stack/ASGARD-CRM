@@ -9,6 +9,7 @@
  */
 window.AsgardKanban = (function(){
   const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
+  let _savedLayout = null;
 
   const COLUMNS = [
     { id: 'new', label: 'Новые', icon: '📥', color: 'var(--blue)' },
@@ -100,6 +101,7 @@ window.AsgardKanban = (function(){
   // ═══════════════════════════════════════════════════════════════
 
   async function render({ layout }) {
+    if (layout) _savedLayout = layout;
     const auth = await AsgardAuth.requireUser();
     if (!auth) { location.hash = '#/login'; return; }
     const user = auth.user;
@@ -427,8 +429,7 @@ window.AsgardKanban = (function(){
   }
 
   async function refresh() {
-    const ctx = AsgardRouter.getContext?.() || {};
-    await render(ctx);
+    await render({ layout: _savedLayout });
   }
 
   // ═══════════════════════════════════════════════════════════════
