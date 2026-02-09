@@ -282,6 +282,29 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/integrations",l:"Интеграции",d:"Банк/1С, Тендерные площадки, ERP",roles:["ADMIN","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO","TO"],i:"backup",p:"integrations",g:"communications"},
   ];
 
+  // Mobile tab group detection
+  function getMobileTabGroup(route) {
+    const r = route || '';
+    if (['/home','/dashboard','/my-dashboard','/big-screen','/calendar','/birthdays','/tasks','/alerts'].some(p => r.startsWith(p))) return 'home';
+    if (['/tenders','/funnel','/counterparties','/to-analytics','/pre-tenders','/customers'].some(p => r.startsWith(p))) return 'tenders';
+    if (['/pm-works','/calculator','/approvals','/all-estimates','/all-works','/gantt','/bonus-approval','/kanban','/tasks-admin'].some(p => r.startsWith(p))) return 'works';
+    if (['/finances','/invoices','/acts','/buh-registry','/cash','/cash-admin','/payroll','/self-employed','/one-time-pay','/office-expenses','/bank-import'].some(p => r.startsWith(p))) return 'finance';
+    return 'more';
+  }
+
+  // Nav icon mapping for mobile grid
+  function getNavIcon(name) {
+    const icons = {
+      home:'🏠', dashboard:'📊', schedule:'📅', birthdays:'🎂',
+      approvals:'✅', tenders:'📋', funnel:'📈', customers:'🏢',
+      pmworks:'⚒️', finances:'💰', buh:'📑', office:'🏗️',
+      backup:'📦', workers:'👥', rating:'⭐', travel:'✈️',
+      correspondence:'📧', alerts:'🔔', settings:'⚙️', proxies:'📄',
+      requests:'📥', kpiworks:'📉'
+    };
+    return icons[name] || '📌';
+  }
+
   async function layout(body,{title,motto,rightBadges=[]}={}){
     // Сохраняем позицию скролла меню
     const sidenav = document.querySelector('.sidenav');
@@ -449,8 +472,31 @@ try{
         <div class="runesep" aria-hidden="true"></div>
         <hr class="hr"/>
         <div class="help">Данные хранятся на сервере. Резервное копирование автоматическое.</div>
-        <div class="credit">ᚠᚹ Сей сайт выкован Androsov’ым — да служит АСГАРД-СЕРВИС ᚹᚠ</div>
+        <div class="credit">ᚠᚹ Сей сайт выкован Androsov'ым — да служит АСГАРД-СЕРВИС ᚹᚠ</div>
       </main>
+      <!-- Mobile Tab Bar -->
+      <nav class="mob-tabbar" id="mobTabbar">
+        <a href="#/home" class="mob-tab ${getMobileTabGroup(cur)==='home'?'active':''}" data-tab="home">
+          <span class="mob-tab-icon">🏠</span>
+          <span class="mob-tab-label">Главная</span>
+        </a>
+        <a href="#/tenders" class="mob-tab ${getMobileTabGroup(cur)==='tenders'?'active':''}" data-tab="tenders">
+          <span class="mob-tab-icon">📋</span>
+          <span class="mob-tab-label">Тендеры</span>
+        </a>
+        <a href="#/pm-works" class="mob-tab ${getMobileTabGroup(cur)==='works'?'active':''}" data-tab="works">
+          <span class="mob-tab-icon">⚒️</span>
+          <span class="mob-tab-label">Работы</span>
+        </a>
+        <a href="#/finances" class="mob-tab ${getMobileTabGroup(cur)==='finance'?'active':''}" data-tab="finance">
+          <span class="mob-tab-icon">💰</span>
+          <span class="mob-tab-label">Деньги</span>
+        </a>
+        <a href="#/mob-more" class="mob-tab ${getMobileTabGroup(cur)==='more'?'active':''}" data-tab="more">
+          <span class="mob-tab-icon">☰</span>
+          <span class="mob-tab-label">Ещё</span>
+        </a>
+      </nav>
     </div>`;
 
 
@@ -1706,6 +1752,70 @@ try{
 
     // Фаза 10: Интеграции (Банк/1С, Площадки, ERP)
     AsgardRouter.add("/integrations", ()=>AsgardIntegrationsPage.render({layout, title:"Интеграции"}), {auth:true, roles:["ADMIN","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO","TO"]});
+
+    // Mobile "More" screen
+    AsgardRouter.add("/mob-more", async () => {
+      const auth = await AsgardAuth.requireUser();
+      const mobUser = auth ? auth.user : null;
+      const mobRole = mobUser ? mobUser.role : "GUEST";
+      const userNav = NAV.filter(n => n.roles.includes(mobRole) || mobRole === "ADMIN");
+      const grouped = {};
+      for (const group of NAV_GROUPS) {
+        const items = userNav.filter(n => n.g === group.id);
+        if (items.length > 0) grouped[group.id] = { ...group, items };
+      }
+
+      const mobBody = `
+        <div class="mob-more-page">
+          <div class="mob-user-card">
+            <div class="mob-user-avatar">${(mobUser?.name || 'U')[0].toUpperCase()}</div>
+            <div class="mob-user-info">
+              <div class="mob-user-name">${esc(mobUser?.name || 'Пользователь')}</div>
+              <div class="mob-user-role">${esc(mobUser?.role || '')}</div>
+            </div>
+            <button class="themebtn icononly" id="btnThemeMob" type="button">🌓</button>
+          </div>
+
+          ${Object.values(grouped).map(g => `
+            <div class="mob-section">
+              <div class="mob-section-title">${g.icon} ${g.label}</div>
+              <div class="mob-grid">
+                ${g.items.map(n => `
+                  <a href="#${n.r}" class="mob-grid-item">
+                    <div class="mob-grid-icon">${getNavIcon(n.i)}</div>
+                    <div class="mob-grid-label">${esc(n.l)}</div>
+                  </a>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+
+          <div class="mob-section">
+            <button class="btn red" style="width:100%" id="btnLogoutMob">Выйти</button>
+          </div>
+        </div>`;
+
+      await layout(mobBody, { title: "Меню" });
+
+      const btnThemeMob = document.getElementById('btnThemeMob');
+      if (btnThemeMob) {
+        btnThemeMob.addEventListener('click', () => {
+          const html = document.documentElement;
+          const curTheme = html.getAttribute('data-theme');
+          html.setAttribute('data-theme', curTheme === 'light' ? 'dark' : 'light');
+          localStorage.setItem('asg_theme', curTheme === 'light' ? 'dark' : 'light');
+        });
+      }
+
+      const btnLogoutMob = document.getElementById('btnLogoutMob');
+      if (btnLogoutMob) {
+        btnLogoutMob.addEventListener('click', () => {
+          localStorage.removeItem('asg_token');
+          location.hash = '#/login';
+          location.reload();
+        });
+      }
+    }, { auth: true, roles: ALL_ROLES });
 
     // TKP Follow-up: проверка напоминаний при старте
     if(window.AsgardTkpFollowup){
