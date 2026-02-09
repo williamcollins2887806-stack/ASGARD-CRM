@@ -8,15 +8,8 @@
    ───────────────────────────────────────────────────────────────────────────────── */
 .app,
 .asg-app {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
+  display: block;
   min-height: 100vh;
-}
-
-/* Collapsed Sidebar Mode */
-.app.sidebar-collapsed,
-.asg-app.sidebar-collapsed {
-  grid-template-columns: var(--sidebar-collapsed) 1fr;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -689,11 +682,6 @@ body.nav-open .nav-overlay {
    RESPONSIVE - TABLET
    ═══════════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 1024px) {
-  .app,
-  .asg-app {
-    grid-template-columns: var(--sidebar-collapsed) 1fr;
-  }
-
   .sidenav,
   .asg-sidebar {
     width: var(--sidebar-collapsed);
@@ -728,11 +716,6 @@ body.nav-open .nav-overlay {
    RESPONSIVE - MOBILE
    ═══════════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-  .app,
-  .asg-app {
-    grid-template-columns: 1fr;
-  }
-
   /* Hide sidebar by default on mobile */
   .sidenav,
   .asg-sidebar {

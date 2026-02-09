@@ -386,11 +386,19 @@ a:hover {
    MAIN CONTENT AREA — Основной контент
    ───────────────────────────────────────────────────────────────────────────── */
 .main {
+  margin-left: var(--sidebar-width, 280px);
+  min-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px;
   position: relative;
   z-index: 1;
+  transition: margin-left var(--transition-normal, 0.3s);
 }
-/* .main::before — defined in layout.css */
+
+.app.sidebar-collapsed .main {
+  margin-left: var(--sidebar-collapsed, 72px);
+}
 
 /* Верхняя панель */
 .topbar {
