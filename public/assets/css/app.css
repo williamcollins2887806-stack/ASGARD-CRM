@@ -1851,7 +1851,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   font-size: 12px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   .funnel-column {
     flex: 0 0 220px;
     min-width: 220px;
@@ -2081,7 +2081,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   flex-shrink: 0;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   .cal-layout {
     grid-template-columns: 1fr;
   }
@@ -2442,7 +2442,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 /* Viewport meta важен - проверь что в index.html есть:
    <meta name="viewport" content="width=device-width, initial-scale=1"> */
 
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   /* Сайдбар - скрыт по умолчанию */
   .sidenav {
     position: fixed;
@@ -2797,7 +2797,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   }
 }
 
-@media (min-width: 901px) {
+@media (min-width: 769px) {
   .mnav {
     display: none;
   }
