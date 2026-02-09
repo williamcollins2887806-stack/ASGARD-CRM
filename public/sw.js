@@ -74,7 +74,6 @@ const JS_ASSETS = [
   './assets/js/theme.js',
   './assets/js/build_info.js',
   './assets/js/acts.js',
-  './assets/js/ai_assistant.js',
   './assets/js/auto_reports.js',
   './assets/js/bank_import.js',
   './assets/js/big_screen.js',

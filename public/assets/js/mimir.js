@@ -40,7 +40,7 @@ window.AsgardMimir = (function(){
 
   const styles = `
     <style id="mimir-styles">
-      .mimir-widget { position:fixed; bottom:24px; right:24px; z-index:9999; font-family:var(--font-main, -apple-system, sans-serif); }
+      .mimir-widget { position:fixed; bottom:24px; right:24px; z-index:500; font-family:var(--font-main, -apple-system, sans-serif); }
 
       .mimir-toggle {
         width:64px; height:64px; border-radius:50%;
