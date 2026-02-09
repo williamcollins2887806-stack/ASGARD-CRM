@@ -186,10 +186,10 @@ a:hover {
 .brand img {
   width: 56px;
   height: 56px;
-  border-radius: var(--radius-md);
-  border: 2px solid var(--gold);
-  background: rgba(0,0,0,0.3);
-  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--gold-border, var(--gold));
+  background: rgba(0,0,0,0.2);
+  padding: 6px;
   object-fit: contain;
 }
 

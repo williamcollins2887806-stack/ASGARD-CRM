@@ -274,13 +274,13 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/object-map",l:"Карта объектов",d:"География работ",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"kpiworks",p:"object_map",g:"analytics"},
 
     // Фаза 8: Почта
-    {r:"/mailbox",l:"Почтовый ящик",d:"Входящие / исходящие письма",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"workers",p:"mailbox",g:"communications"},
-    {r:"/mail-settings",l:"Настройки почты",d:"Аккаунты, правила, шаблоны",roles:["ADMIN","DIRECTOR_GEN"],i:"backup",p:"mail_settings",g:"communications"},
+    {r:"/mailbox",l:"Почтовый ящик",d:"Входящие / исходящие письма",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"workers",p:"mailbox",g:"comm"},
+    {r:"/mail-settings",l:"Настройки почты",d:"Аккаунты, правила, шаблоны",roles:["ADMIN","DIRECTOR_GEN"],i:"backup",p:"mail_settings",g:"comm"},
     // Фаза 9: AI-анализ входящих заявок
-    {r:"/inbox-applications",l:"Входящие заявки (AI)",d:"AI-анализ и классификация писем",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"alerts",p:"inbox_applications",g:"communications"},
+    {r:"/inbox-applications",l:"Входящие заявки (AI)",d:"AI-анализ и классификация писем",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"alerts",p:"inbox_applications",g:"comm"},
 
     // Фаза 10: Интеграции
-    {r:"/integrations",l:"Интеграции",d:"Банк/1С, Тендерные площадки, ERP",roles:["ADMIN","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO","TO"],i:"backup",p:"integrations",g:"communications"},
+    {r:"/integrations",l:"Интеграции",d:"Банк/1С, Тендерные площадки, ERP",roles:["ADMIN","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO","TO"],i:"backup",p:"integrations",g:"comm"},
   ];
 
   // Mobile tab group detection
@@ -375,7 +375,7 @@ try{
           : group.defaultExpanded;
 
         const hasActiveItem = items.some(n => cur === n.r);
-        const expandedClass = hasActiveItem ? "has-active" : "";
+        const expandedClass = (isExpanded || hasActiveItem) ? "expanded" : "";
 
         navHtml += `<div class="nav-group ${expandedClass}" data-group="${esc(group.id)}">
           <button class="nav-group-header" type="button" aria-expanded="${isExpanded || hasActiveItem}">
@@ -541,14 +541,17 @@ try{
     // const sidebarToggle = $("#btnSidebarToggle");
     // if (sidebarToggle) { ... }
 
-    // Nav group click → navigate to first item in that group
+    // Nav group click → toggle expand/collapse
     $$(".nav-group-header").forEach(header => {
       addMobileClick(header, (e) => {
         e.preventDefault();
         const group = header.closest(".nav-group");
         if (!group) return;
-        const firstLink = group.querySelector(".nav-group-items .navitem");
-        if (firstLink) location.hash = firstLink.getAttribute("href").replace('#','');
+        const groupId = group.dataset.group;
+        const isNow = group.classList.toggle("expanded");
+        header.setAttribute("aria-expanded", isNow);
+        if (window.AsgardTheme && AsgardTheme.setNavGroupState)
+          AsgardTheme.setNavGroupState(groupId, isNow);
       });
     });
 

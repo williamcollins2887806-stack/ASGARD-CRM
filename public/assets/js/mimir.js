@@ -358,6 +358,8 @@ window.AsgardMimir = (function(){
       return;
     }
 
+    if (!localStorage.getItem('asgard_token')) return;
+
     if (document.getElementById('mimirWidget')) return;
 
     if (!document.getElementById('mimir-styles')) {

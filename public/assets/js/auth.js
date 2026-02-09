@@ -337,6 +337,7 @@ window.AsgardAuth = (function(){
   let _cachedAuth = null;
   let _cachedAuthTime = 0;
   const AUTH_CACHE_TTL = 30000;
+  let _pendingAuthPromise = null;
 
   async function requireUser(){
     const now = Date.now();
@@ -344,6 +345,16 @@ window.AsgardAuth = (function(){
       return _cachedAuth;
     }
 
+    // Дедупликация: если запрос уже в полёте — ждём его
+    if (_pendingAuthPromise) return _pendingAuthPromise;
+
+    _pendingAuthPromise = _doRequireUser();
+    try { return await _pendingAuthPromise; }
+    finally { _pendingAuthPromise = null; }
+  }
+
+  async function _doRequireUser(){
+    const now = Date.now();
     const auth = getAuth();
     if(!auth || !auth.token || !auth.user) { _cachedAuth = null; return null; }
 

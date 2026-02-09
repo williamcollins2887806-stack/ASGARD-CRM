@@ -616,6 +616,8 @@ window.AsgardSync = (function(){
 
   // Инициализация автосинхронизации
   async function init() {
+    const token = localStorage.getItem('asgard_token');
+    if (!token) return; // Не инициализировать без авторизации
     const settings = await getSettings();
     if (settings.enabled && settings.api_url) {
       // Запускаем автосинхронизацию каждые N минут

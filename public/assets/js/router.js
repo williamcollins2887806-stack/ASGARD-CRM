@@ -73,12 +73,13 @@ window.AsgardRouter=(function(){
     // SLA tick as background interval instead of per-navigation
     setInterval(async () => {
       try {
+        if (!localStorage.getItem('asgard_token')) return;
         const auth = window.AsgardAuth && AsgardAuth.getAuth();
         if (auth && auth.user && window.AsgardSLA) {
           await AsgardSLA.tick(auth.user);
         }
       } catch(_) {}
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000);
   }
 
   return { add, start, current };
