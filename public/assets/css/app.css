@@ -146,58 +146,18 @@ a:hover {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   LAYOUT — Основная сетка
+   LAYOUT — grid defined in layout.css via CSS variables
    ───────────────────────────────────────────────────────────────────────────── */
-.app {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  min-height: 100vh;
-}
-
-@media (max-width: 900px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
-}
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   SIDEBAR — Боковая панель
+   SIDEBAR — Visual styles only (structure in layout.css)
    ───────────────────────────────────────────────────────────────────────────── */
 .sidenav {
   background: linear-gradient(180deg, rgba(10, 22, 40, 0.97), rgba(5, 10, 20, 0.99));
-  border-right: 1px solid var(--border);
   padding: 20px 16px;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  position: relative;
 }
 
-.sidenav::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 250px;
-  background: 
-    radial-gradient(ellipse at 30% 0%, var(--primary-glow), transparent 60%),
-    radial-gradient(ellipse at 70% 0%, var(--secondary-glow), transparent 60%);
-  pointer-events: none;
-}
-
-/* Кастомный скроллбар */
-.sidenav::-webkit-scrollbar { width: 6px; }
-.sidenav::-webkit-scrollbar-track { background: transparent; }
-.sidenav::-webkit-scrollbar-thumb { 
-  background: var(--secondary-border); 
-  border-radius: 3px; 
-}
-.sidenav::-webkit-scrollbar-thumb:hover { 
-  background: var(--primary-dim); 
-}
+/* Scrollbar — defined in layout.css */
 
 /* Логотип/Бренд */
 .brand {
@@ -426,24 +386,11 @@ a:hover {
    MAIN CONTENT AREA — Основной контент
    ───────────────────────────────────────────────────────────────────────────── */
 .main {
-  height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
   padding: 24px;
   position: relative;
+  z-index: 1;
 }
-
-.main::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 60%;
-  height: 400px;
-  background: radial-gradient(ellipse at 80% 0%, var(--gold-glow), transparent 60%);
-  pointer-events: none;
-  z-index: 0;
-}
+/* .main::before — defined in layout.css */
 
 /* Верхняя панель */
 .topbar {
@@ -5590,13 +5537,10 @@ html[data-theme="light"] [data-tooltip]::before {
    Свёрнутый режим сайдбара (только иконки)
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-/* Collapsed sidebar */
-.app.sidebar-collapsed {
-  grid-template-columns: 72px 1fr;
-}
+/* Collapsed sidebar — grid defined in layout.css */
 
 .app.sidebar-collapsed .sidenav {
-  width: 72px;
+  width: var(--sidebar-collapsed);
 }
 
 /* Hide text in collapsed mode */
@@ -5708,17 +5652,7 @@ html[data-theme="light"] [data-tooltip]::before {
   visibility: visible;
 }
 
-/* Grid update for collapsed sidebar */
-@media (min-width: 901px) {
-  .app {
-    grid-template-columns: 280px 1fr;
-    transition: grid-template-columns var(--transition-normal);
-  }
-
-  .app.sidebar-collapsed {
-    grid-template-columns: 72px 1fr;
-  }
-}
+/* Grid update for collapsed sidebar — handled by layout.css */
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    LIGHT THEME — Navigation Groups
