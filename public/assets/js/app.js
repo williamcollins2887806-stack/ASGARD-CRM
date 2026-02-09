@@ -271,6 +271,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/to-analytics",l:"Хроники Тендерного Отдела",d:"KPI тендерных специалистов",roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES],i:"kpiworks",p:"to_analytics",g:"analytics"},
     {r:"/pm-analytics",l:"Хроники Руководителей Проектов",d:"KPI и загрузка РП",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"kpiworks",p:"pm_analytics",g:"analytics"},
     {r:"/engineer-dashboard",l:"Кузница Инженера",d:"Склад, оборудование, ТО",roles:["ADMIN","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"backup",p:"engineer_dashboard",g:"analytics"},
+    {r:"/object-map",l:"Карта объектов",d:"География работ",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"kpiworks",p:"object_map",g:"analytics"},
 
     // Фаза 8: Почта
     {r:"/mailbox",l:"Почтовый ящик",d:"Входящие / исходящие письма",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"workers",p:"mailbox",g:"communications"},
@@ -1808,6 +1809,7 @@ try{
     AsgardRouter.add("/to-analytics", ()=>AsgardTOAnalytics.render({layout, title:"Хроники Тендерного Отдела"}), {auth:true, roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-analytics", ()=>AsgardPMAnalytics.render({layout, title:"Хроники Руководителей Проектов"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/engineer-dashboard", ()=>AsgardEngineerDashboard.render({layout, title:"Кузница Инженера"}), {auth:true, roles:["ADMIN","CHIEF_ENGINEER",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/object-map", ()=>AsgardObjectMap.render({layout, title:"Карта объектов"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
 
     // Фаза 8: Почта
     AsgardRouter.add("/mailbox", ()=>AsgardMailboxPage.render({layout, title:"Почтовый ящик"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"]});

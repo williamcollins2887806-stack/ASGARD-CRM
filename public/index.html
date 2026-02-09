@@ -57,6 +57,9 @@
   <!-- Theme initialization (before render) -->
   <script>(function(){try{var t=localStorage.getItem("asgard_theme")||"dark";document.documentElement.dataset.theme=t==="light"?"light":"dark";}catch(e){}})();</script>
 
+  <!-- Yandex Maps API 2.1 (for object map) -->
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU" type="text/javascript"></script>
+
   <!-- SheetJS (xlsx) для экспорта в Excel -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
@@ -165,6 +168,7 @@
   <script src="assets/js/mail_settings.js"></script>
   <script src="assets/js/inbox_applications.js"></script>
   <script src="assets/js/integrations.js"></script>
+  <script src="assets/js/object_map.js"></script>
   <script src="assets/js/app.js"></script>
   
   <!-- PWA Service Worker Registration -->

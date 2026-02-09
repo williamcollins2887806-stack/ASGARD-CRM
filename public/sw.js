@@ -97,6 +97,7 @@ const JS_ASSETS = [
   './assets/js/inbox_applications.js',
   './assets/js/integrations.js',
   './assets/js/invoices.js',
+  './assets/js/object_map.js',
   './assets/js/kanban.js',
   './assets/js/mail_settings.js',
   './assets/js/mailbox.js',
