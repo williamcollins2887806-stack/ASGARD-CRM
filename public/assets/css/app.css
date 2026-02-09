@@ -5591,12 +5591,12 @@ html[data-theme="light"] [data-tooltip]::before {
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 /* Collapsed sidebar */
-.app.sidebar-collapsed .sidenav {
-  width: 72px;
+.app.sidebar-collapsed {
+  grid-template-columns: 72px 1fr;
 }
 
-.app.sidebar-collapsed .main {
-  margin-left: 0;
+.app.sidebar-collapsed .sidenav {
+  width: 72px;
 }
 
 /* Hide text in collapsed mode */
