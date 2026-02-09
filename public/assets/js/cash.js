@@ -345,7 +345,7 @@ window.CashPage = (function() {
               return `
               <tr>
                 <td>${r.id}</td>
-                <td><span style="display:inline-block;padding:2px 8px;border-radius:4px;background:${typeColor};color:#fff;font-size:0.85em">${TYPE_LABELS[r.type] || r.type}</span></td>
+                <td><span class="badge" style="background:${typeColor}20;color:${typeColor};border:1px solid ${typeColor}40;font-size:0.85em">${TYPE_LABELS[r.type] || r.type}</span></td>
                 <td>${escapeHtml(r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные' : '-')))}</td>
                 <td><strong>${formatMoney(r.amount)}</strong></td>
                 <td><span class="badge bg-${STATUS_COLORS[r.status]}">${STATUS_LABELS[r.status]}</span></td>
@@ -449,7 +449,7 @@ window.CashPage = (function() {
     let html = `
       <div class="row mb-3">
         <div class="col-md-6">
-          <p><strong>Тип:</strong> <span style="display:inline-block;padding:2px 10px;border-radius:4px;background:${typeColor};color:#fff">${TYPE_LABELS[req.type] || req.type}</span></p>
+          <p><strong>Тип:</strong> <span class="badge" style="background:${typeColor}20;color:${typeColor};border:1px solid ${typeColor}40">${TYPE_LABELS[req.type] || req.type}</span></p>
           <p><strong>Проект:</strong> ${escapeHtml(req.work_title || (req.work_id ? '#' + req.work_id : (isLoan ? 'Личные средства' : '-')))}</p>
           <p><strong>Сумма:</strong> ${formatMoney(req.amount)}</p>
           <p><strong>Цель:</strong> ${escapeHtml(req.purpose)}</p>

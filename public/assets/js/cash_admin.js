@@ -289,7 +289,7 @@ window.CashAdminPage = (function() {
               <tr class="${r.status === 'requested' ? 'table-warning' : ''}">
                 <td>${r.id}</td>
                 <td><strong>${escapeHtml(r.user_name)}</strong><br><small class="text-muted">${r.user_role}</small></td>
-                <td><span style="display:inline-block;padding:2px 8px;border-radius:4px;background:${typeColor};color:#fff;font-size:0.85em">${TYPE_LABELS[r.type] || r.type}</span></td>
+                <td><span class="badge" style="background:${typeColor}20;color:${typeColor};border:1px solid ${typeColor}40;font-size:0.85em">${TYPE_LABELS[r.type] || r.type}</span></td>
                 <td>${escapeHtml(r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные' : '-')))}</td>
                 <td><strong>${formatMoney(r.amount)}</strong></td>
                 <td><span class="badge bg-${STATUS_COLORS[r.status]}">${STATUS_LABELS[r.status]}</span></td>
