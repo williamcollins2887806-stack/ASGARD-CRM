@@ -698,9 +698,12 @@ try{
           window.__ASG_NAV_SCROLL__ = nav.scrollTop;
         }, {passive: true});
       }
-      // Скроллим main вверх при навигации
+      // Скроллим вверх только при смене маршрута (не при повторном рендере)
       const newMain = document.querySelector('.main');
-      if (newMain) newMain.scrollTop = 0;
+      if (newMain && window.__ASG_LAST_ROUTE__ !== window.location.hash) {
+        newMain.scrollTop = 0;
+      }
+      window.__ASG_LAST_ROUTE__ = window.location.hash;
     });
     
     // Инициализируем AI-ассистента (только для авторизованных)
