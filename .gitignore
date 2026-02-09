@@ -19,6 +19,7 @@ uploads/
 public/uploads/
 *.sql
 !migrations/*.sql
+!tests/seed.sql
 *.dump
 
 # Бэкапы (содержат секреты и дубликаты)
@@ -30,4 +31,5 @@ src_backup_*/
 tests/screenshots/
 tests/test-report.txt
 tests/test-results.log
+tests/report.html
 backups/
