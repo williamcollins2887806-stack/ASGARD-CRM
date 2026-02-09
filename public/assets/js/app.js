@@ -698,6 +698,9 @@ try{
           window.__ASG_NAV_SCROLL__ = nav.scrollTop;
         }, {passive: true});
       }
+      // Скроллим main вверх при навигации
+      const newMain = document.querySelector('.main');
+      if (newMain) newMain.scrollTop = 0;
     });
     
     // Инициализируем AI-ассистента (только для авторизованных)
