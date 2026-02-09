@@ -78,6 +78,26 @@
   --gold-border: rgba(212, 168, 70, 0.35);
   --gold-bg: rgba(212, 168, 70, 0.08);
 
+  /* ═══════════════════════════════════════════════════════════════
+     ACCENT — Interactive elements (buttons, links, focus rings)
+     Same in both themes for consistency
+     ═══════════════════════════════════════════════════════════════ */
+  --accent: #C62828;
+  --accent-light: #E53935;
+  --accent-hover: #B91C1C;
+  --accent-glow: rgba(198, 40, 40, 0.15);
+  --accent-border: rgba(198, 40, 40, 0.35);
+
+  /* ═══════════════════════════════════════════════════════════════
+     SEMANTIC STATUS COLORS (same in both themes)
+     ═══════════════════════════════════════════════════════════════ */
+  --clr-gray: #64748b;
+  --clr-blue: #3b82f6;
+  --clr-purple: #8b5cf6;
+  --clr-yellow: #f59e0b;
+  --clr-green: #22c55e;
+  --clr-red: #ef4444;
+
   /* ═══════════════════════════════════════════════════════════════════════════
      STATUS COLORS
      ═══════════════════════════════════════════════════════════════════════════ */
@@ -376,6 +396,13 @@ html[data-theme="light"] {
   /* ═══════════════════════════════════════════════════════════════════════════
      SEMANTIC COLORS (adjusted for light mode)
      ═══════════════════════════════════════════════════════════════════════════ */
+
+  /* Accent stays the same in light theme */
+  --accent: #C62828;
+  --accent-light: #E53935;
+  --accent-hover: #B91C1C;
+  --accent-glow: rgba(198, 40, 40, 0.1);
+  --accent-border: rgba(198, 40, 40, 0.25);
 
   /* Primary (Red) */
   --primary: #B91C1C;
