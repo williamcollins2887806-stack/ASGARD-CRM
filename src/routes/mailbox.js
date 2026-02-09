@@ -47,7 +47,10 @@ async function routes(fastify, options) {
           auth: {
             user: a.smtp_user,
             pass: imapService.decrypt(a.smtp_pass_encrypted)
-          }
+          },
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 15000
         });
       }
     }
@@ -59,7 +62,12 @@ async function routes(fastify, options) {
       const result = await db.query("SELECT value_json FROM settings WHERE key = 'smtp_config'");
       if (result.rows.length > 0) {
         const config = JSON.parse(result.rows[0].value_json);
-        smtpTransporter = nodemailer.createTransport(config);
+        smtpTransporter = nodemailer.createTransport({
+          ...config,
+          connectionTimeout: config.connectionTimeout || 10000,
+          greetingTimeout: config.greetingTimeout || 10000,
+          socketTimeout: config.socketTimeout || 15000
+        });
         return smtpTransporter;
       }
     } catch (e) {}
@@ -69,7 +77,10 @@ async function routes(fastify, options) {
         host: process.env.SMTP_HOST,
         port: parseInt(process.env.SMTP_PORT || '587'),
         secure: process.env.SMTP_SECURE === 'true',
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
       });
       return smtpTransporter;
     }
@@ -698,7 +709,10 @@ async function routes(fastify, options) {
         host: b.smtp_host,
         port: b.smtp_port || 587,
         secure: b.smtp_tls !== false,
-        auth: { user: b.smtp_user, pass: b.smtp_pass }
+        auth: { user: b.smtp_user, pass: b.smtp_pass },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
       });
 
       await transport.verify();

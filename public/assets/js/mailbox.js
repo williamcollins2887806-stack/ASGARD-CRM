@@ -379,11 +379,9 @@ window.AsgardMailboxPage = (function(){
         ${ccList.length > 0 ? `<div style="font-size:12px; color:var(--text-muted);"><strong style="color:var(--text-main);">Копия:</strong> ${ccList.map(a => esc(a.address || a)).join(', ')}</div>` : ''}
       </div>
 
-      <!-- Body -->
+      <!-- Body (sandboxed iframe to prevent XSS from email HTML) -->
       <div style="padding:20px 24px; flex:1;">
-        <div id="mail-body-frame" style="background:#fff; border-radius:8px; padding:16px; min-height:200px; color:#1e293b; font-size:14px; line-height:1.6;">
-          ${e.body_html || (e.body_text || '').replace(/\n/g, '<br>').replace(/ {2}/g, '&nbsp; ') || '<em style="color:#94a3b8;">Пустое письмо</em>'}
-        </div>
+        <iframe id="mail-body-frame" sandbox="allow-same-origin" style="background:#fff; border-radius:8px; border:none; width:100%; min-height:200px; color:#1e293b; font-size:14px; line-height:1.6;"></iframe>
       </div>
 
       <!-- Attachments -->
@@ -417,6 +415,24 @@ window.AsgardMailboxPage = (function(){
         </div>
       ` : ''}
     `;
+
+    // Inject email body into sandboxed iframe
+    const bodyFrame = detailEl.querySelector('#mail-body-frame');
+    if (bodyFrame) {
+      const bodyContent = e.body_html || esc(e.body_text || '').replace(/\n/g, '<br>').replace(/ {2}/g, '&nbsp; ') || '<em style="color:#94a3b8;">Пустое письмо</em>';
+      bodyFrame.addEventListener('load', function onLoad() {
+        bodyFrame.removeEventListener('load', onLoad);
+        try {
+          const doc = bodyFrame.contentDocument;
+          doc.open();
+          doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:16px;font-family:system-ui,sans-serif;font-size:14px;line-height:1.6;color:#1e293b}img{max-width:100%}</style></head><body>' + bodyContent + '</body></html>');
+          doc.close();
+          // Auto-resize iframe to content height
+          bodyFrame.style.height = (doc.body.scrollHeight + 40) + 'px';
+        } catch (_) {}
+      });
+      bodyFrame.src = 'about:blank';
+    }
 
     // Bind action buttons
     detailEl.querySelectorAll('.mail-action-btn').forEach(btn => {

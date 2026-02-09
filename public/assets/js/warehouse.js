@@ -457,7 +457,7 @@ window.AsgardWarehouse = (function(){
         `;
       }
     } catch(e) {
-      resultDiv.innerHTML = `<div style="color:#ef4444">Ошибка: ${e.message}</div>`;
+      resultDiv.innerHTML = `<div style="color:#ef4444">Ошибка: ${esc(e.message)}</div>`;
     }
   }
   

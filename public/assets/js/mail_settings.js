@@ -344,10 +344,10 @@ window.AsgardMailSettingsPage = (function(){
         </tr></thead>
         <tbody>
           ${rules.map(r => `<tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:6px 8px;color:var(--text-main);">${RULE_TYPES[r.rule_type] || r.rule_type}</td>
+            <td style="padding:6px 8px;color:var(--text-main);">${esc(RULE_TYPES[r.rule_type] || r.rule_type)}</td>
             <td style="padding:6px 8px;color:var(--text-main);max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.pattern)}">${esc(r.pattern)}</td>
-            <td style="padding:6px 8px;color:var(--text-muted);">${r.match_mode}</td>
-            <td style="padding:6px 8px;"><span style="color:${CLASS_COLORS[r.classification] || '#64748b'};font-weight:600;">${r.classification}</span></td>
+            <td style="padding:6px 8px;color:var(--text-muted);">${esc(r.match_mode)}</td>
+            <td style="padding:6px 8px;"><span style="color:${CLASS_COLORS[r.classification] || '#64748b'};font-weight:600;">${esc(r.classification)}</span></td>
             <td style="padding:6px 8px;text-align:center;color:var(--text-main);">${r.confidence}%</td>
             <td style="padding:6px 8px;text-align:center;color:var(--text-main);">${r.priority}</td>
             <td style="padding:6px 8px;text-align:center;color:var(--text-muted);">${r.times_matched || 0}</td>
@@ -493,7 +493,7 @@ window.AsgardMailSettingsPage = (function(){
         const resDiv = $('#tc-result');
         if (resDiv) {
           resDiv.style.display = 'block';
-          resDiv.innerHTML = `<strong style="color:var(--text-main);">Результат:</strong> <span style="font-weight:600;">${result.type}</span> (уверенность: ${result.confidence}%, правило: ${result.rule_id || 'нет'})`;
+          resDiv.innerHTML = `<strong style="color:var(--text-main);">Результат:</strong> <span style="font-weight:600;">${esc(result.type)}</span> (уверенность: ${esc(result.confidence)}%, правило: ${esc(result.rule_id || 'нет')})`;
         }
       } catch (e) { toast(e.message, 'error'); }
     });
@@ -519,7 +519,7 @@ window.AsgardMailSettingsPage = (function(){
             <div>
               <strong style="color:var(--text-main);font-size:13px;">${esc(t.name)}</strong>
               <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">[${esc(t.code)}]</span>
-              <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">${CAT_LABELS[t.category] || t.category}</span>
+              <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">${esc(CAT_LABELS[t.category] || t.category)}</span>
               ${t.use_letterhead ? '<span style="font-size:10px;color:var(--primary);margin-left:8px;">Бланк</span>' : ''}
               ${t.is_system ? '<span style="font-size:10px;color:var(--blue);margin-left:4px;">Системный</span>' : ''}
             </div>
@@ -570,8 +570,8 @@ window.AsgardMailSettingsPage = (function(){
           ${syncLogs.map(l => `<tr style="border-bottom:1px solid var(--border);">
             <td style="padding:6px 8px;color:var(--text-main);">${l.started_at ? new Date(l.started_at).toLocaleString('ru-RU') : ''}</td>
             <td style="padding:6px 8px;color:var(--text-main);">${esc(l.account_name || '')} <span style="color:var(--text-muted);font-size:11px;">${esc(l.email_address || '')}</span></td>
-            <td style="padding:6px 8px;color:var(--text-muted);">${l.sync_type}</td>
-            <td style="padding:6px 8px;text-align:center;"><span style="color:${statusColors[l.status] || 'var(--text-muted)'}; font-weight:600;">${l.status}</span></td>
+            <td style="padding:6px 8px;color:var(--text-muted);">${esc(l.sync_type)}</td>
+            <td style="padding:6px 8px;text-align:center;"><span style="color:${statusColors[l.status] || 'var(--text-muted)'}; font-weight:600;">${esc(l.status)}</span></td>
             <td style="padding:6px 8px;text-align:center;color:var(--text-main);">${l.emails_fetched || 0}</td>
             <td style="padding:6px 8px;text-align:center;color:var(--green);">${l.emails_new || 0}</td>
             <td style="padding:6px 8px;text-align:center;color:${(l.errors_count || 0) > 0 ? 'var(--red)' : 'var(--text-muted)'};">${l.errors_count || 0}</td>

@@ -8,6 +8,7 @@
 
 'use strict';
 
+const crypto = require('crypto');
 const db = require('../services/db');
 const bankProcessor = require('../services/bank-processor');
 const platformParser = require('../services/platform-parser');
@@ -807,14 +808,32 @@ module.exports = async function (fastify) {
   });
 
   // ── POST /erp/webhook/:connection_id ─────────────────────────────────
-  fastify.post('/erp/webhook/:connection_id', async (req, reply) => {
+  fastify.post('/erp/webhook/:connection_id', {
+    config: { rawBody: true }
+  }, async (req, reply) => {
     const connRes = await db.query('SELECT * FROM erp_connections WHERE id = $1 AND is_active = true', [req.params.connection_id]);
     if (!connRes.rows.length) return reply.code(404).send({ error: 'Подключение не найдено' });
 
-    // Простая проверка токена из заголовка
-    const token = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
-    // В будущем — сравнить с сохранённым
-    if (!token) return reply.code(401).send({ error: 'Требуется авторизация' });
+    const conn = connRes.rows[0];
+
+    // SECURITY: HMAC-SHA256 signature validation
+    if (conn.webhook_secret) {
+      const signature = req.headers['x-webhook-signature'] || '';
+      if (!signature) {
+        return reply.code(401).send({ error: 'Missing X-Webhook-Signature header' });
+      }
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      const expected = crypto.createHmac('sha256', conn.webhook_secret).update(rawBody).digest('hex');
+      const sigHex = signature.replace(/^sha256=/, '');
+      if (sigHex.length !== expected.length ||
+          !crypto.timingSafeEqual(Buffer.from(sigHex, 'hex'), Buffer.from(expected, 'hex'))) {
+        return reply.code(401).send({ error: 'Invalid webhook signature' });
+      }
+    } else {
+      // Fallback: простая проверка токена (backward compatibility)
+      const token = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+      if (!token) return reply.code(401).send({ error: 'Требуется авторизация' });
+    }
 
     const { entity_type, action, data } = req.body;
     if (!entity_type || !data) return reply.code(400).send({ error: 'entity_type и data обязательны' });
@@ -831,6 +850,21 @@ module.exports = async function (fastify) {
         [JSON.stringify([{ error: e.message }]), logRes.rows[0].id]);
       return reply.code(500).send({ error: e.message });
     }
+  });
+
+  // ── POST /erp/connections/:id/rotate-secret ─────────────────────────
+  fastify.post('/erp/connections/:id/rotate-secret', {
+    preHandler: [fastify.authenticate]
+  }, async (req, reply) => {
+    if (!ERP_ROLES.includes(req.user.role)) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+    const connRes = await db.query('SELECT id FROM erp_connections WHERE id = $1', [req.params.id]);
+    if (!connRes.rows.length) return reply.code(404).send({ error: 'Подключение не найдено' });
+
+    const secret = crypto.randomBytes(32).toString('hex');
+    await db.query('UPDATE erp_connections SET webhook_secret = $1, updated_at = NOW() WHERE id = $2', [secret, req.params.id]);
+    return { success: true, webhook_secret: secret };
   });
 
 };

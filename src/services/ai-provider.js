@@ -16,6 +16,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
 const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '4096', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
+const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '60000', 10); // 60 sec default
 
 // API endpoints
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
@@ -62,24 +63,40 @@ async function callAnthropic({ system, messages, maxTokens, temperature, stream 
     stream: stream
   };
 
-  const response = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), stream ? AI_TIMEOUT_MS * 3 : AI_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(ANTHROPIC_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') throw new Error(`Anthropic API timeout after ${AI_TIMEOUT_MS}ms`);
+    throw err;
+  }
 
   if (!response.ok) {
+    clearTimeout(timeoutId);
     const errorText = await response.text();
     throw new Error(`Anthropic API error ${response.status}: ${errorText}`);
   }
 
   if (stream) {
+    // Для стриминга: не очищаем timeout здесь — ответственность вызывающего
+    clearTimeout(timeoutId);
     return response;
   }
+
+  clearTimeout(timeoutId);
 
   const data = await response.json();
 
@@ -129,23 +146,38 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
     stream: stream
   };
 
-  const response = await fetch(OPENAI_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + OPENAI_API_KEY
-    },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), stream ? AI_TIMEOUT_MS * 3 : AI_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(OPENAI_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + OPENAI_API_KEY
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') throw new Error(`OpenAI API timeout after ${AI_TIMEOUT_MS}ms`);
+    throw err;
+  }
 
   if (!response.ok) {
+    clearTimeout(timeoutId);
     const errorText = await response.text();
     throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
   }
 
   if (stream) {
+    clearTimeout(timeoutId);
     return response;
   }
+
+  clearTimeout(timeoutId);
 
   const data = await response.json();
 

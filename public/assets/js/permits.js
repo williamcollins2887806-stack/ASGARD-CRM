@@ -254,7 +254,7 @@ window.AsgardPermitsPage = (function(){
                 ${Object.entries(CATEGORIES).map(([catId, cat]) => `
                   <optgroup label="${cat.name}">
                     ${types.filter(t => t.category === catId).map(t => `
-                      <option value="${t.id}" ${permit?.type_id === t.id ? 'selected' : ''}>${t.name}</option>
+                      <option value="${t.id}" ${permit?.type_id === t.id ? 'selected' : ''}>${esc(t.name)}</option>
                     `).join('')}
                   </optgroup>
                 `).join('')}
@@ -873,7 +873,7 @@ window.AsgardPermitsPage = (function(){
                 <option value="">— Добавить тип —</option>
                 ${Object.entries(CATEGORIES).map(([catId, cat]) => `
                   <optgroup label="${cat.name}">
-                    ${types.filter(t => t.category === catId).map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                    ${types.filter(t => t.category === catId).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
                   </optgroup>
                 `).join('')}
               </select>

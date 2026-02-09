@@ -422,19 +422,19 @@ window.AsgardProxiesPage = (function(){
       }
 
       return `
-        <h4>ДОВЕРЕННОСТЬ № ${data.number || '___'}</h4>
+        <h4>ДОВЕРЕННОСТЬ № ${esc(data.number || '___')}</h4>
         <p class="center">${formatDate(data.issue_date)}</p>
         <p class="center">г. Москва</p>
         <br/>
         <p><span class="bold">${companyName}</span>, ИНН 0000000000, ОГРН 0000000000000, в лице ${directorName}, действующего на основании Устава, настоящей доверенностью уполномочивает:</p>
         <br/>
-        <p class="bold">${data.fio || '_______________'}</p>
-        <p>паспорт: ${data.passport || '_______________'}</p>
-        ${data.address ? `<p>адрес: ${data.address}</p>` : ''}
-        ${data.position ? `<p>должность: ${data.position}</p>` : ''}
-        ${data.license ? `<p>в/у: ${data.license}</p>` : ''}
+        <p class="bold">${esc(data.fio || '_______________')}</p>
+        <p>паспорт: ${esc(data.passport || '_______________')}</p>
+        ${data.address ? `<p>адрес: ${esc(data.address)}</p>` : ''}
+        ${data.position ? `<p>должность: ${esc(data.position)}</p>` : ''}
+        ${data.license ? `<p>в/у: ${esc(data.license)}</p>` : ''}
         <br/>
-        <p>${powersText}.</p>
+        <p>${esc(powersText)}.</p>
         <br/>
         <p>Доверенность выдана сроком до ${formatDate(data.valid_until)} без права передоверия.</p>
         <br/>

@@ -634,7 +634,7 @@ window.AsgardTasksAdminPage = (function() {
             <h4>Файлы</h4>
             <div class="task-files">
               ${task.files.map(f => `
-                <a href="/api/tasks/${task.id}/file/${f.filename}"
+                <a href="/api/tasks/${task.id}/file/${encodeURIComponent(f.filename)}"
                    target="_blank" class="file-link">
                   ${escapeHtml(f.original_name || f.filename)}
                 </a>

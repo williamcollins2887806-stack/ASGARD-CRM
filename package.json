@@ -21,6 +21,7 @@
   "dependencies": {
     "@fastify/cookie": "^9.2.0",
     "@fastify/cors": "^8.5.0",
+    "@fastify/helmet": "^13.0.2",
     "@fastify/jwt": "^8.0.0",
     "@fastify/multipart": "^8.1.0",
     "@fastify/rate-limit": "^9.1.0",

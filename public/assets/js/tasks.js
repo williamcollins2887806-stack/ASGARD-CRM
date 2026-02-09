@@ -276,7 +276,7 @@ window.AsgardTasksPage = (function() {
 
     const filesHtml = (Array.isArray(t.files) && t.files.length > 0) ?
       `<div style="margin-top:8px"><strong>Файлы:</strong> ${t.files.map(f =>
-        `<a href="/api/tasks/${t.id}/file/${f.filename}" target="_blank" style="margin-left:6px">${escapeHtml(f.original_name)}</a>`
+        `<a href="/api/tasks/${t.id}/file/${encodeURIComponent(f.filename)}" target="_blank" style="margin-left:6px">${escapeHtml(f.original_name)}</a>`
       ).join('')}</div>` : '';
 
     return `

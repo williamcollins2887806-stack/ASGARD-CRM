@@ -452,7 +452,7 @@ window.AsgardOfficeExpensesPage = (function(){
         if(window.AsgardContractsPage){
           AsgardContractsPage.openContractSelector(found.id, 'supplier', (contract) => {
             $('#exp_contract_id').value = contract.id;
-            $('#contractInfo').innerHTML = `<strong>${contract.number}</strong><br><small>${contract.subject || 'Без предмета'}</small>`;
+            $('#contractInfo').innerHTML = `<strong>${esc(contract.number)}</strong><br><small>${esc(contract.subject || 'Без предмета')}</small>`;
             $('#contractInfo').style.display = 'block';
           });
         }

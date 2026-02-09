@@ -31,6 +31,13 @@ const config = {
 // Plugins
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Security headers (SECURITY: helmet)
+fastify.register(require('@fastify/helmet'), {
+  contentSecurityPolicy: false,         // CSP отключён — инлайн-скрипты/стили в SPA
+  crossOriginEmbedderPolicy: false,     // не ломать загрузку внешних ресурсов
+  crossOriginResourcePolicy: { policy: 'same-site' }
+});
+
 // CORS
 fastify.register(require('@fastify/cors'), {
   origin: config.corsOrigin === '*' ? true : config.corsOrigin.split(','),
@@ -344,9 +351,18 @@ const start = async () => {
       fastify.log.warn('WARNING: Using weak database password. Change DB_PASSWORD in production!');
     }
 
-    // SECURITY: Предупреждение о CORS в production
-    if (process.env.NODE_ENV === 'production' && config.corsOrigin === '*') {
-      fastify.log.warn('WARNING: CORS origin is set to *. This is not recommended for production!');
+    // SECURITY: CORS production check — запрет wildcard и HTTP origins
+    if (process.env.NODE_ENV === 'production') {
+      if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') {
+        fastify.log.error('FATAL: CORS_ORIGIN must be set to specific origin(s) in production (not "*")');
+        process.exit(1);
+      }
+      const origins = process.env.CORS_ORIGIN.split(',');
+      const httpOrigin = origins.find(o => o.trim().startsWith('http://'));
+      if (httpOrigin) {
+        fastify.log.error('FATAL: CORS_ORIGIN contains insecure HTTP origin: ' + httpOrigin.trim());
+        process.exit(1);
+      }
     }
 
     // Test database connection

@@ -19,7 +19,12 @@ async function routes(fastify, options) {
       const result = await db.query("SELECT value_json FROM settings WHERE key = 'smtp_config'");
       if (result.rows.length > 0) {
         const config = JSON.parse(result.rows[0].value_json);
-        transporter = nodemailer.createTransport(config);
+        transporter = nodemailer.createTransport({
+          ...config,
+          connectionTimeout: config.connectionTimeout || 10000,
+          greetingTimeout: config.greetingTimeout || 10000,
+          socketTimeout: config.socketTimeout || 15000
+        });
         return transporter;
       }
     } catch (e) {}
@@ -33,7 +38,10 @@ async function routes(fastify, options) {
         auth: {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASS
-        }
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
       });
       return transporter;
     }
