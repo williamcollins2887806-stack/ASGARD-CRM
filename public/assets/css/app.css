@@ -3439,28 +3439,6 @@ html[data-theme="light"] .badge.warning { background: rgba(217, 119, 6, 0.15); c
 html[data-theme="light"] .badge.danger { background: rgba(220, 38, 38, 0.15); color: #b91c1c; border-color: rgba(220, 38, 38, 0.2); }
 html[data-theme="light"] .badge.info { background: rgba(37, 99, 235, 0.15); color: #1d4ed8; border-color: rgba(37, 99, 235, 0.2); }
 
-/* Modals */
-html[data-theme="light"] .modal-overlay {
-  background: rgba(0, 0, 0, 0.4);
-}
-
-html[data-theme="light"] .modal-content {
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-}
-
-html[data-theme="light"] .modal-header {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.06), rgba(37, 99, 235, 0.04));
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  color: #1e293b;
-}
-
-html[data-theme="light"] .modal-footer {
-  background: #f8fafc;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-}
-
 /* KPI Cards */
 html[data-theme="light"] .kpi {
   background: #ffffff;
@@ -4483,25 +4461,6 @@ html[data-theme="light"] table.asg tr td:last-child {
   border-top-right-radius: 12px;
   border-bottom-right-radius: 12px;
   border-right-width: 1px;
-}
-
-/* Modal styling handled by components.css + design-tokens.css */
-
-html[data-theme="light"] .modal {
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
-}
-
-html[data-theme="light"] .modal .mh {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.04), rgba(37, 99, 235, 0.03));
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 20px 20px 0 0;
-}
-
-html[data-theme="light"] .modal .mc {
-  color: #1e293b;
 }
 
 /* Softer KPI cards */
@@ -5630,19 +5589,6 @@ html[data-theme="light"] table.asg tr:hover td {
   background: rgba(220, 38, 38, 0.03);
 }
 
-html[data-theme="light"] .modal {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(248, 250, 252, 0.99) 100%
-  );
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow:
-    0 25px 80px rgba(0, 0, 0, 0.15),
-    0 1px 0 rgba(255, 255, 255, 0.8) inset;
-}
-
-
 
 html[data-theme="light"] .kpi .k {
   background: linear-gradient(
@@ -6041,4 +5987,91 @@ td, th { word-break: break-word; }
     max-height: 100vh; border-radius: 0;
   }
   .tasks-page { grid-template-columns: 1fr !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   LIGHT THEME — Modals & Forms (unified)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Modal overlay */
+html[data-theme="light"] .modalback,
+html[data-theme="light"] .modal-overlay {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+/* Modal box */
+html[data-theme="light"] .modal,
+html[data-theme="light"] .modal-content {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+}
+
+/* Modal header */
+html[data-theme="light"] .mh,
+html[data-theme="light"] .modal-header {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.04), rgba(37, 99, 235, 0.03));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="light"] .mh .h,
+html[data-theme="light"] .mh .ttl,
+html[data-theme="light"] .modal-header h2,
+html[data-theme="light"] .modal-header h3 {
+  color: #1e293b;
+}
+
+/* Modal body */
+html[data-theme="light"] .mc,
+html[data-theme="light"] .modal-body {
+  color: #1e293b;
+}
+
+/* Modal footer */
+html[data-theme="light"] .mf,
+html[data-theme="light"] .modal-footer {
+  background: #f8fafc;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* Form inputs */
+html[data-theme="light"] .inp,
+html[data-theme="light"] .modal input,
+html[data-theme="light"] .modal select,
+html[data-theme="light"] .modal textarea,
+html[data-theme="light"] .modal-content input,
+html[data-theme="light"] .modal-content select,
+html[data-theme="light"] .modal-content textarea,
+html[data-theme="light"] .formrow input,
+html[data-theme="light"] .formrow select,
+html[data-theme="light"] .formrow textarea {
+  background: #f8fafc;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #1e293b;
+}
+
+html[data-theme="light"] .inp:focus,
+html[data-theme="light"] .modal input:focus,
+html[data-theme="light"] .modal select:focus,
+html[data-theme="light"] .modal-content input:focus,
+html[data-theme="light"] .modal-content select:focus {
+  border-color: var(--primary, #dc2626);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+html[data-theme="light"] .inp::placeholder,
+html[data-theme="light"] input::placeholder {
+  color: #94a3b8;
+}
+
+/* Form labels */
+html[data-theme="light"] .formrow label,
+html[data-theme="light"] label {
+  color: #475569;
+}
+
+/* Badges in light theme — semi-transparent */
+html[data-theme="light"] .badge[style*="background"] {
+  border-radius: 999px !important;
 }
