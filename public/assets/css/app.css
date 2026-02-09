@@ -2935,6 +2935,167 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+   UNIFIED MODAL SYSTEM — единый стиль для обеих систем модалок
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Overlay — и .modalback и .modal-overlay */
+.modalback,
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  overflow-y: auto;
+  z-index: var(--z-modal, 400);
+}
+
+.modalback[style*="display: flex"],
+.modalback.show,
+.modal-overlay.show,
+.modal-overlay.active,
+.modal-overlay[style*="display: flex"] {
+  display: flex;
+}
+
+/* Modal box */
+.modal,
+.modal-content {
+  width: min(720px, 95vw);
+  max-height: 90vh;
+  background: var(--bg-card, #132040);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalIn 0.3s ease;
+}
+
+.modal.fullscreen,
+.modal-content.fullscreen {
+  width: min(1400px, 98vw);
+  height: 95vh;
+  max-height: 95vh;
+}
+
+/* Wide modal (используется showModal с wide) */
+.modal.wide {
+  width: min(1000px, 95vw);
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Header */
+.mh,
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated, rgba(26, 45, 82, 0.4));
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Gold top line */
+.mh::before,
+.modal-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold, #D4A846), var(--primary, #C62828));
+}
+
+.mh .h,
+.mh .ttl,
+.modal-header h2,
+.modal-header h3,
+.modal-header .title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gold, #D4A846);
+  margin: 0;
+}
+
+/* Body */
+.mc,
+.modal-body {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  color: var(--text-primary);
+}
+
+/* Footer */
+.mf,
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated, rgba(26, 45, 82, 0.4));
+  flex-shrink: 0;
+}
+
+/* Close button */
+.xbtn,
+.modal-close,
+.modal-header .close-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.xbtn:hover,
+.modal-close:hover,
+.modal-header .close-btn:hover {
+  border-color: var(--red, #ef4444);
+  color: var(--red, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Mobile modal */
+@media (max-width: 768px) {
+  .modalback,
+  .modal-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .modal,
+  .modal-content {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    LIGHT THEME — Полная светлая красно-синяя тема
    ───────────────────────────────────────────────────────────────────────────── */
@@ -3998,68 +4159,6 @@ html[data-theme="light"] .watermark {
 }
 
 
-/* ═══════════════════════════════════════════════════════════════════════════════
-   MODAL-OVERLAY (для печатей и других модалов)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  z-index: var(--z-modal);
-  animation: fadeIn 0.2s ease;
-}
-
-.modal-overlay .modal-content {
-  width: 100%;
-  max-height: 90vh;
-  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg), 0 0 60px rgba(0, 0, 0, 0.5);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: modal-in 0.3s ease;
-}
-
-.modal-overlay .modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
-}
-
-.modal-overlay .modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.modal-overlay .modal-body {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.modal-overlay .modal-footer {
-  padding: 16px 24px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-elevated);
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    VIKING GREETING STYLES
