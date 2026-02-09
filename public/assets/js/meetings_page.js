@@ -123,10 +123,12 @@ window.AsgardMeetings = (function(){
     const auth = await AsgardAuth.requireUser();
     if (!auth) { location.hash = '#/login'; return; }
 
-    const [{ meetings }, stats] = await Promise.all([
-      API.getMeetings({ my_only: 'true' }),
-      API.getStats()
+    const [meetingsResp, statsResp] = await Promise.all([
+      API.getMeetings({ my_only: 'true' }).catch(() => ({})),
+      API.getStats().catch(() => ({}))
     ]);
+    const meetings = meetingsResp?.meetings || [];
+    const stats = statsResp || {};
 
     const upcomingHtml = meetings.filter(m => m.status === 'scheduled' || m.status === 'in_progress')
       .slice(0, 10)
@@ -516,7 +518,8 @@ window.AsgardMeetings = (function(){
 
   async function renderWidget() {
     try {
-      const { meetings } = await API.getUpcoming(3);
+      const upResp = await API.getUpcoming(3);
+      const meetings = upResp?.meetings || [];
 
       if (meetings.length === 0) {
         return `<div class="widget-empty"><span class="widget-empty-icon">📅</span><span class="widget-empty-text">Нет совещаний</span></div>`;

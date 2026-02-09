@@ -123,7 +123,8 @@ window.AsgardChatGroups = (function(){
 
     stopPolling();
 
-    const { chats } = await API.getChats();
+    const response = await API.getChats();
+    const chats = response?.chats || [];
 
     const chatListHtml = chats.length > 0 ? chats.map(c => `
       <div class="chat-item ${currentChatId == c.id ? 'active' : ''}" onclick="AsgardChatGroups.openChat(${c.id})">
@@ -179,8 +180,12 @@ window.AsgardChatGroups = (function(){
     const mainArea = $('#chat-main-area');
     if (!mainArea) return;
 
-    const { chat, members, myRole } = await API.getChat(chatId);
-    const { messages } = await API.getMessages(chatId);
+    const chatResp = await API.getChat(chatId);
+    const chat = chatResp?.chat || {};
+    const members = chatResp?.members || [];
+    const myRole = chatResp?.myRole || 'member';
+    const msgsResp = await API.getMessages(chatId);
+    const messages = msgsResp?.messages || [];
     const auth = await AsgardAuth.get();
     const userId = auth.user.id;
 
