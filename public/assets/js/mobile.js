@@ -219,6 +219,9 @@ window.AsgardMobile = (function(){
     }
     setVH();
     window.addEventListener('resize', setVH);
+
+    detectStandalone();
+    checkIOSInstall();
   }
   
   // CSS для мобильной версии (только уникальные стили — остальное в app.css)
@@ -294,6 +297,97 @@ window.AsgardMobile = (function(){
     init();
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PWA INSTALL PROMPT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  let deferredPrompt = null;
+
+  // Android: перехватываем стандартный промпт Chrome
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (window.matchMedia('(display-mode: standalone)').matches) return;
+    if (sessionStorage.getItem('asg_install_dismissed')) return;
+    showInstallBanner('android');
+  });
+
+  // iOS: проверяем при загрузке
+  function checkIOSInstall() {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isStandalone = window.navigator.standalone === true;
+    const dismissed = localStorage.getItem('asg_ios_install_dismissed');
+    if (isIOS && !isStandalone && !dismissed) {
+      setTimeout(() => showInstallBanner('ios'), 3000);
+    }
+  }
+
+  function showInstallBanner(platform) {
+    if (document.getElementById('pwaInstallBanner')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'pwaInstallBanner';
+    banner.className = 'pwa-install-banner';
+
+    if (platform === 'ios') {
+      banner.innerHTML = `
+        <div class="pwa-install-content">
+          <img src="assets/img/icon-96.png" class="pwa-install-icon" alt="АСГАРД"/>
+          <div class="pwa-install-text">
+            <div class="pwa-install-title">Установить АСГАРД CRM</div>
+            <div class="pwa-install-desc">Нажмите <strong>Поделиться</strong> <span style="font-size:16px">⎋</span> → <strong>На экран «Домой»</strong></div>
+          </div>
+          <button class="pwa-install-close" id="pwaInstallClose">✕</button>
+        </div>`;
+    } else {
+      banner.innerHTML = `
+        <div class="pwa-install-content">
+          <img src="assets/img/icon-96.png" class="pwa-install-icon" alt="АСГАРД"/>
+          <div class="pwa-install-text">
+            <div class="pwa-install-title">Установить АСГАРД CRM</div>
+            <div class="pwa-install-desc">Быстрый доступ с рабочего стола</div>
+          </div>
+          <button class="btn primary pwa-install-btn" id="pwaInstallBtn">Установить</button>
+          <button class="pwa-install-close" id="pwaInstallClose">✕</button>
+        </div>`;
+    }
+
+    document.body.appendChild(banner);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => banner.classList.add('visible'));
+    });
+
+    document.getElementById('pwaInstallClose')?.addEventListener('click', () => {
+      banner.classList.remove('visible');
+      setTimeout(() => banner.remove(), 300);
+      if (platform === 'ios') {
+        localStorage.setItem('asg_ios_install_dismissed', '1');
+      } else {
+        sessionStorage.setItem('asg_install_dismissed', '1');
+      }
+    });
+
+    document.getElementById('pwaInstallBtn')?.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const result = await deferredPrompt.userChoice;
+      if (result.outcome === 'accepted' && window.AsgardUI?.toast) {
+        AsgardUI.toast('Готово', 'АСГАРД CRM установлен!', 'ok');
+      }
+      deferredPrompt = null;
+      banner.classList.remove('visible');
+      setTimeout(() => banner.remove(), 300);
+    });
+  }
+
+  // Standalone detection
+  function detectStandalone() {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         window.navigator.standalone === true;
+    document.body.classList.toggle('pwa-standalone', isStandalone);
+    return isStandalone;
+  }
+
   return {
     init,
     detectMobile,
@@ -301,6 +395,7 @@ window.AsgardMobile = (function(){
     closeMenu,
     toggleMenu,
     vibrate,
-    isMobile: () => isMobile
+    isMobile: () => isMobile,
+    detectStandalone
   };
 })();
