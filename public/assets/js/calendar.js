@@ -239,7 +239,8 @@ window.AsgardCalendarPage = (function(){
     const now = new Date();
     let viewYear = now.getFullYear();
     let viewMonth = now.getMonth();
-    
+    let filterParticipant = '';
+
     async function renderCalendar() {
       let events = await loadEvents(viewYear, viewMonth);
 
@@ -353,8 +354,6 @@ window.AsgardCalendarPage = (function(){
     // Load users for filter
     const allUsers = await AsgardDB.all('users') || [];
     const activeUsers = allUsers.filter(u => u.is_active !== false);
-    let filterParticipant = '';
-
     const userOptions = activeUsers.map(u =>
       `<option value="${esc(u.name || u.login)}">${esc(u.name || u.login)}</option>`
     ).join('');
