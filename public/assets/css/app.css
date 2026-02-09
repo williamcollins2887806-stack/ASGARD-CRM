@@ -5143,7 +5143,7 @@ input:focus, select:focus, textarea:focus, .inp:focus {
 /* ─────────────────────────────────────────────────────────────────────────────
    MODERN NOTIFICATION BADGES
    ───────────────────────────────────────────────────────────────────────────── */
-.notification-badge, .bellcount {
+.notification-badge {
   position: absolute;
   top: -4px;
   right: -4px;
@@ -5160,6 +5160,22 @@ input:focus, select:focus, textarea:focus, .inp:focus {
   justify-content: center;
   box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
   animation: badgePulse 2s ease-in-out infinite;
+}
+
+/* bellcount — НЕ absolute, остаётся в потоке flex-контейнера .bellbtn */
+.bellcount {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  background: var(--red, #ef4444);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 @keyframes badgePulse {
@@ -5843,10 +5859,18 @@ html[data-theme="light"] [data-tooltip]::before {
   height: 40px;
 }
 
-/* Adjust nav group header */
+/* Collapsed mode — компактные группы */
+.app.sidebar-collapsed .nav-group {
+  margin-bottom: 0;
+}
+
 .app.sidebar-collapsed .nav-group-header {
   justify-content: center;
-  padding: 12px 8px;
+  padding: 8px 0;
+}
+
+.app.sidebar-collapsed .nav-group-items {
+  display: none;
 }
 
 .app.sidebar-collapsed .nav-group-icon {
