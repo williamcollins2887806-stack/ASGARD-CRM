@@ -237,8 +237,11 @@ window.AsgardTasksAdminPage = (function() {
       const stats = await statsRes.json();
 
       if (usersRes.ok) {
-        users = await usersRes.json();
-        populateUserSelects();
+        const usersData = await usersRes.json();
+        users = usersData.users || usersData || [];
+        if (Array.isArray(users)) {
+          populateUserSelects();
+        }
       }
 
       renderKpiCards(stats);
