@@ -588,9 +588,10 @@ a:hover {
   background: linear-gradient(135deg, var(--secondary-glow), var(--glass));
   color: var(--text-primary);
   font-size: 13px;
+  font-family: var(--font-sans);
   font-weight: 600;
   cursor: pointer;
-  transition: all var(--transition-normal);
+  transition: all 0.2s;
   box-shadow: var(--shadow-sm);
 }
 
@@ -658,13 +659,18 @@ a:hover {
 /* ─────────────────────────────────────────────────────────────────────────────
    CARDS — Карточки
    ───────────────────────────────────────────────────────────────────────────── */
-.card, .panel {
+.card, .panel, .widget, [class*="-card"] {
   background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.card:hover, .panel:hover, .widget:hover {
+  border-color: var(--gold-border, rgba(212,168,70,.4));
 }
 
 .card::before, .panel::before {
@@ -786,8 +792,8 @@ input, select, textarea {
   background: var(--bg-card);
   color: var(--text-primary);
   font-size: 14px;
-  font-family: inherit;
-  transition: all var(--transition-fast);
+  font-family: var(--font-sans);
+  transition: border-color 0.2s;
 }
 
 input:hover, select:hover, textarea:hover {
@@ -4595,8 +4601,8 @@ html[data-theme="light"] table.asg tr:hover td {
 
 /* Better scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -4605,11 +4611,11 @@ html[data-theme="light"] table.asg tr:hover td {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--secondary-dim);
+  background: var(--gold-dim, rgba(212,168,70,.4));
 }
 
 /* Smooth page transitions */
