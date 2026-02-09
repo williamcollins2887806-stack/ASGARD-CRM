@@ -2936,6 +2936,104 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   UNIFIED FORM STYLES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Formrow grid */
+.formrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.formrow label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Все инпуты */
+.inp,
+.modal input,
+.modal select,
+.modal textarea,
+.modal-content input,
+.modal-content select,
+.modal-content textarea,
+.formrow input,
+.formrow select,
+.formrow textarea {
+  width: 100%;
+  padding: 10px 14px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-main, rgba(10, 18, 37, 0.6));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.inp:focus,
+.modal input:focus,
+.modal select:focus,
+.modal textarea:focus,
+.modal-content input:focus,
+.modal-content select:focus,
+.modal-content textarea:focus,
+.formrow input:focus,
+.formrow select:focus,
+.formrow textarea:focus {
+  border-color: var(--gold, #D4A846);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(212, 168, 70, 0.15);
+}
+
+.inp::placeholder,
+.modal input::placeholder,
+.modal-content input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Textarea */
+textarea.inp,
+.modal textarea,
+.modal-content textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+/* Select */
+select.inp,
+.modal select,
+.modal-content select {
+  cursor: pointer;
+  appearance: auto;
+}
+
+/* Disabled */
+.inp:disabled,
+.modal input:disabled,
+.modal select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Form buttons row */
+.form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    UNIFIED MODAL SYSTEM — единый стиль для обеих систем модалок
    ═══════════════════════════════════════════════════════════════════════════════ */
 
