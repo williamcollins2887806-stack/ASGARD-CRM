@@ -85,7 +85,7 @@ window.AsgardPersonnelPage=(function(){
                   <td>${esc(e.role_tag||"")}</td>
                   <td>${esc(e.city||"")}</td>
                   <td>${esc(e.phone||"")}</td>
-                  <td>${e.rating_avg!=null? `<span class="badge"><span class="dot" style="background:#22c55e"></span>${esc(String(e.rating_avg.toFixed(1)))}</span>` : `<span class="badge"><span class="dot" style="background:#94a3b8"></span>—</span>`}</td>
+                  <td>${e.rating_avg!=null && e.rating_avg!==''? `<span class="badge"><span class="dot" style="background:#22c55e"></span>${Number(e.rating_avg).toFixed(1)}</span>` : `<span class="badge"><span class="dot" style="background:#94a3b8"></span>—</span>`}</td>
                   <td class="right">
                     <button class="btn sm ghost" data-open="${e.id}">Открыть</button>
                   </td>
