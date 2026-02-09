@@ -234,7 +234,7 @@ window.AsgardWarehouse = (function(){
             ${eq.serial_number ? `<div style="font-size:11px;color:var(--text-muted)">S/N: ${esc(eq.serial_number)}</div>` : ''}
           </td>
           <td>${eq.category_icon || ''} ${esc(eq.category_name || '—')}</td>
-          <td><span class="badge" style="background:${status.color}">${status.icon} ${status.label}</span></td>
+          <td><span class="badge" style="background:${status.color}20;color:${status.color};border:1px solid ${status.color}40">${status.icon} ${status.label}</span></td>
           <td><span style="color:${condition.color}">${condition.label}</span></td>
           <td style="font-size:13px">${location}</td>
           <td style="font-size:13px">${holder}</td>
@@ -433,7 +433,7 @@ window.AsgardWarehouse = (function(){
                 <div style="font-weight:700;font-size:16px">${esc(eq.name)}</div>
                 <div style="font-size:12px;color:var(--text-muted)">Инв. № ${esc(eq.inventory_number)}</div>
                 <div style="margin-top:8px">
-                  <span class="badge" style="background:${status.color}">${status.icon} ${status.label}</span>
+                  <span class="badge" style="background:${status.color}20;color:${status.color};border:1px solid ${status.color}40">${status.icon} ${status.label}</span>
                 </div>
                 ${eq.holder_name ? `<div style="font-size:12px;margin-top:4px">👤 ${esc(eq.holder_name)}</div>` : ''}
               </div>
@@ -1204,8 +1204,8 @@ window.AsgardWarehouse = (function(){
                 ${eq.brand ? esc(eq.brand) : ''} ${eq.model ? esc(eq.model) : ''}
               </div>
               <div style="margin-top:12px;display:flex;gap:8px">
-                <span class="badge" style="background:${status.color}">${status.icon} ${status.label}</span>
-                <span class="badge" style="background:${condition.color}">${condition.label}</span>
+                <span class="badge" style="background:${status.color}20;color:${status.color};border:1px solid ${status.color}40">${status.icon} ${status.label}</span>
+                <span class="badge" style="background:${condition.color}20;color:${condition.color};border:1px solid ${condition.color}40">${condition.label}</span>
               </div>
             </div>
             

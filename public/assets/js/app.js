@@ -1378,7 +1378,7 @@ try{
                 return `<div style="padding:8px 10px; margin-bottom:8px; background:rgba(42,59,102,.35); border-left:3px solid ${priorityColors[t.priority] || '#3b82f6'}; border-radius:6px">
                   <div style="font-weight:600">${esc(t.title)}</div>
                   <div style="font-size:12px; color:rgba(184,196,231,.85); margin-top:4px">
-                    <span style="background:${priorityColors[t.priority]}; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px">${statusLabels[t.status] || t.status}</span>
+                    <span style="background:${priorityColors[t.priority] || '#3b82f6'}20; color:${priorityColors[t.priority] || '#3b82f6'}; border:1px solid ${priorityColors[t.priority] || '#3b82f6'}40; padding:2px 6px; border-radius:3px; font-size:10px">${statusLabels[t.status] || t.status}</span>
                     ${deadlineStr ? `<span style="margin-left:8px; ${isOverdue ? 'color:#ef4444' : ''}">${deadlineStr}</span>` : ''}
                   </div>
                 </div>`;

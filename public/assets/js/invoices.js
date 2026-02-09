@@ -87,7 +87,7 @@ window.AsgardInvoicesPage = (function(){
                     <td>${esc(inv.customer_name || '—')}</td>
                     <td style="text-align:right">${formatMoney(inv.total_amount)}</td>
                     <td style="text-align:right">${formatMoney(inv.paid_amount)}</td>
-                    <td><span class="badge" style="background:${st.color}">${st.label}</span></td>
+                    <td><span class="badge" style="background:${st.color}20;color:${st.color};border:1px solid ${st.color}40">${st.label}</span></td>
                     <td>
                       <button class="btn mini" data-action="edit" data-id="${inv.id}">✏️</button>
                       <button class="btn mini" data-action="pay" data-id="${inv.id}">💰</button>
