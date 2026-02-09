@@ -1340,7 +1340,7 @@ async function equipmentRoutes(fastify, options) {
 
     // Оборудование требующее ТО
     const needsMaintenance = await db.query(`
-      SELECT e.id, e.name, e.inventory_number, e.next_maintenance_date,
+      SELECT e.id, e.name, e.inventory_number, e.next_maintenance,
         u.name as holder_name
       FROM equipment e
       LEFT JOIN users u ON e.current_holder_id = u.id
