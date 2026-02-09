@@ -105,6 +105,120 @@ window.AsgardUI = (function(){
     if(m) m.classList.remove("fullscreen");
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // SLIDE-OVER DRAWER
+  // ═══════════════════════════════════════════════════════════════
+  let drawerEl = null;
+  let drawerOverlay = null;
+
+  function ensureDrawer() {
+    if (drawerEl) return;
+
+    drawerOverlay = document.createElement('div');
+    drawerOverlay.className = 'drawer-overlay';
+    drawerOverlay.id = 'drawerOverlay';
+    document.body.appendChild(drawerOverlay);
+
+    drawerEl = document.createElement('div');
+    drawerEl.className = 'drawer';
+    drawerEl.id = 'drawer';
+    drawerEl.innerHTML = `
+      <div class="drawer-header" id="drawerHeader">
+        <button class="drawer-close" id="drawerClose" type="button" aria-label="Закрыть">✕</button>
+        <div class="drawer-title" id="drawerTitle"></div>
+        <div class="drawer-actions" id="drawerActions"></div>
+      </div>
+      <div class="drawer-body" id="drawerBody"></div>
+    `;
+    document.body.appendChild(drawerEl);
+
+    $('#drawerClose').addEventListener('click', hideDrawer);
+    drawerOverlay.addEventListener('click', hideDrawer);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && drawerEl.classList.contains('open')) {
+        hideDrawer();
+      }
+    });
+  }
+
+  /**
+   * showDrawer(title, html)
+   * showDrawer({ title, html, width, onMount, actions })
+   *
+   * width: 'normal' (480px) | 'wide' (640px) | 'full' (90vw)
+   * actions: HTML string for action buttons in header
+   */
+  function showDrawer(a, b) {
+    ensureDrawer();
+
+    let title = 'Детали';
+    let html = '';
+    let width = 'normal';
+    let onMount = null;
+    let actions = '';
+
+    if (a && typeof a === 'object') {
+      title = a.title || title;
+      html = a.html || '';
+      width = a.width || 'normal';
+      onMount = typeof a.onMount === 'function' ? a.onMount : null;
+      actions = a.actions || '';
+    } else {
+      title = a || title;
+      html = b || '';
+    }
+
+    $('#drawerTitle').textContent = title;
+    $('#drawerBody').innerHTML = html;
+    $('#drawerActions').innerHTML = actions;
+
+    drawerEl.className = `drawer drawer-${width}`;
+
+    requestAnimationFrame(() => {
+      drawerOverlay.classList.add('open');
+      drawerEl.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    });
+
+    if (onMount) {
+      setTimeout(() => {
+        try {
+          onMount({ drawer: drawerEl, body: $('#drawerBody') });
+        } catch (e) {
+          console.error('Drawer onMount error:', e);
+        }
+      }, 50);
+    }
+  }
+
+  function hideDrawer() {
+    if (!drawerEl) return;
+    drawerEl.classList.remove('open');
+    drawerOverlay.classList.remove('open');
+    document.body.style.overflow = '';
+
+    setTimeout(() => {
+      if (drawerEl) $('#drawerBody').innerHTML = '';
+    }, 300);
+  }
+
+  // Status CSS class mapper
+  function statusClass(statusText) {
+    if (!statusText) return 'status-gray';
+    const s = statusText.toLowerCase().trim();
+
+    if (/^(новый|новая|получен|черновик|draft|отменён|архив)/.test(s)) return 'status-gray';
+    if (/^(в просчёте|на просчёте|в работе|in.progress|выполняется|обработка)/.test(s)) return 'status-blue';
+    if (/^(кп отправлено|ткп отправлено|на согласовании|на проверке|review|ожидание)/.test(s)) return 'status-purple';
+    if (/^(переговоры|отложен|истекает|pending|вопрос|приостановлен)/.test(s)) return 'status-yellow';
+    if (/^(выиграли|контракт|оплачен|завершён|done|готов|выполнен|одобрен|согласован|подписан)/.test(s)) return 'status-green';
+    if (/^(проиграли|отказ|отклонён|просрочен|expired|rejected|ошибка)/.test(s)) return 'status-red';
+    if (/^(vip|премиум|срочный|важный)/.test(s)) return 'status-gold';
+
+    return 'status-blue';
+  }
+
   // ===== Date Formatting =====
   function formatDate(dateStr) {
     if (!dateStr) return '—';
@@ -171,5 +285,5 @@ window.AsgardUI = (function(){
     return Array(count).fill(tpl).join('');
   }
 
-  return { $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton };
+  return { $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton };
 })();
