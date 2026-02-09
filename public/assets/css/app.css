@@ -1006,71 +1006,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   padding: 14px 18px;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   TOAST NOTIFICATIONS — Уведомления
-   ───────────────────────────────────────────────────────────────────────────── */
-.toastwrap {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  z-index: var(--z-toast);
-}
-
-.toast {
-  padding: 16px 20px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
-  box-shadow: var(--shadow-lg);
-  min-width: 300px;
-  max-width: 420px;
-  animation: toast-in 0.3s ease;
-}
-
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.toast .h {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-}
-
-.toast .m {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-.toast.ok {
-  border-left: 3px solid var(--green);
-}
-
-.toast.ok .h { color: var(--green); }
-
-.toast.err {
-  border-left: 3px solid var(--red);
-}
-
-.toast.err .h { color: var(--red); }
-
-.toast.warn {
-  border-left: 3px solid var(--amber);
-}
-
-.toast.warn .h { color: var(--amber); }
+/* Toast styles moved to components.css */
 
 /* ─────────────────────────────────────────────────────────────────────────────
    HELP & INFO — Вспомогательные элементы
@@ -2669,16 +2605,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
     gap: 8px;
   }
   
-  /* Тосты */
-  .toastwrap {
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
-  }
-  
-  .toast {
-    width: 100%;
-  }
+  /* Toast styles moved to components.css */
   
   /* Welcome страница */
   .welcome-page {
@@ -3447,20 +3374,14 @@ html[data-theme="light"] ::-webkit-scrollbar-track {
 }
 
 html[data-theme="light"] ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: rgba(0, 0, 0, 0.15);
 }
 
 html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: rgba(0, 0, 0, 0.3);
 }
 
-/* Toast */
-html[data-theme="light"] .toast {
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  color: #1e293b;
-}
+/* Toast light theme moved to components.css */
 
 /* Links */
 html[data-theme="light"] a {
@@ -3647,8 +3568,7 @@ html[data-theme="light"] .widget-loading {
 
 /* Selection */
 html[data-theme="light"] ::selection {
-  background: rgba(220, 38, 38, 0.2);
-  color: #1e293b;
+  background: rgba(220, 38, 38, 0.15);
 }
 
 /* Gantt chart */
@@ -4727,7 +4647,32 @@ html[data-theme="light"] table.asg tr:hover td {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gold-dim, rgba(212,168,70,.4));
+  background: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SELECTION COLOR
+   ═══════════════════════════════════════════════════════════════════════════════ */
+::selection {
+  background: var(--gold-glow);
+  color: var(--text-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FOCUS-VISIBLE — Keyboard navigation
+   ═══════════════════════════════════════════════════════════════════════════════ */
+*:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+html[data-theme="light"] *:focus-visible {
+  outline-color: var(--primary);
+}
+
+/* Remove focus outline for mouse clicks */
+*:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* Smooth page transitions */
@@ -6552,5 +6497,96 @@ html[data-theme="light"] .sidebar-search-btn:hover {
 
   html[data-theme="light"] .responsive-cards tbody td:first-child {
     color: var(--primary);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   MOBILE FAB — Floating Action Button
+   Shows on mobile for quick create actions
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.fab {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .fab {
+    display: flex;
+    position: fixed;
+    right: 16px;
+    bottom: 80px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent, var(--primary));
+    color: white;
+    border: none;
+    box-shadow: 0 4px 16px rgba(198, 40, 40, 0.4);
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 200;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  }
+
+  .fab:active {
+    transform: scale(0.9);
+  }
+
+  /* FAB menu (expands upward) */
+  .fab-menu {
+    position: fixed;
+    right: 16px;
+    bottom: 140px;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    z-index: 199;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px);
+    transition: all 200ms ease;
+  }
+
+  .fab-menu.open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  .fab-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .fab-menu-item:hover {
+    border-color: var(--gold-border);
+  }
+
+  .fab-menu-item .fab-icon {
+    font-size: 16px;
+  }
+
+  /* Light theme */
+  html[data-theme="light"] .fab {
+    background: var(--accent, #dc2626);
+    box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
+  }
+
+  html[data-theme="light"] .fab-menu-item {
+    background: #ffffff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 }

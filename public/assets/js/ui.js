@@ -6,14 +6,11 @@ window.AsgardUI = (function(){
   }[c]));
 
   const toastWrapId = "asgard_toasts";
-  function toast(title, msg="", type="ok", timeout=3500){
-    // Normalize message to readable string (avoid "[object Object]")
+  function toast(title, msg="", type="ok", timeout=4000){
     let mtxt = msg;
     if(mtxt && typeof mtxt === "object"){
       if(typeof mtxt.message === "string") mtxt = mtxt.message;
-      else{
-        try{ mtxt = JSON.stringify(mtxt); } catch(e){ mtxt = String(mtxt); }
-      }
+      else{ try{ mtxt = JSON.stringify(mtxt); } catch(e){ mtxt = String(mtxt); } }
     }
     if(mtxt === undefined || mtxt === null) mtxt = "";
     mtxt = String(mtxt);
@@ -25,11 +22,41 @@ window.AsgardUI = (function(){
       w.className = "toastwrap";
       document.body.appendChild(w);
     }
+
+    const icons = { ok: '✓', err: '✕', warn: '⚠', info: 'ℹ' };
+    const icon = icons[type] || icons.ok;
+
     const t = document.createElement("div");
-    t.className = "toast " + (type==="err" ? "err" : "ok");
-    t.innerHTML = `<div class="h">${esc(title)}</div><div class="m">${esc(mtxt||"")}</div>`;
+    t.className = "toast toast-" + (type === "err" ? "error" : type === "warn" ? "warning" : type === "info" ? "info" : "success");
+    t.innerHTML = `
+      <div class="toast-icon">${icon}</div>
+      <div class="toast-content">
+        <div class="toast-title">${esc(title)}</div>
+        ${mtxt ? `<div class="toast-msg">${esc(mtxt)}</div>` : ''}
+      </div>
+      <button class="toast-close" type="button">✕</button>
+      <div class="toast-progress"></div>
+    `;
+
+    // Close button
+    t.querySelector('.toast-close').addEventListener('click', () => {
+      t.classList.add('toast-exit');
+      setTimeout(() => t.remove(), 200);
+    });
+
+    // Auto-remove
+    setTimeout(() => {
+      if (t.parentNode) {
+        t.classList.add('toast-exit');
+        setTimeout(() => t.remove(), 200);
+      }
+    }, timeout);
+
     w.appendChild(t);
-    setTimeout(()=>t.remove(), timeout);
+
+    // Limit visible toasts to 5
+    const all = w.querySelectorAll('.toast');
+    if (all.length > 5) all[0].remove();
   }
 
   // ===== Modal =====
@@ -328,5 +355,59 @@ window.AsgardUI = (function(){
     </div>`;
   }
 
-  return { $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton };
+  /**
+   * enableTableSort(tableSelector)
+   * Enables click-to-sort on <th> with data-sort attribute.
+   */
+  function enableTableSort(selector) {
+    const table = typeof selector === 'string' ? document.querySelector(selector) : selector;
+    if (!table) return;
+
+    table.querySelectorAll('th[data-sort]').forEach(th => {
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', () => {
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return;
+
+        const dir = th.classList.contains('asc') ? 'desc' : 'asc';
+        table.querySelectorAll('th[data-sort]').forEach(h => h.classList.remove('asc', 'desc'));
+        th.classList.add(dir);
+
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const colIndex = Array.from(th.parentNode.children).indexOf(th);
+
+        rows.sort((a, b) => {
+          const aVal = a.children[colIndex]?.textContent?.trim() || '';
+          const bVal = b.children[colIndex]?.textContent?.trim() || '';
+          const aNum = parseFloat(aVal.replace(/[^\d.-]/g, ''));
+          const bNum = parseFloat(bVal.replace(/[^\d.-]/g, ''));
+
+          if (!isNaN(aNum) && !isNaN(bNum)) {
+            return dir === 'asc' ? aNum - bNum : bNum - aNum;
+          }
+          return dir === 'asc' ? aVal.localeCompare(bVal, 'ru') : bVal.localeCompare(aVal, 'ru');
+        });
+
+        rows.forEach(r => tbody.appendChild(r));
+      });
+    });
+  }
+
+  /**
+   * formField(label, inputHtml, opts)
+   * Returns HTML for a labeled form field.
+   * opts: { required, help, fullWidth }
+   */
+  function formField(label, inputHtml, opts = {}) {
+    const req = opts.required ? '<span class="req">*</span>' : '';
+    const cls = opts.fullWidth ? ' full-width' : '';
+    const help = opts.help ? `<div class="help">${esc(opts.help)}</div>` : '';
+    return `<div class="form-field${cls}">
+      <label>${esc(label)}${req}</label>
+      ${inputHtml}
+      ${help}
+    </div>`;
+  }
+
+  return { $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton };
 })();

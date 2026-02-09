@@ -450,18 +450,73 @@
 .title h1,
 .page-title {
   margin: 0;
-  font-size: var(--text-xl);
-  font-weight: var(--font-bold);
+  font-size: 18px;
+  font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: 0.5px;
+  line-height: 1.2;
 }
 
+/* Hide motto on desktop — breadcrumbs replace it */
 .title p,
 .page-motto {
-  margin: 6px 0 0;
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  max-width: 600px;
+  display: none;
+}
+
+/* ─── Search button in topbar ─── */
+.topbar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--glass-bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.topbar-search:hover {
+  border-color: var(--gold-border);
+  background: var(--gold-glow);
+  color: var(--text-primary);
+}
+
+.ts-icon { font-size: 14px; }
+
+.ts-kbd {
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-main);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* Hide search label and kbd on narrow screens */
+@media (max-width: 900px) {
+  .ts-label, .ts-kbd { display: none; }
+  .topbar-search { padding: 8px; }
+}
+
+/* Hide topbar search on mobile — tab bar handles it */
+@media (max-width: 768px) {
+  .topbar-search { display: none; }
+  .breadcrumbs { display: none; }
+}
+
+/* Light theme */
+html[data-theme="light"] .topbar-search {
+  background: #f1f5f9;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme="light"] .topbar-search:hover {
+  background: #e2e8f0;
+  border-color: rgba(0, 0, 0, 0.15);
 }
 
 /* Header Badges/Actions */
@@ -634,14 +689,26 @@ html[data-theme="light"] .themebtn .icon-moon { display: block; }
 .breadcrumbs {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  font-size: var(--text-sm);
+  gap: 6px;
+  font-size: 11px;
   color: var(--text-muted);
+  margin-bottom: 2px;
 }
 
-.breadcrumb a, .breadcrumbs a { color: var(--text-secondary); text-decoration: none; transition: color var(--transition-fast); }
-.breadcrumb a:hover, .breadcrumbs a:hover { color: var(--gold); }
-.breadcrumb span, .breadcrumbs span { color: var(--text-primary); }
+.breadcrumbs a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.breadcrumbs a:hover { color: var(--gold); }
+
+.bc-sep { color: var(--text-muted); opacity: 0.5; }
+
+.bc-current {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    MAIN CONTENT

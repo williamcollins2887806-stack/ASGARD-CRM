@@ -439,11 +439,15 @@ try{
         <div class="topbar">
           <div class="mnav"><button class="iconbtn" id="btnMenu" aria-label="Меню">☰</button></div>
           <div class="title">
+            <nav class="breadcrumbs" aria-label="Навигация">
+              <a href="#/home">Главная</a>
+              ${cur && cur !== '/home' ? `<span class="bc-sep">›</span><span class="bc-current">${esc(title||"")}</span>` : ''}
+            </nav>
             <h1 class="page-title">${esc(title||"")}</h1>
-            <p class="page-motto">${esc(motto||MOTTOS[cur]||"")}</p>
           </div>
           <div class="badges">${[
   ...(user ? [
+    `<button class="topbar-search" id="btnTopSearch" type="button" title="Поиск (Ctrl+K)"><span class="ts-icon">🔍</span><span class="ts-label">Поиск</span><kbd class="ts-kbd">⌘K</kbd></button>`,
     `<button class="themebtn icononly" id="btnTheme" type="button" aria-label="Переключить тему"><span class="iconwrap" aria-hidden="true"><svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Zm0-16V1m0 22v-1m11-10h-1M2 12H1m18.364 6.364-.707-.707M6.343 6.343l-.707-.707m13.435-0.293-.707.707M6.343 17.657l-.707.707" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 13.5A8.5 8.5 0 1 1 10.5 3a6.8 6.8 0 0 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span></button>
     <button class="bellbtn" id="btnBell" type="button" aria-label="Уведомления">
       <span class="bell">🔔</span>
@@ -471,6 +475,31 @@ try{
         <div class="help">Данные хранятся на сервере. Резервное копирование автоматическое.</div>
         <div class="credit">ᚠᚹ Сей сайт выкован Androsov'ым — да служит АСГАРД-СЕРВИС ᚹᚠ</div>
       </main>
+      ${user ? (() => {
+        const fabActions = {
+          PM: [
+            { icon: '⚒️', label: 'Новая работа', href: '#/pm-works' },
+            { icon: '💰', label: 'Расход', href: '#/cash' },
+            { icon: '✅', label: 'Задача', href: '#/tasks' }
+          ],
+          TO: [
+            { icon: '📋', label: 'Новый тендер', href: '#/tenders' },
+            { icon: '✅', label: 'Задача', href: '#/tasks' }
+          ],
+          ADMIN: [
+            { icon: '📋', label: 'Тендер', href: '#/tenders' },
+            { icon: '⚒️', label: 'Работа', href: '#/pm-works' },
+            { icon: '✅', label: 'Задача', href: '#/tasks' },
+            { icon: '💰', label: 'Расход', href: '#/cash' }
+          ]
+        };
+        const myFab = fabActions[user.role] || fabActions.ADMIN;
+        return `
+          <button class="fab" id="fabBtn" type="button" aria-label="Создать">+</button>
+          <div class="fab-menu" id="fabMenu">
+            ${myFab.map(a => `<a class="fab-menu-item" href="${a.href}"><span class="fab-icon">${a.icon}</span> ${esc(a.label)}</a>`).join('')}
+          </div>`;
+      })() : ''}
       <!-- Mobile Tab Bar -->
       <nav class="mob-tabbar" id="mobTabbar">
         <a href="#/home" class="mob-tab ${getMobileTabGroup(cur)==='home'?'active':''}" data-tab="home">
@@ -532,6 +561,30 @@ try{
     if (btnSideSearch) {
       addMobileClick(btnSideSearch, () => {
         if (window.AsgardSearch && AsgardSearch.open) AsgardSearch.open();
+      });
+    }
+
+    // Topbar search button → open global search
+    addMobileClick($("#btnTopSearch"), () => {
+      if (window.AsgardSearch) AsgardSearch.open();
+    });
+
+    // FAB — mobile floating action button
+    const fabBtn = $("#fabBtn");
+    if (fabBtn) {
+      addMobileClick(fabBtn, () => {
+        const menu = $("#fabMenu");
+        if (menu) {
+          menu.classList.toggle("open");
+          fabBtn.textContent = menu.classList.contains("open") ? "✕" : "+";
+        }
+      });
+      window.addEventListener("hashchange", () => {
+        const menu = $("#fabMenu");
+        if (menu) {
+          menu.classList.remove("open");
+          if (fabBtn) fabBtn.textContent = "+";
+        }
       });
     }
 
