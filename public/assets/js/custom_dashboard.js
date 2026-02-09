@@ -147,23 +147,7 @@ window.AsgardCustomDashboard = (function(){
           '</div>';
         }).join('') +
       '</div>' +
-    '</div>' +
-    '<style>' +
-      '.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}' +
-      '.dash-widget{background:var(--bg-card);border-radius:16px;border:1px solid var(--line);overflow:hidden;transition:border-color .2s,box-shadow .2s,opacity .2s}' +
-      '.dash-widget:hover{border-color:var(--gold)}' +
-      '.dash-widget.wide{grid-column:span 2}' +
-      '@media(max-width:700px){.dash-widget.wide{grid-column:span 1}}' +
-      '.dash-widget-header{padding:12px 16px;background:var(--bg-elevated);display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}' +
-      '.dash-widget-content{padding:16px;min-height:100px}' +
-      '.btn-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px}' +
-      '.btn-remove:hover{color:var(--red)}' +
-      '.drag-handle{cursor:grab;color:var(--text-muted);font-size:14px}' +
-      '.dash-widget[draggable]{cursor:grab}' +
-      '.dash-widget[draggable]:active{cursor:grabbing}' +
-      '.dash-widget.drag-over{border-color:var(--gold);box-shadow:0 0 20px rgba(242,208,138,.3)}' +
-      '.dash-widget.dragging{opacity:0.4}' +
-    '</style>';
+    '</div>'; // Styles are now in components.css (.dash-grid, .dash-widget, etc.)
 
     await pageLayout(html, { title: title || 'Мой дашборд' });
 
@@ -253,9 +237,23 @@ window.AsgardCustomDashboard = (function(){
   }
 
   async function renderWelcome(el, user) {
-    const h = new Date().getHours();
-    let g = 'Доброй ночи'; if (h>=5&&h<12) g='Доброе утро'; else if (h>=12&&h<17) g='Добрый день'; else if (h>=17&&h<22) g='Добрый вечер';
-    el.innerHTML = '<div style="display:flex;align-items:center;gap:16px"><div style="font-size:40px">⚔️</div><div><div style="font-size:18px;font-weight:700;color:var(--gold)">' + g + ', ' + esc(user.name?.split(' ')[0]||'воин') + '!</div><div class="help">Пусть удача сопутствует тебе</div></div></div>';
+    const hour = new Date().getHours();
+    let greeting = 'Добрый день';
+    if (hour >= 6 && hour < 12) greeting = 'Доброе утро';
+    else if (hour >= 18 && hour < 22) greeting = 'Добрый вечер';
+    else if (hour >= 22 || hour < 6) greeting = 'Доброй ночи';
+
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">
+        <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0">
+          ${(user.name || 'U')[0].toUpperCase()}
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:700;color:var(--text-primary)">${greeting}, ${esc(user.name || user.login)}!</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${esc(user.role)} · ${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+        </div>
+      </div>
+    `;
   }
 
   async function renderNotifications(el, user) {

@@ -1135,8 +1135,28 @@ try{
   async function pageHome(){
     const auth=await AsgardAuth.requireUser();
     if(!auth){ location.hash="#/login"; return; }
-    const user=auth.user;
 
+    // Делегируем рендер в AsgardCustomDashboard
+    if (window.AsgardCustomDashboard) {
+      await AsgardCustomDashboard.render({
+        layout: async (html, opts) => {
+          layout({ title: opts?.title || "Главная", body: html, cur: "/home" });
+        },
+        title: "Главная"
+      });
+    } else {
+      // Fallback если custom_dashboard не загружен
+      layout({
+        title: "Главная",
+        body: '<div class="panel"><h2>Загрузка дашборда...</h2></div>',
+        cur: "/home"
+      });
+    }
+  }
+
+  /* ── Old pageHome removed — delegated to AsgardCustomDashboard ── */
+  async function _pageHome_LEGACY_UNUSED(){ /* dead code — kept for reference */
+    const user=null;
     const sagas = [
       "План — щит. Факт — сталь.",
       "Срок не ждёт. Действие решает.",
@@ -1604,7 +1624,9 @@ try{
     AsgardRouter.add("/sync", ()=>AsgardSync.renderSettings({layout, title:"PostgreSQL Sync"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/mango", ()=>AsgardMango.renderSettings({layout, title:"Телефония"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/chat", ()=>AsgardChat.render({layout, title:"Чат дружины"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/my-dashboard", ()=>AsgardCustomDashboard.render({layout, title:"Мой дашборд"}), {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES]});
+    AsgardRouter.add("/my-dashboard", () => {
+      location.hash = "#/home";
+    }, {auth:true, roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/big-screen", ()=>AsgardBigScreen.render({layout, title:"Big Screen"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/backup", ()=>AsgardBackupPage.render({layout, title:"Камень Хроник • Резерв"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
   AsgardRouter.add("/diag", ()=>AsgardDiagPage.render({layout, title:"Диагностика"}), {auth:true, roles:["ADMIN"]});
