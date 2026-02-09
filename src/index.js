@@ -351,7 +351,7 @@ const start = async () => {
       fastify.log.warn('WARNING: Using weak database password. Change DB_PASSWORD in production!');
     }
 
-    // SECURITY: CORS production check — запрет wildcard и HTTP origins
+    // SECURITY: CORS production check — запрет wildcard; предупреждение о HTTP
     if (process.env.NODE_ENV === 'production') {
       if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') {
         fastify.log.error('FATAL: CORS_ORIGIN must be set to specific origin(s) in production (not "*")');
@@ -360,8 +360,7 @@ const start = async () => {
       const origins = process.env.CORS_ORIGIN.split(',');
       const httpOrigin = origins.find(o => o.trim().startsWith('http://'));
       if (httpOrigin) {
-        fastify.log.error('FATAL: CORS_ORIGIN contains insecure HTTP origin: ' + httpOrigin.trim());
-        process.exit(1);
+        fastify.log.warn('WARNING: CORS_ORIGIN contains HTTP origin: ' + httpOrigin.trim() + '. Use HTTPS in production for full security.');
       }
     }
 
