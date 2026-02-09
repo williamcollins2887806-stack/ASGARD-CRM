@@ -91,7 +91,7 @@ window.AsgardEmployeePage=(function(){
         <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
           <div>
             <div class="kpi"><span class="dot" style="background:#ef4444"></span>${esc(emp.fio||"")}</div>
-            <div class="help">Роль: <b>${esc(emp.role_tag||"—")}</b> · Разряд: <b>${esc(emp.grade||"—")}</b> · Рейтинг: <b>${emp.rating_avg!=null?esc(emp.rating_avg.toFixed(1)):"—"}</b></div>
+            <div class="help">Роль: <b>${esc(emp.role_tag||"—")}</b> · Разряд: <b>${esc(emp.grade||"—")}</b> · Рейтинг: <b>${emp.rating_avg!=null?esc(Number(emp.rating_avg).toFixed(1)):"—"}</b></div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
             <button class="btn ghost" id="btnSchedule">График</button>

@@ -132,6 +132,8 @@ window.AsgardFinancesPage = (function(){
       const currentData = mode === 'expenses' ? data.expenses : data.income;
       const totalYear = currentData.months.reduce((a,b) => a+b, 0);
       const maxMonth = Math.max(...currentData.months, 1);
+      const maxMonthIdx = currentData.months.indexOf(maxMonth);
+      const maxMonthLabel = maxMonthIdx >= 0 ? MONTHS_SHORT[maxMonthIdx] : '—';
 
       const body = `
         <style>
@@ -213,7 +215,7 @@ window.AsgardFinancesPage = (function(){
             <div class="fin-card">
               <div class="fin-card-label">Максимум</div>
               <div class="fin-card-value">${money(Math.round(maxMonth))} ₽</div>
-              <div class="fin-card-sub">${MONTHS_SHORT[currentData.months.indexOf(maxMonth)]} ${selectedYear}</div>
+              <div class="fin-card-sub">${maxMonthLabel} ${selectedYear}</div>
             </div>
           </div>
 

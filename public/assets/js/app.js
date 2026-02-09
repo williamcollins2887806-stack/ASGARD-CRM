@@ -1194,17 +1194,13 @@ try{
     if (window.AsgardCustomDashboard) {
       await AsgardCustomDashboard.render({
         layout: async (html, opts) => {
-          layout({ title: opts?.title || "Главная", body: html, cur: "/home" });
+          await layout(html, { title: opts?.title || "Главная" });
         },
         title: "Главная"
       });
     } else {
       // Fallback если custom_dashboard не загружен
-      layout({
-        title: "Главная",
-        body: '<div class="panel"><h2>Загрузка дашборда...</h2></div>',
-        cur: "/home"
-      });
+      await layout('<div class="panel"><h2>Загрузка дашборда...</h2></div>', { title: "Главная" });
     }
   }
 

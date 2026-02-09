@@ -452,8 +452,8 @@ async function mimirRoutes(fastify, options) {
       });
 
     } catch (error) {
-      fastify.log.error('Stream error:', error.message);
-      sendEvent({ type: 'error', message: 'Ошибка стриминга' });
+      fastify.log.error('Stream error details:', error.message, error.stack);
+      sendEvent({ type: 'error', message: 'Ошибка стриминга: ' + (error.message || 'неизвестная ошибка') });
     }
 
     reply.raw.end();
