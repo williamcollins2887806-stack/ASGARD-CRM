@@ -2457,92 +2457,42 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
    <meta name="viewport" content="width=device-width, initial-scale=1"> */
 
 @media (max-width: 768px) {
-  /* Сайдбар - скрыт по умолчанию */
-  .sidenav {
-    position: fixed;
-    left: -320px;
-    top: 0;
-    width: 300px;
-    height: 100vh;
-    z-index: var(--z-modal);
-    transition: left var(--transition-normal);
-  }
+  /* Sidebar полностью скрыт — навигация через таббар */
+  .sidenav, .nav-overlay { display: none !important; }
 
-  body.nav-open .sidenav {
-    left: 0;
-  }
-
-  /* Оверлей при открытом меню */
-  .nav-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    z-index: var(--z-overlay);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none; /* КРИТИЧНО: не блокировать тапы когда скрыт */
-    transition: all var(--transition-normal);
-  }
-
-  body.nav-open .nav-overlay {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto; /* Включаем только когда виден */
-  }
-  
   /* Основной контент */
   .main {
-    padding: 12px;
     margin-left: 0 !important;
+    padding: 12px;
+    padding-bottom: 72px !important;
   }
-  
-  /* Топбар */
+
+  /* Header — одна строка */
   .topbar {
-    flex-direction: row;
+    display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    flex-wrap: wrap;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    flex-wrap: nowrap;
   }
-
-  .topbar .title {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .topbar h1 {
+  .mnav { display: none !important; }
+  .topbar .title { flex: 1; min-width: 0; }
+  .topbar h1, .topbar h1.page-title {
     font-size: 16px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-
-  .topbar .page-motto {
-    display: none;
-  }
-
-  .badges {
-    width: auto;
-    gap: 6px;
-  }
-
-  .bellbtn {
-    padding: 6px 10px;
-    gap: 4px;
-  }
-
-  .bellbtn .belltext {
-    display: none;
-  }
+  .topbar .page-motto { display: none; }
+  .badges { display: flex; gap: 6px; flex-shrink: 0; }
+  .belltext { display: none; }
+  .bellbtn { padding: 6px; gap: 4px; }
+  .badges .badge:not(.bellbtn) { display: none; }
 
   .bellbtn .bellcount {
     font-size: 10px;
     padding: 1px 6px;
-  }
-
-  /* Кнопка меню — компактная в topbar (не FAB) */
-  .mnav {
-    display: flex;
   }
 
   .iconbtn {
@@ -2615,9 +2565,11 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 
   /* Quicklinks — горизонтальный скролл */
   .quick-links {
+    display: flex;
     overflow-x: auto;
-    flex-wrap: nowrap;
     -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    gap: 6px;
     padding-bottom: 8px;
   }
 
@@ -2625,7 +2577,11 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
     flex-shrink: 0;
     font-size: 12px;
     padding: 6px 12px;
+    white-space: nowrap;
   }
+
+  /* Мимир — над таббаром */
+  .mimir-widget { bottom: 68px !important; }
   
   /* Таблицы - горизонтальный скролл */
   .tbl-wrap {
@@ -6098,4 +6054,191 @@ html[data-theme="light"] label {
 /* Badges in light theme — semi-transparent */
 html[data-theme="light"] .badge[style*="background"] {
   border-radius: 999px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   MOBILE TAB BAR — Bottom navigation for mobile PWA
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.mob-tabbar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mob-tabbar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--bg-card, #132040);
+    border-top: 1px solid var(--border);
+    z-index: 450;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .mob-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 500;
+    transition: color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+  }
+
+  .mob-tab-icon { font-size: 20px; line-height: 1; }
+  .mob-tab-label { font-size: 10px; line-height: 1; font-weight: 600; }
+
+  .mob-tab.active { color: var(--gold, #D4A846); }
+
+  .mob-tab.active::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 25%; right: 25%;
+    height: 2px;
+    background: var(--gold, #D4A846);
+    border-radius: 0 0 2px 2px;
+  }
+
+  html[data-theme="light"] .mob-tabbar {
+    background: #ffffff;
+    border-top: 1px solid rgba(0,0,0,.08);
+    box-shadow: 0 -2px 10px rgba(0,0,0,.06);
+  }
+  html[data-theme="light"] .mob-tab { color: #94a3b8; }
+  html[data-theme="light"] .mob-tab.active { color: var(--primary, #dc2626); }
+  html[data-theme="light"] .mob-tab.active::before { background: var(--primary, #dc2626); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   MOBILE "MORE" PAGE — Grid navigation
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.mob-more-page { padding-bottom: 20px; }
+
+.mob-user-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px; margin-bottom: 16px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+}
+
+.mob-user-avatar {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary, #C62828), var(--secondary, #2563eb));
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 700; flex-shrink: 0;
+}
+
+.mob-user-info { flex: 1; min-width: 0; }
+.mob-user-name { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.mob-user-role { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.mob-section { margin-bottom: 20px; }
+
+.mob-section-title {
+  font-size: 13px; font-weight: 700; color: var(--gold, #D4A846);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  margin-bottom: 10px; padding-left: 4px;
+}
+
+.mob-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 400px) { .mob-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.mob-grid-item {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 12px 4px; border-radius: 12px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  text-decoration: none; color: inherit;
+  transition: border-color 0.2s, background 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mob-grid-item:active {
+  background: var(--bg-elevated);
+  border-color: var(--gold-border, rgba(212,168,70,.4));
+}
+
+.mob-grid-icon { font-size: 22px; line-height: 1; }
+
+.mob-grid-label {
+  font-size: 10px; font-weight: 600; color: var(--text-secondary);
+  text-align: center; line-height: 1.2; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+html[data-theme="light"] .mob-user-card,
+html[data-theme="light"] .mob-grid-item { background: #fff; border-color: rgba(0,0,0,.08); }
+html[data-theme="light"] .mob-grid-item:active { background: #f1f5f9; }
+html[data-theme="light"] .mob-section-title { color: var(--primary, #dc2626); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PWA INSTALL BANNER
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.pwa-install-banner {
+  position: fixed; bottom: -80px; left: 0; right: 0;
+  z-index: 500; padding: 0 12px;
+  transition: bottom 0.3s ease;
+}
+.pwa-install-banner.visible { bottom: 68px; }
+@media (min-width: 769px) { .pwa-install-banner.visible { bottom: 16px; } }
+
+.pwa-install-content {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  background: var(--bg-elevated, #1a2d52);
+  border: 1px solid var(--gold-border, rgba(212,168,70,.3));
+  border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  max-width: 480px; margin: 0 auto;
+}
+
+.pwa-install-icon { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
+
+.pwa-install-text { flex: 1; min-width: 0; }
+.pwa-install-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.pwa-install-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.pwa-install-btn {
+  flex-shrink: 0; padding: 8px 16px !important;
+  font-size: 13px !important; border-radius: 10px !important;
+}
+
+.pwa-install-close {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--text-muted);
+  font-size: 16px; cursor: pointer; flex-shrink: 0; border-radius: 8px;
+}
+.pwa-install-close:hover { background: rgba(255,255,255,.1); }
+
+html[data-theme="light"] .pwa-install-content {
+  background: #fff; border-color: rgba(0,0,0,.1); box-shadow: 0 8px 32px rgba(0,0,0,.12);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PWA STANDALONE MODE (launched from home screen)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+body.pwa-standalone .topbar {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+body.pwa-standalone .mob-tabbar {
+  height: calc(56px + env(safe-area-inset-bottom, 0));
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+body.pwa-standalone {
+  overscroll-behavior-y: contain;
+}
+
+body.pwa-standalone .mob-tabbar,
+body.pwa-standalone .topbar,
+body.pwa-standalone .mob-grid-item,
+body.pwa-standalone .btn {
+  -webkit-user-select: none;
+  user-select: none;
 }
