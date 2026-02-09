@@ -22,6 +22,15 @@ window.AsgardTasksPage = (function() {
     overdue: '#ef4444'
   };
 
+  function getStatusClass(status) {
+    const map = {
+      'new': 'new', 'accepted': 'in-progress', 'in_progress': 'working',
+      'done': 'done', 'completed': 'done', 'overdue': 'error',
+      'cancelled': 'rejected', 'review': 'in-progress', 'blocked': 'rejected'
+    };
+    return map[status] || 'pending';
+  }
+
   const PRIORITY_LABELS = {
     low: 'Низкий',
     normal: 'Обычный',
@@ -291,7 +300,7 @@ window.AsgardTasksPage = (function() {
             </div>
           </div>
           <div>
-            <span style="background:${statusColor}; color:#fff; padding:2px 8px; border-radius:4px; font-size:0.8em">${statusLabel}</span>
+            <span class="status-badge ${getStatusClass(t.status)}">${statusLabel}</span>
           </div>
         </div>
         ${isExpanded ? `
@@ -328,7 +337,7 @@ window.AsgardTasksPage = (function() {
                 <div style="font-weight:500">${escapeHtml(t.title)}</div>
                 <div style="font-size:0.85em; color:var(--dim)">${escapeHtml(t.assignee_name)}</div>
               </div>
-              <span style="background:${statusColor}; color:#fff; padding:2px 8px; border-radius:4px; font-size:0.75em">${statusLabel}</span>
+              <span class="status-badge ${getStatusClass(t.status)}">${statusLabel}</span>
             </div>
           `;
         }).join('')}

@@ -23,6 +23,15 @@ window.AsgardTasksAdminPage = (function() {
     overdue: '#ef4444'
   };
 
+  function getStatusClass(status) {
+    const map = {
+      'new': 'new', 'accepted': 'in-progress', 'in_progress': 'working',
+      'done': 'done', 'completed': 'done', 'overdue': 'error',
+      'cancelled': 'rejected', 'review': 'in-progress', 'blocked': 'rejected'
+    };
+    return map[status] || 'pending';
+  }
+
   const PRIORITY_LABELS = {
     urgent: 'Срочно',
     high: 'Высокий',
@@ -357,7 +366,7 @@ window.AsgardTasksAdminPage = (function() {
           </td>
           <td class="${isOverdue ? 'overdue-text' : ''}">${deadlineStr}</td>
           <td>
-            <span class="status-badge" style="background: ${STATUS_COLORS[task.status]}">
+            <span class="status-badge ${getStatusClass(task.status)}">
               ${STATUS_LABELS[task.status] || task.status}
             </span>
           </td>
@@ -564,7 +573,7 @@ window.AsgardTasksAdminPage = (function() {
       <div class="task-detail">
         <div class="task-detail-header">
           <h2>${escapeHtml(task.title)}</h2>
-          <span class="status-badge" style="background: ${STATUS_COLORS[task.status]}">
+          <span class="status-badge ${getStatusClass(task.status)}">
             ${STATUS_LABELS[task.status]}
           </span>
         </div>
