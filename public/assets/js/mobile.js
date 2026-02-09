@@ -221,21 +221,9 @@ window.AsgardMobile = (function(){
     window.addEventListener('resize', setVH);
   }
   
-  // CSS для мобильной версии
+  // CSS для мобильной версии (только уникальные стили — остальное в app.css)
   const style = document.createElement('style');
   style.textContent = `
-    /* Мобильное меню */
-    .mobile-menu-btn {
-      display: none;
-      background: transparent;
-      border: none;
-      color: var(--text-primary);
-      font-size: 24px;
-      padding: 8px 12px;
-      cursor: pointer;
-      z-index: 1001;
-    }
-    
     .mobile-overlay {
       display: none;
       position: fixed;
@@ -246,16 +234,16 @@ window.AsgardMobile = (function(){
       background: rgba(0, 0, 0, 0.5);
       z-index: 999;
       opacity: 0;
-      pointer-events: none; /* КРИТИЧНО: не блокировать тапы */
+      pointer-events: none;
       transition: opacity 0.3s;
     }
 
     .mobile-overlay.active {
       display: block;
       opacity: 1;
-      pointer-events: auto; /* Включаем только когда активен */
+      pointer-events: auto;
     }
-    
+
     .offline-indicator {
       position: fixed;
       bottom: 20px;
@@ -270,169 +258,28 @@ window.AsgardMobile = (function(){
       transition: transform 0.3s;
       box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     }
-    
+
     .offline-indicator.visible {
       transform: translateX(-50%) translateY(0);
     }
-    
-    /* Mobile styles */
-    @media (max-width: 768px) {
-      .mobile-menu-btn {
-        display: block;
-      }
-      
-      .mobile-overlay {
-        display: block;
-      }
-      
-      .sidenav {
-        position: fixed;
-        left: -280px;
-        top: 0;
-        bottom: 0;
-        width: 280px;
-        z-index: 1000;
-        transition: left 0.3s ease;
-        overflow-y: auto;
-      }
 
-      .sidenav.open {
-        left: 0;
-      }
-      
-      .layout {
-        margin-left: 0 !important;
-      }
-      
-      .topbar {
-        padding: 8px 12px;
-      }
-      
-      .page-header {
-        flex-direction: column;
-        gap: 12px;
-        align-items: stretch;
-      }
-      
-      .page-header h1 {
-        font-size: 20px;
-      }
-      
-      .kpi {
-        grid-template-columns: repeat(2, 1fr) !important;
-        gap: 8px;
-      }
-      
-      .kpi .k {
-        padding: 12px;
-      }
-      
-      .kpi .k .v {
-        font-size: 18px;
-      }
-      
-      .formrow {
-        grid-template-columns: 1fr !important;
-      }
-      
-      .filters {
-        flex-direction: column;
-      }
-      
-      .filters .inp,
-      .filters select {
-        width: 100%;
-      }
-      
-      .tbl-wrap {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-      
-      .tbl {
-        min-width: 600px;
-      }
-      
-      .tbl th,
-      .tbl td {
-        padding: 8px 10px;
-        font-size: 13px;
-      }
-      
-      .btn {
-        padding: 10px 16px;
-      }
-      
-      .btn.mini {
-        min-width: 44px;
-        min-height: 44px;
-        padding: 8px;
-      }
-      
-      .modal {
-        width: 95% !important;
-        max-width: none !important;
-        margin: 10px;
-        max-height: calc(100vh - 20px);
-      }
-      
-      .card {
-        padding: 12px;
-      }
-      
-      .tabs {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch;
-      }
-      
-      .tab {
-        flex-shrink: 0;
-        padding: 10px 16px;
-      }
-      
-      /* Скрываем некритичные колонки */
-      .tbl .hide-mobile {
-        display: none;
-      }
-    }
-    
-    /* Tablet */
-    @media (min-width: 769px) and (max-width: 1024px) {
-      .sidenav {
-        width: 60px;
-      }
-
-      .sidenav .nav-text {
-        display: none;
-      }
-      
-      .layout {
-        margin-left: 60px;
-      }
-      
-      .kpi {
-        grid-template-columns: repeat(3, 1fr);
-      }
-    }
-    
     /* Touch-friendly */
     @media (hover: none) and (pointer: coarse) {
       .btn:active {
         transform: scale(0.98);
       }
-      
+
       .search-result-item:active {
         background: var(--bg-hover);
       }
     }
-    
+
     /* Safe areas (iPhone X+) */
     @supports (padding: env(safe-area-inset-bottom)) {
       .sidenav {
         padding-bottom: env(safe-area-inset-bottom);
       }
-      
+
       .mobile-overlay {
         padding-bottom: env(safe-area-inset-bottom);
       }
