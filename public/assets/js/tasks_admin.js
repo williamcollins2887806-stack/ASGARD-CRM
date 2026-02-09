@@ -210,13 +210,13 @@ window.AsgardTasksAdminPage = (function() {
       // Загружаем параллельно: все задачи, статистику, пользователей
       const [tasksRes, statsRes, usersRes] = await Promise.all([
         fetch('/api/tasks/all', {
-          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
         }),
         fetch('/api/tasks/stats', {
-          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
         }),
         fetch('/api/users', {
-          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
         })
       ]);
 
@@ -487,7 +487,7 @@ window.AsgardTasksAdminPage = (function() {
         method: method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('token')
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token')
         },
         body: JSON.stringify(data)
       });
@@ -534,7 +534,7 @@ window.AsgardTasksAdminPage = (function() {
       await fetch(`/api/tasks/${taskId}/files`, {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('token')
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token')
         },
         body: formData
       });
@@ -667,7 +667,7 @@ window.AsgardTasksAdminPage = (function() {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('token')
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token')
         }
       });
 

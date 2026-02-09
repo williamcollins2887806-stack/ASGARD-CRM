@@ -21,14 +21,14 @@ window.AsgardChatGroups = (function(){
   const API = {
     async getChats(archived = false) {
       const res = await fetch(`/api/chat-groups?archived=${archived}`, {
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
       });
       return res.json();
     },
 
     async getChat(id) {
       const res = await fetch(`/api/chat-groups/${id}`, {
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
       });
       return res.json();
     },
@@ -37,7 +37,7 @@ window.AsgardChatGroups = (function(){
       const res = await fetch('/api/chat-groups', {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
@@ -48,7 +48,7 @@ window.AsgardChatGroups = (function(){
     async getMessages(chatId, beforeId = null) {
       const params = beforeId ? `?before_id=${beforeId}` : '';
       const res = await fetch(`/api/chat-groups/${chatId}/messages${params}`, {
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
       });
       return res.json();
     },
@@ -57,7 +57,7 @@ window.AsgardChatGroups = (function(){
       const res = await fetch(`/api/chat-groups/${chatId}/messages`, {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ text, reply_to_id: replyToId })
@@ -69,7 +69,7 @@ window.AsgardChatGroups = (function(){
       const res = await fetch(`/api/chat-groups/${chatId}/members`, {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ user_id: userId })
@@ -81,7 +81,7 @@ window.AsgardChatGroups = (function(){
       const auth = await AsgardAuth.get();
       const res = await fetch(`/api/chat-groups/${chatId}/members/${auth.user.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
       });
       return res.json();
     },
@@ -91,7 +91,7 @@ window.AsgardChatGroups = (function(){
       const res = await fetch(`/api/chat-groups/${chatId}/mute`, {
         method: 'PUT',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ until })
@@ -103,7 +103,7 @@ window.AsgardChatGroups = (function(){
       const res = await fetch(`/api/chat-groups/${chatId}/messages/${messageId}/reaction`, {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ emoji })

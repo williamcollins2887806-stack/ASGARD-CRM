@@ -35,7 +35,7 @@ window.AsgardKanban = (function(){
   async function fetchKanban(filters = {}) {
     const params = new URLSearchParams(filters);
     const res = await fetch('/api/tasks/kanban?' + params, {
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
     });
     if (!res.ok) throw new Error('Ошибка загрузки');
     return res.json();
@@ -45,7 +45,7 @@ window.AsgardKanban = (function(){
     const res = await fetch(`/api/tasks/${taskId}/move`, {
       method: 'PUT',
       headers: {
-        'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+        'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ column, position })
@@ -60,7 +60,7 @@ window.AsgardKanban = (function(){
   async function acknowledgeTask(taskId) {
     const res = await fetch(`/api/tasks/${taskId}/acknowledge`, {
       method: 'PUT',
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
     });
     if (!res.ok) {
       const err = await res.json();
@@ -71,7 +71,7 @@ window.AsgardKanban = (function(){
 
   async function fetchComments(taskId) {
     const res = await fetch(`/api/tasks/${taskId}/comments`, {
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
     });
     return res.json();
   }
@@ -80,7 +80,7 @@ window.AsgardKanban = (function(){
     const res = await fetch(`/api/tasks/${taskId}/comments`, {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+        'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ text })
@@ -91,7 +91,7 @@ window.AsgardKanban = (function(){
   async function watchTask(taskId, watch = true) {
     const res = await fetch(`/api/tasks/${taskId}/watch`, {
       method: watch ? 'POST' : 'DELETE',
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
     });
     return res.json();
   }
@@ -297,7 +297,7 @@ window.AsgardKanban = (function(){
 
   async function openTask(taskId) {
     const res = await fetch(`/api/tasks/${taskId}`, {
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
     });
     if (!res.ok) {
       toast('Ошибка загрузки задачи', 'error');

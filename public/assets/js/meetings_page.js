@@ -19,28 +19,28 @@ window.AsgardMeetings = (function(){
     async getMeetings(params = {}) {
       const query = new URLSearchParams(params);
       const res = await fetch(`/api/meetings?${query}`, {
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
       });
       return res.json();
     },
 
     async getMeeting(id) {
       const res = await fetch(`/api/meetings/${id}`, {
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
       });
       return res.json();
     },
 
     async getUpcoming(limit = 5) {
       const res = await fetch(`/api/meetings/upcoming?limit=${limit}`, {
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
       });
       return res.json();
     },
 
     async getStats() {
       const res = await fetch('/api/meetings/stats', {
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
       });
       return res.json();
     },
@@ -49,7 +49,7 @@ window.AsgardMeetings = (function(){
       const res = await fetch('/api/meetings', {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
@@ -61,7 +61,7 @@ window.AsgardMeetings = (function(){
       const res = await fetch(`/api/meetings/${id}`, {
         method: 'PUT',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
@@ -73,7 +73,7 @@ window.AsgardMeetings = (function(){
       const res = await fetch(`/api/meetings/${id}/rsvp`, {
         method: 'PUT',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ status, comment })
@@ -85,7 +85,7 @@ window.AsgardMeetings = (function(){
       const res = await fetch(`/api/meetings/${meetingId}/minutes`, {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
@@ -96,7 +96,7 @@ window.AsgardMeetings = (function(){
     async createTaskFromMinutes(meetingId, itemId) {
       const res = await fetch(`/api/meetings/${meetingId}/minutes/${itemId}/create-task`, {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('jwt') }
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') }
       });
       return res.json();
     },
@@ -105,7 +105,7 @@ window.AsgardMeetings = (function(){
       const res = await fetch(`/api/meetings/${id}/finalize`, {
         method: 'PUT',
         headers: {
-          'Authorization': 'Bearer ' + localStorage.getItem('jwt'),
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ minutes_text: minutesText })
