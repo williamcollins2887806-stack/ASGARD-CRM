@@ -787,6 +787,11 @@ async function getRefs(){
 
     applyAndRender();
 
+    // Мобильные карточки
+    if (window.AsgardUI?.makeResponsiveTable) {
+      AsgardUI.makeResponsiveTable('.asg');
+    }
+
     $("#f_period").addEventListener("change", applyAndRender);
     $("#f_q").addEventListener("input", applyAndRender);
     $("#f_type").addEventListener("change", applyAndRender);

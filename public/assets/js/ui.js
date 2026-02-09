@@ -285,5 +285,48 @@ window.AsgardUI = (function(){
     return Array(count).fill(tpl).join('');
   }
 
-  return { $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton };
+  /**
+   * makeResponsiveTable(tableSelector)
+   * Adds data-label attributes to td cells based on thead text,
+   * and adds .responsive-cards class for mobile card view.
+   */
+  function makeResponsiveTable(selector) {
+    const table = typeof selector === 'string' ? document.querySelector(selector) : selector;
+    if (!table) return;
+
+    table.classList.add('responsive-cards');
+
+    const headers = [];
+    table.querySelectorAll('thead th').forEach(th => {
+      headers.push(th.textContent.trim());
+    });
+
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      tr.querySelectorAll('td').forEach((td, i) => {
+        if (headers[i]) {
+          td.setAttribute('data-label', headers[i]);
+        }
+      });
+    });
+  }
+
+  /**
+   * emptyState({ icon, title, desc, action })
+   * Returns HTML for empty state placeholder.
+   */
+  function emptyState(opts = {}) {
+    const icon = opts.icon || '📭';
+    const title = opts.title || 'Нет данных';
+    const desc = opts.desc || '';
+    const action = opts.action;
+
+    return `<div class="empty-state">
+      <div class="empty-state-icon">${icon}</div>
+      <div class="empty-state-title">${esc(title)}</div>
+      ${desc ? `<div class="empty-state-desc">${esc(desc)}</div>` : ''}
+      ${action ? `<a class="btn primary" href="${esc(action.href || '#')}">${esc(action.label || 'Создать')}</a>` : ''}
+    </div>`;
+  }
+
+  return { $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton };
 })();

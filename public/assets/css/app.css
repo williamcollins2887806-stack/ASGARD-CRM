@@ -6480,3 +6480,77 @@ html[data-theme="light"] .sidebar-search-btn:hover {
   border-color: rgba(220, 38, 38, 0.15);
   color: var(--primary);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   MOBILE TABLE → CARDS
+   Responsive table that converts to card layout on mobile
+   ═══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Opt-in: tables with class .responsive-cards */
+  .responsive-cards thead {
+    display: none;
+  }
+
+  .responsive-cards tbody tr {
+    display: block;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+
+  .responsive-cards tbody tr:hover {
+    border-color: var(--gold-border);
+  }
+
+  .responsive-cards tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 4px 0;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .responsive-cards tbody td:last-child {
+    border-bottom: none;
+  }
+
+  /* Use data-label attribute for field names */
+  .responsive-cards tbody td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    margin-right: 12px;
+    max-width: 40%;
+  }
+
+  /* First td = title (bigger, gold) */
+  .responsive-cards tbody td:first-child {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--gold);
+    display: block;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+  }
+
+  .responsive-cards tbody td:first-child::before {
+    display: none;
+  }
+
+  /* Light theme */
+  html[data-theme="light"] .responsive-cards tbody tr {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.06);
+  }
+
+  html[data-theme="light"] .responsive-cards tbody td:first-child {
+    color: var(--primary);
+  }
+}
