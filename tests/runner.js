@@ -26,6 +26,7 @@ async function runTestSuite(suite) {
   const out = [];
   console.log(`\n  ▸ ${suite.name} (${suite.tests.length} tests)`);
 
+    await new Promise(r => setTimeout(r, 2000)); // 2s pause between sections
   for (const test of suite.tests) {
     const t0 = Date.now();
     try {

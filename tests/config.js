@@ -109,7 +109,7 @@ async function initRealUsers() {
 
 // HTTP helper (with 429 retry logic)
 async function api(method, path, { role = 'ADMIN', body = null, expectStatus = null } = {}) {
-  const maxRetries = 3;
+  const maxRetries = 5;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const url = `${BASE_URL}${path}`;
@@ -123,7 +123,7 @@ async function api(method, path, { role = 'ADMIN', body = null, expectStatus = n
     const resp = await fetch(url, opts);
 
     if (resp.status === 429 && attempt < maxRetries) {
-      const waitMs = 2000 * attempt;
+      const waitMs = attempt <= 2 ? 3000 * attempt : 10000 * (attempt - 1);
       console.log(`  [retry] 429 on ${method} ${path}, attempt ${attempt}/${maxRetries}, waiting ${waitMs}ms...`);
       await new Promise(r => setTimeout(r, waitMs));
       continue;
