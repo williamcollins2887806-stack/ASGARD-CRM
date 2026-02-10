@@ -541,19 +541,92 @@ try{
     // const sidebarToggle = $("#btnSidebarToggle");
     // if (sidebarToggle) { ... }
 
-    // Nav group click → toggle expand/collapse
-    $$(".nav-group-header").forEach(header => {
-      addMobileClick(header, (e) => {
-        e.preventDefault();
-        const group = header.closest(".nav-group");
-        if (!group) return;
-        const groupId = group.dataset.group;
-        const isNow = group.classList.toggle("expanded");
-        header.setAttribute("aria-expanded", isNow);
-        if (window.AsgardTheme && AsgardTheme.setNavGroupState)
-          AsgardTheme.setNavGroupState(groupId, isNow);
+    // ── Flyout navigation: show/hide submenu on hover (desktop) and click (mobile) ──
+    (function initFlyoutNav() {
+      let currentFlyout = null;   // currently open flyout element
+      let hideTimer = null;       // delay before hiding
+
+      function showFlyout(group) {
+        const header = group.querySelector(".nav-group-header");
+        const items = group.querySelector(".nav-group-items");
+        if (!header || !items) return;
+
+        // Close previous flyout if different
+        if (currentFlyout && currentFlyout !== items) {
+          currentFlyout.classList.remove("flyout-open");
+        }
+
+        // Calculate position: fixed relative to viewport
+        const rect = header.getBoundingClientRect();
+        const sidebarWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width')) || 60;
+
+        items.style.left = sidebarWidth + "px";
+        items.style.top = Math.max(0, rect.top) + "px";
+
+        // Prevent flyout from going below viewport
+        items.classList.add("flyout-open");
+        const flyoutRect = items.getBoundingClientRect();
+        if (flyoutRect.bottom > window.innerHeight) {
+          items.style.top = Math.max(0, window.innerHeight - flyoutRect.height - 8) + "px";
+        }
+
+        currentFlyout = items;
+        clearTimeout(hideTimer);
+      }
+
+      function hideFlyout(delay) {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          if (currentFlyout) {
+            currentFlyout.classList.remove("flyout-open");
+            currentFlyout = null;
+          }
+        }, delay || 150);
+      }
+
+      function cancelHide() {
+        clearTimeout(hideTimer);
+      }
+
+      // Bind events to each nav group
+      $$(".nav-group").forEach(group => {
+        const header = group.querySelector(".nav-group-header");
+        const items = group.querySelector(".nav-group-items");
+        if (!header || !items) return;
+
+        // Desktop: hover
+        header.addEventListener("mouseenter", () => showFlyout(group));
+        header.addEventListener("mouseleave", () => hideFlyout(200));
+        items.addEventListener("mouseenter", cancelHide);
+        items.addEventListener("mouseleave", () => hideFlyout(150));
+
+        // Desktop + Mobile: click on header
+        addMobileClick(header, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (currentFlyout === items && items.classList.contains("flyout-open")) {
+            hideFlyout(0);
+          } else {
+            showFlyout(group);
+          }
+        });
       });
-    });
+
+      // Close flyout when clicking outside
+      document.addEventListener("click", (e) => {
+        if (currentFlyout && !e.target.closest(".nav-group")) {
+          hideFlyout(0);
+        }
+      });
+
+      // Close flyout on Escape
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && currentFlyout) hideFlyout(0);
+      });
+
+      // Close flyout on route change
+      window.addEventListener("hashchange", () => hideFlyout(0));
+    })();
 
     addMobileClick($("#btnLogout"), ()=>{ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; });
     addMobileClick($("#btnLoginGo"), ()=>location.hash="#/login");

@@ -188,11 +188,9 @@
   display: none;
 }
 
-/* ── Flyout Submenu ── */
+/* ── Flyout Submenu (position: fixed + JS positioning) ── */
 .nav-group-items {
-  position: absolute;
-  left: calc(var(--sidebar-width) - 4px);
-  top: 0;
+  position: fixed;
   width: var(--sidebar-flyout);
   max-height: 80vh;
   overflow-y: auto;
@@ -201,9 +199,9 @@
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   box-shadow: var(--shadow-xl);
   padding: 8px;
-  z-index: var(--z-dropdown);
+  z-index: calc(var(--z-dropdown) + 10);
 
-  /* Скрыто по умолчанию */
+  /* Hidden by default — JS toggles .flyout-open */
   opacity: 0;
   visibility: hidden;
   transform: translateX(-8px);
@@ -211,9 +209,8 @@
   pointer-events: none;
 }
 
-/* Показать при hover на группу */
-.nav-group:hover > .nav-group-items,
-.nav-group:focus-within > .nav-group-items {
+/* JS adds this class on mouseenter */
+.nav-group-items.flyout-open {
   opacity: 1;
   visibility: visible;
   transform: translateX(0);
