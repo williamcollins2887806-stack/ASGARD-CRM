@@ -221,7 +221,10 @@ window.AsgardObjectMap = (function() {
       const resp = await fetch('/api/sites/' + siteId, {
         headers: { 'Authorization': 'Bearer ' + auth.token }
       });
-      const { site, works, tenders } = await resp.json();
+      const _data = await resp.json();
+      const site = _data.site;
+      const works = Array.isArray(_data.works) ? _data.works : [];
+      const tenders = Array.isArray(_data.tenders) ? _data.tenders : [];
 
       const status = getSiteStatus(site);
       const statusLabels = {

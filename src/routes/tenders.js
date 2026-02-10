@@ -393,6 +393,7 @@ async function routes(fastify, options) {
   fastify.get('/analytics/team', {
     preHandler: [fastify.requireRoles(['HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
+    try {
     const { year, period } = request.query;
 
     let whereClause = '1=1';
@@ -469,6 +470,10 @@ async function routes(fastify, options) {
       byStatus: byStatus.rows,
       byMonth: byMonth.rows
     };
+    } catch (err) {
+      request.log.error(err, 'tenders analytics/team error');
+      return reply.code(500).send({ error: 'Analytics error', details: err.message });
+    }
   });
 }
 

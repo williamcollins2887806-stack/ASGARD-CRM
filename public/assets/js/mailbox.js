@@ -68,8 +68,8 @@ window.AsgardMailboxPage = (function(){
   // ═══════════════════════════════════════════════════════════════════
   // RENDER — Main Layout
   // ═══════════════════════════════════════════════════════════════════
-  async function render({ layout }) {
-    layout.innerHTML = `
+  async function render({ layout, title }) {
+    const html = `
     <div style="display:flex; height:calc(100vh - 56px); overflow:hidden;">
       <!-- LEFT SIDEBAR -->
       <div id="mail-sidebar" style="width:220px; min-width:220px; background:var(--bg-deep); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto;">
@@ -114,6 +114,8 @@ window.AsgardMailboxPage = (function(){
         </div>
       </div>
     </div>`;
+
+    await layout(html, { title: title || 'Почта' });
 
     bindEvents();
     await loadStats();

@@ -233,7 +233,8 @@ window.AsgardTasksAdminPage = (function() {
         throw new Error('Ошибка загрузки данных');
       }
 
-      allTasks = await tasksRes.json();
+      const tasksData = await tasksRes.json();
+      allTasks = Array.isArray(tasksData) ? tasksData : (tasksData.tasks || tasksData.data || []);
       const stats = await statsRes.json();
 
       if (usersRes.ok) {

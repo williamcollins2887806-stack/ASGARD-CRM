@@ -78,7 +78,7 @@ window.AsgardEmployeePage=(function(){
         <div style="flex:1">
           <div class="who"><b>${esc(who)}</b> <span class="help">${esc(new Date(r.created_at).toLocaleString("ru-RU"))}</span></div>
           <div class="row" style="gap:8px; margin-top:6px; flex-wrap:wrap">
-            <span class="badge"><span class="dot" style="background:#22c55e"></span>${esc(String(r.score_1_10))}/10</span>
+            <span class="badge"><span class="dot" style="background:#22c55e"></span>${esc(String(r.score_1_10 ?? '—'))}/10</span>
             <span class="badge"><span class="dot" style="background:#3b82f6"></span>${w?esc(w.work_title||""):"—"}</span>
           </div>
           <div class="help" style="margin-top:6px">${esc(r.comment||"")}</div>

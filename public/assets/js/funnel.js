@@ -74,10 +74,10 @@ window.AsgardFunnelPage = (function(){
       const cardsHtml = items.slice(0, 20).map(t => `
         <div class="funnel-card" data-id="${t.id}" draggable="true">
           <div class="funnel-card-header">
-            <span class="funnel-card-customer">${esc(t.customer || 'Без заказчика')}</span>
+            <span class="funnel-card-customer">${esc(t.customer_name || t.customer_display || t.customer || 'Без заказчика')}</span>
             <span class="funnel-card-sum">${money(t._sum)}</span>
           </div>
-          <div class="funnel-card-title">${esc(t.tender_number || t.tag || 'Без номера')}</div>
+          <div class="funnel-card-title">${esc(t.tender_title || t.tender_number || t.subject || t.tag || 'Без номера')}</div>
           <div class="funnel-card-meta">
             <span>${esc(t._pm)}</span>
             ${t.deadline ? `<span>⏰ ${esc(t.deadline)}</span>` : ''}

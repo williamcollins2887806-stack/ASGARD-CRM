@@ -122,7 +122,7 @@
       transport, logistics_total: logisticsTotal, ppe_total: ppeTotal,
       base_cost: baseCost, overhead, overhead_pct: s.overhead_pct || 10, cost_total: costTotal,
       margin_pct: marginPct, price_no_vat: priceNoVat, profit_before_tax: profitBeforeTax,
-      profit_tax, net_profit: netProfit, vat_pct: s.vat_pct || 20, price_with_vat: priceWithVat,
+      profit_tax: profitTax, net_profit: netProfit, vat_pct: s.vat_pct || 20, price_with_vat: priceWithVat,
       profit_per_day: profitPerDay, min_profit: s.profit_per_day_min || 20000, norm_profit: s.profit_per_day_norm || 25000, status
     };
   }

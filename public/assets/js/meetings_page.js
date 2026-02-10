@@ -342,7 +342,7 @@ window.AsgardMeetings = (function(){
       </div>
     `;
 
-    showModal(html, { title: `Совещание #${meeting.id}` });
+    showModal(`Совещание #${meeting.id}`, html);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -474,7 +474,7 @@ window.AsgardMeetings = (function(){
       </div>
     `;
 
-    showModal(html, { title: '📅 Создать совещание' });
+    showModal('📅 Создать совещание', html);
   }
 
   async function createMeeting() {

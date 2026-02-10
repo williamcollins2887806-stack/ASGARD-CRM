@@ -304,7 +304,8 @@ window.AsgardKanban = (function(){
       return;
     }
     const { task } = await res.json();
-    const { comments } = await fetchComments(taskId);
+    const _commData = await fetchComments(taskId);
+    const comments = Array.isArray(_commData?.comments) ? _commData.comments : [];
 
     const priority = PRIORITIES[task.priority] || PRIORITIES.normal;
     const deadline = task.deadline ? new Date(task.deadline).toLocaleString('ru-RU') : 'Не указан';
@@ -370,7 +371,7 @@ window.AsgardKanban = (function(){
       </div>
     `;
 
-    showModal(html, { title: `Задача #${task.id}` });
+    showModal(`Задача #${task.id}`, html);
   }
 
   async function submitComment(taskId) {

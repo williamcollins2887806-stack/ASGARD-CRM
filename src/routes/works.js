@@ -94,6 +94,7 @@ async function routes(fastify, options) {
   fastify.get('/analytics/team', {
     preHandler: [fastify.requireRoles(['HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
+    try {
     const { year } = request.query;
 
     let whereClause = '1=1';
@@ -161,6 +162,10 @@ async function routes(fastify, options) {
       department: deptTotal.rows[0],
       byMonth: byMonth.rows
     };
+    } catch (err) {
+      request.log.error(err, 'works analytics/team error');
+      return reply.code(500).send({ error: 'Analytics error', details: err.message });
+    }
   });
 }
 

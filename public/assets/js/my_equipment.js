@@ -23,7 +23,9 @@ window.AsgardMyEquipment = (function(){
     // Загружаем объекты для формы передачи
     let objects = [];
     try {
-      const resp = await fetch('/api/equipment/objects');
+      const resp = await fetch('/api/equipment/objects', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
       const data = await resp.json();
       objects = data.objects || [];
     } catch(e) {}

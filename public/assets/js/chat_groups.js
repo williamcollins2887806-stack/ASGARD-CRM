@@ -325,7 +325,7 @@ window.AsgardChatGroups = (function(){
       </div>
     `;
 
-    showModal(html, { title: '➕ Создать групповой чат' });
+    showModal('➕ Создать групповой чат', html);
   }
 
   async function createChat() {
@@ -392,7 +392,7 @@ window.AsgardChatGroups = (function(){
       </div>
     `;
 
-    showModal(html, { title: '👥 Участники чата' });
+    showModal('👥 Участники чата', html);
   }
 
   async function addMember(chatId) {
@@ -440,7 +440,7 @@ window.AsgardChatGroups = (function(){
       </div>
     `;
 
-    showModal(html, { title: '⚙️ Настройки чата' });
+    showModal('⚙️ Настройки чата', html);
   }
 
   async function muteChat(chatId, hours) {

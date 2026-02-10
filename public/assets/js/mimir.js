@@ -25,7 +25,7 @@ window.AsgardMimir = (function(){
   let userName = '';
   let currentConversationId = null;
   let conversations = [];
-  let useStreaming = true;
+  let useStreaming = false;  // Отключаем стриминг — RouterAI не поддерживает SSE корректно
 
   const VIKING_WISDOM = [
     "Мудрость дороже золота, ибо золото можно потерять, а мудрость — никогда.",
@@ -1032,6 +1032,17 @@ window.AsgardMimir = (function(){
     }
 
     messages[messages.length - 1].isStreaming = false;
+
+    // Если стриминг не вернул текст — пробуем обычный запрос
+    if (!fullText && messages.length > 0) {
+      messages.pop(); // убираем пустое сообщение
+      const response = await callMimir(text);
+      messages.push({
+        role: 'assistant',
+        content: response.text || response,
+        results: response.results
+      });
+    }
   }
 
   async function callMimir(text) {

@@ -38,8 +38,8 @@ window.AsgardMailSettingsPage = (function(){
   // ═══════════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════════
-  async function render({ layout }) {
-    layout.innerHTML = `
+  async function render({ layout, title }) {
+    const html = `
     <div style="max-width:1100px; margin:0 auto; padding:20px;">
       <h1 style="color:var(--text-main); font-size:22px; margin:0 0 16px;">Настройки почты</h1>
 
@@ -54,13 +54,19 @@ window.AsgardMailSettingsPage = (function(){
       <div id="ms-content"></div>
     </div>`;
 
-    layout.querySelectorAll('.ms-tab').forEach(btn => {
-      btn.addEventListener('click', () => {
-        activeTab = btn.dataset.tab;
-        layout.querySelectorAll('.ms-tab').forEach(b => b.style.cssText = tabStyle(b.dataset.tab));
-        renderTab();
+    await layout(html, { title: title || 'Настройки почты' });
+
+    // Теперь DOM отрисован — навешиваем обработчики
+    const container = document.querySelector('#ms-content')?.parentElement;
+    if (container) {
+      container.querySelectorAll('.ms-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeTab = btn.dataset.tab;
+          container.querySelectorAll('.ms-tab').forEach(b => b.style.cssText = tabStyle(b.dataset.tab));
+          renderTab();
+        });
       });
-    });
+    }
 
     await renderTab();
   }
