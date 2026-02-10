@@ -149,7 +149,7 @@ window.AsgardDashboardPage = (function(){
             position:relative;
             background: linear-gradient(135deg, rgba(13,20,40,.7), rgba(13,20,40,.5));
             border:1px solid rgba(148,163,184,.15);
-            border-radius:18px;
+            border-radius:10px;
             padding:20px;
             overflow:hidden;
             transition: all .3s ease;

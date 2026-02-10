@@ -48,7 +48,7 @@ window.AsgardBigScreen = (function(){
         .bs-dot:hover{background:rgba(255,255,255,.3)}
         .bs-dot.active{background:var(--gold,#f2d08a);transform:scale(1.3)}
         .bs-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
-        .bs-card{background:linear-gradient(135deg,rgba(13,20,40,.8),rgba(13,20,40,.5));border:1px solid rgba(148,163,184,.12);border-radius:20px;padding:32px;text-align:center}
+        .bs-card{background:linear-gradient(135deg,rgba(13,20,40,.8),rgba(13,20,40,.5));border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:32px;text-align:center}
         .bs-card-title{font-size:12px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:2px;font-weight:800;margin-bottom:16px}
         .bs-card-value{font-size:56px;font-weight:900;line-height:1.1}
         .bs-card-sub{font-size:14px;color:rgba(255,255,255,.4);margin-top:12px}

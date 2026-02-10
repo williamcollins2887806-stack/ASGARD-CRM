@@ -8,6 +8,7 @@
    ───────────────────────────────────────────────────────────────────────────────── */
 .app,
 .asg-app {
+  --sidebar-width: 72px;
   display: block;
   min-height: 100vh;
 }
@@ -64,9 +65,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
   overflow: visible;
   border: 1px solid transparent;
   background:
@@ -87,8 +88,8 @@
 }
 
 .brand img {
-  width: 36px;
-  height: 36px;
+  width: 52px;
+  height: 52px;
   border-radius: 6px;
   border: none;
   background: none;
