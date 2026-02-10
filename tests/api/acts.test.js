@@ -30,7 +30,7 @@ module.exports = {
     {
       name: 'ADMIN reads act stats',
       run: async () => {
-        const resp = await api('GET', '/api/acts/stats', { role: 'ADMIN' });
+        const resp = await api('GET', '/api/acts/stats/summary', { role: 'ADMIN' });
         assert(resp.status < 500, `act stats: ${resp.status}`);
       }
     }

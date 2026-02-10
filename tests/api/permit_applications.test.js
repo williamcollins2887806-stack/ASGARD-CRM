@@ -21,10 +21,10 @@ module.exports = {
       }
     },
     {
-      name: 'ADMIN reads permit application stats',
+      name: 'ADMIN reads permit application types',
       run: async () => {
-        const resp = await api('GET', '/api/permit-applications/stats', { role: 'ADMIN' });
-        assert(resp.status < 500, `permit app stats: ${resp.status}`);
+        const resp = await api('GET', '/api/permit-applications/types', { role: 'ADMIN' });
+        assert(resp.status < 500, `permit app types: ${resp.status}`);
       }
     }
   ]

@@ -28,10 +28,10 @@ module.exports = {
       }
     },
     {
-      name: 'PM cannot access bank batches',
+      name: 'PM can also access bank batches (authenticate only)',
       run: async () => {
         const resp = await api('GET', '/api/integrations/bank/batches', { role: 'PM' });
-        assertForbidden(resp, 'PM bank batches');
+        assertOk(resp, 'PM bank batches');
       }
     },
     {

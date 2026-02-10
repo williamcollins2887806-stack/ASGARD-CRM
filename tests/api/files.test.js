@@ -7,17 +7,17 @@ module.exports = {
   name: 'FILES (Файлы)',
   tests: [
     {
-      name: 'ADMIN reads documents list',
+      name: 'ADMIN reads files list',
       run: async () => {
-        const resp = await api('GET', '/api/files/documents', { role: 'ADMIN' });
-        assertOk(resp, 'documents');
+        const resp = await api('GET', '/api/files', { role: 'ADMIN' });
+        assertOk(resp, 'files list');
       }
     },
     {
-      name: 'PM reads documents',
+      name: 'PM reads files list',
       run: async () => {
-        const resp = await api('GET', '/api/files/documents', { role: 'PM' });
-        assertOk(resp, 'PM documents');
+        const resp = await api('GET', '/api/files', { role: 'PM' });
+        assertOk(resp, 'PM files');
       }
     },
     {

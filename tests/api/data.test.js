@@ -28,10 +28,10 @@ module.exports = {
       }
     },
     {
-      name: 'ADMIN reads expenses via /data/expenses',
+      name: 'ADMIN reads work_expenses via /data/work_expenses',
       run: async () => {
-        const resp = await api('GET', '/api/data/expenses?limit=5', { role: 'ADMIN' });
-        assertOk(resp, 'data/expenses');
+        const resp = await api('GET', '/api/data/work_expenses?limit=5', { role: 'ADMIN' });
+        assertOk(resp, 'data/work_expenses');
       }
     },
     {
