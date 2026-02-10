@@ -10,7 +10,8 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/staff/employees', { role: 'HR' });
         assertOk(resp, 'list employees');
-        assert(Array.isArray(resp.data), 'array expected');
+        const list = resp.data?.employees || resp.data;
+        assert(Array.isArray(list), 'array expected');
       }
     },
     {
@@ -26,7 +27,7 @@ module.exports = {
           }
         });
         assertOk(resp, 'create employee');
-        testEmpId = resp.data?.id;
+        testEmpId = resp.data?.employee?.id || resp.data?.id;
       }
     },
     {

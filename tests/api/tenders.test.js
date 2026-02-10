@@ -19,8 +19,8 @@ module.exports = {
           }
         });
         assertOk(resp, 'create tender');
-        assert(resp.data?.id, 'should return id');
-        testTenderId = resp.data.id;
+        testTenderId = resp.data?.tender?.id || resp.data?.id;
+        assert(testTenderId, 'should return id');
       }
     },
     {
@@ -28,7 +28,8 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/tenders', { role: 'TO' });
         assertOk(resp, 'list tenders');
-        assert(Array.isArray(resp.data), 'should be array');
+        const list = resp.data?.tenders || resp.data;
+        assert(Array.isArray(list), 'should be array');
       }
     },
     {

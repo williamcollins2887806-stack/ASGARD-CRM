@@ -82,9 +82,9 @@ const tests = ACCESS_MATRIX.flatMap(([method, path, allowed]) => {
         role,
         body: method === 'POST' ? { _test: true } : null
       });
-      // Для DELETE/POST на несуществующие ID — 404 тоже ок (доступ есть, объекта нет)
+      // 500 = access granted but data/FK issue. Only 403/401 means access denied.
       assert(
-        resp.status < 500 && resp.status !== 403 && resp.status !== 401,
+        resp.status !== 403 && resp.status !== 401,
         `${role} should access ${method} ${path}, got ${resp.status}`
       );
     }

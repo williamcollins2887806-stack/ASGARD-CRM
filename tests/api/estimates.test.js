@@ -11,15 +11,14 @@ module.exports = {
         const resp = await api('POST', '/api/estimates', {
           role: 'PM',
           body: {
-            estimate_title: 'ТЕСТ: Просчёт HVAC',
-            cost_total: 3500000,
-            margin_percent: 15,
-            pm_id: 9001,
-            status: 'Черновик'
+            title: 'ТЕСТ: Просчёт HVAC',
+            amount: 3500000,
+            margin: 15,
+            approval_status: 'draft'
           }
         });
         assertOk(resp, 'create estimate');
-        testEstimateId = resp.data?.id;
+        testEstimateId = resp.data?.estimate?.id || resp.data?.id;
       }
     },
     {
@@ -27,7 +26,8 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/estimates', { role: 'PM' });
         assertOk(resp, 'list estimates');
-        assert(Array.isArray(resp.data), 'array expected');
+        const list = resp.data?.estimates || resp.data;
+        assert(Array.isArray(list), 'array expected');
       }
     },
     {
@@ -44,7 +44,7 @@ module.exports = {
         if (!testEstimateId) throw new Error('No estimate created');
         const resp = await api('PUT', `/api/estimates/${testEstimateId}`, {
           role: 'PM',
-          body: { status: 'На согласовании' }
+          body: { approval_status: 'pending' }
         });
         assertOk(resp, 'update estimate');
       }

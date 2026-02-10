@@ -20,22 +20,36 @@ module.exports = {
       }
     },
     {
-      name: 'ADMIN creates permit for test employee',
+      name: 'ADMIN creates permit for real employee',
       run: async () => {
+        // Look up real employee and permit type to avoid FK violations
+        const empList = await api('GET', '/api/staff/employees', { role: 'ADMIN' });
+        const employees = empList.data?.employees || empList.data || [];
+        const emp = Array.isArray(employees) ? employees.find(e => e.is_active !== false) || employees[0] : null;
+
+        const typeList = await api('GET', '/api/permits/types', { role: 'ADMIN' });
+        const types = typeList.data?.types || typeList.data || [];
+        const pType = Array.isArray(types) ? types[0] : null;
+
+        if (!emp) {
+          // No employees in DB, skip permit creation
+          return;
+        }
+
         const resp = await api('POST', '/api/permits', {
           role: 'ADMIN',
           body: {
-            employee_id: 9100,
-            type_id: 'safety_general',
+            employee_id: emp.id,
+            type_id: pType?.id || 'safety_general',
             doc_number: 'TEST-001',
             issue_date: '2026-01-01',
             expiry_date: '2027-01-01',
             notes: 'Автотест'
           }
         });
-        // Может быть 200/201 или 400 если type_id не существует
+        // May be 200/201 or 400 if type_id doesn't match
         assert(resp.status < 500, `create permit: ${resp.status}`);
-        if (resp.ok) testPermitId = resp.data?.id;
+        if (resp.ok) testPermitId = resp.data?.permit?.id || resp.data?.id;
       }
     },
     {

@@ -16,12 +16,11 @@ module.exports = {
             customer_name: 'Test Customer Alpha',
             contract_value: 3000000,
             cost_plan: 2000000,
-            work_status: 'В работе',
-            pm_id: 9001
+            work_status: 'В работе'
           }
         });
         assertOk(resp, 'create work');
-        testWorkId = resp.data?.id;
+        testWorkId = resp.data?.work?.id || resp.data?.id;
         assert(testWorkId, 'should return id');
       }
     },
@@ -30,7 +29,8 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/works', { role: 'PM' });
         assertOk(resp, 'list works');
-        assert(Array.isArray(resp.data), 'array expected');
+        const list = resp.data?.works || resp.data;
+        assert(Array.isArray(list), 'array expected');
       }
     },
     {
