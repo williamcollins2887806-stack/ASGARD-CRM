@@ -759,21 +759,21 @@ window.AsgardTasksAdminPage = (function() {
       }
 
       .kpi-card {
-        background: var(--card-bg, #fff);
+        background: var(--bg-card);
         border-radius: 8px;
         padding: 16px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: 1px solid var(--border-card, var(--border));
       }
 
       .kpi-value {
         font-size: 32px;
         font-weight: bold;
-        color: var(--text-primary, #333);
+        color: var(--gold);
       }
 
       .kpi-label {
         font-size: 14px;
-        color: var(--text-secondary, #666);
+        color: var(--text-muted);
         margin-top: 4px;
       }
 
@@ -785,9 +785,9 @@ window.AsgardTasksAdminPage = (function() {
         align-items: flex-end;
         margin-bottom: 20px;
         padding: 16px;
-        background: var(--card-bg, #fff);
+        background: var(--bg-card);
         border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: 1px solid var(--border-card, var(--border));
       }
 
       .filter-group {
@@ -798,21 +798,21 @@ window.AsgardTasksAdminPage = (function() {
 
       .filter-group label {
         font-size: 12px;
-        color: var(--text-secondary, #666);
+        color: var(--text-muted);
       }
 
       .filter-group select {
         padding: 8px 12px;
-        border: 1px solid var(--border-color, #ddd);
+        border: 1px solid var(--border);
         border-radius: 4px;
         min-width: 150px;
       }
 
       /* Table */
       .tasks-table-container {
-        background: var(--card-bg, #fff);
+        background: var(--bg-card);
         border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: 1px solid var(--border-card, var(--border));
         overflow-x: auto;
       }
 
@@ -825,18 +825,18 @@ window.AsgardTasksAdminPage = (function() {
       .tasks-table td {
         padding: 12px;
         text-align: left;
-        border-bottom: 1px solid var(--border-color, #eee);
+        border-bottom: 1px solid var(--border);
       }
 
       .tasks-table th {
-        background: var(--bg-secondary, #f5f5f5);
+        background: var(--bg-deep);
         font-weight: 600;
         font-size: 13px;
-        color: var(--text-secondary, #666);
+        color: var(--text-muted);
       }
 
       .tasks-table tbody tr:hover {
-        background: var(--bg-hover, #f9f9f9);
+        background: rgba(59, 130, 246, 0.08);
       }
 
       .tasks-table a {
@@ -890,7 +890,7 @@ window.AsgardTasksAdminPage = (function() {
       .error {
         text-align: center;
         padding: 40px !important;
-        color: var(--text-secondary, #666);
+        color: var(--text-muted);
       }
 
       .error {
@@ -912,7 +912,7 @@ window.AsgardTasksAdminPage = (function() {
       }
 
       .modal-content {
-        background: var(--card-bg, #fff);
+        background: var(--bg-card);
         border-radius: 12px;
         width: 90%;
         max-width: 500px;
@@ -929,7 +929,7 @@ window.AsgardTasksAdminPage = (function() {
         justify-content: space-between;
         align-items: center;
         padding: 16px 20px;
-        border-bottom: 1px solid var(--border-color, #eee);
+        border-bottom: 1px solid var(--border);
       }
 
       .modal-header h3 {
@@ -941,7 +941,7 @@ window.AsgardTasksAdminPage = (function() {
         border: none;
         font-size: 24px;
         cursor: pointer;
-        color: var(--text-secondary, #666);
+        color: var(--text-muted);
       }
 
       .modal-body {
@@ -965,10 +965,12 @@ window.AsgardTasksAdminPage = (function() {
       .form-group textarea {
         width: 100%;
         padding: 10px 12px;
-        border: 1px solid var(--border-color, #ddd);
+        border: 1px solid var(--border);
         border-radius: 6px;
         font-size: 14px;
         box-sizing: border-box;
+        background: var(--bg-deep);
+        color: var(--text-main, #e2e8f0);
       }
 
       .form-row {
@@ -990,7 +992,7 @@ window.AsgardTasksAdminPage = (function() {
 
       .file-tag {
         display: inline-block;
-        background: var(--bg-secondary, #f0f0f0);
+        background: rgba(59, 130, 246, 0.1);
         padding: 4px 8px;
         border-radius: 4px;
         font-size: 12px;
@@ -1016,7 +1018,7 @@ window.AsgardTasksAdminPage = (function() {
         gap: 12px;
         margin-bottom: 20px;
         padding: 16px;
-        background: var(--bg-secondary, #f5f5f5);
+        background: var(--bg-deep);
         border-radius: 8px;
       }
 
@@ -1028,7 +1030,7 @@ window.AsgardTasksAdminPage = (function() {
 
       .meta-label {
         font-size: 12px;
-        color: var(--text-secondary, #666);
+        color: var(--text-muted);
       }
 
       .meta-value {
@@ -1042,7 +1044,7 @@ window.AsgardTasksAdminPage = (function() {
       .task-section h4 {
         margin: 0 0 8px 0;
         font-size: 14px;
-        color: var(--text-secondary, #666);
+        color: var(--text-muted);
       }
 
       .task-section p {
@@ -1058,7 +1060,7 @@ window.AsgardTasksAdminPage = (function() {
 
       .file-link {
         display: inline-block;
-        background: var(--bg-secondary, #f0f0f0);
+        background: rgba(59, 130, 246, 0.1);
         padding: 6px 12px;
         border-radius: 4px;
         font-size: 13px;
@@ -1067,7 +1069,7 @@ window.AsgardTasksAdminPage = (function() {
       }
 
       .file-link:hover {
-        background: var(--bg-hover, #e5e5e5);
+        background: rgba(59, 130, 246, 0.15);
       }
 
       /* Buttons */
@@ -1091,12 +1093,12 @@ window.AsgardTasksAdminPage = (function() {
       }
 
       .btn-secondary {
-        background: var(--bg-secondary, #e5e5e5);
-        color: var(--text-primary, #333);
+        background: rgba(59, 130, 246, 0.15);
+        color: var(--gold);
       }
 
       .btn-secondary:hover {
-        background: var(--bg-hover, #d5d5d5);
+        background: rgba(59, 130, 246, 0.2);
       }
 
       @media (max-width: 768px) {
