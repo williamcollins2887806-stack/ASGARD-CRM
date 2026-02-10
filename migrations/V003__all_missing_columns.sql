@@ -361,9 +361,13 @@ CREATE TABLE IF NOT EXISTS staff_plan (
   staff_id INTEGER,
   date DATE,
   status_code VARCHAR(20),
+  created_by INTEGER,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Add created_by column if table already exists without it
+ALTER TABLE staff_plan ADD COLUMN IF NOT EXISTS created_by INTEGER;
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- BONUS_REQUESTS (Согласования премий)
