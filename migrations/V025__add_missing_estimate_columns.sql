@@ -37,4 +37,15 @@ ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS entity_type VARCHAR(100);
 ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS entity_id INTEGER;
 ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS details TEXT;
 
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- EMPLOYEE_PERMITS — ensure notes column exists (defined in V003 but may be missing)
+-- ═══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE employee_permits ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- EMPLOYEE_REVIEWS — drop overly strict rating CHECK if exists (allow 1-10)
+-- ═══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE employee_reviews DROP CONSTRAINT IF EXISTS employee_reviews_rating_check;
+ALTER TABLE employee_reviews ADD CONSTRAINT employee_reviews_rating_check CHECK (rating >= 1 AND rating <= 10);
+
 SELECT 'V025 applied successfully' as result;

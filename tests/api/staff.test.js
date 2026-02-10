@@ -55,7 +55,7 @@ module.exports = {
         if (!testEmpId) throw new Error('No employee created');
         const resp = await api('POST', `/api/staff/employees/${testEmpId}/review`, {
           role: 'HR',
-          body: { rating: 8, comment: 'Автотест оценка' }
+          body: { rating: 4, comment: 'Автотест оценка' }
         });
         assert(resp.status < 500, `review: ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
       }
