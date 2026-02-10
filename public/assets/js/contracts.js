@@ -201,7 +201,7 @@ window.AsgardContractsPage = (function(){
       
       const esc = AsgardUI.esc;
       return `
-        <tr data-id="${c.id}">
+        <tr data-id="${c.id}" style="background:transparent">
           <td><strong>${esc(c.number) || '—'}</strong></td>
           <td><span class="badge" style="background:${c.type === 'customer' ? 'var(--green-glow)' : 'var(--blue-glow)'}; color:${c.type === 'customer' ? 'var(--green)' : 'var(--blue)'}">${esc(type?.name || c.type)}</span></td>
           <td>${esc(customer?.name || c.counterparty_name) || '—'}</td>
@@ -247,7 +247,7 @@ window.AsgardContractsPage = (function(){
     
     const html = `
       <div class="modal-overlay" id="contractModal">
-        <div class="modal-content" style="max-width:600px">
+        <div class="modal-content" style="max-width:600px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-main, #e2e8f0)"
           <div class="modal-header">
             <h3>${isEdit ? 'Редактирование договора' : 'Новый договор'}</h3>
             <button class="btn ghost btnClose">✕</button>
@@ -406,7 +406,7 @@ window.AsgardContractsPage = (function(){
     
     const html = `
       <div class="modal-overlay" id="contractSelectorModal">
-        <div class="modal-content" style="max-width:500px">
+        <div class="modal-content" style="max-width:500px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-main, #e2e8f0)"
           <div class="modal-header">
             <h3>Выберите договор</h3>
             <button class="btn ghost btnClose">✕</button>

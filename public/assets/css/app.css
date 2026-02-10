@@ -1579,6 +1579,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   background: var(--bg-elevated);
   border-radius: var(--radius-md);
   min-width: 120px;
+  border: 1px solid var(--border);
 }
 
 .funnel-stat.won {

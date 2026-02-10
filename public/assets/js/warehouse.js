@@ -116,24 +116,24 @@ window.AsgardWarehouse = (function(){
       <div class="warehouse-page">
         <!-- Статистика -->
         <div class="stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
-          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center">
+          <div style="background:var(--bg-card);padding:16px;border-radius:8px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:28px;font-weight:700;color:var(--accent)">${stats.total || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">Всего ТМЦ</div>
           </div>
-          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center">
+          <div style="background:var(--bg-card);padding:16px;border-radius:8px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:28px;font-weight:700;color:#22c55e">${stats.on_warehouse || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">На складе</div>
           </div>
-          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center">
+          <div style="background:var(--bg-card);padding:16px;border-radius:8px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:28px;font-weight:700;color:#3b82f6">${stats.issued || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">Выдано</div>
           </div>
-          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center">
+          <div style="background:var(--bg-card);padding:16px;border-radius:8px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:28px;font-weight:700;color:#f97316">${stats.in_repair || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">В ремонте</div>
           </div>
           ${isDirector ? `
-            <div class="stat-card" style="background:linear-gradient(135deg,#1e3a5f,#2a3b66);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--accent)">
+            <div style="background:linear-gradient(135deg,#1e3a5f,#2a3b66);padding:16px;border-radius:8px;text-align:center;border:1px solid var(--accent)">
               <div style="font-size:22px;font-weight:700;color:#f5d78e">${formatMoney(stats.total_book_value)}</div>
               <div style="font-size:11px;color:rgba(255,255,255,0.7)">Балансовая стоимость</div>
               <div style="font-size:10px;color:var(--text-muted);margin-top:4px">

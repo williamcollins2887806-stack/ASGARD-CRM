@@ -110,7 +110,7 @@ window.AsgardFunnelPage = (function(){
         <div class="motto">Сделки в движении — деньги в кассе.</div>
       </div>
       
-      <div class="card">
+      <div class="card" style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px">
         <div class="funnel-stats">
           <div class="funnel-stat">
             <div class="funnel-stat-value">${totalCount}</div>
