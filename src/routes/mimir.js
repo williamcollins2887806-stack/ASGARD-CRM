@@ -297,10 +297,12 @@ async function mimirRoutes(fastify, options) {
 
       // Логируем ошибку
       try {
+        const prov = (aiProvider.getProvider && aiProvider.getProvider()) || 'unknown';
+        const mdl = (aiProvider.getConfig && aiProvider.getConfig()?.model) || 'unknown';
         await db.query(`
           INSERT INTO mimir_usage_log (user_id, provider, model, success, error_message)
           VALUES ($1, $2, $3, FALSE, $4)
-        `, [user.id, aiProvider.getProvider(), aiProvider.getConfig().model, error.message]);
+        `, [user.id, prov, mdl, String(error.message || error).slice(0, 2000)]);
       } catch (e) { /* ignore */ }
 
       return reply.code(500).send({
@@ -1077,14 +1079,16 @@ async function mimirRoutes(fastify, options) {
    */
   async function logUsage(db, userId, conversationId, aiResult) {
     try {
+      const prov = aiResult.provider || (aiProvider.getProvider && aiProvider.getProvider()) || 'unknown';
+      const mdl = aiResult.model || (aiProvider.getConfig && aiProvider.getConfig()?.model) || 'unknown';
       await db.query(`
         INSERT INTO mimir_usage_log (user_id, conversation_id, provider, model, tokens_input, tokens_output, duration_ms, success)
         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
       `, [
         userId,
         conversationId,
-        aiResult.provider || aiProvider.getProvider(),
-        aiResult.model || aiProvider.getConfig().model,
+        prov,
+        mdl,
         aiResult.usage?.inputTokens || 0,
         aiResult.usage?.outputTokens || 0,
         aiResult.durationMs || 0
