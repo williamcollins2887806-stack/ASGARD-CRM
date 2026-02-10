@@ -221,6 +221,31 @@ window.CashPage = (function() {
       </div>
     `;
 
+    // Inject dark theme overrides for Bootstrap elements
+    if (!document.getElementById('cash-dark-styles')) {
+      const style = document.createElement('style');
+      style.id = 'cash-dark-styles';
+      style.textContent = `
+        #cash-page .card { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main, #e2e8f0); }
+        #cash-page .card-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); color: var(--text-main, #e2e8f0); }
+        #cash-page .card-body { background: var(--bg-card); color: var(--text-main, #e2e8f0); }
+        #cash-page .modal-content { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main, #e2e8f0); }
+        #cash-page .modal-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); }
+        #cash-page .modal-footer { background: var(--bg-deep); border-top: 1px solid var(--border); }
+        #cash-page .form-control, #cash-page .form-select { background: var(--bg-deep); color: var(--text-main, #e2e8f0); border-color: var(--border); }
+        #cash-page .form-label { color: var(--text-muted); }
+        #cash-page .table { color: var(--text-main, #e2e8f0); }
+        #cash-page .table th { background: var(--bg-deep); color: var(--text-muted); border-color: var(--border); }
+        #cash-page .table td { border-color: var(--border); }
+        #cash-page .table-hover tbody tr:hover { background: rgba(59,130,246,0.08); }
+        #cash-page .btn-close { filter: invert(1); }
+        #cash-page .alert { border: 1px solid var(--border); }
+        #cash-page .text-muted { color: var(--text-muted) !important; }
+        #cash-page .border { border-color: var(--border) !important; }
+      `;
+      document.head.appendChild(style);
+    }
+
     await loadBalance();
     await loadWorks();
     await loadRequests();
