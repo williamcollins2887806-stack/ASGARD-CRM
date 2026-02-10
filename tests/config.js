@@ -107,27 +107,39 @@ async function initRealUsers() {
   }
 }
 
-// HTTP helper
+// HTTP helper (with 429 retry logic)
 async function api(method, path, { role = 'ADMIN', body = null, expectStatus = null } = {}) {
-  const url = `${BASE_URL}${path}`;
-  const headers = {
-    'Authorization': `Bearer ${getToken(role)}`,
-    'Content-Type': 'application/json'
-  };
-  const opts = { method, headers };
-  if (body) opts.body = JSON.stringify(body);
+  const maxRetries = 3;
 
-  const resp = await fetch(url, opts);
-  const ct = resp.headers.get('content-type') || '';
-  const data = ct.includes('json')
-    ? await resp.json().catch(() => null)
-    : await resp.text().catch(() => null);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const url = `${BASE_URL}${path}`;
+    const headers = {
+      'Authorization': `Bearer ${getToken(role)}`,
+      'Content-Type': 'application/json'
+    };
+    const opts = { method, headers };
+    if (body) opts.body = JSON.stringify(body);
 
-  if (expectStatus && resp.status !== expectStatus) {
-    throw new Error(`${method} ${path} [${role}]: expected ${expectStatus}, got ${resp.status}`);
+    const resp = await fetch(url, opts);
+
+    if (resp.status === 429 && attempt < maxRetries) {
+      const waitMs = 2000 * attempt;
+      console.log(`  [retry] 429 on ${method} ${path}, attempt ${attempt}/${maxRetries}, waiting ${waitMs}ms...`);
+      await new Promise(r => setTimeout(r, waitMs));
+      continue;
+    }
+
+    const ct = resp.headers.get('content-type') || '';
+    const data = ct.includes('json')
+      ? await resp.json().catch(() => null)
+      : await resp.text().catch(() => null);
+
+    if (expectStatus && resp.status !== expectStatus) {
+      throw new Error(`${method} ${path} [${role}]: expected ${expectStatus}, got ${resp.status}`);
+    }
+
+    return { status: resp.status, data, ok: resp.ok };
   }
-
-  return { status: resp.status, data, ok: resp.ok };
 }
 
 // Утилиты
