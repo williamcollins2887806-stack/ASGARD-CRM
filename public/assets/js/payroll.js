@@ -245,22 +245,22 @@ window.AsgardPayrollPage = (function(){
         showModal('Новая ведомость', `
           <div class="formrow"><div>
             <label>Работа *</label>
-            <select id="ps_work" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)">
+            <select id="ps_work" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
               <option value="">— Общая (без работы) —</option>
               ${myWorks2.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' — '+(w.work_title||''))}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div><label>Период с *</label><input type="date" id="ps_from" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
-            <div><label>Период по *</label><input type="date" id="ps_to" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Период с *</label><input type="date" id="ps_from" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Период по *</label><input type="date" id="ps_to" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
           </div>
           <div class="formrow"><div style="grid-column:1/-1">
             <label>Название</label>
-            <input id="ps_title" placeholder="Авто: Ведомость {месяц} \u2014 {объект}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/>
+            <input id="ps_title" placeholder="Авто: Ведомость {месяц} \u2014 {объект}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/>
           </div></div>
           <div class="formrow"><div style="grid-column:1/-1">
             <label>Комментарий</label>
-            <textarea id="ps_comment" rows="2" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"></textarea>
+            <textarea id="ps_comment" rows="2" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"></textarea>
           </div></div>
           <button class="btn primary" id="btnCreateSheet" style="margin-top:12px;width:100%">Создать</button>
         `);
@@ -626,18 +626,18 @@ window.AsgardPayrollPage = (function(){
         showModal('Добавить рабочего', `
           <div class="formrow"><div>
             <label>Рабочий *</label>
-            <select id="addItemEmp" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)">
+            <select id="addItemEmp" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
               <option value="">Выберите...</option>
               ${activeEmps.map(e=>`<option value="${e.id}">${esc(e.fio||'')} ${e.role_tag?'('+esc(e.role_tag)+')':''}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div><label>Дней</label><input type="number" id="addItemDays" value="0" min="0" max="31" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
-            <div><label>Ставка (\u20BD/день)</label><input type="number" id="addItemRate" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Дней</label><input type="number" id="addItemDays" value="0" min="0" max="31" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Ставка (\u20BD/день)</label><input type="number" id="addItemRate" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
           </div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div><label>Премия</label><input type="number" id="addItemBonus" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
-            <div><label>Штраф</label><input type="number" id="addItemPenalty" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Премия</label><input type="number" id="addItemBonus" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Штраф</label><input type="number" id="addItemPenalty" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
           </div>
           <button class="btn primary" id="btnDoAddItem" style="margin-top:12px;width:100%">Добавить</button>
         `);
@@ -767,27 +767,27 @@ window.AsgardPayrollPage = (function(){
       showModal(existing?'Редактировать СЗ':'Добавить самозанятого', `
         <div class="formrow"><div>
           <label>ФИО *</label>
-          <input id="seName" value="${esc(se.full_name||'')}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/>
+          <input id="seName" value="${esc(se.full_name||'')}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/>
         </div></div>
         <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div><label>ИНН * (12 цифр)</label><input id="seInn" value="${esc(se.inn||'')}" maxlength="12" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
-          <div><label>Телефон</label><input id="sePhone" value="${esc(se.phone||'')}" placeholder="+7-XXX-XXX-XX-XX" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>ИНН * (12 цифр)</label><input id="seInn" value="${esc(se.inn||'')}" maxlength="12" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>Телефон</label><input id="sePhone" value="${esc(se.phone||'')}" placeholder="+7-XXX-XXX-XX-XX" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
         </div>
         <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div><label>Банк</label><input id="seBank" value="${esc(se.bank_name||'')}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
-          <div><label>БИК</label><input id="seBik" value="${esc(se.bik||'')}" maxlength="9" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>Банк</label><input id="seBank" value="${esc(se.bank_name||'')}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>БИК</label><input id="seBik" value="${esc(se.bik||'')}" maxlength="9" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
         </div>
         <div class="formrow"><div>
           <label>Расчётный счёт</label>
-          <input id="seAccount" value="${esc(se.account_number||'')}" maxlength="20" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/>
+          <input id="seAccount" value="${esc(se.account_number||'')}" maxlength="20" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/>
         </div></div>
         <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div><label>\u2116 ГПХ</label><input id="seContract" value="${esc(se.contract_number||'')}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
-          <div><label>Дата ГПХ</label><input type="date" id="seContractDate" value="${(se.contract_date||'').slice(0,10)}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>\u2116 ГПХ</label><input id="seContract" value="${esc(se.contract_number||'')}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>Дата ГПХ</label><input type="date" id="seContractDate" value="${(se.contract_date||'').slice(0,10)}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
         </div>
         <div class="formrow"><div>
           <label>Комментарий</label>
-          <textarea id="seComment" rows="2" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)">${esc(se.comment||'')}</textarea>
+          <textarea id="seComment" rows="2" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">${esc(se.comment||'')}</textarea>
         </div></div>
         <button class="btn primary" id="btnSaveSE" style="margin-top:12px;width:100%">${existing?'Сохранить':'Добавить'}</button>
       `);
@@ -928,29 +928,29 @@ window.AsgardPayrollPage = (function(){
         showModal('Запросить разовую оплату', `
           <div class="formrow"><div>
             <label>Рабочий *</label>
-            <select id="otpEmp" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)">
+            <select id="otpEmp" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
               <option value="">Выберите...</option>
               ${activeEmps.map(e=>`<option value="${e.id}">${esc(e.fio||'')}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div><label>Сумма * (\u20BD)</label><input type="number" id="otpAmount" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Сумма * (\u20BD)</label><input type="number" id="otpAmount" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
             <div><label>Тип</label>
-              <select id="otpType" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)">
+              <select id="otpType" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
                 ${Object.entries(PAYMENT_TYPES).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
               </select>
             </div>
           </div>
           <div class="formrow"><div>
             <label>Работа</label>
-            <select id="otpWork" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)">
+            <select id="otpWork" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
               <option value="">Без привязки</option>
               ${myWorks.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' \u2014 '+(w.work_title||''))}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow"><div>
             <label>Причина / описание *</label>
-            <textarea id="otpReason" rows="2" style="width:100%;padding:8px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);color:var(--text)"></textarea>
+            <textarea id="otpReason" rows="2" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"></textarea>
           </div></div>
           <button class="btn primary" id="btnDoOTP" style="margin-top:12px;width:100%">Запросить</button>
         `);

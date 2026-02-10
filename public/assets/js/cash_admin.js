@@ -201,25 +201,30 @@ window.CashAdminPage = (function() {
       const style = document.createElement('style');
       style.id = 'cash-admin-dark-styles';
       style.textContent = `
-        #cash-admin-page .card { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main, #e2e8f0); }
-        #cash-admin-page .card-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); color: var(--text-main, #e2e8f0); }
-        #cash-admin-page .card-body { background: var(--bg-card); color: var(--text-main, #e2e8f0); }
-        #cash-admin-page .modal-content { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main, #e2e8f0); }
+        #cash-admin-page .card { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); }
+        #cash-admin-page .card-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); color: var(--text-primary); }
+        #cash-admin-page .card-body { background: var(--bg-card); color: var(--text-primary); }
+        #cash-admin-page .modal-content { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); }
         #cash-admin-page .modal-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); }
         #cash-admin-page .modal-footer { background: var(--bg-deep); border-top: 1px solid var(--border); }
-        #cash-admin-page .form-control, #cash-admin-page .form-select { background: var(--bg-deep); color: var(--text-main, #e2e8f0); border-color: var(--border); }
+        #cash-admin-page .form-control, #cash-admin-page .form-select { background: var(--bg-deep); color: var(--text-primary); border-color: var(--border); }
         #cash-admin-page .form-label { color: var(--text-muted); }
-        #cash-admin-page .table { color: var(--text-main, #e2e8f0); }
+        #cash-admin-page .table { color: var(--text-primary); }
         #cash-admin-page .table th { background: var(--bg-deep); color: var(--text-muted); border-color: var(--border); }
         #cash-admin-page .table td { border-color: var(--border); }
         #cash-admin-page .table-hover tbody tr:hover { background: rgba(59,130,246,0.08); }
-        #cash-admin-page .table-light, #cash-admin-page .table-light th { background: var(--bg-deep) !important; color: var(--text-main, #e2e8f0) !important; }
+        #cash-admin-page .table-light, #cash-admin-page .table-light th { background: var(--bg-deep) !important; color: var(--text-primary) !important; }
         #cash-admin-page .table-warning { background: rgba(245,158,11,0.1) !important; }
         #cash-admin-page .nav-tabs { border-color: var(--border); }
         #cash-admin-page .nav-tabs .nav-link { color: var(--text-muted); border-color: transparent; }
-        #cash-admin-page .nav-tabs .nav-link.active { background: var(--bg-card); color: var(--text-main, #e2e8f0); border-color: var(--border) var(--border) var(--bg-card); }
+        #cash-admin-page .nav-tabs .nav-link.active { background: var(--bg-card); color: var(--text-primary); border-color: var(--border) var(--border) var(--bg-card); }
         #cash-admin-page .btn-close { filter: invert(1); }
-        #cash-admin-page .alert { border: 1px solid var(--border); }
+        #cash-admin-page .alert { border: 1px solid var(--border); background: var(--bg-deep); color: var(--text-primary); }
+        #cash-admin-page .alert-info { background: rgba(37,99,235,0.1); border-color: var(--secondary-glow); }
+        #cash-admin-page .alert-warning { background: rgba(245,158,11,0.1); border-color: var(--amber-glow); }
+        #cash-admin-page .alert-success { background: rgba(34,197,94,0.1); border-color: var(--green-glow); }
+        #cash-admin-page .alert-danger { background: rgba(220,38,38,0.1); border-color: var(--red-glow); }
+        #cash-admin-page .modal-header, #cash-admin-page .modal-footer { color: var(--text-primary); }
         #cash-admin-page .text-muted { color: var(--text-muted) !important; }
         #cash-admin-page .border { border-color: var(--border) !important; }
       `;

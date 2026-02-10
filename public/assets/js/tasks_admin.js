@@ -840,7 +840,7 @@ window.AsgardTasksAdminPage = (function() {
       }
 
       .tasks-table a {
-        color: var(--link-color, #3b82f6);
+        color: var(--secondary-light);
         text-decoration: none;
       }
 
@@ -970,7 +970,7 @@ window.AsgardTasksAdminPage = (function() {
         font-size: 14px;
         box-sizing: border-box;
         background: var(--bg-deep);
-        color: var(--text-main, #e2e8f0);
+        color: var(--text-primary);
       }
 
       .form-row {
@@ -1064,7 +1064,7 @@ window.AsgardTasksAdminPage = (function() {
         padding: 6px 12px;
         border-radius: 4px;
         font-size: 13px;
-        color: var(--link-color, #3b82f6);
+        color: var(--secondary-light);
         text-decoration: none;
       }
 

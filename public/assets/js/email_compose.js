@@ -111,7 +111,7 @@ window.AsgardEmailCompose = (function(){
       <div style="width:720px; max-width:95vw; max-height:90vh; background:var(--bg-card); border-radius:12px; border:1px solid var(--border); display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
         <!-- Header -->
         <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-          <h3 style="margin:0; color:var(--text-main); font-size:16px;">${modeLabel[mode] || 'Новое письмо'}</h3>
+          <h3 style="margin:0; color:var(--text-primary); font-size:16px;">${modeLabel[mode] || 'Новое письмо'}</h3>
           <button id="compose-close" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px;">&times;</button>
         </div>
 
@@ -120,7 +120,7 @@ window.AsgardEmailCompose = (function(){
           <!-- Template selector -->
           <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center;">
             <label style="font-size:12px; color:var(--text-muted); white-space:nowrap;">Шаблон:</label>
-            <select id="compose-template" style="flex:1; padding:6px 8px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-main); font-size:13px;">
+            <select id="compose-template" style="flex:1; padding:6px 8px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:13px;">
               <option value="">Без шаблона</option>
               ${templates.map(t => `<option value="${t.id}">${esc(t.name)} (${esc(t.category)})</option>`).join('')}
             </select>
@@ -141,7 +141,7 @@ window.AsgardEmailCompose = (function(){
             <div style="display:flex; gap:8px; align-items:center;">
               <label style="font-size:12px; color:var(--text-muted); width:40px;">Кому:</label>
               <input id="compose-to" type="text" value="${esc(toVal)}" placeholder="email@example.com"
-                style="flex:1; padding:6px 10px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-main); font-size:13px;">
+                style="flex:1; padding:6px 10px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:13px;">
             </div>
           </div>
 
@@ -150,7 +150,7 @@ window.AsgardEmailCompose = (function(){
             <div style="display:flex; gap:8px; align-items:center;">
               <label style="font-size:12px; color:var(--text-muted); width:40px;">Копия:</label>
               <input id="compose-cc" type="text" value="${esc(ccVal)}" placeholder="cc@example.com"
-                style="flex:1; padding:6px 10px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-main); font-size:13px;">
+                style="flex:1; padding:6px 10px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:13px;">
             </div>
           </div>
 
@@ -159,7 +159,7 @@ window.AsgardEmailCompose = (function(){
             <div style="display:flex; gap:8px; align-items:center;">
               <label style="font-size:12px; color:var(--text-muted); width:40px;">Тема:</label>
               <input id="compose-subject" type="text" value="${esc(subjectVal)}"
-                style="flex:1; padding:6px 10px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-main); font-size:13px;">
+                style="flex:1; padding:6px 10px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:13px;">
             </div>
           </div>
 
@@ -168,12 +168,12 @@ window.AsgardEmailCompose = (function(){
 
           <!-- Body -->
           <div style="margin-bottom:12px;">
-            <textarea id="compose-body" rows="12" style="width:100%; padding:10px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-main); font-size:13px; line-height:1.5; resize:vertical; font-family:inherit;">${esc(bodyVal)}</textarea>
+            <textarea id="compose-body" rows="12" style="width:100%; padding:10px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:13px; line-height:1.5; resize:vertical; font-family:inherit;">${esc(bodyVal)}</textarea>
           </div>
 
           <!-- Options -->
           <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
-            <label style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--text-main); cursor:pointer;">
+            <label style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--text-primary); cursor:pointer;">
               <input type="checkbox" id="compose-letterhead" ${mode === 'compose' ? 'checked' : ''}> На фирменном бланке
             </label>
           </div>
@@ -185,7 +185,7 @@ window.AsgardEmailCompose = (function(){
 
         <!-- Footer -->
         <div style="padding:12px 20px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end;">
-          <button id="compose-save-draft" style="padding:8px 16px; border-radius:6px; border:1px solid var(--border); background:var(--bg-deep); color:var(--text-main); cursor:pointer; font-size:13px;">Черновик</button>
+          <button id="compose-save-draft" style="padding:8px 16px; border-radius:6px; border:1px solid var(--border); background:var(--bg-deep); color:var(--text-primary); cursor:pointer; font-size:13px;">Черновик</button>
           <button id="compose-send" style="padding:8px 20px; border-radius:6px; border:none; background:var(--primary); color:#fff; cursor:pointer; font-size:13px; font-weight:600;">Отправить</button>
         </div>
       </div>
@@ -247,10 +247,10 @@ window.AsgardEmailCompose = (function(){
         <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
           <label style="font-size:12px; color:var(--text-muted); min-width:120px;">${esc(v.label || v.name)}${v.required ? ' *' : ''}:</label>
           <input class="tpl-var-input" data-name="${esc(v.name)}" type="${v.type === 'number' ? 'number' : v.type === 'date' ? 'date' : 'text'}"
-            style="flex:1; padding:4px 8px; background:var(--bg-deep); border:1px solid var(--border); border-radius:4px; color:var(--text-main); font-size:12px;">
+            style="flex:1; padding:4px 8px; background:var(--bg-deep); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:12px;">
         </div>
       `).join('')}
-      <button id="compose-apply-tpl" style="padding:4px 12px; border-radius:4px; border:1px solid var(--border); background:var(--bg-deep); color:var(--text-main); cursor:pointer; font-size:12px;">Применить шаблон</button>
+      <button id="compose-apply-tpl" style="padding:4px 12px; border-radius:4px; border:1px solid var(--border); background:var(--bg-deep); color:var(--text-primary); cursor:pointer; font-size:12px;">Применить шаблон</button>
     `;
 
     const applyBtn = container.querySelector('#compose-apply-tpl');

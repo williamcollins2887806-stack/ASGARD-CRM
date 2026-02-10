@@ -41,7 +41,7 @@ window.AsgardMailSettingsPage = (function(){
   async function render({ layout, title }) {
     const html = `
     <div style="max-width:1100px; margin:0 auto; padding:20px;">
-      <h1 style="color:var(--text-main); font-size:22px; margin:0 0 16px;">Настройки почты</h1>
+      <h1 style="color:var(--text-primary); font-size:22px; margin:0 0 16px;">Настройки почты</h1>
 
       <!-- Tabs -->
       <div style="display:flex; gap:4px; border-bottom:2px solid var(--border); margin-bottom:16px;">
@@ -111,13 +111,13 @@ window.AsgardMailSettingsPage = (function(){
           <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <div>
-                <strong style="color:var(--text-main);">${esc(a.name)}</strong>
+                <strong style="color:var(--text-primary);">${esc(a.name)}</strong>
                 <span style="color:var(--text-muted); font-size:12px; margin-left:8px;">${esc(a.email_address)}</span>
                 ${a.is_active ? '<span style="color:var(--green); font-size:11px; margin-left:8px;">Активен</span>' : '<span style="color:var(--red); font-size:11px; margin-left:8px;">Неактивен</span>'}
               </div>
               <div style="display:flex; gap:4px;">
-                <button class="ms-sync-btn" data-id="${a.id}" style="padding:4px 10px; border-radius:4px; border:1px solid var(--border); background:var(--bg-deep); color:var(--text-main); cursor:pointer; font-size:12px;">Синхронизировать</button>
-                <button class="ms-edit-acc-btn" data-id="${a.id}" style="padding:4px 10px; border-radius:4px; border:1px solid var(--border); background:var(--bg-deep); color:var(--text-main); cursor:pointer; font-size:12px;">Редактировать</button>
+                <button class="ms-sync-btn" data-id="${a.id}" style="padding:4px 10px; border-radius:4px; border:1px solid var(--border); background:var(--bg-deep); color:var(--text-primary); cursor:pointer; font-size:12px;">Синхронизировать</button>
+                <button class="ms-edit-acc-btn" data-id="${a.id}" style="padding:4px 10px; border-radius:4px; border:1px solid var(--border); background:var(--bg-deep); color:var(--text-primary); cursor:pointer; font-size:12px;">Редактировать</button>
                 <button class="ms-del-acc-btn" data-id="${a.id}" style="padding:4px 10px; border-radius:4px; border:1px solid var(--border); background:var(--bg-deep); color:var(--red); cursor:pointer; font-size:12px;">Удалить</button>
               </div>
             </div>
@@ -171,7 +171,7 @@ window.AsgardMailSettingsPage = (function(){
     overlay.innerHTML = `
     <div style="width:600px;max-width:95vw;max-height:85vh;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);overflow-y:auto;">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
-        <h3 style="margin:0;color:var(--text-main);">${existing ? 'Редактирование аккаунта' : 'Новый аккаунт'}</h3>
+        <h3 style="margin:0;color:var(--text-primary);">${existing ? 'Редактирование аккаунта' : 'Новый аккаунт'}</h3>
         <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:8px;">
@@ -186,7 +186,7 @@ window.AsgardMailSettingsPage = (function(){
           </div>
         </div>
 
-        <div style="font-size:13px;color:var(--text-main);font-weight:600;margin-top:8px;">IMAP (получение)</div>
+        <div style="font-size:13px;color:var(--text-primary);font-weight:600;margin-top:8px;">IMAP (получение)</div>
         <div style="display:flex;gap:8px;">
           <div style="flex:2;"><label style="font-size:12px;color:var(--text-muted);">Хост</label><input id="acc-imap-host" value="${esc(a.imap_host || '')}" style="${inputStyle()}"></div>
           <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);">Порт</label><input id="acc-imap-port" type="number" value="${a.imap_port || 993}" style="${inputStyle()}"></div>
@@ -198,11 +198,11 @@ window.AsgardMailSettingsPage = (function(){
         <div style="display:flex;gap:8px;align-items:center;">
           <label style="font-size:12px;color:var(--text-muted);">Папка:</label>
           <input id="acc-imap-folder" value="${esc(a.imap_folder || 'INBOX')}" style="${inputStyle()};width:140px;">
-          <label style="font-size:12px;color:var(--text-main);cursor:pointer;"><input type="checkbox" id="acc-imap-tls" ${a.imap_tls !== false ? 'checked' : ''}> TLS</label>
-          <button id="acc-test-imap" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-main);cursor:pointer;font-size:12px;">Тест IMAP</button>
+          <label style="font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="acc-imap-tls" ${a.imap_tls !== false ? 'checked' : ''}> TLS</label>
+          <button id="acc-test-imap" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;font-size:12px;">Тест IMAP</button>
         </div>
 
-        <div style="font-size:13px;color:var(--text-main);font-weight:600;margin-top:8px;">SMTP (отправка)</div>
+        <div style="font-size:13px;color:var(--text-primary);font-weight:600;margin-top:8px;">SMTP (отправка)</div>
         <div style="display:flex;gap:8px;">
           <div style="flex:2;"><label style="font-size:12px;color:var(--text-muted);">Хост</label><input id="acc-smtp-host" value="${esc(a.smtp_host || '')}" style="${inputStyle()}"></div>
           <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);">Порт</label><input id="acc-smtp-port" type="number" value="${a.smtp_port || 587}" style="${inputStyle()}"></div>
@@ -214,13 +214,13 @@ window.AsgardMailSettingsPage = (function(){
         <div style="display:flex;gap:8px;align-items:center;">
           <label style="font-size:12px;color:var(--text-muted);">Имя отправителя:</label>
           <input id="acc-smtp-from-name" value="${esc(a.smtp_from_name || 'ООО «Асгард Сервис»')}" style="${inputStyle()};flex:1;">
-          <label style="font-size:12px;color:var(--text-main);cursor:pointer;"><input type="checkbox" id="acc-smtp-tls" ${a.smtp_tls !== false ? 'checked' : ''}> TLS</label>
-          <button id="acc-test-smtp" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-main);cursor:pointer;font-size:12px;">Тест SMTP</button>
+          <label style="font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="acc-smtp-tls" ${a.smtp_tls !== false ? 'checked' : ''}> TLS</label>
+          <button id="acc-test-smtp" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;font-size:12px;">Тест SMTP</button>
         </div>
 
-        <div style="font-size:13px;color:var(--text-main);font-weight:600;margin-top:8px;">Синхронизация</div>
+        <div style="font-size:13px;color:var(--text-primary);font-weight:600;margin-top:8px;">Синхронизация</div>
         <div style="display:flex;gap:12px;align-items:center;">
-          <label style="font-size:12px;color:var(--text-main);cursor:pointer;"><input type="checkbox" id="acc-sync-enabled" ${a.sync_enabled !== false ? 'checked' : ''}> Включена</label>
+          <label style="font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="acc-sync-enabled" ${a.sync_enabled !== false ? 'checked' : ''}> Включена</label>
           <label style="font-size:12px;color:var(--text-muted);">Интервал (сек):</label>
           <input id="acc-sync-interval" type="number" value="${a.sync_interval_sec || 120}" style="${inputStyle()};width:80px;">
           <label style="font-size:12px;color:var(--text-muted);">Макс. писем:</label>
@@ -228,7 +228,7 @@ window.AsgardMailSettingsPage = (function(){
         </div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
-        <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-main);cursor:pointer;">Отмена</button>
+        <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Отмена</button>
         <button id="acc-save" style="padding:8px 20px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:600;">Сохранить</button>
       </div>
     </div>`;
@@ -332,7 +332,7 @@ window.AsgardMailSettingsPage = (function(){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <span style="color:var(--text-muted);font-size:13px;">${rules.length} правил</span>
         <div style="display:flex;gap:8px;">
-          <button id="ms-test-classify" style="padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-main);cursor:pointer;font-size:13px;">Тестировать</button>
+          <button id="ms-test-classify" style="padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);cursor:pointer;font-size:13px;">Тестировать</button>
           <button id="ms-add-rule" style="padding:6px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">+ Правило</button>
         </div>
       </div>
@@ -350,12 +350,12 @@ window.AsgardMailSettingsPage = (function(){
         </tr></thead>
         <tbody>
           ${rules.map(r => `<tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:6px 8px;color:var(--text-main);">${esc(RULE_TYPES[r.rule_type] || r.rule_type)}</td>
-            <td style="padding:6px 8px;color:var(--text-main);max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.pattern)}">${esc(r.pattern)}</td>
+            <td style="padding:6px 8px;color:var(--text-primary);">${esc(RULE_TYPES[r.rule_type] || r.rule_type)}</td>
+            <td style="padding:6px 8px;color:var(--text-primary);max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.pattern)}">${esc(r.pattern)}</td>
             <td style="padding:6px 8px;color:var(--text-muted);">${esc(r.match_mode)}</td>
             <td style="padding:6px 8px;"><span style="color:${CLASS_COLORS[r.classification] || '#64748b'};font-weight:600;">${esc(r.classification)}</span></td>
-            <td style="padding:6px 8px;text-align:center;color:var(--text-main);">${r.confidence}%</td>
-            <td style="padding:6px 8px;text-align:center;color:var(--text-main);">${r.priority}</td>
+            <td style="padding:6px 8px;text-align:center;color:var(--text-primary);">${r.confidence}%</td>
+            <td style="padding:6px 8px;text-align:center;color:var(--text-primary);">${r.priority}</td>
             <td style="padding:6px 8px;text-align:center;color:var(--text-muted);">${r.times_matched || 0}</td>
             <td style="padding:6px 8px;text-align:center;">${r.is_active ? '<span style="color:var(--green);">Да</span>' : '<span style="color:var(--red);">Нет</span>'}</td>
             <td style="padding:6px 8px;text-align:right;">
@@ -386,7 +386,7 @@ window.AsgardMailSettingsPage = (function(){
     overlay.innerHTML = `
     <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
-        <h3 style="margin:0;color:var(--text-main);">Новое правило</h3>
+        <h3 style="margin:0;color:var(--text-primary);">Новое правило</h3>
         <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:10px;">
@@ -429,7 +429,7 @@ window.AsgardMailSettingsPage = (function(){
         <div><label style="font-size:12px;color:var(--text-muted);">Описание</label><input id="rule-desc" style="${inputStyle()}"></div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
-        <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-main);cursor:pointer;">Отмена</button>
+        <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Отмена</button>
         <button id="rule-save" style="padding:8px 20px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:600;">Создать</button>
       </div>
     </div>`;
@@ -467,7 +467,7 @@ window.AsgardMailSettingsPage = (function(){
     overlay.innerHTML = `
     <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
-        <h3 style="margin:0;color:var(--text-main);">Тест классификации</h3>
+        <h3 style="margin:0;color:var(--text-primary);">Тест классификации</h3>
         <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:10px;">
@@ -477,7 +477,7 @@ window.AsgardMailSettingsPage = (function(){
         <div id="tc-result" style="display:none; padding:10px; background:var(--bg-deep); border-radius:6px;"></div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
-        <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-main);cursor:pointer;">Закрыть</button>
+        <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Закрыть</button>
         <button id="tc-run" style="padding:8px 20px;border-radius:6px;border:none;background:var(--secondary);color:#fff;cursor:pointer;font-weight:600;">Проверить</button>
       </div>
     </div>`;
@@ -499,7 +499,7 @@ window.AsgardMailSettingsPage = (function(){
         const resDiv = $('#tc-result');
         if (resDiv) {
           resDiv.style.display = 'block';
-          resDiv.innerHTML = `<strong style="color:var(--text-main);">Результат:</strong> <span style="font-weight:600;">${esc(result.type)}</span> (уверенность: ${esc(result.confidence)}%, правило: ${esc(result.rule_id || 'нет')})`;
+          resDiv.innerHTML = `<strong style="color:var(--text-primary);">Результат:</strong> <span style="font-weight:600;">${esc(result.type)}</span> (уверенность: ${esc(result.confidence)}%, правило: ${esc(result.rule_id || 'нет')})`;
         }
       } catch (e) { toast(e.message, 'error'); }
     });
@@ -523,7 +523,7 @@ window.AsgardMailSettingsPage = (function(){
         ${tplList.map(t => `
           <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
             <div>
-              <strong style="color:var(--text-main);font-size:13px;">${esc(t.name)}</strong>
+              <strong style="color:var(--text-primary);font-size:13px;">${esc(t.name)}</strong>
               <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">[${esc(t.code)}]</span>
               <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">${esc(CAT_LABELS[t.category] || t.category)}</span>
               ${t.use_letterhead ? '<span style="font-size:10px;color:var(--primary);margin-left:8px;">Бланк</span>' : ''}
@@ -574,11 +574,11 @@ window.AsgardMailSettingsPage = (function(){
         </tr></thead>
         <tbody>
           ${syncLogs.map(l => `<tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:6px 8px;color:var(--text-main);">${l.started_at ? new Date(l.started_at).toLocaleString('ru-RU') : ''}</td>
-            <td style="padding:6px 8px;color:var(--text-main);">${esc(l.account_name || '')} <span style="color:var(--text-muted);font-size:11px;">${esc(l.email_address || '')}</span></td>
+            <td style="padding:6px 8px;color:var(--text-primary);">${l.started_at ? new Date(l.started_at).toLocaleString('ru-RU') : ''}</td>
+            <td style="padding:6px 8px;color:var(--text-primary);">${esc(l.account_name || '')} <span style="color:var(--text-muted);font-size:11px;">${esc(l.email_address || '')}</span></td>
             <td style="padding:6px 8px;color:var(--text-muted);">${esc(l.sync_type)}</td>
             <td style="padding:6px 8px;text-align:center;"><span style="color:${statusColors[l.status] || 'var(--text-muted)'}; font-weight:600;">${esc(l.status)}</span></td>
-            <td style="padding:6px 8px;text-align:center;color:var(--text-main);">${l.emails_fetched || 0}</td>
+            <td style="padding:6px 8px;text-align:center;color:var(--text-primary);">${l.emails_fetched || 0}</td>
             <td style="padding:6px 8px;text-align:center;color:var(--green);">${l.emails_new || 0}</td>
             <td style="padding:6px 8px;text-align:center;color:${(l.errors_count || 0) > 0 ? 'var(--red)' : 'var(--text-muted)'};">${l.errors_count || 0}</td>
             <td style="padding:6px 8px;text-align:right;color:var(--text-muted);">${l.duration_ms || '—'}</td>
@@ -592,7 +592,7 @@ window.AsgardMailSettingsPage = (function(){
   // UTILITY
   // ═══════════════════════════════════════════════════════════════════
   function inputStyle() {
-    return 'width:100%;padding:6px 10px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text-main);font-size:13px;';
+    return 'width:100%;padding:6px 10px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;';
   }
 
   return { render };

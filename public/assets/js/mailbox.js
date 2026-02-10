@@ -85,23 +85,23 @@ window.AsgardMailboxPage = (function(){
       <!-- CENTER: EMAIL LIST -->
       <div id="mail-list-panel" style="width:380px; min-width:300px; border-right:1px solid var(--border); display:flex; flex-direction:column; background:var(--bg-main);">
         <div style="padding:8px 12px; border-bottom:1px solid var(--border); display:flex; gap:6px; align-items:center;">
-          <input id="mail-search" type="text" placeholder="Поиск..." style="flex:1; padding:6px 10px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; color:var(--text-main); font-size:13px;">
-          <select id="mail-type-filter" style="padding:6px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; color:var(--text-main); font-size:12px;">
+          <input id="mail-search" type="text" placeholder="Поиск..." style="flex:1; padding:6px 10px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:13px;">
+          <select id="mail-type-filter" style="padding:6px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:12px;">
             <option value="">Все типы</option>
             <option value="direct_request">Прямые запросы</option>
             <option value="platform_tender">Тендерные</option>
             <option value="newsletter">Рассылки</option>
             <option value="internal">Внутренние</option>
           </select>
-          <button id="btn-refresh-mail" title="Обновить" style="padding:6px 10px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; cursor:pointer; color:var(--text-main);">&#x21bb;</button>
+          <button id="btn-refresh-mail" title="Обновить" style="padding:6px 10px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; cursor:pointer; color:var(--text-primary);">&#x21bb;</button>
         </div>
         <!-- Bulk actions -->
         <div id="mail-bulk-bar" style="padding:4px 12px; border-bottom:1px solid var(--border); display:none; gap:4px; align-items:center; font-size:12px;">
           <span id="mail-bulk-count" style="color:var(--text-muted);"></span>
-          <button class="mail-bulk-btn" data-action="mark_read" title="Прочитано" style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); cursor:pointer;">Прочитано</button>
-          <button class="mail-bulk-btn" data-action="archive" title="Архив" style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); cursor:pointer;">Архив</button>
-          <button class="mail-bulk-btn" data-action="delete" title="Удалить" style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); cursor:pointer;">Удалить</button>
-          <button class="mail-bulk-btn" data-action="spam" title="Спам" style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); cursor:pointer;">Спам</button>
+          <button class="mail-bulk-btn" data-action="mark_read" title="Прочитано" style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); cursor:pointer;">Прочитано</button>
+          <button class="mail-bulk-btn" data-action="archive" title="Архив" style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); cursor:pointer;">Архив</button>
+          <button class="mail-bulk-btn" data-action="delete" title="Удалить" style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); cursor:pointer;">Удалить</button>
+          <button class="mail-bulk-btn" data-action="spam" title="Спам" style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); cursor:pointer;">Спам</button>
         </div>
         <div id="mail-list" style="flex:1; overflow-y:auto;"></div>
         <div id="mail-list-pager" style="padding:6px 12px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-muted);"></div>
@@ -141,7 +141,7 @@ window.AsgardMailboxPage = (function(){
     container.innerHTML = FOLDERS.map(f => `
       <div class="mail-folder-item" data-folder="${f.key}"
         style="padding:8px 16px; cursor:pointer; display:flex; align-items:center; justify-content:space-between; font-size:13px;
-          ${state.folder === f.key ? 'background:var(--bg-card); color:var(--primary); font-weight:600;' : 'color:var(--text-main);'}">
+          ${state.folder === f.key ? 'background:var(--bg-card); color:var(--primary); font-weight:600;' : 'color:var(--text-primary);'}">
         <span>${f.icon} ${f.name}</span>
         ${badgeFor(f.key)}
       </div>
@@ -257,10 +257,10 @@ window.AsgardMailboxPage = (function(){
           <div style="width:8px; min-width:8px; height:8px; border-radius:50%; margin-top:6px; background:${t.color};${e.is_starred ? ' box-shadow:0 0 4px ' + t.color + ';' : ''}" title="${t.name}"></div>
           <div style="flex:1; min-width:0;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-size:13px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">${esc(fromDisplay)}</span>
+              <span style="font-size:13px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">${esc(fromDisplay)}</span>
               <span style="font-size:11px; color:var(--text-muted); white-space:nowrap; margin-left:8px;">${date}</span>
             </div>
-            <div style="font-size:12px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;">${esc(e.subject || '(без темы)')}</div>
+            <div style="font-size:12px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;">${esc(e.subject || '(без темы)')}</div>
             <div style="font-size:11px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px;">
               ${e.has_attachments ? '<span title="Вложения" style="margin-right:4px;">&#128206;</span>' : ''}${esc(e.snippet || '')}
             </div>
@@ -294,9 +294,9 @@ window.AsgardMailboxPage = (function(){
     pager.innerHTML = `
       <span>${state.total} писем</span>
       <div style="display:flex; gap:4px; align-items:center;">
-        <button id="mail-prev" ${state.page === 0 ? 'disabled' : ''} style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); cursor:pointer;">&laquo;</button>
+        <button id="mail-prev" ${state.page === 0 ? 'disabled' : ''} style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); cursor:pointer;">&laquo;</button>
         <span>${currentPage} / ${totalPages || 1}</span>
-        <button id="mail-next" ${currentPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); cursor:pointer;">&raquo;</button>
+        <button id="mail-next" ${currentPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); cursor:pointer;">&raquo;</button>
       </div>
     `;
 
@@ -367,18 +367,18 @@ window.AsgardMailboxPage = (function(){
         <!-- Subject -->
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
           <span style="display:inline-block; padding:2px 8px; border-radius:4px; background:${t.bg}; color:${t.color}; font-size:11px; font-weight:600;">${t.name}</span>
-          <h2 style="margin:0; font-size:18px; color:var(--text-main); font-weight:600;">${esc(e.subject || '(без темы)')}</h2>
+          <h2 style="margin:0; font-size:18px; color:var(--text-primary); font-weight:600;">${esc(e.subject || '(без темы)')}</h2>
         </div>
 
         <!-- From / To / Date -->
-        <div style="font-size:13px; color:var(--text-main); margin-bottom:4px;">
+        <div style="font-size:13px; color:var(--text-primary); margin-bottom:4px;">
           <strong>От:</strong> ${esc(e.from_name || '')} &lt;${esc(e.from_email || '')}&gt;
           <span style="float:right; color:var(--text-muted); font-size:12px;">${date}</span>
         </div>
         <div style="font-size:13px; color:var(--text-muted);">
-          <strong style="color:var(--text-main);">Кому:</strong> ${toList.map(a => esc(a.address || a)).join(', ')}
+          <strong style="color:var(--text-primary);">Кому:</strong> ${toList.map(a => esc(a.address || a)).join(', ')}
         </div>
-        ${ccList.length > 0 ? `<div style="font-size:12px; color:var(--text-muted);"><strong style="color:var(--text-main);">Копия:</strong> ${ccList.map(a => esc(a.address || a)).join(', ')}</div>` : ''}
+        ${ccList.length > 0 ? `<div style="font-size:12px; color:var(--text-muted);"><strong style="color:var(--text-primary);">Копия:</strong> ${ccList.map(a => esc(a.address || a)).join(', ')}</div>` : ''}
       </div>
 
       <!-- Body (sandboxed iframe to prevent XSS from email HTML) -->
@@ -389,11 +389,11 @@ window.AsgardMailboxPage = (function(){
       <!-- Attachments -->
       ${attachments.length > 0 ? `
         <div style="padding:12px 24px; border-top:1px solid var(--border);">
-          <div style="font-size:13px; font-weight:600; color:var(--text-main); margin-bottom:8px;">Вложения (${attachments.length}):</div>
+          <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:8px;">Вложения (${attachments.length}):</div>
           <div style="display:flex; flex-wrap:wrap; gap:8px;">
             ${attachments.map(a => `
               <a href="/api/mailbox/attachments/${a.id}/download" target="_blank"
-                style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text-main); font-size:12px;">
+                style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text-primary); font-size:12px;">
                 &#128206; ${esc(a.original_filename || a.filename)}
                 <span style="color:var(--text-muted);">(${formatFileSize(a.size)})</span>
               </a>
@@ -405,7 +405,7 @@ window.AsgardMailboxPage = (function(){
       <!-- Thread -->
       ${thread.length > 0 ? `
         <div style="padding:12px 24px; border-top:1px solid var(--border);">
-          <div style="font-size:13px; font-weight:600; color:var(--text-main); margin-bottom:8px;">Цепочка (${thread.length + 1} писем):</div>
+          <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:8px;">Цепочка (${thread.length + 1} писем):</div>
           <div style="display:flex; flex-direction:column; gap:4px;">
             ${thread.map(t => `
               <div class="mail-thread-item" data-id="${t.id}" style="padding:6px 10px; cursor:pointer; border-radius:6px; border:1px solid var(--border); font-size:12px; display:flex; justify-content:space-between; align-items:center;">
@@ -648,7 +648,7 @@ window.AsgardMailboxPage = (function(){
   }
 
   function btnStyle(color) {
-    return `padding:6px 12px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:${color || 'var(--text-main)'}; cursor:pointer; font-size:12px; white-space:nowrap;`;
+    return `padding:6px 12px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:${color || 'var(--text-primary)'}; cursor:pointer; font-size:12px; white-space:nowrap;`;
   }
 
   return { render };
