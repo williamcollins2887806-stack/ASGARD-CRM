@@ -44,7 +44,7 @@ module.exports = {
         if (!testEmpId) throw new Error('No employee created');
         const resp = await api('PUT', `/api/staff/employees/${testEmpId}`, {
           role: 'HR',
-          body: { grade: '6' }
+          body: { position: 'Инженер' }
         });
         assertOk(resp, 'update employee');
       }
@@ -55,7 +55,7 @@ module.exports = {
         if (!testEmpId) throw new Error('No employee created');
         const resp = await api('POST', `/api/staff/employees/${testEmpId}/review`, {
           role: 'HR',
-          body: { score_1_10: 8, comment: 'Автотест оценка' }
+          body: { rating: 8, comment: 'Автотест оценка' }
         });
         assert(resp.status < 500, `review: ${resp.status}`);
       }

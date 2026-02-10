@@ -13,8 +13,7 @@ module.exports = {
           body: {
             title: 'ТЕСТ: Просчёт HVAC',
             amount: 3500000,
-            margin: 15,
-            approval_status: 'draft'
+            margin: 15
           }
         });
         assertOk(resp, 'create estimate');
@@ -44,7 +43,7 @@ module.exports = {
         if (!testEstimateId) throw new Error('No estimate created');
         const resp = await api('PUT', `/api/estimates/${testEstimateId}`, {
           role: 'PM',
-          body: { approval_status: 'pending' }
+          body: { margin: 20 }
         });
         assertOk(resp, 'update estimate');
       }

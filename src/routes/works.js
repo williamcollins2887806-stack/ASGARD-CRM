@@ -54,7 +54,7 @@ async function routes(fastify, options) {
       return { work: result.rows[0] };
     } catch (err) {
       fastify.log.error('Works POST error:', err);
-      return reply.code(500).send({ error: 'Ошибка создания работы' });
+      return reply.code(500).send({ error: 'Ошибка создания работы', detail: err.message });
     }
   });
 

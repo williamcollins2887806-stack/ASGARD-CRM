@@ -43,9 +43,9 @@ module.exports = async function(fastify, options) {
     if (!site) return reply.code(404).send({ error: 'Site not found' });
 
     const { rows: works } = await db.query(`
-      SELECT w.*, e.name as pm_name
+      SELECT w.*, u.name as pm_name
       FROM works w
-      LEFT JOIN employees e ON w.pm_id = e.id
+      LEFT JOIN users u ON w.pm_id = u.id
       WHERE w.site_id = $1
       ORDER BY w.created_at DESC
     `, [request.params.id]);

@@ -185,6 +185,11 @@ async function routes(fastify, options) {
     }
   }, async (request, reply) => {
     const data = request.body;
+    // Map API field 'customer' to DB column 'customer_name'
+    if (data.customer && !data.customer_name) {
+      data.customer_name = data.customer;
+    }
+    delete data.customer;
     data.created_by = request.user.id;
     data.created_at = new Date().toISOString();
 

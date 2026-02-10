@@ -49,6 +49,10 @@ async function main() {
   console.log(`  Target: ${require('./config').BASE_URL}`);
   console.log(`  Time:   ${new Date().toLocaleString('ru-RU')}`);
 
+  // Initialize real user IDs for FK-safe tests
+  const { initRealUsers } = require('./config');
+  await initRealUsers();
+
   // ═══ СЛОЙ 1: API ТЕСТЫ ═══
   if (runApi) {
     console.log('\n━━━ СЛОЙ 1: API ТЕСТЫ ━━━');
