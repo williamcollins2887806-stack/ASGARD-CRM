@@ -147,15 +147,7 @@ a:hover {
    SIDEBAR — structure & visual in layout.css, removed duplicates (F1 fix)
    ───────────────────────────────────────────────────────────────────────────── */
 
-/* Навигация */
-.nav {
-  flex: 1;
-  margin-top: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-bottom: 16px;
-}
+/* [FIX] .nav styles removed — layout.css controls icon-rail navigation */
 
 .group-title {
   margin: 20px 0 10px 8px;
@@ -5329,11 +5321,7 @@ html[data-theme="light"] [data-tooltip]::before {
   z-index: 2;
 }
 
-.sidebar-header .brand {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-}
+/* [FIX] .sidebar-header .brand removed — layout.css controls icon-rail brand */
 
 .sidebar-header .brand-text {
   overflow: hidden;
@@ -5440,9 +5428,7 @@ html[data-theme="light"] [data-tooltip]::before {
   padding: 8px 0;
 }
 
-.app.sidebar-collapsed .nav-group-items {
-  display: none;
-}
+/* [FIX] .nav-group-items display:none removed — flyout works via hover in icon rail */
 
 .app.sidebar-collapsed .nav-group-icon {
   font-size: 20px;
