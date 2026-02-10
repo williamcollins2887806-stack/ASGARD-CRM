@@ -213,20 +213,18 @@ window.AsgardPayrollPage = (function(){
     await load();
     await layout(renderContent(), {title: title||'Расчёты с рабочими'});
 
-    // Обработчики
-    document.getElementById('payrollTabs')?.addEventListener('click', async e=>{
-      const tab = e.target.closest('.payroll-tab');
-      if(!tab) return;
-      currentTab = tab.dataset.tab;
-      await load();
-      const container = document.getElementById('app');
-      if(container) await layout(renderContent(), {title});
-      bindHandlers();
-    });
-
     bindHandlers();
 
     function bindHandlers(){
+      document.getElementById('payrollTabs')?.addEventListener('click', async e=>{
+        const tab = e.target.closest('.payroll-tab');
+        if(!tab) return;
+        currentTab = tab.dataset.tab;
+        await load();
+        await layout(renderContent(), {title});
+        bindHandlers();
+      });
+
       document.getElementById('filterWork')?.addEventListener('change', async e=>{
         filterWorkId = e.target.value;
         await load();
