@@ -1,7 +1,7 @@
 /**
  * DATA - Universal CRUD API for whitelisted tables
  */
-const { api, assert, assertOk } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
 
 module.exports = {
   name: 'DATA (Универсальный CRUD)',
@@ -11,6 +11,10 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/data/tenders?limit=5', { role: 'ADMIN' });
         assertOk(resp, 'data/tenders');
+        if (resp.data) {
+          const list = Array.isArray(resp.data) ? resp.data : (resp.data.data || resp.data.items || []);
+          assertArray(list, 'data/tenders');
+        }
       }
     },
     {
@@ -42,10 +46,17 @@ module.exports = {
       }
     },
     {
-      name: 'ADMIN counts tenders',
+      name: 'ADMIN counts tenders returns number',
       run: async () => {
         const resp = await api('GET', '/api/data/tenders/count', { role: 'ADMIN' });
         assertOk(resp, 'tenders count');
+        if (resp.data) {
+          const count = resp.data.count !== undefined ? resp.data.count : resp.data;
+          assert(
+            typeof count === 'number' || typeof count === 'string',
+            `count should be number or numeric string, got ${typeof count}`
+          );
+        }
       }
     },
     {

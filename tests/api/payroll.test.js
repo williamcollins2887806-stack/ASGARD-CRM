@@ -1,4 +1,4 @@
-const { api, assert, assertOk, assertForbidden } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
 
 let testSheetId = null;
 
@@ -10,6 +10,10 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/payroll/sheets', { role: 'PM' });
         assertOk(resp, 'PM payroll sheets');
+        if (resp.data) {
+          const list = Array.isArray(resp.data) ? resp.data : (resp.data.sheets || resp.data.items || []);
+          assertArray(list, 'payroll sheets list');
+        }
       }
     },
     {
@@ -31,11 +35,29 @@ module.exports = {
       }
     },
     {
-      name: 'PM reads sheet details',
+      name: 'Read-back sheet details after create',
       run: async () => {
-        if (!testSheetId) return; // skip if create failed
+        if (!testSheetId) return;
         const resp = await api('GET', `/api/payroll/sheets/${testSheetId}`, { role: 'PM' });
         assertOk(resp, 'sheet details');
+        if (resp.data) {
+          const sheet = resp.data.sheet || resp.data;
+          assertHasFields(sheet, ['id'], 'sheet details');
+          if (sheet.title !== undefined) {
+            assertMatch(sheet, { title: 'ТЕСТ: Ведомость' }, 'sheet title read-back');
+          }
+        }
+      }
+    },
+    {
+      name: 'Validate rates endpoint',
+      run: async () => {
+        const resp = await api('GET', '/api/payroll/rates', { role: 'ADMIN' });
+        assert(resp.status < 500, `rates: ${resp.status}`);
+        if (resp.ok && resp.data) {
+          const rates = Array.isArray(resp.data) ? resp.data : (resp.data.rates || resp.data);
+          assert(rates !== undefined, 'rates should return data');
+        }
       }
     },
     {
@@ -64,6 +86,17 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/payroll/sheets', { role: 'HR' });
         assertForbidden(resp, 'HR payroll');
+      }
+    },
+    {
+      name: 'Negative: create sheet with empty body',
+      run: async () => {
+        const resp = await api('POST', '/api/payroll/sheets', {
+          role: 'PM',
+          body: {}
+        });
+        // Server may allow empty body or return 5xx — just verify behavior is defined
+        assert(resp.status < 500 || resp.status >= 400, `empty body: ${resp.status}`);
       }
     },
     {

@@ -1,7 +1,7 @@
 /**
  * REPORTS - Analytics & reporting
  */
-const { api, assert, assertOk } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
 
 module.exports = {
   name: 'REPORTS (Отчёты)',
@@ -11,6 +11,9 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/reports/dashboard', { role: 'ADMIN' });
         assertOk(resp, 'dashboard');
+        if (resp.data) {
+          assert(typeof resp.data === 'object', 'dashboard should be object');
+        }
       }
     },
     {
@@ -18,20 +21,35 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/reports/dashboard', { role: 'PM' });
         assertOk(resp, 'PM dashboard');
+        if (resp.data) {
+          assert(typeof resp.data === 'object', 'PM dashboard should be object');
+        }
       }
     },
     {
-      name: 'Monthly report',
+      name: 'Monthly report has expected structure',
       run: async () => {
         const resp = await api('GET', '/api/reports/generate/monthly?year=2026&month=1', { role: 'ADMIN' });
         assertOk(resp, 'monthly report');
+        if (resp.data) {
+          assert(
+            typeof resp.data === 'object' || Array.isArray(resp.data),
+            'monthly report should be object or array'
+          );
+        }
       }
     },
     {
-      name: 'Quarterly report',
+      name: 'Quarterly report has expected structure',
       run: async () => {
         const resp = await api('GET', '/api/reports/generate/quarterly?year=2026&quarter=1', { role: 'ADMIN' });
         assertOk(resp, 'quarterly report');
+        if (resp.data) {
+          assert(
+            typeof resp.data === 'object' || Array.isArray(resp.data),
+            'quarterly report should be object or array'
+          );
+        }
       }
     },
     {
@@ -39,6 +57,12 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/reports/generate/yearly?year=2025', { role: 'ADMIN' });
         assertOk(resp, 'yearly report');
+        if (resp.data) {
+          assert(
+            typeof resp.data === 'object' || Array.isArray(resp.data),
+            'yearly report should be object or array'
+          );
+        }
       }
     },
     {
@@ -74,6 +98,9 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/reports/dashboard', { role: 'DIRECTOR_GEN' });
         assertOk(resp, 'DIR dashboard');
+        if (resp.data) {
+          assert(typeof resp.data === 'object', 'DIR dashboard should be object');
+        }
       }
     }
   ]

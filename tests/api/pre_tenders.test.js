@@ -1,18 +1,20 @@
 /**
- * PRE_TENDERS - Pre-tender request management
+ * PRE_TENDERS — Deep CRUD + validation
  */
-const { api, assert, assertOk } = require('../config');
+const { api, assert, assertOk, assertHasFields, assertArray, assertFieldType } = require('../config');
 
 let testPreTenderId = null;
 
 module.exports = {
-  name: 'PRE-TENDERS (Предтендеры)',
+  name: 'PRE-TENDERS (deep)',
   tests: [
     {
-      name: 'ADMIN reads pre-tenders list',
+      name: 'ADMIN reads pre-tenders — validates shape',
       run: async () => {
         const resp = await api('GET', '/api/pre-tenders', { role: 'ADMIN' });
-        assertOk(resp, 'pre-tenders list');
+        assertOk(resp, 'pre-tenders');
+        const list = resp.data?.pre_tenders || resp.data?.preTenders || resp.data;
+        if (Array.isArray(list) && list.length > 0) assertHasFields(list[0], ['id'], 'pre-tender item');
       }
     },
     {
@@ -23,27 +25,33 @@ module.exports = {
       }
     },
     {
-      name: 'ADMIN creates pre-tender',
+      name: 'ADMIN creates pre-tender + validates',
       run: async () => {
         const resp = await api('POST', '/api/pre-tenders', {
           role: 'ADMIN',
-          body: {
-            customer_name: 'Stage12 Pre-tender Customer',
-            customer_inn: '7712345678',
-            tender_type: 'Аукцион',
-            estimated_sum: 2000000,
-            status: 'new'
-          }
+          body: { customer_name: 'Deep Pre-tender Customer', customer_inn: '7712345678', tender_type: 'Аукцион', estimated_sum: 2000000, status: 'new' }
         });
-        assert(resp.status < 500, `create pre-tender: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
-        if (resp.ok) testPreTenderId = resp.data?.id || resp.data?.pre_tender?.id;
+        assert(resp.status < 500, `create: ${resp.status}`);
+        if (resp.ok) {
+          const pt = resp.data?.pre_tender || resp.data;
+          testPreTenderId = pt?.id;
+          if (testPreTenderId) assertFieldType(pt, 'id', 'number', 'pre-tender.id');
+        }
       }
     },
     {
-      name: 'ADMIN reads pre-tender stats',
+      name: 'Pre-tender stats returns valid shape',
       run: async () => {
         const resp = await api('GET', '/api/pre-tenders/stats', { role: 'ADMIN' });
-        assert(resp.status < 500, `pre-tender stats: ${resp.status}`);
+        assert(resp.status < 500, `stats: ${resp.status}`);
+        if (resp.ok) assert(typeof resp.data === 'object', 'stats is object');
+      }
+    },
+    {
+      name: 'NEGATIVE: create with empty body → 400',
+      run: async () => {
+        const resp = await api('POST', '/api/pre-tenders', { role: 'ADMIN', body: {} });
+        assert(resp.status >= 400 && resp.status < 500, `expected 4xx, got ${resp.status}`);
       }
     },
     {

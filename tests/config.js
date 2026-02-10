@@ -153,8 +153,51 @@ function assertForbidden(resp, context = '') {
   );
 }
 
+// ── Deep validation helpers ──
+
+function assertArray(data, context = '') {
+  assert(Array.isArray(data), `${context}: expected array, got ${typeof data}`);
+}
+
+function assertHasFields(obj, fields, context = '') {
+  assert(obj && typeof obj === 'object', `${context}: expected object, got ${typeof obj}`);
+  for (const f of fields) {
+    assert(f in obj, `${context}: missing field "${f}" (keys: ${Object.keys(obj).join(', ')})`);
+  }
+}
+
+function assertFieldType(obj, field, type, context = '') {
+  assert(obj && typeof obj === 'object', `${context}: expected object`);
+  if (!(field in obj) || obj[field] === null) return; // null is allowed (nullable column)
+  const actual = typeof obj[field];
+  assert(actual === type, `${context}: field "${field}" expected ${type}, got ${actual} (${JSON.stringify(obj[field])?.slice(0, 50)})`);
+}
+
+function assertIdReturned(data, context = '') {
+  assert(data && (data.id || data.id === 0), `${context}: expected id in response, got ${JSON.stringify(data)?.slice(0, 150)}`);
+}
+
+function assertCount(arr, min, max = Infinity, context = '') {
+  assertArray(arr, context);
+  assert(arr.length >= min, `${context}: expected >= ${min} items, got ${arr.length}`);
+  if (max < Infinity) assert(arr.length <= max, `${context}: expected <= ${max} items, got ${arr.length}`);
+}
+
+function assertMatch(obj, expected, context = '') {
+  for (const [k, v] of Object.entries(expected)) {
+    const actual = obj[k];
+    // Handle numeric comparisons (PostgreSQL returns decimals as strings like "20.00")
+    const numMatch = typeof v === 'number' && !isNaN(parseFloat(actual)) && parseFloat(actual) === v;
+    assert(
+      actual === v || String(actual) === String(v) || numMatch,
+      `${context}: field "${k}" expected ${JSON.stringify(v)}, got ${JSON.stringify(actual)}`
+    );
+  }
+}
+
 module.exports = {
   BASE_URL, JWT_SECRET, ROLES, TEST_USERS,
   getToken, api, assert, assertStatus, assertOk, assertForbidden,
+  assertArray, assertHasFields, assertFieldType, assertIdReturned, assertCount, assertMatch,
   initRealUsers
 };

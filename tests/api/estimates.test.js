@@ -1,12 +1,15 @@
-const { api, assert, assertOk } = require('../config');
+/**
+ * ESTIMATES — Deep CRUD + validation + negative tests
+ */
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
 
 let testEstimateId = null;
 
 module.exports = {
-  name: 'ESTIMATES CRUD',
+  name: 'ESTIMATES CRUD (deep)',
   tests: [
     {
-      name: 'PM creates estimate',
+      name: 'PM creates estimate + validates response',
       run: async () => {
         const resp = await api('POST', '/api/estimates', {
           role: 'PM',
@@ -18,43 +21,68 @@ module.exports = {
           }
         });
         assert(resp.status < 500, `create estimate: ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
-        testEstimateId = resp.data?.estimate?.id || resp.data?.id;
+        const est = resp.data?.estimate || resp.data;
+        testEstimateId = est?.id;
+        if (testEstimateId) assertFieldType(est, 'id', 'number', 'estimate.id');
       }
     },
     {
-      name: 'PM reads estimates',
+      name: 'Read-back: verify created estimate fields',
+      run: async () => {
+        if (!testEstimateId) throw new Error('No estimate');
+        const resp = await api('GET', `/api/estimates/${testEstimateId}`, { role: 'PM' });
+        assertOk(resp, 'get estimate');
+        const e = resp.data?.estimate || resp.data;
+        assertHasFields(e, ['id', 'title', 'approval_status'], 'estimate detail');
+        assertMatch(e, { id: testEstimateId, approval_status: 'draft' }, 'estimate fields');
+      }
+    },
+    {
+      name: 'List estimates: response is array with fields',
       run: async () => {
         const resp = await api('GET', '/api/estimates', { role: 'PM' });
         assertOk(resp, 'list estimates');
         const list = resp.data?.estimates || resp.data;
-        assert(Array.isArray(list), 'array expected');
+        assertArray(list, 'estimates');
+        if (list.length > 0) assertHasFields(list[0], ['id', 'title'], 'estimate item');
       }
     },
     {
-      name: 'PM reads single estimate',
+      name: 'Update estimate → read-back → verify margin changed',
       run: async () => {
-        if (!testEstimateId) throw new Error('No estimate created');
-        const resp = await api('GET', `/api/estimates/${testEstimateId}`, { role: 'PM' });
-        assertOk(resp, 'get estimate');
-      }
-    },
-    {
-      name: 'PM updates estimate',
-      run: async () => {
-        if (!testEstimateId) throw new Error('No estimate created');
-        const resp = await api('PUT', `/api/estimates/${testEstimateId}`, {
-          role: 'PM',
-          body: { margin: 20 }
+        if (!testEstimateId) throw new Error('No estimate');
+        await api('PUT', `/api/estimates/${testEstimateId}`, {
+          role: 'PM', body: { margin: 20 }
         });
-        assertOk(resp, 'update estimate');
+        const check = await api('GET', `/api/estimates/${testEstimateId}`, { role: 'PM' });
+        const e = check.data?.estimate || check.data;
+        assertMatch(e, { margin: 20 }, 'margin updated');
       }
     },
     {
-      name: 'Cleanup: ADMIN deletes estimate',
+      name: 'NEGATIVE: HR cannot create estimate',
+      run: async () => {
+        const resp = await api('POST', '/api/estimates', {
+          role: 'HR', body: { title: 'Forbidden', amount: 100 }
+        });
+        assertForbidden(resp, 'HR create estimate');
+      }
+    },
+    {
+      name: 'NEGATIVE: create estimate with empty body → no 5xx',
+      run: async () => {
+        const resp = await api('POST', '/api/estimates', { role: 'PM', body: {} });
+        // Server allows empty body (no validation) — just verify no 5xx
+        assert(resp.status < 500, `empty body should not cause 5xx, got ${resp.status}`);
+      }
+    },
+    {
+      name: 'Delete estimate → verify gone',
       run: async () => {
         if (!testEstimateId) return;
-        const resp = await api('DELETE', `/api/estimates/${testEstimateId}`, { role: 'ADMIN' });
-        assertOk(resp, 'delete estimate');
+        await api('DELETE', `/api/estimates/${testEstimateId}`, { role: 'ADMIN' });
+        const check = await api('GET', `/api/estimates/${testEstimateId}`, { role: 'PM' });
+        assert(check.status === 404 || check.status === 400, `deleted estimate should be 404, got ${check.status}`);
         testEstimateId = null;
       }
     }

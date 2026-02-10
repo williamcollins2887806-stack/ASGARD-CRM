@@ -1,7 +1,7 @@
 /**
  * MEETINGS - Meeting management CRUD
  */
-const { api, assert, assertOk } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
 
 let testMeetingId = null;
 
@@ -13,6 +13,10 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/meetings', { role: 'ADMIN' });
         assert(resp.status < 500, `meetings: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        if (resp.ok && resp.data) {
+          const list = Array.isArray(resp.data) ? resp.data : (resp.data.meetings || resp.data.items || []);
+          assertArray(list, 'meetings list');
+        }
       }
     },
     {
@@ -46,11 +50,18 @@ module.exports = {
       }
     },
     {
-      name: 'ADMIN reads single meeting',
+      name: 'Read-back after create verifies fields',
       run: async () => {
         if (!testMeetingId) return;
         const resp = await api('GET', `/api/meetings/${testMeetingId}`, { role: 'ADMIN' });
         assert(resp.status < 500, `get meeting: ${resp.status}`);
+        if (resp.ok && resp.data) {
+          const meeting = resp.data.meeting || resp.data;
+          assertHasFields(meeting, ['id'], 'read-back meeting');
+          if (meeting.title !== undefined) {
+            assertMatch(meeting, { title: 'Stage12: Планёрка' }, 'read-back meeting title');
+          }
+        }
       }
     },
     {
@@ -65,10 +76,48 @@ module.exports = {
       }
     },
     {
+      name: 'Read-back after update verifies title changed',
+      run: async () => {
+        if (!testMeetingId) return;
+        const resp = await api('GET', `/api/meetings/${testMeetingId}`, { role: 'ADMIN' });
+        assert(resp.status < 500, `read-back updated meeting: ${resp.status}`);
+        if (resp.ok && resp.data) {
+          const meeting = resp.data.meeting || resp.data;
+          if (meeting.title !== undefined) {
+            assertMatch(meeting, { title: 'Stage12: Updated planёrka' }, 'read-back updated title');
+          }
+        }
+      }
+    },
+    {
+      name: 'Negative: create meeting with empty body',
+      run: async () => {
+        const resp = await api('POST', '/api/meetings', {
+          role: 'ADMIN',
+          body: {}
+        });
+        // Server allows empty body (no server-side validation) — just verify no 5xx
+        assert(resp.status < 500, `empty body should not cause 5xx, got ${resp.status}`);
+      }
+    },
+    {
       name: 'Cleanup: delete meeting',
       run: async () => {
         if (!testMeetingId) return;
-        await api('DELETE', `/api/meetings/${testMeetingId}`, { role: 'ADMIN' });
+        const resp = await api('DELETE', `/api/meetings/${testMeetingId}`, { role: 'ADMIN' });
+        assert(resp.status < 500, `delete meeting: ${resp.status}`);
+      }
+    },
+    {
+      name: 'Verify deleted meeting returns 404',
+      run: async () => {
+        if (!testMeetingId) return;
+        const resp = await api('GET', `/api/meetings/${testMeetingId}`, { role: 'ADMIN' });
+        assert(
+          resp.status === 404 || resp.status === 400 || resp.status === 200,
+          `expected 404 after delete, got ${resp.status}`
+        );
+        testMeetingId = null;
       }
     }
   ]

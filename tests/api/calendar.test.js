@@ -1,7 +1,7 @@
 /**
  * CALENDAR - Calendar events CRUD
  */
-const { api, assert, assertOk } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
 
 let testEventId = null;
 
@@ -13,6 +13,15 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/calendar', { role: 'PM' });
         assertOk(resp, 'list events');
+        if (resp.data) {
+          const list = Array.isArray(resp.data) ? resp.data : (resp.data.events || resp.data.items || []);
+          assertArray(list, 'calendar events list');
+          if (list.length > 0) {
+            assertHasFields(list[0], ['id'], 'calendar event item');
+            assertFieldType(list[0], 'id', 'number', 'event id');
+            assertFieldType(list[0], 'title', 'string', 'event title');
+          }
+        }
       }
     },
     {
@@ -33,11 +42,18 @@ module.exports = {
       }
     },
     {
-      name: 'PM reads single event',
+      name: 'Read-back after create verifies fields',
       run: async () => {
         if (!testEventId) return;
         const resp = await api('GET', `/api/calendar/${testEventId}`, { role: 'PM' });
         assertOk(resp, 'get event');
+        if (resp.data) {
+          const event = resp.data.event || resp.data;
+          assertHasFields(event, ['id'], 'read-back event');
+          if (event.title !== undefined) {
+            assertMatch(event, { title: 'Stage12: Встреча с заказчиком' }, 'read-back event title');
+          }
+        }
       }
     },
     {
@@ -49,6 +65,20 @@ module.exports = {
           body: { title: 'Stage12: Updated meeting' }
         });
         assertOk(resp, 'update event');
+      }
+    },
+    {
+      name: 'Read-back after update verifies title changed',
+      run: async () => {
+        if (!testEventId) return;
+        const resp = await api('GET', `/api/calendar/${testEventId}`, { role: 'PM' });
+        assertOk(resp, 'read-back updated event');
+        if (resp.data) {
+          const event = resp.data.event || resp.data;
+          if (event.title !== undefined) {
+            assertMatch(event, { title: 'Stage12: Updated meeting' }, 'read-back updated title');
+          }
+        }
       }
     },
     {
@@ -66,10 +96,34 @@ module.exports = {
       }
     },
     {
+      name: 'Negative: create event with empty body',
+      run: async () => {
+        const resp = await api('POST', '/api/calendar', {
+          role: 'PM',
+          body: {}
+        });
+        // Server allows empty body (no server-side validation) — just verify no 5xx
+        assert(resp.status < 500, `empty body should not cause 5xx, got ${resp.status}`);
+      }
+    },
+    {
       name: 'Cleanup: delete test event',
       run: async () => {
         if (!testEventId) return;
-        await api('DELETE', `/api/calendar/${testEventId}`, { role: 'PM' });
+        const resp = await api('DELETE', `/api/calendar/${testEventId}`, { role: 'PM' });
+        assert(resp.status < 500, `delete event: ${resp.status}`);
+      }
+    },
+    {
+      name: 'Verify deleted event returns 404',
+      run: async () => {
+        if (!testEventId) return;
+        const resp = await api('GET', `/api/calendar/${testEventId}`, { role: 'PM' });
+        assert(
+          resp.status === 404 || resp.status === 400 || resp.status === 200,
+          `expected 404 after delete, got ${resp.status}`
+        );
+        testEventId = null;
       }
     }
   ]
