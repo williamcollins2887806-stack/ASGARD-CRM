@@ -48,8 +48,11 @@ async function routes(fastify, options) {
   // SECURITY: SQL injection fix — filter keys
   fastify.post('/work', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const body = request.body || {};
-    if (!body.amount || !body.category) {
-      return reply.code(400).send({ error: 'Обязательные поля: amount, category' });
+    if (!body.category?.trim()) {
+      return reply.code(400).send({ error: 'Обязательное поле: category' });
+    }
+    if (body.amount === undefined || body.amount === null || Number(body.amount) <= 0) {
+      return reply.code(400).send({ error: 'Поле amount должно быть положительным числом' });
     }
     const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() }, WORK_EXP_COLS);
     const keys = Object.keys(data);

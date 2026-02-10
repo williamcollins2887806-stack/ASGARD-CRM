@@ -207,9 +207,40 @@ function assertMatch(obj, expected, context = '') {
   }
 }
 
+function assertNotHasFields(obj, fields, context = '') {
+  assert(obj && typeof obj === 'object', `${context}: expected object`);
+  for (const f of fields) {
+    assert(!(f in obj), `${context}: LEAKED field "${f}" should not be present`);
+  }
+}
+
+function assertOneOf(value, allowed, context = '') {
+  assert(allowed.includes(value), `${context}: "${value}" not in [${allowed.join(', ')}]`);
+}
+
+class SkipError extends Error {
+  constructor(msg) { super(msg); this.name = 'SkipError'; }
+}
+function skip(msg) { throw new SkipError(msg); }
+
+// Raw fetch without JWT (for auth bypass tests)
+async function rawFetch(method, urlPath, { body = null, headers = {} } = {}) {
+  const url = `${BASE_URL}${urlPath}`;
+  const opts = { method, headers: { 'Content-Type': 'application/json', ...headers } };
+  if (body) opts.body = JSON.stringify(body);
+  const resp = await fetch(url, opts);
+  const ct = resp.headers.get('content-type') || '';
+  const data = ct.includes('json')
+    ? await resp.json().catch(() => null)
+    : await resp.text().catch(() => null);
+  return { status: resp.status, data, ok: resp.ok, headers: resp.headers };
+}
+
 module.exports = {
   BASE_URL, JWT_SECRET, ROLES, TEST_USERS,
   getToken, api, assert, assertStatus, assertOk, assertForbidden,
   assertArray, assertHasFields, assertFieldType, assertIdReturned, assertCount, assertMatch,
+  assertNotHasFields, assertOneOf,
+  rawFetch, skip, SkipError,
   initRealUsers
 };

@@ -177,7 +177,7 @@ async function dataRoutes(fastify, options) {
   }, async (request, reply) => {
     const { table } = request.params;
     const { limit: rawLimit = 500, offset = 0, orderBy, desc, where } = request.query;
-    const limit = Math.min(parseInt(rawLimit) || 500, 500); // B9: cap at 500
+    const limit = Math.max(1, Math.min(parseInt(rawLimit) || 500, 500)); // B9: cap at 500, floor at 1
 
     if (!isAllowed(table)) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });

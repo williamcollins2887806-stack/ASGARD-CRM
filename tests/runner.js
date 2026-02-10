@@ -24,6 +24,7 @@ const startTime = Date.now();
 
 async function runTestSuite(suite) {
   const out = [];
+  const { SkipError } = require('./config');
   console.log(`\n  ▸ ${suite.name} (${suite.tests.length} tests)`);
 
     await new Promise(r => setTimeout(r, 2000)); // 2s pause between sections
@@ -36,8 +37,13 @@ async function runTestSuite(suite) {
       out.push({ name: test.name, status: 'PASS', ms });
     } catch (err) {
       const ms = Date.now() - t0;
-      console.log(`    ❌ ${test.name}: ${err.message.slice(0, 200)}`);
-      out.push({ name: test.name, status: 'FAIL', ms, error: err.message.slice(0, 300) });
+      if (err instanceof SkipError || err.name === 'SkipError') {
+        console.log(`    ⏭️  ${test.name}: SKIP — ${err.message}`);
+        out.push({ name: test.name, status: 'SKIP', ms });
+      } else {
+        console.log(`    ❌ ${test.name}: ${err.message.slice(0, 200)}`);
+        out.push({ name: test.name, status: 'FAIL', ms, error: err.message.slice(0, 300) });
+      }
     }
   }
   return out;
@@ -114,12 +120,13 @@ async function main() {
   ];
   const pass = allTests.filter(t => t.status === 'PASS').length;
   const fail = allTests.filter(t => t.status === 'FAIL').length;
+  const skipCount = allTests.filter(t => t.status === 'SKIP').length;
   const total = allTests.length;
 
-  results.summary = { total, pass, fail, ms: totalMs };
+  results.summary = { total, pass, fail, skip: skipCount, ms: totalMs };
 
   console.log('\n╔══════════════════════════════════════════════╗');
-  console.log(`║  ИТОГО: ${pass} ✅  ${fail} ❌  из ${total} (${(totalMs / 1000).toFixed(1)}s)`);
+  console.log(`║  ИТОГО: ${pass} ✅  ${fail} ❌  ${skipCount} ⏭️ SKIP  из ${total} (${(totalMs / 1000).toFixed(1)}s)`);
   console.log(`║  ${fail === 0 ? '🎉 ALL PASS' : '⚠️  HAS FAILURES'}                              ║`);
   console.log('╚══════════════════════════════════════════════╝');
 

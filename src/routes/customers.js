@@ -105,6 +105,12 @@ async function routes(fastify, options) {
     const { inn, name, ...rest } = request.body;
     if (!inn || !name) return reply.code(400).send({ error: 'ИНН и наименование обязательны' });
 
+    // Validate INN format: must be 10 or 12 digits
+    const cleanInn = String(inn).replace(/\D/g, '');
+    if (cleanInn.length !== 10 && cleanInn.length !== 12) {
+      return reply.code(400).send({ error: 'ИНН должен содержать 10 или 12 цифр' });
+    }
+
     const data = filterData({ inn, name, ...rest, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     const keys = Object.keys(data);
     const values = Object.values(data);

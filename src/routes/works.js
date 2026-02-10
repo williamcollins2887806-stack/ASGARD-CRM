@@ -46,7 +46,7 @@ async function routes(fastify, options) {
   fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])] }, async (request, reply) => {
     try {
       const body = request.body || {};
-      if (!body.work_title) {
+      if (!body.work_title?.trim()) {
         return reply.code(400).send({ error: 'Обязательное поле: work_title' });
       }
       const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });

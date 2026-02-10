@@ -194,7 +194,7 @@ async function mimirRoutes(fastify, options) {
     const { message, context, conversation_id } = request.body;
     const user = request.user;
 
-    if (!message || message.length < 1) {
+    if (!message?.trim()) {
       return reply.code(400).send({ success: false, message: 'Пустое сообщение' });
     }
 
@@ -319,7 +319,7 @@ async function mimirRoutes(fastify, options) {
     const { message, context, conversation_id } = request.body;
     const user = request.user;
 
-    if (!message || message.length < 1) {
+    if (!message?.trim()) {
       return reply.code(400).send({ success: false, message: 'Пустое сообщение' });
     }
 

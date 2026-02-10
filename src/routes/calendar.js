@@ -52,6 +52,9 @@ async function routes(fastify, options) {
       if (!body.title || !body.date) {
         return reply.code(400).send({ error: 'Обязательные поля: title, date' });
       }
+      if (isNaN(new Date(body.date).getTime())) {
+        return reply.code(400).send({ error: 'Некорректный формат даты' });
+      }
       const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
       const keys = Object.keys(data);
       if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });

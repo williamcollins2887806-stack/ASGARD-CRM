@@ -125,9 +125,9 @@ async function routes(fastify, options) {
     const { id } = request.params;
 
     const result = await db.query(`
-      SELECT t.*, 
+      SELECT t.*,
              u.name as pm_name,
-             c.name as customer_name
+             COALESCE(c.name, t.customer_name) as customer_display
       FROM tenders t
       LEFT JOIN users u ON t.responsible_pm_id = u.id
       LEFT JOIN customers c ON t.customer_inn = c.inn
@@ -185,24 +185,42 @@ async function routes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const data = request.body;
-      // Map API field 'customer' to DB column 'customer_name'
-      if (data.customer && !data.customer_name) {
-        data.customer_name = data.customer;
+      const raw = request.body;
+
+      // Validate customer is non-empty
+      if (!raw.customer?.trim()) {
+        return reply.code(400).send({ error: 'Обязательное поле: customer' });
       }
-      delete data.customer;
-      data.created_by = request.user.id;
-      data.created_at = new Date().toISOString();
+
+      // Map API field 'customer' to DB column 'customer_name'
+      if (raw.customer && !raw.customer_name) {
+        raw.customer_name = raw.customer;
+      }
+      delete raw.customer;
+      raw.created_by = request.user.id;
+      raw.created_at = new Date().toISOString();
 
       // Auto-generate period if not provided
-      if (!data.period) {
+      if (!raw.period) {
         const now = new Date();
-        data.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        raw.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       }
 
       // Set default status
-      if (!data.tender_status) {
-        data.tender_status = 'Новый';
+      if (!raw.tender_status) {
+        raw.tender_status = 'Новый';
+      }
+
+      // SECURITY: Filter to allowed columns only
+      const allowedCols = [
+        'customer_name', 'customer_inn', 'tender_number', 'tender_type', 'tender_title',
+        'tender_status', 'period', 'deadline', 'estimated_sum', 'responsible_pm_id',
+        'tag', 'docs_link', 'comment_to', 'comment_dir', 'reject_reason',
+        'created_by', 'created_at'
+      ];
+      const data = {};
+      for (const k of allowedCols) {
+        if (raw[k] !== undefined) data[k] = raw[k];
       }
 
       const keys = Object.keys(data);
@@ -229,7 +247,8 @@ async function routes(fastify, options) {
 
       return { tender: result.rows[0] };
     } catch (err) {
-      return reply.code(500).send({ error: 'Ошибка создания тендера', detail: err.message });
+      const code = err.code === '22001' || err.code === '23502' ? 400 : 500;
+      return reply.code(code).send({ error: 'Ошибка создания тендера', detail: err.message });
     }
   });
 
