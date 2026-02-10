@@ -184,45 +184,53 @@ async function routes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const data = request.body;
-    // Map API field 'customer' to DB column 'customer_name'
-    if (data.customer && !data.customer_name) {
-      data.customer_name = data.customer;
+    try {
+      const data = request.body;
+      // Map API field 'customer' to DB column 'customer_name'
+      if (data.customer && !data.customer_name) {
+        data.customer_name = data.customer;
+      }
+      delete data.customer;
+      data.created_by = request.user.id;
+      data.created_at = new Date().toISOString();
+
+      // Auto-generate period if not provided
+      if (!data.period) {
+        const now = new Date();
+        data.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      }
+
+      // Set default status
+      if (!data.tender_status) {
+        data.tender_status = 'Новый';
+      }
+
+      const keys = Object.keys(data);
+      const values = Object.values(data);
+      const placeholders = keys.map((_, i) => `$${i + 1}`);
+
+      const sql = `
+        INSERT INTO tenders (${keys.join(', ')})
+        VALUES (${placeholders.join(', ')})
+        RETURNING *
+      `;
+
+      const result = await db.query(sql, values);
+
+      // Log to audit
+      try {
+        await db.query(`
+          INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
+          VALUES ($1, 'tender', $2, 'create', $3, NOW())
+        `, [request.user.id, result.rows[0].id, JSON.stringify({ tender: result.rows[0] })]);
+      } catch (auditErr) {
+        fastify.log.warn('Audit log insert failed:', auditErr.message);
+      }
+
+      return { tender: result.rows[0] };
+    } catch (err) {
+      return reply.code(500).send({ error: 'Ошибка создания тендера', detail: err.message });
     }
-    delete data.customer;
-    data.created_by = request.user.id;
-    data.created_at = new Date().toISOString();
-
-    // Auto-generate period if not provided
-    if (!data.period) {
-      const now = new Date();
-      data.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    }
-
-    // Set default status
-    if (!data.tender_status) {
-      data.tender_status = 'Новый';
-    }
-
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    const placeholders = keys.map((_, i) => `$${i + 1}`);
-
-    const sql = `
-      INSERT INTO tenders (${keys.join(', ')})
-      VALUES (${placeholders.join(', ')})
-      RETURNING *
-    `;
-
-    const result = await db.query(sql, values);
-
-    // Log to audit
-    await db.query(`
-      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
-      VALUES ($1, 'tender', $2, 'create', $3, NOW())
-    `, [request.user.id, result.rows[0].id, JSON.stringify({ tender: result.rows[0] })]);
-
-    return { tender: result.rows[0] };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

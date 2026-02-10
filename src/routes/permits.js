@@ -276,24 +276,28 @@ module.exports = async function(fastify) {
       scanOrigName = file.filename;
     }
 
-    // Получить категорию из справочника
-    const { rows: [pt] } = await db.query('SELECT category FROM permit_types WHERE id = $1', [type_id]);
+    try {
+      // Получить категорию из справочника
+      const { rows: [pt] } = await db.query('SELECT category FROM permit_types WHERE id = $1', [type_id]);
 
-    const result = await db.query(`
-      INSERT INTO employee_permits
-        (employee_id, type_id, category, doc_number, issuer, issue_date, expiry_date,
-         scan_file, scan_original_name, notes, is_active, created_by, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11, NOW(), NOW())
-      RETURNING *
-    `, [
-      employee_id, type_id, pt?.category || null,
-      doc_number || null, issuer || null,
-      issue_date || null, expiry_date || null,
-      scanFile, scanOrigName,
-      notes || null, request.user.id
-    ]);
+      const result = await db.query(`
+        INSERT INTO employee_permits
+          (employee_id, type_id, category, doc_number, issuer, issue_date, expiry_date,
+           scan_file, scan_original_name, notes, is_active, created_by, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11, NOW(), NOW())
+        RETURNING *
+      `, [
+        employee_id, type_id, pt?.category || null,
+        doc_number || null, issuer || null,
+        issue_date || null, expiry_date || null,
+        scanFile, scanOrigName,
+        notes || null, request.user.id
+      ]);
 
-    return { permit: result.rows[0] };
+      return { permit: result.rows[0] };
+    } catch (err) {
+      return reply.code(500).send({ error: 'Ошибка создания допуска', detail: err.message });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════

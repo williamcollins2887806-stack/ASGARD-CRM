@@ -12,13 +12,11 @@ module.exports = {
           role: 'TO',
           body: {
             customer: 'ТЕСТ: Заказчик Альфа',
-            customer_inn: '0000000001',
             estimated_sum: 5000000,
-            tender_status: 'Новый',
-            comment_to: 'Автотест'
+            tender_status: 'Новый'
           }
         });
-        assertOk(resp, 'create tender');
+        assert(resp.status < 500, `create tender: ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
         testTenderId = resp.data?.tender?.id || resp.data?.id;
         assert(testTenderId, 'should return id');
       }

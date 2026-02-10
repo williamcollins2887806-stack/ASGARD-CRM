@@ -42,13 +42,17 @@ async function routes(fastify, options) {
 
   // SECURITY: SQL injection fix + B3 role check
   fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN'])] }, async (request, reply) => {
-    const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString() });
-    const keys = Object.keys(data);
-    if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
-    const values = Object.values(data);
-    const sql = `INSERT INTO estimates (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-    const result = await db.query(sql, values);
-    return { estimate: result.rows[0] };
+    try {
+      const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString() });
+      const keys = Object.keys(data);
+      if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
+      const values = Object.values(data);
+      const sql = `INSERT INTO estimates (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+      const result = await db.query(sql, values);
+      return { estimate: result.rows[0] };
+    } catch (err) {
+      return reply.code(500).send({ error: 'Ошибка создания расчёта', detail: err.message });
+    }
   });
 
   // SECURITY: SQL injection fix + B3 role check

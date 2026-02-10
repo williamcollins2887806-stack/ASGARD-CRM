@@ -79,24 +79,32 @@ async function routes(fastify, options) {
   });
 
   // Employee reviews — SECURITY: SQL injection fix — filter keys
-  fastify.post('/employees/:id/review', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { id } = request.params;
-    const data = filterData({
-      employee_id: id,
-      ...request.body,
-      pm_id: request.user.id,
-      created_at: new Date().toISOString()
-    }, REVIEW_COLS);
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    const sql = `INSERT INTO employee_reviews (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-    const result = await db.query(sql, values);
+  fastify.post('/employees/:id/review', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const data = filterData({
+        employee_id: id,
+        ...request.body,
+        pm_id: request.user.id,
+        created_at: new Date().toISOString()
+      }, REVIEW_COLS);
+      const keys = Object.keys(data);
+      const values = Object.values(data);
+      const sql = `INSERT INTO employee_reviews (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+      const result = await db.query(sql, values);
 
-    // Update average rating
-    const avgResult = await db.query('SELECT AVG(rating) as avg FROM employee_reviews WHERE employee_id = $1', [id]);
-    await db.query('UPDATE employees SET rating_avg = $1, updated_at = NOW() WHERE id = $2', [avgResult.rows[0].avg, id]);
+      // Update average rating
+      try {
+        const avgResult = await db.query('SELECT AVG(rating) as avg FROM employee_reviews WHERE employee_id = $1', [id]);
+        await db.query('UPDATE employees SET rating_avg = $1, updated_at = NOW() WHERE id = $2', [avgResult.rows[0].avg, id]);
+      } catch (avgErr) {
+        fastify.log.warn('Rating avg update failed:', avgErr.message);
+      }
 
-    return { review: result.rows[0] };
+      return { review: result.rows[0] };
+    } catch (err) {
+      return reply.code(500).send({ error: 'Ошибка создания отзыва', detail: err.message });
+    }
   });
 
   // Schedule

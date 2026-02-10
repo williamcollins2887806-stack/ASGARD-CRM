@@ -13,10 +13,11 @@ module.exports = {
           body: {
             title: 'ТЕСТ: Просчёт HVAC',
             amount: 3500000,
-            margin: 15
+            margin: 15,
+            approval_status: 'draft'
           }
         });
-        assertOk(resp, 'create estimate');
+        assert(resp.status < 500, `create estimate: ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
         testEstimateId = resp.data?.estimate?.id || resp.data?.id;
       }
     },

@@ -57,7 +57,7 @@ module.exports = {
           role: 'HR',
           body: { rating: 8, comment: 'Автотест оценка' }
         });
-        assert(resp.status < 500, `review: ${resp.status}`);
+        assert(resp.status < 500, `review: ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
       }
     },
     {

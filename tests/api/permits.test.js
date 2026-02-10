@@ -31,8 +31,8 @@ module.exports = {
         const types = typeList.data?.types || typeList.data || [];
         const pType = Array.isArray(types) ? types[0] : null;
 
-        if (!emp) {
-          // No employees in DB, skip permit creation
+        if (!emp || !pType) {
+          // No employees or permit types in DB, skip permit creation
           return;
         }
 
@@ -40,7 +40,7 @@ module.exports = {
           role: 'ADMIN',
           body: {
             employee_id: emp.id,
-            type_id: pType?.id || 'safety_general',
+            type_id: pType.id,
             doc_number: 'TEST-001',
             issue_date: '2026-01-01',
             expiry_date: '2027-01-01',
@@ -48,7 +48,7 @@ module.exports = {
           }
         });
         // May be 200/201 or 400 if type_id doesn't match
-        assert(resp.status < 500, `create permit: ${resp.status}`);
+        assert(resp.status < 500, `create permit: ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
         if (resp.ok) testPermitId = resp.data?.permit?.id || resp.data?.id;
       }
     },
