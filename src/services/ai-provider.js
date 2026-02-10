@@ -19,8 +19,8 @@ const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
 const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '60000', 10); // 60 sec default
 
 // API endpoints
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const ANTHROPIC_URL = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
+const OPENAI_URL = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
 
 /**
  * Получить текущую конфигурацию AI
