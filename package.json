@@ -21,6 +21,13 @@
     "test:legacy-e2e": "node tests/e2e_test.js",
     "test:load": "node tests/load_test.js",
     "test:all": "node tests/runner.js --all",
+    "test:s12": "node tests/test-all.js",
+    "test:s12:api": "node tests/test-all.js --api-only",
+    "test:s12:e2e": "node tests/test-all.js --e2e-only",
+    "test:s12:smoke": "node tests/test-all.js --smoke-only",
+    "test:s12:all": "node tests/test-all.js --all",
+    "test:s12:seed": "node tests/helpers/seed.js",
+    "test:s12:cleanup": "node tests/helpers/seed.js cleanup",
     "lint": "eslint src/ --ext .js && eslint public/assets/js/ --ext .js --config .eslintrc.frontend.json",
     "lint:fix": "eslint src/ --ext .js --fix && eslint public/assets/js/ --ext .js --config .eslintrc.frontend.json --fix"
   },
