@@ -196,6 +196,36 @@ window.CashAdminPage = (function() {
       </div>
     `;
 
+    // Inject dark theme overrides for Bootstrap elements
+    if (!document.getElementById('cash-admin-dark-styles')) {
+      const style = document.createElement('style');
+      style.id = 'cash-admin-dark-styles';
+      style.textContent = `
+        #cash-admin-page .card { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main, #e2e8f0); }
+        #cash-admin-page .card-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); color: var(--text-main, #e2e8f0); }
+        #cash-admin-page .card-body { background: var(--bg-card); color: var(--text-main, #e2e8f0); }
+        #cash-admin-page .modal-content { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main, #e2e8f0); }
+        #cash-admin-page .modal-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); }
+        #cash-admin-page .modal-footer { background: var(--bg-deep); border-top: 1px solid var(--border); }
+        #cash-admin-page .form-control, #cash-admin-page .form-select { background: var(--bg-deep); color: var(--text-main, #e2e8f0); border-color: var(--border); }
+        #cash-admin-page .form-label { color: var(--text-muted); }
+        #cash-admin-page .table { color: var(--text-main, #e2e8f0); }
+        #cash-admin-page .table th { background: var(--bg-deep); color: var(--text-muted); border-color: var(--border); }
+        #cash-admin-page .table td { border-color: var(--border); }
+        #cash-admin-page .table-hover tbody tr:hover { background: rgba(59,130,246,0.08); }
+        #cash-admin-page .table-light, #cash-admin-page .table-light th { background: var(--bg-deep) !important; color: var(--text-main, #e2e8f0) !important; }
+        #cash-admin-page .table-warning { background: rgba(245,158,11,0.1) !important; }
+        #cash-admin-page .nav-tabs { border-color: var(--border); }
+        #cash-admin-page .nav-tabs .nav-link { color: var(--text-muted); border-color: transparent; }
+        #cash-admin-page .nav-tabs .nav-link.active { background: var(--bg-card); color: var(--text-main, #e2e8f0); border-color: var(--border) var(--border) var(--bg-card); }
+        #cash-admin-page .btn-close { filter: invert(1); }
+        #cash-admin-page .alert { border: 1px solid var(--border); }
+        #cash-admin-page .text-muted { color: var(--text-muted) !important; }
+        #cash-admin-page .border { border-color: var(--border) !important; }
+      `;
+      document.head.appendChild(style);
+    }
+
     // Load data for both tabs
     await Promise.all([loadRequests(), loadSummary()]);
 
