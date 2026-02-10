@@ -7,6 +7,24 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
 
+// SECURITY: Allowlist of columns for expenses
+const WORK_EXP_COLS = new Set([
+  'work_id', 'category', 'description', 'amount', 'date', 'receipt_url',
+  'supplier', 'notes', 'status', 'created_by', 'created_at', 'updated_at'
+]);
+const OFFICE_EXP_COLS = new Set([
+  'category', 'description', 'amount', 'date', 'receipt_url',
+  'supplier', 'notes', 'status', 'created_by', 'created_at', 'updated_at'
+]);
+
+function filterData(data, allowedSet) {
+  const filtered = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (allowedSet.has(k) && v !== undefined) filtered[k] = v;
+  }
+  return filtered;
+}
+
 async function routes(fastify, options) {
   const db = fastify.db;
 
@@ -27,8 +45,9 @@ async function routes(fastify, options) {
   });
 
   // SECURITY: Только WRITE_ROLES (HIGH-9)
+  // SECURITY: SQL injection fix — filter keys
   fastify.post('/work', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
-    const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString() };
+    const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString() }, WORK_EXP_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO work_expenses (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
@@ -53,8 +72,9 @@ async function routes(fastify, options) {
   });
 
   // SECURITY: Только WRITE_ROLES (HIGH-9)
+  // SECURITY: SQL injection fix — filter keys
   fastify.post('/office', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
-    const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString(), status: 'pending' };
+    const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString(), status: 'pending' }, OFFICE_EXP_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO office_expenses (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
@@ -67,12 +87,13 @@ async function routes(fastify, options) {
   fastify.put('/:type/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const { type, id } = request.params;
     const table = type === 'work' ? 'work_expenses' : 'office_expenses';
-    const data = request.body;
+    const allowedSet = type === 'work' ? WORK_EXP_COLS : OFFICE_EXP_COLS;
+    const data = filterData(request.body, allowedSet);
     const updates = [];
     const values = [];
     let idx = 1;
     for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) { updates.push(`${key} = $${idx}`); values.push(value); idx++; }
+      updates.push(`${key} = $${idx}`); values.push(value); idx++;
     }
     if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
     updates.push('updated_at = NOW()');

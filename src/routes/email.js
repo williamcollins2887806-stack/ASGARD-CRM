@@ -113,7 +113,8 @@ async function routes(fastify, options) {
         `, [user.id, to, subject, error.message]);
       } catch (e) {}
       
-      return reply.code(500).send({ error: 'Ошибка отправки: ' + error.message });
+      // SECURITY: Don't expose SMTP internals to client
+      return reply.code(500).send({ error: 'Ошибка отправки письма. Обратитесь к администратору.' });
     }
   });
   

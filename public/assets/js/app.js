@@ -583,13 +583,18 @@ try{
           fabBtn.textContent = menu.classList.contains("open") ? "✕" : "+";
         }
       });
-      window.addEventListener("hashchange", () => {
-        const menu = $("#fabMenu");
-        if (menu) {
-          menu.classList.remove("open");
-          if (fabBtn) fabBtn.textContent = "+";
-        }
-      });
+      // SECURITY: Use named function to prevent listener leak on repeated layout() calls
+      if (!window._fabHashHandler) {
+        window._fabHashHandler = () => {
+          const menu = $("#fabMenu");
+          if (menu) {
+            menu.classList.remove("open");
+            const btn = $("#fabBtn");
+            if (btn) btn.textContent = "+";
+          }
+        };
+        window.addEventListener("hashchange", window._fabHashHandler);
+      }
     }
 
     // M16: Nav customization button

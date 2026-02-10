@@ -279,6 +279,7 @@ async function routes(fastify, options) {
   // POST /api/auth/reset-password-request
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/reset-password-request', {
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
     schema: {
       body: {
         type: 'object',
@@ -330,6 +331,7 @@ async function routes(fastify, options) {
   // POST /api/auth/reset-password
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/reset-password', {
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
     schema: {
       body: {
         type: 'object',

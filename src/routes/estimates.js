@@ -1,6 +1,22 @@
 /**
  * Estimates Routes
  */
+
+// SECURITY: Allowlist of columns for estimates
+const ALLOWED_COLS = new Set([
+  'tender_id', 'pm_id', 'title', 'description', 'approval_status',
+  'amount', 'cost', 'margin', 'notes', 'customer', 'object_name',
+  'work_type', 'priority', 'deadline', 'created_by', 'created_at', 'updated_at'
+]);
+
+function filterData(data) {
+  const filtered = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (ALLOWED_COLS.has(k) && v !== undefined) filtered[k] = v;
+  }
+  return filtered;
+}
+
 async function routes(fastify, options) {
   const db = fastify.db;
 
@@ -24,23 +40,26 @@ async function routes(fastify, options) {
     return { estimate: result.rows[0] };
   });
 
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString() };
+  // SECURITY: SQL injection fix — filter keys
+  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString() });
     const keys = Object.keys(data);
+    if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
     const values = Object.values(data);
     const sql = `INSERT INTO estimates (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
     const result = await db.query(sql, values);
     return { estimate: result.rows[0] };
   });
 
+  // SECURITY: SQL injection fix — filter keys
   fastify.put('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { id } = request.params;
-    const data = request.body;
+    const data = filterData(request.body);
     const updates = [];
     const values = [];
     let idx = 1;
     for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) { updates.push(`${key} = $${idx}`); values.push(value); idx++; }
+      updates.push(`${key} = $${idx}`); values.push(value); idx++;
     }
     if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
     updates.push('updated_at = NOW()');

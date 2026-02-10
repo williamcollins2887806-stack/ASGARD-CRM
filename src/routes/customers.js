@@ -1,6 +1,22 @@
 /**
  * Customers Routes
  */
+
+// SECURITY: Allowlist of columns for customers
+const ALLOWED_COLS = new Set([
+  'inn', 'name', 'full_name', 'kpp', 'ogrn', 'address', 'phone',
+  'email', 'contact_person', 'bank_account', 'bank_name', 'bik',
+  'notes', 'category', 'is_active', 'created_at', 'updated_at'
+]);
+
+function filterData(data) {
+  const filtered = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (ALLOWED_COLS.has(k) && v !== undefined) filtered[k] = v;
+  }
+  return filtered;
+}
+
 async function routes(fastify, options) {
   const db = fastify.db;
 
@@ -88,7 +104,7 @@ async function routes(fastify, options) {
     const { inn, name, ...rest } = request.body;
     if (!inn || !name) return reply.code(400).send({ error: 'ИНН и наименование обязательны' });
 
-    const data = { inn, name, ...rest, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const data = filterData({ inn, name, ...rest, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     const keys = Object.keys(data);
     const values = Object.values(data);
 
@@ -106,12 +122,12 @@ async function routes(fastify, options) {
 
   fastify.put('/:inn', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { inn } = request.params;
-    const data = request.body;
+    const data = filterData(request.body);
     const updates = [];
     const values = [];
     let idx = 1;
     for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined && key !== 'inn') { updates.push(`${key} = $${idx}`); values.push(value); idx++; }
+      if (key !== 'inn') { updates.push(`${key} = $${idx}`); values.push(value); idx++; }
     }
     if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
     updates.push('updated_at = NOW()');

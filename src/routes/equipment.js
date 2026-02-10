@@ -1001,11 +1001,17 @@ async function equipmentRoutes(fastify, options) {
   // ОБОРУДОВАНИЕ СОТРУДНИКА
   // ============================================
   
+  // SECURITY: IDOR fix — only self or privileged roles
   fastify.get('/by-holder/:holderId', {
     preHandler: [fastify.authenticate]
-  }, async (request) => {
+  }, async (request, reply) => {
     const { holderId } = request.params;
-    
+    const userRole = request.user.role;
+    const privileged = ['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'HEAD_PM', 'DIRECTOR_GEN'].includes(userRole);
+    if (String(request.user.id) !== String(holderId) && !privileged) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+
     const result = await db.query(`
       SELECT e.*, 
         c.name as category_name, c.icon as category_icon,

@@ -92,6 +92,7 @@ window.AsgardTasksPage = (function() {
   // ─────────────────────────────────────────────────────────────────
   async function render(container) {
     const auth = AsgardAuth.getAuth();
+    if (!auth?.token) { location.hash = '#login'; return; }
     const role = auth?.user?.role || '';
     isDirector = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
 

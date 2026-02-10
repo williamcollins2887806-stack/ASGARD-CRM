@@ -240,9 +240,12 @@ window.CashPage = (function() {
   async function loadBalance() {
     try {
       const resp = await fetch('/api/cash/my-balance', { headers: getHeaders() });
+      if (!resp.ok) return;
       const data = await resp.json();
+      const widget = document.getElementById('cash-balance-widget');
+      if (!widget) return;
 
-      document.getElementById('cash-balance-widget').innerHTML = `
+      widget.innerHTML = `
         <div class="row g-3">
           <div class="col-md-3">
             <div class="card bg-info text-white">
