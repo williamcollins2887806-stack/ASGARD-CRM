@@ -42,8 +42,8 @@ async function routes(fastify, options) {
     return { work: result.rows[0], expenses: expenses.rows };
   });
 
-  // SECURITY: SQL injection fix — filter keys; try/catch added
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: SQL injection fix + B3 role check + try/catch
+  fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])] }, async (request, reply) => {
     try {
       const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString() });
       const keys = Object.keys(data);
@@ -58,8 +58,8 @@ async function routes(fastify, options) {
     }
   });
 
-  // SECURITY: SQL injection fix — filter keys
-  fastify.put('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: SQL injection fix + B3 role check
+  fastify.put('/:id', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])] }, async (request, reply) => {
     const { id } = request.params;
     const data = filterData(request.body);
     const updates = [];

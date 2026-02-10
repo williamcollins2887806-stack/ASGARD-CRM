@@ -176,7 +176,8 @@ async function dataRoutes(fastify, options) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { table } = request.params;
-    const { limit = 10000, offset = 0, orderBy, desc, where } = request.query;
+    const { limit: rawLimit = 500, offset = 0, orderBy, desc, where } = request.query;
+    const limit = Math.min(parseInt(rawLimit) || 500, 500); // B9: cap at 500
 
     if (!isAllowed(table)) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
@@ -189,7 +190,17 @@ async function dataRoutes(fastify, options) {
     }
 
     try {
-      let query = `SELECT * FROM ${table}`;
+      // SECURITY B1: Hide sensitive columns from users table
+      const HIDDEN_COLS = { users: ['password_hash', 'pin_hash', 'reset_token', 'reset_token_expires', 'temp_password_hash', 'temp_password_expires'] };
+      let selectCols = '*';
+      if (HIDDEN_COLS[table]) {
+        const colRes = await db.query(
+          `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name != ALL($2::text[])`,
+          [table, HIDDEN_COLS[table]]
+        );
+        selectCols = colRes.rows.map(r => r.column_name).join(', ');
+      }
+      let query = `SELECT ${selectCols} FROM ${table}`;
       const params = [];
       let whereParts = [];
 

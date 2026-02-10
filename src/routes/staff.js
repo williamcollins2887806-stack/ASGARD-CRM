@@ -49,8 +49,8 @@ async function routes(fastify, options) {
     return { employee: result.rows[0], reviews: reviews.rows };
   });
 
-  // SECURITY: SQL injection fix — filter keys
-  fastify.post('/employees', { preHandler: [fastify.authenticate] }, async (request) => {
+  // SECURITY: SQL injection fix + B3 role check
+  fastify.post('/employees', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'])] }, async (request) => {
     const data = filterData({ ...request.body, created_at: new Date().toISOString() }, EMPLOYEE_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
@@ -59,8 +59,8 @@ async function routes(fastify, options) {
     return { employee: result.rows[0] };
   });
 
-  // SECURITY: SQL injection fix — filter keys
-  fastify.put('/employees/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: SQL injection fix + B3 role check
+  fastify.put('/employees/:id', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'])] }, async (request, reply) => {
     const { id } = request.params;
     const data = filterData(request.body, EMPLOYEE_COLS);
     const updates = [];

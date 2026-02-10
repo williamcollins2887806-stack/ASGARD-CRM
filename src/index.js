@@ -67,9 +67,11 @@ fastify.register(require('@fastify/static'), {
 });
 
 // Rate limiting
+// SECURITY B8: Per-user rate limit (not just per-IP)
 fastify.register(require('@fastify/rate-limit'), {
   max: parseInt(process.env.RATE_LIMIT_MAX || '300', 10),
-  timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10)
+  timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10),
+  keyGenerator: (request) => request.user?.id ? `user_${request.user.id}` : request.ip
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

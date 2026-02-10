@@ -160,8 +160,9 @@ async function routes(fastify, options) {
   // ─────────────────────────────────────────────────────────────────────────────
   // POST /api/tenders - Create tender
   // ─────────────────────────────────────────────────────────────────────────────
+  // SECURITY B3: Role-based access for write operations
   fastify.post('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])],
     schema: {
       body: {
         type: 'object',
@@ -223,7 +224,7 @@ async function routes(fastify, options) {
   // PUT /api/tenders/:id - Update tender
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
     const { id } = request.params;
     const data = request.body;

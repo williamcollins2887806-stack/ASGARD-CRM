@@ -72,6 +72,14 @@ async function findById(table, id) {
   return res.rows[0] || null;
 }
 
+// SECURITY B5: Validate column names to prevent SQL injection
+const VALID_COLUMN = /^[a-z_][a-z0-9_]*$/i;
+function validateColumn(key) {
+  if (!VALID_COLUMN.test(key) || key.length > 64) {
+    throw new Error(`Invalid column name: ${key}`);
+  }
+}
+
 /**
  * Find all records with optional filters
  */
@@ -82,6 +90,7 @@ async function findAll(table, { where = {}, orderBy = 'id DESC', limit, offset }
 
   for (const [key, value] of Object.entries(where)) {
     if (value !== undefined && value !== null) {
+      validateColumn(key);
       conditions.push(`${key} = $${idx}`);
       values.push(value);
       idx++;
@@ -113,6 +122,7 @@ async function findAll(table, { where = {}, orderBy = 'id DESC', limit, offset }
  */
 async function insert(table, data) {
   const keys = Object.keys(data);
+  keys.forEach(validateColumn);
   const values = Object.values(data);
   const placeholders = keys.map((_, i) => `$${i + 1}`);
 
@@ -131,6 +141,7 @@ async function insert(table, data) {
  */
 async function update(table, id, data) {
   const keys = Object.keys(data);
+  keys.forEach(validateColumn);
   const values = Object.values(data);
   const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
 

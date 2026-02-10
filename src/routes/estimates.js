@@ -40,8 +40,8 @@ async function routes(fastify, options) {
     return { estimate: result.rows[0] };
   });
 
-  // SECURITY: SQL injection fix — filter keys
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: SQL injection fix + B3 role check
+  fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN'])] }, async (request, reply) => {
     const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString() });
     const keys = Object.keys(data);
     if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
@@ -51,8 +51,8 @@ async function routes(fastify, options) {
     return { estimate: result.rows[0] };
   });
 
-  // SECURITY: SQL injection fix — filter keys
-  fastify.put('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: SQL injection fix + B3 role check
+  fastify.put('/:id', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN'])] }, async (request, reply) => {
     const { id } = request.params;
     const data = filterData(request.body);
     const updates = [];

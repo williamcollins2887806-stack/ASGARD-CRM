@@ -61,8 +61,9 @@ module.exports = async function(fastify, options) {
   // ─────────────────────────────────────────────────────────────────
   // POST /api/sites — create new site
   // ─────────────────────────────────────────────────────────────────
+  // SECURITY B3: Role-based access
   fastify.post('/', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN'])]
   }, async (request) => {
     const { name, short_name, lat, lng, region, site_type, customer_id, customer_name, address, description, geocode_status } = request.body;
 
@@ -82,7 +83,7 @@ module.exports = async function(fastify, options) {
   // PUT /api/sites/:id — update site (including manual coordinate placement)
   // ─────────────────────────────────────────────────────────────────
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN'])]
   }, async (request, reply) => {
     const { id } = request.params;
     const data = request.body;

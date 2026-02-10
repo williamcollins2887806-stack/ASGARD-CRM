@@ -241,14 +241,11 @@ async function equipmentRoutes(fastify, options) {
   // СОЗДАНИЕ ОБОРУДОВАНИЯ
   // ============================================
   
+  // SECURITY B3: Role-based access
   fastify.post('/', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
     const user = request.user;
-    
-    if (!isWarehouseAdmin(user.role)) {
-      return reply.code(403).send({ success: false, message: 'Нет прав на создание оборудования' });
-    }
     
     const {
       name, category_id, serial_number, barcode,
@@ -377,15 +374,12 @@ async function equipmentRoutes(fastify, options) {
   // РЕДАКТИРОВАНИЕ
   // ============================================
   
+  // SECURITY B3: Role-based access
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
     const { id } = request.params;
     const user = request.user;
-    
-    if (!isWarehouseAdmin(user.role)) {
-      return reply.code(403).send({ success: false, message: 'Нет прав на редактирование' });
-    }
     
     const {
       name, category_id, serial_number, barcode,

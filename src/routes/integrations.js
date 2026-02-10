@@ -830,9 +830,9 @@ module.exports = async function (fastify) {
         return reply.code(401).send({ error: 'Invalid webhook signature' });
       }
     } else {
-      // Fallback: простая проверка токена (backward compatibility)
-      const token = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
-      if (!token) return reply.code(401).send({ error: 'Требуется авторизация' });
+      // SECURITY B6: No webhook_secret configured — reject until configured
+      fastify.log.warn(`Webhook ${req.params.connection_id}: no webhook_secret configured, rejecting`);
+      return reply.code(403).send({ error: 'Webhook secret не настроен. Добавьте webhook_secret в настройки подключения.' });
     }
 
     const { entity_type, action, data } = req.body;

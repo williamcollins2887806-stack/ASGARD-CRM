@@ -100,7 +100,8 @@ async function routes(fastify, options) {
     return { customer: result.rows[0], tenders: tenders.rows };
   });
 
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY B3: Role-based access
+  fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM'])] }, async (request, reply) => {
     const { inn, name, ...rest } = request.body;
     if (!inn || !name) return reply.code(400).send({ error: 'ИНН и наименование обязательны' });
 
