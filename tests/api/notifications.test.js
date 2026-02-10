@@ -82,14 +82,13 @@ module.exports = {
       }
     },
     {
-      name: 'Negative: create notification without user_id',
+      name: 'Negative: create notification without user_id → 400',
       run: async () => {
         const resp = await api('POST', '/api/notifications', {
           role: 'ADMIN',
           body: { title: 'Missing user_id' }
         });
-        // Server may not validate user_id — just verify no crash
-        assert(resp.status < 500 || resp.status >= 400, `missing user_id: ${resp.status}`);
+        assert(resp.status === 400, `missing user_id should return 400, got ${resp.status}`);
       }
     }
   ]

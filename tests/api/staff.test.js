@@ -103,7 +103,7 @@ module.exports = {
         const resp = await api('POST', '/api/staff/employees', {
           role: 'HR', body: { role_tag: 'worker' }
         });
-        assert(resp.status >= 400, `expected 4xx/5xx for missing fio, got ${resp.status}`);
+        assert(resp.status === 400, `expected 400 for missing fio, got ${resp.status}`);
       }
     },
     {

@@ -2133,20 +2133,9 @@ details > *:not(summary) {
   border-radius: var(--radius-sm);
 }
 
-/* Smooth Expand/Collapse for Nav Groups */
-.nav-group-items {
-  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.25s ease,
-              padding 0.25s ease;
-}
-
-.nav-group:not(.expanded) .nav-group-items {
-  opacity: 0;
-}
-
-.nav-group.expanded .nav-group-items {
-  opacity: 1;
-}
+/* Smooth Expand/Collapse for Nav Groups — REMOVED: old expand/collapse sidebar
+   rules conflicted with flyout navigation. Flyout visibility is now controlled
+   exclusively by .flyout-open class in layout.css. See commit for details. */
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    FADE-IN ANIMATIONS (Stage 7)

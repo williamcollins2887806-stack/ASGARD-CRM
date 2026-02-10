@@ -90,14 +90,13 @@ module.exports = {
       }
     },
     {
-      name: 'Negative: create meeting with empty body',
+      name: 'Negative: create meeting with empty body → 400',
       run: async () => {
         const resp = await api('POST', '/api/meetings', {
           role: 'ADMIN',
           body: {}
         });
-        // Server allows empty body (no server-side validation) — just verify no 5xx
-        assert(resp.status < 500, `empty body should not cause 5xx, got ${resp.status}`);
+        assert(resp.status === 400, `empty body should return 400, got ${resp.status}`);
       }
     },
     {

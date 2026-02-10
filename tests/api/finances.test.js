@@ -102,14 +102,13 @@ module.exports = {
       }
     },
     {
-      name: 'Negative: create expense with empty body',
+      name: 'Negative: create expense with empty body → 400',
       run: async () => {
         const resp = await api('POST', '/api/expenses/work', {
           role: 'PM',
           body: {}
         });
-        // Server allows empty body — just verify no crash
-        assert(resp.status < 500, `empty body should not cause 5xx, got ${resp.status}`);
+        assert(resp.status === 400, `empty body should return 400, got ${resp.status}`);
       }
     },
     {

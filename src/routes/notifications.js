@@ -33,7 +33,11 @@ async function routes(fastify, options) {
   // Создать уведомление (внутренний API)
   // SECURITY: Проверка прав на создание уведомления (HIGH-10)
   fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const { user_id, title, message, type, link } = request.body;
+    const body = request.body || {};
+    if (!body.user_id || !body.title || !body.message) {
+      return reply.code(400).send({ error: 'Обязательные поля: user_id, title, message' });
+    }
+    const { user_id, title, message, type, link } = body;
 
     // SECURITY: Можно создавать уведомления только для себя, если не админ/директор
     const privilegedRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];

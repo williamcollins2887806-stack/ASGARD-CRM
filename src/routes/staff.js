@@ -50,8 +50,12 @@ async function routes(fastify, options) {
   });
 
   // SECURITY: SQL injection fix + B3 role check
-  fastify.post('/employees', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'])] }, async (request) => {
-    const data = filterData({ ...request.body, created_at: new Date().toISOString() }, EMPLOYEE_COLS);
+  fastify.post('/employees', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'])] }, async (request, reply) => {
+    const body = request.body || {};
+    if (!body.fio || !String(body.fio).trim()) {
+      return reply.code(400).send({ error: 'Обязательное поле: fio' });
+    }
+    const data = filterData({ ...body, created_at: new Date().toISOString() }, EMPLOYEE_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO employees (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;

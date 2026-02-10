@@ -542,29 +542,32 @@ try{
     // if (sidebarToggle) { ... }
 
     // ── Flyout navigation: show/hide submenu on hover (desktop) and click (mobile) ──
+    // Clean up previous document-level listeners to prevent duplicates across layout() calls
+    if (window._flyoutOutsideClick) document.removeEventListener("click", window._flyoutOutsideClick);
+    if (window._flyoutEscHandler) document.removeEventListener("keydown", window._flyoutEscHandler);
+    if (window._flyoutHashHandler) window.removeEventListener("hashchange", window._flyoutHashHandler);
+
     (function initFlyoutNav() {
-      let currentFlyout = null;   // currently open flyout element
-      let hideTimer = null;       // delay before hiding
+      let currentFlyout = null;
+      let hideTimer = null;
 
       function showFlyout(group) {
         const header = group.querySelector(".nav-group-header");
         const items = group.querySelector(".nav-group-items");
         if (!header || !items) return;
 
-        // Close previous flyout if different
         if (currentFlyout && currentFlyout !== items) {
           currentFlyout.classList.remove("flyout-open");
         }
 
-        // Calculate position: fixed relative to viewport
         const rect = header.getBoundingClientRect();
         const sidebarWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width')) || 60;
 
         items.style.left = sidebarWidth + "px";
         items.style.top = Math.max(0, rect.top) + "px";
 
-        // Prevent flyout from going below viewport
         items.classList.add("flyout-open");
+
         const flyoutRect = items.getBoundingClientRect();
         if (flyoutRect.bottom > window.innerHeight) {
           items.style.top = Math.max(0, window.innerHeight - flyoutRect.height - 8) + "px";
@@ -588,19 +591,18 @@ try{
         clearTimeout(hideTimer);
       }
 
-      // Bind events to each nav group
       $$(".nav-group").forEach(group => {
         const header = group.querySelector(".nav-group-header");
         const items = group.querySelector(".nav-group-items");
         if (!header || !items) return;
 
-        // Desktop: hover
+        group.dataset.flyoutBound = "1";
+
         header.addEventListener("mouseenter", () => showFlyout(group));
         header.addEventListener("mouseleave", () => hideFlyout(200));
         items.addEventListener("mouseenter", cancelHide);
         items.addEventListener("mouseleave", () => hideFlyout(150));
 
-        // Desktop + Mobile: click on header
         addMobileClick(header, (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -612,20 +614,19 @@ try{
         });
       });
 
-      // Close flyout when clicking outside
-      document.addEventListener("click", (e) => {
-        if (currentFlyout && !e.target.closest(".nav-group")) {
-          hideFlyout(0);
-        }
-      });
+      // Document-level listeners — stored on window for cleanup on next layout()
+      window._flyoutOutsideClick = (e) => {
+        if (currentFlyout && !e.target.closest(".nav-group")) hideFlyout(0);
+      };
+      document.addEventListener("click", window._flyoutOutsideClick);
 
-      // Close flyout on Escape
-      document.addEventListener("keydown", (e) => {
+      window._flyoutEscHandler = (e) => {
         if (e.key === "Escape" && currentFlyout) hideFlyout(0);
-      });
+      };
+      document.addEventListener("keydown", window._flyoutEscHandler);
 
-      // Close flyout on route change
-      window.addEventListener("hashchange", () => hideFlyout(0));
+      window._flyoutHashHandler = () => hideFlyout(0);
+      window.addEventListener("hashchange", window._flyoutHashHandler);
     })();
 
     addMobileClick($("#btnLogout"), ()=>{ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; });

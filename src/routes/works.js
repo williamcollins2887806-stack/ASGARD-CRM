@@ -45,7 +45,11 @@ async function routes(fastify, options) {
   // SECURITY: SQL injection fix + B3 role check + try/catch
   fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])] }, async (request, reply) => {
     try {
-      const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString() });
+      const body = request.body || {};
+      if (!body.work_title) {
+        return reply.code(400).send({ error: 'Обязательное поле: work_title' });
+      }
+      const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
       const keys = Object.keys(data);
       if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
       const values = Object.values(data);

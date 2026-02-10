@@ -48,7 +48,11 @@ async function routes(fastify, options) {
   // SECURITY: SQL injection fix — filter keys; try/catch added
   fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {
-      const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString() });
+      const body = request.body || {};
+      if (!body.title || !body.date) {
+        return reply.code(400).send({ error: 'Обязательные поля: title, date' });
+      }
+      const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
       const keys = Object.keys(data);
       if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
       const values = Object.values(data);

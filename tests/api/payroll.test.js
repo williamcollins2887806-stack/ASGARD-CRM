@@ -89,14 +89,13 @@ module.exports = {
       }
     },
     {
-      name: 'Negative: create sheet with empty body',
+      name: 'Negative: create sheet with empty body → 400',
       run: async () => {
         const resp = await api('POST', '/api/payroll/sheets', {
           role: 'PM',
           body: {}
         });
-        // Server may allow empty body or return 5xx — just verify behavior is defined
-        assert(resp.status < 500 || resp.status >= 400, `empty body: ${resp.status}`);
+        assert(resp.status === 400, `empty body should return 400, got ${resp.status}`);
       }
     },
     {

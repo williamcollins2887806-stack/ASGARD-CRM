@@ -46,8 +46,12 @@ async function routes(fastify, options) {
 
   // SECURITY: Только WRITE_ROLES (HIGH-9)
   // SECURITY: SQL injection fix — filter keys
-  fastify.post('/work', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
-    const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString() }, WORK_EXP_COLS);
+  fastify.post('/work', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const body = request.body || {};
+    if (!body.amount || !body.category) {
+      return reply.code(400).send({ error: 'Обязательные поля: amount, category' });
+    }
+    const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() }, WORK_EXP_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO work_expenses (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
@@ -73,8 +77,12 @@ async function routes(fastify, options) {
 
   // SECURITY: Только WRITE_ROLES (HIGH-9)
   // SECURITY: SQL injection fix — filter keys
-  fastify.post('/office', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
-    const data = filterData({ ...request.body, created_by: request.user.id, created_at: new Date().toISOString(), status: 'pending' }, OFFICE_EXP_COLS);
+  fastify.post('/office', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const body = request.body || {};
+    if (!body.amount || !body.category) {
+      return reply.code(400).send({ error: 'Обязательные поля: amount, category' });
+    }
+    const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString(), status: 'pending' }, OFFICE_EXP_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO office_expenses (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
