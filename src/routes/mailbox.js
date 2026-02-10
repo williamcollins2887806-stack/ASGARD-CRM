@@ -462,7 +462,60 @@ async function routes(fastify, options) {
         user.id, template_id || null, reply_to_email_id || null, forward_of_email_id || null
       ]);
 
-      return { success: true, messageId: result.messageId };
+      // ── Автоматическая регистрация в корреспонденции ──────────────
+      let corrNumber = null;
+      let corrId = null;
+      try {
+        const year = new Date().getFullYear();
+        const seqRes = await db.query("SELECT nextval('correspondence_outgoing_seq') as num");
+        const seqNum = String(seqRes.rows[0].num).padStart(6, '0');
+        corrNumber = `АС-ИСХ-${year}-${seqNum}`;
+
+        // Находим ID только что сохранённого email
+        const savedEmail = await db.query(
+          "SELECT id FROM emails WHERE message_id = $1 ORDER BY id DESC LIMIT 1",
+          [result.messageId]
+        );
+        const emailId = savedEmail.rows[0]?.id || null;
+
+        // Определяем получателя для поля counterparty
+        const toList = Array.isArray(to) ? to : [to];
+        const counterparty = toList[0]?.trim() || '';
+
+        // Создаём запись в корреспонденции
+        const corrRes = await db.query(`
+          INSERT INTO correspondence (
+            direction, number, date, doc_type, subject, body,
+            counterparty, email_id,
+            tender_id, work_id,
+            status, created_by, created_at, updated_at
+          ) VALUES (
+            'outgoing', $1, CURRENT_DATE, 'letter', $2, $3,
+            $4, $5,
+            $6, $7,
+            'sent', $8, NOW(), NOW()
+          ) RETURNING id
+        `, [
+          corrNumber,
+          subject,
+          (body_text || '').slice(0, 1000),
+          counterparty,
+          emailId,
+          request.body.tender_id || null,
+          request.body.work_id || null,
+          user.id
+        ]);
+        corrId = corrRes.rows[0]?.id;
+      } catch (corrErr) {
+        // Не блокируем отправку если корреспонденция не создалась
+        console.error('[Mailbox] Correspondence auto-register error:', corrErr.message);
+      }
+
+      return {
+        success: true,
+        messageId: result.messageId,
+        correspondence: corrNumber ? { id: corrId, number: corrNumber } : null
+      };
     } catch (error) {
       console.error('[Mailbox] Send error:', error);
       return reply.code(500).send({ error: 'Ошибка отправки: ' + error.message });
@@ -1005,6 +1058,28 @@ async function routes(fastify, options) {
     );
 
     return { success: true, ...cls };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // GET NEXT OUTGOING NUMBER (preview, не резервирует)
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/next-outgoing-number', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    if (!checkMailboxAccess(request, reply)) return;
+
+    try {
+      const year = new Date().getFullYear();
+      // Peek at next value without consuming it
+      const res = await db.query("SELECT last_value, is_called FROM correspondence_outgoing_seq");
+      const nextNum = res.rows[0].is_called
+        ? Number(res.rows[0].last_value) + 1
+        : Number(res.rows[0].last_value);
+      const number = `АС-ИСХ-${year}-${String(nextNum).padStart(6, '0')}`;
+      return { number, preview: true };
+    } catch (err) {
+      return { number: `АС-ИСХ-${new Date().getFullYear()}-??????`, preview: true };
+    }
   });
 }
 

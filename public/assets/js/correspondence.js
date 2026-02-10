@@ -47,41 +47,22 @@ window.AsgardCorrespondencePage = (function(){
     return false;
   }
 
-  // === Формат номера исходящего: АС-ИСХ-YYYY-000001 ===
+  // === Формат номера исходящего: АС-ИСХ-YYYY-000001 (серверный sequence) ===
   async function generateOutgoingNumber(){
-    const year = new Date().getFullYear();
-    const prefix = `АС-ИСХ-${year}-`;
-    
-    let items = [];
-    try { items = await AsgardDB.all('correspondence'); } catch(e){}
-    
-    // Получаем стартовый номер из настроек (если есть)
-    let startNum = 1;
     try {
-      const settings = await AsgardDB.get('settings', 'core');
-      if(settings?.correspondence_start_number){
-        startNum = parseInt(settings.correspondence_start_number, 10) || 1;
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch('/api/mailbox/next-outgoing-number', {
+        headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.number || '';
       }
-    } catch(e){}
-    
-    // Ищем максимальный номер за текущий год
-    const outgoing = items.filter(i => 
-      i.direction === 'outgoing' && 
-      i.number && 
-      i.number.startsWith(prefix)
-    );
-    
-    let maxNum = startNum - 1; // Начинаем со стартового
-    outgoing.forEach(i => {
-      const match = i.number.match(/АС-ИСХ-\d{4}-(\d{6})/);
-      if(match){
-        const num = parseInt(match[1], 10);
-        if(num > maxNum) maxNum = num;
-      }
-    });
-    
-    const nextNum = String(maxNum + 1).padStart(6, '0');
-    return `АС-ИСХ-${year}-${nextNum}`;
+    } catch(e) {}
+
+    // Fallback: клиентская генерация (если API недоступен)
+    const year = new Date().getFullYear();
+    return `АС-ИСХ-${year}-??????`;
   }
 
   // === Аудит ===

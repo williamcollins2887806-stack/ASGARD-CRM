@@ -48,7 +48,16 @@ window.AsgardEmailCompose = (function(){
       templates = [];
     }
 
-    renderModal();
+    // Загружаем предварительный ИСХ-номер
+    let previewNumber = '';
+    if (mode === 'compose') {
+      try {
+        const numData = await apiFetch('/api/mailbox/next-outgoing-number');
+        previewNumber = numData.number || '';
+      } catch(e) {}
+    }
+
+    renderModal(previewNumber);
     isOpen = true;
   }
 
@@ -61,7 +70,7 @@ window.AsgardEmailCompose = (function(){
   // ═══════════════════════════════════════════════════════════════════
   // RENDER MODAL
   // ═══════════════════════════════════════════════════════════════════
-  function renderModal() {
+  function renderModal(previewNumber) {
     // Remove existing
     const existing = $('#email-compose-overlay');
     if (existing) existing.remove();
@@ -116,6 +125,16 @@ window.AsgardEmailCompose = (function(){
               ${templates.map(t => `<option value="${t.id}">${esc(t.name)} (${esc(t.category)})</option>`).join('')}
             </select>
           </div>
+
+          ${previewNumber ? `
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;
+                      padding:8px 12px; background:rgba(212,168,70,0.08);
+                      border:1px solid rgba(212,168,70,0.25); border-radius:8px">
+            <span style="font-size:12px; color:var(--text-muted);">Рег. номер:</span>
+            <span style="font-weight:700; color:#D4A846; font-family:var(--font-mono); font-size:13px">${esc(previewNumber)}</span>
+            <span style="font-size:11px; color:var(--text-muted)">(присвоится при отправке)</span>
+          </div>
+          ` : ''}
 
           <!-- To -->
           <div style="margin-bottom:8px;">
@@ -302,8 +321,12 @@ window.AsgardEmailCompose = (function(){
       if (replyToId) payload.reply_to_email_id = parseInt(replyToId);
       if (forwardOfId) payload.forward_of_email_id = parseInt(forwardOfId);
 
-      await apiFetch('/api/mailbox/send', { method: 'POST', body: payload });
-      toast('Письмо отправлено');
+      const sendData = await apiFetch('/api/mailbox/send', { method: 'POST', body: payload });
+      if (sendData.correspondence?.number) {
+        toast('Отправлено', 'Письмо зарегистрировано: ' + sendData.correspondence.number);
+      } else {
+        toast('Письмо отправлено');
+      }
       close();
 
       // Refresh mailbox if visible
