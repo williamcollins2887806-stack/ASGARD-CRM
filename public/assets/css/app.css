@@ -6224,7 +6224,8 @@ html[data-theme="light"] .sidebar-search-btn:hover {
    MOBILE FAB — Floating Action Button
    Shows on mobile for quick create actions
    ═══════════════════════════════════════════════════════════════════════════════ */
-.fab {
+.fab,
+.fab-menu {
   display: none;
 }
 
