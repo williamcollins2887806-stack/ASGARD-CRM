@@ -297,7 +297,7 @@ async function ensureTables() {
       id SERIAL PRIMARY KEY,
       staff_id INTEGER,
       date DATE,
-      status_code VARCHAR(10),
+      status_code VARCHAR(20),
       created_by INTEGER,
       updated_at TIMESTAMP DEFAULT NOW(),
       created_at TIMESTAMP DEFAULT NOW()
