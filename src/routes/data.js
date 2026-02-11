@@ -168,6 +168,19 @@ async function dataRoutes(fastify, options) {
     return 'id DESC';
   }
 
+  // Кэш колонок таблиц — защита от INSERT в несуществующие колонки
+  const _columnCache = {};
+  async function getTableColumns(table) {
+    if (_columnCache[table]) return _columnCache[table];
+    const result = await db.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = $1`,
+      [table]
+    );
+    const cols = new Set(result.rows.map(r => r.column_name));
+    _columnCache[table] = cols;
+    return cols;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/data/:table - Получить все записи
   // SECURITY: Проверка ролевого доступа (CRIT-3)
@@ -311,11 +324,18 @@ async function dataRoutes(fastify, options) {
     const pk = getPrimaryKey(table);
 
     try {
-      // Добавляем метаданные
-      data.created_at = data.created_at || new Date().toISOString();
-      data.updated_at = new Date().toISOString();
-      // SECURITY: Добавляем created_by если не указан
-      if (!data.created_by && request.user.id) {
+      // Получаем реальные колонки таблицы
+      const tableCols = await getTableColumns(table);
+
+      // Добавляем метаданные (только если колонка существует)
+      if (tableCols.has('created_at')) {
+        data.created_at = data.created_at || new Date().toISOString();
+      }
+      if (tableCols.has('updated_at')) {
+        data.updated_at = new Date().toISOString();
+      }
+      // SECURITY: Добавляем created_by если не указан и колонка существует
+      if (tableCols.has('created_by') && !data.created_by && request.user.id) {
         data.created_by = request.user.id;
       }
 
@@ -324,7 +344,8 @@ async function dataRoutes(fastify, options) {
         delete data.id;
       }
 
-      const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k));
+      // Фильтруем ключи: только валидные имена И существующие колонки
+      const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k) && tableCols.has(k));
       const values = keys.map(k => data[k]);
       const placeholders = keys.map((_, i) => `$${i + 1}`);
 
@@ -369,13 +390,19 @@ async function dataRoutes(fastify, options) {
     const pk = getPrimaryKey(table);
 
     try {
-      data.updated_at = new Date().toISOString();
+      // Получаем реальные колонки таблицы
+      const tableCols = await getTableColumns(table);
+
+      if (tableCols.has('updated_at')) {
+        data.updated_at = new Date().toISOString();
+      }
       delete data[pk]; // Не обновляем первичный ключ
       delete data.id;  // И id тоже
       delete data.created_at; // Не меняем дату создания
       delete data.created_by; // Не меняем автора
 
-      const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k));
+      // Фильтруем ключи: только валидные имена И существующие колонки
+      const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k) && tableCols.has(k));
       const values = keys.map(k => data[k]);
       const setParts = keys.map((k, i) => `${k} = $${i + 1}`);
 

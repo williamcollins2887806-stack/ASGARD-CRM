@@ -594,8 +594,11 @@ a:hover {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   position: relative;
-  overflow: hidden;
   transition: border-color 0.2s, box-shadow 0.2s;
+}
+/* overflow:hidden only for containers with ::before decorations, NOT content cards */
+.card, .panel, .widget {
+  overflow: hidden;
 }
 
 .card:hover, .panel:hover, .widget:hover {
@@ -1657,7 +1660,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 .funnel-cards {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1668,8 +1671,8 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 }
 
 .funnel-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  border: 1px solid rgba(148,163,184,0.25);
   border-radius: var(--radius-sm);
   padding: 12px 16px;
   cursor: grab;
@@ -1695,19 +1698,20 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 }
 
 .funnel-card-customer {
-  font-size: 12px;
+  font-size: 13px;
   color: #e2e8f0;
   font-weight: 600;
   flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .funnel-card-sum {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+  color: #f59e0b;
   white-space: nowrap;
 }
 
@@ -1724,6 +1728,21 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   justify-content: space-between;
   font-size: 11px;
   color: #94a3b8;
+}
+
+/* Light theme overrides for funnel cards */
+html[data-theme="light"] .funnel-card {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.12);
+}
+html[data-theme="light"] .funnel-card-customer {
+  color: #1e293b;
+}
+html[data-theme="light"] .funnel-card-sum {
+  color: #d97706;
+}
+html[data-theme="light"] .funnel-card-meta {
+  color: #64748b;
 }
 
 .funnel-more {
@@ -2596,7 +2615,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   }
   
   .stat-card, .kpi-card {
-    padding: 12px;
+    padding: 12px 16px;
   }
   
   .stat-value, .kpi-value {
