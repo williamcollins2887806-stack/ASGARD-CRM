@@ -4,19 +4,44 @@
  */
 const { api, assert, assertOk, assertStatus, skip, TEST_USERS } = require('../config');
 
+// Helper: create a temporary customer and return its INN (for FK-safe tender creation)
+let _crudCustomerInn = null;
+async function ensureCrudCustomer() {
+  if (_crudCustomerInn) return _crudCustomerInn;
+  const inn = '77' + Date.now().toString().slice(-8);
+  const resp = await api('POST', '/api/customers', {
+    role: 'ADMIN',
+    body: { inn, name: 'CRUD_FK_Customer_' + Date.now() }
+  });
+  if (resp.status === 200 || resp.status === 201) {
+    _crudCustomerInn = inn;
+  }
+  return inn;
+}
+async function cleanupCrudCustomer() {
+  if (_crudCustomerInn) {
+    await api('DELETE', `/api/customers/${_crudCustomerInn}`, { role: 'ADMIN' }).catch(() => {});
+    _crudCustomerInn = null;
+  }
+}
+
 // Table definitions with required fields for creation
 const TABLES = [
   {
     table: 'tenders',
-    createBody: () => ({
-      customer_name: 'CRUD_TEST_' + Date.now(),
-      customer_inn: '1234567890',
-      tender_title: 'CRUD Test Tender',
-      tender_type: 'Открытый',
-      tender_status: 'Новый',
-      tender_price: 100000
-    }),
-    updateBody: { tender_title: 'CRUD Updated Tender' }
+    createBody: async () => {
+      const inn = await ensureCrudCustomer();
+      return {
+        customer_name: 'CRUD_TEST_' + Date.now(),
+        customer_inn: inn,
+        tender_title: 'CRUD Test Tender',
+        tender_type: 'Открытый',
+        tender_status: 'Новый',
+        tender_price: 100000
+      };
+    },
+    updateBody: { tender_title: 'CRUD Updated Tender' },
+    afterDelete: cleanupCrudCustomer
   },
   {
     table: 'works',
@@ -61,6 +86,7 @@ const TABLES = [
     table: 'correspondence',
     createBody: () => ({
       number: 'CORR-CRUD-' + Date.now(),
+      direction: 'outgoing',
       type: 'Входящее',
       subject: 'CRUD Test Correspondence',
       date: '2025-01-15'
@@ -81,6 +107,7 @@ const TABLES = [
     table: 'equipment',
     createBody: () => ({
       name: 'CRUD_EQUIP_' + Date.now(),
+      inventory_number: 'TEST-' + Date.now(),
       category_id: 1,
       status: 'on_warehouse'
     }),
@@ -118,14 +145,15 @@ const TABLES = [
 
 const tests = [];
 
-for (const { table, createBody, updateBody } of TABLES) {
+for (const { table, createBody, updateBody, afterDelete } of TABLES) {
   let createdId = null;
 
   // CREATE
   tests.push({
     name: `CRUD: ${table} — create`,
     run: async () => {
-      const body = typeof createBody === 'function' ? createBody() : createBody;
+      const bodyOrPromise = typeof createBody === 'function' ? createBody() : createBody;
+      const body = bodyOrPromise && typeof bodyOrPromise.then === 'function' ? await bodyOrPromise : bodyOrPromise;
       const resp = await api('POST', `/api/data/${table}`, {
         role: 'ADMIN',
         body
@@ -184,6 +212,7 @@ for (const { table, createBody, updateBody } of TABLES) {
         `${table} delete: expected 200/204/404/403, got ${resp.status}`
       );
       createdId = null;
+      if (afterDelete) await afterDelete();
     }
   });
 }

@@ -3,6 +3,20 @@
  */
 const { api, assert, assertOk, assertStatus, assertHasFields, assertMatch, skip, TEST_USERS } = require('../config');
 
+// Helper: create a temporary customer for FK-safe tender creation
+async function createTempCustomer(prefix) {
+  const inn = '77' + Date.now().toString().slice(-8);
+  const resp = await api('POST', '/api/customers', {
+    role: 'ADMIN',
+    body: { inn, name: prefix + '_' + Date.now() }
+  });
+  assertOk(resp, 'temp customer create');
+  return inn;
+}
+async function deleteTempCustomer(inn) {
+  if (inn) await api('DELETE', `/api/customers/${inn}`, { role: 'ADMIN' }).catch(() => {});
+}
+
 module.exports = {
   name: 'E2E BUSINESS LOGIC',
   tests: [
@@ -10,13 +24,16 @@ module.exports = {
     {
       name: 'BIZ: Tender create → update status → verify → cleanup',
       run: async () => {
+        // Step 0: Create customer so tender FK is satisfied
+        const custInn = await createTempCustomer('BIZ_TEST');
+
         // Step 1: TO creates tender
         const createResp = await api('POST', '/api/tenders', {
           role: 'TO',
           body: {
             customer: 'BIZ_TEST_' + Date.now(),
             customer_name: 'BIZ_TEST_' + Date.now(),
-            customer_inn: '7707083893',
+            customer_inn: custInn,
             tender_title: 'E2E Бизнес-тест тендер',
             tender_type: 'Открытый',
             tender_status: 'Новый',
@@ -39,8 +56,9 @@ module.exports = {
           const getResp = await api('GET', `/api/tenders/${tid}`, { role: 'TO' });
           assertOk(getResp, 'tender get');
         } finally {
-          // Cleanup
+          // Cleanup: tender first (has FK to customer), then customer
           await api('DELETE', `/api/tenders/${tid}`, { role: 'ADMIN' });
+          await deleteTempCustomer(custInn);
         }
       }
     },
@@ -96,13 +114,16 @@ module.exports = {
     {
       name: 'BIZ: Create tender → create estimate → verify link → cleanup',
       run: async () => {
+        // Step 0: Create customer so tender FK is satisfied
+        const custInn = await createTempCustomer('BIZ_EST');
+
         // Create tender
         const tResp = await api('POST', '/api/tenders', {
           role: 'TO',
           body: {
             customer: 'BIZ_EST_' + Date.now(),
             customer_name: 'BIZ_EST_' + Date.now(),
-            customer_inn: '7707083893',
+            customer_inn: custInn,
             tender_title: 'Тендер для просчёта',
             tender_type: 'Открытый',
             tender_status: 'Новый',
@@ -138,6 +159,7 @@ module.exports = {
         } finally {
           if (eid) await api('DELETE', `/api/estimates/${eid}`, { role: 'ADMIN' });
           await api('DELETE', `/api/tenders/${tid}`, { role: 'ADMIN' });
+          await deleteTempCustomer(custInn);
         }
       }
     },
@@ -232,22 +254,28 @@ module.exports = {
     {
       name: 'BIZ: Chat create → send message → list messages → delete',
       run: async () => {
+        // Verify ADMIN user actually exists in DB (chat_group_members has FK to users.id)
+        const meResp = await api('GET', '/api/auth/me', { role: 'ADMIN' });
+        assert(meResp.ok, 'ADMIN user must be authenticated for chat test');
+        const adminId = meResp.data?.user?.id || meResp.data?.id;
+        assert(adminId, 'ADMIN must have a real user id in DB (chat_group_members FK requires it)');
+
         const createResp = await api('POST', '/api/chat-groups', {
           role: 'ADMIN',
           body: {
             name: 'BIZ_CHAT_' + Date.now(),
-            description: 'E2E chat test'
+            member_ids: []
           }
         });
         assertOk(createResp, 'chat create');
         const chatId = createResp.data?.chat?.id || createResp.data?.id;
-        if (!chatId) skip('no chat id');
+        assert(chatId, 'chat must return id');
 
         try {
-          // Send message
+          // Send message (route expects field 'text', not 'content')
           const msgResp = await api('POST', `/api/chat-groups/${chatId}/messages`, {
             role: 'ADMIN',
-            body: { content: 'E2E test message ' + Date.now() }
+            body: { text: 'E2E test message ' + Date.now() }
           });
           assert(msgResp.status !== 500, `send msg got ${msgResp.status}`);
 
