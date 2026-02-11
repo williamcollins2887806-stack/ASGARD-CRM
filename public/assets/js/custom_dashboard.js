@@ -569,9 +569,9 @@ window.AsgardCustomDashboard = (function(){
 
   async function renderCashBalance(el, user) {
     try {
-      const cashRecords = await AsgardDB.getAll('cash_advances') || [];
-      const pending = cashRecords.filter(r => r.status === 'pending' || r.status === 'issued').length;
-      const totalIssued = cashRecords.filter(r => r.status === 'issued').reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      const cashRecords = await AsgardDB.getAll('cash_requests') || [];
+      const pending = cashRecords.filter(r => r.status === 'requested' || r.status === 'approved').length;
+      const totalIssued = cashRecords.filter(r => r.status === 'received' || r.status === 'reporting').reduce((s, r) => s + (Number(r.amount) || 0), 0);
       el.innerHTML = '<div style="text-align:center">' +
         '<div style="font-size:28px;font-weight:700;color:var(--gold)">' + formatMoney(totalIssued) + '</div>' +
         '<div class="help">Выдано (не закрыто)</div>' +
