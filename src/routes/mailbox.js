@@ -342,11 +342,14 @@ async function routes(fastify, options) {
       return reply.code(400).send({ error: 'Укажите получателя и тему' });
     }
 
-    // Validate email format
+    // Validate email format (supports both "email@domain" and "Name <email@domain>")
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const recipients = Array.isArray(to) ? to : [to];
     for (const addr of recipients) {
-      if (!emailRegex.test(String(addr).trim())) {
+      const raw = String(addr).trim();
+      const bracketMatch = raw.match(/<([^>]+)>/);
+      const emailOnly = bracketMatch ? bracketMatch[1].trim() : raw;
+      if (!emailRegex.test(emailOnly)) {
         return reply.code(400).send({ error: `Некорректный формат email: ${addr}` });
       }
     }
