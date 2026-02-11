@@ -142,11 +142,22 @@ fastify.decorate('requirePermission', function(moduleKey, operation = 'read') {
     // ADMIN bypass
     if (request.user.role === 'ADMIN') return;
 
-    const { rows } = await db.query(
+    // Check user_permissions first, fallback to role_presets
+    let { rows } = await db.query(
       `SELECT can_read, can_write, can_delete FROM user_permissions
        WHERE user_id = $1 AND module_key = $2`,
       [request.user.id, moduleKey]
     );
+
+    if (rows.length === 0) {
+      // Fallback to role_presets for the user's role
+      const preset = await db.query(
+        `SELECT can_read, can_write, can_delete FROM role_presets
+         WHERE role = $1 AND module_key = $2`,
+        [request.user.role, moduleKey]
+      );
+      rows = preset.rows;
+    }
 
     if (rows.length === 0) {
       return reply.code(403).send({ error: 'Forbidden', message: 'Нет доступа к модулю' });
