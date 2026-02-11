@@ -24,7 +24,7 @@ async function dataRoutes(fastify, options) {
     'equipment_categories', 'warehouses', 'objects',
     'employee_rates', 'payroll_sheets', 'payroll_items',
     'payment_registry', 'self_employed', 'one_time_payments',
-    'permit_types', 'permit_applications', 'permit_application_items', 'permit_application_history',
+    'permits', 'permit_types', 'permit_applications', 'permit_application_items', 'permit_application_history',
     'email_accounts', 'emails', 'email_attachments', 'email_classification_rules', 'email_templates_v2', 'email_sync_log',
     'cash_advances', 'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages'
   ];
@@ -47,7 +47,8 @@ async function dataRoutes(fastify, options) {
         'equipment_reservations', 'acts', 'invoices', 'notifications',
         'sync_meta', 'employee_assignments', 'employee_plan', 'reminders',
         'bonus_requests', 'doc_sets', 'qa_messages', 'user_dashboard',
-        'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments'
+        'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
+        'permits'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -56,7 +57,8 @@ async function dataRoutes(fastify, options) {
         'users', 'employees', 'works', 'invoices', 'user_call_status',
         'tenders', 'estimates', 'customers', 'calendar_events', 'documents',
         'correspondence', 'chats', 'chat_messages', 'notifications',
-        'sync_meta', 'reminders', 'doc_sets', 'user_dashboard'
+        'sync_meta', 'reminders', 'doc_sets', 'user_dashboard',
+        'permits'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -80,7 +82,8 @@ async function dataRoutes(fastify, options) {
         'staff_replacements', 'employee_permits', 'calendar_events',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
         'travel_expenses', 'invoices', 'user_dashboard',
-        'employee_rates', 'payroll_sheets', 'payroll_items'
+        'employee_rates', 'payroll_sheets', 'payroll_items',
+        'permits'
       ],
       ops: ['read', 'create', 'update']
     },
