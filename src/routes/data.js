@@ -39,7 +39,7 @@ async function dataRoutes(fastify, options) {
     DIRECTOR_DEV: { tables: 'all', ops: ['read', 'create', 'update'] },
     PM: {
       tables: [
-        'users', 'employees', 'staff', 'user_call_status',
+        'users', 'employees', 'staff', 'staff_plan', 'user_call_status',
         'tenders', 'estimates', 'works', 'work_expenses', 'work_assign_requests',
         'pm_consents', 'correspondence', 'travel_expenses', 'contracts',
         'calendar_events', 'customers', 'documents', 'chats', 'chat_messages',
@@ -62,7 +62,7 @@ async function dataRoutes(fastify, options) {
     },
     BUH: {
       tables: [
-        'users', 'employees', 'cash_advances',
+        'users', 'employees', 'cash_advances', 'user_call_status',
         'tenders', 'works', 'work_expenses', 'office_expenses', 'incomes',
         'invoices', 'invoice_payments', 'acts', 'contracts', 'customers',
         'bank_rules', 'calendar_events', 'chats', 'chat_messages',
@@ -79,14 +79,14 @@ async function dataRoutes(fastify, options) {
         'staff', 'staff_plan', 'staff_requests', 'staff_request_messages',
         'staff_replacements', 'employee_permits', 'calendar_events',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
-        'travel_expenses', 'user_dashboard',
+        'travel_expenses', 'invoices', 'user_dashboard',
         'employee_rates', 'payroll_sheets', 'payroll_items'
       ],
       ops: ['read', 'create', 'update']
     },
     OFFICE_MANAGER: {
       tables: [
-        'users', 'employees', 'staff',
+        'users', 'employees', 'staff', 'staff_plan',
         'office_expenses', 'calendar_events', 'correspondence', 'documents',
         'chats', 'chat_messages', 'notifications', 'seals', 'seal_transfers',
         'purchase_requests', 'sync_meta', 'reminders', 'contracts',
@@ -182,7 +182,18 @@ async function dataRoutes(fastify, options) {
     return SPECIAL_KEYS[table] || 'id';
   }
 
+  // Таблицы без created_at — особый порядок
+  const SPECIAL_ORDER = {
+    'user_call_status': 'user_id ASC',
+    'user_dashboard': 'user_id ASC',
+    'settings': '"key" ASC',
+    'sync_meta': 'table_name ASC'
+  };
+
   function getDefaultOrder(table) {
+    if (SPECIAL_ORDER[table]) {
+      return SPECIAL_ORDER[table];
+    }
     if (NO_ID_TABLES.includes(table)) {
       return 'created_at DESC NULLS LAST';
     }
