@@ -596,7 +596,26 @@ async function routes(fastify, options) {
       FROM emails
     `);
 
-    return result.rows[0];
+    // Check SMTP availability: email_accounts with smtp_host, settings smtp_config, or ENV
+    let smtp_configured = false;
+    try {
+      const accCheck = await db.query("SELECT 1 FROM email_accounts WHERE smtp_host IS NOT NULL AND smtp_host != '' AND is_active = true LIMIT 1");
+      if (accCheck.rows.length > 0) {
+        smtp_configured = true;
+      } else {
+        const cfgCheck = await db.query("SELECT 1 FROM settings WHERE key = 'smtp_config' LIMIT 1");
+        if (cfgCheck.rows.length > 0) {
+          smtp_configured = true;
+        } else if (process.env.SMTP_HOST) {
+          smtp_configured = true;
+        }
+      }
+    } catch (e) {
+      // If tables don't exist yet, fall back to ENV check
+      smtp_configured = !!process.env.SMTP_HOST;
+    }
+
+    return { ...result.rows[0], smtp_configured };
   });
 
   // ═══════════════════════════════════════════════════════════════════
