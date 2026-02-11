@@ -25,7 +25,8 @@ async function dataRoutes(fastify, options) {
     'employee_rates', 'payroll_sheets', 'payroll_items',
     'payment_registry', 'self_employed', 'one_time_payments',
     'permit_types', 'permit_applications', 'permit_application_items', 'permit_application_history',
-    'email_accounts', 'emails', 'email_attachments', 'email_classification_rules', 'email_templates_v2', 'email_sync_log'
+    'email_accounts', 'emails', 'email_attachments', 'email_classification_rules', 'email_templates_v2', 'email_sync_log',
+    'cash_advances'
   ];
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -38,6 +39,7 @@ async function dataRoutes(fastify, options) {
     DIRECTOR_DEV: { tables: 'all', ops: ['read', 'create', 'update'] },
     PM: {
       tables: [
+        'users', 'employees', 'staff', 'user_call_status',
         'tenders', 'estimates', 'works', 'work_expenses', 'work_assign_requests',
         'pm_consents', 'correspondence', 'travel_expenses', 'contracts',
         'calendar_events', 'customers', 'documents', 'chats', 'chat_messages',
@@ -51,6 +53,7 @@ async function dataRoutes(fastify, options) {
     },
     TO: {
       tables: [
+        'users', 'employees', 'works', 'invoices', 'user_call_status',
         'tenders', 'estimates', 'customers', 'calendar_events', 'documents',
         'correspondence', 'chats', 'chat_messages', 'notifications',
         'sync_meta', 'reminders', 'doc_sets', 'user_dashboard'
@@ -59,6 +62,7 @@ async function dataRoutes(fastify, options) {
     },
     BUH: {
       tables: [
+        'users', 'employees', 'cash_advances',
         'tenders', 'works', 'work_expenses', 'office_expenses', 'incomes',
         'invoices', 'invoice_payments', 'acts', 'contracts', 'customers',
         'bank_rules', 'calendar_events', 'chats', 'chat_messages',
@@ -70,6 +74,7 @@ async function dataRoutes(fastify, options) {
     },
     HR: {
       tables: [
+        'users', 'tenders', 'works', 'user_call_status',
         'employees', 'employee_reviews', 'employee_assignments', 'employee_plan',
         'staff', 'staff_plan', 'staff_requests', 'staff_request_messages',
         'staff_replacements', 'employee_permits', 'calendar_events',
@@ -81,6 +86,7 @@ async function dataRoutes(fastify, options) {
     },
     OFFICE_MANAGER: {
       tables: [
+        'users', 'employees', 'staff',
         'office_expenses', 'calendar_events', 'correspondence', 'documents',
         'chats', 'chat_messages', 'notifications', 'seals', 'seal_transfers',
         'purchase_requests', 'sync_meta', 'reminders', 'contracts',
@@ -90,6 +96,7 @@ async function dataRoutes(fastify, options) {
     },
     WAREHOUSE: {
       tables: [
+        'users',
         'equipment', 'equipment_categories', 'equipment_movements',
         'equipment_requests', 'equipment_maintenance', 'equipment_reservations',
         'warehouses', 'objects', 'chats', 'chat_messages', 'notifications',
@@ -99,10 +106,23 @@ async function dataRoutes(fastify, options) {
     },
     PROC: {
       tables: [
+        'users',
         'purchase_requests', 'equipment', 'equipment_categories',
         'invoices', 'invoice_payments', 'documents', 'calendar_events',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
         'user_dashboard'
+      ],
+      ops: ['read', 'create', 'update']
+    },
+    HEAD_PM: {
+      tables: [
+        'users', 'employees', 'works', 'tenders', 'estimates',
+        'work_expenses', 'work_assign_requests', 'pm_consents',
+        'contracts', 'customers', 'calendar_events', 'documents',
+        'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
+        'acts', 'invoices', 'user_dashboard', 'employee_assignments',
+        'employee_plan', 'bonus_requests', 'doc_sets', 'qa_messages',
+        'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments'
       ],
       ops: ['read', 'create', 'update']
     }
@@ -112,7 +132,8 @@ async function dataRoutes(fastify, options) {
   const WRITE_PROTECTED_TABLES = ['audit_log', 'users'];
 
   // Таблицы, запрещённые для чтения через data API (кроме ADMIN/DIRECTOR)
-  const READ_SENSITIVE_TABLES = ['users', 'audit_log'];
+  // users убран: HIDDEN_COLS уже скрывает password_hash/pin_hash, а ФИО нужны всем ролям
+  const READ_SENSITIVE_TABLES = ['audit_log'];
 
   function checkAccess(role, table, operation) {
     // ADMIN и DIRECTOR_GEN имеют полный доступ
