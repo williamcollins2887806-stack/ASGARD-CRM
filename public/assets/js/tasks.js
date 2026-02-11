@@ -366,7 +366,7 @@ window.AsgardTasksPage = (function() {
       AsgardUI.toast('Задача принята', 'success');
       await loadTasks();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      AsgardUI.toast('Ошибка', e.message, 'err');
     }
   }
 
@@ -380,7 +380,7 @@ window.AsgardTasksPage = (function() {
       AsgardUI.toast('Работа начата', 'success');
       await loadTasks();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      AsgardUI.toast('Ошибка', e.message, 'err');
     }
   }
 
@@ -415,7 +415,7 @@ window.AsgardTasksPage = (function() {
       AsgardUI.toast('Задача выполнена!', 'success');
       await loadTasks();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      AsgardUI.toast('Ошибка', e.message, 'err');
     }
   }
 
@@ -491,7 +491,7 @@ window.AsgardTasksPage = (function() {
       AsgardUI.toast('Задача создана', 'success');
       await loadTasks();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      AsgardUI.toast('Ошибка', e.message, 'err');
     }
   }
 
@@ -573,7 +573,7 @@ window.AsgardTasksPage = (function() {
       input.value = '';
       await loadTodo();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      AsgardUI.toast('Ошибка', e.message, 'err');
     }
   }
 
@@ -581,12 +581,13 @@ window.AsgardTasksPage = (function() {
     try {
       const resp = await fetch(`/api/tasks/todo/${id}/toggle`, {
         method: 'PUT',
-        headers: getHeaders()
+        headers: getHeaders(),
+        body: JSON.stringify({})
       });
       if (!resp.ok) throw new Error('Ошибка');
       await loadTodo();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      AsgardUI.toast('Ошибка', e.message, 'err');
     }
   }
 
@@ -600,7 +601,7 @@ window.AsgardTasksPage = (function() {
       if (!resp.ok) throw new Error('Ошибка');
       await loadTodo();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      AsgardUI.toast('Ошибка', e.message, 'err');
     }
   }
 
