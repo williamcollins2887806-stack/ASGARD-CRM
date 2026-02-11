@@ -33,19 +33,19 @@ const ROLE_TABLES = {
   OFFICE_MANAGER: {
     read: ['users', 'employees', 'contracts', 'seals', 'correspondence', 'office_expenses', 'documents', 'purchase_requests'],
     write: ['contracts', 'seals', 'correspondence', 'office_expenses', 'documents', 'purchase_requests'],
-    noRead: ['audit_log', 'cash_advances'],
+    noRead: ['audit_log'],
     noWrite: ['users', 'audit_log', 'tenders', 'equipment']
   },
   WAREHOUSE: {
     read: ['users', 'equipment', 'equipment_categories', 'equipment_movements', 'equipment_requests', 'equipment_maintenance', 'warehouses', 'objects'],
     write: ['equipment', 'equipment_movements', 'equipment_requests', 'equipment_maintenance', 'warehouses'],
-    noRead: ['audit_log', 'cash_advances'],
+    noRead: ['audit_log'],
     noWrite: ['users', 'audit_log', 'tenders', 'invoices']
   },
   PROC: {
     read: ['users', 'purchase_requests', 'equipment', 'invoices', 'documents'],
     write: ['purchase_requests', 'equipment_categories', 'invoices', 'documents'],
-    noRead: ['audit_log', 'cash_advances'],
+    noRead: ['audit_log'],
     noWrite: ['users', 'audit_log', 'tenders', 'works', 'staff_plan']
   },
   DIRECTOR_GEN: {

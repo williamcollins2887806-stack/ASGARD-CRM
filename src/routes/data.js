@@ -26,7 +26,7 @@ async function dataRoutes(fastify, options) {
     'payment_registry', 'self_employed', 'one_time_payments',
     'permits', 'permit_types', 'permit_applications', 'permit_application_items', 'permit_application_history',
     'email_accounts', 'emails', 'email_attachments', 'email_classification_rules', 'email_templates_v2', 'email_sync_log',
-    'cash_advances', 'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages'
+    'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages'
   ];
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -64,7 +64,7 @@ async function dataRoutes(fastify, options) {
     },
     BUH: {
       tables: [
-        'users', 'employees', 'cash_advances', 'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages', 'user_call_status',
+        'users', 'employees', 'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages', 'user_call_status',
         'tenders', 'works', 'work_expenses', 'office_expenses', 'incomes',
         'invoices', 'invoice_payments', 'acts', 'contracts', 'customers',
         'bank_rules', 'calendar_events', 'chats', 'chat_messages',

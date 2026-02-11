@@ -343,47 +343,52 @@ async function routes(fastify, options) {
   fastify.get('/stats/summary', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { period, year } = request.query;
+    try {
+      const { period, year } = request.query;
 
-    let whereClause = '1=1';
-    const params = [];
-    let idx = 1;
+      let whereClause = '1=1';
+      const params = [];
+      let idx = 1;
 
-    if (period) {
-      whereClause += ` AND period = $${idx}`;
-      params.push(period);
-      idx++;
+      if (period) {
+        whereClause += ` AND period = $${idx}`;
+        params.push(period);
+        idx++;
+      }
+
+      if (year) {
+        whereClause += ` AND EXTRACT(YEAR FROM created_at) = $${idx}`;
+        params.push(year);
+      }
+
+      const stats = await db.query(`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
+          COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
+          COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Проиграли', 'Отказ')) as active,
+          COALESCE(SUM(estimated_sum), 0) as total_sum,
+          COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
+        FROM tenders
+        WHERE ${whereClause}
+      `, params);
+
+      const byStatus = await db.query(`
+        SELECT tender_status, COUNT(*) as count, COALESCE(SUM(estimated_sum), 0) as sum
+        FROM tenders
+        WHERE ${whereClause}
+        GROUP BY tender_status
+        ORDER BY count DESC
+      `, params);
+
+      return {
+        summary: stats.rows[0],
+        byStatus: byStatus.rows
+      };
+    } catch (err) {
+      request.log.error(err, 'tenders stats/summary error');
+      return reply.code(500).send({ error: 'Stats error', details: err.message });
     }
-
-    if (year) {
-      whereClause += ` AND EXTRACT(YEAR FROM created_at) = $${idx}`;
-      params.push(year);
-    }
-
-    const stats = await db.query(`
-      SELECT 
-        COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
-        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
-        COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Проиграли', 'Отказ')) as active,
-        COALESCE(SUM(estimated_sum), 0) as total_sum,
-        COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
-      FROM tenders
-      WHERE ${whereClause}
-    `, params);
-
-    const byStatus = await db.query(`
-      SELECT tender_status, COUNT(*) as count, COALESCE(SUM(estimated_sum), 0) as sum
-      FROM tenders
-      WHERE ${whereClause}
-      GROUP BY tender_status
-      ORDER BY count DESC
-    `, params);
-
-    return {
-      summary: stats.rows[0],
-      byStatus: byStatus.rows
-    };
   });
 
   // ═══════════════════════════════════════════════════════════════

@@ -58,7 +58,7 @@ window.AsgardHrRatingPage=(function(){
     const agg = new Map();
     for(const r of (reviews||[])){
       if(!r || r.employee_id==null) continue;
-      const score = Number(r.score||0);
+      const score = Number(r.score_1_10 || r.score || 0);
       if(!isFinite(score) || score<=0) continue;
       const id = Number(r.employee_id);
       const a = agg.get(id) || {sum:0,count:0,last_at:null};

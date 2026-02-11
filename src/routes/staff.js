@@ -10,7 +10,7 @@ const EMPLOYEE_COLS = new Set([
   'notes', 'photo_url', 'rating_avg', 'created_at', 'updated_at'
 ]);
 const REVIEW_COLS = new Set([
-  'employee_id', 'rating', 'comment', 'work_id', 'pm_id', 'created_at'
+  'employee_id', 'rating', 'score_1_10', 'comment', 'work_id', 'pm_id', 'created_at'
 ]);
 const SCHEDULE_COLS = new Set([
   'employee_id', 'date', 'work_id', 'object_name', 'shift_type',
@@ -99,7 +99,7 @@ async function routes(fastify, options) {
 
       // Update average rating
       try {
-        const avgResult = await db.query('SELECT AVG(rating) as avg FROM employee_reviews WHERE employee_id = $1', [id]);
+        const avgResult = await db.query('SELECT AVG(COALESCE(score_1_10, rating)) as avg FROM employee_reviews WHERE employee_id = $1', [id]);
         await db.query('UPDATE employees SET rating_avg = $1, updated_at = NOW() WHERE id = $2', [avgResult.rows[0].avg, id]);
       } catch (avgErr) {
         fastify.log.warn('Rating avg update failed:', avgErr.message);

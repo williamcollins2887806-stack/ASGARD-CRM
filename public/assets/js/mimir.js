@@ -178,7 +178,7 @@ window.AsgardMimir = (function(){
       .mimir-message.assistant {
         align-self:flex-start;
         background:rgba(42,59,102,0.6);
-        color:#e2e8f0; border-bottom-left-radius:4px;
+        color:var(--text-secondary); border-bottom-left-radius:4px;
         border:1px solid rgba(245,215,142,0.15);
       }
 
