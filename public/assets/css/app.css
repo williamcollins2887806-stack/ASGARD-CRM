@@ -1673,10 +1673,15 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 .funnel-card {
   background: var(--bg-elevated);
   border: 1px solid rgba(148,163,184,0.25);
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
+  border-radius: 6px;
+  padding: 12px;
   cursor: grab;
   transition: all var(--transition-fast);
+}
+
+.funnel-card * {
+  background: none;
+  box-shadow: none;
 }
 
 .funnel-card:hover {
@@ -1695,8 +1700,10 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   align-items: flex-start;
   gap: 8px;
   margin-bottom: 6px;
+  background: none;
   border: none;
   border-radius: 0;
+  box-shadow: none;
 }
 
 .funnel-card-customer {
@@ -1708,8 +1715,10 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: none;
   border: none;
   border-radius: 0;
+  box-shadow: none;
 }
 
 .funnel-card-sum {
@@ -1717,8 +1726,10 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   font-weight: 700;
   color: var(--gold);
   white-space: nowrap;
+  background: none;
   border: none;
   border-radius: 0;
+  box-shadow: none;
 }
 
 .funnel-card-title {
@@ -1726,8 +1737,10 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   color: #94a3b8;
   margin-bottom: 6px;
   line-height: 1.3;
+  background: none;
   border: none;
   border-radius: 0;
+  box-shadow: none;
 }
 
 .funnel-card-meta {
@@ -1735,13 +1748,17 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   justify-content: space-between;
   font-size: 12px;
   color: var(--text-muted);
+  background: none;
   border: none;
   border-radius: 0;
+  box-shadow: none;
 }
 
 .funnel-card-meta span {
+  background: none;
   border: none;
   border-radius: 0;
+  box-shadow: none;
 }
 
 /* Light theme overrides for funnel cards */
@@ -1751,18 +1768,22 @@ html[data-theme="light"] .funnel-card {
 }
 html[data-theme="light"] .funnel-card-customer {
   color: #1e293b;
+  background: none;
   border: none;
 }
 html[data-theme="light"] .funnel-card-sum {
   color: #d97706;
+  background: none;
   border: none;
 }
 html[data-theme="light"] .funnel-card-title {
   color: #475569;
+  background: none;
   border: none;
 }
 html[data-theme="light"] .funnel-card-meta {
   color: #64748b;
+  background: none;
   border: none;
 }
 
