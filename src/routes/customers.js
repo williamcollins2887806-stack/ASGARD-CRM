@@ -146,9 +146,16 @@ async function routes(fastify, options) {
   });
 
   fastify.delete('/:inn', { preHandler: [fastify.requireRoles(['ADMIN'])] }, async (request, reply) => {
-    const result = await db.query('DELETE FROM customers WHERE inn = $1 RETURNING inn', [request.params.inn]);
-    if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
-    return { message: 'Удалено' };
+    try {
+      const result = await db.query('DELETE FROM customers WHERE inn = $1 RETURNING inn', [request.params.inn]);
+      if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
+      return { message: 'Удалено' };
+    } catch (e) {
+      if (e.code === '23503') {
+        return reply.code(400).send({ error: 'Невозможно удалить — есть связанные тендеры или другие записи' });
+      }
+      throw e;
+    }
   });
 }
 

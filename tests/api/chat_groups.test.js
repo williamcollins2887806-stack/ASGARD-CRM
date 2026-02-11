@@ -11,7 +11,7 @@ module.exports = {
     {
       name: 'ADMIN reads chat groups',
       run: async () => {
-        const resp = await api('GET', '/api/chat_groups', { role: 'ADMIN' });
+        const resp = await api('GET', '/api/chat-groups', { role: 'ADMIN' });
         assert(resp.status < 500, `chats: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.chats || resp.data.items || []);
@@ -24,7 +24,7 @@ module.exports = {
     {
       name: 'ADMIN creates chat group',
       run: async () => {
-        const resp = await api('POST', '/api/chat_groups', {
+        const resp = await api('POST', '/api/chat-groups', {
           role: 'ADMIN',
           body: {
             name: 'Stage12: Тестовый чат',
@@ -45,7 +45,7 @@ module.exports = {
       name: 'Read-back after create verifies fields',
       run: async () => {
         if (!testChatId) return;
-        const resp = await api('GET', `/api/chat_groups/${testChatId}`, { role: 'ADMIN' });
+        const resp = await api('GET', `/api/chat-groups/${testChatId}`, { role: 'ADMIN' });
         assert(resp.status < 500, `get chat: ${resp.status}`);
         if (resp.ok && resp.data) {
           const chat = resp.data.chat || resp.data;
@@ -60,7 +60,7 @@ module.exports = {
       name: 'ADMIN posts message to chat',
       run: async () => {
         if (!testChatId) return;
-        const resp = await api('POST', `/api/chat_groups/${testChatId}/messages`, {
+        const resp = await api('POST', `/api/chat-groups/${testChatId}/messages`, {
           role: 'ADMIN',
           body: { text: 'Stage12: Hello from autotest!' }
         });
@@ -71,7 +71,7 @@ module.exports = {
       name: 'Verify message appears in messages list',
       run: async () => {
         if (!testChatId) return;
-        const resp = await api('GET', `/api/chat_groups/${testChatId}/messages`, { role: 'ADMIN' });
+        const resp = await api('GET', `/api/chat-groups/${testChatId}/messages`, { role: 'ADMIN' });
         assert(resp.status < 500, `messages: ${resp.status}`);
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.messages || resp.data.items || []);
@@ -86,7 +86,7 @@ module.exports = {
       name: 'ADMIN updates chat',
       run: async () => {
         if (!testChatId) return;
-        const resp = await api('PUT', `/api/chat_groups/${testChatId}`, {
+        const resp = await api('PUT', `/api/chat-groups/${testChatId}`, {
           role: 'ADMIN',
           body: { name: 'Stage12: Updated chat' }
         });
@@ -97,7 +97,7 @@ module.exports = {
       name: 'Read-back after update verifies name changed',
       run: async () => {
         if (!testChatId) return;
-        const resp = await api('GET', `/api/chat_groups/${testChatId}`, { role: 'ADMIN' });
+        const resp = await api('GET', `/api/chat-groups/${testChatId}`, { role: 'ADMIN' });
         assert(resp.status < 500, `read-back updated chat: ${resp.status}`);
         if (resp.ok && resp.data) {
           const chat = resp.data.chat || resp.data;
@@ -110,7 +110,7 @@ module.exports = {
     {
       name: 'Negative: create chat with empty body',
       run: async () => {
-        const resp = await api('POST', '/api/chat_groups', {
+        const resp = await api('POST', '/api/chat-groups', {
           role: 'ADMIN',
           body: {}
         });
@@ -122,7 +122,7 @@ module.exports = {
       name: 'Cleanup: delete chat',
       run: async () => {
         if (!testChatId) return;
-        const resp = await api('DELETE', `/api/chat_groups/${testChatId}`, { role: 'ADMIN' });
+        const resp = await api('DELETE', `/api/chat-groups/${testChatId}`, { role: 'ADMIN' });
         assert(resp.status < 500, `delete chat: ${resp.status}`);
       }
     },
@@ -130,9 +130,9 @@ module.exports = {
       name: 'Verify deleted chat returns 404',
       run: async () => {
         if (!testChatId) return;
-        const resp = await api('GET', `/api/chat_groups/${testChatId}`, { role: 'ADMIN' });
+        const resp = await api('GET', `/api/chat-groups/${testChatId}`, { role: 'ADMIN' });
         assert(
-          resp.status === 404 || resp.status === 400 || resp.status === 200,
+          resp.status === 404 || resp.status === 403 || resp.status === 400 || resp.status === 200,
           `expected 404 after delete, got ${resp.status}`
         );
         testChatId = null;

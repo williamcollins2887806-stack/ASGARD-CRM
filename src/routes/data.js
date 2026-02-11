@@ -398,6 +398,10 @@ async function dataRoutes(fastify, options) {
       console.error(`[DATA API POST] Keys: ${Object.keys(data).join(', ')}, Values:`, Object.values(data));
       console.error(`[DATA API POST] Stack:`, err.stack);
       fastify.log.error(`Data API POST [${table}]: ${err.message}`, { stack: err.stack, code: err.code });
+      // Constraint violations → 400 instead of 500
+      if (err.code === '23502' || err.code === '23503' || err.code === '23505') {
+        return reply.code(400).send({ error: 'Ошибка валидации данных', details: err.message });
+      }
       return reply.code(500).send({ error: 'Ошибка обработки запроса', details: err.message });
     }
   });
@@ -495,6 +499,9 @@ async function dataRoutes(fastify, options) {
       return { success: true, deleted: true };
     } catch(err) {
       fastify.log.error(`Data API DELETE [${table}]:`, err.message);
+      if (err.code === '23503') {
+        return reply.code(400).send({ error: 'Невозможно удалить — есть связанные записи' });
+      }
       return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }
   });
