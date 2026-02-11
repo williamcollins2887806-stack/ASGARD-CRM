@@ -73,6 +73,7 @@ module.exports = {
           body: {
             purpose: 'BIZ_CASH_TEST_' + Date.now(),
             amount: 50000,
+            type: 'expense',
             description: 'E2E cash flow test'
           }
         });
@@ -406,9 +407,9 @@ module.exports = {
           role: 'HR',
           body: {
             employee_id: TEST_USERS.PM.id,
-            type: 'Допуск СРО',
+            type_id: 2,
             expiry_date: '2026-12-31',
-            description: 'E2E permit test'
+            notes: 'E2E permit test'
           }
         });
         if (createResp.status === 400 || createResp.status === 403) {
@@ -484,9 +485,9 @@ module.exports = {
       name: 'BIZ: Settings create → read → delete',
       run: async () => {
         const key = 'biz_test_setting_' + Date.now();
-        const createResp = await api('POST', '/api/settings', {
+        const createResp = await api('PUT', `/api/settings/${key}`, {
           role: 'ADMIN',
-          body: { key, value: { test: true, ts: Date.now() } }
+          body: { value: { test: true, ts: Date.now() } }
         });
         if (!createResp.ok) skip('settings create failed: ' + createResp.status);
 

@@ -140,28 +140,51 @@ module.exports = async function(fastify) {
       return reply.code(400).send({ error: 'Укажите название чата' });
     }
 
-    // Создать чат
-    const { rows: [chat] } = await db.query(`
-      INSERT INTO chats (name, description, chat_type, is_group, is_readonly, created_by, created_at, updated_at)
-      VALUES ($1, $2, 'group', true, $3, $4, NOW(), NOW())
-      RETURNING *
-    `, [name.trim(), description || null, is_readonly === true, creatorId]);
+    let chat;
+    try {
+      // Создать чат
+      const { rows: [row] } = await db.query(`
+        INSERT INTO chats (name, description, chat_type, is_group, is_readonly, created_by, created_at, updated_at)
+        VALUES ($1, $2, 'group', true, $3, $4, NOW(), NOW())
+        RETURNING *
+      `, [name.trim(), description || null, is_readonly === true, creatorId]);
+      chat = row;
+    } catch (e) {
+      if (e.code === '23503') {
+        return reply.code(400).send({ error: 'Пользователь не найден в системе' });
+      }
+      throw e;
+    }
 
     // Добавить создателя как владельца
-    await db.query(`
-      INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
-      VALUES ($1, $2, 'owner', NOW())
-    `, [chat.id, creatorId]);
+    try {
+      await db.query(`
+        INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+        VALUES ($1, $2, 'owner', NOW())
+      `, [chat.id, creatorId]);
+    } catch (e) {
+      if (e.code === '23503') {
+        // Cleanup orphan chat
+        await db.query('DELETE FROM chats WHERE id = $1', [chat.id]);
+        return reply.code(400).send({ error: 'Пользователь не найден в системе' });
+      }
+      throw e;
+    }
 
     // Добавить участников
     if (Array.isArray(member_ids)) {
       for (const memberId of member_ids) {
         if (memberId !== creatorId) {
-          await db.query(`
-            INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
-            VALUES ($1, $2, 'member', NOW())
-            ON CONFLICT (chat_id, user_id) DO NOTHING
-          `, [chat.id, memberId]);
+          try {
+            await db.query(`
+              INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+              VALUES ($1, $2, 'member', NOW())
+              ON CONFLICT (chat_id, user_id) DO NOTHING
+            `, [chat.id, memberId]);
+          } catch (e) {
+            if (e.code === '23503') continue; // skip non-existent users
+            throw e;
+          }
 
           // Уведомить добавленного
           await notify(

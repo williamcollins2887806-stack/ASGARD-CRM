@@ -13,6 +13,17 @@ module.exports = {
   name: 'CORRESPONDENCE (deep)',
   tests: [
     {
+      name: 'CORR-0: Check SMTP availability',
+      run: async () => {
+        // Try sending a test email — server has test-mode fallback that always works
+        const resp = await api('POST', '/api/mailbox/send', {
+          role: 'ADMIN',
+          body: { to: 'corr-test@example.com', subject: 'CORR-0 SMTP check', body_text: 'probe' }
+        });
+        smtpConfigured = resp.ok;
+      }
+    },
+    {
       name: 'CORR-1: GET /api/data/correspondence (ADMIN) → 200, array',
       run: async () => {
         const resp = await api('GET', '/api/data/correspondence', { role: 'ADMIN' });

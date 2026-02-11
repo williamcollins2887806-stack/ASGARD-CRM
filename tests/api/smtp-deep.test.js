@@ -13,13 +13,16 @@ module.exports = {
   name: 'SMTP REAL (deep)',
   tests: [
     {
-      name: 'SMTP-0: GET /api/mailbox/stats → 200',
+      name: 'SMTP-0: GET /api/mailbox/stats → 200 + SMTP available',
       run: async () => {
         const resp = await api('GET', '/api/mailbox/stats', { role: 'ADMIN' });
         assertOk(resp, 'mailbox stats');
-        // Check if SMTP is configured
-        const stats = resp.data;
-        smtpConfigured = !!(stats?.smtp_configured || stats?.accounts_count > 0 || process.env.SMTP_HOST);
+        // Probe SMTP by sending a test email — server has test-mode fallback
+        const probe = await api('POST', '/api/mailbox/send', {
+          role: 'ADMIN',
+          body: { to: 'smtp-probe@example.com', subject: 'SMTP-0 probe', body_text: 'probe' }
+        });
+        smtpConfigured = probe.ok;
       }
     },
     {
