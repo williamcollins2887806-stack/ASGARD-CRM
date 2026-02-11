@@ -100,8 +100,9 @@ window.AsgardOfficeSchedulePage=(function(){
     (all||[]).forEach(p=>{
       if(!p || !p.date) return;
       if(!staffIds.includes(p.staff_id)) return;
-      if(p.date < start || p.date > end) return;
-      m.set(`${p.staff_id}|${p.date}`, p.status_code||"");
+      const d = ymd(p.date); // Нормализуем дату из API
+      if(d < start || d > end) return;
+      m.set(`${p.staff_id}|${d}`, p.status_code||"");
     });
     return m;
   }
@@ -149,13 +150,26 @@ window.AsgardOfficeSchedulePage=(function(){
   }
 
   async function upsertPlan(staffId, dateIso, code){
-    const all = await AsgardDB.all("staff_plan");
-    const existing = (all||[]).find(p=>p.staff_id===staffId && p.date===dateIso);
-    if(existing){
-      await AsgardDB.del("staff_plan", existing.id);
-    }
-    if(code){
-      await AsgardDB.add("staff_plan", {staff_id:staffId, date:dateIso, status_code:code, updated_at:new Date().toISOString()});
+    try {
+      const all = await AsgardDB.all("staff_plan");
+      // Нормализуем дату: API возвращает "2026-02-11T00:00:00.000Z", а dateIso = "2026-02-11"
+      const existing = (all||[]).find(p=>p.staff_id===staffId && ymd(p.date)===dateIso);
+      if(existing){
+        if(code){
+          // Обновляем существующую запись
+          await AsgardDB.put("staff_plan", Object.assign({}, existing, {status_code:code, updated_at:new Date().toISOString()}));
+          return;
+        } else {
+          await AsgardDB.del("staff_plan", existing.id);
+          return;
+        }
+      }
+      if(code){
+        await AsgardDB.add("staff_plan", {staff_id:staffId, date:dateIso, status_code:code, updated_at:new Date().toISOString()});
+      }
+    } catch(e) {
+      console.error("[office_schedule] upsertPlan error:", e);
+      AsgardUI.toast("Ошибка","Не удалось сохранить: " + (e.message||""), "err");
     }
   }
 

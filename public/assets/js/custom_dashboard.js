@@ -534,10 +534,10 @@ window.AsgardCustomDashboard = (function(){
     const done = yWorks.filter(w => w.work_status === 'Работы сдали').length;
 
     el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-      '<div style="text-align:center;padding:8px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Тендеров</div><div style="font-size:24px;font-weight:900;color:#60a5fa">' + yTenders.length + '</div></div>' +
-      '<div style="text-align:center;padding:8px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Конверсия</div><div style="font-size:24px;font-weight:900;color:#4caf50">' + conv + '%</div></div>' +
-      '<div style="text-align:center;padding:8px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Выручка</div><div style="font-size:18px;font-weight:900;color:var(--gold)">' + formatMoney(revenue) + '</div></div>' +
-      '<div style="text-align:center;padding:8px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Сдано работ</div><div style="font-size:24px;font-weight:900;color:#22c55e">' + done + '/' + yWorks.length + '</div></div>' +
+      '<div style="text-align:center;padding:12px 16px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Тендеров</div><div style="font-size:24px;font-weight:900;color:#60a5fa">' + yTenders.length + '</div></div>' +
+      '<div style="text-align:center;padding:12px 16px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Конверсия</div><div style="font-size:24px;font-weight:900;color:#4caf50">' + conv + '%</div></div>' +
+      '<div style="text-align:center;padding:12px 16px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Выручка</div><div style="font-size:18px;font-weight:900;color:var(--gold)">' + formatMoney(revenue) + '</div></div>' +
+      '<div style="text-align:center;padding:12px 16px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Сдано работ</div><div style="font-size:24px;font-weight:900;color:#22c55e">' + done + '/' + yWorks.length + '</div></div>' +
     '</div>';
   }
 

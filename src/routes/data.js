@@ -338,6 +338,9 @@ async function dataRoutes(fastify, options) {
 
       return { success: true, item: result.rows[0], id: result.rows[0][pk] };
     } catch(err) {
+      console.error(`[DATA API POST] Table: ${table}, Error: ${err.message}, Code: ${err.code}`);
+      console.error(`[DATA API POST] Keys: ${Object.keys(data).join(', ')}, Values:`, Object.values(data));
+      console.error(`[DATA API POST] Stack:`, err.stack);
       fastify.log.error(`Data API POST [${table}]: ${err.message}`, { stack: err.stack, code: err.code });
       return reply.code(500).send({ error: 'Ошибка обработки запроса', details: err.message });
     }
@@ -392,8 +395,10 @@ async function dataRoutes(fastify, options) {
 
       return { success: true, item: result.rows[0] };
     } catch(err) {
+      console.error(`[DATA API PUT] Table: ${table}, ID: ${id}, Error: ${err.message}, Code: ${err.code}`);
+      console.error(`[DATA API PUT] Stack:`, err.stack);
       fastify.log.error(`Data API PUT [${table}]:`, err.message);
-      return reply.code(500).send({ error: 'Ошибка обработки запроса' });
+      return reply.code(500).send({ error: 'Ошибка обработки запроса', details: err.message });
     }
   });
 

@@ -700,7 +700,7 @@ try{
 
         ordered.forEach(n => {
           const checked = !hidSet.has(n.r) ? 'checked' : '';
-          modalHtml += '<div class="nav-cust-item" data-route="' + esc(n.r) + '" draggable="true" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;margin-bottom:4px;cursor:grab;background:var(--bg-card)">';
+          modalHtml += '<div class="nav-cust-item" data-route="' + esc(n.r) + '" draggable="true" style="display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--line);border-radius:6px;margin-bottom:4px;cursor:grab;background:var(--bg-card)">';
           modalHtml += '<span style="color:var(--text-muted);cursor:grab">☰</span>';
           modalHtml += '<input type="checkbox" ' + checked + ' data-route="' + esc(n.r) + '" class="nav-vis-cb"/>';
           modalHtml += '<span style="flex:1;font-size:13px">' + esc(n.l) + '</span>';
@@ -1567,7 +1567,7 @@ try{
               document.getElementById('tasksWidgetContent').innerHTML = activeTasks.map(t => {
                 const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleDateString('ru-RU') : '';
                 const isOverdue = t.deadline && new Date(t.deadline) < new Date();
-                return `<div style="padding:8px 10px; margin-bottom:8px; background:rgba(42,59,102,.35); border-left:3px solid ${priorityColors[t.priority] || '#3b82f6'}; border-radius:6px">
+                return `<div style="padding:12px 16px; margin-bottom:8px; background:rgba(42,59,102,.35); border-left:3px solid ${priorityColors[t.priority] || '#3b82f6'}; border-radius:6px">
                   <div style="font-weight:600">${esc(t.title)}</div>
                   <div style="font-size:12px; color:rgba(184,196,231,.85); margin-top:4px">
                     <span style="background:${priorityColors[t.priority] || '#3b82f6'}20; color:${priorityColors[t.priority] || '#3b82f6'}; border:1px solid ${priorityColors[t.priority] || '#3b82f6'}40; padding:2px 6px; border-radius:3px; font-size:10px">${statusLabels[t.status] || t.status}</span>
@@ -1602,7 +1602,7 @@ try{
               document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Список дел пуст</div>';
             } else {
               document.getElementById('todoWidgetContent').innerHTML = activeTodos.map(t =>
-                `<div style="padding:6px 10px; margin-bottom:6px; background:rgba(42,59,102,.25); border-radius:4px; display:flex; align-items:center; gap:8px">
+                `<div style="padding:12px 16px; margin-bottom:6px; background:rgba(42,59,102,.25); border-radius:4px; display:flex; align-items:center; gap:8px">
                   <span style="color:#3b82f6">○</span>
                   <span>${esc(t.text)}</span>
                 </div>`
