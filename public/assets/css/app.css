@@ -1695,7 +1695,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 
 .funnel-card-customer {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -1721,7 +1721,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .funnel-more {

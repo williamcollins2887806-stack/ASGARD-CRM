@@ -209,7 +209,7 @@ window.AsgardCustomDashboard = (function(){
       const avail = available.filter(([id]) => !curr.has(id));
       const html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">' +
         avail.map(([id, w]) =>
-          '<div class="widget-pick" data-id="' + id + '" style="padding:16px;border:1px solid var(--line);border-radius:12px;text-align:center;cursor:pointer">' +
+          '<div class="widget-pick" data-id="' + id + '" style="padding:16px;border:1px solid var(--line);border-radius:8px;text-align:center;cursor:pointer">' +
             '<div style="font-size:32px">' + w.icon + '</div>' +
             '<div style="font-size:13px;font-weight:600">' + w.name + '</div>' +
             (w.size === 'wide' ? '<div style="font-size:10px;color:var(--text-muted);margin-top:4px">широкий</div>' : '') +
