@@ -458,8 +458,8 @@ window.AsgardReminders = (function(){
       <div id="tab_completed" style="display:none">${renderList(completed, false, true)}</div>
     `;
     
-    layout.setMain(html);
-    
+    await layout(html, { title });
+
     // Вкладки
     $$('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
