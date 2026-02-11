@@ -116,9 +116,9 @@ window.AsgardOfficeExpensesPage = (function(){
         <style>
           .oexp-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:20px; }
           .oexp-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px; }
-          .oexp-kpi-card { background:rgba(13,20,40,.5); border:1px solid var(--line); border-radius:14px; padding:14px; text-align:center; }
+          .oexp-kpi-card { background:rgba(13,20,40,.5); border:1px solid var(--line); border-radius:12px; padding:16px; text-align:center; }
           .oexp-kpi-label { font-size:11px; color:var(--muted); text-transform:uppercase; }
-          .oexp-kpi-value { font-size:24px; font-weight:900; color:var(--gold); margin-top:4px; }
+          .oexp-kpi-value { font-size:26px; font-weight:900; color:var(--gold); margin-top:4px; }
           .oexp-kpi-sub { font-size:11px; color:var(--muted); }
           
           .oexp-filters { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding:14px; background:rgba(13,20,40,.4); border-radius:12px; align-items:flex-end; }
@@ -138,6 +138,7 @@ window.AsgardOfficeExpensesPage = (function(){
           .oexp-table td { padding:10px; background:rgba(13,20,40,.4); border:1px solid var(--line); }
           .oexp-table tr td:first-child { border-radius:10px 0 0 10px; }
           .oexp-table tr td:last-child { border-radius:0 10px 10px 0; }
+          .oexp-table tbody tr:nth-child(even) td { background:rgba(13,20,40,.55); }
           .oexp-table tr:hover td { background:rgba(59,130,246,.1); }
           
           .oexp-status { display:inline-block; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; }

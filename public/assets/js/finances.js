@@ -149,9 +149,9 @@ window.AsgardFinancesPage = (function(){
           .fin-arrow:disabled { opacity:.3; cursor:not-allowed; }
           
           .fin-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px; }
-          .fin-card { background:rgba(13,20,40,.5); border:1px solid var(--line); border-radius:10px; padding:20px; }
-          .fin-card-label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
-          .fin-card-value { font-size:32px; font-weight:900; color:var(--gold); }
+          .fin-card { background:rgba(13,20,40,.5); border:1px solid var(--line); border-radius:12px; padding:16px; }
+          .fin-card-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+          .fin-card-value { font-size:26px; font-weight:900; color:var(--gold); }
           .fin-card-sub { font-size:13px; color:var(--muted); margin-top:4px; }
           
           .fin-chart-container { background:rgba(13,20,40,.4); border:1px solid var(--line); border-radius:12px; padding:24px; margin-bottom:24px; }

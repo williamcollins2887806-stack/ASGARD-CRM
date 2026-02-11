@@ -65,7 +65,7 @@ window.AsgardInvoicesPage = (function(){
         </div>
         
         <div class="table-wrap" style="background:var(--bg-card);border-radius:8px;overflow:hidden">
-          <table class="tbl">
+          <table class="tbl zebra">
             <thead>
               <tr>
                 <th>№ счёта</th>

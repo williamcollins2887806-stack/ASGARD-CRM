@@ -1642,6 +1642,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 .funnel-count {
   background: var(--stage-color, var(--primary));
   color: white;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 12px;
