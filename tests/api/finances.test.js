@@ -88,7 +88,7 @@ module.exports = {
         const resp = await api('GET', `/api/expenses/work/${testExpenseId}`, { role: 'PM' });
         // Single-item endpoint may not exist, fall back to list check
         if (resp.status === 404) {
-          const listResp = await api('GET', '/api/expenses/work', { role: 'PM' });
+          const listResp = await api('GET', '/api/expenses/work?limit=500', { role: 'PM' });
           assertOk(listResp, 'read-back expense via list');
           const list = Array.isArray(listResp.data) ? listResp.data : (listResp.data?.expenses || listResp.data?.items || []);
           const found = list.find(e => e.id === testExpenseId);

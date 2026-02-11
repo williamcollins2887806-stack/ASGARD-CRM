@@ -50,7 +50,11 @@ module.exports = {
           if (list.length > 0) {
             assertHasFields(list[0], ['id'], 'cash list item');
             assertFieldType(list[0], 'id', 'number', 'cash list item id');
-            assertFieldType(list[0], 'amount', 'number', 'cash list item amount');
+            // PostgreSQL returns NUMERIC/DECIMAL as strings (e.g. "50000.00")
+            assert(
+              list[0].amount !== undefined && list[0].amount !== null && !isNaN(Number(list[0].amount)),
+              'cash list item amount: expected numeric value, got ' + JSON.stringify(list[0].amount)
+            );
           }
         }
       }
