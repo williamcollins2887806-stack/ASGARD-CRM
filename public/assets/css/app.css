@@ -1644,7 +1644,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   color: white;
   text-shadow: 0 1px 3px rgba(0,0,0,0.4);
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
 }
@@ -2789,7 +2789,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   color: var(--text-primary);
   background: var(--bg-main, rgba(10, 18, 37, 0.6));
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 6px;
   transition: border-color 0.2s, box-shadow 0.2s;
   box-sizing: border-box;
 }
@@ -3892,7 +3892,7 @@ html[data-theme="light"] .watermark {
   padding: 14px 20px;
   background: linear-gradient(135deg, var(--primary-glow), var(--secondary-glow));
   border: 1px solid var(--primary-border);
-  border-radius: 14px;
+  border-radius: 6px;
   margin-bottom: 8px;
 }
 
@@ -3926,7 +3926,7 @@ html[data-theme="light"] .watermark {
   padding: 4px 10px;
   background: linear-gradient(135deg, var(--gold-glow), var(--secondary-glow));
   border: 1px solid var(--gold-border);
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 11px;
   font-weight: 700;
   color: var(--gold);
@@ -3963,7 +3963,7 @@ html[data-theme="light"] .saga-badge {
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  border-radius: 20px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -4074,19 +4074,19 @@ html[data-theme="light"] body {
 /* Increase border radius globally */
 html[data-theme="light"] .card,
 html[data-theme="light"] .panel {
-  border-radius: 10px;
+  border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.02);
 }
 
 html[data-theme="light"] .btn {
-  border-radius: 10px;
+  border-radius: 6px;
 }
 
 html[data-theme="light"] input,
 html[data-theme="light"] select,
 html[data-theme="light"] textarea,
 html[data-theme="light"] .inp {
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 10px 14px;
 }
 
@@ -4113,7 +4113,7 @@ html[data-theme="light"] table.asg tr td:last-child {
 html[data-theme="light"] .kpi .k {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 14px;
+  border-radius: 6px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
@@ -4141,7 +4141,7 @@ html[data-theme="light"] .sidenav::before {
 
 /* Better navitem styling */
 html[data-theme="light"] .navitem {
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 html[data-theme="light"] .navitem .lbl .name {
@@ -4159,7 +4159,7 @@ html[data-theme="light"] .navitem.active .lbl .name {
 
 /* Better pill styling */
 html[data-theme="light"] .pill {
-  border-radius: 20px;
+  border-radius: 6px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   background: #f8fafc;
 }
@@ -4191,7 +4191,7 @@ html[data-theme="light"] .bellbtn {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.08);
   color: #475569;
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 html[data-theme="light"] .bellbtn:hover {
@@ -4208,7 +4208,7 @@ html[data-theme="light"] .bellcount {
 html[data-theme="light"] .bellpop {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
+  border-radius: 6px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
 }
 
@@ -4231,7 +4231,7 @@ html[data-theme="light"] .bellitem:hover {
 html[data-theme="light"] .tools {
   background: #f8fafc;
   padding: 16px;
-  border-radius: 14px;
+  border-radius: 6px;
   border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
@@ -4239,14 +4239,14 @@ html[data-theme="light"] .tools {
 html[data-theme="light"] .chart {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 14px;
+  border-radius: 6px;
 }
 
 /* Grid cards */
 html[data-theme="light"] .grid .card {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 10px;
+  border-radius: 6px;
 }
 
 html[data-theme="light"] .grid .card h3 {
@@ -4289,7 +4289,7 @@ html[data-theme="light"] .field label {
 
 .cal-filter select {
   padding: 8px 12px;
-  border-radius: 10px;
+  border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--glass);
   color: var(--text-primary);
@@ -4816,7 +4816,7 @@ input:focus, select:focus, textarea:focus, .inp:focus {
   color: white;
   font-size: 10px;
   font-weight: 700;
-  border-radius: 9px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4952,7 +4952,7 @@ table.asg tr:hover td:first-child {
   width: 52px;
   height: 28px;
   background: rgba(100, 116, 139, 0.3);
-  border-radius: 14px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all var(--transition-normal);
   border: 1px solid rgba(100, 116, 139, 0.2);
@@ -5728,7 +5728,7 @@ html[data-theme="light"] .badge[style*="background"] {
 .mob-user-card {
   display: flex; align-items: center; gap: 12px;
   padding: 16px; margin-bottom: 16px;
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
 }
 
 .mob-user-avatar {
@@ -5755,7 +5755,7 @@ html[data-theme="light"] .badge[style*="background"] {
 
 .mob-grid-item {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 12px 4px; border-radius: 12px;
+  padding: 12px 4px; border-radius: 6px;
   background: var(--bg-card); border: 1px solid var(--border);
   text-decoration: none; color: inherit;
   transition: border-color 0.2s, background 0.2s;
@@ -5796,11 +5796,11 @@ html[data-theme="light"] .mob-section-title { color: var(--primary, #dc2626); }
   display: flex; align-items: center; gap: 12px; padding: 12px 16px;
   background: var(--bg-elevated, #1a2d52);
   border: 1px solid var(--gold-border, rgba(212,168,70,.3));
-  border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  border-radius: 6px; box-shadow: 0 8px 32px rgba(0,0,0,.4);
   max-width: 480px; margin: 0 auto;
 }
 
-.pwa-install-icon { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
+.pwa-install-icon { width: 40px; height: 40px; border-radius: 6px; flex-shrink: 0; }
 
 .pwa-install-text { flex: 1; min-width: 0; }
 .pwa-install-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
@@ -5808,13 +5808,13 @@ html[data-theme="light"] .mob-section-title { color: var(--primary, #dc2626); }
 
 .pwa-install-btn {
   flex-shrink: 0; padding: 8px 16px !important;
-  font-size: 13px !important; border-radius: 10px !important;
+  font-size: 13px !important; border-radius: 6px !important;
 }
 
 .pwa-install-close {
   width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
   border: none; background: transparent; color: var(--text-muted);
-  font-size: 16px; cursor: pointer; flex-shrink: 0; border-radius: 8px;
+  font-size: 16px; cursor: pointer; flex-shrink: 0; border-radius: 6px;
 }
 .pwa-install-close:hover { background: rgba(255,255,255,.1); }
 
@@ -5871,7 +5871,7 @@ body.pwa-standalone .btn {
   width: min(600px, 90vw);
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 6px;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   animation: search-slide-in 200ms ease;
@@ -5955,7 +5955,7 @@ body.pwa-standalone .btn {
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: background var(--transition-fast);
 }
@@ -6098,7 +6098,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
     display: block;
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 6px;
     padding: 12px 14px;
     margin-bottom: 8px;
   }
@@ -6217,7 +6217,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
     align-items: center;
     gap: 10px;
     padding: 8px 14px;
-    border-radius: 10px;
+    border-radius: 6px;
     background: var(--bg-card);
     border: 1px solid var(--border);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
@@ -6276,7 +6276,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
 .map-filter {
   padding: 6px 12px;
   font-size: 12px;
-  border-radius: 20px;
+  border-radius: 6px;
   border: 1px solid var(--border);
   transition: all var(--transition-fast);
 }
@@ -6303,7 +6303,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: 20px;
+  border-radius: 6px;
   background: var(--secondary-glow);
   border: 1px solid var(--border);
   font-size: 12px;
@@ -6321,7 +6321,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
 .map-container {
   flex: 1;
   min-height: 400px;
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--border);
   position: relative;
@@ -6330,7 +6330,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
 /* ─── Site Drawer ─── */
 .site-card {
   background: var(--glass-bg);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 16px;
   margin-bottom: 16px;
   border: 1px solid var(--border);
@@ -6371,7 +6371,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
 .site-summary-item {
   text-align: center;
   padding: 10px 4px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--glass-bg);
   border: 1px solid var(--border);
 }
@@ -6393,7 +6393,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
 /* ─── Work card in drawer ─── */
 .site-work-card {
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid var(--border);
   margin-bottom: 6px;
   transition: all var(--transition-fast);
@@ -6444,7 +6444,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-radius: 10px;
+  border-radius: 6px;
   background: rgba(239, 68, 68, 0.08);
   border: 1px solid rgba(239, 68, 68, 0.2);
   margin-bottom: 16px;
@@ -6461,7 +6461,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid transparent;
   transition: all var(--transition-fast);
 }
@@ -6500,7 +6500,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
 
 .sli-badge {
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: 6px;
   font-size: 11px;
   font-weight: 600;
   background: var(--secondary-glow);

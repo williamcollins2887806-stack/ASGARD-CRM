@@ -90,15 +90,15 @@ window.AsgardInboxApplicationsPage = (function(){
 
       <style>
         .inbox-stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}
-        .inbox-stat{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;flex:1;min-width:120px;text-align:center}
+        .inbox-stat{background:var(--bg-card);border:1px solid var(--line);border-radius:6px;padding:16px 20px;flex:1;min-width:120px;text-align:center}
         .inbox-stat .val{font-size:28px;font-weight:900}
         .inbox-stat .lbl{font-size:11px;color:var(--text-muted);margin-top:4px;text-transform:uppercase}
-        .inbox-card{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:8px;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+        .inbox-card{background:var(--bg-card);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:8px;cursor:pointer;transition:border-color .2s,box-shadow .2s}
         .inbox-card:hover{border-color:var(--gold);box-shadow:0 2px 12px rgba(242,208,138,.15)}
         .inbox-card .ic-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
         .inbox-card .ic-subject{font-weight:700;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .inbox-card .ic-meta{font-size:12px;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap}
-        .inbox-card .ic-ai{font-size:12px;margin-top:8px;padding:8px 12px;border-radius:8px}
+        .inbox-card .ic-ai{font-size:12px;margin-top:8px;padding:8px 12px;border-radius:6px}
         .badge-info{background:#3b82f622;color:#3b82f6;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
         .badge-primary{background:#8b5cf622;color:#8b5cf6;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
         .badge-warning{background:#eab30822;color:#eab308;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
@@ -236,7 +236,7 @@ window.AsgardInboxApplicationsPage = (function(){
 
           <!-- AI Анализ -->
           ${item.ai_summary ? `
-          <div style="background:${col.bg || 'var(--bg-elevated)'};border:1px solid ${col.border || 'var(--line)'};border-radius:12px;padding:16px;margin-bottom:16px">
+          <div style="background:${col.bg || 'var(--bg-elevated)'};border:1px solid ${col.border || 'var(--line)'};border-radius:6px;padding:16px;margin-bottom:16px">
             <div style="font-weight:700;margin-bottom:8px">🤖 AI Анализ</div>
             <div style="margin-bottom:8px">${esc(item.ai_summary)}</div>
             <div style="font-size:12px;color:var(--text-muted)">
@@ -249,7 +249,7 @@ window.AsgardInboxApplicationsPage = (function(){
               ${item.ai_model ? '<br><b>Модель:</b> ' + esc(item.ai_model) : ''}
             </div>
           </div>` : `
-          <div style="background:var(--bg-elevated);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center">
+          <div style="background:var(--bg-elevated);border-radius:6px;padding:16px;margin-bottom:16px;text-align:center">
             <div class="help">AI-анализ не проводился</div>
             <button class="btn ghost" id="btnRunAI" style="margin-top:8px">🤖 Запустить анализ</button>
           </div>`}
@@ -257,7 +257,7 @@ window.AsgardInboxApplicationsPage = (function(){
           <!-- Текст письма -->
           <details style="margin-bottom:16px">
             <summary style="cursor:pointer;font-weight:600;font-size:13px">Текст письма</summary>
-            <div style="margin-top:8px;padding:12px;background:var(--bg-elevated);border-radius:8px;font-size:12px;max-height:300px;overflow:auto;white-space:pre-wrap">${esc(item.email_body_text || item.body_preview || '(пусто)')}</div>
+            <div style="margin-top:8px;padding:12px;background:var(--bg-elevated);border-radius:6px;font-size:12px;max-height:300px;overflow:auto;white-space:pre-wrap">${esc(item.email_body_text || item.body_preview || '(пусто)')}</div>
           </details>
 
           <!-- Вложения -->
@@ -271,7 +271,7 @@ window.AsgardInboxApplicationsPage = (function(){
 
           <!-- Решение -->
           ${item.decision_by_name ? `
-          <div style="margin-bottom:16px;padding:12px;background:var(--bg-elevated);border-radius:8px;font-size:12px">
+          <div style="margin-bottom:16px;padding:12px;background:var(--bg-elevated);border-radius:6px;font-size:12px">
             <b>Решение:</b> ${esc(item.decision_by_name)} · ${item.decision_at ? new Date(item.decision_at).toLocaleString('ru-RU') : ''}
             ${item.decision_notes ? '<br>' + esc(item.decision_notes) : ''}
             ${item.rejection_reason ? '<br><b>Причина:</b> ' + esc(item.rejection_reason) : ''}

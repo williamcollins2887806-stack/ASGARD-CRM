@@ -760,7 +760,7 @@ window.AsgardTasksAdminPage = (function() {
 
       .kpi-card {
         background: var(--bg-card);
-        border-radius: 8px;
+        border-radius: 6px;
         padding: 16px;
         border: 1px solid var(--border-card, var(--border));
       }
@@ -786,7 +786,7 @@ window.AsgardTasksAdminPage = (function() {
         margin-bottom: 20px;
         padding: 16px;
         background: var(--bg-card);
-        border-radius: 8px;
+        border-radius: 6px;
         border: 1px solid var(--border-card, var(--border));
       }
 
@@ -811,7 +811,7 @@ window.AsgardTasksAdminPage = (function() {
       /* Table */
       .tasks-table-container {
         background: var(--bg-card);
-        border-radius: 8px;
+        border-radius: 6px;
         border: 1px solid var(--border-card, var(--border));
         overflow-x: auto;
       }
@@ -913,7 +913,7 @@ window.AsgardTasksAdminPage = (function() {
 
       .modal-content {
         background: var(--bg-card);
-        border-radius: 12px;
+        border-radius: 6px;
         width: 90%;
         max-width: 500px;
         max-height: 90vh;
@@ -1019,7 +1019,7 @@ window.AsgardTasksAdminPage = (function() {
         margin-bottom: 20px;
         padding: 16px;
         background: var(--bg-deep);
-        border-radius: 8px;
+        border-radius: 6px;
       }
 
       .meta-item {

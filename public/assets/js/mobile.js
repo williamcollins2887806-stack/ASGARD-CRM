@@ -255,7 +255,7 @@ window.AsgardMobile = (function(){
       background: var(--red);
       color: #fff;
       padding: 12px 24px;
-      border-radius: 8px;
+      border-radius: 6px;
       font-size: 14px;
       z-index: 9999;
       transition: transform 0.3s;

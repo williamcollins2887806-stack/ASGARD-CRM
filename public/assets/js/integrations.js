@@ -48,7 +48,7 @@ window.AsgardIntegrationsPage = (function(){
         .tab-btn{padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:var(--text-muted);border-bottom:3px solid transparent;transition:.2s}
         .tab-btn:hover{color:var(--text)}
         .tab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
-        .int-card{background:var(--bg-card);border-radius:12px;border:1px solid var(--line);padding:16px;margin-bottom:12px}
+        .int-card{background:var(--bg-card);border-radius:6px;border:1px solid var(--line);padding:16px;margin-bottom:12px}
         .int-stat{text-align:center;padding:12px}
         .int-stat .val{font-size:22px;font-weight:900}
         .int-stat .lbl{font-size:11px;color:var(--text-muted)}
@@ -177,7 +177,7 @@ window.AsgardIntegrationsPage = (function(){
   function openBankUpload() {
     AsgardUI.showModal('📥 Загрузить выписку',
       '<div style="padding:20px;text-align:center">' +
-        '<div id="bankDropZone" style="padding:40px;border:2px dashed var(--line);border-radius:12px;cursor:pointer;transition:.2s">' +
+        '<div id="bankDropZone" style="padding:40px;border:2px dashed var(--line);border-radius:6px;cursor:pointer;transition:.2s">' +
           '<div style="font-size:40px;margin-bottom:8px">📄</div>' +
           '<div style="font-size:14px;font-weight:600">Перетащите файл или нажмите</div>' +
           '<div class="help" style="margin-top:4px">CSV, TXT (1С, Тинькофф, Сбер, Точка)</div>' +

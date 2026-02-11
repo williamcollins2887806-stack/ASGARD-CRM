@@ -52,7 +52,7 @@ window.AsgardGantt = (function(){
 
     return `
       <style>
-        .gbox{border:1px solid rgba(42,59,102,.85); background:rgba(13,20,40,.35); border-radius:16px; overflow:hidden}
+        .gbox{border:1px solid rgba(42,59,102,.85); background:rgba(13,20,40,.35); border-radius:6px; overflow:hidden}
         .ghead{display:grid; grid-template-columns: repeat(${totalWeeks}, 1fr); gap:0; border-bottom:1px solid rgba(42,59,102,.85)}
         .ghead .w{padding:8px 6px; font-size:11px; color:rgba(184,196,231,.92); text-align:center; border-right:1px solid rgba(42,59,102,.35)}
         .gbody{position:relative; height:58px}
@@ -131,7 +131,7 @@ window.AsgardGantt = (function(){
 
     return `
       <style>
-        .gboard{border:1px solid rgba(42,59,102,.85); background:rgba(13,20,40,.35); border-radius:16px; overflow:hidden}
+        .gboard{border:1px solid rgba(42,59,102,.85); background:rgba(13,20,40,.35); border-radius:6px; overflow:hidden}
         .ghead{display:grid; grid-template-columns: 320px 1fr; border-bottom:1px solid rgba(42,59,102,.85)}
         .ghead .left{padding:10px 12px; font-weight:900; color:rgba(242,208,138,.95)}
         .ghead .right{display:grid; grid-template-columns:${gridCols}}

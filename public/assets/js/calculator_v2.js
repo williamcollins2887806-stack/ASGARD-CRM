@@ -352,10 +352,10 @@
       
       const html = `<style>
         .calc-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}
-        .calc-tabs .tab{padding:8px 12px;border-radius:8px;background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.5);cursor:pointer;font-size:12px}
+        .calc-tabs .tab{padding:8px 12px;border-radius:6px;background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.5);cursor:pointer;font-size:12px}
         .calc-tabs .tab.active{background:rgba(42,108,241,.3);border-color:var(--accent)}
         .calc-tabs .tab.warn{border-color:rgba(245,158,11,.6)}
-        .csec{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.5);border-radius:12px;padding:16px;margin-bottom:16px}
+        .csec{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.5);border-radius:6px;padding:16px;margin-bottom:16px}
         .csec h3{margin:0 0 12px;font-size:14px;color:var(--gold)}
         .cbl{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0}
         .cbl input{width:18px;height:18px}
@@ -368,7 +368,7 @@
         .kpi3,.kpi4{display:grid;gap:12px;margin-top:12px}
         .kpi3{grid-template-columns:repeat(3,1fr)}
         .kpi4{grid-template-columns:repeat(4,1fr)}
-        .k{background:rgba(13,20,40,.5);border-radius:10px;padding:12px;text-align:center}
+        .k{background:rgba(13,20,40,.5);border-radius:6px;padding:12px;text-align:center}
         .k .t{font-size:11px;color:var(--muted)}
         .k .v{font-size:18px;font-weight:700;color:var(--gold)}
         .mini{padding:4px 8px;font-size:11px}
@@ -376,7 +376,7 @@
       <div class="help" style="margin-bottom:12px"><b>ᚱ ${CALC_NAME}</b> — ${esc(st.customer_name)}</div>
       ${tabs(tab)}
       <div id="tabContent">${content}</div>
-      <div style="margin-top:16px;padding:12px;background:rgba(13,20,40,.5);border-radius:10px;display:flex;justify-content:space-between">
+      <div style="margin-top:16px;padding:12px;background:rgba(13,20,40,.5);border-radius:6px;display:flex;justify-content:space-between">
         <div><span style="color:var(--muted)">Цена с НДС:</span> <b style="font-size:18px;color:var(--gold)">${money(sum.price_with_vat)}</b></div>
         <div><span style="color:var(--muted)">Прибыль/чел-день:</span> <b style="font-size:18px;color:${sum.status==='green'?'#22c55e':sum.status==='yellow'?'#f59e0b':'#e03a4a'}">${money(sum.profit_per_day)}</b></div>
       </div>`;
@@ -606,10 +606,10 @@
         <style>
           .calc-page{max-width:1000px;margin:0 auto}
           .calc-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}
-          .calc-tabs .tab{padding:8px 12px;border-radius:8px;background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.5);cursor:pointer;font-size:12px}
+          .calc-tabs .tab{padding:8px 12px;border-radius:6px;background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.5);cursor:pointer;font-size:12px}
           .calc-tabs .tab.active{background:rgba(42,108,241,.3);border-color:var(--accent)}
           .calc-tabs .tab.warn{border-color:rgba(245,158,11,.6)}
-          .csec{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.5);border-radius:12px;padding:16px;margin-bottom:16px}
+          .csec{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.5);border-radius:6px;padding:16px;margin-bottom:16px}
           .csec h3{margin:0 0 12px;font-size:14px;color:var(--gold)}
           .cbl{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0}
           .cbl input{width:18px;height:18px}
@@ -622,11 +622,11 @@
           .kpi3,.kpi4{display:grid;gap:12px;margin-top:12px}
           .kpi3{grid-template-columns:repeat(3,1fr)}
           .kpi4{grid-template-columns:repeat(4,1fr)}
-          .k{background:rgba(13,20,40,.5);border-radius:10px;padding:12px;text-align:center}
+          .k{background:rgba(13,20,40,.5);border-radius:6px;padding:12px;text-align:center}
           .k .t{font-size:11px;color:var(--muted)}
           .k .v{font-size:18px;font-weight:700;color:var(--gold)}
           .mini{padding:4px 8px;font-size:11px}
-          .calc-bottom-bar{margin-top:16px;padding:16px;background:rgba(13,20,40,.5);border-radius:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+          .calc-bottom-bar{margin-top:16px;padding:16px;background:rgba(13,20,40,.5);border-radius:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
           @media(max-width:768px){
             .calc-bottom-bar{flex-direction:column;text-align:center}
             .kpi3{grid-template-columns:1fr}

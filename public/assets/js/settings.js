@@ -192,7 +192,7 @@ window.AsgardSettingsPage = (function(){
               </div>
               <div>
                 <label>Пример следующего номера</label>
-                <div style="padding:10px;background:rgba(212,175,55,.15);border-radius:8px;font-family:monospace;color:#D4AF37;font-weight:600">
+                <div style="padding:10px;background:rgba(212,175,55,.15);border-radius:6px;font-family:monospace;color:#D4AF37;font-weight:600">
                   АС-ИСХ-${new Date().getFullYear()}-${String(app.correspondence_start_number ?? 1).padStart(6,'0')}
                 </div>
               </div>

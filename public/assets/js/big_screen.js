@@ -38,7 +38,7 @@ window.AsgardBigScreen = (function(){
         .bs-header{padding:16px 32px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.3);border-bottom:1px solid rgba(242,208,138,.15)}
         .bs-logo{font-size:24px;font-weight:900;color:var(--gold,#f2d08a);letter-spacing:2px}
         .bs-time{font-size:18px;color:rgba(255,255,255,.6);font-variant-numeric:tabular-nums}
-        .bs-exit{background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.5);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;transition:all .2s}
+        .bs-exit{background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.5);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .2s}
         .bs-exit:hover{border-color:var(--gold,#f2d08a);color:var(--gold,#f2d08a)}
         .bs-body{flex:1;display:flex;align-items:center;justify-content:center;padding:32px}
         .bs-slide{width:100%;max-width:1400px;animation:bsFadeIn .5s ease}
@@ -48,18 +48,18 @@ window.AsgardBigScreen = (function(){
         .bs-dot:hover{background:rgba(255,255,255,.3)}
         .bs-dot.active{background:var(--gold,#f2d08a);transform:scale(1.3)}
         .bs-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
-        .bs-card{background:linear-gradient(135deg,rgba(13,20,40,.8),rgba(13,20,40,.5));border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:32px;text-align:center}
+        .bs-card{background:linear-gradient(135deg,rgba(13,20,40,.8),rgba(13,20,40,.5));border:1px solid rgba(148,163,184,.12);border-radius:6px;padding:32px;text-align:center}
         .bs-card-title{font-size:12px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:2px;font-weight:800;margin-bottom:16px}
         .bs-card-value{font-size:56px;font-weight:900;line-height:1.1}
         .bs-card-sub{font-size:14px;color:rgba(255,255,255,.4);margin-top:12px}
         .bs-table{width:100%;border-collapse:separate;border-spacing:0 8px}
         .bs-table th{font-size:11px;color:rgba(255,255,255,.3);text-transform:uppercase;text-align:left;padding:8px 16px}
         .bs-table td{padding:16px;background:rgba(13,20,40,.5);border:1px solid rgba(148,163,184,.08);font-size:16px}
-        .bs-table tr td:first-child{border-radius:12px 0 0 12px}
-        .bs-table tr td:last-child{border-radius:0 12px 12px 0}
+        .bs-table tr td:first-child{border-radius:6px 0 0 6px}
+        .bs-table tr td:last-child{border-radius:0 6px 6px 0}
         .green{color:#4ade80} .red{color:#f87171} .amber{color:#fbbf24} .blue{color:#60a5fa} .gold{color:#f2d08a}
         .bs-nav{display:flex;gap:12px;position:absolute;bottom:80px;left:50%;transform:translateX(-50%)}
-        .bs-nav button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px;transition:all .2s}
+        .bs-nav button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;transition:all .2s}
         .bs-nav button:hover{background:rgba(255,255,255,.2);color:white}
       </style>
       <div class="bs-wrap" id="bsWrap">
@@ -255,8 +255,8 @@ window.AsgardBigScreen = (function(){
           const pct = Math.round((s.count / maxFunnel) * 100);
           return `<div style="display:flex;align-items:center;gap:16px;margin:12px 0">
             <div style="width:120px;font-size:14px;color:rgba(255,255,255,.7)">${s.name}</div>
-            <div style="flex:1;background:rgba(255,255,255,.1);border-radius:8px;height:32px;overflow:hidden">
-              <div style="height:100%;width:${pct}%;background:${s.color};border-radius:8px;transition:width .5s"></div>
+            <div style="flex:1;background:rgba(255,255,255,.1);border-radius:6px;height:32px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${s.color};border-radius:6px;transition:width .5s"></div>
             </div>
             <div style="width:60px;text-align:right;font-size:20px;font-weight:700;color:${s.color}">${s.count}</div>
           </div>`;

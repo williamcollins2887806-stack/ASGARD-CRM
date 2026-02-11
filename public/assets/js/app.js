@@ -161,11 +161,11 @@ console.log('[ASGARD] Global period functions loaded');
   .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
   .tools .field{min-width:220px}
   .kpi{display:grid; grid-template-columns:repeat(6,minmax(140px,1fr)); gap:12px}
-  .kpi .k{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:16px; padding:12px}
+  .kpi .k{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:6px; padding:12px}
   .kpi .k .t{font-size:11px; color:rgba(184,196,231,.85); font-weight:900}
   .kpi .k .v{font-size:22px; font-weight:1000; margin-top:6px; color:rgba(242,208,138,.95)}
   .kpi .k .s{font-size:12px; color:rgba(184,196,231,.85); margin-top:6px}
-  .chart{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:16px; padding:12px}
+  .chart{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:6px; padding:12px}
   .barrow{display:grid; grid-template-columns: 200px 1fr 70px; gap:12px; align-items:center; margin:10px 0}
   .bar{height:14px; border-radius:999px; background:rgba(42,59,102,.35); overflow:hidden}
   .bar > div{height:100%}
@@ -700,7 +700,7 @@ try{
 
         ordered.forEach(n => {
           const checked = !hidSet.has(n.r) ? 'checked' : '';
-          modalHtml += '<div class="nav-cust-item" data-route="' + esc(n.r) + '" draggable="true" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:4px;cursor:grab;background:var(--bg-card)">';
+          modalHtml += '<div class="nav-cust-item" data-route="' + esc(n.r) + '" draggable="true" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;margin-bottom:4px;cursor:grab;background:var(--bg-card)">';
           modalHtml += '<span style="color:var(--text-muted);cursor:grab">☰</span>';
           modalHtml += '<input type="checkbox" ' + checked + ' data-route="' + esc(n.r) + '" class="nav-vis-cb"/>';
           modalHtml += '<span style="flex:1;font-size:13px">' + esc(n.l) + '</span>';

@@ -243,7 +243,7 @@ window.AsgardWarehouse = (function(){
         
         .stat-card {
           background: var(--bg-card);
-          border-radius: 8px;
+          border-radius: 6px;
           padding: 16px;
           display: flex;
           align-items: center;
@@ -297,7 +297,7 @@ window.AsgardWarehouse = (function(){
           align-items: center;
           padding: 10px;
           background: var(--bg);
-          border-radius: 8px;
+          border-radius: 6px;
           margin-bottom: 8px;
         }
         
@@ -309,7 +309,7 @@ window.AsgardWarehouse = (function(){
           align-items: center;
           gap: 4px;
           padding: 4px 10px;
-          border-radius: 20px;
+          border-radius: 6px;
           font-size: 12px;
           font-weight: 500;
         }
@@ -683,7 +683,7 @@ window.AsgardWarehouse = (function(){
           
           <div class="eq-tab-content" id="tabQr" style="display:none">
             <div style="text-align:center;padding:20px">
-              <div id="qrCodeContainer" style="display:inline-block;padding:20px;background:white;border-radius:12px"></div>
+              <div id="qrCodeContainer" style="display:inline-block;padding:20px;background:white;border-radius:6px"></div>
               <p style="margin-top:12px">${esc(eq.inventory_number)}</p>
               <button class="btn" id="btnPrintSingleQR">🖨️ Печать QR</button>
             </div>
@@ -708,7 +708,7 @@ window.AsgardWarehouse = (function(){
           .eq-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
           
           .eq-info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-          .info-section { background: var(--bg); padding: 12px; border-radius: 8px; }
+          .info-section { background: var(--bg); padding: 12px; border-radius: 6px; }
           .info-section h4 { margin: 0 0 10px; font-size: 13px; color: var(--text-muted); }
           .info-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
           .info-row span:first-child { color: var(--text-muted); }
@@ -1410,7 +1410,7 @@ window.AsgardWarehouse = (function(){
     } else {
       // Fallback - показываем данные
       container.innerHTML = `
-        <div style="padding:20px;background:#f0f0f0;border-radius:8px;font-family:monospace;font-size:12px">
+        <div style="padding:20px;background:#f0f0f0;border-radius:6px;font-family:monospace;font-size:12px">
           ${esc(qrData)}
         </div>
         <p style="font-size:11px;color:var(--text-muted);margin-top:8px">

@@ -35,9 +35,9 @@ window.AsgardEngineerDashboard = (function(){
     const body = `
       ${window.__ASG_SHARED_TABLE_CSS__||""}
       <style>
-        .pm-card { background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:16px; padding:12px; margin-bottom:12px; }
+        .pm-card { background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:6px; padding:12px; margin-bottom:12px; }
         .pm-header { display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
-        .pm-header:hover { background:rgba(42,59,102,.25); margin:-12px; padding:12px; border-radius:16px; }
+        .pm-header:hover { background:rgba(42,59,102,.25); margin:-12px; padding:12px; border-radius:6px; }
         .pm-name { font-weight:700; font-size:16px; }
         .pm-stats { display:flex; gap:16px; color:rgba(184,196,231,.85); font-size:13px; }
         .pm-list { margin-top:12px; display:none; }

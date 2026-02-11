@@ -854,7 +854,7 @@ async function getRefs(){
         const html = `
           <div style="margin-bottom:16px">
             <div style="font-size:14px; font-weight:700; margin-bottom:8px">Тендеры на архивном РП: ${archiveTenders.length}</div>
-            <div style="background:rgba(13,20,40,.5); padding:12px; border-radius:10px; max-height:150px; overflow:auto; font-size:13px">
+            <div style="background:rgba(13,20,40,.5); padding:12px; border-radius:6px; max-height:150px; overflow:auto; font-size:13px">
               ${statusList}
             </div>
           </div>

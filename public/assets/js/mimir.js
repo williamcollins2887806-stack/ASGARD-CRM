@@ -72,7 +72,7 @@ window.AsgardMimir = (function(){
         width:520px; max-width:calc(100vw - 48px);
         height:650px; max-height:calc(100vh - 140px);
         background:linear-gradient(180deg, #1a1a2e 0%, #0d1428 100%);
-        border-radius:20px; border:2px solid rgba(245,215,142,0.3);
+        border-radius:6px; border:2px solid rgba(245,215,142,0.3);
         box-shadow:0 10px 50px rgba(0,0,0,0.6);
         display:none; flex-direction:row; overflow:hidden;
       }
@@ -97,7 +97,7 @@ window.AsgardMimir = (function(){
         padding:12px; border-bottom:1px solid rgba(245,215,142,0.1);
       }
       .mimir-new-chat-btn {
-        width:100%; padding:10px; border-radius:10px;
+        width:100%; padding:10px; border-radius:6px;
         background:linear-gradient(135deg, #c0392b, #8e2c22);
         border:1px solid rgba(245,215,142,0.3); color:#f5d78e;
         cursor:pointer; font-weight:600; font-size:13px;
@@ -109,7 +109,7 @@ window.AsgardMimir = (function(){
         flex:1; overflow-y:auto; padding:8px;
       }
       .mimir-conv-item {
-        padding:10px 12px; margin-bottom:4px; border-radius:8px;
+        padding:10px 12px; margin-bottom:4px; border-radius:6px;
         background:rgba(255,255,255,0.03); cursor:pointer;
         transition:all 0.2s; font-size:13px; color:rgba(255,255,255,0.7);
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -129,7 +129,7 @@ window.AsgardMimir = (function(){
       }
 
       .mimir-menu-btn {
-        width:32px; height:32px; border-radius:8px;
+        width:32px; height:32px; border-radius:6px;
         background:rgba(255,255,255,0.1); border:none; color:#fff;
         cursor:pointer; font-size:16px; transition:all 0.2s;
         display:flex; align-items:center; justify-content:center;
@@ -143,7 +143,7 @@ window.AsgardMimir = (function(){
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .mimir-header-actions { display:flex; gap:6px; }
       .mimir-header-btn {
-        width:28px; height:28px; border-radius:8px;
+        width:28px; height:28px; border-radius:6px;
         background:rgba(255,255,255,0.1); border:none; color:#fff;
         cursor:pointer; font-size:14px; transition:all 0.2s;
       }
@@ -160,7 +160,7 @@ window.AsgardMimir = (function(){
 
       .mimir-message {
         max-width:90%; padding:12px 16px;
-        border-radius:16px; font-size:14px; line-height:1.6;
+        border-radius:6px; font-size:14px; line-height:1.6;
         animation:msgFade 0.3s ease; position:relative;
       }
 
@@ -195,7 +195,7 @@ window.AsgardMimir = (function(){
       .mimir-copy-btn:hover { background:rgba(0,0,0,0.5); color:#fff; }
 
       /* Markdown стили */
-      .mimir-code { background:rgba(0,0,0,0.4); border-radius:8px; padding:12px; margin:8px 0;
+      .mimir-code { background:rgba(0,0,0,0.4); border-radius:6px; padding:12px; margin:8px 0;
         font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px; overflow-x:auto; white-space:pre; }
       .mimir-inline-code { background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:4px; font-size:13px; font-family:monospace; }
       .mimir-h2 { font-size:16px; font-weight:700; color:#f5d78e; margin:14px 0 8px; }
@@ -234,7 +234,7 @@ window.AsgardMimir = (function(){
 
       .mimir-suggestions { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
       .mimir-suggestion {
-        padding:8px 14px; border-radius:20px;
+        padding:8px 14px; border-radius:6px;
         background:rgba(245,215,142,0.1); border:1px solid rgba(245,215,142,0.3);
         color:#f5d78e; font-size:12px; cursor:pointer; transition:all 0.2s;
       }
@@ -252,7 +252,7 @@ window.AsgardMimir = (function(){
 
       .mimir-attachment {
         display:flex; align-items:center; gap:6px;
-        padding:6px 10px; border-radius:8px;
+        padding:6px 10px; border-radius:6px;
         background:rgba(245,215,142,0.15); font-size:12px; color:#f5d78e;
       }
       .mimir-attachment-size { font-size:10px; opacity:0.7; }
@@ -265,7 +265,7 @@ window.AsgardMimir = (function(){
       .mimir-input-row { display:flex; gap:8px; align-items:flex-end; }
 
       .mimir-file-btn {
-        width:40px; height:40px; border-radius:10px;
+        width:40px; height:40px; border-radius:6px;
         background:rgba(255,255,255,0.1); border:1px solid rgba(245,215,142,0.2);
         color:#f5d78e; cursor:pointer; font-size:16px;
         display:flex; align-items:center; justify-content:center;
@@ -276,14 +276,14 @@ window.AsgardMimir = (function(){
       .mimir-input {
         flex:1; padding:10px 14px;
         background:rgba(255,255,255,0.08); border:1px solid rgba(245,215,142,0.2);
-        border-radius:10px; color:#fff; font-size:14px;
+        border-radius:6px; color:#fff; font-size:14px;
         resize:none; min-height:40px; max-height:100px;
       }
       .mimir-input:focus { outline:none; border-color:rgba(245,215,142,0.5); box-shadow:0 0 15px rgba(245,215,142,0.1); }
       .mimir-input::placeholder { color:rgba(255,255,255,0.4); font-style:italic; }
 
       .mimir-send-btn {
-        width:40px; height:40px; border-radius:10px;
+        width:40px; height:40px; border-radius:6px;
         background:linear-gradient(135deg, #c0392b, #8e2c22);
         border:1px solid rgba(245,215,142,0.3); color:#f5d78e;
         cursor:pointer; display:flex; align-items:center; justify-content:center;
@@ -297,7 +297,7 @@ window.AsgardMimir = (function(){
       }
 
       .mimir-quick-btn {
-        padding:4px 10px; border-radius:12px;
+        padding:4px 10px; border-radius:6px;
         background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
         color:rgba(255,255,255,0.7); font-size:11px; cursor:pointer;
         transition:all 0.2s;
@@ -311,7 +311,7 @@ window.AsgardMimir = (function(){
       }
 
       .mimir-result-card {
-        background:rgba(0,0,0,0.2); border-radius:8px;
+        background:rgba(0,0,0,0.2); border-radius:6px;
         padding:10px; margin-top:8px; font-size:13px;
       }
 
@@ -331,7 +331,7 @@ window.AsgardMimir = (function(){
         position:absolute; inset:0; background:rgba(26,26,46,0.95);
         display:none; align-items:center; justify-content:center;
         flex-direction:column; gap:16px; z-index:10;
-        border-radius:18px;
+        border-radius:6px;
       }
       .mimir-panel.drag-over .mimir-drop-overlay { display:flex; }
       .mimir-drop-icon { font-size:48px; }

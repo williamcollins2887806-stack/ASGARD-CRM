@@ -64,7 +64,7 @@ window.AsgardInvoicesPage = (function(){
           <button class="btn primary" id="btnAddInvoice">➕ Новый счёт</button>
         </div>
         
-        <div class="table-wrap" style="background:var(--bg-card);border-radius:8px;overflow:hidden">
+        <div class="table-wrap" style="background:var(--bg-card);border-radius:6px;overflow:hidden">
           <table class="tbl zebra">
             <thead>
               <tr>
@@ -289,7 +289,7 @@ window.AsgardInvoicesPage = (function(){
     
     const html = `
       <div class="stack" style="gap:16px">
-        <div style="padding:12px;background:var(--bg);border-radius:8px">
+        <div style="padding:12px;background:var(--bg);border-radius:6px">
           <div>Счёт: <b>${esc(inv.invoice_number)}</b></div>
           <div>Сумма: <b>${(inv.total_amount||0).toLocaleString('ru-RU')} ₽</b></div>
           <div>Оплачено: <b>${(inv.paid_amount||0).toLocaleString('ru-RU')} ₽</b></div>

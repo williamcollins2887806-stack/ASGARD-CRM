@@ -248,7 +248,7 @@ window.AsgardChat = (function(){
         const readColor = m.is_read ? 'var(--green)' : 'inherit';
         return `
           <div style="align-self:${isOwn ? 'flex-end' : 'flex-start'};max-width:80%">
-            <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
+            <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:6px">
               ${!isOwn ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${AsgardUI.esc(m.user_name || 'Аноним')}</div>` : ''}
               <div>${AsgardUI.esc(m.text || '')}</div>
             </div>
@@ -385,19 +385,19 @@ window.AsgardChat = (function(){
     async function renderChatList() {
       const unread = await getUnreadCounts();
       const generalBadge = unread.general > 0
-        ? `<span style="background:var(--red);color:#fff;font-size:11px;padding:2px 6px;border-radius:10px;margin-left:8px">${unread.general > 99 ? '99+' : unread.general}</span>`
+        ? `<span style="background:var(--red);color:#fff;font-size:11px;padding:2px 6px;border-radius:6px;margin-left:8px">${unread.general > 99 ? '99+' : unread.general}</span>`
         : '';
 
       chatList.innerHTML = `
-        <div class="chat-item ${currentChat?.type === 'general' ? 'active' : ''}" data-type="general" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'general' ? 'var(--primary-glow)' : 'transparent'};display:flex;align-items:center;justify-content:space-between">
+        <div class="chat-item ${currentChat?.type === 'general' ? 'active' : ''}" data-type="general" style="padding:10px;cursor:pointer;border-radius:6px;margin-bottom:4px;background:${currentChat?.type === 'general' ? 'var(--primary-glow)' : 'transparent'};display:flex;align-items:center;justify-content:space-between">
           <span><span style="font-size:18px">💬</span> Общий чат</span>${generalBadge}
         </div>
         <div style="padding:8px 10px;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--line);margin:8px 0">Личные сообщения</div>
         ${otherUsers.map(u => {
           const cnt = unread.direct[u.id] || 0;
-          const badge = cnt > 0 ? `<span style="background:var(--red);color:#fff;font-size:11px;padding:2px 6px;border-radius:10px;margin-left:8px">${cnt > 99 ? '99+' : cnt}</span>` : '';
+          const badge = cnt > 0 ? `<span style="background:var(--red);color:#fff;font-size:11px;padding:2px 6px;border-radius:6px;margin-left:8px">${cnt > 99 ? '99+' : cnt}</span>` : '';
           return `
-          <div class="chat-item ${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'active' : ''}" data-type="direct" data-id="${u.id}" style="padding:10px;cursor:pointer;border-radius:8px;margin-bottom:4px;background:${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'var(--primary-glow)' : 'transparent'};display:flex;align-items:center;justify-content:space-between">
+          <div class="chat-item ${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'active' : ''}" data-type="direct" data-id="${u.id}" style="padding:10px;cursor:pointer;border-radius:6px;margin-bottom:4px;background:${currentChat?.type === 'direct' && currentChat?.id === u.id ? 'var(--primary-glow)' : 'transparent'};display:flex;align-items:center;justify-content:space-between">
             <span><span style="font-size:18px">👤</span> ${AsgardUI.esc(u.name || u.login)}</span>${badge}
           </div>
         `}).join('')}
@@ -456,7 +456,7 @@ window.AsgardChat = (function(){
             const readColor = m.is_read ? 'var(--green)' : 'inherit';
             return `
               <div style="align-self:${isOwn ? 'flex-end' : 'flex-start'};max-width:80%">
-                <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
+                <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:6px">
                   ${!isOwn ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${AsgardUI.esc(m.user_name || 'Аноним')}</div>` : ''}
                   <div>${AsgardUI.esc(m.text || '')}</div>
                 </div>

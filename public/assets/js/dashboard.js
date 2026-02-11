@@ -149,7 +149,7 @@ window.AsgardDashboardPage = (function(){
             position:relative;
             background: linear-gradient(135deg, rgba(13,20,40,.7), rgba(13,20,40,.5));
             border:1px solid rgba(148,163,184,.15);
-            border-radius:10px;
+            border-radius:6px;
             padding:20px;
             overflow:hidden;
             transition: all .3s ease;
@@ -187,7 +187,7 @@ window.AsgardDashboardPage = (function(){
           .dash-chart-card {
             background: rgba(13,20,40,.5);
             border:1px solid rgba(148,163,184,.12);
-            border-radius:8px;
+            border-radius:6px;
             padding:16px;
           }
           .dash-chart-title { font-size:12px; color:var(--muted); margin-bottom:12px; font-weight:700; }
@@ -199,7 +199,7 @@ window.AsgardDashboardPage = (function(){
             padding:10px 16px;
             background: rgba(59,130,246,.1);
             border:1px solid rgba(59,130,246,.25);
-            border-radius:10px;
+            border-radius:6px;
             color:var(--blue);
             font-size:13px; font-weight:600;
             transition: all .2s ease;
@@ -213,7 +213,7 @@ window.AsgardDashboardPage = (function(){
           .dash-alerts { 
             background: rgba(239,68,68,.1);
             border:1px solid rgba(239,68,68,.25);
-            border-radius:8px;
+            border-radius:6px;
             padding:16px;
             margin-bottom:24px;
           }

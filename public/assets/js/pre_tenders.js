@@ -85,10 +85,10 @@ window.AsgardPreTendersPage = (function(){
 
       <style>
         .pt-stats-row{display:flex;gap:10px;flex-wrap:wrap}
-        .pt-stat{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;flex:1;min-width:100px;text-align:center}
+        .pt-stat{background:var(--bg-card);border:1px solid var(--line);border-radius:6px;padding:14px 18px;flex:1;min-width:100px;text-align:center}
         .pt-stat .v{font-size:26px;font-weight:900}
         .pt-stat .l{font-size:10px;color:var(--text-muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
-        .pt-row{background:var(--bg-card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:6px;cursor:pointer;display:grid;grid-template-columns:36px 1fr 120px 100px 100px 90px;gap:12px;align-items:center;transition:border-color .15s}
+        .pt-row{background:var(--bg-card);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:6px;cursor:pointer;display:grid;grid-template-columns:36px 1fr 120px 100px 100px 90px;gap:12px;align-items:center;transition:border-color .15s}
         .pt-row:hover{border-color:var(--gold)}
         .pt-dot{width:14px;height:14px;border-radius:50%;margin:auto}
         .pt-subj{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -99,7 +99,7 @@ window.AsgardPreTendersPage = (function(){
           .pt-row{grid-template-columns:30px 1fr 80px;gap:8px}
           .pt-row .pt-sum,.pt-row .pt-date,.pt-row .pt-dl{display:none}
         }
-        .pt-ai-card{border-radius:12px;padding:16px;margin:12px 0}
+        .pt-ai-card{border-radius:6px;padding:16px;margin:12px 0}
         .pt-match-bar{height:8px;border-radius:4px;background:var(--bg-elevated);overflow:hidden;margin:6px 0}
         .pt-match-fill{height:100%;border-radius:4px;transition:width .3s}
       </style>
@@ -231,7 +231,7 @@ window.AsgardPreTendersPage = (function(){
       </div>
 
       <!-- Блок 1: Информация о заказчике (inline editing) -->
-      <div style="background:var(--bg-elevated);border-radius:12px;padding:16px;margin-bottom:12px">
+      <div style="background:var(--bg-elevated);border-radius:6px;padding:16px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <span style="font-weight:700">Заказчик</span>
           ${canEdit ? '<span style="font-size:10px;color:var(--text-muted)">Нажмите на значение для редактирования</span>' : ''}
@@ -257,13 +257,13 @@ window.AsgardPreTendersPage = (function(){
           <span style="font-size:11px;color:var(--text-muted)">${it.ai_processed_at ? new Date(it.ai_processed_at).toLocaleString('ru-RU') : ''}</span>
         </div>
         <div style="font-size:13px;line-height:1.6;margin-bottom:12px;white-space:pre-line">${esc(it.ai_summary)}</div>
-        ${it.ai_recommendation ? `<div style="font-size:12px;padding:8px 12px;background:var(--bg-elevated);border-radius:8px;margin-bottom:8px"><b>Рекомендация:</b> ${esc(it.ai_recommendation)}</div>` : ''}
+        ${it.ai_recommendation ? `<div style="font-size:12px;padding:8px 12px;background:var(--bg-elevated);border-radius:6px;margin-bottom:8px"><b>Рекомендация:</b> ${esc(it.ai_recommendation)}</div>` : ''}
         <div style="font-size:12px;margin-bottom:4px"><b>Соответствие профилю:</b> ${score}%</div>
         <div class="pt-match-bar"><div class="pt-match-fill" style="width:${score}%;background:${scoreColor}"></div></div>
         ${it.ai_workload_warning ? `<div style="margin-top:8px;font-size:12px;color:var(--amber)">⚠️ ${esc(it.ai_workload_warning)}</div>` : ''}
         <button class="btn ghost mini" id="btnReanalyze" style="margin-top:8px">🔄 Перезапросить анализ</button>
       </div>` : `
-      <div style="background:var(--bg-elevated);border-radius:12px;padding:20px;margin-bottom:12px;text-align:center">
+      <div style="background:var(--bg-elevated);border-radius:6px;padding:20px;margin-bottom:12px;text-align:center">
         <div class="help">AI-анализ не проводился</div>
         <button class="btn ghost" id="btnRunAnalysis" style="margin-top:8px">🤖 Запустить AI-анализ</button>
       </div>`}
@@ -272,7 +272,7 @@ window.AsgardPreTendersPage = (function(){
       ${it.email_id ? `
       <details style="margin-bottom:12px">
         <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:8px 0">📧 Оригинальное письмо</summary>
-        <div style="padding:12px;background:var(--bg-elevated);border-radius:8px;margin-top:4px">
+        <div style="padding:12px;background:var(--bg-elevated);border-radius:6px;margin-top:4px">
           <div style="font-size:12px;margin-bottom:8px">
             <b>От:</b> ${esc(it.email_from_name || '')} &lt;${esc(it.email_from || '')}&gt;<br>
             <b>Тема:</b> ${esc(it.email_subject || '')}<br>
@@ -292,7 +292,7 @@ window.AsgardPreTendersPage = (function(){
           ${(d.attachments || []).map(a => `<div style="padding:4px 0;font-size:12px">📄 ${esc(a.original_filename)} <span class="help">(${Math.round((a.size||0)/1024)} КБ)</span></div>`).join('')}
           ${manualDocs.map(a => `<div style="padding:4px 0;font-size:12px">📎 ${esc(a.original_name || a.filename)} <span class="help">(${Math.round((a.size||0)/1024)} КБ, загружено вручную)</span></div>`).join('')}
           ${canEdit ? `
-          <div id="ptUploadZone" style="margin-top:10px;padding:20px;border:2px dashed var(--line);border-radius:10px;text-align:center;cursor:pointer;transition:border-color .2s">
+          <div id="ptUploadZone" style="margin-top:10px;padding:20px;border:2px dashed var(--line);border-radius:6px;text-align:center;cursor:pointer;transition:border-color .2s">
             <div style="font-size:24px;margin-bottom:4px">📎</div>
             <div style="font-size:12px;color:var(--text-muted)">Перетащите файлы сюда или нажмите для загрузки</div>
             <input type="file" id="ptFileInput" multiple style="display:none"/>
@@ -303,7 +303,7 @@ window.AsgardPreTendersPage = (function(){
 
       <!-- Решение (если есть) -->
       ${it.decision_by_name ? `
-      <div style="padding:12px;background:var(--bg-elevated);border-radius:8px;margin-bottom:12px;font-size:12px">
+      <div style="padding:12px;background:var(--bg-elevated);border-radius:6px;margin-bottom:12px;font-size:12px">
         <b>Решение:</b> ${esc(it.decision_by_name)} · ${it.decision_at ? new Date(it.decision_at).toLocaleString('ru-RU') : ''}
         ${it.decision_comment ? '<br><b>Комментарий:</b> ' + esc(it.decision_comment) : ''}
         ${it.reject_reason ? '<br><b>Причина:</b> ' + esc(it.reject_reason) : ''}
@@ -480,7 +480,7 @@ window.AsgardPreTendersPage = (function(){
         </div>
 
         <!-- Превью письма -->
-        <div id="accEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:8px;border-left:3px solid #22c55e;font-size:12px">
+        <div id="accEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:6px;border-left:3px solid #22c55e;font-size:12px">
           <div style="font-weight:700;margin-bottom:6px">Превью письма:</div>
           <div style="color:var(--text-muted);margin-bottom:4px"><b>Кому:</b> ${esc(pt.customer_email || '—')}</div>
           <div style="color:var(--text-muted);margin-bottom:4px"><b>Тема:</b> ${emailSubject}</div>
@@ -570,7 +570,7 @@ window.AsgardPreTendersPage = (function(){
         </div>
 
         <!-- Превью письма -->
-        <div id="rejEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:8px;border-left:3px solid #ef4444;font-size:12px">
+        <div id="rejEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:6px;border-left:3px solid #ef4444;font-size:12px">
           <div style="font-weight:700;margin-bottom:6px">Превью письма:</div>
           <div style="color:var(--text-muted);margin-bottom:4px"><b>Кому:</b> ${esc(pt.customer_email || '—')}</div>
           <div style="color:var(--text-muted);margin-bottom:4px"><b>Тема:</b> ${emailSubject}</div>

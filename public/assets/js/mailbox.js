@@ -74,7 +74,7 @@ window.AsgardMailboxPage = (function(){
       <!-- LEFT SIDEBAR -->
       <div id="mail-sidebar" style="width:220px; min-width:220px; background:var(--bg-deep); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto;">
         <div style="padding:12px;">
-          <button id="btn-compose" style="width:100%; padding:10px; background:var(--primary); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px;">
+          <button id="btn-compose" style="width:100%; padding:10px; background:var(--primary); color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:14px;">
             Написать
           </button>
         </div>
@@ -132,7 +132,7 @@ window.AsgardMailboxPage = (function(){
 
     const stats = state.stats;
     const badgeFor = (key) => {
-      if (key === 'inbox' && stats.unread > 0) return `<span style="background:var(--primary); color:#fff; padding:1px 6px; border-radius:10px; font-size:11px; font-weight:600;">${stats.unread}</span>`;
+      if (key === 'inbox' && stats.unread > 0) return `<span style="background:var(--primary); color:#fff; padding:1px 6px; border-radius:6px; font-size:11px; font-weight:600;">${stats.unread}</span>`;
       if (key === 'starred' && stats.starred > 0) return `<span style="color:var(--text-muted); font-size:11px;">${stats.starred}</span>`;
       if (key === 'drafts' && stats.drafts > 0) return `<span style="color:var(--text-muted); font-size:11px;">${stats.drafts}</span>`;
       return '';
@@ -383,7 +383,7 @@ window.AsgardMailboxPage = (function(){
 
       <!-- Body (sandboxed iframe to prevent XSS from email HTML) -->
       <div style="padding:20px 24px; flex:1;">
-        <iframe id="mail-body-frame" sandbox="allow-same-origin" style="background:#fff; border-radius:8px; border:none; width:100%; min-height:200px; color:#1e293b; font-size:14px; line-height:1.6;"></iframe>
+        <iframe id="mail-body-frame" sandbox="allow-same-origin" style="background:#fff; border-radius:6px; border:none; width:100%; min-height:200px; color:#1e293b; font-size:14px; line-height:1.6;"></iframe>
       </div>
 
       <!-- Attachments -->

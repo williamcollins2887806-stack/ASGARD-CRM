@@ -108,7 +108,7 @@ window.AsgardMailSettingsPage = (function(){
       </div>
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${accounts.map(a => `
-          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:16px;">
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <div>
                 <strong style="color:var(--text-primary);">${esc(a.name)}</strong>
@@ -169,7 +169,7 @@ window.AsgardMailSettingsPage = (function(){
 
     const a = existing || {};
     overlay.innerHTML = `
-    <div style="width:600px;max-width:95vw;max-height:85vh;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);overflow-y:auto;">
+    <div style="width:600px;max-width:95vw;max-height:85vh;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);overflow-y:auto;">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
         <h3 style="margin:0;color:var(--text-primary);">${existing ? 'Редактирование аккаунта' : 'Новый аккаунт'}</h3>
         <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
@@ -384,7 +384,7 @@ window.AsgardMailSettingsPage = (function(){
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9100;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
-    <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);">
+    <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
         <h3 style="margin:0;color:var(--text-primary);">Новое правило</h3>
         <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
@@ -465,7 +465,7 @@ window.AsgardMailSettingsPage = (function(){
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9100;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
-    <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);">
+    <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
         <h3 style="margin:0;color:var(--text-primary);">Тест классификации</h3>
         <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>

@@ -73,28 +73,28 @@ window.AsgardPayrollPage = (function(){
   const CSS = `
 <style>
 .payroll-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px}
-.payroll-tabs{display:flex;gap:4px;background:rgba(13,20,40,.6);padding:4px;border-radius:14px;flex-wrap:wrap}
-.payroll-tab{padding:8px 16px;border-radius:12px;border:none;background:transparent;color:var(--muted);font-weight:700;cursor:pointer;transition:all .2s;font-size:13px}
+.payroll-tabs{display:flex;gap:4px;background:rgba(13,20,40,.6);padding:4px;border-radius:6px;flex-wrap:wrap}
+.payroll-tab{padding:8px 16px;border-radius:6px;border:none;background:transparent;color:var(--muted);font-weight:700;cursor:pointer;transition:all .2s;font-size:13px}
 .payroll-tab:hover{color:var(--text)}
 .payroll-tab.active{background:linear-gradient(135deg,rgba(59,130,246,.3),rgba(34,197,94,.2));color:var(--text)}
 .payroll-tab .count{font-size:11px;background:rgba(245,158,11,.3);color:#f59e0b;padding:2px 6px;border-radius:6px;margin-left:4px}
 .payroll-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
-.payroll-kpi .k{background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.85);border-radius:16px;padding:14px}
+.payroll-kpi .k{background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.85);border-radius:6px;padding:14px}
 .payroll-kpi .k .t{font-size:11px;color:rgba(184,196,231,.85);font-weight:800;text-transform:uppercase}
 .payroll-kpi .k .v{font-size:24px;font-weight:900;margin-top:6px;color:rgba(242,208,138,.95)}
 .payroll-kpi .k .s{font-size:12px;color:rgba(184,196,231,.7);margin-top:4px}
-.payroll-card{background:rgba(13,20,40,.45);border:1px solid rgba(42,59,102,.85);border-radius:16px;padding:16px;margin-bottom:12px;cursor:pointer;transition:all .2s}
+.payroll-card{background:rgba(13,20,40,.45);border:1px solid rgba(42,59,102,.85);border-radius:6px;padding:16px;margin-bottom:12px;cursor:pointer;transition:all .2s}
 .payroll-card:hover{border-color:rgba(242,208,138,.5);transform:translateY(-2px)}
-.payroll-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700}
+.payroll-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700}
 .payroll-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
-.payroll-director-comment{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-left:4px solid #ef4444;border-radius:12px;padding:12px 16px;margin-bottom:16px}
-.payroll-inline-input{background:rgba(13,20,40,.3);border:1px solid rgba(42,59,102,.6);border-radius:8px;padding:4px 8px;color:var(--text);width:80px;text-align:right;font-size:13px}
+.payroll-director-comment{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-left:4px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:16px}
+.payroll-inline-input{background:rgba(13,20,40,.3);border:1px solid rgba(42,59,102,.6);border-radius:6px;padding:4px 8px;color:var(--text);width:80px;text-align:right;font-size:13px}
 .payroll-inline-input:focus{border-color:rgba(242,208,138,.6);outline:none}
 .payroll-inline-input:read-only{background:transparent;border-color:transparent;cursor:default}
-.se-card{background:rgba(13,20,40,.45);border:1px solid rgba(42,59,102,.85);border-radius:16px;padding:16px;margin-bottom:12px}
+.se-card{background:rgba(13,20,40,.45);border:1px solid rgba(42,59,102,.85);border-radius:6px;padding:16px;margin-bottom:12px}
 .se-card .se-name{font-size:16px;font-weight:800;color:var(--text)}
 .se-card .se-inn{font-size:13px;color:var(--muted);font-family:monospace}
-.otp-card{background:rgba(13,20,40,.45);border:1px solid rgba(42,59,102,.85);border-radius:16px;padding:16px;margin-bottom:12px;border-left:4px solid transparent}
+.otp-card{background:rgba(13,20,40,.45);border:1px solid rgba(42,59,102,.85);border-radius:6px;padding:16px;margin-bottom:12px;border-left:4px solid transparent}
 .otp-card[data-status="pending"]{border-left-color:#f59e0b}
 .otp-card[data-status="approved"]{border-left-color:#3b82f6}
 .otp-card[data-status="paid"]{border-left-color:#22c55e}
@@ -105,7 +105,7 @@ window.AsgardPayrollPage = (function(){
 .payroll-table tr:hover{background:rgba(59,130,246,.05)}
 .payroll-table tfoot td{font-weight:800;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)}
 .payroll-filters{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
-.payroll-filters select,.payroll-filters input{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.6);border-radius:10px;padding:6px 12px;color:var(--text);font-size:13px}
+.payroll-filters select,.payroll-filters input{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.6);border-radius:6px;padding:6px 12px;color:var(--text);font-size:13px}
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 </style>`;
 
@@ -245,22 +245,22 @@ window.AsgardPayrollPage = (function(){
         showModal('Новая ведомость', `
           <div class="formrow"><div>
             <label>Работа *</label>
-            <select id="ps_work" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
+            <select id="ps_work" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
               <option value="">— Общая (без работы) —</option>
               ${myWorks2.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' — '+(w.work_title||''))}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div><label>Период с *</label><input type="date" id="ps_from" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
-            <div><label>Период по *</label><input type="date" id="ps_to" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Период с *</label><input type="date" id="ps_from" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Период по *</label><input type="date" id="ps_to" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
           </div>
           <div class="formrow"><div style="grid-column:1/-1">
             <label>Название</label>
-            <input id="ps_title" placeholder="Авто: Ведомость {месяц} \u2014 {объект}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/>
+            <input id="ps_title" placeholder="Авто: Ведомость {месяц} \u2014 {объект}" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/>
           </div></div>
           <div class="formrow"><div style="grid-column:1/-1">
             <label>Комментарий</label>
-            <textarea id="ps_comment" rows="2" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"></textarea>
+            <textarea id="ps_comment" rows="2" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"></textarea>
           </div></div>
           <button class="btn primary" id="btnCreateSheet" style="margin-top:12px;width:100%">Создать</button>
         `);
@@ -459,7 +459,7 @@ window.AsgardPayrollPage = (function(){
         </table>
         </div>
 
-        ${sheet.comment?`<div style="margin-top:20px;padding:12px;background:rgba(13,20,40,.3);border-radius:12px;font-size:13px"><b>Комментарий:</b> ${esc(sheet.comment)}</div>`:''}
+        ${sheet.comment?`<div style="margin-top:20px;padding:12px;background:rgba(13,20,40,.3);border-radius:6px;font-size:13px"><b>Комментарий:</b> ${esc(sheet.comment)}</div>`:''}
       `;
     }
 
@@ -626,18 +626,18 @@ window.AsgardPayrollPage = (function(){
         showModal('Добавить рабочего', `
           <div class="formrow"><div>
             <label>Рабочий *</label>
-            <select id="addItemEmp" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
+            <select id="addItemEmp" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
               <option value="">Выберите...</option>
               ${activeEmps.map(e=>`<option value="${e.id}">${esc(e.fio||'')} ${e.role_tag?'('+esc(e.role_tag)+')':''}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div><label>Дней</label><input type="number" id="addItemDays" value="0" min="0" max="31" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
-            <div><label>Ставка (\u20BD/день)</label><input type="number" id="addItemRate" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Дней</label><input type="number" id="addItemDays" value="0" min="0" max="31" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Ставка (\u20BD/день)</label><input type="number" id="addItemRate" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
           </div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div><label>Премия</label><input type="number" id="addItemBonus" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
-            <div><label>Штраф</label><input type="number" id="addItemPenalty" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Премия</label><input type="number" id="addItemBonus" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Штраф</label><input type="number" id="addItemPenalty" value="0" min="0" step="100" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
           </div>
           <button class="btn primary" id="btnDoAddItem" style="margin-top:12px;width:100%">Добавить</button>
         `);
@@ -767,27 +767,27 @@ window.AsgardPayrollPage = (function(){
       showModal(existing?'Редактировать СЗ':'Добавить самозанятого', `
         <div class="formrow"><div>
           <label>ФИО *</label>
-          <input id="seName" value="${esc(se.full_name||'')}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/>
+          <input id="seName" value="${esc(se.full_name||'')}" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/>
         </div></div>
         <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div><label>ИНН * (12 цифр)</label><input id="seInn" value="${esc(se.inn||'')}" maxlength="12" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
-          <div><label>Телефон</label><input id="sePhone" value="${esc(se.phone||'')}" placeholder="+7-XXX-XXX-XX-XX" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>ИНН * (12 цифр)</label><input id="seInn" value="${esc(se.inn||'')}" maxlength="12" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>Телефон</label><input id="sePhone" value="${esc(se.phone||'')}" placeholder="+7-XXX-XXX-XX-XX" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
         </div>
         <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div><label>Банк</label><input id="seBank" value="${esc(se.bank_name||'')}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
-          <div><label>БИК</label><input id="seBik" value="${esc(se.bik||'')}" maxlength="9" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>Банк</label><input id="seBank" value="${esc(se.bank_name||'')}" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>БИК</label><input id="seBik" value="${esc(se.bik||'')}" maxlength="9" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
         </div>
         <div class="formrow"><div>
           <label>Расчётный счёт</label>
-          <input id="seAccount" value="${esc(se.account_number||'')}" maxlength="20" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/>
+          <input id="seAccount" value="${esc(se.account_number||'')}" maxlength="20" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/>
         </div></div>
         <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div><label>\u2116 ГПХ</label><input id="seContract" value="${esc(se.contract_number||'')}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
-          <div><label>Дата ГПХ</label><input type="date" id="seContractDate" value="${(se.contract_date||'').slice(0,10)}" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>\u2116 ГПХ</label><input id="seContract" value="${esc(se.contract_number||'')}" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+          <div><label>Дата ГПХ</label><input type="date" id="seContractDate" value="${(se.contract_date||'').slice(0,10)}" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
         </div>
         <div class="formrow"><div>
           <label>Комментарий</label>
-          <textarea id="seComment" rows="2" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">${esc(se.comment||'')}</textarea>
+          <textarea id="seComment" rows="2" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">${esc(se.comment||'')}</textarea>
         </div></div>
         <button class="btn primary" id="btnSaveSE" style="margin-top:12px;width:100%">${existing?'Сохранить':'Добавить'}</button>
       `);
@@ -928,29 +928,29 @@ window.AsgardPayrollPage = (function(){
         showModal('Запросить разовую оплату', `
           <div class="formrow"><div>
             <label>Рабочий *</label>
-            <select id="otpEmp" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
+            <select id="otpEmp" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
               <option value="">Выберите...</option>
               ${activeEmps.map(e=>`<option value="${e.id}">${esc(e.fio||'')}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div><label>Сумма * (\u20BD)</label><input type="number" id="otpAmount" min="0" step="100" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
+            <div><label>Сумма * (\u20BD)</label><input type="number" id="otpAmount" min="0" step="100" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
             <div><label>Тип</label>
-              <select id="otpType" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
+              <select id="otpType" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
                 ${Object.entries(PAYMENT_TYPES).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
               </select>
             </div>
           </div>
           <div class="formrow"><div>
             <label>Работа</label>
-            <select id="otpWork" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
+            <select id="otpWork" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
               <option value="">Без привязки</option>
               ${myWorks.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' \u2014 '+(w.work_title||''))}</option>`).join('')}
             </select>
           </div></div>
           <div class="formrow"><div>
             <label>Причина / описание *</label>
-            <textarea id="otpReason" rows="2" style="width:100%;padding:8px;border-radius:10px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"></textarea>
+            <textarea id="otpReason" rows="2" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"></textarea>
           </div></div>
           <button class="btn primary" id="btnDoOTP" style="margin-top:12px;width:100%">Запросить</button>
         `);

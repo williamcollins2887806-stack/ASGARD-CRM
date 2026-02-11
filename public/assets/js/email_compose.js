@@ -108,7 +108,7 @@ window.AsgardEmailCompose = (function(){
     overlay.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:9000; display:flex; align-items:center; justify-content:center;';
 
     overlay.innerHTML = `
-      <div style="width:720px; max-width:95vw; max-height:90vh; background:var(--bg-card); border-radius:12px; border:1px solid var(--border); display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="width:720px; max-width:95vw; max-height:90vh; background:var(--bg-card); border-radius:6px; border:1px solid var(--border); display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
         <!-- Header -->
         <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
           <h3 style="margin:0; color:var(--text-primary); font-size:16px;">${modeLabel[mode] || 'Новое письмо'}</h3>
@@ -129,7 +129,7 @@ window.AsgardEmailCompose = (function(){
           ${previewNumber ? `
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;
                       padding:8px 12px; background:rgba(212,168,70,0.08);
-                      border:1px solid rgba(212,168,70,0.25); border-radius:8px">
+                      border:1px solid rgba(212,168,70,0.25); border-radius:6px">
             <span style="font-size:12px; color:var(--text-muted);">Рег. номер:</span>
             <span style="font-weight:700; color:#D4A846; font-family:var(--font-mono); font-size:13px">${esc(previewNumber)}</span>
             <span style="font-size:11px; color:var(--text-muted)">(присвоится при отправке)</span>

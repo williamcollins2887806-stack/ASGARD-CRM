@@ -116,24 +116,24 @@ window.AsgardWarehouse = (function(){
       <div class="warehouse-page">
         <!-- Статистика -->
         <div class="stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
-          <div style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--border)">
+          <div style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:26px;font-weight:700;color:var(--accent)">${stats.total || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">Всего ТМЦ</div>
           </div>
-          <div style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--border)">
+          <div style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:26px;font-weight:700;color:#22c55e">${stats.on_warehouse || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">На складе</div>
           </div>
-          <div style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--border)">
+          <div style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:26px;font-weight:700;color:#3b82f6">${stats.issued || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">Выдано</div>
           </div>
-          <div style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--border)">
+          <div style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:26px;font-weight:700;color:#f97316">${stats.in_repair || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">В ремонте</div>
           </div>
           ${isDirector ? `
-            <div style="background:linear-gradient(135deg,#1e3a5f,#2a3b66);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--accent)">
+            <div style="background:linear-gradient(135deg,#1e3a5f,#2a3b66);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--accent)">
               <div style="font-size:22px;font-weight:700;color:#f5d78e">${formatMoney(stats.total_book_value)}</div>
               <div style="font-size:11px;color:rgba(255,255,255,0.7)">Балансовая стоимость</div>
               <div style="font-size:10px;color:var(--text-muted);margin-top:4px">
@@ -173,7 +173,7 @@ window.AsgardWarehouse = (function(){
         </div>
         
         <!-- Таблица оборудования -->
-        <div class="table-wrap" style="background:var(--bg-card);border-radius:12px;overflow:hidden">
+        <div class="table-wrap" style="background:var(--bg-card);border-radius:6px;overflow:hidden">
           <table class="tbl" id="equipmentTable">
             <thead>
               <tr>
@@ -369,7 +369,7 @@ window.AsgardWarehouse = (function(){
     const readerDiv = $('#qrReaderDiv');
     if (readerDiv) {
       readerDiv.innerHTML = `
-        <div style="text-align:center;padding:20px;border:2px dashed var(--border);border-radius:12px">
+        <div style="text-align:center;padding:20px;border:2px dashed var(--border);border-radius:6px">
           <input type="file" id="qrFileInput" accept="image/*" capture="environment" style="display:none"/>
           <button class="btn primary" id="btnCaptureQR" style="font-size:18px;padding:16px 32px">
             📷 Сфотографировать QR
@@ -426,7 +426,7 @@ window.AsgardWarehouse = (function(){
         const status = STATUSES[eq.status] || STATUSES.on_warehouse;
         
         resultDiv.innerHTML = `
-          <div style="padding:16px;background:var(--bg);border-radius:12px;border:2px solid var(--accent)">
+          <div style="padding:16px;background:var(--bg);border-radius:6px;border:2px solid var(--accent)">
             <div style="display:flex;gap:12px;align-items:center">
               <div style="font-size:32px">${eq.category_icon || '📦'}</div>
               <div style="flex:1">
@@ -451,7 +451,7 @@ window.AsgardWarehouse = (function(){
         `;
       } else {
         resultDiv.innerHTML = `
-          <div style="padding:16px;background:#fef2f2;border-radius:12px;color:#dc2626;text-align:center">
+          <div style="padding:16px;background:#fef2f2;border-radius:6px;color:#dc2626;text-align:center">
             ❌ Оборудование не найдено
           </div>
         `;
@@ -519,7 +519,7 @@ window.AsgardWarehouse = (function(){
           <button class="btn primary" id="btnDoPrint">🖨️ Печать</button>
         </div>
         
-        <div id="qrPrintArea" style="max-height:500px;overflow-y:auto;background:#fff;padding:16px;border-radius:8px">
+        <div id="qrPrintArea" style="max-height:500px;overflow-y:auto;background:#fff;padding:16px;border-radius:6px">
           ${qrCards}
         </div>
       </div>
@@ -957,7 +957,7 @@ window.AsgardWarehouse = (function(){
     
     const html = `
       <div class="stack" style="gap:16px">
-        <div style="padding:12px;background:var(--bg);border-radius:8px">
+        <div style="padding:12px;background:var(--bg);border-radius:6px">
           <div style="font-weight:600">${eq.category_icon || '📦'} ${esc(eq.name)}</div>
           <div style="font-size:12px;color:var(--text-muted)">Инв. № ${esc(eq.inventory_number)}</div>
         </div>
@@ -1067,7 +1067,7 @@ window.AsgardWarehouse = (function(){
     
     const html = `
       <div class="stack" style="gap:16px">
-        <div style="padding:12px;background:var(--bg);border-radius:8px">
+        <div style="padding:12px;background:var(--bg);border-radius:6px">
           <div style="font-weight:600">${eq.category_icon || '📦'} ${esc(eq.name)}</div>
           <div style="font-size:12px;color:var(--text-muted)">
             Инв. № ${esc(eq.inventory_number)} • У: ${esc(eq.holder_name || '—')}
@@ -1197,7 +1197,7 @@ window.AsgardWarehouse = (function(){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
           <!-- Левая колонка -->
           <div>
-            <div style="background:var(--bg);padding:16px;border-radius:8px;margin-bottom:16px">
+            <div style="background:var(--bg);padding:16px;border-radius:6px;margin-bottom:16px">
               <div style="font-size:24px;margin-bottom:8px">${eq.category_icon || '📦'}</div>
               <div style="font-size:18px;font-weight:700">${esc(eq.name)}</div>
               <div style="font-size:13px;color:var(--text-muted);margin-top:4px">
@@ -1221,7 +1221,7 @@ window.AsgardWarehouse = (function(){
             </table>
             
             ${eq.current_holder_id ? `
-              <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px">
+              <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:6px">
                 <div style="font-size:12px;color:var(--text-muted)">Текущий ответственный</div>
                 <div style="font-weight:600">👤 ${esc(eq.holder_name)}</div>
                 ${eq.holder_phone ? `<div style="font-size:12px">${esc(eq.holder_phone)}</div>` : ''}
@@ -1233,12 +1233,12 @@ window.AsgardWarehouse = (function(){
           <!-- Правая колонка: история -->
           <div>
             <div style="font-weight:600;margin-bottom:8px">📜 История перемещений</div>
-            <div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+            <div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
               ${movementsHtml}
             </div>
             
             <div style="font-weight:600;margin:16px 0 8px">🔧 ТО и ремонт</div>
-            <div style="max-height:150px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+            <div style="max-height:150px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
               ${maintenanceHtml}
             </div>
           </div>
