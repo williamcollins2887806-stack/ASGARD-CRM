@@ -101,13 +101,21 @@ async function main() {
   // ═══ СЛОЙ 3: E2E МАРШРУТЫ ═══
   if (runE2e) {
     console.log('\n━━━ СЛОЙ 3: E2E БИЗНЕС-МАРШРУТЫ ━━━');
-    try {
-      const e2e = require('./e2e/flows.test.js');
-      const r = await runTestSuite(e2e);
-      results.e2e = r;
-    } catch (e) {
-      console.log(`    ⚠️  E2E failed to load: ${e.message}`);
-      results.e2e = [{ name: 'Load E2E', status: 'FAIL', ms: 0, error: e.message }];
+
+    const e2eDir = path.join(__dirname, 'e2e');
+    const e2eFiles = fs.readdirSync(e2eDir)
+      .filter(f => f.endsWith('.test.js'))
+      .sort();
+
+    for (const file of e2eFiles) {
+      try {
+        const suite = require(path.join(e2eDir, file));
+        const r = await runTestSuite(suite);
+        results.e2e.push(...r);
+      } catch (e) {
+        console.log(`    ⚠️  E2E failed to load ${file}: ${e.message}`);
+        results.e2e.push({ name: `Load ${file}`, status: 'FAIL', ms: 0, error: e.message });
+      }
     }
   }
 
