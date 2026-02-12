@@ -207,6 +207,25 @@ module.exports = async function(fastify) {
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // GET /api/permits/upcoming — Допуски, истекающие в ближайшие 30 дней
+  // ═══════════════════════════════════════════════════════════════
+  fastify.get('/upcoming', {
+    preHandler: [fastify.requirePermission('permits', 'read')]
+  }, async () => {
+    const { rows } = await db.query(`
+      SELECT ep.id, ep.expiry_date, e.fio as employee_name, pt.name as type_name
+      FROM employee_permits ep
+      JOIN employees e ON ep.employee_id = e.id
+      LEFT JOIN permit_types pt ON ep.type_id = pt.id
+      WHERE ep.is_active = true
+        AND ep.expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+      ORDER BY ep.expiry_date ASC
+      LIMIT 100
+    `);
+    return { success: true, upcoming: rows };
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // GET /api/permits/:id — Детали допуска
   // ═══════════════════════════════════════════════════════════════
   fastify.get('/:id', {

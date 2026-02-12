@@ -642,10 +642,11 @@ async function mimirRoutes(fastify, options) {
   }, async () => {
     const config = aiProvider.getConfig();
     return {
-      status: config.hasAnthropicKey || config.hasOpenAIKey ? 'ok' : 'not_configured',
+      status: 'ok',
       service: 'Mimir AI v3',
-      provider: config.provider,
-      model: config.model,
+      provider: config.hasAnthropicKey || config.hasOpenAIKey ? config.provider : 'demo',
+      model: config.hasAnthropicKey || config.hasOpenAIKey ? config.model : 'demo',
+      demo: !config.hasAnthropicKey && !config.hasOpenAIKey,
       timestamp: new Date().toISOString()
     };
   });

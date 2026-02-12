@@ -176,7 +176,6 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/permits/upcoming', { role: 'ADMIN' });
         if (resp.status === 404) skip('permits/upcoming not available');
-        if (resp.status === 400) skip('permits/upcoming matches /:id route — not a dedicated endpoint');
         assertOk(resp, '/api/permits/upcoming: got');
       }
     },

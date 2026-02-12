@@ -206,6 +206,19 @@ async function complete({ system, messages, maxTokens, temperature }) {
   const provider = AI_PROVIDER;
   const startTime = Date.now();
 
+  // Demo mode: if no API keys configured, return a mock response
+  if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) {
+    const lastMsg = messages[messages.length - 1]?.content || '';
+    return {
+      text: `[Demo] Получено сообщение (${lastMsg.length} символов). AI-провайдер не настроен — работает демо-режим.`,
+      usage: { inputTokens: lastMsg.length, outputTokens: 30 },
+      model: 'demo',
+      provider: 'demo',
+      stopReason: 'end_turn',
+      durationMs: Date.now() - startTime
+    };
+  }
+
   try {
     if (provider === 'anthropic') {
       const result = await callAnthropic({ system, messages, maxTokens, temperature });
