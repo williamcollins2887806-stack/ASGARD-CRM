@@ -186,14 +186,16 @@ async function routes(fastify, options) {
     try {
       const raw = request.body;
 
-      // Set default status
-      if (!raw.tender_status) {
-        raw.tender_status = 'Черновик';
+      // Validate customer is always required via API
+      // (Draft workflow uses /api/data/tenders instead, not this route)
+      const customerVal = String(raw.customer || raw.customer_name || '').trim();
+      if (!customerVal) {
+        return reply.code(400).send({ error: 'Обязательное поле: customer' });
       }
 
-      // Validate customer is non-empty (skip for drafts)
-      if (raw.tender_status !== 'Черновик' && !raw.customer?.trim()) {
-        return reply.code(400).send({ error: 'Обязательное поле: customer' });
+      // Set default status to "Новый"
+      if (!raw.tender_status) {
+        raw.tender_status = 'Новый';
       }
 
       // Map API field 'customer' to DB column 'customer_name'

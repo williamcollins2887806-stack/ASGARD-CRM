@@ -126,13 +126,25 @@ async function routes(fastify, options) {
   });
 
   // SECURITY: SQL injection fix — filter keys
-  fastify.post('/schedule', { preHandler: [fastify.authenticate] }, async (request) => {
-    const data = filterData({ ...request.body, created_at: new Date().toISOString() }, SCHEDULE_COLS);
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    const sql = `INSERT INTO employee_plan (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-    const result = await db.query(sql, values);
-    return { plan: result.rows[0] };
+  fastify.post('/schedule', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      const body = request.body || {};
+      if (!body.employee_id) {
+        return reply.code(400).send({ error: 'Обязательное поле: employee_id' });
+      }
+      const data = filterData({ ...body, created_at: new Date().toISOString() }, SCHEDULE_COLS);
+      const keys = Object.keys(data);
+      if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
+      const values = Object.values(data);
+      const sql = `INSERT INTO employee_plan (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+      const result = await db.query(sql, values);
+      return { plan: result.rows[0] };
+    } catch (err) {
+      if (err.code === '23503') return reply.code(400).send({ error: 'Сотрудник или объект не найден' });
+      if (err.code === '23505') return reply.code(409).send({ error: 'Запись уже существует' });
+      if (err.code === '22003') return reply.code(400).send({ error: 'Числовое значение вне допустимого диапазона' });
+      throw err;
+    }
   });
 
   // SECURITY: SQL injection fix — filter keys

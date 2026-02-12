@@ -96,23 +96,30 @@ async function routes(fastify, options) {
   // Generic update/delete
   // SECURITY: Только WRITE_ROLES (HIGH-9)
   fastify.put('/:type/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
-    const { type, id } = request.params;
-    const table = type === 'work' ? 'work_expenses' : 'office_expenses';
-    const allowedSet = type === 'work' ? WORK_EXP_COLS : OFFICE_EXP_COLS;
-    const data = filterData(request.body, allowedSet);
-    const updates = [];
-    const values = [];
-    let idx = 1;
-    for (const [key, value] of Object.entries(data)) {
-      updates.push(`${key} = $${idx}`); values.push(value); idx++;
+    try {
+      const { type, id } = request.params;
+      if (!['work', 'office'].includes(type)) return reply.code(400).send({ error: 'Тип: work или office' });
+      const table = type === 'work' ? 'work_expenses' : 'office_expenses';
+      const allowedSet = type === 'work' ? WORK_EXP_COLS : OFFICE_EXP_COLS;
+      const data = filterData(request.body, allowedSet);
+      const updates = [];
+      const values = [];
+      let idx = 1;
+      for (const [key, value] of Object.entries(data)) {
+        updates.push(`${key} = $${idx}`); values.push(value); idx++;
+      }
+      if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
+      updates.push('updated_at = NOW()');
+      values.push(id);
+      const sql = `UPDATE ${table} SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
+      const result = await db.query(sql, values);
+      if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
+      return { expense: result.rows[0] };
+    } catch (err) {
+      if (err.code === '22003') return reply.code(400).send({ error: 'Числовое значение вне допустимого диапазона' });
+      if (err.code === '23503') return reply.code(400).send({ error: 'Связанная запись не найдена' });
+      throw err;
     }
-    if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
-    updates.push('updated_at = NOW()');
-    values.push(id);
-    const sql = `UPDATE ${table} SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
-    const result = await db.query(sql, values);
-    if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
-    return { expense: result.rows[0] };
   });
 
   // SECURITY: Только WRITE_ROLES (HIGH-9)

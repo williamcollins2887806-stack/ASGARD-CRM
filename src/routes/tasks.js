@@ -924,17 +924,25 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Некорректный ID задачи' });
     const { user_id } = request.body;
 
     if (!user_id) return reply.code(400).send({ error: 'user_id обязателен' });
 
-    await db.query(`
-      INSERT INTO task_watchers (task_id, user_id, created_at)
-      VALUES ($1, $2, NOW())
-      ON CONFLICT (task_id, user_id) DO NOTHING
-    `, [id, parseInt(user_id)]);
+    try {
+      await db.query(`
+        INSERT INTO task_watchers (task_id, user_id, created_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (task_id, user_id) DO NOTHING
+      `, [id, parseInt(user_id)]);
 
-    return { success: true };
+      return { success: true };
+    } catch (err) {
+      if (err.code === '23503') {
+        return reply.code(400).send({ error: 'Задача или пользователь не найдены' });
+      }
+      throw err;
+    }
   });
 
   // ───────────────────────────────────────────────────────────────

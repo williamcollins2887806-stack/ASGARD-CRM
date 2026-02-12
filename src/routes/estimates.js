@@ -55,7 +55,10 @@ async function routes(fastify, options) {
       const result = await db.query(sql, values);
       return { estimate: result.rows[0] };
     } catch (err) {
-      return reply.code(500).send({ error: 'Ошибка создания расчёта', detail: err.message });
+      if (err.code === '22003') return reply.code(400).send({ error: 'Числовое значение вне допустимого диапазона (numeric field overflow)' });
+      if (err.code === '23503') return reply.code(400).send({ error: 'Связанная запись не найдена (FK violation)' });
+      if (err.code === '23505') return reply.code(409).send({ error: 'Запись уже существует' });
+      return reply.code(500).send({ error: 'Ошибка создания расчёта' });
     }
   });
 

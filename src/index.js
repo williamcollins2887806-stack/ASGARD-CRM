@@ -71,7 +71,11 @@ fastify.register(require('@fastify/static'), {
 fastify.register(require('@fastify/rate-limit'), {
   max: parseInt(process.env.RATE_LIMIT_MAX || '300', 10),
   timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10),
-  keyGenerator: (request) => request.user?.id ? `user_${request.user.id}` : request.ip
+  keyGenerator: (request) => request.user?.id ? `user_${request.user.id}` : request.ip,
+  allowList: (request) => {
+    const ip = request.ip;
+    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

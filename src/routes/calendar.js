@@ -63,6 +63,9 @@ async function routes(fastify, options) {
       const result = await db.query(sql, values);
       return { event: result.rows[0] };
     } catch (err) {
+      if (err.code === '22P02') return reply.code(400).send({ error: 'Некорректный формат данных (тип поля)' });
+      if (err.code === '22003') return reply.code(400).send({ error: 'Числовое значение вне допустимого диапазона' });
+      if (err.code === '23503') return reply.code(400).send({ error: 'Связанная запись не найдена' });
       fastify.log.error('Calendar POST error:', err);
       return reply.code(500).send({ error: 'Ошибка создания события' });
     }
