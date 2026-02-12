@@ -5,7 +5,7 @@
 const jwt = require('jsonwebtoken');
 
 const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
-const JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-for-testing';
+const JWT_SECRET = process.env.JWT_SECRET || 'asgard-jwt-secret-2026';
 
 // 15 ролей системы
 const ROLES = [
