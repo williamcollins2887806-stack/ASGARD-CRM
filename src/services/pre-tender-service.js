@@ -8,6 +8,8 @@
 
 const db = require('./db');
 const aiProvider = require('./ai-provider');
+const fs = require('fs');
+const path = require('path');
 
 // ── System prompt для AI-анализа заявок ──────────────────────────────
 
@@ -106,6 +108,42 @@ async function createPreTenderFromEmail(emailId) {
   return { exists: false, id: preTenderId };
 }
 
+// ── Извлечение текста из вложений (PDF, DOCX) ───────────────────────
+
+const MAX_TEXT_PER_FILE = 5000;  // chars per file
+const MAX_TEXT_TOTAL = 15000;    // total chars for all attachments
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+async function extractTextFromFile(filePath, mimeType) {
+  try {
+    const absPath = path.join(__dirname, '..', '..', filePath);
+    if (!fs.existsSync(absPath)) return null;
+    const stats = fs.statSync(absPath);
+    if (stats.size > MAX_FILE_SIZE) return null;
+
+    const buf = fs.readFileSync(absPath);
+    const lc = (filePath || '').toLowerCase();
+
+    if (mimeType === 'application/pdf' || lc.endsWith('.pdf')) {
+      const pdfParse = require('pdf-parse');
+      const result = await pdfParse(buf);
+      return result.text ? result.text.slice(0, MAX_TEXT_PER_FILE) : null;
+    }
+
+    if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        || lc.endsWith('.docx') || mimeType === 'application/msword' || lc.endsWith('.doc')) {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ buffer: buf });
+      return result.value ? result.value.slice(0, MAX_TEXT_PER_FILE) : null;
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('[PreTender] Text extraction error:', filePath, err.message);
+    return null;
+  }
+}
+
 // ── AI-анализ заявки ─────────────────────────────────────────────────
 
 async function analyzePreTender(preTenderId) {
@@ -119,12 +157,41 @@ async function analyzePreTender(preTenderId) {
   if (!ptRes.rows.length) throw new Error('Заявка не найдена');
   const pt = ptRes.rows[0];
 
-  // Получаем вложения
+  // Получаем вложения и извлекаем текст из PDF/DOCX
   let attachmentTexts = 'Вложений нет';
+  const extractedTexts = [];
+  let totalExtracted = 0;
+
   if (pt.email_id) {
-    const attRes = await db.query('SELECT original_filename, mime_type, size FROM email_attachments WHERE email_id = $1', [pt.email_id]);
+    const attRes = await db.query(
+      'SELECT original_filename, mime_type, size, file_path FROM email_attachments WHERE email_id = $1',
+      [pt.email_id]
+    );
     if (attRes.rows.length) {
-      attachmentTexts = attRes.rows.map(a => `${a.original_filename} (${a.mime_type}, ${Math.round((a.size || 0) / 1024)} КБ)`).join('\n');
+      const parts = [];
+      for (const a of attRes.rows) {
+        parts.push(`${a.original_filename} (${a.mime_type}, ${Math.round((a.size || 0) / 1024)} КБ)`);
+        if (a.file_path && totalExtracted < MAX_TEXT_TOTAL) {
+          const text = await extractTextFromFile(a.file_path, a.mime_type);
+          if (text) {
+            extractedTexts.push(`--- Содержимое «${a.original_filename}» ---\n${text}`);
+            totalExtracted += text.length;
+          }
+        }
+      }
+      attachmentTexts = parts.join('\n');
+    }
+  }
+
+  // Также проверяем вручную загруженные документы
+  const manualDocs = Array.isArray(pt.manual_documents) ? pt.manual_documents : [];
+  for (const doc of manualDocs) {
+    if (doc.path && totalExtracted < MAX_TEXT_TOTAL) {
+      const text = await extractTextFromFile(doc.path, doc.mime_type);
+      if (text) {
+        extractedTexts.push(`--- Содержимое «${doc.original_name || doc.filename}» ---\n${text}`);
+        totalExtracted += text.length;
+      }
     }
   }
 
@@ -145,7 +212,7 @@ ${pt.body_text || pt.work_description || 'Текст отсутствует'}
 
 ВЛОЖЕНИЯ:
 ${attachmentTexts}
-
+${extractedTexts.length ? '\nСОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n' + extractedTexts.join('\n\n') : ''}
 ЗАГРУЗКА КОМПАНИИ:
 ${workloadInfo}`;
 

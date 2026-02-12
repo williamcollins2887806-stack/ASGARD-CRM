@@ -1122,6 +1122,41 @@ ${docsHtml}</div>
         });
       }
 
+      // === Auto-save draft on page exit (beforeunload, hashchange, modal close, tab switch) ===
+      if (isNew) {
+        function _autoSaveDraftIfOpen() {
+          const el = document.getElementById('e_title');
+          if (!el) return false;
+          const data = getDraftFormData();
+          if (data.customer_name || data.tender_title || data.customer_inn) saveDraft(data);
+          return true;
+        }
+        const _onBeforeUnload = () => _autoSaveDraftIfOpen();
+        const _onHashChange = () => { _autoSaveDraftIfOpen(); _cleanupDraftAuto(); };
+        const _onVisChange = () => { if (document.hidden) _autoSaveDraftIfOpen(); };
+        // Auto-save every 30s while modal is open
+        const _draftAutoTimer = setInterval(() => {
+          if (!_autoSaveDraftIfOpen()) _cleanupDraftAuto();
+        }, 30000);
+        // Save draft on modal close (capture phase fires before hideModal clears content)
+        const _modalBack = document.querySelector('.modalback');
+        const _onModalCloseCapture = (e) => {
+          const closeBtn = document.getElementById('modalClose');
+          if (e.target === closeBtn || e.target === _modalBack) _autoSaveDraftIfOpen();
+        };
+        if (_modalBack) _modalBack.addEventListener('click', _onModalCloseCapture, true);
+        function _cleanupDraftAuto() {
+          window.removeEventListener('beforeunload', _onBeforeUnload);
+          window.removeEventListener('hashchange', _onHashChange);
+          document.removeEventListener('visibilitychange', _onVisChange);
+          if (_modalBack) _modalBack.removeEventListener('click', _onModalCloseCapture, true);
+          clearInterval(_draftAutoTimer);
+        }
+        window.addEventListener('beforeunload', _onBeforeUnload);
+        window.addEventListener('hashchange', _onHashChange);
+        document.addEventListener('visibilitychange', _onVisChange);
+      }
+
       // Customers directory (INN -> name)
       const normInn = (v)=>String(v||"").replace(/\D/g, "");
       const custList = await AsgardDB.all("customers");
@@ -1618,11 +1653,37 @@ ${docsHtml}</div>
           if (!chkDeadline) missingFields.push('Дедлайн');
 
           if (missingFields.length > 0) {
-            const choice = confirm(`Не заполнены поля: ${missingFields.join(', ')}.\n\nСохранить как черновик?`);
-            if (choice) {
+            const _fieldIdMap = {'Заказчик':'e_customer','Название тендера':'e_title','Период':'e_period','Дедлайн':'e_docs_deadline'};
+            const _overlay = document.createElement('div');
+            _overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+            _overlay.innerHTML = `
+              <div style="background:var(--card,#1e1e2e);padding:24px;border-radius:12px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+                <div style="font-weight:600;font-size:16px;margin-bottom:12px">Не заполнены обязательные поля</div>
+                <div style="margin-bottom:16px;color:var(--text-secondary,#aaa)">${esc(missingFields.join(', '))}</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <button class="btn" id="btnFillMissing">Заполнить поля</button>
+                  <button class="btn ghost" id="btnDraftMissing">Сохранить как черновик</button>
+                </div>
+              </div>`;
+            document.body.appendChild(_overlay);
+            _overlay.addEventListener('click', (e) => { if (e.target === _overlay) _overlay.remove(); });
+            document.getElementById('btnFillMissing').addEventListener('click', () => {
+              _overlay.remove();
+              const ids = missingFields.map(f => _fieldIdMap[f]).filter(Boolean);
+              ids.forEach(fid => {
+                const el = document.getElementById(fid);
+                if (el) {
+                  el.style.border = '2px solid #ef4444';
+                  el.addEventListener('input', () => { el.style.border = ''; }, { once: true });
+                }
+              });
+              if (ids.length) { const first = document.getElementById(ids[0]); if (first) first.focus(); }
+            });
+            document.getElementById('btnDraftMissing').addEventListener('click', async () => {
+              _overlay.remove();
               const id = await saveTender(true);
               if(id){ await render({layout, title}); openTenderEditor(id); }
-            }
+            });
             return;
           }
 
