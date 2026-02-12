@@ -387,6 +387,12 @@ a:hover {
   font-size: 12px;
   color: var(--text-secondary);
 }
+.badge.draft {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  font-style: italic;
+}
 
 /* Кнопка уведомлений */
 .bellbtn {

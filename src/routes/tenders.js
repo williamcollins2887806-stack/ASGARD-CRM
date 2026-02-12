@@ -166,7 +166,6 @@ async function routes(fastify, options) {
     schema: {
       body: {
         type: 'object',
-        required: ['customer'],
         properties: {
           customer: { type: 'string' },
           customer_inn: { type: 'string' },
@@ -187,8 +186,13 @@ async function routes(fastify, options) {
     try {
       const raw = request.body;
 
-      // Validate customer is non-empty
-      if (!raw.customer?.trim()) {
+      // Set default status
+      if (!raw.tender_status) {
+        raw.tender_status = 'Черновик';
+      }
+
+      // Validate customer is non-empty (skip for drafts)
+      if (raw.tender_status !== 'Черновик' && !raw.customer?.trim()) {
         return reply.code(400).send({ error: 'Обязательное поле: customer' });
       }
 
@@ -204,11 +208,6 @@ async function routes(fastify, options) {
       if (!raw.period) {
         const now = new Date();
         raw.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      }
-
-      // Set default status
-      if (!raw.tender_status) {
-        raw.tender_status = 'Новый';
       }
 
       // SECURITY: Filter to allowed columns only
@@ -265,6 +264,18 @@ async function routes(fastify, options) {
     const current = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
     if (!current.rows[0]) {
       return reply.code(404).send({ error: 'Тендер не найден' });
+    }
+    const oldTender = current.rows[0];
+
+    // Draft transition validation: require customer when leaving Черновик
+    if (oldTender.tender_status === 'Черновик' && data.tender_status && data.tender_status !== 'Черновик') {
+      const customerValue = data.customer || oldTender.customer_name;
+      if (!customerValue || !String(customerValue).trim()) {
+        return reply.code(400).send({
+          error: 'Для смены статуса заполните обязательные поля',
+          missing_fields: ['customer']
+        });
+      }
     }
 
     // Build update query
@@ -346,7 +357,7 @@ async function routes(fastify, options) {
     try {
       const { period, year } = request.query;
 
-      let whereClause = '1=1';
+      let whereClause = "1=1 AND tender_status != 'Черновик'";
       const params = [];
       let idx = 1;
 
@@ -401,7 +412,7 @@ async function routes(fastify, options) {
     try {
     const { year, period } = request.query;
 
-    let whereClause = '1=1';
+    let whereClause = "1=1 AND t.tender_status != 'Черновик'";
     const params = [];
     let idx = 1;
 
@@ -464,7 +475,7 @@ async function routes(fastify, options) {
         COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
         COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
       FROM tenders
-      WHERE created_at >= NOW() - INTERVAL '12 months'
+      WHERE created_at >= NOW() - INTERVAL '12 months' AND tender_status != 'Черновик'
       GROUP BY TO_CHAR(created_at, 'YYYY-MM')
       ORDER BY month
     `);

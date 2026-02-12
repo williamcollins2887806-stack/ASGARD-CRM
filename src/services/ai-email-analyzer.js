@@ -270,8 +270,59 @@ async function logAnalysis({ entityType, entityId, analysisType, promptTokens, c
   }
 }
 
+// ── Генерация AI-отчёта ──────────────────────────────────────────────
+
+const REPORT_SYSTEM_PROMPT = `Ты — AI-ассистент компании АСГАРД СЕРВИС (нефтегазовый сервис).
+Составь краткий деловой отчёт по входящему запросу.
+
+СТРУКТУРА ОТЧЁТА:
+1. Заказчик — название организации, контактное лицо
+2. Суть запроса — что хотят, какие работы
+3. Объект — где нужно выполнить работы (город, предприятие, цех)
+4. Объём работ — что именно нужно сделать (перечень)
+5. Сроки — когда нужно, дедлайны
+6. Особые условия — допуски, требования безопасности, специфика
+
+НЕ ВКЛЮЧАЙ цены, стоимость, суммы.
+Пиши кратко, по делу, деловым языком.
+Если информации недостаточно — укажи "Данные отсутствуют" для соответствующего пункта.
+Отвечай простым текстом без markdown-форматирования.`;
+
+async function generateReport({ subject, bodyText, fromEmail, fromName, attachmentNames }) {
+  try {
+    let msg = `ВХОДЯЩЕЕ ПИСЬМО:\n`;
+    msg += `От: ${fromName || 'Неизвестно'} <${fromEmail || '?'}>\n`;
+    msg += `Тема: ${subject || '(без темы)'}\n\n`;
+
+    if (bodyText) {
+      const maxLen = 4000;
+      const body = bodyText.length > maxLen ? bodyText.slice(0, maxLen) + '...[обрезано]' : bodyText;
+      msg += `ТЕКСТ ПИСЬМА:\n${body}\n\n`;
+    }
+
+    if (attachmentNames?.length) {
+      msg += `ВЛОЖЕНИЯ: ${attachmentNames.join(', ')}\n\n`;
+    }
+
+    msg += 'Составь деловой отчёт по этому запросу.';
+
+    const response = await aiProvider.complete({
+      system: REPORT_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: msg }],
+      maxTokens: 2048,
+      temperature: 0.3
+    });
+
+    return response.text || null;
+  } catch (err) {
+    console.error('[AI-Analyzer] Report generation error:', err.message);
+    return null;
+  }
+}
+
 module.exports = {
   analyzeEmail,
+  generateReport,
   getWorkloadData,
   parseAIResponse,
   ANALYSIS_SYSTEM_PROMPT

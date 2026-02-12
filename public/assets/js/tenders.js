@@ -317,7 +317,7 @@ async function getRefs(){
       </td>
       <td>${esc(pmName||"—")}</td>
       <td>${esc(t.tender_type||"—")}</td>
-      <td>${esc(t.tender_status||"")}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
+      <td>${t.tender_status==='Черновик'?'<span class="badge draft">Черновик</span>':esc(t.tender_status||"")}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
       <td>${ddl}</td>
       <td>${esc(createdByName||"—")}</td>
       <td>${t.tender_price?money(t.tender_price):"—"}</td>
@@ -945,7 +945,7 @@ async function getRefs(){
       }).join("");
 
       const statusOptions = refs.tender_statuses.map(s=>{
-        const sel = (t && t.tender_status===s) ? "selected" : ((isNew && s==="Новый")?"selected":"");
+        const sel = (t && t.tender_status===s) ? "selected" : ((isNew && s==="Черновик")?"selected":"");
         return `<option value="${esc(s)}" ${sel}>${esc(s)}</option>`;
       }).join("");
 
@@ -1445,7 +1445,7 @@ ${docsHtml}</div>
         });
       }
 
-      async function saveTender(){
+      async function saveTender(forceDraft){
         const period=document.getElementById("e_period").value.trim();
         const innRaw = document.getElementById("e_inn")?.value || "";
         const customer_inn = String(innRaw).replace(/\D/g, "");
@@ -1463,6 +1463,29 @@ ${docsHtml}</div>
         const tag=document.getElementById("e_tag").value.trim()||null;
         const cto=document.getElementById("e_c_to").value.trim()||"";
         const rejectEl=document.getElementById("e_reject"); const reject=rejectEl ? rejectEl.value||null : null;
+
+        // Draft mode: skip strict validation, save with 'Черновик' status
+        if (forceDraft && isNew) {
+          const obj={
+            period: period || ymNow(), year:Number((period || ymNow()).slice(0,4)),
+            customer_inn: customer_inn||null, customer_name:customer||'',
+            tender_title:title||'', tender_type: tenderType||'Тендер',
+            responsible_pm_id:pmId, tender_status:'Черновик',
+            tender_price: price, work_start_plan: ws, work_end_plan: we,
+            purchase_url: url, docs_deadline: docsDeadline,
+            reject_reason: reject, group_tag: tag, tender_comment_to: cto,
+            created_by_user_id: user.id,
+            handoff_at: null, handoff_by_user_id: null,
+            distribution_requested_at: null, distribution_requested_by_user_id: null,
+            distribution_assigned_at: null, distribution_assigned_by_user_id: null,
+            dedup_key: url || (`local:${period||ymNow()}:${customer_inn||customer||'draft'}:${title||'draft'}`.toLowerCase())
+          };
+          const id = await AsgardDB.add("tenders", obj);
+          await audit(user.id,"tender",id,"create",{draft:true});
+          clearDraft();
+          toast("Черновик","Тендер сохранён как черновик");
+          return id;
+        }
 
         if(!period || !/^\d{4}-\d{2}$/.test(period)){ toast("Проверка","Период должен быть YYYY-MM","err"); return null; }
         if(!customer && customer_inn){
@@ -1582,34 +1605,51 @@ ${docsHtml}</div>
       }
 
       document.getElementById("btnSave").addEventListener("click", async ()=>{
-        // Проверка дубликатов для новых тендеров (Этап 34)
         if (isNew) {
+          // Check required fields — offer draft save if missing
+          const chkCustomer = document.getElementById("e_customer")?.value?.trim() || '';
+          const chkTitle = document.getElementById("e_title")?.value?.trim() || '';
+          const chkPeriod = document.getElementById("e_period")?.value?.trim() || '';
+          const chkDeadline = document.getElementById("e_docs_deadline")?.value?.trim() || '';
+          const missingFields = [];
+          if (!chkCustomer) missingFields.push('Заказчик');
+          if (!chkTitle) missingFields.push('Название тендера');
+          if (!chkPeriod || !/^\d{4}-\d{2}$/.test(chkPeriod)) missingFields.push('Период');
+          if (!chkDeadline) missingFields.push('Дедлайн');
+
+          if (missingFields.length > 0) {
+            const choice = confirm(`Не заполнены поля: ${missingFields.join(', ')}.\n\nСохранить как черновик?`);
+            if (choice) {
+              const id = await saveTender(true);
+              if(id){ await render({layout, title}); openTenderEditor(id); }
+            }
+            return;
+          }
+
+          // Проверка дубликатов для новых тендеров (Этап 34)
           const customerInn = document.getElementById("e_inn")?.value?.trim() || '';
-          const customerName = document.getElementById("e_cust")?.value?.trim() || '';
-          const tenderTitle = document.getElementById("e_title")?.value?.trim() || '';
-          
+          const customerName = chkCustomer;
+          const tenderTitle = chkTitle;
+
           if (customerName && tenderTitle) {
             const duplicates = await findDuplicates(customerInn, customerName, tenderTitle);
-            
+
             if (duplicates.length > 0) {
-              // Показываем предупреждение и ждём решения пользователя
               showDuplicateWarning(
                 duplicates,
                 async () => {
-                  // Пользователь нажал "Создать всё равно"
                   const id = await saveTender();
                   if(id){ await render({layout, title}); openTenderEditor(id); }
                 },
                 () => {
-                  // Пользователь отменил
                   toast("Отменено", "Создание тендера отменено");
                 }
               );
-              return; // Ждём решения пользователя
+              return;
             }
           }
         }
-        
+
         // Обычное сохранение (без дубликатов или редактирование)
         const id = await saveTender();
         if(id){ await render({layout, title}); openTenderEditor(id); }

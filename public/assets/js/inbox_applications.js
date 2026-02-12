@@ -254,6 +254,12 @@ window.AsgardInboxApplicationsPage = (function(){
             <button class="btn ghost" id="btnRunAI" style="margin-top:8px">🤖 Запустить анализ</button>
           </div>`}
 
+          ${item.ai_report ? `
+          <details style="margin-bottom:16px" open>
+            <summary style="cursor:pointer;font-weight:700;font-size:13px">AI-отчёт</summary>
+            <div style="margin-top:8px;padding:12px;background:var(--bg-elevated);border:1px solid var(--line);border-radius:6px;font-size:13px;white-space:pre-wrap;line-height:1.5">${esc(item.ai_report)}</div>
+          </details>` : ''}
+
           <!-- Текст письма -->
           <details style="margin-bottom:16px">
             <summary style="cursor:pointer;font-weight:600;font-size:13px">Текст письма</summary>

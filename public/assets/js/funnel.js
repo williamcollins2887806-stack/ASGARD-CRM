@@ -3,6 +3,7 @@ window.AsgardFunnelPage = (function(){
   
   // Стадии воронки
   const STAGES = [
+    {id: 'draft', label: 'Черновики', color: '#94a3b8', statuses: ['Черновик']},
     {id: 'new', label: 'Новые', color: '#64748b', statuses: ['Новый', 'Получен']},
     {id: 'calc', label: 'В просчёте', color: '#2563eb', statuses: ['В просчёте', 'На просчёте']},
     {id: 'tkp', label: 'КП отправлено', color: '#8b5cf6', statuses: ['КП отправлено', 'ТКП отправлено', 'Согласование ТКП']},
@@ -61,8 +62,10 @@ window.AsgardFunnelPage = (function(){
       return {id: s.id, count, sum};
     });
     
-    const totalCount = tenders.length;
-    const totalSum = tenders.reduce((a, t) => a + (t._sum || 0), 0);
+    // Drafts excluded from funnel statistics
+    const nonDraftTenders = tenders.filter(t => t.tender_status !== 'Черновик');
+    const totalCount = nonDraftTenders.length;
+    const totalSum = nonDraftTenders.reduce((a, t) => a + (t._sum || 0), 0);
     const wonSum = byStage.won.reduce((a, t) => a + (t._sum || 0), 0);
     const conversionRate = totalCount > 0 ? ((byStage.won.length / totalCount) * 100).toFixed(1) : 0;
     

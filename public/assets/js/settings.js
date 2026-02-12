@@ -720,7 +720,8 @@ window.AsgardSettingsPage = (function(){
       // --- refs ---
       const nextRefs = Object.assign({}, refs);
       let tenderStatuses = parseLines($("#r_tender").value);
-      if(!tenderStatuses.find(s=>s.toLowerCase()==="новый")) tenderStatuses = ["Новый", ...tenderStatuses];
+      if(!tenderStatuses.find(s=>s==="Черновик")) tenderStatuses = ["Черновик", ...tenderStatuses];
+      if(!tenderStatuses.find(s=>s.toLowerCase()==="новый")) tenderStatuses.splice(1, 0, "Новый");
       nextRefs.tender_statuses = tenderStatuses;
       nextRefs.work_statuses = parseLines($("#r_work").value);
       nextRefs.reject_reasons = parseLines($("#r_rej").value);

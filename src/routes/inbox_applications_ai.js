@@ -229,6 +229,19 @@ module.exports = async function (fastify) {
           VALUES ('inbox_application', $1, 'email_classification', $2, $3, $4, $5, $6)
         `, [appId, analysis._raw?.model, analysis._raw?.provider, analysis._raw?.durationMs, JSON.stringify(analysis), user.id]);
 
+        // Generate AI report
+        try {
+          const aiReport = await aiAnalyzer.generateReport({
+            subject: email.subject, bodyText: email.body_text,
+            fromEmail: email.from_email, fromName: email.from_name, attachmentNames
+          });
+          if (aiReport) {
+            await db.query('UPDATE inbox_applications SET ai_report = $1 WHERE id = $2', [aiReport, appId]);
+          }
+        } catch (reportErr) {
+          console.error('[InboxApp] AI report generation error:', reportErr.message);
+        }
+
       } catch (aiErr) {
         console.error('[InboxApp] AI analysis error:', aiErr.message);
         // Заявка создана, но AI не сработал — оставляем status='new'
@@ -302,7 +315,20 @@ module.exports = async function (fastify) {
       VALUES ('inbox_application', $1, 'email_classification', $2, $3, $4, $5, $6)
     `, [id, analysis._raw?.model, analysis._raw?.provider, analysis._raw?.durationMs, JSON.stringify(analysis), user.id]);
 
-    return { success: true, analysis };
+    // Generate AI report (separate call)
+    let aiReport = null;
+    try {
+      aiReport = await aiAnalyzer.generateReport({
+        subject, bodyText, fromEmail, fromName, attachmentNames
+      });
+      if (aiReport) {
+        await db.query('UPDATE inbox_applications SET ai_report = $1 WHERE id = $2', [aiReport, id]);
+      }
+    } catch (reportErr) {
+      console.error('[InboxApp] AI report generation error:', reportErr.message);
+    }
+
+    return { success: true, analysis, ai_report: aiReport };
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -363,14 +389,20 @@ module.exports = async function (fastify) {
 
     let tenderId = null;
 
-    // Создать тендер из заявки
+    // Создать тендер-черновик из заявки
     if (create_tender) {
+      const tenderNotes = [
+        app.ai_report || app.ai_summary || '',
+        `Создано из входящей заявки #${id}.`,
+        notes || ''
+      ].filter(Boolean).join('\n\n').trim();
+
       const tenderRes = await db.query(`
         INSERT INTO tenders (
           tender_title, customer_name, tender_status, source, source_email,
           work_type, estimated_budget, notes,
           created_by, created_at, updated_at
-        ) VALUES ($1, $2, 'Новый', 'inbox_ai', $3, $4, $5, $6, $7, NOW(), NOW())
+        ) VALUES ($1, $2, 'Черновик', 'inbox_ai', $3, $4, $5, $6, $7, NOW(), NOW())
         RETURNING id
       `, [
         app.subject || 'Заявка из почты #' + id,
@@ -378,7 +410,7 @@ module.exports = async function (fastify) {
         app.source_email || '',
         app.ai_work_type || '',
         app.ai_estimated_budget || 0,
-        `Создано из входящей заявки #${id}. ${notes || ''}`.trim(),
+        tenderNotes,
         user.id
       ]);
       tenderId = tenderRes.rows[0].id;
@@ -473,6 +505,42 @@ module.exports = async function (fastify) {
       } catch (emailErr) {
         console.error('[InboxApp] Reject email error:', emailErr.message);
       }
+    }
+
+    // Create correspondence record for the rejection
+    try {
+      const year = new Date().getFullYear();
+      const seqRes = await db.query("SELECT nextval('correspondence_outgoing_seq') as num");
+      const seqNum = String(seqRes.rows[0].num).padStart(6, '0');
+      const corrNumber = `АС-ИСХ-${year}-${seqNum}`;
+
+      const rejectBody = reason
+        ? `Уважаемый(ая) ${app.source_name || 'коллега'},\n\nБлагодарим Вас за обращение в ООО «Асгард Сервис».\n\nК сожалению, мы вынуждены отказаться от участия в данном запросе.\nПричина: ${reason}\n\nНадеемся на дальнейшее сотрудничество.\n\nС уважением,\nООО «Асгард Сервис»`
+        : `Уважаемый(ая) ${app.source_name || 'коллега'},\n\nБлагодарим Вас за обращение в ООО «Асгард Сервис».\n\nК сожалению, данный запрос не соответствует нашему профилю работ.\n\nНадеемся на дальнейшее сотрудничество.\n\nС уважением,\nООО «Асгард Сервис»`;
+
+      await db.query(`
+        INSERT INTO correspondence (
+          direction, number, date, doc_type, subject, body,
+          counterparty, contact_person,
+          linked_inbox_application_id,
+          status, created_by, created_at, updated_at
+        ) VALUES (
+          'outgoing', $1, CURRENT_DATE, 'letter', $2, $3,
+          $4, $5,
+          $6,
+          'sent', $7, NOW(), NOW()
+        )
+      `, [
+        corrNumber,
+        'Отказ: ' + (app.subject || ''),
+        rejectBody,
+        app.source_email || '',
+        app.source_name || '',
+        id,
+        user.id
+      ]);
+    } catch (corrErr) {
+      console.error('[InboxApp] Correspondence auto-register error:', corrErr.message);
     }
 
     return { success: true };
