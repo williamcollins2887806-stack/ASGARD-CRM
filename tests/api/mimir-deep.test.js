@@ -25,9 +25,12 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/mimir/stats', { role: 'ADMIN' });
         assertOk(resp, 'mimir stats');
-        // Check if AI is configured
-        const stats = resp.data;
-        aiConfigured = !!(stats?.ai_configured || stats?.provider || process.env.AI_API_KEY || process.env.OPENAI_API_KEY);
+        // Check if AI is configured via /health endpoint
+        const healthResp = await api('GET', '/api/mimir/health', { role: 'ADMIN' });
+        if (healthResp.ok) {
+          const h = healthResp.data;
+          aiConfigured = h?.status === 'ok' || !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+        }
       }
     },
     {

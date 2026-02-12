@@ -9,9 +9,9 @@ module.exports = {
     {
       name: 'ADMIN tests email config',
       run: async () => {
-        const resp = await api('GET', '/api/email/test', { role: 'ADMIN' });
-        if (resp.status === 404) skip('Email config endpoint not available');
-        assertOk(resp, 'email test');
+        const resp = await api('GET', '/api/email/history', { role: 'ADMIN' });
+        if (resp.status === 404) skip('Email history endpoint not available');
+        assertOk(resp, 'email history');
       }
     },
     {

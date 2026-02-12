@@ -261,12 +261,20 @@ module.exports = {
     {
       name: '6.5.1 Equipment: create with required fields',
       run: async () => {
-        // Get category
+        // Get category — create one if none exist
         const cats = await api('GET', '/api/equipment/categories', { role: 'ADMIN' });
         assertOk(cats, 'get categories');
-        const categories = cats.data?.categories || cats.data;
-        if (!categories || !categories.length) skip('No equipment categories');
-        const catId = categories[0].id;
+        let categories = cats.data?.categories || cats.data;
+        let catId;
+        if (!categories || !categories.length) {
+          const newCat = await api('POST', '/api/data/equipment_categories', {
+            role: 'ADMIN', body: { name: 'TEST_FV_' + Date.now() }
+          });
+          if (!newCat.ok) skip('No equipment categories');
+          catId = (newCat.data?.item || newCat.data)?.id;
+        } else {
+          catId = categories[0].id;
+        }
 
         const resp = await api('POST', '/api/equipment', {
           role: 'ADMIN',

@@ -342,11 +342,11 @@ module.exports = {
 
     // ═══ Reports ═══
     {
-      name: 'EP: GET /api/reports/summary → not 500',
+      name: 'EP: GET /api/reports/dashboard → not 500',
       run: async () => {
-        const resp = await api('GET', '/api/reports/summary', { role: 'ADMIN' });
-        if (resp.status === 404) skip('reports/summary not available');
-        assertOk(resp, '/api/reports/summary: got');
+        const resp = await api('GET', '/api/reports/dashboard', { role: 'ADMIN' });
+        if (resp.status === 404) skip('reports/dashboard not available');
+        assertOk(resp, '/api/reports/dashboard: got');
       }
     },
 
@@ -390,11 +390,11 @@ module.exports = {
 
     // ═══ Payroll ═══
     {
-      name: 'EP: GET /api/payroll → not 500',
+      name: 'EP: GET /api/payroll/sheets → not 500',
       run: async () => {
-        const resp = await api('GET', '/api/payroll', { role: 'ADMIN' });
-        if (resp.status === 404) skip('payroll endpoint not available');
-        assertOk(resp, '/api/payroll: got');
+        const resp = await api('GET', '/api/payroll/sheets', { role: 'ADMIN' });
+        if (resp.status === 404) skip('payroll/sheets endpoint not available');
+        assertOk(resp, '/api/payroll/sheets: got');
       }
     },
 
@@ -494,29 +494,29 @@ module.exports = {
 
     // ═══ Inbox AI ═══
     {
-      name: 'EP: GET /api/inbox_applications_ai → not 500',
+      name: 'EP: GET /api/inbox-applications → not 500',
       run: async () => {
-        const resp = await api('GET', '/api/inbox_applications_ai', { role: 'ADMIN' });
-        if (resp.status === 404) skip('inbox_applications_ai not available');
-        assertOk(resp, '/api/inbox_applications_ai: got');
+        const resp = await api('GET', '/api/inbox-applications', { role: 'ADMIN' });
+        if (resp.status === 404) skip('inbox-applications not available');
+        assertOk(resp, '/api/inbox-applications: got');
       }
     },
     {
-      name: 'EP: GET /api/inbox_applications_ai/stats/summary → not 500',
+      name: 'EP: GET /api/inbox-applications/stats/summary → not 500',
       run: async () => {
-        const resp = await api('GET', '/api/inbox_applications_ai/stats/summary', { role: 'ADMIN' });
-        if (resp.status === 404) skip('inbox_applications_ai/stats/summary not available');
-        assertOk(resp, '/api/inbox_applications_ai/stats/summary: got');
+        const resp = await api('GET', '/api/inbox-applications/stats/summary', { role: 'ADMIN' });
+        if (resp.status === 404) skip('inbox-applications/stats/summary not available');
+        assertOk(resp, '/api/inbox-applications/stats/summary: got');
       }
     },
 
     // ═══ Geo ═══
     {
-      name: 'EP: GET /api/geo → not 500',
+      name: 'EP: GET /api/geo/cities → not 500',
       run: async () => {
-        const resp = await api('GET', '/api/geo', { role: 'ADMIN' });
-        if (resp.status === 404) skip('geo endpoint not available');
-        assertOk(resp, '/api/geo: got');
+        const resp = await api('GET', '/api/geo/cities', { role: 'ADMIN' });
+        if (resp.status === 404) skip('geo/cities endpoint not available');
+        assertOk(resp, '/api/geo/cities: got');
       }
     },
 

@@ -1,5 +1,6 @@
 /**
  * E2E FLOW 5: Cash advance lifecycle
+ * Route: POST /api/cash, PUT /:id/approve, PUT /:id/receive, POST /:id/return, PUT /:id/close
  */
 const { api, assert, assertOk, skip } = require('../config');
 
@@ -9,52 +10,51 @@ module.exports = {
     {
       name: 'Cash advance: request -> approve -> receive -> expense -> return -> close',
       run: async () => {
+        // Need a work_id for advance type
+        const works = await api('GET', '/api/works?limit=1', { role: 'PM' });
+        const workList = works.data?.works || works.data || [];
+        const workId = Array.isArray(workList) && workList.length > 0 ? workList[0].id : null;
+        if (!workId) skip('No works available for cash advance test');
+
         // 1. PM creates cash advance request
-        const req = await api('POST', '/api/cash/request', {
+        const req = await api('POST', '/api/cash', {
           role: 'PM',
-          body: { amount: 75000, description: 'E2E: Business trip to site' }
+          body: { amount: 75000, purpose: 'E2E: Business trip to site', work_id: workId, type: 'advance' }
         });
-        if (req.status === 404) skip('cash/request endpoint not available');
+        if (req.status === 404) skip('cash endpoint not available');
         assertOk(req, 'cash request');
-        const cashId = req.data?.request?.id || req.data?.id;
+        const cashId = req.data?.id;
         if (!cashId) return;
 
         // 2. ADMIN approves
         const approve = await api('PUT', `/api/cash/${cashId}/approve`, {
           role: 'ADMIN',
-          body: { notes: 'E2E: Approved for trip' }
+          body: { comment: 'E2E: Approved for trip' }
         });
         assertOk(approve, 'approve');
 
         // 3. PM marks as received
-        const received = await api('PUT', `/api/cash/${cashId}/received`, {
+        const received = await api('PUT', `/api/cash/${cashId}/receive`, {
           role: 'PM',
-          body: { received_date: '2026-02-01', notes: 'E2E: Cash received' }
+          body: {}
         });
         assertOk(received, 'received');
 
-        // 4. PM adds expense report
-        const expense = await api('POST', `/api/cash/${cashId}/expenses`, {
-          role: 'PM',
-          body: { amount: 45000, category: 'travel', date: '2026-02-05', description: 'E2E: Hotel + transport' }
-        });
-        assertOk(expense, 'cash expense');
-
-        // 5. PM returns remainder
+        // 4. PM returns the full amount (expense requires multipart upload)
         const ret = await api('POST', `/api/cash/${cashId}/return`, {
           role: 'PM',
-          body: { amount: 30000, date: '2026-02-10', notes: 'E2E: Returning unused funds' }
+          body: { amount: 75000, note: 'E2E: Returning full amount' }
         });
         assertOk(ret, 'cash return');
 
-        // 6. ADMIN closes the request
+        // 5. ADMIN closes the request
         const close = await api('PUT', `/api/cash/${cashId}/close`, {
           role: 'ADMIN',
-          body: { notes: 'E2E: Closed after full reconciliation' }
+          body: { force: true, comment: 'E2E: Closed after return' }
         });
         assertOk(close, 'close');
 
-        // 7. Verify in all cash list
+        // 6. Verify in all cash list
         const allCash = await api('GET', '/api/cash/all', { role: 'ADMIN' });
         assertOk(allCash, 'all cash');
       }

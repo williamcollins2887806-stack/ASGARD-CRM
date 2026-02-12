@@ -59,10 +59,10 @@ module.exports = {
           body: {
             contractor_name: 'ООО Тест Stage12',
             title: 'Тест заявка Stage12',
-            items: [{ employee_id: 1, type_ids: [1] }]
+            items: [{ employee_id: 1, permit_type_ids: [2] }]
           }
         });
-        if (resp.status === 400) skip('Cannot create permit app: validation error');
+        if (resp.status === 400) skip('Cannot create permit app: ' + (resp.data?.error || 'validation error'));
         assertOk(resp, 'create permit app');
         if (resp.ok) {
           testPermitAppId = resp.data?.application?.id || resp.data?.id;

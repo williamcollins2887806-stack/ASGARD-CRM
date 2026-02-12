@@ -17,8 +17,8 @@ module.exports = {
     {
       name: 'ADMIN reads inbox emails',
       run: async () => {
-        const resp = await api('GET', '/api/mailbox/inbox', { role: 'ADMIN' });
-        if (resp.status === 404) skip('mailbox/inbox not available');
+        const resp = await api('GET', '/api/mailbox/emails', { role: 'ADMIN' });
+        if (resp.status === 404) skip('mailbox/emails not available');
         assertOk(resp, 'inbox');
       }
     }

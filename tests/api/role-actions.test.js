@@ -374,7 +374,7 @@ module.exports = {
     {
       name: '8.5.7 DIRECTOR_GEN can read reports',
       run: async () => {
-        const resp = await api('GET', '/api/reports/summary', { role: 'DIRECTOR_GEN' });
+        const resp = await api('GET', '/api/reports/dashboard', { role: 'DIRECTOR_GEN' });
         // Reports might not exist, but should not be 403
         assert(resp.status !== 403 && resp.status !== 401, `expected non-403, got ${resp.status}`);
       }
@@ -451,12 +451,21 @@ module.exports = {
       name: '8.7.2 WAREHOUSE can create equipment',
       run: async () => {
         const cats = await api('GET', '/api/equipment/categories', { role: 'WAREHOUSE' });
-        const categories = cats.data?.categories || cats.data;
-        if (!categories || !categories.length) skip('No categories');
+        let categories = cats.data?.categories || cats.data;
+        let catId;
+        if (!categories || !categories.length) {
+          const newCat = await api('POST', '/api/data/equipment_categories', {
+            role: 'ADMIN', body: { name: 'TEST_RA_' + Date.now() }
+          });
+          if (!newCat.ok) skip('No categories');
+          catId = (newCat.data?.item || newCat.data)?.id;
+        } else {
+          catId = categories[0].id;
+        }
 
         const resp = await api('POST', '/api/equipment', {
           role: 'WAREHOUSE',
-          body: { name: 'WH-Tool', category_id: categories[0].id, purchase_price: 1000 }
+          body: { name: 'WH-Tool', category_id: catId, purchase_price: 1000 }
         });
         assertOk(resp, 'WH creates equipment');
       }
