@@ -9,8 +9,8 @@ module.exports = {
     {
       name: 'ADMIN reads mailbox status',
       run: async () => {
-        const resp = await api('GET', '/api/mailbox/status', { role: 'ADMIN' });
-        if (resp.status === 404) skip('mailbox/status not available');
+        const resp = await api('GET', '/api/mailbox/stats', { role: 'ADMIN' });
+        if (resp.status === 404) skip('mailbox/stats not available');
         assertOk(resp, 'mailbox status');
       }
     },

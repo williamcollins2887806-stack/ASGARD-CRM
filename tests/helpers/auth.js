@@ -9,6 +9,15 @@
 
 const { request } = require('./api');
 
+// Read JWT_SECRET from .env (same as server) or use fallback
+const dotenvPath = require('path').join(__dirname, '..', '..', '.env');
+try {
+  const envContent = require('fs').readFileSync(dotenvPath, 'utf8');
+  const match = envContent.match(/^JWT_SECRET=(.+)$/m);
+  if (match && !process.env.JWT_SECRET) {
+    process.env.JWT_SECRET = match[1].trim();
+  }
+} catch (_) { /* .env not found — use default */ }
 const JWT_SECRET = process.env.JWT_SECRET || 'asgard-jwt-secret-2026';
 
 const ROLES = [

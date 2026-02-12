@@ -52,8 +52,13 @@ module.exports = {
     {
       name: 'Validate rates endpoint',
       run: async () => {
-        const resp = await api('GET', '/api/payroll/rates', { role: 'ADMIN' });
-        if (resp.status === 400) skip('rates requires employee_id param');
+        // Get a real employee_id — endpoint requires it
+        const empResp = await api('GET', '/api/staff/employees', { role: 'ADMIN' });
+        const emps = empResp.data?.employees || empResp.data || [];
+        const empId = Array.isArray(emps) && emps.length > 0 ? emps[0].id : 1;
+
+        const resp = await api('GET', `/api/payroll/rates?employee_id=${empId}`, { role: 'ADMIN' });
+        if (resp.status === 404) skip('rates endpoint not available');
         assertOk(resp, 'rates');
         if (resp.ok && resp.data) {
           const rates = Array.isArray(resp.data) ? resp.data : (resp.data.rates || resp.data);

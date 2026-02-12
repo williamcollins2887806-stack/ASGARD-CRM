@@ -110,7 +110,7 @@ function makeTests() {
   tests.push({
     name: 'SCHEMA: tasks endpoint accessible',
     run: async () => {
-      const resp = await api('GET', '/api/tasks', { role: 'ADMIN' });
+      const resp = await api('GET', '/api/tasks/my', { role: 'ADMIN' });
       if (resp.status === 404) skip('tasks endpoint not available');
       assertOk(resp, 'tasks endpoint');
       const list = Array.isArray(resp.data) ? resp.data : (resp.data?.tasks || []);
