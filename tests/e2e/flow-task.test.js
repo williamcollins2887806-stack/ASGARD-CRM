@@ -1,7 +1,7 @@
 /**
  * E2E FLOW 4: Task lifecycle with director -> employee flow
  */
-const { api, assert, assertOk } = require('../config');
+const { api, assert, assertOk, skip } = require('../config');
 
 module.exports = {
   name: 'FLOW: Task Lifecycle',
@@ -20,7 +20,7 @@ module.exports = {
           role: 'ADMIN',
           body: { title: 'E2E Task: Prepare monthly report', assignee_id: assigneeId, priority: 'high', deadline: '2026-03-15', description: 'E2E autotest task' }
         });
-        assert(t.status < 500, `create task: ${t.status}`);
+        assertOk(t, 'create task');
         const taskId = t.data?.task?.id || t.data?.id;
         if (!taskId) return;
 
@@ -33,14 +33,15 @@ module.exports = {
           role: 'PM',
           body: { text: 'E2E: Working on this task' }
         });
-        assert(comment.status < 500, `comment: ${comment.status}`);
+        assertOk(comment, 'comment');
 
-        // 4. PM completes task
-        const complete = await api('POST', `/api/tasks/${taskId}/complete`, {
+        // 4. PM completes task (route is PUT, not POST)
+        const complete = await api('PUT', `/api/tasks/${taskId}/complete`, {
           role: 'PM',
           body: { comment: 'E2E: Task completed successfully' }
         });
-        assert(complete.status < 500, `complete: ${complete.status}`);
+        if (complete.status === 404) skip('task complete endpoint not found');
+        assertOk(complete, 'complete');
 
         // Cleanup
         await api('DELETE', `/api/tasks/${taskId}`, { role: 'ADMIN' });

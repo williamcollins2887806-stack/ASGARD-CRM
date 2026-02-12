@@ -37,7 +37,7 @@ module.exports = {
           role: 'PM',
           body: { work_id: wid, amount: 500000, description: 'E2E Advance payment', type: 'advance', date: '2026-01-10' }
         });
-        assert(inc.status < 500, `income: ${inc.status}`);
+        assertOk(inc, 'income');
 
         // 5. Check work detail shows expenses
         const wDetail = await api('GET', `/api/works/${wid}`, { role: 'PM' });

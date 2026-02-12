@@ -36,7 +36,7 @@ module.exports = {
             deadline: '2026-03-01'
           }
         });
-        assert(resp.status < 500, `create task: ${resp.status}`);
+        assertOk(resp, 'create task');
         if (resp.ok) {
           const task = resp.data?.task || resp.data;
           testTaskId = task?.id;
@@ -75,7 +75,7 @@ module.exports = {
       name: 'Task stats returns valid object',
       run: async () => {
         const resp = await api('GET', '/api/tasks/stats', { role: 'ADMIN' });
-        assert(resp.status < 500, `stats: ${resp.status}`);
+        assertOk(resp, 'stats');
         if (resp.ok) assert(resp.data && typeof resp.data === 'object', 'stats should be object');
       }
     },
@@ -85,10 +85,10 @@ module.exports = {
         const create = await api('POST', '/api/tasks/todo', {
           role: 'ADMIN', body: { text: 'ТЕСТ: Todo элемент' }
         });
-        assert(create.status < 500, `create todo: ${create.status}`);
+        assertOk(create, 'create todo');
 
         const list = await api('GET', '/api/tasks/todo', { role: 'ADMIN' });
-        assert(list.status < 500, `get todo: ${list.status}`);
+        assertOk(list, 'get todo');
       }
     },
     {
@@ -97,7 +97,7 @@ module.exports = {
         const resp = await api('POST', '/api/tasks', {
           role: 'ADMIN', body: { assignee_id: assigneeId || 1 }
         });
-        assert(resp.status >= 400 && resp.status < 500, `expected 4xx, got ${resp.status}`);
+        assert(resp.status === 400, `expected 4xx, got ${resp.status}`);
       }
     },
     {
@@ -112,7 +112,7 @@ module.exports = {
       run: async () => {
         if (!testTaskId) return;
         const del = await api('DELETE', `/api/tasks/${testTaskId}`, { role: 'ADMIN' });
-        assert(del.status < 500, `delete task: ${del.status}`);
+        assertOk(del, 'delete task');
         const check = await api('GET', `/api/tasks/${testTaskId}`, { role: 'ADMIN' });
         assert(check.status === 404 || check.status === 400 || check.status === 403, `deleted task should be 404, got ${check.status}`);
         testTaskId = null;

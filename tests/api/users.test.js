@@ -31,7 +31,7 @@ module.exports = {
             email: 'stage12_test@asgard.local'
           }
         });
-        assert(resp.status < 500, `create user: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        assertOk(resp, 'create user:  -');
         if (resp.ok) {
           const user = resp.data?.user || resp.data;
           createdUserId = user?.id;
@@ -84,7 +84,7 @@ module.exports = {
         const resp = await api('POST', '/api/users', {
           role: 'ADMIN', body: { name: 'No Login', role: 'PM' }
         });
-        assert(resp.status >= 400 && resp.status < 500, `expected 4xx, got ${resp.status}`);
+        assert(resp.status === 400, `expected 4xx, got ${resp.status}`);
       }
     },
     {

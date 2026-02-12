@@ -46,7 +46,7 @@ module.exports = {
       name: 'ADMIN reads bank transactions — validates shape',
       run: async () => {
         const resp = await api('GET', '/api/integrations/bank/transactions', { role: 'ADMIN' });
-        assert(resp.status < 500, `bank transactions: ${resp.status}`);
+        assertOk(resp, 'bank transactions');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.transactions || resp.data.items || []);
           if (Array.isArray(list) && list.length > 0) {
@@ -59,7 +59,7 @@ module.exports = {
       name: 'ADMIN reads bank stats',
       run: async () => {
         const resp = await api('GET', '/api/integrations/bank/stats', { role: 'ADMIN' });
-        assert(resp.status < 500, `bank stats: ${resp.status}`);
+        assertOk(resp, 'bank stats');
         if (resp.ok) assert(typeof resp.data === 'object', 'stats should be object');
       }
     },
@@ -67,7 +67,7 @@ module.exports = {
       name: 'ADMIN reads bank rules — validates array',
       run: async () => {
         const resp = await api('GET', '/api/integrations/bank/rules', { role: 'ADMIN' });
-        assert(resp.status < 500, `bank rules: ${resp.status}`);
+        assertOk(resp, 'bank rules');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.rules || resp.data.items || []);
           assertArray(list, 'bank rules list');
@@ -78,7 +78,7 @@ module.exports = {
       name: 'ADMIN reads ERP connections',
       run: async () => {
         const resp = await api('GET', '/api/integrations/erp/connections', { role: 'ADMIN' });
-        assert(resp.status < 500, `erp connections: ${resp.status}`);
+        assertOk(resp, 'erp connections');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.connections || []);
           assertArray(list, 'erp connections list');
@@ -89,14 +89,14 @@ module.exports = {
       name: 'ADMIN reads ERP sync log',
       run: async () => {
         const resp = await api('GET', '/api/integrations/erp/sync-log', { role: 'ADMIN' });
-        assert(resp.status < 500, `erp sync-log: ${resp.status}`);
+        assertOk(resp, 'erp sync-log');
       }
     },
     {
       name: 'ADMIN reads platforms — validates shape',
       run: async () => {
         const resp = await api('GET', '/api/integrations/platforms', { role: 'ADMIN' });
-        assert(resp.status < 500, `platforms: ${resp.status}`);
+        assertOk(resp, 'platforms');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.platforms || resp.data.items || []);
           if (Array.isArray(list) && list.length > 0) {
@@ -109,7 +109,7 @@ module.exports = {
       name: 'ADMIN reads platforms stats',
       run: async () => {
         const resp = await api('GET', '/api/integrations/platforms/stats', { role: 'ADMIN' });
-        assert(resp.status < 500, `platforms stats: ${resp.status}`);
+        assertOk(resp, 'platforms stats');
         if (resp.ok) assert(typeof resp.data === 'object', 'platforms stats is object');
       }
     },
@@ -117,7 +117,7 @@ module.exports = {
       name: 'NEGATIVE: upload bank without file → 400',
       run: async () => {
         const resp = await api('POST', '/api/integrations/bank/upload', { role: 'ADMIN', body: {} });
-        assert(resp.status >= 400 && resp.status < 500, `upload empty: expected 4xx, got ${resp.status}`);
+        assert(resp.status === 400 || resp.status === 406, `upload empty: expected 400/406, got ${resp.status}`);
       }
     },
     {

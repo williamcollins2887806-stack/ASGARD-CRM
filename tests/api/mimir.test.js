@@ -1,7 +1,7 @@
 /**
  * MIMIR - AI assistant endpoints
  */
-const { api, assert } = require('../config');
+const {api, assert, assertOk, skip} = require('../config');
 
 module.exports = {
   name: 'MIMIR (AI Ассистент)',
@@ -10,21 +10,24 @@ module.exports = {
       name: 'ADMIN reads mimir status',
       run: async () => {
         const resp = await api('GET', '/api/mimir/status', { role: 'ADMIN' });
-        assert(resp.status < 500, `mimir status: ${resp.status}`);
+        if (resp.status === 404) skip('mimir/status not available');
+        assertOk(resp, 'mimir status');
       }
     },
     {
       name: 'ADMIN reads mimir providers',
       run: async () => {
         const resp = await api('GET', '/api/mimir/providers', { role: 'ADMIN' });
-        assert(resp.status < 500, `mimir providers: ${resp.status}`);
+        if (resp.status === 404) skip('mimir/providers not available');
+        assertOk(resp, 'mimir providers');
       }
     },
     {
       name: 'PM reads mimir status',
       run: async () => {
         const resp = await api('GET', '/api/mimir/status', { role: 'PM' });
-        assert(resp.status < 500, `PM mimir: ${resp.status}`);
+        if (resp.status === 404) skip('mimir/status not available');
+        assertOk(resp, 'PM mimir');
       }
     }
   ]

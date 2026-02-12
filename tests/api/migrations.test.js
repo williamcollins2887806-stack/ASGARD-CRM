@@ -40,10 +40,10 @@ function makeTests() {
         // 400 means "not in whitelist" (table may exist but not exposed)
         // 200 means table exists and accessible
         // 403 means accessible but role restricted
-        // 200=ok, 400=not in whitelist, 403=restricted, 500=table has schema issue but exists
+        // A6: 200=ok, 400=not in whitelist, 403=restricted — never 500
         assert(
-          resp.status === 200 || resp.status === 400 || resp.status === 403 || resp.status === 500,
-          `table "${table}": expected 200/400/403/500, got ${resp.status}`
+          resp.status === 200 || resp.status === 400 || resp.status === 403,
+          `table "${table}": expected 200/400/403, got ${resp.status}`
         );
       }
     });
@@ -85,7 +85,7 @@ function makeTests() {
       for (const est of list.slice(0, 3)) {
         if (est.tender_id) {
           const check = await api('GET', `/api/tenders/${est.tender_id}`);
-          assert(check.status < 500, `tender ${est.tender_id} lookup should not 500`);
+          assertOk(check, `tender ${est.tender_id} lookup`);
         }
       }
     }
@@ -101,7 +101,7 @@ function makeTests() {
       for (const w of list.slice(0, 3)) {
         if (w.tender_id) {
           const check = await api('GET', `/api/tenders/${w.tender_id}`);
-          assert(check.status < 500, `tender ${w.tender_id} for work ${w.id} should not 500`);
+          assertOk(check, `tender ${w.tender_id} for work ${w.id}`);
         }
       }
     }
@@ -111,11 +111,12 @@ function makeTests() {
     name: 'SCHEMA: tasks endpoint accessible',
     run: async () => {
       const resp = await api('GET', '/api/tasks', { role: 'ADMIN' });
-      assert(resp.status < 500, `tasks endpoint: ${resp.status}`);
+      if (resp.status === 404) skip('tasks endpoint not available');
+      assertOk(resp, 'tasks endpoint');
       const list = Array.isArray(resp.data) ? resp.data : (resp.data?.tasks || []);
       if (list.length > 0 && list[0].assignee_id) {
         const check = await api('GET', `/api/users/${list[0].assignee_id}`);
-        assert(check.status < 500, `user lookup: ${check.status}`);
+        assertOk(check, 'user lookup');
       }
     }
   });
@@ -130,7 +131,7 @@ function makeTests() {
       for (const e of list.slice(0, 3)) {
         if (e.work_id) {
           const check = await api('GET', `/api/data/works/${e.work_id}`);
-          assert(check.status < 500, `work ${e.work_id} for expense ${e.id} should not 500`);
+          assertOk(check, `work ${e.work_id} for expense ${e.id}`);
         }
       }
     }
@@ -144,9 +145,9 @@ function makeTests() {
       // sites might not be in whitelist — check via dedicated endpoint
       if (resp.status === 400) {
         const direct = await api('GET', '/api/sites');
-        assert(direct.status < 500, `sites endpoint: ${direct.status}`);
+        assertOk(direct, 'sites endpoint');
       } else {
-        assert(resp.status < 500, `sites data: ${resp.status}`);
+        assertOk(resp, 'sites data');
       }
     }
   });
@@ -155,7 +156,7 @@ function makeTests() {
     name: 'SCHEMA: permit_applications table exists (V017)',
     run: async () => {
       const resp = await api('GET', '/api/data/permit_applications?limit=1');
-      assert(resp.status < 500, `permit_applications: ${resp.status}`);
+      assertOk(resp, 'permit_applications');
     }
   });
 
@@ -163,7 +164,8 @@ function makeTests() {
     name: 'SCHEMA: mimir_conversations table exists (V014)',
     run: async () => {
       const resp = await api('GET', '/api/mimir/conversations', { role: 'ADMIN' });
-      assert(resp.status < 500, `mimir conversations: ${resp.status}`);
+      if (resp.status === 404) skip('mimir/conversations not available');
+      assertOk(resp, 'mimir conversations');
     }
   });
 

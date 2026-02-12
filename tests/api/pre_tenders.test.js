@@ -31,7 +31,7 @@ module.exports = {
           role: 'ADMIN',
           body: { customer_name: 'Deep Pre-tender Customer', customer_inn: '7712345678', tender_type: 'Аукцион', estimated_sum: 2000000, status: 'new' }
         });
-        assert(resp.status < 500, `create: ${resp.status}`);
+        assertOk(resp, 'create');
         if (resp.ok) {
           const pt = resp.data?.pre_tender || resp.data;
           testPreTenderId = pt?.id;
@@ -43,7 +43,7 @@ module.exports = {
       name: 'Pre-tender stats returns valid shape',
       run: async () => {
         const resp = await api('GET', '/api/pre-tenders/stats', { role: 'ADMIN' });
-        assert(resp.status < 500, `stats: ${resp.status}`);
+        assertOk(resp, 'stats');
         if (resp.ok) assert(typeof resp.data === 'object', 'stats is object');
       }
     },
@@ -51,7 +51,7 @@ module.exports = {
       name: 'NEGATIVE: create with empty body → 400',
       run: async () => {
         const resp = await api('POST', '/api/pre-tenders', { role: 'ADMIN', body: {} });
-        assert(resp.status >= 400 && resp.status < 500, `expected 4xx, got ${resp.status}`);
+        assert(resp.status === 400, `expected 4xx, got ${resp.status}`);
       }
     },
     {

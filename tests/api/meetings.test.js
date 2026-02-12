@@ -12,7 +12,7 @@ module.exports = {
       name: 'ADMIN reads meetings list',
       run: async () => {
         const resp = await api('GET', '/api/meetings', { role: 'ADMIN' });
-        assert(resp.status < 500, `meetings: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        assertOk(resp, 'meetings:  -');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.meetings || resp.data.items || []);
           assertArray(list, 'meetings list');
@@ -23,14 +23,14 @@ module.exports = {
       name: 'ADMIN reads upcoming meetings',
       run: async () => {
         const resp = await api('GET', '/api/meetings/upcoming', { role: 'ADMIN' });
-        assert(resp.status < 500, `upcoming: ${resp.status}`);
+        assertOk(resp, 'upcoming');
       }
     },
     {
       name: 'ADMIN reads meetings stats',
       run: async () => {
         const resp = await api('GET', '/api/meetings/stats', { role: 'ADMIN' });
-        assert(resp.status < 500, `stats: ${resp.status}`);
+        assertOk(resp, 'stats');
       }
     },
     {
@@ -45,7 +45,7 @@ module.exports = {
             description: 'Автотест совещание'
           }
         });
-        assert(resp.status < 500, `create meeting: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        assertOk(resp, 'create meeting:  -');
         if (resp.ok) testMeetingId = resp.data?.meeting?.id || resp.data?.id;
       }
     },
@@ -54,7 +54,7 @@ module.exports = {
       run: async () => {
         if (!testMeetingId) return;
         const resp = await api('GET', `/api/meetings/${testMeetingId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `get meeting: ${resp.status}`);
+        assertOk(resp, 'get meeting');
         if (resp.ok && resp.data) {
           const meeting = resp.data.meeting || resp.data;
           assertHasFields(meeting, ['id'], 'read-back meeting');
@@ -72,7 +72,7 @@ module.exports = {
           role: 'ADMIN',
           body: { title: 'Stage12: Updated planёrka' }
         });
-        assert(resp.status < 500, `update meeting: ${resp.status}`);
+        assertOk(resp, 'update meeting');
       }
     },
     {
@@ -80,7 +80,7 @@ module.exports = {
       run: async () => {
         if (!testMeetingId) return;
         const resp = await api('GET', `/api/meetings/${testMeetingId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `read-back updated meeting: ${resp.status}`);
+        assertOk(resp, 'read-back updated meeting');
         if (resp.ok && resp.data) {
           const meeting = resp.data.meeting || resp.data;
           if (meeting.title !== undefined) {
@@ -104,7 +104,7 @@ module.exports = {
       run: async () => {
         if (!testMeetingId) return;
         const resp = await api('DELETE', `/api/meetings/${testMeetingId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `delete meeting: ${resp.status}`);
+        assertOk(resp, 'delete meeting');
       }
     },
     {

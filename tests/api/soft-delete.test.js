@@ -22,7 +22,7 @@ module.exports = {
           role: 'TO',
           body: { customer: 'DEL-TEST-tender', tender_status: 'Новый', tender_type: 'Аукцион' }
         });
-        assert(cr.status < 500, `create: ${cr.status}`);
+        assertOk(cr, 'create');
         const id = cr.data?.tender?.id || cr.data?.id;
         if (!id) skip('Cannot create tender');
         tenderIds.push(id);
@@ -42,7 +42,7 @@ module.exports = {
           role: 'TO',
           body: { customer: 'DEL-LIST-TEST', tender_status: 'Новый', tender_type: 'Аукцион' }
         });
-        assert(cr.status < 500, `create: ${cr.status}`);
+        assertOk(cr, 'create');
         const id = cr.data?.tender?.id || cr.data?.id;
         if (!id) skip('Cannot create tender');
         tenderIds.push(id);
@@ -95,7 +95,8 @@ module.exports = {
         assertOk(del1, 'first delete');
 
         const del2 = await api('DELETE', `/api/tenders/${id}`, { role: 'ADMIN' });
-        assert(del2.status < 500, `second delete should not 500, got ${del2.status}`);
+        // Double-delete correctly returns 404 (already gone)
+        assert(del2.status === 404, `second delete: expected 404, got ${del2.status}`);
         tenderIds = tenderIds.filter(x => x !== id);
       }
     },
@@ -107,12 +108,12 @@ module.exports = {
           role: 'PM',
           body: { work_title: 'DEL-TEST-work' }
         });
-        assert(cr.status < 500, `create work: ${cr.status}`);
+        assertOk(cr, 'create work');
         workId = cr.data?.work?.id || cr.data?.id;
         if (!workId) skip('Cannot create work');
 
         const del = await api('DELETE', `/api/works/${workId}`, { role: 'ADMIN' });
-        assert(del.status < 500, `delete work: ${del.status}`);
+        assertOk(del, 'delete work');
 
         const check = await api('GET', `/api/data/works/${workId}`, { role: 'ADMIN' });
         assert(check.status === 404 || check.status === 400, `deleted work should be 404, got ${check.status}`);
@@ -127,12 +128,12 @@ module.exports = {
           role: 'ADMIN',
           body: { fio: 'DEL-TEST Сотрудник', is_active: true }
         });
-        assert(cr.status < 500, `create employee: ${cr.status}`);
+        assertOk(cr, 'create employee');
         employeeId = cr.data?.id || cr.data?.item?.id;
         if (!employeeId) skip('Cannot create employee');
 
         const del = await api('DELETE', `/api/data/employees/${employeeId}`, { role: 'ADMIN' });
-        assert(del.status < 500, `delete employee: ${del.status}`);
+        assertOk(del, 'delete employee');
 
         const check = await api('GET', `/api/data/employees/${employeeId}`, { role: 'ADMIN' });
         assert(check.status === 404 || check.status === 400, `deleted employee should be 404, got ${check.status}`);
@@ -148,11 +149,11 @@ module.exports = {
           role: 'ADMIN',
           body: { inn, name: 'DEL-TEST Клиент' }
         });
-        assert(cr.status < 500, `create customer: ${cr.status}`);
+        assertOk(cr, 'create customer');
         customerId = cr.data?.customer?.inn || cr.data?.inn || inn;
 
         const del = await api('DELETE', `/api/customers/${customerId}`, { role: 'ADMIN' });
-        assert(del.status < 500, `delete customer: ${del.status}`);
+        assertOk(del, 'delete customer');
 
         const check = await api('GET', `/api/customers/${customerId}`, { role: 'ADMIN' });
         assert(check.status === 404 || check.status === 400 || (check.ok && !check.data?.customer),
@@ -168,12 +169,12 @@ module.exports = {
           role: 'ADMIN',
           body: { number: 'DEL-TEST-INV-001', amount: 10000, status: 'Новый' }
         });
-        assert(cr.status < 500, `create invoice: ${cr.status}`);
+        assertOk(cr, 'create invoice');
         invoiceId = cr.data?.id || cr.data?.item?.id;
         if (!invoiceId) skip('Cannot create invoice');
 
         const del = await api('DELETE', `/api/data/invoices/${invoiceId}`, { role: 'ADMIN' });
-        assert(del.status < 500, `delete invoice: ${del.status}`);
+        assertOk(del, 'delete invoice');
 
         const check = await api('GET', `/api/data/invoices/${invoiceId}`, { role: 'ADMIN' });
         assert(check.status === 404 || check.status === 400, `deleted invoice should be 404, got ${check.status}`);

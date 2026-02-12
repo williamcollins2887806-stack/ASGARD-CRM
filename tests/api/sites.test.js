@@ -44,7 +44,7 @@ module.exports = {
       run: async () => {
         if (!testSiteId) throw new Error('No site');
         const resp = await api('GET', `/api/sites/${testSiteId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `get site: ${resp.status}`);
+        assertOk(resp, 'get site');
         if (resp.ok && resp.data) {
           const site = resp.data.site || resp.data;
           assertHasFields(site, ['id', 'name'], 'read-back site');
@@ -68,7 +68,7 @@ module.exports = {
       run: async () => {
         if (!testSiteId) throw new Error('No site');
         const resp = await api('GET', `/api/sites/${testSiteId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `read-back site coords: ${resp.status}`);
+        assertOk(resp, 'read-back site coords');
         if (resp.ok && resp.data) {
           const site = resp.data.site || resp.data;
           // Verify coordinates were saved

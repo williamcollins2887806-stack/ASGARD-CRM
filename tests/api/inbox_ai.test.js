@@ -1,7 +1,7 @@
 /**
  * INBOX_APPLICATIONS_AI - AI-powered inbox application processing
  */
-const { api, assert } = require('../config');
+const {api, assert, assertOk, skip} = require('../config');
 
 module.exports = {
   name: 'INBOX AI (AI Заявки)',
@@ -10,21 +10,24 @@ module.exports = {
       name: 'ADMIN reads inbox applications',
       run: async () => {
         const resp = await api('GET', '/api/inbox-ai/applications', { role: 'ADMIN' });
-        assert(resp.status < 500, `inbox apps: ${resp.status}`);
+        if (resp.status === 404) skip('inbox-ai/applications not available');
+        assertOk(resp, 'inbox apps');
       }
     },
     {
       name: 'ADMIN reads inbox AI status',
       run: async () => {
         const resp = await api('GET', '/api/inbox-ai/status', { role: 'ADMIN' });
-        assert(resp.status < 500, `inbox ai status: ${resp.status}`);
+        if (resp.status === 404) skip('inbox-ai/status not available');
+        assertOk(resp, 'inbox ai status');
       }
     },
     {
       name: 'TO reads inbox applications',
       run: async () => {
         const resp = await api('GET', '/api/inbox-ai/applications', { role: 'TO' });
-        assert(resp.status < 500, `TO inbox apps: ${resp.status}`);
+        if (resp.status === 404) skip('inbox-ai/applications not available');
+        assertOk(resp, 'TO inbox apps');
       }
     }
   ]

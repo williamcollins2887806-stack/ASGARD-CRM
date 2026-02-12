@@ -69,7 +69,7 @@ module.exports = {
         const resp = await api('POST', `/api/staff/employees/${testEmpId}/review`, {
           role: 'HR', body: { rating: 4, comment: 'Автотест оценка' }
         });
-        assert(resp.status < 500, `review: ${resp.status}`);
+        assertOk(resp, 'review');
       }
     },
     {

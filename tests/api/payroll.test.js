@@ -1,4 +1,4 @@
-const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType, skip } = require('../config');
 
 let testSheetId = null;
 
@@ -28,7 +28,7 @@ module.exports = {
           }
         });
         // May fail with 400 if validation differs, accept non-500
-        assert(resp.status < 500, `create sheet: ${resp.status}`);
+        assertOk(resp, 'create sheet');
         if (resp.ok) {
           testSheetId = resp.data?.sheet?.id || resp.data?.id;
         }
@@ -53,7 +53,8 @@ module.exports = {
       name: 'Validate rates endpoint',
       run: async () => {
         const resp = await api('GET', '/api/payroll/rates', { role: 'ADMIN' });
-        assert(resp.status < 500, `rates: ${resp.status}`);
+        if (resp.status === 400) skip('rates requires employee_id param');
+        assertOk(resp, 'rates');
         if (resp.ok && resp.data) {
           const rates = Array.isArray(resp.data) ? resp.data : (resp.data.rates || resp.data);
           assert(rates !== undefined, 'rates should return data');

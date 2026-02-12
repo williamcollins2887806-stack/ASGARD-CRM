@@ -39,7 +39,7 @@ module.exports = {
       name: 'ADMIN reads act stats',
       run: async () => {
         const resp = await api('GET', '/api/acts/stats/summary', { role: 'ADMIN' });
-        assert(resp.status < 500, `act stats: ${resp.status}`);
+        assertOk(resp, 'act stats');
         if (resp.ok && resp.data) {
           assert(typeof resp.data === 'object', 'stats should be object');
         }

@@ -1,7 +1,7 @@
 /**
  * PERMIT_APPLICATIONS - Permit application workflow — deep CRUD + validation
  */
-const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertFieldType, assertMatch } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertFieldType, assertMatch, skip } = require('../config');
 
 let testPermitAppId = null;
 
@@ -57,14 +57,13 @@ module.exports = {
         const resp = await api('POST', '/api/permit-applications', {
           role: 'HR',
           body: {
-            employee_name: 'Тест Сотрудник Stage12',
-            permit_type: 'safety',
-            contractor: 'ООО Тест',
-            site_name: 'Объект Тест',
-            status: 'draft'
+            contractor_name: 'ООО Тест Stage12',
+            title: 'Тест заявка Stage12',
+            items: [{ employee_id: 1, type_ids: [1] }]
           }
         });
-        assert(resp.status < 500, `create permit app: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        if (resp.status === 400) skip('Cannot create permit app: validation error');
+        assertOk(resp, 'create permit app');
         if (resp.ok) {
           testPermitAppId = resp.data?.application?.id || resp.data?.id;
         }
@@ -75,7 +74,7 @@ module.exports = {
       run: async () => {
         if (!testPermitAppId) return;
         const resp = await api('GET', `/api/permit-applications/${testPermitAppId}`, { role: 'HR' });
-        assert(resp.status < 500, `read-back permit: ${resp.status}`);
+        assertOk(resp, 'read-back permit');
         if (resp.ok && resp.data) {
           const app = resp.data.application || resp.data;
           assertHasFields(app, ['id'], 'read-back permit app');
@@ -90,7 +89,7 @@ module.exports = {
           role: 'HR',
           body: { employee_name: 'Тест Обновлено Stage12' }
         });
-        assert(resp.status < 500, `update permit: ${resp.status}`);
+        assertOk(resp, 'update permit');
       }
     },
     {
@@ -114,7 +113,7 @@ module.exports = {
       name: 'NEGATIVE: create with empty body → 400',
       run: async () => {
         const resp = await api('POST', '/api/permit-applications', { role: 'HR', body: {} });
-        assert(resp.status >= 400 && resp.status < 500, `empty body: expected 4xx, got ${resp.status}`);
+        assert(resp.status === 400, `empty body: expected 4xx, got ${resp.status}`);
       }
     },
     {
@@ -128,7 +127,7 @@ module.exports = {
       name: 'Contractors autocomplete returns array',
       run: async () => {
         const resp = await api('GET', '/api/permit-applications/contractors', { role: 'HR' });
-        assert(resp.status < 500, `contractors: ${resp.status}`);
+        assertOk(resp, 'contractors');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.contractors || []);
           assertArray(list, 'contractors list');
@@ -140,7 +139,7 @@ module.exports = {
       run: async () => {
         if (!testPermitAppId) return;
         const resp = await api('DELETE', `/api/permit-applications/${testPermitAppId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `delete permit: ${resp.status}`);
+        assertOk(resp, 'delete permit');
         testPermitAppId = null;
       }
     }

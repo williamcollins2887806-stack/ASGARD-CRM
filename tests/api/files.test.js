@@ -44,8 +44,7 @@ module.exports = {
           role: 'ADMIN',
           body: {}
         });
-        assert(resp.status >= 400, `upload without file should fail, got ${resp.status}`);
-        assert(resp.status < 500, `upload without file should be 4xx not 5xx, got ${resp.status}`);
+        assert(resp.status === 400 || resp.status === 406, `upload without file should return 400/406, got ${resp.status}`);
       }
     }
   ]

@@ -224,8 +224,9 @@ async function dataRoutes(fastify, options) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { table } = request.params;
-    const { limit: rawLimit = 500, offset = 0, orderBy, desc, where } = request.query;
+    const { limit: rawLimit = 500, offset: rawOffset = 0, orderBy, desc, where } = request.query;
     const limit = Math.max(1, Math.min(parseInt(rawLimit) || 500, 500)); // B9: cap at 500, floor at 1
+    const offset = Math.max(parseInt(rawOffset) || 0, 0); // Sanitize offset: NaN → 0
 
     if (!isAllowed(table)) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
@@ -277,7 +278,7 @@ async function dataRoutes(fastify, options) {
 
       // LIMIT/OFFSET
       query += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-      const dataParams = [...params, parseInt(limit), parseInt(offset)];
+      const dataParams = [...params, limit, offset];
 
       const result = await db.query(query, dataParams);
 
@@ -291,8 +292,8 @@ async function dataRoutes(fastify, options) {
       return {
         [table]: result.rows,
         total: parseInt(countResult.rows[0].total),
-        limit: parseInt(limit),
-        offset: parseInt(offset)
+        limit,
+        offset
       };
     } catch(err) {
       // SECURITY FIX (HIGH-4): Не утекает err.message
@@ -322,6 +323,13 @@ async function dataRoutes(fastify, options) {
 
     const pk = getPrimaryKey(table);
 
+    // Validate numeric ID for integer primary keys
+    if (['id', 'user_id'].includes(pk)) {
+      if (isNaN(parseInt(id)) || String(id).trim() !== String(parseInt(id))) {
+        return reply.code(400).send({ error: 'ID должен быть числом' });
+      }
+    }
+
     try {
       const result = await db.query(`SELECT * FROM ${table} WHERE ${pk} = $1`, [id]);
 
@@ -348,6 +356,11 @@ async function dataRoutes(fastify, options) {
 
     if (!isAllowed(table)) {
       return reply.code(400).send({ error: 'Недопустимая таблица' });
+    }
+
+    // Validate body is a JSON object (not string from text/plain, not null, not array)
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return reply.code(400).send({ error: 'Тело запроса должно быть JSON-объектом. Укажите Content-Type: application/json' });
     }
 
     // SECURITY: Проверка ролевого доступа
@@ -398,6 +411,10 @@ async function dataRoutes(fastify, options) {
       console.error(`[DATA API POST] Keys: ${Object.keys(data).join(', ')}, Values:`, Object.values(data));
       console.error(`[DATA API POST] Stack:`, err.stack);
       fastify.log.error(`Data API POST [${table}]: ${err.message}`, { stack: err.stack, code: err.code });
+      // VARCHAR overflow → 400
+      if (err.code === '22001') {
+        return reply.code(400).send({ error: 'Значение поля слишком длинное' });
+      }
       // Constraint violations → 400 instead of 500
       if (err.code === '23502' || err.code === '23503' || err.code === '23505') {
         return reply.code(400).send({ error: 'Ошибка валидации данных', details: err.message });
@@ -427,6 +444,13 @@ async function dataRoutes(fastify, options) {
     }
 
     const pk = getPrimaryKey(table);
+
+    // Validate numeric ID for integer primary keys
+    if (['id', 'user_id'].includes(pk)) {
+      if (isNaN(parseInt(id)) || String(id).trim() !== String(parseInt(id))) {
+        return reply.code(400).send({ error: 'ID должен быть числом' });
+      }
+    }
 
     try {
       // Получаем реальные колонки таблицы
@@ -464,6 +488,14 @@ async function dataRoutes(fastify, options) {
       console.error(`[DATA API PUT] Table: ${table}, ID: ${id}, Error: ${err.message}, Code: ${err.code}`);
       console.error(`[DATA API PUT] Stack:`, err.stack);
       fastify.log.error(`Data API PUT [${table}]:`, err.message);
+      // VARCHAR overflow → 400
+      if (err.code === '22001') {
+        return reply.code(400).send({ error: 'Значение поля слишком длинное' });
+      }
+      // Constraint violations → 400
+      if (err.code === '23502' || err.code === '23503' || err.code === '23505') {
+        return reply.code(400).send({ error: 'Ошибка валидации данных', details: err.message });
+      }
       return reply.code(500).send({ error: 'Ошибка обработки запроса', details: err.message });
     }
   });
@@ -488,6 +520,13 @@ async function dataRoutes(fastify, options) {
     }
 
     const pk = getPrimaryKey(table);
+
+    // Validate numeric ID for integer primary keys
+    if (['id', 'user_id'].includes(pk)) {
+      if (isNaN(parseInt(id)) || String(id).trim() !== String(parseInt(id))) {
+        return reply.code(400).send({ error: 'ID должен быть числом' });
+      }
+    }
 
     try {
       const result = await db.query(`DELETE FROM ${table} WHERE ${pk} = $1 RETURNING *`, [id]);

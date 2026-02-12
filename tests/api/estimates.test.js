@@ -20,7 +20,7 @@ module.exports = {
             approval_status: 'draft'
           }
         });
-        assert(resp.status < 500, `create estimate: ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
+        assertOk(resp, 'create estimate:');
         const est = resp.data?.estimate || resp.data;
         testEstimateId = est?.id;
         if (testEstimateId) assertFieldType(est, 'id', 'number', 'estimate.id');

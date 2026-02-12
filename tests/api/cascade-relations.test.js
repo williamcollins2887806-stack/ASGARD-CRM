@@ -24,7 +24,7 @@ module.exports = {
           role: 'TO',
           body: { customer: 'FK-TEST', tender_status: 'Новый', tender_type: 'Аукцион' }
         });
-        assert(t.status < 500, `create tender: ${t.status}`);
+        assertOk(t, 'create tender');
         tenderId = t.data?.tender?.id || t.data?.id;
         if (!tenderId) skip('Cannot create tender');
 
@@ -32,7 +32,7 @@ module.exports = {
           role: 'PM',
           body: { tender_id: tenderId, title: 'FK-TEST-ESTIMATE', total_sum: 500000 }
         });
-        assert(e.status < 500, `create estimate: ${e.status}`);
+        assertOk(e, 'create estimate');
         estimateId = e.data?.estimate?.id || e.data?.id;
         if (!estimateId) skip('Cannot create estimate');
       }
@@ -42,14 +42,8 @@ module.exports = {
       run: async () => {
         if (!tenderId) skip('No tender to test');
         const del = await api('DELETE', `/api/tenders/${tenderId}`, { role: 'ADMIN' });
-        // Should either be blocked (400/409) due to FK or succeed with cascade
-        assert(del.status < 500, `delete tender with estimate: ${del.status}`);
-        // If delete succeeded, estimate should be gone too
-        if (del.ok && estimateId) {
-          const check = await api('GET', `/api/data/estimates/${estimateId}`, { role: 'ADMIN' });
-          // Either 404 (cascaded) or still exists (FK was removed first)
-          assert(check.status < 500, `check estimate after tender delete: ${check.status}`);
-        }
+        // FK constraint blocks delete with 400
+        assert(del.status === 400, `delete with FK: expected 400, got ${del.status}`);
       }
     },
     {
@@ -70,7 +64,7 @@ module.exports = {
           role: 'PM',
           body: { work_title: 'FK-WORK-TEST' }
         });
-        assert(w.status < 500, `create work: ${w.status}`);
+        assertOk(w, 'create work');
         workId = w.data?.work?.id || w.data?.id;
         if (!workId) skip('Cannot create work');
 
@@ -78,7 +72,7 @@ module.exports = {
           role: 'ADMIN',
           body: { work_id: workId, amount: 1000, description: 'FK test expense' }
         });
-        assert(e.status < 500, `create expense: ${e.status}`);
+        assertOk(e, 'create expense');
         expenseId = e.data?.id || e.data?.item?.id;
       }
     },
@@ -95,7 +89,7 @@ module.exports = {
         );
         if (del.ok && expenseId) {
           const check = await api('GET', `/api/data/work_expenses/${expenseId}`, { role: 'ADMIN' });
-          assert(check.status < 500, `check expense after work delete: ${check.status}`);
+          assertOk(check, 'check expense after work delete');
         }
       }
     },
@@ -117,7 +111,7 @@ module.exports = {
           role: 'ADMIN',
           body: { fio: 'FK-EMP-TEST', is_active: true }
         });
-        assert(emp.status < 500, `create employee: ${emp.status}`);
+        assertOk(emp, 'create employee');
         employeeId = emp.data?.id || emp.data?.item?.id;
         if (!employeeId) skip('Cannot create employee');
 
@@ -125,7 +119,7 @@ module.exports = {
           role: 'ADMIN',
           body: { employee_id: employeeId, permit_type: 'Допуск', status: 'active' }
         });
-        assert(p.status < 500, `create permit: ${p.status}`);
+        assertOk(p, 'create permit');
         permitId = p.data?.id || p.data?.item?.id;
       }
     },
@@ -134,7 +128,7 @@ module.exports = {
       run: async () => {
         if (!employeeId) skip('No employee');
         const del = await api('DELETE', `/api/data/employees/${employeeId}`, { role: 'ADMIN' });
-        assert(del.status < 500, `delete employee: ${del.status}`);
+        assertOk(del, 'delete employee');
       }
     },
     {
@@ -163,13 +157,13 @@ module.exports = {
             priority: 'medium'
           }
         });
-        assert(t.status < 500, `create task: ${t.status}`);
+        assertOk(t, 'create task');
         taskId = t.data?.task?.id || t.data?.id;
         if (!taskId) skip('Cannot create task');
 
         // Verify task exists
         const check = await api('GET', `/api/tasks/${taskId}`, { role: 'ADMIN' });
-        assert(check.status < 500, `get task: ${check.status}`);
+        assertOk(check, 'get task');
       }
     },
     {
@@ -199,14 +193,14 @@ module.exports = {
           role: 'ADMIN',
           body: { inn, name: 'FK-CUST-TEST ООО' }
         });
-        assert(c.status < 500, `create customer: ${c.status}`);
+        assertOk(c, 'create customer');
         customerId = c.data?.customer?.inn || c.data?.inn || inn;
 
         const t = await api('POST', '/api/tenders', {
           role: 'TO',
           body: { customer: 'FK-CUST-TEST ООО', customer_inn: inn, tender_status: 'Новый', tender_type: 'Аукцион' }
         });
-        assert(t.status < 500, `create tender with customer: ${t.status}`);
+        assertOk(t, 'create tender with customer');
         tenderId = t.data?.tender?.id || t.data?.id;
       }
     },
@@ -215,12 +209,12 @@ module.exports = {
       run: async () => {
         if (!customerId) skip('No customer');
         const del = await api('DELETE', `/api/customers/${customerId}`, { role: 'ADMIN' });
-        assert(del.status < 500, `delete customer: ${del.status}`);
+        assertOk(del, 'delete customer');
 
         if (tenderId) {
           const check = await api('GET', `/api/tenders/${tenderId}`, { role: 'ADMIN' });
           // Tender should still exist (customer_inn is a soft reference, not FK)
-          assert(check.status < 500, `tender after customer delete: ${check.status}`);
+          assertOk(check, 'tender after customer delete');
         }
       }
     },

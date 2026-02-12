@@ -8,12 +8,13 @@ module.exports = {
   name: 'SEARCH',
   tests: [
     {
-      name: 'SEARCH: staff?search=... filters by FIO',
+      // SKIP10 fix: Use correct endpoint /api/staff/employees?search=
+      name: 'SEARCH: staff/employees?search=... filters by FIO',
       run: async () => {
-        const resp = await api('GET', '/api/staff?search=а', { role: 'ADMIN' });
+        const resp = await api('GET', '/api/staff/employees?search=test', { role: 'ADMIN' });
         if (resp.status === 404) skip('Staff search endpoint not available');
         assertOk(resp, 'staff search');
-        const list = Array.isArray(resp.data) ? resp.data : (resp.data?.staff || resp.data?.items || []);
+        const list = Array.isArray(resp.data) ? resp.data : (resp.data?.employees || resp.data?.staff || resp.data?.items || []);
         assertArray(list, 'staff search results');
       }
     },
@@ -48,10 +49,11 @@ module.exports = {
       }
     },
     {
-      name: 'SEARCH: special chars (%, _) → no SQL error',
+      // D3: strict 200
+      name: 'SEARCH: special chars (%, _) → 200',
       run: async () => {
         const resp = await api('GET', '/api/users?search=' + encodeURIComponent("100%_test'OR 1=1"), { role: 'ADMIN' });
-        assert(resp.status < 500, `special chars should not cause 500, got ${resp.status}`);
+        assert(resp.status === 200, `special chars search: expected 200, got ${resp.status}`);
       }
     },
     {
@@ -77,11 +79,12 @@ module.exports = {
       }
     },
     {
-      name: 'SEARCH: pre_tenders?search=... (if available)',
+      // D4: strict 200
+      name: 'SEARCH: pre_tenders?search=... → 200',
       run: async () => {
         const resp = await api('GET', '/api/pre-tenders?search=test', { role: 'ADMIN' });
         if (resp.status === 404) skip('Pre-tenders search not available');
-        assert(resp.status < 500, `pre-tenders search: ${resp.status}`);
+        assert(resp.status === 200, `pre-tenders search: expected 200, got ${resp.status}`);
       }
     },
     {
@@ -97,11 +100,12 @@ module.exports = {
       }
     },
     {
-      name: 'SEARCH: payroll self-employed?search=... (if available)',
+      // D5: strict 200
+      name: 'SEARCH: payroll self-employed?search=... → 200',
       run: async () => {
         const resp = await api('GET', '/api/payroll/self-employed?search=test', { role: 'ADMIN' });
         if (resp.status === 404) skip('Self-employed search not available');
-        assert(resp.status < 500, `self-employed search: ${resp.status}`);
+        assert(resp.status === 200, `self-employed search: expected 200, got ${resp.status}`);
       }
     }
   ]

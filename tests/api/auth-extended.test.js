@@ -77,9 +77,8 @@ module.exports = {
         const resp = await rawFetch('GET', '/api/data/tenders?limit=1', {
           headers: { 'Authorization': `Bearer ${limitedToken}` }
         });
-        // Server may reject or allow depending on PIN requirement setting
-        // We just verify it doesn't crash (no 500)
-        assert(resp.status !== 500, `should not 500, got ${resp.status}`);
+        // Server rejects with 403 when PIN is not verified
+        assert(resp.status === 403, `expected 403 for unverified PIN, got ${resp.status}`);
       }
     },
     {
@@ -97,9 +96,8 @@ module.exports = {
         const resp = await rawFetch('GET', '/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        // Valid JWT = accepted. Server may return 200 with the JWT claims
-        // or 401 if it validates user existence. Both are acceptable.
-        assert(resp.status !== 500, `should not 500, got ${resp.status}`);
+        // Server returns 404 for non-existent user id in JWT
+        assert(resp.status === 404, `expected 404 for tampered user, got ${resp.status}`);
       }
     },
 
@@ -140,12 +138,8 @@ module.exports = {
         const resp = await rawFetch('POST', '/api/auth/reset-password-request', {
           body: { email: 'nonexistent_' + Date.now() + '@example.com' }
         });
-        // Should not reveal if email exists (security best practice)
-        // Accept 200 (no leak), 400 (validation), or 429 (rate limited)
-        assert(
-          resp.status === 200 || resp.status === 400 || resp.status === 429 || resp.status === 404,
-          `expected 200/400/429/404, got ${resp.status}`
-        );
+        // Should not reveal if email exists (security best practice) → always 200
+        assert(resp.status === 200, `reset-password-request: expected 200, got ${resp.status}`);
       }
     },
     {
@@ -154,10 +148,7 @@ module.exports = {
         const resp = await rawFetch('POST', '/api/auth/reset-password', {
           body: { token: 'invalid-reset-token', password: 'NewPass123!' }
         });
-        assert(
-          resp.status === 400 || resp.status === 404 || resp.status === 401,
-          `expected 400/404/401, got ${resp.status}`
-        );
+        assert(resp.status === 400, `reset-password invalid token: expected 400, got ${resp.status}`);
       }
     },
 

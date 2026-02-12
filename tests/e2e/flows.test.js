@@ -26,7 +26,7 @@ module.exports = {
           role: 'PM',
           body: { tender_id: tid, title: 'E2E просчёт', amount: 3500000, margin: 15, approval_status: 'draft' }
         });
-        assert(e.status < 500, `estimate: ${e.status}`);
+        assertOk(e, 'estimate');
         const eid = e.data?.estimate?.id || e.data?.id;
 
         // Verify estimate appears in list
@@ -78,7 +78,7 @@ module.exports = {
           role: 'PM',
           body: { work_id: wid, amount: 200000, description: 'Оплата аванса', type: 'advance' }
         });
-        assert(inc.status < 500, `income: ${inc.status}`);
+        assertOk(inc, 'income');
 
         // Verify expenses list shows our expense
         const expList = await api('GET', '/api/expenses/work', { role: 'PM' });
@@ -102,7 +102,7 @@ module.exports = {
           role: 'ADMIN',
           body: { title: 'E2E: Подготовить отчёт', assignee_id: assigneeId, priority: 'high', deadline: '2026-03-01' }
         });
-        assert(t.status < 500, `create task: ${t.status}`);
+        assertOk(t, 'create task');
         const task = t.data?.task || t.data;
         const taskId = task?.id;
         if (!taskId) return;
@@ -114,15 +114,15 @@ module.exports = {
           assertHasFields(td, ['id', 'title', 'status'], 'task detail');
         }
 
-        // PM принимает
-        const acc = await api('PUT', `/api/tasks/${taskId}/accept`, { role: 'PM' });
-        assert(acc.status < 500, `accept: ${acc.status}`);
+        // PM принимает (body: {} needed to avoid "Body cannot be empty" with Content-Type json)
+        const acc = await api('PUT', `/api/tasks/${taskId}/accept`, { role: 'PM', body: {} });
+        assertOk(acc, 'accept');
 
         // PM завершает
         const comp = await api('PUT', `/api/tasks/${taskId}/complete`, {
           role: 'PM', body: { comment: 'Выполнено автотестом' }
         });
-        assert(comp.status < 500, `complete: ${comp.status}`);
+        assertOk(comp, 'complete');
 
         // Verify task appears in list
         const myTasks = await api('GET', '/api/tasks/my', { role: 'ADMIN' });
@@ -168,7 +168,7 @@ module.exports = {
           role: 'ADMIN',
           body: { employee_id: empId, type_id: pType.id, issue_date: '2026-01-01', expiry_date: '2027-01-01', doc_number: 'E2E-001' }
         });
-        assert(permit.status < 500, `permit: ${permit.status}`);
+        assertOk(permit, 'permit');
         const permitId = permit.data?.permit?.id || permit.data?.id;
 
         // Verify matrix

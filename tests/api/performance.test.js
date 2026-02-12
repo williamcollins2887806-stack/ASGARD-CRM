@@ -120,7 +120,7 @@ module.exports = {
       }
     },
     {
-      name: 'PERF: 30 parallel mixed ops → all < 500 status',
+      name: 'PERF: 30 parallel mixed ops → all return 200',
       run: async () => {
         const promises = [
           ...Array.from({ length: 10 }, () => api('GET', '/api/data/tenders?limit=5')),
@@ -128,8 +128,9 @@ module.exports = {
           ...Array.from({ length: 10 }, () => api('GET', '/api/data/employees?limit=5'))
         ];
         const results = await Promise.all(promises);
-        const failures = results.filter(r => r.status >= 500);
-        assert(failures.length === 0, `${failures.length} of 30 mixed requests returned 5xx`);
+        for (const r of results) {
+          assertOk(r, 'parallel request');
+        }
       }
     },
     {

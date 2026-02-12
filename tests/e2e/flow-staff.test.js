@@ -30,7 +30,7 @@ module.exports = {
             role: 'ADMIN',
             body: { employee_id: empId, type_id: pType.id, issue_date: '2026-01-01', expiry_date: '2027-01-01', notes: 'E2E test permit' }
           });
-          assert(permit.status < 500, `permit: ${permit.status}`);
+          assertOk(permit, 'permit');
           if (permit.ok) permitId = permit.data?.permit?.id || permit.data?.id;
         }
 
@@ -40,14 +40,14 @@ module.exports = {
           body: { employee_id: empId, date: '2026-03-01', shift_type: 'day', hours: 8 }
         });
         // POST /api/staff/schedule may not be implemented yet — 404/500 acceptable
-        assert(sched.status < 500 || sched.status === 500 || sched.status === 404, `schedule: ${sched.status}`);
+        assertOk(sched, 'schedule');
 
         // 5. Add review
         const review = await api('POST', `/api/staff/employees/${empId}/review`, {
           role: 'HR',
           body: { rating: 4, comment: 'E2E: Good performance' }
         });
-        assert(review.status < 500, `review: ${review.status}`);
+        assertOk(review, 'review');
 
         // 6. Check employee detail
         const detail = await api('GET', `/api/staff/employees/${empId}`, { role: 'HR' });

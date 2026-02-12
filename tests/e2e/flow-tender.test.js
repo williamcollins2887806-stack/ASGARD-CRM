@@ -14,7 +14,7 @@ module.exports = {
           role: 'TO',
           body: { customer: 'E2E Flow1: Lifecycle Customer', estimated_sum: 10000000, tender_status: 'Новый' }
         });
-        assert(t.status < 500, `tender: ${t.status}`);
+        assertOk(t, 'tender');
         const tid = t.data?.tender?.id || t.data?.id;
         if (!tid) return;
 
@@ -23,7 +23,7 @@ module.exports = {
           role: 'PM',
           body: { tender_id: tid, title: 'E2E: HVAC estimate', amount: 8000000, cost: 6000000, margin: 25, approval_status: 'draft' }
         });
-        assert(e.status < 500, `estimate: ${e.status}`);
+        assertOk(e, 'estimate');
         const eid = e.data?.estimate?.id || e.data?.id;
 
         // 3. Verify estimates linked to tender
@@ -35,7 +35,7 @@ module.exports = {
           role: 'PM',
           body: { tender_id: tid, work_title: 'E2E: HVAC installation', work_number: 'E2E-W-001', work_status: 'В работе', contract_value: 8000000 }
         });
-        assert(w.status < 500, `work: ${w.status}`);
+        assertOk(w, 'work');
         const wid = w.data?.work?.id || w.data?.id;
 
         // 5. PM creates invoice
@@ -45,7 +45,7 @@ module.exports = {
             role: 'PM',
             body: { work_id: wid, invoice_number: 'E2E-INV-001', invoice_date: '2026-02-01', invoice_type: 'income', customer_name: 'E2E Customer', amount: 4000000, total_amount: 4000000 }
           });
-          assert(inv.status < 500, `invoice: ${inv.status}`);
+          assertOk(inv, 'invoice');
           iid = inv.data?.invoice?.id || inv.data?.id;
         }
 

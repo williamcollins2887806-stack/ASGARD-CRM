@@ -1,6 +1,7 @@
-const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType, skip } = require('../config');
 
 let testEquipmentId = null;
+let testCategoryId = null;
 
 module.exports = {
   name: 'EQUIPMENT (Оборудование)',
@@ -52,12 +53,27 @@ module.exports = {
       }
     },
     {
-      name: 'ADMIN creates equipment',
+      // SKIP8/SKIP9 fix: Create a category if none exist, then create equipment
+      name: 'ADMIN creates equipment (with auto-category setup)',
       run: async () => {
-        // Get a category first
+        // Get existing categories
         const catResp = await api('GET', '/api/equipment/categories', { role: 'ADMIN' });
         const cats = Array.isArray(catResp.data) ? catResp.data : (catResp.data?.categories || []);
-        const catId = cats.length > 0 ? cats[0].id : null;
+        let catId = cats.length > 0 ? cats[0].id : null;
+
+        // If no categories exist, create one for the test
+        if (!catId) {
+          const newCatResp = await api('POST', '/api/data/equipment_categories', {
+            role: 'ADMIN',
+            body: { name: 'TEST_CAT_' + Date.now() }
+          });
+          if (newCatResp.status === 404) skip('POST equipment_categories not available');
+          assertOk(newCatResp, 'create test category');
+          const newCat = newCatResp.data?.category || newCatResp.data?.item || newCatResp.data;
+          catId = newCat?.id;
+          testCategoryId = catId;
+          assert(catId, 'should return category id');
+        }
 
         const body = {
           name: 'ТЕСТ: Генератор Stage12',
@@ -70,23 +86,20 @@ module.exports = {
           role: 'ADMIN',
           body
         });
-        assert(resp.status < 500, `create equipment: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
-        if (resp.ok) {
-          testEquipmentId = resp.data?.equipment?.id || resp.data?.id;
-        }
+        assertOk(resp, 'create equipment');
+        testEquipmentId = resp.data?.equipment?.id || resp.data?.id;
+        assert(testEquipmentId, 'should return equipment id');
       }
     },
     {
       name: 'Read-back created equipment',
       run: async () => {
-        if (!testEquipmentId) return;
+        if (!testEquipmentId) throw new Error('No equipment created');
         const resp = await api('GET', `/api/equipment/${testEquipmentId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `read-back equipment: ${resp.status}`);
-        if (resp.ok && resp.data) {
-          const item = resp.data.equipment || resp.data;
-          assertHasFields(item, ['id', 'name'], 'read-back equipment');
-          assertMatch(item, { name: 'ТЕСТ: Генератор Stage12' }, 'read-back equipment name');
-        }
+        assertOk(resp, 'read-back equipment');
+        const item = resp.data?.equipment || resp.data;
+        assertHasFields(item, ['id', 'name'], 'read-back equipment');
+        assertMatch(item, { name: 'ТЕСТ: Генератор Stage12' }, 'read-back equipment name');
       }
     },
     {
@@ -121,8 +134,10 @@ module.exports = {
       name: 'Cleanup: delete test equipment',
       run: async () => {
         if (!testEquipmentId) return;
-        const resp = await api('DELETE', `/api/equipment/${testEquipmentId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `delete equipment: ${resp.status}`);
+        // Equipment routes have no DELETE /:id — use generic data API
+        const resp = await api('DELETE', `/api/data/equipment/${testEquipmentId}`, { role: 'ADMIN' });
+        if (resp.status === 404) skip('equipment DELETE via data API not available');
+        assertOk(resp, 'delete equipment');
       }
     },
     {
@@ -130,9 +145,16 @@ module.exports = {
       run: async () => {
         if (!testEquipmentId) return;
         const resp = await api('GET', `/api/equipment/${testEquipmentId}`, { role: 'ADMIN' });
-        assert(resp.status === 404 || resp.status === 400 || resp.status === 200,
-          `expected 404 after delete, got ${resp.status}`);
+        assert(resp.status === 404, `expected 404 after delete, got ${resp.status}`);
         testEquipmentId = null;
+      }
+    },
+    {
+      name: 'Cleanup: delete test category',
+      run: async () => {
+        if (!testCategoryId) return;
+        await api('DELETE', `/api/data/equipment_categories/${testCategoryId}`, { role: 'ADMIN' });
+        testCategoryId = null;
       }
     }
   ]

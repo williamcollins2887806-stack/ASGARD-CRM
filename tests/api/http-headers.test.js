@@ -13,7 +13,7 @@ module.exports = {
         const resp = await rawFetch('GET', '/api/data/tenders?limit=1', {
           headers: { 'Authorization': `Bearer ${getToken('ADMIN')}` }
         });
-        assert(resp.status < 500, `status: ${resp.status}`);
+        assertOk(resp, 'status');
         const ct = resp.headers.get('content-type') || '';
         assert(ct.includes('application/json'), `expected application/json, got "${ct}"`);
       }
@@ -61,7 +61,7 @@ module.exports = {
           }
         });
         // Should return 200 or 204, not 500
-        assert(resp.status < 500, `OPTIONS should not 500, got ${resp.status}`);
+        assertOk(resp, 'OPTIONS should not 500, got');
       }
     },
     {
@@ -72,9 +72,9 @@ module.exports = {
             'Authorization': `Bearer ${getToken('TO')}`,
             'Content-Type': 'application/json'
           },
-          body: { customer_name: 'HDR-TEST', tender_status: 'Новый' }
+          body: { customer: 'HDR-TEST', tender_status: 'Новый', tender_type: 'Аукцион' }
         });
-        assert(resp.status < 500, `POST with JSON: ${resp.status}`);
+        assertOk(resp, 'POST with JSON');
         const ct = resp.headers.get('content-type') || '';
         assert(ct.includes('application/json'), `response should be JSON, got "${ct}"`);
         // Cleanup if created
@@ -94,7 +94,7 @@ module.exports = {
           },
           body: '{invalid json content'
         });
-        assert(resp.status >= 400 && resp.status < 500, `invalid JSON should be 4xx, got ${resp.status}`);
+        assert(resp.status === 400, `invalid JSON should be 4xx, got ${resp.status}`);
       }
     },
     {
@@ -106,7 +106,7 @@ module.exports = {
         const limit = resp.headers.get('x-ratelimit-limit');
         const remaining = resp.headers.get('x-ratelimit-remaining');
         // Rate limiting may not be enabled — just verify no 500
-        assert(resp.status < 500, `status: ${resp.status}`);
+        assertOk(resp, 'status');
         if (!limit && !remaining) skip('Rate limiting headers not configured');
         assert(limit || remaining, 'expected rate limit headers');
       }
@@ -120,7 +120,7 @@ module.exports = {
           headers: { 'Authorization': `Bearer ${getToken('ADMIN')}` }
         });
         // HEAD should return 200 or at least not 500
-        assert(resp.status < 500, `HEAD should not 500, got ${resp.status}`);
+        assertOk(resp, 'HEAD should not 500, got');
       }
     },
     {

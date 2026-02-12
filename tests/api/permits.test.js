@@ -60,7 +60,7 @@ module.exports = {
           }
         });
         // May be 200/201 or 400 if type_id doesn't match
-        assert(resp.status < 500, `create permit: ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
+        assertOk(resp, 'create permit:');
         if (resp.ok) testPermitId = resp.data?.permit?.id || resp.data?.id;
       }
     },
@@ -69,7 +69,7 @@ module.exports = {
       run: async () => {
         if (!testPermitId) return;
         const resp = await api('GET', `/api/permits/${testPermitId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `read-back permit: ${resp.status}`);
+        assertOk(resp, 'read-back permit');
         if (resp.ok && resp.data) {
           const permit = resp.data.permit || resp.data;
           assertHasFields(permit, ['id'], 'read-back permit');
@@ -107,7 +107,7 @@ module.exports = {
           }
         });
         // Server may accept invalid FK (no constraint check) — just verify no crash
-        assert(resp.status < 500, `invalid employee_id should not 5xx, got ${resp.status}`);
+        assertOk(resp, 'invalid employee_id should not 5xx, got');
       }
     },
     {
@@ -115,7 +115,7 @@ module.exports = {
       run: async () => {
         if (!testPermitId) return;
         const resp = await api('DELETE', `/api/permits/${testPermitId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `delete permit: ${resp.status}`);
+        assertOk(resp, 'delete permit');
       }
     },
     {

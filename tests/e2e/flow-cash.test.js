@@ -1,7 +1,7 @@
 /**
  * E2E FLOW 5: Cash advance lifecycle
  */
-const { api, assert, assertOk } = require('../config');
+const { api, assert, assertOk, skip } = require('../config');
 
 module.exports = {
   name: 'FLOW: Cash Advance Lifecycle',
@@ -14,7 +14,8 @@ module.exports = {
           role: 'PM',
           body: { amount: 75000, description: 'E2E: Business trip to site' }
         });
-        assert(req.status < 500, `cash request: ${req.status} - ${JSON.stringify(req.data)?.slice(0, 200)}`);
+        if (req.status === 404) skip('cash/request endpoint not available');
+        assertOk(req, 'cash request');
         const cashId = req.data?.request?.id || req.data?.id;
         if (!cashId) return;
 
@@ -23,35 +24,35 @@ module.exports = {
           role: 'ADMIN',
           body: { notes: 'E2E: Approved for trip' }
         });
-        assert(approve.status < 500, `approve: ${approve.status}`);
+        assertOk(approve, 'approve');
 
         // 3. PM marks as received
         const received = await api('PUT', `/api/cash/${cashId}/received`, {
           role: 'PM',
           body: { received_date: '2026-02-01', notes: 'E2E: Cash received' }
         });
-        assert(received.status < 500, `received: ${received.status}`);
+        assertOk(received, 'received');
 
         // 4. PM adds expense report
         const expense = await api('POST', `/api/cash/${cashId}/expenses`, {
           role: 'PM',
           body: { amount: 45000, category: 'travel', date: '2026-02-05', description: 'E2E: Hotel + transport' }
         });
-        assert(expense.status < 500, `cash expense: ${expense.status}`);
+        assertOk(expense, 'cash expense');
 
         // 5. PM returns remainder
         const ret = await api('POST', `/api/cash/${cashId}/return`, {
           role: 'PM',
           body: { amount: 30000, date: '2026-02-10', notes: 'E2E: Returning unused funds' }
         });
-        assert(ret.status < 500, `cash return: ${ret.status}`);
+        assertOk(ret, 'cash return');
 
         // 6. ADMIN closes the request
         const close = await api('PUT', `/api/cash/${cashId}/close`, {
           role: 'ADMIN',
           body: { notes: 'E2E: Closed after full reconciliation' }
         });
-        assert(close.status < 500, `close: ${close.status}`);
+        assertOk(close, 'close');
 
         // 7. Verify in all cash list
         const allCash = await api('GET', '/api/cash/all', { role: 'ADMIN' });

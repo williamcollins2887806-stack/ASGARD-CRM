@@ -17,7 +17,7 @@ module.exports = {
           role: 'TO',
           body: { customer: 'INTEG-CYCLE-TEST', tender_status: 'Новый', tender_type: 'Аукцион' }
         });
-        assert(cr.status < 500, `create: ${cr.status}`);
+        assertOk(cr, 'create');
         const id = cr.data?.tender?.id || cr.data?.id;
         if (!id) skip('Cannot create tender');
         tenderIds.push(id);
@@ -127,8 +127,8 @@ module.exports = {
           role: 'TO',
           body: {}
         });
-        // Should either be 400 or succeed without changes
-        assert(resp.status < 500, `empty update should not 500, got ${resp.status}`);
+        // Should be 400 for empty body
+        assert(resp.status === 400, `empty update should return 400, got ${resp.status}`);
 
         // Cleanup
         await api('DELETE', `/api/tenders/${id}`, { role: 'ADMIN' }).catch(() => {});
@@ -143,7 +143,7 @@ module.exports = {
           role: 'TO',
           body: { customer: longName, tender_status: 'Новый', tender_type: 'Аукцион' }
         });
-        assert(cr.status < 500, `long field: ${cr.status}`);
+        assertOk(cr, 'long field');
         const id = cr.data?.tender?.id || cr.data?.id;
         if (id) {
           tenderIds.push(id);
@@ -163,7 +163,7 @@ module.exports = {
           role: 'PM',
           body: { work_title: 'INTEG-WORK' }
         });
-        assert(cr.status < 500, `create work: ${cr.status}`);
+        assertOk(cr, 'create work');
         workId = cr.data?.work?.id || cr.data?.id;
         if (!workId) skip('Cannot create work');
 
@@ -172,15 +172,16 @@ module.exports = {
           role: 'PM',
           body: { status: 'В работе' }
         });
-        assert(upd.status < 500, `update work: ${upd.status}`);
+        // Body columns may not be valid — accept 200 or 400
+        assert(upd.status === 200 || upd.status === 400, `update work: expected 200 or 400, got ${upd.status}`);
 
         // Read back
         const check = await api('GET', `/api/data/works/${workId}`, { role: 'PM' });
-        assert(check.status < 500, `read work: ${check.status}`);
+        assertOk(check, 'read work');
 
         // Delete
         const del = await api('DELETE', `/api/works/${workId}`, { role: 'ADMIN' });
-        assert(del.status < 500, `delete work: ${del.status}`);
+        assertOk(del, 'delete work');
         workId = null;
       }
     },
@@ -191,7 +192,7 @@ module.exports = {
           role: 'ADMIN',
           body: { name: 'INTEG-EQUIP-TEST', status: 'available' }
         });
-        assert(cr.status < 500, `create equipment: ${cr.status}`);
+        assertOk(cr, 'create equipment');
         const id = cr.data?.id || cr.data?.item?.id;
         if (!id) skip('Cannot create equipment');
 
@@ -204,7 +205,7 @@ module.exports = {
           role: 'ADMIN',
           body: { status: 'in_use' }
         });
-        assert(upd.status < 500, `update equipment: ${upd.status}`);
+        assertOk(upd, 'update equipment');
 
         // Delete
         await api('DELETE', `/api/data/equipment/${id}`, { role: 'ADMIN' });
@@ -217,7 +218,7 @@ module.exports = {
           role: 'ADMIN',
           body: { number: 'INTEG-INV-001', amount: 15000, status: 'Новый' }
         });
-        assert(cr.status < 500, `create invoice: ${cr.status}`);
+        assertOk(cr, 'create invoice');
         const id = cr.data?.id || cr.data?.item?.id;
         if (!id) skip('Cannot create invoice');
 
@@ -226,7 +227,7 @@ module.exports = {
           role: 'ADMIN',
           body: { status: 'Оплачен' }
         });
-        assert(upd.status < 500, `update invoice: ${upd.status}`);
+        assertOk(upd, 'update invoice');
 
         // Delete
         await api('DELETE', `/api/data/invoices/${id}`, { role: 'ADMIN' });

@@ -37,7 +37,7 @@ module.exports = {
             description: 'Автотест'
           }
         });
-        assert(resp.status < 500, `create event: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        assertOk(resp, 'create event:  -');
         if (resp.ok) testEventId = resp.data?.event?.id || resp.data?.id;
       }
     },
@@ -92,7 +92,7 @@ module.exports = {
       name: 'Calendar reminders check',
       run: async () => {
         const resp = await api('GET', '/api/calendar/reminders/check', { role: 'PM' });
-        assert(resp.status < 500, `reminders: ${resp.status}`);
+        assertOk(resp, 'reminders');
       }
     },
     {
@@ -110,7 +110,7 @@ module.exports = {
       run: async () => {
         if (!testEventId) return;
         const resp = await api('DELETE', `/api/calendar/${testEventId}`, { role: 'PM' });
-        assert(resp.status < 500, `delete event: ${resp.status}`);
+        assertOk(resp, 'delete event');
       }
     },
     {

@@ -50,7 +50,7 @@ module.exports = {
             role: 'TO',
             body: { tender_status: 'В работе' }
           });
-          assert(upResp.status !== 500, `tender update got ${upResp.status}`);
+          assertOk(upResp, 'tender update got');
 
           // Step 3: Verify updated
           const getResp = await api('GET', `/api/tenders/${tid}`, { role: 'TO' });
@@ -91,7 +91,7 @@ module.exports = {
             body: { comment: 'Одобрено для теста' }
           });
           // May succeed or fail based on status flow — just verify no 500
-          assert(approveResp.status !== 500, `approve got ${approveResp.status}`);
+          assertOk(approveResp, 'approve got');
 
           // Step 3: PM confirms receipt
           if (approveResp.ok) {
@@ -99,12 +99,12 @@ module.exports = {
               role: 'PM',
               body: {}
             });
-            assert(receiveResp.status !== 500, `receive got ${receiveResp.status}`);
+            assertOk(receiveResp, 'receive got');
           }
 
           // Step 4: Check request status
           const getResp = await api('GET', `/api/cash/${cid}`, { role: 'ADMIN' });
-          assert(getResp.status !== 500, `cash get got ${getResp.status}`);
+          assertOk(getResp, 'cash get got');
         } finally {
           // No direct delete for cash — it stays in DB
         }
@@ -189,7 +189,7 @@ module.exports = {
             role: 'PM',
             body: { title: 'Updated BIZ Calendar Event' }
           });
-          assert(upResp.status !== 500, `calendar update got ${upResp.status}`);
+          assertOk(upResp, 'calendar update got');
 
           // Read
           const getResp = await api('GET', `/api/calendar/${eid}`, { role: 'PM' });
@@ -220,6 +220,13 @@ module.exports = {
         const eqid = createResp.data?.equipment?.id || createResp.data?.id;
         if (!eqid) skip('no equipment id');
 
+        // Need a work_id for equipment issue (required by endpoint)
+        const workResp = await api('POST', '/api/works', {
+          role: 'PM',
+          body: { work_title: 'BIZ_EQUIP_WORK_' + Date.now() }
+        });
+        const workId = workResp.ok ? (workResp.data?.work?.id || workResp.data?.id) : null;
+
         try {
           // Issue to holder
           const issueResp = await api('POST', '/api/equipment/issue', {
@@ -227,11 +234,12 @@ module.exports = {
             body: {
               equipment_id: eqid,
               holder_id: TEST_USERS.PM.id,
+              work_id: workId || 1,
               comment: 'E2E issue test'
             }
           });
-          // May fail if holder doesn't exist — OK
-          assert(issueResp.status !== 500, `issue got ${issueResp.status}`);
+          // May fail if holder/work doesn't exist — OK
+          assertOk(issueResp, 'issue got');
 
           // Return
           if (issueResp.ok) {
@@ -242,9 +250,10 @@ module.exports = {
                 comment: 'E2E return test'
               }
             });
-            assert(returnResp.status !== 500, `return got ${returnResp.status}`);
+            assertOk(returnResp, 'return got');
           }
         } finally {
+          if (workId) await api('DELETE', `/api/works/${workId}`, { role: 'ADMIN' }).catch(() => {});
           // Cleanup via data API
           await api('DELETE', `/api/data/equipment/${eqid}`, { role: 'ADMIN' });
         }
@@ -278,11 +287,11 @@ module.exports = {
             role: 'ADMIN',
             body: { text: 'E2E test message ' + Date.now() }
           });
-          assert(msgResp.status !== 500, `send msg got ${msgResp.status}`);
+          assertOk(msgResp, 'send msg got');
 
           // List messages
           const listResp = await api('GET', `/api/chat-groups/${chatId}/messages`, { role: 'ADMIN' });
-          assert(listResp.status !== 500, `list msgs got ${listResp.status}`);
+          assertOk(listResp, 'list msgs got');
         } finally {
           await api('DELETE', `/api/chat-groups/${chatId}`, { role: 'ADMIN' });
         }
@@ -313,7 +322,7 @@ module.exports = {
             role: 'ADMIN',
             body: { name: 'Updated BIZ Customer' }
           });
-          assert(upResp.status !== 500, `customer update got ${upResp.status}`);
+          assertOk(upResp, 'customer update got');
         } finally {
           await api('DELETE', `/api/customers/${inn}`, { role: 'ADMIN' });
         }
@@ -348,7 +357,7 @@ module.exports = {
               description: 'Partial payment E2E'
             }
           });
-          assert(payResp.status !== 500, `payment got ${payResp.status}`);
+          assertOk(payResp, 'payment got');
 
           // Verify invoice
           const getResp = await api('GET', `/api/invoices/${invId}`, { role: 'PM' });
@@ -388,7 +397,7 @@ module.exports = {
               comment: 'E2E expense test'
             }
           });
-          assert(expResp.status !== 500, `expense got ${expResp.status}`);
+          assertOk(expResp, 'expense got');
 
           // Verify work detail
           const getResp = await api('GET', `/api/works/${wid}`, { role: 'PM' });
@@ -426,9 +435,9 @@ module.exports = {
           // Update
           const upResp = await api('PUT', `/api/permits/${pid}`, {
             role: 'HR',
-            body: { description: 'Updated E2E permit' }
+            body: { notes: 'Updated E2E permit' }
           });
-          assert(upResp.status !== 500, `permit update got ${upResp.status}`);
+          assertOk(upResp, 'permit update got');
         } finally {
           await api('DELETE', `/api/permits/${pid}`, { role: 'ADMIN' });
         }
@@ -463,7 +472,7 @@ module.exports = {
             role: 'PM',
             body: { status: 'Закрыт' }
           });
-          assert(upResp.status !== 500, `act update got ${upResp.status}`);
+          assertOk(upResp, 'act update got');
         } finally {
           await api('DELETE', `/api/acts/${aid}`, { role: 'ADMIN' });
         }
@@ -527,7 +536,7 @@ module.exports = {
             role: 'ADMIN',
             body: { name: 'Updated BIZ Site' }
           });
-          assert(upResp.status !== 500, `site update got ${upResp.status}`);
+          assertOk(upResp, 'site update got');
         } finally {
           await api('DELETE', `/api/sites/${sid}`, { role: 'ADMIN' });
         }

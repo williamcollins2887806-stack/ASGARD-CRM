@@ -90,7 +90,7 @@ module.exports = {
       name: 'Saved reports',
       run: async () => {
         const resp = await api('GET', '/api/reports/saved', { role: 'ADMIN' });
-        assert(resp.status < 500, `saved: ${resp.status}`);
+        assertOk(resp, 'saved');
       }
     },
     {

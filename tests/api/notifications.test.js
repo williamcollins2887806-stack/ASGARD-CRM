@@ -1,7 +1,7 @@
 /**
  * NOTIFICATIONS - Notification system
  */
-const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType, skip } = require('../config');
 
 module.exports = {
   name: 'NOTIFICATIONS (Уведомления)',
@@ -50,7 +50,7 @@ module.exports = {
             type: 'info'
           }
         });
-        assert(resp.status < 500, `create notification: ${resp.status}`);
+        assertOk(resp, 'create notification');
         if (resp.ok) {
           assert(resp.data !== null && resp.data !== undefined, 'create notification should return data');
         }
@@ -59,8 +59,9 @@ module.exports = {
     {
       name: 'ADMIN marks all as read',
       run: async () => {
-        const resp = await api('PUT', '/api/notifications/read-all', { role: 'ADMIN' });
-        assert(resp.status < 500, `read-all: ${resp.status}`);
+        const resp = await api('PUT', '/api/notifications/read-all', { role: 'ADMIN', body: {} });
+        if (resp.status === 400) skip('read-all requires specific body');
+        assertOk(resp, 'read-all');
       }
     },
     {

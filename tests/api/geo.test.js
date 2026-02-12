@@ -10,7 +10,7 @@ module.exports = {
       name: 'ADMIN reads geo cities — validates array shape',
       run: async () => {
         const resp = await api('GET', '/api/geo/cities', { role: 'ADMIN' });
-        assert(resp.status < 500, `geo cities: ${resp.status}`);
+        assertOk(resp, 'geo cities');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.cities || resp.data.items || []);
           assertArray(list, 'geo cities list');
@@ -24,14 +24,14 @@ module.exports = {
       name: 'PM reads geo cities',
       run: async () => {
         const resp = await api('GET', '/api/geo/cities', { role: 'PM' });
-        assert(resp.status < 500, `PM geo cities: ${resp.status}`);
+        assertOk(resp, 'PM geo cities');
       }
     },
     {
       name: 'Geocode known city — validates lat/lng',
       run: async () => {
         const resp = await api('GET', '/api/geo/geocode?city=Москва', { role: 'PM' });
-        assert(resp.status < 500, `geocode: ${resp.status}`);
+        assertOk(resp, 'geocode');
         if (resp.ok && resp.data) {
           const data = resp.data.result || resp.data;
           if (data.lat !== undefined) {
@@ -45,7 +45,7 @@ module.exports = {
       name: 'Distance between two cities — validates number',
       run: async () => {
         const resp = await api('GET', '/api/geo/distance?from=Москва&to=Санкт-Петербург', { role: 'PM' });
-        assert(resp.status < 500, `distance: ${resp.status}`);
+        assertOk(resp, 'distance');
         if (resp.ok && resp.data) {
           const data = resp.data.result || resp.data;
           if (data.distance !== undefined) {
@@ -60,7 +60,7 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/geo/geocode', { role: 'PM' });
         // Server may return empty result instead of 400 — just verify no crash
-        assert(resp.status < 500, `geocode no param should not 5xx, got ${resp.status}`);
+        assertOk(resp, 'geocode no param should not 5xx, got');
       }
     },
     {
@@ -68,14 +68,14 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/geo/distance', { role: 'PM' });
         // Server may return empty result instead of 400 — just verify no crash
-        assert(resp.status < 500, `distance no params should not 5xx, got ${resp.status}`);
+        assertOk(resp, 'distance no params should not 5xx, got');
       }
     },
     {
       name: 'Geocode unknown city — handles gracefully',
       run: async () => {
         const resp = await api('GET', '/api/geo/geocode?city=НесуществующийГород12345', { role: 'PM' });
-        assert(resp.status < 500, `geocode unknown city: should not 5xx, got ${resp.status}`);
+        assertOk(resp, 'geocode unknown city: should not 5xx, got');
       }
     }
   ]

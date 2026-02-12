@@ -1,7 +1,7 @@
 /**
  * EMAIL - Email sending + test
  */
-const { api, assert } = require('../config');
+const {api, assert, assertOk, skip} = require('../config');
 
 module.exports = {
   name: 'EMAIL (Почта)',
@@ -10,8 +10,8 @@ module.exports = {
       name: 'ADMIN tests email config',
       run: async () => {
         const resp = await api('GET', '/api/email/test', { role: 'ADMIN' });
-        // May fail if SMTP not configured - accept non-500
-        assert(resp.status < 500, `email test: ${resp.status}`);
+        if (resp.status === 404) skip('Email config endpoint not available');
+        assertOk(resp, 'email test');
       }
     },
     {
@@ -25,8 +25,8 @@ module.exports = {
             body: 'This is an autotest email'
           }
         });
-        // SMTP may not be configured - we just check it doesn't 500 crash
-        assert(resp.status < 500, `send email: ${resp.status}`);
+        if (resp.status === 404) skip('Email send endpoint not available');
+        assertOk(resp, 'send email');
       }
     }
   ]

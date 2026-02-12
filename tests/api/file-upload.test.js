@@ -37,7 +37,7 @@ module.exports = {
         const ct = resp.headers.get('content-type') || '';
         const data = ct.includes('json') ? await resp.json().catch(() => null) : await resp.text();
 
-        assert(resp.status < 500, `upload: expected non-500, got ${resp.status}`);
+        assertOk(resp, 'upload: expected non-500, got');
         if (resp.ok && data?.file) {
           uploadedFilename = data.file.filename || data.download_url?.split('/').pop();
         }
@@ -66,8 +66,7 @@ module.exports = {
           body
         });
 
-        assert(resp.status >= 400, `no file should be 400, got ${resp.status}`);
-        assert(resp.status < 500, `no file should be 4xx not 5xx, got ${resp.status}`);
+        assert(resp.status === 400, `no file should return 400, got ${resp.status}`);
       }
     },
     {
@@ -93,8 +92,7 @@ module.exports = {
           body
         });
 
-        assert(resp.status >= 400, `exe upload should be rejected, got ${resp.status}`);
-        assert(resp.status < 500, `exe rejection should be 4xx, got ${resp.status}`);
+        assert(resp.status === 400, `exe upload should return 400, got ${resp.status}`);
       }
     },
     {
@@ -120,8 +118,7 @@ module.exports = {
           body
         });
 
-        assert(resp.status >= 400, `.js upload should be rejected, got ${resp.status}`);
-        assert(resp.status < 500, `.js rejection should be 4xx, got ${resp.status}`);
+        assert(resp.status === 400, `.js upload should return 400, got ${resp.status}`);
       }
     },
     {

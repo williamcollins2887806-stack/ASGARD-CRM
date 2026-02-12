@@ -56,6 +56,9 @@ async function initAuth() {
   let synthCount = 0;
 
   for (const role of ROLES) {
+    // E1: Let real login errors propagate clearly instead of swallowing
+    let realLoginFailed = false;
+    let realLoginError = null;
     try {
       const token = await _realLogin(role);
       if (token) {
@@ -63,7 +66,11 @@ async function initAuth() {
         realCount++;
         continue;
       }
-    } catch (_) { /* fallback below */ }
+      realLoginFailed = true;
+    } catch (e) {
+      realLoginFailed = true;
+      realLoginError = e;
+    }
 
     // Fallback: JWT synthesis
     try {
@@ -71,7 +78,7 @@ async function initAuth() {
       _tokens[role] = token;
       synthCount++;
     } catch (e) {
-      console.log(`    ! ${role}: no token - ${e.message.slice(0, 80)}`);
+      throw new Error(`SETUP FAILED: cannot get ${role} token (real: ${realLoginError?.message || 'no token'}, synth: ${e.message})`);
     }
   }
 
@@ -125,12 +132,8 @@ async function _realLogin(role) {
  * JWT synthesis fallback
  */
 async function _synthToken(role) {
-  let jwt;
-  try {
-    jwt = require('jsonwebtoken');
-  } catch (_) {
-    throw new Error('jsonwebtoken not installed');
-  }
+  // E2: Let jsonwebtoken import failure propagate
+  const jwt = require('jsonwebtoken');
 
   if (!_userIds[role]) await _mapRealUserIds();
 
@@ -151,33 +154,40 @@ async function _mapRealUserIds() {
   if (_mapAttempted) return;
   _mapAttempted = true;
 
-  try {
-    let jwt;
-    try { jwt = require('jsonwebtoken'); } catch (_) { return; }
+  // E3/E4: Let errors propagate with context instead of swallowing silently
+  const jwt = require('jsonwebtoken');
 
-    const tempToken = jwt.sign({
-      id: 9000, login: 'test_admin', name: 'Test ADMIN',
-      role: 'ADMIN', email: 'test_admin@test.asgard.local', pinVerified: true
-    }, JWT_SECRET, { expiresIn: '5m' });
+  const tempToken = jwt.sign({
+    id: 9000, login: 'test_admin', name: 'Test ADMIN',
+    role: 'ADMIN', email: 'test_admin@test.asgard.local', pinVerified: true
+  }, JWT_SECRET, { expiresIn: '5m' });
 
-    const resp = await request('GET', '/api/users', { token: tempToken });
-    if (!resp.ok) return;
+  const resp = await request('GET', '/api/users', { token: tempToken });
+  if (!resp.ok) return;
 
-    const users = Array.isArray(resp.data) ? resp.data : (resp.data?.users || []);
-    for (const u of users) {
-      if (u.role && !_userIds[u.role]) {
-        _userIds[u.role] = u.id;
-      }
+  const users = Array.isArray(resp.data) ? resp.data : (resp.data?.users || []);
+  for (const u of users) {
+    if (u.role && !_userIds[u.role]) {
+      _userIds[u.role] = u.id;
     }
-  } catch (_) { /* silent */ }
+  }
 }
 
 async function _authenticate(role) {
+  // E5: Let real login errors propagate with context
+  let realError = null;
   try {
     const token = await _realLogin(role);
     if (token) return token;
-  } catch (_) { /* fallback */ }
-  return _synthToken(role);
+  } catch (e) {
+    realError = e;
+  }
+  // Fallback to synth — if synth also fails, both errors are visible
+  try {
+    return await _synthToken(role);
+  } catch (e) {
+    throw new Error(`AUTH FAILED for ${role}: real login: ${realError?.message || 'no token'}, synth: ${e.message}`);
+  }
 }
 
 function clearTokens() {

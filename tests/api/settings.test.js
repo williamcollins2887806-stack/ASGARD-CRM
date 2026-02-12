@@ -39,14 +39,14 @@ module.exports = {
           role: 'ADMIN',
           body: { value: 'test_value_stage12' }
         });
-        assert(resp.status < 500, `write setting: ${resp.status}`);
+        assertOk(resp, 'write setting');
       }
     },
     {
       name: 'Read-back after write verifies value matches',
       run: async () => {
         const resp = await api('GET', '/api/settings/test_stage12_key', { role: 'ADMIN' });
-        assert(resp.status < 500, `read setting: ${resp.status}`);
+        assertOk(resp, 'read setting');
         if (resp.ok && resp.data) {
           const val = resp.data.value !== undefined ? resp.data.value : resp.data;
           assert(

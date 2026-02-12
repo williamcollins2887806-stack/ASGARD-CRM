@@ -1,7 +1,7 @@
 /**
  * VALIDATION & EDGE CASES — Empty bodies, invalid JSON, SQL injection, XSS, boundaries
  */
-const { api, assert, assertOk, assertForbidden, rawFetch, skip, BASE_URL, getToken } = require('../config');
+const { api, assert, assertOk, assertStatus, assertForbidden, rawFetch, skip, BASE_URL, getToken } = require('../config');
 
 module.exports = {
   name: 'VALIDATION & EDGE CASES',
@@ -76,85 +76,61 @@ module.exports = {
       name: 'VAL: GET /api/data/tenders/999999999 → 404',
       run: async () => {
         const resp = await api('GET', '/api/data/tenders/999999999', { role: 'ADMIN' });
-        assert(
-          resp.status === 404 || resp.status === 200,
-          `non-existent tender: got ${resp.status}`
-        );
-        // If 200, data should be null/empty
-        if (resp.status === 200) {
-          const isEmpty = !resp.data || (Array.isArray(resp.data) && resp.data.length === 0) ||
-            (resp.data && Object.keys(resp.data).length === 0);
-          // Some APIs return empty object for non-existent records
-        }
+        // C3: Server returns 404 for non-existent record
+        assert(resp.status === 404, `non-existent tender: expected 404, got ${resp.status}`);
       }
     },
     {
-      name: 'VAL: PUT /api/data/tenders/999999999 → 404/200',
+      name: 'VAL: PUT /api/data/tenders/999999999 → 404',
       run: async () => {
         const resp = await api('PUT', '/api/data/tenders/999999999', {
           role: 'ADMIN',
           body: { tender_title: 'ghost' }
         });
-        assert(
-          resp.status === 404 || resp.status === 200 || resp.status === 400,
-          `update non-existent: got ${resp.status}`
-        );
+        assert(resp.status === 404, `update non-existent: expected 404, got ${resp.status}`);
       }
     },
     {
-      name: 'VAL: DELETE /api/data/tenders/999999999 → 404/200',
+      name: 'VAL: DELETE /api/data/tenders/999999999 → 404',
       run: async () => {
         const resp = await api('DELETE', '/api/data/tenders/999999999', { role: 'ADMIN' });
-        assert(
-          resp.status === 404 || resp.status === 200 || resp.status === 204,
-          `delete non-existent: got ${resp.status}`
-        );
+        assert(resp.status === 404, `delete non-existent: expected 404, got ${resp.status}`);
       }
     },
     {
       name: 'VAL: GET /api/users/999999999 → 404',
       run: async () => {
         const resp = await api('GET', '/api/users/999999999', { role: 'ADMIN' });
-        assert(
-          resp.status === 404 || resp.status === 200,
-          `non-existent user: got ${resp.status}`
-        );
+        assert(resp.status === 404, `non-existent user: expected 404, got ${resp.status}`);
       }
     },
     {
       name: 'VAL: GET /api/tenders/999999999 → 404',
       run: async () => {
         const resp = await api('GET', '/api/tenders/999999999', { role: 'ADMIN' });
-        assert(
-          resp.status === 404 || resp.status === 200,
-          `non-existent tender: got ${resp.status}`
-        );
+        assert(resp.status === 404, `non-existent tender: expected 404, got ${resp.status}`);
       }
     },
 
     // ═══ SQL Injection attempts ═══
     {
-      name: 'SEC: SQL injection in table name → blocked or safe',
+      name: 'SEC: SQL injection in table name → safe (Fastify parses ; as separator)',
       run: async () => {
         const resp = await api('GET', '/api/data/tenders;DROP%20TABLE%20users', { role: 'ADMIN' });
-        // Fastify may route "tenders;DROP..." as "tenders" (ignoring after ;)
-        // This is safe because the table name is checked against whitelist
-        assert(
-          resp.status === 400 || resp.status === 404 || resp.status === 403 || resp.status === 200,
-          `SQL injection in table: got ${resp.status}`
-        );
+        // C4: Fastify parses `;` as path separator, table resolves to "tenders" → safe 200
+        assert(resp.status === 200, `SQL injection in table: expected 200, got ${resp.status}`);
       }
     },
     {
-      name: 'SEC: SQL injection in query param → no execution',
+      name: 'SEC: SQL injection in query param → 200 (parameterized queries)',
       run: async () => {
         const resp = await api('GET', "/api/data/tenders?limit=1;DROP TABLE users--", { role: 'ADMIN' });
-        // Should either return normal data or error, but NOT execute the injection
-        assert(resp.status !== 500, `SQL injection should not crash: got ${resp.status}`);
+        // B1: Parameterized queries safely ignore injection; parseInt returns NaN → defaults to 500 → capped
+        assert(resp.status === 200, `SQL injection in query param: expected 200, got ${resp.status}`);
       }
     },
     {
-      name: 'SEC: SQL injection in POST body field → safe',
+      name: 'SEC: SQL injection in POST body field → 200 (stored as string)',
       run: async () => {
         const resp = await api('POST', '/api/data/tenders', {
           role: 'ADMIN',
@@ -165,8 +141,8 @@ module.exports = {
             tender_status: 'Новый'
           }
         });
-        // Should either succeed (stored as string) or error — never execute SQL
-        assert(resp.status !== 500, `SQL injection in body: got ${resp.status}`);
+        // B2: Parameterized queries store injection text literally
+        assert(resp.status === 200, `SQL injection in body: expected 200, got ${resp.status}`);
 
         // Cleanup if created
         const id = resp.data?.id || resp.data?.item?.id;
@@ -176,20 +152,17 @@ module.exports = {
       }
     },
     {
-      name: 'SEC: SQL injection in ID param → safe',
+      name: 'SEC: SQL injection in ID param → 400 (invalid ID)',
       run: async () => {
         const resp = await api('GET', '/api/data/tenders/1%20OR%201=1', { role: 'ADMIN' });
-        // Server may 500 if it casts to integer — parameterized queries still prevent SQL injection
-        assert(
-          [200, 400, 404, 500].includes(resp.status),
-          `SQL injection in ID: got ${resp.status}`
-        );
+        // A1: Server validates ID is numeric → 400
+        assert(resp.status === 400, `SQL injection in ID: expected 400, got ${resp.status}`);
       }
     },
 
     // ═══ XSS attempts ═══
     {
-      name: 'SEC: XSS in POST body → stored safely',
+      name: 'SEC: XSS in POST body → 200 (stored safely as text)',
       run: async () => {
         const xssPayload = '<script>alert("xss")</script>';
         const resp = await api('POST', '/api/data/tenders', {
@@ -201,8 +174,8 @@ module.exports = {
             tender_status: 'Новый'
           }
         });
-        // Either stored safely or rejected — never 500
-        assert(resp.status !== 500, `XSS in body: got ${resp.status}`);
+        // B3: XSS text is stored as literal string by parameterized queries
+        assert(resp.status === 200, `XSS in body: expected 200, got ${resp.status}`);
 
         // Cleanup
         const id = resp.data?.id || resp.data?.item?.id;
@@ -214,7 +187,7 @@ module.exports = {
 
     // ═══ Boundary values ═══
     {
-      name: 'VAL: Very long string in field (5000 chars)',
+      name: 'VAL: Very long string in field (5000 chars) → 400 (VARCHAR overflow)',
       run: async () => {
         const longStr = 'A'.repeat(5000);
         const resp = await api('POST', '/api/data/tenders', {
@@ -226,25 +199,16 @@ module.exports = {
             tender_status: 'Новый'
           }
         });
-        // Server may 500 if column has varchar limit — this is a known boundary
-        assert(
-          [200, 201, 400, 422, 500].includes(resp.status),
-          `long string: got ${resp.status}`
-        );
-
-        // Cleanup
-        const id = resp.data?.id || resp.data?.item?.id;
-        if (id) {
-          await api('DELETE', `/api/data/tenders/${id}`, { role: 'ADMIN' });
-        }
+        // A2: Server catches PostgreSQL error 22001 (string_data_right_truncation) → 400
+        assert(resp.status === 400, `long string: expected 400, got ${resp.status}`);
       }
     },
     {
-      name: 'VAL: Limit=0 → valid response',
+      name: 'VAL: Limit=0 → 200 (clamped to 1)',
       run: async () => {
         const resp = await api('GET', '/api/data/tenders?limit=0', { role: 'ADMIN' });
-        // Server has floor(1) — should return at least 1 or empty array
-        assert(resp.status !== 500, `limit=0: got ${resp.status}`);
+        // B4: Server clamps limit to min 1 via Math.max
+        assert(resp.status === 200, `limit=0: expected 200, got ${resp.status}`);
       }
     },
     {
@@ -255,21 +219,19 @@ module.exports = {
       }
     },
     {
-      name: 'VAL: Negative limit → handled',
+      name: 'VAL: Negative limit → 200 (clamped to 1)',
       run: async () => {
         const resp = await api('GET', '/api/data/tenders?limit=-5', { role: 'ADMIN' });
-        assert(resp.status !== 500, `negative limit: got ${resp.status}`);
+        // B5: Server clamps negative limit to 1 via Math.max
+        assert(resp.status === 200, `negative limit: expected 200, got ${resp.status}`);
       }
     },
     {
-      name: 'VAL: Offset with string → handled',
+      name: 'VAL: Offset with string → 200 (defaults to 0)',
       run: async () => {
         const resp = await api('GET', '/api/data/tenders?offset=abc', { role: 'ADMIN' });
-        // Server may 500 if it doesn't validate offset type — known issue
-        assert(
-          [200, 400, 500].includes(resp.status),
-          `string offset: got ${resp.status}`
-        );
+        // A3: Server sanitizes offset: parseInt('abc') || 0 → uses 0
+        assert(resp.status === 200, `string offset: expected 200, got ${resp.status}`);
       }
     },
 
@@ -278,26 +240,20 @@ module.exports = {
       name: 'VAL: GET /api/data/pg_tables → blocked (not in whitelist)',
       run: async () => {
         const resp = await api('GET', '/api/data/pg_tables', { role: 'ADMIN' });
-        assert(
-          resp.status === 400 || resp.status === 403 || resp.status === 404,
-          `system table should be blocked, got ${resp.status}`
-        );
+        assert(resp.status === 400, `system table should be blocked: expected 400, got ${resp.status}`);
       }
     },
     {
       name: 'VAL: GET /api/data/information_schema → blocked',
       run: async () => {
         const resp = await api('GET', '/api/data/information_schema', { role: 'ADMIN' });
-        assert(
-          resp.status === 400 || resp.status === 403 || resp.status === 404,
-          `information_schema should be blocked, got ${resp.status}`
-        );
+        assert(resp.status === 400, `information_schema should be blocked: expected 400, got ${resp.status}`);
       }
     },
 
     // ═══ Content-Type validation ═══
     {
-      name: 'VAL: POST without Content-Type → handled',
+      name: 'VAL: POST without Content-Type → 400',
       run: async () => {
         const token = getToken('ADMIN');
         const resp = await fetch(`${BASE_URL}/api/data/tenders`, {
@@ -305,17 +261,14 @@ module.exports = {
           headers: { 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ customer_name: 'No content type' })
         });
-        // Fastify may 500 or 415 without Content-Type — known behavior
-        assert(
-          [200, 400, 415, 500].includes(resp.status),
-          `no content-type: got ${resp.status}`
-        );
+        // A4: Node fetch sends text/plain by default → body is string not object → 400
+        assert(resp.status === 400, `no content-type: expected 400, got ${resp.status}`);
       }
     },
 
     // ═══ Special characters ═══
     {
-      name: 'VAL: Unicode in field values → stored correctly',
+      name: 'VAL: Unicode in field values → 200 (stored correctly)',
       run: async () => {
         const unicodeStr = '测试 тест テスト 🔧';
         const resp = await api('POST', '/api/data/tenders', {
@@ -327,7 +280,8 @@ module.exports = {
             tender_status: 'Новый'
           }
         });
-        assert(resp.status !== 500, `unicode: got ${resp.status}`);
+        // B6: Unicode is stored correctly by PostgreSQL
+        assert(resp.status === 200, `unicode: expected 200, got ${resp.status}`);
 
         const id = resp.data?.id || resp.data?.item?.id;
         if (id) {
@@ -367,7 +321,7 @@ module.exports = {
 
     // ═══ Extra fields in POST ═══
     {
-      name: 'VAL: POST with unknown columns → ignored or rejected',
+      name: 'VAL: POST with unknown columns → 200 (extra fields ignored)',
       run: async () => {
         const resp = await api('POST', '/api/data/tenders', {
           role: 'ADMIN',
@@ -380,8 +334,8 @@ module.exports = {
             another_fake_field: 12345
           }
         });
-        // Column whitelist should strip unknown columns
-        assert(resp.status !== 500, `extra fields: got ${resp.status}`);
+        // B7: Column whitelist strips unknown columns, record created normally
+        assert(resp.status === 200, `extra fields: expected 200, got ${resp.status}`);
 
         const id = resp.data?.id || resp.data?.item?.id;
         if (id) {
@@ -392,14 +346,11 @@ module.exports = {
 
     // ═══ ID type coercion ═══
     {
-      name: 'VAL: String ID where integer expected → handled',
+      name: 'VAL: String ID where integer expected → 400',
       run: async () => {
         const resp = await api('GET', '/api/data/tenders/abc', { role: 'ADMIN' });
-        assert(
-          [400, 404, 200, 500].includes(resp.status),
-          `string ID: got ${resp.status}`
-        );
-        // Actually, we'd prefer no 500. But it's a boundary test.
+        // A5: Server validates ID is numeric → 400
+        assert(resp.status === 400, `string ID: expected 400, got ${resp.status}`);
       }
     }
   ]

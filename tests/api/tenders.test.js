@@ -21,7 +21,8 @@ module.exports = {
             tender_type: 'Аукцион'
           }
         });
-        assert(resp.status < 500, `create tender: ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
+        // D6: strict 200 for tender creation
+        assert(resp.status === 200, `create tender: expected 200, got ${resp.status} — ${JSON.stringify(resp.data)?.slice(0, 300)}`);
         const tender = resp.data?.tender || resp.data;
         testTenderId = tender?.id;
         assert(testTenderId, 'should return id');
@@ -106,7 +107,7 @@ module.exports = {
         const resp = await api('POST', '/api/tenders', {
           role: 'TO', body: {}
         });
-        assert(resp.status >= 400 && resp.status < 500, `expected 4xx for empty body, got ${resp.status}`);
+        assert(resp.status === 400, `expected 400 for empty body, got ${resp.status}`);
       }
     },
     {

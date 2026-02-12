@@ -12,7 +12,7 @@ module.exports = {
       name: 'ADMIN reads chat groups',
       run: async () => {
         const resp = await api('GET', '/api/chat-groups', { role: 'ADMIN' });
-        assert(resp.status < 500, `chats: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        assertOk(resp, 'chats:  -');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.chats || resp.data.items || []);
           if (Array.isArray(list) && list.length > 0) {
@@ -31,7 +31,7 @@ module.exports = {
             description: 'Автотест'
           }
         });
-        assert(resp.status < 500, `create chat: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        assertOk(resp, 'create chat:  -');
         if (resp.ok) {
           testChatId = resp.data?.chat?.id || resp.data?.id;
           if (resp.data) {
@@ -46,7 +46,7 @@ module.exports = {
       run: async () => {
         if (!testChatId) return;
         const resp = await api('GET', `/api/chat-groups/${testChatId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `get chat: ${resp.status}`);
+        assertOk(resp, 'get chat');
         if (resp.ok && resp.data) {
           const chat = resp.data.chat || resp.data;
           assertHasFields(chat, ['id'], 'read-back chat');
@@ -64,7 +64,7 @@ module.exports = {
           role: 'ADMIN',
           body: { text: 'Stage12: Hello from autotest!' }
         });
-        assert(resp.status < 500, `post message: ${resp.status}`);
+        assertOk(resp, 'post message');
       }
     },
     {
@@ -72,7 +72,7 @@ module.exports = {
       run: async () => {
         if (!testChatId) return;
         const resp = await api('GET', `/api/chat-groups/${testChatId}/messages`, { role: 'ADMIN' });
-        assert(resp.status < 500, `messages: ${resp.status}`);
+        assertOk(resp, 'messages');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.messages || resp.data.items || []);
           if (Array.isArray(list)) {
@@ -90,7 +90,7 @@ module.exports = {
           role: 'ADMIN',
           body: { name: 'Stage12: Updated chat' }
         });
-        assert(resp.status < 500, `update chat: ${resp.status}`);
+        assertOk(resp, 'update chat');
       }
     },
     {
@@ -98,7 +98,7 @@ module.exports = {
       run: async () => {
         if (!testChatId) return;
         const resp = await api('GET', `/api/chat-groups/${testChatId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `read-back updated chat: ${resp.status}`);
+        assertOk(resp, 'read-back updated chat');
         if (resp.ok && resp.data) {
           const chat = resp.data.chat || resp.data;
           if (chat.name !== undefined) {
@@ -114,8 +114,7 @@ module.exports = {
           role: 'ADMIN',
           body: {}
         });
-        assert(resp.status >= 400, `empty body should fail, got ${resp.status}`);
-        assert(resp.status < 500, `empty body should be 4xx not 5xx, got ${resp.status}`);
+        assert(resp.status === 400, `empty body should return 400, got ${resp.status}`);
       }
     },
     {
@@ -123,7 +122,7 @@ module.exports = {
       run: async () => {
         if (!testChatId) return;
         const resp = await api('DELETE', `/api/chat-groups/${testChatId}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `delete chat: ${resp.status}`);
+        assertOk(resp, 'delete chat');
       }
     },
     {

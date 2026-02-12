@@ -1,4 +1,4 @@
-const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType } = require('../config');
+const { api, assert, assertOk, assertForbidden, assertHasFields, assertArray, assertMatch, assertFieldType, skip } = require('../config');
 
 let testCashId = null;
 
@@ -12,7 +12,8 @@ module.exports = {
           role: 'PM',
           body: {
             amount: 50000,
-            purpose: 'ТЕСТ: командировка на объект'
+            purpose: 'ТЕСТ: командировка на объект',
+            type: 'expense'
           }
         });
         // Может быть 200 или 201, или 403 если нет permission
@@ -21,10 +22,14 @@ module.exports = {
           // Validate response shape on successful create
           if (resp.data && typeof resp.data === 'object') {
             assertFieldType(resp.data, 'id', 'number', 'cash create id');
-            assertFieldType(resp.data, 'amount', 'number', 'cash create amount');
+            // PostgreSQL returns NUMERIC/DECIMAL as strings (e.g. "50000.00")
+            assert(
+              resp.data.amount !== undefined && resp.data.amount !== null && !isNaN(Number(resp.data.amount)),
+              'cash create amount: expected numeric value, got ' + JSON.stringify(resp.data.amount)
+            );
           }
         }
-        assert(resp.status < 500, `create cash: unexpected ${resp.status}`);
+        assertOk(resp, 'create cash: unexpected');
       }
     },
     {
@@ -32,7 +37,7 @@ module.exports = {
       run: async () => {
         const resp = await api('GET', '/api/cash/my', { role: 'PM' });
         // Может быть 403 если permission не настроен
-        assert(resp.status < 500, `my cash: ${resp.status}`);
+        assertOk(resp, 'my cash');
         if (resp.ok && resp.data) {
           const list = Array.isArray(resp.data) ? resp.data : (resp.data.requests || resp.data.items || []);
           assertArray(list, 'cash/my list');
@@ -67,7 +72,7 @@ module.exports = {
           role: 'ADMIN',
           body: { comment: 'Одобрено автотестом' }
         });
-        assert(resp.status < 500, `approve: ${resp.status}`);
+        assertOk(resp, 'approve');
       }
     },
     {
@@ -91,8 +96,8 @@ module.exports = {
       name: 'Cash summary shape validation',
       run: async () => {
         const resp = await api('GET', '/api/cash/summary', { role: 'ADMIN' });
-        // Summary endpoint may not exist — accept non-500
-        assert(resp.status < 500, `cash summary: ${resp.status}`);
+        if (resp.status === 404) skip('cash/summary endpoint not available');
+        assertOk(resp, 'cash summary');
         if (resp.ok && resp.data && typeof resp.data === 'object') {
           // Summary should be an object (not array)
           assert(typeof resp.data === 'object', 'cash summary should be object');
@@ -106,8 +111,7 @@ module.exports = {
           role: 'PM',
           body: {}
         });
-        assert(resp.status >= 400, `empty body should fail, got ${resp.status}`);
-        assert(resp.status < 500, `empty body should be 4xx not 5xx, got ${resp.status}`);
+        assert(resp.status === 400, `empty body should return 400, got ${resp.status}`);
       }
     },
     {

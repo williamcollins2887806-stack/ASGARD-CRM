@@ -42,7 +42,7 @@ module.exports = {
       name: 'ADMIN reads audit_log via /data/audit_log',
       run: async () => {
         const resp = await api('GET', '/api/data/audit_log?limit=5', { role: 'ADMIN' });
-        assert(resp.status < 500, `audit_log: ${resp.status}`);
+        assertOk(resp, 'audit_log');
       }
     },
     {

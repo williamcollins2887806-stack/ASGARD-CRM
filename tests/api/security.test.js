@@ -88,8 +88,8 @@ module.exports = {
         const resp = await rawFetch('POST', '/api/auth/login', {
           body: { login: 'test_admin', password: 'Test123!' }
         });
-        // Login should return 200 (success) or 401 (bad credentials) — never 500
-        assert(resp.status === 200 || resp.status === 401, `login: expected 200 or 401, got ${resp.status}`);
+        // C5: Login with correct credentials → strict 200
+        assert(resp.status === 200, `login: expected 200, got ${resp.status}`);
         if (resp.data && typeof resp.data === 'object') {
           assertNotHasFields(resp.data, SENSITIVE_FIELDS, 'login response');
           if (resp.data.user) {
@@ -169,11 +169,8 @@ module.exports = {
           role: 'HR',
           body: { fio: "'; UPDATE users SET role='ADMIN';--" }
         });
-        // May succeed (200/201) or fail (400) for missing required fields — must NOT be 500
-        assert(
-          resp.status === 200 || resp.status === 201 || resp.status === 400,
-          `SQLi employee: expected 200/201/400, got ${resp.status}`
-        );
+        // C6: SQL injection stored literally via parameterized queries → 200
+        assert(resp.status === 200, `SQLi employee: expected 200, got ${resp.status}`);
       }
     },
     {

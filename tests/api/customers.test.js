@@ -39,14 +39,14 @@ module.exports = {
             contact_person: 'Ivanov I.I.'
           }
         });
-        assert(resp.status < 500, `create customer: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        assertOk(resp, 'create customer:  -');
       }
     },
     {
       name: 'Read-back by INN after create verifies fields',
       run: async () => {
         const resp = await api('GET', `/api/customers/${TEST_INN}`, { role: 'PM' });
-        assert(resp.status < 500, `get customer: ${resp.status}`);
+        assertOk(resp, 'get customer');
         if (resp.ok && resp.data) {
           const customer = resp.data.customer || resp.data;
           assertHasFields(customer, ['name'], 'read-back customer');
@@ -66,14 +66,14 @@ module.exports = {
           role: 'PM',
           body: { contact_person: 'Petrov P.P.' }
         });
-        assert(resp.status < 500, `update customer: ${resp.status}`);
+        assertOk(resp, 'update customer');
       }
     },
     {
       name: 'Read-back after update verifies contact_person changed',
       run: async () => {
         const resp = await api('GET', `/api/customers/${TEST_INN}`, { role: 'PM' });
-        assert(resp.status < 500, `read-back updated customer: ${resp.status}`);
+        assertOk(resp, 'read-back updated customer');
         if (resp.ok && resp.data) {
           const customer = resp.data.customer || resp.data;
           if (customer.contact_person !== undefined) {
@@ -96,8 +96,7 @@ module.exports = {
           role: 'PM',
           body: {}
         });
-        assert(resp.status >= 400, `empty body should fail, got ${resp.status}`);
-        assert(resp.status < 500, `empty body should be 4xx not 5xx, got ${resp.status}`);
+        assert(resp.status === 400, `empty body should return 400, got ${resp.status}`);
       }
     },
     {
@@ -118,7 +117,7 @@ module.exports = {
       name: 'Cleanup: delete test customer',
       run: async () => {
         const resp = await api('DELETE', `/api/customers/${TEST_INN}`, { role: 'ADMIN' });
-        assert(resp.status < 500, `delete customer: ${resp.status}`);
+        assertOk(resp, 'delete customer');
       }
     },
     {

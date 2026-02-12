@@ -75,7 +75,7 @@ module.exports = {
             category: 'materials'
           }
         });
-        assert(resp.status < 500, `create expense: ${resp.status} - ${JSON.stringify(resp.data)?.slice(0, 200)}`);
+        assertOk(resp, 'create expense:  -');
         if (resp.ok) {
           testExpenseId = resp.data?.expense?.id || resp.data?.id;
         }
@@ -97,7 +97,7 @@ module.exports = {
             assertMatch(found, { amount: 1500 }, 'read-back expense amount');
           }
         } else {
-          assert(resp.status < 500, `read-back expense: ${resp.status}`);
+          assertOk(resp, 'read-back expense');
         }
       }
     },
