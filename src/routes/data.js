@@ -21,7 +21,10 @@ async function dataRoutes(fastify, options) {
     'notifications', 'acts', 'invoices', 'invoice_payments', 'email_history',
     'email_queue', 'reminders', 'equipment', 'equipment_movements',
     'equipment_requests', 'equipment_maintenance', 'equipment_reservations',
-    'equipment_categories', 'warehouses', 'objects'
+    'equipment_categories', 'warehouses', 'objects',
+    'cash_advances', 'tasks', 'emails', 'email_accounts',
+    'chat_group_members', 'saved_reports',
+    'tkp', 'pass_requests', 'tmc_requests'
   ];
 
   // Таблицы с особыми первичными ключами
