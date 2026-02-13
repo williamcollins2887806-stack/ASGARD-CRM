@@ -724,10 +724,30 @@ a:hover {
 
 .card {
   padding: 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel {
   padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Кнопка внизу карточки */
+.card .btn:last-child,
+.card [class*="btn"]:last-child,
+.widget .btn:last-child {
+  margin-top: auto;
+}
+
+/* Центрирование метрик в виджетах */
+.stat-card .value,
+.widget .value,
+.metric-value {
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 700;
 }
 
 .card h3 {
@@ -812,6 +832,8 @@ a:hover {
   height: 10px;
   border-radius: 50%;
   margin-right: 8px;
+  vertical-align: middle;
+  flex-shrink: 0;
 }
 
 .dot.green { background: var(--green); box-shadow: 0 0 8px var(--green); }
@@ -851,11 +873,34 @@ input::placeholder, textarea::placeholder {
 /* Стилизация select */
 select {
   appearance: none;
+  background-color: var(--bg-card);
+  color: var(--text-primary);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 36px;
   cursor: pointer;
+}
+
+select option {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
+/* Модальные select */
+.modal select,
+.modal-content select,
+.modalback select {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+/* Select padding для стрелки — глобально */
+select,
+.calc select,
+#calculator select {
+  padding-right: 36px;
 }
 
 /* Чекбоксы и радио */
@@ -868,14 +913,15 @@ input[type="checkbox"], input[type="radio"] {
 }
 
 /* Метки */
-label {
+label,
+.label,
+.form-label {
   display: block;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-secondary);
   margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
 }
 
 /* Группы форм */
@@ -883,7 +929,13 @@ label {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+}
+
+.formrow > input,
+.formrow > select,
+.formrow > textarea {
+  margin-top: 4px;
 }
 
 .formgroup {
@@ -971,6 +1023,43 @@ table.asg tbody tr:last-child td:last-child {
 .card table.asg tbody tr:last-child td:first-child,
 .card table.asg tbody tr:last-child td:last-child {
   border-radius: 0;
+}
+
+/* Единый стиль таблиц (не-asg) */
+.tbl th,
+table:not(.asg) th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 80px;
+}
+
+.tbl td,
+table:not(.asg) td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+/* Zebra */
+.tbl tr:nth-child(even),
+table:not(.asg) tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Hover */
+.tbl tr:hover,
+table:not(.asg) tr:hover {
+  background: var(--bg-elevated);
 }
 
 /* Статус-ячейки */
@@ -1065,6 +1154,33 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   color: var(--gold);
 }
 
+/* Крестик закрытия модалки */
+.modal-close,
+.modal-header .close-btn,
+.mh .btn.ghost {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.modal-close:hover,
+.modal-header .close-btn:hover,
+.mh .btn.ghost:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
 /* Контент модала */
 .mc {
   flex: 1;
@@ -1098,7 +1214,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
 
 .tab {
   flex: 1;
-  padding: 12px 20px;
+  padding: 10px 20px;
   border-radius: var(--radius-sm);
   border: none;
   background: transparent;
@@ -1106,17 +1222,19 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.2s;
+  white-space: nowrap;
 }
 
-.tab:hover {
+.tab:hover:not(.active) {
+  background: var(--bg-elevated);
   color: var(--text-primary);
-  background: var(--gold-glow);
 }
 
 .tab.active {
-  background: linear-gradient(135deg, var(--gold-glow), var(--red-glow));
-  color: var(--gold);
+  background: var(--primary);
+  color: #ffffff;
+  font-weight: 600;
   box-shadow: var(--shadow-sm);
 }
 
@@ -2549,6 +2667,7 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   background: var(--glass);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
+  align-items: center;
 }
 
 .filters input,
@@ -2557,6 +2676,14 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   min-width: 180px;
   padding: 10px 14px;
   font-size: 13px;
+}
+
+.filters input,
+.filters select,
+.filters .inp,
+.filters .btn {
+  height: 40px;
+  box-sizing: border-box;
 }
 
 .search-box {
@@ -2577,6 +2704,128 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   transform: translateY(-50%);
   font-size: 14px;
   opacity: 0.5;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   EMPTY STATES & STATUS DOTS & MISC UX FIXES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Пустые ячейки */
+.empty-cell,
+.no-data {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Статус-точки — выравнивание */
+.status-dot,
+.dot,
+.color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+/* Кнопки уведомлений — единая высота */
+.alert-actions .btn,
+.notification-actions .btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Плавающий помощник — ненавязчивый */
+.floating-helper,
+.fab-helper,
+.assistant-btn {
+  width: 44px;
+  height: 44px;
+  opacity: 0.6;
+  transition: opacity 0.3s;
+}
+
+.floating-helper:hover,
+.fab-helper:hover {
+  opacity: 1;
+}
+
+.floating-helper .close-helper {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Форма настроек Mango — сетка */
+.settings-form,
+.mango-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.settings-form input,
+.mango-form input {
+  width: 100%;
+}
+
+.settings-form .full-width,
+.mango-form .full-width {
+  grid-column: 1 / -1;
+}
+
+/* Карточки синхронизации — сетка */
+.sync-cards,
+.sync-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.sync-card {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Нумерация шагов калькулятора */
+.calc-step-number,
+.step-badge {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+  background: var(--primary-glow);
+  color: var(--primary);
+  border: 1px solid var(--primary-border);
+}
+
+/* Карточка тендера — контраст */
+.tender-detail .field-value,
+.tender-card .value {
+  color: var(--text-primary);
+}
+
+.tender-detail .field-label {
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3173,6 +3422,33 @@ html[data-theme="light"] table td {
 html[data-theme="light"] .tbl tr:hover,
 html[data-theme="light"] table tr:hover {
   background: rgba(220, 38, 38, 0.04);
+}
+
+/* Zebra striping for light theme */
+html[data-theme="light"] .tbl tr:nth-child(even),
+html[data-theme="light"] table:not(.asg) tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Light theme tabs */
+html[data-theme="light"] .tab {
+  color: var(--text-secondary);
+}
+
+html[data-theme="light"] .tab.active {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+html[data-theme="light"] .tab:hover:not(.active) {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+/* Light theme empty cell */
+html[data-theme="light"] .empty-cell,
+html[data-theme="light"] .no-data {
+  color: #94a3b8;
 }
 
 /* Badges */

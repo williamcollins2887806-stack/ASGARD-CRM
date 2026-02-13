@@ -172,7 +172,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies"},
     {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","PM",...DIRECTOR_ROLES],i:"travel"},
     {r:"/user-requests",l:"Заявки на регистрацию",d:"Одобрение новых пользователей",roles:["ADMIN",...DIRECTOR_ROLES],i:"requests"},
-    {r:"/analytics",l:"Аналитика Ярла",d:"KPI работ и денег",roles:["ADMIN",...DIRECTOR_ROLES],i:"kpiworks"},
+    {r:"/kpi-works",l:"Аналитика Ярла",d:"KPI работ и денег",roles:["ADMIN",...DIRECTOR_ROLES],i:"kpiworks"},
     {r:"/alerts",l:"Воронья почта • Уведомления",d:"События и ответы",roles:ALL_ROLES,i:"alerts"},
     {r:"/office-schedule",l:"График Дружины • Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule"},
     {r:"/workers-schedule",l:"График Дружины • Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR",...DIRECTOR_ROLES],i:"workers"},
@@ -309,7 +309,7 @@ try{
     window.__ASG_DOC_ESC_NAV__ = (e)=>{ if(e.key==="Escape") closeNav(); };
     document.addEventListener("keydown", window.__ASG_DOC_ESC_NAV__);
 
-    addMobileClick($("#btnLogout"), ()=>{ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; });
+    addMobileClick($("#btnLogout"), ()=>{ if(confirm('Выйти из системы?')){ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; } });
     addMobileClick($("#btnLoginGo"), ()=>location.hash="#/login");
     addMobileClick($("#btnRegGo"), ()=>location.hash="#/register");
     addMobileClick($("#btnBackup"), backupModal);
