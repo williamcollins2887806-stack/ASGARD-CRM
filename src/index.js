@@ -119,6 +119,8 @@ fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
 fastify.register(require('./routes/invoices'), { prefix: '/api/invoices' });
 fastify.register(require('./routes/equipment'), { prefix: '/api/equipment' });
 fastify.register(require('./routes/data'), { prefix: '/api/data' });
+fastify.register(require('./routes/tasks'), { prefix: '/api/tasks' });
+fastify.register(require('./routes/chat-groups'), { prefix: '/api/chat-groups' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check

@@ -32,14 +32,14 @@ async function routes(fastify, options) {
 
   // Создать уведомление (внутренний API)
   fastify.post('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { user_id, title, message, type, link } = request.body;
-    
+    const { user_id, title, message, type, link, link_hash } = request.body;
+
     // Сохраняем в БД
     const result = await db.query(`
-      INSERT INTO notifications (user_id, title, message, type, link, is_read, created_at)
-      VALUES ($1, $2, $3, $4, $5, false, NOW())
+      INSERT INTO notifications (user_id, title, message, type, link, link_hash, is_read, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, false, NOW())
       RETURNING *
-    `, [user_id, title, message, type || 'info', link || null]);
+    `, [user_id, title, message, type || 'info', link || null, link_hash || null]);
     
     // Отправляем в Telegram
     try {

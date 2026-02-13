@@ -186,6 +186,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup"},
     {r:"/mango",l:"Телефония",d:"Манго Телеком",roles:["ADMIN"],i:"alerts"},
     {r:"/chat",l:"Чат дружины",d:"Общение и согласования",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"correspondence"},
+    {r:"/tasks",l:"Задачи",d:"Назначение и контроль",roles:ALL_ROLES,i:"approvals"},
     {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"dashboard"},
   ];
 
@@ -1011,6 +1012,9 @@ try{
     
     // Склад и ТМЦ
     AsgardRouter.add("/warehouse", ()=>AsgardWarehouse.render({layout, title:"Склад и ТМЦ"}), {auth:true, roles:ALL_ROLES});
+
+    // Задачи
+    AsgardRouter.add("/tasks", ()=>AsgardTasksPage.render({layout, title:"Задачи"}), {auth:true, roles:ALL_ROLES});
 
     // TKP Follow-up: проверка напоминаний при старте
     if(window.AsgardTkpFollowup){

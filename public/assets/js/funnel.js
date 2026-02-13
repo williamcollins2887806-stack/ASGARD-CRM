@@ -72,7 +72,7 @@ window.AsgardFunnelPage = (function(){
       const stat = stats.find(s => s.id === stage.id);
       
       const cardsHtml = items.slice(0, 20).map(t => `
-        <div class="funnel-card" data-id="${t.id}" draggable="true">
+        <div class="funnel-card" data-id="${t.id}" draggable="true" style="border:none">
           <div class="funnel-card-header">
             <span class="funnel-card-customer">${esc(t.customer || 'Без заказчика')}</span>
             <span class="funnel-card-sum">${money(t._sum)}</span>

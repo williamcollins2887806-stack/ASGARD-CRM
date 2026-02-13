@@ -40,9 +40,17 @@ window.AsgardDB = (function(){
         body: options.body
       });
       
-      // При 401 - возвращаем null (не авторизован)
+      // При 401 - сессия истекла, перенаправляем на вход
       if (resp.status === 401) {
         console.warn('[AsgardDB] Unauthorized:', url);
+        // Очищаем кэш авторизации
+        localStorage.removeItem('asgard_token');
+        localStorage.removeItem('asgard_user');
+        // Перенаправляем на логин (если ещё не там)
+        if (location.hash !== '#/login' && location.hash !== '#/welcome' && location.hash !== '#/register') {
+          AsgardUI.toast('Сессия истекла', 'Войдите в систему заново', 'err');
+          location.hash = '#/login';
+        }
         return null;
       }
       
