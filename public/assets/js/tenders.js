@@ -251,7 +251,9 @@ window.AsgardTendersPage = (function(){
 
 async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
-    return refs && refs.tender_statuses ? refs : { tender_statuses:[], reject_reasons:[] };
+    const defaultStatuses = ['Черновик','Новый','В работе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Выиграли','Проиграли','Контракт','Клиент отказался','Клиент согласился','Отказ'];
+    if(refs && refs.tender_statuses && refs.tender_statuses.length) return refs;
+    return { tender_statuses: defaultStatuses, reject_reasons: (refs && refs.reject_reasons) || [] };
   }
 
   async function getUsers(){
@@ -309,6 +311,7 @@ async function getRefs(){
     const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Ссылка</a>` : "—";
     const ddl = fmtDate(t.docs_deadline);
     return `<tr data-id="${t.id}">
+      <td><input type="checkbox" class="tender-check" value="${t.id}" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>
       <td>${esc(t.period||"")}</td>
       <td>
         <b>${esc(t.customer_name||"")}</b>
@@ -421,6 +424,7 @@ async function getRefs(){
           <table class="asg">
             <thead>
               <tr>
+                <th><input type="checkbox" id="selectAllTenders" title="Выбрать все"/></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="period">Период</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="customer_name">Заказчик / Тендер</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="responsible_pm_id">РП</button></th>
@@ -437,7 +441,11 @@ async function getRefs(){
             <tbody id="tb"></tbody>
           </table>
         </div>
-        <div class="help" id="cnt"></div>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px">
+          <div class="help" id="cnt"></div>
+          <div id="bulkCount" style="font-weight:600; color:var(--primary); display:none"></div>
+          <button class="btn ghost" id="btnBulkSelected" style="display:none; background:rgba(139,92,246,.2)">Переназначить выбранные</button>
+        </div>
       </div>
     `;
 
@@ -816,6 +824,64 @@ async function getRefs(){
     });
 
     $("#btnNew").addEventListener("click", ()=>openTenderEditor(null));
+
+    // Чекбоксы массового выбора
+    function updateBulkCount(){
+      const checked = $$(".tender-check:checked");
+      const count = checked.length;
+      const bulkCountEl = $("#bulkCount");
+      const bulkBtn = $("#btnBulkSelected");
+      if(bulkCountEl) { bulkCountEl.textContent = count ? `Выбрано: ${count}` : ''; bulkCountEl.style.display = count ? '' : 'none'; }
+      if(bulkBtn) bulkBtn.style.display = count > 0 ? '' : 'none';
+    }
+    window._asgTenderBulkCount = updateBulkCount;
+
+    const selectAllEl = $("#selectAllTenders");
+    if(selectAllEl){
+      selectAllEl.addEventListener("change", ()=>{
+        $$(".tender-check").forEach(cb=>{ cb.checked = selectAllEl.checked; });
+        updateBulkCount();
+      });
+    }
+
+    const btnBulkSelected = $("#btnBulkSelected");
+    if(btnBulkSelected && (user.role === "ADMIN" || isDirRole(user.role))){
+      btnBulkSelected.addEventListener("click", ()=>{
+        const ids = $$(".tender-check:checked").map(cb=>Number(cb.value));
+        if(!ids.length){ toast("Ошибка","Выберите тендеры","err"); return; }
+        const pmOpts = pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+        const html = `
+          <div style="margin-bottom:16px">Выбрано тендеров: <b>${ids.length}</b></div>
+          <div class="formrow">
+            <div><label>Новый ответственный РП</label><select id="bulk_sel_pm"><option value="">— выбрать —</option>${pmOpts}</select></div>
+            <div><label>Причина</label><input id="bulk_sel_reason" value="Переназначение"/></div>
+          </div>
+          <hr class="hr"/>
+          <button class="btn" id="bulk_sel_do">Переназначить</button>
+        `;
+        showModal("Переназначение выбранных тендеров", html);
+        $("#bulk_sel_do").addEventListener("click", async ()=>{
+          const newPmId = Number($("#bulk_sel_pm").value||0);
+          const reason = ($("#bulk_sel_reason").value||"").trim();
+          if(!newPmId){ toast("Ошибка","Выберите РП","err"); return; }
+          if(!reason){ toast("Ошибка","Укажите причину","err"); return; }
+          if(!confirm(`Переназначить ${ids.length} тендеров?`)) return;
+          let count = 0;
+          for(const id of ids){
+            const t = tenders.find(x=>x.id===id);
+            if(!t) continue;
+            const oldPm = t.responsible_pm_id;
+            t.responsible_pm_id = newPmId;
+            await AsgardDB.put("tenders", t);
+            await audit(user.id, "tender", t.id, "bulk_reassign_pm", {old_pm: oldPm, new_pm: newPmId, reason});
+            count++;
+          }
+          toast("Готово", `Переназначено ${count} тендеров`);
+          AsgardUI.hideModal();
+          applyAndRender();
+        });
+      });
+    }
 
     // Массовое переназначение тендеров (только для админа)
     const btnBulk = $("#btnBulkReassign");

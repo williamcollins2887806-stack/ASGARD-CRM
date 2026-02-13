@@ -629,7 +629,7 @@ try{
       window.addEventListener("hashchange", window._flyoutHashHandler);
     })();
 
-    addMobileClick($("#btnLogout"), ()=>{ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; });
+    addMobileClick($("#btnLogout"), ()=>{ if(confirm('Выйти из системы?')){ AsgardAuth.logout(); toast("Выход","Сессия завершена"); location.hash="#/welcome"; } });
     addMobileClick($("#btnLoginGo"), ()=>location.hash="#/login");
     addMobileClick($("#btnRegGo"), ()=>location.hash="#/register");
     addMobileClick($("#btnBackup"), backupModal);
