@@ -32,7 +32,7 @@ async function routes(fastify, options) {
     let sql = `
       SELECT pr.*, u.name as creator_name, w.work_title, ap.name as approver_name
       FROM pass_requests pr
-      LEFT JOIN users u ON pr.created_by = u.id
+      LEFT JOIN users u ON pr.author_id = u.id
       LEFT JOIN works w ON pr.work_id = w.id
       LEFT JOIN users ap ON pr.approved_by = ap.id
       WHERE 1=1
@@ -55,10 +55,10 @@ async function routes(fastify, options) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { rows } = await db.query(`
-      SELECT pr.*, u.name as creator_name, w.work_title, w.object_name as work_object,
+      SELECT pr.*, u.name as creator_name, w.work_title,
              ap.name as approver_name
       FROM pass_requests pr
-      LEFT JOIN users u ON pr.created_by = u.id
+      LEFT JOIN users u ON pr.author_id = u.id
       LEFT JOIN works w ON pr.work_id = w.id
       LEFT JOIN users ap ON pr.approved_by = ap.id
       WHERE pr.id = $1
@@ -213,7 +213,7 @@ async function routes(fastify, options) {
     const { rows } = await db.query(`
       SELECT pr.*, u.name as creator_name, w.work_title
       FROM pass_requests pr
-      LEFT JOIN users u ON pr.created_by = u.id
+      LEFT JOIN users u ON pr.author_id = u.id
       LEFT JOIN works w ON pr.work_id = w.id
       WHERE pr.id = $1
     `, [request.params.id]);

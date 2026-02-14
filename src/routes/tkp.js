@@ -34,7 +34,7 @@ async function routes(fastify, options) {
     let sql = `
       SELECT t.*, u.name as creator_name, te.customer_name as tender_customer
       FROM tkp t
-      LEFT JOIN users u ON t.created_by = u.id
+      LEFT JOIN users u ON t.author_id = u.id
       LEFT JOIN tenders te ON t.tender_id = te.id
       WHERE 1=1
     `;
@@ -59,9 +59,9 @@ async function routes(fastify, options) {
   }, async (request, reply) => {
     const { rows } = await db.query(`
       SELECT t.*, u.name as creator_name, sb.name as sent_by_name,
-             te.customer_name as tender_customer, te.tender_number
+             te.customer_name as tender_customer, te.tender_title as tender_number
       FROM tkp t
-      LEFT JOIN users u ON t.created_by = u.id
+      LEFT JOIN users u ON t.author_id = u.id
       LEFT JOIN users sb ON t.sent_by = sb.id
       LEFT JOIN tenders te ON t.tender_id = te.id
       WHERE t.id = $1
@@ -185,7 +185,7 @@ async function routes(fastify, options) {
   fastify.get('/:id/pdf', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { rows } = await db.query('SELECT t.*, te.tender_number FROM tkp t LEFT JOIN tenders te ON t.tender_id = te.id WHERE t.id = $1', [request.params.id]);
+    const { rows } = await db.query('SELECT t.*, te.tender_title as tender_number FROM tkp t LEFT JOIN tenders te ON t.tender_id = te.id WHERE t.id = $1', [request.params.id]);
     if (!rows[0]) return reply.code(404).send({ error: 'ТКП не найдено' });
     const tkp = rows[0];
 

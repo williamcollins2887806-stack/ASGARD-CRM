@@ -28,3 +28,11 @@ CREATE INDEX IF NOT EXISTS idx_tmc_requests_priority ON tmc_requests(priority);
 
 -- Обновить title из request_type для существующих записей TMC
 UPDATE tmc_requests SET title = request_type WHERE title IS NULL AND request_type IS NOT NULL;
+
+-- Нормализовать статусы на английские ключи (для единообразия с API)
+ALTER TABLE tkp ALTER COLUMN status SET DEFAULT 'draft';
+ALTER TABLE pass_requests ALTER COLUMN status SET DEFAULT 'draft';
+ALTER TABLE tmc_requests ALTER COLUMN status SET DEFAULT 'draft';
+UPDATE tkp SET status = 'draft' WHERE status = 'Черновик';
+UPDATE pass_requests SET status = 'draft' WHERE status = 'Черновик';
+UPDATE tmc_requests SET status = 'draft' WHERE status = 'Черновик';
