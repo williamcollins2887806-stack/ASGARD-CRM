@@ -198,7 +198,7 @@ window.AsgardKanban = (function(){
 
   function renderCard(task, usersById) {
     const priority = PRIORITIES[task.priority] || PRIORITIES.normal;
-    const assignee = usersById.get(task.assignee_id);
+    const assignee = usersById.get(task.assigned_to);
     const initials = assignee?.name?.split(' ').map(n => n[0]).join('').substring(0, 2) || '??';
 
     const deadline = task.deadline ? new Date(task.deadline) : null;

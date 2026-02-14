@@ -60,8 +60,8 @@ module.exports = async function(fastify) {
     let sql = `
       SELECT t.*, u_creator.name as creator_name, u_creator.role as creator_role
       FROM tasks t
-      JOIN users u_creator ON t.creator_id = u_creator.id
-      WHERE t.assignee_id = $1
+      JOIN users u_creator ON t.created_by = u_creator.id
+      WHERE t.assigned_to = $1
     `;
     const params = [request.user.id];
     let idx = 2;
@@ -93,8 +93,8 @@ module.exports = async function(fastify) {
     let sql = `
       SELECT t.*, u_assignee.name as assignee_name, u_assignee.role as assignee_role
       FROM tasks t
-      JOIN users u_assignee ON t.assignee_id = u_assignee.id
-      WHERE t.creator_id = $1
+      JOIN users u_assignee ON t.assigned_to = u_assignee.id
+      WHERE t.created_by = $1
     `;
     const params = [request.user.id];
     let idx = 2;
@@ -105,7 +105,7 @@ module.exports = async function(fastify) {
       idx++;
     }
     if (assignee_id) {
-      sql += ` AND t.assignee_id = $${idx}`;
+      sql += ` AND t.assigned_to = $${idx}`;
       params.push(parseInt(assignee_id));
       idx++;
     }
@@ -162,7 +162,7 @@ module.exports = async function(fastify) {
         COUNT(*) FILTER (WHERE status = 'done') as done_count,
         COUNT(*) FILTER (WHERE status IN ('new','accepted','in_progress')
           AND deadline IS NOT NULL AND deadline < NOW()) as overdue
-      FROM tasks WHERE assignee_id = $1
+      FROM tasks WHERE assigned_to = $1
     `, [userId]);
 
     return rows[0] || { active: 0, new_count: 0, done_count: 0, overdue: 0 };
@@ -182,16 +182,16 @@ module.exports = async function(fastify) {
         u_creator.name as creator_name, u_creator.role as creator_role,
         u_assignee.name as assignee_name, u_assignee.role as assignee_role
       FROM tasks t
-      JOIN users u_creator ON t.creator_id = u_creator.id
-      JOIN users u_assignee ON t.assignee_id = u_assignee.id
+      JOIN users u_creator ON t.created_by = u_creator.id
+      JOIN users u_assignee ON t.assigned_to = u_assignee.id
       WHERE t.id = $1
     `, [id]);
 
     if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
 
     // Доступ: создатель, исполнитель или ADMIN/директор
-    const canAccess = task.creator_id === request.user.id
-      || task.assignee_id === request.user.id
+    const canAccess = task.created_by === request.user.id
+      || task.assigned_to === request.user.id
       || DIRECTOR_ROLES.includes(request.user.role);
 
     if (!canAccess) return reply.code(403).send({ error: 'Нет доступа' });
@@ -217,7 +217,7 @@ module.exports = async function(fastify) {
     if (!assignee) return reply.code(400).send({ error: 'Исполнитель не найден' });
 
     const result = await db.query(`
-      INSERT INTO tasks (creator_id, assignee_id, title, description, deadline, priority, creator_comment, status, created_at, updated_at)
+      INSERT INTO tasks (created_by, assigned_to, title, description, deadline, priority, creator_comment, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', NOW(), NOW())
       RETURNING *
     `, [
@@ -257,7 +257,7 @@ module.exports = async function(fastify) {
     if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
 
     // Только создатель или ADMIN могут прикладывать файлы
-    if (task.creator_id !== request.user.id && request.user.role !== 'ADMIN') {
+    if (task.created_by !== request.user.id && request.user.role !== 'ADMIN') {
       return reply.code(403).send({ error: 'Только создатель может прикладывать файлы' });
     }
 
@@ -306,8 +306,8 @@ module.exports = async function(fastify) {
     if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
 
     // Доступ: создатель, исполнитель или директор
-    const canAccess = task.creator_id === request.user.id
-      || task.assignee_id === request.user.id
+    const canAccess = task.created_by === request.user.id
+      || task.assigned_to === request.user.id
       || DIRECTOR_ROLES.includes(request.user.role);
 
     if (!canAccess) return reply.code(403).send({ error: 'Нет доступа' });
@@ -348,7 +348,7 @@ module.exports = async function(fastify) {
     const id = parseInt(request.params.id);
 
     const { rows: [task] } = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2 AND status = $3',
+      'SELECT * FROM tasks WHERE id = $1 AND assigned_to = $2 AND status = $3',
       [id, request.user.id, 'new']
     );
     if (!task) return reply.code(400).send({ error: 'Задача не найдена или не в статусе "Новая"' });
@@ -360,7 +360,7 @@ module.exports = async function(fastify) {
 
     // Уведомить создателя
     await notify(
-      task.creator_id,
+      task.created_by,
       '👍 Задача принята',
       `${request.user.name || request.user.login} принял задачу «${task.title}»`,
       `#/tasks-admin?id=${id}`
@@ -378,7 +378,7 @@ module.exports = async function(fastify) {
     const id = parseInt(request.params.id);
 
     const { rows: [task] } = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2 AND status IN ($3, $4)',
+      'SELECT * FROM tasks WHERE id = $1 AND assigned_to = $2 AND status IN ($3, $4)',
       [id, request.user.id, 'new', 'accepted']
     );
     if (!task) return reply.code(400).send({ error: 'Нельзя начать эту задачу' });
@@ -401,7 +401,7 @@ module.exports = async function(fastify) {
     const { comment } = request.body || {};
 
     const { rows: [task] } = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2 AND status IN ($3, $4, $5, $6)',
+      'SELECT * FROM tasks WHERE id = $1 AND assigned_to = $2 AND status IN ($3, $4, $5, $6)',
       [id, request.user.id, 'new', 'accepted', 'in_progress', 'overdue']
     );
     if (!task) return reply.code(400).send({ error: 'Нельзя завершить эту задачу' });
@@ -413,7 +413,7 @@ module.exports = async function(fastify) {
 
     // Уведомить создателя
     await notify(
-      task.creator_id,
+      task.created_by,
       '✅ Задача выполнена',
       `${request.user.name || request.user.login} выполнил задачу «${task.title}»${comment ? '\nКомментарий: ' + comment : ''}`,
       `#/tasks-admin?id=${id}`
@@ -435,7 +435,7 @@ module.exports = async function(fastify) {
     if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
 
     // Только создатель или ADMIN может редактировать
-    if (task.creator_id !== request.user.id && request.user.role !== 'ADMIN') {
+    if (task.created_by !== request.user.id && request.user.role !== 'ADMIN') {
       return reply.code(403).send({ error: 'Только создатель может редактировать' });
     }
 
@@ -473,7 +473,7 @@ module.exports = async function(fastify) {
     const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
     if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
 
-    if (task.creator_id !== request.user.id && request.user.role !== 'ADMIN') {
+    if (task.created_by !== request.user.id && request.user.role !== 'ADMIN') {
       return reply.code(403).send({ error: 'Только создатель или ADMIN' });
     }
 
@@ -497,7 +497,7 @@ module.exports = async function(fastify) {
     // Найти задачи с дедлайном через 24 часа или менее, ещё не выполненные
     const { rows: upcoming } = await db.query(`
       SELECT t.*, u.name as assignee_name
-      FROM tasks t JOIN users u ON t.assignee_id = u.id
+      FROM tasks t JOIN users u ON t.assigned_to = u.id
       WHERE t.status IN ('new', 'accepted', 'in_progress')
         AND t.deadline IS NOT NULL
         AND t.deadline BETWEEN NOW() AND NOW() + INTERVAL '24 hours'
@@ -507,7 +507,7 @@ module.exports = async function(fastify) {
     for (const task of upcoming) {
       const hoursLeft = Math.max(0, Math.round((new Date(task.deadline) - Date.now()) / 3600000));
       await notify(
-        task.assignee_id,
+        task.assigned_to,
         '⏰ Дедлайн приближается',
         `Задача «${task.title}» — осталось ${hoursLeft} ч.\nДедлайн: ${new Date(task.deadline).toLocaleString('ru-RU')}`,
         `#/tasks?id=${task.id}`
@@ -669,8 +669,8 @@ module.exports = async function(fastify) {
         (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count,
         (SELECT COUNT(*) FROM task_watchers WHERE task_id = t.id) as watcher_count
       FROM tasks t
-      JOIN users u_creator ON t.creator_id = u_creator.id
-      JOIN users u_assignee ON t.assignee_id = u_assignee.id
+      JOIN users u_creator ON t.created_by = u_creator.id
+      JOIN users u_assignee ON t.assigned_to = u_assignee.id
       WHERE t.status != 'done' OR t.completed_at > NOW() - INTERVAL '7 days'
     `;
     const params = [];
@@ -679,13 +679,13 @@ module.exports = async function(fastify) {
     // Фильтры
     if (!isDirector) {
       // Обычные пользователи видят только свои задачи или где они наблюдатели
-      sql += ` AND (t.assignee_id = $${idx} OR t.creator_id = $${idx} OR EXISTS (SELECT 1 FROM task_watchers WHERE task_id = t.id AND user_id = $${idx}))`;
+      sql += ` AND (t.assigned_to = $${idx} OR t.created_by = $${idx} OR EXISTS (SELECT 1 FROM task_watchers WHERE task_id = t.id AND user_id = $${idx}))`;
       params.push(userId);
       idx++;
     }
 
-    if (assignee_id) { sql += ` AND t.assignee_id = $${idx}`; params.push(parseInt(assignee_id)); idx++; }
-    if (creator_id) { sql += ` AND t.creator_id = $${idx}`; params.push(parseInt(creator_id)); idx++; }
+    if (assignee_id) { sql += ` AND t.assigned_to = $${idx}`; params.push(parseInt(assignee_id)); idx++; }
+    if (creator_id) { sql += ` AND t.created_by = $${idx}`; params.push(parseInt(creator_id)); idx++; }
     if (priority) { sql += ` AND t.priority = $${idx}`; params.push(priority); idx++; }
     if (work_id) { sql += ` AND t.work_id = $${idx}`; params.push(parseInt(work_id)); idx++; }
     if (tender_id) { sql += ` AND t.tender_id = $${idx}`; params.push(parseInt(tender_id)); idx++; }
@@ -725,8 +725,8 @@ module.exports = async function(fastify) {
     if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
 
     // Проверить права: исполнитель, создатель или директор
-    const canMove = task.assignee_id === userId
-      || task.creator_id === userId
+    const canMove = task.assigned_to === userId
+      || task.created_by === userId
       || DIRECTOR_ROLES.includes(request.user.role);
 
     if (!canMove) {
@@ -780,7 +780,7 @@ module.exports = async function(fastify) {
     // Уведомления
     if (column === 'done' && oldStatus !== 'done') {
       await notify(
-        task.creator_id,
+        task.created_by,
         '✅ Задача выполнена',
         `${request.user.name || request.user.login} завершил задачу «${task.title}»`,
         `#/kanban?id=${id}`
@@ -800,7 +800,7 @@ module.exports = async function(fastify) {
     const userId = request.user.id;
 
     const { rows: [task] } = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2',
+      'SELECT * FROM tasks WHERE id = $1 AND assigned_to = $2',
       [id, userId]
     );
     if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
@@ -816,7 +816,7 @@ module.exports = async function(fastify) {
 
     // Уведомить создателя
     await notify(
-      task.creator_id,
+      task.created_by,
       '👁️ Задача просмотрена',
       `${request.user.name || request.user.login} ознакомился с задачей «${task.title}»`,
       `#/kanban?id=${id}`
@@ -875,7 +875,7 @@ module.exports = async function(fastify) {
     `, [id, userId, text.trim()]);
 
     // Уведомить участников (создателя, исполнителя, наблюдателей)
-    const usersToNotify = new Set([task.creator_id, task.assignee_id]);
+    const usersToNotify = new Set([task.created_by, task.assigned_to]);
 
     const { rows: watchers } = await db.query('SELECT user_id FROM task_watchers WHERE task_id = $1', [id]);
     for (const w of watchers) usersToNotify.add(w.user_id);

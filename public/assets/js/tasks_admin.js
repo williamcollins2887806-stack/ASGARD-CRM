@@ -334,10 +334,10 @@ window.AsgardTasksAdminPage = (function() {
       filtered = filtered.filter(t => t.status === currentFilters.status);
     }
     if (currentFilters.assignee) {
-      filtered = filtered.filter(t => t.assignee_id == currentFilters.assignee);
+      filtered = filtered.filter(t => t.assigned_to == currentFilters.assignee);
     }
     if (currentFilters.creator) {
-      filtered = filtered.filter(t => t.creator_id == currentFilters.creator);
+      filtered = filtered.filter(t => t.created_by == currentFilters.creator);
     }
 
     if (filtered.length === 0) {
@@ -436,7 +436,7 @@ window.AsgardTasksAdminPage = (function() {
     document.getElementById('taskSubmitBtn').textContent = 'Сохранить';
     document.getElementById('taskId').value = taskId;
 
-    document.getElementById('taskAssignee').value = task.assignee_id;
+    document.getElementById('taskAssignee').value = task.assigned_to;
     document.getElementById('taskTitle').value = task.title || '';
     document.getElementById('taskDescription').value = task.description || '';
     document.getElementById('taskPriority').value = task.priority || 'normal';
