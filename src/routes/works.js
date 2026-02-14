@@ -20,6 +20,7 @@ function filterData(data) {
 
 async function routes(fastify, options) {
   const db = fastify.db;
+  const { createNotification } = require('../services/notify');
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { tender_id, pm_id, status, limit = 100, offset = 0 } = request.query;
@@ -55,7 +56,18 @@ async function routes(fastify, options) {
       const values = Object.values(data);
       const sql = `INSERT INTO works (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
       const result = await db.query(sql, values);
-      return { work: result.rows[0] };
+      const work = result.rows[0];
+      // Notify PM about new work
+      if (work.pm_id && work.pm_id !== request.user.id) {
+        createNotification(db, {
+          user_id: work.pm_id,
+          title: '🔧 Новая работа',
+          message: `${request.user.name || 'Пользователь'} создал работу: ${work.work_title}`,
+          type: 'work',
+          link: `#/pm-works?id=${work.id}`
+        });
+      }
+      return { work };
     } catch (err) {
       fastify.log.error('Works POST error:', err);
       return reply.code(500).send({ error: 'Ошибка создания работы', detail: err.message });
@@ -65,6 +77,7 @@ async function routes(fastify, options) {
   // SECURITY: SQL injection fix + B3 role check
   fastify.put('/:id', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])] }, async (request, reply) => {
     const { id } = request.params;
+    const oldWork = await db.query('SELECT * FROM works WHERE id = $1', [id]);
     const data = filterData(request.body);
     const updates = [];
     const values = [];
@@ -78,7 +91,28 @@ async function routes(fastify, options) {
     const sql = `UPDATE works SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
     const result = await db.query(sql, values);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
-    return { work: result.rows[0] };
+    const updated = result.rows[0];
+    // Notify PM on status change
+    if (data.work_status && oldWork.rows[0] && data.work_status !== oldWork.rows[0].work_status && updated.pm_id && updated.pm_id !== request.user.id) {
+      createNotification(db, {
+        user_id: updated.pm_id,
+        title: `🔧 Работа: ${data.work_status}`,
+        message: `Статус работы "${updated.work_title || ''}" изменён: ${oldWork.rows[0].work_status || '?'} → ${data.work_status}`,
+        type: 'work',
+        link: `#/pm-works?id=${updated.id}`
+      });
+    }
+    // Notify new PM on reassignment
+    if (data.pm_id && oldWork.rows[0] && data.pm_id !== oldWork.rows[0].pm_id && data.pm_id !== request.user.id) {
+      createNotification(db, {
+        user_id: data.pm_id,
+        title: '🔧 Работа назначена вам',
+        message: `Вам назначена работа: ${updated.work_title || ''}`,
+        type: 'work',
+        link: `#/pm-works?id=${updated.id}`
+      });
+    }
+    return { work: updated };
   });
 
   fastify.delete('/:id', { preHandler: [fastify.requireRoles(['ADMIN'])] }, async (request, reply) => {

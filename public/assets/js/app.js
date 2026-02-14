@@ -231,6 +231,9 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/one-time-pay",l:"Разовые оплаты",d:"Такси, топливо, разовые",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
 
     // ── РЕСУРСЫ ──
+    {r:"/tkp",l:"ТКП",d:"Коммерческие предложения",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"tkp",g:"resources"},
+    {r:"/pass-requests",l:"Заявки на пропуск",d:"Оформление пропусков",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"approvals",p:"pass_requests",g:"resources"},
+    {r:"/tmc-requests",l:"Заявки на ТМЦ",d:"Закупка материалов",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","BUH",...DIRECTOR_ROLES],i:"backup",p:"tmc_requests",g:"resources"},
     {r:"/warehouse",l:"Склад ТМЦ",d:"Оборудование и инструменты",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
     {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment",g:"resources"},
     {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence",p:"correspondence",g:"resources"},
@@ -1895,6 +1898,11 @@ try{
 
     // Фаза 9: AI входящие заявки
     AsgardRouter.add("/inbox-applications", ()=>AsgardInboxApplicationsPage.render({layout, title:"Входящие заявки (AI)"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"]});
+
+    // ── Phase: TKP, Pass Requests, TMC ──
+    AsgardRouter.add("/tkp", ()=>AsgardTkpPage.render({layout, title:"ТКП — Коммерческие предложения"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pass-requests", ()=>AsgardPassRequestsPage.render({layout, title:"Заявки на пропуск"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","HR","HR_MANAGER",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/tmc-requests", ()=>AsgardTmcRequestsPage.render({layout, title:"Заявки на ТМЦ"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","BUH",...DIRECTOR_ROLES]});
 
     // Фаза 10: Интеграции (Банк/1С, Площадки, ERP)
     AsgardRouter.add("/integrations", ()=>AsgardIntegrationsPage.render({layout, title:"Интеграции"}), {auth:true, roles:["ADMIN","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO","TO"]});

@@ -216,6 +216,9 @@ fastify.register(require('./routes/mailbox'), { prefix: '/api/mailbox' });
 fastify.register(require('./routes/inbox_applications_ai'), { prefix: '/api/inbox-applications' });
 fastify.register(require('./routes/integrations'), { prefix: '/api/integrations' });
 fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
+fastify.register(require('./routes/tkp'), { prefix: '/api/tkp' });
+fastify.register(require('./routes/pass_requests'), { prefix: '/api/pass-requests' });
+fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check

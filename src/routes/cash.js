@@ -18,6 +18,7 @@ const { randomUUID } = require('crypto');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
+  const { createNotification } = require('../services/notify');
 
   // ─────────────────────────────────────────────────────────────────
   // Хелперы
@@ -243,6 +244,22 @@ module.exports = async function(fastify) {
       RETURNING *
     `, [userId, work_id || null, type, amount, purpose.trim(), cover_letter || null]);
 
+    // Notify directors about new cash request
+    const directors = await db.query(
+      `SELECT id FROM users WHERE role IN ('ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV') AND is_active = true`
+    );
+    for (const dir of directors.rows) {
+      if (dir.id !== userId) {
+        createNotification(db, {
+          user_id: dir.id,
+          title: '💰 Новая заявка на аванс',
+          message: `${request.user.name || 'РП'} запрашивает ${amount} ₽: ${purpose.trim().substring(0, 100)}`,
+          type: 'cash',
+          link: `#/cash?id=${rows[0].id}`
+        });
+      }
+    }
+
     return rows[0];
   });
 
@@ -338,6 +355,18 @@ module.exports = async function(fastify) {
       WHERE id = $3
     `, [request.user.id, comment || null, id]);
 
+    // Notify requesting user about approval
+    const { rows: [req] } = await db.query('SELECT * FROM cash_requests WHERE id = $1', [id]);
+    if (req && req.user_id && req.user_id !== request.user.id) {
+      createNotification(db, {
+        user_id: req.user_id,
+        title: '✅ Заявка на аванс согласована',
+        message: `${request.user.name || 'Директор'} согласовал вашу заявку на ${req.amount || 0} ₽`,
+        type: 'cash',
+        link: `#/cash?id=${id}`
+      });
+    }
+
     return { success: true, message: 'Заявка согласована' };
   });
 
@@ -369,6 +398,18 @@ module.exports = async function(fastify) {
           updated_at = NOW()
       WHERE id = $3
     `, [request.user.id, comment.trim(), id]);
+
+    // Notify requesting user about rejection
+    const { rows: [rejReq] } = await db.query('SELECT * FROM cash_requests WHERE id = $1', [id]);
+    if (rejReq && rejReq.user_id && rejReq.user_id !== request.user.id) {
+      createNotification(db, {
+        user_id: rejReq.user_id,
+        title: '❌ Заявка на аванс отклонена',
+        message: `${request.user.name || 'Директор'} отклонил заявку. Причина: ${comment.trim()}`,
+        type: 'cash',
+        link: `#/cash?id=${id}`
+      });
+    }
 
     return { success: true, message: 'Заявка отклонена' };
   });
@@ -403,6 +444,18 @@ module.exports = async function(fastify) {
       INSERT INTO cash_messages (request_id, user_id, message)
       VALUES ($1, $2, $3)
     `, [id, request.user.id, message.trim()]);
+
+    // Notify requesting user about question
+    const { rows: [qReq] } = await db.query('SELECT user_id FROM cash_requests WHERE id = $1', [id]);
+    if (qReq && qReq.user_id && qReq.user_id !== request.user.id) {
+      createNotification(db, {
+        user_id: qReq.user_id,
+        title: '❓ Вопрос по заявке на аванс',
+        message: `${request.user.name || 'Директор'} задал вопрос: ${message.trim().substring(0, 100)}`,
+        type: 'cash',
+        link: `#/cash?id=${id}`
+      });
+    }
 
     return { success: true, message: 'Вопрос отправлен' };
   });
@@ -439,6 +492,18 @@ module.exports = async function(fastify) {
       await db.query(`
         UPDATE cash_requests SET status = 'requested', updated_at = NOW() WHERE id = $1
       `, [id]);
+    }
+
+    // Notify director about reply
+    const { rows: [rReq] } = await db.query('SELECT director_id FROM cash_requests WHERE id = $1', [id]);
+    if (rReq && rReq.director_id && rReq.director_id !== request.user.id) {
+      createNotification(db, {
+        user_id: rReq.director_id,
+        title: '💬 Ответ по заявке на аванс',
+        message: `${request.user.name || 'РП'} ответил на вопрос: ${message.trim().substring(0, 100)}`,
+        type: 'cash',
+        link: `#/cash?id=${id}`
+      });
     }
 
     return { success: true, message: 'Ответ отправлен' };
@@ -690,6 +755,18 @@ module.exports = async function(fastify) {
           updated_at = NOW()
       WHERE id = $3
     `, [request.user.id, comment ? '\n' + comment : '', id]);
+
+    // Notify requesting user about closure
+    const { rows: [closeReq] } = await db.query('SELECT user_id FROM cash_requests WHERE id = $1', [id]);
+    if (closeReq && closeReq.user_id && closeReq.user_id !== request.user.id) {
+      createNotification(db, {
+        user_id: closeReq.user_id,
+        title: '🔒 Заявка на аванс закрыта',
+        message: `${request.user.name || 'Директор'} закрыл заявку${comment ? ': ' + comment : ''}`,
+        type: 'cash',
+        link: `#/cash?id=${id}`
+      });
+    }
 
     return { success: true, message: 'Заявка закрыта' };
   });

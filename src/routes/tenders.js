@@ -5,6 +5,7 @@
 
 async function routes(fastify, options) {
   const db = fastify.db;
+  const { createNotification } = require('../services/notify');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders - List all tenders
@@ -246,7 +247,19 @@ async function routes(fastify, options) {
         fastify.log.warn('Audit log insert failed:', auditErr.message);
       }
 
-      return { tender: result.rows[0] };
+      // Notify assigned PM about new tender
+      const tender = result.rows[0];
+      if (tender.responsible_pm_id && tender.responsible_pm_id !== request.user.id) {
+        createNotification(db, {
+          user_id: tender.responsible_pm_id,
+          title: '📋 Новый тендер',
+          message: `${request.user.name || 'Пользователь'} создал тендер: ${tender.customer_name || ''} — ${tender.tender_number || ''}`,
+          type: 'tender',
+          link: `#/tenders?id=${tender.id}`
+        });
+      }
+
+      return { tender };
     } catch (err) {
       const code = err.code === '22001' || err.code === '23502' ? 400 : 500;
       return reply.code(code).send({ error: 'Ошибка создания тендера', detail: err.message });
@@ -320,7 +333,29 @@ async function routes(fastify, options) {
       VALUES ($1, 'tender', $2, 'update', $3, NOW())
     `, [request.user.id, id, JSON.stringify({ before: current.rows[0], after: result.rows[0] })]);
 
-    return { tender: result.rows[0] };
+    // Notify PM on status change
+    const updated = result.rows[0];
+    if (data.tender_status && data.tender_status !== oldTender.tender_status && updated.responsible_pm_id && updated.responsible_pm_id !== request.user.id) {
+      createNotification(db, {
+        user_id: updated.responsible_pm_id,
+        title: `📋 Тендер: ${data.tender_status}`,
+        message: `Статус тендера ${updated.customer_name || updated.tender_number || ''} изменён: ${oldTender.tender_status} → ${data.tender_status}`,
+        type: 'tender',
+        link: `#/tenders?id=${updated.id}`
+      });
+    }
+    // Notify new PM on reassignment
+    if (data.responsible_pm_id && data.responsible_pm_id !== oldTender.responsible_pm_id && data.responsible_pm_id !== request.user.id) {
+      createNotification(db, {
+        user_id: data.responsible_pm_id,
+        title: '📋 Тендер назначен вам',
+        message: `Вам назначен тендер: ${updated.customer_name || ''} — ${updated.tender_number || ''}`,
+        type: 'tender',
+        link: `#/tenders?id=${updated.id}`
+      });
+    }
+
+    return { tender: updated };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

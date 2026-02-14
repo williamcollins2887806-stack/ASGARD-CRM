@@ -26,7 +26,8 @@ async function dataRoutes(fastify, options) {
     'payment_registry', 'self_employed', 'one_time_payments',
     'permits', 'permit_types', 'permit_applications', 'permit_application_items', 'permit_application_history',
     'email_accounts', 'emails', 'email_attachments', 'email_classification_rules', 'email_templates_v2', 'email_sync_log',
-    'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages'
+    'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages',
+    'tkp', 'pass_requests', 'tmc_requests'
   ];
 
   // ═══════════════════════════════════════════════════════════════════════════
