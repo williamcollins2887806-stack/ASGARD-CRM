@@ -129,16 +129,16 @@ module.exports = async function(fastify) {
         u_creator.name as creator_name,
         u_assignee.name as assignee_name, u_assignee.role as assignee_role
       FROM tasks t
-      JOIN users u_creator ON t.creator_id = u_creator.id
-      JOIN users u_assignee ON t.assignee_id = u_assignee.id
+      LEFT JOIN users u_creator ON t.created_by = u_creator.id
+      LEFT JOIN users u_assignee ON t.assigned_to = u_assignee.id
       WHERE 1=1
     `;
     const params = [];
     let idx = 1;
 
     if (status) { sql += ` AND t.status = $${idx}`; params.push(status); idx++; }
-    if (assignee_id) { sql += ` AND t.assignee_id = $${idx}`; params.push(parseInt(assignee_id)); idx++; }
-    if (creator_id) { sql += ` AND t.creator_id = $${idx}`; params.push(parseInt(creator_id)); idx++; }
+    if (assignee_id) { sql += ` AND t.assigned_to = $${idx}`; params.push(parseInt(assignee_id)); idx++; }
+    if (creator_id) { sql += ` AND t.created_by = $${idx}`; params.push(parseInt(creator_id)); idx++; }
 
     sql += ` ORDER BY t.created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`;
     params.push(parseInt(limit), parseInt(offset));

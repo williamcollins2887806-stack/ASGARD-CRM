@@ -94,7 +94,9 @@ module.exports = {
       name: '[T2] GET /api/permissions/modules returns module list',
       run: async () => {
         const resp = await api('GET', '/api/permissions/modules', { role: 'ADMIN' });
-        assert(resp.status !== 404, `permissions/modules should be registered (got ${resp.status})`);
+        assertOk(resp, 'permissions/modules');
+        assertArray(resp.data, 'modules');
+        assert(resp.data.length > 0, 'should have at least 1 module');
       }
     },
 
@@ -132,8 +134,7 @@ module.exports = {
       name: '[T3] GET /api/estimates returns response',
       run: async () => {
         const resp = await api('GET', '/api/estimates', { role: 'ADMIN' });
-        // estimates may 500 if table has missing columns, just check route is registered
-        assert(resp.status !== 404, 'estimates route should be registered');
+        assertOk(resp, 'estimates');
       }
     },
 
@@ -141,11 +142,12 @@ module.exports = {
     // TASK 4: Chat groups
     // ═══════════════════════════════════════════════════════════════
     {
-      name: '[T4] GET /api/chat-groups route is registered',
+      name: '[T4] GET /api/chat-groups returns chats array',
       run: async () => {
         const resp = await api('GET', '/api/chat-groups', { role: 'ADMIN' });
-        // chat-groups may have DB column issues (pre-existing) — just verify route is registered
-        assert(resp.status !== 404, `chat-groups route should be registered (got ${resp.status})`);
+        assertOk(resp, 'chat-groups');
+        const list = resp.data?.chats || resp.data;
+        assertArray(list, 'chats');
       }
     },
 
@@ -564,9 +566,9 @@ module.exports = {
     // TASK 15: API audit — all registered routes respond
     // ═══════════════════════════════════════════════════════════════
     {
-      name: '[T15] All major API endpoints are registered (not 404)',
+      name: '[T15] All major GET endpoints respond 2xx (not 404/500)',
       run: async () => {
-        // Use endpoints that actually exist as GET (some routes have no GET /)
+        // Each endpoint uses correct sub-path (routes w/o GET / use their first GET sub-route)
         const endpoints = [
           '/api/users',
           '/api/tenders',
@@ -575,6 +577,11 @@ module.exports = {
           '/api/cash/all',
           '/api/tasks/all',
           '/api/notifications',
+          '/api/settings',
+          '/api/staff/employees',
+          '/api/email/history',
+          '/api/permissions/modules',
+          '/api/chat-groups',
           '/api/tkp',
           '/api/pass-requests',
           '/api/tmc-requests',
@@ -582,22 +589,22 @@ module.exports = {
           '/api/equipment',
           '/api/customers'
         ];
-        const missing = [];
+        const failed = [];
         for (const ep of endpoints) {
           const resp = await api('GET', ep, { role: 'ADMIN' });
-          if (resp.status === 404) missing.push(ep);
+          if (resp.status >= 400) failed.push(`${ep} → ${resp.status}`);
         }
-        assert(missing.length === 0, `These endpoints returned 404: ${missing.join(', ')}`);
+        assert(failed.length === 0, `These endpoints failed: ${failed.join(', ')}`);
       }
     },
     {
-      name: '[T15] Auth endpoint responds to POST',
+      name: '[T15] POST /api/auth/login responds (not 404)',
       run: async () => {
         const resp = await rawFetch('POST', '/api/auth/login', {
           body: { login: 'test', password: 'test' }
         });
-        // Should respond (400/401) not 404
         assert(resp.status !== 404, 'auth/login should be registered');
+        assert(resp.status === 400 || resp.status === 401, `expected 400/401 for bad creds, got ${resp.status}`);
       }
     },
 

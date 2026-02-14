@@ -23,7 +23,7 @@ async function routes(fastify, options) {
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { tender_id, pm_id, status, limit = 100, offset = 0 } = request.query;
-    let sql = 'SELECT e.*, t.customer, u.name as pm_name FROM estimates e LEFT JOIN tenders t ON e.tender_id = t.id LEFT JOIN users u ON e.pm_id = u.id WHERE 1=1';
+    let sql = 'SELECT e.*, t.customer_name as customer, u.name as pm_name FROM estimates e LEFT JOIN tenders t ON e.tender_id = t.id LEFT JOIN users u ON e.pm_id = u.id WHERE 1=1';
     const params = [];
     let idx = 1;
     if (tender_id) { sql += ` AND e.tender_id = $${idx}`; params.push(tender_id); idx++; }
