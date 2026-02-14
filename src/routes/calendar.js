@@ -2,12 +2,10 @@
  * Calendar Routes
  */
 
-// SECURITY: Allowlist of columns for calendar_events
+// SECURITY: Allowlist of columns matching actual DB schema
 const ALLOWED_COLS = new Set([
-  'title', 'description', 'date', 'time', 'end_date', 'end_time',
-  'type', 'color', 'reminder_minutes', 'reminder_sent', 'participants',
-  'location', 'tender_id', 'work_id', 'is_all_day', 'recurrence',
-  'created_by', 'created_at', 'updated_at'
+  'title', 'description', 'date', 'end_date',
+  'user_id', 'type', 'created_at', 'updated_at'
 ]);
 
 function filterData(data) {
@@ -29,7 +27,7 @@ async function routes(fastify, options) {
     if (date_from) { sql += ` AND date >= $${idx}`; params.push(date_from); idx++; }
     if (date_to) { sql += ` AND date <= $${idx}`; params.push(date_to); idx++; }
     if (type) { sql += ` AND type = $${idx}`; params.push(type); idx++; }
-    sql += ` ORDER BY date ASC, time ASC LIMIT $${idx}`;
+    sql += ` ORDER BY date ASC LIMIT $${idx}`;
     params.push(limit);
     const result = await db.query(sql, params);
     return { events: result.rows };
@@ -38,7 +36,7 @@ async function routes(fastify, options) {
   // SECURITY: IDOR fix — check ownership
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const result = await db.query(
-      'SELECT * FROM calendar_events WHERE id = $1 AND created_by = $2',
+      'SELECT * FROM calendar_events WHERE id = $1 AND user_id = $2',
       [request.params.id, request.user.id]
     );
     if (!result.rows[0]) return reply.code(404).send({ error: 'Событие не найдено' });
@@ -55,7 +53,7 @@ async function routes(fastify, options) {
       if (isNaN(new Date(body.date).getTime())) {
         return reply.code(400).send({ error: 'Некорректный формат даты' });
       }
-      const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
+      const data = filterData({ ...body, user_id: request.user.id, created_at: new Date().toISOString() });
       const keys = Object.keys(data);
       if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
       const values = Object.values(data);
@@ -84,7 +82,7 @@ async function routes(fastify, options) {
     if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
     updates.push('updated_at = NOW()');
     values.push(id, request.user.id);
-    const sql = `UPDATE calendar_events SET ${updates.join(', ')} WHERE id = $${idx} AND created_by = $${idx + 1} RETURNING *`;
+    const sql = `UPDATE calendar_events SET ${updates.join(', ')} WHERE id = $${idx} AND user_id = $${idx + 1} RETURNING *`;
     const result = await db.query(sql, values);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     return { event: result.rows[0] };
@@ -93,23 +91,20 @@ async function routes(fastify, options) {
   // SECURITY: IDOR fix — check ownership
   fastify.delete('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const result = await db.query(
-      'DELETE FROM calendar_events WHERE id = $1 AND created_by = $2 RETURNING id',
+      'DELETE FROM calendar_events WHERE id = $1 AND user_id = $2 RETURNING id',
       [request.params.id, request.user.id]
     );
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     return { message: 'Удалено' };
   });
 
-  // Check reminders
+  // Check reminders — returns upcoming events for today
   fastify.get('/reminders/check', { preHandler: [fastify.authenticate] }, async (request) => {
-    const now = new Date();
     const result = await db.query(`
       SELECT * FROM calendar_events
-      WHERE reminder_sent = false
-        AND reminder_minutes > 0
-        AND (date || ' ' || COALESCE(time, '00:00'))::timestamp - (reminder_minutes || ' minutes')::interval <= $1
-        AND (date || ' ' || COALESCE(time, '00:00'))::timestamp > $1
-    `, [now.toISOString()]);
+      WHERE user_id = $1 AND date = CURRENT_DATE
+      ORDER BY date ASC
+    `, [request.user.id]);
     return { reminders: result.rows };
   });
 }

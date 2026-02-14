@@ -18,13 +18,12 @@ module.exports = async function(fastify, options) {
   }, async (request) => {
     const { rows } = await db.query(`
       SELECT s.*,
-        c.name as customer_display_name,
+        s.customer_name as customer_display_name,
         (SELECT COUNT(*) FROM works w WHERE w.site_id = s.id) as works_count,
         (SELECT COUNT(*) FROM tenders t WHERE t.site_id = s.id) as tenders_count,
         (SELECT COUNT(*) FROM works w WHERE w.site_id = s.id
           AND w.work_status IN ('В работе','Мобилизация','На объекте','In Progress')) as active_works
       FROM sites s
-      LEFT JOIN customers c ON s.customer_id = c.id
       ORDER BY s.updated_at DESC
     `);
     return rows;

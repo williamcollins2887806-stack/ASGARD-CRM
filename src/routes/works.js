@@ -150,11 +150,11 @@ async function routes(fastify, options) {
         COUNT(w.id) as total_works,
         COUNT(w.id) FILTER (WHERE w.work_status IN ('В работе', 'Мобилизация', 'Подготовка')) as active,
         COUNT(w.id) FILTER (WHERE w.work_status = 'Работы сдали') as completed,
-        COUNT(w.id) FILTER (WHERE w.end_plan < NOW() AND w.work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
-        COALESCE(SUM(w.contract_value), 0) as total_contract,
-        COALESCE(SUM(w.cost_plan), 0) as total_cost_plan,
-        COALESCE(SUM(w.cost_fact), 0) as total_cost_fact,
-        COALESCE(SUM(w.contract_value) - SUM(COALESCE(w.cost_fact, w.cost_plan, 0)), 0) as profit,
+        COUNT(w.id) FILTER (WHERE w.end_date < NOW() AND w.work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
+        COALESCE(SUM(w.contract_sum), 0) as total_contract,
+        0 as total_cost_plan,
+        0 as total_cost_fact,
+        COALESCE(SUM(w.contract_sum), 0) as profit,
         COUNT(DISTINCT e.id) as active_estimates
       FROM users u
       LEFT JOIN works w ON w.pm_id = u.id AND ${whereClause.replace(/w\./g, '')}
@@ -170,9 +170,9 @@ async function routes(fastify, options) {
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE work_status IN ('В работе', 'Мобилизация', 'Подготовка')) as active,
         COUNT(*) FILTER (WHERE work_status = 'Работы сдали') as completed,
-        COUNT(*) FILTER (WHERE end_plan < NOW() AND work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
-        COALESCE(SUM(contract_value), 0) as total_contract,
-        COALESCE(SUM(contract_value) - SUM(COALESCE(cost_fact, cost_plan, 0)), 0) as total_profit
+        COUNT(*) FILTER (WHERE end_date < NOW() AND work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
+        COALESCE(SUM(contract_sum), 0) as total_contract,
+        COALESCE(SUM(contract_sum), 0) as total_profit
       FROM works w
       WHERE ${whereClause.replace(/w\./g, '')}
     `, params);
@@ -182,7 +182,7 @@ async function routes(fastify, options) {
       SELECT
         TO_CHAR(w.created_at, 'YYYY-MM') as month,
         COUNT(*) as total,
-        COALESCE(SUM(contract_value), 0) as contract_sum,
+        COALESCE(SUM(contract_sum), 0) as contract_sum,
         COUNT(*) FILTER (WHERE work_status = 'Работы сдали') as completed
       FROM works w
       WHERE w.created_at >= NOW() - INTERVAL '12 months'

@@ -4,17 +4,14 @@
 
 // SECURITY: Allowlist of columns
 const EMPLOYEE_COLS = new Set([
-  'fio', 'role_tag', 'phone', 'email', 'passport', 'inn', 'snils',
-  'bank_account', 'bank_name', 'address', 'birth_date', 'employment_date',
-  'dismissal_date', 'position', 'department', 'salary', 'is_active',
-  'notes', 'photo_url', 'rating_avg', 'created_at', 'updated_at'
+  'fio', 'role_tag', 'phone', 'position', 'passport_number',
+  'rating_avg', 'is_active', 'created_at', 'updated_at'
 ]);
 const REVIEW_COLS = new Set([
-  'employee_id', 'rating', 'score_1_10', 'comment', 'work_id', 'pm_id', 'created_at'
+  'employee_id', 'rating', 'comment', 'pm_id', 'created_at'
 ]);
 const SCHEDULE_COLS = new Set([
-  'employee_id', 'date', 'work_id', 'object_name', 'shift_type',
-  'hours', 'notes', 'status', 'created_at'
+  'employee_id', 'date', 'work_id', 'note', 'created_at'
 ]);
 
 function filterData(data, allowedSet) {

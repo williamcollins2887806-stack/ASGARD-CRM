@@ -656,7 +656,7 @@ module.exports = async function(fastify) {
   // GET /api/tasks/kanban — Получить задачи для Канбан-доски
   // ───────────────────────────────────────────────────────────────
   fastify.get('/kanban', {
-    preHandler: [fastify.requirePermission('kanban', 'read')]
+    preHandler: [fastify.requirePermission('tasks', 'read')]
   }, async (request) => {
     const userId = request.user.id;
     const { assignee_id, creator_id, priority, work_id, tender_id } = request.query;
@@ -666,8 +666,7 @@ module.exports = async function(fastify) {
       SELECT t.*,
         u_creator.name as creator_name,
         u_assignee.name as assignee_name, u_assignee.role as assignee_role,
-        (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count,
-        (SELECT COUNT(*) FROM task_watchers WHERE task_id = t.id) as watcher_count
+        (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count
       FROM tasks t
       JOIN users u_creator ON t.created_by = u_creator.id
       JOIN users u_assignee ON t.assigned_to = u_assignee.id
@@ -711,7 +710,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/:id/move — Переместить задачу в другую колонку
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:id/move', {
-    preHandler: [fastify.requirePermission('kanban', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const { column, position } = request.body;
@@ -877,8 +876,11 @@ module.exports = async function(fastify) {
     // Уведомить участников (создателя, исполнителя, наблюдателей)
     const usersToNotify = new Set([task.created_by, task.assigned_to]);
 
-    const { rows: watchers } = await db.query('SELECT user_id FROM task_watchers WHERE task_id = $1', [id]);
-    for (const w of watchers) usersToNotify.add(w.user_id);
+    // task_watchers — если таблица существует
+    try {
+      const { rows: watchers } = await db.query('SELECT user_id FROM task_watchers WHERE task_id = $1', [id]);
+      for (const w of watchers) usersToNotify.add(w.user_id);
+    } catch (_) { /* table may not exist yet */ }
 
     usersToNotify.delete(userId); // Не уведомлять автора комментария
 
