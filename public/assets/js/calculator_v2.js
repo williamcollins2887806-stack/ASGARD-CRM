@@ -464,40 +464,169 @@
           const dateNow = new Date().toLocaleDateString('ru-RU');
           const wt = s.work_types?.find(w => w.id === st.work_type_id);
 
-          // Лист 1: Сводка
-          const summaryData = [
-            ['АСГАРД СЕРВИС — Рунический Калькулятор ᚱ'],
-            [],
-            ['Заказчик:', st.customer_name || '—'],
-            ['Объект:', st.tender_title || '—'],
-            ['Вид работ:', wt?.name || st.work_type_id || '—'],
-            ['Город:', st.city || '—'],
-            ['Расстояние:', `${st.distance_km || 0} км`],
-            [],
-            ['СРОКИ И ПЕРСОНАЛ'],
-            ['Подготовка:', `${sum.prep_days} дней`],
-            ['Работы:', `${sum.work_days} дней`],
-            ['Демобилизация:', `${sum.demob_days} дней`],
-            ['Всего дней:', `${sum.total_days} дней`],
-            ['Бригада:', `${sum.people_count} чел`],
-            [],
-            ['ИТОГИ РАСЧЁТА'],
-            ['Себестоимость (без НДС):', sum.cost_total],
-            ['Цена клиенту (без НДС):', sum.price_no_vat],
-            ['НДС:', `${sum.vat_pct}%`],
-            ['Цена клиенту (с НДС):', sum.price_with_vat],
-            ['Чистая прибыль:', sum.net_profit],
-            ['Прибыль/чел-день:', sum.profit_per_day],
-            ['Статус:', sum.status === 'green' ? 'НОРМА' : sum.status === 'yellow' ? 'ВНИМАНИЕ' : 'НИЗКАЯ'],
-            [],
-            ['Дата расчёта:', dateNow],
-            ['Версия:', `v${st.version || 1}`]
-          ];
-          const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-          wsSummary['!cols'] = [{ wch: 28 }, { wch: 35 }];
-          XLSX.utils.book_append_sheet(wb, wsSummary, 'Сводка');
+          // === Хелпер: стиль ячейки ===
+          function cellStyle(ws, ref, style) {
+            if (!ws[ref]) ws[ref] = { v: '' };
+            ws[ref].s = style;
+          }
+          const HEADER_FILL = { fgColor: { rgb: '1A2D52' } };
+          const HEADER_FONT = { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' };
+          const TITLE_FONT = { bold: true, sz: 16, name: 'Calibri' };
+          const COMPANY_FONT = { bold: true, sz: 14, name: 'Calibri' };
+          const TOTAL_FONT = { bold: true, sz: 12, name: 'Calibri' };
+          const BORDER_THIN = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+          const BORDER_DOUBLE_TOP = { top: { style: 'double' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+          const ALT_FILL = { fgColor: { rgb: 'F0F4FA' } };
+          const FMT_NUM = '#,##0';
 
+          // === Сумма прописью (рус.) ===
+          function sumInWords(n) {
+            n = Math.round(Math.abs(n));
+            if (n === 0) return 'Ноль рублей 00 копеек';
+            const ones = ['', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять',
+              'десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать',
+              'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать'];
+            const tens = ['', '', 'двадцать', 'тридцать', 'сорок', 'пятьдесят', 'шестьдесят', 'семьдесят', 'восемьдесят', 'девяносто'];
+            const hunds = ['', 'сто', 'двести', 'триста', 'четыреста', 'пятьсот', 'шестьсот', 'семьсот', 'восемьсот', 'девятьсот'];
+            function group(num, fem) {
+              let r = '';
+              const h = Math.floor(num / 100), t = Math.floor((num % 100) / 10), o = num % 10;
+              if (h) r += hunds[h] + ' ';
+              if (t >= 2) { r += tens[t] + ' '; if (o) r += (fem && o <= 2 ? (o === 1 ? 'одна' : 'две') : ones[o]) + ' '; }
+              else if (num % 100 >= 1 && num % 100 <= 19) { r += (fem && num % 100 <= 2 ? (num % 100 === 1 ? 'одна' : 'две') : ones[num % 100]) + ' '; }
+              return r;
+            }
+            function decline(n, f1, f2, f5) {
+              const m = n % 100;
+              if (m >= 11 && m <= 19) return f5;
+              const d = m % 10;
+              if (d === 1) return f1;
+              if (d >= 2 && d <= 4) return f2;
+              return f5;
+            }
+            let result = '';
+            const billions = Math.floor(n / 1e9);
+            const millions = Math.floor((n % 1e9) / 1e6);
+            const thousands = Math.floor((n % 1e6) / 1e3);
+            const remainder = n % 1e3;
+            if (billions) result += group(billions, false) + decline(billions, 'миллиард ', 'миллиарда ', 'миллиардов ');
+            if (millions) result += group(millions, false) + decline(millions, 'миллион ', 'миллиона ', 'миллионов ');
+            if (thousands) result += group(thousands, true) + decline(thousands, 'тысяча ', 'тысячи ', 'тысяч ');
+            if (remainder) result += group(remainder, false);
+            result = result.trim();
+            result += ' ' + decline(remainder || (thousands ? thousands : 0), 'рубль', 'рубля', 'рублей') + ' 00 копеек';
+            return result.charAt(0).toUpperCase() + result.slice(1);
+          }
+
+          // === Хелпер: применить стили к диапазону ===
+          function applyStyles(ws, data) {
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            for (let R = range.s.r; R <= range.e.r; R++) {
+              for (let C = range.s.c; C <= range.e.c; C++) {
+                const addr = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+                if (!ws[addr].s) ws[addr].s = {};
+                // Numbers formatting
+                if (typeof ws[addr].v === 'number' && ws[addr].v > 100) {
+                  ws[addr].z = FMT_NUM;
+                }
+              }
+            }
+          }
+
+          // ══════════════════════════════════════════════
+          // Лист 1: КАЛЬКУЛЯЦИЯ РАБОТ (основной)
+          // ══════════════════════════════════════════════
+          const mainData = [
+            ['ООО "Асгард-Сервис"', '', '', '', '', ''],
+            ['Большая Почтовая ул., д. 55/59, стр. 1, помещ. №37, Москва, 105082', '', '', '', '', ''],
+            ['Тел.: +7 (499) 322-30-62  |  ИНН: 7736244785  |  КПП: 770101001', '', '', '', '', ''],
+            [],
+            ['КАЛЬКУЛЯЦИЯ РАБОТ', '', '', '', '', ''],
+            [],
+            ['Объект:', st.tender_title || '—', '', 'Заказчик:', st.customer_name || '—', ''],
+            ['Вид работ:', wt?.name || '—', '', 'Дата:', dateNow, ''],
+            [],
+            ['№', 'Наименование', 'Ед.изм.', 'Кол-во', 'Цена', 'Сумма'],
+            [1, 'ФОТ (работа + подготовка + демобилизация)', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.payroll_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.payroll_total)],
+            [2, 'Налоги на ФОТ (' + (s.fot_tax_pct || 50) + '%)', 'руб', 1, Math.round(sum.fot_tax), Math.round(sum.fot_tax)],
+            [3, 'Суточные', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.per_diem_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.per_diem_total)],
+            [4, 'Проживание', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.lodging_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.lodging_total)],
+            [5, 'Мобилизация/демобилизация персонала', 'чел', sum.people_count * 2, Math.round(sum.mobilization_total / Math.max(1, sum.people_count * 2)), Math.round(sum.mobilization_total)],
+            [6, 'Химические составы', 'компл', 1, Math.round(sum.chem_total), Math.round(sum.chem_total)],
+            [7, 'Расходные материалы', 'компл', 1, Math.round(sum.consumables), Math.round(sum.consumables)],
+            [8, 'Оборудование', 'компл', 1, Math.round(sum.equip_total), Math.round(sum.equip_total)],
+            [9, 'Логистика (' + (sum.transport?.name || 'авто') + ', ' + st.distance_km + ' км × 2)', 'рейс', 1, Math.round(sum.logistics_total), Math.round(sum.logistics_total)],
+            [10, 'СИЗ', 'чел', sum.people_count, Math.round(sum.ppe_total / Math.max(1, sum.people_count)), Math.round(sum.ppe_total)],
+            [11, 'Накладные расходы (' + sum.overhead_pct + '%)', 'руб', 1, Math.round(sum.overhead), Math.round(sum.overhead)],
+            [],
+            ['', 'ПОДЫТОГ (без НДС):', '', '', '', Math.round(sum.price_no_vat)],
+            ['', 'НДС ' + sum.vat_pct + '%:', '', '', '', Math.round(sum.price_with_vat - sum.price_no_vat)],
+            ['', 'ИТОГО С НДС:', '', '', '', Math.round(sum.price_with_vat)],
+            [],
+            ['Сумма прописью: ' + sumInWords(Math.round(sum.price_with_vat))],
+            [],
+            ['Расчёт подготовил: ___________________ / ______________________ /'],
+            ['', '', '', '', '', 'Дата: ' + dateNow]
+          ];
+
+          const wsMain = XLSX.utils.aoa_to_sheet(mainData);
+          wsMain['!cols'] = [{ wch: 5 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 18 }];
+          wsMain['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },   // Company name
+            { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },   // Address
+            { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },   // Phone/INN
+            { s: { r: 4, c: 0 }, e: { r: 4, c: 5 } },   // Title
+            { s: { r: 26, c: 0 }, e: { r: 26, c: 5 } },  // Sum in words
+            { s: { r: 28, c: 0 }, e: { r: 28, c: 5 } },  // Signature
+          ];
+          // Apply styles
+          const styleCells = (ws, row, cols, style) => {
+            cols.forEach(c => {
+              const ref = XLSX.utils.encode_cell({ r: row, c });
+              if (!ws[ref]) ws[ref] = { v: '', t: 's' };
+              ws[ref].s = style;
+            });
+          };
+          // Company header
+          styleCells(wsMain, 0, [0], { font: COMPANY_FONT, alignment: { horizontal: 'center' } });
+          styleCells(wsMain, 1, [0], { font: { sz: 10, color: { rgb: '666666' } }, alignment: { horizontal: 'center' } });
+          styleCells(wsMain, 2, [0], { font: { sz: 10, color: { rgb: '666666' } }, alignment: { horizontal: 'center' } });
+          // Title
+          styleCells(wsMain, 4, [0], { font: TITLE_FONT, alignment: { horizontal: 'center' } });
+          // Table header row (row 9)
+          [0,1,2,3,4,5].forEach(c => {
+            const ref = XLSX.utils.encode_cell({ r: 9, c });
+            if (!wsMain[ref]) wsMain[ref] = { v: '', t: 's' };
+            wsMain[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN, alignment: { horizontal: 'center', wrapText: true } };
+          });
+          // Data rows (10-20) — borders + alternating fill
+          for (let r = 10; r <= 20; r++) {
+            for (let c = 0; c <= 5; c++) {
+              const ref = XLSX.utils.encode_cell({ r, c });
+              if (!wsMain[ref]) wsMain[ref] = { v: '', t: 's' };
+              wsMain[ref].s = { border: BORDER_THIN, alignment: c >= 3 ? { horizontal: 'right' } : {} };
+              if ((r - 10) % 2 === 1) wsMain[ref].s.fill = ALT_FILL;
+              if (c >= 3 && typeof wsMain[ref].v === 'number') wsMain[ref].z = FMT_NUM;
+            }
+          }
+          // Totals rows (22-24) — bold, double border top
+          [22, 23, 24].forEach((r, i) => {
+            const ref5 = XLSX.utils.encode_cell({ r, c: 5 });
+            if (wsMain[ref5]) {
+              wsMain[ref5].s = { font: i === 2 ? { bold: true, sz: 14 } : TOTAL_FONT, border: i === 0 ? BORDER_DOUBLE_TOP : BORDER_THIN, alignment: { horizontal: 'right' } };
+              wsMain[ref5].z = FMT_NUM;
+            }
+            const ref1 = XLSX.utils.encode_cell({ r, c: 1 });
+            if (wsMain[ref1]) wsMain[ref1].s = { font: i === 2 ? { bold: true, sz: 14 } : TOTAL_FONT, alignment: { horizontal: 'right' } };
+          });
+          // Print settings
+          wsMain['!print'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
+          XLSX.utils.book_append_sheet(wb, wsMain, 'Калькуляция');
+
+          // ══════════════════════════════════════════════
           // Лист 2: Детали (статьи расходов)
+          // ══════════════════════════════════════════════
           const detailsData = [
             ['Статья расходов', 'Сумма, руб', 'Примечание'],
             ['ФОТ (работа + подготовка + демоб.)', sum.payroll_total, `${sum.people_count} чел x ${sum.work_days} дней работы`],
@@ -520,6 +649,11 @@
           ];
           const wsDetails = XLSX.utils.aoa_to_sheet(detailsData);
           wsDetails['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 30 }];
+          // Header styling
+          [0,1,2].forEach(c => {
+            const ref = XLSX.utils.encode_cell({ r: 0, c });
+            if (wsDetails[ref]) wsDetails[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN };
+          });
           XLSX.utils.book_append_sheet(wb, wsDetails, 'Детали');
 
           // Лист 3: Бригада
@@ -535,6 +669,10 @@
           if (crewData.length > 1) {
             const wsCrew = XLSX.utils.aoa_to_sheet(crewData);
             wsCrew['!cols'] = [{ wch: 25 }, { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 18 }];
+            [0,1,2,3,4].forEach(c => {
+              const ref = XLSX.utils.encode_cell({ r: 0, c });
+              if (wsCrew[ref]) wsCrew[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN };
+            });
             XLSX.utils.book_append_sheet(wb, wsCrew, 'Бригада');
           }
 
@@ -558,11 +696,15 @@
 
           const wsParams = XLSX.utils.aoa_to_sheet(paramsData);
           wsParams['!cols'] = [{ wch: 25 }, { wch: 30 }];
+          [0,1].forEach(c => {
+            const ref = XLSX.utils.encode_cell({ r: 0, c });
+            if (wsParams[ref]) wsParams[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN };
+          });
           XLSX.utils.book_append_sheet(wb, wsParams, 'Параметры');
 
           // Генерация имени файла
           const objName = (st.tender_title || 'объект').replace(/[^\w\u0400-\u04FF\s-]/g, '').substring(0, 30).trim();
-          const filename = `Расчёт_${objName}_${dateNow.replace(/\./g, '-')}.xlsx`;
+          const filename = `Калькуляция_${objName}_${dateNow.replace(/\./g, '-')}.xlsx`;
 
           // Скачивание
           XLSX.writeFile(wb, filename);
@@ -715,59 +857,60 @@
           return;
         }
         try {
+          // Используем общий экспорт из основного калькулятора
           const wb = XLSX.utils.book_new();
           const dateNow = new Date().toLocaleDateString('ru-RU');
           const wtObj = s.work_types?.find(w => w.id === st.work_type_id);
-          const summaryData = [
-            ['АСГАРД СЕРВИС — Рунический Калькулятор ᚱ'], [],
-            ['Объект:', st.tender_title || '(автономный расчёт)'],
-            ['Вид работ:', wtObj?.name || st.work_type_id || '—'],
-            ['Город:', st.city || '—'],
-            ['Расстояние:', `${st.distance_km || 0} км`], [],
-            ['СРОКИ И ПЕРСОНАЛ'],
-            ['Подготовка:', `${sum.prep_days} дней`],
-            ['Работы:', `${sum.work_days} дней`],
-            ['Демобилизация:', `${sum.demob_days} дней`],
-            ['Всего дней:', `${sum.total_days} дней`],
-            ['Бригада:', `${sum.people_count} чел`], [],
-            ['ИТОГИ РАСЧЁТА'],
-            ['Себестоимость (без НДС):', sum.cost_total],
-            ['Цена клиенту (без НДС):', sum.price_no_vat],
-            ['НДС:', `${sum.vat_pct}%`],
-            ['Цена клиенту (с НДС):', sum.price_with_vat],
-            ['Чистая прибыль:', sum.net_profit],
-            ['Прибыль/чел-день:', sum.profit_per_day],
-            ['Статус:', sum.status === 'green' ? 'НОРМА' : sum.status === 'yellow' ? 'ВНИМАНИЕ' : 'НИЗКАЯ'], [],
-            ['Дата расчёта:', dateNow],
-            ['Режим:', 'Автономный (без тендера)']
+          const HEADER_FILL = { fgColor: { rgb: '1A2D52' } };
+          const HEADER_FONT = { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' };
+          const TITLE_FONT = { bold: true, sz: 16, name: 'Calibri' };
+          const COMPANY_FONT = { bold: true, sz: 14, name: 'Calibri' };
+          const TOTAL_FONT = { bold: true, sz: 12, name: 'Calibri' };
+          const BORDER_THIN = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+          const FMT_NUM = '#,##0';
+          const mainData = [
+            ['ООО "Асгард-Сервис"', '', '', '', '', ''],
+            ['Большая Почтовая ул., д. 55/59, стр. 1, помещ. №37, Москва, 105082'],
+            ['Тел.: +7 (499) 322-30-62  |  ИНН: 7736244785'],
+            [],
+            ['КАЛЬКУЛЯЦИЯ РАБОТ (автономный расчёт)'],
+            [],
+            ['Вид работ:', wtObj?.name || '—', '', 'Город:', st.city || '—', ''],
+            ['Расстояние:', `${st.distance_km || 0} км`, '', 'Дата:', dateNow, ''],
+            [],
+            ['№', 'Наименование', 'Ед.изм.', 'Кол-во', 'Цена', 'Сумма'],
+            [1, 'ФОТ (работа + подготовка + демоб.)', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.payroll_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.payroll_total)],
+            [2, 'Налоги на ФОТ', 'руб', 1, Math.round(sum.fot_tax), Math.round(sum.fot_tax)],
+            [3, 'Суточные', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.per_diem_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.per_diem_total)],
+            [4, 'Проживание', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.lodging_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.lodging_total)],
+            [5, 'Мобилизация/демобилизация', 'чел', sum.people_count * 2, Math.round(sum.mobilization_total / Math.max(1, sum.people_count * 2)), Math.round(sum.mobilization_total)],
+            [6, 'Химия + расходные', 'компл', 1, Math.round(sum.chem_total + sum.consumables), Math.round(sum.chem_total + sum.consumables)],
+            [7, 'Оборудование', 'компл', 1, Math.round(sum.equip_total), Math.round(sum.equip_total)],
+            [8, 'Логистика', 'рейс', 1, Math.round(sum.logistics_total), Math.round(sum.logistics_total)],
+            [9, 'СИЗ', 'чел', sum.people_count, Math.round(sum.ppe_total / Math.max(1, sum.people_count)), Math.round(sum.ppe_total)],
+            [10, 'Накладные (' + (sum.overhead_pct) + '%)', 'руб', 1, Math.round(sum.overhead), Math.round(sum.overhead)],
+            [],
+            ['', 'ПОДЫТОГ (без НДС):', '', '', '', Math.round(sum.price_no_vat)],
+            ['', 'НДС ' + sum.vat_pct + '%:', '', '', '', Math.round(sum.price_with_vat - sum.price_no_vat)],
+            ['', 'ИТОГО С НДС:', '', '', '', Math.round(sum.price_with_vat)],
+            [],
+            ['Дата расчёта: ' + dateNow]
           ];
-          const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-          wsSummary['!cols'] = [{ wch: 28 }, { wch: 35 }];
-          XLSX.utils.book_append_sheet(wb, wsSummary, 'Сводка');
-          const detailsData = [
-            ['Статья расходов', 'Сумма, руб', 'Примечание'],
-            ['ФОТ', sum.payroll_total, `${sum.people_count} чел x ${sum.work_days} дней`],
-            ['Налоги на ФОТ', sum.fot_tax, `${s.fot_tax_pct || 50}%`],
-            ['Суточные', sum.per_diem_total, `${sum.total_days} дней`],
-            ['Проживание', sum.lodging_total, st.lodging_type],
-            ['Мобилизация', sum.mobilization_total, st.mobilization_type],
-            ['Химия', sum.chem_total, `${st.chemicals?.length || 0} позиций`],
-            ['Расходные материалы', sum.consumables, `${s.consumables_pct || 5}%`],
-            ['Оборудование', sum.equip_total, `${st.equipment?.length || 0} позиций`],
-            ['Логистика', sum.logistics_total, `${st.distance_km * 2} км`],
-            ['СИЗ', sum.ppe_total, `${sum.people_count} чел`],
-            ['Накладные', sum.overhead, `${sum.overhead_pct}%`], [],
-            ['ИТОГО себестоимость:', sum.cost_total, ''],
-            ['Маржа:', sum.margin_pct + '%', ''],
-            ['Цена без НДС:', sum.price_no_vat, ''],
-            ['НДС:', sum.price_with_vat - sum.price_no_vat, `${sum.vat_pct}%`],
-            ['ЦЕНА С НДС:', sum.price_with_vat, '']
+          const wsMain = XLSX.utils.aoa_to_sheet(mainData);
+          wsMain['!cols'] = [{ wch: 5 }, { wch: 40 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 18 }];
+          wsMain['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+            { s: { r: 4, c: 0 }, e: { r: 4, c: 5 } },
           ];
-          const wsDetails = XLSX.utils.aoa_to_sheet(detailsData);
-          wsDetails['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 30 }];
-          XLSX.utils.book_append_sheet(wb, wsDetails, 'Детали');
+          // Header row styling
+          [0,1,2,3,4,5].forEach(c => {
+            const ref = XLSX.utils.encode_cell({ r: 9, c });
+            if (wsMain[ref]) wsMain[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN, alignment: { horizontal: 'center' } };
+          });
+          wsMain['!print'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1 };
+          XLSX.utils.book_append_sheet(wb, wsMain, 'Калькуляция');
           const objName = (st.city || 'расчёт').replace(/[^\w\u0400-\u04FF\s-]/g, '').substring(0, 30).trim();
-          const filename = `Расчёт_${objName}_${dateNow.replace(/\./g, '-')}.xlsx`;
+          const filename = `Калькуляция_${objName}_${dateNow.replace(/\./g, '-')}.xlsx`;
           XLSX.writeFile(wb, filename);
           toast("Экспорт", "Excel-файл скачан");
         } catch (err) {

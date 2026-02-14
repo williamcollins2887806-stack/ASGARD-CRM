@@ -150,6 +150,20 @@ module.exports = {
         assertArray(list, 'chats');
       }
     },
+    {
+      name: '[T4] chat_groups.js has messenger-style UI (bubbles, sidebar, polling)',
+      run: async () => {
+        const chatPath = path.join(__dirname, '..', '..', 'public', 'assets', 'js', 'chat_groups.js');
+        assert(fs.existsSync(chatPath), 'chat_groups.js should exist');
+        const src = fs.readFileSync(chatPath, 'utf8');
+        assert(src.includes('chat-message-bubble'), 'should have message bubbles');
+        assert(src.includes('chat-sidebar'), 'should have sidebar with chat list');
+        assert(src.includes('chat-message-sender'), 'should show sender name');
+        assert(src.includes('scrollTop') || src.includes('scrollHeight'), 'should auto-scroll to bottom');
+        assert(src.includes('pollingInterval') || src.includes('setInterval'), 'should have polling for new messages');
+        assert(src.includes('isOwn'), 'should distinguish own vs other messages');
+      }
+    },
 
     // ═══════════════════════════════════════════════════════════════
     // TASK 5: Notifications + Telegram
@@ -539,7 +553,7 @@ module.exports = {
     // TASK 14: Excel export in calculator
     // ═══════════════════════════════════════════════════════════════
     {
-      name: '[T14] calculator_v2.js uses SheetJS (XLSX) for export',
+      name: '[T14] calculator_v2.js uses SheetJS (XLSX) with styled headers + sum in words',
       run: async () => {
         const src = fs.readFileSync(
           path.join(__dirname, '..', '..', 'public', 'assets', 'js', 'calculator_v2.js'), 'utf8'
@@ -549,6 +563,10 @@ module.exports = {
           src.includes('writeFile') || src.includes('write_file') || src.includes('book_new'),
           'should have XLSX write methods'
         );
+        assert(src.includes('sumInWords'), 'should have sum-in-words function');
+        assert(src.includes('HEADER_FILL') || src.includes('1A2D52'), 'should have styled header fill');
+        assert(src.includes('ООО "Асгард-Сервис"') || src.includes('Асгард-Сервис'), 'should have company name in header');
+        assert(src.includes('!merges'), 'should have merged cells for company header');
       }
     },
     {
@@ -672,6 +690,18 @@ module.exports = {
       run: async () => {
         const testPath = path.join(__dirname, 'tasks-17-verification.test.js');
         assert(fs.existsSync(testPath), 'tasks-17-verification.test.js should exist');
+      }
+    },
+    {
+      name: '[T17] business-process.test.js exists with 10 E2E scenarios',
+      run: async () => {
+        const bpPath = path.join(__dirname, 'business-process.test.js');
+        assert(fs.existsSync(bpPath), 'business-process.test.js should exist');
+        const src = fs.readFileSync(bpPath, 'utf8');
+        assert(src.includes('BP1'), 'should have scenario BP1 (Tender flow)');
+        assert(src.includes('BP5'), 'should have scenario BP5 (TMC flow)');
+        assert(src.includes('BP10'), 'should have scenario BP10 (Multi-role)');
+        assert(src.includes('Business Process') || src.includes('business process') || src.includes('SCENARIO'), 'should be business process test');
       }
     },
 
