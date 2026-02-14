@@ -5,9 +5,8 @@
 // SECURITY: Allowlist of columns for works
 const ALLOWED_COLS = new Set([
   'tender_id', 'pm_id', 'work_number', 'work_title', 'work_status',
-  'contract_value', 'cost_plan', 'cost_fact', 'start_plan', 'end_plan',
-  'start_fact', 'end_fact', 'object_name', 'object_address', 'customer_name',
-  'description', 'notes', 'priority', 'created_by', 'created_at', 'updated_at'
+  'contract_sum', 'customer_name', 'start_date', 'end_date',
+  'created_by', 'created_at', 'updated_at'
 ]);
 
 function filterData(data) {

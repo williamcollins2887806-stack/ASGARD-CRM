@@ -204,7 +204,7 @@ async function routes(fastify, options) {
         raw.customer_name = raw.customer;
       }
       delete raw.customer;
-      raw.created_by = request.user.id;
+      raw.created_by_user_id = request.user.id;
       raw.created_at = new Date().toISOString();
 
       // Auto-generate period if not provided
@@ -218,7 +218,7 @@ async function routes(fastify, options) {
         'customer_name', 'customer_inn', 'tender_number', 'tender_type', 'tender_title',
         'tender_status', 'period', 'deadline', 'estimated_sum', 'responsible_pm_id',
         'tag', 'docs_link', 'comment_to', 'comment_dir', 'reject_reason',
-        'created_by', 'created_at'
+        'created_by_user_id', 'created_at'
       ];
       const data = {};
       for (const k of allowedCols) {
@@ -479,7 +479,7 @@ async function routes(fastify, options) {
         COUNT(DISTINCT t.customer_inn) as unique_customers,
         MAX(t.created_at) as last_tender_at
       FROM users u
-      LEFT JOIN tenders t ON (t.created_by = u.id) AND ${whereClause.replace(/t\./g, '')}
+      LEFT JOIN tenders t ON (t.created_by_user_id = u.id) AND ${whereClause.replace(/t\./g, '')}
       WHERE u.role IN ('TO', 'HEAD_TO') AND u.is_active = true
       GROUP BY u.id, u.name, u.role
       ORDER BY won_sum DESC
