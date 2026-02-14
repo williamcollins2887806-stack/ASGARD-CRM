@@ -179,11 +179,12 @@ module.exports = async function(fastify) {
 
     const { rows: [task] } = await db.query(`
       SELECT t.*,
+        t.assigned_to as assignee_id, t.created_by as creator_id,
         u_creator.name as creator_name, u_creator.role as creator_role,
         u_assignee.name as assignee_name, u_assignee.role as assignee_role
       FROM tasks t
-      JOIN users u_creator ON t.created_by = u_creator.id
-      JOIN users u_assignee ON t.assigned_to = u_assignee.id
+      LEFT JOIN users u_creator ON t.created_by = u_creator.id
+      LEFT JOIN users u_assignee ON t.assigned_to = u_assignee.id
       WHERE t.id = $1
     `, [id]);
 
@@ -347,10 +348,20 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
-    const { rows: [task] } = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND assigned_to = $2 AND status = $3',
-      [id, request.user.id, 'new']
-    );
+    // ADMIN/Director может принять любую задачу; исполнитель — только свою
+    let task;
+    if (DIRECTOR_ROLES.includes(request.user.role)) {
+      const { rows: [t] } = await db.query(
+        'SELECT * FROM tasks WHERE id = $1 AND status = $2', [id, 'new']
+      );
+      task = t;
+    } else {
+      const { rows: [t] } = await db.query(
+        'SELECT * FROM tasks WHERE id = $1 AND assigned_to = $2 AND status = $3',
+        [id, request.user.id, 'new']
+      );
+      task = t;
+    }
     if (!task) return reply.code(400).send({ error: 'Задача не найдена или не в статусе "Новая"' });
 
     await db.query(`
@@ -400,10 +411,21 @@ module.exports = async function(fastify) {
     const id = parseInt(request.params.id);
     const { comment } = request.body || {};
 
-    const { rows: [task] } = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND assigned_to = $2 AND status IN ($3, $4, $5, $6)',
-      [id, request.user.id, 'new', 'accepted', 'in_progress', 'overdue']
-    );
+    // ADMIN/Director может завершить любую задачу; исполнитель — только свою
+    let task;
+    if (DIRECTOR_ROLES.includes(request.user.role)) {
+      const { rows: [t] } = await db.query(
+        'SELECT * FROM tasks WHERE id = $1 AND status IN ($2, $3, $4, $5)',
+        [id, 'new', 'accepted', 'in_progress', 'overdue']
+      );
+      task = t;
+    } else {
+      const { rows: [t] } = await db.query(
+        'SELECT * FROM tasks WHERE id = $1 AND assigned_to = $2 AND status IN ($3, $4, $5, $6)',
+        [id, request.user.id, 'new', 'accepted', 'in_progress', 'overdue']
+      );
+      task = t;
+    }
     if (!task) return reply.code(400).send({ error: 'Нельзя завершить эту задачу' });
 
     await db.query(`

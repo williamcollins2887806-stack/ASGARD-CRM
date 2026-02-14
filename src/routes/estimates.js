@@ -4,8 +4,8 @@
 
 // SECURITY: Allowlist of columns for estimates
 const ALLOWED_COLS = new Set([
-  'tender_id', 'name', 'pm_id', 'approval_status',
-  'items', 'subtotal', 'vat', 'total', 'comment',
+  'tender_id', 'name', 'title', 'pm_id', 'approval_status',
+  'items', 'subtotal', 'vat', 'total', 'margin', 'comment',
   'created_by', 'created_at', 'updated_at'
 ]);
 

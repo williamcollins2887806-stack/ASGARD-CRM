@@ -315,6 +315,8 @@ module.exports = async function(fastify) {
 
       return { permit: result.rows[0] };
     } catch (err) {
+      if (err.code === '23503') return reply.code(400).send({ error: 'Связанная запись не найдена (FK violation)', detail: err.message });
+      if (err.code === '23505') return reply.code(409).send({ error: 'Допуск уже существует', detail: err.message });
       return reply.code(500).send({ error: 'Ошибка создания допуска', detail: err.message });
     }
   });
