@@ -105,7 +105,7 @@ window.AsgardDiagPage=(function(){
           <h3>Последние события audit_log</h3>
           <table class="table">
             <thead><tr><th>when</th><th>action</th><th>type</th><th>id</th><th>actor</th></tr></thead>
-            <tbody>${auditRows || "<tr><td colspan='5' class='muted'>нет данных</td></tr>"}</tbody>
+            <tbody>${auditRows || "<tr><td colspan='5'><div class='asg-empty'><div class='asg-empty-icon'>📭</div><div class='asg-empty-text'>Нет данных</div></div></td></tr>"}</tbody>
           </table>
         </div>
       </div>

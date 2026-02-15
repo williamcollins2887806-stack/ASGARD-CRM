@@ -103,7 +103,7 @@ window.AsgardCustomersPage = (function(){
     function renderTable(q=""){
       const qq = String(q||"").trim().toLowerCase();
       const out = !qq ? list : list.filter(c=> String(c.inn||"").toLowerCase().includes(qq) || String(c.name||"").toLowerCase().includes(qq));
-      tb.innerHTML = out.map(row).join("") || '<tr><td colspan="5" class="help">Пусто.</td></tr>';
+      tb.innerHTML = out.map(row).join("") || '<tr><td colspan="5"><div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных</div></div></td></tr>';
     }
     renderTable("");
     $("#q").addEventListener("input", (e)=>renderTable(e.target.value));

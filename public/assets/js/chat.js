@@ -216,7 +216,7 @@ window.AsgardChat = (function(){
         const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
         return `
           <div style="align-self:${isOwn ? 'flex-end' : 'flex-start'};max-width:80%">
-            <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
+            <div style="background:${isOwn ? 'var(--secondary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
               ${!isOwn ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${AsgardUI.esc(m.user_name || 'Аноним')}</div>` : ''}
               <div>${AsgardUI.esc(m.text || '')}</div>
             </div>
@@ -383,7 +383,7 @@ window.AsgardChat = (function(){
             const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
             return `
               <div style="align-self:${isOwn ? 'flex-end' : 'flex-start'};max-width:80%">
-                <div style="background:${isOwn ? 'var(--primary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
+                <div style="background:${isOwn ? 'var(--secondary)' : 'var(--bg-elevated)'};color:${isOwn ? '#fff' : 'inherit'};padding:8px 12px;border-radius:12px">
                   ${!isOwn ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${AsgardUI.esc(m.user_name || 'Аноним')}</div>` : ''}
                   <div>${AsgardUI.esc(m.text || '')}</div>
                 </div>

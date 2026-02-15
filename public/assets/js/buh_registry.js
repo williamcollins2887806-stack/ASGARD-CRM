@@ -296,7 +296,7 @@ window.AsgardBuhRegistryPage = (function(){
 
     function renderTable(expenses){
       if(!expenses.length){
-        $('#buhTable').innerHTML = `<div class="buh-empty">Нет данных по выбранным фильтрам</div>`;
+        $('#buhTable').innerHTML = `<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных по выбранным фильтрам</div></div>`;
         return;
       }
 

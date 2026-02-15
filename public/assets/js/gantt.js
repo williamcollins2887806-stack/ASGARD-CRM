@@ -57,7 +57,7 @@ window.AsgardGantt = (function(){
         .ghead .w{padding:8px 6px; font-size:11px; color:var(--text-secondary); text-align:center; border-right:1px solid var(--bg-hover)}
         .gbody{position:relative; height:58px}
         .gbar{position:absolute; top:16px; height:26px; left:${barLeft}%; width:${barW}%; background:${barColor};
-          border-radius:999px; box-shadow:0 10px 20px rgba(0,0,0,.25); display:flex; align-items:center; padding:0 10px; font-size:12px; font-weight:800; color:#0b0f1f}
+          border-radius:999px; box-shadow:0 10px 20px rgba(0,0,0,.25); display:flex; align-items:center; padding:0 10px; font-size:12px; font-weight:800; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.5)}
         .gtoday{position:absolute; top:0; bottom:0; left:${todayLeft}%; width:2px; background:var(--primary)}
         .gtoday::after{content:""; position:absolute; top:6px; left:6px; font-size:10px; color:var(--primary)}
         .ggrid{position:absolute; inset:0; display:grid; grid-template-columns: repeat(${totalWeeks}, 1fr)}
@@ -155,7 +155,7 @@ window.AsgardGantt = (function(){
           <div class="left">Список</div>
           <div class="right">${head}</div>
         </div>
-        ${rowHtml || `<div class="help" style="padding:14px">Нет данных для отображения.</div>`}
+        ${rowHtml || `<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных для отображения</div></div>`}
       </div>
     `;
   }

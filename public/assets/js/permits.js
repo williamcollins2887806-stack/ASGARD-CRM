@@ -267,7 +267,7 @@ window.AsgardPermitsPage = (function(){
     });
 
     const renderTable = (list, showEmployee = true) => {
-      if (!list.length) return '<div class="help">Нет данных</div>';
+      if (!list.length) return '<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных</div></div>';
       return `
         <table class="tbl">
           <thead><tr>${showEmployee ? '<th>Сотрудник</th>' : ''}<th>Тип</th><th>Действует до</th><th>Статус</th></tr></thead>

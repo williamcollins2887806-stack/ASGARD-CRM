@@ -313,8 +313,8 @@
         <table class="tbl" style="margin-top:12px"><tbody>
           <tr><td>Цена без НДС</td><td style="text-align:right">${money(sum.price_no_vat)}</td></tr>
           <tr><td>НДС ${sum.vat_pct}%</td><td style="text-align:right">${money(sum.price_with_vat - sum.price_no_vat)}</td></tr>
-          <tr style="background:rgba(242,208,138,.2)"><td><b>ЦЕНА С НДС</b></td><td style="text-align:right"><b>${money(sum.price_with_vat)}</b></td></tr>
-          <tr style="background:rgba(34,197,94,.15)"><td><b>Чистая прибыль</b></td><td style="text-align:right"><b>${money(sum.net_profit)}</b></td></tr>
+          <tr style="background:rgba(242,208,138,.2)"><td><b>ЦЕНА С НДС</b></td><td style="text-align:right"><b style="font-size:16px;color:var(--primary)">${money(sum.price_with_vat)}</b></td></tr>
+          <tr style="background:rgba(34,197,94,.15)"><td><b>Чистая прибыль</b></td><td style="text-align:right"><b style="font-size:16px;color:#22c55e">${money(sum.net_profit)}</b></td></tr>
         </tbody></table></div>
       <div class="csec" style="background:${col[sum.status]}22;border:2px solid ${col[sum.status]}">
         <div style="text-align:center"><span style="font-size:16px;font-weight:700;color:${col[sum.status]}">${lbl[sum.status]} ЗОНА</span></div>

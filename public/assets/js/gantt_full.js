@@ -66,7 +66,7 @@ window.AsgardGanttFullPage=(function(){
       <div class="card" style="margin-top:12px">
         <table class="table">
           <thead><tr><th>Проект</th><th>Старт</th><th>Финиш</th><th>Статус</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="4" class="muted">нет данных</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="4"><div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных</div></div></td></tr>`}</tbody>
         </table>
       </div>
     `;

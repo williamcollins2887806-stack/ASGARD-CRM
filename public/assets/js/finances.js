@@ -256,7 +256,7 @@ window.AsgardFinancesPage = (function(){
 
     function renderCategoriesPie(currentData){
       const total = Object.values(currentData.categories).reduce((a,b) => a+b, 0);
-      if(total === 0) return '<div class="help">Нет данных по категориям расходов.</div>';
+      if(total === 0) return '<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных по категориям расходов</div></div>';
 
       // SVG круговая диаграмма
       let currentAngle = 0;
@@ -379,7 +379,7 @@ window.AsgardFinancesPage = (function(){
                   <div class="fin-legend-value">${money(Math.round(s.value))} ₽</div>
                   <div class="fin-legend-pct">${(s.pct*100).toFixed(1)}%</div>
                 </div>
-              `).join('') : '<div class="help">Нет данных</div>'}
+              `).join('') : '<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных</div></div>'}
             </div>
           </div>
         `;

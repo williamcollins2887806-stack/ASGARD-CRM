@@ -164,7 +164,7 @@ window.AsgardProcRequestsPage=(function(){
           <div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(new Date(l.created_at).toLocaleString("ru-RU"))}</div><div class="role">${esc(l.actor_user_id)}</div></div>
           <div class="help" style="margin:6px 0 10px">${esc(l.payload_json||"")}</div>
         `).join("");
-        showModal("История (purchase_request)", rows || `<div class="help">Пусто.</div>`);
+        showModal("История (purchase_request)", rows || `<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных</div></div>`);
       });
 
       $("#btnSend").addEventListener("click", async ()=>{

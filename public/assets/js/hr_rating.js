@@ -133,7 +133,7 @@ window.AsgardHrRatingPage=(function(){
                     <td class="right"><button class="btn sm ghost" data-open="${e.id}">Открыть</button></td>
                   </tr>
                 `;
-              }).join("") || `<tr><td colspan="8" class="muted">Нет данных</td></tr>`}
+              }).join("") || `<tr><td colspan="8"><div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных</div></div></td></tr>`}
             </tbody>
           </table>
         </div>
