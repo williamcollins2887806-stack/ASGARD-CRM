@@ -90,7 +90,7 @@ window.AsgardAlertsPage=(function(){
 
     async function renderList(){
       const items=await fetchAll();
-      list.innerHTML = items.length ? items.map(card).join("") : `<div class="help">Пока нет уведомлений по выбранному фильтру.</div>`;
+      list.innerHTML = items.length ? items.map(card).join("") : `<div class="asg-empty"><div class="asg-empty-icon">📬</div><div class="asg-empty-text">Пока нет уведомлений по выбранному фильтру</div></div>`;
       cnt.textContent = `Показано: ${items.length}`;
       // handlers
       $$("[data-toggle]").forEach(b=>b.addEventListener("click", async ()=>{

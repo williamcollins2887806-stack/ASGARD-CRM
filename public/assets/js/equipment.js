@@ -1320,7 +1320,7 @@ window.AsgardWarehouse = (function(){
     } else {
       // Fallback - показываем данные
       container.innerHTML = `
-        <div style="padding:20px;background:#f0f0f0;border-radius:8px;font-family:monospace;font-size:12px">
+        <div style="padding:20px;background:var(--bg-elevated);border-radius:8px;font-family:monospace;font-size:12px;color:var(--text-primary)">
           ${esc(qrData)}
         </div>
         <p style="font-size:11px;color:var(--text-muted);margin-top:8px">

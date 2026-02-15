@@ -94,6 +94,16 @@
   --line: var(--border);
   --accent: var(--primary);
   --card: var(--bg-card);
+  --bg: var(--bg-main);
+  --cyan: #06b6d4;
+  --purple: #8b5cf6;
+  --mono: var(--font-mono);
+  --dim: var(--text-muted);
+  --subtle: var(--text-secondary);
+  --success: var(--green);
+  --warning: var(--amber);
+  --danger: var(--red);
+  --info: var(--blue);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

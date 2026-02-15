@@ -72,7 +72,7 @@ window.AsgardCustomersPage = (function(){
         <button class="btn ghost" data-del-contact="${i}" style="padding:6px 10px">Удалить</button>
       </div>
     `).join("");
-    return rows || '<div class="help">Контактов пока нет.</div>';
+    return rows || '<div class="asg-empty"><div class="asg-empty-icon">👤</div><div class="asg-empty-text">Контактов пока нет</div></div>';
   }
 
   async function renderList({layout, title}={}){

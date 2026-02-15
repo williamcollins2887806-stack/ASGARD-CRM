@@ -817,7 +817,7 @@ window.AsgardPmCalcsPage = (function(){
             .sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
           const rows = logs.map(l=>`<div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(new Date(l.created_at).toLocaleString("ru-RU"))}</div><div class="role">${esc((byId.get(l.actor_user_id)||{}).login||"")}</div></div>
             <div class="help" style="margin:6px 0 10px">${esc(l.payload_json||"")}</div>`).join("");
-          showModal("История тендера", rows || `<div class="help">Пока пусто.</div>`);
+          showModal("История тендера", rows || `<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных</div></div>`);
         });
       }
 

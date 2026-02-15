@@ -506,8 +506,8 @@ window.AsgardWarehouse = (function(){
         <div class="qr-print-card" style="width:200px;padding:16px;border:1px solid #ccc;text-align:center;page-break-inside:avoid;display:inline-block;margin:8px">
           <img src="${qrUrl}" alt="QR" style="width:150px;height:150px"/>
           <div style="font-weight:700;font-size:14px;margin-top:8px">${esc(item.inventory_number)}</div>
-          <div style="font-size:11px;color:#666;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</div>
-          ${item.serial_number ? `<div style="font-size:10px;color:#999">S/N: ${esc(item.serial_number)}</div>` : ''}
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</div>
+          ${item.serial_number ? `<div style="font-size:10px;color:var(--text-muted)">S/N: ${esc(item.serial_number)}</div>` : ''}
         </div>
       `;
     }).join('');

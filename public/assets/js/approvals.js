@@ -415,7 +415,7 @@ window.AsgardApprovalsPage = (function(){
               ${quickCalc.work_type ? `<span style="background:var(--bg-hover); padding:4px 8px; border-radius:6px">${esc(quickCalc.work_type)}</span>` : ''}
             </div>
             ${(quickCalc.assumptions || est.assumptions) ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:8px; border-left:3px solid #f59e0b">
-              <div style="font-size:11px; color:#f59e0b; font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
+              <div style="font-size:11px; color:var(--amber); font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
               <div style="font-size:12px; color:var(--muted)">${esc(quickCalc.assumptions || est.assumptions)}</div>
             </div>` : ''}
           </div>
@@ -455,7 +455,7 @@ window.AsgardApprovalsPage = (function(){
             <span style="background:var(--bg-hover); padding:4px 8px; border-radius:6px">Город: ${esc(calcV2.city||'—')} (${calcV2.distance_km||0} км)</span>
           </div>
           ${calcV2.assumptions ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:8px; border-left:3px solid #f59e0b">
-            <div style="font-size:11px; color:#f59e0b; font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
+            <div style="font-size:11px; color:var(--amber); font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
             <div style="font-size:12px; color:var(--muted)">${esc(calcV2.assumptions)}</div>
           </div>` : ''}
         </div>

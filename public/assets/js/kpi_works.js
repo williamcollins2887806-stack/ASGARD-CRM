@@ -249,7 +249,7 @@ window.AsgardKpiWorksPage=(function(){
             </div>
           </div>`;
       }).join('');
-      dialBox.innerHTML = cards || `<div class="help">Нет данных план/факт для расчёта KPI по выбранному фильтру.</div>`;
+      dialBox.innerHTML = cards || `<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных план/факт для расчёта KPI по выбранному фильтру</div></div>`;
 
       // draw dials (skip in Safe Mode)
       if(!isSafe()){

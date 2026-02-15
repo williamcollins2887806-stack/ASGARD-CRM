@@ -135,7 +135,7 @@ window.AsgardBirthdaysPage=(function(){
   function renderMonths(byMonth){
     const months = Array.from(byMonth.keys()).sort((a,b)=>a-b);
     if(!months.length){
-      return `<div class="card"><div class="help">Нет данных по датам рождения.</div></div>`;
+      return `<div class="card"><div class="asg-empty"><div class="asg-empty-icon">🎂</div><div class="asg-empty-text">Нет данных по датам рождения</div></div></div>`;
     }
     // Показываем только месяцы где есть ДР
     return months.map(m=>{

@@ -17,7 +17,7 @@ window.AsgardTravelPage = (function(){
   function today(){ return new Date().toISOString().slice(0,10); }
 
   function getTypeInfo(key){
-    return EXPENSE_TYPES.find(t => t.key === key) || { label: key, icon: '💰', color: '#888' };
+    return EXPENSE_TYPES.find(t => t.key === key) || { label: key, icon: '💰', color: '#94a3b8' };
   }
 
   function fmtMoney(n){

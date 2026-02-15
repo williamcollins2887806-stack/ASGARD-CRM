@@ -325,7 +325,7 @@ window.AsgardSettingsPage = (function(){
                         <button class="btn ghost" data-cust-del="${esc(c.inn||"")}">Удалить</button>
                       </td>
                     </tr>
-                  `).join("") || `<tr><td colspan="3"><div class="help">Пока пусто. Добавьте контрагентов или импортируйте через экспорт/импорт базы.</div></td></tr>`}
+                  `).join("") || `<tr><td colspan="3"><div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Пока пусто. Добавьте контрагентов через экспорт/импорт базы.</div></div></td></tr>`}
                 </tbody>
               </table>
             </div>
