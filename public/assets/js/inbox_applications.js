@@ -236,7 +236,7 @@ window.AsgardInboxApplicationsPage = (function(){
 
           <!-- AI Анализ -->
           ${item.ai_summary ? `
-          <div style="background:${col.bg || 'var(--bg-elevated)'};border:1px solid ${col.border || 'var(--line)'};border-radius:6px;padding:16px;margin-bottom:16px">
+          <div style="background:${col.bg || 'var(--bg-elevated)'};border-radius:6px;padding:16px;margin-bottom:16px">
             <div style="font-weight:700;margin-bottom:8px">🤖 AI Анализ</div>
             <div style="margin-bottom:8px">${esc(item.ai_summary)}</div>
             <div style="font-size:12px;color:var(--text-muted)">

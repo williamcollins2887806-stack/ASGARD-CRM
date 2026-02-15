@@ -89,7 +89,7 @@ window.AsgardPreTendersPage = (function(){
         .pt-stat .v{font-size:26px;font-weight:900}
         .pt-stat .l{font-size:10px;color:var(--text-muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
         .pt-row{background:var(--bg-elevated);border-radius:6px;padding:14px 16px;margin-bottom:6px;cursor:pointer;display:grid;grid-template-columns:36px 1fr 120px 100px 100px 90px;gap:12px;align-items:center;transition:background .15s}
-        .pt-row:hover{background:var(--bg-card)}
+        .pt-row:hover{background:var(--bg-hover)}
         .pt-dot{width:14px;height:14px;border-radius:50%;margin:auto}
         .pt-subj{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .pt-cust{font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

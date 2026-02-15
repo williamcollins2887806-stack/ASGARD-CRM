@@ -851,7 +851,7 @@ window.AsgardTasksAdminPage = (function() {
         padding: 4px 8px;
         border-radius: 4px;
         font-size: 12px;
-        color: #fff;
+        color: var(--text-inverse);
         font-weight: 500;
       }
 
@@ -1082,7 +1082,7 @@ window.AsgardTasksAdminPage = (function() {
 
       .btn-primary {
         background: #3b82f6;
-        color: #fff;
+        color: var(--text-inverse);
       }
 
       .btn-primary:hover {

@@ -223,7 +223,7 @@ window.AsgardMango = (function(){
           width: 22px;
           left: 3px;
           bottom: 3px;
-          background-color: var(--bg-card);
+          background-color: var(--bg-elevated);
           border-radius: 50%;
           transition: 0.3s;
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
