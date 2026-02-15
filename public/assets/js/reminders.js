@@ -266,7 +266,7 @@ window.AsgardReminders = (function(){
     });
     
     if (active.length === 0) {
-      return '<div class="muted" style="padding:16px;text-align:center">Нет активных напоминаний</div>';
+      return '<div class="asg-empty"><div class="asg-empty-icon">🔔</div><div class="asg-empty-text">Нет активных напоминаний</div></div>';
     }
     
     return `
@@ -390,7 +390,7 @@ window.AsgardReminders = (function(){
     
     function renderList(list, showActions = true) {
       if (list.length === 0) {
-        return '<div class="muted" style="padding:20px;text-align:center">Нет напоминаний</div>';
+        return '<div class="asg-empty"><div class="asg-empty-icon">🔔</div><div class="asg-empty-text">Нет напоминаний</div></div>';
       }
       
       return list.map(r => {

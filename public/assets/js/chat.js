@@ -377,7 +377,7 @@ window.AsgardChat = (function(){
 
       const messages = await getMessages(currentChat.type, currentChat.id);
       chatMessages.innerHTML = messages.length === 0 
-        ? '<div class="help" style="text-align:center;margin-top:50px">Сообщений пока нет</div>'
+        ? '<div class="asg-empty" style="margin-top:50px"><div class="asg-empty-icon">💬</div><div class="asg-empty-text">Сообщений пока нет</div></div>'
         : messages.map(m => {
             const isOwn = m.user_id === user.id;
             const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });

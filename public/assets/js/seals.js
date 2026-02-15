@@ -122,7 +122,7 @@ window.AsgardSealsPage = (function(){
             </tbody>
           </table>
         </div>
-        ${seals.length === 0 ? '<div class="help" style="text-align:center;padding:40px">Печатей пока нет</div>' : ''}
+        ${seals.length === 0 ? '<div class="asg-empty"><div class="asg-empty-icon">🔏</div><div class="asg-empty-text">Печатей пока нет</div></div>' : ''}
       </div>
     `;
 

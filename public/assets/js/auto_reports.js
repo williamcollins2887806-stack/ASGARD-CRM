@@ -372,7 +372,7 @@ window.AsgardReports = (function(){
     const reports = await loadSavedReports();
     
     if (!reports.length) {
-      container.innerHTML = '<div class="muted">Нет сохранённых отчётов</div>';
+      container.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">📊</div><div class="asg-empty-text">Нет сохранённых отчётов</div></div>';
       return;
     }
     

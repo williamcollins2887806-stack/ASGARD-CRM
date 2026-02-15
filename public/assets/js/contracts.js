@@ -149,7 +149,7 @@ window.AsgardContractsPage = (function(){
           </tbody>
         </table>
       </div>
-      ${contracts.length === 0 ? '<div class="help" style="text-align:center;padding:40px">Договоров пока нет. Нажмите «+ Новый договор» для добавления.</div>' : ''}
+      ${contracts.length === 0 ? '<div class="asg-empty"><div class="asg-empty-icon">📄</div><div class="asg-empty-text">Договоров пока нет. Нажмите «+ Новый договор» для добавления.</div></div>' : ''}
     `;
 
     const body = `

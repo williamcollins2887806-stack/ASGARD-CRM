@@ -256,7 +256,7 @@ window.AsgardOfficeSchedulePage=(function(){
             <div class="sched-name head">Сотрудник</div>
             <div class="sched-days" id="schedDays">${initialGrid.days.join("")}</div>
           </div>
-          <div class="sched-body" id="schedBody">${initialGrid.bodyRows || `<div class="muted" style="padding:12px">Нет сотрудников</div>`}</div>
+          <div class="sched-body" id="schedBody">${initialGrid.bodyRows || `<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет сотрудников</div></div>`}</div>
         </div>
       </div>
     `;

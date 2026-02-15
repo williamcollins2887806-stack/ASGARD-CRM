@@ -313,7 +313,7 @@ window.AsgardCalendarPage = (function(){
         .slice(0, 5);
       
       if (!upcoming.length) {
-        return '<div class="muted">Нет предстоящих событий</div>';
+        return '<div class="asg-empty"><div class="asg-empty-icon">📅</div><div class="asg-empty-text">Нет предстоящих событий</div></div>';
       }
       
       return upcoming.map(e => {
