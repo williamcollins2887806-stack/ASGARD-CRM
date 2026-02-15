@@ -2,12 +2,11 @@
  * Calendar Routes
  */
 
-// SECURITY: Allowlist of columns for calendar_events
+// SECURITY: Allowlist of columns matching actual DB schema
 const ALLOWED_COLS = new Set([
-  'title', 'description', 'date', 'time', 'end_date', 'end_time',
-  'type', 'color', 'reminder_minutes', 'reminder_sent', 'participants',
-  'location', 'tender_id', 'work_id', 'is_all_day', 'recurrence',
-  'created_by', 'created_at', 'updated_at'
+  'title', 'description', 'date', 'end_date',
+  'created_by', 'type', 'created_at', 'updated_at',
+  'time', 'location', 'color', 'tender_id', 'work_id'
 ]);
 
 function filterData(data) {
@@ -29,7 +28,7 @@ async function routes(fastify, options) {
     if (date_from) { sql += ` AND date >= $${idx}`; params.push(date_from); idx++; }
     if (date_to) { sql += ` AND date <= $${idx}`; params.push(date_to); idx++; }
     if (type) { sql += ` AND type = $${idx}`; params.push(type); idx++; }
-    sql += ` ORDER BY date ASC, time ASC LIMIT $${idx}`;
+    sql += ` ORDER BY date ASC LIMIT $${idx}`;
     params.push(limit);
     const result = await db.query(sql, params);
     return { events: result.rows };
@@ -100,16 +99,13 @@ async function routes(fastify, options) {
     return { message: 'Удалено' };
   });
 
-  // Check reminders
+  // Check reminders — returns upcoming events for today
   fastify.get('/reminders/check', { preHandler: [fastify.authenticate] }, async (request) => {
-    const now = new Date();
     const result = await db.query(`
       SELECT * FROM calendar_events
-      WHERE reminder_sent = false
-        AND reminder_minutes > 0
-        AND (date || ' ' || COALESCE(time, '00:00'))::timestamp - (reminder_minutes || ' minutes')::interval <= $1
-        AND (date || ' ' || COALESCE(time, '00:00'))::timestamp > $1
-    `, [now.toISOString()]);
+      WHERE created_by = $1 AND date = CURRENT_DATE
+      ORDER BY date ASC
+    `, [request.user.id]);
     return { reminders: result.rows };
   });
 }

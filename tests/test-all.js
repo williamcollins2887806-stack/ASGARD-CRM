@@ -71,6 +71,10 @@ async function main() {
   // Initialize auth tokens
   await initAuth();
 
+  // Map real user IDs to config.js TEST_USERS for FK-safe synthetic tokens
+  const { initRealUsers } = require('./config');
+  await initRealUsers();
+
   // === LAYER 1: API TESTS ===
   if (runApi) {
     console.log('\n\u2501\u2501\u2501 LAYER 1: API TESTS \u2501\u2501\u2501');

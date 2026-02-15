@@ -154,11 +154,20 @@ fastify.decorate('requirePermission', function(moduleKey, operation = 'read') {
     );
 
     if (rows.length === 0) {
-      // Fallback to role_presets for the user's role
+      // Role inheritance map (child inherits parent permissions)
+      const ROLE_INHERIT = {
+        'HEAD_PM': 'PM', 'HEAD_TO': 'TO',
+        'HR_MANAGER': 'HR', 'CHIEF_ENGINEER': 'WAREHOUSE'
+      };
+      const rolesToCheck = [request.user.role];
+      if (ROLE_INHERIT[request.user.role]) rolesToCheck.push(ROLE_INHERIT[request.user.role]);
+
+      // Fallback to role_presets for the user's role (with inheritance)
       const preset = await db.query(
         `SELECT can_read, can_write, can_delete FROM role_presets
-         WHERE role = $1 AND module_key = $2`,
-        [request.user.role, moduleKey]
+         WHERE role = ANY($1) AND module_key = $2
+         ORDER BY can_write DESC, can_read DESC LIMIT 1`,
+        [rolesToCheck, moduleKey]
       );
       rows = preset.rows;
     }
@@ -216,6 +225,9 @@ fastify.register(require('./routes/mailbox'), { prefix: '/api/mailbox' });
 fastify.register(require('./routes/inbox_applications_ai'), { prefix: '/api/inbox-applications' });
 fastify.register(require('./routes/integrations'), { prefix: '/api/integrations' });
 fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
+fastify.register(require('./routes/tkp'), { prefix: '/api/tkp' });
+fastify.register(require('./routes/pass_requests'), { prefix: '/api/pass-requests' });
+fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check
@@ -410,9 +422,8 @@ const start = async () => {
 
         const result = await db.query(
           `DELETE FROM reminders
-           WHERE completed = true
-             AND completed_at IS NOT NULL
-             AND completed_at < NOW() - INTERVAL '1 hour' * $1
+           WHERE is_done = true
+             AND remind_at < NOW() - INTERVAL '1 hour' * $1
            RETURNING id`,
           [hours]
         );

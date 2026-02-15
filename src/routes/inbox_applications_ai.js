@@ -20,6 +20,7 @@
 
 const db = require('../services/db');
 const aiAnalyzer = require('../services/ai-email-analyzer');
+const { createNotification } = require('../services/notify');
 
 module.exports = async function (fastify) {
 
@@ -452,6 +453,22 @@ module.exports = async function (fastify) {
       }
     }
 
+    // Notify directors about accepted application
+    const directors = await db.query(
+      `SELECT id FROM users WHERE role IN ('ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'HEAD_TO') AND is_active = true`
+    );
+    for (const dir of directors.rows) {
+      if (dir.id !== user.id) {
+        createNotification(db, {
+          user_id: dir.id,
+          title: '✅ Входящая заявка принята',
+          message: `${user.name || 'Пользователь'} принял заявку: ${app.subject || ''}${tenderId ? ' → тендер #' + tenderId : ''}`,
+          type: 'inbox',
+          link: `#/inbox-applications?id=${id}`
+        });
+      }
+    }
+
     return { success: true, tender_id: tenderId };
   });
 
@@ -541,6 +558,22 @@ module.exports = async function (fastify) {
       ]);
     } catch (corrErr) {
       console.error('[InboxApp] Correspondence auto-register error:', corrErr.message);
+    }
+
+    // Notify directors about rejected application
+    const rDirectors = await db.query(
+      `SELECT id FROM users WHERE role IN ('ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM') AND is_active = true`
+    );
+    for (const dir of rDirectors.rows) {
+      if (dir.id !== user.id) {
+        createNotification(db, {
+          user_id: dir.id,
+          title: '❌ Входящая заявка отклонена',
+          message: `${user.name || 'Пользователь'} отклонил заявку: ${app.subject || ''}${reason ? ' — ' + reason.substring(0, 60) : ''}`,
+          type: 'inbox',
+          link: `#/inbox-applications?id=${id}`
+        });
+      }
     }
 
     return { success: true };

@@ -129,8 +129,8 @@ module.exports = async function(fastify) {
         u_creator.name as creator_name,
         u_assignee.name as assignee_name, u_assignee.role as assignee_role
       FROM tasks t
-      JOIN users u_creator ON t.creator_id = u_creator.id
-      JOIN users u_assignee ON t.assignee_id = u_assignee.id
+      LEFT JOIN users u_creator ON t.creator_id = u_creator.id
+      LEFT JOIN users u_assignee ON t.assignee_id = u_assignee.id
       WHERE 1=1
     `;
     const params = [];
@@ -179,11 +179,12 @@ module.exports = async function(fastify) {
 
     const { rows: [task] } = await db.query(`
       SELECT t.*,
+        t.assignee_id as assignee_id, t.creator_id as creator_id,
         u_creator.name as creator_name, u_creator.role as creator_role,
         u_assignee.name as assignee_name, u_assignee.role as assignee_role
       FROM tasks t
-      JOIN users u_creator ON t.creator_id = u_creator.id
-      JOIN users u_assignee ON t.assignee_id = u_assignee.id
+      LEFT JOIN users u_creator ON t.creator_id = u_creator.id
+      LEFT JOIN users u_assignee ON t.assignee_id = u_assignee.id
       WHERE t.id = $1
     `, [id]);
 
@@ -205,10 +206,15 @@ module.exports = async function(fastify) {
   fastify.post('/', {
     preHandler: [fastify.requirePermission('tasks_admin', 'write')]
   }, async (request, reply) => {
-    const { assignee_id, title, description, deadline, priority, creator_comment } = request.body;
+    let { assignee_id, title, description, deadline, priority, creator_comment } = request.body;
 
     if (!assignee_id) return reply.code(400).send({ error: 'Укажите исполнителя' });
     if (!title || !title.trim()) return reply.code(400).send({ error: 'Укажите название задачи' });
+
+    // Truncate title to prevent VARCHAR overflow (max 500 chars)
+    if (title.length > 500) {
+      title = title.slice(0, 500);
+    }
 
     // Проверить что исполнитель существует
     const { rows: [assignee] } = await db.query(
@@ -347,10 +353,20 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
-    const { rows: [task] } = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2 AND status = $3',
-      [id, request.user.id, 'new']
-    );
+    // ADMIN/Director может принять любую задачу; исполнитель — только свою
+    let task;
+    if (DIRECTOR_ROLES.includes(request.user.role)) {
+      const { rows: [t] } = await db.query(
+        'SELECT * FROM tasks WHERE id = $1 AND status = $2', [id, 'new']
+      );
+      task = t;
+    } else {
+      const { rows: [t] } = await db.query(
+        'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2 AND status = $3',
+        [id, request.user.id, 'new']
+      );
+      task = t;
+    }
     if (!task) return reply.code(400).send({ error: 'Задача не найдена или не в статусе "Новая"' });
 
     await db.query(`
@@ -400,10 +416,21 @@ module.exports = async function(fastify) {
     const id = parseInt(request.params.id);
     const { comment } = request.body || {};
 
-    const { rows: [task] } = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2 AND status IN ($3, $4, $5, $6)',
-      [id, request.user.id, 'new', 'accepted', 'in_progress', 'overdue']
-    );
+    // ADMIN/Director может завершить любую задачу; исполнитель — только свою
+    let task;
+    if (DIRECTOR_ROLES.includes(request.user.role)) {
+      const { rows: [t] } = await db.query(
+        'SELECT * FROM tasks WHERE id = $1 AND status IN ($2, $3, $4, $5)',
+        [id, 'new', 'accepted', 'in_progress', 'overdue']
+      );
+      task = t;
+    } else {
+      const { rows: [t] } = await db.query(
+        'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2 AND status IN ($3, $4, $5, $6)',
+        [id, request.user.id, 'new', 'accepted', 'in_progress', 'overdue']
+      );
+      task = t;
+    }
     if (!task) return reply.code(400).send({ error: 'Нельзя завершить эту задачу' });
 
     await db.query(`
@@ -428,7 +455,8 @@ module.exports = async function(fastify) {
   fastify.put('/:id', {
     preHandler: [fastify.requirePermission('tasks_admin', 'write')]
   }, async (request, reply) => {
-    const id = parseInt(request.params.id);
+    const id = parseInt(request.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
     const { title, description, deadline, priority, creator_comment } = request.body;
 
     const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
@@ -656,7 +684,7 @@ module.exports = async function(fastify) {
   // GET /api/tasks/kanban — Получить задачи для Канбан-доски
   // ───────────────────────────────────────────────────────────────
   fastify.get('/kanban', {
-    preHandler: [fastify.requirePermission('kanban', 'read')]
+    preHandler: [fastify.requirePermission('tasks', 'read')]
   }, async (request) => {
     const userId = request.user.id;
     const { assignee_id, creator_id, priority, work_id, tender_id } = request.query;
@@ -666,8 +694,7 @@ module.exports = async function(fastify) {
       SELECT t.*,
         u_creator.name as creator_name,
         u_assignee.name as assignee_name, u_assignee.role as assignee_role,
-        (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count,
-        (SELECT COUNT(*) FROM task_watchers WHERE task_id = t.id) as watcher_count
+        (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count
       FROM tasks t
       JOIN users u_creator ON t.creator_id = u_creator.id
       JOIN users u_assignee ON t.assignee_id = u_assignee.id
@@ -711,7 +738,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/:id/move — Переместить задачу в другую колонку
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:id/move', {
-    preHandler: [fastify.requirePermission('kanban', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const { column, position } = request.body;
@@ -877,8 +904,11 @@ module.exports = async function(fastify) {
     // Уведомить участников (создателя, исполнителя, наблюдателей)
     const usersToNotify = new Set([task.creator_id, task.assignee_id]);
 
-    const { rows: watchers } = await db.query('SELECT user_id FROM task_watchers WHERE task_id = $1', [id]);
-    for (const w of watchers) usersToNotify.add(w.user_id);
+    // task_watchers — если таблица существует
+    try {
+      const { rows: watchers } = await db.query('SELECT user_id FROM task_watchers WHERE task_id = $1', [id]);
+      for (const w of watchers) usersToNotify.add(w.user_id);
+    } catch (_) { /* table may not exist yet */ }
 
     usersToNotify.delete(userId); // Не уведомлять автора комментария
 

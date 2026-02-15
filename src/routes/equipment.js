@@ -956,39 +956,47 @@ async function equipmentRoutes(fastify, options) {
   }, async (request, reply) => {
     const { id } = request.params;
     const user = request.user;
-    
+
     if (!isWarehouseAdmin(user.role)) {
       return reply.code(403).send({ success: false, message: 'Нет прав' });
     }
-    
-    const { maintenance_type, description, cost, spare_parts, performed_by, contractor, started_at, completed_at, next_date, invoice_id, notes } = request.body;
-    
-    const result = await db.query(`
-      INSERT INTO equipment_maintenance (
-        equipment_id, maintenance_type, description, cost, spare_parts,
-        performed_by, contractor, started_at, completed_at, next_date,
-        invoice_id, notes, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      RETURNING *
-    `, [
-      id, maintenance_type, description, cost, spare_parts ? JSON.stringify(spare_parts) : null,
-      performed_by, contractor, started_at, completed_at, next_date,
-      invoice_id, notes, user.id
-    ]);
-    
-    // Обновляем дату следующего ТО
-    if (next_date) {
-      await db.query('UPDATE equipment SET next_maintenance = $1 WHERE id = $2', [next_date, id]);
+
+    const body = request.body || {};
+    const { maintenance_type, type: bodyType, description, cost, performed_by, performed_at, next_maintenance } = body;
+
+    const maintenanceType = maintenance_type || bodyType;
+    if (!maintenanceType) {
+      return reply.code(400).send({ success: false, message: 'type обязателен' });
     }
-    
-    // Если это ремонт — меняем статус
-    if (maintenance_type === 'repair' && !completed_at) {
-      await db.query('UPDATE equipment SET status = $1 WHERE id = $2', ['repair', id]);
-    } else if (maintenance_type === 'repair' && completed_at) {
-      await db.query('UPDATE equipment SET status = $1 WHERE id = $2', ['on_warehouse', id]);
+
+    try {
+      const result = await db.query(`
+        INSERT INTO equipment_maintenance (
+          equipment_id, type, description, cost,
+          performed_by, performed_at, next_maintenance
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `, [
+        id, maintenanceType, description || null, cost || null,
+        performed_by || null, performed_at || null, next_maintenance || null
+      ]);
+
+      // Обновляем дату следующего ТО
+      if (next_maintenance) {
+        await db.query('UPDATE equipment SET next_maintenance = $1 WHERE id = $2', [next_maintenance, id]);
+      }
+
+      // Если это ремонт — меняем статус
+      if (maintenanceType === 'repair') {
+        await db.query('UPDATE equipment SET status = $1 WHERE id = $2', ['repair', id]);
+      }
+
+      return { success: true, maintenance: result.rows[0] };
+    } catch (err) {
+      fastify.log.error(err, 'Maintenance create error');
+      const code = err.code === '23503' || err.code === '23502' || err.code === '22001' || err.code === '42703' ? 400 : 500;
+      return reply.code(code).send({ success: false, message: err.message || 'Unknown error' });
     }
-    
-    return { success: true, maintenance: result.rows[0] };
   });
   
   // ============================================

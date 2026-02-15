@@ -10,6 +10,7 @@ const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
 
 async function invoicesRoutes(fastify, options) {
   const db = fastify.db;
+  const { createNotification } = require('../services/notify');
   
   // Получить все счета
   fastify.get('/', {
@@ -184,8 +185,19 @@ async function invoicesRoutes(fastify, options) {
       UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3
     `, [newPaidAmount, newStatus, id]);
     
-    return { 
-      success: true, 
+    // Notify invoice creator about payment
+    if (invoice.rows[0].created_by && invoice.rows[0].created_by !== request.user?.id) {
+      createNotification(db, {
+        user_id: invoice.rows[0].created_by,
+        title: newStatus === 'paid' ? '✅ Счёт полностью оплачен' : '💰 Частичная оплата счёта',
+        message: `Оплата ${amount} ₽ по счёту ${invoice.rows[0].invoice_number || '#' + id}`,
+        type: 'invoice',
+        link: `#/invoices?id=${id}`
+      });
+    }
+
+    return {
+      success: true,
       payment: payment.rows[0],
       new_paid_amount: newPaidAmount,
       new_status: newStatus

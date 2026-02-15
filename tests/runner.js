@@ -56,6 +56,15 @@ async function main() {
   console.log(`  Target: ${require('./config').BASE_URL}`);
   console.log(`  Time:   ${new Date().toLocaleString('ru-RU')}`);
 
+  // Re-seed test users to ensure password hashes match Test123!
+  try {
+    const seed = require('./helpers/seed');
+    if (typeof seed === 'function') await seed();
+    else if (typeof seed.seed === 'function') await seed.seed();
+  } catch (e) {
+    console.log('  [runner] Seed skipped:', e.message?.slice(0, 80));
+  }
+
   // Initialize real user IDs for FK-safe tests
   const { initRealUsers } = require('./config');
   await initRealUsers();

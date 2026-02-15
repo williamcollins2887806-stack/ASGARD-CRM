@@ -202,22 +202,22 @@ module.exports = async function (fastify) {
     let linkedId = null;
     if (tx.direction === 'income') {
       const ins = await db.query(`
-        INSERT INTO incomes (work_id, type, date, amount, article, description, source, import_hash, created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,'bank_import',$7,NOW()) RETURNING id`,
-        [tx.work_id, tx.article, tx.transaction_date, tx.amount, tx.article, tx.payment_purpose, tx.import_hash]);
+        INSERT INTO incomes (work_id, type, date, amount, description, created_at)
+        VALUES ($1,$2,$3,$4,$5,NOW()) RETURNING id`,
+        [tx.work_id, tx.article, tx.transaction_date, tx.amount, tx.payment_purpose || 'Банковский импорт']);
       linkedId = ins.rows[0].id;
       await db.query('UPDATE bank_transactions SET status = $1, linked_income_id = $2, updated_at = NOW() WHERE id = $3', ['distributed', linkedId, tx.id]);
     } else {
       if (tx.work_id) {
         const ins = await db.query(`
-          INSERT INTO work_expenses (work_id, category, amount, date, comment, source, created_at)
-          VALUES ($1,$2,$3,$4,$5,'bank_import',NOW()) RETURNING id`,
+          INSERT INTO work_expenses (work_id, category, amount, date, comment, created_at)
+          VALUES ($1,$2,$3,$4,$5,NOW()) RETURNING id`,
           [tx.work_id, tx.article, tx.amount, tx.transaction_date, tx.payment_purpose]);
         linkedId = ins.rows[0].id;
       } else {
         const ins = await db.query(`
-          INSERT INTO office_expenses (category, amount, date, description, source, status, created_at)
-          VALUES ($1,$2,$3,$4,'bank_import','approved',NOW()) RETURNING id`,
+          INSERT INTO office_expenses (category, amount, date, description, status, created_at)
+          VALUES ($1,$2,$3,$4,'approved',NOW()) RETURNING id`,
           [tx.article, tx.amount, tx.transaction_date, tx.payment_purpose]);
         linkedId = ins.rows[0].id;
       }
@@ -239,16 +239,16 @@ module.exports = async function (fastify) {
         const tx = txRes.rows[0];
 
         if (tx.direction === 'income') {
-          const ins = await db.query(`INSERT INTO incomes (work_id, type, date, amount, article, description, source, import_hash, created_at) VALUES ($1,$2,$3,$4,$5,$6,'bank_import',$7,NOW()) RETURNING id`,
-            [tx.work_id, tx.article, tx.transaction_date, tx.amount, tx.article, tx.payment_purpose, tx.import_hash]);
+          const ins = await db.query(`INSERT INTO incomes (work_id, type, date, amount, description, created_at) VALUES ($1,$2,$3,$4,$5,NOW()) RETURNING id`,
+            [tx.work_id, tx.article, tx.transaction_date, tx.amount, tx.payment_purpose || 'Банковский импорт']);
           await db.query('UPDATE bank_transactions SET status=$1, linked_income_id=$2, updated_at=NOW() WHERE id=$3', ['distributed', ins.rows[0].id, id]);
         } else {
           if (tx.work_id) {
-            const ins = await db.query(`INSERT INTO work_expenses (work_id, category, amount, date, comment, source, created_at) VALUES ($1,$2,$3,$4,$5,'bank_import',NOW()) RETURNING id`,
+            const ins = await db.query(`INSERT INTO work_expenses (work_id, category, amount, date, comment, created_at) VALUES ($1,$2,$3,$4,$5,NOW()) RETURNING id`,
               [tx.work_id, tx.article, tx.amount, tx.transaction_date, tx.payment_purpose]);
             await db.query('UPDATE bank_transactions SET status=$1, linked_expense_id=$2, updated_at=NOW() WHERE id=$3', ['distributed', ins.rows[0].id, id]);
           } else {
-            const ins = await db.query(`INSERT INTO office_expenses (category, amount, date, description, source, status, created_at) VALUES ($1,$2,$3,$4,'bank_import','approved',NOW()) RETURNING id`,
+            const ins = await db.query(`INSERT INTO office_expenses (category, amount, date, description, status, created_at) VALUES ($1,$2,$3,$4,'approved',NOW()) RETURNING id`,
               [tx.article, tx.amount, tx.transaction_date, tx.payment_purpose]);
             await db.query('UPDATE bank_transactions SET status=$1, linked_expense_id=$2, updated_at=NOW() WHERE id=$3', ['distributed', ins.rows[0].id, id]);
           }

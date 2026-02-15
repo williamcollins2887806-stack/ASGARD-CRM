@@ -42,7 +42,7 @@ module.exports = {
     {
       name: '4.1.2 Task appears in assignee GET /api/tasks/my',
       run: async () => {
-        const resp = await api('GET', '/api/tasks/my', { role: 'PM' });
+        const resp = await api('GET', '/api/tasks/my?limit=500', { role: 'PM' });
         assertOk(resp, 'my tasks');
         const tasks = resp.data?.tasks || resp.data;
         assertArray(tasks, 'tasks array');

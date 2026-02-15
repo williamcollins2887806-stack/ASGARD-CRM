@@ -4,9 +4,11 @@
 
 // SECURITY: Allowlist of columns for estimates
 const ALLOWED_COLS = new Set([
-  'tender_id', 'pm_id', 'title', 'description', 'approval_status',
-  'amount', 'cost', 'margin', 'notes', 'customer', 'object_name',
-  'work_type', 'priority', 'deadline', 'created_by', 'created_at', 'updated_at'
+  'tender_id', 'title', 'pm_id', 'approval_status',
+  'margin', 'comment', 'amount', 'cost', 'notes', 'description',
+  'customer', 'object_name', 'work_type', 'priority', 'deadline',
+  'items_json', 'status', 'work_id',
+  'created_by', 'created_at', 'updated_at'
 ]);
 
 function filterData(data) {
@@ -19,10 +21,11 @@ function filterData(data) {
 
 async function routes(fastify, options) {
   const db = fastify.db;
+  const { createNotification } = require('../services/notify');
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { tender_id, pm_id, status, limit = 100, offset = 0 } = request.query;
-    let sql = 'SELECT e.*, t.customer, u.name as pm_name FROM estimates e LEFT JOIN tenders t ON e.tender_id = t.id LEFT JOIN users u ON e.pm_id = u.id WHERE 1=1';
+    let sql = 'SELECT e.*, t.customer_name as customer, u.name as pm_name FROM estimates e LEFT JOIN tenders t ON e.tender_id = t.id LEFT JOIN users u ON e.pm_id = u.id WHERE 1=1';
     const params = [];
     let idx = 1;
     if (tender_id) { sql += ` AND e.tender_id = $${idx}`; params.push(tender_id); idx++; }
@@ -44,8 +47,10 @@ async function routes(fastify, options) {
   fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN'])] }, async (request, reply) => {
     try {
       const body = request.body || {};
-      if (!body.title) {
-        return reply.code(400).send({ error: 'Обязательное поле: title' });
+      // Map API field 'name' to DB column 'title'
+      if (body.name && !body.title) { body.title = body.name; delete body.name; }
+      if (!body.title && !body.tender_id) {
+        return reply.code(400).send({ error: 'Укажите title или tender_id' });
       }
       const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
       const keys = Object.keys(data);
@@ -53,7 +58,18 @@ async function routes(fastify, options) {
       const values = Object.values(data);
       const sql = `INSERT INTO estimates (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
       const result = await db.query(sql, values);
-      return { estimate: result.rows[0] };
+      const estimate = result.rows[0];
+      // Notify assigned PM about new estimate
+      if (estimate.pm_id && estimate.pm_id !== request.user.id) {
+        createNotification(db, {
+          user_id: estimate.pm_id,
+          title: '📊 Новый расчёт',
+          message: `${request.user.name || 'Пользователь'} создал расчёт: ${estimate.title || ''}`,
+          type: 'estimate',
+          link: `#/estimates?id=${estimate.id}`
+        });
+      }
+      return { estimate };
     } catch (err) {
       if (err.code === '22003') return reply.code(400).send({ error: 'Числовое значение вне допустимого диапазона (numeric field overflow)' });
       if (err.code === '23503') return reply.code(400).send({ error: 'Связанная запись не найдена (FK violation)' });
@@ -75,10 +91,26 @@ async function routes(fastify, options) {
     if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
     updates.push('updated_at = NOW()');
     values.push(id);
+    // Get old estimate for comparison
+    const oldEstimate = await db.query('SELECT * FROM estimates WHERE id = $1', [id]);
     const sql = `UPDATE estimates SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
     const result = await db.query(sql, values);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
-    return { estimate: result.rows[0] };
+    const updated = result.rows[0];
+    // Notify PM on approval_status change
+    if (data.approval_status && oldEstimate.rows[0] && data.approval_status !== oldEstimate.rows[0].approval_status) {
+      const notifyUserId = updated.pm_id || updated.created_by;
+      if (notifyUserId && notifyUserId !== request.user.id) {
+        createNotification(db, {
+          user_id: notifyUserId,
+          title: `📊 Расчёт: ${data.approval_status}`,
+          message: `Статус расчёта "${updated.title || ''}" изменён на "${data.approval_status}"`,
+          type: 'estimate',
+          link: `#/estimates?id=${updated.id}`
+        });
+      }
+    }
+    return { estimate: updated };
   });
 
   fastify.delete('/:id', { preHandler: [fastify.requireRoles(['ADMIN'])] }, async (request, reply) => {

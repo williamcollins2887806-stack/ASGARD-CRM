@@ -106,8 +106,12 @@ module.exports = {
             expiry_date: '2027-01-01'
           }
         });
-        // Server may accept invalid FK (no constraint check) — just verify no crash
-        assertOk(resp, 'invalid employee_id should not 5xx, got');
+        // Invalid FK should ideally return 400, but server may accept it
+        // (no FK constraint check) — just verify no crash (status < 500)
+        assert(
+          resp.status < 500,
+          `invalid employee_id should not crash server, got ${resp.status}`
+        );
       }
     },
     {

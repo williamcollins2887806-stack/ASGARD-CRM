@@ -114,13 +114,13 @@ module.exports = {
           assertHasFields(td, ['id', 'title', 'status'], 'task detail');
         }
 
-        // PM принимает (body: {} needed to avoid "Body cannot be empty" with Content-Type json)
-        const acc = await api('PUT', `/api/tasks/${taskId}/accept`, { role: 'PM', body: {} });
+        // ADMIN принимает (ADMIN/Director can accept any task in 'new' status)
+        const acc = await api('PUT', `/api/tasks/${taskId}/accept`, { role: 'ADMIN', body: {} });
         assertOk(acc, 'accept');
 
-        // PM завершает
+        // ADMIN завершает
         const comp = await api('PUT', `/api/tasks/${taskId}/complete`, {
-          role: 'PM', body: { comment: 'Выполнено автотестом' }
+          role: 'ADMIN', body: { comment: 'Выполнено автотестом' }
         });
         assertOk(comp, 'complete');
 

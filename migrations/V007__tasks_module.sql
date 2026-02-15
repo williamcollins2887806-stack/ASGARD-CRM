@@ -5,8 +5,8 @@
 -- 1. Задачи от руководства
 CREATE TABLE IF NOT EXISTS tasks (
   id SERIAL PRIMARY KEY,
-  creator_id INTEGER NOT NULL REFERENCES users(id),       -- кто создал (директор)
-  assignee_id INTEGER NOT NULL REFERENCES users(id),      -- кому назначена
+  created_by INTEGER REFERENCES users(id),                 -- кто создал (директор)
+  assigned_to INTEGER REFERENCES users(id),               -- кому назначена
   title VARCHAR(255) NOT NULL,
   description TEXT,
   deadline TIMESTAMP,                                      -- дедлайн
@@ -34,8 +34,8 @@ CREATE TABLE IF NOT EXISTS todo_items (
 );
 
 -- Индексы
-CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_creator ON tasks(creator_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
 CREATE INDEX IF NOT EXISTS idx_todo_user ON todo_items(user_id);

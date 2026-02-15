@@ -105,9 +105,8 @@ module.exports = async function(fastify) {
     if (!member) return reply.code(403).send({ error: 'Нет доступа к чату' });
 
     const { rows: [chat] } = await db.query(`
-      SELECT c.*, u.name as created_by_name
+      SELECT c.*
       FROM chats c
-      LEFT JOIN users u ON c.created_by = u.id
       WHERE c.id = $1 AND c.is_group = true
     `, [chatId]);
 
@@ -144,10 +143,10 @@ module.exports = async function(fastify) {
     try {
       // Создать чат
       const { rows: [row] } = await db.query(`
-        INSERT INTO chats (name, description, chat_type, is_group, is_readonly, created_by, created_at, updated_at)
-        VALUES ($1, $2, 'group', true, $3, $4, NOW(), NOW())
+        INSERT INTO chats (name, description, type, is_group, created_at, updated_at)
+        VALUES ($1, $2, 'group', true, NOW(), NOW())
         RETURNING *
-      `, [name.trim(), description || null, is_readonly === true, creatorId]);
+      `, [name.trim(), description || null]);
       chat = row;
     } catch (e) {
       if (e.code === '23503') {
@@ -406,10 +405,10 @@ module.exports = async function(fastify) {
 
     let sql = `
       SELECT m.*, u.name as user_name, u.role as user_role,
-        rm.id as reply_id, rm.text as reply_text, ru.name as reply_user_name
+        rm.id as reply_id, rm.message as reply_text, ru.name as reply_user_name
       FROM chat_messages m
       JOIN users u ON m.user_id = u.id
-      LEFT JOIN chat_messages rm ON m.reply_to_id = rm.id
+      LEFT JOIN chat_messages rm ON m.reply_to = rm.id
       LEFT JOIN users ru ON rm.user_id = ru.id
       WHERE m.chat_id = $1 AND m.deleted_at IS NULL
     `;
@@ -423,7 +422,7 @@ module.exports = async function(fastify) {
     }
 
     if (search) {
-      sql += ` AND m.text ILIKE $${idx}`;
+      sql += ` AND m.message ILIKE $${idx}`;
       params.push(`%${search}%`);
       idx++;
     }
@@ -455,11 +454,8 @@ module.exports = async function(fastify) {
     const member = await getChatMembership(chatId, userId);
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
 
-    // Проверить readonly
-    const { rows: [chat] } = await db.query('SELECT is_readonly, name FROM chats WHERE id = $1', [chatId]);
-    if (chat.is_readonly && member.role === 'member') {
-      return reply.code(403).send({ error: 'Чат только для чтения' });
-    }
+    // Получить данные чата
+    const { rows: [chat] } = await db.query('SELECT name FROM chats WHERE id = $1', [chatId]);
 
     if (!text || !text.trim()) {
       return reply.code(400).send({ error: 'Текст сообщения обязателен' });
@@ -467,21 +463,19 @@ module.exports = async function(fastify) {
 
     // Создать сообщение
     const { rows: [message] } = await db.query(`
-      INSERT INTO chat_messages (chat_id, user_id, user_name, user_role, text, reply_to_id, chat_type, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, 'group', NOW(), NOW())
+      INSERT INTO chat_messages (chat_id, user_id, message, is_read, reply_to, created_at)
+      VALUES ($1, $2, $3, false, $4, NOW())
       RETURNING *
     `, [
       chatId,
       userId,
-      request.user.name || request.user.login,
-      request.user.role,
       text.trim(),
       reply_to_id ? parseInt(reply_to_id) : null
     ]);
 
     // Обновить метаданные чата
     await db.query(`
-      UPDATE chats SET last_message_at = NOW(), message_count = message_count + 1, updated_at = NOW()
+      UPDATE chats SET last_message_at = NOW(), updated_at = NOW()
       WHERE id = $1
     `, [chatId]);
 
@@ -528,7 +522,7 @@ module.exports = async function(fastify) {
     if (!msg) return reply.code(404).send({ error: 'Сообщение не найдено' });
 
     await db.query(`
-      UPDATE chat_messages SET text = $1, edited_at = NOW(), updated_at = NOW()
+      UPDATE chat_messages SET message = $1, edited_at = NOW()
       WHERE id = $2
     `, [text.trim(), messageId]);
 

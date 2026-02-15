@@ -62,7 +62,7 @@ module.exports = async function(fastify) {
   // GET /api/meetings — Список совещаний
   // ───────────────────────────────────────────────────────────────
   fastify.get('/', {
-    preHandler: [fastify.requirePermission('meetings', 'read')]
+    preHandler: [fastify.authenticate]
   }, async (request) => {
     const userId = request.user.id;
     const { status, from_date, to_date, limit = 50, offset = 0, my_only = 'false' } = request.query;
@@ -113,7 +113,7 @@ module.exports = async function(fastify) {
   // GET /api/meetings/upcoming — Ближайшие совещания (для виджета)
   // ───────────────────────────────────────────────────────────────
   fastify.get('/upcoming', {
-    preHandler: [fastify.requirePermission('meetings', 'read')]
+    preHandler: [fastify.authenticate]
   }, async (request) => {
     const userId = request.user.id;
     const { limit = 5 } = request.query;
@@ -138,7 +138,7 @@ module.exports = async function(fastify) {
   // GET /api/meetings/stats — Статистика (для виджета на главной)
   // ───────────────────────────────────────────────────────────────
   fastify.get('/stats', {
-    preHandler: [fastify.requirePermission('meetings', 'read')]
+    preHandler: [fastify.authenticate]
   }, async (request) => {
     const userId = request.user.id;
 
@@ -159,7 +159,7 @@ module.exports = async function(fastify) {
   // GET /api/meetings/:id — Детали совещания
   // ───────────────────────────────────────────────────────────────
   fastify.get('/:id', {
-    preHandler: [fastify.requirePermission('meetings', 'read')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const userId = request.user.id;
@@ -205,7 +205,7 @@ module.exports = async function(fastify) {
   // POST /api/meetings — Создать совещание
   // ───────────────────────────────────────────────────────────────
   fastify.post('/', {
-    preHandler: [fastify.requirePermission('meetings', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const {
       title, description, location, start_time, end_time,
@@ -271,7 +271,7 @@ module.exports = async function(fastify) {
   // PUT /api/meetings/:id — Обновить совещание
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:id', {
-    preHandler: [fastify.requirePermission('meetings', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const userId = request.user.id;
@@ -334,7 +334,7 @@ module.exports = async function(fastify) {
   // POST /api/meetings/:id/participants — Добавить участника
   // ───────────────────────────────────────────────────────────────
   fastify.post('/:id/participants', {
-    preHandler: [fastify.requirePermission('meetings', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const userId = request.user.id;
@@ -368,7 +368,7 @@ module.exports = async function(fastify) {
   // PUT /api/meetings/:id/rsvp — RSVP (принять/отклонить)
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:id/rsvp', {
-    preHandler: [fastify.requirePermission('meetings', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const userId = request.user.id;
@@ -406,7 +406,7 @@ module.exports = async function(fastify) {
   // PUT /api/meetings/:id/attendance — Отметить присутствие
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:id/attendance', {
-    preHandler: [fastify.requirePermission('meetings', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const userId = request.user.id;
@@ -441,7 +441,7 @@ module.exports = async function(fastify) {
   // POST /api/meetings/:id/minutes — Добавить пункт протокола
   // ───────────────────────────────────────────────────────────────
   fastify.post('/:id/minutes', {
-    preHandler: [fastify.requirePermission('meetings', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const userId = request.user.id;
@@ -482,7 +482,7 @@ module.exports = async function(fastify) {
   // PUT /api/meetings/:meetingId/minutes/:id — Обновить пункт
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:meetingId/minutes/:id', {
-    preHandler: [fastify.requirePermission('meetings', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const meetingId = parseInt(request.params.meetingId);
     const itemId = parseInt(request.params.id);
@@ -519,7 +519,7 @@ module.exports = async function(fastify) {
   // POST /api/meetings/:meetingId/minutes/:id/create-task — Создать задачу из пункта
   // ───────────────────────────────────────────────────────────────
   fastify.post('/:meetingId/minutes/:id/create-task', {
-    preHandler: [fastify.requirePermission('meetings', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const meetingId = parseInt(request.params.meetingId);
     const itemId = parseInt(request.params.id);
@@ -572,7 +572,7 @@ module.exports = async function(fastify) {
   // PUT /api/meetings/:id/finalize — Завершить и сохранить протокол
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:id/finalize', {
-    preHandler: [fastify.requirePermission('meetings', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const userId = request.user.id;
@@ -617,7 +617,7 @@ module.exports = async function(fastify) {
   // DELETE /api/meetings/:id — Удалить совещание
   // ───────────────────────────────────────────────────────────────
   fastify.delete('/:id', {
-    preHandler: [fastify.requirePermission('meetings', 'delete')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const userId = request.user.id;

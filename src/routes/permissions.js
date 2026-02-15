@@ -79,10 +79,10 @@ module.exports = async function(fastify) {
 
     // ADMIN получает всё
     if (request.user.role === 'ADMIN') {
-      const { rows: modules } = await db.query('SELECT key FROM modules WHERE is_active = true');
+      const { rows: modules } = await db.query('SELECT key as module_key FROM modules WHERE is_active = true');
       const perms = {};
       for (const m of modules) {
-        perms[m.key] = { read: true, write: true, delete: true };
+        perms[m.module_key] = { read: true, write: true, delete: true };
       }
       return perms;
     }

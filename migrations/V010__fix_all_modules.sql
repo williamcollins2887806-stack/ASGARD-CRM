@@ -68,8 +68,8 @@ CREATE INDEX IF NOT EXISTS idx_cash_messages_request ON cash_messages(request_id
 -- ═══════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS tasks (
   id SERIAL PRIMARY KEY,
-  creator_id INTEGER NOT NULL REFERENCES users(id),
-  assignee_id INTEGER NOT NULL REFERENCES users(id),
+  created_by INTEGER REFERENCES users(id),
+  assigned_to INTEGER REFERENCES users(id),
   title VARCHAR(255) NOT NULL,
   description TEXT,
   deadline TIMESTAMP,
@@ -95,8 +95,8 @@ CREATE TABLE IF NOT EXISTS todo_items (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_creator ON tasks(creator_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
 CREATE INDEX IF NOT EXISTS idx_todo_user ON todo_items(user_id);

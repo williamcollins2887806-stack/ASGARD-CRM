@@ -5,6 +5,7 @@
 
 async function routes(fastify, options) {
   const db = fastify.db;
+  const { createNotification } = require('../services/notify');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders - List all tenders
@@ -12,15 +13,21 @@ async function routes(fastify, options) {
   fastify.get('/', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { 
-      period, 
-      status, 
-      pm_id, 
+    const {
+      period,
+      status,
+      pm_id,
       type,
-      search,
-      limit = 100, 
-      offset = 0 
+      search: rawSearch,
+      limit: rawLimit = 100,
+      offset: rawOffset = 0
     } = request.query;
+
+    // Clamp limit to minimum of 1 to prevent negative LIMIT crash
+    const limit = Math.max(1, parseInt(rawLimit, 10) || 100);
+    const offset = Math.max(0, parseInt(rawOffset, 10) || 0);
+    // Strip null bytes from search to prevent PostgreSQL crash
+    const search = rawSearch ? rawSearch.replace(/\0/g, '') : rawSearch;
 
     let sql = `
       SELECT t.*, 
@@ -60,9 +67,9 @@ async function routes(fastify, options) {
 
     if (search) {
       sql += ` AND (
-        LOWER(t.customer) LIKE $${idx} OR 
-        LOWER(t.tender_number) LIKE $${idx} OR 
-        LOWER(t.tag) LIKE $${idx}
+        LOWER(t.customer_name) LIKE $${idx} OR
+        LOWER(t.tender_title) LIKE $${idx} OR
+        LOWER(t.group_tag) LIKE $${idx}
       )`;
       params.push(`%${search.toLowerCase()}%`);
       idx++;
@@ -100,9 +107,9 @@ async function routes(fastify, options) {
     }
     if (search) {
       countSql += ` AND (
-        LOWER(t.customer) LIKE $${countIdx} OR
-        LOWER(t.tender_number) LIKE $${countIdx} OR
-        LOWER(t.tag) LIKE $${countIdx}
+        LOWER(t.customer_name) LIKE $${countIdx} OR
+        LOWER(t.tender_title) LIKE $${countIdx} OR
+        LOWER(t.group_tag) LIKE $${countIdx}
       )`;
       countParams.push(`%${search.toLowerCase()}%`);
       countIdx++;
@@ -174,7 +181,7 @@ async function routes(fastify, options) {
           tender_status: { type: 'string' },
           period: { type: 'string' },
           deadline: { type: 'string' },
-          estimated_sum: { type: 'number' },
+          tender_price: { type: 'number' },
           responsible_pm_id: { type: 'number' },
           tag: { type: 'string' },
           docs_link: { type: 'string' },
@@ -198,11 +205,19 @@ async function routes(fastify, options) {
         raw.tender_status = 'Новый';
       }
 
-      // Map API field 'customer' to DB column 'customer_name'
-      if (raw.customer && !raw.customer_name) {
-        raw.customer_name = raw.customer;
-      }
+      // Map API field names to DB column names
+      if (raw.customer && !raw.customer_name) { raw.customer_name = raw.customer; }
       delete raw.customer;
+      if (raw.tender_number && !raw.tender_title) { raw.tender_title = raw.tender_number; }
+      delete raw.tender_number;
+      if (raw.deadline && !raw.docs_deadline) { raw.docs_deadline = raw.deadline; }
+      delete raw.deadline;
+      if (raw.tender_price !== undefined && raw.tender_price === undefined) { raw.tender_price = raw.tender_price; }
+      delete raw.tender_price;
+      if (raw.tag && !raw.group_tag) { raw.group_tag = raw.tag; }
+      delete raw.tag;
+      if (raw.docs_link && !raw.purchase_url) { raw.purchase_url = raw.docs_link; }
+      delete raw.docs_link;
       raw.created_by = request.user.id;
       raw.created_at = new Date().toISOString();
 
@@ -212,11 +227,11 @@ async function routes(fastify, options) {
         raw.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       }
 
-      // SECURITY: Filter to allowed columns only
+      // SECURITY: Filter to allowed DB columns only
       const allowedCols = [
-        'customer_name', 'customer_inn', 'tender_number', 'tender_type', 'tender_title',
-        'tender_status', 'period', 'deadline', 'estimated_sum', 'responsible_pm_id',
-        'tag', 'docs_link', 'comment_to', 'comment_dir', 'reject_reason',
+        'customer_name', 'customer_inn', 'tender_title', 'tender_type',
+        'tender_status', 'period', 'docs_deadline', 'tender_price', 'responsible_pm_id',
+        'group_tag', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
         'created_by', 'created_at'
       ];
       const data = {};
@@ -246,7 +261,19 @@ async function routes(fastify, options) {
         fastify.log.warn('Audit log insert failed:', auditErr.message);
       }
 
-      return { tender: result.rows[0] };
+      // Notify assigned PM about new tender
+      const tender = result.rows[0];
+      if (tender.responsible_pm_id && tender.responsible_pm_id !== request.user.id) {
+        createNotification(db, {
+          user_id: tender.responsible_pm_id,
+          title: '📋 Новый тендер',
+          message: `${request.user.name || 'Пользователь'} создал тендер: ${tender.customer_name || ''} — ${tender.tender_title || ''}`,
+          type: 'tender',
+          link: `#/tenders?id=${tender.id}`
+        });
+      }
+
+      return { tender };
     } catch (err) {
       const code = err.code === '22001' || err.code === '23502' ? 400 : 500;
       return reply.code(code).send({ error: 'Ошибка создания тендера', detail: err.message });
@@ -280,20 +307,34 @@ async function routes(fastify, options) {
       }
     }
 
-    // Build update query
+    // Build update query — map API field names to DB columns
+    const FIELD_MAP = {
+      'customer': 'customer_name',
+      'tender_number': 'tender_title',
+      'deadline': 'docs_deadline',
+      'tender_price': 'tender_price',
+      'tag': 'group_tag',
+      'docs_link': 'purchase_url'
+    };
+
+    const allowedFields = [
+      'customer', 'customer_name', 'customer_inn', 'tender_number', 'tender_title',
+      'tender_type', 'tender_status', 'period', 'deadline', 'docs_deadline',
+      'tender_price', 'tender_price', 'responsible_pm_id', 'tag', 'group_tag',
+      'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason'
+    ];
+
     const updates = [];
     const values = [];
     let idx = 1;
-
-    const allowedFields = [
-      'customer', 'customer_inn', 'tender_number', 'tender_type', 'tender_status',
-      'period', 'deadline', 'estimated_sum', 'responsible_pm_id', 'tag',
-      'docs_link', 'comment_to', 'comment_dir', 'reject_reason'
-    ];
+    const usedCols = new Set();
 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
-        updates.push(`${field} = $${idx}`);
+        const dbCol = FIELD_MAP[field] || field;
+        if (usedCols.has(dbCol)) continue;
+        usedCols.add(dbCol);
+        updates.push(`${dbCol} = $${idx}`);
         values.push(data[field]);
         idx++;
       }
@@ -320,7 +361,29 @@ async function routes(fastify, options) {
       VALUES ($1, 'tender', $2, 'update', $3, NOW())
     `, [request.user.id, id, JSON.stringify({ before: current.rows[0], after: result.rows[0] })]);
 
-    return { tender: result.rows[0] };
+    // Notify PM on status change
+    const updated = result.rows[0];
+    if (data.tender_status && data.tender_status !== oldTender.tender_status && updated.responsible_pm_id && updated.responsible_pm_id !== request.user.id) {
+      createNotification(db, {
+        user_id: updated.responsible_pm_id,
+        title: `📋 Тендер: ${data.tender_status}`,
+        message: `Статус тендера ${updated.customer_name || updated.tender_title || ''} изменён: ${oldTender.tender_status} → ${data.tender_status}`,
+        type: 'tender',
+        link: `#/tenders?id=${updated.id}`
+      });
+    }
+    // Notify new PM on reassignment
+    if (data.responsible_pm_id && data.responsible_pm_id !== oldTender.responsible_pm_id && data.responsible_pm_id !== request.user.id) {
+      createNotification(db, {
+        user_id: data.responsible_pm_id,
+        title: '📋 Тендер назначен вам',
+        message: `Вам назначен тендер: ${updated.customer_name || ''} — ${updated.tender_title || ''}`,
+        type: 'tender',
+        link: `#/tenders?id=${updated.id}`
+      });
+    }
+
+    return { tender: updated };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -380,14 +443,14 @@ async function routes(fastify, options) {
           COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
           COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
           COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Проиграли', 'Отказ')) as active,
-          COALESCE(SUM(estimated_sum), 0) as total_sum,
-          COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
+          COALESCE(SUM(tender_price), 0) as total_sum,
+          COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
         FROM tenders
         WHERE ${whereClause}
       `, params);
 
       const byStatus = await db.query(`
-        SELECT tender_status, COUNT(*) as count, COALESCE(SUM(estimated_sum), 0) as sum
+        SELECT tender_status, COUNT(*) as count, COALESCE(SUM(tender_price), 0) as sum
         FROM tenders
         WHERE ${whereClause}
         GROUP BY tender_status
@@ -439,8 +502,8 @@ async function routes(fastify, options) {
         COUNT(t.id) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
         COUNT(t.id) FILTER (WHERE t.tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
         COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Контракт', 'Клиент согласился', 'Проиграли', 'Отказ', 'Клиент отказался', 'Отменён', 'Другое')) as active,
-        COALESCE(SUM(t.estimated_sum) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
-        COALESCE(SUM(t.estimated_sum), 0) as total_sum,
+        COALESCE(SUM(t.tender_price) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COALESCE(SUM(t.tender_price), 0) as total_sum,
         COUNT(DISTINCT t.customer_inn) as unique_customers,
         MAX(t.created_at) as last_tender_at
       FROM users u
@@ -456,15 +519,15 @@ async function routes(fastify, options) {
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
         COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
-        COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
-        COALESCE(SUM(estimated_sum), 0) as total_sum
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COALESCE(SUM(tender_price), 0) as total_sum
       FROM tenders
       WHERE ${whereClause.replace(/t\./g, '')}
     `, params);
 
     // По статусам
     const byStatus = await db.query(`
-      SELECT tender_status, COUNT(*) as count, COALESCE(SUM(estimated_sum), 0) as sum
+      SELECT tender_status, COUNT(*) as count, COALESCE(SUM(tender_price), 0) as sum
       FROM tenders WHERE ${whereClause.replace(/t\./g, '')}
       GROUP BY tender_status ORDER BY count DESC
     `, params);
@@ -475,7 +538,7 @@ async function routes(fastify, options) {
         TO_CHAR(created_at, 'YYYY-MM') as month,
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
       FROM tenders
       WHERE created_at >= NOW() - INTERVAL '12 months' AND tender_status != 'Черновик'
       GROUP BY TO_CHAR(created_at, 'YYYY-MM')
