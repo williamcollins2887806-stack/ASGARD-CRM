@@ -121,9 +121,11 @@ const CASH_ADMIN_READ_ROLES = [
 // meetings (read): NO role has meetings.read in role_presets — ADMIN only
 const MEETINGS_READ_ROLES = ['ADMIN'];
 
-// permits (read): DIRECTOR_GEN, DIRECTOR_COMM, DIRECTOR_DEV, HEAD_PM, HR, HR_MANAGER + ADMIN
+// permits (read): V005 role_presets give TO, PM, HR + ADMIN + directors
+// HEAD_PM inherits PM, HR_MANAGER inherits HR, HEAD_TO inherits TO
 const PERMITS_READ_ROLES = [
-  'ADMIN', 'HEAD_PM', 'HR', 'HR_MANAGER',
+  'ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO',
+  'HR', 'HR_MANAGER',
   'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'
 ];
 

@@ -540,7 +540,7 @@ module.exports = async function(fastify) {
 
     // Создать задачу
     const { rows: [task] } = await db.query(`
-      INSERT INTO tasks (created_by, assigned_to, title, description, deadline, priority, status, created_at, updated_at)
+      INSERT INTO tasks (creator_id, assignee_id, title, description, deadline, priority, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, 'normal', 'new', NOW(), NOW())
       RETURNING *
     `, [

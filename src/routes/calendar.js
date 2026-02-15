@@ -5,7 +5,8 @@
 // SECURITY: Allowlist of columns matching actual DB schema
 const ALLOWED_COLS = new Set([
   'title', 'description', 'date', 'end_date',
-  'user_id', 'type', 'created_at', 'updated_at'
+  'created_by', 'type', 'created_at', 'updated_at',
+  'time', 'location', 'color', 'tender_id', 'work_id'
 ]);
 
 function filterData(data) {
@@ -36,7 +37,7 @@ async function routes(fastify, options) {
   // SECURITY: IDOR fix — check ownership
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const result = await db.query(
-      'SELECT * FROM calendar_events WHERE id = $1 AND user_id = $2',
+      'SELECT * FROM calendar_events WHERE id = $1 AND created_by = $2',
       [request.params.id, request.user.id]
     );
     if (!result.rows[0]) return reply.code(404).send({ error: 'Событие не найдено' });
@@ -53,7 +54,7 @@ async function routes(fastify, options) {
       if (isNaN(new Date(body.date).getTime())) {
         return reply.code(400).send({ error: 'Некорректный формат даты' });
       }
-      const data = filterData({ ...body, user_id: request.user.id, created_at: new Date().toISOString() });
+      const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
       const keys = Object.keys(data);
       if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
       const values = Object.values(data);
@@ -82,7 +83,7 @@ async function routes(fastify, options) {
     if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
     updates.push('updated_at = NOW()');
     values.push(id, request.user.id);
-    const sql = `UPDATE calendar_events SET ${updates.join(', ')} WHERE id = $${idx} AND user_id = $${idx + 1} RETURNING *`;
+    const sql = `UPDATE calendar_events SET ${updates.join(', ')} WHERE id = $${idx} AND created_by = $${idx + 1} RETURNING *`;
     const result = await db.query(sql, values);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     return { event: result.rows[0] };
@@ -91,7 +92,7 @@ async function routes(fastify, options) {
   // SECURITY: IDOR fix — check ownership
   fastify.delete('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const result = await db.query(
-      'DELETE FROM calendar_events WHERE id = $1 AND user_id = $2 RETURNING id',
+      'DELETE FROM calendar_events WHERE id = $1 AND created_by = $2 RETURNING id',
       [request.params.id, request.user.id]
     );
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
@@ -102,7 +103,7 @@ async function routes(fastify, options) {
   fastify.get('/reminders/check', { preHandler: [fastify.authenticate] }, async (request) => {
     const result = await db.query(`
       SELECT * FROM calendar_events
-      WHERE user_id = $1 AND date = CURRENT_DATE
+      WHERE created_by = $1 AND date = CURRENT_DATE
       ORDER BY date ASC
     `, [request.user.id]);
     return { reminders: result.rows };

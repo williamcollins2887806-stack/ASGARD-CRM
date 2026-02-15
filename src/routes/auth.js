@@ -18,7 +18,7 @@ async function routes(fastify, options) {
 
     // ADMIN получает всё
     if (role === 'ADMIN') {
-      const { rows: mods } = await db.query('SELECT module_key FROM modules WHERE is_active = true');
+      const { rows: mods } = await db.query('SELECT key as module_key FROM modules WHERE is_active = true');
       for (const m of mods) {
         permissions[m.module_key] = { read: true, write: true, delete: true };
       }

@@ -154,11 +154,20 @@ fastify.decorate('requirePermission', function(moduleKey, operation = 'read') {
     );
 
     if (rows.length === 0) {
-      // Fallback to role_presets for the user's role
+      // Role inheritance map (child inherits parent permissions)
+      const ROLE_INHERIT = {
+        'HEAD_PM': 'PM', 'HEAD_TO': 'TO',
+        'HR_MANAGER': 'HR', 'CHIEF_ENGINEER': 'WAREHOUSE'
+      };
+      const rolesToCheck = [request.user.role];
+      if (ROLE_INHERIT[request.user.role]) rolesToCheck.push(ROLE_INHERIT[request.user.role]);
+
+      // Fallback to role_presets for the user's role (with inheritance)
       const preset = await db.query(
         `SELECT can_read, can_write, can_delete FROM role_presets
-         WHERE role = $1 AND module_key = $2`,
-        [request.user.role, moduleKey]
+         WHERE role = ANY($1) AND module_key = $2
+         ORDER BY can_write DESC, can_read DESC LIMIT 1`,
+        [rolesToCheck, moduleKey]
       );
       rows = preset.rows;
     }

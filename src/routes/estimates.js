@@ -4,8 +4,10 @@
 
 // SECURITY: Allowlist of columns for estimates
 const ALLOWED_COLS = new Set([
-  'tender_id', 'name', 'title', 'pm_id', 'approval_status',
-  'items', 'subtotal', 'vat', 'total', 'margin', 'comment',
+  'tender_id', 'title', 'pm_id', 'approval_status',
+  'margin', 'comment', 'amount', 'cost', 'notes', 'description',
+  'customer', 'object_name', 'work_type', 'priority', 'deadline',
+  'items_json', 'status', 'work_id',
   'created_by', 'created_at', 'updated_at'
 ]);
 
@@ -45,10 +47,10 @@ async function routes(fastify, options) {
   fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN'])] }, async (request, reply) => {
     try {
       const body = request.body || {};
-      // Map API field 'title' to DB column 'name'
-      if (body.title && !body.name) { body.name = body.title; delete body.title; }
-      if (!body.name) {
-        return reply.code(400).send({ error: 'Обязательное поле: name (или title)' });
+      // Map API field 'name' to DB column 'title'
+      if (body.name && !body.title) { body.title = body.name; delete body.name; }
+      if (!body.title && !body.tender_id) {
+        // title не обязательно если есть tender_id
       }
       const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
       const keys = Object.keys(data);

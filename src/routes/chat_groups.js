@@ -144,10 +144,10 @@ module.exports = async function(fastify) {
     try {
       // Создать чат
       const { rows: [row] } = await db.query(`
-        INSERT INTO chats (name, description, type, is_group, created_by, created_at, updated_at)
-        VALUES ($1, $2, 'group', true, $3, NOW(), NOW())
+        INSERT INTO chats (name, description, type, is_group, created_at, updated_at)
+        VALUES ($1, $2, 'group', true, NOW(), NOW())
         RETURNING *
-      `, [name.trim(), description || null, creatorId]);
+      `, [name.trim(), description || null]);
       chat = row;
     } catch (e) {
       if (e.code === '23503') {

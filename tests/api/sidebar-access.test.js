@@ -104,9 +104,9 @@ const PERMISSION_ENDPOINTS = [
     path: '/api/permits',
     label: 'permits',
     module: 'permits',
-    // permits.read: HR, HR_MANAGER, HEAD_PM + DIRECTORS + ADMIN
-    allowed: ['HR'],
-    denied:  ['TO', 'PM', 'PROC', 'OFFICE_MANAGER', 'WAREHOUSE'],
+    // permits.read: V005 role_presets — TO, PM, HR + ADMIN + DIRECTORS
+    allowed: ['TO', 'PM', 'HR'],
+    denied:  ['PROC', 'OFFICE_MANAGER', 'WAREHOUSE'],
   },
   {
     path: '/api/chat-groups',
