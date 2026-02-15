@@ -3069,6 +3069,17 @@ html[data-theme="light"] {
   --gold-dim: var(--primary-dim);
   --gold-glow: var(--primary-glow);
   --gold-border: var(--primary-border);
+
+  /* Алиасы для JS-модулей */
+  --text: #1e293b;
+  --muted: #64748b;
+  --accent: var(--primary);
+  --card: #ffffff;
+  --bg: #f1f5f9;
+  --line: rgba(0, 0, 0, 0.08);
+  --mono: var(--font-mono);
+  --dim: #64748b;
+  --subtle: #475569;
 }
 
 /* Body background */

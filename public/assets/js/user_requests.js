@@ -69,7 +69,7 @@ window.AsgardUserRequestsPage = (function(){
           .ur-tab .count { 
             display:inline-flex; align-items:center; justify-content:center;
             min-width:20px; height:20px; margin-left:8px; padding:0 6px;
-            background:rgba(59,130,246,.6); color:#fff; 
+            background:rgba(59,130,246,.85); color:#fff;
             border-radius:999px; font-size:11px; font-weight:900;
           }
           .ur-tab.active .count { background:var(--gold); color:#000; }

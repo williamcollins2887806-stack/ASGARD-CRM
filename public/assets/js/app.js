@@ -1036,6 +1036,6 @@ try{
   boot({startRouter:true}).catch(e=>{
     console.error(e);
     toast("Ошибка запуска", e.message||String(e), "err", 7000);
-    $("#app").innerHTML = `<div style="padding:18px;color:#fff">Ошибка запуска: ${esc(e.message||e)}</div>`;
+    $("#app").innerHTML = `<div style="padding:18px;color:var(--text-primary,#fff)">Ошибка запуска: ${esc(e.message||e)}</div>`;
   });
 })();
