@@ -42,9 +42,9 @@ async function mimirRoutes(fastify, options) {
       if (hasFullAccess(role) || isPM(role) || isTO(role)) {
         let tenderQuery = 'SELECT tender_status, COUNT(*) as cnt FROM tenders';
         let params = [];
-        
+
         if (isPM(role) && !hasFullAccess(role)) {
-          tenderQuery += ' WHERE pm_id = $1';
+          tenderQuery += ' WHERE responsible_pm_id = $1';
           params.push(userId);
         }
         tenderQuery += ' GROUP BY tender_status';
@@ -60,7 +60,7 @@ async function mimirRoutes(fastify, options) {
         // За месяц
         let recentQuery = 'SELECT COUNT(*) as cnt FROM tenders WHERE created_at > NOW() - INTERVAL \'30 days\'';
         if (isPM(role) && !hasFullAccess(role)) {
-          recentQuery += ' AND pm_id = $1';
+          recentQuery += ' AND responsible_pm_id = $1';
           const recent = await db.query(recentQuery, [userId]);
           stats.tendersLastMonth = parseInt(recent.rows[0].cnt || 0);
         } else {
@@ -126,12 +126,12 @@ async function mimirRoutes(fastify, options) {
     const userId = user?.id;
     
     try {
-      let sql = `SELECT id, customer_name, tender_title, tender_status, period FROM tenders 
+      let sql = `SELECT id, customer_name, tender_title, tender_status, period FROM tenders
                  WHERE (customer_name ILIKE $1 OR tender_title ILIKE $1)`;
       let params = ['%' + query + '%'];
-      
+
       if (isPM(role) && !hasFullAccess(role)) {
-        sql += ' AND pm_id = $2';
+        sql += ' AND responsible_pm_id = $2';
         params.push(userId);
       }
       

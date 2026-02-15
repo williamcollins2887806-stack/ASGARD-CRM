@@ -24,8 +24,15 @@ async function routes(fastify, options) {
     return { event: result.rows[0] };
   });
 
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString() };
+  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const body = request.body || {};
+    if (!body.date) {
+      return reply.code(400).send({ error: 'Поле date обязательно' });
+    }
+    if (!body.title) {
+      return reply.code(400).send({ error: 'Поле title обязательно' });
+    }
+    const data = { ...body, created_by: request.user.id, created_at: new Date().toISOString() };
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO calendar_events (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;

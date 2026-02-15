@@ -25,13 +25,32 @@ async function routes(fastify, options) {
     return { work: result.rows[0], expenses: expenses.rows };
   });
 
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request) => {
+  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString() };
+    // Truncate overly long string fields
+    for (const key of Object.keys(data)) {
+      if (typeof data[key] === 'string' && data[key].length > 1000 && !['description', 'comment', 'notes'].includes(key)) {
+        data[key] = data[key].substring(0, 1000);
+      }
+    }
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO works (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-    const result = await db.query(sql, values);
-    return { work: result.rows[0] };
+    try {
+      const result = await db.query(sql, values);
+      return { work: result.rows[0] };
+    } catch (err) {
+      if (err.code === '42703') {
+        return reply.code(400).send({ error: `Неизвестная колонка: ${err.message}` });
+      }
+      if (err.code === '23502') {
+        return reply.code(400).send({ error: `Обязательное поле не заполнено: ${err.column || err.message}` });
+      }
+      if (err.code === '23503') {
+        return reply.code(400).send({ error: `Ссылка на несуществующую запись: ${err.detail || err.message}` });
+      }
+      throw err;
+    }
   });
 
   fastify.put('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {

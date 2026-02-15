@@ -21,7 +21,9 @@ async function dataRoutes(fastify, options) {
     'notifications', 'acts', 'invoices', 'invoice_payments', 'email_history',
     'email_queue', 'reminders', 'equipment', 'equipment_movements',
     'equipment_requests', 'equipment_maintenance', 'equipment_reservations',
-    'equipment_categories', 'warehouses', 'objects'
+    'equipment_categories', 'warehouses', 'objects',
+    'pre_tender_requests', 'cash_requests', 'permit_applications',
+    'saved_reports', 'tasks'
   ];
 
   // Таблицы с особыми первичными ключами
@@ -158,6 +160,13 @@ async function dataRoutes(fastify, options) {
     const pk = getPrimaryKey(table);
 
     try {
+      // Truncate overly long string fields to prevent varchar overflow
+      for (const key of Object.keys(data)) {
+        if (typeof data[key] === 'string' && data[key].length > 1000 && !['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'].includes(key)) {
+          data[key] = data[key].substring(0, 1000);
+        }
+      }
+
       // Добавляем метаданные
       data.created_at = data.created_at || new Date().toISOString();
       data.updated_at = new Date().toISOString();
@@ -182,6 +191,16 @@ async function dataRoutes(fastify, options) {
       return { success: true, item: result.rows[0], id: result.rows[0][pk] };
     } catch(err) {
       fastify.log.error(err);
+      // Return 400 for constraint violations instead of 500
+      if (err.code === '23502') {
+        return reply.code(400).send({ error: `Обязательное поле не заполнено: ${err.column || err.message}` });
+      }
+      if (err.code === '23503') {
+        return reply.code(400).send({ error: `Ссылка на несуществующую запись: ${err.detail || err.message}` });
+      }
+      if (err.code === '23505') {
+        return reply.code(409).send({ error: `Запись уже существует: ${err.detail || err.message}` });
+      }
       return reply.code(500).send({ error: err.message });
     }
   });
@@ -227,6 +246,15 @@ async function dataRoutes(fastify, options) {
       return { success: true, item: result.rows[0] };
     } catch(err) {
       fastify.log.error(err);
+      if (err.code === '23502') {
+        return reply.code(400).send({ error: `Обязательное поле не заполнено: ${err.column || err.message}` });
+      }
+      if (err.code === '23503') {
+        return reply.code(400).send({ error: `Ссылка на несуществующую запись: ${err.detail || err.message}` });
+      }
+      if (err.code === '23505') {
+        return reply.code(409).send({ error: `Запись уже существует: ${err.detail || err.message}` });
+      }
       return reply.code(500).send({ error: err.message });
     }
   });

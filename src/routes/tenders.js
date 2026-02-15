@@ -208,13 +208,25 @@ async function routes(fastify, options) {
       RETURNING *
     `;
 
-    const result = await db.query(sql, values);
+    let result;
+    try {
+      result = await db.query(sql, values);
+    } catch (err) {
+      if (err.code === '23503') {
+        return reply.code(400).send({ error: `Ссылка на несуществующую запись: ${err.detail || err.message}` });
+      }
+      throw err;
+    }
 
     // Log to audit
-    await db.query(`
-      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
-      VALUES ($1, 'tender', $2, 'create', $3, NOW())
-    `, [request.user.id, result.rows[0].id, JSON.stringify({ tender: result.rows[0] })]);
+    try {
+      await db.query(`
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
+        VALUES ($1, 'tender', $2, 'create', $3, NOW())
+      `, [request.user.id, result.rows[0].id, JSON.stringify({ tender: result.rows[0] })]);
+    } catch (auditErr) {
+      fastify.log.error('Audit log error:', auditErr.message);
+    }
 
     return { tender: result.rows[0] };
   });

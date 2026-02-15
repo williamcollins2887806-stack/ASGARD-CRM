@@ -242,24 +242,30 @@ async function equipmentRoutes(fastify, options) {
     }
     
     const {
-      name, category_id, serial_number, barcode,
+      name, category_id, serial_number, barcode, inventory_number,
       purchase_price, purchase_date, invoice_id,
       quantity = 1, unit = 'шт',
       warranty_end, maintenance_interval_days,
       useful_life_months = 60, salvage_value = 0, auto_write_off = true,
       brand, model, specifications, notes
     } = request.body;
-    
-    // Генерируем инвентарный номер
-    let inventoryNumber;
-    try {
-      const catResult = await db.query('SELECT code FROM equipment_categories WHERE id = $1', [category_id]);
-      const catCode = catResult.rows[0]?.code || 'MISC';
-      
-      const invResult = await db.query('SELECT generate_inventory_number($1) as inv_num', [catCode]);
-      inventoryNumber = invResult.rows[0].inv_num;
-    } catch(e) {
-      inventoryNumber = 'INV-' + Date.now();
+
+    if (!name) {
+      return reply.code(400).send({ success: false, message: 'Поле name обязательно' });
+    }
+
+    // Используем переданный инвентарный номер или генерируем новый
+    let inventoryNumber = inventory_number || null;
+    if (!inventoryNumber) {
+      try {
+        const catResult = await db.query('SELECT code FROM equipment_categories WHERE id = $1', [category_id]);
+        const catCode = catResult.rows[0]?.code || 'MISC';
+
+        const invResult = await db.query('SELECT generate_inventory_number($1) as inv_num', [catCode]);
+        inventoryNumber = invResult.rows[0].inv_num;
+      } catch(e) {
+        inventoryNumber = 'INV-' + Date.now();
+      }
     }
     
     // Получаем главный склад
@@ -959,7 +965,11 @@ async function equipmentRoutes(fastify, options) {
     }
     
     const { maintenance_type, description, cost, spare_parts, performed_by, contractor, started_at, completed_at, next_date, invoice_id, notes } = request.body;
-    
+
+    if (!maintenance_type) {
+      return reply.code(400).send({ success: false, message: 'Поле maintenance_type обязательно' });
+    }
+
     const result = await db.query(`
       INSERT INTO equipment_maintenance (
         equipment_id, maintenance_type, description, cost, spare_parts,
