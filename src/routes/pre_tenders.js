@@ -19,7 +19,7 @@ module.exports = async function (fastify) {
   // 1. GET / — Список заявок
   // ═══════════════════════════════════════════════════════════════════
   fastify.get('/', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { status, ai_color, search, sort = 'created_at', order = 'DESC', limit = 50, offset = 0 } = request.query;
 
@@ -73,7 +73,7 @@ module.exports = async function (fastify) {
   // 2. GET /stats — Статистика
   // ═══════════════════════════════════════════════════════════════════
   fastify.get('/stats', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const [statusRes, colorRes, monthRes, avgRes] = await Promise.all([
       db.query(`SELECT status, COUNT(*) as cnt FROM pre_tender_requests GROUP BY status`),
@@ -117,7 +117,7 @@ module.exports = async function (fastify) {
   // 3. GET /:id — Одна заявка
   // ═══════════════════════════════════════════════════════════════════
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
 
@@ -171,7 +171,7 @@ module.exports = async function (fastify) {
   // 4. POST /from-email — Создать из письма
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/from-email', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { email_id } = request.body;
     if (!email_id) return reply.code(400).send({ error: 'email_id обязателен' });
@@ -196,7 +196,7 @@ module.exports = async function (fastify) {
   // 5. POST / — Ручное создание
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { customer_name, customer_email, customer_inn, contact_person, contact_phone,
             work_description, work_location, work_deadline, estimated_sum } = request.body;
@@ -228,7 +228,7 @@ module.exports = async function (fastify) {
   // 6. PUT /:id — Обновить
   // ═══════════════════════════════════════════════════════════════════
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     const allowed = ['customer_name', 'customer_inn', 'customer_email', 'contact_person',
@@ -263,7 +263,7 @@ module.exports = async function (fastify) {
   // 7. POST /:id/request-docs — Запрос документов
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/:id/request-docs', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     const { comment } = request.body || {};
@@ -280,7 +280,7 @@ module.exports = async function (fastify) {
   // 7.5 POST /:id/upload-docs — Загрузка документов
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/:id/upload-docs', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
 
@@ -330,7 +330,7 @@ module.exports = async function (fastify) {
   // 8. POST /:id/analyze — AI-анализ
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/:id/analyze', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
 
@@ -346,7 +346,7 @@ module.exports = async function (fastify) {
   // 9. POST /:id/accept — ПРИНЯТЬ ЗАЯВКУ
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/:id/accept', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     const { comment, contact_person, contact_phone, assigned_pm_id, send_email = true } = request.body || {};
@@ -486,7 +486,7 @@ module.exports = async function (fastify) {
   // 10. POST /:id/reject — ОТКЛОНИТЬ ЗАЯВКУ
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/:id/reject', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     const { reject_reason, send_email = true } = request.body || {};
@@ -583,7 +583,7 @@ module.exports = async function (fastify) {
   // 11. DELETE /:id — Удалить
   // ═══════════════════════════════════════════════════════════════════
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     // Удаляем заявку (обратной ссылки pre_tender_id нет в emails)
