@@ -458,7 +458,7 @@ window.AsgardMeetings = (function(){
         </div>
         <div class="form-group">
           <label>Участники</label>
-          <div style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--sp-2);">
+          <div style="max-height: 150px; overflow-y: auto; border-radius: var(--radius-md); padding: var(--sp-2); background: var(--bg-elevated);">
             ${activeUsers.map(u => `
               <label class="row" style="padding: 4px 0;">
                 <input type="checkbox" name="meeting-participants" value="${u.id}">

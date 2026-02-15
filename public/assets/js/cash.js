@@ -226,10 +226,10 @@ window.CashPage = (function() {
       const style = document.createElement('style');
       style.id = 'cash-dark-styles';
       style.textContent = `
-        #cash-page .card { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); }
+        #cash-page .card { background: var(--bg-elevated); color: var(--text-primary); }
         #cash-page .card-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); color: var(--text-primary); }
-        #cash-page .card-body { background: var(--bg-card); color: var(--text-primary); }
-        #cash-page .modal-content { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); }
+        #cash-page .card-body { background: var(--bg-elevated); color: var(--text-primary); }
+        #cash-page .modal-content { background: var(--bg-elevated); color: var(--text-primary); }
         #cash-page .modal-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); }
         #cash-page .modal-footer { background: var(--bg-deep); border-top: 1px solid var(--border); }
         #cash-page .form-control, #cash-page .form-select { background: var(--bg-deep); color: var(--text-primary); border-color: var(--border); }
@@ -347,7 +347,7 @@ window.CashPage = (function() {
     const container = document.getElementById('cash-requests-list');
 
     if (!currentRequests.length) {
-      container.innerHTML = '<div class="text-center text-muted p-4">Нет заявок</div>';
+      container.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">💰</div><div class="asg-empty-text">Нет заявок</div></div>';
       return;
     }
 

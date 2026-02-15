@@ -48,7 +48,7 @@ window.AsgardIntegrationsPage = (function(){
         .tab-btn{padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:var(--text-muted);border-bottom:3px solid transparent;transition:.2s}
         .tab-btn:hover{color:var(--text)}
         .tab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
-        .int-card{background:var(--bg-card);border-radius:6px;border:1px solid var(--line);padding:16px;margin-bottom:12px}
+        .int-card{background:var(--bg-elevated);border-radius:6px;padding:16px;margin-bottom:12px}
         .int-stat{text-align:center;padding:12px}
         .int-stat .val{font-size:22px;font-weight:900}
         .int-stat .lbl{font-size:11px;color:var(--text-muted)}
@@ -140,7 +140,7 @@ window.AsgardIntegrationsPage = (function(){
     if (q) params += '&search=' + encodeURIComponent(q);
 
     var data = await api('/bank/transactions' + params);
-    if (!data.success || !data.items?.length) { list.innerHTML = '<div class="help" style="text-align:center;padding:20px">Нет транзакций</div>'; return; }
+    if (!data.success || !data.items?.length) { list.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">&#128179;</div><div class="asg-empty-text">Нет транзакций</div></div>'; return; }
 
     list.innerHTML = '<div style="display:grid;grid-template-columns:30px 90px 100px 1fr 120px 100px 80px;gap:8px;padding:8px 12px;font-size:11px;font-weight:700;border-bottom:2px solid var(--line)">' +
       '<div><input type="checkbox" id="chkAllTx"/></div><div>Дата</div><div>Сумма</div><div>Контрагент</div><div>Статья</div><div>Проект</div><div>Статус</div></div>' +
@@ -242,7 +242,7 @@ window.AsgardIntegrationsPage = (function(){
           '<div style="width:20px">'+(r.is_system?'🔒':'')+'</div>' +
         '</div>';
       }).join('') +
-      (items.length === 0 ? '<div class="help" style="text-align:center;padding:20px">Нет правил</div>' : '') +
+      (items.length === 0 ? '<div class="asg-empty"><div class="asg-empty-icon">&#9881;</div><div class="asg-empty-text">Нет правил</div></div>' : '') +
     '</div>';
     AsgardUI.showModal('⚙️ Правила классификации', html);
   }
@@ -307,7 +307,7 @@ window.AsgardIntegrationsPage = (function(){
     if (q) params += '&search=' + encodeURIComponent(q);
 
     var data = await api('/platforms' + params);
-    if (!data.success || !data.items?.length) { list.innerHTML = '<div class="help" style="text-align:center;padding:20px">Нет данных</div>'; return; }
+    if (!data.success || !data.items?.length) { list.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">&#128269;</div><div class="asg-empty-text">Нет данных</div></div>'; return; }
 
     var relColors = { h:'#22c55e', m:'#eab308', l:'#ef4444' };
 
@@ -412,7 +412,7 @@ window.AsgardIntegrationsPage = (function(){
             '</div>' +
           '</div>';
         }).join('') +
-      '</div>' : '<div class="help" style="text-align:center;padding:20px">Нет ERP-подключений</div>') +
+      '</div>' : '<div class="asg-empty"><div class="asg-empty-icon">&#128268;</div><div class="asg-empty-text">Нет ERP-подключений</div></div>') +
 
       (logs.length ? '<div class="int-card"><div style="font-weight:700;margin-bottom:8px">📋 Последние синхронизации</div>' +
         logs.map(function(l) {

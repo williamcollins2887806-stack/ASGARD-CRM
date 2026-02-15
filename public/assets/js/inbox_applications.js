@@ -90,11 +90,11 @@ window.AsgardInboxApplicationsPage = (function(){
 
       <style>
         .inbox-stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}
-        .inbox-stat{background:var(--bg-card);border:1px solid var(--line);border-radius:6px;padding:16px 20px;flex:1;min-width:120px;text-align:center}
+        .inbox-stat{background:var(--bg-elevated);border-radius:6px;padding:16px 20px;flex:1;min-width:120px;text-align:center}
         .inbox-stat .val{font-size:28px;font-weight:900}
         .inbox-stat .lbl{font-size:11px;color:var(--text-muted);margin-top:4px;text-transform:uppercase}
-        .inbox-card{background:var(--bg-card);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:8px;cursor:pointer;transition:border-color .2s,box-shadow .2s}
-        .inbox-card:hover{border-color:var(--gold);box-shadow:0 2px 12px rgba(242,208,138,.15)}
+        .inbox-card{background:var(--bg-elevated);border-radius:6px;padding:16px;margin-bottom:8px;cursor:pointer;transition:box-shadow .2s}
+        .inbox-card:hover{box-shadow:0 2px 12px rgba(242,208,138,.15)}
         .inbox-card .ic-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
         .inbox-card .ic-subject{font-weight:700;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .inbox-card .ic-meta{font-size:12px;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap}
@@ -161,7 +161,7 @@ window.AsgardInboxApplicationsPage = (function(){
     try {
       const data = await api('/?' + params.toString());
       if (!data.success || !data.items?.length) {
-        el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)"><div style="font-size:48px;margin-bottom:12px">📭</div>Нет заявок</div>';
+        el.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет заявок</div></div>';
         return;
       }
       currentItems = data.items;
@@ -257,7 +257,7 @@ window.AsgardInboxApplicationsPage = (function(){
           ${item.ai_report ? `
           <details style="margin-bottom:16px" open>
             <summary style="cursor:pointer;font-weight:700;font-size:13px">AI-отчёт</summary>
-            <div style="margin-top:8px;padding:12px;background:var(--bg-elevated);border:1px solid var(--line);border-radius:6px;font-size:13px;white-space:pre-wrap;line-height:1.5">${esc(item.ai_report)}</div>
+            <div style="margin-top:8px;padding:12px;background:var(--bg-elevated);border-radius:6px;font-size:13px;white-space:pre-wrap;line-height:1.5">${esc(item.ai_report)}</div>
           </details>` : ''}
 
           <!-- Текст письма -->

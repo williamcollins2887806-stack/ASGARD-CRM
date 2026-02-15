@@ -108,7 +108,7 @@ window.AsgardEmailCompose = (function(){
     overlay.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:9000; display:flex; align-items:center; justify-content:center;';
 
     overlay.innerHTML = `
-      <div style="width:720px; max-width:95vw; max-height:90vh; background:var(--bg-card); border-radius:6px; border:1px solid var(--border); display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="width:720px; max-width:95vw; max-height:90vh; background:var(--bg-elevated); border-radius:6px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
         <!-- Header -->
         <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
           <h3 style="margin:0; color:var(--text-primary); font-size:16px;">${modeLabel[mode] || 'Новое письмо'}</h3>
@@ -186,7 +186,7 @@ window.AsgardEmailCompose = (function(){
         <!-- Footer -->
         <div style="padding:12px 20px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end;">
           <button id="compose-save-draft" style="padding:8px 16px; border-radius:6px; border:1px solid var(--border); background:var(--bg-deep); color:var(--text-primary); cursor:pointer; font-size:13px;">Черновик</button>
-          <button id="compose-send" style="padding:8px 20px; border-radius:6px; border:none; background:var(--primary); color:#fff; cursor:pointer; font-size:13px; font-weight:600;">Отправить</button>
+          <button id="compose-send" style="padding:8px 20px; border-radius:6px; border:none; background:var(--primary); color:var(--text); cursor:pointer; font-size:13px; font-weight:600;">Отправить</button>
         </div>
       </div>
     `;

@@ -186,8 +186,10 @@ window.AsgardPermitApplications = (function(){
       let rows = '';
       if (apps.length === 0) {
         rows = `<tr><td colspan="7" style="text-align:center;padding:40px">
-          <div style="font-size:36px;margin-bottom:12px">&#128203;</div>
-          <div style="font-size:14px;font-weight:600;margin-bottom:8px">Заявок пока нет</div>
+          <div class="asg-empty">
+            <div class="asg-empty-icon">&#128203;</div>
+            <div class="asg-empty-text">Заявок пока нет</div>
+          </div>
           <div class="help" style="margin-bottom:16px">Создайте первую заявку на оформление разрешений</div>
           ${canCreate ? '<button class="btn primary" id="btnNewAppEmpty">+ Новая заявка</button>' : ''}
         </td></tr>`;
@@ -556,7 +558,7 @@ window.AsgardPermitApplications = (function(){
         </div>
       </details>
 
-      <div style="position:sticky;bottom:0;background:var(--bg-card);border-top:1px solid var(--border);padding:16px;display:flex;align-items:center;justify-content:space-between;border-radius:0 0 var(--radius-lg) var(--radius-lg);z-index:10">
+      <div style="position:sticky;bottom:0;background:var(--bg-elevated);border-top:1px solid var(--border);padding:16px;display:flex;align-items:center;justify-content:space-between;border-radius:0 0 var(--radius-lg) var(--radius-lg);z-index:10">
         <div id="formSummary" style="font-size:14px;color:var(--text-secondary)">
           Сотрудников: ${formState.items.length}, разрешений: ${formState.items.reduce((s,i)=>s+(i.permit_type_ids||[]).length,0)}
         </div>

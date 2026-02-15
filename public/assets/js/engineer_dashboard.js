@@ -35,7 +35,7 @@ window.AsgardEngineerDashboard = (function(){
     const body = `
       ${window.__ASG_SHARED_TABLE_CSS__||""}
       <style>
-        .pm-card { background:var(--bg-card); border-radius:6px; padding:12px; margin-bottom:12px; }
+        .pm-card { background:var(--bg-elevated); border-radius:6px; padding:12px; margin-bottom:12px; }
         .pm-header { display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
         .pm-header:hover { background:var(--bg-hover); margin:-12px; padding:12px; border-radius:6px; }
         .pm-name { font-weight:700; font-size:16px; }
@@ -139,7 +139,7 @@ window.AsgardEngineerDashboard = (function(){
     if(!el) return;
 
     if(!byPm || !byPm.length){
-      el.innerHTML = '<div class="help">Нет оборудования на руках у РП</div>';
+      el.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">&#128736;</div><div class="asg-empty-text">Нет оборудования на руках у РП</div></div>';
       return;
     }
 
@@ -175,7 +175,7 @@ window.AsgardEngineerDashboard = (function(){
     if(!el) return;
 
     if(!items || !items.length){
-      el.innerHTML = '<div class="help">Нет оборудования, требующего ТО в ближайшие 30 дней</div>';
+      el.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">&#9989;</div><div class="asg-empty-text">Нет оборудования, требующего ТО в ближайшие 30 дней</div></div>';
       return;
     }
 
@@ -202,7 +202,7 @@ window.AsgardEngineerDashboard = (function(){
     if(!el) return;
 
     if(!movements || !movements.length){
-      el.innerHTML = '<div class="help">Нет движений за последние 30 дней</div>';
+      el.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">&#128230;</div><div class="asg-empty-text">Нет движений за последние 30 дней</div></div>';
       return;
     }
 

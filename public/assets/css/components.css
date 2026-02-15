@@ -3737,3 +3737,29 @@ html[data-theme="light"] .dash-widget-header {
 .empty-state .btn {
   margin-top: 4px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ASG-EMPTY (lightweight empty state used in JS modules)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.asg-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.asg-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.asg-empty-text {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 320px;
+  line-height: 1.5;
+}

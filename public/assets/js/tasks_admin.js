@@ -341,7 +341,7 @@ window.AsgardTasksAdminPage = (function() {
     }
 
     if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="no-data">Нет задач</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8"><div class="asg-empty"><div class="asg-empty-icon">📋</div><div class="asg-empty-text">Нет задач</div></div></td></tr>';
       return;
     }
 
@@ -759,10 +759,9 @@ window.AsgardTasksAdminPage = (function() {
       }
 
       .kpi-card {
-        background: var(--bg-card);
+        background: var(--bg-elevated);
         border-radius: 6px;
         padding: 16px;
-        border: 1px solid var(--border-card, var(--border));
       }
 
       .kpi-value {
@@ -785,9 +784,8 @@ window.AsgardTasksAdminPage = (function() {
         align-items: flex-end;
         margin-bottom: 20px;
         padding: 16px;
-        background: var(--bg-card);
+        background: var(--bg-elevated);
         border-radius: 6px;
-        border: 1px solid var(--border-card, var(--border));
       }
 
       .filter-group {
@@ -810,9 +808,8 @@ window.AsgardTasksAdminPage = (function() {
 
       /* Table */
       .tasks-table-container {
-        background: var(--bg-card);
+        background: var(--bg-elevated);
         border-radius: 6px;
-        border: 1px solid var(--border-card, var(--border));
         overflow-x: auto;
       }
 
@@ -912,7 +909,7 @@ window.AsgardTasksAdminPage = (function() {
       }
 
       .modal-content {
-        background: var(--bg-card);
+        background: var(--bg-elevated);
         border-radius: 6px;
         width: 90%;
         max-width: 500px;

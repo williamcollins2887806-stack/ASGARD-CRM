@@ -85,11 +85,11 @@ window.AsgardPreTendersPage = (function(){
 
       <style>
         .pt-stats-row{display:flex;gap:10px;flex-wrap:wrap}
-        .pt-stat{background:var(--bg-card);border:1px solid var(--line);border-radius:6px;padding:14px 18px;flex:1;min-width:100px;text-align:center}
+        .pt-stat{background:var(--bg-elevated);border-radius:6px;padding:14px 18px;flex:1;min-width:100px;text-align:center}
         .pt-stat .v{font-size:26px;font-weight:900}
         .pt-stat .l{font-size:10px;color:var(--text-muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
-        .pt-row{background:var(--bg-card);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:6px;cursor:pointer;display:grid;grid-template-columns:36px 1fr 120px 100px 100px 90px;gap:12px;align-items:center;transition:border-color .15s}
-        .pt-row:hover{border-color:var(--gold)}
+        .pt-row{background:var(--bg-elevated);border-radius:6px;padding:14px 16px;margin-bottom:6px;cursor:pointer;display:grid;grid-template-columns:36px 1fr 120px 100px 100px 90px;gap:12px;align-items:center;transition:background .15s}
+        .pt-row:hover{background:var(--bg-card)}
         .pt-dot{width:14px;height:14px;border-radius:50%;margin:auto}
         .pt-subj{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .pt-cust{font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -158,7 +158,7 @@ window.AsgardPreTendersPage = (function(){
     try {
       const d = await api('/?' + params.toString());
       if (!d.success || !d.items?.length) {
-        el.innerHTML = '<div style="text-align:center;padding:50px;color:var(--text-muted)"><div style="font-size:48px;margin-bottom:12px">📭</div>Нет заявок</div>';
+        el.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">\u{1F4ED}</div><div class="asg-empty-text">Нет заявок</div></div>';
         return;
       }
 
@@ -313,7 +313,7 @@ window.AsgardPreTendersPage = (function(){
       <!-- Блок 5: Действия -->
       ${canEdit ? `
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
-        <button class="btn" id="btnAcceptPT" style="background:#22c55e;color:#000;font-weight:800;flex:1;min-width:160px;font-size:14px;padding:12px">🟢 ПРИНЯТЬ В РАБОТУ</button>
+        <button class="btn" id="btnAcceptPT" style="background:#22c55e;color:var(--text);font-weight:800;flex:1;min-width:160px;font-size:14px;padding:12px">🟢 ПРИНЯТЬ В РАБОТУ</button>
         <button class="btn" id="btnRejectPT" style="background:#ef4444;flex:1;min-width:140px;font-size:14px;padding:12px">🔴 ОТКЛОНИТЬ</button>
         <button class="btn ghost" id="btnRequestDocs" style="min-width:120px">📄 Запросить документы</button>
       </div>` : ''}
@@ -495,7 +495,7 @@ window.AsgardPreTendersPage = (function(){
 
         <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
           <button class="btn ghost" id="accCancelBtn">Отмена</button>
-          <button class="btn" id="accConfirmBtn" style="background:#22c55e;color:#000;font-weight:800;padding:10px 24px">✅ Подтвердить</button>
+          <button class="btn" id="accConfirmBtn" style="background:#22c55e;color:var(--text);font-weight:800;padding:10px 24px">✅ Подтвердить</button>
         </div>
       </div>
     `;

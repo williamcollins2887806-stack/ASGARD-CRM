@@ -167,7 +167,6 @@ window.AsgardMango = (function(){
       <style>
         .call-toggle-widget {
           background: var(--bg-elevated);
-          border: 1px solid var(--line);
           border-radius: 6px;
           padding: 16px;
           display: flex;
@@ -224,7 +223,7 @@ window.AsgardMango = (function(){
           width: 22px;
           left: 3px;
           bottom: 3px;
-          background-color: #fff;
+          background-color: var(--bg-card);
           border-radius: 50%;
           transition: 0.3s;
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
@@ -352,7 +351,7 @@ window.AsgardMango = (function(){
         }
         
         .call-popup-content {
-          background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
+          background: linear-gradient(135deg, var(--bg-elevated), var(--bg-elevated));
           border: 2px solid var(--green);
           border-radius: 6px;
           padding: 20px;
@@ -405,9 +404,9 @@ window.AsgardMango = (function(){
         .call-number {
           font-size: 20px;
           font-weight: 700;
-          color: #fff;
+          color: var(--text);
         }
-        
+
         .call-name {
           font-size: 14px;
           color: var(--text-muted);
@@ -441,7 +440,7 @@ window.AsgardMango = (function(){
           flex: 1;
           background: linear-gradient(135deg, var(--green), #15803d) !important;
           border: none !important;
-          color: #fff !important;
+          color: var(--text) !important;
           padding: 14px !important;
           font-size: 16px !important;
         }
@@ -454,7 +453,7 @@ window.AsgardMango = (function(){
           flex: 1;
           background: linear-gradient(135deg, var(--red), #b91c1c) !important;
           border: none !important;
-          color: #fff !important;
+          color: var(--text) !important;
           padding: 14px !important;
           font-size: 16px !important;
         }
@@ -512,7 +511,7 @@ window.AsgardMango = (function(){
       callPopupElement.querySelector('.call-avatar').textContent = '🎧';
       callPopupElement.querySelector('.call-avatar').style.animation = 'none';
       callPopupElement.querySelector('.call-actions').innerHTML = `
-        <button class="btn" id="btnEndCall" style="flex:1;background:var(--red)!important;color:#fff!important">
+        <button class="btn" id="btnEndCall" style="flex:1;background:var(--red)!important;color:var(--text)!important">
           📵 Завершить
         </button>
       `;
@@ -823,7 +822,7 @@ window.AsgardMango = (function(){
     const history = await getCallHistory(20);
     
     if (history.length === 0) {
-      container.innerHTML = '<div class="help">Нет записей</div>';
+      container.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">\u{1F4DE}</div><div class="asg-empty-text">Нет записей</div></div>';
       return;
     }
     

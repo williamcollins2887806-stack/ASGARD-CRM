@@ -73,17 +73,17 @@ window.AsgardPayrollPage = (function(){
   const CSS = `
 <style>
 .payroll-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px}
-.payroll-tabs{display:flex;gap:4px;background:var(--bg-card);padding:4px;border-radius:6px;flex-wrap:wrap}
+.payroll-tabs{display:flex;gap:4px;background:var(--bg-elevated);padding:4px;border-radius:6px;flex-wrap:wrap}
 .payroll-tab{padding:8px 16px;border-radius:6px;border:none;background:transparent;color:var(--muted);font-weight:700;cursor:pointer;transition:all .2s;font-size:13px}
 .payroll-tab:hover{color:var(--text)}
 .payroll-tab.active{background:linear-gradient(135deg,rgba(59,130,246,.3),rgba(34,197,94,.2));color:var(--text)}
 .payroll-tab .count{font-size:11px;background:rgba(245,158,11,.3);color:#f59e0b;padding:2px 6px;border-radius:6px;margin-left:4px}
 .payroll-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
-.payroll-kpi .k{background:var(--bg-card);border-radius:6px;padding:14px}
+.payroll-kpi .k{background:var(--bg-elevated);border-radius:6px;padding:14px}
 .payroll-kpi .k .t{font-size:11px;color:var(--text-secondary);font-weight:800;text-transform:uppercase}
 .payroll-kpi .k .v{font-size:24px;font-weight:900;margin-top:6px;color:var(--accent)}
 .payroll-kpi .k .s{font-size:12px;color:var(--text-muted);margin-top:4px}
-.payroll-card{background:var(--bg-card);border-radius:6px;padding:16px;margin-bottom:12px;cursor:pointer;transition:all .2s}
+.payroll-card{background:var(--bg-elevated);border-radius:6px;padding:16px;margin-bottom:12px;cursor:pointer;transition:all .2s}
 .payroll-card:hover{background:var(--bg-hover);transform:translateY(-2px)}
 .payroll-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700}
 .payroll-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
@@ -91,10 +91,10 @@ window.AsgardPayrollPage = (function(){
 .payroll-inline-input{background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);width:80px;text-align:right;font-size:13px}
 .payroll-inline-input:focus{border-color:var(--accent);outline:none}
 .payroll-inline-input:read-only{background:transparent;border-color:transparent;cursor:default}
-.se-card{background:var(--bg-card);border-radius:6px;padding:16px;margin-bottom:12px}
+.se-card{background:var(--bg-elevated);border-radius:6px;padding:16px;margin-bottom:12px}
 .se-card .se-name{font-size:16px;font-weight:800;color:var(--text)}
 .se-card .se-inn{font-size:13px;color:var(--muted);font-family:monospace}
-.otp-card{background:var(--bg-card);border-radius:6px;padding:16px;margin-bottom:12px;border-left:4px solid transparent}
+.otp-card{background:var(--bg-elevated);border-radius:6px;padding:16px;margin-bottom:12px;border-left:4px solid transparent}
 .otp-card[data-status="pending"]{border-left-color:#f59e0b}
 .otp-card[data-status="approved"]{border-left-color:#3b82f6}
 .otp-card[data-status="paid"]{border-left-color:#22c55e}
@@ -185,7 +185,7 @@ window.AsgardPayrollPage = (function(){
         </div>
 
         <div id="sheetsList">
-          ${sheets.length===0 ? '<div style="text-align:center;color:var(--muted);padding:40px">Нет ведомостей</div>' :
+          ${sheets.length===0 ? '<div class="asg-empty"><div class="asg-empty-icon">\uD83D\uDCCB</div><div class="asg-empty-text">Нет ведомостей</div></div>' :
             sheets.map(s=>{
               const workLabel = s.work_title ? esc((s.customer_name||'')+ ' — '+(s.work_title||'')) : 'Общая';
               return `<div class="payroll-card" data-id="${s.id}">
@@ -446,7 +446,7 @@ window.AsgardPayrollPage = (function(){
               <th>Премия</th><th>Штраф</th><th>Аванс</th><th>К выпл.</th><th></th>
             </tr>
           </thead>
-          <tbody>${tableRows || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">Нет строк</td></tr>'}</tbody>
+          <tbody>${tableRows || '<tr><td colspan="10"><div class="asg-empty"><div class="asg-empty-icon">\uD83D\uDCC4</div><div class="asg-empty-text">Нет строк</div></div></td></tr>'}</tbody>
           ${items.length?`<tfoot><tr>
             <td></td><td><b>ИТОГО</b></td><td></td><td></td>
             <td style="text-align:right">${money(totalAccrued)}</td>
@@ -459,7 +459,7 @@ window.AsgardPayrollPage = (function(){
         </table>
         </div>
 
-        ${sheet.comment?`<div style="margin-top:20px;padding:12px;background:var(--bg-card);border-radius:6px;font-size:13px"><b>Комментарий:</b> ${esc(sheet.comment)}</div>`:''}
+        ${sheet.comment?`<div style="margin-top:20px;padding:12px;background:var(--bg-elevated);border-radius:6px;font-size:13px"><b>Комментарий:</b> ${esc(sheet.comment)}</div>`:''}
       `;
     }
 
@@ -708,7 +708,7 @@ window.AsgardPayrollPage = (function(){
         </div>
 
         <div id="seList">
-          ${items.length===0 ? '<div style="text-align:center;color:var(--muted);padding:40px">Нет самозанятых</div>' :
+          ${items.length===0 ? '<div class="asg-empty"><div class="asg-empty-icon">\uD83D\uDC64</div><div class="asg-empty-text">Нет самозанятых</div></div>' :
             items.map(se=>{
               const statusColor = se.npd_status==='active' ? '#22c55e' : se.npd_status==='suspended' ? '#f59e0b' : '#ef4444';
               return `<div class="se-card">
@@ -873,7 +873,7 @@ window.AsgardPayrollPage = (function(){
         </div>
 
         <div id="otpList" style="margin-top:16px">
-          ${items.length===0 ? '<div style="text-align:center;color:var(--muted);padding:40px">Нет разовых оплат</div>' :
+          ${items.length===0 ? '<div class="asg-empty"><div class="asg-empty-icon">\uD83D\uDCB8</div><div class="asg-empty-text">Нет разовых оплат</div></div>' :
             items.map(otp=>{
               const pt = PAYMENT_TYPES[otp.payment_type] || PAYMENT_TYPES.other;
               return `<div class="otp-card" data-status="${otp.status}">

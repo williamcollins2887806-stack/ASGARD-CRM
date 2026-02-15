@@ -201,10 +201,10 @@ window.CashAdminPage = (function() {
       const style = document.createElement('style');
       style.id = 'cash-admin-dark-styles';
       style.textContent = `
-        #cash-admin-page .card { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); }
+        #cash-admin-page .card { background: var(--bg-elevated); color: var(--text-primary); }
         #cash-admin-page .card-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); color: var(--text-primary); }
-        #cash-admin-page .card-body { background: var(--bg-card); color: var(--text-primary); }
-        #cash-admin-page .modal-content { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); }
+        #cash-admin-page .card-body { background: var(--bg-elevated); color: var(--text-primary); }
+        #cash-admin-page .modal-content { background: var(--bg-elevated); color: var(--text-primary); }
         #cash-admin-page .modal-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); }
         #cash-admin-page .modal-footer { background: var(--bg-deep); border-top: 1px solid var(--border); }
         #cash-admin-page .form-control, #cash-admin-page .form-select { background: var(--bg-deep); color: var(--text-primary); border-color: var(--border); }
@@ -217,7 +217,7 @@ window.CashAdminPage = (function() {
         #cash-admin-page .table-warning { background: rgba(245,158,11,0.1) !important; }
         #cash-admin-page .nav-tabs { border-color: var(--border); }
         #cash-admin-page .nav-tabs .nav-link { color: var(--text-muted); border-color: transparent; }
-        #cash-admin-page .nav-tabs .nav-link.active { background: var(--bg-card); color: var(--text-primary); border-color: var(--border) var(--border) var(--bg-card); }
+        #cash-admin-page .nav-tabs .nav-link.active { background: var(--bg-elevated); color: var(--text-primary); border-color: var(--border) var(--border) var(--bg-elevated); }
         #cash-admin-page .btn-close { filter: invert(1); }
         #cash-admin-page .alert { border: 1px solid var(--border); background: var(--bg-deep); color: var(--text-primary); }
         #cash-admin-page .alert-info { background: rgba(37,99,235,0.1); border-color: var(--secondary-glow); }
@@ -291,7 +291,7 @@ window.CashAdminPage = (function() {
     const container = document.getElementById('cash-admin-requests-list');
 
     if (!currentRequests.length) {
-      container.innerHTML = '<div class="text-center text-muted p-4">Нет заявок</div>';
+      container.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">💰</div><div class="asg-empty-text">Нет заявок</div></div>';
       return;
     }
 
@@ -347,7 +347,7 @@ window.CashAdminPage = (function() {
     const container = document.getElementById('cash-admin-summary');
 
     if (!currentSummary.length) {
-      container.innerHTML = '<div class="text-center text-muted p-4">Нет данных</div>';
+      container.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">📊</div><div class="asg-empty-text">Нет данных</div></div>';
       return;
     }
 

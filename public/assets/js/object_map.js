@@ -189,11 +189,11 @@ window.AsgardObjectMap = (function() {
           balloonContent: `
             <div style="min-width:200px;font-family:Manrope,sans-serif">
               <div style="font-weight:700;font-size:14px;margin-bottom:4px">${esc(s.name)}</div>
-              <div style="font-size:12px;color:#666;margin-bottom:8px">${esc(s.customer_name || '')}</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${esc(s.customer_name || '')}</div>
               <div style="font-size:12px">
                 Работ: <b>${s.works_count || 0}</b> · Активных: <b style="color:${pin.color}">${s.active_works || 0}</b>
               </div>
-              ${s.region ? `<div style="font-size:11px;color:#999;margin-top:4px">${esc(s.region)}</div>` : ''}
+              ${s.region ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${esc(s.region)}</div>` : ''}
             </div>
           `,
           siteId: s.id,

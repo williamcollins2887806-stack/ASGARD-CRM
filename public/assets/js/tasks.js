@@ -100,7 +100,7 @@ window.AsgardTasksPage = (function() {
       <div class="tasks-page" style="display:grid; grid-template-columns:1fr 350px; gap:20px; min-height:60vh">
         <!-- Левая панель: Задачи от руководства -->
         <div>
-          <div class="card" style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px">
+          <div class="card" style="background:var(--bg-elevated);border-radius:6px;padding:16px">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px">
               <h3 style="margin:0">📋 Задачи от руководства</h3>
               <div style="display:flex; gap:10px; align-items:center">
@@ -121,7 +121,7 @@ window.AsgardTasksPage = (function() {
           </div>
 
           ${isDirector ? `
-          <div class="card" style="margin-top:20px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px">
+          <div class="card" style="margin-top:20px;background:var(--bg-elevated);border-radius:6px;padding:16px">
             <h3>📤 Мои поручения</h3>
             <div id="createdTasksList">
               <div style="text-align:center; padding:20px"><div class="spinner-border"></div></div>
@@ -132,7 +132,7 @@ window.AsgardTasksPage = (function() {
 
         <!-- Правая панель: Todo-список -->
         <div>
-          <div class="card" style="position:sticky; top:20px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px">
+          <div class="card" style="position:sticky; top:20px;background:var(--bg-elevated);border-radius:6px;padding:16px">
             <h3 style="margin-bottom:15px">📝 Мои дела <span id="todoCounter" style="font-size:0.8em; color:var(--dim)"></span></h3>
             <div style="display:flex; gap:8px; margin-bottom:15px">
               <input type="text" id="todoInput" class="inp" placeholder="Что нужно сделать..." style="flex:1"
@@ -253,7 +253,7 @@ window.AsgardTasksPage = (function() {
   function renderTasksList() {
     const container = document.getElementById('tasksList');
     if (!currentTasks.length) {
-      container.innerHTML = '<div style="color:var(--dim); padding:20px; text-align:center">Нет задач</div>';
+      container.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">📋</div><div class="asg-empty-text">Нет задач</div></div>';
       return;
     }
 
@@ -290,7 +290,7 @@ window.AsgardTasksPage = (function() {
       ).join('')}</div>` : '';
 
     return `
-      <div class="task-card" style="border-left:4px solid ${priorityColor}; background:var(--bg-card); padding:12px 15px; border-radius:6px; margin-bottom:10px; cursor:pointer; border:1px solid var(--border)"
+      <div class="task-card" style="border-left:4px solid ${priorityColor}; background:var(--bg-elevated); padding:12px 15px; border-radius:6px; margin-bottom:10px; cursor:pointer"
            onclick="AsgardTasksPage.toggleTask(${t.id})">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px">
           <div style="flex:1">
@@ -323,7 +323,7 @@ window.AsgardTasksPage = (function() {
     if (!container) return;
 
     if (!tasks.length) {
-      container.innerHTML = '<div style="color:var(--dim); padding:10px; text-align:center">Нет созданных задач</div>';
+      container.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">📤</div><div class="asg-empty-text">Нет созданных задач</div></div>';
       return;
     }
 
@@ -521,7 +521,7 @@ window.AsgardTasksPage = (function() {
     }
 
     if (!currentTodo.length) {
-      container.innerHTML = '<div style="color:var(--dim); text-align:center; padding:20px">Список пуст</div>';
+      container.innerHTML = '<div class="asg-empty"><div class="asg-empty-icon">📝</div><div class="asg-empty-text">Список пуст</div></div>';
       return;
     }
 

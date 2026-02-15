@@ -34,32 +34,32 @@ window.AsgardBigScreen = (function(){
 
     const body = `
       <style>
-        .bs-wrap{position:fixed;inset:0;background:#080d1a;z-index:9999;overflow:hidden;display:flex;flex-direction:column}
-        .bs-header{padding:16px 32px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.3);border-bottom:1px solid rgba(242,208,138,.15)}
+        .bs-wrap{position:fixed;inset:0;background:var(--bg-deep);z-index:9999;overflow:hidden;display:flex;flex-direction:column}
+        .bs-header{padding:16px 32px;display:flex;justify-content:space-between;align-items:center;background:var(--bg-surface);border-bottom:1px solid rgba(242,208,138,.15)}
         .bs-logo{font-size:24px;font-weight:900;color:var(--gold,#f2d08a);letter-spacing:2px}
-        .bs-time{font-size:18px;color:rgba(255,255,255,.6);font-variant-numeric:tabular-nums}
-        .bs-exit{background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.5);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .2s}
+        .bs-time{font-size:18px;color:var(--muted);font-variant-numeric:tabular-nums}
+        .bs-exit{background:none;border:1px solid var(--border);color:var(--muted);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .2s}
         .bs-exit:hover{border-color:var(--gold,#f2d08a);color:var(--gold,#f2d08a)}
         .bs-body{flex:1;display:flex;align-items:center;justify-content:center;padding:32px}
         .bs-slide{width:100%;max-width:1400px;animation:bsFadeIn .5s ease}
         @keyframes bsFadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
         .bs-dots{display:flex;justify-content:center;gap:8px;padding:16px}
-        .bs-dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.15);transition:all .3s;cursor:pointer}
-        .bs-dot:hover{background:rgba(255,255,255,.3)}
+        .bs-dot{width:10px;height:10px;border-radius:50%;background:var(--glass);transition:all .3s;cursor:pointer}
+        .bs-dot:hover{background:var(--glass-hover)}
         .bs-dot.active{background:var(--gold,#f2d08a);transform:scale(1.3)}
         .bs-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
-        .bs-card{background:linear-gradient(135deg,rgba(13,20,40,.8),rgba(13,20,40,.5));border:1px solid rgba(148,163,184,.12);border-radius:6px;padding:32px;text-align:center}
-        .bs-card-title{font-size:12px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:2px;font-weight:800;margin-bottom:16px}
+        .bs-card{background:var(--bg-surface);border-radius:6px;padding:32px;text-align:center}
+        .bs-card-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;font-weight:800;margin-bottom:16px}
         .bs-card-value{font-size:56px;font-weight:900;line-height:1.1}
-        .bs-card-sub{font-size:14px;color:rgba(255,255,255,.4);margin-top:12px}
+        .bs-card-sub{font-size:14px;color:var(--muted);margin-top:12px}
         .bs-table{width:100%;border-collapse:collapse}
-        .bs-table th{font-size:11px;color:rgba(255,255,255,.3);text-transform:uppercase;text-align:left;padding:8px 16px;border-bottom:2px solid var(--border)}
+        .bs-table th{font-size:11px;color:var(--muted);text-transform:uppercase;text-align:left;padding:8px 16px;border-bottom:2px solid var(--border)}
         .bs-table td{padding:16px;font-size:16px;border-bottom:1px solid var(--border)}
         .bs-table tbody tr:last-child td{border-bottom:none}
         .green{color:#4ade80} .red{color:#f87171} .amber{color:#fbbf24} .blue{color:#60a5fa} .gold{color:#f2d08a}
         .bs-nav{display:flex;gap:12px;position:absolute;bottom:80px;left:50%;transform:translateX(-50%)}
-        .bs-nav button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;transition:all .2s}
-        .bs-nav button:hover{background:rgba(255,255,255,.2);color:white}
+        .bs-nav button{background:var(--glass);border:1px solid var(--border);color:var(--muted);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;transition:all .2s}
+        .bs-nav button:hover{background:var(--glass-hover);color:var(--text)}
       </style>
       <div class="bs-wrap" id="bsWrap">
         <div class="bs-header">
@@ -213,7 +213,7 @@ window.AsgardBigScreen = (function(){
         <thead><tr><th>РП</th><th>Активные</th><th>Всего</th><th>Сумма контрактов</th></tr></thead>
         <tbody>${pmRows.map(r => `<tr><td style="font-weight:700">${esc(r.name)}</td><td class="amber" style="font-weight:700">${r.active}</td><td>${r.total}</td><td class="gold">${_m(r.contract)}</td></tr>`).join('')}</tbody>
       </table>
-    ` : `<h2 style="text-align:center;color:var(--gold,#f2d08a);margin-bottom:32px">👷 Руководители проектов</h2><p style="text-align:center;color:rgba(255,255,255,.5)">Нет данных</p>`;
+    ` : `<h2 style="text-align:center;color:var(--gold,#f2d08a);margin-bottom:32px">👷 Руководители проектов</h2><div class="asg-empty"><div class="asg-empty-icon">📋</div><div class="asg-empty-text">Нет данных</div></div>`;
 
     // --- Slide 3: Просроченные ---
     const overdueList = works.filter(w => w.end_plan && !['Работы сдали','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < now)
@@ -229,7 +229,7 @@ window.AsgardBigScreen = (function(){
           return `<tr><td style="font-weight:600">${esc(w.work_title || w.work_name || '')}</td><td>${esc(byPm.get(w.pm_id) || '—')}</td><td>${new Date(w.end_plan).toLocaleDateString('ru-RU')}</td><td class="red" style="font-weight:900;font-size:20px">+${days} дн.</td></tr>`;
         }).join('')}</tbody>
       </table>
-    ` : `<h2 style="text-align:center;color:#4ade80;margin-bottom:32px;font-size:48px">✅</h2><p style="text-align:center;font-size:24px;color:rgba(255,255,255,.5)">Просроченных работ нет</p>`;
+    ` : `<div class="asg-empty"><div class="asg-empty-icon">✅</div><div class="asg-empty-text">Просроченных работ нет</div></div>`;
 
     // --- Slide 4: Тендерная воронка ---
     const stages = [
@@ -253,8 +253,8 @@ window.AsgardBigScreen = (function(){
         ${funnelData.map(s => {
           const pct = Math.round((s.count / maxFunnel) * 100);
           return `<div style="display:flex;align-items:center;gap:16px;margin:12px 0">
-            <div style="width:120px;font-size:14px;color:rgba(255,255,255,.7)">${s.name}</div>
-            <div style="flex:1;background:rgba(255,255,255,.1);border-radius:6px;height:32px;overflow:hidden">
+            <div style="width:120px;font-size:14px;color:var(--text)">${s.name}</div>
+            <div style="flex:1;background:var(--glass);border-radius:6px;height:32px;overflow:hidden">
               <div style="height:100%;width:${pct}%;background:${s.color};border-radius:6px;transition:width .5s"></div>
             </div>
             <div style="width:60px;text-align:right;font-size:20px;font-weight:700;color:${s.color}">${s.count}</div>

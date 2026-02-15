@@ -104,11 +104,11 @@ window.AsgardMailSettingsPage = (function(){
     container.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <span style="color:var(--text-muted); font-size:13px;">${accounts.length} аккаунтов</span>
-        <button id="ms-add-account" style="padding:6px 16px; background:var(--primary); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px;">+ Добавить аккаунт</button>
+        <button id="ms-add-account" style="padding:6px 16px; background:var(--primary); color:var(--text); border:none; border-radius:6px; cursor:pointer; font-size:13px;">+ Добавить аккаунт</button>
       </div>
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${accounts.map(a => `
-          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:16px;">
+          <div style="background:var(--bg-elevated); border-radius:6px; padding:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <div>
                 <strong style="color:var(--text-primary);">${esc(a.name)}</strong>
@@ -169,7 +169,7 @@ window.AsgardMailSettingsPage = (function(){
 
     const a = existing || {};
     overlay.innerHTML = `
-    <div style="width:600px;max-width:95vw;max-height:85vh;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);overflow-y:auto;">
+    <div style="width:600px;max-width:95vw;max-height:85vh;background:var(--bg-elevated);border-radius:6px;overflow-y:auto;">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
         <h3 style="margin:0;color:var(--text-primary);">${existing ? 'Редактирование аккаунта' : 'Новый аккаунт'}</h3>
         <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
@@ -229,7 +229,7 @@ window.AsgardMailSettingsPage = (function(){
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
         <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Отмена</button>
-        <button id="acc-save" style="padding:8px 20px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:600;">Сохранить</button>
+        <button id="acc-save" style="padding:8px 20px;border-radius:6px;border:none;background:var(--primary);color:var(--text);cursor:pointer;font-weight:600;">Сохранить</button>
       </div>
     </div>`;
 
@@ -332,8 +332,8 @@ window.AsgardMailSettingsPage = (function(){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <span style="color:var(--text-muted);font-size:13px;">${rules.length} правил</span>
         <div style="display:flex;gap:8px;">
-          <button id="ms-test-classify" style="padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);cursor:pointer;font-size:13px;">Тестировать</button>
-          <button id="ms-add-rule" style="padding:6px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">+ Правило</button>
+          <button id="ms-test-classify" style="padding:6px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-primary);cursor:pointer;font-size:13px;">Тестировать</button>
+          <button id="ms-add-rule" style="padding:6px 16px;background:var(--primary);color:var(--text);border:none;border-radius:6px;cursor:pointer;font-size:13px;">+ Правило</button>
         </div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -384,7 +384,7 @@ window.AsgardMailSettingsPage = (function(){
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9100;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
-    <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);">
+    <div style="width:480px;max-width:95vw;background:var(--bg-elevated);border-radius:6px;">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
         <h3 style="margin:0;color:var(--text-primary);">Новое правило</h3>
         <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
@@ -430,7 +430,7 @@ window.AsgardMailSettingsPage = (function(){
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
         <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Отмена</button>
-        <button id="rule-save" style="padding:8px 20px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:600;">Создать</button>
+        <button id="rule-save" style="padding:8px 20px;border-radius:6px;border:none;background:var(--primary);color:var(--text);cursor:pointer;font-weight:600;">Создать</button>
       </div>
     </div>`;
 
@@ -465,7 +465,7 @@ window.AsgardMailSettingsPage = (function(){
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9100;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
-    <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);">
+    <div style="width:480px;max-width:95vw;background:var(--bg-elevated);border-radius:6px;">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
         <h3 style="margin:0;color:var(--text-primary);">Тест классификации</h3>
         <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
@@ -478,7 +478,7 @@ window.AsgardMailSettingsPage = (function(){
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
         <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Закрыть</button>
-        <button id="tc-run" style="padding:8px 20px;border-radius:6px;border:none;background:var(--secondary);color:#fff;cursor:pointer;font-weight:600;">Проверить</button>
+        <button id="tc-run" style="padding:8px 20px;border-radius:6px;border:none;background:var(--secondary);color:var(--text);cursor:pointer;font-weight:600;">Проверить</button>
       </div>
     </div>`;
 
@@ -517,11 +517,11 @@ window.AsgardMailSettingsPage = (function(){
     container.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <span style="color:var(--text-muted);font-size:13px;">${tplList.length} шаблонов</span>
-        <button id="ms-add-tpl" style="padding:6px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">+ Шаблон</button>
+        <button id="ms-add-tpl" style="padding:6px 16px;background:var(--primary);color:var(--text);border:none;border-radius:6px;cursor:pointer;font-size:13px;">+ Шаблон</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         ${tplList.map(t => `
-          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="background:var(--bg-elevated);border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
             <div>
               <strong style="color:var(--text-primary);font-size:13px;">${esc(t.name)}</strong>
               <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">[${esc(t.code)}]</span>
