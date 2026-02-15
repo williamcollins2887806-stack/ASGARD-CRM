@@ -220,17 +220,23 @@ async function syncAccount(accountId) {
     console.log(`[IMAP] Sync account #${accountId}: ${newCount} new, ${updatedCount} updated, ${attachmentsSaved} attachments`);
   } catch (err) {
     console.error(`[IMAP] Sync error account #${accountId}:`, err.message);
+    if (err.message.includes('auth') || err.message.includes('login') || err.message.includes('credentials')) {
+      console.error(`[IMAP] ⚠️  Authentication failed for account #${accountId}. Check IMAP_USER/IMAP_PASS or email_accounts credentials.`);
+    }
+    if (err.message.includes('ECONNREFUSED') || err.message.includes('ETIMEDOUT') || err.message.includes('getaddrinfo')) {
+      console.error(`[IMAP] ⚠️  Connection failed for account #${accountId}. Check IMAP_HOST and network access.`);
+    }
 
     await db.query(
       'UPDATE email_accounts SET last_sync_error = $1, updated_at = NOW() WHERE id = $2',
       [err.message, accountId]
-    ).catch(() => {});
+    ).catch((dbErr) => { console.error('[IMAP] DB error saving sync error:', dbErr.message); });
 
     await db.query(
       `UPDATE email_sync_log SET status = 'error', errors_count = $1, error_details = $2,
        duration_ms = $3, completed_at = NOW() WHERE id = $4`,
       [1, JSON.stringify([{ error: err.message }]), Date.now() - startMs, syncLogId]
-    ).catch(() => {});
+    ).catch((dbErr) => { console.error('[IMAP] DB error saving sync log:', dbErr.message); });
   } finally {
     activeClients.delete(accountId);
     if (client) {
@@ -480,19 +486,81 @@ function stopAllPolling() {
   pollingTimers.clear();
 }
 
+// ── Auto-provision email account from ENV if none exist ──────────────────
+async function autoProvisionFromEnv() {
+  const imapHost = process.env.IMAP_HOST;
+  const imapUser = process.env.IMAP_USER;
+  const imapPass = process.env.IMAP_PASS;
+
+  if (!imapHost || !imapUser || !imapPass) {
+    return false;
+  }
+
+  // Check if any account already exists
+  const existing = await db.query('SELECT id FROM email_accounts LIMIT 1');
+  if (existing.rows.length > 0) {
+    return false; // accounts exist, don't auto-provision
+  }
+
+  console.log(`[IMAP] Auto-provisioning email account from ENV: ${imapUser}@${imapHost}`);
+
+  const smtpHost = process.env.SMTP_HOST || '';
+  const smtpUser = process.env.SMTP_USER || imapUser;
+  const smtpPass = process.env.SMTP_PASS || imapPass;
+  const emailAddress = imapUser.includes('@') ? imapUser : `${imapUser}@${imapHost.replace(/^imap\./, '')}`;
+
+  try {
+    await db.query(`
+      INSERT INTO email_accounts (
+        name, email_address, account_type,
+        imap_host, imap_port, imap_user, imap_pass_encrypted, imap_tls, imap_folder,
+        smtp_host, smtp_port, smtp_user, smtp_pass_encrypted, smtp_tls, smtp_from_name,
+        sync_enabled, sync_interval_sec, sync_max_emails,
+        is_active
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+    `, [
+      'Основной почтовый ящик', emailAddress, 'primary',
+      imapHost,
+      parseInt(process.env.IMAP_PORT || '993'),
+      imapUser,
+      encrypt(imapPass),
+      process.env.IMAP_TLS !== 'false',
+      process.env.IMAP_FOLDER || 'INBOX',
+      smtpHost,
+      parseInt(process.env.SMTP_PORT || '587'),
+      smtpUser,
+      encrypt(smtpPass),
+      process.env.SMTP_SECURE === 'true',
+      process.env.SMTP_FROM_NAME || 'ООО «Асгард Сервис»',
+      true, 120, 200,
+      true
+    ]);
+    console.log('[IMAP] Email account auto-provisioned successfully');
+    return true;
+  } catch (e) {
+    console.error('[IMAP] Auto-provision error:', e.message);
+    return false;
+  }
+}
+
 // ── Init: start polling for all active accounts ─────────────────────────
 async function init() {
   try {
+    // Auto-provision from ENV if no accounts exist
+    await autoProvisionFromEnv();
+
     const result = await db.query(
-      'SELECT id, sync_interval_sec FROM email_accounts WHERE is_active = true AND sync_enabled = true'
+      'SELECT id, email_address, imap_host, sync_interval_sec FROM email_accounts WHERE is_active = true AND sync_enabled = true'
     );
 
     if (result.rows.length === 0) {
       console.log('[IMAP] No active email accounts to sync');
+      console.log('[IMAP] To enable: set IMAP_HOST, IMAP_USER, IMAP_PASS in .env or add account via /api/mailbox/accounts');
       return;
     }
 
     for (const acc of result.rows) {
+      console.log(`[IMAP] Starting sync for ${acc.email_address} via ${acc.imap_host}`);
       startPolling(acc.id, acc.sync_interval_sec);
     }
 
