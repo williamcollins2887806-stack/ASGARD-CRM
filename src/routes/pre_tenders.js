@@ -369,13 +369,8 @@ module.exports = async function (fastify) {
     const { comment, contact_person, contact_phone, assigned_pm_id, send_email = true } = request.body || {};
     const user = request.user;
 
-    // Получаем заявку
-    const ptRes = await db.query(`
-      SELECT pt.*, e.subject as email_subject, e.from_email, e.from_name, e.email_type, e.id as eid
-      FROM pre_tender_requests pt
-      LEFT JOIN emails e ON e.id = pt.email_id
-      WHERE pt.id = $1
-    `, [id]);
+    // Получаем заявку (без JOIN с emails — для ручных заявок emails не нужны)
+    const ptRes = await db.query('SELECT * FROM pre_tender_requests WHERE id = $1', [id]);
 
     if (!ptRes.rows.length) return reply.code(404).send({ error: 'Заявка не найдена' });
     const pt = ptRes.rows[0];
@@ -384,9 +379,24 @@ module.exports = async function (fastify) {
       return reply.code(400).send({ error: 'Заявка уже обработана (статус: ' + pt.status + ')' });
     }
 
+    // Подгружаем данные письма, только если есть email_id
+    let emailData = {};
+    if (pt.email_id) {
+      try {
+        const emailRes = await db.query(
+          'SELECT subject as email_subject, from_email, from_name, email_type, id as eid FROM emails WHERE id = $1',
+          [pt.email_id]
+        );
+        if (emailRes.rows.length) emailData = emailRes.rows[0];
+      } catch (emailFetchErr) {
+        console.error('[PreTender] Accept: email fetch error:', emailFetchErr.message);
+      }
+    }
+
     // 1. Создать тендер
     const period = new Date().toISOString().slice(0, 7);
-    const tenderType = pt.source_type === 'email' && pt.email_type === 'platform_tender' ? 'Тендер' : 'Прямой запрос';
+    const tenderType = pt.source_type === 'email' && emailData.email_type === 'platform_tender' ? 'Тендер' : 'Прямой запрос';
+    const commentTo = `Создано из заявки #${id}. ${pt.ai_recommendation || ''} ${comment || ''}`.trim().slice(0, 500);
 
     let tenderId;
     try {
@@ -398,13 +408,13 @@ module.exports = async function (fastify) {
         ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
         RETURNING id
       `, [
-        pt.customer_name || pt.from_name || 'Не указан',
+        pt.customer_name || emailData.from_name || 'Не указан',
         pt.customer_inn || null,
         tenderType,
         pt.estimated_sum || null,
         pt.work_deadline || null,
         assigned_pm_id || null,
-        `Создано из заявки #${id}. ${pt.ai_recommendation || ''} ${comment || ''}`.trim(),
+        commentTo,
         period,
         user.id
       ]);
@@ -447,7 +457,7 @@ module.exports = async function (fastify) {
           const letterhead = require('../services/email-letterhead');
 
           const subject = letterhead.fillTemplate(tpl.subject_template, {
-            original_subject: pt.email_subject || pt.work_description?.slice(0, 50) || 'заявка'
+            original_subject: emailData.email_subject || pt.work_description?.slice(0, 50) || 'заявка'
           });
           const bodyHtml = letterhead.fillTemplate(tpl.body_template, {
             contact_person: contact_person || 'менеджер',
@@ -510,7 +520,7 @@ module.exports = async function (fastify) {
     // SSE: уведомляем о принятии заявки
     broadcast('pre_tender:accepted', {
       id: parseInt(id), tender_id: tenderId,
-      customer_name: pt.customer_name || pt.from_name || '',
+      customer_name: pt.customer_name || emailData.from_name || '',
       accepted_by: user.id
     });
 
@@ -535,12 +545,7 @@ module.exports = async function (fastify) {
     const { reject_reason, send_email = true } = request.body || {};
     const user = request.user;
 
-    const ptRes = await db.query(`
-      SELECT pt.*, e.subject as email_subject, e.id as eid
-      FROM pre_tender_requests pt
-      LEFT JOIN emails e ON e.id = pt.email_id
-      WHERE pt.id = $1
-    `, [id]);
+    const ptRes = await db.query('SELECT * FROM pre_tender_requests WHERE id = $1', [id]);
 
     if (!ptRes.rows.length) return reply.code(404).send({ error: 'Заявка не найдена' });
     const pt = ptRes.rows[0];
@@ -549,15 +554,34 @@ module.exports = async function (fastify) {
       return reply.code(400).send({ error: 'Заявка уже обработана' });
     }
 
+    // Подгружаем данные письма, только если есть email_id
+    let rejectEmailData = {};
+    if (pt.email_id) {
+      try {
+        const emailRes = await db.query(
+          'SELECT subject as email_subject, id as eid FROM emails WHERE id = $1',
+          [pt.email_id]
+        );
+        if (emailRes.rows.length) rejectEmailData = emailRes.rows[0];
+      } catch (emailFetchErr) {
+        console.error('[PreTender] Reject: email fetch error:', emailFetchErr.message);
+      }
+    }
+
     // 1. Обновить заявку
-    await db.query(`
-      UPDATE pre_tender_requests SET
-        status = 'rejected',
-        decision_by = $1, decision_at = NOW(),
-        reject_reason = $2,
-        updated_at = NOW()
-      WHERE id = $3
-    `, [user.id, reject_reason || 'Не указана', id]);
+    try {
+      await db.query(`
+        UPDATE pre_tender_requests SET
+          status = 'rejected',
+          decision_by = $1, decision_at = NOW(),
+          reject_reason = $2,
+          updated_at = NOW()
+        WHERE id = $3
+      `, [user.id, reject_reason || 'Не указана', id]);
+    } catch (updateErr) {
+      console.error('[PreTender] Reject: UPDATE error:', updateErr.message, updateErr.code);
+      return reply.code(500).send({ error: 'Ошибка обновления заявки: ' + updateErr.message });
+    }
 
     // 2. Отправить письмо с отказом
     let responseEmailId = null;
@@ -572,7 +596,7 @@ module.exports = async function (fastify) {
           const letterhead = require('../services/email-letterhead');
 
           const subject = letterhead.fillTemplate(tpl.subject_template, {
-            original_subject: pt.email_subject || 'заявка'
+            original_subject: rejectEmailData.email_subject || 'заявка'
           });
           const reasonText = reject_reason ? ', в связи с: ' + reject_reason : '';
           const bodyHtml = letterhead.fillTemplate(tpl.body_template, {
@@ -608,7 +632,9 @@ module.exports = async function (fastify) {
 
     // 3. Архивировать письмо
     if (pt.email_id) {
-      await db.query('UPDATE emails SET is_archived = true WHERE id = $1', [pt.email_id]);
+      try {
+        await db.query('UPDATE emails SET is_archived = true WHERE id = $1', [pt.email_id]);
+      } catch (_) {}
     }
 
     // 4. Audit log
@@ -653,13 +679,8 @@ module.exports = async function (fastify) {
     }
     const pm = pmRes.rows[0];
 
-    // Получаем заявку
-    const ptRes = await db.query(`
-      SELECT pt.*, e.subject as email_subject, e.from_email, e.from_name, e.email_type, e.id as eid
-      FROM pre_tender_requests pt
-      LEFT JOIN emails e ON e.id = pt.email_id
-      WHERE pt.id = $1
-    `, [id]);
+    // Получаем заявку (без JOIN с emails)
+    const ptRes = await db.query('SELECT * FROM pre_tender_requests WHERE id = $1', [id]);
 
     if (!ptRes.rows.length) return reply.code(404).send({ error: 'Заявка не найдена' });
     const pt = ptRes.rows[0];
@@ -668,14 +689,28 @@ module.exports = async function (fastify) {
       return reply.code(400).send({ error: 'Заявка уже обработана (статус: ' + pt.status + ')' });
     }
 
+    // Подгружаем данные письма, только если есть email_id
+    let ftEmailData = {};
+    if (pt.email_id) {
+      try {
+        const emailRes = await db.query(
+          'SELECT subject as email_subject, from_email, from_name, email_type, id as eid FROM emails WHERE id = $1',
+          [pt.email_id]
+        );
+        if (emailRes.rows.length) ftEmailData = emailRes.rows[0];
+      } catch (emailFetchErr) {
+        console.error('[PreTender] Fast-track: email fetch error:', emailFetchErr.message);
+      }
+    }
+
     const period = new Date().toISOString().slice(0, 7);
-    const tenderType = pt.source_type === 'email' && pt.email_type === 'platform_tender' ? 'Тендер' : 'Прямой запрос';
+    const tenderType = pt.source_type === 'email' && ftEmailData.email_type === 'platform_tender' ? 'Тендер' : 'Прямой запрос';
     const aiComment = pt.ai_recommendation ? `AI: ${pt.ai_recommendation}` : '';
     const fullComment = [
       `Быстрый путь из заявки #${id}`,
       comment || '',
       aiComment
-    ].filter(Boolean).join('. ');
+    ].filter(Boolean).join('. ').slice(0, 500);
 
     // Транзакция: создаём тендер + обновляем заявку + уведомление + audit
     let tenderId;
@@ -690,7 +725,7 @@ module.exports = async function (fastify) {
           ) VALUES ($1, $2, $3, 'Отправлено на просчёт', $4, $5, $6, $7, $8, $9, NOW(), NOW())
           RETURNING id
         `, [
-          pt.customer_name || pt.from_name || 'Не указан',
+          pt.customer_name || ftEmailData.from_name || 'Не указан',
           pt.customer_inn || null,
           tenderType,
           pt.estimated_sum || null,
@@ -752,7 +787,7 @@ module.exports = async function (fastify) {
           const letterhead = require('../services/email-letterhead');
 
           const subject = letterhead.fillTemplate(tpl.subject_template, {
-            original_subject: pt.email_subject || pt.work_description?.slice(0, 50) || 'заявка'
+            original_subject: ftEmailData.email_subject || pt.work_description?.slice(0, 50) || 'заявка'
           });
           const bodyHtml = letterhead.fillTemplate(tpl.body_template, {
             contact_person: pm.name || contact_person || 'менеджер',
