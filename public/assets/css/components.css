@@ -3565,17 +3565,17 @@ html[data-theme="light"] .inp:focus {
 }
 
 .dash-widget-header {
-  padding: 14px 20px;
-  background: var(--glass-bg);
+  padding: 14px 20px 0;
+  background: transparent;
   display: flex;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   font-size: 13px;
 }
 
 .dash-widget-content {
-  padding: 20px;
+  padding: 16px 20px 20px;
   min-height: 80px;
 }
 
@@ -3623,7 +3623,7 @@ html[data-theme="light"] .dash-widget:hover {
 }
 
 html[data-theme="light"] .dash-widget-header {
-  background: #f8fafc;
+  background: transparent;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
