@@ -373,9 +373,9 @@ module.exports = async function (fastify) {
 
     const tenderRes = await db.query(`
       INSERT INTO tenders (
-        customer, customer_inn, tender_type, tender_status,
-        estimated_sum, deadline, responsible_pm_id,
-        comment_to, period, created_by, created_at
+        customer_name, customer_inn, tender_type, tender_status,
+        tender_price, docs_deadline, responsible_pm_id,
+        comment_to, period, created_by_user_id, created_at
       ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
       RETURNING id
     `, [
@@ -586,8 +586,7 @@ module.exports = async function (fastify) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params;
-    // Снимаем обратную ссылку
-    await db.query('UPDATE emails SET pre_tender_id = NULL WHERE pre_tender_id = $1', [parseInt(id)]);
+    // Удаляем заявку (обратной ссылки pre_tender_id нет в emails)
     await db.query('DELETE FROM pre_tender_requests WHERE id = $1', [id]);
     return { success: true };
   });

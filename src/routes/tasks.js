@@ -206,10 +206,15 @@ module.exports = async function(fastify) {
   fastify.post('/', {
     preHandler: [fastify.requirePermission('tasks_admin', 'write')]
   }, async (request, reply) => {
-    const { assignee_id, title, description, deadline, priority, creator_comment } = request.body;
+    let { assignee_id, title, description, deadline, priority, creator_comment } = request.body;
 
     if (!assignee_id) return reply.code(400).send({ error: 'Укажите исполнителя' });
     if (!title || !title.trim()) return reply.code(400).send({ error: 'Укажите название задачи' });
+
+    // Truncate title to prevent VARCHAR overflow (max 500 chars)
+    if (title.length > 500) {
+      title = title.slice(0, 500);
+    }
 
     // Проверить что исполнитель существует
     const { rows: [assignee] } = await db.query(
@@ -450,7 +455,8 @@ module.exports = async function(fastify) {
   fastify.put('/:id', {
     preHandler: [fastify.requirePermission('tasks_admin', 'write')]
   }, async (request, reply) => {
-    const id = parseInt(request.params.id);
+    const id = parseInt(request.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
     const { title, description, deadline, priority, creator_comment } = request.body;
 
     const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);

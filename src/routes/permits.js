@@ -633,7 +633,8 @@ module.exports = async function(fastify) {
   // Вызывается периодически (со страницы или cron)
   fastify.get('/check-expiry', {
     preHandler: [fastify.authenticate]
-  }, async () => {
+  }, async (request, reply) => {
+    try {
     // Допуски, истекающие через 30 дней (ещё не уведомлённые)
     const { rows: expiring30 } = await db.query(`
       SELECT ep.*, e.fio as employee_name, pt.name as type_name
@@ -710,6 +711,10 @@ module.exports = async function(fastify) {
     }
 
     return { checked: { expiring30: expiring30.length, expiring14: expiring14.length, expired: expired.length }, sent };
+    } catch (err) {
+      request.log.error(err, 'check-expiry error');
+      return reply.code(500).send({ error: 'Check expiry failed', detail: err.message });
+    }
   });
 
   // ╔═══════════════════════════════════════════════════════════════╗

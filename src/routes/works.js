@@ -115,9 +115,20 @@ async function routes(fastify, options) {
   });
 
   fastify.delete('/:id', { preHandler: [fastify.requireRoles(['ADMIN'])] }, async (request, reply) => {
-    const result = await db.query('DELETE FROM works WHERE id = $1 RETURNING id', [request.params.id]);
-    if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
-    return { message: 'Удалено' };
+    const workId = request.params.id;
+    try {
+      // Delete related records first to avoid FK constraint violations
+      await db.query('DELETE FROM work_expenses WHERE work_id = $1', [workId]);
+      await db.query('DELETE FROM employee_assignments WHERE work_id = $1', [workId]);
+      await db.query('DELETE FROM employee_plan WHERE work_id = $1', [workId]);
+      await db.query('DELETE FROM incomes WHERE work_id = $1', [workId]);
+      const result = await db.query('DELETE FROM works WHERE id = $1 RETURNING id', [workId]);
+      if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+      return { message: 'Удалено' };
+    } catch (err) {
+      request.log.error(err, 'works delete error');
+      return reply.code(500).send({ error: 'Не удалось удалить работу', detail: err.message });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════

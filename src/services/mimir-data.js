@@ -133,13 +133,15 @@ async function getDbStats(db, user) {
       const employees = await db.query('SELECT COUNT(*) as total FROM employees');
       stats.employeesTotal = parseInt(employees.rows[0].total);
 
-      // По подразделениям
-      const byDept = await db.query(`
-        SELECT department, COUNT(*) as cnt FROM employees
-        WHERE department IS NOT NULL
-        GROUP BY department ORDER BY cnt DESC LIMIT 5
-      `);
-      stats.employeesByDept = byDept.rows;
+      // По должностям (position)
+      try {
+        const byDept = await db.query(`
+          SELECT position as department, COUNT(*) as cnt FROM employees
+          WHERE position IS NOT NULL
+          GROUP BY position ORDER BY cnt DESC LIMIT 5
+        `);
+        stats.employeesByDept = byDept.rows;
+      } catch (e) { stats.employeesByDept = []; }
     }
 
     // ФИНАНСЫ (только директора и бухгалтерия)
@@ -237,10 +239,10 @@ async function searchEmployees(db, query, user) {
 
   try {
     const results = await db.query(`
-      SELECT id, full_name, position, phone, department
+      SELECT id, full_name, fio, position, phone
       FROM employees
-      WHERE full_name ILIKE $1 OR position ILIKE $1 OR department ILIKE $1
-      ORDER BY full_name LIMIT 10
+      WHERE full_name ILIKE $1 OR fio ILIKE $1 OR position ILIKE $1
+      ORDER BY fio LIMIT 10
     `, ['%' + query + '%']);
     return results.rows;
   } catch (e) {

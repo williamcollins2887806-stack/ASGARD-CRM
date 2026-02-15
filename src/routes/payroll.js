@@ -337,22 +337,11 @@ async function routes(fastify, options) {
     for (const item of items.rows) {
       if (Number(item.payout) <= 0) continue;
 
-      // Получаем банковские реквизиты
-      const emp = await db.query(
-        'SELECT inn, bank_name, bik, account_number FROM employees WHERE id = $1',
-        [item.employee_id]
-      );
-      const empData = emp.rows[0] || {};
-
       await db.query(`
         INSERT INTO payment_registry
-          (sheet_id, employee_id, employee_name, amount, payment_type, payment_method,
-           inn, bank_name, bik, account_number, status, created_by)
-        VALUES ($1, $2, $3, $4, 'salary', $5, $6, $7, $8, $9, 'pending', $10)
-      `, [id, item.employee_id, item.employee_name, item.payout,
-          item.payment_method || 'card',
-          empData.inn, empData.bank_name, empData.bik, empData.account_number,
-          user.id]);
+          (sheet_id, employee_id, amount, payment_type, payment_date, status)
+        VALUES ($1, $2, $3, 'salary', CURRENT_DATE, 'pending')
+      `, [id, item.employee_id, item.payout]);
       paymentsCreated++;
     }
 
@@ -424,7 +413,11 @@ async function routes(fastify, options) {
     }
 
     // Получаем данные работника
-    const emp = await db.query('SELECT fio, is_self_employed, day_rate as emp_day_rate FROM employees WHERE id = $1', [b.employee_id]);
+    const emp = await db.query(`
+      SELECT e.fio, e.is_self_employed,
+        (SELECT er.day_rate FROM employee_rates er WHERE er.employee_id = e.id AND er.effective_to IS NULL ORDER BY er.effective_from DESC LIMIT 1) as emp_day_rate
+      FROM employees e WHERE e.id = $1
+    `, [b.employee_id]);
     if (!emp.rows.length) return reply.code(404).send({ error: 'Работник не найден' });
 
     const dayRate = Number(b.day_rate) || Number(emp.rows[0].emp_day_rate) || 0;
@@ -434,10 +427,10 @@ async function routes(fastify, options) {
     let roleOnWork = b.role_on_work || null;
     if (!roleOnWork && sheetCheck.rows[0].work_id) {
       const assign = await db.query(
-        'SELECT role_on_work FROM employee_assignments WHERE employee_id = $1 AND work_id = $2 ORDER BY id DESC LIMIT 1',
+        'SELECT role FROM employee_assignments WHERE employee_id = $1 AND work_id = $2 ORDER BY id DESC LIMIT 1',
         [b.employee_id, sheetCheck.rows[0].work_id]
       );
-      if (assign.rows.length) roleOnWork = assign.rows[0].role_on_work;
+      if (assign.rows.length) roleOnWork = assign.rows[0].role;
     }
 
     const q = await db.query(`
@@ -544,7 +537,8 @@ async function routes(fastify, options) {
 
     // Назначенные на работу
     const assignments = await db.query(`
-      SELECT ea.*, e.fio, e.is_self_employed, e.day_rate as emp_day_rate
+      SELECT ea.*, e.fio, e.is_self_employed,
+        (SELECT er.day_rate FROM employee_rates er WHERE er.employee_id = e.id AND er.effective_to IS NULL ORDER BY er.effective_from DESC LIMIT 1) as emp_day_rate
       FROM employee_assignments ea
       JOIN employees e ON ea.employee_id = e.id
       WHERE ea.work_id = $1
@@ -671,7 +665,7 @@ async function routes(fastify, options) {
     if (sheet_id) { where.push(`pr.sheet_id = $${idx++}`); params.push(sheet_id); }
     if (status) { where.push(`pr.status = $${idx++}`); params.push(status); }
     if (employee_id) { where.push(`pr.employee_id = $${idx++}`); params.push(employee_id); }
-    if (payment_method) { where.push(`pr.payment_method = $${idx++}`); params.push(payment_method); }
+    if (payment_method) { where.push(`pr.payment_type = $${idx++}`); params.push(payment_method); }
     if (date_from) { where.push(`pr.created_at >= $${idx++}`); params.push(date_from); }
     if (date_to) { where.push(`pr.created_at <= $${idx++}`); params.push(date_to + 'T23:59:59'); }
 
@@ -710,17 +704,12 @@ async function routes(fastify, options) {
       return reply.code(400).send({ error: 'Недопустимый переход статуса' });
     }
 
-    const paidAt = status === 'paid' ? 'NOW()' : 'paid_at';
     const q = await db.query(`
       UPDATE payment_registry SET
         status = $2,
-        bank_ref = COALESCE($3, bank_ref),
-        payment_order_number = COALESCE($4, payment_order_number),
-        comment = COALESCE($5, comment),
-        paid_at = ${status === 'paid' ? 'NOW()' : 'paid_at'},
-        updated_at = NOW()
+        payment_date = ${status === 'paid' ? 'CURRENT_DATE' : 'payment_date'}
       WHERE id = $1 RETURNING *
-    `, [id, status, bank_ref, payment_order_number, comment]);
+    `, [id, status]);
 
     return { payment: q.rows[0] };
   });
@@ -730,14 +719,16 @@ async function routes(fastify, options) {
     const user = req.user;
     if (!hasRole(user, PAY_ROLES)) return reply.code(403).send({ error: 'Нет доступа' });
 
+    try {
     const { sheet_id } = req.query;
     let payments, sheetData;
 
     if (sheet_id) {
       sheetData = await db.query('SELECT * FROM payroll_sheets WHERE id = $1', [sheet_id]);
       payments = await db.query(`
-        SELECT pr.*, e.inn as emp_inn, e.bank_name as emp_bank, e.bik as emp_bik,
-               e.account_number as emp_account, e.is_self_employed as emp_se,
+        SELECT pr.*, e.fio as employee_name, e.is_self_employed as emp_se,
+               se.inn as emp_inn, se.bank_name as emp_bank, se.bik as emp_bik,
+               se.account_number as emp_account,
                se.contract_number as se_contract
         FROM payment_registry pr
         LEFT JOIN employees e ON pr.employee_id = e.id
@@ -747,8 +738,9 @@ async function routes(fastify, options) {
       `, [sheet_id]);
     } else {
       payments = await db.query(`
-        SELECT pr.*, e.inn as emp_inn, e.bank_name as emp_bank, e.bik as emp_bik,
-               e.account_number as emp_account, e.is_self_employed as emp_se,
+        SELECT pr.*, e.fio as employee_name, e.is_self_employed as emp_se,
+               se.inn as emp_inn, se.bank_name as emp_bank, se.bik as emp_bik,
+               se.account_number as emp_account,
                se.contract_number as se_contract
         FROM payment_registry pr
         LEFT JOIN employees e ON pr.employee_id = e.id
@@ -858,6 +850,10 @@ async function routes(fastify, options) {
     reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     reply.header('Content-Disposition', `attachment; filename="payroll_${sheet_id || 'all'}_${Date.now()}.xlsx"`);
     return reply.send(Buffer.from(buffer));
+    } catch (err) {
+      req.log.error(err, 'payments/export error');
+      return reply.code(500).send({ error: 'Export failed', detail: err.message });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -907,8 +903,7 @@ async function routes(fastify, options) {
     `, [b.employee_id, b.role_tag || null, b.day_rate, b.shift_rate || null,
         b.overtime_rate || null, effectiveFrom, b.comment || null, user.id]);
 
-    // Обновляем day_rate в employees
-    await db.query('UPDATE employees SET day_rate = $1 WHERE id = $2', [b.day_rate, b.employee_id]);
+    // day_rate хранится в employee_rates, employees не имеет этого поля
 
     return { rate: q.rows[0] };
   });
@@ -1153,17 +1148,12 @@ async function routes(fastify, options) {
 
     // Создать запись в payment_registry
     const item = check.rows[0];
-    const emp = await db.query('SELECT inn, bank_name, bik, account_number FROM employees WHERE id = $1', [item.employee_id]);
-    const empData = emp.rows[0] || {};
 
     await db.query(`
       INSERT INTO payment_registry
-        (employee_id, employee_name, amount, payment_type, payment_method,
-         inn, bank_name, bik, account_number, status, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10)
-    `, [item.employee_id, item.employee_name, item.amount, item.payment_type,
-        item.payment_method, empData.inn, empData.bank_name, empData.bik,
-        empData.account_number, user.id]);
+        (employee_id, amount, payment_type, payment_date, status)
+      VALUES ($1, $2, $3, CURRENT_DATE, 'pending')
+    `, [item.employee_id, item.amount, item.payment_type || 'one_time']);
 
     // Уведомление запросившему
     await db.query(`

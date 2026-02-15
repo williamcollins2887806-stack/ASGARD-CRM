@@ -144,33 +144,38 @@ module.exports = async function(fastify, options) {
 
     const apiKey = process.env.YANDEX_GEOCODER_API_KEY || '';
     if (!apiKey) {
-      return reply.code(500).send({ error: 'Geocoder API key not configured' });
+      return reply.code(200).send({ found: false, error: 'Geocoder API key not configured' });
     }
 
     const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${encodeURIComponent(apiKey)}&format=json&geocode=${encodeURIComponent(address)}&results=1&lang=ru_RU`;
 
-    const resp = await fetch(url);
-    const data = await resp.json();
+    try {
+      const resp = await fetch(url);
+      const data = await resp.json();
 
-    const geoObj = data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
-    if (!geoObj) return { found: false };
+      const geoObj = data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
+      if (!geoObj) return { found: false };
 
-    const pos = geoObj.Point.pos.split(' ');
-    const lng = parseFloat(pos[0]);
-    const lat = parseFloat(pos[1]);
-    const precision = geoObj.metaDataProperty?.GeocoderMetaData?.precision || 'other';
-    const displayName = geoObj.metaDataProperty?.GeocoderMetaData?.text || '';
+      const pos = geoObj.Point.pos.split(' ');
+      const lng = parseFloat(pos[0]);
+      const lat = parseFloat(pos[1]);
+      const precision = geoObj.metaDataProperty?.GeocoderMetaData?.precision || 'other';
+      const displayName = geoObj.metaDataProperty?.GeocoderMetaData?.text || '';
 
-    const highConfidence = ['exact', 'number', 'near'].includes(precision);
+      const highConfidence = ['exact', 'number', 'near'].includes(precision);
 
-    return {
-      found: true,
-      lat,
-      lng,
-      precision,
-      highConfidence,
-      displayName,
-      region: geoObj.metaDataProperty?.GeocoderMetaData?.AddressDetails?.Country?.AdministrativeArea?.AdministrativeAreaName || ''
-    };
+      return {
+        found: true,
+        lat,
+        lng,
+        precision,
+        highConfidence,
+        displayName,
+        region: geoObj.metaDataProperty?.GeocoderMetaData?.AddressDetails?.Country?.AdministrativeArea?.AdministrativeAreaName || ''
+      };
+    } catch (err) {
+      fastify.log.error('Geocode fetch error:', err.message);
+      return reply.code(500).send({ error: 'Geocoding failed', detail: err.message });
+    }
   });
 };

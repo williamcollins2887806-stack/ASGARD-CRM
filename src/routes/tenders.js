@@ -13,15 +13,21 @@ async function routes(fastify, options) {
   fastify.get('/', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { 
-      period, 
-      status, 
-      pm_id, 
+    const {
+      period,
+      status,
+      pm_id,
       type,
-      search,
-      limit = 100, 
-      offset = 0 
+      search: rawSearch,
+      limit: rawLimit = 100,
+      offset: rawOffset = 0
     } = request.query;
+
+    // Clamp limit to minimum of 1 to prevent negative LIMIT crash
+    const limit = Math.max(1, parseInt(rawLimit, 10) || 100);
+    const offset = Math.max(0, parseInt(rawOffset, 10) || 0);
+    // Strip null bytes from search to prevent PostgreSQL crash
+    const search = rawSearch ? rawSearch.replace(/\0/g, '') : rawSearch;
 
     let sql = `
       SELECT t.*, 

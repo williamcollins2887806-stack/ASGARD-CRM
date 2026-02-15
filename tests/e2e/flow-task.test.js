@@ -28,16 +28,23 @@ module.exports = {
         const created = await api('GET', '/api/tasks/created', { role: 'ADMIN' });
         assertOk(created, 'created tasks');
 
-        // 3. PM comments on task
+        // 3. ADMIN accepts task
+        const accept = await api('PUT', `/api/tasks/${taskId}/accept`, {
+          role: 'ADMIN',
+          body: {}
+        });
+        assertOk(accept, 'accept');
+
+        // 4. ADMIN comments on task
         const comment = await api('POST', `/api/tasks/${taskId}/comments`, {
-          role: 'PM',
+          role: 'ADMIN',
           body: { text: 'E2E: Working on this task' }
         });
         assertOk(comment, 'comment');
 
-        // 4. PM completes task (route is PUT, not POST)
+        // 5. ADMIN completes task
         const complete = await api('PUT', `/api/tasks/${taskId}/complete`, {
-          role: 'PM',
+          role: 'ADMIN',
           body: { comment: 'E2E: Task completed successfully' }
         });
         if (complete.status === 404) skip('task complete endpoint not found');
