@@ -56,12 +56,18 @@ echo ""
 # ─── 1. ФИКС pre_tenders.js (500 ошибка на accept) ───────
 echo "── 1. Фикс pre_tenders.js (500 ошибка accept/reject) ──"
 if check_exists "src/routes/pre_tenders.js" "pre_tenders.js"; then
-  check_not_contains "src/routes/pre_tenders.js" \
-    "LEFT JOIN emails" \
-    "LEFT JOIN emails удалён (разделён на отдельные запросы)"
+  # Accept handler (POST /:id/accept) должен использовать отдельный SELECT, а не JOIN
+  if grep -A5 "id/accept" "$BASE/src/routes/pre_tenders.js" 2>/dev/null | grep -q "LEFT JOIN emails"; then
+    red "Accept handler всё ещё использует LEFT JOIN emails"
+  else
+    green "Accept handler использует отдельные запросы (без LEFT JOIN emails)"
+  fi
   check_contains "src/routes/pre_tenders.js" \
     "slice(0, 500)" \
     "comment_to обрезается до 500 символов (.slice(0,500))"
+  check_contains "src/routes/pre_tenders.js" \
+    "INSERT INTO customers" \
+    "Авто-создание customers перед тендером (FK fix)"
 fi
 echo ""
 
@@ -135,16 +141,40 @@ echo ""
 # ─── 6. CSS — components.css ─────────────────────────────
 echo "── 6. CSS — components.css ──"
 if check_exists "public/assets/css/components.css" "components.css"; then
-  # Проверяем что dash-widget-content имеет padding 20px
+  # Проверяем что dash-widget-content имеет padding 20px (с пробелом или без)
   if grep -q "dash-widget-content" "$BASE/public/assets/css/components.css" 2>/dev/null; then
-    check_contains "public/assets/css/components.css" \
-      "padding:20px" \
-      "dash-widget-content padding увеличен до 20px"
+    if grep -A2 "dash-widget-content" "$BASE/public/assets/css/components.css" 2>/dev/null | grep -qE "padding:\s*20px"; then
+      green "dash-widget-content padding увеличен до 20px"
+    else
+      red "dash-widget-content padding НЕ 20px"
+    fi
   fi
 fi
 echo ""
 
 # ─── 7. .env.example — IMAP переменные ───────────────────
+echo "── 6b. Фикс imap.js — AI анализ всех входящих ──"
+if check_exists "src/services/imap.js" "imap.js"; then
+  check_contains "src/services/imap.js" \
+    "skipAiTypes" \
+    "AI анализ расширен на все типы (кроме skipAiTypes)"
+fi
+echo ""
+
+echo "── 6c. Кнопки inbox_applications.js ──"
+if check_exists "public/assets/js/inbox_applications.js" "inbox_applications.js"; then
+  check_contains "public/assets/js/inbox_applications.js" \
+    "inbox-actions" \
+    "Кнопки действий используют класс inbox-actions"
+  check_contains "public/assets/js/inbox_applications.js" \
+    "btn success" \
+    "Кнопка Принять использует класс btn success"
+  check_contains "public/assets/js/inbox_applications.js" \
+    "btn danger" \
+    "Кнопка Отклонить использует класс btn danger"
+fi
+echo ""
+
 echo "── 7. .env.example — IMAP переменные ──"
 if check_exists ".env.example" ".env.example"; then
   check_contains ".env.example" "IMAP_HOST" "IMAP_HOST в .env.example"

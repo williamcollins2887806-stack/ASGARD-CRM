@@ -398,6 +398,16 @@ module.exports = async function (fastify) {
     const tenderType = pt.source_type === 'email' && emailData.email_type === 'platform_tender' ? 'Тендер' : 'Прямой запрос';
     const commentTo = `Создано из заявки #${id}. ${pt.ai_recommendation || ''} ${comment || ''}`.trim().slice(0, 500);
 
+    // Авто-создание записи в customers если указан ИНН (для FK tenders_customer_inn_fkey)
+    if (pt.customer_inn) {
+      try {
+        await db.query(
+          `INSERT INTO customers (inn, name) VALUES ($1, $2) ON CONFLICT (inn) DO NOTHING`,
+          [pt.customer_inn, pt.customer_name || 'Не указан']
+        );
+      } catch (_) { /* customers table might not have this constraint */ }
+    }
+
     let tenderId;
     try {
       const tenderRes = await db.query(`
@@ -711,6 +721,16 @@ module.exports = async function (fastify) {
       comment || '',
       aiComment
     ].filter(Boolean).join('. ').slice(0, 500);
+
+    // Авто-создание записи в customers если указан ИНН (для FK tenders_customer_inn_fkey)
+    if (pt.customer_inn) {
+      try {
+        await db.query(
+          `INSERT INTO customers (inn, name) VALUES ($1, $2) ON CONFLICT (inn) DO NOTHING`,
+          [pt.customer_inn, pt.customer_name || 'Не указан']
+        );
+      } catch (_) { /* customers table might not have this constraint */ }
+    }
 
     // Транзакция: создаём тендер + обновляем заявку + уведомление + audit
     let tenderId;

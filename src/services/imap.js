@@ -379,8 +379,9 @@ async function saveEmail(account, msg, parsed) {
   }
 
   // ── AI auto-analysis hook (Phase 9) ──
-  // Для прямых запросов и тендеров автоматически создаём входящую заявку
-  if (['direct_request', 'platform_tender'].includes(emailType)) {
+  // Автоматически анализируем все входящие (кроме внутренних, спама, рассылок)
+  const skipAiTypes = ['internal', 'spam', 'newsletter', 'notification', 'auto_reply'];
+  if (!skipAiTypes.includes(emailType)) {
     try {
       const attNames = attachments.map(a => a.filename || 'file');
       const analysis = await aiAnalyzer.analyzeEmail({

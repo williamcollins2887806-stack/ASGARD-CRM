@@ -105,6 +105,14 @@ window.AsgardInboxApplicationsPage = (function(){
         .badge-success{background:#16a34a22;color:#16a34a;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
         .badge-danger{background:#dc262622;color:#dc2626;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
         .badge-muted{background:#94a3b822;color:#94a3b8;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
+        .inbox-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+        .inbox-actions .btn{min-width:120px;padding:10px 20px;font-size:13px;font-weight:700;letter-spacing:.3px}
+        .inbox-actions .btn.success{background:linear-gradient(135deg,#16a34a,#15803d);border-color:#16a34a;color:#fff}
+        .inbox-actions .btn.success:hover{box-shadow:0 4px 15px rgba(22,163,74,.35);transform:translateY(-1px)}
+        .inbox-actions .btn.danger{background:linear-gradient(135deg,#dc2626,#b91c1c);border-color:#dc2626;color:#fff}
+        .inbox-actions .btn.danger:hover{box-shadow:0 4px 15px rgba(220,38,38,.35);transform:translateY(-1px)}
+        .inbox-actions .btn.secondary{background:linear-gradient(135deg,#3b82f6,#2563eb);border-color:#3b82f6;color:#fff}
+        .inbox-actions .btn.secondary:hover{box-shadow:0 4px 15px rgba(59,130,246,.35);transform:translateY(-1px)}
       </style>
     `;
 
@@ -285,16 +293,16 @@ window.AsgardInboxApplicationsPage = (function(){
           </div>` : ''}
 
           <!-- Действия -->
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
+          <div class="inbox-actions">
             ${['new','ai_processed','under_review'].includes(item.status) ? `
-              <button class="btn" id="btnAcceptApp" style="background:#16a34a">✅ Принять</button>
-              <button class="btn" id="btnRejectApp" style="background:#dc2626">❌ Отклонить</button>
+              <button class="btn success" id="btnAcceptApp">Принять</button>
+              <button class="btn danger" id="btnRejectApp">Отклонить</button>
             ` : ''}
             ${['new','ai_processed'].includes(item.status) ? `
-              <button class="btn ghost" id="btnReviewApp">👁 Взять на рассмотрение</button>
+              <button class="btn secondary" id="btnReviewApp">На рассмотрение</button>
             ` : ''}
-            <button class="btn ghost" id="btnReanalyze">🤖 Переанализировать</button>
-            ${item.status !== 'archived' ? '<button class="btn ghost" id="btnArchiveApp">📦 В архив</button>' : ''}
+            <button class="btn ghost" id="btnReanalyze">Переанализировать</button>
+            ${item.status !== 'archived' ? '<button class="btn ghost" id="btnArchiveApp">В архив</button>' : ''}
           </div>
 
           <!-- Загрузка компании на момент анализа -->
