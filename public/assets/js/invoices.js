@@ -64,7 +64,7 @@ window.AsgardInvoicesPage = (function(){
           <button class="btn primary" id="btnAddInvoice">➕ Новый счёт</button>
         </div>
         
-        <div class="table-wrap" style="background:var(--bg-card);border-radius:12px;overflow:hidden">
+        <div class="table-wrap" style="background:var(--bg-elevated);border-radius:12px;overflow:hidden">
           <table class="tbl">
             <thead>
               <tr>

@@ -87,6 +87,13 @@
   --gold-dim: var(--primary-dim);
   --gold-glow: var(--primary-glow);
   --gold-border: var(--primary-border);
+
+  /* Алиасы для JS-модулей (используются в inline <style> блоках) */
+  --text: var(--text-primary);
+  --muted: var(--text-muted);
+  --line: var(--border);
+  --accent: var(--primary);
+  --card: var(--bg-card);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

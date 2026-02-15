@@ -166,7 +166,7 @@ window.AsgardMango = (function(){
       
       <style>
         .call-toggle-widget {
-          background: var(--bg-card);
+          background: var(--bg-elevated);
           border: 1px solid var(--line);
           border-radius: 16px;
           padding: 16px;

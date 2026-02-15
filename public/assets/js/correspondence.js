@@ -174,7 +174,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:24px; }
           .corr-kpi-card { 
             position:relative;
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             border: 1px solid rgba(242,208,138,.15);
             border-radius:16px; 
             padding:18px;
@@ -202,7 +202,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-filters { 
             display:flex; flex-wrap:wrap; gap:12px; 
             margin-bottom:20px; padding:16px; 
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             border: 1px solid var(--border);
             border-radius:14px;
             align-items:flex-end;
@@ -212,7 +212,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-filter select, .corr-filter input { 
             padding:10px 14px; border-radius:10px; 
             border:1px solid var(--border);
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             color:var(--text); font-size:13px;
             transition: all .2s ease;
           }
@@ -232,7 +232,7 @@ window.AsgardCorrespondencePage = (function(){
           }
           .corr-table td { 
             padding:14px; 
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             border:1px solid var(--border);
             transition: all .2s ease;
           }
@@ -276,7 +276,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-btn { 
             padding:6px 10px; border-radius:8px; 
             border:1px solid var(--border);
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             color:var(--text); font-size:12px; cursor:pointer;
             transition: all .2s ease;
           }
@@ -289,7 +289,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-empty { 
             text-align:center; padding:60px 20px; 
             color:var(--muted);
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             border-radius:16px;
             border: 1px dashed var(--border);
           }

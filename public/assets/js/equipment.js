@@ -242,7 +242,7 @@ window.AsgardWarehouse = (function(){
         }
         
         .stat-card {
-          background: var(--bg-card);
+          background: var(--bg-elevated);
           border-radius: 12px;
           padding: 16px;
           display: flex;

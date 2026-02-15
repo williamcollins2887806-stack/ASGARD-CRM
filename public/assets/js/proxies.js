@@ -147,7 +147,7 @@ window.AsgardProxiesPage = (function(){
           
           .proxy-card {
             position:relative;
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             border: 1px solid var(--border);
             border-radius:var(--radius-lg);
             padding:24px;
@@ -221,7 +221,7 @@ window.AsgardProxiesPage = (function(){
             padding:12px 14px;
             border-radius:var(--radius-sm);
             border:1px solid var(--border);
-            background:var(--bg-card);
+            background:var(--bg-elevated);
             color:var(--text-primary);
             font-size:14px;
           }

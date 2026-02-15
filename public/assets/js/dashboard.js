@@ -147,8 +147,8 @@ window.AsgardDashboardPage = (function(){
           
           .dash-card {
             position:relative;
-            background: var(--bg-card);
-            border:1px solid var(--border);
+            background: var(--bg-elevated);
+            border:1px solid rgba(148,163,184,.2);
             border-radius:var(--radius-lg);
             padding:20px;
             overflow:hidden;
@@ -185,8 +185,8 @@ window.AsgardDashboardPage = (function(){
           @media(max-width:900px){ .dash-chart-row { grid-template-columns:1fr; } }
           
           .dash-chart-card {
-            background: var(--bg-card);
-            border:1px solid var(--border);
+            background: var(--bg-elevated);
+            border:1px solid rgba(148,163,184,.2);
             border-radius:var(--radius-lg);
             padding:16px;
           }

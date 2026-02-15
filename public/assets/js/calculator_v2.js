@@ -352,10 +352,10 @@
       
       const html = `<style>
         .calc-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}
-        .calc-tabs .tab{padding:8px 12px;border-radius:8px;background:var(--bg-card);border:1px solid var(--border);cursor:pointer;font-size:12px}
+        .calc-tabs .tab{padding:8px 12px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border);cursor:pointer;font-size:12px}
         .calc-tabs .tab.active{background:rgba(42,108,241,.3);border-color:var(--accent)}
         .calc-tabs .tab.warn{border-color:rgba(245,158,11,.6)}
-        .csec{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+        .csec{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
         .csec h3{margin:0 0 12px;font-size:14px;color:var(--gold)}
         .cbl{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0}
         .cbl input{width:18px;height:18px}
@@ -368,7 +368,7 @@
         .kpi3,.kpi4{display:grid;gap:12px;margin-top:12px}
         .kpi3{grid-template-columns:repeat(3,1fr)}
         .kpi4{grid-template-columns:repeat(4,1fr)}
-        .k{background:var(--bg-card);border-radius:10px;padding:12px;text-align:center}
+        .k{background:var(--bg-elevated);border-radius:10px;padding:12px;text-align:center}
         .k .t{font-size:11px;color:var(--muted)}
         .k .v{font-size:18px;font-weight:700;color:var(--gold)}
         .mini{padding:4px 8px;font-size:11px}
@@ -376,7 +376,7 @@
       <div class="help" style="margin-bottom:12px"><b>ᚱ ${CALC_NAME}</b> — ${esc(st.customer_name)}</div>
       ${tabs(tab)}
       <div id="tabContent">${content}</div>
-      <div style="margin-top:16px;padding:12px;background:var(--bg-card);border-radius:10px;display:flex;justify-content:space-between">
+      <div style="margin-top:16px;padding:12px;background:var(--bg-elevated);border-radius:10px;display:flex;justify-content:space-between">
         <div><span style="color:var(--muted)">Цена с НДС:</span> <b style="font-size:18px;color:var(--gold)">${money(sum.price_with_vat)}</b></div>
         <div><span style="color:var(--muted)">Прибыль/чел-день:</span> <b style="font-size:18px;color:${sum.status==='green'?'#22c55e':sum.status==='yellow'?'#f59e0b':'#e03a4a'}">${money(sum.profit_per_day)}</b></div>
       </div>`;

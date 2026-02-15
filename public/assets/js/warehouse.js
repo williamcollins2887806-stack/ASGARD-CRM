@@ -116,19 +116,19 @@ window.AsgardWarehouse = (function(){
       <div class="warehouse-page">
         <!-- Статистика -->
         <div class="stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
-          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center">
+          <div class="stat-card" style="background:var(--bg-elevated);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:28px;font-weight:700;color:var(--accent)">${stats.total || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">Всего ТМЦ</div>
           </div>
-          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center">
+          <div class="stat-card" style="background:var(--bg-elevated);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:28px;font-weight:700;color:#22c55e">${stats.on_warehouse || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">На складе</div>
           </div>
-          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center">
+          <div class="stat-card" style="background:var(--bg-elevated);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:28px;font-weight:700;color:#3b82f6">${stats.issued || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">Выдано</div>
           </div>
-          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center">
+          <div class="stat-card" style="background:var(--bg-elevated);padding:16px;border-radius:12px;text-align:center;border:1px solid var(--border)">
             <div style="font-size:28px;font-weight:700;color:#f97316">${stats.in_repair || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">В ремонте</div>
           </div>
@@ -173,7 +173,7 @@ window.AsgardWarehouse = (function(){
         </div>
         
         <!-- Таблица оборудования -->
-        <div class="table-wrap" style="background:var(--bg-card);border-radius:12px;overflow:hidden">
+        <div class="table-wrap" style="background:var(--bg-elevated);border-radius:12px;overflow:hidden">
           <table class="tbl" id="equipmentTable">
             <thead>
               <tr>
@@ -451,8 +451,8 @@ window.AsgardWarehouse = (function(){
         `;
       } else {
         resultDiv.innerHTML = `
-          <div style="padding:16px;background:#fef2f2;border-radius:12px;color:#dc2626;text-align:center">
-            ❌ Оборудование не найдено
+          <div style="padding:16px;background:rgba(239,68,68,.1);border-radius:12px;color:#ef4444;text-align:center">
+            Оборудование не найдено
           </div>
         `;
       }

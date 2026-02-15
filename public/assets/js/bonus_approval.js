@@ -390,7 +390,7 @@ window.AsgardBonusApproval = (function(){
         </div>
         
         ${request.director_comment ? `
-          <div style="margin-top:12px;padding:10px;background:var(--bg-card);border-radius:8px;border-left:3px solid ${status.color}">
+          <div style="margin-top:12px;padding:10px;background:var(--bg-elevated);border-radius:8px;border-left:3px solid ${status.color}">
             <div class="help">Ответ директора:</div>
             <div>${esc(request.director_comment)}</div>
           </div>

@@ -72,7 +72,7 @@ window.AsgardCustomDashboard = (function(){
     '</div>' +
     '<style>' +
       '.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}' +
-      '.dash-widget{background:var(--bg-card);border-radius:16px;border:1px solid var(--line);overflow:hidden}' +
+      '.dash-widget{background:var(--bg-elevated);border-radius:16px;border:1px solid var(--line);overflow:hidden}' +
       '.dash-widget:hover{border-color:var(--gold)}' +
       '.dash-widget-header{padding:12px 16px;background:var(--bg-elevated);display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}' +
       '.dash-widget-content{padding:16px;min-height:100px}' +

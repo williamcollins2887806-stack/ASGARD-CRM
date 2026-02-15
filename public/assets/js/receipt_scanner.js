@@ -93,7 +93,7 @@ window.AsgardReceiptScanner = (function(){
         }
         
         .scanner-container {
-          background: var(--bg-card);
+          background: var(--bg-elevated);
           border-radius: 20px;
           width: 100%;
           max-width: 500px;
@@ -517,7 +517,7 @@ window.AsgardReceiptScanner = (function(){
       
       <details style="margin-bottom:16px">
         <summary class="help" style="cursor:pointer">Показать распознанный текст</summary>
-        <pre style="font-size:11px;background:var(--bg-card);padding:8px;border-radius:8px;white-space:pre-wrap;margin-top:8px">${esc(rawText)}</pre>
+        <pre style="font-size:11px;background:var(--bg-elevated);padding:8px;border-radius:8px;white-space:pre-wrap;margin-top:8px">${esc(rawText)}</pre>
       </details>
       
       ${renderManualForm(parsed)}

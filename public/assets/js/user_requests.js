@@ -55,7 +55,7 @@ window.AsgardUserRequestsPage = (function(){
           .ur-tabs { display:flex; gap:8px; margin-bottom:20px; }
           .ur-tab { 
             padding:10px 18px; border-radius:10px; 
-            background:var(--bg-card);
+            background:var(--bg-elevated);
             border:1px solid var(--border);
             color:var(--muted); font-weight:700; cursor:pointer;
             transition: all .2s ease;
@@ -78,7 +78,7 @@ window.AsgardUserRequestsPage = (function(){
           .ur-list { display:grid; gap:12px; }
           
           .ur-card {
-            background: linear-gradient(135deg, var(--bg-card), var(--bg-card));
+            background: linear-gradient(135deg, var(--bg-elevated), var(--bg-elevated));
             border:1px solid var(--border);
             border-radius:14px;
             padding:16px 20px;
@@ -113,7 +113,7 @@ window.AsgardUserRequestsPage = (function(){
           
           .ur-empty {
             text-align:center; padding:60px 20px;
-            background:var(--bg-card);
+            background:var(--bg-elevated);
             border:1px dashed var(--border);
             border-radius:16px;
             color:var(--muted);
@@ -122,13 +122,13 @@ window.AsgardUserRequestsPage = (function(){
           
           .ur-search { 
             display:flex; gap:12px; margin-bottom:16px; 
-            padding:12px; background:var(--bg-card);
+            padding:12px; background:var(--bg-elevated);
             border-radius:12px; align-items:center;
           }
           .ur-search input {
             flex:1; padding:10px 14px; border-radius:10px;
             border:1px solid var(--border);
-            background:var(--bg-card);
+            background:var(--bg-elevated);
             color:var(--text); font-size:14px;
           }
         </style>

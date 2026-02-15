@@ -212,7 +212,7 @@ window.AsgardFX = (function(){
           bottom: 24px;
           left: 50%;
           transform: translateX(-50%) translateY(100px);
-          background: var(--bg-card);
+          background: var(--bg-elevated);
           border: 1px solid ${colors[type] || colors.info};
           border-left: 4px solid ${colors[type] || colors.info};
           border-radius: 12px;

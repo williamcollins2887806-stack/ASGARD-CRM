@@ -341,7 +341,7 @@ window.AsgardSearch = (function(){
     }
     
     .search-modal {
-      background: var(--bg-card);
+      background: var(--bg-elevated);
       border: 1px solid var(--border);
       border-radius: 12px;
       width: 90%;

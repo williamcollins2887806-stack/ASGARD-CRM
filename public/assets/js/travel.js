@@ -99,7 +99,7 @@ window.AsgardTravelPage = (function(){
           .travel-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:24px; }
           .travel-kpi-card {
             position:relative;
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             border:1px solid var(--border);
             border-radius:14px;
             padding:16px;
@@ -122,7 +122,7 @@ window.AsgardTravelPage = (function(){
           .travel-filters {
             display:flex; flex-wrap:wrap; gap:12px;
             margin-bottom:20px; padding:16px;
-            background:var(--bg-card);
+            background:var(--bg-elevated);
             border:1px solid var(--border);
             border-radius:14px;
             align-items:flex-end;
@@ -132,7 +132,7 @@ window.AsgardTravelPage = (function(){
           .travel-filter select, .travel-filter input {
             padding:10px 12px; border-radius:10px;
             border:1px solid var(--border);
-            background:var(--bg-card);
+            background:var(--bg-elevated);
             color:var(--text); font-size:13px;
           }
           
@@ -144,7 +144,7 @@ window.AsgardTravelPage = (function(){
           }
           .travel-table td {
             padding:14px 12px;
-            background:var(--bg-card);
+            background:var(--bg-elevated);
             border:1px solid var(--border);
             transition: all .2s ease;
           }
@@ -167,7 +167,7 @@ window.AsgardTravelPage = (function(){
           .travel-btn {
             padding:6px 10px; border-radius:8px;
             border:1px solid var(--border);
-            background:var(--bg-card);
+            background:var(--bg-elevated);
             color:var(--text); font-size:12px; cursor:pointer;
             transition: all .2s ease;
           }
@@ -175,7 +175,7 @@ window.AsgardTravelPage = (function(){
           
           .travel-empty {
             text-align:center; padding:60px 20px;
-            background:var(--bg-card);
+            background:var(--bg-elevated);
             border:1px dashed var(--border);
             border-radius:16px;
             color:var(--muted);
