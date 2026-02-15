@@ -1973,14 +1973,60 @@ try{
 
     // TKP Follow-up: проверка напоминаний при старте
     if(window.AsgardTkpFollowup){
-      try { 
+      try {
         AsgardTkpFollowup.checkAndCreateReminders().catch(e => console.warn('TKP Followup check error:', e));
       } catch(e){ console.warn('TKP Followup init error:', e); }
     }
 
+    // SSE: подключение для real-time обновлений
+    initGlobalSSE();
+
     if(startRouter){
       if(!location.hash) location.hash="#/welcome";
       AsgardRouter.start();
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SSE — Server-Sent Events для real-time уведомлений
+  // ═══════════════════════════════════════════════════════════════
+  let _sseSource = null;
+
+  function initGlobalSSE() {
+    try {
+      const token = localStorage.getItem('asg_token');
+      if (!token || _sseSource) return;
+
+      _sseSource = new EventSource('/api/sse/stream?token=' + encodeURIComponent(token));
+
+      // Глобальные уведомления о тендерах
+      _sseSource.addEventListener('tender:new_assignment', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          toast('Тендер назначен', `Вам назначен тендер от ${data.customer_name || 'заказчика'}`);
+        } catch(_) {}
+      });
+
+      _sseSource.addEventListener('tender:new_estimation', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          toast('Новый просчёт', `Тендер #${data.tender_id} — ${data.customer_name || ''}`);
+        } catch(_) {}
+      });
+
+      _sseSource.addEventListener('tender:status_changed', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          toast('Статус тендера', `${data.customer_name || ''}: ${data.old_status} → ${data.new_status}`);
+        } catch(_) {}
+      });
+
+      _sseSource.addEventListener('error', () => {
+        if (_sseSource) { _sseSource.close(); _sseSource = null; }
+        setTimeout(initGlobalSSE, 10000);
+      });
+    } catch(e) {
+      console.warn('[SSE] Global init error:', e);
     }
   }
 

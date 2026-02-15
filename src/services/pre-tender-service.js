@@ -13,26 +13,34 @@ const path = require('path');
 
 // ── System prompt для AI-анализа заявок ──────────────────────────────
 
-const SYSTEM_PROMPT = `Ты — аналитик тендерного отдела ООО "Асгард Сервис".
-Компания специализируется на:
-- Обслуживание трубопроводов (химическая чистка, диагностика, ремонт)
-- HVAC системы (вентиляция, кондиционирование, отопление)
-- Работы на нефтегазовых объектах (НПЗ, ГПЗ, МЛСП)
-- Монтажные и пусконаладочные работы
+const SYSTEM_PROMPT = `Ты — старший аналитик тендерного отдела ООО "Асгард Сервис".
+
+ПРОФИЛЬ КОМПАНИИ:
+- Обслуживание трубопроводов (химическая чистка, диагностика, ремонт, гидроиспытания)
+- HVAC системы (вентиляция, кондиционирование, отопление, дымоудаление)
+- Работы на нефтегазовых объектах (НПЗ, ГПЗ, МЛСП, КС)
+- Монтажные и пусконаладочные работы (технологические трубопроводы, металлоконструкции)
 - Сервисное обслуживание промышленного оборудования
+- Антикоррозионная защита, теплоизоляция
+- Работы на высоте, в ограниченных пространствах
 
-Опыт: Арктическая платформа "Приразломная", Хабаровский НПЗ,
-объекты Роскосмос, промышленные предприятия по всей России.
+ОПЫТ: Арктическая платформа "Приразломная", Хабаровский НПЗ, Омский НПЗ,
+объекты Роскосмос, "Газпром нефть", "Лукойл", промышленные предприятия по всей России.
 
-Твоя задача — проанализировать входящую заявку и дать рекомендацию.
+ЗАДАЧА: Проанализировать входящую заявку и дать структурированную рекомендацию.
 
 ФОРМАТ ОТВЕТА (строго JSON, без markdown):
 {
-  "summary": "Развёрнутый отчёт по заявке...",
+  "summary": "Развёрнутый отчёт по заявке (3-5 предложений)",
   "color": "green|yellow|red",
-  "recommendation": "Краткая рекомендация 2-3 предложения",
+  "recommendation": "Конкретная рекомендация 2-3 предложения",
   "work_match_score": 0-100,
-  "workload_warning": "Предупреждение или null",
+  "workload_warning": "Предупреждение о загрузке или null",
+  "confidence": 0.0-1.0,
+  "urgency": "high|medium|low",
+  "auto_suggestion": "accept_green|review|reject_red|need_info",
+  "risk_factors": ["фактор 1", "фактор 2"],
+  "required_specialists": ["сварщик НАКС", "монтажник", "инженер ПНР"],
   "extracted_data": {
     "customer_name": "...",
     "customer_inn": "... или null",
@@ -46,16 +54,27 @@ const SYSTEM_PROMPT = `Ты — аналитик тендерного отдел
 }
 
 ПРАВИЛА МАРКИРОВКИ:
-🟢 GREEN (work_match_score >= 70): Наша работа, специалисты свободны
-🟡 YELLOW (work_match_score 30-69): Частично наш профиль или есть риски
-🔴 RED (work_match_score < 30): Не наш профиль или невыполнимо
+🟢 GREEN (work_match_score >= 70): Точно наш профиль, есть опыт и специалисты
+🟡 YELLOW (work_match_score 30-69): Частично наш профиль, есть риски или нужна доп.информация
+🔴 RED (work_match_score < 30): Не наш профиль, невыполнимо, или нерентабельно
+
+ПРАВИЛА СРОЧНОСТИ (urgency):
+- high: дедлайн менее 14 дней ИЛИ указано "срочно/urgent"
+- medium: дедлайн 14-45 дней
+- low: дедлайн более 45 дней или не указан
+
+ПРАВИЛА AUTO_SUGGESTION:
+- accept_green: confidence >= 0.85 и color = green → можно сразу принимать
+- reject_red: confidence >= 0.85 и color = red → можно сразу отклонять
+- need_info: не хватает данных для оценки (нет ТЗ, суммы, сроков)
+- review: все остальные случаи → нужен ручной разбор
 
 В summary укажи:
 1. Что за работа и для кого
-2. Наш ли это профиль
-3. Есть ли подобный опыт
+2. Наш ли это профиль (конкретные пересечения)
+3. Есть ли подобный опыт на аналогичных объектах
 4. Риски и сложности
-5. Рекомендация по участию`;
+5. Какие специалисты потребуются`;
 
 // ── Создание заявки из письма ────────────────────────────────────────
 
@@ -110,9 +129,13 @@ async function createPreTenderFromEmail(emailId) {
 
 // ── Извлечение текста из вложений (PDF, DOCX) ───────────────────────
 
-const MAX_TEXT_PER_FILE = 5000;  // chars per file
-const MAX_TEXT_TOTAL = 15000;    // total chars for all attachments
+const MAX_TEXT_PER_FILE = 10000;  // chars per file (increased for detailed analysis)
+const MAX_TEXT_TOTAL = 30000;     // total chars for all attachments
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB for vision
+
+// Типы файлов, поддерживающие мультимодальную отправку (изображения)
+const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
 async function extractTextFromFile(filePath, mimeType) {
   try {
@@ -124,12 +147,14 @@ async function extractTextFromFile(filePath, mimeType) {
     const buf = fs.readFileSync(absPath);
     const lc = (filePath || '').toLowerCase();
 
+    // PDF
     if (mimeType === 'application/pdf' || lc.endsWith('.pdf')) {
       const pdfParse = require('pdf-parse');
       const result = await pdfParse(buf);
       return result.text ? result.text.slice(0, MAX_TEXT_PER_FILE) : null;
     }
 
+    // DOCX / DOC
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         || lc.endsWith('.docx') || mimeType === 'application/msword' || lc.endsWith('.doc')) {
       const mammoth = require('mammoth');
@@ -137,9 +162,64 @@ async function extractTextFromFile(filePath, mimeType) {
       return result.value ? result.value.slice(0, MAX_TEXT_PER_FILE) : null;
     }
 
+    // XLSX / XLS — извлекаем данные из таблиц
+    if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        || mimeType === 'application/vnd.ms-excel'
+        || lc.endsWith('.xlsx') || lc.endsWith('.xls')) {
+      try {
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buf);
+        const lines = [];
+        workbook.eachSheet((sheet, sheetId) => {
+          if (sheetId > 3) return; // max 3 sheets
+          lines.push(`[Лист: ${sheet.name}]`);
+          let rowCount = 0;
+          sheet.eachRow((row, rowNum) => {
+            if (rowCount++ > 200) return; // max 200 rows
+            const vals = [];
+            row.eachCell((cell) => {
+              const v = cell.text || cell.value;
+              if (v !== null && v !== undefined && v !== '') vals.push(String(v).trim());
+            });
+            if (vals.length) lines.push(vals.join(' | '));
+          });
+        });
+        const text = lines.join('\n');
+        return text ? text.slice(0, MAX_TEXT_PER_FILE) : null;
+      } catch (xlErr) {
+        console.warn('[PreTender] XLSX extraction error:', xlErr.message);
+        return null;
+      }
+    }
+
     return null;
   } catch (err) {
     console.warn('[PreTender] Text extraction error:', filePath, err.message);
+    return null;
+  }
+}
+
+/**
+ * Подготовить изображения для мультимодального AI-запроса (Claude Vision)
+ * Возвращает массив content blocks для messages API
+ */
+function prepareImageBlocks(filePath, mimeType) {
+  try {
+    const absPath = path.join(__dirname, '..', '..', filePath);
+    if (!fs.existsSync(absPath)) return null;
+    const stats = fs.statSync(absPath);
+    if (stats.size > MAX_IMAGE_SIZE) return null;
+    if (!IMAGE_MIMES.includes(mimeType)) return null;
+
+    const buf = fs.readFileSync(absPath);
+    const base64 = buf.toString('base64');
+    return {
+      type: 'image',
+      source: { type: 'base64', media_type: mimeType, data: base64 }
+    };
+  } catch (err) {
+    console.warn('[PreTender] Image preparation error:', filePath, err.message);
     return null;
   }
 }
@@ -157,9 +237,10 @@ async function analyzePreTender(preTenderId) {
   if (!ptRes.rows.length) throw new Error('Заявка не найдена');
   const pt = ptRes.rows[0];
 
-  // Получаем вложения и извлекаем текст из PDF/DOCX
+  // Получаем вложения и извлекаем текст из PDF/DOCX + изображения для Vision
   let attachmentTexts = 'Вложений нет';
   const extractedTexts = [];
+  const imageBlocks = []; // для мультимодального запроса Claude Vision
   let totalExtracted = 0;
 
   if (pt.email_id) {
@@ -171,11 +252,19 @@ async function analyzePreTender(preTenderId) {
       const parts = [];
       for (const a of attRes.rows) {
         parts.push(`${a.original_filename} (${a.mime_type}, ${Math.round((a.size || 0) / 1024)} КБ)`);
-        if (a.file_path && totalExtracted < MAX_TEXT_TOTAL) {
-          const text = await extractTextFromFile(a.file_path, a.mime_type);
-          if (text) {
-            extractedTexts.push(`--- Содержимое «${a.original_filename}» ---\n${text}`);
-            totalExtracted += text.length;
+        if (a.file_path) {
+          // Изображения — собираем для мультимодального запроса
+          if (IMAGE_MIMES.includes(a.mime_type) && imageBlocks.length < 5) {
+            const imgBlock = prepareImageBlocks(a.file_path, a.mime_type);
+            if (imgBlock) imageBlocks.push(imgBlock);
+          }
+          // Текстовые документы — извлекаем текст
+          if (totalExtracted < MAX_TEXT_TOTAL && !IMAGE_MIMES.includes(a.mime_type)) {
+            const text = await extractTextFromFile(a.file_path, a.mime_type);
+            if (text) {
+              extractedTexts.push(`--- Содержимое «${a.original_filename}» ---\n${text}`);
+              totalExtracted += text.length;
+            }
           }
         }
       }
@@ -186,11 +275,19 @@ async function analyzePreTender(preTenderId) {
   // Также проверяем вручную загруженные документы
   const manualDocs = Array.isArray(pt.manual_documents) ? pt.manual_documents : [];
   for (const doc of manualDocs) {
-    if (doc.path && totalExtracted < MAX_TEXT_TOTAL) {
-      const text = await extractTextFromFile(doc.path, doc.mime_type);
-      if (text) {
-        extractedTexts.push(`--- Содержимое «${doc.original_name || doc.filename}» ---\n${text}`);
-        totalExtracted += text.length;
+    if (doc.path) {
+      // Изображения
+      if (IMAGE_MIMES.includes(doc.mime_type) && imageBlocks.length < 5) {
+        const imgBlock = prepareImageBlocks(doc.path, doc.mime_type);
+        if (imgBlock) imageBlocks.push(imgBlock);
+      }
+      // Текстовые документы
+      if (totalExtracted < MAX_TEXT_TOTAL && !IMAGE_MIMES.includes(doc.mime_type)) {
+        const text = await extractTextFromFile(doc.path, doc.mime_type);
+        if (text) {
+          extractedTexts.push(`--- Содержимое «${doc.original_name || doc.filename}» ---\n${text}`);
+          totalExtracted += text.length;
+        }
       }
     }
   }
@@ -223,16 +320,33 @@ ${workloadInfo}`;
   }
 
   try {
+    // Формируем content: текст + (опционально) изображения для Vision
+    let messageContent;
+    if (imageBlocks.length > 0 && config.hasAnthropicKey) {
+      // Мультимодальный запрос: текст + изображения (только Anthropic поддерживает Vision)
+      messageContent = [
+        { type: 'text', text: userMessage },
+        ...imageBlocks.map((img, i) => ({
+          ...img,
+          // Подпись для каждого изображения
+        }))
+      ];
+      // Добавляем инструкцию по изображениям
+      messageContent[0].text += '\n\nК заявке приложены изображения (чертежи, фото, сканы). Проанализируй их содержимое и учти в оценке.';
+    } else {
+      messageContent = userMessage;
+    }
+
     const response = await aiProvider.complete({
       system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
+      messages: [{ role: 'user', content: messageContent }],
       maxTokens: 2048,
       temperature: 0.3
     });
 
     const result = parseAIResult(response.text);
 
-    // Обновляем заявку
+    // Обновляем заявку (включая новые AI-поля)
     await db.query(`
       UPDATE pre_tender_requests SET
         ai_summary = $1,
@@ -240,23 +354,33 @@ ${workloadInfo}`;
         ai_recommendation = $3,
         ai_work_match_score = $4,
         ai_workload_warning = $5,
+        ai_confidence = $6,
+        ai_urgency = $7,
+        ai_auto_suggestion = $8,
+        ai_risk_factors = $9,
+        ai_required_specialists = $10,
         ai_processed_at = NOW(),
-        customer_name = COALESCE(NULLIF($6, ''), customer_name),
-        customer_inn = COALESCE(NULLIF($7, ''), customer_inn),
-        contact_person = COALESCE(NULLIF($8, ''), contact_person),
-        contact_phone = COALESCE(NULLIF($9, ''), contact_phone),
-        work_description = COALESCE(NULLIF($10, ''), work_description),
-        work_location = COALESCE(NULLIF($11, ''), work_location),
-        work_deadline = COALESCE($12, work_deadline),
-        estimated_sum = COALESCE($13, estimated_sum),
+        customer_name = COALESCE(NULLIF($11, ''), customer_name),
+        customer_inn = COALESCE(NULLIF($12, ''), customer_inn),
+        contact_person = COALESCE(NULLIF($13, ''), contact_person),
+        contact_phone = COALESCE(NULLIF($14, ''), contact_phone),
+        work_description = COALESCE(NULLIF($15, ''), work_description),
+        work_location = COALESCE(NULLIF($16, ''), work_location),
+        work_deadline = COALESCE($17, work_deadline),
+        estimated_sum = COALESCE($18, estimated_sum),
         updated_at = NOW()
-      WHERE id = $14
+      WHERE id = $19
     `, [
       result.summary,
       result.color,
       result.recommendation,
       result.work_match_score,
       result.workload_warning,
+      result.confidence,
+      result.urgency,
+      result.auto_suggestion,
+      JSON.stringify(result.risk_factors),
+      JSON.stringify(result.required_specialists),
       result.extracted_data?.customer_name || '',
       result.extracted_data?.customer_inn || '',
       result.extracted_data?.contact_person || '',
@@ -293,12 +417,20 @@ function parseAIResult(text) {
 
   try {
     const p = JSON.parse(clean);
+    const color = ['green', 'yellow', 'red'].includes(p.color) ? p.color : 'yellow';
+    const confidence = Math.max(0, Math.min(1, parseFloat(p.confidence) || 0.5));
     return {
       summary: p.summary || '',
-      color: ['green', 'yellow', 'red'].includes(p.color) ? p.color : 'yellow',
+      color,
       recommendation: p.recommendation || '',
       work_match_score: Math.max(0, Math.min(100, parseInt(p.work_match_score) || 50)),
       workload_warning: p.workload_warning || null,
+      confidence,
+      urgency: ['high', 'medium', 'low'].includes(p.urgency) ? p.urgency : 'medium',
+      auto_suggestion: ['accept_green', 'review', 'reject_red', 'need_info'].includes(p.auto_suggestion)
+        ? p.auto_suggestion : 'review',
+      risk_factors: Array.isArray(p.risk_factors) ? p.risk_factors : [],
+      required_specialists: Array.isArray(p.required_specialists) ? p.required_specialists : [],
       extracted_data: p.extracted_data || {}
     };
   } catch (e) {
@@ -314,6 +446,11 @@ function fallbackResult() {
     recommendation: 'Просмотрите заявку вручную.',
     work_match_score: 50,
     workload_warning: null,
+    confidence: 0,
+    urgency: 'medium',
+    auto_suggestion: 'review',
+    risk_factors: [],
+    required_specialists: [],
     extracted_data: {}
   };
 }
@@ -331,6 +468,11 @@ function fallbackAnalysis(pt) {
     recommendation: matches.length > 2 ? 'Рекомендуется рассмотреть заявку.' : 'Требуется детальное изучение.',
     work_match_score: score,
     workload_warning: null,
+    confidence: 0.3,
+    urgency: 'medium',
+    auto_suggestion: 'review',
+    risk_factors: [],
+    required_specialists: [],
     extracted_data: {}
   };
 }

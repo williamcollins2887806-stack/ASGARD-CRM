@@ -8,6 +8,7 @@
 
 const db = require('../services/db');
 const preTenderService = require('../services/pre-tender-service');
+const { sendToUser, sendToRoles, broadcast } = require('./sse');
 const path = require('path');
 const fs = require('fs');
 
@@ -221,7 +222,15 @@ module.exports = async function (fastify) {
       user.id
     ]);
 
-    return { success: true, id: ins.rows[0].id };
+    const newId = ins.rows[0].id;
+
+    // SSE: уведомляем о новой заявке
+    broadcast('pre_tender:new', {
+      id: newId, customer_name: customer_name || '', ai_color: 'gray',
+      status: 'new', source_type: 'manual', created_by: user.id
+    });
+
+    return { success: true, id: newId };
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -234,6 +243,11 @@ module.exports = async function (fastify) {
     const allowed = ['customer_name', 'customer_inn', 'customer_email', 'contact_person',
                      'contact_phone', 'work_description', 'work_location', 'work_deadline',
                      'estimated_sum', 'assigned_to', 'ai_color'];
+
+    // Статус можно менять только на допустимые значения (для канбан drag-and-drop)
+    if (request.body.status && ['new', 'in_review', 'need_docs'].includes(request.body.status)) {
+      allowed.push('status');
+    }
 
     const fields = [];
     const vals = [];
@@ -255,6 +269,9 @@ module.exports = async function (fastify) {
       `UPDATE pre_tender_requests SET ${fields.join(', ')} WHERE id = $${idx} AND status IN ('new','in_review','need_docs')`,
       vals
     );
+
+    // SSE: уведомляем об обновлении заявки
+    broadcast('pre_tender:updated', { id: parseInt(id), updated_fields: Object.keys(request.body) });
 
     return { success: true };
   });
@@ -490,6 +507,21 @@ module.exports = async function (fastify) {
       } catch (_) {}
     }
 
+    // SSE: уведомляем о принятии заявки
+    broadcast('pre_tender:accepted', {
+      id: parseInt(id), tender_id: tenderId,
+      customer_name: pt.customer_name || pt.from_name || '',
+      accepted_by: user.id
+    });
+
+    // SSE: уведомляем назначенного РП
+    if (assigned_pm_id) {
+      sendToUser(assigned_pm_id, 'tender:new_assignment', {
+        tender_id: tenderId, customer_name: pt.customer_name || '',
+        pre_tender_id: parseInt(id)
+      });
+    }
+
     return { success: true, tender_id: tenderId, response_email_id: responseEmailId };
   });
 
@@ -587,11 +619,193 @@ module.exports = async function (fastify) {
       `, [user.id, parseInt(id), JSON.stringify({ reject_reason })]);
     } catch (_) {}
 
+    // SSE: уведомляем об отклонении
+    broadcast('pre_tender:rejected', {
+      id: parseInt(id), customer_name: pt.customer_name || '',
+      rejected_by: user.id
+    });
+
     return { success: true, response_email_id: responseEmailId };
   });
 
   // ═══════════════════════════════════════════════════════════════════
-  // 11. DELETE /:id — Удалить
+  // 11. POST /:id/fast-track — БЫСТРЫЙ ПУТЬ (сразу на просчёт)
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/:id/fast-track', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { pm_id, contact_person, contact_phone, comment, send_email = true } = request.body || {};
+    const user = request.user;
+
+    // Валидация: pm_id обязателен
+    if (!pm_id) {
+      return reply.code(400).send({ error: 'Необходимо указать РП (pm_id)' });
+    }
+
+    // Проверяем что РП существует и имеет нужную роль
+    const pmRes = await db.query(
+      "SELECT id, name, role FROM users WHERE id = $1 AND is_active = true AND role IN ('PM','HEAD_PM','ADMIN')",
+      [pm_id]
+    );
+    if (!pmRes.rows.length) {
+      return reply.code(400).send({ error: 'Указанный пользователь не найден или не является РП' });
+    }
+    const pm = pmRes.rows[0];
+
+    // Получаем заявку
+    const ptRes = await db.query(`
+      SELECT pt.*, e.subject as email_subject, e.from_email, e.from_name, e.email_type, e.id as eid
+      FROM pre_tender_requests pt
+      LEFT JOIN emails e ON e.id = pt.email_id
+      WHERE pt.id = $1
+    `, [id]);
+
+    if (!ptRes.rows.length) return reply.code(404).send({ error: 'Заявка не найдена' });
+    const pt = ptRes.rows[0];
+
+    if (!['new', 'in_review', 'need_docs'].includes(pt.status)) {
+      return reply.code(400).send({ error: 'Заявка уже обработана (статус: ' + pt.status + ')' });
+    }
+
+    const period = new Date().toISOString().slice(0, 7);
+    const tenderType = pt.source_type === 'email' && pt.email_type === 'platform_tender' ? 'Тендер' : 'Прямой запрос';
+    const aiComment = pt.ai_recommendation ? `AI: ${pt.ai_recommendation}` : '';
+    const fullComment = [
+      `Быстрый путь из заявки #${id}`,
+      comment || '',
+      aiComment
+    ].filter(Boolean).join('. ');
+
+    // Транзакция: создаём тендер + обновляем заявку + уведомление + audit
+    let tenderId;
+    try {
+      tenderId = await db.transaction(async (client) => {
+        // 1. Создаём тендер со статусом "Отправлено на просчёт"
+        const tenderRes = await client.query(`
+          INSERT INTO tenders (
+            customer_name, customer_inn, tender_type, tender_status,
+            tender_price, docs_deadline, responsible_pm_id,
+            comment_to, period, created_by, created_at, handoff_at
+          ) VALUES ($1, $2, $3, 'Отправлено на просчёт', $4, $5, $6, $7, $8, $9, NOW(), NOW())
+          RETURNING id
+        `, [
+          pt.customer_name || pt.from_name || 'Не указан',
+          pt.customer_inn || null,
+          tenderType,
+          pt.estimated_sum || null,
+          pt.work_deadline || null,
+          pm_id,
+          fullComment,
+          period,
+          user.id
+        ]);
+        const tId = tenderRes.rows[0].id;
+
+        // 2. Обновляем заявку → accepted
+        await client.query(`
+          UPDATE pre_tender_requests SET
+            status = 'accepted',
+            decision_by = $1, decision_at = NOW(), decision_comment = $2,
+            created_tender_id = $3,
+            contact_person = COALESCE(NULLIF($4, ''), contact_person),
+            contact_phone = COALESCE(NULLIF($5, ''), contact_phone),
+            assigned_to = $6,
+            updated_at = NOW()
+          WHERE id = $7
+        `, [user.id, 'Быстрый путь: сразу на просчёт', tId, contact_person || '', contact_phone || '', pm_id, id]);
+
+        // 3. Уведомление РП
+        await client.query(`
+          INSERT INTO notifications (user_id, title, message, type, link, entity_id, created_at)
+          VALUES ($1, $2, $3, 'estimation_request', $4, $5, NOW())
+        `, [
+          pm_id,
+          'Новый тендер на просчёт',
+          `Вам назначен тендер от ${pt.customer_name || 'заказчика'}. ${comment || ''}`.trim(),
+          `/tenders/${tId}`,
+          tId
+        ]);
+
+        // 4. Audit log
+        await client.query(`
+          INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+          VALUES ($1, 'pre_tender', $2, 'fast_track', $3, NOW())
+        `, [user.id, parseInt(id), JSON.stringify({ tender_id: tId, pm_id, comment })]);
+
+        return tId;
+      });
+    } catch (txErr) {
+      console.error('[PreTender] Fast-track transaction error:', txErr.message);
+      return reply.code(500).send({ error: 'Ошибка создания тендера: ' + txErr.message });
+    }
+
+    // 5. Отправить email заказчику (вне транзакции)
+    let responseEmailId = null;
+    if (send_email && pt.customer_email) {
+      try {
+        const tplRes = await db.query(
+          "SELECT * FROM email_templates_v2 WHERE code = 'tender_accept' AND is_active = true LIMIT 1"
+        );
+        if (tplRes.rows.length) {
+          const tpl = tplRes.rows[0];
+          const letterhead = require('../services/email-letterhead');
+
+          const subject = letterhead.fillTemplate(tpl.subject_template, {
+            original_subject: pt.email_subject || pt.work_description?.slice(0, 50) || 'заявка'
+          });
+          const bodyHtml = letterhead.fillTemplate(tpl.body_template, {
+            contact_person: pm.name || contact_person || 'менеджер',
+            contact_phone: contact_phone || ''
+          });
+          const finalHtml = tpl.use_letterhead ? letterhead.wrapInLetterhead(bodyHtml) : bodyHtml;
+
+          const accRes = await db.query('SELECT id FROM email_accounts WHERE is_active = true AND smtp_host IS NOT NULL LIMIT 1');
+          if (accRes.rows.length) {
+            const emailIns = await db.query(`
+              INSERT INTO emails (
+                account_id, direction, to_emails, subject, body_html, body_text,
+                email_type, is_read, sent_by_user_id, reply_to_email_id, email_date
+              ) VALUES ($1, 'outbound', $2, $3, $4, $5, 'crm_outbound', true, $6, $7, NOW())
+              RETURNING id
+            `, [
+              accRes.rows[0].id,
+              JSON.stringify([{ address: pt.customer_email, name: pt.customer_name || '' }]),
+              subject, finalHtml, subject, user.id, pt.email_id || null
+            ]);
+            responseEmailId = emailIns.rows[0].id;
+            await db.query('UPDATE pre_tender_requests SET response_email_id = $1 WHERE id = $2', [responseEmailId, id]);
+          }
+        }
+      } catch (emailErr) {
+        console.error('[PreTender] Fast-track email error:', emailErr.message);
+      }
+    }
+
+    // 6. SSE: уведомляем всех о fast-track
+    broadcast('pre_tender:accepted', {
+      id: parseInt(id), tender_id: tenderId,
+      customer_name: pt.customer_name || '', fast_track: true,
+      accepted_by: user.id
+    });
+
+    // SSE: уведомляем РП о новом тендере на просчёт
+    sendToUser(pm_id, 'tender:new_estimation', {
+      tender_id: tenderId, customer_name: pt.customer_name || '',
+      pre_tender_id: parseInt(id), comment: comment || ''
+    });
+
+    return {
+      success: true,
+      tender_id: tenderId,
+      tender_status: 'Отправлено на просчёт',
+      assigned_pm: pm.name,
+      response_email_id: responseEmailId
+    };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 12. DELETE /:id — Удалить
   // ═══════════════════════════════════════════════════════════════════
   fastify.delete('/:id', {
     preHandler: [fastify.requireRoles(ALLOWED_ROLES)]

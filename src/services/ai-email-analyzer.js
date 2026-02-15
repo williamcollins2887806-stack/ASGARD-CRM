@@ -12,6 +12,8 @@
 
 const db = require('./db');
 const aiProvider = require('./ai-provider');
+const fs = require('fs');
+const path = require('path');
 
 // ── System prompt для анализа входящих писем ─────────────────────────
 
@@ -58,6 +60,98 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 
 ВАЖНО: Отвечай ТОЛЬКО JSON, без markdown-форматирования, без \`\`\`json блоков.`;
 
+// ── Извлечение текста из вложений для классификации ──────────────────
+
+const MAX_EXTRACT_PER_FILE = 3000;
+const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+async function extractAttachmentTexts(emailId) {
+  if (!emailId) return { texts: [], imageBlocks: [] };
+  try {
+    const attRes = await db.query(
+      'SELECT original_filename, mime_type, size, file_path FROM email_attachments WHERE email_id = $1',
+      [emailId]
+    );
+    if (!attRes.rows.length) return { texts: [], imageBlocks: [] };
+
+    const texts = [];
+    const imageBlocks = [];
+
+    for (const a of attRes.rows) {
+      if (!a.file_path) continue;
+      const absPath = path.join(__dirname, '..', '..', a.file_path);
+      if (!fs.existsSync(absPath)) continue;
+
+      // Изображения — готовим для Vision
+      if (IMAGE_MIMES.includes(a.mime_type) && imageBlocks.length < 3) {
+        const stats = fs.statSync(absPath);
+        if (stats.size <= 5 * 1024 * 1024) {
+          const buf = fs.readFileSync(absPath);
+          imageBlocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: a.mime_type, data: buf.toString('base64') }
+          });
+        }
+        continue;
+      }
+
+      // XLSX
+      if (a.mime_type?.includes('spreadsheet') || a.mime_type?.includes('ms-excel')
+          || a.file_path.endsWith('.xlsx') || a.file_path.endsWith('.xls')) {
+        try {
+          const ExcelJS = require('exceljs');
+          const buf = fs.readFileSync(absPath);
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.load(buf);
+          const lines = [];
+          workbook.eachSheet((sheet, sheetId) => {
+            if (sheetId > 2) return;
+            lines.push(`[${sheet.name}]`);
+            let cnt = 0;
+            sheet.eachRow((row) => {
+              if (cnt++ > 100) return;
+              const vals = [];
+              row.eachCell((cell) => {
+                const v = cell.text || cell.value;
+                if (v != null && v !== '') vals.push(String(v).trim());
+              });
+              if (vals.length) lines.push(vals.join(' | '));
+            });
+          });
+          if (lines.length) texts.push(`[${a.original_filename}]\n${lines.join('\n').slice(0, MAX_EXTRACT_PER_FILE)}`);
+        } catch (_) {}
+        continue;
+      }
+
+      // PDF
+      if (a.mime_type === 'application/pdf' || a.file_path.endsWith('.pdf')) {
+        try {
+          const pdfParse = require('pdf-parse');
+          const buf = fs.readFileSync(absPath);
+          const result = await pdfParse(buf);
+          if (result.text) texts.push(`[${a.original_filename}]\n${result.text.slice(0, MAX_EXTRACT_PER_FILE)}`);
+        } catch (_) {}
+        continue;
+      }
+
+      // DOCX
+      if (a.file_path.endsWith('.docx') || a.mime_type?.includes('wordprocessingml')) {
+        try {
+          const mammoth = require('mammoth');
+          const buf = fs.readFileSync(absPath);
+          const result = await mammoth.extractRawText({ buffer: buf });
+          if (result.value) texts.push(`[${a.original_filename}]\n${result.value.slice(0, MAX_EXTRACT_PER_FILE)}`);
+        } catch (_) {}
+      }
+    }
+
+    return { texts, imageBlocks };
+  } catch (err) {
+    console.warn('[AI-Analyzer] Attachment extraction error:', err.message);
+    return { texts: [], imageBlocks: [] };
+  }
+}
+
 // ── Анализ письма ────────────────────────────────────────────────────
 
 async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, attachmentNames }) {
@@ -69,13 +163,28 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
     // Собираем контекст о загрузке
     const workload = await getWorkloadData();
 
+    // Извлекаем содержимое вложений (текст + изображения)
+    const { texts: attachmentTexts, imageBlocks } = await extractAttachmentTexts(emailId);
+
     const userMessage = buildAnalysisMessage({
-      subject, bodyText, fromEmail, fromName, attachmentNames, workload
+      subject, bodyText, fromEmail, fromName, attachmentNames, workload, attachmentTexts
     });
+
+    // Формируем content: текст + (опционально) изображения
+    const config = aiProvider.getConfig();
+    let messageContent;
+    if (imageBlocks.length > 0 && config.hasAnthropicKey) {
+      messageContent = [
+        { type: 'text', text: userMessage + '\n\nК письму приложены изображения. Учти их содержимое при классификации.' },
+        ...imageBlocks
+      ];
+    } else {
+      messageContent = userMessage;
+    }
 
     const response = await aiProvider.complete({
       system: ANALYSIS_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
+      messages: [{ role: 'user', content: messageContent }],
       maxTokens: 1024,
       temperature: 0.3
     });
@@ -124,7 +233,7 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
 
 // ── Построение сообщения для AI ──────────────────────────────────────
 
-function buildAnalysisMessage({ subject, bodyText, fromEmail, fromName, attachmentNames, workload }) {
+function buildAnalysisMessage({ subject, bodyText, fromEmail, fromName, attachmentNames, workload, attachmentTexts }) {
   let msg = `ВХОДЯЩЕЕ ПИСЬМО:\n`;
   msg += `От: ${fromName || 'Неизвестно'} <${fromEmail || '?'}>\n`;
   msg += `Тема: ${subject || '(без темы)'}\n\n`;
@@ -138,6 +247,11 @@ function buildAnalysisMessage({ subject, bodyText, fromEmail, fromName, attachme
 
   if (attachmentNames?.length) {
     msg += `ВЛОЖЕНИЯ: ${attachmentNames.join(', ')}\n\n`;
+  }
+
+  // Извлечённое содержимое вложений (PDF, DOCX, XLSX)
+  if (attachmentTexts?.length) {
+    msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${attachmentTexts.join('\n\n').slice(0, 8000)}\n\n`;
   }
 
   if (workload) {

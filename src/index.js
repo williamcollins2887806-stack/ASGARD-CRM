@@ -228,6 +228,7 @@ fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
 fastify.register(require('./routes/tkp'), { prefix: '/api/tkp' });
 fastify.register(require('./routes/pass_requests'), { prefix: '/api/pass-requests' });
 fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
+fastify.register(require('./routes/sse'), { prefix: '/api/sse' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check

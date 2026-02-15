@@ -6,6 +6,7 @@
 async function routes(fastify, options) {
   const db = fastify.db;
   const { createNotification } = require('../services/notify');
+  const { sendToUser, broadcast } = require('./sse');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders - List all tenders
@@ -273,6 +274,13 @@ async function routes(fastify, options) {
         });
       }
 
+      // SSE: уведомляем о новом тендере
+      broadcast('tender:created', {
+        id: tender.id, customer_name: tender.customer_name || '',
+        tender_status: tender.tender_status, tender_type: tender.tender_type,
+        responsible_pm_id: tender.responsible_pm_id
+      });
+
       return { tender };
     } catch (err) {
       if (err.code === '23503') {
@@ -383,6 +391,23 @@ async function routes(fastify, options) {
         message: `Вам назначен тендер: ${updated.customer_name || ''} — ${updated.tender_title || ''}`,
         type: 'tender',
         link: `#/tenders?id=${updated.id}`
+      });
+    }
+
+    // SSE: уведомляем об изменении тендера
+    broadcast('tender:updated', {
+      id: updated.id, customer_name: updated.customer_name || '',
+      tender_status: updated.tender_status,
+      old_status: oldTender.tender_status,
+      responsible_pm_id: updated.responsible_pm_id
+    });
+
+    // SSE: персональное уведомление РП при смене статуса
+    if (data.tender_status && data.tender_status !== oldTender.tender_status && updated.responsible_pm_id) {
+      sendToUser(updated.responsible_pm_id, 'tender:status_changed', {
+        id: updated.id, customer_name: updated.customer_name || '',
+        old_status: oldTender.tender_status,
+        new_status: updated.tender_status
       });
     }
 
