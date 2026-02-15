@@ -72,8 +72,8 @@ window.AsgardCustomDashboard = (function(){
     '</div>' +
     '<style>' +
       '.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}' +
-      '.dash-widget{background:var(--bg-elevated);border-radius:16px;border:1px solid var(--line);overflow:hidden}' +
-      '.dash-widget:hover{border-color:var(--gold)}' +
+      '.dash-widget{background:var(--bg-elevated);border-radius:16px;overflow:hidden}' +
+      '.dash-widget:hover{box-shadow:var(--shadow-md)}' +
       '.dash-widget-header{padding:12px 16px;background:var(--bg-elevated);display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}' +
       '.dash-widget-content{padding:16px;min-height:100px}' +
       '.btn-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px}' +
@@ -104,7 +104,7 @@ window.AsgardCustomDashboard = (function(){
       const avail = available.filter(([id]) => !curr.has(id));
       const html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">' +
         avail.map(([id, w]) => 
-          '<div class="widget-pick" data-id="' + id + '" style="padding:16px;border:1px solid var(--line);border-radius:12px;text-align:center;cursor:pointer">' +
+          '<div class="widget-pick" data-id="' + id + '" style="padding:16px;background:var(--bg-elevated);border-radius:12px;text-align:center;cursor:pointer">' +
             '<div style="font-size:32px">' + w.icon + '</div>' +
             '<div style="font-size:13px;font-weight:600">' + w.name + '</div>' +
           '</div>'

@@ -355,7 +355,7 @@
         .calc-tabs .tab{padding:8px 12px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border);cursor:pointer;font-size:12px}
         .calc-tabs .tab.active{background:rgba(42,108,241,.3);border-color:var(--accent)}
         .calc-tabs .tab.warn{border-color:rgba(245,158,11,.6)}
-        .csec{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+        .csec{background:var(--bg-elevated);border-radius:12px;padding:16px;margin-bottom:16px}
         .csec h3{margin:0 0 12px;font-size:14px;color:var(--gold)}
         .cbl{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0}
         .cbl input{width:18px;height:18px}

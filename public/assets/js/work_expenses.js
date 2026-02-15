@@ -170,7 +170,7 @@ window.AsgardWorkExpenses = (function(){
         .exp-mode-toggle { display:flex; gap:4px; background:var(--bg-elevated); padding:4px; border-radius:10px; margin-bottom:16px; }
         .exp-mode-btn { padding:8px 16px; border-radius:8px; border:none; background:transparent; color:var(--muted); font-weight:700; cursor:pointer; }
         .exp-mode-btn.active { background:var(--glass); color:var(--text); }
-        .exp-category { margin-bottom:12px; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+        .exp-category { margin-bottom:12px; border-radius:12px; overflow:hidden; background:var(--bg-elevated); }
         .exp-cat-header { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--bg-elevated); }
         .exp-cat-icon { font-size:18px; }
         .exp-cat-label { font-weight:700; flex:1; }

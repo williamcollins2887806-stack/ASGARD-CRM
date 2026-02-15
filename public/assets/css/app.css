@@ -935,8 +935,7 @@ label {
    ───────────────────────────────────────────────────────────────────────────── */
 table.asg {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
   font-size: 13px;
 }
 
@@ -965,7 +964,6 @@ table.asg th:last-child {
 
 table.asg td {
   padding: 14px 16px;
-  background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
   transition: background var(--transition-fast);

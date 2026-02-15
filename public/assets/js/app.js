@@ -125,20 +125,19 @@ console.log('[ASGARD] Global period functions loaded');
 
   window.__ASG_SHARED_TABLE_CSS__ = `
 <style>
-  table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-  table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:0 10px;}
-  table.asg td{padding:10px; background:var(--bg-elevated); border:1px solid var(--border); vertical-align:top; color:var(--text-primary)}
-  table.asg tr td:first-child{border-top-left-radius:var(--radius-md);border-bottom-left-radius:var(--radius-md);}
-  table.asg tr td:last-child{border-top-right-radius:var(--radius-md);border-bottom-right-radius:var(--radius-md);}
+  table.asg{width:100%; border-collapse:collapse;}
+  table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:10px 10px; border-bottom:2px solid var(--border)}
+  table.asg td{padding:10px; vertical-align:top; color:var(--text-primary); border-bottom:1px solid var(--border)}
+  table.asg tbody tr:last-child td{border-bottom:none}
   table.asg tr:hover td{background:var(--bg-hover)}
   .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
   .tools .field{min-width:220px}
   .kpi{display:grid; grid-template-columns:repeat(6,minmax(140px,1fr)); gap:12px}
-  .kpi .k{background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px; text-align:center}
+  .kpi .k{padding:12px; text-align:center}
   .kpi .k .t{font-size:11px; color:var(--text-secondary); font-weight:900}
   .kpi .k .v{font-size:22px; font-weight:1000; margin-top:6px; color:var(--primary); text-align:center}
   .kpi .k .s{font-size:12px; color:var(--text-secondary); margin-top:6px}
-  .chart{background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px}
+  .chart{background:var(--bg-elevated); border-radius:var(--radius-lg); padding:12px}
   .barrow{display:grid; grid-template-columns: 200px 1fr 70px; gap:12px; align-items:center; margin:10px 0}
   .bar{height:14px; border-radius:999px; background:var(--bg-hover); overflow:hidden}
   .bar > div{height:100%}

@@ -92,7 +92,7 @@ window.AsgardPmCalcsPage = (function(){
         .qc-form>div{display:flex;flex-direction:column}
         .qc-form label{font-size:12px;color:var(--muted);margin-bottom:4px}
         .qc-form .full{grid-column:1/-1}
-        .qc-section{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+        .qc-section{background:var(--bg-elevated);border-radius:12px;padding:16px;margin-bottom:16px}
         .qc-section h4{margin:0 0 12px;font-size:14px;color:var(--gold)}
         .qc-kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
         .qc-kpi .k{background:var(--bg-elevated);border-radius:10px;padding:12px;text-align:center}
@@ -422,11 +422,10 @@ window.AsgardPmCalcsPage = (function(){
 
     const body = `
       <style>
-        table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-        table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:0 10px;}
-        table.asg td{padding:10px; background:var(--bg-elevated); border:1px solid var(--border); color:var(--text-primary)}
-        table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-        table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
+        table.asg{width:100%; border-collapse:collapse;}
+        table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:10px; border-bottom:2px solid var(--border)}
+        table.asg td{padding:10px; border-bottom:1px solid var(--border); color:var(--text-primary)}
+        table.asg tbody tr:last-child td{border-bottom:none}
         .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
         .tools .field{min-width:220px}
         .st{display:inline-flex; align-items:center; gap:8px}

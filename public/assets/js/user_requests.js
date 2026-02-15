@@ -78,8 +78,7 @@ window.AsgardUserRequestsPage = (function(){
           .ur-list { display:grid; gap:12px; }
           
           .ur-card {
-            background: linear-gradient(135deg, var(--bg-elevated), var(--bg-elevated));
-            border:1px solid var(--border);
+            background: var(--bg-elevated);
             border-radius:14px;
             padding:16px 20px;
             display:grid;
@@ -89,11 +88,10 @@ window.AsgardUserRequestsPage = (function(){
             transition: all .3s ease;
           }
           .ur-card:hover {
-            border-color:var(--primary);
+            background:var(--bg-hover);
           }
           .ur-card.blocked {
             opacity:.6;
-            border-color:rgba(239,68,68,.3);
           }
           
           .ur-info h3 { margin:0 0 6px; font-size:16px; display:flex; align-items:center; gap:8px; }

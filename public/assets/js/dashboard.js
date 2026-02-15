@@ -148,7 +148,6 @@ window.AsgardDashboardPage = (function(){
           .dash-card {
             position:relative;
             background: var(--bg-elevated);
-            border:1px solid rgba(148,163,184,.2);
             border-radius:var(--radius-lg);
             padding:20px;
             overflow:hidden;
@@ -164,7 +163,6 @@ window.AsgardDashboardPage = (function(){
           }
           .dash-card:hover {
             transform:translateY(-3px);
-            border-color:var(--border-hover);
             box-shadow:var(--shadow-lg);
           }
           
@@ -186,7 +184,6 @@ window.AsgardDashboardPage = (function(){
           
           .dash-chart-card {
             background: var(--bg-elevated);
-            border:1px solid rgba(148,163,184,.2);
             border-radius:var(--radius-lg);
             padding:16px;
           }

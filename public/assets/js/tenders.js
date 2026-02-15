@@ -252,16 +252,15 @@ async function getRefs(){
 
   function tableCSS(){
     return `<style>
-      table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-      table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:0 10px;}
-      table.asg td{padding:10px; background:var(--bg-elevated); border:1px solid var(--border); color:var(--text-primary)}
-      table.asg tr td:first-child{border-top-left-radius:var(--radius-md);border-bottom-left-radius:var(--radius-md);}
-      table.asg tr td:last-child{border-top-right-radius:var(--radius-md);border-bottom-right-radius:var(--radius-md);}
+      table.asg{width:100%; border-collapse:collapse;}
+      table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:10px; border-bottom:2px solid var(--border)}
+      table.asg td{padding:10px; border-bottom:1px solid var(--border); color:var(--text-primary)}
+      table.asg tbody tr:last-child td{border-bottom:none}
       table.asg tr:hover td{background:var(--bg-hover)}
       .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
       .tools .field{min-width:220px}
       .tag{display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px;
-        border:1px solid var(--border); background:var(--bg-elevated); font-size:12px; color:var(--text-secondary)}
+        background:var(--bg-elevated); font-size:12px; color:var(--text-secondary)}
       .tag b{color:var(--gold)}
     </style>`;
   }

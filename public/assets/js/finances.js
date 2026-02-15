@@ -147,12 +147,12 @@ window.AsgardFinancesPage = (function(){
           .fin-arrow:disabled { opacity:.3; cursor:not-allowed; }
           
           .fin-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px; }
-          .fin-card { background:var(--bg-elevated); border:1px solid rgba(148,163,184,.2); border-radius:var(--radius-lg); padding:20px; }
+          .fin-card { background:var(--bg-elevated); border-radius:var(--radius-lg); padding:20px; }
           .fin-card-label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
           .fin-card-value { font-size:32px; font-weight:900; color:var(--gold); }
           .fin-card-sub { font-size:13px; color:var(--muted); margin-top:4px; }
           
-          .fin-chart-container { background:var(--bg-elevated); border:1px solid rgba(148,163,184,.2); border-radius:var(--radius-lg); padding:24px; margin-bottom:24px; }
+          .fin-chart-container { background:var(--bg-elevated); border-radius:var(--radius-lg); padding:24px; margin-bottom:24px; }
           .fin-chart-title { font-size:16px; font-weight:800; margin-bottom:20px; display:flex; align-items:center; gap:10px; }
           .fin-chart-title .back-btn { padding:6px 12px; border-radius:8px; border:1px solid var(--line); background:var(--glass); color:var(--text); font-size:12px; cursor:pointer; }
           .fin-chart-title .back-btn:hover { border-color:var(--gold); }

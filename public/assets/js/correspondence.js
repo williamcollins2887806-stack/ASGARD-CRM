@@ -199,11 +199,10 @@ window.AsgardCorrespondencePage = (function(){
           .corr-kpi-icon { position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:42px; opacity:.15; }
           
           /* Filters bar */
-          .corr-filters { 
-            display:flex; flex-wrap:wrap; gap:12px; 
-            margin-bottom:20px; padding:16px; 
+          .corr-filters {
+            display:flex; flex-wrap:wrap; gap:12px;
+            margin-bottom:20px; padding:16px;
             background: var(--bg-elevated);
-            border: 1px solid var(--border);
             border-radius:14px;
             align-items:flex-end;
           }
@@ -223,26 +222,22 @@ window.AsgardCorrespondencePage = (function(){
           }
           
           /* Table with Viking styling */
-          .corr-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
-          .corr-table th { 
-            font-size:10px; color:var(--muted); font-weight:800; 
-            text-align:left; padding:10px 14px; 
+          .corr-table { width:100%; border-collapse:collapse; }
+          .corr-table th {
+            font-size:10px; color:var(--muted); font-weight:800;
+            text-align:left; padding:10px 14px;
             text-transform:uppercase; letter-spacing:1px;
-            border-bottom: 2px solid rgba(242,208,138,.2);
+            border-bottom: 2px solid var(--border);
           }
-          .corr-table td { 
-            padding:14px; 
-            background: var(--bg-elevated);
-            border:1px solid var(--border);
+          .corr-table td {
+            padding:14px;
+            border-bottom:1px solid var(--border);
             transition: all .2s ease;
           }
-          .corr-table tr td:first-child { border-radius:12px 0 0 12px; border-left:3px solid transparent; }
-          .corr-table tr td:last-child { border-radius:0 12px 12px 0; }
-          .corr-table tr:hover td { 
+          .corr-table tbody tr:last-child td { border-bottom:none; }
+          .corr-table tr:hover td {
             background: rgba(59,130,246,.08);
-            border-color: var(--primary);
           }
-          .corr-table tr:hover td:first-child { border-left-color: var(--gold); }
           
           /* Direction badge */
           .corr-dir { 
