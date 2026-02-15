@@ -813,7 +813,7 @@ label {
    ───────────────────────────────────────────────────────────────────────────── */
 table.asg {
   width: 100%;
-  border-collapse: separate;
+  border-collapse: collapse;
   border-spacing: 0;
   font-size: 13px;
 }
@@ -843,7 +843,6 @@ table.asg th:last-child {
 
 table.asg td {
   padding: 14px 16px;
-  background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
   transition: background var(--transition-fast);
@@ -2982,6 +2981,17 @@ html[data-theme="light"] {
   --gold-dim: var(--primary-dim);
   --gold-glow: var(--primary-glow);
   --gold-border: var(--primary-border);
+
+  /* Алиасы для JS-модулей */
+  --text: #1e293b;
+  --muted: #64748b;
+  --accent: var(--primary);
+  --card: #ffffff;
+  --bg: #f1f5f9;
+  --line: rgba(0, 0, 0, 0.08);
+  --mono: var(--font-mono);
+  --dim: #64748b;
+  --subtle: #475569;
 }
 
 /* Body background */
@@ -4923,7 +4933,7 @@ input:focus, select:focus, textarea:focus, .inp:focus {
    MODERN TABLE STYLING
    ───────────────────────────────────────────────────────────────────────────── */
 table.asg {
-  border-collapse: separate;
+  border-collapse: collapse;
   border-spacing: 0 8px;
 }
 

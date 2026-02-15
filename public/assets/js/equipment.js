@@ -248,7 +248,6 @@ window.AsgardWarehouse = (function(){
           display: flex;
           align-items: center;
           gap: 12px;
-          border: 1px solid var(--border);
         }
         
         .stat-card.green { border-left: 4px solid #22c55e; }

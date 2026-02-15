@@ -52,11 +52,10 @@ window.AsgardBigScreen = (function(){
         .bs-card-title{font-size:12px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:2px;font-weight:800;margin-bottom:16px}
         .bs-card-value{font-size:56px;font-weight:900;line-height:1.1}
         .bs-card-sub{font-size:14px;color:rgba(255,255,255,.4);margin-top:12px}
-        .bs-table{width:100%;border-collapse:separate;border-spacing:0 8px}
-        .bs-table th{font-size:11px;color:rgba(255,255,255,.3);text-transform:uppercase;text-align:left;padding:8px 16px}
-        .bs-table td{padding:16px;background:rgba(13,20,40,.5);border:1px solid rgba(148,163,184,.08);font-size:16px}
-        .bs-table tr td:first-child{border-radius:6px 0 0 6px}
-        .bs-table tr td:last-child{border-radius:0 6px 6px 0}
+        .bs-table{width:100%;border-collapse:collapse}
+        .bs-table th{font-size:11px;color:rgba(255,255,255,.3);text-transform:uppercase;text-align:left;padding:8px 16px;border-bottom:2px solid var(--border)}
+        .bs-table td{padding:16px;font-size:16px;border-bottom:1px solid var(--border)}
+        .bs-table tbody tr:last-child td{border-bottom:none}
         .green{color:#4ade80} .red{color:#f87171} .amber{color:#fbbf24} .blue{color:#60a5fa} .gold{color:#f2d08a}
         .bs-nav{display:flex;gap:12px;position:absolute;bottom:80px;left:50%;transform:translateX(-50%)}
         .bs-nav button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;transition:all .2s}

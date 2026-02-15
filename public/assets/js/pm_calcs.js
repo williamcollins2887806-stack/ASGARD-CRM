@@ -92,10 +92,10 @@ window.AsgardPmCalcsPage = (function(){
         .qc-form>div{display:flex;flex-direction:column}
         .qc-form label{font-size:12px;color:var(--muted);margin-bottom:4px}
         .qc-form .full{grid-column:1/-1}
-        .qc-section{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.5);border-radius:6px;padding:16px;margin-bottom:16px}
+        .qc-section{border-radius:6px;padding:16px;margin-bottom:16px}
         .qc-section h4{margin:0 0 12px;font-size:14px;color:var(--gold)}
         .qc-kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
-        .qc-kpi .k{background:rgba(13,20,40,.5);border-radius:6px;padding:12px;text-align:center}
+        .qc-kpi .k{background:var(--bg-card);border-radius:6px;padding:12px;text-align:center}
         .qc-kpi .k .t{font-size:11px;color:var(--muted)}
         .qc-kpi .k .v{font-size:18px;font-weight:700;color:var(--gold)}
         .qc-zone{padding:16px;border-radius:6px;text-align:center;margin-top:16px}
@@ -422,11 +422,10 @@ window.AsgardPmCalcsPage = (function(){
 
     const body = `
       <style>
-        table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-        table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-        table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85);}
-        table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-        table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
+        table.asg{width:100%; border-collapse:collapse;}
+        table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:0 10px; border-bottom:2px solid var(--border)}
+        table.asg td{padding:10px; vertical-align:top; color:var(--text-primary); border-bottom:1px solid var(--border)}
+        table.asg tbody tr:last-child td{border-bottom:none}
         .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
         .tools .field{min-width:220px}
         .st{display:inline-flex; align-items:center; gap:8px}
@@ -468,7 +467,7 @@ window.AsgardPmCalcsPage = (function(){
 
           <div class="field" style="min-width:280px">
             <label>Показать</label>
-            <div style="display:flex; gap:12px; flex-wrap:wrap; padding:10px 12px; border:1px solid rgba(42,59,102,.85); border-radius:6px; background:rgba(13,20,40,.35)">
+            <div style="display:flex; gap:12px; flex-wrap:wrap; padding:10px 12px; border-radius:6px; background:var(--bg-deep)">
               <label style="display:flex; gap:8px; align-items:center"><input id="f_refused" type="checkbox"/> Отказы</label>
               <label style="display:flex; gap:8px; align-items:center"><input id="f_allperiod" type="checkbox"/> Все периоды</label>
               <label style="display:flex; gap:8px; align-items:center"><input id="f_won" type="checkbox"/> Выигранные (архив)</label>

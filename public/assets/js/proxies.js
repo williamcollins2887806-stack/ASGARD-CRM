@@ -217,16 +217,17 @@ window.AsgardProxiesPage = (function(){
           .proxy-field input, .proxy-field textarea, .proxy-field select {
             padding:12px 14px;
             border-radius:6px;
-            border:1px solid rgba(148,163,184,.2);
-            background:rgba(13,20,40,.6);
+            border:1px solid var(--border);
+            background:var(--bg-deep);
             color:var(--text);
             font-size:14px;
           }
           .proxy-field textarea { min-height:80px; resize:vertical; }
           .proxy-field input:focus, .proxy-field textarea:focus {
-            border-color:rgba(242,208,138,.5);
+            border-color:var(--accent);
             outline:none;
             box-shadow: 0 0 0 3px rgba(242,208,138,.1);
+
           }
           
           .proxy-preview {

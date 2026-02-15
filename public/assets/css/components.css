@@ -3544,13 +3544,11 @@ html[data-theme="light"] .inp:focus {
 .dash-widget {
   background: var(--bg-card);
   border-radius: 10px;
-  border: 1px solid var(--border);
   overflow: hidden;
-  transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s, transform 0.2s;
+  transition: box-shadow 0.2s, opacity 0.2s, transform 0.2s;
 }
 
 .dash-widget:hover {
-  border-color: var(--gold-border);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
@@ -3614,11 +3612,9 @@ html[data-theme="light"] .inp:focus {
 /* Light theme */
 html[data-theme="light"] .dash-widget {
   background: #ffffff;
-  border-color: rgba(0, 0, 0, 0.06);
 }
 
 html[data-theme="light"] .dash-widget:hover {
-  border-color: rgba(220, 38, 38, 0.2);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 

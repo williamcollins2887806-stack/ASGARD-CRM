@@ -332,15 +332,14 @@ async function getRefs(){
 
   function tableCSS(){
     return `<style>
-      table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-      table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-      table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85);}
-      table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-      table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
+      table.asg{width:100%; border-collapse:collapse;}
+      table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:0 10px; border-bottom:2px solid var(--border)}
+      table.asg td{padding:10px; vertical-align:top; color:var(--text-primary); border-bottom:1px solid var(--border)}
+      table.asg tbody tr:last-child td{border-bottom:none}
       .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
       .tools .field{min-width:220px}
       .tag{display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px;
-        border:1px solid rgba(42,59,102,.85); background:rgba(13,20,40,.40); font-size:12px; color:rgba(184,196,231,.95)}
+        font-size:12px; color:var(--text-secondary)}
       .tag b{color:var(--gold)}
     </style>`;
   }
@@ -920,7 +919,7 @@ async function getRefs(){
         const html = `
           <div style="margin-bottom:16px">
             <div style="font-size:14px; font-weight:700; margin-bottom:8px">Тендеры на архивном РП: ${archiveTenders.length}</div>
-            <div style="background:rgba(13,20,40,.5); padding:12px; border-radius:6px; max-height:150px; overflow:auto; font-size:13px">
+            <div style="background:var(--bg-card); padding:12px; border-radius:6px; max-height:150px; overflow:auto; font-size:13px">
               ${statusList}
             </div>
           </div>

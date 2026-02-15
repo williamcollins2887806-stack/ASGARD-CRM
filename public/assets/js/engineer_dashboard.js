@@ -35,16 +35,16 @@ window.AsgardEngineerDashboard = (function(){
     const body = `
       ${window.__ASG_SHARED_TABLE_CSS__||""}
       <style>
-        .pm-card { background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:6px; padding:12px; margin-bottom:12px; }
+        .pm-card { background:var(--bg-card); border-radius:6px; padding:12px; margin-bottom:12px; }
         .pm-header { display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
-        .pm-header:hover { background:rgba(42,59,102,.25); margin:-12px; padding:12px; border-radius:6px; }
+        .pm-header:hover { background:var(--bg-hover); margin:-12px; padding:12px; border-radius:6px; }
         .pm-name { font-weight:700; font-size:16px; }
-        .pm-stats { display:flex; gap:16px; color:rgba(184,196,231,.85); font-size:13px; }
+        .pm-stats { display:flex; gap:16px; color:var(--text-secondary); font-size:13px; }
         .pm-list { margin-top:12px; display:none; }
         .pm-list.open { display:block; }
-        .eq-item { display:flex; gap:12px; padding:8px 0; border-bottom:1px solid rgba(42,59,102,.35); font-size:13px; }
+        .eq-item { display:flex; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
         .eq-item:last-child { border-bottom:none; }
-        .maint-item { display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid rgba(42,59,102,.35); }
+        .maint-item { display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid var(--border); }
         .maint-item:last-child { border-bottom:none; }
         .maint-soon { color:#ff9800; }
         .maint-overdue { color:#f44336; font-weight:700; }

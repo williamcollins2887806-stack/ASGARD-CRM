@@ -163,15 +163,15 @@ window.AsgardWorkExpenses = (function(){
 
     const html = `
       <style>
-        .exp-summary { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px; padding:12px; background:rgba(13,20,40,.4); border-radius:6px; }
+        .exp-summary { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px; padding:12px; background:var(--bg-card); border-radius:6px; }
         .exp-summary-item { flex:1; min-width:150px; }
         .exp-summary-label { font-size:11px; color:var(--muted); text-transform:uppercase; }
         .exp-summary-value { font-size:24px; font-weight:900; color:var(--gold); }
-        .exp-mode-toggle { display:flex; gap:4px; background:rgba(13,20,40,.6); padding:4px; border-radius:6px; margin-bottom:16px; }
+        .exp-mode-toggle { display:flex; gap:4px; background:var(--bg-card); padding:4px; border-radius:6px; margin-bottom:16px; }
         .exp-mode-btn { padding:8px 16px; border-radius:6px; border:none; background:transparent; color:var(--muted); font-weight:700; cursor:pointer; }
         .exp-mode-btn.active { background:var(--glass); color:var(--text); }
-        .exp-category { margin-bottom:12px; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
-        .exp-cat-header { display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(13,20,40,.5); }
+        .exp-category { margin-bottom:12px; border-radius:6px; overflow:hidden; background:var(--bg-elevated); }
+        .exp-cat-header { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--bg-card); }
         .exp-cat-icon { font-size:18px; }
         .exp-cat-label { font-weight:700; flex:1; }
         .exp-cat-total { font-weight:700; color:var(--gold); }

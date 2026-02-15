@@ -153,21 +153,20 @@ console.log('[ASGARD] Global period functions loaded');
 
   window.__ASG_SHARED_TABLE_CSS__ = `
 <style>
-  table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-  table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-  table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); vertical-align:top}
-  table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-  table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
+  table.asg{width:100%; border-collapse:collapse;}
+  table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:0 10px; border-bottom:2px solid var(--border)}
+  table.asg td{padding:10px; vertical-align:top; color:var(--text-primary); border-bottom:1px solid var(--border)}
+  table.asg tbody tr:last-child td{border-bottom:none}
   .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
   .tools .field{min-width:220px}
   .kpi{display:grid; grid-template-columns:repeat(6,minmax(140px,1fr)); gap:12px}
-  .kpi .k{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:6px; padding:12px}
-  .kpi .k .t{font-size:11px; color:rgba(184,196,231,.85); font-weight:900}
-  .kpi .k .v{font-size:22px; font-weight:1000; margin-top:6px; color:rgba(242,208,138,.95)}
-  .kpi .k .s{font-size:12px; color:rgba(184,196,231,.85); margin-top:6px}
-  .chart{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:6px; padding:12px}
+  .kpi .k{padding:12px; text-align:center}
+  .kpi .k .t{font-size:11px; color:var(--text-secondary); font-weight:900}
+  .kpi .k .v{font-size:22px; font-weight:1000; margin-top:6px; color:var(--accent)}
+  .kpi .k .s{font-size:12px; color:var(--text-secondary); margin-top:6px}
+  .chart{background:var(--bg-elevated); border-radius:var(--radius-lg); padding:12px}
   .barrow{display:grid; grid-template-columns: 200px 1fr 70px; gap:12px; align-items:center; margin:10px 0}
-  .bar{height:14px; border-radius:999px; background:rgba(42,59,102,.35); overflow:hidden}
+  .bar{height:14px; border-radius:999px; background:var(--bg-card); overflow:hidden}
   .bar > div{height:100%}
 </style>
 `;
@@ -1567,9 +1566,9 @@ try{
               document.getElementById('tasksWidgetContent').innerHTML = activeTasks.map(t => {
                 const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleDateString('ru-RU') : '';
                 const isOverdue = t.deadline && new Date(t.deadline) < new Date();
-                return `<div style="padding:12px 16px; margin-bottom:8px; background:rgba(42,59,102,.35); border-left:3px solid ${priorityColors[t.priority] || '#3b82f6'}; border-radius:6px">
+                return `<div style="padding:12px 16px; margin-bottom:8px; background:var(--bg-card); border-left:3px solid ${priorityColors[t.priority] || '#3b82f6'}; border-radius:6px">
                   <div style="font-weight:600">${esc(t.title)}</div>
-                  <div style="font-size:12px; color:rgba(184,196,231,.85); margin-top:4px">
+                  <div style="font-size:12px; color:var(--text-secondary); margin-top:4px">
                     <span style="background:${priorityColors[t.priority] || '#3b82f6'}20; color:${priorityColors[t.priority] || '#3b82f6'}; border:1px solid ${priorityColors[t.priority] || '#3b82f6'}40; padding:2px 6px; border-radius:3px; font-size:10px">${statusLabels[t.status] || t.status}</span>
                     ${deadlineStr ? `<span style="margin-left:8px; ${isOverdue ? 'color:#ef4444' : ''}">${deadlineStr}</span>` : ''}
                   </div>
@@ -1602,7 +1601,7 @@ try{
               document.getElementById('todoWidgetContent').innerHTML = '<div class="text-muted">Список дел пуст</div>';
             } else {
               document.getElementById('todoWidgetContent').innerHTML = activeTodos.map(t =>
-                `<div style="padding:12px 16px; margin-bottom:6px; background:rgba(42,59,102,.25); border-radius:4px; display:flex; align-items:center; gap:8px">
+                `<div style="padding:12px 16px; margin-bottom:6px; background:var(--bg-card); border-radius:4px; display:flex; align-items:center; gap:8px">
                   <span style="color:#3b82f6">○</span>
                   <span>${esc(t.text)}</span>
                 </div>`
@@ -1985,6 +1984,6 @@ try{
   boot({startRouter:true}).catch(e=>{
     console.error(e);
     toast("Ошибка запуска", e.message||String(e), "err", 7000);
-    $("#app").innerHTML = `<div style="padding:18px;color:#fff">Ошибка запуска: ${esc(e.message||e)}</div>`;
+    $("#app").innerHTML = `<div style="padding:18px;color:var(--text-primary,#fff)">Ошибка запуска: ${esc(e.message||e)}</div>`;
   });
 })();

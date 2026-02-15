@@ -99,8 +99,7 @@ window.AsgardTravelPage = (function(){
           .travel-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:24px; }
           .travel-kpi-card {
             position:relative;
-            background: linear-gradient(135deg, rgba(13,20,40,.6), rgba(13,20,40,.4));
-            border:1px solid rgba(148,163,184,.15);
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-card));
             border-radius:6px;
             padding:16px;
             overflow:hidden;
@@ -114,7 +113,7 @@ window.AsgardTravelPage = (function(){
             background: var(--card-accent, var(--gold));
             opacity:.6;
           }
-          .travel-kpi-card:hover { transform:translateY(-2px); border-color:rgba(242,208,138,.3); }
+          .travel-kpi-card:hover { transform:translateY(-2px); }
           .travel-kpi-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
           .travel-kpi-value { font-size:24px; font-weight:900; margin-top:6px; }
           .travel-kpi-icon { position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:32px; opacity:.2; }
@@ -122,8 +121,7 @@ window.AsgardTravelPage = (function(){
           .travel-filters {
             display:flex; flex-wrap:wrap; gap:12px;
             margin-bottom:20px; padding:16px;
-            background:rgba(13,20,40,.4);
-            border:1px solid rgba(148,163,184,.1);
+            background:var(--bg-card);
             border-radius:6px;
             align-items:flex-end;
           }
@@ -132,25 +130,24 @@ window.AsgardTravelPage = (function(){
           .travel-filter select, .travel-filter input {
             padding:10px 12px; border-radius:6px;
             border:1px solid rgba(148,163,184,.18);
-            background:rgba(13,20,40,.6);
+            background:var(--bg-card);
             color:var(--text); font-size:13px;
           }
           
-          .travel-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
+          .travel-table { width:100%; border-collapse:collapse; }
           .travel-table th {
             font-size:10px; color:var(--muted); font-weight:800;
             text-align:left; padding:10px 12px;
             text-transform:uppercase; letter-spacing:1px;
+            border-bottom:2px solid var(--border);
           }
           .travel-table td {
             padding:14px 12px;
-            background:linear-gradient(135deg, rgba(13,20,40,.5), rgba(13,20,40,.35));
-            border:1px solid rgba(148,163,184,.1);
+            border-bottom:1px solid var(--border);
             transition: all .2s ease;
           }
-          .travel-table tr td:first-child { border-radius:6px 0 0 6px; }
-          .travel-table tr td:last-child { border-radius:0 6px 6px 0; }
-          .travel-table tr:hover td { background:rgba(59,130,246,.08); border-color:rgba(242,208,138,.2); }
+          .travel-table tbody tr:last-child td { border-bottom:none; }
+          .travel-table tr:hover td { background:rgba(59,130,246,.08); }
           
           .travel-type {
             display:inline-flex; align-items:center; gap:6px;
@@ -167,15 +164,15 @@ window.AsgardTravelPage = (function(){
           .travel-btn {
             padding:6px 10px; border-radius:6px;
             border:1px solid rgba(148,163,184,.18);
-            background:rgba(13,20,40,.5);
+            background:var(--bg-card);
             color:var(--text); font-size:12px; cursor:pointer;
             transition: all .2s ease;
           }
-          .travel-btn:hover { border-color:rgba(242,208,138,.4); }
+          .travel-btn:hover { border-color:var(--accent); }
           
           .travel-empty {
             text-align:center; padding:60px 20px;
-            background:rgba(13,20,40,.3);
+            background:var(--bg-deep);
             border:1px dashed rgba(148,163,184,.2);
             border-radius:6px;
             color:var(--muted);

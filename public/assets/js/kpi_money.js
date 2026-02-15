@@ -295,7 +295,7 @@ window.AsgardKpiMoneyPage = (function(){
       .tabs .tab.active { background: var(--gold); color: var(--bg); }
       .tabs .tab:hover:not(.active) { background: rgba(212,175,55,0.1); }
       .kpi-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
-      .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; text-align: center; }
+      .kpi-card { background: var(--card); border-radius: 6px; padding: 16px; text-align: center; }
       .kpi-card .label { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
       .kpi-card .value { font-size: 26px; font-weight: 700; color: var(--gold); }
       .kpi-card .sub { font-size: 11px; color: var(--muted); margin-top: 5px; }
