@@ -773,7 +773,7 @@ table.asg tr td:last-child {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: var(--sp-3);
+  padding: var(--sp-4);
 }
 
 .kpi .k .t {
@@ -3538,7 +3538,7 @@ html[data-theme="light"] .inp:focus {
 .dash-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
+  gap: 20px;
 }
 
 .dash-widget {
@@ -3565,7 +3565,7 @@ html[data-theme="light"] .inp:focus {
 }
 
 .dash-widget-header {
-  padding: 12px 16px;
+  padding: 14px 20px;
   background: var(--glass-bg);
   display: flex;
   align-items: center;
@@ -3575,7 +3575,7 @@ html[data-theme="light"] .inp:focus {
 }
 
 .dash-widget-content {
-  padding: 16px;
+  padding: 20px;
   min-height: 80px;
 }
 

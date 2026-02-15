@@ -259,13 +259,13 @@ window.AsgardCustomDashboard = (function(){
   async function renderNotifications(el, user) {
     const n = (await AsgardDB.byIndex('notifications','user_id',user.id)||[]).filter(x=>!x.is_read).slice(0,5);
     if (!n.length) { el.innerHTML = '<div class="help" style="text-align:center">Нет уведомлений</div>'; return; }
-    el.innerHTML = n.map(x=>'<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="font-weight:600;font-size:13px">'+esc(x.title)+'</div><div class="help" style="font-size:12px">'+esc((x.message||'').slice(0,50))+'</div></div>').join('');
+    el.innerHTML = n.map(x=>'<div style="padding:10px 0"><div style="font-weight:600;font-size:13px">'+esc(x.title)+'</div><div class="help" style="font-size:12px">'+esc((x.message||'').slice(0,50))+'</div></div>').join('');
   }
 
   async function renderMyWorks(el, user) {
     const w = (await AsgardDB.getAll('works')||[]).filter(x=>x.pm_id===user.id&&x.work_status!=='Завершена').slice(0,5);
     if (!w.length) { el.innerHTML = '<div class="help" style="text-align:center">Нет работ</div>'; return; }
-    el.innerHTML = w.map(x=>'<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div style="font-weight:600;font-size:13px">'+esc(x.work_name||x.work_title)+'</div><div class="help">'+esc(x.customer_name)+' · '+esc(x.work_status)+'</div></div>').join('');
+    el.innerHTML = w.map(x=>'<div style="padding:10px 0"><div style="font-weight:600;font-size:13px">'+esc(x.work_name||x.work_title)+'</div><div class="help">'+esc(x.customer_name)+' · '+esc(x.work_status)+'</div></div>').join('');
   }
 
   async function renderFunnel(el, user) {
@@ -311,7 +311,7 @@ window.AsgardCustomDashboard = (function(){
       return {...e, days:Math.ceil((ty-today)/(1000*60*60*24))};
     }).filter(e=>e.days<=30).sort((a,b)=>a.days-b.days).slice(0,5);
     if (!up.length) { el.innerHTML = '<div class="help" style="text-align:center">Нет ДР</div>'; return; }
-    el.innerHTML = up.map(e=>'<div style="padding:8px 0;border-bottom:1px solid var(--line);display:flex;gap:10px"><div style="font-size:24px">🎂</div><div><div style="font-weight:600;font-size:13px">'+esc(e.fio||e.full_name)+'</div><div class="help">'+(e.days===0?'Сегодня!':'Через '+e.days+' дн.')+'</div></div></div>').join('');
+    el.innerHTML = up.map(e=>'<div style="padding:10px 0;display:flex;gap:10px"><div style="font-size:24px">🎂</div><div><div style="font-weight:600;font-size:13px">'+esc(e.fio||e.full_name)+'</div><div class="help">'+(e.days===0?'Сегодня!':'Через '+e.days+' дн.')+'</div></div></div>').join('');
   }
 
   async function renderApprovals(el, user) {
@@ -419,7 +419,7 @@ window.AsgardCustomDashboard = (function(){
     el.innerHTML = '<div style="font-size:12px;color:var(--red);font-weight:700;margin-bottom:8px">⚠️ ' + overdue.length + ' просроченных</div>' +
       overdue.map(w => {
         const days = Math.round((now - new Date(w.end_plan)) / 86400000);
-        return '<div style="padding:6px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px">' +
+        return '<div style="padding:10px 0;display:flex;justify-content:space-between;gap:8px">' +
           '<div style="font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || w.work_name || ('ID ' + w.id)) + '</div>' +
           '<div style="font-size:11px;color:var(--red);white-space:nowrap">+' + days + ' дн.</div>' +
         '</div>';
@@ -445,7 +445,7 @@ window.AsgardCustomDashboard = (function(){
       soon.map(p => {
         const days = Math.round((new Date(p.expiry_date) - now) / 86400000);
         const color = days <= 7 ? 'var(--red)' : 'var(--amber)';
-        return '<div style="padding:6px 0;border-bottom:1px solid var(--line)">' +
+        return '<div style="padding:10px 0">' +
           '<div style="font-size:12px;font-weight:600">' + esc(p.employee_name || p.fio || '') + '</div>' +
           '<div style="display:flex;justify-content:space-between;font-size:11px">' +
             '<span class="help">' + esc(p.permit_type || p.type || '') + '</span>' +
@@ -534,10 +534,10 @@ window.AsgardCustomDashboard = (function(){
     const done = yWorks.filter(w => w.work_status === 'Работы сдали').length;
 
     el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-      '<div style="text-align:center;padding:12px 16px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Тендеров</div><div style="font-size:24px;font-weight:900;color:#60a5fa">' + yTenders.length + '</div></div>' +
-      '<div style="text-align:center;padding:12px 16px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Конверсия</div><div style="font-size:24px;font-weight:900;color:#4caf50">' + conv + '%</div></div>' +
-      '<div style="text-align:center;padding:12px 16px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Выручка</div><div style="font-size:18px;font-weight:900;color:var(--gold)">' + formatMoney(revenue) + '</div></div>' +
-      '<div style="text-align:center;padding:12px 16px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Сдано работ</div><div style="font-size:24px;font-weight:900;color:#22c55e">' + done + '/' + yWorks.length + '</div></div>' +
+      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Тендеров</div><div style="font-size:24px;font-weight:900;color:#60a5fa">' + yTenders.length + '</div></div>' +
+      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Конверсия</div><div style="font-size:24px;font-weight:900;color:#4caf50">' + conv + '%</div></div>' +
+      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Выручка</div><div style="font-size:18px;font-weight:900;color:var(--gold)">' + formatMoney(revenue) + '</div></div>' +
+      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Сдано работ</div><div style="font-size:24px;font-weight:900;color:#22c55e">' + done + '/' + yWorks.length + '</div></div>' +
     '</div>';
   }
 
@@ -559,7 +559,7 @@ window.AsgardCustomDashboard = (function(){
     el.innerHTML = soon.map(w => {
       const days = Math.round((new Date(w.end_plan) - now) / 86400000);
       const color = days <= 3 ? 'var(--red)' : days <= 7 ? 'var(--amber)' : 'var(--text-muted)';
-      return '<div style="padding:6px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px">' +
+      return '<div style="padding:10px 0;display:flex;justify-content:space-between;gap:8px">' +
         '<div style="font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || w.work_name || '') + '</div>' +
         '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap">' + days + ' дн.</div>' +
       '</div>';
@@ -595,7 +595,7 @@ window.AsgardCustomDashboard = (function(){
         return;
       }
       el.innerHTML = '<div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:8px">🔧 Требуется ТО</div>' +
-        items.map(i => '<div style="padding:5px 0;border-bottom:1px solid var(--line);font-size:12px">' +
+        items.map(i => '<div style="padding:7px 0;font-size:12px">' +
           '<div style="font-weight:600">' + esc(i.name || i.equipment_name || '') + '</div>' +
           '<div class="help">' + esc(i.next_maintenance_date ? new Date(i.next_maintenance_date).toLocaleDateString('ru-RU') : '—') + '</div>' +
         '</div>').join('') +
@@ -637,7 +637,7 @@ window.AsgardCustomDashboard = (function(){
       const done = items.filter(i => i.done);
       el.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:8px">' + pending.length + ' активных</div>' +
         pending.slice(0, 5).map(i =>
-          '<div style="padding:5px 0;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center">' +
+          '<div style="padding:7px 0;display:flex;gap:8px;align-items:center">' +
             '<span style="color:var(--amber);font-size:14px">○</span>' +
             '<span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(i.text || i.title || '') + '</span>' +
           '</div>'
@@ -675,7 +675,7 @@ window.AsgardCustomDashboard = (function(){
           const colorDots = { green: '#22c55e', yellow: '#eab308', red: '#ef4444', gray: '#94a3b8' };
           el.innerHTML += listData.items.map(function(i) {
             var dot = colorDots[i.ai_color] || colorDots.gray;
-            return '<div style="padding:4px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:12px">' +
+            return '<div style="padding:10px 0;display:flex;align-items:center;gap:8px;font-size:12px">' +
               '<div style="width:10px;height:10px;border-radius:50%;background:' + dot + ';flex-shrink:0"></div>' +
               '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(i.customer_name || i.email_from_name || '-') + '</div>' +
               '<div style="color:var(--text-muted);font-size:10px">' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '') + '</div>' +
@@ -717,7 +717,7 @@ window.AsgardCustomDashboard = (function(){
           el.innerHTML += txData.items.map(function(t) {
             var color = t.direction === 'income' ? '#22c55e' : '#ef4444';
             var sign = t.direction === 'income' ? '+' : '-';
-            return '<div style="padding:3px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;font-size:11px">' +
+            return '<div style="padding:10px 0;display:flex;align-items:center;gap:6px;font-size:11px">' +
               '<div style="color:' + color + ';font-weight:700;white-space:nowrap">' + sign + formatMoney(Math.abs(t.amount)) + '</div>' +
               '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">' + esc(t.counterparty_name || t.payment_purpose || '-') + '</div>' +
             '</div>';
@@ -762,7 +762,7 @@ window.AsgardCustomDashboard = (function(){
             var dl = new Date(p.application_deadline);
             var daysLeft = Math.ceil((dl - now) / 86400000);
             var urgColor = daysLeft <= 2 ? '#ef4444' : daysLeft <= 5 ? '#eab308' : '#22c55e';
-            return '<div style="padding:3px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;font-size:11px">' +
+            return '<div style="padding:10px 0;display:flex;align-items:center;gap:6px;font-size:11px">' +
               '<div style="width:8px;height:8px;border-radius:50%;background:' + urgColor + ';flex-shrink:0"></div>' +
               '<div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.customer_name || p.purchase_number || '-') + '</div>' +
               '<div style="color:' + urgColor + ';font-size:10px;font-weight:700;white-space:nowrap">' + daysLeft + 'д</div>' +
