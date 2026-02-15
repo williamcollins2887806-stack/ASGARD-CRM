@@ -105,9 +105,8 @@ module.exports = async function(fastify) {
     if (!member) return reply.code(403).send({ error: 'Нет доступа к чату' });
 
     const { rows: [chat] } = await db.query(`
-      SELECT c.*, u.name as created_by_name
+      SELECT c.*
       FROM chats c
-      LEFT JOIN users u ON c.created_by = u.id
       WHERE c.id = $1 AND c.is_group = true
     `, [chatId]);
 

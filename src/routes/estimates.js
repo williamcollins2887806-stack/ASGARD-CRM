@@ -50,7 +50,7 @@ async function routes(fastify, options) {
       // Map API field 'name' to DB column 'title'
       if (body.name && !body.title) { body.title = body.name; delete body.name; }
       if (!body.title && !body.tender_id) {
-        // title не обязательно если есть tender_id
+        return reply.code(400).send({ error: 'Укажите title или tender_id' });
       }
       const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
       const keys = Object.keys(data);

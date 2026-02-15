@@ -5,7 +5,7 @@
 // SECURITY: Allowlist of columns for works
 const ALLOWED_COLS = new Set([
   'tender_id', 'pm_id', 'work_number', 'work_title', 'work_status',
-  'contract_sum', 'customer_name', 'start_date', 'end_date',
+  'contract_sum', 'customer_name', 'start_date', 'start_plan', 'end_plan', 'end_fact',
   'created_by', 'created_at', 'updated_at'
 ]);
 
@@ -161,7 +161,7 @@ async function routes(fastify, options) {
         COUNT(w.id) as total_works,
         COUNT(w.id) FILTER (WHERE w.work_status IN ('В работе', 'Мобилизация', 'Подготовка')) as active,
         COUNT(w.id) FILTER (WHERE w.work_status = 'Работы сдали') as completed,
-        COUNT(w.id) FILTER (WHERE w.end_date < NOW() AND w.work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
+        COUNT(w.id) FILTER (WHERE w.end_plan < NOW() AND w.work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
         COALESCE(SUM(w.contract_sum), 0) as total_contract,
         0 as total_cost_plan,
         0 as total_cost_fact,
@@ -181,7 +181,7 @@ async function routes(fastify, options) {
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE work_status IN ('В работе', 'Мобилизация', 'Подготовка')) as active,
         COUNT(*) FILTER (WHERE work_status = 'Работы сдали') as completed,
-        COUNT(*) FILTER (WHERE end_date < NOW() AND work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
+        COUNT(*) FILTER (WHERE end_plan < NOW() AND work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
         COALESCE(SUM(contract_sum), 0) as total_contract,
         COALESCE(SUM(contract_sum), 0) as total_profit
       FROM works w

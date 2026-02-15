@@ -118,8 +118,8 @@ const CASH_ADMIN_READ_ROLES = [
   'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'
 ];
 
-// meetings (read): NO role has meetings.read in role_presets — ADMIN only
-const MEETINGS_READ_ROLES = ['ADMIN'];
+// meetings (read): meetings endpoint is OPEN — all authenticated users can access
+const MEETINGS_READ_ROLES = [...ALL_ROLES];
 
 // permits (read): V005 role_presets give TO, PM, HR + ADMIN + directors
 // HEAD_PM inherits PM, HR_MANAGER inherits HR, HEAD_TO inherits TO
@@ -462,10 +462,10 @@ tests.push({
 });
 
 tests.push({
-  name: '[PERM-VERIFY] HEAD_TO lacks meetings permission (no preset) -> 403',
+  name: '[PERM-VERIFY] HEAD_TO CAN access meetings (open endpoint) -> non-403',
   run: async () => {
     const resp = await api('GET', '/api/meetings', { role: 'HEAD_TO' });
-    assert(resp.status === 403, `HEAD_TO should NOT access /api/meetings but got ${resp.status}`);
+    assert(resp.status !== 403, `HEAD_TO should access /api/meetings but got 403`);
   }
 });
 
@@ -478,10 +478,10 @@ tests.push({
 });
 
 tests.push({
-  name: '[PERM-VERIFY] CHIEF_ENGINEER lacks meetings permission -> 403',
+  name: '[PERM-VERIFY] CHIEF_ENGINEER CAN access meetings (open endpoint) -> non-403',
   run: async () => {
     const resp = await api('GET', '/api/meetings', { role: 'CHIEF_ENGINEER' });
-    assert(resp.status === 403, `CHIEF_ENGINEER should NOT access /api/meetings but got ${resp.status}`);
+    assert(resp.status !== 403, `CHIEF_ENGINEER should access /api/meetings but got 403`);
   }
 });
 

@@ -375,7 +375,7 @@ module.exports = async function (fastify) {
       INSERT INTO tenders (
         customer_name, customer_inn, tender_type, tender_status,
         tender_price, docs_deadline, responsible_pm_id,
-        comment_to, period, created_by_user_id, created_at
+        comment_to, period, created_by, created_at
       ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
       RETURNING id
     `, [

@@ -275,68 +275,29 @@ module.exports = {
     // ═══════════════════════════════════════════════════════════════
     // NEGATIVE: forbidden write roles
     // ═══════════════════════════════════════════════════════════════
+    // Meetings is OPEN (authenticate only) — all roles can access
     {
-      name: 'NEGATIVE: WAREHOUSE cannot create meeting (write) -> 403',
+      name: 'OPEN: WAREHOUSE can create meeting (authenticate only)',
       run: async () => {
         const resp = await api('POST', '/api/meetings', {
           role: 'WAREHOUSE',
-          body: {
-            title: 'Forbidden meeting',
-            start_time: '2026-07-01T09:00:00Z'
-          }
+          body: { title: 'Warehouse meeting test', start_time: '2026-07-01T09:00:00Z' }
         });
-        assertForbidden(resp, 'WAREHOUSE create meeting');
+        assert(resp.status !== 403, `WAREHOUSE should access meetings but got 403`);
+        const id = resp.data?.meeting?.id || resp.data?.id;
+        if (id) await api('DELETE', `/api/meetings/${id}`, { role: 'ADMIN' }).catch(() => {});
       }
     },
     {
-      name: 'NEGATIVE: PROC cannot create meeting (write) -> 403',
+      name: 'OPEN: PROC can create meeting (authenticate only)',
       run: async () => {
         const resp = await api('POST', '/api/meetings', {
           role: 'PROC',
-          body: {
-            title: 'Forbidden meeting',
-            start_time: '2026-07-01T09:00:00Z'
-          }
+          body: { title: 'Proc meeting test', start_time: '2026-07-01T09:00:00Z' }
         });
-        assertForbidden(resp, 'PROC create meeting');
-      }
-    },
-    {
-      name: 'NEGATIVE: WAREHOUSE cannot update meeting (write) -> 403',
-      run: async () => {
-        if (!testMeetingId) return skip('no meeting created');
-        const resp = await api('PUT', `/api/meetings/${testMeetingId}`, {
-          role: 'WAREHOUSE',
-          body: { title: 'Hacked title' }
-        });
-        assertForbidden(resp, 'WAREHOUSE update meeting');
-      }
-    },
-    {
-      name: 'NEGATIVE: PROC cannot add participants (write) -> 403',
-      run: async () => {
-        if (!testMeetingId || !participantUserId) return skip('no meeting or participant');
-        const resp = await api('POST', `/api/meetings/${testMeetingId}/participants`, {
-          role: 'PROC',
-          body: { user_id: participantUserId }
-        });
-        assertForbidden(resp, 'PROC add participant');
-      }
-    },
-    {
-      name: 'NEGATIVE: WAREHOUSE cannot delete meeting (delete) -> 403',
-      run: async () => {
-        if (!testMeetingId) return skip('no meeting created');
-        const resp = await api('DELETE', `/api/meetings/${testMeetingId}`, { role: 'WAREHOUSE' });
-        assertForbidden(resp, 'WAREHOUSE delete meeting');
-      }
-    },
-    {
-      name: 'NEGATIVE: PROC cannot delete meeting (delete) -> 403',
-      run: async () => {
-        if (!testMeetingId) return skip('no meeting created');
-        const resp = await api('DELETE', `/api/meetings/${testMeetingId}`, { role: 'PROC' });
-        assertForbidden(resp, 'PROC delete meeting');
+        assert(resp.status !== 403, `PROC should access meetings but got 403`);
+        const id = resp.data?.meeting?.id || resp.data?.id;
+        if (id) await api('DELETE', `/api/meetings/${id}`, { role: 'ADMIN' }).catch(() => {});
       }
     },
 

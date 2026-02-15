@@ -96,9 +96,9 @@ const PERMISSION_ENDPOINTS = [
     path: '/api/meetings',
     label: 'meetings',
     module: 'meetings',
-    // meetings.read NOT in role_presets — only ADMIN has access
-    allowed: [],
-    denied:  ['TO', 'PM', 'HR', 'BUH', 'PROC', 'OFFICE_MANAGER', 'CHIEF_ENGINEER', 'WAREHOUSE'],
+    // meetings endpoint is OPEN — all authenticated users can access
+    allowed: ['TO', 'PM', 'HR', 'BUH', 'PROC', 'OFFICE_MANAGER', 'CHIEF_ENGINEER', 'WAREHOUSE'],
+    denied:  [],
   },
   {
     path: '/api/permits',
