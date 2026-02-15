@@ -15,7 +15,7 @@ window.AsgardAlertsPage=(function(){
       <div class="card">
         <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
           <div>
-            <div class="kpi"><span class="dot" style="background:#3b82f6"></span> Воронья почта • Уведомления</div>
+            <div class="kpi" style="align-items:center; justify-content:flex-start"><span class="dot" style="background:#3b82f6"></span> Воронья почта • Уведомления</div>
             <div class="help">Сообщения о передаче, согласовании, ответах персонала и закупок.</div>
           </div>
           <div class="row" style="gap:8px">

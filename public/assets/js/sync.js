@@ -428,17 +428,17 @@ window.AsgardSync = (function(){
       <div class="panel">
         <h3 style="margin-bottom:16px">🔄 Синхронизация с PostgreSQL</h3>
         
-        <div class="row" style="gap:16px;flex-wrap:wrap;margin-bottom:16px">
-          <div class="card" style="flex:1;min-width:200px;padding:16px;border-left:4px solid ${connection.connected ? 'var(--green)' : 'var(--red)'}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px;align-items:stretch">
+          <div class="card" style="padding:16px;border-left:4px solid ${connection.connected ? 'var(--green)' : 'var(--red)'}">
             <div class="help">Статус подключения</div>
             <div style="font-size:18px;font-weight:bold">${connection.connected ? '✅ Подключено' : '❌ Нет связи'}</div>
             ${connection.error ? `<div class="help" style="color:var(--red)">${esc(connection.error)}</div>` : ''}
           </div>
-          <div class="card" style="flex:1;min-width:200px;padding:16px">
+          <div class="card" style="padding:16px">
             <div class="help">Последняя синхронизация</div>
             <div style="font-size:18px;font-weight:bold">${lastResult?.timestamp ? formatDateTime(lastResult.timestamp) : 'Никогда'}</div>
           </div>
-          <div class="card" style="flex:1;min-width:200px;padding:16px">
+          <div class="card" style="padding:16px">
             <div class="help">Результат</div>
             <div style="font-size:14px">
               ${lastResult ? `↓${lastResult.totalPulled || 0} ↑${lastResult.totalPushed || 0} ⚠️${lastResult.totalConflicts || 0}` : '—'}
@@ -447,7 +447,7 @@ window.AsgardSync = (function(){
         </div>
 
         <details open style="margin-bottom:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--blue)"></span> Настройки подключения</summary>
+          <summary class="kpi" style="cursor:pointer;align-items:center;justify-content:flex-start"><span class="dot" style="background:var(--blue)"></span> Настройки подключения</summary>
           <div class="formrow" style="margin-top:12px">
             <div style="grid-column:1/-1">
               <label>URL API сервера *</label>

@@ -55,15 +55,15 @@ window.AsgardUserRequestsPage = (function(){
           .ur-tabs { display:flex; gap:8px; margin-bottom:20px; }
           .ur-tab { 
             padding:10px 18px; border-radius:10px; 
-            background:rgba(13,20,40,.4); 
-            border:1px solid rgba(148,163,184,.15);
+            background:var(--bg-card);
+            border:1px solid var(--border);
             color:var(--muted); font-weight:700; cursor:pointer;
             transition: all .2s ease;
           }
-          .ur-tab:hover { border-color:rgba(242,208,138,.3); }
+          .ur-tab:hover { border-color:var(--primary); }
           .ur-tab.active { 
             background:linear-gradient(135deg, rgba(242,208,138,.2), rgba(242,208,138,.1));
-            border-color:rgba(242,208,138,.4);
+            border-color:var(--primary);
             color:var(--gold);
           }
           .ur-tab .count { 
@@ -78,8 +78,8 @@ window.AsgardUserRequestsPage = (function(){
           .ur-list { display:grid; gap:12px; }
           
           .ur-card {
-            background: linear-gradient(135deg, rgba(13,20,40,.6), rgba(13,20,40,.4));
-            border:1px solid rgba(148,163,184,.15);
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-card));
+            border:1px solid var(--border);
             border-radius:14px;
             padding:16px 20px;
             display:grid;
@@ -89,7 +89,7 @@ window.AsgardUserRequestsPage = (function(){
             transition: all .3s ease;
           }
           .ur-card:hover {
-            border-color:rgba(242,208,138,.25);
+            border-color:var(--primary);
           }
           .ur-card.blocked {
             opacity:.6;
@@ -113,8 +113,8 @@ window.AsgardUserRequestsPage = (function(){
           
           .ur-empty {
             text-align:center; padding:60px 20px;
-            background:rgba(13,20,40,.3);
-            border:1px dashed rgba(148,163,184,.2);
+            background:var(--bg-card);
+            border:1px dashed var(--border);
             border-radius:16px;
             color:var(--muted);
           }
@@ -122,13 +122,13 @@ window.AsgardUserRequestsPage = (function(){
           
           .ur-search { 
             display:flex; gap:12px; margin-bottom:16px; 
-            padding:12px; background:rgba(13,20,40,.3); 
+            padding:12px; background:var(--bg-card);
             border-radius:12px; align-items:center;
           }
           .ur-search input {
             flex:1; padding:10px 14px; border-radius:10px;
-            border:1px solid rgba(148,163,184,.15);
-            background:rgba(13,20,40,.5);
+            border:1px solid var(--border);
+            background:var(--bg-card);
             color:var(--text); font-size:14px;
           }
         </style>

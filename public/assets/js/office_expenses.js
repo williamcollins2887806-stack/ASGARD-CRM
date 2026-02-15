@@ -116,18 +116,18 @@ window.AsgardOfficeExpensesPage = (function(){
         <style>
           .oexp-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:20px; }
           .oexp-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px; }
-          .oexp-kpi-card { background:rgba(13,20,40,.5); border:1px solid var(--line); border-radius:14px; padding:14px; text-align:center; }
+          .oexp-kpi-card { background:var(--bg-card); border:1px solid var(--line); border-radius:14px; padding:14px; text-align:center; }
           .oexp-kpi-label { font-size:11px; color:var(--muted); text-transform:uppercase; }
           .oexp-kpi-value { font-size:24px; font-weight:900; color:var(--gold); margin-top:4px; }
           .oexp-kpi-sub { font-size:11px; color:var(--muted); }
           
-          .oexp-filters { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding:14px; background:rgba(13,20,40,.4); border-radius:12px; align-items:flex-end; }
+          .oexp-filters { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; padding:14px; background:var(--bg-card); border-radius:12px; align-items:flex-end; }
           .oexp-filter { display:flex; flex-direction:column; gap:4px; }
           .oexp-filter label { font-size:11px; color:var(--muted); text-transform:uppercase; }
           .oexp-filter select { padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:var(--glass); color:var(--text); }
           
           .oexp-cats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px; }
-          .oexp-cat { background:rgba(13,20,40,.4); border:1px solid var(--line); border-radius:12px; padding:12px; display:flex; align-items:center; gap:10px; }
+          .oexp-cat { background:var(--bg-card); border:1px solid var(--line); border-radius:12px; padding:12px; display:flex; align-items:center; gap:10px; }
           .oexp-cat-icon { font-size:24px; }
           .oexp-cat-info { flex:1; }
           .oexp-cat-label { font-size:12px; color:var(--muted); }
@@ -135,7 +135,7 @@ window.AsgardOfficeExpensesPage = (function(){
           
           .oexp-table { width:100%; border-collapse:separate; border-spacing:0 6px; }
           .oexp-table th { font-size:11px; color:var(--muted); font-weight:700; text-align:left; padding:8px 10px; text-transform:uppercase; }
-          .oexp-table td { padding:10px; background:rgba(13,20,40,.4); border:1px solid var(--line); }
+          .oexp-table td { padding:10px; background:var(--bg-card); border:1px solid var(--line); }
           .oexp-table tr td:first-child { border-radius:10px 0 0 10px; }
           .oexp-table tr td:last-child { border-radius:0 10px 10px 0; }
           .oexp-table tr:hover td { background:rgba(59,130,246,.1); }

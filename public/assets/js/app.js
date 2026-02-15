@@ -126,20 +126,21 @@ console.log('[ASGARD] Global period functions loaded');
   window.__ASG_SHARED_TABLE_CSS__ = `
 <style>
   table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-  table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-  table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); vertical-align:top}
-  table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-  table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
+  table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:0 10px;}
+  table.asg td{padding:10px; background:var(--bg-card); border:1px solid var(--border); vertical-align:top; color:var(--text-primary)}
+  table.asg tr td:first-child{border-top-left-radius:var(--radius-md);border-bottom-left-radius:var(--radius-md);}
+  table.asg tr td:last-child{border-top-right-radius:var(--radius-md);border-bottom-right-radius:var(--radius-md);}
+  table.asg tr:hover td{background:var(--bg-hover)}
   .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
   .tools .field{min-width:220px}
   .kpi{display:grid; grid-template-columns:repeat(6,minmax(140px,1fr)); gap:12px}
-  .kpi .k{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:16px; padding:12px}
-  .kpi .k .t{font-size:11px; color:rgba(184,196,231,.85); font-weight:900}
-  .kpi .k .v{font-size:22px; font-weight:1000; margin-top:6px; color:rgba(242,208,138,.95)}
-  .kpi .k .s{font-size:12px; color:rgba(184,196,231,.85); margin-top:6px}
-  .chart{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:16px; padding:12px}
+  .kpi .k{background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px; text-align:center}
+  .kpi .k .t{font-size:11px; color:var(--text-secondary); font-weight:900}
+  .kpi .k .v{font-size:22px; font-weight:1000; margin-top:6px; color:var(--primary); text-align:center}
+  .kpi .k .s{font-size:12px; color:var(--text-secondary); margin-top:6px}
+  .chart{background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px}
   .barrow{display:grid; grid-template-columns: 200px 1fr 70px; gap:12px; align-items:center; margin:10px 0}
-  .bar{height:14px; border-radius:999px; background:rgba(42,59,102,.35); overflow:hidden}
+  .bar{height:14px; border-radius:999px; background:var(--bg-hover); overflow:hidden}
   .bar > div{height:100%}
 </style>
 `;
@@ -221,7 +222,9 @@ try{
     };
 
     const navHtml = (role==="GUEST") ? "" : NAV.filter(n=>roleAllowed(n.roles, role)).map(n=>{
-      const a=(cur===n.r)?"active":"";
+      const NAV_CHILDREN={"/analytics":["/kpi-works","/kpi-money"]};
+      const ch=NAV_CHILDREN[n.r]||[];
+      const a=(cur===n.r||ch.includes(cur))?"active":"";
       return `<a class="navitem ${a}" href="#${n.r}">
         <div class="ico"><img src="assets/icons/nav/${esc(n.i)}.svg" alt="" loading="lazy"/></div>
         <div class="lbl"><div class="name">${esc(n.l)}</div><div class="desc">${esc(n.d)}</div></div>

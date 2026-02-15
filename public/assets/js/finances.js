@@ -136,10 +136,10 @@ window.AsgardFinancesPage = (function(){
       const body = `
         <style>
           .fin-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:20px; }
-          .fin-tabs { display:flex; gap:4px; background:rgba(13,20,40,.6); padding:4px; border-radius:14px; }
+          .fin-tabs { display:flex; gap:4px; background:var(--glass); padding:4px; border-radius:14px; }
           .fin-tab { padding:10px 20px; border-radius:12px; border:none; background:transparent; color:var(--muted); font-weight:700; cursor:pointer; transition:all .2s; }
           .fin-tab:hover { color:var(--text); }
-          .fin-tab.active { background:linear-gradient(135deg, rgba(59,130,246,.3), rgba(220,38,38,.2)); color:var(--text); }
+          .fin-tab.active { background:linear-gradient(135deg, var(--secondary-glow), var(--primary-glow)); color:var(--text-primary); }
           .fin-year-nav { display:flex; align-items:center; gap:12px; }
           .fin-year { font-size:28px; font-weight:900; color:var(--gold); min-width:100px; text-align:center; }
           .fin-arrow { width:40px; height:40px; border-radius:12px; border:1px solid var(--line); background:var(--glass); color:var(--text); font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .2s; }
@@ -147,12 +147,12 @@ window.AsgardFinancesPage = (function(){
           .fin-arrow:disabled { opacity:.3; cursor:not-allowed; }
           
           .fin-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px; }
-          .fin-card { background:rgba(13,20,40,.5); border:1px solid var(--line); border-radius:18px; padding:20px; }
+          .fin-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; }
           .fin-card-label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
           .fin-card-value { font-size:32px; font-weight:900; color:var(--gold); }
           .fin-card-sub { font-size:13px; color:var(--muted); margin-top:4px; }
           
-          .fin-chart-container { background:rgba(13,20,40,.4); border:1px solid var(--line); border-radius:20px; padding:24px; margin-bottom:24px; }
+          .fin-chart-container { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; margin-bottom:24px; }
           .fin-chart-title { font-size:16px; font-weight:800; margin-bottom:20px; display:flex; align-items:center; gap:10px; }
           .fin-chart-title .back-btn { padding:6px 12px; border-radius:8px; border:1px solid var(--line); background:var(--glass); color:var(--text); font-size:12px; cursor:pointer; }
           .fin-chart-title .back-btn:hover { border-color:var(--gold); }

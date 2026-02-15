@@ -161,10 +161,10 @@ window.AsgardBirthdaysPage=(function(){
   function topTabs({activeTab, canWorkers}){
     const mk = (tab, label)=>{
       const is = tab===activeTab;
-      return `<a class="badge" href="#/birthdays?tab=${tab}" style="text-decoration:none; cursor:pointer; ${is?'background:#3b82f6':''}">${esc(label)}</a>`;
+      return `<a class="tab" href="#/birthdays?tab=${tab}" style="text-decoration:none; cursor:pointer; flex:0; padding:10px 20px; ${is?'background:linear-gradient(135deg, var(--primary-glow), var(--secondary-glow)); color:var(--primary)':''}">${esc(label)}</a>`;
     };
     return `
-      <div class="row" style="gap:10px; flex-wrap:wrap">
+      <div class="tabs" style="display:inline-flex; width:auto">
         ${mk('office','Офис')}
         ${canWorkers ? mk('workers','Рабочие') : ''}
       </div>

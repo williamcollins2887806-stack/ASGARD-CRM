@@ -254,7 +254,7 @@ async function getRefs(){
     return `<style>
       table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
       table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-      table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85);}
+      table.asg td{padding:10px; background:var(--bg-card); border:1px solid var(--border);}
       table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
       table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
       .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
@@ -331,7 +331,7 @@ async function getRefs(){
               ${pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}
             </select>
           </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; align-self:flex-end">
             <button class="btn" id="btnNew">+ Внести тендер</button>
             <button class="btn ghost" id="btnReset">Сброс</button>
             ${user.role === "ADMIN" ? '<button class="btn ghost" id="btnBulkReassign" style="background:rgba(139,92,246,.2)">🔄 Массовое переназначение</button>' : ''}
@@ -772,7 +772,7 @@ async function getRefs(){
         const html = `
           <div style="margin-bottom:16px">
             <div style="font-size:14px; font-weight:700; margin-bottom:8px">Тендеры на архивном РП: ${archiveTenders.length}</div>
-            <div style="background:rgba(13,20,40,.5); padding:12px; border-radius:10px; max-height:150px; overflow:auto; font-size:13px">
+            <div style="background:var(--bg-card); padding:12px; border-radius:var(--radius-sm); max-height:150px; overflow:auto; font-size:13px">
               ${statusList}
             </div>
           </div>

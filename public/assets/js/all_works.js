@@ -43,7 +43,7 @@ window.AsgardAllWorksPage=(function(){
           <div class="field"><label>Статус</label>
             <select id="f_status"><option value="">Все</option>${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select>
           </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; align-self:flex-end">
             <button class="btn ghost" id="btnGantt">Гантт по всем работам</button>
           </div>
         </div>

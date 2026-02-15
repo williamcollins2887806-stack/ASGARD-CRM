@@ -49,7 +49,7 @@ window.AsgardPersonnelPage=(function(){
       <div class="panel">
         <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
           <div>
-            <div class="kpi"><span class="dot" style="background:#3b82f6"></span> Персонал</div>
+            <div class="kpi" style="align-items:center; justify-content:flex-start"><span class="dot" style="background:#3b82f6"></span> Персонал</div>
             <div class="help">50 тестовых бойцов уже в базе. Рейтинг считается по оценкам РП.</div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">

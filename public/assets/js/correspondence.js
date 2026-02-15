@@ -174,7 +174,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:24px; }
           .corr-kpi-card { 
             position:relative;
-            background: linear-gradient(135deg, rgba(13,20,40,.6) 0%, rgba(13,20,40,.4) 100%);
+            background: var(--bg-card);
             border: 1px solid rgba(242,208,138,.15);
             border-radius:16px; 
             padding:18px;
@@ -190,7 +190,7 @@ window.AsgardCorrespondencePage = (function(){
             opacity:.6;
           }
           .corr-kpi-card:hover {
-            border-color: rgba(242,208,138,.35);
+            border-color: var(--primary);
             transform: translateY(-2px);
             box-shadow: 0 12px 40px rgba(0,0,0,.3);
           }
@@ -202,8 +202,8 @@ window.AsgardCorrespondencePage = (function(){
           .corr-filters { 
             display:flex; flex-wrap:wrap; gap:12px; 
             margin-bottom:20px; padding:16px; 
-            background: linear-gradient(135deg, rgba(13,20,40,.5), rgba(13,20,40,.3));
-            border: 1px solid rgba(148,163,184,.12);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
             border-radius:14px;
             align-items:flex-end;
           }
@@ -211,13 +211,13 @@ window.AsgardCorrespondencePage = (function(){
           .corr-filter label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
           .corr-filter select, .corr-filter input { 
             padding:10px 14px; border-radius:10px; 
-            border:1px solid rgba(148,163,184,.18); 
-            background: rgba(13,20,40,.6); 
+            border:1px solid var(--border);
+            background: var(--bg-card);
             color:var(--text); font-size:13px;
             transition: all .2s ease;
           }
           .corr-filter select:focus, .corr-filter input:focus {
-            border-color: rgba(242,208,138,.4);
+            border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(242,208,138,.1);
             outline:none;
           }
@@ -232,15 +232,15 @@ window.AsgardCorrespondencePage = (function(){
           }
           .corr-table td { 
             padding:14px; 
-            background: linear-gradient(135deg, rgba(13,20,40,.5), rgba(13,20,40,.35));
-            border:1px solid rgba(148,163,184,.1);
+            background: var(--bg-card);
+            border:1px solid var(--border);
             transition: all .2s ease;
           }
           .corr-table tr td:first-child { border-radius:12px 0 0 12px; border-left:3px solid transparent; }
           .corr-table tr td:last-child { border-radius:0 12px 12px 0; }
           .corr-table tr:hover td { 
             background: rgba(59,130,246,.08);
-            border-color: rgba(242,208,138,.2);
+            border-color: var(--primary);
           }
           .corr-table tr:hover td:first-child { border-left-color: var(--gold); }
           
@@ -275,13 +275,13 @@ window.AsgardCorrespondencePage = (function(){
           .corr-actions { display:flex; gap:6px; }
           .corr-btn { 
             padding:6px 10px; border-radius:8px; 
-            border:1px solid rgba(148,163,184,.18); 
-            background: rgba(13,20,40,.5); 
+            border:1px solid var(--border);
+            background: var(--bg-card);
             color:var(--text); font-size:12px; cursor:pointer;
             transition: all .2s ease;
           }
-          .corr-btn:hover { 
-            border-color: rgba(242,208,138,.4);
+          .corr-btn:hover {
+            border-color: var(--primary);
             transform: translateY(-1px);
           }
           
@@ -289,9 +289,9 @@ window.AsgardCorrespondencePage = (function(){
           .corr-empty { 
             text-align:center; padding:60px 20px; 
             color:var(--muted);
-            background: linear-gradient(135deg, rgba(13,20,40,.4), rgba(13,20,40,.2));
+            background: var(--bg-card);
             border-radius:16px;
-            border: 1px dashed rgba(148,163,184,.2);
+            border: 1px dashed var(--border);
           }
           .corr-empty-icon { font-size:64px; margin-bottom:16px; opacity:.5; }
           

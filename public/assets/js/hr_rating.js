@@ -88,7 +88,7 @@ window.AsgardHrRatingPage=(function(){
       <div class="panel">
         <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
           <div>
-            <div class="kpi"><span class="dot" style="background:#22c55e"></span>Рейтинг дружины</div>
+            <div class="kpi" style="align-items:center; justify-content:flex-start"><span class="dot" style="background:#22c55e"></span>Рейтинг дружины</div>
             <div class="help">Оценки РП 1–10. Средний балл = сумма/кол-во оценок. Фильтр по допускам — из настроек.</div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">

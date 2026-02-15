@@ -185,7 +185,7 @@ window.AsgardApprovalsPage = (function(){
       <style>
         table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
         table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-        table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85);}
+        table.asg td{padding:10px; background:var(--bg-card); border:1px solid var(--border);}
         table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
         table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
         .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
@@ -218,7 +218,7 @@ window.AsgardApprovalsPage = (function(){
               <option value="all">Все решения</option>
             </select>
           </div>
-          <div style="display:flex; gap:10px">
+          <div style="display:flex; gap:10px; align-items:center; align-self:flex-end">
             <button class="btn ghost" id="btnReset">Сброс</button>
           </div>
         </div>
@@ -383,7 +383,7 @@ window.AsgardApprovalsPage = (function(){
         else if(profitPD >= minPPD) { status = "yellow"; statusLabel = "🟡 ЖЁЛТАЯ ЗОНА"; statusColor = "#f59e0b"; }
         
         quickCard = `
-          <div style="background:rgba(13,20,40,.6); border-radius:14px; padding:16px; margin-bottom:16px">
+          <div style="background:var(--bg-card); border-radius:var(--radius-lg); padding:16px; margin-bottom:16px">
             <div style="font-size:12px; color:var(--muted); margin-bottom:8px">📝 БЫСТРЫЙ ПРОСЧЁТ</div>
             <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px">
               <div style="text-align:center">
@@ -424,7 +424,7 @@ window.AsgardApprovalsPage = (function(){
 
       // Компактная карточка v2 если есть данные
       const v2Card = v2Summary ? `
-        <div style="background:rgba(13,20,40,.6); border-radius:14px; padding:16px; margin-bottom:16px">
+        <div style="background:var(--bg-card); border-radius:var(--radius-lg); padding:16px; margin-bottom:16px">
           <div style="font-size:12px; color:var(--muted); margin-bottom:8px">ᚱ РУНИЧЕСКИЙ КАЛЬКУЛЯТОР</div>
           <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px">
             <div style="text-align:center">

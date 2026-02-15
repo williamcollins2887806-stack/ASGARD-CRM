@@ -352,7 +352,7 @@ window.AsgardMango = (function(){
         }
         
         .call-popup-content {
-          background: linear-gradient(135deg, #1a1a2e, #0d1428);
+          background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
           border: 2px solid var(--green);
           border-radius: 20px;
           padding: 20px;
@@ -693,19 +693,19 @@ window.AsgardMango = (function(){
       <div class="panel">
         <h3 style="margin-bottom:16px">📞 Манго Телеком — Интеграция</h3>
         
-        <div class="row" style="gap:16px;flex-wrap:wrap;margin-bottom:24px">
-          <div class="card" style="flex:1;min-width:200px;padding:16px;border-left:4px solid ${settings.enabled ? 'var(--green)' : 'var(--red)'}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+          <div class="card" style="padding:16px;border-left:4px solid ${settings.enabled ? 'var(--green)' : 'var(--red)'}">
             <div class="help">Статус</div>
             <div style="font-size:18px;font-weight:bold">${settings.enabled ? '✅ Подключено' : '❌ Не настроено'}</div>
           </div>
-          <div class="card" style="flex:1;min-width:200px;padding:16px">
+          <div class="card" style="padding:16px">
             <div class="help">Принимают звонки</div>
             <div style="font-size:18px;font-weight:bold">${statuses.filter(s => s.callStatus?.accepting).length} из ${users.length}</div>
           </div>
         </div>
 
         <details open style="margin-bottom:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--blue)"></span> Настройки API</summary>
+          <summary class="kpi" style="cursor:pointer;align-items:center;justify-content:flex-start"><span class="dot" style="background:var(--blue)"></span> Настройки API</summary>
           <div class="formrow" style="margin-top:12px">
             <div>
               <label>API Key *</label>
@@ -734,7 +734,7 @@ window.AsgardMango = (function(){
         </details>
 
         <details style="margin-bottom:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--green)"></span> Статусы сотрудников</summary>
+          <summary class="kpi" style="cursor:pointer;align-items:center;justify-content:flex-start"><span class="dot" style="background:var(--green)"></span> Статусы сотрудников</summary>
           <div style="margin-top:12px">
             <table class="tbl">
               <thead>

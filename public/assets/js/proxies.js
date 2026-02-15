@@ -147,13 +147,15 @@ window.AsgardProxiesPage = (function(){
           
           .proxy-card {
             position:relative;
-            background: linear-gradient(135deg, rgba(13,20,40,.6) 0%, rgba(13,20,40,.4) 100%);
-            border: 1px solid rgba(148,163,184,.15);
-            border-radius:18px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius:var(--radius-lg);
             padding:24px;
             cursor:pointer;
             transition: all .3s ease;
             overflow:hidden;
+            display:flex;
+            flex-direction:column;
           }
           
           .proxy-card::before {
@@ -193,6 +195,7 @@ window.AsgardProxiesPage = (function(){
             font-size:13px;
             color:var(--muted);
             line-height:1.5;
+            flex:1;
           }
           
           .proxy-action {
@@ -216,10 +219,10 @@ window.AsgardProxiesPage = (function(){
           .proxy-field label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
           .proxy-field input, .proxy-field textarea, .proxy-field select {
             padding:12px 14px;
-            border-radius:10px;
-            border:1px solid rgba(148,163,184,.2);
-            background:rgba(13,20,40,.6);
-            color:var(--text);
+            border-radius:var(--radius-sm);
+            border:1px solid var(--border);
+            background:var(--bg-card);
+            color:var(--text-primary);
             font-size:14px;
           }
           .proxy-field textarea { min-height:80px; resize:vertical; }
