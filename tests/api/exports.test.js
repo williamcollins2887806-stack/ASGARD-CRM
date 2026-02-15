@@ -83,7 +83,10 @@ module.exports = {
           // Create a test permit application so export has data
           const createResp = await api('POST', '/api/permit-applications', {
             role: 'ADMIN',
-            body: { employee_name: 'Export Test Worker', permit_type: 'fire_safety', status: 'pending' }
+            body: {
+              contractor_name: 'Export Test Contractor',
+              items: [{ employee_id: 1, permit_type_ids: [1] }]
+            }
           });
           if (createResp.ok) {
             testAppId = createResp.data?.application?.id || createResp.data?.item?.id || createResp.data?.id;

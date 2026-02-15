@@ -371,40 +371,51 @@ module.exports = async function (fastify) {
     const period = new Date().toISOString().slice(0, 7);
     const tenderType = pt.source_type === 'email' && pt.email_type === 'platform_tender' ? 'Тендер' : 'Прямой запрос';
 
-    const tenderRes = await db.query(`
-      INSERT INTO tenders (
-        customer_name, customer_inn, tender_type, tender_status,
-        tender_price, docs_deadline, responsible_pm_id,
-        comment_to, period, created_by, created_at
-      ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
-      RETURNING id
-    `, [
-      pt.customer_name || pt.from_name || 'Не указан',
-      pt.customer_inn || null,
-      tenderType,
-      pt.estimated_sum || null,
-      pt.work_deadline || null,
-      assigned_pm_id || null,
-      `Создано из заявки #${id}. ${pt.ai_recommendation || ''} ${comment || ''}`.trim(),
-      period,
-      user.id
-    ]);
-    const tenderId = tenderRes.rows[0].id;
+    let tenderId;
+    try {
+      const tenderRes = await db.query(`
+        INSERT INTO tenders (
+          customer_name, customer_inn, tender_type, tender_status,
+          tender_price, docs_deadline, responsible_pm_id,
+          comment_to, period, created_by, created_at
+        ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
+        RETURNING id
+      `, [
+        pt.customer_name || pt.from_name || 'Не указан',
+        pt.customer_inn || null,
+        tenderType,
+        pt.estimated_sum || null,
+        pt.work_deadline || null,
+        assigned_pm_id || null,
+        `Создано из заявки #${id}. ${pt.ai_recommendation || ''} ${comment || ''}`.trim(),
+        period,
+        user.id
+      ]);
+      tenderId = tenderRes.rows[0].id;
+    } catch (tenderErr) {
+      console.error('[PreTender] Accept: tender INSERT error:', tenderErr.message, tenderErr.code);
+      return reply.code(400).send({ error: 'Ошибка создания тендера: ' + (tenderErr.message || 'неизвестная ошибка') });
+    }
 
     // 2. Обновить заявку
     let responseEmailId = null;
 
-    await db.query(`
-      UPDATE pre_tender_requests SET
-        status = 'accepted',
-        decision_by = $1, decision_at = NOW(), decision_comment = $2,
-        created_tender_id = $3,
-        contact_person = COALESCE(NULLIF($4, ''), contact_person),
-        contact_phone = COALESCE(NULLIF($5, ''), contact_phone),
-        assigned_to = $6,
-        updated_at = NOW()
-      WHERE id = $7
-    `, [user.id, comment || null, tenderId, contact_person || '', contact_phone || '', assigned_pm_id || null, id]);
+    try {
+      await db.query(`
+        UPDATE pre_tender_requests SET
+          status = 'accepted',
+          decision_by = $1, decision_at = NOW(), decision_comment = $2,
+          created_tender_id = $3,
+          contact_person = COALESCE(NULLIF($4, ''), contact_person),
+          contact_phone = COALESCE(NULLIF($5, ''), contact_phone),
+          assigned_to = $6,
+          updated_at = NOW()
+        WHERE id = $7
+      `, [user.id, comment || null, tenderId, contact_person || '', contact_phone || '', assigned_pm_id || null, id]);
+    } catch (updateErr) {
+      console.error('[PreTender] Accept: UPDATE error:', updateErr.message, updateErr.code);
+      // Tender was created, return success with warning
+    }
 
     // 3. Отправить письмо через /api/mailbox/send
     if (send_email && pt.customer_email) {

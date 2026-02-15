@@ -190,7 +190,7 @@ module.exports = {
       run: async () => {
         const cr = await api('POST', '/api/data/equipment', {
           role: 'ADMIN',
-          body: { name: 'INTEG-EQUIP-TEST', status: 'available' }
+          body: { name: 'INTEG-EQUIP-TEST', status: 'available', inventory_number: 'INV-INTEG-' + Date.now() }
         });
         assertOk(cr, 'create equipment');
         const id = cr.data?.id || cr.data?.item?.id;

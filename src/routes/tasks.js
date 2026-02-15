@@ -211,44 +211,52 @@ module.exports = async function(fastify) {
     if (!assignee_id) return reply.code(400).send({ error: 'Укажите исполнителя' });
     if (!title || !title.trim()) return reply.code(400).send({ error: 'Укажите название задачи' });
 
-    // Truncate title to prevent VARCHAR overflow (max 500 chars)
-    if (title.length > 500) {
-      title = title.slice(0, 500);
+    // Truncate title to prevent VARCHAR overflow (max 255 chars)
+    if (title.length > 255) {
+      title = title.slice(0, 255);
     }
 
     // Проверить что исполнитель существует
-    const { rows: [assignee] } = await db.query(
-      'SELECT id, name FROM users WHERE id = $1 AND is_active = true', [parseInt(assignee_id)]
-    );
-    if (!assignee) return reply.code(400).send({ error: 'Исполнитель не найден' });
+    try {
+      const { rows: [assignee] } = await db.query(
+        'SELECT id, name FROM users WHERE id = $1 AND is_active = true', [parseInt(assignee_id)]
+      );
+      if (!assignee) return reply.code(400).send({ error: 'Исполнитель не найден' });
 
-    const result = await db.query(`
-      INSERT INTO tasks (creator_id, assignee_id, title, description, deadline, priority, creator_comment, status, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', NOW(), NOW())
-      RETURNING *
-    `, [
-      request.user.id,
-      parseInt(assignee_id),
-      title.trim(),
-      description || null,
-      deadline || null,
-      priority || 'normal',
-      creator_comment || null
-    ]);
+      const result = await db.query(`
+        INSERT INTO tasks (creator_id, assignee_id, title, description, deadline, priority, creator_comment, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', NOW(), NOW())
+        RETURNING *
+      `, [
+        request.user.id,
+        parseInt(assignee_id),
+        title.trim(),
+        description || null,
+        deadline || null,
+        priority || 'normal',
+        creator_comment || null
+      ]);
 
-    const task = result.rows[0];
+      const task = result.rows[0];
 
-    // Уведомить исполнителя
-    const creatorName = request.user.name || request.user.login;
-    const deadlineStr = deadline ? new Date(deadline).toLocaleDateString('ru-RU') : 'не указан';
-    await notify(
-      parseInt(assignee_id),
-      '📋 Новая задача',
-      `${creatorName} назначил вам задачу:\n«${title.trim()}»\nДедлайн: ${deadlineStr}\nПриоритет: ${priority || 'normal'}`,
-      `#/tasks?id=${task.id}`
-    );
+      // Уведомить исполнителя
+      const creatorName = request.user.name || request.user.login;
+      const deadlineStr = deadline ? new Date(deadline).toLocaleDateString('ru-RU') : 'не указан';
+      await notify(
+        parseInt(assignee_id),
+        '📋 Новая задача',
+        `${creatorName} назначил вам задачу:\n«${title.trim()}»\nДедлайн: ${deadlineStr}\nПриоритет: ${priority || 'normal'}`,
+        `#/tasks?id=${task.id}`
+      );
 
-    return { task };
+      return { task };
+    } catch (err) {
+      fastify.log.error('Task creation error:', err.message);
+      if (err.code === '22001') return reply.code(400).send({ error: 'Значение поля слишком длинное' });
+      if (err.code === '23502') return reply.code(400).send({ error: `Обязательное поле не заполнено: ${err.column || err.message}` });
+      if (err.code === '23503') return reply.code(400).send({ error: 'Ссылка на несуществующую запись' });
+      return reply.code(400).send({ error: err.message || 'Ошибка создания задачи' });
+    }
   });
 
   // ───────────────────────────────────────────────────────────────
