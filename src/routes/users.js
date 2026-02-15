@@ -62,10 +62,14 @@ async function routes(fastify, options) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params;
+    const numericId = parseInt(id, 10);
+    if (isNaN(numericId)) {
+      return reply.code(400).send({ error: 'Invalid user id' });
+    }
 
     const result = await db.query(
       'SELECT id, login, name, email, role, is_active, created_at, last_login_at FROM users WHERE id = $1',
-      [id]
+      [numericId]
     );
 
     if (!result.rows[0]) {

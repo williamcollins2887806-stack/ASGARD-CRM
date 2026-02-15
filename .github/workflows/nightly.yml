@@ -1,0 +1,74 @@
+name: ASGARD CRM — Nightly
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  full-suite:
+    name: "\U0001F319 Полный прогон"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: asgard_test
+          POSTGRES_USER: asgard_test
+          POSTGRES_PASSWORD: test_password
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Прогон миграций
+        run: node migrations/run.js
+        env:
+          DB_HOST: localhost
+          DB_NAME: asgard_test
+          DB_USER: asgard_test
+          DB_PASSWORD: test_password
+
+      - name: Unit + Integration тесты
+        run: npm test -- --coverage
+        env:
+          DB_HOST: localhost
+          DB_NAME: asgard_test
+          DB_USER: asgard_test
+          DB_PASSWORD: test_password
+          JWT_SECRET: test-jwt-secret-nightly
+
+      - name: Запуск сервера
+        run: |
+          node src/index.js &
+          sleep 5
+        env:
+          PORT: 3000
+          DB_HOST: localhost
+          DB_NAME: asgard_test
+          DB_USER: asgard_test
+          DB_PASSWORD: test_password
+          JWT_SECRET: test-jwt-secret-nightly
+
+      - name: Нагрузочные тесты
+        run: node tests/load_test.js
+        env:
+          BASE_URL: http://localhost:3000
+          CONCURRENCY: 5
+          DURATION_SEC: 15
+          LOGIN: test_admin
+          PASSWORD: Test123!
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-results
+          path: |
+            tests/screenshots/
+            tests/test-report.txt
+            coverage/

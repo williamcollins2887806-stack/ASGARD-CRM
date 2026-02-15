@@ -116,7 +116,7 @@ window.AsgardKpiMoneyPage = (function(){
         amount: Number(exp.amount) || 0,
         counterparty: work?.customer_name || '—',
         work_id: exp.work_id,
-        work_name: work ? `${work.customer_name} — ${work.title || ''}` : `Работа #${exp.work_id}`,
+        work_name: work ? `${work.customer_name} — ${work.work_title || ''}` : `Работа #${exp.work_id}`,
         comment: exp.comment || '',
         status: exp.approval_status || exp.status || 'approved',
         created_by: exp.created_by
@@ -198,7 +198,7 @@ window.AsgardKpiMoneyPage = (function(){
         amount: Number(inc.amount) || 0,
         counterparty: inc.counterparty || work?.customer_name || '—',
         work_id: inc.work_id,
-        work_name: work ? `${work.customer_name} — ${work.title || ''}` : (inc.counterparty || '—'),
+        work_name: work ? `${work.customer_name} — ${work.work_title || ''}` : (inc.counterparty || '—'),
         comment: inc.comment || '',
         confirmed: inc.confirmed !== false,
         created_by: inc.created_by
@@ -266,7 +266,7 @@ window.AsgardKpiMoneyPage = (function(){
             <button class="tab" data-mode="incomes">💰 Поступления</button>
           </div>
           <div style="flex:1"></div>
-          <select id="yearSelect" style="padding:8px 16px; border-radius:8px; background:var(--card); border:1px solid var(--border); color:var(--text)">
+          <select id="yearSelect" style="padding:8px 16px; border-radius:6px; background:var(--card); border:1px solid var(--border); color:var(--text)">
             ${[currentYear, currentYear-1, currentYear-2].map(y => 
               `<option value="${y}" ${y===selectedYear?'selected':''}>${y}</option>`
             ).join('')}
@@ -290,14 +290,14 @@ window.AsgardKpiMoneyPage = (function(){
 
     const style = document.createElement('style');
     style.textContent = `
-      .tabs { display: flex; gap: 0; background: var(--card); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+      .tabs { display: flex; gap: 0; background: var(--card); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
       .tabs .tab { padding: 10px 20px; border: none; background: transparent; color: var(--muted); cursor: pointer; font-weight: 600; transition: all 0.2s; }
       .tabs .tab.active { background: var(--gold); color: var(--bg); }
       .tabs .tab:hover:not(.active) { background: rgba(212,175,55,0.1); }
       .kpi-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
-      .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; }
-      .kpi-card .label { font-size: 12px; color: var(--muted); margin-bottom: 5px; }
-      .kpi-card .value { font-size: 24px; font-weight: 700; color: var(--gold); }
+      .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; text-align: center; }
+      .kpi-card .label { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+      .kpi-card .value { font-size: 26px; font-weight: 700; color: var(--gold); }
       .kpi-card .sub { font-size: 11px; color: var(--muted); margin-top: 5px; }
       .chart-bar { cursor: pointer; transition: opacity 0.2s; }
       .chart-bar:hover { opacity: 0.8; }
@@ -521,7 +521,7 @@ window.AsgardKpiMoneyPage = (function(){
         works.forEach(w => {
           const opt = document.createElement('option');
           opt.value = w.id;
-          opt.textContent = `#${w.id} ${w.customer_name || ''} — ${w.title || ''}`.slice(0, 60);
+          opt.textContent = `#${w.id} ${w.customer_name || ''} — ${w.work_title || ''}`.slice(0, 60);
           select.appendChild(opt);
         });
       });

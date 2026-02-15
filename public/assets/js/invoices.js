@@ -2,7 +2,7 @@
  * АСГАРД CRM — Счета и оплаты (API версия)
  */
 window.AsgardInvoicesPage = (function(){
-  const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, closeModal, showDrawer, hideDrawer } = AsgardUI;
   
   let invoices = [];
   let works = [];
@@ -64,8 +64,8 @@ window.AsgardInvoicesPage = (function(){
           <button class="btn primary" id="btnAddInvoice">➕ Новый счёт</button>
         </div>
         
-        <div class="table-wrap" style="background:var(--bg-card);border-radius:12px;overflow:hidden">
-          <table class="tbl">
+        <div class="table-wrap" style="background:var(--bg-card);border-radius:6px;overflow:hidden">
+          <table class="tbl zebra">
             <thead>
               <tr>
                 <th>№ счёта</th>
@@ -87,7 +87,7 @@ window.AsgardInvoicesPage = (function(){
                     <td>${esc(inv.customer_name || '—')}</td>
                     <td style="text-align:right">${formatMoney(inv.total_amount)}</td>
                     <td style="text-align:right">${formatMoney(inv.paid_amount)}</td>
-                    <td><span class="badge" style="background:${st.color}">${st.label}</span></td>
+                    <td><span class="badge" style="background:${st.color}20;color:${st.color};border:1px solid ${st.color}40">${st.label}</span></td>
                     <td>
                       <button class="btn mini" data-action="edit" data-id="${inv.id}">✏️</button>
                       <button class="btn mini" data-action="pay" data-id="${inv.id}">💰</button>
@@ -107,13 +107,88 @@ window.AsgardInvoicesPage = (function(){
 
   function bindEvents() {
     $('#btnAddInvoice')?.addEventListener('click', () => openInvoiceForm());
-    
+
     $('#invoicesBody')?.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-action]');
-      if (!btn) return;
-      const id = parseInt(btn.dataset.id);
-      if (btn.dataset.action === 'edit') openInvoiceForm(id);
-      if (btn.dataset.action === 'pay') openPaymentForm(id);
+      if (btn) {
+        e.stopPropagation();
+        const id = parseInt(btn.dataset.id);
+        if (btn.dataset.action === 'edit') openInvoiceForm(id);
+        if (btn.dataset.action === 'pay') openPaymentForm(id);
+        return;
+      }
+      // Row click → open drawer card
+      const row = e.target.closest('tr[data-id]');
+      if (row) {
+        const id = parseInt(row.dataset.id);
+        viewInvoice(id);
+      }
+    });
+  }
+
+  function viewInvoice(invoiceId) {
+    const inv = invoices.find(i => i.id === invoiceId);
+    if (!inv) return;
+
+    const STATUSES = {
+      'pending': { label: 'Ожидает', cls: 'status-yellow' },
+      'partial': { label: 'Частично', cls: 'status-blue' },
+      'paid': { label: 'Оплачен', cls: 'status-green' },
+      'cancelled': { label: 'Отменён', cls: 'status-red' }
+    };
+    const st = STATUSES[inv.status] || STATUSES.pending;
+    const formatMoney = n => (n||0).toLocaleString('ru-RU') + ' ₽';
+    const formatDate = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
+    const remaining = (inv.total_amount || 0) - (inv.paid_amount || 0);
+
+    const html = `
+      <div class="drawer-section">Основные данные</div>
+      <div class="drawer-field">
+        <span class="drawer-field-label">Статус</span>
+        <span class="drawer-field-value"><span class="status ${st.cls}">${st.label}</span></span>
+      </div>
+      <div class="drawer-field">
+        <span class="drawer-field-label">Дата</span>
+        <span class="drawer-field-value">${formatDate(inv.invoice_date)}</span>
+      </div>
+      <div class="drawer-field">
+        <span class="drawer-field-label">Контрагент</span>
+        <span class="drawer-field-value">${esc(inv.customer_name || '—')}</span>
+      </div>
+
+      <div class="drawer-section">Финансы</div>
+      <div class="drawer-field">
+        <span class="drawer-field-label">Сумма</span>
+        <span class="drawer-field-value">${formatMoney(inv.total_amount)}</span>
+      </div>
+      <div class="drawer-field">
+        <span class="drawer-field-label">Оплачено</span>
+        <span class="drawer-field-value" style="color:var(--success)">${formatMoney(inv.paid_amount)}</span>
+      </div>
+      <div class="drawer-field">
+        <span class="drawer-field-label">Остаток</span>
+        <span class="drawer-field-value" style="color:${remaining > 0 ? 'var(--warning)' : 'var(--success)'}">${formatMoney(remaining)}</span>
+      </div>
+
+      ${inv.notes ? `
+        <div class="drawer-section">Примечание</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.5">${esc(inv.notes)}</div>
+      ` : ''}
+
+      <div style="display:flex;gap:8px;margin-top:24px">
+        <button class="btn primary" id="drawerEditInv" style="flex:1">✏️ Редактировать</button>
+        <button class="btn gold" id="drawerPayInv" style="flex:1">💰 Внести оплату</button>
+      </div>
+    `;
+
+    showDrawer({
+      title: 'Счёт №' + (inv.invoice_number || inv.id),
+      html: html,
+      width: 'normal',
+      onMount: () => {
+        $('#drawerEditInv')?.addEventListener('click', () => { hideDrawer(); openInvoiceForm(invoiceId); });
+        $('#drawerPayInv')?.addEventListener('click', () => { hideDrawer(); openPaymentForm(invoiceId); });
+      }
     });
   }
 
@@ -214,7 +289,7 @@ window.AsgardInvoicesPage = (function(){
     
     const html = `
       <div class="stack" style="gap:16px">
-        <div style="padding:12px;background:var(--bg);border-radius:8px">
+        <div style="padding:12px;background:var(--bg);border-radius:6px">
           <div>Счёт: <b>${esc(inv.invoice_number)}</b></div>
           <div>Сумма: <b>${(inv.total_amount||0).toLocaleString('ru-RU')} ₽</b></div>
           <div>Оплачено: <b>${(inv.paid_amount||0).toLocaleString('ru-RU')} ₽</b></div>

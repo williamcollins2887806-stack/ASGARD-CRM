@@ -98,7 +98,7 @@ window.AsgardFX = (function(){
           background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-card) 50%, var(--bg-elevated) 75%);
           background-size: 200% 100%;
           animation: skeleton-shimmer 1.5s infinite;
-          border-radius: 8px;
+          border-radius: 6px;
         }
         .skeleton-text { height: 16px; margin-bottom: 8px; }
         .skeleton-title { height: 24px; width: 60%; margin-bottom: 12px; }
@@ -215,7 +215,7 @@ window.AsgardFX = (function(){
           background: var(--bg-card);
           border: 1px solid ${colors[type] || colors.info};
           border-left: 4px solid ${colors[type] || colors.info};
-          border-radius: 12px;
+          border-radius: 6px;
           padding: 14px 20px;
           display: flex;
           align-items: center;

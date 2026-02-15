@@ -73,7 +73,7 @@ window.AsgardAI = (function(){
         height: 500px;
         max-height: calc(100vh - 120px);
         background: linear-gradient(180deg, #1a1a2e 0%, #16162a 100%);
-        border-radius: 20px;
+        border-radius: 6px;
         border: 1px solid rgba(192, 57, 43, 0.3);
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
         display: none;
@@ -144,7 +144,7 @@ window.AsgardAI = (function(){
       .ai-header-btn {
         width: 28px;
         height: 28px;
-        border-radius: 8px;
+        border-radius: 6px;
         border: none;
         background: rgba(255, 255, 255, 0.1);
         color: rgba(255, 255, 255, 0.7);
@@ -172,7 +172,7 @@ window.AsgardAI = (function(){
       .ai-message {
         max-width: 85%;
         padding: 12px 16px;
-        border-radius: 16px;
+        border-radius: 6px;
         font-size: 14px;
         line-height: 1.5;
         animation: aiFadeIn 0.3s ease;
@@ -262,7 +262,7 @@ window.AsgardAI = (function(){
         padding: 6px 10px;
         background: rgba(192, 57, 43, 0.2);
         border: 1px solid rgba(192, 57, 43, 0.3);
-        border-radius: 8px;
+        border-radius: 6px;
         font-size: 12px;
         color: rgba(255, 255, 255, 0.8);
       }
@@ -290,7 +290,7 @@ window.AsgardAI = (function(){
       .ai-attach-btn {
         width: 40px;
         height: 40px;
-        border-radius: 12px;
+        border-radius: 6px;
         border: 1px solid rgba(255, 255, 255, 0.2);
         background: transparent;
         color: rgba(255, 255, 255, 0.6);
@@ -315,7 +315,7 @@ window.AsgardAI = (function(){
       .ai-input {
         width: 100%;
         padding: 10px 14px;
-        border-radius: 12px;
+        border-radius: 6px;
         border: 1px solid rgba(255, 255, 255, 0.2);
         background: rgba(255, 255, 255, 0.05);
         color: #fff;
@@ -338,7 +338,7 @@ window.AsgardAI = (function(){
       .ai-send-btn {
         width: 40px;
         height: 40px;
-        border-radius: 12px;
+        border-radius: 6px;
         border: none;
         background: linear-gradient(135deg, #c0392b, #a33527);
         color: white;
@@ -401,7 +401,7 @@ window.AsgardAI = (function(){
         padding: 8px 14px;
         background: rgba(255, 255, 255, 0.1);
         border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 20px;
+        border-radius: 6px;
         color: rgba(255, 255, 255, 0.8);
         font-size: 13px;
         cursor: pointer;

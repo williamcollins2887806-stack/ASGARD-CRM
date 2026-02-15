@@ -46,7 +46,7 @@ window.AsgardTemplates=(function(){
       .logo{width:92px; height:auto;}
       .h1{font-size:18px; font-weight:800; letter-spacing:.3px;}
       .h2{font-size:12px; color:#334155; margin-top:4px;}
-      .box{border:1px solid #cbd5e1; padding:14px 16px; border-radius:10px;}
+      .box{border:1px solid #cbd5e1; padding:14px 16px; border-radius:6px;}
       .p{font-size:13px; line-height:1.5; margin:10px 0;}
       .muted{color:#475569; font-size:12px;}
       .sig{margin-top:18px; display:flex; justify-content:space-between; gap:20px; align-items:flex-end;}

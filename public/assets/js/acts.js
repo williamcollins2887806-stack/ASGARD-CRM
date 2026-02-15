@@ -65,7 +65,7 @@ window.AsgardActsPage = (function(){
           <button class="btn primary" id="btnAddAct">➕ Новый акт</button>
         </div>
         
-        <div class="table-wrap" style="background:var(--bg-card);border-radius:12px;overflow:hidden">
+        <div class="table-wrap" style="background:var(--bg-card);border-radius:6px;overflow:hidden">
           <table class="tbl">
             <thead>
               <tr>
@@ -86,7 +86,7 @@ window.AsgardActsPage = (function(){
                     <td>${formatDate(act.act_date)}</td>
                     <td>${esc(act.customer_name || '—')}</td>
                     <td style="text-align:right">${formatMoney(act.total_amount)}</td>
-                    <td><span class="badge" style="background:${st.color}">${st.label}</span></td>
+                    <td><span class="badge" style="background:${st.color}20;color:${st.color};border:1px solid ${st.color}40">${st.label}</span></td>
                     <td>
                       <button class="btn mini" data-action="edit" data-id="${act.id}">✏️</button>
                       <button class="btn mini" data-action="sign" data-id="${act.id}">✍️</button>

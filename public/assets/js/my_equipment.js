@@ -23,7 +23,9 @@ window.AsgardMyEquipment = (function(){
     // Загружаем объекты для формы передачи
     let objects = [];
     try {
-      const resp = await fetch('/api/equipment/objects');
+      const resp = await fetch('/api/equipment/objects', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
       const data = await resp.json();
       objects = data.objects || [];
     } catch(e) {}
@@ -40,7 +42,7 @@ window.AsgardMyEquipment = (function(){
       <div class="my-equipment-page">
         <!-- Статистика -->
         <div class="stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
-          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:12px;text-align:center">
+          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center">
             <div style="font-size:32px;font-weight:700;color:var(--accent)">${equipment.length}</div>
             <div style="font-size:12px;color:var(--text-muted)">Единиц оборудования</div>
           </div>
@@ -54,7 +56,7 @@ window.AsgardMyEquipment = (function(){
         </div>
         
         <!-- Таблица -->
-        <div class="table-wrap" style="background:var(--bg-card);border-radius:12px;overflow:hidden">
+        <div class="table-wrap" style="background:var(--bg-card);border-radius:6px;overflow:hidden">
           <table class="tbl" id="myEquipmentTable">
             <thead>
               <tr>

@@ -168,7 +168,7 @@ window.AsgardMango = (function(){
         .call-toggle-widget {
           background: var(--bg-card);
           border: 1px solid var(--line);
-          border-radius: 16px;
+          border-radius: 6px;
           padding: 16px;
           display: flex;
           flex-direction: column;
@@ -213,7 +213,7 @@ window.AsgardMango = (function(){
           bottom: 0;
           background-color: var(--bg-elevated);
           border: 1px solid var(--line);
-          border-radius: 30px;
+          border-radius: 6px;
           transition: 0.3s;
         }
         
@@ -354,7 +354,7 @@ window.AsgardMango = (function(){
         .call-popup-content {
           background: linear-gradient(135deg, #1a1a2e, #0d1428);
           border: 2px solid var(--green);
-          border-radius: 20px;
+          border-radius: 6px;
           padding: 20px;
           min-width: 320px;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(34, 197, 94, 0.3);
@@ -417,7 +417,7 @@ window.AsgardMango = (function(){
         .call-customer {
           background: rgba(34, 197, 94, 0.1);
           border: 1px solid rgba(34, 197, 94, 0.2);
-          border-radius: 12px;
+          border-radius: 6px;
           padding: 12px;
           margin-bottom: 16px;
         }

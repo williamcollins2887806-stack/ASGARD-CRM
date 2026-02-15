@@ -17,6 +17,25 @@ window.AsgardCustomersPage = (function(){
     return await AsgardDB.get("customers", inn);
   }
 
+  // Lookup company info by INN via DaData API
+  async function lookupByInn(inn){
+    inn = normInn(inn);
+    if(inn.length !== 10 && inn.length !== 12) {
+      throw new Error("ИНН должен быть 10 или 12 цифр");
+    }
+    const auth = await AsgardAuth.getAuth();
+    if(!auth?.token) throw new Error("Требуется авторизация");
+
+    const resp = await fetch('/api/customers/lookup/' + inn, {
+      headers: { 'Authorization': 'Bearer ' + auth.token }
+    });
+    if(!resp.ok) {
+      const err = await resp.json().catch(()=>({ error: 'Ошибка запроса' }));
+      throw new Error(err.error || 'Ошибка поиска');
+    }
+    return await resp.json();
+  }
+
   async function upsertCustomer(rec){
     const inn = normInn(rec.inn);
     if(!(inn.length===10 || inn.length===12)) throw new Error("ИНН должен быть 10 или 12 цифр");
@@ -122,7 +141,35 @@ window.AsgardCustomersPage = (function(){
     }
     const contacts = parseContactsJson(c?.contacts_json||"");
 
-    const html = '<div class="tools" style="margin-bottom:10px"><a class="btn ghost" href="#/customers">← К списку</a><div style="flex:1"></div><button class="btn" id="btnSave">Сохранить</button>'+(c?.inn && !isNew ? '<button class="btn ghost" id="btnDel">Удалить</button>' : '')+'</div><div class="formrow"><div><label>ИНН</label><input id="inn" placeholder="10/12 цифр" value="'+esc(c?.inn||'')+'" '+(c?.inn && !isNew ? 'disabled' : '')+'/></div><div style="grid-column:1/-1"><label>Название (краткое)</label><input id="name" value="'+esc(c?.name||'')+'"/></div><div style="grid-column:1/-1"><label>Наименование полное</label><input id="full" value="'+esc(c?.full_name||'')+'"/></div><div><label>КПП</label><input id="kpp" value="'+esc(c?.kpp||'')+'"/></div><div><label>ОГРН</label><input id="ogrn" value="'+esc(c?.ogrn||'')+'"/></div><div style="grid-column:1/-1"><label>Адрес</label><input id="addr" value="'+esc(c?.address||'')+'"/></div><div><label>Телефон</label><input id="phone" value="'+esc(c?.phone||'')+'"/></div><div><label>Email</label><input id="email" value="'+esc(c?.email||'')+'"/></div><div style="grid-column:1/-1"><label>Комментарий</label><input id="comment" value="'+esc(c?.comment||'')+'"/></div></div><hr class="hr"/><div class="help"><b>Контактные лица</b></div><div id="contactsBox" style="margin-top:10px">'+contactsTemplate(contacts)+'</div><div class="row" style="gap:10px;margin-top:10px"><button class="btn ghost" id="btnAddContact">+ Контакт</button></div>';
+    const html = `
+      <div class="tools" style="margin-bottom:10px">
+        <a class="btn ghost" href="#/customers">← К списку</a>
+        <div style="flex:1"></div>
+        <button class="btn" id="btnSave">Сохранить</button>
+        ${c?.inn && !isNew ? '<button class="btn ghost" id="btnDel">Удалить</button>' : ''}
+      </div>
+      <div class="formrow">
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div style="flex:1">
+            <label>ИНН</label>
+            <input id="inn" placeholder="10/12 цифр" value="${esc(c?.inn||'')}" ${c?.inn && !isNew ? 'disabled' : ''}/>
+          </div>
+          ${!c?.inn || isNew ? '<button class="btn ghost" id="btnLookup" style="height:38px" title="Найти по ИНН">🔍</button>' : ''}
+        </div>
+        <div style="grid-column:1/-1"><label>Название (краткое)</label><input id="name" value="${esc(c?.name||'')}"/></div>
+        <div style="grid-column:1/-1"><label>Наименование полное</label><input id="full" value="${esc(c?.full_name||'')}"/></div>
+        <div><label>КПП</label><input id="kpp" value="${esc(c?.kpp||'')}"/></div>
+        <div><label>ОГРН</label><input id="ogrn" value="${esc(c?.ogrn||'')}"/></div>
+        <div style="grid-column:1/-1"><label>Адрес</label><input id="addr" value="${esc(c?.address||'')}"/></div>
+        <div><label>Телефон</label><input id="phone" value="${esc(c?.phone||'')}"/></div>
+        <div><label>Email</label><input id="email" value="${esc(c?.email||'')}"/></div>
+        <div style="grid-column:1/-1"><label>Комментарий</label><input id="comment" value="${esc(c?.comment||'')}"/></div>
+      </div>
+      <hr class="hr"/>
+      <div class="help"><b>Контактные лица</b></div>
+      <div id="contactsBox" style="margin-top:10px">${contactsTemplate(contacts)}</div>
+      <div class="row" style="gap:10px;margin-top:10px"><button class="btn ghost" id="btnAddContact">+ Контакт</button></div>
+    `;
 
     await layout('<div class="content"><div class="card">'+html+'</div></div>', { title, motto:"Храни имена и печати." });
 
@@ -153,6 +200,39 @@ window.AsgardCustomersPage = (function(){
       });
     });
 
+    // INN lookup button
+    const btnLookup = $("#btnLookup");
+    if(btnLookup){
+      btnLookup.addEventListener("click", async ()=>{
+        const inn = normInn($("#inn").value);
+        if(inn.length !== 10 && inn.length !== 12){
+          toast("Поиск","ИНН должен быть 10 или 12 цифр","err");
+          return;
+        }
+        btnLookup.disabled = true;
+        btnLookup.textContent = "⏳";
+        try{
+          const result = await lookupByInn(inn);
+          if(result.found && result.suggestion){
+            const s = result.suggestion;
+            if(s.name) $("#name").value = s.name;
+            if(s.full_name) $("#full").value = s.full_name;
+            if(s.kpp) $("#kpp").value = s.kpp;
+            if(s.ogrn) $("#ogrn").value = s.ogrn;
+            if(s.address) $("#addr").value = s.address;
+            toast("Поиск","Данные заполнены из реестра","ok");
+          } else {
+            toast("Поиск", result.message || "Организация не найдена","warn");
+          }
+        }catch(e){
+          toast("Поиск", e.message||"Ошибка","err");
+        }finally{
+          btnLookup.disabled = false;
+          btnLookup.textContent = "🔍";
+        }
+      });
+    }
+
     $("#btnSave").addEventListener("click", async ()=>{
       try{
         const rec = { inn: normInn($("#inn").value), name: $("#name").value, full_name: $("#full").value, kpp: $("#kpp").value, ogrn: $("#ogrn").value, address: $("#addr").value, phone: $("#phone").value, email: $("#email").value, comment: $("#comment").value, contacts_json: JSON.stringify(contacts) };
@@ -181,5 +261,5 @@ window.AsgardCustomersPage = (function(){
     }
   }
 
-  return { renderList, renderCard, upsertCustomer, getCustomerByInn };
+  return { renderList, renderCard, upsertCustomer, getCustomerByInn, lookupByInn };
 })();

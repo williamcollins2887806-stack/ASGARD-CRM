@@ -78,7 +78,7 @@ window.AsgardEmployeePage=(function(){
         <div style="flex:1">
           <div class="who"><b>${esc(who)}</b> <span class="help">${esc(new Date(r.created_at).toLocaleString("ru-RU"))}</span></div>
           <div class="row" style="gap:8px; margin-top:6px; flex-wrap:wrap">
-            <span class="badge"><span class="dot" style="background:#22c55e"></span>${esc(String(r.score_1_10))}/10</span>
+            <span class="badge"><span class="dot" style="background:#22c55e"></span>${esc(String(r.score_1_10 ?? '—'))}/10</span>
             <span class="badge"><span class="dot" style="background:#3b82f6"></span>${w?esc(w.work_title||""):"—"}</span>
           </div>
           <div class="help" style="margin-top:6px">${esc(r.comment||"")}</div>
@@ -91,7 +91,7 @@ window.AsgardEmployeePage=(function(){
         <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
           <div>
             <div class="kpi"><span class="dot" style="background:#ef4444"></span>${esc(emp.fio||"")}</div>
-            <div class="help">Роль: <b>${esc(emp.role_tag||"—")}</b> · Разряд: <b>${esc(emp.grade||"—")}</b> · Рейтинг: <b>${emp.rating_avg!=null?esc(emp.rating_avg.toFixed(1)):"—"}</b></div>
+            <div class="help">Роль: <b>${esc(emp.role_tag||"—")}</b> · Разряд: <b>${esc(emp.grade||"—")}</b> · Рейтинг: <b>${emp.rating_avg!=null?esc(Number(emp.rating_avg).toFixed(1)):"—"}</b></div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
             <button class="btn ghost" id="btnSchedule">График</button>

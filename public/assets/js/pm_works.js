@@ -896,6 +896,7 @@ window.AsgardPmWorksPage=(function(){
           ${(user.role==="PM" && String(w.work_status||"")===triggerStatus) ? `<button class="btn" id="btnCloseout" style="background:#ef4444">Работы завершены</button>` : ``}
           <button class="btn" id="btnSaveWork">Сохранить</button>
           <button class="btn ghost" id="btnExpenses">💰 Расходы</button>
+          <button class="btn ghost" id="btnPayroll">💰 Ведомость</button>
           <button class="btn ghost" id="btnHistory">История</button>
           <button class="btn ghost" id="btnFullGantt">Открыть Гантт</button>
         </div>
@@ -935,6 +936,15 @@ window.AsgardPmWorksPage=(function(){
           } else {
             toast("Расходы", "Модуль расходов не загружен", "err");
           }
+        });
+      }
+
+      // Кнопка "Ведомость" — переход в модуль расчётов
+      const btnPayroll = $("#btnPayroll");
+      if(btnPayroll){
+        btnPayroll.addEventListener("click", ()=>{
+          hideModal();
+          location.hash = '#/payroll-sheet?work_id=' + w.id;
         });
       }
 
@@ -1252,6 +1262,10 @@ window.AsgardPmWorksPage=(function(){
 
       $("#btnSaveWork").addEventListener("click", async ()=>{
         const prevStatus = String(w.work_status||"");
+        // Доработка 3: сохраняем старые даты для перебронирования
+        const oldStart = w.start_in_work_date || null;
+        const oldEnd = w.end_plan || null;
+
         w.work_status = $("#w_status").value;
         w.start_in_work_date = $("#w_start").value.trim()||null;
         w.end_plan = $("#w_end_plan").value.trim()||null;
@@ -1297,8 +1311,46 @@ window.AsgardPmWorksPage=(function(){
           return;
         }
 
+        // Доработка 3: Проверяем изменение дат и перебронируем персонал
+        const newStart = w.start_in_work_date;
+        const newEnd = w.end_plan;
+        const datesChanged = (oldStart !== newStart || oldEnd !== newEnd) && newStart && newEnd;
+
+        if (datesChanged && window.AsgardBooking && AsgardBooking.rebookWorkDates) {
+          const rebookResult = await AsgardBooking.rebookWorkDates({
+            work: w,
+            oldStart,
+            oldEnd,
+            newStart,
+            newEnd,
+            actor_user_id: user.id
+          });
+
+          if (!rebookResult.ok) {
+            if (rebookResult.error === 'CONFLICT') {
+              // Показываем конфликты и спрашиваем продолжить ли
+              const emps = await AsgardDB.all("employees");
+              const empById = new Map((emps||[]).map(e=>[e.id,e]));
+              const rows = (rebookResult.conflicts||[]).map(c=>{
+                const e = empById.get(c.employee_id);
+                const name = e ? (e.fio||"") : `ID ${c.employee_id}`;
+                const days = c.rows.map(r=>`${esc(r.date)}`).slice(0,3).join(", ");
+                return `<div class="pill"><div class="who"><b>${esc(name)}</b></div><div class="role">${days}${c.rows.length>3?'...':''}</div></div>`;
+              }).join("");
+              showModal("Конфликт при перебронировании", `
+                <div class="help">При смене дат обнаружен конфликт брони персонала на новый период ${esc(newStart)} — ${esc(newEnd)}.</div>
+                <div style="margin-top:10px">${rows || ""}</div>
+                <div class="help" style="margin-top:10px">Работа будет сохранена, но бронь персонала НЕ обновлена. Обратитесь к HR для ручной корректировки графика.</div>
+              `);
+            }
+            // Продолжаем сохранение даже при ошибке (работа важнее)
+          } else if (rebookResult.written > 0) {
+            toast("График", `Персонал перебронирован: ${rebookResult.message}`, "ok");
+          }
+        }
+
         await AsgardDB.put("works", w);
-        await audit(user.id,"work",id,"update",{work_status:w.work_status});
+        await audit(user.id,"work",id,"update",{work_status:w.work_status, dates_changed: datesChanged});
         toast("Работы","Сохранено");
         await render({layout,title});
         openWork(id);

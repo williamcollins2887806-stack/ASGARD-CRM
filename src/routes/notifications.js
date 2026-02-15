@@ -31,9 +31,25 @@ async function routes(fastify, options) {
   });
 
   // Создать уведомление (внутренний API)
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { user_id, title, message, type, link } = request.body;
-    
+  // SECURITY: Проверка прав на создание уведомления (HIGH-10)
+  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const body = request.body || {};
+    if (!body.user_id || !body.title || !body.message) {
+      return reply.code(400).send({ error: 'Обязательные поля: user_id, title, message' });
+    }
+    const { user_id, title, message, type, link } = body;
+
+    // SECURITY: Можно создавать уведомления только для себя, если не админ/директор
+    const privilegedRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
+    const isPrivileged = privilegedRoles.includes(request.user.role);
+
+    if (!isPrivileged && user_id !== request.user.id) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: 'Нельзя создавать уведомления для других пользователей'
+      });
+    }
+
     // Сохраняем в БД
     const result = await db.query(`
       INSERT INTO notifications (user_id, title, message, type, link, is_read, created_at)
@@ -54,9 +70,21 @@ async function routes(fastify, options) {
   });
 
   // Отправить уведомление в Telegram напрямую
-  fastify.post('/telegram', { preHandler: [fastify.authenticate] }, async (request) => {
+  // SECURITY: Ограничено для админов/директоров (HIGH-10)
+  fastify.post('/telegram', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { userId, message } = request.body;
-    
+
+    // SECURITY: Только привилегированные роли могут отправлять Telegram-уведомления другим
+    const privilegedRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
+    const isPrivileged = privilegedRoles.includes(request.user.role);
+
+    if (!isPrivileged && userId !== request.user.id) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: 'Нельзя отправлять уведомления другим пользователям'
+      });
+    }
+
     try {
       const telegram = require('../services/telegram');
       const sent = await telegram.sendNotification(userId, message);
@@ -101,8 +129,18 @@ async function routes(fastify, options) {
   });
 
   // Уведомление о согласовании (премии, заявки и т.д.)
-  fastify.post('/approval', { preHandler: [fastify.authenticate] }, async (request) => {
+  // SECURITY: Только привилегированные роли могут отправлять approval-уведомления (HIGH-10)
+  fastify.post('/approval', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { type, action, entityId, toUserId, details } = request.body;
+
+    // SECURITY: Только привилегированные роли могут отправлять уведомления о согласовании
+    const privilegedRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
+    if (!privilegedRoles.includes(request.user.role)) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: 'Недостаточно прав для отправки уведомлений о согласовании'
+      });
+    }
     
     const titles = {
       bonus_created: '💰 Запрос на премии',

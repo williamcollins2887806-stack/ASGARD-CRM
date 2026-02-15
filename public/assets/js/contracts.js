@@ -199,12 +199,13 @@ window.AsgardContractsPage = (function(){
       const type = CONTRACT_TYPES.find(t => t.id === c.type);
       const customer = customers.find(cust => cust.id === c.counterparty_id);
       
+      const esc = AsgardUI.esc;
       return `
-        <tr data-id="${c.id}">
-          <td><strong>${c.number || '—'}</strong></td>
-          <td><span class="badge" style="background:${c.type === 'customer' ? 'var(--green-glow)' : 'var(--blue-glow)'}; color:${c.type === 'customer' ? 'var(--green)' : 'var(--blue)'}">${type?.name || c.type}</span></td>
-          <td>${customer?.name || c.counterparty_name || '—'}</td>
-          <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis">${c.subject || '—'}</td>
+        <tr data-id="${c.id}" style="background:transparent">
+          <td><strong>${esc(c.number) || '—'}</strong></td>
+          <td><span class="badge" style="background:${c.type === 'customer' ? 'var(--green-glow)' : 'var(--blue-glow)'}; color:${c.type === 'customer' ? 'var(--green)' : 'var(--blue)'}">${esc(type?.name || c.type)}</span></td>
+          <td>${esc(customer?.name || c.counterparty_name) || '—'}</td>
+          <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis">${esc(c.subject) || '—'}</td>
           <td>${c.start_date ? formatDate(c.start_date) : '—'}</td>
           <td>${c.is_perpetual ? '<span style="opacity:0.7">Бессрочный</span>' : (c.end_date ? formatDate(c.end_date) : '—')}</td>
           <td>${c.amount ? formatMoney(c.amount) : '—'}</td>
@@ -246,7 +247,7 @@ window.AsgardContractsPage = (function(){
     
     const html = `
       <div class="modal-overlay" id="contractModal">
-        <div class="modal-content" style="max-width:600px">
+        <div class="modal-content" style="max-width:600px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary)"
           <div class="modal-header">
             <h3>${isEdit ? 'Редактирование договора' : 'Новый договор'}</h3>
             <button class="btn ghost btnClose">✕</button>
@@ -405,7 +406,7 @@ window.AsgardContractsPage = (function(){
     
     const html = `
       <div class="modal-overlay" id="contractSelectorModal">
-        <div class="modal-content" style="max-width:500px">
+        <div class="modal-content" style="max-width:500px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary)"
           <div class="modal-header">
             <h3>Выберите договор</h3>
             <button class="btn ghost btnClose">✕</button>

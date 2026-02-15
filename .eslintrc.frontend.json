@@ -1,0 +1,29 @@
+{
+  "env": { "browser": true, "es2022": true },
+  "parserOptions": { "ecmaVersion": 2022 },
+  "globals": {
+    "AsgardUI": "readonly",
+    "AsgardAuth": "readonly",
+    "AsgardDB": "readonly",
+    "AsgardRouter": "readonly",
+    "AsgardTheme": "readonly",
+    "AsgardSync": "readonly",
+    "AsgardBankImport": "readonly",
+    "AsgardCustomDashboard": "readonly",
+    "AsgardIntegrationsPage": "readonly",
+    "AsgardPreTendersPage": "readonly",
+    "AsgardInboxApplicationsPage": "readonly",
+    "AsgardMailboxPage": "readonly",
+    "AsgardMailSettingsPage": "readonly",
+    "Chart": "readonly",
+    "dayjs": "readonly",
+    "addMobileClick": "readonly",
+    "generatePeriodOptions": "readonly",
+    "generateYearOptions": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": "off",
+    "no-undef": "warn",
+    "no-eval": "error"
+  }
+}

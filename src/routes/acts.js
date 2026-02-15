@@ -3,9 +3,14 @@
  * Акты выполненных работ
  */
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SECURITY: Ролевой контроль для финансовых операций (HIGH-9)
+// ═══════════════════════════════════════════════════════════════════════════
+const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
+
 async function actsRoutes(fastify, options) {
   const db = fastify.db;
-  
+
   // Получить все акты
   fastify.get('/', {
     preHandler: [fastify.authenticate]
@@ -52,8 +57,9 @@ async function actsRoutes(fastify, options) {
   });
   
   // Создать акт
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
   fastify.post('/', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request) => {
     const {
       act_number, act_date, status = 'draft',
@@ -81,8 +87,9 @@ async function actsRoutes(fastify, options) {
   });
   
   // Обновить акт
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     const {
@@ -124,8 +131,9 @@ async function actsRoutes(fastify, options) {
   });
   
   // Удалить акт
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     

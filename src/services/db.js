@@ -1,16 +1,23 @@
 /**
  * Database Service - PostgreSQL Connection Pool
  * ═══════════════════════════════════════════════════════════════════════════
+ * SECURITY: Требуется DB_PASSWORD (CRIT-5)
  */
 
 const { Pool } = require('pg');
+
+// SECURITY: Проверка обязательных переменных окружения (CRIT-5)
+if (!process.env.DB_PASSWORD) {
+  console.error('FATAL: DB_PASSWORD environment variable is required');
+  process.exit(1);
+}
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
   database: process.env.DB_NAME || 'asgard_crm',
   user: process.env.DB_USER || 'asgard',
-  password: process.env.DB_PASSWORD || 'password',
+  password: process.env.DB_PASSWORD, // SECURITY: Без fallback (CRIT-5)
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
@@ -65,6 +72,14 @@ async function findById(table, id) {
   return res.rows[0] || null;
 }
 
+// SECURITY B5: Validate column names to prevent SQL injection
+const VALID_COLUMN = /^[a-z_][a-z0-9_]*$/i;
+function validateColumn(key) {
+  if (!VALID_COLUMN.test(key) || key.length > 64) {
+    throw new Error(`Invalid column name: ${key}`);
+  }
+}
+
 /**
  * Find all records with optional filters
  */
@@ -75,6 +90,7 @@ async function findAll(table, { where = {}, orderBy = 'id DESC', limit, offset }
 
   for (const [key, value] of Object.entries(where)) {
     if (value !== undefined && value !== null) {
+      validateColumn(key);
       conditions.push(`${key} = $${idx}`);
       values.push(value);
       idx++;
@@ -106,6 +122,7 @@ async function findAll(table, { where = {}, orderBy = 'id DESC', limit, offset }
  */
 async function insert(table, data) {
   const keys = Object.keys(data);
+  keys.forEach(validateColumn);
   const values = Object.values(data);
   const placeholders = keys.map((_, i) => `$${i + 1}`);
 
@@ -124,6 +141,7 @@ async function insert(table, data) {
  */
 async function update(table, id, data) {
   const keys = Object.keys(data);
+  keys.forEach(validateColumn);
   const values = Object.values(data);
   const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
 
