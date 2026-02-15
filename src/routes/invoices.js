@@ -3,6 +3,11 @@
  * Счета и оплаты
  */
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SECURITY: Ролевой контроль для финансовых операций (HIGH-9)
+// ═══════════════════════════════════════════════════════════════════════════
+const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
+
 async function invoicesRoutes(fastify, options) {
   const db = fastify.db;
   
@@ -59,17 +64,22 @@ async function invoicesRoutes(fastify, options) {
   });
   
   // Создать счёт
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
   fastify.post('/', {
-    preHandler: [fastify.authenticate]
-  }, async (request) => {
+    preHandler: [fastify.requireRoles(WRITE_ROLES)]
+  }, async (request, reply) => {
+    const body = request.body || {};
+    if (!body.invoice_number || !body.invoice_date || !body.amount) {
+      return reply.code(400).send({ error: 'Обязательные поля: invoice_number, invoice_date, amount' });
+    }
     const {
       invoice_number, invoice_date, invoice_type,
       status = 'draft', work_id, act_id,
       customer_name, customer_inn, description,
       amount, vat_pct = 20, total_amount,
       due_date, paid_amount = 0
-    } = request.body;
-    
+    } = body;
+
     const result = await db.query(`
       INSERT INTO invoices (
         invoice_number, invoice_date, invoice_type,
@@ -91,8 +101,9 @@ async function invoicesRoutes(fastify, options) {
   });
   
   // Обновить счёт
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     const {
@@ -138,8 +149,9 @@ async function invoicesRoutes(fastify, options) {
   });
   
   // Добавить оплату
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
   fastify.post('/:id/payments', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     const { amount, payment_date, comment } = request.body;
@@ -181,8 +193,9 @@ async function invoicesRoutes(fastify, options) {
   });
   
   // Удалить счёт
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
     

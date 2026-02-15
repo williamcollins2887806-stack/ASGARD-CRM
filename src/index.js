@@ -7,11 +7,7 @@ require('dotenv').config();
 
 const fastify = require('fastify')({
   logger: {
-    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-    transport: process.env.NODE_ENV !== 'production' ? {
-      target: 'pino-pretty',
-      options: { colorize: true }
-    } : undefined
+    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug'
   }
 });
 
@@ -19,19 +15,28 @@ const path = require('path');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
+// SECURITY: JWT_SECRET обязателен (CRIT-4)
 // ─────────────────────────────────────────────────────────────────────────────
 const config = {
   port: parseInt(process.env.PORT || '3000', 10),
   host: process.env.HOST || '0.0.0.0',
-  jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+  jwtSecret: process.env.JWT_SECRET, // SECURITY: Без fallback (CRIT-4)
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  corsOrigin: process.env.CORS_ORIGIN || '*',
+  // SECURITY: В production нельзя использовать * (CRIT-6)
+  corsOrigin: process.env.CORS_ORIGIN || (process.env.NODE_ENV === 'production' ? 'https://asgard-crm.ru' : '*'),
   uploadDir: process.env.UPLOAD_DIR || './uploads'
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Plugins
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Security headers (SECURITY: helmet)
+fastify.register(require('@fastify/helmet'), {
+  contentSecurityPolicy: false,         // CSP отключён — инлайн-скрипты/стили в SPA
+  crossOriginEmbedderPolicy: false,     // не ломать загрузку внешних ресурсов
+  crossOriginResourcePolicy: { policy: 'same-site' }
+});
 
 // CORS
 fastify.register(require('@fastify/cors'), {
@@ -62,9 +67,15 @@ fastify.register(require('@fastify/static'), {
 });
 
 // Rate limiting
+// SECURITY B8: Per-user rate limit (not just per-IP)
 fastify.register(require('@fastify/rate-limit'), {
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
-  timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10)
+  max: parseInt(process.env.RATE_LIMIT_MAX || '300', 10),
+  timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10),
+  keyGenerator: (request) => request.user?.id ? `user_${request.user.id}` : request.ip,
+  allowList: (request) => {
+    const ip = request.ip;
+    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,21 +87,94 @@ fastify.decorate('db', db);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Authentication Decorator
+// SECURITY: Проверка pinVerified и mustChangePassword (HIGH-7, MED-4)
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.decorate('authenticate', async function(request, reply) {
   try {
     await request.jwtVerify();
+
+    // SECURITY: Проверка PIN-верификации (HIGH-7)
+    if (request.user.pinVerified === false) {
+      const allowedPaths = ['/api/auth/verify-pin', '/api/auth/setup-credentials', '/api/auth/me'];
+      if (!allowedPaths.some(p => request.url.startsWith(p))) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Требуется подтверждение PIN' });
+      }
+    }
+
+    // SECURITY: Проверка обязательной смены пароля (MED-4)
+    if (request.user.mustChangePassword) {
+      const allowedPaths = ['/api/auth/setup-credentials', '/api/auth/change-password', '/api/auth/me'];
+      if (!allowedPaths.some(p => request.url.startsWith(p))) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Требуется смена пароля' });
+      }
+    }
   } catch (err) {
-    reply.code(401).send({ error: 'Unauthorized', message: 'Требуется авторизация' });
+    return reply.code(401).send({ error: 'Unauthorized', message: 'Требуется авторизация' });
   }
 });
 
-// Role check decorator
+// Role check decorator — поддержка групп ролей (M15)
 fastify.decorate('requireRoles', function(roles) {
   return async function(request, reply) {
     await fastify.authenticate(request, reply);
-    if (!roles.includes(request.user.role) && request.user.role !== 'ADMIN') {
-      reply.code(403).send({ error: 'Forbidden', message: 'Недостаточно прав' });
+    if (reply.sent) return; // authenticate уже отправил ошибку
+
+    const userRole = request.user.role;
+    if (userRole === 'ADMIN') return; // ADMIN всегда проходит
+    if (roles.includes(userRole)) return;
+    // HEAD_TO наследует доступы TO
+    if (userRole === 'HEAD_TO' && roles.includes('TO')) return;
+    // HEAD_PM наследует доступы PM
+    if (userRole === 'HEAD_PM' && roles.includes('PM')) return;
+    // HR_MANAGER наследует доступы HR
+    if (userRole === 'HR_MANAGER' && roles.includes('HR')) return;
+    // CHIEF_ENGINEER наследует доступы WAREHOUSE
+    if (userRole === 'CHIEF_ENGINEER' && roles.includes('WAREHOUSE')) return;
+
+    reply.code(403).send({ error: 'Forbidden', message: 'Недостаточно прав' });
+  };
+});
+
+// Permission check decorator (модульные роли M1)
+// Использование: preHandler: [fastify.requirePermission('tenders', 'read')]
+// ADMIN всегда проходит. Для остальных проверяет user_permissions.
+fastify.decorate('requirePermission', function(moduleKey, operation = 'read') {
+  return async function(request, reply) {
+    await fastify.authenticate(request, reply);
+    if (reply.sent) return; // authenticate уже отправил 401
+
+    // ADMIN bypass
+    if (request.user.role === 'ADMIN') return;
+
+    // Check user_permissions first, fallback to role_presets
+    let { rows } = await db.query(
+      `SELECT can_read, can_write, can_delete FROM user_permissions
+       WHERE user_id = $1 AND module_key = $2`,
+      [request.user.id, moduleKey]
+    );
+
+    if (rows.length === 0) {
+      // Fallback to role_presets for the user's role
+      const preset = await db.query(
+        `SELECT can_read, can_write, can_delete FROM role_presets
+         WHERE role = $1 AND module_key = $2`,
+        [request.user.role, moduleKey]
+      );
+      rows = preset.rows;
+    }
+
+    if (rows.length === 0) {
+      return reply.code(403).send({ error: 'Forbidden', message: 'Нет доступа к модулю' });
+    }
+
+    const perm = rows[0];
+    const allowed =
+      (operation === 'read' && perm.can_read) ||
+      (operation === 'write' && perm.can_write) ||
+      (operation === 'delete' && perm.can_delete);
+
+    if (!allowed) {
+      return reply.code(403).send({ error: 'Forbidden', message: `Нет права "${operation}" на модуль "${moduleKey}"` });
     }
   };
 });
@@ -100,6 +184,7 @@ fastify.decorate('requireRoles', function(roles) {
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
+fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });
 fastify.register(require('./routes/tenders'), { prefix: '/api/tenders' });
 fastify.register(require('./routes/estimates'), { prefix: '/api/estimates' });
 fastify.register(require('./routes/works'), { prefix: '/api/works' });
@@ -119,6 +204,18 @@ fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
 fastify.register(require('./routes/invoices'), { prefix: '/api/invoices' });
 fastify.register(require('./routes/equipment'), { prefix: '/api/equipment' });
 fastify.register(require('./routes/data'), { prefix: '/api/data' });
+fastify.register(require('./routes/permissions'), { prefix: '/api/permissions' });
+fastify.register(require('./routes/cash'), { prefix: '/api/cash' });
+fastify.register(require('./routes/tasks'), { prefix: '/api/tasks' });
+fastify.register(require('./routes/permits'), { prefix: '/api/permits' });
+fastify.register(require('./routes/chat_groups'), { prefix: '/api/chat-groups' });
+fastify.register(require('./routes/meetings'), { prefix: '/api/meetings' });
+fastify.register(require('./routes/payroll'), { prefix: '/api/payroll' });
+fastify.register(require('./routes/permit_applications'), { prefix: '/api/permit-applications' });
+fastify.register(require('./routes/mailbox'), { prefix: '/api/mailbox' });
+fastify.register(require('./routes/inbox_applications_ai'), { prefix: '/api/inbox-applications' });
+fastify.register(require('./routes/integrations'), { prefix: '/api/integrations' });
+fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check
@@ -171,21 +268,184 @@ fastify.setErrorHandler((error, request, reply) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Ensure Required Tables Exist
+// ─────────────────────────────────────────────────────────────────────────────
+async function ensureTables() {
+  // Chat messages table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id SERIAL PRIMARY KEY,
+      chat_type VARCHAR(50) DEFAULT 'general',
+      entity_id INTEGER,
+      entity_title VARCHAR(255),
+      chat_id INTEGER,
+      to_user_id INTEGER,
+      user_id INTEGER,
+      user_name VARCHAR(255),
+      user_role VARCHAR(50),
+      text TEXT,
+      attachments TEXT,
+      mentions TEXT,
+      is_system BOOLEAN DEFAULT false,
+      is_read BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // Chats table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chats (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255),
+      chat_type VARCHAR(50) DEFAULT 'direct',
+      participants TEXT,
+      created_by INTEGER,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // Staff plan table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS staff_plan (
+      id SERIAL PRIMARY KEY,
+      staff_id INTEGER,
+      date DATE,
+      status_code VARCHAR(20),
+      created_by INTEGER,
+      updated_at TIMESTAMP DEFAULT NOW(),
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // Add user_id column to staff if not exists
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='staff' AND column_name='user_id') THEN
+        ALTER TABLE staff ADD COLUMN user_id INTEGER;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='staff' AND column_name='role_tag') THEN
+        ALTER TABLE staff ADD COLUMN role_tag VARCHAR(50);
+      END IF;
+    END $$;
+  `);
+
+  // Add PIN hash column to users if not exists
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='pin_hash') THEN
+        ALTER TABLE users ADD COLUMN pin_hash VARCHAR(255);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='must_change_password') THEN
+        ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT false;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='last_login_at') THEN
+        ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='telegram_chat_id') THEN
+        ALTER TABLE users ADD COLUMN telegram_chat_id BIGINT;
+      END IF;
+    END $$;
+  `);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Start Server
+// SECURITY: Проверка обязательных переменных окружения (CRIT-4, CRIT-5)
 // ─────────────────────────────────────────────────────────────────────────────
 const start = async () => {
   try {
+    // SECURITY: Проверка JWT_SECRET (CRIT-4)
+    if (!process.env.JWT_SECRET) {
+      fastify.log.error('FATAL: JWT_SECRET environment variable is required');
+      process.exit(1);
+    }
+
+    // SECURITY: Предупреждение о слабом пароле БД (CRIT-5)
+    const weakPasswords = ['password', 'changeme', '123456', 'postgres', 'admin'];
+    if (!process.env.DB_PASSWORD || weakPasswords.includes(process.env.DB_PASSWORD)) {
+      fastify.log.warn('WARNING: Using weak database password. Change DB_PASSWORD in production!');
+    }
+
+    // SECURITY: CORS production check — запрет wildcard; предупреждение о HTTP
+    if (process.env.NODE_ENV === 'production') {
+      if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') {
+        fastify.log.error('FATAL: CORS_ORIGIN must be set to specific origin(s) in production (not "*")');
+        process.exit(1);
+      }
+      const origins = process.env.CORS_ORIGIN.split(',');
+      const httpOrigin = origins.find(o => o.trim().startsWith('http://'));
+      if (httpOrigin) {
+        fastify.log.warn('WARNING: CORS_ORIGIN contains HTTP origin: ' + httpOrigin.trim() + '. Use HTTPS in production for full security.');
+      }
+    }
+
     // Test database connection
     await db.query('SELECT NOW()');
     fastify.log.info('Database connected');
-    
+
+    // Ensure required tables exist
+    await ensureTables();
+    fastify.log.info('Database tables verified');
+
+    // ── Cron: автоудаление завершённых напоминаний ─────────────────────
+    async function cleanupCompletedReminders() {
+      try {
+        // Получаем настройку (по умолчанию 48 часов)
+        let hours = 48;
+        try {
+          const res = await db.query(
+            `SELECT value_json FROM settings WHERE key = 'app' LIMIT 1`
+          );
+          if (res.rows[0]?.value_json) {
+            const cfg = JSON.parse(res.rows[0].value_json);
+            if (cfg.reminder_auto_delete_hours != null) {
+              hours = Math.max(1, Number(cfg.reminder_auto_delete_hours) || 48);
+            }
+          }
+        } catch (_) {}
+
+        const result = await db.query(
+          `DELETE FROM reminders
+           WHERE completed = true
+             AND completed_at IS NOT NULL
+             AND completed_at < NOW() - INTERVAL '1 hour' * $1
+           RETURNING id`,
+          [hours]
+        );
+        if (result.rowCount > 0) {
+          fastify.log.info(`[Cron] Удалено ${result.rowCount} завершённых напоминаний (порог: ${hours}ч)`);
+        }
+      } catch (err) {
+        fastify.log.error('[Cron] Ошибка очистки напоминаний: ' + err.message);
+      }
+    }
+
+    // Запуск каждый час
+    setInterval(cleanupCompletedReminders, 60 * 60 * 1000);
+    // Первый запуск через 10 секунд после старта
+    setTimeout(cleanupCompletedReminders, 10_000);
+    fastify.log.info('[Cron] Автоочистка напоминаний запланирована');
+
     // Initialize Telegram bot if token provided
     if (process.env.TELEGRAM_BOT_TOKEN) {
       const telegram = require('./services/telegram');
       await telegram.init();
       fastify.log.info('Telegram bot started');
     }
-    
+
+    // Initialize IMAP mail collection service
+    try {
+      const imapService = require('./services/imap');
+      await imapService.init();
+      fastify.log.info('IMAP mail service started');
+    } catch (imapErr) {
+      fastify.log.warn('IMAP mail service init skipped: ' + imapErr.message);
+    }
+
     // Start server
     await fastify.listen({ port: config.port, host: config.host });
     fastify.log.info(`
@@ -207,6 +467,7 @@ const start = async () => {
 // Graceful shutdown
 const shutdown = async () => {
   fastify.log.info('Shutting down...');
+  try { const imap = require('./services/imap'); await imap.shutdown(); } catch (_) {}
   await fastify.close();
   await db.end();
   process.exit(0);

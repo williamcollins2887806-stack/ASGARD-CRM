@@ -84,19 +84,20 @@ window.AsgardBuhRegistryPage = (function(){
         .buh-filters { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; align-items:flex-end; }
         .buh-filter { display:flex; flex-direction:column; gap:4px; min-width:150px; }
         .buh-filter label { font-size:11px; color:var(--muted); text-transform:uppercase; font-weight:700; }
-        .buh-filter select, .buh-filter input { padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:var(--glass); color:var(--text); }
+        .buh-filter select, .buh-filter input { padding:8px 12px; border-radius:6px; border:1px solid var(--line); background:var(--glass); color:var(--text); }
         
         .buh-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:20px; }
-        .buh-card { background:var(--bg-elevated); border-radius:var(--radius-lg); padding:16px; }
+        .buh-card { background:rgba(13,20,40,.5); border:1px solid var(--line); border-radius:6px; padding:16px; }
         .buh-card-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
         .buh-card-value { font-size:26px; font-weight:900; color:var(--gold); margin-top:6px; }
         .buh-card-sub { font-size:12px; color:var(--muted); margin-top:4px; }
         
-        .buh-table { width:100%; border-collapse:collapse; }
-        .buh-table th { font-size:11px; color:var(--muted); text-align:left; padding:8px 12px; font-weight:800; text-transform:uppercase; border-bottom:2px solid var(--border); }
-        .buh-table td { padding:12px; vertical-align:top; color:var(--text-primary); border-bottom:1px solid var(--border); }
-        .buh-table tbody tr:last-child td { border-bottom:none; }
-        .buh-table tr:hover td { background:var(--bg-hover); }
+        .buh-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
+        .buh-table th { font-size:11px; color:var(--muted); text-align:left; padding:8px 12px; font-weight:800; text-transform:uppercase; }
+        .buh-table td { padding:12px; background:rgba(13,20,40,.4); border:1px solid var(--line); vertical-align:top; }
+        .buh-table tr td:first-child { border-top-left-radius:12px; border-bottom-left-radius:12px; }
+        .buh-table tr td:last-child { border-top-right-radius:12px; border-bottom-right-radius:12px; }
+        .buh-table tr:hover td { background:rgba(59,130,246,.1); }
         
         .buh-cat-badge { display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:700; }
         .buh-status { padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; }
@@ -109,7 +110,7 @@ window.AsgardBuhRegistryPage = (function(){
         .buh-work-open { background:rgba(59,130,246,.2); color:#3b82f6; }
         
         .buh-actions { display:flex; gap:6px; }
-        .buh-btn { padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:var(--glass); color:var(--text); font-size:12px; cursor:pointer; }
+        .buh-btn { padding:6px 10px; border-radius:6px; border:1px solid var(--line); background:var(--glass); color:var(--text); font-size:12px; cursor:pointer; }
         .buh-btn:hover { border-color:var(--gold); }
         
         .buh-empty { text-align:center; padding:40px; color:var(--muted); }
@@ -295,7 +296,7 @@ window.AsgardBuhRegistryPage = (function(){
 
     function renderTable(expenses){
       if(!expenses.length){
-        $('#buhTable').innerHTML = `<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных по выбранным фильтрам</div></div>`;
+        $('#buhTable').innerHTML = `<div class="buh-empty">Нет данных по выбранным фильтрам</div>`;
         return;
       }
 

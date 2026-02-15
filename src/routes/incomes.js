@@ -1,6 +1,12 @@
 /**
  * Incomes Routes
  */
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECURITY: Ролевой контроль для финансовых операций (HIGH-9)
+// ═══════════════════════════════════════════════════════════════════════════
+const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
+
 async function routes(fastify, options) {
   const db = fastify.db;
 
@@ -19,7 +25,8 @@ async function routes(fastify, options) {
     return { incomes: result.rows };
   });
 
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.post('/', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
     const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString() };
     const keys = Object.keys(data);
     const values = Object.values(data);
@@ -28,7 +35,8 @@ async function routes(fastify, options) {
     return { income: result.rows[0] };
   });
 
-  fastify.put('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.put('/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const { id } = request.params;
     const data = request.body;
     const updates = [];
@@ -45,7 +53,8 @@ async function routes(fastify, options) {
     return { income: result.rows[0] };
   });
 
-  fastify.delete('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.delete('/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const result = await db.query('DELETE FROM incomes WHERE id = $1 RETURNING id', [request.params.id]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
     return { message: 'Удалено' };

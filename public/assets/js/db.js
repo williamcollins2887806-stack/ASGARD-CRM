@@ -50,7 +50,13 @@ window.AsgardDB = (function(){
       if (resp.status === 404) {
         return null;
       }
-      
+
+      // При 429 — rate limit, тихо вернуть null
+      if (resp.status === 429) {
+        console.warn('[AsgardDB] Rate limited:', url);
+        return null;
+      }
+
       if (!resp.ok) {
         const err = await resp.json().catch(function() { return { error: 'Network error' }; });
         throw new Error(err.error || err.message || 'API Error');

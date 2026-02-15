@@ -110,55 +110,63 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 async function routes(fastify, options) {
-  
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SECURITY: Добавлен auth ко всем endpoints (HIGH-3)
+  // ═══════════════════════════════════════════════════════════════════════════
+
   // Геокодирование города
-  fastify.get('/geocode', async (request) => {
+  fastify.get('/geocode', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
     const { city } = request.query;
-    
+
     if (!city) {
       return { error: 'Укажите город', coords: null };
     }
-    
+
     const key = city.toLowerCase().trim();
     const coords = KNOWN_CITIES[key];
-    
+
     if (coords) {
       return { city, coords, source: 'local' };
     }
-    
+
     // Попытка найти частичное совпадение
     const partial = Object.keys(KNOWN_CITIES).find(k => k.includes(key) || key.includes(k));
     if (partial) {
       return { city, coords: KNOWN_CITIES[partial], source: 'partial', matched: partial };
     }
-    
+
     return { city, coords: null, error: 'Город не найден' };
   });
-  
+
   // Расчёт расстояния
-  fastify.get('/distance', async (request) => {
+  fastify.get('/distance', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
     const { from, to } = request.query;
-    
+
     if (!from || !to) {
       return { error: 'Укажите оба города: from и to' };
     }
-    
+
     const fromKey = from.toLowerCase().trim();
     const toKey = to.toLowerCase().trim();
-    
+
     const fromCoords = KNOWN_CITIES[fromKey];
     const toCoords = KNOWN_CITIES[toKey];
-    
+
     if (!fromCoords) {
       return { error: `Город "${from}" не найден` };
     }
     if (!toCoords) {
       return { error: `Город "${to}" не найден` };
     }
-    
+
     const directDist = haversineDistance(fromCoords[0], fromCoords[1], toCoords[0], toCoords[1]);
     const roadDist = Math.round(directDist * 1.3); // Коэффициент для автодорог
-    
+
     return {
       from: { city: from, coords: fromCoords },
       to: { city: to, coords: toCoords },
@@ -166,9 +174,11 @@ async function routes(fastify, options) {
       distance_road_km: roadDist
     };
   });
-  
+
   // Список известных городов
-  fastify.get('/cities', async () => {
+  fastify.get('/cities', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
     return {
       cities: Object.keys(KNOWN_CITIES).sort(),
       count: Object.keys(KNOWN_CITIES).length

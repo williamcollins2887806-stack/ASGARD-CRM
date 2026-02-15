@@ -3,6 +3,7 @@ window.AsgardFunnelPage = (function(){
   
   // Стадии воронки
   const STAGES = [
+    {id: 'draft', label: 'Черновики', color: '#94a3b8', statuses: ['Черновик']},
     {id: 'new', label: 'Новые', color: '#64748b', statuses: ['Новый', 'Получен']},
     {id: 'calc', label: 'В просчёте', color: '#2563eb', statuses: ['В просчёте', 'На просчёте']},
     {id: 'tkp', label: 'КП отправлено', color: '#8b5cf6', statuses: ['КП отправлено', 'ТКП отправлено', 'Согласование ТКП']},
@@ -61,8 +62,10 @@ window.AsgardFunnelPage = (function(){
       return {id: s.id, count, sum};
     });
     
-    const totalCount = tenders.length;
-    const totalSum = tenders.reduce((a, t) => a + (t._sum || 0), 0);
+    // Drafts excluded from funnel statistics
+    const nonDraftTenders = tenders.filter(t => t.tender_status !== 'Черновик');
+    const totalCount = nonDraftTenders.length;
+    const totalSum = nonDraftTenders.reduce((a, t) => a + (t._sum || 0), 0);
     const wonSum = byStage.won.reduce((a, t) => a + (t._sum || 0), 0);
     const conversionRate = totalCount > 0 ? ((byStage.won.length / totalCount) * 100).toFixed(1) : 0;
     
@@ -74,10 +77,10 @@ window.AsgardFunnelPage = (function(){
       const cardsHtml = items.slice(0, 20).map(t => `
         <div class="funnel-card" data-id="${t.id}" draggable="true">
           <div class="funnel-card-header">
-            <span class="funnel-card-customer">${esc(t.customer || 'Без заказчика')}</span>
+            <span class="funnel-card-customer">${esc(t.customer_name || t.customer_display || t.customer || 'Без заказчика')}</span>
             <span class="funnel-card-sum">${money(t._sum)}</span>
           </div>
-          <div class="funnel-card-title">${esc(t.tender_number || t.tag || 'Без номера')}</div>
+          <div class="funnel-card-title">${esc(t.tender_title || t.tender_number || t.subject || t.tag || 'Без номера')}</div>
           <div class="funnel-card-meta">
             <span>${esc(t._pm)}</span>
             ${t.deadline ? `<span>⏰ ${esc(t.deadline)}</span>` : ''}
@@ -110,7 +113,7 @@ window.AsgardFunnelPage = (function(){
         <div class="motto">Сделки в движении — деньги в кассе.</div>
       </div>
       
-      <div class="card">
+      <div class="card" style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px">
         <div class="funnel-stats">
           <div class="funnel-stat">
             <div class="funnel-stat-value">${totalCount}</div>

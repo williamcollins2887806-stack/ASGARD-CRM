@@ -92,13 +92,13 @@ window.AsgardPmCalcsPage = (function(){
         .qc-form>div{display:flex;flex-direction:column}
         .qc-form label{font-size:12px;color:var(--muted);margin-bottom:4px}
         .qc-form .full{grid-column:1/-1}
-        .qc-section{background:var(--bg-elevated);border-radius:12px;padding:16px;margin-bottom:16px}
+        .qc-section{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.5);border-radius:6px;padding:16px;margin-bottom:16px}
         .qc-section h4{margin:0 0 12px;font-size:14px;color:var(--gold)}
         .qc-kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
-        .qc-kpi .k{background:var(--bg-elevated);border-radius:10px;padding:12px;text-align:center}
+        .qc-kpi .k{background:rgba(13,20,40,.5);border-radius:6px;padding:12px;text-align:center}
         .qc-kpi .k .t{font-size:11px;color:var(--muted)}
         .qc-kpi .k .v{font-size:18px;font-weight:700;color:var(--gold)}
-        .qc-zone{padding:16px;border-radius:12px;text-align:center;margin-top:16px}
+        .qc-zone{padding:16px;border-radius:6px;text-align:center;margin-top:16px}
       </style>
       
       <div class="help" style="margin-bottom:16px">
@@ -223,7 +223,7 @@ window.AsgardPmCalcsPage = (function(){
       `;
       
       $("#qc_zone_block").innerHTML = `
-        <div style="background:${statusColor}22;border:2px solid ${statusColor};border-radius:12px;padding:16px;text-align:center">
+        <div style="background:${statusColor}22;border:2px solid ${statusColor};border-radius:6px;padding:16px;text-align:center">
           <div style="font-size:14px;font-weight:700;color:${statusColor}">${statusLabel}</div>
           <div style="font-size:24px;font-weight:700;color:${statusColor};margin-top:8px">${money(Math.round(profitPD))}</div>
           <div style="font-size:11px;color:var(--muted)">прибыль / чел-день</div>
@@ -411,7 +411,7 @@ window.AsgardPmCalcsPage = (function(){
     const byId = new Map(users.map(u=>[u.id,u]));
     const tendersAll = await AsgardDB.all("tenders");
 
-    const isPM = user.role==="PM";
+    const isPM = user.role==="PM" || user.role==="ADMIN";
     const isDir = isDirRole(user.role) || user.role==="ADMIN";
 
     // PM sees only own; Director/Admin can see all handed-off
@@ -422,14 +422,15 @@ window.AsgardPmCalcsPage = (function(){
 
     const body = `
       <style>
-        table.asg{width:100%; border-collapse:collapse;}
-        table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:10px; border-bottom:2px solid var(--border)}
-        table.asg td{padding:10px; border-bottom:1px solid var(--border); color:var(--text-primary)}
-        table.asg tbody tr:last-child td{border-bottom:none}
+        table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
+        table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
+        table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85);}
+        table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
+        table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
         .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
         .tools .field{min-width:220px}
         .st{display:inline-flex; align-items:center; gap:8px}
-        .dot{width:10px;height:10px;border-radius:999px; box-shadow:0 0 0 2px var(--border) inset}
+        .dot{width:10px;height:10px;border-radius:999px; box-shadow:0 0 0 2px rgba(255,255,255,.05) inset}
       </style>
 
       <div class="panel">
@@ -467,14 +468,14 @@ window.AsgardPmCalcsPage = (function(){
 
           <div class="field" style="min-width:280px">
             <label>Показать</label>
-            <div style="display:flex; gap:12px; flex-wrap:wrap; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--glass)">
+            <div style="display:flex; gap:12px; flex-wrap:wrap; padding:10px 12px; border:1px solid rgba(42,59,102,.85); border-radius:6px; background:rgba(13,20,40,.35)">
               <label style="display:flex; gap:8px; align-items:center"><input id="f_refused" type="checkbox"/> Отказы</label>
               <label style="display:flex; gap:8px; align-items:center"><input id="f_allperiod" type="checkbox"/> Все периоды</label>
               <label style="display:flex; gap:8px; align-items:center"><input id="f_won" type="checkbox"/> Выигранные (архив)</label>
             </div>
           </div>
 
-          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; align-self:flex-end">
+          <div style="display:flex; gap:10px; flex-wrap:wrap">
             <button class="btn ghost" id="btnReset">Сброс</button>
           </div>
         </div>
@@ -511,8 +512,9 @@ window.AsgardPmCalcsPage = (function(){
     }
 
     function row(t){
-      const ds = t.work_start_plan ? esc(t.work_start_plan) : "—";
-      const de = t.work_end_plan ? esc(t.work_end_plan) : "—";
+      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+      const ds = fmtDate(t.work_start_plan);
+      const de = fmtDate(t.work_end_plan);
       const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Площадка</a>` : "";
       const pmName = (byId.get(t.responsible_pm_id)||{}).name || "—";
       return `<tr data-id="${t.id}">
@@ -816,7 +818,7 @@ window.AsgardPmCalcsPage = (function(){
             .sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
           const rows = logs.map(l=>`<div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(new Date(l.created_at).toLocaleString("ru-RU"))}</div><div class="role">${esc((byId.get(l.actor_user_id)||{}).login||"")}</div></div>
             <div class="help" style="margin:6px 0 10px">${esc(l.payload_json||"")}</div>`).join("");
-          showModal("История тендера", rows || `<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных</div></div>`);
+          showModal("История тендера", rows || `<div class="help">Пока пусто.</div>`);
         });
       }
 

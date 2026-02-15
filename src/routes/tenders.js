@@ -125,9 +125,9 @@ async function routes(fastify, options) {
     const { id } = request.params;
 
     const result = await db.query(`
-      SELECT t.*, 
+      SELECT t.*,
              u.name as pm_name,
-             c.name as customer_name
+             COALESCE(c.name, t.customer_name) as customer_display
       FROM tenders t
       LEFT JOIN users u ON t.responsible_pm_id = u.id
       LEFT JOIN customers c ON t.customer_inn = c.inn
@@ -160,12 +160,12 @@ async function routes(fastify, options) {
   // ─────────────────────────────────────────────────────────────────────────────
   // POST /api/tenders - Create tender
   // ─────────────────────────────────────────────────────────────────────────────
+  // SECURITY B3: Role-based access for write operations
   fastify.post('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])],
     schema: {
       body: {
         type: 'object',
-        required: ['customer'],
         properties: {
           customer: { type: 'string' },
           customer_inn: { type: 'string' },
@@ -183,47 +183,81 @@ async function routes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const data = request.body;
-    data.created_by = request.user.id;
-    data.created_at = new Date().toISOString();
+    try {
+      const raw = request.body;
 
-    // Auto-generate period if not provided
-    if (!data.period) {
-      const now = new Date();
-      data.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      // Validate customer is always required via API
+      // (Draft workflow uses /api/data/tenders instead, not this route)
+      const customerVal = String(raw.customer || raw.customer_name || '').trim();
+      if (!customerVal) {
+        return reply.code(400).send({ error: 'Обязательное поле: customer' });
+      }
+
+      // Set default status to "Новый"
+      if (!raw.tender_status) {
+        raw.tender_status = 'Новый';
+      }
+
+      // Map API field 'customer' to DB column 'customer_name'
+      if (raw.customer && !raw.customer_name) {
+        raw.customer_name = raw.customer;
+      }
+      delete raw.customer;
+      raw.created_by = request.user.id;
+      raw.created_at = new Date().toISOString();
+
+      // Auto-generate period if not provided
+      if (!raw.period) {
+        const now = new Date();
+        raw.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      }
+
+      // SECURITY: Filter to allowed columns only
+      const allowedCols = [
+        'customer_name', 'customer_inn', 'tender_number', 'tender_type', 'tender_title',
+        'tender_status', 'period', 'deadline', 'estimated_sum', 'responsible_pm_id',
+        'tag', 'docs_link', 'comment_to', 'comment_dir', 'reject_reason',
+        'created_by', 'created_at'
+      ];
+      const data = {};
+      for (const k of allowedCols) {
+        if (raw[k] !== undefined) data[k] = raw[k];
+      }
+
+      const keys = Object.keys(data);
+      const values = Object.values(data);
+      const placeholders = keys.map((_, i) => `$${i + 1}`);
+
+      const sql = `
+        INSERT INTO tenders (${keys.join(', ')})
+        VALUES (${placeholders.join(', ')})
+        RETURNING *
+      `;
+
+      const result = await db.query(sql, values);
+
+      // Log to audit
+      try {
+        await db.query(`
+          INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
+          VALUES ($1, 'tender', $2, 'create', $3, NOW())
+        `, [request.user.id, result.rows[0].id, JSON.stringify({ tender: result.rows[0] })]);
+      } catch (auditErr) {
+        fastify.log.warn('Audit log insert failed:', auditErr.message);
+      }
+
+      return { tender: result.rows[0] };
+    } catch (err) {
+      const code = err.code === '22001' || err.code === '23502' ? 400 : 500;
+      return reply.code(code).send({ error: 'Ошибка создания тендера', detail: err.message });
     }
-
-    // Set default status
-    if (!data.tender_status) {
-      data.tender_status = 'Новый';
-    }
-
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    const placeholders = keys.map((_, i) => `$${i + 1}`);
-
-    const sql = `
-      INSERT INTO tenders (${keys.join(', ')})
-      VALUES (${placeholders.join(', ')})
-      RETURNING *
-    `;
-
-    const result = await db.query(sql, values);
-
-    // Log to audit
-    await db.query(`
-      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
-      VALUES ($1, 'tender', $2, 'create', $3, NOW())
-    `, [request.user.id, result.rows[0].id, JSON.stringify({ tender: result.rows[0] })]);
-
-    return { tender: result.rows[0] };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // PUT /api/tenders/:id - Update tender
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
     const { id } = request.params;
     const data = request.body;
@@ -232,6 +266,18 @@ async function routes(fastify, options) {
     const current = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
     if (!current.rows[0]) {
       return reply.code(404).send({ error: 'Тендер не найден' });
+    }
+    const oldTender = current.rows[0];
+
+    // Draft transition validation: require customer when leaving Черновик
+    if (oldTender.tender_status === 'Черновик' && data.tender_status && data.tender_status !== 'Черновик') {
+      const customerValue = data.customer || oldTender.customer_name;
+      if (!customerValue || !String(customerValue).trim()) {
+        return reply.code(400).send({
+          error: 'Для смены статуса заполните обязательные поля',
+          missing_fields: ['customer']
+        });
+      }
     }
 
     // Build update query
@@ -310,47 +356,142 @@ async function routes(fastify, options) {
   fastify.get('/stats/summary', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { period, year } = request.query;
+    try {
+      const { period, year } = request.query;
 
-    let whereClause = '1=1';
+      let whereClause = "1=1 AND tender_status != 'Черновик'";
+      const params = [];
+      let idx = 1;
+
+      if (period) {
+        whereClause += ` AND period = $${idx}`;
+        params.push(period);
+        idx++;
+      }
+
+      if (year) {
+        whereClause += ` AND EXTRACT(YEAR FROM created_at) = $${idx}`;
+        params.push(year);
+      }
+
+      const stats = await db.query(`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
+          COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
+          COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Проиграли', 'Отказ')) as active,
+          COALESCE(SUM(estimated_sum), 0) as total_sum,
+          COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
+        FROM tenders
+        WHERE ${whereClause}
+      `, params);
+
+      const byStatus = await db.query(`
+        SELECT tender_status, COUNT(*) as count, COALESCE(SUM(estimated_sum), 0) as sum
+        FROM tenders
+        WHERE ${whereClause}
+        GROUP BY tender_status
+        ORDER BY count DESC
+      `, params);
+
+      return {
+        summary: stats.rows[0],
+        byStatus: byStatus.rows
+      };
+    } catch (err) {
+      request.log.error(err, 'tenders stats/summary error');
+      return reply.code(500).send({ error: 'Stats error', details: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // M15: Аналитика тендерного отдела (для HEAD_TO)
+  // ═══════════════════════════════════════════════════════════════
+
+  fastify.get('/analytics/team', {
+    preHandler: [fastify.requireRoles(['HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    try {
+    const { year, period } = request.query;
+
+    let whereClause = "1=1 AND t.tender_status != 'Черновик'";
     const params = [];
     let idx = 1;
 
+    if (year) {
+      whereClause += ` AND EXTRACT(YEAR FROM t.created_at) = $${idx}`;
+      params.push(parseInt(year));
+      idx++;
+    }
     if (period) {
-      whereClause += ` AND period = $${idx}`;
+      whereClause += ` AND t.period = $${idx}`;
       params.push(period);
       idx++;
     }
 
-    if (year) {
-      whereClause += ` AND EXTRACT(YEAR FROM created_at) = $${idx}`;
-      params.push(year);
-    }
-
-    const stats = await db.query(`
-      SELECT 
-        COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
-        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
-        COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Проиграли', 'Отказ')) as active,
-        COALESCE(SUM(estimated_sum), 0) as total_sum,
-        COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
-      FROM tenders
-      WHERE ${whereClause}
+    // KPI по каждому тендерному специалисту
+    const teamKpi = await db.query(`
+      SELECT
+        u.id,
+        u.name,
+        u.role,
+        COUNT(t.id) as total_tenders,
+        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
+        COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Контракт', 'Клиент согласился', 'Проиграли', 'Отказ', 'Клиент отказался', 'Отменён', 'Другое')) as active,
+        COALESCE(SUM(t.estimated_sum) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COALESCE(SUM(t.estimated_sum), 0) as total_sum,
+        COUNT(DISTINCT t.customer_inn) as unique_customers,
+        MAX(t.created_at) as last_tender_at
+      FROM users u
+      LEFT JOIN tenders t ON (t.created_by = u.id) AND ${whereClause.replace(/t\./g, '')}
+      WHERE u.role IN ('TO', 'HEAD_TO') AND u.is_active = true
+      GROUP BY u.id, u.name, u.role
+      ORDER BY won_sum DESC
     `, params);
 
+    // Общая сводка отдела
+    const deptTotal = await db.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
+        COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COALESCE(SUM(estimated_sum), 0) as total_sum
+      FROM tenders
+      WHERE ${whereClause.replace(/t\./g, '')}
+    `, params);
+
+    // По статусам
     const byStatus = await db.query(`
       SELECT tender_status, COUNT(*) as count, COALESCE(SUM(estimated_sum), 0) as sum
-      FROM tenders
-      WHERE ${whereClause}
-      GROUP BY tender_status
-      ORDER BY count DESC
+      FROM tenders WHERE ${whereClause.replace(/t\./g, '')}
+      GROUP BY tender_status ORDER BY count DESC
     `, params);
 
+    // По месяцам (динамика за последние 12 мес)
+    const byMonth = await db.query(`
+      SELECT
+        TO_CHAR(created_at, 'YYYY-MM') as month,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+        COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+      FROM tenders
+      WHERE created_at >= NOW() - INTERVAL '12 months' AND tender_status != 'Черновик'
+      GROUP BY TO_CHAR(created_at, 'YYYY-MM')
+      ORDER BY month
+    `);
+
     return {
-      summary: stats.rows[0],
-      byStatus: byStatus.rows
+      team: teamKpi.rows,
+      department: deptTotal.rows[0],
+      byStatus: byStatus.rows,
+      byMonth: byMonth.rows
     };
+    } catch (err) {
+      request.log.error(err, 'tenders analytics/team error');
+      return reply.code(500).send({ error: 'Analytics error', details: err.message });
+    }
   });
 }
 

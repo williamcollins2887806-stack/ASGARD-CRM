@@ -9,7 +9,17 @@
  */
 window.AsgardSearch = (function(){
   const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
-  
+
+  const NAV_GROUPS_FOR_SEARCH = [
+    { icon: '🏠', label: 'Главная', route: '#/home' },
+    { icon: '📋', label: 'Тендеры', route: '#/tenders' },
+    { icon: '⚒️', label: 'Работы', route: '#/pm-works' },
+    { icon: '💰', label: 'Финансы', route: '#/finances' },
+    { icon: '👥', label: 'Персонал', route: '#/personnel' },
+    { icon: '📧', label: 'Корреспонденция', route: '#/correspondence' },
+    { icon: '⚙️', label: 'Настройки', route: '#/settings' }
+  ];
+
   const SEARCH_TYPES = {
     all: { label: 'Везде', icon: '🔍' },
     tender: { label: 'Тендеры', icon: '📋', table: 'tenders', fields: ['tender_title', 'customer_name', 'customer_inn', 'purchase_url'] },
@@ -133,7 +143,20 @@ window.AsgardSearch = (function(){
           </div>
         `;
       }
-      return '<div class="search-empty">Введите минимум 2 символа для поиска</div>';
+      // Quick navigation
+      return `
+        <div class="search-section">
+          <div class="search-section-title">⚡ Быстрый доступ</div>
+          ${NAV_GROUPS_FOR_SEARCH.map(g => `
+            <div class="search-result-item" data-route="${g.route}">
+              <span class="search-result-icon">${g.icon}</span>
+              <div class="search-result-content">
+                <div class="search-result-title">${g.label}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
     }
     
     if (results.length === 0) {
@@ -235,7 +258,10 @@ window.AsgardSearch = (function(){
     function bindResultEvents() {
       $$('.search-result-item').forEach((item, idx) => {
         item.addEventListener('click', () => {
-          if (item.dataset.history) {
+          if (item.dataset.route) {
+            location.hash = item.dataset.route.replace('#','');
+            closeSearchModal();
+          } else if (item.dataset.history) {
             input.value = item.dataset.history;
             doSearch();
           } else {
@@ -322,186 +348,10 @@ window.AsgardSearch = (function(){
     }
   });
   
-  // CSS стили
-  const style = document.createElement('style');
-  style.textContent = `
-    .search-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
-      z-index: 9999;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding-top: 10vh;
-      backdrop-filter: blur(4px);
-    }
-    
-    .search-modal {
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      width: 90%;
-      max-width: 600px;
-      max-height: 70vh;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-    }
-    
-    .search-header {
-      display: flex;
-      gap: 12px;
-      padding: 16px;
-      border-bottom: 1px solid var(--border);
-    }
-    
-    .search-input-wrap {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: var(--bg-main);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0 12px;
-    }
-    
-    .search-icon {
-      font-size: 18px;
-      opacity: 0.6;
-    }
-    
-    .search-input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      outline: none;
-      color: var(--text-primary);
-      font-size: 16px;
-      padding: 12px 0;
-    }
-    
-    .search-type {
-      background: transparent;
-      border: none;
-      color: var(--text-secondary);
-      font-size: 13px;
-      cursor: pointer;
-    }
-    
-    .search-results {
-      flex: 1;
-      overflow-y: auto;
-      padding: 8px;
-    }
-    
-    .search-section {
-      margin-bottom: 16px;
-    }
-    
-    .search-section-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      padding: 8px 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    .search-result-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    
-    .search-result-item:hover,
-    .search-result-item.selected {
-      background: var(--bg-hover);
-    }
-    
-    .search-result-icon {
-      font-size: 20px;
-      width: 32px;
-      text-align: center;
-    }
-    
-    .search-result-content {
-      flex: 1;
-      min-width: 0;
-    }
-    
-    .search-result-title {
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    
-    .search-result-title mark {
-      background: var(--amber);
-      color: #000;
-      border-radius: 2px;
-      padding: 0 2px;
-    }
-    
-    .search-result-subtitle {
-      font-size: 13px;
-      color: var(--text-muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    
-    .search-result-subtitle mark {
-      background: var(--amber);
-      color: #000;
-    }
-    
-    .search-more {
-      font-size: 13px;
-      color: var(--text-muted);
-      padding: 8px 12px;
-      text-align: center;
-    }
-    
-    .search-empty {
-      text-align: center;
-      padding: 40px 20px;
-      color: var(--text-muted);
-    }
-    
-    .search-footer {
-      display: flex;
-      gap: 20px;
-      justify-content: center;
-      padding: 12px;
-      border-top: 1px solid var(--border);
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-    
-    .search-footer kbd {
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 2px 6px;
-      font-family: monospace;
-      font-size: 11px;
-    }
-  `;
-  document.head.appendChild(style);
-  
+  // CSS is now in app.css (Command Palette section)
+
   return {
+    open: openSearchModal,
     openSearchModal,
     closeSearchModal,
     search,

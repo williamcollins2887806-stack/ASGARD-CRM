@@ -17,7 +17,7 @@ window.AsgardTravelPage = (function(){
   function today(){ return new Date().toISOString().slice(0,10); }
 
   function getTypeInfo(key){
-    return EXPENSE_TYPES.find(t => t.key === key) || { label: key, icon: '💰', color: '#94a3b8' };
+    return EXPENSE_TYPES.find(t => t.key === key) || { label: key, icon: '💰', color: '#888' };
   }
 
   function fmtMoney(n){
@@ -67,7 +67,7 @@ window.AsgardTravelPage = (function(){
           const match = 
             (item.description || '').toLowerCase().includes(s) ||
             (item.supplier || '').toLowerCase().includes(s) ||
-            (work?.name || '').toLowerCase().includes(s) ||
+            (work?.work_title || '').toLowerCase().includes(s) ||
             (emp?.fio || '').toLowerCase().includes(s);
           if(!match) return false;
         }
@@ -99,8 +99,9 @@ window.AsgardTravelPage = (function(){
           .travel-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:24px; }
           .travel-kpi-card {
             position:relative;
-            background: var(--bg-elevated);
-            border-radius:14px;
+            background: linear-gradient(135deg, rgba(13,20,40,.6), rgba(13,20,40,.4));
+            border:1px solid rgba(148,163,184,.15);
+            border-radius:6px;
             padding:16px;
             overflow:hidden;
             transition: all .3s ease;
@@ -113,7 +114,7 @@ window.AsgardTravelPage = (function(){
             background: var(--card-accent, var(--gold));
             opacity:.6;
           }
-          .travel-kpi-card:hover { transform:translateY(-2px); }
+          .travel-kpi-card:hover { transform:translateY(-2px); border-color:rgba(242,208,138,.3); }
           .travel-kpi-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
           .travel-kpi-value { font-size:24px; font-weight:900; margin-top:6px; }
           .travel-kpi-icon { position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:32px; opacity:.2; }
@@ -121,37 +122,39 @@ window.AsgardTravelPage = (function(){
           .travel-filters {
             display:flex; flex-wrap:wrap; gap:12px;
             margin-bottom:20px; padding:16px;
-            background:var(--bg-elevated);
-            border-radius:14px;
+            background:rgba(13,20,40,.4);
+            border:1px solid rgba(148,163,184,.1);
+            border-radius:6px;
             align-items:flex-end;
           }
           .travel-filter { display:flex; flex-direction:column; gap:4px; min-width:130px; }
           .travel-filter label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
           .travel-filter select, .travel-filter input {
-            padding:10px 12px; border-radius:10px;
-            border:1px solid var(--border);
-            background:var(--bg-elevated);
+            padding:10px 12px; border-radius:6px;
+            border:1px solid rgba(148,163,184,.18);
+            background:rgba(13,20,40,.6);
             color:var(--text); font-size:13px;
           }
           
-          .travel-table { width:100%; border-collapse:collapse; }
+          .travel-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
           .travel-table th {
             font-size:10px; color:var(--muted); font-weight:800;
             text-align:left; padding:10px 12px;
             text-transform:uppercase; letter-spacing:1px;
-            border-bottom:2px solid var(--border);
           }
           .travel-table td {
             padding:14px 12px;
-            border-bottom:1px solid var(--border);
+            background:linear-gradient(135deg, rgba(13,20,40,.5), rgba(13,20,40,.35));
+            border:1px solid rgba(148,163,184,.1);
             transition: all .2s ease;
           }
-          .travel-table tbody tr:last-child td { border-bottom:none; }
-          .travel-table tr:hover td { background:var(--bg-hover); }
+          .travel-table tr td:first-child { border-radius:6px 0 0 6px; }
+          .travel-table tr td:last-child { border-radius:0 6px 6px 0; }
+          .travel-table tr:hover td { background:rgba(59,130,246,.08); border-color:rgba(242,208,138,.2); }
           
           .travel-type {
             display:inline-flex; align-items:center; gap:6px;
-            padding:4px 10px; border-radius:8px;
+            padding:4px 10px; border-radius:6px;
             font-size:12px; font-weight:700;
           }
           
@@ -162,19 +165,19 @@ window.AsgardTravelPage = (function(){
           
           .travel-actions { display:flex; gap:6px; }
           .travel-btn {
-            padding:6px 10px; border-radius:8px;
-            border:1px solid var(--border);
-            background:var(--bg-elevated);
+            padding:6px 10px; border-radius:6px;
+            border:1px solid rgba(148,163,184,.18);
+            background:rgba(13,20,40,.5);
             color:var(--text); font-size:12px; cursor:pointer;
             transition: all .2s ease;
           }
-          .travel-btn:hover { border-color:var(--primary); }
+          .travel-btn:hover { border-color:rgba(242,208,138,.4); }
           
           .travel-empty {
             text-align:center; padding:60px 20px;
-            background:var(--bg-elevated);
-            border:1px dashed var(--border);
-            border-radius:16px;
+            background:rgba(13,20,40,.3);
+            border:1px dashed rgba(148,163,184,.2);
+            border-radius:6px;
             color:var(--muted);
           }
           .travel-empty-icon { font-size:64px; margin-bottom:16px; opacity:.5; }
@@ -268,7 +271,7 @@ window.AsgardTravelPage = (function(){
                       <td>${item.date || '—'}</td>
                       <td class="travel-amount">${fmtMoney(item.amount)}</td>
                       <td>
-                        ${work ? `<a class="travel-link" href="#/pm-works?id=${work.id}">${esc(work.name || 'Проект #'+work.id)}</a>` : ''}
+                        ${work ? `<a class="travel-link" href="#/pm-works?id=${work.id}">${esc(work.work_title || 'Проект #'+work.id)}</a>` : ''}
                         ${emp ? `<div style="font-size:12px; color:var(--muted)">${esc(emp.fio || '')}</div>` : ''}
                         ${!work && !emp ? '<span style="color:var(--muted)">—</span>' : ''}
                       </td>
@@ -354,7 +357,7 @@ window.AsgardTravelPage = (function(){
             <select id="te_work">
               <option value="">— Не привязано —</option>
               ${works.filter(w => w.work_status !== 'Работы сдали').map(w => 
-                `<option value="${w.id}" ${item?.work_id === w.id ? 'selected' : ''}>${esc(w.name || 'Проект #'+w.id)}</option>`
+                `<option value="${w.id}" ${item?.work_id === w.id ? 'selected' : ''}>${esc(w.work_title || 'Проект #'+w.id)}</option>`
               ).join('')}
             </select>
           </div>

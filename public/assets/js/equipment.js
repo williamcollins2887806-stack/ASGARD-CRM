@@ -242,12 +242,13 @@ window.AsgardWarehouse = (function(){
         }
         
         .stat-card {
-          background: var(--bg-elevated);
-          border-radius: 12px;
+          background: var(--bg-card);
+          border-radius: 6px;
           padding: 16px;
           display: flex;
           align-items: center;
           gap: 12px;
+          border: 1px solid var(--border);
         }
         
         .stat-card.green { border-left: 4px solid #22c55e; }
@@ -296,7 +297,7 @@ window.AsgardWarehouse = (function(){
           align-items: center;
           padding: 10px;
           background: var(--bg);
-          border-radius: 8px;
+          border-radius: 6px;
           margin-bottom: 8px;
         }
         
@@ -308,7 +309,7 @@ window.AsgardWarehouse = (function(){
           align-items: center;
           gap: 4px;
           padding: 4px 10px;
-          border-radius: 20px;
+          border-radius: 6px;
           font-size: 12px;
           font-weight: 500;
         }
@@ -682,7 +683,7 @@ window.AsgardWarehouse = (function(){
           
           <div class="eq-tab-content" id="tabQr" style="display:none">
             <div style="text-align:center;padding:20px">
-              <div id="qrCodeContainer" style="display:inline-block;padding:20px;background:white;border-radius:12px"></div>
+              <div id="qrCodeContainer" style="display:inline-block;padding:20px;background:white;border-radius:6px"></div>
               <p style="margin-top:12px">${esc(eq.inventory_number)}</p>
               <button class="btn" id="btnPrintSingleQR">🖨️ Печать QR</button>
             </div>
@@ -707,7 +708,7 @@ window.AsgardWarehouse = (function(){
           .eq-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
           
           .eq-info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-          .info-section { background: var(--bg); padding: 12px; border-radius: 8px; }
+          .info-section { background: var(--bg); padding: 12px; border-radius: 6px; }
           .info-section h4 { margin: 0 0 10px; font-size: 13px; color: var(--text-muted); }
           .info-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
           .info-row span:first-child { color: var(--text-muted); }
@@ -958,7 +959,97 @@ window.AsgardWarehouse = (function(){
       }
     });
   }
-  
+
+  // Форма запроса оборудования
+  async function openRequestForm() {
+    const categoryOptions = categories.map(c =>
+      `<option value="${c.id}">${c.icon || ''} ${esc(c.name)}</option>`
+    ).join('');
+
+    const workOptions = worksList.filter(w => w.work_status !== 'Завершена').map(w =>
+      `<option value="${w.id}">${esc(w.work_number || '')} — ${esc(w.work_title || w.customer_name)}</option>`
+    ).join('');
+
+    const objectOptions = objects.map(o =>
+      `<option value="${o.id}">${esc(o.name)}</option>`
+    ).join('');
+
+    const html = `
+      <form id="requestEquipmentForm">
+        <div class="form-group">
+          <label>Категория оборудования *</label>
+          <select name="category_id" class="inp">
+            <option value="">Любая категория</option>
+            ${categoryOptions}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Для какой работы *</label>
+          <select name="work_id" class="inp" required>
+            <option value="">Выберите работу...</option>
+            ${workOptions}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Объект</label>
+          <select name="object_id" class="inp">
+            <option value="">Выберите объект...</option>
+            ${objectOptions}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Описание запроса *</label>
+          <textarea name="notes" class="inp" rows="3" required placeholder="Укажите что именно нужно..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-full">📝 Отправить заявку</button>
+      </form>
+    `;
+
+    showModal('📋 Запрос оборудования', html);
+
+    $('#requestEquipmentForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const form = e.target;
+      const formData = new FormData(form);
+      const auth = await AsgardAuth.getAuth();
+
+      const data = {
+        request_type: 'equipment',
+        requester_id: auth.user.id,
+        work_id: formData.get('work_id'),
+        object_id: formData.get('object_id') || null,
+        notes: formData.get('notes'),
+        status: 'pending'
+      };
+
+      try {
+        const resp = await fetch('/api/data/equipment_requests', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + auth.token
+          },
+          body: JSON.stringify(data)
+        });
+
+        if (resp.ok) {
+          closeModal();
+          toast('Успех', 'Заявка на оборудование отправлена', 'ok');
+        } else {
+          const err = await resp.json();
+          toast('Ошибка', err.error || 'Не удалось отправить заявку', 'err');
+        }
+      } catch(e) {
+        toast('Ошибка', e.message, 'err');
+      }
+    });
+  }
+
   // Форма выдачи
   async function openIssueForm(equipmentId) {
     const pmOptions = pmList.map(p => 
@@ -1319,7 +1410,7 @@ window.AsgardWarehouse = (function(){
     } else {
       // Fallback - показываем данные
       container.innerHTML = `
-        <div style="padding:20px;background:var(--bg-elevated);border-radius:8px;font-family:monospace;font-size:12px;color:var(--text-primary)">
+        <div style="padding:20px;background:#f0f0f0;border-radius:6px;font-family:monospace;font-size:12px">
           ${esc(qrData)}
         </div>
         <p style="font-size:11px;color:var(--text-muted);margin-top:8px">

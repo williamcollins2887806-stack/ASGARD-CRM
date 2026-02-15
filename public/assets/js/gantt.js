@@ -52,16 +52,16 @@ window.AsgardGantt = (function(){
 
     return `
       <style>
-        .gbox{border:1px solid var(--border); background:var(--bg-elevated); border-radius:16px; overflow:hidden}
-        .ghead{display:grid; grid-template-columns: repeat(${totalWeeks}, 1fr); gap:0; border-bottom:1px solid var(--border)}
-        .ghead .w{padding:8px 6px; font-size:11px; color:var(--text-secondary); text-align:center; border-right:1px solid var(--bg-hover)}
+        .gbox{border:1px solid rgba(42,59,102,.85); background:rgba(13,20,40,.35); border-radius:6px; overflow:hidden}
+        .ghead{display:grid; grid-template-columns: repeat(${totalWeeks}, 1fr); gap:0; border-bottom:1px solid rgba(42,59,102,.85)}
+        .ghead .w{padding:8px 6px; font-size:11px; color:rgba(184,196,231,.92); text-align:center; border-right:1px solid rgba(42,59,102,.35)}
         .gbody{position:relative; height:58px}
         .gbar{position:absolute; top:16px; height:26px; left:${barLeft}%; width:${barW}%; background:${barColor};
-          border-radius:999px; box-shadow:0 10px 20px rgba(0,0,0,.25); display:flex; align-items:center; padding:0 10px; font-size:12px; font-weight:800; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.5)}
-        .gtoday{position:absolute; top:0; bottom:0; left:${todayLeft}%; width:2px; background:var(--primary)}
-        .gtoday::after{content:""; position:absolute; top:6px; left:6px; font-size:10px; color:var(--primary)}
+          border-radius:999px; box-shadow:0 10px 20px rgba(0,0,0,.25); display:flex; align-items:center; padding:0 10px; font-size:12px; font-weight:800; color:#0b0f1f}
+        .gtoday{position:absolute; top:0; bottom:0; left:${todayLeft}%; width:2px; background:rgba(242,208,138,.95)}
+        .gtoday::after{content:""; position:absolute; top:6px; left:6px; font-size:10px; color:rgba(242,208,138,.95)}
         .ggrid{position:absolute; inset:0; display:grid; grid-template-columns: repeat(${totalWeeks}, 1fr)}
-        .ggrid div{border-right:1px solid var(--bg-hover)}
+        .ggrid div{border-right:1px solid rgba(42,59,102,.25)}
       </style>
       <div class="gbox">
         <div class="ghead">${head}</div>
@@ -131,31 +131,31 @@ window.AsgardGantt = (function(){
 
     return `
       <style>
-        .gboard{border:1px solid var(--border); background:var(--bg-elevated); border-radius:16px; overflow:hidden}
-        .ghead{display:grid; grid-template-columns: 320px 1fr; border-bottom:1px solid var(--border)}
-        .ghead .left{padding:10px 12px; font-weight:900; color:var(--primary)}
+        .gboard{border:1px solid rgba(42,59,102,.85); background:rgba(13,20,40,.35); border-radius:6px; overflow:hidden}
+        .ghead{display:grid; grid-template-columns: 320px 1fr; border-bottom:1px solid rgba(42,59,102,.85)}
+        .ghead .left{padding:10px 12px; font-weight:900; color:rgba(242,208,138,.95)}
         .ghead .right{display:grid; grid-template-columns:${gridCols}}
-        .ghead .right .w{padding:10px 4px; font-size:11px; color:var(--text-secondary); text-align:center; border-right:1px solid var(--bg-hover)}
-        .grow{display:grid; grid-template-columns:320px 1fr; border-bottom:1px solid var(--bg-hover)}
+        .ghead .right .w{padding:10px 4px; font-size:11px; color:rgba(184,196,231,.92); text-align:center; border-right:1px solid rgba(42,59,102,.25)}
+        .grow{display:grid; grid-template-columns:320px 1fr; border-bottom:1px solid rgba(42,59,102,.35)}
         .gname{padding:10px 12px}
         .gmain{font-weight:900}
-        .gsub{font-size:12px; color:var(--text-secondary); margin-top:4px}
+        .gsub{font-size:12px; color:rgba(184,196,231,.85); margin-top:4px}
         .gtrack{position:relative; height:44px; padding:8px 0}
         .ggrid{position:absolute; inset:0; display:grid}
-        .ggrid div{border-right:1px solid var(--bg-hover)}
+        .ggrid div{border-right:1px solid rgba(42,59,102,.18)}
         .gbar{position:absolute; top:9px; height:26px; border-radius:999px; box-shadow:0 10px 20px rgba(0,0,0,.25);
           display:flex; align-items:center; padding:0; overflow:hidden}
         .gcap{position:absolute; top:0; bottom:0; width:8px; opacity:.9}
         .gcap.start{left:0; background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0))}
         .gcap.end{right:0; background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0))}
-        .gtoday{position:absolute; top:0; bottom:0; width:2px; background:var(--primary)}
+        .gtoday{position:absolute; top:0; bottom:0; width:2px; background:rgba(242,208,138,.95)}
       </style>
       <div class="gboard">
         <div class="ghead">
           <div class="left">Список</div>
           <div class="right">${head}</div>
         </div>
-        ${rowHtml || `<div class="asg-empty"><div class="asg-empty-icon">📭</div><div class="asg-empty-text">Нет данных для отображения</div></div>`}
+        ${rowHtml || `<div class="help" style="padding:14px">Нет данных для отображения.</div>`}
       </div>
     `;
   }

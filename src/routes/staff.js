@@ -1,6 +1,30 @@
 /**
  * Staff Routes (employees, schedule, rating)
  */
+
+// SECURITY: Allowlist of columns
+const EMPLOYEE_COLS = new Set([
+  'fio', 'role_tag', 'phone', 'email', 'passport', 'inn', 'snils',
+  'bank_account', 'bank_name', 'address', 'birth_date', 'employment_date',
+  'dismissal_date', 'position', 'department', 'salary', 'is_active',
+  'notes', 'photo_url', 'rating_avg', 'created_at', 'updated_at'
+]);
+const REVIEW_COLS = new Set([
+  'employee_id', 'rating', 'score_1_10', 'comment', 'work_id', 'pm_id', 'created_at'
+]);
+const SCHEDULE_COLS = new Set([
+  'employee_id', 'date', 'work_id', 'object_name', 'shift_type',
+  'hours', 'notes', 'status', 'created_at'
+]);
+
+function filterData(data, allowedSet) {
+  const filtered = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (allowedSet.has(k) && v !== undefined) filtered[k] = v;
+  }
+  return filtered;
+}
+
 async function routes(fastify, options) {
   const db = fastify.db;
 
@@ -25,8 +49,13 @@ async function routes(fastify, options) {
     return { employee: result.rows[0], reviews: reviews.rows };
   });
 
-  fastify.post('/employees', { preHandler: [fastify.authenticate] }, async (request) => {
-    const data = { ...request.body, created_at: new Date().toISOString() };
+  // SECURITY: SQL injection fix + B3 role check
+  fastify.post('/employees', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'])] }, async (request, reply) => {
+    const body = request.body || {};
+    if (!body.fio || !String(body.fio).trim()) {
+      return reply.code(400).send({ error: 'Обязательное поле: fio' });
+    }
+    const data = filterData({ ...body, created_at: new Date().toISOString() }, EMPLOYEE_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO employees (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
@@ -34,15 +63,17 @@ async function routes(fastify, options) {
     return { employee: result.rows[0] };
   });
 
-  fastify.put('/employees/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: SQL injection fix + B3 role check
+  fastify.put('/employees/:id', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'])] }, async (request, reply) => {
     const { id } = request.params;
-    const data = request.body;
+    const data = filterData(request.body, EMPLOYEE_COLS);
     const updates = [];
     const values = [];
     let idx = 1;
     for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) { updates.push(`${key} = $${idx}`); values.push(value); idx++; }
+      updates.push(`${key} = $${idx}`); values.push(value); idx++;
     }
+    if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
     updates.push('updated_at = NOW()');
     values.push(id);
     const sql = `UPDATE employees SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
@@ -51,25 +82,33 @@ async function routes(fastify, options) {
     return { employee: result.rows[0] };
   });
 
-  // Employee reviews
-  fastify.post('/employees/:id/review', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { id } = request.params;
-    const data = { 
-      employee_id: id,
-      ...request.body, 
-      pm_id: request.user.id,
-      created_at: new Date().toISOString() 
-    };
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    const sql = `INSERT INTO employee_reviews (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-    const result = await db.query(sql, values);
-    
-    // Update average rating
-    const avgResult = await db.query('SELECT AVG(rating) as avg FROM employee_reviews WHERE employee_id = $1', [id]);
-    await db.query('UPDATE employees SET rating_avg = $1, updated_at = NOW() WHERE id = $2', [avgResult.rows[0].avg, id]);
-    
-    return { review: result.rows[0] };
+  // Employee reviews — SECURITY: SQL injection fix — filter keys
+  fastify.post('/employees/:id/review', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const data = filterData({
+        employee_id: id,
+        ...request.body,
+        pm_id: request.user.id,
+        created_at: new Date().toISOString()
+      }, REVIEW_COLS);
+      const keys = Object.keys(data);
+      const values = Object.values(data);
+      const sql = `INSERT INTO employee_reviews (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+      const result = await db.query(sql, values);
+
+      // Update average rating
+      try {
+        const avgResult = await db.query('SELECT AVG(COALESCE(score_1_10, rating)) as avg FROM employee_reviews WHERE employee_id = $1', [id]);
+        await db.query('UPDATE employees SET rating_avg = $1, updated_at = NOW() WHERE id = $2', [avgResult.rows[0].avg, id]);
+      } catch (avgErr) {
+        fastify.log.warn('Rating avg update failed:', avgErr.message);
+      }
+
+      return { review: result.rows[0] };
+    } catch (err) {
+      return reply.code(500).send({ error: 'Ошибка создания отзыва', detail: err.message });
+    }
   });
 
   // Schedule
@@ -86,24 +125,39 @@ async function routes(fastify, options) {
     return { schedule: result.rows };
   });
 
-  fastify.post('/schedule', { preHandler: [fastify.authenticate] }, async (request) => {
-    const data = { ...request.body, created_at: new Date().toISOString() };
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    const sql = `INSERT INTO employee_plan (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-    const result = await db.query(sql, values);
-    return { plan: result.rows[0] };
+  // SECURITY: SQL injection fix — filter keys
+  fastify.post('/schedule', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      const body = request.body || {};
+      if (!body.employee_id) {
+        return reply.code(400).send({ error: 'Обязательное поле: employee_id' });
+      }
+      const data = filterData({ ...body, created_at: new Date().toISOString() }, SCHEDULE_COLS);
+      const keys = Object.keys(data);
+      if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
+      const values = Object.values(data);
+      const sql = `INSERT INTO employee_plan (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+      const result = await db.query(sql, values);
+      return { plan: result.rows[0] };
+    } catch (err) {
+      if (err.code === '23503') return reply.code(400).send({ error: 'Сотрудник или объект не найден' });
+      if (err.code === '23505') return reply.code(409).send({ error: 'Запись уже существует' });
+      if (err.code === '22003') return reply.code(400).send({ error: 'Числовое значение вне допустимого диапазона' });
+      throw err;
+    }
   });
 
+  // SECURITY: SQL injection fix — filter keys
   fastify.put('/schedule/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { id } = request.params;
-    const data = request.body;
+    const data = filterData(request.body, SCHEDULE_COLS);
     const updates = [];
     const values = [];
     let idx = 1;
     for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) { updates.push(`${key} = $${idx}`); values.push(value); idx++; }
+      updates.push(`${key} = $${idx}`); values.push(value); idx++;
     }
+    if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
     values.push(id);
     const sql = `UPDATE employee_plan SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
     const result = await db.query(sql, values);

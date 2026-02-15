@@ -49,7 +49,7 @@ window.AsgardQR = (function(){
             <button class="btn ghost btnClose">✕</button>
           </div>
           <div class="modal-body" style="padding:24px">
-            <img src="${qrUrl}" alt="QR Code" style="width:250px;height:250px;border-radius:12px;background:#fff;padding:10px"/>
+            <img src="${qrUrl}" alt="QR Code" style="width:250px;height:250px;border-radius:6px;background:#fff;padding:10px"/>
             <div style="margin-top:16px;font-weight:600">${esc(title || `${type} #${id}`)}</div>
             <div class="help" style="margin-top:8px;word-break:break-all;font-size:11px">${esc(url)}</div>
           </div>
@@ -238,7 +238,7 @@ window.AsgardQR = (function(){
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; }
           .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-          .item { text-align: center; border: 1px solid #ddd; padding: 15px; border-radius: 8px; }
+          .item { text-align: center; border: 1px solid #ddd; padding: 15px; border-radius: 6px; }
           .item img { width: 150px; height: 150px; }
           .item h4 { margin: 10px 0 5px; font-size: 14px; }
           .item .url { font-size: 10px; color: #666; word-break: break-all; }

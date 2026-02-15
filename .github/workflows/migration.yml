@@ -1,0 +1,47 @@
+name: ASGARD CRM — Migration Check
+
+on:
+  pull_request:
+    paths: ['migrations/**']
+
+jobs:
+  check-migrations:
+    name: "\U0001F4E6 Проверка миграций"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: asgard_migration_test
+          POSTGRES_USER: asgard_test
+          POSTGRES_PASSWORD: test_password
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Прогон всех миграций с нуля
+        run: node migrations/run.js
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: asgard_migration_test
+          DB_USER: asgard_test
+          DB_PASSWORD: test_password
+      - name: Проверка таблиц
+        run: |
+          PGPASSWORD=test_password psql -h localhost -U asgard_test -d asgard_migration_test -c "
+            SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;
+          "
+      - name: Повторный прогон (идемпотентность)
+        run: node migrations/run.js
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: asgard_migration_test
+          DB_USER: asgard_test
+          DB_PASSWORD: test_password

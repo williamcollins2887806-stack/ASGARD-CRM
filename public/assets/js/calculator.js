@@ -409,6 +409,7 @@
         <div class="help" style="margin:0">Порог: <b>${esc(money(num(app.calc?.min_profit_per_person_day,25000)))}</b> / чел‑сутки</div>
         <div class="calc-actions">
           <button class="btn ghost" id="btnCalcCancel" type="button">Закрыть</button>
+          <button class="btn ghost" id="btnCalcExport" type="button">📥 Экспорт</button>
           <button class="btn" id="btnCalcApply" type="button">Применить в просчёт</button>
         </div>
       </div>
@@ -594,6 +595,83 @@
       }
 
       wireInputs();
+
+      // Excel export (SheetJS)
+      $("#btnCalcExport").addEventListener("click", ()=>{
+        const s = summary();
+        if(typeof XLSX === 'undefined'){
+          toast("Экспорт","XLSX не загружен","err"); return;
+        }
+        try {
+          const wb = XLSX.utils.book_new();
+          const dateNow = new Date().toLocaleDateString('ru-RU');
+          // Лист 1: Сводка
+          const summaryData = [
+            ['АСГАРД СЕРВИС — Калькулятор просчёта'],
+            [],
+            ['Рабочие дни:', s.workDays],
+            ['Подготовка:', s.prepDays + ' дней'],
+            ['Всего дней:', s.totalDays + ' дней'],
+            ['Бригада:', s.peopleWork + ' чел'],
+            [],
+            ['ИТОГИ'],
+            ['ФОТ (итого):', Math.round(s.payrollTotal)],
+            ['Налоги на ФОТ:', Math.round(s.fotTax)],
+            ['Суточные:', Math.round(s.perDiem)],
+            ['Проживание:', Math.round(s.lodging)],
+            ['СИЗ:', Math.round(s.ppe)],
+            ['Мобилизация:', Math.round(s.mobilization)],
+            ['Оборудование:', Math.round(s.equipCost)],
+            ['Химия:', Math.round(s.chem?s.chem.cost:0)],
+            ['Логистика:', Math.round(s.logistics)],
+            ['Накладные (' + s.overhead_pct + '%):', Math.round(s.overhead)],
+            [],
+            ['СЕБЕСТОИМОСТЬ:', Math.round(s.costTotal)],
+            ['Маржа:', s.margin_pct + '%'],
+            ['Цена без НДС:', Math.round(s.priceNoVat)],
+            ['НДС (' + s.vatPct + '%):', Math.round(s.priceWithVat - s.priceNoVat)],
+            ['ЦЕНА С НДС:', Math.round(s.priceWithVat)],
+            ['Чистая прибыль:', Math.round(s.netProfit)],
+            ['Прибыль/чел-день:', Math.round(s.profit_per_person_day)],
+            ['Статус:', s.ok ? 'НОРМА' : 'НИЗКАЯ'],
+            [],
+            ['Дата расчёта:', dateNow]
+          ];
+          const ws1 = XLSX.utils.aoa_to_sheet(summaryData);
+          ws1['!cols'] = [{wch:28},{wch:20}];
+          XLSX.utils.book_append_sheet(wb, ws1, 'Сводка');
+
+          // Лист 2: Бригада
+          const crewData = [['Роль','Кол-во','Ставка/смена']];
+          for(const r of (state.roles||[])){
+            if(r.count>0) crewData.push([r.role, r.count, r.rate]);
+          }
+          if(crewData.length>1){
+            const ws2 = XLSX.utils.aoa_to_sheet(crewData);
+            ws2['!cols'] = [{wch:20},{wch:10},{wch:16}];
+            XLSX.utils.book_append_sheet(wb, ws2, 'Бригада');
+          }
+
+          // Лист 3: Оборудование
+          if(state.equipment?.length){
+            const eqData = [['Название','Тип','Вес,кг','Объём,м³','Стоимость']];
+            for(const e of state.equipment){
+              const cost = e.kind==='buy'?e.cost:(e.kind==='rent'?e.rate_per_day:e.amort)||0;
+              eqData.push([e.name||'', e.kind||'own', e.weight_kg||0, e.volume_m3||0, cost]);
+            }
+            const ws3 = XLSX.utils.aoa_to_sheet(eqData);
+            ws3['!cols'] = [{wch:25},{wch:10},{wch:10},{wch:10},{wch:14}];
+            XLSX.utils.book_append_sheet(wb, ws3, 'Оборудование');
+          }
+
+          const filename = 'Расчёт_V1_' + dateNow.replace(/\./g,'-') + '.xlsx';
+          XLSX.writeFile(wb, filename);
+          toast("Экспорт","Excel-файл скачан");
+        } catch(err){
+          console.error('Excel export V1:', err);
+          toast("Ошибка","Не удалось экспортировать","err");
+        }
+      });
 
       $("#btnCalcCancel").addEventListener("click", hideModal);
       $("#btnCalcApply").addEventListener("click", async ()=>{

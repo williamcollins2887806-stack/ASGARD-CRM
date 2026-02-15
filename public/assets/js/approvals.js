@@ -183,13 +183,14 @@ window.AsgardApprovalsPage = (function(){
 
     const body = `
       <style>
-        table.asg{width:100%; border-collapse:collapse;}
-        table.asg th{font-size:11px; color:var(--text-secondary); font-weight:800; text-align:left; padding:10px; border-bottom:2px solid var(--border)}
-        table.asg td{padding:10px; border-bottom:1px solid var(--border);}
-        table.asg tbody tr:last-child td{border-bottom:none}
+        table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
+        table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
+        table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85);}
+        table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
+        table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
         .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
         .tools .field{min-width:220px}
-        tr.overdue td{background:rgba(239,68,68,.10);}
+        tr.overdue td{border-color:rgba(239,68,68,.85); background:rgba(239,68,68,.10);}
         tr.overdue td:first-child{box-shadow: inset 4px 0 0 rgba(239,68,68,.85);}
       </style>
 
@@ -217,7 +218,7 @@ window.AsgardApprovalsPage = (function(){
               <option value="all">Все решения</option>
             </select>
           </div>
-          <div style="display:flex; gap:10px; align-items:center; align-self:flex-end">
+          <div style="display:flex; gap:10px">
             <button class="btn ghost" id="btnReset">Сброс</button>
           </div>
         </div>
@@ -382,7 +383,7 @@ window.AsgardApprovalsPage = (function(){
         else if(profitPD >= minPPD) { status = "yellow"; statusLabel = "🟡 ЖЁЛТАЯ ЗОНА"; statusColor = "#f59e0b"; }
         
         quickCard = `
-          <div style="background:var(--bg-elevated); border-radius:var(--radius-lg); padding:16px; margin-bottom:16px">
+          <div style="background:rgba(13,20,40,.6); border-radius:6px; padding:16px; margin-bottom:16px">
             <div style="font-size:12px; color:var(--muted); margin-bottom:8px">📝 БЫСТРЫЙ ПРОСЧЁТ</div>
             <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px">
               <div style="text-align:center">
@@ -402,19 +403,19 @@ window.AsgardApprovalsPage = (function(){
                 <div style="font-size:18px; font-weight:700; color:var(--gold)">${money(est.price_tkp)}</div>
               </div>
             </div>
-            <div style="background:${statusColor}22; border:2px solid ${statusColor}; border-radius:10px; padding:12px; margin-top:12px; text-align:center">
+            <div style="background:${statusColor}22; border:2px solid ${statusColor}; border-radius:6px; padding:12px; margin-top:12px; text-align:center">
               <div style="font-size:13px; font-weight:700; color:${statusColor}">${statusLabel}</div>
               <div style="font-size:22px; font-weight:700; color:${statusColor}; margin-top:4px">${money(Math.round(profitPD))}</div>
               <div style="font-size:11px; color:var(--muted)">прибыль / чел-день</div>
             </div>
             <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; font-size:12px">
-              <span style="background:var(--bg-hover); padding:4px 8px; border-radius:6px">Маржа: ${margin.toFixed(1)}%</span>
-              <span style="background:var(--bg-hover); padding:4px 8px; border-radius:6px">Прибыль: ${money(Math.round(profit))}</span>
-              ${quickCalc.city ? `<span style="background:var(--bg-hover); padding:4px 8px; border-radius:6px">Город: ${esc(quickCalc.city)} (${quickCalc.distance_km||0} км)</span>` : ''}
-              ${quickCalc.work_type ? `<span style="background:var(--bg-hover); padding:4px 8px; border-radius:6px">${esc(quickCalc.work_type)}</span>` : ''}
+              <span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">Маржа: ${margin.toFixed(1)}%</span>
+              <span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">Прибыль: ${money(Math.round(profit))}</span>
+              ${quickCalc.city ? `<span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">Город: ${esc(quickCalc.city)} (${quickCalc.distance_km||0} км)</span>` : ''}
+              ${quickCalc.work_type ? `<span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">${esc(quickCalc.work_type)}</span>` : ''}
             </div>
-            ${(quickCalc.assumptions || est.assumptions) ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:8px; border-left:3px solid #f59e0b">
-              <div style="font-size:11px; color:var(--amber); font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
+            ${(quickCalc.assumptions || est.assumptions) ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:6px; border-left:3px solid #f59e0b">
+              <div style="font-size:11px; color:#f59e0b; font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
               <div style="font-size:12px; color:var(--muted)">${esc(quickCalc.assumptions || est.assumptions)}</div>
             </div>` : ''}
           </div>
@@ -423,7 +424,7 @@ window.AsgardApprovalsPage = (function(){
 
       // Компактная карточка v2 если есть данные
       const v2Card = v2Summary ? `
-        <div style="background:var(--bg-elevated); border-radius:var(--radius-lg); padding:16px; margin-bottom:16px">
+        <div style="background:rgba(13,20,40,.6); border-radius:6px; padding:16px; margin-bottom:16px">
           <div style="font-size:12px; color:var(--muted); margin-bottom:8px">ᚱ РУНИЧЕСКИЙ КАЛЬКУЛЯТОР</div>
           <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px">
             <div style="text-align:center">
@@ -443,18 +444,18 @@ window.AsgardApprovalsPage = (function(){
               <div style="font-size:18px; font-weight:700; color:var(--gold)">${money(v2Summary.price_with_vat)}</div>
             </div>
           </div>
-          <div style="background:${v2Summary.status==='green'?'rgba(34,197,94,.2)':v2Summary.status==='yellow'?'rgba(245,158,11,.2)':'rgba(224,58,74,.2)'}; border:2px solid ${v2Summary.status==='green'?'#22c55e':v2Summary.status==='yellow'?'#f59e0b':'#e03a4a'}; border-radius:10px; padding:12px; margin-top:12px; text-align:center">
+          <div style="background:${v2Summary.status==='green'?'rgba(34,197,94,.2)':v2Summary.status==='yellow'?'rgba(245,158,11,.2)':'rgba(224,58,74,.2)'}; border:2px solid ${v2Summary.status==='green'?'#22c55e':v2Summary.status==='yellow'?'#f59e0b':'#e03a4a'}; border-radius:6px; padding:12px; margin-top:12px; text-align:center">
             <div style="font-size:13px; font-weight:700; color:${v2Summary.status==='green'?'#22c55e':v2Summary.status==='yellow'?'#f59e0b':'#e03a4a'}">${v2Summary.status==='green'?'🟢 ЗЕЛЁНАЯ':v2Summary.status==='yellow'?'🟡 ЖЁЛТАЯ':'🔴 КРАСНАЯ'} ЗОНА</div>
             <div style="font-size:22px; font-weight:700; color:${v2Summary.status==='green'?'#22c55e':v2Summary.status==='yellow'?'#f59e0b':'#e03a4a'}; margin-top:4px">${money(v2Summary.profit_per_day)}</div>
             <div style="font-size:11px; color:var(--muted)">прибыль / чел-день</div>
           </div>
           <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; font-size:12px">
-            <span style="background:var(--bg-hover); padding:4px 8px; border-radius:6px">Маржа: ${v2Summary.margin_pct}%</span>
-            <span style="background:var(--bg-hover); padding:4px 8px; border-radius:6px">Чистая прибыль: ${money(v2Summary.net_profit)}</span>
-            <span style="background:var(--bg-hover); padding:4px 8px; border-radius:6px">Город: ${esc(calcV2.city||'—')} (${calcV2.distance_km||0} км)</span>
+            <span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">Маржа: ${v2Summary.margin_pct}%</span>
+            <span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">Чистая прибыль: ${money(v2Summary.net_profit)}</span>
+            <span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">Город: ${esc(calcV2.city||'—')} (${calcV2.distance_km||0} км)</span>
           </div>
-          ${calcV2.assumptions ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:8px; border-left:3px solid #f59e0b">
-            <div style="font-size:11px; color:var(--amber); font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
+          ${calcV2.assumptions ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:6px; border-left:3px solid #f59e0b">
+            <div style="font-size:11px; color:#f59e0b; font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
             <div style="font-size:12px; color:var(--muted)">${esc(calcV2.assumptions)}</div>
           </div>` : ''}
         </div>

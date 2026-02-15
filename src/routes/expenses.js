@@ -1,6 +1,30 @@
 /**
  * Expenses Routes (work_expenses + office_expenses)
  */
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECURITY: Ролевой контроль для финансовых операций (HIGH-9)
+// ═══════════════════════════════════════════════════════════════════════════
+const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
+
+// SECURITY: Allowlist of columns for expenses
+const WORK_EXP_COLS = new Set([
+  'work_id', 'category', 'description', 'amount', 'date', 'receipt_url',
+  'supplier', 'notes', 'status', 'created_by', 'created_at', 'updated_at'
+]);
+const OFFICE_EXP_COLS = new Set([
+  'category', 'description', 'amount', 'date', 'receipt_url',
+  'supplier', 'notes', 'status', 'created_by', 'created_at', 'updated_at'
+]);
+
+function filterData(data, allowedSet) {
+  const filtered = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (allowedSet.has(k) && v !== undefined) filtered[k] = v;
+  }
+  return filtered;
+}
+
 async function routes(fastify, options) {
   const db = fastify.db;
 
@@ -20,8 +44,17 @@ async function routes(fastify, options) {
     return { expenses: result.rows };
   });
 
-  fastify.post('/work', { preHandler: [fastify.authenticate] }, async (request) => {
-    const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString() };
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  // SECURITY: SQL injection fix — filter keys
+  fastify.post('/work', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const body = request.body || {};
+    if (!body.category?.trim()) {
+      return reply.code(400).send({ error: 'Обязательное поле: category' });
+    }
+    if (body.amount === undefined || body.amount === null || Number(body.amount) <= 0) {
+      return reply.code(400).send({ error: 'Поле amount должно быть положительным числом' });
+    }
+    const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() }, WORK_EXP_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO work_expenses (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
@@ -45,8 +78,14 @@ async function routes(fastify, options) {
     return { expenses: result.rows };
   });
 
-  fastify.post('/office', { preHandler: [fastify.authenticate] }, async (request) => {
-    const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString(), status: 'pending' };
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  // SECURITY: SQL injection fix — filter keys
+  fastify.post('/office', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const body = request.body || {};
+    if (!body.amount || !body.category) {
+      return reply.code(400).send({ error: 'Обязательные поля: amount, category' });
+    }
+    const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString(), status: 'pending' }, OFFICE_EXP_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
     const sql = `INSERT INTO office_expenses (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
@@ -55,26 +94,36 @@ async function routes(fastify, options) {
   });
 
   // Generic update/delete
-  fastify.put('/:type/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const { type, id } = request.params;
-    const table = type === 'work' ? 'work_expenses' : 'office_expenses';
-    const data = request.body;
-    const updates = [];
-    const values = [];
-    let idx = 1;
-    for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) { updates.push(`${key} = $${idx}`); values.push(value); idx++; }
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.put('/:type/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    try {
+      const { type, id } = request.params;
+      if (!['work', 'office'].includes(type)) return reply.code(400).send({ error: 'Тип: work или office' });
+      const table = type === 'work' ? 'work_expenses' : 'office_expenses';
+      const allowedSet = type === 'work' ? WORK_EXP_COLS : OFFICE_EXP_COLS;
+      const data = filterData(request.body, allowedSet);
+      const updates = [];
+      const values = [];
+      let idx = 1;
+      for (const [key, value] of Object.entries(data)) {
+        updates.push(`${key} = $${idx}`); values.push(value); idx++;
+      }
+      if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
+      updates.push('updated_at = NOW()');
+      values.push(id);
+      const sql = `UPDATE ${table} SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
+      const result = await db.query(sql, values);
+      if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
+      return { expense: result.rows[0] };
+    } catch (err) {
+      if (err.code === '22003') return reply.code(400).send({ error: 'Числовое значение вне допустимого диапазона' });
+      if (err.code === '23503') return reply.code(400).send({ error: 'Связанная запись не найдена' });
+      throw err;
     }
-    if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
-    updates.push('updated_at = NOW()');
-    values.push(id);
-    const sql = `UPDATE ${table} SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
-    const result = await db.query(sql, values);
-    if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
-    return { expense: result.rows[0] };
   });
 
-  fastify.delete('/:type/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.delete('/:type/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const { type, id } = request.params;
     const table = type === 'work' ? 'work_expenses' : 'office_expenses';
     const result = await db.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]);
