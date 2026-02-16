@@ -146,18 +146,18 @@ window.AsgardDashboardPage = (function(){
           .dash-grid {
             display:grid;
             grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
-            gap:1px;
+            gap:12px;
             margin-bottom:24px;
-            background: rgba(148,163,184,.15);
-            border:1px solid rgba(148,163,184,.15);
+            background: transparent;
+            border:none;
             border-radius:8px;
-            overflow:hidden;
           }
 
           .dash-card {
             position:relative;
             background: linear-gradient(135deg, rgba(13,20,40,.7), rgba(13,20,40,.5));
             border:none;
+            border-radius:8px;
             padding:24px;
             overflow:hidden;
             transition: all .3s ease;
@@ -193,7 +193,7 @@ window.AsgardDashboardPage = (function(){
           
           .dash-chart-card {
             background: rgba(13,20,40,.5);
-            border:1px solid rgba(148,163,184,.12);
+            border:none;
             border-radius:6px;
             padding:20px;
           }
@@ -205,7 +205,7 @@ window.AsgardDashboardPage = (function(){
             display:flex; align-items:center; gap:8px;
             padding:10px 16px;
             background: rgba(59,130,246,.1);
-            border:1px solid rgba(59,130,246,.25);
+            border:none;
             border-radius:6px;
             color:var(--blue);
             font-size:13px; font-weight:600;
@@ -219,7 +219,7 @@ window.AsgardDashboardPage = (function(){
           
           .dash-alerts {
             background: rgba(239,68,68,.1);
-            border:1px solid rgba(239,68,68,.25);
+            border:none;
             border-radius:6px;
             padding:20px;
             margin-bottom:24px;

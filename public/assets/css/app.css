@@ -5140,7 +5140,7 @@ table.asg tr:hover td:first-child {
     rgba(10, 22, 40, 0.9) 100%
   );
   backdrop-filter: blur(15px);
-  border: 1px solid rgba(59, 130, 246, 0.1);
+  border: none;
   border-radius: var(--radius-lg);
   padding: 20px;
   position: relative;
@@ -5162,7 +5162,6 @@ table.asg tr:hover td:first-child {
 
 .kpi .k:hover {
   transform: translateY(-4px);
-  border-color: rgba(220, 38, 38, 0.2);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
 

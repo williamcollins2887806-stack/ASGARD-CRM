@@ -771,7 +771,7 @@ table.asg tr td:last-child {
 
 .kpi .k {
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-lg);
   padding: var(--sp-4);
 }
@@ -2495,8 +2495,8 @@ button:focus-visible {
 
 /* Kanban Column Colors — only top accent, no extra borders */
 .kanban-column[data-column="new"] { border-top: 3px solid var(--blue); }
-.kanban-column[data-column="in_progress"] { border-top: 3px solid var(--orange); }
-.kanban-column[data-column="review"] { border-top: 3px solid var(--purple); }
+.kanban-column[data-column="in_progress"] { border-top: 3px solid var(--amber); }
+.kanban-column[data-column="review"] { border-top: 3px solid #8b5cf6; }
 .kanban-column[data-column="done"] { border-top: 3px solid var(--green); }
 
 /* Kanban Filters */
@@ -3544,13 +3544,12 @@ html[data-theme="light"] .inp:focus {
 .dash-widget {
   background: var(--bg-card);
   border-radius: 10px;
-  border: 1px solid var(--border);
+  border: none;
   overflow: hidden;
-  transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s, transform 0.2s;
+  transition: box-shadow 0.2s, opacity 0.2s, transform 0.2s;
 }
 
 .dash-widget:hover {
-  border-color: var(--gold-border);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
@@ -3606,7 +3605,6 @@ html[data-theme="light"] .inp:focus {
 .dash-widget:hover .drag-handle { opacity: 1; }
 .dash-widget[draggable]:active { cursor: grabbing; }
 .dash-widget.drag-over {
-  border-color: var(--gold);
   box-shadow: 0 0 20px var(--gold-glow);
 }
 .dash-widget.dragging { opacity: 0.4; }
@@ -3614,12 +3612,12 @@ html[data-theme="light"] .inp:focus {
 /* Light theme */
 html[data-theme="light"] .dash-widget {
   background: #ffffff;
-  border-color: rgba(0, 0, 0, 0.06);
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 html[data-theme="light"] .dash-widget:hover {
-  border-color: rgba(220, 38, 38, 0.2);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
 html[data-theme="light"] .dash-widget-header {
