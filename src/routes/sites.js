@@ -133,8 +133,8 @@ module.exports = async function(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────
-  // POST /api/sites/geocode — server-side geocoding proxy (Yandex Geocoder)
-  // Keeps API key secret on server side
+  // POST /api/sites/geocode — server-side geocoding proxy (Nominatim / OpenStreetMap)
+  // No API key required
   // ─────────────────────────────────────────────────────────────────
   fastify.post('/geocode', {
     preHandler: [fastify.authenticate]
@@ -142,37 +142,43 @@ module.exports = async function(fastify, options) {
     const { address } = request.body;
     if (!address) return reply.code(400).send({ error: 'Address required' });
 
-    const apiKey = process.env.YANDEX_GEOCODER_API_KEY || '';
-    if (!apiKey) {
-      return reply.code(200).send({ found: false, error: 'Geocoder API key not configured' });
-    }
-
-    const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${encodeURIComponent(apiKey)}&format=json&geocode=${encodeURIComponent(address)}&results=1&lang=ru_RU`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=ru`;
 
     try {
-      const resp = await fetch(url);
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': 'AsgardCRM/1.0 (admin@asgard-service.ru)' }
+      });
       const data = await resp.json();
 
-      const geoObj = data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
-      if (!geoObj) return { found: false };
+      if (data.length > 0) {
+        const lat = parseFloat(data[0].lat);
+        const lng = parseFloat(data[0].lon);
+        const displayName = data[0].display_name || '';
+        const placeClass = data[0].class || '';
+        const placeType = data[0].type || '';
 
-      const pos = geoObj.Point.pos.split(' ');
-      const lng = parseFloat(pos[0]);
-      const lat = parseFloat(pos[1]);
-      const precision = geoObj.metaDataProperty?.GeocoderMetaData?.precision || 'other';
-      const displayName = geoObj.metaDataProperty?.GeocoderMetaData?.text || '';
+        // Determine confidence based on result type and importance
+        const importance = parseFloat(data[0].importance || 0);
+        const highConfidence = importance > 0.5 ||
+          ['building', 'place', 'amenity'].includes(placeClass) ||
+          ['house', 'residential', 'city', 'town', 'village'].includes(placeType);
 
-      const highConfidence = ['exact', 'number', 'near'].includes(precision);
+        // Extract region from display_name (typically second-to-last part)
+        const parts = displayName.split(', ');
+        const region = parts.length >= 3 ? parts[parts.length - 2] : (parts[1] || '');
 
-      return {
-        found: true,
-        lat,
-        lng,
-        precision,
-        highConfidence,
-        displayName,
-        region: geoObj.metaDataProperty?.GeocoderMetaData?.AddressDetails?.Country?.AdministrativeArea?.AdministrativeAreaName || ''
-      };
+        return {
+          found: true,
+          lat,
+          lng,
+          precision: highConfidence ? 'exact' : 'other',
+          highConfidence,
+          displayName,
+          region
+        };
+      }
+
+      return { found: false };
     } catch (err) {
       fastify.log.error('Geocode fetch error:', err.message);
       return reply.code(500).send({ error: 'Geocoding failed', detail: err.message });

@@ -1,7 +1,7 @@
 /**
- * АСГАРД CRM — Яндекс.Карты + Скоринг клиентов
- * 
- * 1. Расчёт расстояний через Яндекс.Карты API
+ * АСГАРД CRM — Геокодинг (Nominatim/OSM) + Скоринг клиентов
+ *
+ * 1. Расчёт расстояний через Nominatim (OpenStreetMap) / OSRM
  * 2. Светофор клиентов (конверсия + комбинированный скоринг)
  */
 window.AsgardGeoScore = (function(){
@@ -10,21 +10,21 @@ window.AsgardGeoScore = (function(){
   const BASE_CITY = 'Москва';
   const BASE_COORDS = [55.7558, 37.6173];
   
-  // Яндекс API ключ (нужно получить на developer.tech.yandex.ru)
-  // Пока используем бесплатный геокодер
-  const YANDEX_GEOCODER_URL = 'https://geocode-maps.yandex.ru/1.x/';
-  const YANDEX_ROUTER_URL = 'https://api.routing.yandex.net/v2/route';
+  // Nominatim (OpenStreetMap) — бесплатный геокодер, без ключа
+  const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+  // OSRM — бесплатный роутер на основе OSM
+  const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving';
   
   // Кэш расстояний
   const distanceCache = new Map();
   
   // ============================================
-  // ЯНДЕКС.КАРТЫ — РАСЧЁТ РАССТОЯНИЙ
+  // NOMINATIM/OSM — РАСЧЁТ РАССТОЯНИЙ
   // ============================================
-  
+
   /**
    * Геокодирование города -> координаты
-   * Использует бесплатный API Яндекса (с ограничениями)
+   * Использует серверный прокси /api/sites/geocode (Nominatim)
    */
   async function geocodeCity(cityName) {
     if (!cityName) return null;
@@ -198,7 +198,7 @@ window.AsgardGeoScore = (function(){
         
         <div class="help">
           Расстояние рассчитывается по прямой с коэффициентом 1.3 для автодорог.
-          Для точного расчёта используйте Яндекс.Карты.
+          Для точного расчёта используйте OpenStreetMap.
         </div>
       </div>
     `;
@@ -453,7 +453,7 @@ window.AsgardGeoScore = (function(){
   }
 
   return {
-    // Яндекс.Карты
+    // Nominatim/OSM
     geocodeCity,
     calculateDistance,
     openDistanceCalculator,

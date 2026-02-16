@@ -15,6 +15,56 @@ const aiProvider = require('./ai-provider');
 const fs = require('fs');
 const path = require('path');
 
+// ── Фильтрация писем ДО отправки в AI ────────────────────────────────
+
+/**
+ * Pre-filter: проверяет, нужно ли пропустить письмо БЕЗ AI-анализа.
+ * Возвращает { skip: true/false, reason: string }
+ */
+function shouldSkipEmail(email) {
+  const { fromEmail, subject, bodyText } = email;
+  const from = (fromEmail || '').toLowerCase();
+  const subj = (subject || '').toLowerCase();
+  const body = (bodyText || '').toLowerCase().substring(0, 2000);
+
+  // 1. Skip bounce/non-delivery notifications
+  const bouncePatterns = [
+    'mailer-daemon', 'postmaster@', 'noreply', 'no-reply',
+    'mail delivery', 'delivery status', 'undeliverable',
+    'returned mail', 'delivery failure', 'delivery has failed',
+    'not delivered', 'could not be delivered', 'unable to deliver',
+    'автоматический ответ', 'automatic reply', 'auto-reply',
+    'out of office', 'вне офиса'
+  ];
+
+  for (const p of bouncePatterns) {
+    if (from.includes(p) || subj.includes(p) || body.includes(p.toLowerCase())) {
+      return { skip: true, reason: 'bounce_or_auto_reply' };
+    }
+  }
+
+  // 2. Skip internal emails (from company domain)
+  const internalDomains = ['asgard-crm.ru', 'asgard-service.ru', 'asgard-s.ru', 'асгард.рф'];
+  for (const d of internalDomains) {
+    if (from.includes(d)) {
+      return { skip: true, reason: 'internal_email' };
+    }
+  }
+
+  // 3. Skip system notifications
+  const systemPatterns = [
+    'notification@', 'alert@', 'system@', 'info@calendar',
+    'уведомление', 'системное сообщение'
+  ];
+  for (const p of systemPatterns) {
+    if (from.includes(p) || subj.includes(p)) {
+      return { skip: true, reason: 'system_notification' };
+    }
+  }
+
+  return { skip: false };
+}
+
 // ── System prompt для анализа входящих писем ─────────────────────────
 
 const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании АСГАРД СЕРВИС (нефтегазовый сервис).
@@ -57,6 +107,21 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 - spam: Спам, рассылка
 - personal: Личное письмо
 - other: Другое
+
+ВАЖНО: Классифицируй как "direct_request" или "platform_tender" ТОЛЬКО те письма, которые ЯВНО содержат:
+- Конкретное описание работ (трубопровод, сварка, монтаж, очистка, антикоррозия и т.д.)
+- Приглашение на тендер или запрос ценового предложения
+- Техническое задание или объем работ
+
+НЕ классифицируй как заявку:
+- Внутреннюю переписку между сотрудниками
+- Уведомления о недоставке писем (bounce, delivery failure)
+- Рассылки, рекламу, спам
+- Автоматические ответы (out of office, автоответ)
+- Переписку без упоминания конкретных работ
+- Информационные рассылки и новостные дайджесты
+
+Если сомневаешься — классифицируй как "information" или "other", а НЕ как заявку.
 
 ВАЖНО: Отвечай ТОЛЬКО JSON, без markdown-форматирования, без \`\`\`json блоков.`;
 
@@ -158,6 +223,38 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
   const startTime = Date.now();
   let result = null;
   let error = null;
+
+  // Pre-filter: пропускаем bounce, internal, system emails БЕЗ обращения к AI
+  const skipCheck = shouldSkipEmail({ fromEmail, subject, bodyText });
+  if (skipCheck.skip) {
+    console.log(`[AI-Analyzer] Skipping email #${emailId}: ${skipCheck.reason} (from: ${fromEmail})`);
+    const skippedResult = {
+      classification: skipCheck.reason === 'bounce_or_auto_reply' ? 'other' :
+                      skipCheck.reason === 'internal_email' ? 'personal' :
+                      'other',
+      color: 'red',
+      summary: `Пропущено автоматически: ${skipCheck.reason}`,
+      recommendation: 'Не требует действий',
+      work_type: null,
+      estimated_budget: null,
+      estimated_days: null,
+      keywords: [],
+      confidence: 0.95,
+      _skipped: true,
+      _skipReason: skipCheck.reason
+    };
+
+    // Логируем пропуск
+    await logAnalysis({
+      entityType: 'email',
+      entityId: emailId || 0,
+      analysisType: 'email_classification_skipped',
+      inputPreview: `[SKIPPED:${skipCheck.reason}] ${(subject || '').slice(0, 200)}`,
+      outputJson: skippedResult
+    });
+
+    return skippedResult;
+  }
 
   try {
     // Собираем контекст о загрузке
@@ -439,5 +536,6 @@ module.exports = {
   generateReport,
   getWorkloadData,
   parseAIResponse,
+  shouldSkipEmail,
   ANALYSIS_SYSTEM_PROMPT
 };

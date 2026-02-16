@@ -1144,6 +1144,15 @@ async function getRefs(){
 </div>
 ${docsHtml}</div>
 
+        ${!isNew ? `
+        <hr class="hr"/>
+        <div class="help"><b>Заявки</b></div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0">
+          <button class="btn ghost" id="btnPassRequest">🏗 Заявка на пропуск</button>
+          <button class="btn ghost" id="btnTmcRequest">📦 Заявка на ввоз/вывоз ТМЦ</button>
+        </div>
+        ` : ``}
+
         <hr class="hr"/>
         <div style="display:flex; gap:10px; flex-wrap:wrap">
           <button class="btn" id="btnSave">${isNew?"Создать":"Сохранить"}</button>
@@ -1540,6 +1549,26 @@ ${docsHtml}</div>
         });
       }
 
+      // ═══════════════════════════════════════════════════════════════
+      // Заявка на пропуск из карточки тендера
+      // ═══════════════════════════════════════════════════════════════
+      const btnPassReq = document.getElementById("btnPassRequest");
+      if(btnPassReq && t){
+        btnPassReq.addEventListener("click", async ()=>{
+          openPassRequestFromTender(t);
+        });
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // Заявка на ввоз/вывоз ТМЦ из карточки тендера
+      // ═══════════════════════════════════════════════════════════════
+      const btnTmcReq = document.getElementById("btnTmcRequest");
+      if(btnTmcReq && t){
+        btnTmcReq.addEventListener("click", async ()=>{
+          openTmcRequestFromTender(t);
+        });
+      }
+
       async function saveTender(forceDraft){
         const period=document.getElementById("e_period").value.trim();
         const innRaw = document.getElementById("e_inn")?.value || "";
@@ -1875,6 +1904,243 @@ ${docsHtml}</div>
         });
       }
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Заявка на пропуск — из карточки тендера (pre-filled)
+  // ═══════════════════════════════════════════════════════════════════
+  async function openPassRequestFromTender(tender) {
+    const { showModal, hideModal, toast, esc } = AsgardUI;
+    const $ = (s) => document.querySelector(s);
+
+    // Получаем список сотрудников компании для выбора
+    let staffList = [];
+    try {
+      const token = localStorage.getItem('asgard_token');
+      const resp = await fetch('/api/users?limit=500', { headers: { Authorization: 'Bearer ' + token } });
+      const data = await resp.json();
+      staffList = (data.users || data.items || []).filter(u => u.is_active !== false);
+    } catch(e) {
+      // fallback: try from IndexedDB
+      try { staffList = (await AsgardDB.all('users')) || []; } catch(_) {}
+    }
+
+    const staffOptions = staffList.map(s =>
+      `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer">
+        <input type="checkbox" class="pass-staff-cb" value="${s.id}" data-name="${(s.name||s.login||'').replace(/"/g,'&quot;')}" data-position="${(s.position||s.role||'').replace(/"/g,'&quot;')}" />
+        <span>${(s.name||s.login||'—')} <span class="help" style="font-size:11px">(${s.position||s.role||''})</span></span>
+      </label>`
+    ).join('');
+
+    // Получаем email заказчика
+    let customerEmail = '';
+    if (tender.customer_inn) {
+      try {
+        const cust = await AsgardDB.get('customers', tender.customer_inn);
+        customerEmail = cust?.email || '';
+      } catch(_) {}
+    }
+
+    const objectName = tender.customer_name || tender.tender_title || '';
+    const contactPerson = '';
+
+    const html = `
+      <div class="help" style="margin-bottom:12px">Заявка на пропуск для тендера: <b>${esc(tender.tender_title || '')}</b><br/>Заказчик: <b>${esc(tender.customer_name || '')}</b></div>
+      <div class="formrow">
+        <div><label>Объект (название)</label><input id="prObj" value="${esc(objectName)}" placeholder="Название объекта" /></div>
+      </div>
+      <div class="formrow">
+        <div><label>Дата с</label><input id="prFrom" type="date" value="${tender.work_start_plan || ''}" /></div>
+        <div><label>Дата по</label><input id="prTo" type="date" value="${tender.work_end_plan || ''}" /></div>
+      </div>
+      <div class="formrow">
+        <div><label>Контактное лицо</label><input id="prContact" value="${esc(contactPerson)}" /></div>
+        <div><label>Телефон</label><input id="prPhone" value="" /></div>
+      </div>
+      <div class="formrow"><div style="grid-column:1/-1">
+        <label>Email заказчика (для отправки заявки)</label>
+        <input id="prClientEmail" type="email" value="${esc(customerEmail)}" placeholder="email заказчика"/>
+      </div></div>
+
+      <hr class="hr"/>
+      <div class="help"><b>Сотрудники</b> — выберите из списка или введите вручную</div>
+      <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border,#333);border-radius:6px;padding:8px;margin:8px 0" id="staffSelectBox">
+        ${staffOptions || '<div class="muted">Список сотрудников не загружен</div>'}
+      </div>
+      <div class="formrow"><div style="grid-column:1/-1">
+        <label>Дополнительные сотрудники (ФИО, по одному на строку)</label>
+        <textarea id="prEmpsExtra" rows="2" placeholder="Иванов Иван Иванович"></textarea>
+      </div></div>
+
+      <hr class="hr"/>
+      <div class="formrow"><div style="grid-column:1/-1">
+        <label>Транспорт (марка + номер, по одному на строку)</label>
+        <textarea id="prVehs" rows="2" placeholder="Газель А123БВ77"></textarea>
+      </div></div>
+      <div class="formrow"><div style="grid-column:1/-1">
+        <label>Примечания</label><textarea id="prNotes" rows="2">${esc(tender.tender_comment_to || '')}</textarea>
+      </div></div>
+      <hr class="hr"/>
+      <div style="display:flex;gap:10px">
+        <button class="btn primary" id="btnCreatePassReq" style="flex:1">Создать заявку на пропуск</button>
+      </div>`;
+
+    showModal('Заявка на пропуск', html);
+
+    $('#btnCreatePassReq')?.addEventListener('click', async () => {
+      // Собираем выбранных сотрудников
+      const employees = [];
+      document.querySelectorAll('.pass-staff-cb:checked').forEach(cb => {
+        employees.push({
+          fio: cb.dataset.name || '',
+          position: cb.dataset.position || '',
+          user_id: cb.value
+        });
+      });
+      // Добавляем введённых вручную
+      const extraLines = ($('#prEmpsExtra')?.value || '').split('\n').filter(s => s.trim());
+      extraLines.forEach(line => {
+        employees.push({ fio: line.trim() });
+      });
+
+      // Транспорт
+      const vehicles = ($('#prVehs')?.value || '').split('\n').filter(s => s.trim()).map(line => {
+        const parts = line.trim().split(/\s+/);
+        return { brand: parts.slice(0, -1).join(' ') || 'ТС', plate: parts[parts.length - 1] || '' };
+      });
+
+      const body = {
+        work_id: tender.work_id || null,
+        object_name: $('#prObj')?.value || '',
+        pass_date_from: $('#prFrom')?.value || '',
+        pass_date_to: $('#prTo')?.value || '',
+        contact_person: $('#prContact')?.value || '',
+        contact_phone: $('#prPhone')?.value || '',
+        employees_json: employees,
+        vehicles_json: vehicles,
+        notes: ($('#prNotes')?.value || '') + (tender.id ? `\n[Тендер #${tender.id}: ${tender.tender_title || ''}]` : '')
+      };
+
+      if (!body.object_name) { toast('Ошибка', 'Укажите объект', 'err'); return; }
+      if (!body.pass_date_from || !body.pass_date_to) { toast('Ошибка', 'Укажите даты пропуска', 'err'); return; }
+
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/pass-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify(body)
+        });
+        if (resp.ok) {
+          const result = await resp.json();
+          toast('Готово', 'Заявка на пропуск создана');
+          hideModal();
+
+          // Отправить заявку на email заказчика, если указан
+          const clientEmail = $('#prClientEmail')?.value;
+          if (clientEmail && result.item?.id) {
+            try {
+              window.open(`/api/pass-requests/${result.item.id}/pdf?token=${token}`, '_blank');
+              toast('PDF', 'PDF заявки открыт для скачивания/отправки');
+            } catch(_) {}
+          }
+        } else {
+          const err = await resp.json();
+          toast('Ошибка', err.error || 'Не удалось создать заявку', 'err');
+        }
+      } catch(e) {
+        toast('Ошибка', e.message || 'Ошибка сети', 'err');
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Заявка на ввоз/вывоз ТМЦ — из карточки тендера (pre-filled)
+  // ═══════════════════════════════════════════════════════════════════
+  async function openTmcRequestFromTender(tender) {
+    const { showModal, hideModal, toast, esc } = AsgardUI;
+    const $ = (s) => document.querySelector(s);
+
+    const tenderTitle = tender.tender_title || '';
+    const customerName = tender.customer_name || '';
+
+    const html = `
+      <div class="help" style="margin-bottom:12px">Заявка на ввоз/вывоз ТМЦ для тендера: <b>${esc(tenderTitle)}</b><br/>Заказчик: <b>${esc(customerName)}</b></div>
+      <div class="formrow"><div style="grid-column:1/-1">
+        <label>Название заявки</label>
+        <input id="tmcTitle" value="${esc('ТМЦ — ' + tenderTitle)}" placeholder="Заявка на материалы для..." />
+      </div></div>
+      <div class="formrow">
+        <div><label>Приоритет</label>
+          <select id="tmcPriority">
+            <option value="low">Низкий</option>
+            <option value="normal" selected>Обычный</option>
+            <option value="high">Высокий</option>
+            <option value="urgent">Срочный</option>
+          </select>
+        </div>
+        <div><label>Нужно к дате</label><input id="tmcNeeded" type="date" value="${tender.work_start_plan || ''}" /></div>
+      </div>
+      <div class="formrow">
+        <div><label>Поставщик</label><input id="tmcSupplier" value="" /></div>
+        <div><label>Адрес доставки</label><input id="tmcAddr" value="" /></div>
+      </div>
+      <div class="formrow"><div style="grid-column:1/-1">
+        <label>Позиции (наименование|ед.|кол-во|цена, по одной на строку)</label>
+        <textarea id="tmcItems" rows="6" placeholder="Труба 89x6|м.п.|100|1500&#10;Электрод ОК 46.00|кг|50|800"></textarea>
+      </div></div>
+      <div class="formrow"><div style="grid-column:1/-1">
+        <label>Примечания</label><textarea id="tmcNotes" rows="2">${esc(tender.tender_comment_to || '')}</textarea>
+      </div></div>
+      <hr class="hr"/>
+      <div style="display:flex;gap:10px">
+        <button class="btn primary" id="btnCreateTmcReq" style="flex:1">Создать заявку на ТМЦ</button>
+      </div>`;
+
+    showModal('Заявка на ввоз/вывоз ТМЦ', html);
+
+    $('#btnCreateTmcReq')?.addEventListener('click', async () => {
+      const lines = ($('#tmcItems')?.value || '').split('\n').filter(s => s.trim());
+      const parsedItems = lines.map(line => {
+        const parts = line.split('|');
+        const qty = parseFloat(parts[2]) || 0;
+        const price = parseFloat(parts[3]) || 0;
+        return { name: (parts[0] || '').trim(), unit: (parts[1] || 'шт.').trim(), quantity: qty, price: price, total: qty * price };
+      });
+      const totalSum = parsedItems.reduce((s, i) => s + (i.total || 0), 0);
+
+      const body = {
+        work_id: tender.work_id || null,
+        title: $('#tmcTitle')?.value || '',
+        priority: $('#tmcPriority')?.value || 'normal',
+        needed_by: $('#tmcNeeded')?.value || null,
+        supplier: $('#tmcSupplier')?.value || '',
+        delivery_address: $('#tmcAddr')?.value || '',
+        items_json: parsedItems,
+        total_sum: totalSum,
+        notes: ($('#tmcNotes')?.value || '') + (tender.id ? `\n[Тендер #${tender.id}: ${tenderTitle}]` : '')
+      };
+
+      if (!body.title) { toast('Ошибка', 'Укажите название заявки', 'err'); return; }
+
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/tmc-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify(body)
+        });
+        if (resp.ok) {
+          toast('Готово', 'Заявка на ТМЦ создана');
+          hideModal();
+        } else {
+          const err = await resp.json();
+          toast('Ошибка', err.error || 'Не удалось создать заявку', 'err');
+        }
+      } catch(e) {
+        toast('Ошибка', e.message || 'Ошибка сети', 'err');
+      }
+    });
   }
 
   return { render };

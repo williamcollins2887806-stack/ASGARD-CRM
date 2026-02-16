@@ -24,10 +24,15 @@ window.AsgardSearch = (function(){
     all: { label: 'Везде', icon: '🔍' },
     tender: { label: 'Тендеры', icon: '📋', table: 'tenders', fields: ['tender_title', 'customer_name', 'customer_inn', 'purchase_url'] },
     work: { label: 'Работы', icon: '🔧', table: 'works', fields: ['work_title', 'work_number', 'customer_name'] },
-    customer: { label: 'Клиенты', icon: '🏢', table: 'customers', fields: ['name', 'inn', 'city'] },
+    customer: { label: 'Клиенты', icon: '🏢', table: 'customers', fields: ['name', 'inn', 'city'], keyField: 'inn' },
     employee: { label: 'Сотрудники', icon: '👤', table: 'employees', fields: ['name', 'phone', 'position'] },
     invoice: { label: 'Счета', icon: '💰', table: 'invoices', fields: ['invoice_number', 'customer_name'] },
-    act: { label: 'Акты', icon: '📄', table: 'acts', fields: ['act_number', 'customer_name'] }
+    act: { label: 'Акты', icon: '📄', table: 'acts', fields: ['act_number', 'customer_name'] },
+    task: { label: 'Задачи', icon: '✅', table: 'tasks', fields: ['title', 'description'] },
+    contract: { label: 'Договоры', icon: '📑', table: 'contracts', fields: ['number', 'subject', 'counterparty_name'] },
+    correspondence: { label: 'Корреспонденция', icon: '📧', table: 'correspondence', fields: ['subject', 'counterparty', 'doc_number'] },
+    estimate: { label: 'Расчёты', icon: '📊', table: 'estimates', fields: ['title', 'customer_name'] },
+    equipment: { label: 'Оборудование', icon: '🔩', table: 'equipment', fields: ['name', 'inventory_number', 'serial_number'] }
   };
   
   let searchHistory = [];
@@ -81,7 +86,7 @@ window.AsgardSearch = (function(){
             results.push({
               type: typeKey,
               icon: config.icon,
-              id: item.id,
+              id: item[config.keyField || 'id'] || item.id,
               title: item[config.fields[0]] || item.name || item.id,
               subtitle: config.fields.slice(1).map(f => item[f]).filter(Boolean).join(' · '),
               item: item
@@ -109,17 +114,22 @@ window.AsgardSearch = (function(){
     const routes = {
       tender: '#/tenders?id=',
       work: '#/pm-works?id=',
-      customer: '#/customers?id=',
-      employee: '#/employees?id=',
+      customer: '#/customer?inn=',
+      employee: '#/employee?id=',
       invoice: '#/invoices?id=',
-      act: '#/acts?id='
+      act: '#/acts?id=',
+      task: '#/tasks?id=',
+      contract: '#/contracts?id=',
+      correspondence: '#/correspondence?id=',
+      estimate: '#/all-estimates?id=',
+      equipment: '#/warehouse?id='
     };
-    
+
     const route = routes[result.type];
     if (route) {
       location.hash = route + result.id;
     }
-    
+
     closeSearchModal();
   }
   

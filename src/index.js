@@ -319,6 +319,80 @@ async function ensureTables() {
     )
   `);
 
+  // Add group-chat columns to chats table if missing
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chats' AND column_name='is_group') THEN
+        ALTER TABLE chats ADD COLUMN is_group BOOLEAN DEFAULT false;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chats' AND column_name='description') THEN
+        ALTER TABLE chats ADD COLUMN description TEXT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chats' AND column_name='type') THEN
+        ALTER TABLE chats ADD COLUMN type VARCHAR(50) DEFAULT 'direct';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chats' AND column_name='archived_at') THEN
+        ALTER TABLE chats ADD COLUMN archived_at TIMESTAMP;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chats' AND column_name='last_message_at') THEN
+        ALTER TABLE chats ADD COLUMN last_message_at TIMESTAMP;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chats' AND column_name='is_readonly') THEN
+        ALTER TABLE chats ADD COLUMN is_readonly BOOLEAN DEFAULT false;
+      END IF;
+    END $$;
+  `);
+
+  // Add group-chat columns to chat_messages table if missing
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='message') THEN
+        ALTER TABLE chat_messages ADD COLUMN message TEXT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='reply_to') THEN
+        ALTER TABLE chat_messages ADD COLUMN reply_to INTEGER;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='reactions') THEN
+        ALTER TABLE chat_messages ADD COLUMN reactions JSONB DEFAULT '{}';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='edited_at') THEN
+        ALTER TABLE chat_messages ADD COLUMN edited_at TIMESTAMP;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_messages' AND column_name='deleted_at') THEN
+        ALTER TABLE chat_messages ADD COLUMN deleted_at TIMESTAMP;
+      END IF;
+    END $$;
+  `);
+
+  // Chat group members table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chat_group_members (
+      id SERIAL PRIMARY KEY,
+      chat_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      role VARCHAR(20) DEFAULT 'member',
+      joined_at TIMESTAMP DEFAULT NOW(),
+      last_read_at TIMESTAMP,
+      muted_until TIMESTAMP,
+      UNIQUE(chat_id, user_id)
+    )
+  `);
+
+  // Chat attachments table
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chat_attachments (
+      id SERIAL PRIMARY KEY,
+      message_id INTEGER NOT NULL,
+      file_name VARCHAR(255),
+      file_path VARCHAR(500),
+      file_size INTEGER,
+      mime_type VARCHAR(100),
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
   // Staff plan table
   await db.query(`
     CREATE TABLE IF NOT EXISTS staff_plan (

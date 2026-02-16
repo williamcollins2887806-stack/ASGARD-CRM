@@ -44,6 +44,16 @@ module.exports = async function(fastify) {
         INSERT INTO notifications (user_id, title, message, type, link, is_read, created_at)
         VALUES ($1, $2, $3, 'chat', $4, false, NOW())
       `, [userId, title, message, link || '#/chat-groups']);
+
+      // Telegram notification
+      try {
+        const telegram = require('../services/telegram');
+        if (telegram && telegram.sendNotification) {
+          await telegram.sendNotification(userId, `💬 *${title}*\n\n${message}`);
+        }
+      } catch (tgErr) {
+        // Telegram may not be configured
+      }
     } catch (e) {
       fastify.log.error('Chat notification error:', e.message);
     }

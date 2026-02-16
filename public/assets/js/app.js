@@ -323,10 +323,12 @@ console.log('[ASGARD] Global period functions loaded');
     const role=user?user.role:"GUEST";
     const cur=AsgardRouter.current();
     let unreadCount=0;
-    try{
-      const nots = await AsgardDB.byIndex("notifications","user_id", user?.id||-1);
-      unreadCount = (nots||[]).filter(n=>!n.is_read).length;
-    }catch(e){}
+    if(user && user.id){
+      try{
+        const nots = await AsgardDB.byIndex("notifications","user_id", user.id);
+        unreadCount = (nots||[]).filter(n=>!n.is_read).length;
+      }catch(e){}
+    }
 // Prevent duplicate/stale global listeners between navigations / logout-login.
 try{
   if(window.__ASG_BELL_DOC_CLICK__) document.removeEventListener("click", window.__ASG_BELL_DOC_CLICK__);
@@ -813,6 +815,7 @@ try{
 
       async function loadBell(){
         let items=[];
+        if(!user || !user.id) return;
         try{ items = await AsgardDB.byIndex("notifications","user_id", user.id); }catch(e){ items=[]; }
         items.sort((a,b)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
         items = items.slice(0,8);
@@ -834,13 +837,14 @@ try{
           </a>`;
         }).join("");
 
-        // Mark read on open
+        // Mark read on click and close popover
         $$(".bellitem").forEach(a=>a.addEventListener("click", async ()=>{
           const id = Number(a.getAttribute("data-nid"));
           try{
             const n = await AsgardDB.get("notifications", id);
             if(n && !n.is_read){ n.is_read=true; await AsgardDB.put("notifications", n); }
           }catch(e){}
+          hide();
         }));
       }
 
@@ -858,6 +862,7 @@ try{
       document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") hide(); });
 
       addMobileClick(markAllBtn, async ()=>{
+        if(!user || !user.id) return;
         let items=[];
         try{ items = await AsgardDB.byIndex("notifications","user_id", user.id); }catch(e){ items=[]; }
         for(const n of items){ if(n && !n.is_read){ n.is_read=true; await AsgardDB.put("notifications", n); } }
@@ -1975,8 +1980,8 @@ try{
       }
     }, { auth: true, roles: ALL_ROLES });
 
-    // TKP Follow-up: проверка напоминаний при старте
-    if(window.AsgardTkpFollowup){
+    // TKP Follow-up: проверка напоминаний при старте (только если авторизован)
+    if(window.AsgardTkpFollowup && localStorage.getItem('asgard_token')){
       try {
         AsgardTkpFollowup.checkAndCreateReminders().catch(e => console.warn('TKP Followup check error:', e));
       } catch(e){ console.warn('TKP Followup init error:', e); }

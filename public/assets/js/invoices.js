@@ -233,7 +233,7 @@ window.AsgardInvoicesPage = (function(){
           </div>
           <div>
             <label>НДС %</label>
-            <input class="inp" type="number" id="inv_vat" value="${inv.vat_pct || 20}"/>
+            <input class="inp" type="number" id="inv_vat" value="${inv.vat_pct || 22}"/>
           </div>
         </div>
         

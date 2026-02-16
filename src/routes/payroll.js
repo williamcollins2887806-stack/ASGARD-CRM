@@ -76,6 +76,7 @@ function calcItemAmounts(item) {
 
 async function routes(fastify, options) {
   const db = fastify.db;
+  const { createNotification } = require('../services/notify');
 
   // ═══════════════════════════════════════════════════════════
   // ВЕДОМОСТИ (sheets)
@@ -253,12 +254,13 @@ async function routes(fastify, options) {
     );
     const sheet = q.rows[0];
     for (const dir of directors.rows) {
-      await db.query(`
-        INSERT INTO notifications (user_id, title, message, type, entity_id, link_hash, is_read, created_at)
-        VALUES ($1, $2, $3, 'payroll_approval', $4, $5, false, NOW())
-      `, [dir.id, 'Ведомость на согласование',
-          `${sheet.title} — к выплате ${Number(sheet.total_payout).toLocaleString('ru-RU')} ₽`,
-          id, '#/payroll-sheet?id=' + id]);
+      createNotification(db, {
+        user_id: dir.id,
+        title: 'Ведомость на согласование',
+        message: `${sheet.title} — к выплате ${Number(sheet.total_payout).toLocaleString('ru-RU')} ₽`,
+        type: 'payroll_approval',
+        link: '#/payroll-sheet?id=' + id
+      });
     }
 
     return { sheet };
@@ -280,10 +282,13 @@ async function routes(fastify, options) {
     `, [id, user.id]);
 
     // Уведомление создателю
-    await db.query(`
-      INSERT INTO notifications (user_id, title, message, type, entity_id, link_hash, is_read, created_at)
-      VALUES ($1, 'Ведомость согласована', $2, 'payroll_approved', $3, $4, false, NOW())
-    `, [check.rows[0].created_by, q.rows[0].title, id, '#/payroll-sheet?id=' + id]);
+    createNotification(db, {
+      user_id: check.rows[0].created_by,
+      title: 'Ведомость согласована',
+      message: q.rows[0].title,
+      type: 'payroll_approved',
+      link: '#/payroll-sheet?id=' + id
+    });
 
     return { sheet: q.rows[0] };
   });
@@ -305,10 +310,13 @@ async function routes(fastify, options) {
       WHERE id = $1 RETURNING *
     `, [id, director_comment || '']);
 
-    await db.query(`
-      INSERT INTO notifications (user_id, title, message, type, entity_id, link_hash, is_read, created_at)
-      VALUES ($1, 'Ведомость на доработку', $2, 'payroll_rework', $3, $4, false, NOW())
-    `, [check.rows[0].created_by, director_comment || 'Требуется доработка', id, '#/payroll-sheet?id=' + id]);
+    createNotification(db, {
+      user_id: check.rows[0].created_by,
+      title: 'Ведомость на доработку',
+      message: director_comment || 'Требуется доработка',
+      type: 'payroll_rework',
+      link: '#/payroll-sheet?id=' + id
+    });
 
     return { sheet: q.rows[0] };
   });
@@ -359,10 +367,13 @@ async function routes(fastify, options) {
     }
 
     // Уведомление создателю
-    await db.query(`
-      INSERT INTO notifications (user_id, title, message, type, entity_id, link_hash, is_read, created_at)
-      VALUES ($1, 'Ведомость оплачена', $2, 'payroll_paid', $3, $4, false, NOW())
-    `, [sheet.created_by, sheet.title, id, '#/payroll-sheet?id=' + id]);
+    createNotification(db, {
+      user_id: sheet.created_by,
+      title: 'Ведомость оплачена',
+      message: sheet.title,
+      type: 'payroll_paid',
+      link: '#/payroll-sheet?id=' + id
+    });
 
     const updatedSheet = await db.query('SELECT * FROM payroll_sheets WHERE id = $1', [id]);
     return { sheet: updatedSheet.rows[0], payments_created: paymentsCreated };
@@ -1118,10 +1129,13 @@ async function routes(fastify, options) {
       `SELECT id FROM users WHERE role IN ('ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV') AND is_active = true`
     );
     for (const dir of directors.rows) {
-      await db.query(`
-        INSERT INTO notifications (user_id, title, message, type, entity_id, link_hash, is_read, created_at)
-        VALUES ($1, 'Запрос разовой оплаты', $2, 'one_time_payment', $3, '#/one-time-pay', false, NOW())
-      `, [dir.id, `${user.name} запрашивает ${b.amount} ₽ для ${empName}: ${b.reason}`, q.rows[0].id]);
+      createNotification(db, {
+        user_id: dir.id,
+        title: 'Запрос разовой оплаты',
+        message: `${user.name} запрашивает ${b.amount} ₽ для ${empName}: ${b.reason}`,
+        type: 'one_time_payment',
+        link: '#/one-time-pay'
+      });
     }
 
     return { item: q.rows[0] };
@@ -1156,10 +1170,13 @@ async function routes(fastify, options) {
     `, [item.employee_id, item.amount, item.payment_type || 'one_time']);
 
     // Уведомление запросившему
-    await db.query(`
-      INSERT INTO notifications (user_id, title, message, type, entity_id, link_hash, is_read, created_at)
-      VALUES ($1, 'Разовая оплата согласована', $2, 'one_time_approved', $3, '#/one-time-pay', false, NOW())
-    `, [item.requested_by, `${item.amount} ₽ для ${item.employee_name} — согласовано`, id]);
+    createNotification(db, {
+      user_id: item.requested_by,
+      title: 'Разовая оплата согласована',
+      message: `${item.amount} ₽ для ${item.employee_name} — согласовано`,
+      type: 'one_time_approved',
+      link: '#/one-time-pay'
+    });
 
     return { item: q.rows[0] };
   });
@@ -1182,10 +1199,13 @@ async function routes(fastify, options) {
       WHERE id = $1 RETURNING *
     `, [id, director_comment || '']);
 
-    await db.query(`
-      INSERT INTO notifications (user_id, title, message, type, entity_id, link_hash, is_read, created_at)
-      VALUES ($1, 'Разовая оплата отклонена', $2, 'one_time_rejected', $3, '#/one-time-pay', false, NOW())
-    `, [check.rows[0].requested_by, director_comment || 'Отклонено', id]);
+    createNotification(db, {
+      user_id: check.rows[0].requested_by,
+      title: 'Разовая оплата отклонена',
+      message: director_comment || 'Отклонено',
+      type: 'one_time_rejected',
+      link: '#/one-time-pay'
+    });
 
     return { item: q.rows[0] };
   });

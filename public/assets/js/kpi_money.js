@@ -290,12 +290,12 @@ window.AsgardKpiMoneyPage = (function(){
 
     const style = document.createElement('style');
     style.textContent = `
-      .tabs { display: flex; gap: 0; background: var(--card); border-radius: var(--radius-md); overflow: hidden; border: none; }
+      .tabs { display: flex; gap: 0; background: transparent; border-radius: var(--radius-md); overflow: hidden; border: none; }
       .tabs .tab { padding: 10px 20px; border: none; background: transparent; color: var(--muted); cursor: pointer; font-weight: 600; font-family: var(--font-sans); font-size: var(--btn-font-size); transition: all 0.2s; }
       .tabs .tab.active { background: var(--gold); color: var(--bg); }
       .tabs .tab:hover:not(.active) { background: rgba(212,175,55,0.1); }
       .kpi-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
-      .kpi-card { background: var(--card); border: none; border-radius: var(--radius-md); padding: 16px; text-align: center; }
+      .kpi-card { background: transparent; border: none; border-radius: var(--radius-md); padding: 16px; text-align: center; }
       .kpi-card .label { font-size: var(--text-xs); color: var(--muted); margin-bottom: 5px; font-family: var(--font-sans); }
       .kpi-card .value { font-size: var(--text-xl); font-weight: 700; color: var(--gold); font-family: var(--font-sans); }
       .kpi-card .sub { font-size: var(--text-xs); color: var(--muted); margin-top: 5px; }

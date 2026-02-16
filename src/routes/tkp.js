@@ -107,7 +107,7 @@ async function routes(fastify, options) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const allowed = ['subject', 'tender_id', 'work_id', 'customer_name', 'contact_email',
-                     'items', 'services', 'total_sum', 'deadline', 'validity_days'];
+                     'items', 'services', 'total_sum', 'deadline', 'validity_days', 'tkp_type'];
     const updates = [];
     const values = [];
     let idx = 1;

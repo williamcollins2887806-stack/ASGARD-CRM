@@ -140,6 +140,13 @@ async function dataRoutes(fastify, options) {
   // users убран: HIDDEN_COLS уже скрывает password_hash/pin_hash, а ФИО нужны всем ролям
   const READ_SENSITIVE_TABLES = ['audit_log'];
 
+  // Role inheritance map: child roles inherit parent role permissions
+  const ROLE_INHERIT = {
+    'HEAD_TO': 'TO',
+    'HR_MANAGER': 'HR',
+    'CHIEF_ENGINEER': 'WAREHOUSE'
+  };
+
   function checkAccess(role, table, operation) {
     // ADMIN и DIRECTOR_GEN имеют полный доступ
     if (role === 'ADMIN' || role === 'DIRECTOR_GEN') {
@@ -156,7 +163,11 @@ async function dataRoutes(fastify, options) {
       return false;
     }
 
-    const matrix = ACCESS_MATRIX[role];
+    // Check direct role first, then inherited parent role
+    let matrix = ACCESS_MATRIX[role];
+    if (!matrix && ROLE_INHERIT[role]) {
+      matrix = ACCESS_MATRIX[ROLE_INHERIT[role]];
+    }
     if (!matrix) return false;
 
     const tablesAllowed = matrix.tables === 'all' || matrix.tables.includes(table);
@@ -166,6 +177,15 @@ async function dataRoutes(fastify, options) {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // Алиасы таблиц: если клиент запрашивает "permits", реально в БД таблица "employee_permits"
+  const TABLE_ALIASES = {
+    'permits': 'employee_permits'
+  };
+
+  function resolveTable(table) {
+    return TABLE_ALIASES[table] || table;
+  }
 
   // Таблицы с особыми первичными ключами
   const SPECIAL_KEYS = {
@@ -240,6 +260,9 @@ async function dataRoutes(fastify, options) {
       return reply.code(403).send({ error: 'Нет доступа к таблице ' + table });
     }
 
+    // Resolve table alias (e.g. "permits" → "employee_permits")
+    const dbTable = resolveTable(table);
+
     try {
       // SECURITY B1: Hide sensitive columns from users table
       const HIDDEN_COLS = { users: ['password_hash', 'pin_hash', 'reset_token', 'reset_token_expires', 'temp_password_hash', 'temp_password_expires'] };
@@ -247,11 +270,11 @@ async function dataRoutes(fastify, options) {
       if (HIDDEN_COLS[table]) {
         const colRes = await db.query(
           `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name != ALL($2::text[])`,
-          [table, HIDDEN_COLS[table]]
+          [dbTable, HIDDEN_COLS[table]]
         );
         selectCols = colRes.rows.map(r => r.column_name).join(', ');
       }
-      let query = `SELECT ${selectCols} FROM ${table}`;
+      let query = `SELECT ${selectCols} FROM ${dbTable}`;
       const params = [];
       let whereParts = [];
 
@@ -285,7 +308,7 @@ async function dataRoutes(fastify, options) {
       const result = await db.query(query, dataParams);
 
       // SECURITY FIX (MED-7): COUNT с теми же WHERE-условиями
-      let countQuery = `SELECT COUNT(*) as total FROM ${table}`;
+      let countQuery = `SELECT COUNT(*) as total FROM ${dbTable}`;
       if (whereParts.length > 0) {
         countQuery += ' WHERE ' + whereParts.join(' AND ');
       }
@@ -323,6 +346,7 @@ async function dataRoutes(fastify, options) {
       return reply.code(403).send({ error: 'Нет доступа к таблице ' + table });
     }
 
+    const dbTable = resolveTable(table);
     const pk = getPrimaryKey(table);
 
     // Validate numeric ID for integer primary keys
@@ -333,7 +357,7 @@ async function dataRoutes(fastify, options) {
     }
 
     try {
-      const result = await db.query(`SELECT * FROM ${table} WHERE ${pk} = $1`, [id]);
+      const result = await db.query(`SELECT * FROM ${dbTable} WHERE ${pk} = $1`, [id]);
 
       if (result.rows.length === 0) {
         return reply.code(404).send({ error: 'Запись не найдена' });
@@ -371,11 +395,12 @@ async function dataRoutes(fastify, options) {
       return reply.code(403).send({ error: 'Нет прав на создание записей в таблице ' + table });
     }
 
+    const dbTable = resolveTable(table);
     const pk = getPrimaryKey(table);
 
     try {
       // Получаем реальные колонки таблицы
-      const tableCols = await getTableColumns(table);
+      const tableCols = await getTableColumns(dbTable);
 
       // Truncate overly long string fields to prevent varchar overflow
       for (const key of Object.keys(data)) {
@@ -407,7 +432,7 @@ async function dataRoutes(fastify, options) {
       const placeholders = keys.map((_, i) => `$${i + 1}`);
 
       const query = `
-        INSERT INTO ${table} (${keys.join(', ')})
+        INSERT INTO ${dbTable} (${keys.join(', ')})
         VALUES (${placeholders.join(', ')})
         RETURNING *
       `;
@@ -458,6 +483,7 @@ async function dataRoutes(fastify, options) {
       return reply.code(403).send({ error: 'Нет прав на обновление записей в таблице ' + table });
     }
 
+    const dbTable = resolveTable(table);
     const pk = getPrimaryKey(table);
 
     // Validate numeric ID for integer primary keys
@@ -469,7 +495,7 @@ async function dataRoutes(fastify, options) {
 
     try {
       // Получаем реальные колонки таблицы
-      const tableCols = await getTableColumns(table);
+      const tableCols = await getTableColumns(dbTable);
 
       if (tableCols.has('updated_at')) {
         data.updated_at = new Date().toISOString();
@@ -485,7 +511,7 @@ async function dataRoutes(fastify, options) {
       const setParts = keys.map((k, i) => `${k} = $${i + 1}`);
 
       const query = `
-        UPDATE ${table}
+        UPDATE ${dbTable}
         SET ${setParts.join(', ')}
         WHERE ${pk} = $${keys.length + 1}
         RETURNING *
@@ -540,6 +566,7 @@ async function dataRoutes(fastify, options) {
       return reply.code(403).send({ error: 'Нет прав на удаление записей в таблице ' + table });
     }
 
+    const dbTable = resolveTable(table);
     const pk = getPrimaryKey(table);
 
     // Validate numeric ID for integer primary keys
@@ -550,7 +577,7 @@ async function dataRoutes(fastify, options) {
     }
 
     try {
-      const result = await db.query(`DELETE FROM ${table} WHERE ${pk} = $1 RETURNING *`, [id]);
+      const result = await db.query(`DELETE FROM ${dbTable} WHERE ${pk} = $1 RETURNING *`, [id]);
 
       if (result.rows.length === 0) {
         return reply.code(404).send({ error: 'Запись не найдена' });
@@ -590,9 +617,11 @@ async function dataRoutes(fastify, options) {
       return reply.code(400).send({ error: 'Недопустимый индекс' });
     }
 
+    const dbTable = resolveTable(table);
+
     try {
       const result = await db.query(
-        `SELECT * FROM ${table} WHERE ${index} = $1 ORDER BY ${getDefaultOrder(table)}`,
+        `SELECT * FROM ${dbTable} WHERE ${index} = $1 ORDER BY ${getDefaultOrder(table)}`,
         [value]
       );
 
@@ -622,8 +651,10 @@ async function dataRoutes(fastify, options) {
       return reply.code(403).send({ error: 'Нет доступа к таблице ' + table });
     }
 
+    const dbTable = resolveTable(table);
+
     try {
-      const result = await db.query(`SELECT COUNT(*) as count FROM ${table}`);
+      const result = await db.query(`SELECT COUNT(*) as count FROM ${dbTable}`);
       return { count: parseInt(result.rows[0].count) };
     } catch(err) {
       fastify.log.error(`Data API count [${table}]:`, err.message);

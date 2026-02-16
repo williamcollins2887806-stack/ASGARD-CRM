@@ -155,7 +155,7 @@ window.AsgardDashboardPage = (function(){
 
           .dash-card {
             position:relative;
-            background: linear-gradient(135deg, rgba(13,20,40,.7), rgba(13,20,40,.5));
+            background: transparent;
             border:none;
             border-radius:8px;
             padding:24px;
@@ -168,11 +168,11 @@ window.AsgardDashboardPage = (function(){
             top:0; left:0; right:0;
             height:3px;
             background: var(--card-gradient, linear-gradient(90deg, var(--gold), var(--red)));
-            opacity:.6;
+            opacity:0;
           }
           .dash-card:hover {
-            background: linear-gradient(135deg, rgba(13,20,40,.9), rgba(13,20,40,.7));
-            box-shadow: inset 0 0 30px rgba(242,208,138,.05);
+            background: transparent;
+            box-shadow: none;
           }
           
           .dash-card-title { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:800; margin-bottom:12px; }
@@ -192,7 +192,7 @@ window.AsgardDashboardPage = (function(){
           @media(max-width:900px){ .dash-chart-row { grid-template-columns:1fr; } }
           
           .dash-chart-card {
-            background: rgba(13,20,40,.5);
+            background: transparent;
             border:none;
             border-radius:6px;
             padding:20px;
@@ -204,7 +204,7 @@ window.AsgardDashboardPage = (function(){
           .dash-quick a {
             display:flex; align-items:center; gap:8px;
             padding:10px 16px;
-            background: rgba(59,130,246,.1);
+            background: transparent;
             border:none;
             border-radius:6px;
             color:var(--blue);
@@ -213,12 +213,12 @@ window.AsgardDashboardPage = (function(){
             text-decoration:none;
           }
           .dash-quick a:hover {
-            background: rgba(59,130,246,.2);
+            background: rgba(59,130,246,.05);
             transform:translateY(-2px);
           }
           
           .dash-alerts {
-            background: rgba(239,68,68,.1);
+            background: transparent;
             border:none;
             border-radius:6px;
             padding:20px;
@@ -229,7 +229,7 @@ window.AsgardDashboardPage = (function(){
           .dash-alert-item:last-child { padding-bottom:0; }
           
           .dash-progress { 
-            height:8px; background:rgba(148,163,184,.15); 
+            height:8px; background:rgba(148,163,184,.08); 
             border-radius:4px; overflow:hidden; margin-top:8px;
           }
           .dash-progress-bar { height:100%; border-radius:4px; transition:width .5s ease; }

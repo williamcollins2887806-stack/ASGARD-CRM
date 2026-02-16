@@ -57,11 +57,15 @@
   <!-- Theme initialization (before render) -->
   <script>(function(){try{var t=localStorage.getItem("asgard_theme")||"dark";document.documentElement.dataset.theme=t==="light"?"light":"dark";}catch(e){}})();</script>
 
-  <!-- Yandex Maps API 2.1 (for object map) — disabled until real API key is configured -->
-  <!-- <script src="https://api-maps.yandex.ru/2.1/?apikey=YOUR_YANDEX_MAPS_KEY&lang=ru_RU" type="text/javascript"></script> -->
+  <!-- Leaflet Map (OpenStreetMap - free, no API key) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
-  <!-- SheetJS (xlsx) для экспорта в Excel -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- SheetJS с поддержкой стилей (xlsx-js-style) для красивого экспорта в Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body>
   <div id="app"><noscript>Для работы требуется JavaScript.</noscript></div>
@@ -86,6 +90,7 @@
   <script src="assets/js/calc_cities.js"></script>
     <script src="assets/js/calc_norms.js"></script>
     <script src="assets/js/calc_equipment.js"></script>
+    <script src="assets/js/calc_excel_export.js"></script>
     <script src="assets/js/calculator_v2.js"></script>
     <script src="assets/js/calculator.js"></script>
   <script src="assets/js/tenders.js"></script>

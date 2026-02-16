@@ -371,7 +371,7 @@ window.AsgardWarehouse = (function(){
       readerDiv.innerHTML = `
         <div style="text-align:center;padding:20px;border:2px dashed var(--border);border-radius:6px">
           <input type="file" id="qrFileInput" accept="image/*" capture="environment" style="display:none"/>
-          <button class="btn primary" id="btnCaptureQR" style="font-size:18px;padding:16px 32px">
+          <button class="btn primary" id="btnCaptureQR">
             📷 Сфотографировать QR
           </button>
           <p style="margin-top:12px;font-size:12px;color:var(--text-muted)">

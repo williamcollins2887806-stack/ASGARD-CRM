@@ -398,6 +398,21 @@ let aiProcessorRunning = false;
 async function analyzeOneEmail(email) {
   const emailId = email.id;
   try {
+    // Pre-filter: пропускаем bounce, internal, system emails БЕЗ обращения к AI
+    const skipCheck = aiAnalyzer.shouldSkipEmail({
+      fromEmail: email.from_email,
+      subject: email.subject,
+      bodyText: email.body_text
+    });
+    if (skipCheck.skip) {
+      console.log(`[IMAP-AI] Skipping email #${emailId}: ${skipCheck.reason} (from: ${email.from_email})`);
+      await db.query(
+        `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, ai_classification = 'other', ai_color = 'red', updated_at = NOW() WHERE id = $2`,
+        [`[Пропущено: ${skipCheck.reason}]`, emailId]
+      );
+      return true; // Считаем обработанным, но НЕ создаём inbox_application
+    }
+
     const attRes = await db.query(
       'SELECT original_filename FROM email_attachments WHERE email_id = $1',
       [emailId]
@@ -427,47 +442,52 @@ async function analyzeOneEmail(email) {
       emailId
     ]);
 
-    // Create inbox_application
-    await db.query(`
-      INSERT INTO inbox_applications (
-        email_id, source, source_email, source_name, subject, body_preview,
-        ai_classification, ai_color, ai_summary, ai_recommendation,
-        ai_work_type, ai_estimated_budget, ai_estimated_days,
-        ai_keywords, ai_confidence, ai_raw_json, ai_analyzed_at, ai_model,
-        workload_snapshot, attachment_count, status
-      ) VALUES (
-        $1, 'email', $2, $3, $4, $5,
-        $6, $7, $8, $9,
-        $10, $11, $12,
-        $13, $14, $15, NOW(), $16,
-        $17, $18, 'ai_processed'
-      ) ON CONFLICT DO NOTHING
-    `, [
-      emailId,
-      email.from_email || '', email.from_name || '',
-      email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
-      analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
-      analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
-      analysis.keywords, analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
-      JSON.stringify(workload), email.attachment_count || 0
-    ]);
+    // Create inbox_application ONLY for genuine work proposals/tenders
+    const applicationTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
+    if (applicationTypes.includes(analysis.classification) && !analysis._skipped) {
+      await db.query(`
+        INSERT INTO inbox_applications (
+          email_id, source, source_email, source_name, subject, body_preview,
+          ai_classification, ai_color, ai_summary, ai_recommendation,
+          ai_work_type, ai_estimated_budget, ai_estimated_days,
+          ai_keywords, ai_confidence, ai_raw_json, ai_analyzed_at, ai_model,
+          workload_snapshot, attachment_count, status
+        ) VALUES (
+          $1, 'email', $2, $3, $4, $5,
+          $6, $7, $8, $9,
+          $10, $11, $12,
+          $13, $14, $15, NOW(), $16,
+          $17, $18, 'ai_processed'
+        ) ON CONFLICT DO NOTHING
+      `, [
+        emailId,
+        email.from_email || '', email.from_name || '',
+        email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
+        analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
+        analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
+        analysis.keywords, analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
+        JSON.stringify(workload), email.attachment_count || 0
+      ]);
 
-    console.log(`[IMAP-AI] Processed email #${emailId}: ${analysis.color} / ${analysis.classification}`);
+      console.log(`[IMAP-AI] Created application for email #${emailId}: ${analysis.color} / ${analysis.classification}`);
 
-    // Create pre-tender request
-    try {
-      await preTenderService.createPreTenderFromEmail(emailId);
-    } catch (ptErr) {
-      console.error('[IMAP-AI] Pre-tender error:', ptErr.message);
-    }
-
-    // Parse platform tenders
-    if (email.email_type === 'platform_tender') {
+      // Create pre-tender request
       try {
-        await platformParser.parseAndSave(emailId);
-      } catch (ppErr) {
-        console.error('[IMAP-AI] Platform parse error:', ppErr.message);
+        await preTenderService.createPreTenderFromEmail(emailId);
+      } catch (ptErr) {
+        console.error('[IMAP-AI] Pre-tender error:', ptErr.message);
       }
+
+      // Parse platform tenders
+      if (email.email_type === 'platform_tender' || analysis.classification === 'platform_tender') {
+        try {
+          await platformParser.parseAndSave(emailId);
+        } catch (ppErr) {
+          console.error('[IMAP-AI] Platform parse error:', ppErr.message);
+        }
+      }
+    } else {
+      console.log(`[IMAP-AI] Skipped application creation for email #${emailId}: ${analysis.classification} (not a work proposal)`);
     }
 
     return true;

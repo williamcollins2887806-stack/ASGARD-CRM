@@ -77,7 +77,7 @@ async function invoicesRoutes(fastify, options) {
       invoice_number, invoice_date, invoice_type,
       status = 'draft', work_id, act_id,
       customer_name, customer_inn, description,
-      amount, vat_pct = 20, total_amount,
+      amount, vat_pct = 22, total_amount,
       due_date, paid_amount = 0
     } = body;
 

@@ -12,13 +12,61 @@ window.AsgardEmail = (function(){
   // Шаблоны писем
   const EMAIL_TEMPLATES = {
     tkp: {
-      name: 'Коммерческое предложение',
-      subject: 'Коммерческое предложение от ООО «Асгард Сервис»',
+      name: 'ТКП — Коммерческое предложение',
+      subject: 'Коммерческое предложение: {tkp_title}',
       body: `Добрый день!
 
 Направляем Вам коммерческое предложение на выполнение работ.
 
-Детали предложения во вложении.
+Наименование: {tkp_title}
+Сумма: {total_sum}
+Срок действия предложения: {validity_days} дней
+
+Детали предложения во вложении (PDF).
+
+С уважением,
+ООО «Асгард Сервис»
+Тел: +7 (XXX) XXX-XX-XX
+Email: info@asgard-service.ru`
+    },
+    tkp_to: {
+      name: 'ТКП (ТО) — Техническое обслуживание',
+      subject: 'Коммерческое предложение (ТО): {tkp_title}',
+      body: `Добрый день!
+
+Направляем Вам коммерческое предложение на выполнение работ по техническому обслуживанию.
+
+Наименование: {tkp_title}
+Заказчик: {customer_name}
+Сумма: {total_sum}
+Срок выполнения: {deadline}
+Срок действия предложения: {validity_days} дней
+
+{services}
+
+Детали предложения во вложении (PDF).
+
+С уважением,
+ООО «Асгард Сервис»
+Тел: +7 (XXX) XXX-XX-XX
+Email: info@asgard-service.ru`
+    },
+    tkp_rp: {
+      name: 'ТКП (РП) — Ремонтные работы',
+      subject: 'Коммерческое предложение (РП): {tkp_title}',
+      body: `Добрый день!
+
+Направляем Вам коммерческое предложение на выполнение ремонтных работ.
+
+Наименование: {tkp_title}
+Заказчик: {customer_name}
+Сумма: {total_sum}
+Срок выполнения: {deadline}
+Срок действия предложения: {validity_days} дней
+
+{services}
+
+Детали предложения во вложении (PDF).
 
 С уважением,
 ООО «Асгард Сервис»
@@ -322,11 +370,37 @@ Email: info@asgard-service.ru`
     });
   }
   
+  // Отправить ТКП по email (вызов из TKP-модуля)
+  async function sendTkp(tkpId, tkpData) {
+    const customerEmail = tkpData.contact_email || tkpData.customer_email || '';
+    const tkpTitle = tkpData.subject || tkpData.title || '';
+    const tkpType = tkpData.tkp_type || 'to';
+    const templateType = tkpType === 'rp' ? 'tkp_rp' : 'tkp_to';
+    const token = localStorage.getItem('asgard_token');
+
+    openEmailModal({
+      to: customerEmail,
+      templateType: templateType,
+      data: {
+        tkp_title: tkpTitle,
+        total_sum: tkpData.total_sum ? Number(tkpData.total_sum).toLocaleString('ru-RU') + ' ₽' : 'по запросу',
+        validity_days: String(tkpData.validity_days || 30),
+        customer_name: tkpData.customer_name || tkpData.tender_customer || '',
+        services: tkpData.services ? 'Перечень услуг:\n' + tkpData.services : '',
+        deadline: tkpData.deadline || ''
+      },
+      attachments: [{ name: `TKP_${tkpId}.pdf`, url: `/api/tkp/${tkpId}/pdf?token=${token}` }],
+      entityType: 'tkp',
+      entityId: tkpId
+    });
+  }
+
   return {
     openEmailModal,
     sendEmail,
     sendInvoice,
     sendAct,
+    sendTkp,
     sendPaymentReminder,
     getHistory,
     fillTemplate,

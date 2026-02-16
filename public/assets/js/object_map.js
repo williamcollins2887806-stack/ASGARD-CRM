@@ -1,25 +1,26 @@
 /**
  * АСГАРД CRM — Карта объектов
- * Яндекс.Карты 2.1 + кластеризация + drawer
+ * Leaflet + OpenStreetMap + MarkerCluster + drawer
  */
 window.AsgardObjectMap = (function() {
   const { $, $$, esc, toast, showDrawer, hideDrawer, showModal, hideModal } = AsgardUI;
 
   let map = null;
-  let clusterer = null;
+  let clusterGroup = null;
   let sites = [];
   let editMode = false;
   let editingSiteId = null;
+  let editMarker = null;
 
   // ═════════════════════════════════════════════════════════════
   // PIN COLORS BY STATUS
   // ═════════════════════════════════════════════════════════════
   const PIN_COLORS = {
-    active:   { preset: 'islands#greenCircleDotIcon',   color: '#22c55e' },
-    tender:   { preset: 'islands#yellowCircleDotIcon',  color: '#f59e0b' },
-    done:     { preset: 'islands#grayCircleDotIcon',    color: '#94a3b8' },
-    pending:  { preset: 'islands#redCircleDotIcon',     color: '#ef4444' },
-    unknown:  { preset: 'islands#blueCircleDotIcon',    color: '#3b82f6' }
+    active:   '#22c55e',
+    tender:   '#f59e0b',
+    done:     '#94a3b8',
+    pending:  '#ef4444',
+    unknown:  '#3b82f6'
   };
 
   function getSiteStatus(site) {
@@ -99,78 +100,87 @@ window.AsgardObjectMap = (function() {
   }
 
   // ═════════════════════════════════════════════════════════════
-  // YANDEX MAP INITIALIZATION
+  // TILE LAYER SELECTION (dark / light)
+  // ═════════════════════════════════════════════════════════════
+  function getTileLayer() {
+    const isDark = document.documentElement.dataset.theme !== 'light';
+    if (isDark) {
+      return L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19
+      });
+    }
+    return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19
+    });
+  }
+
+  // ═════════════════════════════════════════════════════════════
+  // LEAFLET MAP INITIALIZATION
   // ═════════════════════════════════════════════════════════════
   function initMap() {
-    if (typeof ymaps === 'undefined') {
-      toast('Ошибка', 'Яндекс.Карты не загружены. Проверьте API-ключ.', 'err');
+    if (typeof L === 'undefined') {
+      toast('Ошибка', 'Leaflet не загружен. Проверьте подключение.', 'err');
       const el = document.getElementById('yaMap');
       if (el) el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted)">Карты недоступны</div>';
       return;
     }
 
-    ymaps.ready(() => {
-      map = new ymaps.Map('yaMap', {
-        center: [62.0, 80.0],
-        zoom: 3,
-        controls: ['zoomControl', 'typeSelector', 'fullscreenControl', 'rulerControl']
-      }, {
-        searchControlProvider: 'yandex#search'
-      });
+    map = L.map('yaMap', {
+      center: [62.0, 80.0],
+      zoom: 3,
+      zoomControl: true
+    });
 
-      // Dark theme: CSS inversion
-      if (document.documentElement.dataset.theme !== 'light') {
-        const mapEl = document.getElementById('yaMap');
-        if (mapEl) {
-          mapEl.style.filter = 'invert(0.9) hue-rotate(180deg) saturate(0.3) brightness(0.8)';
-        }
+    getTileLayer().addTo(map);
+
+    // Cluster group
+    clusterGroup = L.markerClusterGroup({
+      showCoverageOnHover: false,
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      iconCreateFunction: function(cluster) {
+        const count = cluster.getChildCount();
+        let size = 'small';
+        if (count >= 100) size = 'large';
+        else if (count >= 10) size = 'medium';
+        return L.divIcon({
+          html: '<div>' + count + '</div>',
+          className: 'marker-cluster marker-cluster-' + size,
+          iconSize: L.point(40, 40)
+        });
       }
+    });
 
-      // Clusterer
-      clusterer = new ymaps.Clusterer({
-        preset: 'islands#invertedDarkBlueClusterIcons',
-        clusterDisableClickZoom: false,
-        clusterOpenBalloonOnClick: false,
-        groupByCoordinates: false,
-        clusterBalloonContentLayout: 'cluster#balloonCarousel',
-        clusterIconLayout: 'default#pieChart',
-        clusterIconPieChartRadius: 22,
-        clusterIconPieChartCoreRadius: 14,
-        clusterIconPieChartStrokeWidth: 2
-      });
+    addPlacemarks();
+    map.addLayer(clusterGroup);
 
-      clusterer.events.add('click', (e) => {
-        const target = e.get('target');
-        if (target.getGeoObjects) {
-          map.setCenter(target.geometry.getCoordinates(), map.getZoom() + 2, { duration: 300 });
-        }
-      });
-
-      addPlacemarks();
-      map.geoObjects.add(clusterer);
-
-      // Auto-zoom to fit all objects
-      const withCoords = sites.filter(s => s.lat && s.lng);
-      if (withCoords.length > 0) {
-        map.setBounds(clusterer.getBounds(), { checkZoomRange: true, zoomMargin: 40 });
+    // Auto-zoom to fit all objects
+    const withCoords = sites.filter(s => s.lat && s.lng);
+    if (withCoords.length > 0) {
+      const bounds = clusterGroup.getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [40, 40] });
       }
+    }
 
-      // Map click for manual placement mode
-      map.events.add('click', (e) => {
-        if (editMode) {
-          onMapClickForPlacement(e.get('coords'));
-        }
-      });
+    // Map click for manual placement mode
+    map.on('click', function(e) {
+      if (editMode) {
+        onMapClickForPlacement([e.latlng.lat, e.latlng.lng]);
+      }
     });
   }
 
   // ═════════════════════════════════════════════════════════════
-  // PLACEMARKS
+  // PLACEMARKS (circle markers)
   // ═════════════════════════════════════════════════════════════
   function addPlacemarks(filter) {
-    if (!clusterer) return;
+    if (!clusterGroup) return;
     filter = filter || 'all';
-    clusterer.removeAll();
+    clusterGroup.clearLayers();
 
     const filtered = sites.filter(s => {
       if (!s.lat || !s.lng) return filter === 'pending';
@@ -178,36 +188,40 @@ window.AsgardObjectMap = (function() {
       return getSiteStatus(s) === filter;
     });
 
-    const placemarks = filtered
+    const markers = filtered
       .filter(s => s.lat && s.lng)
       .map(s => {
         const status = getSiteStatus(s);
-        const pin = PIN_COLORS[status] || PIN_COLORS.unknown;
+        const color = PIN_COLORS[status] || PIN_COLORS.unknown;
 
-        const pm = new ymaps.Placemark([s.lat, s.lng], {
-          hintContent: s.name,
-          balloonContent: `
-            <div style="min-width:200px;font-family:Manrope,sans-serif">
-              <div style="font-weight:700;font-size:14px;margin-bottom:4px">${esc(s.name)}</div>
-              <div style="font-size:12px;color:#666;margin-bottom:8px">${esc(s.customer_name || '')}</div>
-              <div style="font-size:12px">
-                Работ: <b>${s.works_count || 0}</b> · Активных: <b style="color:${pin.color}">${s.active_works || 0}</b>
-              </div>
-              ${s.region ? `<div style="font-size:11px;color:#999;margin-top:4px">${esc(s.region)}</div>` : ''}
-            </div>
-          `,
-          siteId: s.id,
-          siteStatus: status
-        }, {
-          preset: pin.preset,
-          iconColor: pin.color
+        const marker = L.circleMarker([s.lat, s.lng], {
+          radius: 8,
+          fillColor: color,
+          color: '#fff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.85
         });
 
-        pm.events.add('click', () => openSiteDrawer(s.id));
-        return pm;
+        // Popup
+        const popupContent = `
+          <div style="min-width:200px;font-family:Inter,sans-serif">
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">${esc(s.name)}</div>
+            <div style="font-size:12px;color:#666;margin-bottom:8px">${esc(s.customer_name || '')}</div>
+            <div style="font-size:12px">
+              Работ: <b>${s.works_count || 0}</b> · Активных: <b style="color:${color}">${s.active_works || 0}</b>
+            </div>
+            ${s.region ? `<div style="font-size:11px;color:#999;margin-top:4px">${esc(s.region)}</div>` : ''}
+          </div>
+        `;
+        marker.bindPopup(popupContent);
+        marker.bindTooltip(esc(s.name));
+
+        marker.on('click', () => openSiteDrawer(s.id));
+        return marker;
       });
 
-    clusterer.add(placemarks);
+    clusterGroup.addLayers(markers);
   }
 
   // ═════════════════════════════════════════════════════════════
@@ -406,13 +420,25 @@ window.AsgardObjectMap = (function() {
     if (!editMode || !editingSiteId) return;
     const [lat, lng] = coords;
 
-    // Reverse geocode for region name
+    // Remove previous edit marker if any
+    if (editMarker) {
+      map.removeLayer(editMarker);
+      editMarker = null;
+    }
+
+    // Place a temporary marker
+    editMarker = L.marker([lat, lng]).addTo(map);
+
+    // Reverse geocode for region name using Nominatim
     let regionName = '';
     try {
-      const geo = await ymaps.geocode(coords);
-      const firstObj = geo.geoObjects.get(0);
-      if (firstObj) {
-        regionName = firstObj.getAdministrativeAreas()?.[0] || firstObj.getLocalities()?.[0] || '';
+      const resp = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=ru`,
+        { headers: { 'User-Agent': 'AsgardCRM/1.0 (admin@asgard-service.ru)' } }
+      );
+      const data = await resp.json();
+      if (data && data.address) {
+        regionName = data.address.state || data.address.region || data.address.city || '';
       }
     } catch (e) { /* ignore */ }
 
@@ -432,6 +458,12 @@ window.AsgardObjectMap = (function() {
       editingSiteId = null;
       const mapEl = document.getElementById('yaMap');
       if (mapEl) mapEl.style.cursor = '';
+
+      // Remove temporary marker
+      if (editMarker) {
+        map.removeLayer(editMarker);
+        editMarker = null;
+      }
 
       await loadSites();
       addPlacemarks();
@@ -546,7 +578,7 @@ window.AsgardObjectMap = (function() {
               document.getElementById('yaMap').style.cursor = 'crosshair';
               toast('Привязка', 'Кликните на карте, чтобы указать местоположение объекта', 'info', 8000);
             } else if (lat && lng && map) {
-              map.setCenter([lat, lng], 10, { duration: 500 });
+              map.setView([lat, lng], 10, { animate: true, duration: 0.5 });
             }
           } catch (err) {
             toast('Ошибка', err.message, 'err');
@@ -564,10 +596,10 @@ window.AsgardObjectMap = (function() {
 
     const listHtml = sorted.map(s => {
       const status = getSiteStatus(s);
-      const pin = PIN_COLORS[status];
+      const color = PIN_COLORS[status];
       return `
         <div class="site-list-item" data-id="${s.id}" style="cursor:pointer">
-          <div class="sli-dot" style="background:${pin.color}"></div>
+          <div class="sli-dot" style="background:${color}"></div>
           <div class="sli-info">
             <div class="sli-name">${esc(s.name)}</div>
             <div class="sli-meta">${esc(s.customer_name || '')} · ${esc(s.region || '')}</div>
@@ -590,7 +622,7 @@ window.AsgardObjectMap = (function() {
             hideDrawer();
             const site = sites.find(s => s.id === id);
             if (site?.lat && site?.lng && map) {
-              map.setCenter([site.lat, site.lng], 12, { duration: 500 });
+              map.setView([site.lat, site.lng], 12, { animate: true, duration: 0.5 });
             }
             setTimeout(() => openSiteDrawer(id), 400);
           });

@@ -9,6 +9,7 @@
 const db = require('../services/db');
 const preTenderService = require('../services/pre-tender-service');
 const { sendToUser, sendToRoles, broadcast } = require('./sse');
+const { createNotification } = require('../services/notify');
 const path = require('path');
 const fs = require('fs');
 
@@ -513,18 +514,13 @@ module.exports = async function (fastify) {
 
     // 5. Уведомление назначенному РП
     if (assigned_pm_id) {
-      try {
-        await db.query(`
-          INSERT INTO notifications (user_id, title, message, type, link, entity_id, created_at)
-          VALUES ($1, $2, $3, 'info', $4, $5, NOW())
-        `, [
-          assigned_pm_id,
-          'Новый тендер назначен',
-          `Вам назначен тендер от ${pt.customer_name || 'заказчика'}`,
-          `/tenders/${tenderId}`,
-          tenderId
-        ]);
-      } catch (_) {}
+      createNotification(db, {
+        user_id: assigned_pm_id,
+        title: 'Новый тендер назначен',
+        message: `Вам назначен тендер от ${pt.customer_name || 'заказчика'}`,
+        type: 'info',
+        link: `#/tenders?id=${tenderId}`
+      });
     }
 
     // SSE: уведомляем о принятии заявки
@@ -794,6 +790,15 @@ module.exports = async function (fastify) {
       console.error('[PreTender] Fast-track transaction error:', txErr.message);
       return reply.code(500).send({ error: 'Ошибка создания тендера: ' + txErr.message });
     }
+
+    // Telegram notification for assigned PM (outside transaction)
+    try {
+      const telegram = require('../services/telegram');
+      if (telegram && telegram.sendNotification) {
+        const msgText = `Вам назначен тендер от ${pt.customer_name || 'заказчика'}. ${comment || ''}`.trim();
+        await telegram.sendNotification(pm_id, `🔔 *Новый тендер на просчёт*\n\n${msgText}`);
+      }
+    } catch (_) {}
 
     // 5. Отправить email заказчику (вне транзакции)
     let responseEmailId = null;

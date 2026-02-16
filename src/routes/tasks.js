@@ -361,20 +361,10 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
-    // ADMIN/Director может принять любую задачу; исполнитель — только свою
-    let task;
-    if (DIRECTOR_ROLES.includes(request.user.role)) {
-      const { rows: [t] } = await db.query(
-        'SELECT * FROM tasks WHERE id = $1 AND status = $2', [id, 'new']
-      );
-      task = t;
-    } else {
-      const { rows: [t] } = await db.query(
-        'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2 AND status = $3',
-        [id, request.user.id, 'new']
-      );
-      task = t;
-    }
+    // Any user with 'tasks' write permission can accept tasks in 'new' status
+    const { rows: [task] } = await db.query(
+      'SELECT * FROM tasks WHERE id = $1 AND status = $2', [id, 'new']
+    );
     if (!task) return reply.code(400).send({ error: 'Задача не найдена или не в статусе "Новая"' });
 
     await db.query(`
@@ -402,15 +392,23 @@ module.exports = async function(fastify) {
     const id = parseInt(request.params.id);
 
     const { rows: [task] } = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND assignee_id = $2 AND status IN ($3, $4)',
-      [id, request.user.id, 'new', 'accepted']
+      'SELECT * FROM tasks WHERE id = $1 AND (assignee_id = $2 OR assignee_id IS NULL) AND status IN ($3, $4, $5)',
+      [id, request.user.id, 'new', 'accepted', 'assigned']
     );
     if (!task) return reply.code(400).send({ error: 'Нельзя начать эту задачу' });
 
-    await db.query(`
-      UPDATE tasks SET status = 'in_progress', accepted_at = COALESCE(accepted_at, NOW()), updated_at = NOW()
-      WHERE id = $1
-    `, [id]);
+    // If task has no assignee, assign it to the user who starts it
+    if (!task.assignee_id) {
+      await db.query(`
+        UPDATE tasks SET status = 'in_progress', assignee_id = $1, accepted_at = COALESCE(accepted_at, NOW()), updated_at = NOW()
+        WHERE id = $2
+      `, [request.user.id, id]);
+    } else {
+      await db.query(`
+        UPDATE tasks SET status = 'in_progress', accepted_at = COALESCE(accepted_at, NOW()), updated_at = NOW()
+        WHERE id = $1
+      `, [id]);
+    }
 
     return { success: true };
   });

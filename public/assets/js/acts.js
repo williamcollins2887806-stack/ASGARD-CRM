@@ -157,7 +157,7 @@ window.AsgardActsPage = (function(){
           </div>
           <div>
             <label>НДС %</label>
-            <input class="inp" type="number" id="act_vat" value="${act.vat_pct || 20}"/>
+            <input class="inp" type="number" id="act_vat" value="${act.vat_pct || 22}"/>
           </div>
         </div>
         

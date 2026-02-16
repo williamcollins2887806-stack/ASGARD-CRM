@@ -160,6 +160,25 @@ module.exports = async function (fastify) {
     if (!emailRes.rows.length) return reply.code(404).send({ error: 'Письмо не найдено' });
     const email = emailRes.rows[0];
 
+    // Pre-filter: пропускаем bounce, internal, system emails
+    const skipCheck = aiAnalyzer.shouldSkipEmail({
+      fromEmail: email.from_email,
+      subject: email.subject,
+      bodyText: email.body_text
+    });
+    if (skipCheck.skip) {
+      console.log(`[InboxApp] Skipping email #${email_id}: ${skipCheck.reason}`);
+      return reply.code(422).send({
+        error: 'Письмо не подходит для создания заявки',
+        reason: skipCheck.reason,
+        message: skipCheck.reason === 'bounce_or_auto_reply'
+          ? 'Это автоматический ответ или уведомление о недоставке'
+          : skipCheck.reason === 'internal_email'
+          ? 'Это внутреннее письмо от сотрудника компании'
+          : 'Это системное уведомление'
+      });
+    }
+
     // Проверяем что заявка не создана ранее
     const existing = await db.query('SELECT id FROM inbox_applications WHERE email_id = $1', [email_id]);
     if (existing.rows.length) return reply.code(409).send({ error: 'Заявка для этого письма уже создана', application_id: existing.rows[0].id });
