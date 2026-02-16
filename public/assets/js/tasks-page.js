@@ -1,8 +1,12 @@
 /**
  * ASGARD CRM — Задачи (tasks) CRUD
  * Статусы: Новая → В работе → Выполнена → Закрыта
+ *
+ * NOTE: Renamed from AsgardTasksPage to AsgardTasksCrudPage to avoid
+ * collision with the newer M3 tasks module in tasks.js which owns
+ * the window.AsgardTasksPage name (used by the /tasks route in app.js).
  */
-window.AsgardTasksPage = (function(){
+window.AsgardTasksCrudPage = (function(){
   const { $, $$, esc, toast, showModal, hideModal } = AsgardUI;
 
   const STATUSES = ['Новая', 'В работе', 'Выполнена', 'Закрыта'];
