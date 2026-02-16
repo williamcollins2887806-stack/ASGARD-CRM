@@ -1,9 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   ASGARD CRM — Визуальный патч v1
-   Единые рамки: KPI-блоки, таблицы, графики
+   ASGARD CRM — Визуальный патч v2
+   Единые рамки на ВСЕ страницы: дашборд, финансы, KPI, таблицы, канбан
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── KPI блоки: одна общая рамка вместо индивидуальных ────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   1. SHARED KPI БЛОКИ (.kpi .k из __ASG_SHARED_TABLE_CSS__)
+   ───────────────────────────────────────────────────────────────────────────── */
 .kpi {
   gap: 0 !important;
   border: 1px solid rgba(42,59,102,.85) !important;
@@ -22,7 +24,170 @@
   border-right: none !important;
 }
 
-/* ── Таблицы: чистое разделение строк ─────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   2. ДАШБОРД — KPI карточки (.dash-grid > .dash-card)
+   ───────────────────────────────────────────────────────────────────────────── */
+.dash-grid {
+  gap: 0 !important;
+  border: 1px solid rgba(148,163,184,.15) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.dash-card {
+  border: none !important;
+  border-radius: 0 !important;
+  border-right: 1px solid rgba(148,163,184,.08) !important;
+  border-bottom: 1px solid rgba(148,163,184,.08) !important;
+}
+
+.dash-card::before {
+  display: none !important;
+}
+
+.dash-card:hover {
+  border-color: rgba(148,163,184,.08) !important;
+  background: rgba(59,130,246,.05) !important;
+}
+
+/* Алерты */
+.dash-alerts {
+  border-radius: 12px !important;
+}
+
+/* Графики */
+.dash-chart-card {
+  border-radius: 12px !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   3. ФИНАНСЫ — KPI карточки (.fin-summary > .fin-card)
+   ───────────────────────────────────────────────────────────────────────────── */
+.fin-summary {
+  gap: 0 !important;
+  border: 1px solid rgba(148,163,184,.15) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  display: grid !important;
+}
+
+.fin-card {
+  border: none !important;
+  border-radius: 0 !important;
+  border-right: 1px solid rgba(148,163,184,.08) !important;
+  border-bottom: 1px solid rgba(148,163,184,.08) !important;
+}
+
+.fin-card:last-child {
+  border-right: none !important;
+}
+
+.fin-chart-container {
+  border-radius: 12px !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   4. ОФИСНЫЕ РАСХОДЫ — KPI карточки (.oexp-kpi > .oexp-kpi-card)
+   ───────────────────────────────────────────────────────────────────────────── */
+.oexp-kpi {
+  gap: 0 !important;
+  border: 1px solid rgba(148,163,184,.15) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.oexp-kpi-card {
+  border: none !important;
+  border-radius: 0 !important;
+  border-right: 1px solid rgba(148,163,184,.08) !important;
+  border-bottom: 1px solid rgba(148,163,184,.08) !important;
+}
+
+.oexp-kpi-card:last-child {
+  border-right: none !important;
+}
+
+/* Категории */
+.oexp-cat {
+  border-radius: 10px !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   5. БУХГАЛТЕРИЯ — KPI карточки (.buh-summary > .buh-card)
+   ───────────────────────────────────────────────────────────────────────────── */
+.buh-summary {
+  gap: 0 !important;
+  border: 1px solid rgba(148,163,184,.15) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.buh-card {
+  border: none !important;
+  border-radius: 0 !important;
+  border-right: 1px solid rgba(148,163,184,.08) !important;
+  border-bottom: 1px solid rgba(148,163,184,.08) !important;
+}
+
+.buh-card:last-child {
+  border-right: none !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   6. КОРРЕСПОНДЕНЦИЯ — KPI карточки (.corr-kpi > .corr-kpi-card)
+   ───────────────────────────────────────────────────────────────────────────── */
+.corr-kpi {
+  gap: 0 !important;
+  border: 1px solid rgba(242,208,138,.15) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.corr-kpi-card {
+  border: none !important;
+  border-radius: 0 !important;
+  border-right: 1px solid rgba(242,208,138,.08) !important;
+  border-bottom: 1px solid rgba(242,208,138,.08) !important;
+}
+
+.corr-kpi-card::before {
+  display: none !important;
+}
+
+.corr-kpi-card:last-child {
+  border-right: none !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   7. ВОРОНКА ПРОДАЖ — Статистика (.funnel-stats > .funnel-stat)
+   ───────────────────────────────────────────────────────────────────────────── */
+.funnel-stats {
+  gap: 0 !important;
+  border: 1px solid var(--border, rgba(42,59,102,.85)) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.funnel-stat {
+  border: none !important;
+  border-radius: 0 !important;
+  border-right: 1px solid rgba(42,59,102,.25) !important;
+}
+
+.funnel-stat:last-child {
+  border-right: none !important;
+}
+
+.funnel-stat.won {
+  border: none !important;
+  border-right: 1px solid rgba(22,163,98,.2) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   8. ВСЕ ТАБЛИЦЫ — Чистое разделение строк (без рамок на каждой ячейке)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Shared table.asg */
 table.asg {
   border-collapse: collapse !important;
   border-spacing: 0 !important;
@@ -41,21 +206,95 @@ table.asg tr:last-child td {
   border-bottom: none !important;
 }
 
-table.asg tr td:first-child {
-  border-top-left-radius: 0 !important;
-  border-bottom-left-radius: 0 !important;
-}
-
+table.asg tr td:first-child,
 table.asg tr td:last-child {
-  border-top-right-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
+  border-radius: 0 !important;
 }
 
 table.asg tr:hover td {
   background: rgba(42,59,102,.15) !important;
 }
 
-/* ── Графики: скруглённые рамки ───────────────────────────────────────── */
+/* Офисные расходы */
+.oexp-table {
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  border: 1px solid rgba(148,163,184,.15) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.oexp-table td {
+  border: none !important;
+  border-bottom: 1px solid rgba(148,163,184,.08) !important;
+  border-radius: 0 !important;
+}
+
+.oexp-table tr:last-child td {
+  border-bottom: none !important;
+}
+
+.oexp-table tr:hover td {
+  background: rgba(59,130,246,.05) !important;
+}
+
+/* Бухгалтерия */
+.buh-table {
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  border: 1px solid rgba(148,163,184,.15) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.buh-table td {
+  border: none !important;
+  border-bottom: 1px solid rgba(148,163,184,.08) !important;
+  border-radius: 0 !important;
+}
+
+.buh-table tr:last-child td {
+  border-bottom: none !important;
+}
+
+.buh-table tr:hover td {
+  background: rgba(59,130,246,.05) !important;
+}
+
+/* Корреспонденция */
+.corr-table {
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  border: 1px solid rgba(148,163,184,.12) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.corr-table td {
+  border: none !important;
+  border-bottom: 1px solid rgba(148,163,184,.08) !important;
+  border-radius: 0 !important;
+}
+
+.corr-table td:first-child {
+  border-left: 3px solid transparent !important;
+}
+
+.corr-table tr:hover td:first-child {
+  border-left-color: rgba(242,208,138,.6) !important;
+}
+
+.corr-table tr:last-child td {
+  border-bottom: none !important;
+}
+
+.corr-table tr:hover td {
+  background: rgba(242,208,138,.04) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   9. ГРАФИКИ — Единый стиль
+   ───────────────────────────────────────────────────────────────────────────── */
 .chart {
   border-radius: 16px !important;
   padding: 16px !important;
@@ -66,4 +305,48 @@ table.asg tr:hover td {
   font-size: 15px !important;
   font-weight: 600 !important;
   margin: 0 0 8px !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   10. CUSTOM DASHBOARD ВИДЖЕТЫ
+   ───────────────────────────────────────────────────────────────────────────── */
+.dash-widget {
+  border-radius: 12px !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   11. LIGHT THEME — Корректировки для светлой темы
+   ───────────────────────────────────────────────────────────────────────────── */
+html[data-theme="light"] .kpi,
+html[data-theme="light"] .dash-grid,
+html[data-theme="light"] .fin-summary,
+html[data-theme="light"] .oexp-kpi,
+html[data-theme="light"] .buh-summary,
+html[data-theme="light"] .corr-kpi,
+html[data-theme="light"] .funnel-stats {
+  border-color: rgba(0,0,0,.12) !important;
+}
+
+html[data-theme="light"] .kpi .k,
+html[data-theme="light"] .dash-card,
+html[data-theme="light"] .fin-card,
+html[data-theme="light"] .oexp-kpi-card,
+html[data-theme="light"] .buh-card,
+html[data-theme="light"] .corr-kpi-card,
+html[data-theme="light"] .funnel-stat {
+  border-color: rgba(0,0,0,.06) !important;
+}
+
+html[data-theme="light"] table.asg,
+html[data-theme="light"] .oexp-table,
+html[data-theme="light"] .buh-table,
+html[data-theme="light"] .corr-table {
+  border-color: rgba(0,0,0,.12) !important;
+}
+
+html[data-theme="light"] table.asg td,
+html[data-theme="light"] .oexp-table td,
+html[data-theme="light"] .buh-table td,
+html[data-theme="light"] .corr-table td {
+  border-bottom-color: rgba(0,0,0,.06) !important;
 }
