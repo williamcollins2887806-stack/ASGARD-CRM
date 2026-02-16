@@ -1160,8 +1160,8 @@ window.AsgardMimir = (function(){
         </div>
 
         <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button id="tkp_cancel" style="padding:8px 16px;border-radius:6px;background:rgba(255,255,255,0.1);border:none;color:#fff;cursor:pointer">Отмена</button>
-          <button id="tkp_generate" style="padding:8px 16px;border-radius:6px;background:linear-gradient(135deg,#c0392b,#8e2c22);border:1px solid rgba(245,215,142,0.3);color:#f5d78e;cursor:pointer;font-weight:600">✨ Сгенерировать</button>
+          <button class="btn ghost" id="tkp_cancel">Отмена</button>
+          <button class="btn primary" id="tkp_generate">Сгенерировать</button>
         </div>
       </div>
     `;

@@ -414,7 +414,7 @@ async function getRefs(){
           <div style="display:flex; gap:10px; flex-wrap:wrap">
             <button class="btn" id="btnNew">+ Внести тендер</button>
             <button class="btn ghost" id="btnReset">Сброс</button>
-            ${user.role === "ADMIN" ? '<button class="btn ghost" id="btnBulkReassign" style="background:rgba(139,92,246,.2)">🔄 Массовое переназначение</button>' : ''}
+            ${user.role === "ADMIN" ? '<button class="btn ghost" id="btnBulkReassign">Массовое переназначение</button>' : ''}
           </div>
         </div>
         <hr class="hr"/>
@@ -444,7 +444,7 @@ async function getRefs(){
         <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px">
           <div class="help" id="cnt"></div>
           <div id="bulkCount" style="font-weight:600; color:var(--primary); display:none"></div>
-          <button class="btn ghost" id="btnBulkSelected" style="display:none; background:rgba(139,92,246,.2)">Переназначить выбранные</button>
+          <button class="btn ghost" id="btnBulkSelected" style="display:none">Переназначить выбранные</button>
         </div>
       </div>
     `;
@@ -948,7 +948,7 @@ async function getRefs(){
           </div>
           <hr class="hr"/>
           <div style="display:flex; gap:10px">
-            <button class="btn" id="bulk_do" style="background:linear-gradient(135deg, rgba(139,92,246,.4), rgba(139,92,246,.2))">🔄 Переназначить</button>
+            <button class="btn primary" id="bulk_do">Переназначить</button>
             <div id="bulk_result" style="padding:10px; color:var(--muted)"></div>
           </div>
         `;

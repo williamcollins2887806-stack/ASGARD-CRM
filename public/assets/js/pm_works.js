@@ -292,7 +292,7 @@ window.AsgardPmWorksPage=(function(){
       </div>
       <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px">
         <button class="btn ghost" id="c_cancel">Отмена</button>
-        <button class="btn" id="c_submit" style="background:#ef4444">Отправить на закрытие</button>
+        <button class="btn danger" id="c_submit">Отправить на закрытие</button>
       </div>
     `;
 
@@ -893,7 +893,7 @@ window.AsgardPmWorksPage=(function(){
 
         <hr class="hr"/>
         <div style="display:flex; gap:10px; flex-wrap:wrap">
-          ${(user.role==="PM" && String(w.work_status||"")===triggerStatus) ? `<button class="btn" id="btnCloseout" style="background:#ef4444">Работы завершены</button>` : ``}
+          ${(user.role==="PM" && String(w.work_status||"")===triggerStatus) ? `<button class="btn danger" id="btnCloseout">Работы завершены</button>` : ``}
           <button class="btn" id="btnSaveWork">Сохранить</button>
           <button class="btn ghost" id="btnExpenses">💰 Расходы</button>
           <button class="btn ghost" id="btnPayroll">💰 Ведомость</button>

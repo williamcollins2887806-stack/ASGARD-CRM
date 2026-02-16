@@ -126,9 +126,7 @@ window.AsgardPreTendersPage = (function(){
         .pt-kanban-card .kc-bottom{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text-muted)}
         .pt-kanban-card .kc-ai{font-size:10px;padding:2px 6px;border-radius:4px;margin-top:4px;display:inline-block}
 
-        /* Fast-track button */
-        .btn-fast-track{background:linear-gradient(135deg,#D4A846,#c49b3a);color:#000;font-weight:800;border:none}
-        .btn-fast-track:hover{background:linear-gradient(135deg,#e0b44f,#d4a846)}
+        /* Fast-track — uses .btn.primary */
 
         /* AI enhanced card */
         .pt-ai-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
@@ -554,10 +552,10 @@ window.AsgardPreTendersPage = (function(){
       <!-- Блок 5: Действия -->
       ${canEdit ? `
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
-        <button class="btn" id="btnAcceptPT" style="background:#22c55e;color:#000;font-weight:800;flex:1;min-width:140px;font-size:14px;padding:12px">🟢 ПРИНЯТЬ В РАБОТУ</button>
-        <button class="btn btn-fast-track" id="btnFastTrack" style="flex:1;min-width:160px;font-size:14px;padding:12px">⚡ СРАЗУ НА ПРОСЧЁТ</button>
-        <button class="btn" id="btnRejectPT" style="background:#ef4444;flex:1;min-width:120px;font-size:14px;padding:12px">🔴 ОТКЛОНИТЬ</button>
-        <button class="btn ghost" id="btnRequestDocs" style="min-width:120px">📄 Запросить документы</button>
+        <button class="btn green" id="btnAcceptPT" style="flex:1;min-width:140px">ПРИНЯТЬ В РАБОТУ</button>
+        <button class="btn primary" id="btnFastTrack" style="flex:1;min-width:160px">СРАЗУ НА ПРОСЧЁТ</button>
+        <button class="btn danger" id="btnRejectPT" style="flex:1;min-width:120px">ОТКЛОНИТЬ</button>
+        <button class="btn ghost" id="btnRequestDocs" style="min-width:120px">Запросить документы</button>
       </div>` : ''}
 
       <!-- Цепочка переписки -->
@@ -741,7 +739,7 @@ window.AsgardPreTendersPage = (function(){
 
         <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
           <button class="btn ghost" id="accCancelBtn">Отмена</button>
-          <button class="btn" id="accConfirmBtn" style="background:#22c55e;color:#000;font-weight:800;padding:10px 24px">✅ Подтвердить</button>
+          <button class="btn green" id="accConfirmBtn">Подтвердить</button>
         </div>
       </div>
     `;
@@ -956,7 +954,7 @@ window.AsgardPreTendersPage = (function(){
 
         <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
           <button class="btn ghost" id="rejCancelBtn">Отмена</button>
-          <button class="btn" id="rejConfirmBtn" style="background:#ef4444;padding:10px 24px;font-weight:800">❌ Подтвердить отказ</button>
+          <button class="btn danger" id="rejConfirmBtn">Подтвердить отказ</button>
         </div>
       </div>
     `;

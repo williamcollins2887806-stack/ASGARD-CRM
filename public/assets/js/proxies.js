@@ -359,7 +359,7 @@ window.AsgardProxiesPage = (function(){
         
         <div style="display:flex; gap:12px; flex-wrap:wrap">
           <button class="btn" id="btnPreviewProxy">👁 Предпросмотр</button>
-          <button class="btn" id="btnDownloadProxy" style="background:linear-gradient(135deg, rgba(34,197,94,.3), rgba(34,197,94,.15))">📥 Скачать .doc</button>
+          <button class="btn green" id="btnDownloadProxy">Скачать .doc</button>
         </div>
         
         <div id="proxyPreviewArea"></div>

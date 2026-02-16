@@ -512,7 +512,7 @@ window.AsgardMango = (function(){
       callPopupElement.querySelector('.call-avatar').textContent = '🎧';
       callPopupElement.querySelector('.call-avatar').style.animation = 'none';
       callPopupElement.querySelector('.call-actions').innerHTML = `
-        <button class="btn" id="btnEndCall" style="flex:1;background:var(--red)!important;color:#fff!important">
+        <button class="btn danger" id="btnEndCall" style="flex:1">
           📵 Завершить
         </button>
       `;

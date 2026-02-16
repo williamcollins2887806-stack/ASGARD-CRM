@@ -347,11 +347,11 @@ window.AsgardPayrollPage = (function(){
         actions += `<button class="btn" id="btnAutoFill">Автозаполнение</button>`;
         actions += `<button class="btn" id="btnRecalc">Пересчитать</button>`;
         actions += `<button class="btn primary" id="btnSubmit">На согласование</button>`;
-        actions += `<button class="btn" id="btnDeleteSheet" style="color:#ef4444">Удалить</button>`;
+        actions += `<button class="btn danger" id="btnDeleteSheet">Удалить</button>`;
       }
       if(sheet.status==='pending' && isDirector){
         actions += `<button class="btn primary" id="btnApprove">Согласовать</button>`;
-        actions += `<button class="btn" id="btnRework" style="color:#f59e0b">На доработку</button>`;
+        actions += `<button class="btn ghost" id="btnRework">На доработку</button>`;
       }
       if(sheet.status==='approved' && canPay){
         actions += `<button class="btn primary" id="btnPay">Оплачено</button>`;

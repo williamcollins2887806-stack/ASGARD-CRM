@@ -433,7 +433,7 @@ window.AsgardReminders = (function(){
               </div>
               ${showActions ? `
                 <div class="row" style="gap:4px">
-                  <button class="btn mini" style="background:#22c55e" data-complete="${r.id}" title="Выполнено">✓</button>
+                  <button class="btn mini green" data-complete="${r.id}" title="Выполнено">✓</button>
                   <button class="btn mini ghost" data-dismiss="${r.id}" title="Скрыть">✕</button>
                 </div>
               ` : ''}

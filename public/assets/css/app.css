@@ -554,13 +554,15 @@ a:hover {
   box-shadow: 0 8px 24px rgba(220, 38, 38, 0.3), 0 8px 24px rgba(37, 99, 235, 0.2);
 }
 
-.btn.red {
+.btn.red,
+.btn.danger {
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  border-color: var(--primary);
+  border-color: transparent;
   color: white;
 }
 
-.btn.red:hover {
+.btn.red:hover,
+.btn.danger:hover {
   box-shadow: var(--shadow-glow-red), var(--shadow-md);
 }
 
@@ -574,9 +576,10 @@ a:hover {
   box-shadow: var(--shadow-glow-blue), var(--shadow-md);
 }
 
-.btn.green {
+.btn.green,
+.btn.success {
   background: linear-gradient(135deg, var(--green), #16a34a);
-  border-color: var(--green);
+  border-color: transparent;
   color: white;
 }
 

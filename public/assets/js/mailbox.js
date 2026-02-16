@@ -336,10 +336,16 @@ window.AsgardMailboxPage = (function(){
 
     const detailEl = $('#mail-detail');
     if (!detailEl) return;
+    // Switch to column layout for detail view
+    detailEl.style.cssText = 'flex:1; display:flex; flex-direction:column; overflow-y:auto;';
     detailEl.innerHTML = '<div style="padding:40px; text-align:center; color:var(--text-muted);">Загрузка...</div>';
 
     try {
       const data = await apiFetch(`/api/mailbox/emails/${id}`);
+      if (!data || !data.email) {
+        detailEl.innerHTML = '<div style="padding:20px; color:var(--text-muted);">Письмо не найдено</div>';
+        return;
+      }
       state.selectedEmail = data.email;
       renderDetail(data);
 
@@ -350,7 +356,7 @@ window.AsgardMailboxPage = (function(){
       // Refresh stats (unread count)
       loadStats().then(renderFolders);
     } catch (e) {
-      detailEl.innerHTML = `<div style="padding:20px; color:var(--red);">${esc(e.message)}</div>`;
+      detailEl.innerHTML = `<div style="padding:20px; color:#ef4444; font-size:14px;">Ошибка загрузки: ${esc(e.message || 'неизвестная ошибка')}</div>`;
     }
   }
 
@@ -359,9 +365,13 @@ window.AsgardMailboxPage = (function(){
     if (!detailEl) return;
 
     if (!data || !data.email) {
-      detailEl.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--text-muted); font-size:14px;">Выберите письмо для просмотра</div>';
+      detailEl.style.cssText = 'flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:14px;';
+      detailEl.innerHTML = 'Выберите письмо для просмотра';
       return;
     }
+
+    // Set proper column layout for email content
+    detailEl.style.cssText = 'flex:1; display:flex; flex-direction:column; overflow-y:auto;';
 
     const e = data.email;
     const attachments = data.attachments || [];
@@ -373,16 +383,16 @@ window.AsgardMailboxPage = (function(){
     const ccList = parseEmailList(e.cc_emails);
 
     detailEl.innerHTML = `
-      <div style="padding:20px 24px; border-bottom:1px solid var(--border);">
+      <div style="padding:20px 24px;">
         <!-- Toolbar -->
         <div style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-          <button class="mail-action-btn" data-action="reply" style="${btnStyle()}">Ответить</button>
-          <button class="mail-action-btn" data-action="reply_all" style="${btnStyle()}">Ответить всем</button>
-          <button class="mail-action-btn" data-action="forward" style="${btnStyle()}">Переслать</button>
+          <button class="btn ghost mail-action-btn" data-action="reply">Ответить</button>
+          <button class="btn ghost mail-action-btn" data-action="reply_all">Ответить всем</button>
+          <button class="btn ghost mail-action-btn" data-action="forward">Переслать</button>
           <span style="flex:1;"></span>
-          <button class="mail-action-btn" data-action="star" style="${btnStyle()}">${e.is_starred ? '&#9733; Убрать' : '&#9734; Избранное'}</button>
-          <button class="mail-action-btn" data-action="archive" style="${btnStyle()}">&#128230; Архив</button>
-          <button class="mail-action-btn" data-action="delete" style="${btnStyle('var(--red)')}">&times; Удалить</button>
+          <button class="btn ghost mail-action-btn" data-action="star">${e.is_starred ? '&#9733; Убрать' : '&#9734; Избранное'}</button>
+          <button class="btn ghost mail-action-btn" data-action="archive">&#128230; Архив</button>
+          <button class="btn danger mail-action-btn" data-action="delete">&times; Удалить</button>
         </div>
 
         <!-- Subject -->
@@ -409,12 +419,12 @@ window.AsgardMailboxPage = (function(){
 
       <!-- Attachments -->
       ${attachments.length > 0 ? `
-        <div style="padding:12px 24px; border-top:1px solid var(--border);">
+        <div style="padding:12px 24px;">
           <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:8px;">Вложения (${attachments.length}):</div>
           <div style="display:flex; flex-wrap:wrap; gap:8px;">
             ${attachments.map(a => `
               <a href="/api/mailbox/attachments/${a.id}/download" target="_blank"
-                style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text-primary); font-size:12px;">
+                style="display:flex; align-items:center; gap:6px; padding:6px 12px; background:var(--bg-elevated); border-radius:6px; text-decoration:none; color:var(--text-primary); font-size:12px;">
                 &#128206; ${esc(a.original_filename || a.filename)}
                 <span style="color:var(--text-muted);">(${formatFileSize(a.size)})</span>
               </a>
@@ -425,11 +435,11 @@ window.AsgardMailboxPage = (function(){
 
       <!-- Thread -->
       ${thread.length > 0 ? `
-        <div style="padding:12px 24px; border-top:1px solid var(--border);">
+        <div style="padding:12px 24px;">
           <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:8px;">Цепочка (${thread.length + 1} писем):</div>
           <div style="display:flex; flex-direction:column; gap:4px;">
             ${thread.map(t => `
-              <div class="mail-thread-item" data-id="${t.id}" style="padding:6px 10px; cursor:pointer; border-radius:6px; border:1px solid var(--border); font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+              <div class="mail-thread-item" data-id="${t.id}" style="padding:6px 10px; cursor:pointer; border-radius:6px; background:var(--bg-elevated); font-size:12px; display:flex; justify-content:space-between; align-items:center;">
                 <span>${t.direction === 'outbound' ? '&#8594;' : '&#8592;'} <strong>${esc(t.from_name || t.from_email || '')}</strong> — ${esc(t.subject || '')}</span>
                 <span style="color:var(--text-muted);">${formatEmailDate(t.email_date)}</span>
               </div>
