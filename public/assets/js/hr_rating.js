@@ -41,13 +41,24 @@ window.AsgardHrRatingPage=(function(){
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
     const permits = Array.isArray(refs.permits) ? refs.permits : [];
 
-    const employees = await AsgardDB.all("employees");
+    const allEmployees = await AsgardDB.all("employees");
+    // Фильтруем: показываем только рабочих (не офисных сотрудников)
+    // Офисные роли исключаем из рейтинга
+    const officeRoles = ['ADMIN', 'HR', 'BUH', 'TO', 'PM', 'PROC', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER', 'WAREHOUSE', 'VIEWER'];
+    const employees = (allEmployees || []).filter(e => {
+      // Исключаем если role_tag совпадает с офисной ролью
+      const roleTag = (e.role_tag || '').toUpperCase();
+      if (officeRoles.includes(roleTag)) return false;
+      // Исключаем если fio содержит "Тест" и роль офисная
+      if ((e.fio || '').toLowerCase().includes('тест') && officeRoles.some(r => roleTag.includes(r))) return false;
+      return true;
+    });
     const reviews = await AsgardDB.all("employee_reviews");
 
     const agg = new Map();
     for(const r of (reviews||[])){
       if(!r || r.employee_id==null) continue;
-      const score = Number(r.score||0);
+      const score = Number(r.score_1_10 || r.score || 0);
       if(!isFinite(score) || score<=0) continue;
       const id = Number(r.employee_id);
       const a = agg.get(id) || {sum:0,count:0,last_at:null};

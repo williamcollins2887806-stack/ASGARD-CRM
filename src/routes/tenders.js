@@ -5,6 +5,8 @@
 
 async function routes(fastify, options) {
   const db = fastify.db;
+  const { createNotification } = require('../services/notify');
+  const { sendToUser, broadcast } = require('./sse');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders - List all tenders
@@ -12,15 +14,21 @@ async function routes(fastify, options) {
   fastify.get('/', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { 
-      period, 
-      status, 
-      pm_id, 
+    const {
+      period,
+      status,
+      pm_id,
       type,
-      search,
-      limit = 100, 
-      offset = 0 
+      search: rawSearch,
+      limit: rawLimit = 100,
+      offset: rawOffset = 0
     } = request.query;
+
+    // Clamp limit to minimum of 1 to prevent negative LIMIT crash
+    const limit = Math.max(1, parseInt(rawLimit, 10) || 100);
+    const offset = Math.max(0, parseInt(rawOffset, 10) || 0);
+    // Strip null bytes from search to prevent PostgreSQL crash
+    const search = rawSearch ? rawSearch.replace(/\0/g, '') : rawSearch;
 
     let sql = `
       SELECT t.*, 
@@ -60,9 +68,9 @@ async function routes(fastify, options) {
 
     if (search) {
       sql += ` AND (
-        LOWER(t.customer) LIKE $${idx} OR 
-        LOWER(t.tender_number) LIKE $${idx} OR 
-        LOWER(t.tag) LIKE $${idx}
+        LOWER(t.customer_name) LIKE $${idx} OR
+        LOWER(t.tender_title) LIKE $${idx} OR
+        LOWER(t.group_tag) LIKE $${idx}
       )`;
       params.push(`%${search.toLowerCase()}%`);
       idx++;
@@ -100,9 +108,9 @@ async function routes(fastify, options) {
     }
     if (search) {
       countSql += ` AND (
-        LOWER(t.customer) LIKE $${countIdx} OR
-        LOWER(t.tender_number) LIKE $${countIdx} OR
-        LOWER(t.tag) LIKE $${countIdx}
+        LOWER(t.customer_name) LIKE $${countIdx} OR
+        LOWER(t.tender_title) LIKE $${countIdx} OR
+        LOWER(t.group_tag) LIKE $${countIdx}
       )`;
       countParams.push(`%${search.toLowerCase()}%`);
       countIdx++;
@@ -125,9 +133,9 @@ async function routes(fastify, options) {
     const { id } = request.params;
 
     const result = await db.query(`
-      SELECT t.*, 
+      SELECT t.*,
              u.name as pm_name,
-             c.name as customer_name
+             COALESCE(c.name, t.customer_name) as customer_display
       FROM tenders t
       LEFT JOIN users u ON t.responsible_pm_id = u.id
       LEFT JOIN customers c ON t.customer_inn = c.inn
@@ -160,12 +168,12 @@ async function routes(fastify, options) {
   // ─────────────────────────────────────────────────────────────────────────────
   // POST /api/tenders - Create tender
   // ─────────────────────────────────────────────────────────────────────────────
+  // SECURITY B3: Role-based access for write operations
   fastify.post('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])],
     schema: {
       body: {
         type: 'object',
-        required: ['customer'],
         properties: {
           customer: { type: 'string' },
           customer_inn: { type: 'string' },
@@ -174,7 +182,7 @@ async function routes(fastify, options) {
           tender_status: { type: 'string' },
           period: { type: 'string' },
           deadline: { type: 'string' },
-          estimated_sum: { type: 'number' },
+          tender_price: { type: 'number' },
           responsible_pm_id: { type: 'number' },
           tag: { type: 'string' },
           docs_link: { type: 'string' },
@@ -183,47 +191,111 @@ async function routes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const data = request.body;
-    data.created_by = request.user.id;
-    data.created_at = new Date().toISOString();
+    try {
+      const raw = request.body;
 
-    // Auto-generate period if not provided
-    if (!data.period) {
-      const now = new Date();
-      data.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      // Validate customer is always required via API
+      // (Draft workflow uses /api/data/tenders instead, not this route)
+      const customerVal = String(raw.customer || raw.customer_name || '').trim();
+      if (!customerVal) {
+        return reply.code(400).send({ error: 'Обязательное поле: customer' });
+      }
+
+      // Set default status to "Новый"
+      if (!raw.tender_status) {
+        raw.tender_status = 'Новый';
+      }
+
+      // Map API field names to DB column names
+      if (raw.customer && !raw.customer_name) { raw.customer_name = raw.customer; }
+      delete raw.customer;
+      if (raw.tender_number && !raw.tender_title) { raw.tender_title = raw.tender_number; }
+      delete raw.tender_number;
+      if (raw.deadline && !raw.docs_deadline) { raw.docs_deadline = raw.deadline; }
+      delete raw.deadline;
+      if (raw.tender_price !== undefined && raw.tender_price === undefined) { raw.tender_price = raw.tender_price; }
+      delete raw.tender_price;
+      if (raw.tag && !raw.group_tag) { raw.group_tag = raw.tag; }
+      delete raw.tag;
+      if (raw.docs_link && !raw.purchase_url) { raw.purchase_url = raw.docs_link; }
+      delete raw.docs_link;
+      raw.created_by = request.user.id;
+      raw.created_at = new Date().toISOString();
+
+      // Auto-generate period if not provided
+      if (!raw.period) {
+        const now = new Date();
+        raw.period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      }
+
+      // SECURITY: Filter to allowed DB columns only
+      const allowedCols = [
+        'customer_name', 'customer_inn', 'tender_title', 'tender_type',
+        'tender_status', 'period', 'docs_deadline', 'tender_price', 'responsible_pm_id',
+        'group_tag', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
+        'created_by', 'created_at'
+      ];
+      const data = {};
+      for (const k of allowedCols) {
+        if (raw[k] !== undefined) data[k] = raw[k];
+      }
+
+      const keys = Object.keys(data);
+      const values = Object.values(data);
+      const placeholders = keys.map((_, i) => `$${i + 1}`);
+
+      const sql = `
+        INSERT INTO tenders (${keys.join(', ')})
+        VALUES (${placeholders.join(', ')})
+        RETURNING *
+      `;
+
+      const result = await db.query(sql, values);
+
+      // Log to audit
+      try {
+        await db.query(`
+          INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
+          VALUES ($1, 'tender', $2, 'create', $3, NOW())
+        `, [request.user.id, result.rows[0].id, JSON.stringify({ tender: result.rows[0] })]);
+      } catch (auditErr) {
+        fastify.log.warn('Audit log insert failed:', auditErr.message);
+      }
+
+      // Notify assigned PM about new tender
+      const tender = result.rows[0];
+      if (tender.responsible_pm_id && tender.responsible_pm_id !== request.user.id) {
+        createNotification(db, {
+          user_id: tender.responsible_pm_id,
+          title: '📋 Новый тендер',
+          message: `${request.user.name || 'Пользователь'} создал тендер: ${tender.customer_name || ''} — ${tender.tender_title || ''}`,
+          type: 'tender',
+          link: `#/tenders?id=${tender.id}`
+        });
+      }
+
+      // SSE: уведомляем о новом тендере
+      broadcast('tender:created', {
+        id: tender.id, customer_name: tender.customer_name || '',
+        tender_status: tender.tender_status, tender_type: tender.tender_type,
+        responsible_pm_id: tender.responsible_pm_id
+      });
+
+      return { tender };
+    } catch (err) {
+      if (err.code === '23503') {
+        return reply.code(400).send({ error: `Ссылка на несуществующую запись: ${err.detail || err.message}` });
+      }
+      const code = err.code === '22001' || err.code === '23502' ? 400 : 500;
+      return reply.code(code).send({ error: 'Ошибка создания тендера', detail: err.message });
     }
-
-    // Set default status
-    if (!data.tender_status) {
-      data.tender_status = 'Новый';
-    }
-
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    const placeholders = keys.map((_, i) => `$${i + 1}`);
-
-    const sql = `
-      INSERT INTO tenders (${keys.join(', ')})
-      VALUES (${placeholders.join(', ')})
-      RETURNING *
-    `;
-
-    const result = await db.query(sql, values);
-
-    // Log to audit
-    await db.query(`
-      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
-      VALUES ($1, 'tender', $2, 'create', $3, NOW())
-    `, [request.user.id, result.rows[0].id, JSON.stringify({ tender: result.rows[0] })]);
-
-    return { tender: result.rows[0] };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // PUT /api/tenders/:id - Update tender
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
     const { id } = request.params;
     const data = request.body;
@@ -233,21 +305,47 @@ async function routes(fastify, options) {
     if (!current.rows[0]) {
       return reply.code(404).send({ error: 'Тендер не найден' });
     }
+    const oldTender = current.rows[0];
 
-    // Build update query
+    // Draft transition validation: require customer when leaving Черновик
+    if (oldTender.tender_status === 'Черновик' && data.tender_status && data.tender_status !== 'Черновик') {
+      const customerValue = data.customer || oldTender.customer_name;
+      if (!customerValue || !String(customerValue).trim()) {
+        return reply.code(400).send({
+          error: 'Для смены статуса заполните обязательные поля',
+          missing_fields: ['customer']
+        });
+      }
+    }
+
+    // Build update query — map API field names to DB columns
+    const FIELD_MAP = {
+      'customer': 'customer_name',
+      'tender_number': 'tender_title',
+      'deadline': 'docs_deadline',
+      'tender_price': 'tender_price',
+      'tag': 'group_tag',
+      'docs_link': 'purchase_url'
+    };
+
+    const allowedFields = [
+      'customer', 'customer_name', 'customer_inn', 'tender_number', 'tender_title',
+      'tender_type', 'tender_status', 'period', 'deadline', 'docs_deadline',
+      'tender_price', 'tender_price', 'responsible_pm_id', 'tag', 'group_tag',
+      'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason'
+    ];
+
     const updates = [];
     const values = [];
     let idx = 1;
-
-    const allowedFields = [
-      'customer', 'customer_inn', 'tender_number', 'tender_type', 'tender_status',
-      'period', 'deadline', 'estimated_sum', 'responsible_pm_id', 'tag',
-      'docs_link', 'comment_to', 'comment_dir', 'reject_reason'
-    ];
+    const usedCols = new Set();
 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
-        updates.push(`${field} = $${idx}`);
+        const dbCol = FIELD_MAP[field] || field;
+        if (usedCols.has(dbCol)) continue;
+        usedCols.add(dbCol);
+        updates.push(`${dbCol} = $${idx}`);
         values.push(data[field]);
         idx++;
       }
@@ -274,7 +372,46 @@ async function routes(fastify, options) {
       VALUES ($1, 'tender', $2, 'update', $3, NOW())
     `, [request.user.id, id, JSON.stringify({ before: current.rows[0], after: result.rows[0] })]);
 
-    return { tender: result.rows[0] };
+    // Notify PM on status change
+    const updated = result.rows[0];
+    if (data.tender_status && data.tender_status !== oldTender.tender_status && updated.responsible_pm_id && updated.responsible_pm_id !== request.user.id) {
+      createNotification(db, {
+        user_id: updated.responsible_pm_id,
+        title: `📋 Тендер: ${data.tender_status}`,
+        message: `Статус тендера ${updated.customer_name || updated.tender_title || ''} изменён: ${oldTender.tender_status} → ${data.tender_status}`,
+        type: 'tender',
+        link: `#/tenders?id=${updated.id}`
+      });
+    }
+    // Notify new PM on reassignment
+    if (data.responsible_pm_id && data.responsible_pm_id !== oldTender.responsible_pm_id && data.responsible_pm_id !== request.user.id) {
+      createNotification(db, {
+        user_id: data.responsible_pm_id,
+        title: '📋 Тендер назначен вам',
+        message: `Вам назначен тендер: ${updated.customer_name || ''} — ${updated.tender_title || ''}`,
+        type: 'tender',
+        link: `#/tenders?id=${updated.id}`
+      });
+    }
+
+    // SSE: уведомляем об изменении тендера
+    broadcast('tender:updated', {
+      id: updated.id, customer_name: updated.customer_name || '',
+      tender_status: updated.tender_status,
+      old_status: oldTender.tender_status,
+      responsible_pm_id: updated.responsible_pm_id
+    });
+
+    // SSE: персональное уведомление РП при смене статуса
+    if (data.tender_status && data.tender_status !== oldTender.tender_status && updated.responsible_pm_id) {
+      sendToUser(updated.responsible_pm_id, 'tender:status_changed', {
+        id: updated.id, customer_name: updated.customer_name || '',
+        old_status: oldTender.tender_status,
+        new_status: updated.tender_status
+      });
+    }
+
+    return { tender: updated };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -310,47 +447,142 @@ async function routes(fastify, options) {
   fastify.get('/stats/summary', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { period, year } = request.query;
+    try {
+      const { period, year } = request.query;
 
-    let whereClause = '1=1';
+      let whereClause = "1=1 AND tender_status != 'Черновик'";
+      const params = [];
+      let idx = 1;
+
+      if (period) {
+        whereClause += ` AND period = $${idx}`;
+        params.push(period);
+        idx++;
+      }
+
+      if (year) {
+        whereClause += ` AND EXTRACT(YEAR FROM created_at) = $${idx}`;
+        params.push(year);
+      }
+
+      const stats = await db.query(`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
+          COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
+          COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Проиграли', 'Отказ')) as active,
+          COALESCE(SUM(tender_price), 0) as total_sum,
+          COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
+        FROM tenders
+        WHERE ${whereClause}
+      `, params);
+
+      const byStatus = await db.query(`
+        SELECT tender_status, COUNT(*) as count, COALESCE(SUM(tender_price), 0) as sum
+        FROM tenders
+        WHERE ${whereClause}
+        GROUP BY tender_status
+        ORDER BY count DESC
+      `, params);
+
+      return {
+        summary: stats.rows[0],
+        byStatus: byStatus.rows
+      };
+    } catch (err) {
+      request.log.error(err, 'tenders stats/summary error');
+      return reply.code(500).send({ error: 'Stats error', details: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // M15: Аналитика тендерного отдела (для HEAD_TO)
+  // ═══════════════════════════════════════════════════════════════
+
+  fastify.get('/analytics/team', {
+    preHandler: [fastify.requireRoles(['HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    try {
+    const { year, period } = request.query;
+
+    let whereClause = "1=1 AND t.tender_status != 'Черновик'";
     const params = [];
     let idx = 1;
 
+    if (year) {
+      whereClause += ` AND EXTRACT(YEAR FROM t.created_at) = $${idx}`;
+      params.push(parseInt(year));
+      idx++;
+    }
     if (period) {
-      whereClause += ` AND period = $${idx}`;
+      whereClause += ` AND t.period = $${idx}`;
       params.push(period);
       idx++;
     }
 
-    if (year) {
-      whereClause += ` AND EXTRACT(YEAR FROM created_at) = $${idx}`;
-      params.push(year);
-    }
+    // KPI по каждому тендерному специалисту
+    const teamKpi = await db.query(`
+      SELECT
+        u.id,
+        u.name,
+        u.role,
+        COUNT(t.id) as total_tenders,
+        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
+        COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Контракт', 'Клиент согласился', 'Проиграли', 'Отказ', 'Клиент отказался', 'Отменён', 'Другое')) as active,
+        COALESCE(SUM(t.tender_price) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COALESCE(SUM(t.tender_price), 0) as total_sum,
+        COUNT(DISTINCT t.customer_inn) as unique_customers,
+        MAX(t.created_at) as last_tender_at
+      FROM users u
+      LEFT JOIN tenders t ON (t.created_by = u.id) AND ${whereClause.replace(/t\./g, '')}
+      WHERE u.role IN ('TO', 'HEAD_TO') AND u.is_active = true
+      GROUP BY u.id, u.name, u.role
+      ORDER BY won_sum DESC
+    `, params);
 
-    const stats = await db.query(`
-      SELECT 
+    // Общая сводка отдела
+    const deptTotal = await db.query(`
+      SELECT
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
-        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
-        COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Проиграли', 'Отказ')) as active,
-        COALESCE(SUM(estimated_sum), 0) as total_sum,
-        COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
+        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COALESCE(SUM(tender_price), 0) as total_sum
       FROM tenders
-      WHERE ${whereClause}
+      WHERE ${whereClause.replace(/t\./g, '')}
     `, params);
 
+    // По статусам
     const byStatus = await db.query(`
-      SELECT tender_status, COUNT(*) as count, COALESCE(SUM(estimated_sum), 0) as sum
-      FROM tenders
-      WHERE ${whereClause}
-      GROUP BY tender_status
-      ORDER BY count DESC
+      SELECT tender_status, COUNT(*) as count, COALESCE(SUM(tender_price), 0) as sum
+      FROM tenders WHERE ${whereClause.replace(/t\./g, '')}
+      GROUP BY tender_status ORDER BY count DESC
     `, params);
+
+    // По месяцам (динамика за последние 12 мес)
+    const byMonth = await db.query(`
+      SELECT
+        TO_CHAR(created_at, 'YYYY-MM') as month,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+      FROM tenders
+      WHERE created_at >= NOW() - INTERVAL '12 months' AND tender_status != 'Черновик'
+      GROUP BY TO_CHAR(created_at, 'YYYY-MM')
+      ORDER BY month
+    `);
 
     return {
-      summary: stats.rows[0],
-      byStatus: byStatus.rows
+      team: teamKpi.rows,
+      department: deptTotal.rows[0],
+      byStatus: byStatus.rows,
+      byMonth: byMonth.rows
     };
+    } catch (err) {
+      request.log.error(err, 'tenders analytics/team error');
+      return reply.code(500).send({ error: 'Analytics error', details: err.message });
+    }
   });
 }
 

@@ -14,7 +14,12 @@ window.AsgardUserRequestsPage = (function(){
     { key: 'PROC', label: 'PROC — Закупки' },
     { key: 'DIRECTOR_COMM', label: 'DIRECTOR_COMM — Коммерческий директор' },
     { key: 'DIRECTOR_GEN', label: 'DIRECTOR_GEN — Генеральный директор' },
-    { key: 'DIRECTOR_DEV', label: 'DIRECTOR_DEV — Директор разработки + PM' }
+    { key: 'DIRECTOR_DEV', label: 'DIRECTOR_DEV — Директор разработки + PM' },
+    // M15: Новые роли
+    { key: 'HEAD_TO', label: 'HEAD_TO — Рук. тендерного отдела' },
+    { key: 'HEAD_PM', label: 'HEAD_PM — Рук. технического отдела' },
+    { key: 'CHIEF_ENGINEER', label: 'CHIEF_ENGINEER — Главный инженер' },
+    { key: 'HR_MANAGER', label: 'HR_MANAGER — HR-менеджер' }
   ];
 
   function today(){ return new Date().toISOString().slice(0,10); }
@@ -54,7 +59,7 @@ window.AsgardUserRequestsPage = (function(){
           
           .ur-tabs { display:flex; gap:8px; margin-bottom:20px; }
           .ur-tab { 
-            padding:10px 18px; border-radius:10px; 
+            padding:10px 18px; border-radius:6px; 
             background:rgba(13,20,40,.4); 
             border:1px solid rgba(148,163,184,.15);
             color:var(--muted); font-weight:700; cursor:pointer;
@@ -80,7 +85,7 @@ window.AsgardUserRequestsPage = (function(){
           .ur-card {
             background: linear-gradient(135deg, rgba(13,20,40,.6), rgba(13,20,40,.4));
             border:1px solid rgba(148,163,184,.15);
-            border-radius:14px;
+            border-radius:6px;
             padding:16px 20px;
             display:grid;
             grid-template-columns:1fr auto;
@@ -115,7 +120,7 @@ window.AsgardUserRequestsPage = (function(){
             text-align:center; padding:60px 20px;
             background:rgba(13,20,40,.3);
             border:1px dashed rgba(148,163,184,.2);
-            border-radius:16px;
+            border-radius:6px;
             color:var(--muted);
           }
           .ur-empty-icon { font-size:64px; margin-bottom:16px; opacity:.5; }
@@ -123,10 +128,10 @@ window.AsgardUserRequestsPage = (function(){
           .ur-search { 
             display:flex; gap:12px; margin-bottom:16px; 
             padding:12px; background:rgba(13,20,40,.3); 
-            border-radius:12px; align-items:center;
+            border-radius:6px; align-items:center;
           }
           .ur-search input {
-            flex:1; padding:10px 14px; border-radius:10px;
+            flex:1; padding:10px 14px; border-radius:6px;
             border:1px solid rgba(148,163,184,.15);
             background:rgba(13,20,40,.5);
             color:var(--text); font-size:14px;
@@ -254,7 +259,7 @@ window.AsgardUserRequestsPage = (function(){
               <div style="text-align:center">
                 <div style="font-size:48px; margin-bottom:16px">🔑</div>
                 <div style="font-size:16px; margin-bottom:16px">${esc(u.name)}</div>
-                <div style="background:rgba(242,208,138,.15); padding:16px; border-radius:12px; margin-bottom:16px">
+                <div style="background:rgba(242,208,138,.15); padding:16px; border-radius:6px; margin-bottom:16px">
                   <div style="font-size:12px; color:var(--muted); margin-bottom:8px">Новый временный пароль:</div>
                   <div style="font-size:24px; font-weight:900; font-family:var(--mono); color:var(--gold); letter-spacing:2px">${result.tempPassword}</div>
                 </div>
@@ -338,7 +343,7 @@ window.AsgardUserRequestsPage = (function(){
           <div><label>Email</label><input id="cu_email" placeholder="user@company.ru"/></div>
           <div><label>Telegram Chat ID</label><input id="cu_telegram" placeholder="123456789"/></div>
         </div>
-        <div style="margin:12px 0; padding:12px; background:rgba(59,130,246,.1); border-radius:8px; font-size:12px; color:var(--muted)">
+        <div style="margin:12px 0; padding:12px; background:rgba(59,130,246,.1); border-radius:6px; font-size:12px; color:var(--muted)">
           💡 Чтобы узнать Telegram Chat ID, попросите сотрудника написать боту @asgard_crm_bot команду /start
         </div>
         <hr class="hr"/>
@@ -377,7 +382,7 @@ window.AsgardUserRequestsPage = (function(){
               <div style="font-size:48px; margin-bottom:16px">✅</div>
               <div style="font-size:18px; font-weight:700; margin-bottom:16px">${esc(name)}</div>
               <div style="margin-bottom:20px; color:var(--muted)">Роль: ${role}</div>
-              <div style="background:rgba(242,208,138,.15); padding:16px; border-radius:12px; margin-bottom:16px">
+              <div style="background:rgba(242,208,138,.15); padding:16px; border-radius:6px; margin-bottom:16px">
                 <div style="font-size:12px; color:var(--muted); margin-bottom:8px">Временный пароль:</div>
                 <div style="font-size:24px; font-weight:900; font-family:var(--mono); color:var(--gold); letter-spacing:2px">${result.tempPassword}</div>
               </div>

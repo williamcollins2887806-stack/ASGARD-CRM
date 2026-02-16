@@ -149,7 +149,7 @@ window.AsgardProxiesPage = (function(){
             position:relative;
             background: linear-gradient(135deg, rgba(13,20,40,.6) 0%, rgba(13,20,40,.4) 100%);
             border: 1px solid rgba(148,163,184,.15);
-            border-radius:18px;
+            border-radius:6px;
             padding:24px;
             cursor:pointer;
             transition: all .3s ease;
@@ -202,7 +202,7 @@ window.AsgardProxiesPage = (function(){
             margin-top:16px;
             padding:8px 14px;
             background: rgba(242,208,138,.15);
-            border-radius:10px;
+            border-radius:6px;
             font-size:12px;
             font-weight:700;
             color:var(--gold);
@@ -216,7 +216,7 @@ window.AsgardProxiesPage = (function(){
           .proxy-field label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
           .proxy-field input, .proxy-field textarea, .proxy-field select {
             padding:12px 14px;
-            border-radius:10px;
+            border-radius:6px;
             border:1px solid rgba(148,163,184,.2);
             background:rgba(13,20,40,.6);
             color:var(--text);
@@ -232,7 +232,7 @@ window.AsgardProxiesPage = (function(){
           .proxy-preview {
             background: rgba(255,255,255,.03);
             border:1px solid rgba(148,163,184,.15);
-            border-radius:12px;
+            border-radius:6px;
             padding:16px;
             margin-top:16px;
             font-size:13px;
@@ -359,7 +359,7 @@ window.AsgardProxiesPage = (function(){
         
         <div style="display:flex; gap:12px; flex-wrap:wrap">
           <button class="btn" id="btnPreviewProxy">👁 Предпросмотр</button>
-          <button class="btn" id="btnDownloadProxy" style="background:linear-gradient(135deg, rgba(34,197,94,.3), rgba(34,197,94,.15))">📥 Скачать .doc</button>
+          <button class="btn green" id="btnDownloadProxy">Скачать .doc</button>
         </div>
         
         <div id="proxyPreviewArea"></div>
@@ -422,19 +422,19 @@ window.AsgardProxiesPage = (function(){
       }
 
       return `
-        <h4>ДОВЕРЕННОСТЬ № ${data.number || '___'}</h4>
+        <h4>ДОВЕРЕННОСТЬ № ${esc(data.number || '___')}</h4>
         <p class="center">${formatDate(data.issue_date)}</p>
         <p class="center">г. Москва</p>
         <br/>
         <p><span class="bold">${companyName}</span>, ИНН 0000000000, ОГРН 0000000000000, в лице ${directorName}, действующего на основании Устава, настоящей доверенностью уполномочивает:</p>
         <br/>
-        <p class="bold">${data.fio || '_______________'}</p>
-        <p>паспорт: ${data.passport || '_______________'}</p>
-        ${data.address ? `<p>адрес: ${data.address}</p>` : ''}
-        ${data.position ? `<p>должность: ${data.position}</p>` : ''}
-        ${data.license ? `<p>в/у: ${data.license}</p>` : ''}
+        <p class="bold">${esc(data.fio || '_______________')}</p>
+        <p>паспорт: ${esc(data.passport || '_______________')}</p>
+        ${data.address ? `<p>адрес: ${esc(data.address)}</p>` : ''}
+        ${data.position ? `<p>должность: ${esc(data.position)}</p>` : ''}
+        ${data.license ? `<p>в/у: ${esc(data.license)}</p>` : ''}
         <br/>
-        <p>${powersText}.</p>
+        <p>${esc(powersText)}.</p>
         <br/>
         <p>Доверенность выдана сроком до ${formatDate(data.valid_until)} без права передоверия.</p>
         <br/>

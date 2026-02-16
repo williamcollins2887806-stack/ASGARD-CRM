@@ -85,13 +85,14 @@ window.AsgardAllWorksPage=(function(){
       const color=(settings.status_colors?.work||{})[st]||"#2a6cf1";
       const got = (Number(w.advance_received||0)+Number(w.balance_received||0))||0;
       const left = (w.contract_value||0) ? Math.max(0, Number(w.contract_value||0)-got) : 0;
-      const start = w.start_in_work_date || t?.work_start_plan || "—";
-      const end = w.end_fact || w.end_plan || t?.work_end_plan || "—";
+      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+      const start = fmtDate(w.start_in_work_date || t?.work_start_plan);
+      const end = fmtDate(w.end_fact || w.end_plan || t?.work_end_plan);
       return `<tr>
         <td><b>${esc(w.company||t?.customer_name||"")}</b><div class="help">${esc(w.work_title||t?.tender_title||"")}</div></td>
         <td>${esc(pm?pm.name:"—")}</td>
         <td><span class="pill" style="border-color:${esc(color)}">${esc(st)}</span></td>
-        <td>${esc(start)} → ${esc(end)}</td>
+        <td>${start} → ${end}</td>
         <td><div><b>${money(w.contract_value)}</b> ₽</div><div class="help">получено: ${money(got)} ₽ • должны: ${money(left)} ₽</div></td>
       </tr>`;
     }

@@ -192,7 +192,7 @@ window.AsgardSettingsPage = (function(){
               </div>
               <div>
                 <label>Пример следующего номера</label>
-                <div style="padding:10px;background:rgba(212,175,55,.15);border-radius:8px;font-family:monospace;color:#D4AF37;font-weight:600">
+                <div style="padding:10px;background:rgba(212,175,55,.15);border-radius:6px;font-family:monospace;color:#D4AF37;font-weight:600">
                   АС-ИСХ-${new Date().getFullYear()}-${String(app.correspondence_start_number ?? 1).padStart(6,'0')}
                 </div>
               </div>
@@ -222,6 +222,11 @@ window.AsgardSettingsPage = (function(){
               <div>
                 <label for="sla_rework">РП: срок доработки, рабочих дней</label>
                 <input id="sla_rework" type="number" min="0" step="1" value="${esc(String(sla.pm_rework_due_workdays ?? 1))}"/>
+              </div>
+              <div>
+                <label for="sla_reminder_del">Автоудаление напоминаний, часов</label>
+                <input id="sla_reminder_del" type="number" min="1" step="1" value="${esc(String(app.reminder_auto_delete_hours ?? 48))}"/>
+                <div class="help">Завершённые напоминания удаляются через N часов</div>
               </div>
               <div>
                 <label for="lim_pm">Лимит активных просчётов на 1 РП</label>
@@ -622,6 +627,9 @@ window.AsgardSettingsPage = (function(){
         tkp_followup_first_delay_days: Math.max(1, Math.round(num($("#tkp_followup_days")?.value, 3))),
       });
 
+      // Автоудаление напоминаний (часы)
+      nextApp.reminder_auto_delete_hours = Math.max(1, Math.round(num($("#sla_reminder_del")?.value, 48)));
+
       nextApp.limits = Object.assign({}, limits, {
         pm_active_calcs_limit: Math.max(1, Math.round(num($("#lim_pm").value, 6)))
       });
@@ -712,7 +720,8 @@ window.AsgardSettingsPage = (function(){
       // --- refs ---
       const nextRefs = Object.assign({}, refs);
       let tenderStatuses = parseLines($("#r_tender").value);
-      if(!tenderStatuses.find(s=>s.toLowerCase()==="новый")) tenderStatuses = ["Новый", ...tenderStatuses];
+      if(!tenderStatuses.find(s=>s==="Черновик")) tenderStatuses = ["Черновик", ...tenderStatuses];
+      if(!tenderStatuses.find(s=>s.toLowerCase()==="новый")) tenderStatuses.splice(1, 0, "Новый");
       nextRefs.tender_statuses = tenderStatuses;
       nextRefs.work_statuses = parseLines($("#r_work").value);
       nextRefs.reject_reasons = parseLines($("#r_rej").value);

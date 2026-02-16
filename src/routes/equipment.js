@@ -6,8 +6,8 @@
 async function equipmentRoutes(fastify, options) {
   const db = fastify.db;
   
-  // Роли с полным доступом к складу
-  const WAREHOUSE_ADMINS = ['ADMIN', 'WAREHOUSE', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+  // Роли с полным доступом к складу (M15: добавлен CHIEF_ENGINEER)
+  const WAREHOUSE_ADMINS = ['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
   const PM_ROLES = ['PM', 'MANAGER'];
   
   function canManageEquipment(role) {
@@ -19,36 +19,45 @@ async function equipmentRoutes(fastify, options) {
   }
   
   function hasFullAccess(role) {
-    return ['ADMIN', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
+    return ['ADMIN', 'CHIEF_ENGINEER', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
   }
   
   // ============================================
   // КАТЕГОРИИ
+  // SECURITY: Добавлен auth (HIGH-1)
   // ============================================
-  
-  fastify.get('/categories', async () => {
+
+  fastify.get('/categories', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
     const result = await db.query(`
       SELECT * FROM equipment_categories ORDER BY sort_order, name
     `);
     return { success: true, categories: result.rows };
   });
-  
+
   // ============================================
   // ОБЪЕКТЫ
+  // SECURITY: Добавлен auth (HIGH-1)
   // ============================================
-  
-  fastify.get('/objects', async () => {
+
+  fastify.get('/objects', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
     const result = await db.query(`
       SELECT * FROM objects WHERE is_active = true ORDER BY name
     `);
     return { success: true, objects: result.rows };
   });
-  
+
   // ============================================
   // СКЛАДЫ
+  // SECURITY: Добавлен auth (HIGH-1)
   // ============================================
-  
-  fastify.get('/warehouses', async () => {
+
+  fastify.get('/warehouses', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
     const result = await db.query(`
       SELECT w.*, u.name as responsible_name
       FROM warehouses w
@@ -232,34 +241,37 @@ async function equipmentRoutes(fastify, options) {
   // СОЗДАНИЕ ОБОРУДОВАНИЯ
   // ============================================
   
+  // SECURITY B3: Role-based access
   fastify.post('/', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
     const user = request.user;
     
-    if (!isWarehouseAdmin(user.role)) {
-      return reply.code(403).send({ success: false, message: 'Нет прав на создание оборудования' });
-    }
-    
     const {
-      name, category_id, serial_number, barcode,
+      name, category_id, serial_number, barcode, inventory_number,
       purchase_price, purchase_date, invoice_id,
       quantity = 1, unit = 'шт',
       warranty_end, maintenance_interval_days,
       useful_life_months = 60, salvage_value = 0, auto_write_off = true,
       brand, model, specifications, notes
     } = request.body;
-    
-    // Генерируем инвентарный номер
-    let inventoryNumber;
-    try {
-      const catResult = await db.query('SELECT code FROM equipment_categories WHERE id = $1', [category_id]);
-      const catCode = catResult.rows[0]?.code || 'MISC';
-      
-      const invResult = await db.query('SELECT generate_inventory_number($1) as inv_num', [catCode]);
-      inventoryNumber = invResult.rows[0].inv_num;
-    } catch(e) {
-      inventoryNumber = 'INV-' + Date.now();
+
+    if (!name) {
+      return reply.code(400).send({ success: false, message: 'Поле name обязательно' });
+    }
+
+    // Используем переданный инвентарный номер или генерируем новый
+    let inventoryNumber = inventory_number || null;
+    if (!inventoryNumber) {
+      try {
+        const catResult = await db.query('SELECT code FROM equipment_categories WHERE id = $1', [category_id]);
+        const catCode = catResult.rows[0]?.code || 'MISC';
+
+        const invResult = await db.query('SELECT generate_inventory_number($1) as inv_num', [catCode]);
+        inventoryNumber = invResult.rows[0].inv_num;
+      } catch(e) {
+        inventoryNumber = 'INV-' + Date.now();
+      }
     }
     
     // Получаем главный склад
@@ -368,15 +380,12 @@ async function equipmentRoutes(fastify, options) {
   // РЕДАКТИРОВАНИЕ
   // ============================================
   
+  // SECURITY B3: Role-based access
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
     const { id } = request.params;
     const user = request.user;
-    
-    if (!isWarehouseAdmin(user.role)) {
-      return reply.code(403).send({ success: false, message: 'Нет прав на редактирование' });
-    }
     
     const {
       name, category_id, serial_number, barcode,
@@ -953,50 +962,64 @@ async function equipmentRoutes(fastify, options) {
   }, async (request, reply) => {
     const { id } = request.params;
     const user = request.user;
-    
+
     if (!isWarehouseAdmin(user.role)) {
       return reply.code(403).send({ success: false, message: 'Нет прав' });
     }
-    
-    const { maintenance_type, description, cost, spare_parts, performed_by, contractor, started_at, completed_at, next_date, invoice_id, notes } = request.body;
-    
-    const result = await db.query(`
-      INSERT INTO equipment_maintenance (
-        equipment_id, maintenance_type, description, cost, spare_parts,
-        performed_by, contractor, started_at, completed_at, next_date,
-        invoice_id, notes, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      RETURNING *
-    `, [
-      id, maintenance_type, description, cost, spare_parts ? JSON.stringify(spare_parts) : null,
-      performed_by, contractor, started_at, completed_at, next_date,
-      invoice_id, notes, user.id
-    ]);
-    
-    // Обновляем дату следующего ТО
-    if (next_date) {
-      await db.query('UPDATE equipment SET next_maintenance = $1 WHERE id = $2', [next_date, id]);
+
+    const body = request.body || {};
+    const { maintenance_type, type: bodyType, description, cost, performed_by, performed_at, next_maintenance, started_at, completed_at } = body;
+
+    const maintenanceType = maintenance_type || bodyType;
+    if (!maintenanceType) {
+      return reply.code(400).send({ success: false, message: 'maintenance_type обязателен' });
     }
-    
-    // Если это ремонт — меняем статус
-    if (maintenance_type === 'repair' && !completed_at) {
-      await db.query('UPDATE equipment SET status = $1 WHERE id = $2', ['repair', id]);
-    } else if (maintenance_type === 'repair' && completed_at) {
-      await db.query('UPDATE equipment SET status = $1 WHERE id = $2', ['on_warehouse', id]);
+
+    try {
+      const result = await db.query(`
+        INSERT INTO equipment_maintenance (
+          equipment_id, maintenance_type, description, cost,
+          performed_by, started_at, completed_at, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING *
+      `, [
+        id, maintenanceType, description || null, cost || null,
+        performed_by || null, started_at || performed_at || null, completed_at || null, user.id
+      ]);
+
+      // Обновляем дату следующего ТО
+      if (next_maintenance) {
+        await db.query('UPDATE equipment SET next_maintenance = $1 WHERE id = $2', [next_maintenance, id]);
+      }
+
+      // Если это ремонт — меняем статус
+      if (maintenanceType === 'repair') {
+        await db.query('UPDATE equipment SET status = $1 WHERE id = $2', ['repair', id]);
+      }
+
+      return { success: true, maintenance: result.rows[0] };
+    } catch (err) {
+      fastify.log.error(err, 'Maintenance create error');
+      const code = err.code === '23503' || err.code === '23502' || err.code === '22001' || err.code === '42703' ? 400 : 500;
+      return reply.code(code).send({ success: false, message: err.message || 'Unknown error' });
     }
-    
-    return { success: true, maintenance: result.rows[0] };
   });
   
   // ============================================
   // ОБОРУДОВАНИЕ СОТРУДНИКА
   // ============================================
   
+  // SECURITY: IDOR fix — only self or privileged roles
   fastify.get('/by-holder/:holderId', {
     preHandler: [fastify.authenticate]
-  }, async (request) => {
+  }, async (request, reply) => {
     const { holderId } = request.params;
-    
+    const userRole = request.user.role;
+    const privileged = ['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'HEAD_PM', 'DIRECTOR_GEN'].includes(userRole);
+    if (String(request.user.id) !== String(holderId) && !privileged) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+
     const result = await db.query(`
       SELECT e.*, 
         c.name as category_name, c.icon as category_icon,
@@ -1282,6 +1305,71 @@ async function equipmentRoutes(fastify, options) {
     `, [warehouseId, condition_after, equipment_id]);
     
     return { success: true, message: 'Ремонт завершён, оборудование на складе' };
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // M15: Аналитика склада для главного инженера
+  // ═══════════════════════════════════════════════════════════════
+
+  fastify.get('/analytics/by-pm', {
+    preHandler: [fastify.requireRoles(['CHIEF_ENGINEER', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    // Оборудование по каждому РП (current_holder_id)
+    const byPm = await db.query(`
+      SELECT
+        u.id as pm_id,
+        u.name as pm_name,
+        COUNT(e.id) as equipment_count,
+        COALESCE(SUM(e.book_value), 0) as total_value,
+        COUNT(e.id) FILTER (WHERE e.status = 'issued') as issued,
+        COUNT(e.id) FILTER (WHERE e.status = 'repair') as in_repair,
+        json_agg(json_build_object(
+          'id', e.id,
+          'name', e.name,
+          'inventory_number', e.inventory_number,
+          'category_id', e.category_id,
+          'status', e.status,
+          'book_value', e.book_value,
+          'serial_number', e.serial_number
+        ) ORDER BY e.name) FILTER (WHERE e.id IS NOT NULL) as equipment_list
+      FROM users u
+      LEFT JOIN equipment e ON e.current_holder_id = u.id AND e.status IN ('issued', 'repair')
+      WHERE u.role IN ('PM', 'HEAD_PM') AND u.is_active = true
+      GROUP BY u.id, u.name
+      HAVING COUNT(e.id) > 0
+      ORDER BY total_value DESC
+    `);
+
+    // Движение за последние 30 дней
+    const movements = await db.query(`
+      SELECT
+        em.movement_type,
+        COUNT(*) as count,
+        TO_CHAR(em.created_at, 'YYYY-MM-DD') as date
+      FROM equipment_movements em
+      WHERE em.created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY em.movement_type, TO_CHAR(em.created_at, 'YYYY-MM-DD')
+      ORDER BY date
+    `);
+
+    // Оборудование требующее ТО
+    const needsMaintenance = await db.query(`
+      SELECT e.id, e.name, e.inventory_number, e.next_maintenance,
+        u.name as holder_name
+      FROM equipment e
+      LEFT JOIN users u ON e.current_holder_id = u.id
+      WHERE e.next_maintenance IS NOT NULL
+        AND e.next_maintenance <= NOW() + INTERVAL '30 days'
+        AND e.status != 'written_off'
+      ORDER BY e.next_maintenance
+      LIMIT 50
+    `);
+
+    return {
+      byPm: byPm.rows,
+      movements: movements.rows,
+      needsMaintenance: needsMaintenance.rows
+    };
   });
 }
 

@@ -122,7 +122,7 @@
       transport, logistics_total: logisticsTotal, ppe_total: ppeTotal,
       base_cost: baseCost, overhead, overhead_pct: s.overhead_pct || 10, cost_total: costTotal,
       margin_pct: marginPct, price_no_vat: priceNoVat, profit_before_tax: profitBeforeTax,
-      profit_tax, net_profit: netProfit, vat_pct: s.vat_pct || 20, price_with_vat: priceWithVat,
+      profit_tax: profitTax, net_profit: netProfit, vat_pct: s.vat_pct || 20, price_with_vat: priceWithVat,
       profit_per_day: profitPerDay, min_profit: s.profit_per_day_min || 20000, norm_profit: s.profit_per_day_norm || 25000, status
     };
   }
@@ -352,23 +352,23 @@
       
       const html = `<style>
         .calc-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}
-        .calc-tabs .tab{padding:8px 12px;border-radius:8px;background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.5);cursor:pointer;font-size:12px}
+        .calc-tabs .tab{padding:8px 12px;border-radius:6px;background:rgba(13,20,40,.5);border:none;cursor:pointer;font-size:12px}
         .calc-tabs .tab.active{background:rgba(42,108,241,.3);border-color:var(--accent)}
         .calc-tabs .tab.warn{border-color:rgba(245,158,11,.6)}
-        .csec{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.5);border-radius:12px;padding:16px;margin-bottom:16px}
+        .csec{background:rgba(13,20,40,.4);border:none;border-radius:6px;padding:16px;margin-bottom:16px}
         .csec h3{margin:0 0 12px;font-size:14px;color:var(--gold)}
         .cbl{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0}
         .cbl input{width:18px;height:18px}
         .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
         .fr{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
         .tbl{width:100%;border-collapse:collapse}
-        .tbl th,.tbl td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(42,59,102,.3)}
+        .tbl th,.tbl td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.04)}
         .tbl th{font-size:11px;color:var(--muted);font-weight:600}
         .tbl tfoot td{font-weight:600;background:rgba(42,108,241,.1)}
         .kpi3,.kpi4{display:grid;gap:12px;margin-top:12px}
         .kpi3{grid-template-columns:repeat(3,1fr)}
         .kpi4{grid-template-columns:repeat(4,1fr)}
-        .k{background:rgba(13,20,40,.5);border-radius:10px;padding:12px;text-align:center}
+        .k{background:rgba(13,20,40,.5);border-radius:6px;padding:12px;text-align:center}
         .k .t{font-size:11px;color:var(--muted)}
         .k .v{font-size:18px;font-weight:700;color:var(--gold)}
         .mini{padding:4px 8px;font-size:11px}
@@ -376,7 +376,7 @@
       <div class="help" style="margin-bottom:12px"><b>ᚱ ${CALC_NAME}</b> — ${esc(st.customer_name)}</div>
       ${tabs(tab)}
       <div id="tabContent">${content}</div>
-      <div style="margin-top:16px;padding:12px;background:rgba(13,20,40,.5);border-radius:10px;display:flex;justify-content:space-between">
+      <div style="margin-top:16px;padding:12px;background:rgba(13,20,40,.5);border-radius:6px;display:flex;justify-content:space-between">
         <div><span style="color:var(--muted)">Цена с НДС:</span> <b style="font-size:18px;color:var(--gold)">${money(sum.price_with_vat)}</b></div>
         <div><span style="color:var(--muted)">Прибыль/чел-день:</span> <b style="font-size:18px;color:${sum.status==='green'?'#22c55e':sum.status==='yellow'?'#f59e0b':'#e03a4a'}">${money(sum.profit_per_day)}</b></div>
       </div>`;
@@ -446,17 +446,483 @@
       };
       const exportBtn = $('#exportBtn'); if(exportBtn) exportBtn.onclick = () => {
         const sum = compute(st, s);
-        const txt = `КАЛЬКУЛЯТОР v2\n==============\nЗаказчик: ${st.customer_name}\nОбъект: ${st.tender_title}\nГород: ${st.city} (${st.distance_km} км)\nБригада: ${sum.people_count} чел\nСроки: ${sum.work_days} дней\nСебестоимость: ${money(sum.cost_total)}\nЦена с НДС: ${money(sum.price_with_vat)}\nЧистая прибыль: ${money(sum.net_profit)}\nПрибыль/чел-день: ${money(sum.profit_per_day)} (${sum.status.toUpperCase()})\nДата: ${new Date().toLocaleDateString('ru-RU')}`;
-        const blob = new Blob([txt], { type: 'text/plain' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `calc_${st.tender_id||'new'}.txt`; a.click();
-        toast("Экспорт", "Файл скачан");
+
+        // Проверяем наличие SheetJS (XLSX)
+        if (typeof XLSX === 'undefined') {
+          // Fallback на txt если xlsx не загружен
+          const txt = `КАЛЬКУЛЯТОР v2\n==============\nЗаказчик: ${st.customer_name}\nОбъект: ${st.tender_title}\nГород: ${st.city} (${st.distance_km} км)\nБригада: ${sum.people_count} чел\nСроки: ${sum.work_days} дней\nСебестоимость: ${money(sum.cost_total)}\nЦена с НДС: ${money(sum.price_with_vat)}\nЧистая прибыль: ${money(sum.net_profit)}\nПрибыль/чел-день: ${money(sum.profit_per_day)} (${sum.status.toUpperCase()})\nДата: ${new Date().toLocaleDateString('ru-RU')}`;
+          const blob = new Blob([txt], { type: 'text/plain' });
+          const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+          a.download = `calc_${st.tender_id||'new'}.txt`; a.click();
+          toast("Экспорт", "Файл скачан (TXT)");
+          return;
+        }
+
+        // Excel-экспорт через SheetJS
+        try {
+          const wb = XLSX.utils.book_new();
+          const dateNow = new Date().toLocaleDateString('ru-RU');
+          const wt = s.work_types?.find(w => w.id === st.work_type_id);
+
+          // === Хелпер: стиль ячейки ===
+          function cellStyle(ws, ref, style) {
+            if (!ws[ref]) ws[ref] = { v: '' };
+            ws[ref].s = style;
+          }
+          const HEADER_FILL = { fgColor: { rgb: '1A2D52' } };
+          const HEADER_FONT = { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' };
+          const TITLE_FONT = { bold: true, sz: 16, name: 'Calibri' };
+          const COMPANY_FONT = { bold: true, sz: 14, name: 'Calibri' };
+          const TOTAL_FONT = { bold: true, sz: 12, name: 'Calibri' };
+          const BORDER_THIN = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+          const BORDER_DOUBLE_TOP = { top: { style: 'double' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+          const ALT_FILL = { fgColor: { rgb: 'F0F4FA' } };
+          const FMT_NUM = '#,##0';
+
+          // === Сумма прописью (рус.) ===
+          function sumInWords(n) {
+            n = Math.round(Math.abs(n));
+            if (n === 0) return 'Ноль рублей 00 копеек';
+            const ones = ['', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять',
+              'десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать',
+              'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать'];
+            const tens = ['', '', 'двадцать', 'тридцать', 'сорок', 'пятьдесят', 'шестьдесят', 'семьдесят', 'восемьдесят', 'девяносто'];
+            const hunds = ['', 'сто', 'двести', 'триста', 'четыреста', 'пятьсот', 'шестьсот', 'семьсот', 'восемьсот', 'девятьсот'];
+            function group(num, fem) {
+              let r = '';
+              const h = Math.floor(num / 100), t = Math.floor((num % 100) / 10), o = num % 10;
+              if (h) r += hunds[h] + ' ';
+              if (t >= 2) { r += tens[t] + ' '; if (o) r += (fem && o <= 2 ? (o === 1 ? 'одна' : 'две') : ones[o]) + ' '; }
+              else if (num % 100 >= 1 && num % 100 <= 19) { r += (fem && num % 100 <= 2 ? (num % 100 === 1 ? 'одна' : 'две') : ones[num % 100]) + ' '; }
+              return r;
+            }
+            function decline(n, f1, f2, f5) {
+              const m = n % 100;
+              if (m >= 11 && m <= 19) return f5;
+              const d = m % 10;
+              if (d === 1) return f1;
+              if (d >= 2 && d <= 4) return f2;
+              return f5;
+            }
+            let result = '';
+            const billions = Math.floor(n / 1e9);
+            const millions = Math.floor((n % 1e9) / 1e6);
+            const thousands = Math.floor((n % 1e6) / 1e3);
+            const remainder = n % 1e3;
+            if (billions) result += group(billions, false) + decline(billions, 'миллиард ', 'миллиарда ', 'миллиардов ');
+            if (millions) result += group(millions, false) + decline(millions, 'миллион ', 'миллиона ', 'миллионов ');
+            if (thousands) result += group(thousands, true) + decline(thousands, 'тысяча ', 'тысячи ', 'тысяч ');
+            if (remainder) result += group(remainder, false);
+            result = result.trim();
+            result += ' ' + decline(remainder || (thousands ? thousands : 0), 'рубль', 'рубля', 'рублей') + ' 00 копеек';
+            return result.charAt(0).toUpperCase() + result.slice(1);
+          }
+
+          // === Хелпер: применить стили к диапазону ===
+          function applyStyles(ws, data) {
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            for (let R = range.s.r; R <= range.e.r; R++) {
+              for (let C = range.s.c; C <= range.e.c; C++) {
+                const addr = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+                if (!ws[addr].s) ws[addr].s = {};
+                // Numbers formatting
+                if (typeof ws[addr].v === 'number' && ws[addr].v > 100) {
+                  ws[addr].z = FMT_NUM;
+                }
+              }
+            }
+          }
+
+          // ══════════════════════════════════════════════
+          // Лист 1: КАЛЬКУЛЯЦИЯ РАБОТ (основной)
+          // ══════════════════════════════════════════════
+          const mainData = [
+            ['ООО "Асгард-Сервис"', '', '', '', '', ''],
+            ['Большая Почтовая ул., д. 55/59, стр. 1, помещ. №37, Москва, 105082', '', '', '', '', ''],
+            ['Тел.: +7 (499) 322-30-62  |  ИНН: 7736244785  |  КПП: 770101001', '', '', '', '', ''],
+            [],
+            ['КАЛЬКУЛЯЦИЯ РАБОТ', '', '', '', '', ''],
+            [],
+            ['Объект:', st.tender_title || '—', '', 'Заказчик:', st.customer_name || '—', ''],
+            ['Вид работ:', wt?.name || '—', '', 'Дата:', dateNow, ''],
+            [],
+            ['№', 'Наименование', 'Ед.изм.', 'Кол-во', 'Цена', 'Сумма'],
+            [1, 'ФОТ (работа + подготовка + демобилизация)', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.payroll_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.payroll_total)],
+            [2, 'Налоги на ФОТ (' + (s.fot_tax_pct || 50) + '%)', 'руб', 1, Math.round(sum.fot_tax), Math.round(sum.fot_tax)],
+            [3, 'Суточные', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.per_diem_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.per_diem_total)],
+            [4, 'Проживание', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.lodging_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.lodging_total)],
+            [5, 'Мобилизация/демобилизация персонала', 'чел', sum.people_count * 2, Math.round(sum.mobilization_total / Math.max(1, sum.people_count * 2)), Math.round(sum.mobilization_total)],
+            [6, 'Химические составы', 'компл', 1, Math.round(sum.chem_total), Math.round(sum.chem_total)],
+            [7, 'Расходные материалы', 'компл', 1, Math.round(sum.consumables), Math.round(sum.consumables)],
+            [8, 'Оборудование', 'компл', 1, Math.round(sum.equip_total), Math.round(sum.equip_total)],
+            [9, 'Логистика (' + (sum.transport?.name || 'авто') + ', ' + st.distance_km + ' км × 2)', 'рейс', 1, Math.round(sum.logistics_total), Math.round(sum.logistics_total)],
+            [10, 'СИЗ', 'чел', sum.people_count, Math.round(sum.ppe_total / Math.max(1, sum.people_count)), Math.round(sum.ppe_total)],
+            [11, 'Накладные расходы (' + sum.overhead_pct + '%)', 'руб', 1, Math.round(sum.overhead), Math.round(sum.overhead)],
+            [],
+            ['', 'ПОДЫТОГ (без НДС):', '', '', '', Math.round(sum.price_no_vat)],
+            ['', 'НДС ' + sum.vat_pct + '%:', '', '', '', Math.round(sum.price_with_vat - sum.price_no_vat)],
+            ['', 'ИТОГО С НДС:', '', '', '', Math.round(sum.price_with_vat)],
+            [],
+            ['Сумма прописью: ' + sumInWords(Math.round(sum.price_with_vat))],
+            [],
+            ['Расчёт подготовил: ___________________ / ______________________ /'],
+            ['', '', '', '', '', 'Дата: ' + dateNow]
+          ];
+
+          const wsMain = XLSX.utils.aoa_to_sheet(mainData);
+          wsMain['!cols'] = [{ wch: 5 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 18 }];
+          wsMain['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },   // Company name
+            { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },   // Address
+            { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },   // Phone/INN
+            { s: { r: 4, c: 0 }, e: { r: 4, c: 5 } },   // Title
+            { s: { r: 26, c: 0 }, e: { r: 26, c: 5 } },  // Sum in words
+            { s: { r: 28, c: 0 }, e: { r: 28, c: 5 } },  // Signature
+          ];
+          // Apply styles
+          const styleCells = (ws, row, cols, style) => {
+            cols.forEach(c => {
+              const ref = XLSX.utils.encode_cell({ r: row, c });
+              if (!ws[ref]) ws[ref] = { v: '', t: 's' };
+              ws[ref].s = style;
+            });
+          };
+          // Company header
+          styleCells(wsMain, 0, [0], { font: COMPANY_FONT, alignment: { horizontal: 'center' } });
+          styleCells(wsMain, 1, [0], { font: { sz: 10, color: { rgb: '666666' } }, alignment: { horizontal: 'center' } });
+          styleCells(wsMain, 2, [0], { font: { sz: 10, color: { rgb: '666666' } }, alignment: { horizontal: 'center' } });
+          // Title
+          styleCells(wsMain, 4, [0], { font: TITLE_FONT, alignment: { horizontal: 'center' } });
+          // Table header row (row 9)
+          [0,1,2,3,4,5].forEach(c => {
+            const ref = XLSX.utils.encode_cell({ r: 9, c });
+            if (!wsMain[ref]) wsMain[ref] = { v: '', t: 's' };
+            wsMain[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN, alignment: { horizontal: 'center', wrapText: true } };
+          });
+          // Data rows (10-20) — borders + alternating fill
+          for (let r = 10; r <= 20; r++) {
+            for (let c = 0; c <= 5; c++) {
+              const ref = XLSX.utils.encode_cell({ r, c });
+              if (!wsMain[ref]) wsMain[ref] = { v: '', t: 's' };
+              wsMain[ref].s = { border: BORDER_THIN, alignment: c >= 3 ? { horizontal: 'right' } : {} };
+              if ((r - 10) % 2 === 1) wsMain[ref].s.fill = ALT_FILL;
+              if (c >= 3 && typeof wsMain[ref].v === 'number') wsMain[ref].z = FMT_NUM;
+            }
+          }
+          // Totals rows (22-24) — bold, double border top
+          [22, 23, 24].forEach((r, i) => {
+            const ref5 = XLSX.utils.encode_cell({ r, c: 5 });
+            if (wsMain[ref5]) {
+              wsMain[ref5].s = { font: i === 2 ? { bold: true, sz: 14 } : TOTAL_FONT, border: i === 0 ? BORDER_DOUBLE_TOP : BORDER_THIN, alignment: { horizontal: 'right' } };
+              wsMain[ref5].z = FMT_NUM;
+            }
+            const ref1 = XLSX.utils.encode_cell({ r, c: 1 });
+            if (wsMain[ref1]) wsMain[ref1].s = { font: i === 2 ? { bold: true, sz: 14 } : TOTAL_FONT, alignment: { horizontal: 'right' } };
+          });
+          // Print settings
+          wsMain['!print'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
+          XLSX.utils.book_append_sheet(wb, wsMain, 'Калькуляция');
+
+          // ══════════════════════════════════════════════
+          // Лист 2: Детали (статьи расходов)
+          // ══════════════════════════════════════════════
+          const detailsData = [
+            ['Статья расходов', 'Сумма, руб', 'Примечание'],
+            ['ФОТ (работа + подготовка + демоб.)', sum.payroll_total, `${sum.people_count} чел x ${sum.work_days} дней работы`],
+            ['Налоги на ФОТ', sum.fot_tax, `${s.fot_tax_pct || 50}%`],
+            ['Суточные', sum.per_diem_total, `${sum.total_days} дней`],
+            ['Проживание', sum.lodging_total, st.lodging_type],
+            ['Мобилизация', sum.mobilization_total, sum.mobilization_type],
+            ['Химия', sum.chem_total, `${st.chemicals?.length || 0} позиций`],
+            ['Расходные материалы', sum.consumables, `${s.consumables_pct || 5}%`],
+            ['Оборудование', sum.equip_total, `${st.equipment?.length || 0} позиций`],
+            ['Логистика', sum.logistics_total, `${sum.transport?.name || 'авто'}, ${st.distance_km * 2} км`],
+            ['СИЗ', sum.ppe_total, `${sum.people_count} чел`],
+            ['Накладные', sum.overhead, `${sum.overhead_pct}%`],
+            [],
+            ['ИТОГО себестоимость:', sum.cost_total, ''],
+            ['Маржа:', sum.margin_pct + '%', ''],
+            ['Цена без НДС:', sum.price_no_vat, ''],
+            ['НДС:', sum.price_with_vat - sum.price_no_vat, `${sum.vat_pct}%`],
+            ['ЦЕНА С НДС:', sum.price_with_vat, '']
+          ];
+          const wsDetails = XLSX.utils.aoa_to_sheet(detailsData);
+          wsDetails['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 30 }];
+          // Header styling
+          [0,1,2].forEach(c => {
+            const ref = XLSX.utils.encode_cell({ r: 0, c });
+            if (wsDetails[ref]) wsDetails[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN };
+          });
+          XLSX.utils.book_append_sheet(wb, wsDetails, 'Детали');
+
+          // Лист 3: Бригада
+          const crewData = [['Роль', 'Кол-во', 'Ставка/день', 'Суточные', 'Итого за работу']];
+          for (const c of (st.crew || [])) {
+            const role = s.roles?.find(r => r.id === c.role_id);
+            if (!role) continue;
+            const rate = window.calcRateWithSurcharges ? window.calcRateWithSurcharges(c.role_id, st.surcharges, s) : (s.base_rate * role.coef);
+            const perDiem = role.per_diem || 1000;
+            const total = rate * c.count * sum.work_days + perDiem * c.count * sum.total_days;
+            crewData.push([role.name || c.role_id, c.count, rate, perDiem, total]);
+          }
+          if (crewData.length > 1) {
+            const wsCrew = XLSX.utils.aoa_to_sheet(crewData);
+            wsCrew['!cols'] = [{ wch: 25 }, { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 18 }];
+            [0,1,2,3,4].forEach(c => {
+              const ref = XLSX.utils.encode_cell({ r: 0, c });
+              if (wsCrew[ref]) wsCrew[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN };
+            });
+            XLSX.utils.book_append_sheet(wb, wsCrew, 'Бригада');
+          }
+
+          // Лист 4: Параметры
+          const paramsData = [['Параметр', 'Значение']];
+          if (st.params) {
+            for (const [key, val] of Object.entries(st.params)) {
+              if (val !== null && val !== undefined && val !== '') {
+                paramsData.push([key, val]);
+              }
+            }
+          }
+          paramsData.push(['margin_pct', st.margin_pct]);
+          paramsData.push(['prep_days', st.prep_days]);
+          paramsData.push(['work_days', st.work_days]);
+          paramsData.push(['demob_days', st.demob_days]);
+          paramsData.push(['distance_km', st.distance_km]);
+          paramsData.push(['transport_id', st.transport_id]);
+          paramsData.push(['lodging_type', st.lodging_type]);
+          if (st.assumptions) paramsData.push(['assumptions', st.assumptions]);
+
+          const wsParams = XLSX.utils.aoa_to_sheet(paramsData);
+          wsParams['!cols'] = [{ wch: 25 }, { wch: 30 }];
+          [0,1].forEach(c => {
+            const ref = XLSX.utils.encode_cell({ r: 0, c });
+            if (wsParams[ref]) wsParams[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN };
+          });
+          XLSX.utils.book_append_sheet(wb, wsParams, 'Параметры');
+
+          // Генерация имени файла
+          const objName = (st.tender_title || 'объект').replace(/[^\w\u0400-\u04FF\s-]/g, '').substring(0, 30).trim();
+          const filename = `Калькуляция_${objName}_${dateNow.replace(/\./g, '-')}.xlsx`;
+
+          // Скачивание
+          XLSX.writeFile(wb, filename);
+          toast("Экспорт", "Excel-файл скачан");
+        } catch (err) {
+          console.error('Excel export error:', err);
+          toast("Ошибка", "Не удалось экспортировать в Excel", "err");
+        }
       };
     }
     
     render();
   }
   
-  window.AsgardCalcV2 = { open, compute, getSettings };
+  /**
+   * Рендер калькулятора как автономной страницы (не модалка).
+   * Используется маршрутом /calculator.
+   */
+  async function renderPage(container) {
+    const s = await getSettings();
+    let st = createState(null);
+    let tab = "object";
+
+    function render() {
+      st = autoFill(st, s);
+      const sum = compute(st, s);
+
+      let content = '';
+      switch(tab) {
+        case 'object': content = tabObject(st, s); break;
+        case 'params': content = tabParams(st, s); break;
+        case 'crew': content = tabCrew(st, s); break;
+        case 'time': content = tabTime(st, s); break;
+        case 'chem': content = tabChem(st, s); break;
+        case 'equip': content = tabEquip(st, s); break;
+        case 'logistics': content = tabLogistics(st, s, sum); break;
+        case 'totals': content = tabTotals(st, s, sum); break;
+      }
+
+      container.innerHTML = `
+        <style>
+          .calc-page{max-width:1000px;margin:0 auto}
+          .calc-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}
+          .calc-tabs .tab{padding:8px 12px;border-radius:6px;background:rgba(13,20,40,.5);border:none;cursor:pointer;font-size:12px}
+          .calc-tabs .tab.active{background:rgba(42,108,241,.3);border-color:var(--accent)}
+          .calc-tabs .tab.warn{border-color:rgba(245,158,11,.6)}
+          .csec{background:rgba(13,20,40,.4);border:none;border-radius:6px;padding:16px;margin-bottom:16px}
+          .csec h3{margin:0 0 12px;font-size:14px;color:var(--gold)}
+          .cbl{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0}
+          .cbl input{width:18px;height:18px}
+          .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+          .fr{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+          .tbl{width:100%;border-collapse:collapse}
+          .tbl th,.tbl td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.04)}
+          .tbl th{font-size:11px;color:var(--muted);font-weight:600}
+          .tbl tfoot td{font-weight:600;background:rgba(42,108,241,.1)}
+          .kpi3,.kpi4{display:grid;gap:12px;margin-top:12px}
+          .kpi3{grid-template-columns:repeat(3,1fr)}
+          .kpi4{grid-template-columns:repeat(4,1fr)}
+          .k{background:rgba(13,20,40,.5);border-radius:6px;padding:12px;text-align:center}
+          .k .t{font-size:11px;color:var(--muted)}
+          .k .v{font-size:18px;font-weight:700;color:var(--gold)}
+          .mini{padding:4px 8px;font-size:11px}
+          .calc-bottom-bar{margin-top:16px;padding:16px;background:rgba(13,20,40,.5);border-radius:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+          @media(max-width:768px){
+            .calc-bottom-bar{flex-direction:column;text-align:center}
+            .kpi3{grid-template-columns:1fr}
+            .kpi4{grid-template-columns:repeat(2,1fr)}
+          }
+        </style>
+        <div class="calc-page">
+          <div class="help" style="margin-bottom:12px">
+            <b>ᚱ Рунический Калькулятор</b> — автономный расчёт стоимости работ
+          </div>
+          ${tabs(tab)}
+          <div id="tabContent">${content}</div>
+          <div class="calc-bottom-bar">
+            <div>
+              <span style="color:var(--muted)">Цена с НДС:</span>
+              <b style="font-size:18px;color:var(--gold)">${money(sum.price_with_vat)}</b>
+            </div>
+            <div>
+              <span style="color:var(--muted)">Прибыль/чел-день:</span>
+              <b style="font-size:18px;color:${sum.status==='green'?'#22c55e':sum.status==='yellow'?'#f59e0b':'#e03a4a'}">${money(sum.profit_per_day)}</b>
+            </div>
+          </div>
+        </div>`;
+
+      bindPage();
+    }
+
+    function bindPage() {
+      $$('.calc-tabs .tab').forEach(btn => btn.onclick = () => { tab = btn.dataset.tab; render(); });
+
+      // Object tab
+      const wt = $('#c_wt'); if(wt) wt.onchange = () => { st.work_type_id = wt.value; st.params = {}; st.crew_manual = st.days_manual = st.chem_manual = st.equip_manual = false; render(); };
+      const city = $('#c_city'); if(city) {
+        city.oninput = () => { st.city = city.value; if(window.findCity){ const dl=$('#citylist'); if(dl) dl.innerHTML = window.findCity(city.value).map(c=>`<option value="${c.name}">${c.name} (${c.km} км)</option>`).join(''); } };
+        city.onchange = () => { if(window.getCityDistance){ const km = window.getCityDistance(city.value); if(km!==null){ st.distance_km = km; const inp=$('#c_km'); if(inp) inp.value = km; } } };
+      }
+      const km = $('#c_km'); if(km) km.oninput = () => { st.distance_km = num(km.value); };
+      $$('[data-cond]').forEach(cb => cb.onchange = () => { const id = cb.dataset.cond; if(cb.checked){ if(!st.conditions.includes(id)) st.conditions.push(id); if(!st.surcharges.includes(id)) st.surcharges.push(id); } else { st.conditions = st.conditions.filter(x=>x!==id); st.surcharges = st.surcharges.filter(x=>x!==id); } });
+      const assumptions = $('#c_assumptions'); if(assumptions) assumptions.oninput = () => { st.assumptions = assumptions.value; };
+
+      // Params tab
+      $$('[data-p]').forEach(inp => inp.oninput = () => { st.params[inp.dataset.p] = inp.type==='number' ? num(inp.value) : inp.value; });
+      const autoBtn = $('#autoBtn'); if(autoBtn) autoBtn.onclick = () => { st.crew_manual = st.days_manual = st.chem_manual = st.equip_manual = false; render(); toast("Авто","Пересчитано"); };
+
+      // Crew tab
+      const crewMan = $('#crewMan'); if(crewMan) crewMan.onchange = () => { st.crew_manual = crewMan.checked; };
+      $$('[data-ci]').forEach(inp => inp.oninput = () => { const i = +inp.dataset.ci; if(st.crew[i]) { st.crew[i].count = num(inp.value); st.crew_manual = true; render(); } });
+      $$('[data-cdel]').forEach(btn => btn.onclick = () => { st.crew.splice(+btn.dataset.cdel, 1); st.crew_manual = true; render(); });
+      const addCrewBtn = $('#addCrewBtn'); if(addCrewBtn) addCrewBtn.onclick = () => { const rid = $('#addRole')?.value; if(rid && !st.crew.find(c=>c.role_id===rid)){ const role = s.roles?.find(r=>r.id===rid); st.crew.push({ role_id: rid, role_name: role?.name||rid, count: 1, per_diem: role?.per_diem||1000 }); st.crew_manual = true; render(); } };
+      $$('[data-sur]').forEach(cb => cb.onchange = () => { const id = cb.dataset.sur; if(cb.checked){ if(!st.surcharges.includes(id)) st.surcharges.push(id); } else { st.surcharges = st.surcharges.filter(x=>x!==id); } render(); });
+
+      // Time tab
+      const daysMan = $('#daysMan'); if(daysMan) daysMan.onchange = () => { st.days_manual = daysMan.checked; };
+      ['prep','work','demob'].forEach(k => { const inp = $(`#c_${k}`); if(inp) inp.oninput = () => { st[k+'_days'] = num(inp.value); st.days_manual = true; render(); }; });
+
+      // Chem tab
+      const chemMan = $('#chemMan'); if(chemMan) chemMan.onchange = () => { st.chem_manual = chemMan.checked; };
+      $$('[data-chi]').forEach(inp => inp.oninput = () => { const i = +inp.dataset.chi; if(st.chemicals[i]) { st.chemicals[i].kg = num(inp.value); st.chem_manual = true; render(); } });
+      $$('[data-chdel]').forEach(btn => btn.onclick = () => { st.chemicals.splice(+btn.dataset.chdel, 1); st.chem_manual = true; render(); });
+      const addChemBtn = $('#addChemBtn'); if(addChemBtn) addChemBtn.onclick = () => { const cid = $('#addChem')?.value; if(cid && !st.chemicals.find(c=>c.id===cid)){ st.chemicals.push({ id: cid, kg: 100 }); st.chem_manual = true; render(); } };
+
+      // Equip tab
+      const equipMan = $('#equipMan'); if(equipMan) equipMan.onchange = () => { st.equip_manual = equipMan.checked; };
+      $$('[data-eqi]').forEach(inp => inp.oninput = () => { const i = +inp.dataset.eqi; if(st.equipment[i]) { st.equipment[i].qty = num(inp.value); st.equip_manual = true; render(); } });
+      $$('[data-eqr]').forEach(sel => sel.onchange = () => { const i = +sel.dataset.eqr; if(st.equipment[i]) { st.equipment[i].rent = sel.value==='1'; st.equip_manual = true; render(); } });
+      $$('[data-eqdel]').forEach(btn => btn.onclick = () => { st.equipment.splice(+btn.dataset.eqdel, 1); st.equip_manual = true; render(); });
+      const addEqBtn = $('#addEqBtn'); if(addEqBtn) addEqBtn.onclick = () => { const eid = $('#addEq')?.value; if(eid && !st.equipment.find(e=>e.id===eid)){ st.equipment.push({ id: eid, qty: 1, rent: false }); st.equip_manual = true; render(); } };
+
+      // Logistics tab
+      const tr = $('#c_tr'); if(tr) tr.onchange = () => { st.transport_id = tr.value; render(); };
+      const lod = $('#c_lod'); if(lod) lod.onchange = () => { st.lodging_type = lod.value; render(); };
+      const mob = $('#c_mob'); if(mob) mob.onchange = () => { st.mobilization_type = mob.value; render(); };
+
+      // Totals tab
+      const margin = $('#c_margin'); if(margin) margin.oninput = () => { st.margin_pct = num(margin.value); render(); };
+
+      // Excel-экспорт
+      const exportBtn = $('#exportBtn'); if(exportBtn) exportBtn.onclick = () => {
+        const sum = compute(st, s);
+        if (typeof XLSX === 'undefined') {
+          const txt = `КАЛЬКУЛЯТОР v2\n==============\nОбъект: ${st.tender_title || '(автономный)'}\nГород: ${st.city} (${st.distance_km} км)\nБригада: ${sum.people_count} чел\nСроки: ${sum.work_days} дней\nСебестоимость: ${money(sum.cost_total)}\nЦена с НДС: ${money(sum.price_with_vat)}\nЧистая прибыль: ${money(sum.net_profit)}\nПрибыль/чел-день: ${money(sum.profit_per_day)} (${sum.status.toUpperCase()})\nДата: ${new Date().toLocaleDateString('ru-RU')}`;
+          const blob = new Blob([txt], { type: 'text/plain' });
+          const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+          a.download = 'calc_standalone.txt'; a.click();
+          toast("Экспорт", "Файл скачан (TXT)");
+          return;
+        }
+        try {
+          // Используем общий экспорт из основного калькулятора
+          const wb = XLSX.utils.book_new();
+          const dateNow = new Date().toLocaleDateString('ru-RU');
+          const wtObj = s.work_types?.find(w => w.id === st.work_type_id);
+          const HEADER_FILL = { fgColor: { rgb: '1A2D52' } };
+          const HEADER_FONT = { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' };
+          const TITLE_FONT = { bold: true, sz: 16, name: 'Calibri' };
+          const COMPANY_FONT = { bold: true, sz: 14, name: 'Calibri' };
+          const TOTAL_FONT = { bold: true, sz: 12, name: 'Calibri' };
+          const BORDER_THIN = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+          const FMT_NUM = '#,##0';
+          const mainData = [
+            ['ООО "Асгард-Сервис"', '', '', '', '', ''],
+            ['Большая Почтовая ул., д. 55/59, стр. 1, помещ. №37, Москва, 105082'],
+            ['Тел.: +7 (499) 322-30-62  |  ИНН: 7736244785'],
+            [],
+            ['КАЛЬКУЛЯЦИЯ РАБОТ (автономный расчёт)'],
+            [],
+            ['Вид работ:', wtObj?.name || '—', '', 'Город:', st.city || '—', ''],
+            ['Расстояние:', `${st.distance_km || 0} км`, '', 'Дата:', dateNow, ''],
+            [],
+            ['№', 'Наименование', 'Ед.изм.', 'Кол-во', 'Цена', 'Сумма'],
+            [1, 'ФОТ (работа + подготовка + демоб.)', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.payroll_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.payroll_total)],
+            [2, 'Налоги на ФОТ', 'руб', 1, Math.round(sum.fot_tax), Math.round(sum.fot_tax)],
+            [3, 'Суточные', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.per_diem_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.per_diem_total)],
+            [4, 'Проживание', 'чел-дн', sum.people_count * sum.total_days, Math.round(sum.lodging_total / Math.max(1, sum.people_count * sum.total_days)), Math.round(sum.lodging_total)],
+            [5, 'Мобилизация/демобилизация', 'чел', sum.people_count * 2, Math.round(sum.mobilization_total / Math.max(1, sum.people_count * 2)), Math.round(sum.mobilization_total)],
+            [6, 'Химия + расходные', 'компл', 1, Math.round(sum.chem_total + sum.consumables), Math.round(sum.chem_total + sum.consumables)],
+            [7, 'Оборудование', 'компл', 1, Math.round(sum.equip_total), Math.round(sum.equip_total)],
+            [8, 'Логистика', 'рейс', 1, Math.round(sum.logistics_total), Math.round(sum.logistics_total)],
+            [9, 'СИЗ', 'чел', sum.people_count, Math.round(sum.ppe_total / Math.max(1, sum.people_count)), Math.round(sum.ppe_total)],
+            [10, 'Накладные (' + (sum.overhead_pct) + '%)', 'руб', 1, Math.round(sum.overhead), Math.round(sum.overhead)],
+            [],
+            ['', 'ПОДЫТОГ (без НДС):', '', '', '', Math.round(sum.price_no_vat)],
+            ['', 'НДС ' + sum.vat_pct + '%:', '', '', '', Math.round(sum.price_with_vat - sum.price_no_vat)],
+            ['', 'ИТОГО С НДС:', '', '', '', Math.round(sum.price_with_vat)],
+            [],
+            ['Дата расчёта: ' + dateNow]
+          ];
+          const wsMain = XLSX.utils.aoa_to_sheet(mainData);
+          wsMain['!cols'] = [{ wch: 5 }, { wch: 40 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 18 }];
+          wsMain['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+            { s: { r: 4, c: 0 }, e: { r: 4, c: 5 } },
+          ];
+          // Header row styling
+          [0,1,2,3,4,5].forEach(c => {
+            const ref = XLSX.utils.encode_cell({ r: 9, c });
+            if (wsMain[ref]) wsMain[ref].s = { font: HEADER_FONT, fill: HEADER_FILL, border: BORDER_THIN, alignment: { horizontal: 'center' } };
+          });
+          wsMain['!print'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1 };
+          XLSX.utils.book_append_sheet(wb, wsMain, 'Калькуляция');
+          const objName = (st.city || 'расчёт').replace(/[^\w\u0400-\u04FF\s-]/g, '').substring(0, 30).trim();
+          const filename = `Калькуляция_${objName}_${dateNow.replace(/\./g, '-')}.xlsx`;
+          XLSX.writeFile(wb, filename);
+          toast("Экспорт", "Excel-файл скачан");
+        } catch (err) {
+          console.error('Excel export error:', err);
+          toast("Ошибка", "Не удалось экспортировать в Excel", "err");
+        }
+      };
+    }
+
+    render();
+  }
+
+  window.AsgardCalcV2 = { open, renderPage, compute, getSettings };
   console.log('[CALC] Calculator v2 loaded');
 })();

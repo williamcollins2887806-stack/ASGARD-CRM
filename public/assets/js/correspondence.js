@@ -47,41 +47,22 @@ window.AsgardCorrespondencePage = (function(){
     return false;
   }
 
-  // === Формат номера исходящего: АС-ИСХ-YYYY-000001 ===
+  // === Формат номера исходящего: АС-ИСХ-YYYY-000001 (серверный sequence) ===
   async function generateOutgoingNumber(){
-    const year = new Date().getFullYear();
-    const prefix = `АС-ИСХ-${year}-`;
-    
-    let items = [];
-    try { items = await AsgardDB.all('correspondence'); } catch(e){}
-    
-    // Получаем стартовый номер из настроек (если есть)
-    let startNum = 1;
     try {
-      const settings = await AsgardDB.get('settings', 'core');
-      if(settings?.correspondence_start_number){
-        startNum = parseInt(settings.correspondence_start_number, 10) || 1;
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch('/api/mailbox/next-outgoing-number', {
+        headers: { 'Authorization': 'Bearer ' + (auth?.token || '') }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.number || '';
       }
-    } catch(e){}
-    
-    // Ищем максимальный номер за текущий год
-    const outgoing = items.filter(i => 
-      i.direction === 'outgoing' && 
-      i.number && 
-      i.number.startsWith(prefix)
-    );
-    
-    let maxNum = startNum - 1; // Начинаем со стартового
-    outgoing.forEach(i => {
-      const match = i.number.match(/АС-ИСХ-\d{4}-(\d{6})/);
-      if(match){
-        const num = parseInt(match[1], 10);
-        if(num > maxNum) maxNum = num;
-      }
-    });
-    
-    const nextNum = String(maxNum + 1).padStart(6, '0');
-    return `АС-ИСХ-${year}-${nextNum}`;
+    } catch(e) {}
+
+    // Fallback: клиентская генерация (если API недоступен)
+    const year = new Date().getFullYear();
+    return `АС-ИСХ-${year}-??????`;
   }
 
   // === Аудит ===
@@ -176,7 +157,7 @@ window.AsgardCorrespondencePage = (function(){
             position:relative;
             background: linear-gradient(135deg, rgba(13,20,40,.6) 0%, rgba(13,20,40,.4) 100%);
             border: 1px solid rgba(242,208,138,.15);
-            border-radius:16px; 
+            border-radius:6px; 
             padding:18px;
             overflow:hidden;
             transition: all .3s ease;
@@ -204,13 +185,13 @@ window.AsgardCorrespondencePage = (function(){
             margin-bottom:20px; padding:16px; 
             background: linear-gradient(135deg, rgba(13,20,40,.5), rgba(13,20,40,.3));
             border: 1px solid rgba(148,163,184,.12);
-            border-radius:14px;
+            border-radius:6px;
             align-items:flex-end;
           }
           .corr-filter { display:flex; flex-direction:column; gap:5px; min-width:140px; }
           .corr-filter label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
           .corr-filter select, .corr-filter input { 
-            padding:10px 14px; border-radius:10px; 
+            padding:10px 14px; border-radius:6px; 
             border:1px solid rgba(148,163,184,.18); 
             background: rgba(13,20,40,.6); 
             color:var(--text); font-size:13px;
@@ -236,8 +217,8 @@ window.AsgardCorrespondencePage = (function(){
             border:1px solid rgba(148,163,184,.1);
             transition: all .2s ease;
           }
-          .corr-table tr td:first-child { border-radius:12px 0 0 12px; border-left:3px solid transparent; }
-          .corr-table tr td:last-child { border-radius:0 12px 12px 0; }
+          .corr-table tr td:first-child { border-radius:6px 0 0 6px; border-left:3px solid transparent; }
+          .corr-table tr td:last-child { border-radius:0 6px 6px 0; }
           .corr-table tr:hover td { 
             background: rgba(59,130,246,.08);
             border-color: rgba(242,208,138,.2);
@@ -247,7 +228,7 @@ window.AsgardCorrespondencePage = (function(){
           /* Direction badge */
           .corr-dir { 
             display:inline-flex; align-items:center; gap:6px;
-            padding:5px 10px; border-radius:8px; 
+            padding:5px 10px; border-radius:6px; 
             font-size:11px; font-weight:700;
           }
           .corr-dir.incoming { background:rgba(59,130,246,.15); color:#60a5fa; }
@@ -274,7 +255,7 @@ window.AsgardCorrespondencePage = (function(){
           /* Actions */
           .corr-actions { display:flex; gap:6px; }
           .corr-btn { 
-            padding:6px 10px; border-radius:8px; 
+            padding:6px 10px; border-radius:6px; 
             border:1px solid rgba(148,163,184,.18); 
             background: rgba(13,20,40,.5); 
             color:var(--text); font-size:12px; cursor:pointer;
@@ -290,7 +271,7 @@ window.AsgardCorrespondencePage = (function(){
             text-align:center; padding:60px 20px; 
             color:var(--muted);
             background: linear-gradient(135deg, rgba(13,20,40,.4), rgba(13,20,40,.2));
-            border-radius:16px;
+            border-radius:6px;
             border: 1px dashed rgba(148,163,184,.2);
           }
           .corr-empty-icon { font-size:64px; margin-bottom:16px; opacity:.5; }

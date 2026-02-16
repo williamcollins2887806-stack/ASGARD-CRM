@@ -75,8 +75,10 @@ window.AsgardSLA = (function(){
   }
 
   async function alreadyNotified(user_id, dedup_key){
-    const nots = await AsgardDB.byIndex('notifications','user_id', user_id);
-    return (nots||[]).some(n=>n && n.dedup_key===dedup_key);
+    try {
+      const nots = await AsgardDB.byIndex('notifications','user_id', user_id);
+      return (nots||[]).some(n=>n && n.dedup_key===dedup_key);
+    } catch(e) { return true; } // Считаем что уже уведомлено при ошибке
   }
 
   async function notifyOnce({user_id, title, message, link_hash, kind, entity_type, entity_id, day}){
@@ -105,7 +107,14 @@ window.AsgardSLA = (function(){
     return Math.floor(ms/(24*3600*1000));
   }
 
+  let lastTickTime = 0;
+  const TICK_COOLDOWN = 5 * 60 * 1000; // 5 minutes
+
   async function tick(currentUser){
+    const now = Date.now();
+    if (now - lastTickTime < TICK_COOLDOWN) return;
+    lastTickTime = now;
+
     if(!currentUser || !currentUser.id) return;
 
     const app = await getApp();

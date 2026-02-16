@@ -66,7 +66,7 @@ window.AsgardReceiptScanner = (function(){
             </div>
             
             <div class="scanner-result" id="scannerResult" style="display:none">
-              <img id="capturedImage" style="max-width:100%;border-radius:12px"/>
+              <img id="capturedImage" style="max-width:100%;border-radius:6px"/>
               <div class="scanner-ocr" id="ocrResult">
                 <div class="scanner-loading">
                   <div class="scanner-spinner"></div>
@@ -94,7 +94,7 @@ window.AsgardReceiptScanner = (function(){
         
         .scanner-container {
           background: var(--bg-card);
-          border-radius: 20px;
+          border-radius: 6px;
           width: 100%;
           max-width: 500px;
           max-height: 90vh;
@@ -143,7 +143,7 @@ window.AsgardReceiptScanner = (function(){
           right: 10%;
           bottom: 10%;
           border: 2px solid rgba(245, 215, 142, 0.5);
-          border-radius: 12px;
+          border-radius: 6px;
           pointer-events: none;
         }
         
@@ -154,10 +154,10 @@ window.AsgardReceiptScanner = (function(){
           border: 3px solid #f5d78e;
         }
         
-        .scanner-corner.tl { top: -3px; left: -3px; border-right: none; border-bottom: none; border-radius: 8px 0 0 0; }
-        .scanner-corner.tr { top: -3px; right: -3px; border-left: none; border-bottom: none; border-radius: 0 8px 0 0; }
-        .scanner-corner.bl { bottom: -3px; left: -3px; border-right: none; border-top: none; border-radius: 0 0 0 8px; }
-        .scanner-corner.br { bottom: -3px; right: -3px; border-left: none; border-top: none; border-radius: 0 0 8px 0; }
+        .scanner-corner.tl { top: -3px; left: -3px; border-right: none; border-bottom: none; border-radius: 6px 0 0 0; }
+        .scanner-corner.tr { top: -3px; right: -3px; border-left: none; border-bottom: none; border-radius: 0 6px 0 0; }
+        .scanner-corner.bl { bottom: -3px; left: -3px; border-right: none; border-top: none; border-radius: 0 0 0 6px; }
+        .scanner-corner.br { bottom: -3px; right: -3px; border-left: none; border-top: none; border-radius: 0 0 6px 0; }
         
         .scanner-hint {
           position: absolute;
@@ -166,7 +166,7 @@ window.AsgardReceiptScanner = (function(){
           transform: translateX(-50%);
           background: rgba(0,0,0,0.7);
           padding: 8px 16px;
-          border-radius: 20px;
+          border-radius: 6px;
           color: #fff;
           font-size: 13px;
         }
@@ -179,7 +179,7 @@ window.AsgardReceiptScanner = (function(){
           margin-top: 16px;
           padding: 16px;
           background: var(--bg-elevated);
-          border-radius: 12px;
+          border-radius: 6px;
         }
         
         .scanner-loading {
@@ -517,7 +517,7 @@ window.AsgardReceiptScanner = (function(){
       
       <details style="margin-bottom:16px">
         <summary class="help" style="cursor:pointer">Показать распознанный текст</summary>
-        <pre style="font-size:11px;background:var(--bg-card);padding:8px;border-radius:8px;white-space:pre-wrap;margin-top:8px">${esc(rawText)}</pre>
+        <pre style="font-size:11px;background:var(--bg-card);padding:8px;border-radius:6px;white-space:pre-wrap;margin-top:8px">${esc(rawText)}</pre>
       </details>
       
       ${renderManualForm(parsed)}

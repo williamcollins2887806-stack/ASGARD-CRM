@@ -28,34 +28,21 @@ window.AsgardMobile = (function(){
   
   // Инициализация мобильного меню
   function initMobileMenu() {
-    // Создаём кнопку бургера если её нет
-    if (!$('#mobileMenuBtn')) {
-      const btn = document.createElement('button');
-      btn.id = 'mobileMenuBtn';
-      btn.className = 'mobile-menu-btn';
-      btn.innerHTML = '☰';
-      btn.setAttribute('aria-label', 'Меню');
-      
-      const header = $('header') || $('.topbar');
-      if (header) {
-        header.insertBefore(btn, header.firstChild);
-      }
-    }
-    
-    // Создаём оверлей
+    // Используем существующую кнопку #btnMenu из app.js (не создаём дубль)
+    // Создаём оверлей если его нет
     if (!$('#mobileOverlay')) {
       const overlay = document.createElement('div');
       overlay.id = 'mobileOverlay';
       overlay.className = 'mobile-overlay';
+      overlay.style.pointerEvents = 'none';
       document.body.appendChild(overlay);
     }
-    
-    // Обработчики
-    $('#mobileMenuBtn')?.addEventListener('click', toggleMenu);
+
+    // Обработчики (btnMenu уже обработан в app.js через toggleNav)
     $('#mobileOverlay')?.addEventListener('click', closeMenu);
-    
+
     // Закрытие при клике на пункт меню
-    $$('.nav a, .sidebar a').forEach(link => {
+    $$('.nav a, .sidenav a').forEach(link => {
       link.addEventListener('click', () => {
         if (isMobile) closeMenu();
       });
@@ -78,21 +65,18 @@ window.AsgardMobile = (function(){
   }
   
   function updateMenuState() {
-    const sidebar = $('.sidebar') || $('nav');
+    const sidebar = $('.sidenav') || $('nav');
     const overlay = $('#mobileOverlay');
-    const btn = $('#mobileMenuBtn');
-    
+
     if (sidebar) {
       sidebar.classList.toggle('open', isMenuOpen);
     }
     if (overlay) {
       overlay.classList.toggle('active', isMenuOpen);
+      overlay.style.pointerEvents = isMenuOpen ? 'auto' : 'none';
     }
-    if (btn) {
-      btn.innerHTML = isMenuOpen ? '✕' : '☰';
-    }
-    
-    document.body.classList.toggle('menu-open', isMenuOpen);
+
+    document.body.classList.toggle('nav-open', isMenuOpen);
   }
   
   // Свайп для открытия/закрытия меню
@@ -235,23 +219,14 @@ window.AsgardMobile = (function(){
     }
     setVH();
     window.addEventListener('resize', setVH);
+
+    detectStandalone();
+    checkIOSInstall();
   }
   
-  // CSS для мобильной версии
+  // CSS для мобильной версии (только уникальные стили — остальное в app.css)
   const style = document.createElement('style');
   style.textContent = `
-    /* Мобильное меню */
-    .mobile-menu-btn {
-      display: none;
-      background: transparent;
-      border: none;
-      color: var(--text-primary);
-      font-size: 24px;
-      padding: 8px 12px;
-      cursor: pointer;
-      z-index: 1001;
-    }
-    
     .mobile-overlay {
       display: none;
       position: fixed;
@@ -262,13 +237,16 @@ window.AsgardMobile = (function(){
       background: rgba(0, 0, 0, 0.5);
       z-index: 999;
       opacity: 0;
+      pointer-events: none;
       transition: opacity 0.3s;
     }
-    
+
     .mobile-overlay.active {
+      display: block;
       opacity: 1;
+      pointer-events: auto;
     }
-    
+
     .offline-indicator {
       position: fixed;
       bottom: 20px;
@@ -277,175 +255,34 @@ window.AsgardMobile = (function(){
       background: var(--red);
       color: #fff;
       padding: 12px 24px;
-      border-radius: 8px;
+      border-radius: 6px;
       font-size: 14px;
       z-index: 9999;
       transition: transform 0.3s;
       box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     }
-    
+
     .offline-indicator.visible {
       transform: translateX(-50%) translateY(0);
     }
-    
-    /* Mobile styles */
-    @media (max-width: 768px) {
-      .mobile-menu-btn {
-        display: block;
-      }
-      
-      .mobile-overlay {
-        display: block;
-      }
-      
-      .sidebar {
-        position: fixed;
-        left: -280px;
-        top: 0;
-        bottom: 0;
-        width: 280px;
-        z-index: 1000;
-        transition: left 0.3s ease;
-        overflow-y: auto;
-      }
-      
-      .sidebar.open {
-        left: 0;
-      }
-      
-      .layout {
-        margin-left: 0 !important;
-      }
-      
-      .topbar {
-        padding: 8px 12px;
-      }
-      
-      .page-header {
-        flex-direction: column;
-        gap: 12px;
-        align-items: stretch;
-      }
-      
-      .page-header h1 {
-        font-size: 20px;
-      }
-      
-      .kpi {
-        grid-template-columns: repeat(2, 1fr) !important;
-        gap: 8px;
-      }
-      
-      .kpi .k {
-        padding: 12px;
-      }
-      
-      .kpi .k .v {
-        font-size: 18px;
-      }
-      
-      .formrow {
-        grid-template-columns: 1fr !important;
-      }
-      
-      .filters {
-        flex-direction: column;
-      }
-      
-      .filters .inp,
-      .filters select {
-        width: 100%;
-      }
-      
-      .tbl-wrap {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-      
-      .tbl {
-        min-width: 600px;
-      }
-      
-      .tbl th,
-      .tbl td {
-        padding: 8px 10px;
-        font-size: 13px;
-      }
-      
-      .btn {
-        padding: 10px 16px;
-      }
-      
-      .btn.mini {
-        min-width: 44px;
-        min-height: 44px;
-        padding: 8px;
-      }
-      
-      .modal {
-        width: 95% !important;
-        max-width: none !important;
-        margin: 10px;
-        max-height: calc(100vh - 20px);
-      }
-      
-      .card {
-        padding: 12px;
-      }
-      
-      .tabs {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch;
-      }
-      
-      .tab {
-        flex-shrink: 0;
-        padding: 10px 16px;
-      }
-      
-      /* Скрываем некритичные колонки */
-      .tbl .hide-mobile {
-        display: none;
-      }
-    }
-    
-    /* Tablet */
-    @media (min-width: 769px) and (max-width: 1024px) {
-      .sidebar {
-        width: 60px;
-      }
-      
-      .sidebar .nav-text {
-        display: none;
-      }
-      
-      .layout {
-        margin-left: 60px;
-      }
-      
-      .kpi {
-        grid-template-columns: repeat(3, 1fr);
-      }
-    }
-    
+
     /* Touch-friendly */
     @media (hover: none) and (pointer: coarse) {
       .btn:active {
         transform: scale(0.98);
       }
-      
+
       .search-result-item:active {
         background: var(--bg-hover);
       }
     }
-    
+
     /* Safe areas (iPhone X+) */
     @supports (padding: env(safe-area-inset-bottom)) {
-      .sidebar {
+      .sidenav {
         padding-bottom: env(safe-area-inset-bottom);
       }
-      
+
       .mobile-overlay {
         padding-bottom: env(safe-area-inset-bottom);
       }
@@ -460,6 +297,97 @@ window.AsgardMobile = (function(){
     init();
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PWA INSTALL PROMPT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  let deferredPrompt = null;
+
+  // Android: перехватываем стандартный промпт Chrome
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (window.matchMedia('(display-mode: standalone)').matches) return;
+    if (sessionStorage.getItem('asg_install_dismissed')) return;
+    showInstallBanner('android');
+  });
+
+  // iOS: проверяем при загрузке
+  function checkIOSInstall() {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isStandalone = window.navigator.standalone === true;
+    const dismissed = localStorage.getItem('asg_ios_install_dismissed');
+    if (isIOS && !isStandalone && !dismissed) {
+      setTimeout(() => showInstallBanner('ios'), 3000);
+    }
+  }
+
+  function showInstallBanner(platform) {
+    if (document.getElementById('pwaInstallBanner')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'pwaInstallBanner';
+    banner.className = 'pwa-install-banner';
+
+    if (platform === 'ios') {
+      banner.innerHTML = `
+        <div class="pwa-install-content">
+          <img src="assets/img/icon-96.png" class="pwa-install-icon" alt="АСГАРД"/>
+          <div class="pwa-install-text">
+            <div class="pwa-install-title">Установить АСГАРД CRM</div>
+            <div class="pwa-install-desc">Нажмите <strong>Поделиться</strong> <span style="font-size:16px">⎋</span> → <strong>На экран «Домой»</strong></div>
+          </div>
+          <button class="pwa-install-close" id="pwaInstallClose">✕</button>
+        </div>`;
+    } else {
+      banner.innerHTML = `
+        <div class="pwa-install-content">
+          <img src="assets/img/icon-96.png" class="pwa-install-icon" alt="АСГАРД"/>
+          <div class="pwa-install-text">
+            <div class="pwa-install-title">Установить АСГАРД CRM</div>
+            <div class="pwa-install-desc">Быстрый доступ с рабочего стола</div>
+          </div>
+          <button class="btn primary pwa-install-btn" id="pwaInstallBtn">Установить</button>
+          <button class="pwa-install-close" id="pwaInstallClose">✕</button>
+        </div>`;
+    }
+
+    document.body.appendChild(banner);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => banner.classList.add('visible'));
+    });
+
+    document.getElementById('pwaInstallClose')?.addEventListener('click', () => {
+      banner.classList.remove('visible');
+      setTimeout(() => banner.remove(), 300);
+      if (platform === 'ios') {
+        localStorage.setItem('asg_ios_install_dismissed', '1');
+      } else {
+        sessionStorage.setItem('asg_install_dismissed', '1');
+      }
+    });
+
+    document.getElementById('pwaInstallBtn')?.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const result = await deferredPrompt.userChoice;
+      if (result.outcome === 'accepted' && window.AsgardUI?.toast) {
+        AsgardUI.toast('Готово', 'АСГАРД CRM установлен!', 'ok');
+      }
+      deferredPrompt = null;
+      banner.classList.remove('visible');
+      setTimeout(() => banner.remove(), 300);
+    });
+  }
+
+  // Standalone detection
+  function detectStandalone() {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         window.navigator.standalone === true;
+    document.body.classList.toggle('pwa-standalone', isStandalone);
+    return isStandalone;
+  }
+
   return {
     init,
     detectMobile,
@@ -467,6 +395,7 @@ window.AsgardMobile = (function(){
     closeMenu,
     toggleMenu,
     vibrate,
-    isMobile: () => isMobile
+    isMobile: () => isMobile,
+    detectStandalone
   };
 })();

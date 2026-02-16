@@ -561,10 +561,56 @@ window.AsgardBankImport = (function(){
     
     return imported;
   }
-  
+
+  // Серверная синхронизация: отправка локальных транзакций на сервер
+  async function syncToServer() {
+    try {
+      const auth = await AsgardAuth.getAuth();
+      if (!auth?.token) return { synced: 0 };
+
+      // Собираем из всех store где source=bank_import
+      const stores = ['incomes', 'work_expenses', 'office_expenses'];
+      const txList = [];
+
+      for (const store of stores) {
+        try {
+          const all = await AsgardDB.getAll(store);
+          const bankItems = (all || []).filter(function(r) { return r.source === 'bank_import'; });
+          bankItems.forEach(function(r) {
+            txList.push({
+              import_hash: r.import_hash || r.hash,
+              transaction_date: r.date,
+              amount: r.amount,
+              direction: store === 'incomes' ? 'income' : 'expense',
+              counterparty_name: r.counterparty,
+              payment_purpose: r.description,
+              article: r.article || r.category || r.type,
+              work_id: r.work_id || null,
+              status: 'confirmed'
+            });
+          });
+        } catch (e) { /* store may not exist */ }
+      }
+
+      if (!txList.length) return { synced: 0 };
+
+      const resp = await fetch('/api/integrations/bank/sync-from-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + auth.token },
+        body: JSON.stringify({ transactions: txList })
+      });
+      const data = await resp.json();
+      return { synced: data.inserted || 0, duplicates: data.duplicates || 0 };
+    } catch (e) {
+      console.error('[BankImport] syncToServer error:', e);
+      return { synced: 0, error: e.message };
+    }
+  }
+
   return {
     openImportModal,
     importTransactions,
+    syncToServer,
     parseCSV,
     detectArticle,
     loadRules,

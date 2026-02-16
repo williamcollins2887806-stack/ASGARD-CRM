@@ -143,8 +143,8 @@ async function routes(fastify, options) {
           COUNT(*) as total,
           COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
           COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
-          COALESCE(SUM(estimated_sum), 0) as total_sum,
-          COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
+          COALESCE(SUM(tender_price), 0) as total_sum,
+          COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
         FROM tenders
         WHERE EXTRACT(YEAR FROM created_at) = $1
       `, [currentYear]),
@@ -259,7 +259,7 @@ async function routes(fastify, options) {
       SELECT 
         tender_status,
         COUNT(*) as count,
-        COALESCE(SUM(estimated_sum), 0) as sum
+        COALESCE(SUM(tender_price), 0) as sum
       FROM tenders
       WHERE ${whereClause}
       GROUP BY tender_status
@@ -328,8 +328,8 @@ async function generateMonthlyReport(db, year, month) {
       COUNT(*) FILTER (WHERE tender_status = 'В работе') as in_work,
       COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
       COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
-      COALESCE(SUM(estimated_sum), 0) as total_sum,
-      COALESCE(SUM(estimated_sum) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
+      COALESCE(SUM(tender_price), 0) as total_sum,
+      COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
     FROM tenders
     WHERE created_at >= $1 AND created_at < $2
   `, [startDate, endDate]);
@@ -398,7 +398,7 @@ async function generateMonthlyReport(db, year, month) {
   
   // Топ заказчики
   const topCustomers = await db.query(`
-    SELECT customer_name, COUNT(*) as count, COALESCE(SUM(estimated_sum), 0) as sum
+    SELECT customer_name, COUNT(*) as count, COALESCE(SUM(tender_price), 0) as sum
     FROM tenders
     WHERE created_at >= $1 AND created_at < $2 AND customer_name IS NOT NULL
     GROUP BY customer_name

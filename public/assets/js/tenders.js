@@ -13,6 +13,82 @@ window.AsgardTendersPage = (function(){
 
   const TENDER_TYPES = ["Тендер","Запрос предложений","Оценка рынка","Прямой запрос","Доп. объём"];
 
+  // === ЧЕРНОВИКИ ТЕНДЕРОВ ===
+  const DRAFT_KEY = 'asgard_tender_draft';
+
+  function saveDraft(data) {
+    try {
+      const draft = { ...data, saved_at: isoNow() };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      return true;
+    } catch(e) {
+      console.warn('[Tender] Draft save failed:', e);
+      return false;
+    }
+  }
+
+  function loadDraft() {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return null;
+      const draft = JSON.parse(raw);
+      // Check if draft is less than 7 days old
+      if (draft.saved_at) {
+        const age = Date.now() - new Date(draft.saved_at).getTime();
+        if (age > 7 * 24 * 60 * 60 * 1000) {
+          clearDraft();
+          return null;
+        }
+      }
+      return draft;
+    } catch(e) {
+      return null;
+    }
+  }
+
+  function clearDraft() {
+    localStorage.removeItem(DRAFT_KEY);
+  }
+
+  function getDraftFormData() {
+    return {
+      period: document.getElementById("e_period")?.value || '',
+      customer_inn: document.getElementById("e_inn")?.value || '',
+      customer_name: document.getElementById("e_customer")?.value || '',
+      tender_title: document.getElementById("e_title")?.value || '',
+      tender_type: document.getElementById("e_type")?.value || '',
+      tender_price: document.getElementById("e_price")?.value || '',
+      group_tag: document.getElementById("e_tag")?.value || '',
+      work_start_plan: document.getElementById("e_ws")?.value || '',
+      work_end_plan: document.getElementById("e_we")?.value || '',
+      purchase_url: document.getElementById("e_url")?.value || '',
+      docs_deadline: document.getElementById("e_docs_deadline")?.value || '',
+      tender_comment_to: document.getElementById("e_c_to")?.value || ''
+    };
+  }
+
+  function restoreDraftToForm(draft) {
+    if (!draft) return;
+    const fields = {
+      'e_period': draft.period,
+      'e_inn': draft.customer_inn,
+      'e_customer': draft.customer_name,
+      'e_title': draft.tender_title,
+      'e_type': draft.tender_type,
+      'e_price': draft.tender_price,
+      'e_tag': draft.group_tag,
+      'e_ws': draft.work_start_plan,
+      'e_we': draft.work_end_plan,
+      'e_url': draft.purchase_url,
+      'e_docs_deadline': draft.docs_deadline,
+      'e_c_to': draft.tender_comment_to
+    };
+    for (const [id, value] of Object.entries(fields)) {
+      const el = document.getElementById(id);
+      if (el && value) el.value = value;
+    }
+  }
+
   // === ПРОВЕРКА ДУБЛИКАТОВ (Этап 34) ===
   
   // Fuzzy match - вычисляет схожесть строк (0..1)
@@ -175,7 +251,9 @@ window.AsgardTendersPage = (function(){
 
 async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
-    return refs && refs.tender_statuses ? refs : { tender_statuses:[], reject_reasons:[] };
+    const defaultStatuses = ['Черновик','Новый','В работе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Выиграли','Проиграли','Контракт','Клиент отказался','Клиент согласился','Отказ'];
+    if(refs && refs.tender_statuses && refs.tender_statuses.length) return refs;
+    return { tender_statuses: defaultStatuses, reject_reasons: (refs && refs.reject_reasons) || [] };
   }
 
   async function getUsers(){
@@ -227,11 +305,13 @@ async function getRefs(){
   function norm(s){ return String(s||"").toLowerCase().trim(); }
 
   function tenderRow(t, pmName, createdByName){
-    const ds = t.work_start_plan ? esc(t.work_start_plan) : "—";
-    const de = t.work_end_plan ? esc(t.work_end_plan) : "—";
+    const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+    const ds = fmtDate(t.work_start_plan);
+    const de = fmtDate(t.work_end_plan);
     const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Ссылка</a>` : "—";
-    const ddl = t.docs_deadline ? esc(t.docs_deadline) : "—";
+    const ddl = fmtDate(t.docs_deadline);
     return `<tr data-id="${t.id}">
+      <td><input type="checkbox" class="tender-check" value="${t.id}" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>
       <td>${esc(t.period||"")}</td>
       <td>
         <b>${esc(t.customer_name||"")}</b>
@@ -240,7 +320,7 @@ async function getRefs(){
       </td>
       <td>${esc(pmName||"—")}</td>
       <td>${esc(t.tender_type||"—")}</td>
-      <td>${esc(t.tender_status||"")}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
+      <td>${t.tender_status==='Черновик'?'<span class="badge draft">Черновик</span>':esc(t.tender_status||"")}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
       <td>${ddl}</td>
       <td>${esc(createdByName||"—")}</td>
       <td>${t.tender_price?money(t.tender_price):"—"}</td>
@@ -251,16 +331,10 @@ async function getRefs(){
   }
 
   function tableCSS(){
-    return `<style>
-      table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-      table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-      table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85);}
-      table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-      table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
-      .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
-      .tools .field{min-width:220px}
+    return `${window.__ASG_SHARED_TABLE_CSS__||""}
+    <style>
       .tag{display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px;
-        border:1px solid rgba(42,59,102,.85); background:rgba(13,20,40,.40); font-size:12px; color:rgba(184,196,231,.95)}
+        border:none; background:var(--bg-card); font-size:12px; color:var(--text-secondary); font-family:var(--font-sans)}
       .tag b{color:var(--gold)}
     </style>`;
   }
@@ -334,7 +408,7 @@ async function getRefs(){
           <div style="display:flex; gap:10px; flex-wrap:wrap">
             <button class="btn" id="btnNew">+ Внести тендер</button>
             <button class="btn ghost" id="btnReset">Сброс</button>
-            ${user.role === "ADMIN" ? '<button class="btn ghost" id="btnBulkReassign" style="background:rgba(139,92,246,.2)">🔄 Массовое переназначение</button>' : ''}
+            ${user.role === "ADMIN" ? '<button class="btn ghost" id="btnBulkReassign">Массовое переназначение</button>' : ''}
           </div>
         </div>
         <hr class="hr"/>
@@ -344,6 +418,7 @@ async function getRefs(){
           <table class="asg">
             <thead>
               <tr>
+                <th><input type="checkbox" id="selectAllTenders" title="Выбрать все"/></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="period">Период</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="customer_name">Заказчик / Тендер</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="responsible_pm_id">РП</button></th>
@@ -360,7 +435,11 @@ async function getRefs(){
             <tbody id="tb"></tbody>
           </table>
         </div>
-        <div class="help" id="cnt"></div>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px">
+          <div class="help" id="cnt"></div>
+          <div id="bulkCount" style="font-weight:600; color:var(--primary); display:none"></div>
+          <button class="btn ghost" id="btnBulkSelected" style="display:none">Переназначить выбранные</button>
+        </div>
       </div>
     `;
 
@@ -710,6 +789,11 @@ async function getRefs(){
 
     applyAndRender();
 
+    // Мобильные карточки
+    if (window.AsgardUI?.makeResponsiveTable) {
+      AsgardUI.makeResponsiveTable('.asg');
+    }
+
     $("#f_period").addEventListener("change", applyAndRender);
     $("#f_q").addEventListener("input", applyAndRender);
     $("#f_type").addEventListener("change", applyAndRender);
@@ -734,6 +818,64 @@ async function getRefs(){
     });
 
     $("#btnNew").addEventListener("click", ()=>openTenderEditor(null));
+
+    // Чекбоксы массового выбора
+    function updateBulkCount(){
+      const checked = $$(".tender-check:checked");
+      const count = checked.length;
+      const bulkCountEl = $("#bulkCount");
+      const bulkBtn = $("#btnBulkSelected");
+      if(bulkCountEl) { bulkCountEl.textContent = count ? `Выбрано: ${count}` : ''; bulkCountEl.style.display = count ? '' : 'none'; }
+      if(bulkBtn) bulkBtn.style.display = count > 0 ? '' : 'none';
+    }
+    window._asgTenderBulkCount = updateBulkCount;
+
+    const selectAllEl = $("#selectAllTenders");
+    if(selectAllEl){
+      selectAllEl.addEventListener("change", ()=>{
+        $$(".tender-check").forEach(cb=>{ cb.checked = selectAllEl.checked; });
+        updateBulkCount();
+      });
+    }
+
+    const btnBulkSelected = $("#btnBulkSelected");
+    if(btnBulkSelected && (user.role === "ADMIN" || isDirRole(user.role))){
+      btnBulkSelected.addEventListener("click", ()=>{
+        const ids = $$(".tender-check:checked").map(cb=>Number(cb.value));
+        if(!ids.length){ toast("Ошибка","Выберите тендеры","err"); return; }
+        const pmOpts = pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+        const html = `
+          <div style="margin-bottom:16px">Выбрано тендеров: <b>${ids.length}</b></div>
+          <div class="formrow">
+            <div><label>Новый ответственный РП</label><select id="bulk_sel_pm"><option value="">— выбрать —</option>${pmOpts}</select></div>
+            <div><label>Причина</label><input id="bulk_sel_reason" value="Переназначение"/></div>
+          </div>
+          <hr class="hr"/>
+          <button class="btn" id="bulk_sel_do">Переназначить</button>
+        `;
+        showModal("Переназначение выбранных тендеров", html);
+        $("#bulk_sel_do").addEventListener("click", async ()=>{
+          const newPmId = Number($("#bulk_sel_pm").value||0);
+          const reason = ($("#bulk_sel_reason").value||"").trim();
+          if(!newPmId){ toast("Ошибка","Выберите РП","err"); return; }
+          if(!reason){ toast("Ошибка","Укажите причину","err"); return; }
+          if(!confirm(`Переназначить ${ids.length} тендеров?`)) return;
+          let count = 0;
+          for(const id of ids){
+            const t = tenders.find(x=>x.id===id);
+            if(!t) continue;
+            const oldPm = t.responsible_pm_id;
+            t.responsible_pm_id = newPmId;
+            await AsgardDB.put("tenders", t);
+            await audit(user.id, "tender", t.id, "bulk_reassign_pm", {old_pm: oldPm, new_pm: newPmId, reason});
+            count++;
+          }
+          toast("Готово", `Переназначено ${count} тендеров`);
+          AsgardUI.hideModal();
+          applyAndRender();
+        });
+      });
+    }
 
     // Массовое переназначение тендеров (только для админа)
     const btnBulk = $("#btnBulkReassign");
@@ -772,7 +914,7 @@ async function getRefs(){
         const html = `
           <div style="margin-bottom:16px">
             <div style="font-size:14px; font-weight:700; margin-bottom:8px">Тендеры на архивном РП: ${archiveTenders.length}</div>
-            <div style="background:rgba(13,20,40,.5); padding:12px; border-radius:10px; max-height:150px; overflow:auto; font-size:13px">
+            <div style="background:rgba(13,20,40,.5); padding:12px; border-radius:6px; max-height:150px; overflow:auto; font-size:13px">
               ${statusList}
             </div>
           </div>
@@ -800,7 +942,7 @@ async function getRefs(){
           </div>
           <hr class="hr"/>
           <div style="display:flex; gap:10px">
-            <button class="btn" id="bulk_do" style="background:linear-gradient(135deg, rgba(139,92,246,.4), rgba(139,92,246,.2))">🔄 Переназначить</button>
+            <button class="btn primary" id="bulk_do">Переназначить</button>
             <div id="bulk_result" style="padding:10px; color:var(--muted)"></div>
           </div>
         `;
@@ -863,7 +1005,7 @@ async function getRefs(){
       }).join("");
 
       const statusOptions = refs.tender_statuses.map(s=>{
-        const sel = (t && t.tender_status===s) ? "selected" : ((isNew && s==="Новый")?"selected":"");
+        const sel = (t && t.tender_status===s) ? "selected" : ((isNew && s==="Черновик")?"selected":"");
         return `<option value="${esc(s)}" ${sel}>${esc(s)}</option>`;
       }).join("");
 
@@ -952,11 +1094,11 @@ async function getRefs(){
           </div>
           <div>
             <label>План: начало работ</label>
-            <input id="e_ws" value="${esc((t&&t.work_start_plan)||"")}" ${full?"":"disabled"} placeholder="YYYY-MM-DD"/>
+            <input id="e_ws" value="${esc((t&&t.work_start_plan)||"")}" ${full?"":"disabled"} placeholder="ДД.ММ.ГГГГ"/>
           </div>
           <div>
             <label>План: окончание работ</label>
-            <input id="e_we" value="${esc((t&&t.work_end_plan)||"")}" ${full?"":"disabled"} placeholder="YYYY-MM-DD"/>
+            <input id="e_we" value="${esc((t&&t.work_end_plan)||"")}" ${full?"":"disabled"} placeholder="ДД.ММ.ГГГГ"/>
           </div>
           <div style="grid-column: 1 / -1">
             <label>Ссылка на комплект документов (Я.Диск/площадка)</label>
@@ -964,8 +1106,8 @@ async function getRefs(){
           </div>
           <div>
             <label>Дедлайн (окончание приема заявок)</label>
-            <input id="e_docs_deadline" value="${esc((t&&t.docs_deadline)||"")}" ${(full||limited)?"":"disabled"} placeholder="YYYY-MM-DD"/>
-            <div class="help">Напоминания формируются ежедневно (в офлайне — при входе) за N дней до дедлайна. Для типа «Прямой запрос» дедлайн = +N дней автоматически (N в настройках), если не задан.</div>
+            <input id="e_docs_deadline" value="${esc((t&&t.docs_deadline)||"")}" ${(full||limited)?"":"disabled"} placeholder="ДД.ММ.ГГГГ или ГГГГ-ММ-ДД"/>
+            <div class="help">Формат: ДД.ММ.ГГГГ или ГГГГ-ММ-ДД. Напоминания формируются ежедневно за N дней до дедлайна.</div>
           </div>
           <div style="grid-column: 1 / -1">
             <label>Комментарий ТО</label>
@@ -988,6 +1130,7 @@ async function getRefs(){
         <div id="docsBox" style="display:flex; flex-direction:column; gap:10px"><div class="row" style="gap:8px; flex-wrap:wrap; margin:8px 0 10px 0">
   <button class="btn" id="copyAllDocs">Скопировать все ссылки</button>
   <button class="btn ghost" id="openAllDocs">Открыть все</button>
+  <button class="btn primary" id="downloadAllDocs">📥 Скачать все документы</button>
   <button class="btn ghost" id="btnPackExport">Экспорт комплекта (JSON)</button>
   <button class="btn ghost" id="btnPackImport">Импорт в комплект</button>
 </div>
@@ -1004,12 +1147,75 @@ ${docsHtml}</div>
         <hr class="hr"/>
         <div style="display:flex; gap:10px; flex-wrap:wrap">
           <button class="btn" id="btnSave">${isNew?"Создать":"Сохранить"}</button>
+          ${isNew ? `<button class="btn ghost" id="btnSaveDraft">💾 Черновик</button>` : ``}
           ${(t && !t.handoff_at && !t.distribution_requested_at && user.role==="TO") ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
           ${(t && !t.handoff_at && (user.role==="ADMIN"||isDirRole(user.role))) ? `<button class="btn red" id="btnHandoff">Передать в просчёт</button>` : ``}
         </div>
       `;
 
       showModal(isNew ? "Новый тендер" : `Тендер #${t.id}`, html);
+
+      // Restore draft for new tenders
+      if (isNew) {
+        const draft = loadDraft();
+        if (draft && (draft.customer_name || draft.tender_title || draft.customer_inn)) {
+          const draftAge = draft.saved_at ? new Date(draft.saved_at).toLocaleString('ru-RU') : 'неизвестно';
+          const useIt = confirm(`Найден черновик от ${draftAge}.\n\nЗаказчик: ${draft.customer_name || '—'}\nТендер: ${draft.tender_title || '—'}\n\nВосстановить?`);
+          if (useIt) {
+            setTimeout(() => restoreDraftToForm(draft), 50);
+          } else {
+            clearDraft();
+          }
+        }
+      }
+
+      // Draft save button handler
+      const btnSaveDraft = document.getElementById("btnSaveDraft");
+      if (btnSaveDraft) {
+        btnSaveDraft.addEventListener("click", () => {
+          const data = getDraftFormData();
+          if (saveDraft(data)) {
+            toast("Черновик", "Сохранён. Будет доступен при создании нового тендера", "ok");
+          } else {
+            toast("Черновик", "Ошибка сохранения", "err");
+          }
+        });
+      }
+
+      // === Auto-save draft on page exit (beforeunload, hashchange, modal close, tab switch) ===
+      if (isNew) {
+        function _autoSaveDraftIfOpen() {
+          const el = document.getElementById('e_title');
+          if (!el) return false;
+          const data = getDraftFormData();
+          if (data.customer_name || data.tender_title || data.customer_inn) saveDraft(data);
+          return true;
+        }
+        const _onBeforeUnload = () => _autoSaveDraftIfOpen();
+        const _onHashChange = () => { _autoSaveDraftIfOpen(); _cleanupDraftAuto(); };
+        const _onVisChange = () => { if (document.hidden) _autoSaveDraftIfOpen(); };
+        // Auto-save every 30s while modal is open
+        const _draftAutoTimer = setInterval(() => {
+          if (!_autoSaveDraftIfOpen()) _cleanupDraftAuto();
+        }, 30000);
+        // Save draft on modal close (capture phase fires before hideModal clears content)
+        const _modalBack = document.querySelector('.modalback');
+        const _onModalCloseCapture = (e) => {
+          const closeBtn = document.getElementById('modalClose');
+          if (e.target === closeBtn || e.target === _modalBack) _autoSaveDraftIfOpen();
+        };
+        if (_modalBack) _modalBack.addEventListener('click', _onModalCloseCapture, true);
+        function _cleanupDraftAuto() {
+          window.removeEventListener('beforeunload', _onBeforeUnload);
+          window.removeEventListener('hashchange', _onHashChange);
+          document.removeEventListener('visibilitychange', _onVisChange);
+          if (_modalBack) _modalBack.removeEventListener('click', _onModalCloseCapture, true);
+          clearInterval(_draftAutoTimer);
+        }
+        window.addEventListener('beforeunload', _onBeforeUnload);
+        window.addEventListener('hashchange', _onHashChange);
+        document.addEventListener('visibilitychange', _onVisChange);
+      }
 
       // Customers directory (INN -> name)
       const normInn = (v)=>String(v||"").replace(/\D/g, "");
@@ -1207,6 +1413,47 @@ ${docsHtml}</div>
         (docs||[]).forEach(d=>{ if(d.data_url) window.open(d.data_url, "_blank"); });
       });
 
+      // Download All Documents handler
+      const bDownloadAll = document.getElementById("downloadAllDocs");
+      if(bDownloadAll) bDownloadAll.addEventListener("click", async ()=>{
+        if(!docs || docs.length === 0) {
+          toast("Документы", "Нет документов для скачивания", "err");
+          return;
+        }
+
+        toast("Скачивание", `Начинаю загрузку ${docs.length} документов...`, "ok");
+
+        // Download each document with a small delay to avoid browser blocking
+        let downloadCount = 0;
+        for(const d of docs) {
+          if(d.data_url) {
+            try {
+              const a = document.createElement('a');
+              a.href = d.data_url;
+              a.download = d.name || d.type || 'document';
+              a.target = '_blank';
+
+              // For data URLs, use direct download
+              if(d.data_url.startsWith('data:')) {
+                a.click();
+                downloadCount++;
+              } else {
+                // For external URLs, open in new tab (browser security restriction)
+                window.open(d.data_url, '_blank');
+                downloadCount++;
+              }
+
+              // Small delay between downloads
+              await new Promise(r => setTimeout(r, 300));
+            } catch(e) {
+              console.warn('[Tender] Download failed for:', d.name, e);
+            }
+          }
+        }
+
+        toast("Скачивание", `Открыто ${downloadCount} документов`, "ok");
+      });
+
       const bPackExp = document.getElementById("btnPackExport");
       if(bPackExp) bPackExp.addEventListener("click", async ()=>{
         if(!tenderId){ toast("Комплект","Сначала сохраните тендер","err"); return; }
@@ -1293,7 +1540,7 @@ ${docsHtml}</div>
         });
       }
 
-      async function saveTender(){
+      async function saveTender(forceDraft){
         const period=document.getElementById("e_period").value.trim();
         const innRaw = document.getElementById("e_inn")?.value || "";
         const customer_inn = String(innRaw).replace(/\D/g, "");
@@ -1311,6 +1558,29 @@ ${docsHtml}</div>
         const tag=document.getElementById("e_tag").value.trim()||null;
         const cto=document.getElementById("e_c_to").value.trim()||"";
         const rejectEl=document.getElementById("e_reject"); const reject=rejectEl ? rejectEl.value||null : null;
+
+        // Draft mode: skip strict validation, save with 'Черновик' status
+        if (forceDraft && isNew) {
+          const obj={
+            period: period || ymNow(), year:Number((period || ymNow()).slice(0,4)),
+            customer_inn: customer_inn||null, customer_name:customer||'',
+            tender_title:title||'', tender_type: tenderType||'Тендер',
+            responsible_pm_id:pmId, tender_status:'Черновик',
+            tender_price: price, work_start_plan: ws, work_end_plan: we,
+            purchase_url: url, docs_deadline: docsDeadline,
+            reject_reason: reject, group_tag: tag, tender_comment_to: cto,
+            created_by_user_id: user.id,
+            handoff_at: null, handoff_by_user_id: null,
+            distribution_requested_at: null, distribution_requested_by_user_id: null,
+            distribution_assigned_at: null, distribution_assigned_by_user_id: null,
+            dedup_key: url || (`local:${period||ymNow()}:${customer_inn||customer||'draft'}:${title||'draft'}`.toLowerCase())
+          };
+          const id = await AsgardDB.add("tenders", obj);
+          await audit(user.id,"tender",id,"create",{draft:true});
+          clearDraft();
+          toast("Черновик","Тендер сохранён как черновик");
+          return id;
+        }
 
         if(!period || !/^\d{4}-\d{2}$/.test(period)){ toast("Проверка","Период должен быть YYYY-MM","err"); return null; }
         if(!customer && customer_inn){
@@ -1334,9 +1604,18 @@ ${docsHtml}</div>
 
         if(!pmId && status!=="Новый"){ toast("Проверка","Назначьте ответственного РП","err"); return null; }
         if(status==="Клиент отказался" && !reject){ toast("Проверка","Для отказа нужна причина","err"); return null; }
-        if(docsDeadline && !/^\d{4}-\d{2}-\d{2}$/.test(docsDeadline)){
-          toast("Проверка","Срок подачи документов должен быть YYYY-MM-DD","err");
-          return null;
+        // Accept both DD.MM.YYYY and YYYY-MM-DD formats, convert to ISO
+        if(docsDeadline){
+          // Try to parse and normalize to YYYY-MM-DD
+          const isoDate = V.dateISO ? V.dateISO(docsDeadline) : null;
+          if(isoDate){
+            docsDeadline = isoDate;
+            const inp = document.getElementById("e_docs_deadline");
+            if(inp) inp.value = isoDate;
+          } else if(!/^\d{4}-\d{2}-\d{2}$/.test(docsDeadline)){
+            toast("Проверка","Дата должна быть в формате ДД.ММ.ГГГГ или ГГГГ-ММ-ДД","err");
+            return null;
+          }
         }
 
         if(isNew){
@@ -1377,6 +1656,7 @@ ${docsHtml}</div>
           }
           const id = await AsgardDB.add("tenders", obj);
           await audit(user.id,"tender",id,"create",{period,customer,title,pmId});
+          clearDraft(); // Clear draft after successful save
           toast("Тендер","Создан");
           return id;
         }else{
@@ -1420,34 +1700,77 @@ ${docsHtml}</div>
       }
 
       document.getElementById("btnSave").addEventListener("click", async ()=>{
-        // Проверка дубликатов для новых тендеров (Этап 34)
         if (isNew) {
+          // Check required fields — offer draft save if missing
+          const chkCustomer = document.getElementById("e_customer")?.value?.trim() || '';
+          const chkTitle = document.getElementById("e_title")?.value?.trim() || '';
+          const chkPeriod = document.getElementById("e_period")?.value?.trim() || '';
+          const chkDeadline = document.getElementById("e_docs_deadline")?.value?.trim() || '';
+          const missingFields = [];
+          if (!chkCustomer) missingFields.push('Заказчик');
+          if (!chkTitle) missingFields.push('Название тендера');
+          if (!chkPeriod || !/^\d{4}-\d{2}$/.test(chkPeriod)) missingFields.push('Период');
+          if (!chkDeadline) missingFields.push('Дедлайн');
+
+          if (missingFields.length > 0) {
+            const _fieldIdMap = {'Заказчик':'e_customer','Название тендера':'e_title','Период':'e_period','Дедлайн':'e_docs_deadline'};
+            const _overlay = document.createElement('div');
+            _overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+            _overlay.innerHTML = `
+              <div style="background:var(--card,#1e1e2e);padding:24px;border-radius:12px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+                <div style="font-weight:600;font-size:16px;margin-bottom:12px">Не заполнены обязательные поля</div>
+                <div style="margin-bottom:16px;color:var(--text-secondary,#aaa)">${esc(missingFields.join(', '))}</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <button class="btn" id="btnFillMissing">Заполнить поля</button>
+                  <button class="btn ghost" id="btnDraftMissing">Сохранить как черновик</button>
+                </div>
+              </div>`;
+            document.body.appendChild(_overlay);
+            _overlay.addEventListener('click', (e) => { if (e.target === _overlay) _overlay.remove(); });
+            document.getElementById('btnFillMissing').addEventListener('click', () => {
+              _overlay.remove();
+              const ids = missingFields.map(f => _fieldIdMap[f]).filter(Boolean);
+              ids.forEach(fid => {
+                const el = document.getElementById(fid);
+                if (el) {
+                  el.style.border = '2px solid #ef4444';
+                  el.addEventListener('input', () => { el.style.border = ''; }, { once: true });
+                }
+              });
+              if (ids.length) { const first = document.getElementById(ids[0]); if (first) first.focus(); }
+            });
+            document.getElementById('btnDraftMissing').addEventListener('click', async () => {
+              _overlay.remove();
+              const id = await saveTender(true);
+              if(id){ await render({layout, title}); openTenderEditor(id); }
+            });
+            return;
+          }
+
+          // Проверка дубликатов для новых тендеров (Этап 34)
           const customerInn = document.getElementById("e_inn")?.value?.trim() || '';
-          const customerName = document.getElementById("e_cust")?.value?.trim() || '';
-          const tenderTitle = document.getElementById("e_title")?.value?.trim() || '';
-          
+          const customerName = chkCustomer;
+          const tenderTitle = chkTitle;
+
           if (customerName && tenderTitle) {
             const duplicates = await findDuplicates(customerInn, customerName, tenderTitle);
-            
+
             if (duplicates.length > 0) {
-              // Показываем предупреждение и ждём решения пользователя
               showDuplicateWarning(
                 duplicates,
                 async () => {
-                  // Пользователь нажал "Создать всё равно"
                   const id = await saveTender();
                   if(id){ await render({layout, title}); openTenderEditor(id); }
                 },
                 () => {
-                  // Пользователь отменил
                   toast("Отменено", "Создание тендера отменено");
                 }
               );
-              return; // Ждём решения пользователя
+              return;
             }
           }
         }
-        
+
         // Обычное сохранение (без дубликатов или редактирование)
         const id = await saveTender();
         if(id){ await render({layout, title}); openTenderEditor(id); }
@@ -1466,14 +1789,20 @@ ${docsHtml}</div>
           await AsgardDB.put("tenders", cur);
           await audit(user.id, "tender", id, "request_distribution", {});
 
-          // notify all directors
+          // notify all directors and admins
           try{
             const allU = await getUsers();
-            const dirs = (allU||[]).filter(u=> Array.isArray(u.roles) && u.roles.some(r=>isDirRole(r)) );
+            const dirs = (allU||[]).filter(u=> {
+              // Check singular role field
+              if (u.role && (isDirRole(u.role) || u.role === 'ADMIN')) return true;
+              // Check roles array if exists
+              if (Array.isArray(u.roles) && u.roles.some(r => isDirRole(r) || r === 'ADMIN')) return true;
+              return false;
+            });
             for(const d of dirs){
               await notify(d.id, "На распределение", `${cur.customer_name} — ${cur.tender_title}\nДедлайн: ${cur.docs_deadline||"—"}\nТип: ${cur.tender_type||"—"}`, "#/tenders");
             }
-          }catch(e){}
+          }catch(e){ console.error('Distribution notify error:', e); }
 
           toast("Распределение","Отправлено директору");
           await render({layout, title});

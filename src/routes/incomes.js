@@ -1,6 +1,12 @@
 /**
  * Incomes Routes
  */
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECURITY: Ролевой контроль для финансовых операций (HIGH-9)
+// ═══════════════════════════════════════════════════════════════════════════
+const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
+
 async function routes(fastify, options) {
   const db = fastify.db;
 
@@ -19,16 +25,29 @@ async function routes(fastify, options) {
     return { incomes: result.rows };
   });
 
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const data = { ...request.body, created_by: request.user.id, created_at: new Date().toISOString() };
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    const sql = `INSERT INTO incomes (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-    const result = await db.query(sql, values);
-    return { income: result.rows[0] };
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.post('/', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    try {
+      // Filter to allowed DB columns only to prevent crash on unknown columns
+      const allowedCols = ['work_id', 'amount', 'date', 'description', 'type'];
+      const raw = request.body || {};
+      const data = { created_by: request.user.id, created_at: new Date().toISOString() };
+      for (const k of allowedCols) {
+        if (raw[k] !== undefined) data[k] = raw[k];
+      }
+      const keys = Object.keys(data);
+      const values = Object.values(data);
+      const sql = `INSERT INTO incomes (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+      const result = await db.query(sql, values);
+      return { income: result.rows[0] };
+    } catch (err) {
+      const code = err.code === '23502' || err.code === '22001' || err.code === '42703' ? 400 : 500;
+      return reply.code(code).send({ error: 'Ошибка создания записи', detail: err.message });
+    }
   });
 
-  fastify.put('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.put('/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const { id } = request.params;
     const data = request.body;
     const updates = [];
@@ -45,7 +64,8 @@ async function routes(fastify, options) {
     return { income: result.rows[0] };
   });
 
-  fastify.delete('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // SECURITY: Только WRITE_ROLES (HIGH-9)
+  fastify.delete('/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const result = await db.query('DELETE FROM incomes WHERE id = $1 RETURNING id', [request.params.id]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
     return { message: 'Удалено' };
