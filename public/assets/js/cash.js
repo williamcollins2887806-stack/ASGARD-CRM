@@ -1,10 +1,13 @@
 /**
  * ASGARD CRM — Касса (страница РП)
  * Авансовые отчёты и расчёты
+ * Redesigned to use ASGARD Design System
  */
 
 window.CashPage = (function() {
   'use strict';
+
+  const { showModal, hideModal, toast, esc } = AsgardUI;
 
   const STATUS_LABELS = {
     requested: 'Ожидает согласования',
@@ -31,10 +34,9 @@ window.CashPage = (function() {
     loan: 'Долг до ЗП'
   };
 
-  // Цвета типов запросов (Доработка 1)
   const TYPE_COLORS = {
-    advance: '#3b82f6', // синий — целевой аванс
-    loan: '#f59e0b'     // жёлтый — личный долг
+    advance: 'info',
+    loan: 'warning'
   };
 
   let currentRequests = [];
@@ -47,209 +49,23 @@ window.CashPage = (function() {
     container.innerHTML = `
       <div class="page-header">
         <h1>Касса</h1>
-        <p class="text-muted">Авансовые отчёты и расчёты</p>
+        <p style="color:var(--text-muted); font-size:var(--text-sm); margin:0">Авансовые отчёты и расчёты</p>
       </div>
 
-      <div id="cash-balance-widget" class="mb-4"></div>
+      <div id="cash-balance-widget"></div>
 
-      <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <span>Мои заявки</span>
-          <button class="btn btn-primary btn-sm" onclick="CashPage.showCreateModal()">
-            + Новая заявка
-          </button>
+      <div class="cash-card">
+        <div class="cash-card-header">
+          <span class="card-title">Мои заявки</span>
+          <button class="btn primary" onclick="CashPage.showCreateModal()">+ Новая заявка</button>
         </div>
-        <div class="card-body p-0">
+        <div class="cash-card-body">
           <div id="cash-requests-list">
-            <div class="text-center p-4"><div class="spinner-border"></div></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Create Modal -->
-      <div class="modal fade" id="cashCreateModal" tabindex="-1">
-        <div class="modal-dialog">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">Новая заявка на выдачу</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-              <form id="cashCreateForm">
-                <div class="mb-3">
-                  <label class="form-label">Тип</label>
-                  <select class="form-select" name="type" id="cashType" onchange="CashPage.onTypeChange()">
-                    <option value="advance">Аванс на проект</option>
-                    <option value="loan">Личный долг до ЗП</option>
-                  </select>
-                </div>
-                <div class="mb-3" id="cashWorkGroup">
-                  <label class="form-label">Проект</label>
-                  <select class="form-select" name="work_id" id="cashWorkId">
-                    <option value="">Загрузка...</option>
-                  </select>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">Сумма</label>
-                  <input type="number" class="form-control" name="amount" step="0.01" min="1" required>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">Цель / обоснование</label>
-                  <textarea class="form-control" name="purpose" rows="2" required></textarea>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">Сопроводительное письмо (опционально)</label>
-                  <textarea class="form-control" name="cover_letter" rows="3"></textarea>
-                </div>
-              </form>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-              <button type="button" class="btn btn-primary" onclick="CashPage.submitCreate()">Создать</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Detail Modal -->
-      <div class="modal fade" id="cashDetailModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">Заявка #<span id="cashDetailId"></span></h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="cashDetailBody">
-              <div class="text-center p-4"><div class="spinner-border"></div></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Expense Modal -->
-      <div class="modal fade" id="cashExpenseModal" tabindex="-1">
-        <div class="modal-dialog">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">Добавить расход</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-              <form id="cashExpenseForm">
-                <input type="hidden" name="request_id" id="expenseRequestId">
-                <div class="mb-3">
-                  <label class="form-label">Сумма</label>
-                  <input type="number" class="form-control" name="amount" step="0.01" min="0.01" required>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">За что потрачено</label>
-                  <input type="text" class="form-control" name="description" required>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">Дата расхода</label>
-                  <input type="date" class="form-control" name="expense_date">
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">Фото чека</label>
-                  <input type="file" class="form-control" name="receipt" accept="image/*,.pdf" required>
-                </div>
-              </form>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-              <button type="button" class="btn btn-primary" onclick="CashPage.submitExpense()">Добавить</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Return Modal -->
-      <div class="modal fade" id="cashReturnModal" tabindex="-1">
-        <div class="modal-dialog">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">Вернуть остаток</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-              <form id="cashReturnForm">
-                <input type="hidden" name="request_id" id="returnRequestId">
-                <div class="alert alert-info">
-                  Остаток: <strong id="returnRemainder">0</strong> руб.
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">Сумма возврата</label>
-                  <input type="number" class="form-control" name="amount" step="0.01" min="0.01" required>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">Комментарий</label>
-                  <input type="text" class="form-control" name="note">
-                </div>
-              </form>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-              <button type="button" class="btn btn-success" onclick="CashPage.submitReturn()">Вернуть</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Reply Modal -->
-      <div class="modal fade" id="cashReplyModal" tabindex="-1">
-        <div class="modal-dialog">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">Ответить на вопрос</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-              <form id="cashReplyForm">
-                <input type="hidden" name="request_id" id="replyRequestId">
-                <div class="mb-3">
-                  <label class="form-label">Ваш ответ</label>
-                  <textarea class="form-control" name="message" rows="3" required></textarea>
-                </div>
-              </form>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-              <button type="button" class="btn btn-primary" onclick="CashPage.submitReply()">Отправить</button>
-            </div>
+            <div style="text-align:center; padding:24px; color:var(--text-muted)">Загрузка...</div>
           </div>
         </div>
       </div>
     `;
-
-    // Inject dark theme overrides for Bootstrap elements
-    if (!document.getElementById('cash-dark-styles')) {
-      const style = document.createElement('style');
-      style.id = 'cash-dark-styles';
-      style.textContent = `
-        #cash-page .card { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); }
-        #cash-page .card-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); color: var(--text-primary); }
-        #cash-page .card-body { background: var(--bg-card); color: var(--text-primary); }
-        #cash-page .modal-content { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); }
-        #cash-page .modal-header { background: var(--bg-deep); border-bottom: 1px solid var(--border); }
-        #cash-page .modal-footer { background: var(--bg-deep); border-top: 1px solid var(--border); }
-        #cash-page .form-control, #cash-page .form-select { background: var(--bg-deep); color: var(--text-primary); border-color: var(--border); }
-        #cash-page .form-label { color: var(--text-muted); }
-        #cash-page .table { color: var(--text-primary); }
-        #cash-page .table th { background: var(--bg-deep); color: var(--text-muted); border-color: var(--border); }
-        #cash-page .table td { border-color: var(--border); }
-        #cash-page .table-hover tbody tr:hover { background: rgba(59,130,246,0.08); }
-        #cash-page .btn-close { filter: invert(1); }
-        #cash-page .alert { border: 1px solid var(--border); background: var(--bg-deep); color: var(--text-primary); }
-        #cash-page .alert-info { background: rgba(37,99,235,0.1); border-color: var(--secondary-glow); }
-        #cash-page .alert-warning { background: rgba(245,158,11,0.1); border-color: var(--amber-glow); }
-        #cash-page .alert-success { background: rgba(34,197,94,0.1); border-color: var(--green-glow); }
-        #cash-page .alert-danger { background: rgba(220,38,38,0.1); border-color: var(--red-glow); }
-        #cash-page .modal-header, #cash-page .modal-footer { color: var(--text-primary); }
-        #cash-page .text-muted { color: var(--text-muted) !important; }
-        #cash-page .border { border-color: var(--border) !important; }
-      `;
-      document.head.appendChild(style);
-    }
 
     await loadBalance();
     await loadWorks();
@@ -276,38 +92,22 @@ window.CashPage = (function() {
       if (!widget) return;
 
       widget.innerHTML = `
-        <div class="row g-3">
-          <div class="col-md-3">
-            <div class="card bg-info text-white">
-              <div class="card-body text-center">
-                <h4>${formatMoney(data.issued)}</h4>
-                <small>Получено</small>
-              </div>
-            </div>
+        <div class="cash-balance-grid">
+          <div class="cash-balance-card info">
+            <div class="balance-value">${formatMoney(data.issued)}</div>
+            <div class="balance-label">Получено</div>
           </div>
-          <div class="col-md-3">
-            <div class="card bg-warning text-dark">
-              <div class="card-body text-center">
-                <h4>${formatMoney(data.spent)}</h4>
-                <small>Потрачено</small>
-              </div>
-            </div>
+          <div class="cash-balance-card warning">
+            <div class="balance-value">${formatMoney(data.spent)}</div>
+            <div class="balance-label">Потрачено</div>
           </div>
-          <div class="col-md-3">
-            <div class="card bg-success text-white">
-              <div class="card-body text-center">
-                <h4>${formatMoney(data.returned)}</h4>
-                <small>Возвращено</small>
-              </div>
-            </div>
+          <div class="cash-balance-card success">
+            <div class="balance-value">${formatMoney(data.returned)}</div>
+            <div class="balance-label">Возвращено</div>
           </div>
-          <div class="col-md-3">
-            <div class="card ${data.balance > 0 ? 'bg-danger text-white' : 'bg-secondary text-white'}">
-              <div class="card-body text-center">
-                <h4>${formatMoney(data.balance)}</h4>
-                <small>На руках</small>
-              </div>
-            </div>
+          <div class="cash-balance-card ${data.balance > 0 ? 'danger' : 'secondary'}">
+            <div class="balance-value">${formatMoney(data.balance)}</div>
+            <div class="balance-label">На руках</div>
           </div>
         </div>
       `;
@@ -321,12 +121,6 @@ window.CashPage = (function() {
       const resp = await fetch('/api/works?limit=500', { headers: getHeaders() });
       const data = await resp.json();
       works = data.works || data || [];
-
-      const select = document.getElementById('cashWorkId');
-      if (select) {
-        select.innerHTML = '<option value="">-- Выберите проект --</option>' +
-          works.map(w => `<option value="${w.id}">${escapeHtml(w.work_title || 'Проект #' + w.id)}</option>`).join('');
-      }
     } catch (e) {
       console.error('loadWorks error', e);
     }
@@ -339,7 +133,8 @@ window.CashPage = (function() {
       renderRequestsList();
     } catch (e) {
       console.error('loadRequests error', e);
-      document.getElementById('cash-requests-list').innerHTML = '<div class="text-center text-danger p-4">Ошибка загрузки</div>';
+      document.getElementById('cash-requests-list').innerHTML =
+        '<div style="text-align:center; padding:24px; color:var(--danger)">Ошибка загрузки</div>';
     }
   }
 
@@ -347,13 +142,13 @@ window.CashPage = (function() {
     const container = document.getElementById('cash-requests-list');
 
     if (!currentRequests.length) {
-      container.innerHTML = '<div class="text-center text-muted p-4">Нет заявок</div>';
+      container.innerHTML = AsgardUI.emptyState({ icon: '💰', title: 'Нет заявок', desc: 'Создайте первую заявку на аванс' });
       return;
     }
 
     container.innerHTML = `
-      <div class="table-responsive">
-        <table class="table table-hover mb-0">
+      <div style="overflow-x:auto">
+        <table class="tbl">
           <thead>
             <tr>
               <th>#</th>
@@ -368,26 +163,22 @@ window.CashPage = (function() {
           </thead>
           <tbody>
             ${currentRequests.map(r => {
-              // Для loan (долг) баланс показываем как отрицательный (долг сотрудника)
               const isLoan = r.type === 'loan';
               const balanceVal = r.balance ? r.balance.remainder : 0;
               const balanceDisplay = isLoan && balanceVal > 0 ? `-${formatMoney(balanceVal)}` : formatMoney(balanceVal);
-              const balanceColor = isLoan ? (balanceVal > 0 ? 'color:#ef4444' : 'color:#22c55e') : (balanceVal > 0 ? 'color:#f59e0b' : 'color:#22c55e');
-              const typeColor = TYPE_COLORS[r.type] || '#6b7280';
+              const balanceColor = isLoan ? (balanceVal > 0 ? 'var(--danger)' : 'var(--success)') : (balanceVal > 0 ? 'var(--warning)' : 'var(--success)');
 
               return `
-              <tr>
+              <tr onclick="CashPage.showDetail(${r.id})" style="cursor:pointer">
                 <td>${r.id}</td>
-                <td><span class="badge" style="background:${typeColor}20;color:${typeColor};border:1px solid ${typeColor}40;font-size:0.85em">${TYPE_LABELS[r.type] || r.type}</span></td>
-                <td>${escapeHtml(r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные' : '-')))}</td>
+                <td><span class="status status-${TYPE_COLORS[r.type] === 'info' ? 'blue' : 'yellow'}">${esc(TYPE_LABELS[r.type] || r.type)}</span></td>
+                <td>${esc(r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные' : '-')))}</td>
                 <td><strong>${formatMoney(r.amount)}</strong></td>
-                <td><span class="badge bg-${STATUS_COLORS[r.status]}">${STATUS_LABELS[r.status]}</span></td>
-                <td><span style="${balanceColor};font-weight:600">${r.balance ? balanceDisplay : '-'}</span></td>
+                <td><span class="status status-${statusCssClass(r.status)}">${esc(STATUS_LABELS[r.status])}</span></td>
+                <td><span style="color:${balanceColor};font-weight:600">${r.balance ? balanceDisplay : '-'}</span></td>
                 <td>${formatDate(r.created_at)}</td>
                 <td>
-                  <button class="btn btn-sm btn-outline-primary" onclick="CashPage.showDetail(${r.id})">
-                    Открыть
-                  </button>
+                  <button class="btn ghost mini" onclick="event.stopPropagation(); CashPage.showDetail(${r.id})">Открыть</button>
                 </td>
               </tr>
             `;}).join('')}
@@ -397,26 +188,69 @@ window.CashPage = (function() {
     `;
   }
 
+  function statusCssClass(status) {
+    const map = { requested: 'yellow', approved: 'green', received: 'blue', reporting: 'blue', closed: 'gray', rejected: 'red', question: 'yellow' };
+    return map[status] || 'gray';
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // CREATE REQUEST
   // ─────────────────────────────────────────────────────────────────
   function showCreateModal() {
-    document.getElementById('cashCreateForm').reset();
-    onTypeChange();
-    new bootstrap.Modal(document.getElementById('cashCreateModal')).show();
+    const worksOptions = '<option value="">-- Выберите проект --</option>' +
+      works.map(w => `<option value="${w.id}">${esc(w.work_title || 'Проект #' + w.id)}</option>`).join('');
+
+    showModal({
+      title: 'Новая заявка на выдачу',
+      html: `
+        <form id="cashCreateForm">
+          <div class="asg-form-group">
+            <label>Тип</label>
+            <select name="type" id="cashType" onchange="CashPage.onTypeChange()">
+              <option value="advance">Аванс на проект</option>
+              <option value="loan">Личный долг до ЗП</option>
+            </select>
+          </div>
+          <div class="asg-form-group" id="cashWorkGroup">
+            <label>Проект</label>
+            <select name="work_id" id="cashWorkId">${worksOptions}</select>
+          </div>
+          <div class="asg-form-group">
+            <label>Сумма</label>
+            <input type="number" name="amount" step="0.01" min="1" required placeholder="0.00">
+          </div>
+          <div class="asg-form-group">
+            <label>Цель / обоснование</label>
+            <textarea name="purpose" rows="2" required placeholder="Укажите цель"></textarea>
+          </div>
+          <div class="asg-form-group">
+            <label>Сопроводительное письмо (опционально)</label>
+            <textarea name="cover_letter" rows="3" placeholder="Дополнительная информация"></textarea>
+          </div>
+          <div class="asg-form-actions">
+            <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
+            <button type="button" class="btn primary" onclick="CashPage.submitCreate()">Создать</button>
+          </div>
+        </form>
+      `
+    });
   }
 
   function onTypeChange() {
-    const type = document.getElementById('cashType').value;
-    document.getElementById('cashWorkGroup').style.display = type === 'advance' ? 'block' : 'none';
+    const typeEl = document.getElementById('cashType');
+    const workGroup = document.getElementById('cashWorkGroup');
+    if (typeEl && workGroup) {
+      workGroup.style.display = typeEl.value === 'advance' ? 'block' : 'none';
+    }
   }
 
   async function submitCreate() {
     const form = document.getElementById('cashCreateForm');
+    if (!form) return;
     const data = Object.fromEntries(new FormData(form));
 
     if (data.type === 'advance' && !data.work_id) {
-      AsgardUI.toast('Выберите проект', 'warning');
+      toast('Выберите проект', '', 'warn');
       return;
     }
 
@@ -438,12 +272,12 @@ window.CashPage = (function() {
         throw new Error(err.error || 'Ошибка');
       }
 
-      bootstrap.Modal.getInstance(document.getElementById('cashCreateModal')).hide();
-      AsgardUI.toast('Заявка создана', 'success');
+      hideModal();
+      toast('Заявка создана', '', 'ok');
       await loadBalance();
       await loadRequests();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      toast('Ошибка', e.message, 'err');
     }
   }
 
@@ -451,150 +285,136 @@ window.CashPage = (function() {
   // DETAIL
   // ─────────────────────────────────────────────────────────────────
   async function showDetail(id) {
-    document.getElementById('cashDetailId').textContent = id;
-    document.getElementById('cashDetailBody').innerHTML = '<div class="text-center p-4"><div class="spinner-border"></div></div>';
-    new bootstrap.Modal(document.getElementById('cashDetailModal')).show();
+    showModal({
+      title: 'Заявка #' + id,
+      html: '<div style="text-align:center; padding:24px; color:var(--text-muted)">Загрузка...</div>'
+    });
 
     try {
       const resp = await fetch('/api/cash/' + id, { headers: getHeaders() });
       if (!resp.ok) throw new Error('Ошибка загрузки');
       const req = await resp.json();
-      renderDetail(req);
+      const body = document.getElementById('modalBody');
+      if (body) body.innerHTML = renderDetail(req);
     } catch (e) {
-      document.getElementById('cashDetailBody').innerHTML = '<div class="text-center text-danger p-4">' + escapeHtml(e.message) + '</div>';
+      const body = document.getElementById('modalBody');
+      if (body) body.innerHTML = `<div style="text-align:center; padding:24px; color:var(--danger)">${esc(e.message)}</div>`;
     }
   }
 
   function renderDetail(req) {
     const isLoan = req.type === 'loan';
     const canReceive = req.status === 'approved';
-    // Для loan нельзя добавлять расходы (нет авансового отчёта)
     const canAddExpense = !isLoan && ['received', 'reporting'].includes(req.status);
     const canReturn = ['received', 'reporting'].includes(req.status) && req.balance?.remainder > 0;
     const canReply = req.status === 'question';
-    const typeColor = TYPE_COLORS[req.type] || '#6b7280';
 
-    // Для loan баланс отображаем как долг (отрицательный)
     const balanceVal = req.balance?.remainder || 0;
     const balanceDisplay = isLoan && balanceVal > 0 ? `-${formatMoney(balanceVal)}` : formatMoney(balanceVal);
     const balanceLabel = isLoan ? 'Долг' : 'Остаток';
 
     let html = `
-      <div class="row mb-3">
-        <div class="col-md-6">
-          <p><strong>Тип:</strong> <span class="badge" style="background:${typeColor}20;color:${typeColor};border:1px solid ${typeColor}40">${TYPE_LABELS[req.type] || req.type}</span></p>
-          <p><strong>Проект:</strong> ${escapeHtml(req.work_title || (req.work_id ? '#' + req.work_id : (isLoan ? 'Личные средства' : '-')))}</p>
-          <p><strong>Сумма:</strong> ${formatMoney(req.amount)}</p>
-          <p><strong>Цель:</strong> ${escapeHtml(req.purpose)}</p>
-          ${req.cover_letter ? `<p><strong>Письмо:</strong> ${escapeHtml(req.cover_letter)}</p>` : ''}
+      <div class="cash-detail-grid">
+        <div>
+          <div class="cash-detail-item"><span class="label">Тип</span><span class="value"><span class="status status-${TYPE_COLORS[req.type] === 'info' ? 'blue' : 'yellow'}">${esc(TYPE_LABELS[req.type] || req.type)}</span></span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Проект</span><span class="value">${esc(req.work_title || (req.work_id ? '#' + req.work_id : (isLoan ? 'Личные средства' : '-')))}</span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Сумма</span><span class="value" style="font-size:var(--text-lg);color:var(--gold)">${formatMoney(req.amount)}</span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Цель</span><span class="value">${esc(req.purpose)}</span></div>
+          ${req.cover_letter ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Письмо</span><span class="value">${esc(req.cover_letter)}</span></div>` : ''}
         </div>
-        <div class="col-md-6">
-          <p><strong>Статус:</strong> <span class="badge bg-${STATUS_COLORS[req.status]}">${STATUS_LABELS[req.status]}</span></p>
-          <p><strong>Создано:</strong> ${formatDateTime(req.created_at)}</p>
-          ${req.director_name ? `<p><strong>Директор:</strong> ${escapeHtml(req.director_name)}</p>` : ''}
-          ${req.director_comment ? `<p><strong>Комментарий:</strong> ${escapeHtml(req.director_comment)}</p>` : ''}
-          ${req.received_at ? `<p><strong>Получено:</strong> ${formatDateTime(req.received_at)}</p>` : ''}
-          ${req.closed_at ? `<p><strong>Закрыто:</strong> ${formatDateTime(req.closed_at)}</p>` : ''}
+        <div>
+          <div class="cash-detail-item"><span class="label">Статус</span><span class="value"><span class="status status-${statusCssClass(req.status)}">${esc(STATUS_LABELS[req.status])}</span></span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Создано</span><span class="value">${formatDateTime(req.created_at)}</span></div>
+          ${req.director_name ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Директор</span><span class="value">${esc(req.director_name)}</span></div>` : ''}
+          ${req.director_comment ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Комментарий</span><span class="value">${esc(req.director_comment)}</span></div>` : ''}
+          ${req.received_at ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Получено</span><span class="value">${formatDateTime(req.received_at)}</span></div>` : ''}
+          ${req.closed_at ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Закрыто</span><span class="value">${formatDateTime(req.closed_at)}</span></div>` : ''}
         </div>
-      </div>
-
-      ${req.balance ? `
-        <div class="alert alert-${req.balance.remainder > 0 ? (isLoan ? 'danger' : 'warning') : 'success'}">
-          ${isLoan ? `
-            <strong>Долг:</strong>
-            Получено: ${formatMoney(req.balance.approved)} |
-            Возвращено: ${formatMoney(req.balance.returned)} |
-            <strong style="color:${balanceVal > 0 ? '#dc2626' : '#16a34a'}">${balanceLabel}: ${balanceDisplay}</strong>
-            ${balanceVal > 0 ? ' (будет удержан из ЗП)' : ' (погашен)'}
-          ` : `
-            <strong>Баланс:</strong>
-            Выдано: ${formatMoney(req.balance.approved)} |
-            Потрачено: ${formatMoney(req.balance.spent)} |
-            Возвращено: ${formatMoney(req.balance.returned)} |
-            <strong>${balanceLabel}: ${balanceDisplay}</strong>
-          `}
-        </div>
-      ` : ''}
-
-      ${isLoan ? `
-        <div class="alert alert-info" style="font-size:0.9em">
-          <strong>Долг до ЗП</strong> — личные деньги без авансового отчёта. Необходим полный возврат (из ЗП или наличными).
-        </div>
-      ` : ''}
-
-      <div class="mb-3">
-        ${canReceive ? `<button class="btn btn-success me-2" onclick="CashPage.confirmReceive(${req.id})">Подтвердить получение</button>` : ''}
-        ${canAddExpense ? `<button class="btn btn-primary me-2" onclick="CashPage.showExpenseModal(${req.id})">Добавить расход</button>` : ''}
-        ${canReturn ? `<button class="btn btn-${isLoan ? 'danger' : 'warning'} me-2" onclick="CashPage.showReturnModal(${req.id}, ${req.balance?.remainder || 0})">${isLoan ? 'Погасить долг' : 'Вернуть остаток'}</button>` : ''}
-        ${canReply ? `<button class="btn btn-info me-2" onclick="CashPage.showReplyModal(${req.id})">Ответить</button>` : ''}
       </div>
     `;
 
-    // Expenses (только для авансов, не для долга до ЗП)
+    // Balance alert
+    if (req.balance) {
+      const alertType = req.balance.remainder > 0 ? (isLoan ? 'danger' : 'warning') : 'success';
+      html += `<div class="cash-alert ${alertType}">`;
+      if (isLoan) {
+        html += `<strong>Долг:</strong> Получено: ${formatMoney(req.balance.approved)} | Возвращено: ${formatMoney(req.balance.returned)} | <strong>${balanceLabel}: ${balanceDisplay}</strong>${balanceVal > 0 ? ' (будет удержан из ЗП)' : ' (погашен)'}`;
+      } else {
+        html += `<strong>Баланс:</strong> Выдано: ${formatMoney(req.balance.approved)} | Потрачено: ${formatMoney(req.balance.spent)} | Возвращено: ${formatMoney(req.balance.returned)} | <strong>${balanceLabel}: ${balanceDisplay}</strong>`;
+      }
+      html += '</div>';
+    }
+
+    if (isLoan) {
+      html += `<div class="cash-alert info"><strong>Долг до ЗП</strong> — личные деньги без авансового отчёта. Необходим полный возврат (из ЗП или наличными).</div>`;
+    }
+
+    // Actions
+    const actions = [];
+    if (canReceive) actions.push(`<button class="btn green" onclick="CashPage.confirmReceive(${req.id})">Подтвердить получение</button>`);
+    if (canAddExpense) actions.push(`<button class="btn primary" onclick="CashPage.showExpenseModal(${req.id})">Добавить расход</button>`);
+    if (canReturn) actions.push(`<button class="btn ${isLoan ? 'red' : 'amber'}" onclick="CashPage.showReturnModal(${req.id}, ${req.balance?.remainder || 0})">${isLoan ? 'Погасить долг' : 'Вернуть остаток'}</button>`);
+    if (canReply) actions.push(`<button class="btn blue" onclick="CashPage.showReplyModal(${req.id})">Ответить</button>`);
+
+    if (actions.length) {
+      html += `<div class="cash-actions">${actions.join('')}</div>`;
+    }
+
+    // Expenses
     if (!isLoan && req.expenses?.length) {
-      html += `
-        <h6>Расходы (авансовый отчёт)</h6>
-        <div class="table-responsive mb-3">
-          <table class="table table-sm">
-            <thead><tr><th>Дата</th><th>Описание</th><th>Сумма</th><th>Чек</th><th></th></tr></thead>
+      html += `<div class="cash-section-title">Расходы (авансовый отчёт)</div>
+        <div style="overflow-x:auto; margin-bottom:16px">
+          <table class="tbl">
+            <thead><tr><th>Дата</th><th>Описание</th><th>Сумма</th><th>Чек</th>${canAddExpense ? '<th></th>' : ''}</tr></thead>
             <tbody>
               ${req.expenses.map(e => `
                 <tr>
                   <td>${formatDate(e.expense_date)}</td>
-                  <td>${escapeHtml(e.description)}</td>
+                  <td>${esc(e.description)}</td>
                   <td>${formatMoney(e.amount)}</td>
-                  <td>
-                    ${e.receipt_file ? `<a href="/api/cash/${req.id}/receipt/${e.receipt_file}" target="_blank">${escapeHtml(e.receipt_original_name || 'Чек')}</a>` : '-'}
-                  </td>
-                  <td>
-                    ${canAddExpense ? `<button class="btn btn-sm btn-outline-danger" onclick="CashPage.deleteExpense(${req.id}, ${e.id})">X</button>` : ''}
-                  </td>
+                  <td>${e.receipt_file ? `<a href="/api/cash/${req.id}/receipt/${e.receipt_file}" target="_blank" style="color:var(--gold)">${esc(e.receipt_original_name || 'Чек')}</a>` : '-'}</td>
+                  ${canAddExpense ? `<td><button class="btn red mini" onclick="CashPage.deleteExpense(${req.id}, ${e.id})">Удалить</button></td>` : ''}
                 </tr>
               `).join('')}
             </tbody>
           </table>
-        </div>
-      `;
+        </div>`;
     }
 
     // Returns
     if (req.returns?.length) {
-      html += `
-        <h6>Возвраты</h6>
-        <div class="table-responsive mb-3">
-          <table class="table table-sm">
+      html += `<div class="cash-section-title">Возвраты</div>
+        <div style="overflow-x:auto; margin-bottom:16px">
+          <table class="tbl">
             <thead><tr><th>Дата</th><th>Сумма</th><th>Комментарий</th><th>Подтверждено</th></tr></thead>
             <tbody>
               ${req.returns.map(r => `
                 <tr>
                   <td>${formatDateTime(r.created_at)}</td>
                   <td>${formatMoney(r.amount)}</td>
-                  <td>${escapeHtml(r.note || '-')}</td>
-                  <td>${r.confirmed_at ? `${formatDateTime(r.confirmed_at)} (${escapeHtml(r.confirmed_by_name || '')})` : '<span class="badge bg-warning">Ожидает</span>'}</td>
+                  <td>${esc(r.note || '-')}</td>
+                  <td>${r.confirmed_at ? `${formatDateTime(r.confirmed_at)} (${esc(r.confirmed_by_name || '')})` : '<span class="status status-yellow">Ожидает</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
-        </div>
-      `;
+        </div>`;
     }
 
     // Messages
     if (req.messages?.length) {
-      html += `
-        <h6>Переписка</h6>
-        <div class="border rounded p-2 mb-3" style="max-height: 200px; overflow-y: auto;">
+      html += `<div class="cash-section-title">Переписка</div>
+        <div class="cash-messages">
           ${req.messages.map(m => `
-            <div class="mb-2">
-              <small class="text-muted">${formatDateTime(m.created_at)} - ${escapeHtml(m.user_name)} (${m.user_role})</small>
-              <div>${escapeHtml(m.message)}</div>
+            <div class="cash-message">
+              <div class="meta">${formatDateTime(m.created_at)} — ${esc(m.user_name)} (${esc(m.user_role)})</div>
+              <div class="text">${esc(m.message)}</div>
             </div>
           `).join('')}
-        </div>
-      `;
+        </div>`;
     }
 
-    document.getElementById('cashDetailBody').innerHTML = html;
+    return html;
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -612,25 +432,53 @@ window.CashPage = (function() {
         const err = await resp.json();
         throw new Error(err.error || 'Ошибка');
       }
-      AsgardUI.toast('Получение подтверждено', 'success');
+      toast('Получение подтверждено', '', 'ok');
       await showDetail(id);
       await loadBalance();
       await loadRequests();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      toast('Ошибка', e.message, 'err');
     }
   }
 
   function showExpenseModal(requestId) {
-    document.getElementById('cashExpenseForm').reset();
-    document.getElementById('expenseRequestId').value = requestId;
-    document.querySelector('#cashExpenseForm [name="expense_date"]').value = new Date().toISOString().split('T')[0];
-    new bootstrap.Modal(document.getElementById('cashExpenseModal')).show();
+    hideModal();
+    setTimeout(() => {
+      showModal({
+        title: 'Добавить расход',
+        html: `
+          <form id="cashExpenseForm">
+            <input type="hidden" name="request_id" value="${requestId}">
+            <div class="asg-form-group">
+              <label>Сумма</label>
+              <input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00">
+            </div>
+            <div class="asg-form-group">
+              <label>За что потрачено</label>
+              <input type="text" name="description" required placeholder="Описание расхода">
+            </div>
+            <div class="asg-form-group">
+              <label>Дата расхода</label>
+              <input type="date" name="expense_date" value="${new Date().toISOString().split('T')[0]}">
+            </div>
+            <div class="asg-form-group">
+              <label>Фото чека</label>
+              <input type="file" name="receipt" accept="image/*,.pdf" required>
+            </div>
+            <div class="asg-form-actions">
+              <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
+              <button type="button" class="btn primary" onclick="CashPage.submitExpense()">Добавить</button>
+            </div>
+          </form>
+        `
+      });
+    }, 100);
   }
 
   async function submitExpense() {
     const form = document.getElementById('cashExpenseForm');
-    const requestId = document.getElementById('expenseRequestId').value;
+    if (!form) return;
+    const requestId = form.querySelector('[name="request_id"]').value;
     const formData = new FormData(form);
     formData.delete('request_id');
 
@@ -648,13 +496,13 @@ window.CashPage = (function() {
         throw new Error(err.error || 'Ошибка');
       }
 
-      bootstrap.Modal.getInstance(document.getElementById('cashExpenseModal')).hide();
-      AsgardUI.toast('Расход добавлен', 'success');
+      hideModal();
+      toast('Расход добавлен', '', 'ok');
       await showDetail(parseInt(requestId));
       await loadBalance();
       await loadRequests();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      toast('Ошибка', e.message, 'err');
     }
   }
 
@@ -670,27 +518,48 @@ window.CashPage = (function() {
         const err = await resp.json();
         throw new Error(err.error || 'Ошибка');
       }
-      AsgardUI.toast('Расход удалён', 'success');
+      toast('Расход удалён', '', 'ok');
       await showDetail(requestId);
       await loadBalance();
       await loadRequests();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      toast('Ошибка', e.message, 'err');
     }
   }
 
   function showReturnModal(requestId, remainder) {
-    document.getElementById('cashReturnForm').reset();
-    document.getElementById('returnRequestId').value = requestId;
-    document.getElementById('returnRemainder').textContent = formatMoney(remainder);
-    document.querySelector('#cashReturnForm [name="amount"]').max = remainder;
-    document.querySelector('#cashReturnForm [name="amount"]').value = remainder;
-    new bootstrap.Modal(document.getElementById('cashReturnModal')).show();
+    hideModal();
+    setTimeout(() => {
+      showModal({
+        title: 'Вернуть остаток',
+        html: `
+          <form id="cashReturnForm">
+            <input type="hidden" name="request_id" value="${requestId}">
+            <div class="cash-alert info" style="margin-bottom:16px">
+              Остаток: <strong>${formatMoney(remainder)}</strong>
+            </div>
+            <div class="asg-form-group">
+              <label>Сумма возврата</label>
+              <input type="number" name="amount" step="0.01" min="0.01" max="${remainder}" value="${remainder}" required>
+            </div>
+            <div class="asg-form-group">
+              <label>Комментарий</label>
+              <input type="text" name="note" placeholder="Необязательно">
+            </div>
+            <div class="asg-form-actions">
+              <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
+              <button type="button" class="btn green" onclick="CashPage.submitReturn()">Вернуть</button>
+            </div>
+          </form>
+        `
+      });
+    }, 100);
   }
 
   async function submitReturn() {
     const form = document.getElementById('cashReturnForm');
-    const requestId = document.getElementById('returnRequestId').value;
+    if (!form) return;
+    const requestId = form.querySelector('[name="request_id"]').value;
     const data = Object.fromEntries(new FormData(form));
 
     try {
@@ -708,25 +577,42 @@ window.CashPage = (function() {
         throw new Error(err.error || 'Ошибка');
       }
 
-      bootstrap.Modal.getInstance(document.getElementById('cashReturnModal')).hide();
-      AsgardUI.toast('Возврат зарегистрирован', 'success');
+      hideModal();
+      toast('Возврат зарегистрирован', '', 'ok');
       await showDetail(parseInt(requestId));
       await loadBalance();
       await loadRequests();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      toast('Ошибка', e.message, 'err');
     }
   }
 
   function showReplyModal(requestId) {
-    document.getElementById('cashReplyForm').reset();
-    document.getElementById('replyRequestId').value = requestId;
-    new bootstrap.Modal(document.getElementById('cashReplyModal')).show();
+    hideModal();
+    setTimeout(() => {
+      showModal({
+        title: 'Ответить на вопрос',
+        html: `
+          <form id="cashReplyForm">
+            <input type="hidden" name="request_id" value="${requestId}">
+            <div class="asg-form-group">
+              <label>Ваш ответ</label>
+              <textarea name="message" rows="3" required placeholder="Введите ответ"></textarea>
+            </div>
+            <div class="asg-form-actions">
+              <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
+              <button type="button" class="btn primary" onclick="CashPage.submitReply()">Отправить</button>
+            </div>
+          </form>
+        `
+      });
+    }, 100);
   }
 
   async function submitReply() {
     const form = document.getElementById('cashReplyForm');
-    const requestId = document.getElementById('replyRequestId').value;
+    if (!form) return;
+    const requestId = form.querySelector('[name="request_id"]').value;
     const data = Object.fromEntries(new FormData(form));
 
     try {
@@ -741,12 +627,12 @@ window.CashPage = (function() {
         throw new Error(err.error || 'Ошибка');
       }
 
-      bootstrap.Modal.getInstance(document.getElementById('cashReplyModal')).hide();
-      AsgardUI.toast('Ответ отправлен', 'success');
+      hideModal();
+      toast('Ответ отправлен', '', 'ok');
       await showDetail(parseInt(requestId));
       await loadRequests();
     } catch (e) {
-      AsgardUI.toast(e.message, 'danger');
+      toast('Ошибка', e.message, 'err');
     }
   }
 
@@ -755,7 +641,7 @@ window.CashPage = (function() {
   // ─────────────────────────────────────────────────────────────────
   function formatMoney(val) {
     const num = parseFloat(val) || 0;
-    return num.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' руб.';
+    return num.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' \u20BD';
   }
 
   function formatDate(val) {
@@ -766,15 +652,6 @@ window.CashPage = (function() {
   function formatDateTime(val) {
     if (!val) return '-';
     return new Date(val).toLocaleString('ru-RU');
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
   }
 
   // ─────────────────────────────────────────────────────────────────
