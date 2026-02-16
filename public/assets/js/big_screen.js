@@ -49,15 +49,16 @@ window.AsgardBigScreen = (function(){
         .bs *{box-sizing:border-box}
 
         /* ── Header ── */
-        .bs-hdr{padding:20px 40px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(180deg,rgba(242,208,138,.06) 0%,transparent 100%);border-bottom:1px solid rgba(242,208,138,.1);flex-shrink:0}
-        .bs-brand{display:flex;align-items:center;gap:14px}
+        .bs-hdr{padding:20px 40px;display:flex;align-items:center;background:linear-gradient(180deg,rgba(242,208,138,.06) 0%,transparent 100%);border-bottom:1px solid rgba(242,208,138,.1);flex-shrink:0;gap:20px}
+        .bs-brand{display:flex;align-items:center;gap:14px;flex-shrink:0}
         .bs-brand-icon{font-size:28px}
         .bs-brand-name{font-size:22px;font-weight:900;color:#f2d08a;letter-spacing:3px;text-transform:uppercase}
         .bs-brand-sub{font-size:11px;color:rgba(255,255,255,.3);letter-spacing:1px;margin-top:2px}
-        .bs-clock{text-align:right}
+        .bs-hdr-spacer{flex:1}
+        .bs-clock{text-align:right;flex-shrink:0}
         .bs-clock-time{font-size:32px;font-weight:300;color:rgba(255,255,255,.9);font-variant-numeric:tabular-nums;letter-spacing:1px}
         .bs-clock-date{font-size:13px;color:rgba(255,255,255,.35);margin-top:2px}
-        .bs-exit{position:absolute;top:20px;right:40px;background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.25);width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:14px;transition:all .3s;display:flex;align-items:center;justify-content:center}
+        .bs-exit{flex-shrink:0;margin-left:16px;background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.25);width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:14px;transition:all .3s;display:flex;align-items:center;justify-content:center}
         .bs-exit:hover{border-color:#f2d08a;color:#f2d08a}
 
         /* ── Body ── */
@@ -80,9 +81,9 @@ window.AsgardBigScreen = (function(){
         .bs-progress{position:absolute;bottom:0;left:0;height:2px;background:linear-gradient(90deg,#f2d08a,#c9302c);transition:width linear}
 
         /* ── KPI Cards ── */
-        .bs-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
-        .bs-kpi-card{background:linear-gradient(145deg,rgba(15,22,42,.9),rgba(15,22,42,.5));border:1px solid rgba(148,163,184,.08);border-radius:12px;padding:28px 24px;text-align:center;position:relative;overflow:hidden}
-        .bs-kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:12px 12px 0 0}
+        .bs-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:rgba(148,163,184,.06);border-radius:12px;overflow:hidden;border:1px solid rgba(148,163,184,.08)}
+        .bs-kpi-card{background:rgba(15,22,42,.85);border:none;border-radius:0;padding:28px 24px;text-align:center;position:relative;overflow:hidden}
+        .bs-kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
         .bs-kpi-card.c-blue::before{background:linear-gradient(90deg,#3b82f6,#60a5fa)}
         .bs-kpi-card.c-gold::before{background:linear-gradient(90deg,#f2d08a,#d4a853)}
         .bs-kpi-card.c-green::before{background:linear-gradient(90deg,#22c55e,#4ade80)}
@@ -130,6 +131,8 @@ window.AsgardBigScreen = (function(){
           .bs-kpi{grid-template-columns:repeat(2,1fr)}
           .bs-cols{grid-template-columns:1fr}
           .bs-kpi-val{font-size:36px}
+          .bs-hdr{padding:16px 24px}
+          .bs-body{padding:16px 24px}
         }
       </style>
       <div class="bs" id="bsWrap">
@@ -141,6 +144,7 @@ window.AsgardBigScreen = (function(){
               <div class="bs-brand-sub">COMMAND CENTER</div>
             </div>
           </div>
+          <div class="bs-hdr-spacer"></div>
           <div class="bs-clock">
             <div class="bs-clock-time" id="bsClock"></div>
             <div class="bs-clock-date" id="bsDate"></div>
@@ -157,6 +161,11 @@ window.AsgardBigScreen = (function(){
     `;
 
     await layout(body, { title: title || 'Big Screen' });
+
+    // Move big screen overlay to document.body so it escapes .main stacking context
+    // and renders ABOVE the sidebar (z-index: 9999 vs sidebar z-index: 200)
+    const bsWrap = document.getElementById('bsWrap');
+    if (bsWrap) document.body.appendChild(bsWrap);
 
     // Clock
     function updateClock() {
