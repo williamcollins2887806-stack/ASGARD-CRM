@@ -119,6 +119,7 @@ fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
 fastify.register(require('./routes/invoices'), { prefix: '/api/invoices' });
 fastify.register(require('./routes/equipment'), { prefix: '/api/equipment' });
 fastify.register(require('./routes/data'), { prefix: '/api/data' });
+fastify.register(require('./routes/inbox_applications_ai'), { prefix: '/api/inbox-applications' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check
@@ -185,7 +186,16 @@ const start = async () => {
       await telegram.init();
       fastify.log.info('Telegram bot started');
     }
-    
+
+    // Initialize IMAP mail collection service
+    try {
+      const imapService = require('./services/imap');
+      await imapService.init();
+      fastify.log.info('IMAP mail service started');
+    } catch (imapErr) {
+      fastify.log.warn('IMAP mail service init skipped: ' + imapErr.message);
+    }
+
     // Start server
     await fastify.listen({ port: config.port, host: config.host });
     fastify.log.info(`
@@ -207,6 +217,7 @@ const start = async () => {
 // Graceful shutdown
 const shutdown = async () => {
   fastify.log.info('Shutting down...');
+  try { const imap = require('./services/imap'); await imap.shutdown(); } catch (_) {}
   await fastify.close();
   await db.end();
   process.exit(0);
