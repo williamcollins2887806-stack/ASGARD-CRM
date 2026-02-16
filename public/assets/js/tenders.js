@@ -412,7 +412,7 @@ async function getRefs(){
             <td>${esc(createdBy)}</td>
             <td style="white-space:nowrap">
               <select id="dist_pm_${t.id}" style="min-width:220px">${opts}</select>
-              <button class="btn red" style="padding:6px 10px; margin-left:8px" data-assign="${t.id}">Назначить</button>
+              <button class="btn red sm" style="margin-left:8px" data-assign="${t.id}">Назначить</button>
             </td>
           </tr>
         `;
@@ -563,8 +563,8 @@ async function getRefs(){
             <td>${esc(srcPm)}</td>
             <td style="white-space:nowrap">
               <select id="win_pm_${r.id}" style="min-width:240px">${opts.join("")}</select>
-              <button class="btn red" style="padding:6px 10px; margin-left:8px" data-win-assign="${r.id}">Назначить</button>
-              <button class="btn ghost" style="padding:6px 10px; margin-left:8px" data-win-consent="${r.id}">Запросить согласие</button>
+              <button class="btn red sm" style="margin-left:8px" data-win-assign="${r.id}">Назначить</button>
+              <button class="btn ghost sm" style="margin-left:8px" data-win-consent="${r.id}">Запросить согласие</button>
             </td>
           </tr>
         `;
@@ -874,9 +874,9 @@ async function getRefs(){
 
       const docList = await AsgardDB.byIndex("documents","tender_id", tenderId||-1);
       const docsHtml = docList.length ? docList.map(d=>`
-        <div class="pill" style="gap:10px">
-          <div class="who"><b>${esc(d.type||"Документ")}</b> — <a target="_blank" href="${esc(d.data_url)}">${esc(d.name||"ссылка")}</a></div>
-          <button class="btn ghost" style="padding:6px 10px" data-del-doc="${d.id}">Удалить</button>
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--glass); border:1px solid var(--border); border-radius:var(--radius-sm)">
+          <div style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap"><b>${esc(d.type||"Документ")}</b> — <a target="_blank" href="${esc(d.data_url)}">${esc(d.name||"ссылка")}</a></div>
+          <button class="btn ghost sm" data-del-doc="${d.id}">Удалить</button>
         </div>
       `).join("") : `<div class="help">Пока нет документов. Добавляйте ссылки на Я.Диск/площадку.</div>`;
 

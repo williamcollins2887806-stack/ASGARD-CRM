@@ -125,21 +125,23 @@ console.log('[ASGARD] Global period functions loaded');
 
   window.__ASG_SHARED_TABLE_CSS__ = `
 <style>
-  table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-  table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-  table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); vertical-align:top}
-  table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-  table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
+  table.asg{width:100%; border-collapse:separate; border-spacing:0 8px; font-size:13px}
+  table.asg th{font-size:11px; color:var(--text-muted,rgba(184,196,231,.92)); font-weight:700; text-transform:uppercase; letter-spacing:0.05em; text-align:left; padding:0 10px}
+  table.asg td{padding:12px; background:var(--bg-card,rgba(13,20,40,.40)); border:1px solid var(--border,rgba(42,59,102,.85)); vertical-align:top; color:var(--text-primary,#f1f5f9)}
+  table.asg tr td:first-child{border-top-left-radius:var(--radius-md,12px);border-bottom-left-radius:var(--radius-md,12px)}
+  table.asg tr td:last-child{border-top-right-radius:var(--radius-md,12px);border-bottom-right-radius:var(--radius-md,12px)}
+  table.asg tbody tr:hover td{background:var(--bg-hover,rgba(26,51,88,.5))}
   .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
-  .tools .field{min-width:220px}
-  .kpi{display:grid; grid-template-columns:repeat(6,minmax(140px,1fr)); gap:12px}
-  .kpi .k{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:16px; padding:12px}
-  .kpi .k .t{font-size:11px; color:rgba(184,196,231,.85); font-weight:900}
-  .kpi .k .v{font-size:22px; font-weight:1000; margin-top:6px; color:rgba(242,208,138,.95)}
-  .kpi .k .s{font-size:12px; color:rgba(184,196,231,.85); margin-top:6px}
-  .chart{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:16px; padding:12px}
+  .tools .field{min-width:200px}
+  .kpi{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px}
+  .kpi .k{background:var(--bg-card,rgba(13,20,40,.40)); border:1px solid var(--border,rgba(42,59,102,.85)); border-radius:var(--radius-md,12px); padding:14px}
+  .kpi .k .t{font-size:11px; color:var(--text-muted,rgba(184,196,231,.85)); font-weight:700; text-transform:uppercase; letter-spacing:0.03em}
+  .kpi .k .v{font-size:20px; font-weight:800; margin-top:6px; color:var(--primary,#dc2626)}
+  .kpi .k .s{font-size:12px; color:var(--text-secondary,rgba(184,196,231,.85)); margin-top:6px}
+  .chart{background:var(--bg-card,rgba(13,20,40,.40)); border:1px solid var(--border,rgba(42,59,102,.85)); border-radius:var(--radius-lg,16px); padding:16px; margin-top:8px}
+  .chart h3{font-size:15px; font-weight:600; color:var(--text-primary,#f1f5f9); margin:0 0 8px}
   .barrow{display:grid; grid-template-columns: 200px 1fr 70px; gap:12px; align-items:center; margin:10px 0}
-  .bar{height:14px; border-radius:999px; background:rgba(42,59,102,.35); overflow:hidden}
+  .bar{height:14px; border-radius:999px; background:var(--border,rgba(42,59,102,.35)); overflow:hidden}
   .bar > div{height:100%}
 </style>
 `;

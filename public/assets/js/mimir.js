@@ -423,37 +423,37 @@ window.AsgardMimir = (function(){
   async function openTkpGenerator() {
     const html = `
       <div style="padding:16px">
-        <h3 style="color:#f5d78e;margin:0 0 16px">📝 Генератор ТКП</h3>
-        
-        <div style="margin-bottom:12px">
-          <label style="display:block;color:#94a3b8;font-size:12px;margin-bottom:4px">Заказчик</label>
-          <input id="tkp_customer" class="inp" style="width:100%;background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);color:#fff;padding:8px;border-radius:6px" placeholder="ООО Газпром"/>
+        <h3 style="color:var(--primary);margin:0 0 16px">📝 Генератор ТКП</h3>
+
+        <div class="formgroup" style="margin-bottom:12px">
+          <label>Заказчик</label>
+          <input id="tkp_customer" placeholder="ООО Газпром"/>
         </div>
-        
-        <div style="margin-bottom:12px">
-          <label style="display:block;color:#94a3b8;font-size:12px;margin-bottom:4px">Название работ</label>
-          <input id="tkp_title" class="inp" style="width:100%;background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);color:#fff;padding:8px;border-radius:6px" placeholder="Техническое обслуживание..."/>
+
+        <div class="formgroup" style="margin-bottom:12px">
+          <label>Название работ</label>
+          <input id="tkp_title" placeholder="Техническое обслуживание..."/>
         </div>
-        
-        <div style="margin-bottom:12px">
-          <label style="display:block;color:#94a3b8;font-size:12px;margin-bottom:4px">Перечень услуг</label>
-          <textarea id="tkp_services" style="width:100%;background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);color:#fff;padding:8px;border-radius:6px;resize:vertical" rows="3" placeholder="Диагностика, ремонт, замена..."></textarea>
+
+        <div class="formgroup" style="margin-bottom:12px">
+          <label>Перечень услуг</label>
+          <textarea id="tkp_services" rows="3" placeholder="Диагностика, ремонт, замена..." style="resize:vertical"></textarea>
         </div>
-        
-        <div style="display:flex;gap:12px;margin-bottom:12px">
-          <div style="flex:1">
-            <label style="display:block;color:#94a3b8;font-size:12px;margin-bottom:4px">Сумма (руб)</label>
-            <input id="tkp_sum" type="number" class="inp" style="width:100%;background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);color:#fff;padding:8px;border-radius:6px" placeholder="500000"/>
+
+        <div class="formrow" style="margin-bottom:12px">
+          <div class="formgroup">
+            <label>Сумма (руб)</label>
+            <input id="tkp_sum" type="number" placeholder="500000"/>
           </div>
-          <div style="flex:1">
-            <label style="display:block;color:#94a3b8;font-size:12px;margin-bottom:4px">Срок</label>
-            <input id="tkp_deadline" class="inp" style="width:100%;background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);color:#fff;padding:8px;border-radius:6px" placeholder="14 дней"/>
+          <div class="formgroup">
+            <label>Срок</label>
+            <input id="tkp_deadline" placeholder="14 дней"/>
           </div>
         </div>
-        
+
         <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button id="tkp_cancel" style="padding:8px 16px;border-radius:6px;background:rgba(255,255,255,0.1);border:none;color:#fff;cursor:pointer">Отмена</button>
-          <button id="tkp_generate" style="padding:8px 16px;border-radius:6px;background:linear-gradient(135deg,#c0392b,#8e2c22);border:1px solid rgba(245,215,142,0.3);color:#f5d78e;cursor:pointer;font-weight:600">✨ Сгенерировать</button>
+          <button id="tkp_cancel" class="btn ghost">Отмена</button>
+          <button id="tkp_generate" class="btn primary">✨ Сгенерировать</button>
         </div>
       </div>
     `;

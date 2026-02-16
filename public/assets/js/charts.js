@@ -36,13 +36,26 @@ window.AsgardCharts = (function(){
     }catch(e){ /* ignore */ }
   }
 
+  function truncate(ctx, s, maxW){
+    const str = String(s);
+    if(!maxW || maxW <= 0) return str;
+    let w = ctx.measureText(str).width;
+    if(w <= maxW) return str;
+    for(let i = str.length - 1; i > 0; i--){
+      const t = str.slice(0, i) + '…';
+      if(ctx.measureText(t).width <= maxW) return t;
+    }
+    return '…';
+  }
+
   function text(ctx, s, x, y, opts={}){
     ctx.save();
     if(opts.font) ctx.font = opts.font;
     if(opts.fill) ctx.fillStyle = opts.fill;
     ctx.textBaseline = opts.base || 'alphabetic';
     ctx.textAlign = opts.align || 'left';
-    ctx.fillText(String(s), x, y);
+    const str = opts.maxW ? truncate(ctx, String(s), opts.maxW) : String(s);
+    ctx.fillText(str, x, y);
     ctx.restore();
   }
 
@@ -112,7 +125,7 @@ window.AsgardCharts = (function(){
 
     norm.forEach((r, idx)=>{
       const y = pad + idx*(rowH+gap);
-      text(ctx, r.label||'', pad, y+rowH*0.72, {font:'12px system-ui', fill:ink});
+      text(ctx, r.label||'', pad, y+rowH*0.72, {font:'12px system-ui', fill:ink, maxW: left - pad - 10});
 
       const bw = (r.total/max)*barW;
       // background track
@@ -194,7 +207,7 @@ window.AsgardCharts = (function(){
 
     rows.forEach((r, idx)=>{
       const y = pad + idx*(rowH+gap);
-      text(ctx, r.label||'', pad, y+rowH*0.70, {font:'12px system-ui', fill:ink});
+      text(ctx, r.label||'', pad, y+rowH*0.70, {font:'12px system-ui', fill:ink, maxW: left - pad - 10});
 
       // two lanes within row
       const laneH = (rowH-6)/2;

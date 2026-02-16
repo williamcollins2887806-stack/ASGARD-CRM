@@ -391,11 +391,13 @@ a:hover {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--glass);
   font-size: 12px;
   color: var(--text-secondary);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .pill.unread {
@@ -409,6 +411,10 @@ a:hover {
 
 .pill .who {
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .pill .role {
@@ -697,6 +703,38 @@ a:hover {
   border-color: var(--primary-border);
   color: var(--primary);
   background: var(--primary-glow);
+}
+
+/* Размеры кнопок — единый стиль */
+.btn.sm {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+}
+
+.btn.xs {
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.btn.lg {
+  padding: 14px 28px;
+  font-size: 15px;
+}
+
+/* Нормализация всех button/a внутри таблиц и модалов */
+table .btn,
+.mc .btn,
+.modal-body .btn {
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+/* Кнопки внутри модальных окон — компактные */
+.mf .btn {
+  padding: 10px 20px;
+  font-size: 13px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3542,6 +3580,122 @@ html[data-theme="light"] .themebtn:hover {
 /* ─────────────────────────────────────────────────────────────────────────────
    UTILITIES
    ───────────────────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   GLOBAL NORMALIZATION — Единый шрифт и кнопки
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Все кнопки — единый шрифт, включая инлайновые */
+button, .btn, a.btn, input[type="button"], input[type="submit"] {
+  font-family: var(--font-sans);
+  line-height: 1.4;
+}
+
+/* Все инлайн кнопки в таблицах — компактный единый размер */
+table button.btn,
+table a.btn,
+th button.btn,
+td button.btn,
+td a.btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+/* Кнопки в тулбарах — средний размер */
+.tools .btn,
+.badges .btn,
+.sched-header .btn,
+.cal-header .btn {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+/* KPI карточки для PM dials — фикс переполнения */
+.pm-dial-card {
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.pm-dial-card .pm-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-dial-card .pm-dials-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.pm-dial-card .dial-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+/* KPI Money — единые стили карточек */
+.kpi-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 15px;
+}
+
+.kpi-card {
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  text-align: center;
+}
+
+.kpi-card .label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+
+.kpi-card .value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.kpi-card .sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 5px;
+}
+
+/* Chart container — единый стиль */
+.page-card {
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+/* SVG chart bar — единый стиль */
+.chart-bar {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.chart-bar:hover {
+  opacity: 0.8;
+}
+
 .text-gold { color: var(--gold) !important; }
 .text-red { color: var(--red) !important; }
 .text-green { color: var(--green) !important; }

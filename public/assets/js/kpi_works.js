@@ -116,7 +116,7 @@ window.AsgardKpiWorksPage=(function(){
         <div class="chart">
           <h3>KPI РП: план vs факт (всё время / по фильтру)</h3>
           <div class="help">Индикаторы: отклонение себестоимости и срока в процентах (Σфакт vs Σплан). Отрицательное значение = факт лучше плана (зелёная зона справа). Положительное = перерасход/пересрок (красная зона слева).</div>
-          <div id="pm_dials" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px"></div>
+          <div id="pm_dials" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:16px; margin-top:12px"></div>
         </div>
 
         <hr class="hr"/>
@@ -235,15 +235,15 @@ window.AsgardKpiWorksPage=(function(){
         const cid1 = `dial_cost_${pm.id}`;
         const cid2 = `dial_time_${pm.id}`;
         return `
-          <div class="pill" style="display:grid; gap:10px; padding:12px">
-            <div class="who"><b>${esc(pm.name)}</b></div>
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; align-items:center">
+          <div class="pm-dial-card">
+            <div class="pm-name" title="${esc(pm.name)}">${esc(pm.name)}</div>
+            <div class="pm-dials-row">
               <div>
-                <div class="help" style="margin-bottom:6px">Себестоимость (план→факт)</div>
+                <div class="dial-label">Себестоимость (план→факт)</div>
                 <canvas id="${cid1}" class="asgcanvas" style="width:100%; height:150px"></canvas>
               </div>
               <div>
-                <div class="help" style="margin-bottom:6px">Срок (план→факт)</div>
+                <div class="dial-label">Срок (план→факт)</div>
                 <canvas id="${cid2}" class="asgcanvas" style="width:100%; height:150px"></canvas>
               </div>
             </div>
