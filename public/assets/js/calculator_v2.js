@@ -352,17 +352,17 @@
       
       const html = `<style>
         .calc-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}
-        .calc-tabs .tab{padding:8px 12px;border-radius:6px;background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.5);cursor:pointer;font-size:12px}
+        .calc-tabs .tab{padding:8px 12px;border-radius:6px;background:rgba(13,20,40,.5);border:none;cursor:pointer;font-size:12px}
         .calc-tabs .tab.active{background:rgba(42,108,241,.3);border-color:var(--accent)}
         .calc-tabs .tab.warn{border-color:rgba(245,158,11,.6)}
-        .csec{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.5);border-radius:6px;padding:16px;margin-bottom:16px}
+        .csec{background:rgba(13,20,40,.4);border:none;border-radius:6px;padding:16px;margin-bottom:16px}
         .csec h3{margin:0 0 12px;font-size:14px;color:var(--gold)}
         .cbl{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0}
         .cbl input{width:18px;height:18px}
         .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
         .fr{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
         .tbl{width:100%;border-collapse:collapse}
-        .tbl th,.tbl td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(42,59,102,.3)}
+        .tbl th,.tbl td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.04)}
         .tbl th{font-size:11px;color:var(--muted);font-weight:600}
         .tbl tfoot td{font-weight:600;background:rgba(42,108,241,.1)}
         .kpi3,.kpi4{display:grid;gap:12px;margin-top:12px}
@@ -748,17 +748,17 @@
         <style>
           .calc-page{max-width:1000px;margin:0 auto}
           .calc-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}
-          .calc-tabs .tab{padding:8px 12px;border-radius:6px;background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.5);cursor:pointer;font-size:12px}
+          .calc-tabs .tab{padding:8px 12px;border-radius:6px;background:rgba(13,20,40,.5);border:none;cursor:pointer;font-size:12px}
           .calc-tabs .tab.active{background:rgba(42,108,241,.3);border-color:var(--accent)}
           .calc-tabs .tab.warn{border-color:rgba(245,158,11,.6)}
-          .csec{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.5);border-radius:6px;padding:16px;margin-bottom:16px}
+          .csec{background:rgba(13,20,40,.4);border:none;border-radius:6px;padding:16px;margin-bottom:16px}
           .csec h3{margin:0 0 12px;font-size:14px;color:var(--gold)}
           .cbl{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0}
           .cbl input{width:18px;height:18px}
           .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
           .fr{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
           .tbl{width:100%;border-collapse:collapse}
-          .tbl th,.tbl td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(42,59,102,.3)}
+          .tbl th,.tbl td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.04)}
           .tbl th{font-size:11px;color:var(--muted);font-weight:600}
           .tbl tfoot td{font-weight:600;background:rgba(42,108,241,.1)}
           .kpi3,.kpi4{display:grid;gap:12px;margin-top:12px}

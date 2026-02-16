@@ -50,7 +50,7 @@ window.AsgardTOAnalytics = (function(){
           <button class="btn ghost" id="btnRefresh">Обновить</button>
         </div>
         <hr class="hr"/>
-        <div class="kpi" id="deptKpi" style="grid-template-columns:repeat(6,minmax(130px,1fr))"></div>
+        <div class="kpi" id="deptKpi"></div>
         <div class="chart" style="margin-top:16px">
           <h3>KPI по тендерным специалистам</h3>
           <table class="asg" id="teamTable">
@@ -106,9 +106,9 @@ window.AsgardTOAnalytics = (function(){
     const active = total - won - lost;
     el.innerHTML = `
       <div class="k"><div class="t">Всего тендеров</div><div class="v">${total}</div></div>
-      <div class="k"><div class="t">Выиграно</div><div class="v" style="color:#4caf50">${won}</div></div>
-      <div class="k"><div class="t">Проиграно</div><div class="v" style="color:#f44336">${lost}</div></div>
-      <div class="k"><div class="t">В работе</div><div class="v" style="color:#ff9800">${active}</div></div>
+      <div class="k"><div class="t">Выиграно</div><div class="v" style="color:var(--green)">${won}</div></div>
+      <div class="k"><div class="t">Проиграно</div><div class="v" style="color:var(--red)">${lost}</div></div>
+      <div class="k"><div class="t">В работе</div><div class="v" style="color:var(--warning)">${active}</div></div>
       <div class="k"><div class="t">Сумма выигранных</div><div class="v">${money(dept.won_sum)}</div></div>
       <div class="k"><div class="t">Конверсия</div><div class="v">${pct(won, total)}</div></div>
     `;
@@ -130,9 +130,9 @@ window.AsgardTOAnalytics = (function(){
       return `<tr>
         <td><b>${esc(t.name)}</b><br><span class="muted">${esc(t.role)}</span></td>
         <td>${total}</td>
-        <td style="color:#4caf50; font-weight:700">${won}</td>
-        <td style="color:#f44336">${lost}</td>
-        <td style="color:#ff9800">${active}</td>
+        <td style="color:var(--green); font-weight:700">${won}</td>
+        <td style="color:var(--red)">${lost}</td>
+        <td style="color:var(--warning)">${active}</td>
         <td>${money(t.won_sum)}</td>
         <td><b>${conv}</b></td>
       </tr>`;
@@ -146,12 +146,12 @@ window.AsgardTOAnalytics = (function(){
     el.innerHTML = byStatus.map(s=>{
       const c = Number(s.count)||0;
       const w = Math.round((c/max)*100);
-      const color = s.tender_status?.includes("согласился") || s.tender_status?.includes("Выиграли") ? "#4caf50" :
-                    s.tender_status?.includes("отказался") || s.tender_status?.includes("Проиграли") ? "#f44336" : "#5c6bc0";
+      const color = s.tender_status?.includes("согласился") || s.tender_status?.includes("Выиграли") ? 'var(--green)' :
+                    s.tender_status?.includes("отказался") || s.tender_status?.includes("Проиграли") ? 'var(--red)' : 'var(--blue)';
       return `<div class="barrow">
         <div>${esc(s.tender_status||"—")}</div>
         <div class="bar"><div style="width:${w}%; background:${color}; border-radius:999px"></div></div>
-        <div style="text-align:right"><b>${c}</b> · ${money(s.sum)}</div>
+        <div><b>${c}</b> · ${money(s.sum)}</div>
       </div>`;
     }).join("");
   }
@@ -166,8 +166,8 @@ window.AsgardTOAnalytics = (function(){
       const w = Math.round((total/max)*100);
       return `<div class="barrow">
         <div>${esc(m.month)}</div>
-        <div class="bar"><div style="width:${w}%; background:linear-gradient(90deg,#4caf50 ${pct(won,total)},#5c6bc0 ${pct(won,total)}); border-radius:999px"></div></div>
-        <div style="text-align:right"><b>${total}</b> (${won} выигр.)</div>
+        <div class="bar"><div style="width:${w}%; background:linear-gradient(90deg, var(--green) ${pct(won,total)}, var(--blue) ${pct(won,total)}); border-radius:999px"></div></div>
+        <div><b>${total}</b> (${won} выигр.)</div>
       </div>`;
     }).join("");
   }

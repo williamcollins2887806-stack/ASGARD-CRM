@@ -7656,3 +7656,77 @@ html[data-theme="light"] .modal,
 html[data-theme="light"] .modal-content {
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   NUCLEAR OVERRIDES — !important для гарантии отсутствия рамок/матрёшек
+   Этот блок в самом конце файла перебивает ВСЕ inline-стили
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* --- Все карточки, панели, KPI — без рамок (перебиваем inline style) --- */
+.card,
+.panel,
+.kpi .k,
+.kpi-card,
+.chart,
+.pill,
+.pm-card,
+.se-card,
+.otp-card,
+.payroll-card,
+.payroll-kpi .k,
+.task-card,
+.stats-row > div,
+.csec,
+[class*="calc-tabs"] .tab {
+  border: none !important;
+}
+
+/* Исключения: кнопки, инпуты, alertы, director-comment сохраняют рамки */
+.btn,
+input,
+select,
+textarea,
+.inp,
+.cash-alert,
+.payroll-director-comment,
+.payroll-inline-input,
+.status-unified {
+  /* не перебиваем */
+}
+
+/* --- Единый шрифт по всей CRM --- */
+body,
+.card,
+.panel,
+.kpi .k,
+.kpi-card,
+.chart,
+table,
+th,
+td,
+div,
+span,
+p,
+label,
+button,
+select,
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+}
+
+/* --- Заголовки используют heading шрифт --- */
+h1, h2, h3,
+.card h3,
+.panel h3,
+.chart h3 {
+  font-family: var(--font-heading);
+}
+
+/* --- Light тема: исключения для карточек --- */
+html[data-theme="light"] .card,
+html[data-theme="light"] .panel,
+html[data-theme="light"] .kpi .k,
+html[data-theme="light"] .kpi-card,
+html[data-theme="light"] .chart {
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+}

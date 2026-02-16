@@ -266,7 +266,7 @@ window.AsgardKpiMoneyPage = (function(){
             <button class="tab" data-mode="incomes">💰 Поступления</button>
           </div>
           <div style="flex:1"></div>
-          <select id="yearSelect" style="padding:8px 16px; border-radius:6px; background:var(--card); border:1px solid var(--border); color:var(--text)">
+          <select id="yearSelect" style="padding:8px 16px; border-radius:var(--radius-sm); background:var(--bg-input); border:1px solid var(--border-input); color:var(--text); font-family:var(--font-sans); font-size:var(--input-font-size)">
             ${[currentYear, currentYear-1, currentYear-2].map(y => 
               `<option value="${y}" ${y===selectedYear?'selected':''}>${y}</option>`
             ).join('')}
@@ -290,15 +290,15 @@ window.AsgardKpiMoneyPage = (function(){
 
     const style = document.createElement('style');
     style.textContent = `
-      .tabs { display: flex; gap: 0; background: var(--card); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
-      .tabs .tab { padding: 10px 20px; border: none; background: transparent; color: var(--muted); cursor: pointer; font-weight: 600; transition: all 0.2s; }
+      .tabs { display: flex; gap: 0; background: var(--card); border-radius: var(--radius-md); overflow: hidden; border: none; }
+      .tabs .tab { padding: 10px 20px; border: none; background: transparent; color: var(--muted); cursor: pointer; font-weight: 600; font-family: var(--font-sans); font-size: var(--btn-font-size); transition: all 0.2s; }
       .tabs .tab.active { background: var(--gold); color: var(--bg); }
       .tabs .tab:hover:not(.active) { background: rgba(212,175,55,0.1); }
       .kpi-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
-      .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; text-align: center; }
-      .kpi-card .label { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
-      .kpi-card .value { font-size: 26px; font-weight: 700; color: var(--gold); }
-      .kpi-card .sub { font-size: 11px; color: var(--muted); margin-top: 5px; }
+      .kpi-card { background: var(--card); border: none; border-radius: var(--radius-md); padding: 16px; text-align: center; }
+      .kpi-card .label { font-size: var(--text-xs); color: var(--muted); margin-bottom: 5px; font-family: var(--font-sans); }
+      .kpi-card .value { font-size: var(--text-xl); font-weight: 700; color: var(--gold); font-family: var(--font-sans); }
+      .kpi-card .sub { font-size: var(--text-xs); color: var(--muted); margin-top: 5px; }
       .chart-bar { cursor: pointer; transition: opacity 0.2s; }
       .chart-bar:hover { opacity: 0.8; }
     `;
@@ -318,7 +318,7 @@ window.AsgardKpiMoneyPage = (function(){
         const y = 250 - (i * 50);
         const val = Math.round(maxVal * i / 4);
         html += `<line x1="50" y1="${y}" x2="980" y2="${y}" stroke="rgba(255,255,255,0.1)" stroke-dasharray="4"/>`;
-        html += `<text x="45" y="${y+4}" fill="#94a3b8" font-size="11" text-anchor="end">${(val/1000000).toFixed(1)}М</text>`;
+        html += `<text x="45" y="${y+4}" fill="var(--text-muted)" font-size="11" text-anchor="end">${(val/1000000).toFixed(1)}М</text>`;
       }
 
       for(let m = 1; m <= 12; m++){
@@ -326,10 +326,10 @@ window.AsgardKpiMoneyPage = (function(){
         const h = maxVal > 0 ? (val / maxVal) * 200 : 0;
         const x = 50 + (m - 1) * 77 + 10;
         const y = 250 - h;
-        const color = mode === 'expenses' ? '#ef4444' : '#22c55e';
+        const color = mode === 'expenses' ? 'var(--red)' : 'var(--green)';
 
         html += `<rect class="chart-bar" data-month="${m}" x="${x}" y="${y}" width="55" height="${h}" fill="${color}" rx="4"/>`;
-        html += `<text x="${x + 27}" y="270" fill="#94a3b8" font-size="12" text-anchor="middle">${MONTHS[m-1]}</text>`;
+        html += `<text x="${x + 27}" y="270" fill="var(--text-muted)" font-size="12" text-anchor="middle">${MONTHS[m-1]}</text>`;
         
         if(val > 0){
           html += `<text x="${x + 27}" y="${y - 8}" fill="white" font-size="11" text-anchor="middle">${(val/1000).toFixed(0)}К</text>`;
@@ -442,7 +442,7 @@ window.AsgardKpiMoneyPage = (function(){
                     <td>${item.date || '—'}</td>
                     <td><span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:${catInfo.color}; margin-right:6px"></span>${catInfo.label}</td>
                     <td>${esc(item.work_name || item.counterparty || '—')}</td>
-                    <td style="font-weight:600; color:${mode === 'expenses' ? '#ef4444' : '#22c55e'}">${money(item.amount)}</td>
+                    <td style="font-weight:600; color:${mode === 'expenses' ? 'var(--red)' : 'var(--green)'}">${money(item.amount)}</td>
                     <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(item.comment || '—')}</td>
                     <td>${item.status === 'approved' || item.confirmed ? '✓' : item.status || '—'}</td>
                   </tr>

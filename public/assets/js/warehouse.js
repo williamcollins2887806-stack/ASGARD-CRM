@@ -116,20 +116,20 @@ window.AsgardWarehouse = (function(){
       <div class="warehouse-page">
         <!-- Статистика -->
         <div class="stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
-          <div style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--border)">
-            <div style="font-size:26px;font-weight:700;color:var(--accent)">${stats.total || 0}</div>
+          <div style="background:var(--bg-card);padding:16px;border-radius:var(--radius-md);text-align:center">
+            <div style="font-size:26px;font-weight:700;color:var(--gold)">${stats.total || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">Всего ТМЦ</div>
           </div>
-          <div style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--border)">
-            <div style="font-size:26px;font-weight:700;color:#22c55e">${stats.on_warehouse || 0}</div>
+          <div style="background:var(--bg-card);padding:16px;border-radius:var(--radius-md);text-align:center">
+            <div style="font-size:26px;font-weight:700;color:var(--green)">${stats.on_warehouse || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">На складе</div>
           </div>
-          <div style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--border)">
-            <div style="font-size:26px;font-weight:700;color:#3b82f6">${stats.issued || 0}</div>
+          <div style="background:var(--bg-card);padding:16px;border-radius:var(--radius-md);text-align:center">
+            <div style="font-size:26px;font-weight:700;color:var(--blue)">${stats.issued || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">Выдано</div>
           </div>
-          <div style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--border)">
-            <div style="font-size:26px;font-weight:700;color:#f97316">${stats.in_repair || 0}</div>
+          <div style="background:var(--bg-card);padding:16px;border-radius:var(--radius-md);text-align:center">
+            <div style="font-size:26px;font-weight:700;color:var(--warning)">${stats.in_repair || 0}</div>
             <div style="font-size:12px;color:var(--text-muted)">В ремонте</div>
           </div>
           ${isDirector ? `

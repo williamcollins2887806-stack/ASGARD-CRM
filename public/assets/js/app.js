@@ -153,21 +153,25 @@ console.log('[ASGARD] Global period functions loaded');
 
   window.__ASG_SHARED_TABLE_CSS__ = `
 <style>
-  table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-  table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-  table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); vertical-align:top}
-  table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-  table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
+  table.asg{width:100%; border-collapse:separate; border-spacing:0 6px;}
+  table.asg th{font-size:11px; color:var(--text-secondary); font-weight:700; text-align:left; padding:0 10px; font-family:var(--font-sans)}
+  table.asg td{padding:10px; background:var(--bg-card); border:none; vertical-align:top; font-family:var(--font-sans); font-size:13px}
+  table.asg tr td:first-child{border-top-left-radius:8px;border-bottom-left-radius:8px;}
+  table.asg tr td:last-child{border-top-right-radius:8px;border-bottom-right-radius:8px;}
+  table.asg tr:hover td{background:var(--bg-elevated)}
   .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
   .tools .field{min-width:220px}
-  .kpi{display:grid; grid-template-columns:repeat(6,minmax(140px,1fr)); gap:12px}
-  .kpi .k{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:6px; padding:12px}
-  .kpi .k .t{font-size:11px; color:rgba(184,196,231,.85); font-weight:900}
-  .kpi .k .v{font-size:22px; font-weight:1000; margin-top:6px; color:rgba(242,208,138,.95)}
-  .kpi .k .s{font-size:12px; color:rgba(184,196,231,.85); margin-top:6px}
-  .chart{background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:6px; padding:12px}
-  .barrow{display:grid; grid-template-columns: 200px 1fr 70px; gap:12px; align-items:center; margin:10px 0}
-  .bar{height:14px; border-radius:999px; background:rgba(42,59,102,.35); overflow:hidden}
+  .kpi{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px}
+  .kpi .k{background:var(--bg-card); border:none; border-radius:8px; padding:14px}
+  .kpi .k .t{font-size:11px; color:var(--text-secondary); font-weight:700; font-family:var(--font-sans)}
+  .kpi .k .v{font-size:22px; font-weight:800; margin-top:6px; color:var(--gold); font-family:var(--font-sans)}
+  .kpi .k .s{font-size:12px; color:var(--text-secondary); margin-top:6px}
+  .chart{background:var(--bg-card); border:none; border-radius:8px; padding:16px}
+  .chart h3{font-size:14px; font-weight:700; color:var(--text-primary); margin:0 0 12px 0; font-family:var(--font-sans)}
+  .barrow{display:grid; grid-template-columns: minmax(100px,200px) 1fr minmax(80px,auto); gap:12px; align-items:center; margin:6px 0; font-size:13px}
+  .barrow > div:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary)}
+  .barrow > div:last-child{text-align:right; white-space:nowrap; color:var(--text-primary)}
+  .bar{height:14px; border-radius:999px; background:rgba(255,255,255,.06); overflow:hidden}
   .bar > div{height:100%}
 </style>
 `;

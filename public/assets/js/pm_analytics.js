@@ -50,7 +50,7 @@ window.AsgardPMAnalytics = (function(){
           <button class="btn ghost" id="btnRefresh">Обновить</button>
         </div>
         <hr class="hr"/>
-        <div class="kpi" id="deptKpi" style="grid-template-columns:repeat(6,minmax(130px,1fr))"></div>
+        <div class="kpi" id="deptKpi"></div>
         <div class="chart" style="margin-top:16px">
           <h3>KPI по руководителям проектов</h3>
           <table class="asg" id="teamTable">
@@ -101,11 +101,11 @@ window.AsgardPMAnalytics = (function(){
     const overdue = Number(dept.overdue)||0;
     el.innerHTML = `
       <div class="k"><div class="t">Всего работ</div><div class="v">${total}</div></div>
-      <div class="k"><div class="t">Активных</div><div class="v" style="color:#2196f3">${active}</div></div>
-      <div class="k"><div class="t">Завершено</div><div class="v" style="color:#4caf50">${completed}</div></div>
-      <div class="k"><div class="t">Просрочено</div><div class="v" style="color:#f44336">${overdue}</div></div>
+      <div class="k"><div class="t">Активных</div><div class="v" style="color:var(--blue)">${active}</div></div>
+      <div class="k"><div class="t">Завершено</div><div class="v" style="color:var(--green)">${completed}</div></div>
+      <div class="k"><div class="t">Просрочено</div><div class="v" style="color:var(--red)">${overdue}</div></div>
       <div class="k"><div class="t">Сумма контрактов</div><div class="v">${money(dept.total_contract)}</div></div>
-      <div class="k"><div class="t">Общая прибыль</div><div class="v" style="color:#4caf50">${money(dept.total_profit)}</div></div>
+      <div class="k"><div class="t">Общая прибыль</div><div class="v" style="color:var(--green)">${money(dept.total_profit)}</div></div>
     `;
   }
 
@@ -122,13 +122,13 @@ window.AsgardPMAnalytics = (function(){
       const completed = Number(t.completed)||0;
       const overdue = Number(t.overdue)||0;
       const profit = Number(t.profit)||0;
-      const profitColor = profit >= 0 ? "#4caf50" : "#f44336";
+      const profitColor = profit >= 0 ? 'var(--green)' : 'var(--red)';
       return `<tr>
         <td><b>${esc(t.name)}</b><br><span class="muted">${esc(t.role)}</span></td>
         <td>${total}</td>
-        <td style="color:#2196f3">${active}</td>
-        <td style="color:#4caf50; font-weight:700">${completed}</td>
-        <td style="color:#f44336">${overdue}</td>
+        <td style="color:var(--blue)">${active}</td>
+        <td style="color:var(--green); font-weight:700">${completed}</td>
+        <td style="color:var(--red)">${overdue}</td>
         <td>${money(t.total_contract)}</td>
         <td style="color:${profitColor}; font-weight:700">${money(profit)}</td>
       </tr>`;
@@ -146,8 +146,8 @@ window.AsgardPMAnalytics = (function(){
       const w = Math.round((contractSum/max)*100);
       return `<div class="barrow">
         <div>${esc(m.month)}</div>
-        <div class="bar"><div style="width:${w}%; background:linear-gradient(90deg,#4caf50 ${pct(completed,total)},#2196f3 ${pct(completed,total)}); border-radius:999px"></div></div>
-        <div style="text-align:right"><b>${total}</b> работ · ${money(contractSum)}</div>
+        <div class="bar"><div style="width:${w}%; background:linear-gradient(90deg, var(--green) ${pct(completed,total)}, var(--blue) ${pct(completed,total)}); border-radius:999px"></div></div>
+        <div><b>${total}</b> работ · ${money(contractSum)}</div>
       </div>`;
     }).join("");
   }

@@ -79,33 +79,33 @@ window.AsgardPayrollPage = (function(){
 .payroll-tab.active{background:linear-gradient(135deg,rgba(59,130,246,.3),rgba(34,197,94,.2));color:var(--text)}
 .payroll-tab .count{font-size:11px;background:rgba(245,158,11,.3);color:#f59e0b;padding:2px 6px;border-radius:6px;margin-left:4px}
 .payroll-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
-.payroll-kpi .k{background:rgba(13,20,40,.5);border:1px solid rgba(42,59,102,.85);border-radius:6px;padding:14px}
+.payroll-kpi .k{background:rgba(13,20,40,.5);border:none;border-radius:6px;padding:14px}
 .payroll-kpi .k .t{font-size:11px;color:rgba(184,196,231,.85);font-weight:800;text-transform:uppercase}
 .payroll-kpi .k .v{font-size:24px;font-weight:900;margin-top:6px;color:rgba(242,208,138,.95)}
 .payroll-kpi .k .s{font-size:12px;color:rgba(184,196,231,.7);margin-top:4px}
-.payroll-card{background:rgba(13,20,40,.45);border:1px solid rgba(42,59,102,.85);border-radius:6px;padding:16px;margin-bottom:12px;cursor:pointer;transition:all .2s}
+.payroll-card{background:rgba(13,20,40,.45);border:none;border-radius:6px;padding:16px;margin-bottom:12px;cursor:pointer;transition:all .2s}
 .payroll-card:hover{border-color:rgba(242,208,138,.5);transform:translateY(-2px)}
 .payroll-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700}
 .payroll-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
 .payroll-director-comment{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-left:4px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:16px}
-.payroll-inline-input{background:rgba(13,20,40,.3);border:1px solid rgba(42,59,102,.6);border-radius:6px;padding:4px 8px;color:var(--text);width:80px;text-align:right;font-size:13px}
+.payroll-inline-input{background:rgba(13,20,40,.3);border:1px solid var(--border-input);border-radius:6px;padding:4px 8px;color:var(--text);width:80px;text-align:right;font-size:13px}
 .payroll-inline-input:focus{border-color:rgba(242,208,138,.6);outline:none}
 .payroll-inline-input:read-only{background:transparent;border-color:transparent;cursor:default}
-.se-card{background:rgba(13,20,40,.45);border:1px solid rgba(42,59,102,.85);border-radius:6px;padding:16px;margin-bottom:12px}
+.se-card{background:rgba(13,20,40,.45);border:none;border-radius:6px;padding:16px;margin-bottom:12px}
 .se-card .se-name{font-size:16px;font-weight:800;color:var(--text)}
 .se-card .se-inn{font-size:13px;color:var(--muted);font-family:monospace}
-.otp-card{background:rgba(13,20,40,.45);border:1px solid rgba(42,59,102,.85);border-radius:6px;padding:16px;margin-bottom:12px;border-left:4px solid transparent}
+.otp-card{background:rgba(13,20,40,.45);border:none;border-radius:6px;padding:16px;margin-bottom:12px;border-left:4px solid transparent}
 .otp-card[data-status="pending"]{border-left-color:#f59e0b}
 .otp-card[data-status="approved"]{border-left-color:#3b82f6}
 .otp-card[data-status="paid"]{border-left-color:#22c55e}
 .otp-card[data-status="rejected"]{border-left-color:#ef4444}
 .payroll-table{width:100%;border-collapse:collapse;font-size:13px}
-.payroll-table th{text-align:left;padding:8px 6px;font-size:11px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid rgba(42,59,102,.6);white-space:nowrap}
-.payroll-table td{padding:6px;border-bottom:1px solid rgba(42,59,102,.3);vertical-align:middle}
+.payroll-table th{text-align:left;padding:8px 6px;font-size:11px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.06);white-space:nowrap}
+.payroll-table td{padding:6px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
 .payroll-table tr:hover{background:rgba(59,130,246,.05)}
 .payroll-table tfoot td{font-weight:800;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)}
 .payroll-filters{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
-.payroll-filters select,.payroll-filters input{background:rgba(13,20,40,.4);border:1px solid rgba(42,59,102,.6);border-radius:6px;padding:6px 12px;color:var(--text);font-size:13px}
+.payroll-filters select,.payroll-filters input{background:rgba(13,20,40,.4);border:1px solid var(--border-input);border-radius:6px;padding:6px 12px;color:var(--text);font-size:13px}
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 </style>`;
 

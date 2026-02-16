@@ -35,7 +35,7 @@ window.AsgardEngineerDashboard = (function(){
     const body = `
       ${window.__ASG_SHARED_TABLE_CSS__||""}
       <style>
-        .pm-card { background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85); border-radius:6px; padding:16px; margin-bottom:14px; }
+        .pm-card { background:rgba(13,20,40,.40); border:none; border-radius:6px; padding:16px; margin-bottom:14px; }
         .pm-header { display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
         .pm-header:hover { background:rgba(42,59,102,.25); margin:-16px; padding:16px; border-radius:6px; }
         .pm-name { font-weight:700; font-size:16px; }
@@ -44,8 +44,8 @@ window.AsgardEngineerDashboard = (function(){
         .pm-list.open { display:block; }
         .eq-item { display:flex; gap:12px; padding:10px 0; font-size:13px; }
         .maint-item { display:flex; justify-content:space-between; padding:10px 8px; }
-        .maint-soon { color:#ff9800; }
-        .maint-overdue { color:#f44336; font-weight:700; }
+        .maint-soon { color:var(--warning); }
+        .maint-overdue { color:var(--danger); font-weight:700; }
       </style>
       <div class="panel">
         <div class="help">Кузница Инженера — контроль оборудования по РП, требующее ТО и движения склада.</div>
@@ -55,7 +55,7 @@ window.AsgardEngineerDashboard = (function(){
           <a href="#/warehouse" class="btn">Перейти на склад</a>
         </div>
         <hr class="hr"/>
-        <div class="kpi" id="summaryKpi" style="grid-template-columns:repeat(5,minmax(140px,1fr))"></div>
+        <div class="kpi" id="summaryKpi"></div>
 
         <div class="chart" style="margin-top:16px">
           <h3>Оборудование по РП</h3>
@@ -125,9 +125,9 @@ window.AsgardEngineerDashboard = (function(){
 
     el.innerHTML = `
       <div class="k"><div class="t">Всего на складе</div><div class="v">${total}</div></div>
-      <div class="k"><div class="t">На складе (доступно)</div><div class="v" style="color:#4caf50">${inStock}</div></div>
-      <div class="k"><div class="t">На руках у РП</div><div class="v" style="color:#2196f3">${totalOnHands}</div></div>
-      <div class="k"><div class="t">В ремонте</div><div class="v" style="color:#ff9800">${totalRepair}</div></div>
+      <div class="k"><div class="t">На складе (доступно)</div><div class="v" style="color:var(--green)">${inStock}</div></div>
+      <div class="k"><div class="t">На руках у РП</div><div class="v" style="color:var(--blue)">${totalOnHands}</div></div>
+      <div class="k"><div class="t">В ремонте</div><div class="v" style="color:var(--warning)">${totalRepair}</div></div>
       <div class="k"><div class="t">Стоимость на руках</div><div class="v">${money(totalValue)}</div></div>
     `;
   }
@@ -150,7 +150,7 @@ window.AsgardEngineerDashboard = (function(){
             <div class="pm-stats">
               <span>${pm.equipment_count} ед.</span>
               <span>${money(pm.total_value)}</span>
-              <span style="color:#ff9800">${pm.in_repair||0} в ремонте</span>
+              <span style="color:var(--warning)">${pm.in_repair||0} в ремонте</span>
             </div>
           </div>
           <div class="pm-list" id="pmEq_${idx}">
@@ -226,10 +226,10 @@ window.AsgardEngineerDashboard = (function(){
     el.innerHTML = types.map(([type, count]) => {
       const w = Math.round((count/max)*100);
       const label = typeLabels[type] || type;
-      const color = type === 'issue' ? '#2196f3' :
-                    type === 'return' ? '#4caf50' :
-                    type === 'repair' ? '#ff9800' :
-                    type === 'write_off' ? '#f44336' : '#5c6bc0';
+      const color = type === 'issue' ? 'var(--blue)' :
+                    type === 'return' ? 'var(--green)' :
+                    type === 'repair' ? 'var(--warning)' :
+                    type === 'write_off' ? 'var(--red)' : 'var(--purple)';
       return `<div class="barrow">
         <div>${esc(label)}</div>
         <div class="bar"><div style="width:${w}%; background:${color}; border-radius:999px"></div></div>

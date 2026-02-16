@@ -473,7 +473,7 @@ window.AsgardCustomDashboard = (function(){
     const max = Math.max(...data.map(d => d.count), 1);
     el.innerHTML = data.map(d => {
       const pct = Math.round((d.count / max) * 100);
-      const color = d.count > 5 ? '#f44336' : d.count > 3 ? '#ff9800' : '#4caf50';
+      const color = d.count > 5 ? 'var(--red)' : d.count > 3 ? 'var(--warning)' : 'var(--green)';
       return '<div style="display:flex;align-items:center;gap:10px;margin:6px 0">' +
         '<div style="width:90px;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc((d.name || '').split(' ')[0]) + '</div>' +
         '<div style="flex:1;background:var(--bg-elevated);border-radius:4px;height:16px;overflow:hidden">' +
@@ -504,16 +504,16 @@ window.AsgardCustomDashboard = (function(){
         return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">' +
           '<div style="font-size:10px;font-weight:700">' + m.total + '</div>' +
           '<div style="width:100%;height:' + h + 'px;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">' +
-            '<div style="height:' + (h - wh) + 'px;background:#5c6bc0"></div>' +
-            '<div style="height:' + wh + 'px;background:#4caf50"></div>' +
+            '<div style="height:' + (h - wh) + 'px;background:var(--blue)"></div>' +
+            '<div style="height:' + wh + 'px;background:var(--green)"></div>' +
           '</div>' +
           '<div style="font-size:10px;color:var(--text-muted)">' + esc(m.label) + '</div>' +
         '</div>';
       }).join('') +
     '</div>' +
     '<div style="display:flex;gap:12px;margin-top:8px;font-size:10px">' +
-      '<span><span style="display:inline-block;width:8px;height:8px;background:#5c6bc0;border-radius:2px;margin-right:4px"></span>Всего</span>' +
-      '<span><span style="display:inline-block;width:8px;height:8px;background:#4caf50;border-radius:2px;margin-right:4px"></span>Выиграно</span>' +
+      '<span><span style="display:inline-block;width:8px;height:8px;background:var(--blue);border-radius:2px;margin-right:4px"></span>Всего</span>' +
+      '<span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:2px;margin-right:4px"></span>Выиграно</span>' +
     '</div>';
   }
 
@@ -534,10 +534,10 @@ window.AsgardCustomDashboard = (function(){
     const done = yWorks.filter(w => w.work_status === 'Работы сдали').length;
 
     el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Тендеров</div><div style="font-size:24px;font-weight:900;color:#60a5fa">' + yTenders.length + '</div></div>' +
-      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Конверсия</div><div style="font-size:24px;font-weight:900;color:#4caf50">' + conv + '%</div></div>' +
+      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Тендеров</div><div style="font-size:24px;font-weight:900;color:var(--blue)">' + yTenders.length + '</div></div>' +
+      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Конверсия</div><div style="font-size:24px;font-weight:900;color:var(--green)">' + conv + '%</div></div>' +
       '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Выручка</div><div style="font-size:18px;font-weight:900;color:var(--gold)">' + formatMoney(revenue) + '</div></div>' +
-      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Сдано работ</div><div style="font-size:24px;font-weight:900;color:#22c55e">' + done + '/' + yWorks.length + '</div></div>' +
+      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Сдано работ</div><div style="font-size:24px;font-weight:900;color:var(--green)">' + done + '/' + yWorks.length + '</div></div>' +
     '</div>';
   }
 

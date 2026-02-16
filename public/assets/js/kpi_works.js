@@ -112,7 +112,7 @@ window.AsgardKpiWorksPage=(function(){
     const body=`
       ${window.__ASG_SHARED_TABLE_CSS__||""}
       <div class="kpi-works-page">
-        <div class="panel" style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:var(--sp-6); margin-bottom:var(--sp-6);">
+        <div class="panel" style="margin-bottom:var(--sp-6);">
           <div class="tools">
             <div class="field"><label>Период</label>
               <select id="f_mode">
