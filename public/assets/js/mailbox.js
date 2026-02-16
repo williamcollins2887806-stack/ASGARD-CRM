@@ -247,6 +247,14 @@ window.AsgardMailboxPage = (function(){
         ? `Кому: ${extractFirstEmail(e.to_emails)}`
         : (e.from_name || e.from_email || '???');
 
+      // AI processing status indicator
+      const aiProcessed = !!e.ai_processed_at;
+      const aiColorMap = { green: '#4ade80', yellow: '#fbbf24', red: '#f87171' };
+      const aiDotColor = aiProcessed && e.ai_color ? (aiColorMap[e.ai_color] || '#94a3b8') : '';
+      const aiTitle = aiProcessed
+        ? (e.ai_summary ? `AI: ${e.ai_summary}` : 'AI обработано')
+        : 'Ожидает AI-анализа';
+
       return `
         <div class="mail-item" data-id="${e.id}"
           style="padding:10px 12px; cursor:pointer; border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:flex-start;
@@ -258,7 +266,13 @@ window.AsgardMailboxPage = (function(){
           <div style="flex:1; min-width:0;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <span style="font-size:13px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">${esc(fromDisplay)}</span>
-              <span style="font-size:11px; color:var(--text-muted); white-space:nowrap; margin-left:8px;">${date}</span>
+              <div style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+                ${aiProcessed
+                  ? `<span title="${esc(aiTitle)}" style="display:inline-flex; align-items:center; gap:2px; font-size:10px; padding:1px 5px; border-radius:3px; background:${aiDotColor ? aiDotColor + '22' : 'rgba(148,163,184,.15)'}; color:${aiDotColor || '#94a3b8'}; font-weight:700; white-space:nowrap;">&#10003; AI</span>`
+                  : `<span title="${esc(aiTitle)}" style="display:inline-flex; align-items:center; font-size:10px; padding:1px 5px; border-radius:3px; background:rgba(148,163,184,.08); color:rgba(148,163,184,.4); white-space:nowrap;">&#8987;</span>`
+                }
+                <span style="font-size:11px; color:var(--text-muted); white-space:nowrap;">${date}</span>
+              </div>
             </div>
             <div style="font-size:12px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;">${esc(e.subject || '(без темы)')}</div>
             <div style="font-size:11px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px;">

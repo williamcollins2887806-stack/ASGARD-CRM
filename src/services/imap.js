@@ -378,71 +378,177 @@ async function saveEmail(account, msg, parsed) {
     }
   }
 
-  // ── AI auto-analysis hook (Phase 9) ──
-  // Автоматически анализируем все входящие (кроме внутренних, спама, рассылок)
-  const skipAiTypes = ['internal', 'spam', 'newsletter', 'notification', 'auto_reply'];
-  if (!skipAiTypes.includes(emailType)) {
-    try {
-      const attNames = attachments.map(a => a.filename || 'file');
-      const analysis = await aiAnalyzer.analyzeEmail({
-        emailId: emailId,
-        subject: parsed.subject,
-        bodyText: bodyText,
-        fromEmail: fromAddr.address,
-        fromName: fromAddr.name,
-        attachmentNames: attNames
-      });
-
-      const workload = await aiAnalyzer.getWorkloadData();
-
-      await db.query(`
-        INSERT INTO inbox_applications (
-          email_id, source, source_email, source_name, subject, body_preview,
-          ai_classification, ai_color, ai_summary, ai_recommendation,
-          ai_work_type, ai_estimated_budget, ai_estimated_days,
-          ai_keywords, ai_confidence, ai_raw_json, ai_analyzed_at, ai_model,
-          workload_snapshot, attachment_count, status
-        ) VALUES (
-          $1, 'email', $2, $3, $4, $5,
-          $6, $7, $8, $9,
-          $10, $11, $12,
-          $13, $14, $15, NOW(), $16,
-          $17, $18, 'ai_processed'
-        ) ON CONFLICT DO NOTHING
-      `, [
-        emailId,
-        fromAddr.address || '', fromAddr.name || '',
-        parsed.subject || '(без темы)', (bodyText || '').slice(0, 500),
-        analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
-        analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
-        analysis.keywords, analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
-        JSON.stringify(workload), attachmentCount
-      ]);
-
-      console.log(`[IMAP] AI auto-application created for email #${emailId}: ${analysis.color} / ${analysis.classification}`);
-
-      // Также создаём предварительную заявку (pre_tender_requests)
-      try {
-        await preTenderService.createPreTenderFromEmail(emailId);
-      } catch (ptErr) {
-        console.error('[IMAP] Pre-tender auto-creation error:', ptErr.message);
-      }
-
-      // Фаза 10: Парсинг тендерных площадок
-      if (emailType === 'platform_tender') {
-        try {
-          await platformParser.parseAndSave(emailId);
-          console.log(`[IMAP] Platform parse completed for email #${emailId}`);
-        } catch (ppErr) {
-          console.error('[IMAP] Platform parse error:', ppErr.message);
-        }
-      }
-    } catch (aiErr) {
-      console.error('[IMAP] AI auto-analysis error:', aiErr.message);
-    }
-  }
+  // AI analysis is now decoupled — runs asynchronously after sync completes
+  // (see processUnanalyzedEmails below)
 
   return { isNew: true, attachmentCount };
+}
+
+// ── Async AI processing (decoupled from sync loop) ──────────────────────
+const AI_SKIP_TYPES = ['internal', 'spam', 'newsletter', 'notification', 'auto_reply'];
+const AI_BATCH_SIZE = 5;       // process N emails concurrently
+const AI_PROCESS_INTERVAL = 30000; // run every 30 sec
+let aiProcessorTimer = null;
+let aiProcessorRunning = false;
+
+/**
+ * Process a single email with AI analysis.
+ * Updates emails table and creates inbox_application.
+ */
+async function analyzeOneEmail(email) {
+  const emailId = email.id;
+  try {
+    const attRes = await db.query(
+      'SELECT original_filename FROM email_attachments WHERE email_id = $1',
+      [emailId]
+    );
+    const attNames = attRes.rows.map(a => a.original_filename || 'file');
+
+    const analysis = await aiAnalyzer.analyzeEmail({
+      emailId,
+      subject: email.subject,
+      bodyText: email.body_text,
+      fromEmail: email.from_email,
+      fromName: email.from_name,
+      attachmentNames: attNames
+    });
+
+    const workload = await aiAnalyzer.getWorkloadData();
+
+    // Update the emails table with AI results
+    await db.query(`
+      UPDATE emails SET
+        ai_classification = $1, ai_color = $2, ai_summary = $3,
+        ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+      WHERE id = $5
+    `, [
+      analysis.classification, analysis.color,
+      analysis.summary, analysis.recommendation,
+      emailId
+    ]);
+
+    // Create inbox_application
+    await db.query(`
+      INSERT INTO inbox_applications (
+        email_id, source, source_email, source_name, subject, body_preview,
+        ai_classification, ai_color, ai_summary, ai_recommendation,
+        ai_work_type, ai_estimated_budget, ai_estimated_days,
+        ai_keywords, ai_confidence, ai_raw_json, ai_analyzed_at, ai_model,
+        workload_snapshot, attachment_count, status
+      ) VALUES (
+        $1, 'email', $2, $3, $4, $5,
+        $6, $7, $8, $9,
+        $10, $11, $12,
+        $13, $14, $15, NOW(), $16,
+        $17, $18, 'ai_processed'
+      ) ON CONFLICT DO NOTHING
+    `, [
+      emailId,
+      email.from_email || '', email.from_name || '',
+      email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
+      analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
+      analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
+      analysis.keywords, analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
+      JSON.stringify(workload), email.attachment_count || 0
+    ]);
+
+    console.log(`[IMAP-AI] Processed email #${emailId}: ${analysis.color} / ${analysis.classification}`);
+
+    // Create pre-tender request
+    try {
+      await preTenderService.createPreTenderFromEmail(emailId);
+    } catch (ptErr) {
+      console.error('[IMAP-AI] Pre-tender error:', ptErr.message);
+    }
+
+    // Parse platform tenders
+    if (email.email_type === 'platform_tender') {
+      try {
+        await platformParser.parseAndSave(emailId);
+      } catch (ppErr) {
+        console.error('[IMAP-AI] Platform parse error:', ppErr.message);
+      }
+    }
+
+    return true;
+  } catch (err) {
+    console.error(`[IMAP-AI] Error processing email #${emailId}:`, err.message);
+    // Mark as failed so we don't retry endlessly
+    await db.query(
+      `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, updated_at = NOW() WHERE id = $2`,
+      ['[Ошибка AI-анализа: ' + err.message.slice(0, 200) + ']', emailId]
+    ).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * Process unanalyzed emails in batches with concurrency.
+ * This runs independently from the IMAP sync loop.
+ */
+async function processUnanalyzedEmails() {
+  if (isShuttingDown || aiProcessorRunning) return;
+  aiProcessorRunning = true;
+
+  try {
+    // Find emails that need AI analysis
+    const typePlaceholders = AI_SKIP_TYPES.map((_, i) => `$${i + 1}`).join(',');
+    const res = await db.query(`
+      SELECT id, subject, body_text, from_email, from_name, email_type, attachment_count
+      FROM emails
+      WHERE ai_processed_at IS NULL
+        AND direction = 'inbound'
+        AND email_type NOT IN (${typePlaceholders})
+        AND is_deleted = false
+      ORDER BY email_date DESC
+      LIMIT $${AI_SKIP_TYPES.length + 1}
+    `, [...AI_SKIP_TYPES, AI_BATCH_SIZE]);
+
+    if (res.rows.length === 0) {
+      aiProcessorRunning = false;
+      return;
+    }
+
+    console.log(`[IMAP-AI] Processing ${res.rows.length} unanalyzed emails...`);
+
+    // Process batch concurrently
+    const results = await Promise.allSettled(
+      res.rows.map(email => analyzeOneEmail(email))
+    );
+
+    const ok = results.filter(r => r.status === 'fulfilled' && r.value).length;
+    const fail = results.length - ok;
+    console.log(`[IMAP-AI] Batch done: ${ok} ok, ${fail} failed`);
+
+    // Also mark skippable types as processed (no AI needed)
+    await db.query(`
+      UPDATE emails SET ai_processed_at = NOW(), ai_summary = '[Пропущено — тип не требует AI]'
+      WHERE ai_processed_at IS NULL
+        AND direction = 'inbound'
+        AND email_type IN (${typePlaceholders})
+    `, AI_SKIP_TYPES).catch(() => {});
+  } catch (err) {
+    console.error('[IMAP-AI] Batch processor error:', err.message);
+  } finally {
+    aiProcessorRunning = false;
+  }
+}
+
+function startAiProcessor() {
+  if (aiProcessorTimer) return;
+  aiProcessorTimer = setInterval(() => {
+    if (!isShuttingDown) processUnanalyzedEmails().catch(() => {});
+  }, AI_PROCESS_INTERVAL);
+  // Also run once immediately after a short delay
+  setTimeout(() => processUnanalyzedEmails().catch(() => {}), 10000);
+  console.log(`[IMAP-AI] Background AI processor started (every ${AI_PROCESS_INTERVAL / 1000}s, batch=${AI_BATCH_SIZE})`);
+}
+
+function stopAiProcessor() {
+  if (aiProcessorTimer) {
+    clearInterval(aiProcessorTimer);
+    aiProcessorTimer = null;
+  }
 }
 
 // ── Polling loop ────────────────────────────────────────────────────────
@@ -458,6 +564,8 @@ function startPolling(accountId, intervalSec) {
     } catch (e) {
       console.error(`[IMAP] Poll error account #${accountId}:`, e.message);
     }
+    // Trigger AI processing after sync
+    processUnanalyzedEmails().catch(() => {});
     if (!isShuttingDown && pollingTimers.has(accountId)) {
       const timerId = setTimeout(poll, interval);
       pollingTimers.set(accountId, timerId);
@@ -565,6 +673,9 @@ async function init() {
       startPolling(acc.id, acc.sync_interval_sec);
     }
 
+    // Start background AI processor
+    startAiProcessor();
+
     console.log(`[IMAP] Initialized polling for ${result.rows.length} account(s)`);
   } catch (e) {
     console.error('[IMAP] Init error:', e.message);
@@ -614,6 +725,7 @@ async function shutdown() {
   console.log('[IMAP] Shutting down...');
   isShuttingDown = true;
   stopAllPolling();
+  stopAiProcessor();
 
   // Close active IMAP connections
   for (const [accountId, client] of activeClients) {
@@ -635,5 +747,6 @@ module.exports = {
   testConnection,
   shutdown,
   encrypt,
-  decrypt
+  decrypt,
+  processUnanalyzedEmails
 };

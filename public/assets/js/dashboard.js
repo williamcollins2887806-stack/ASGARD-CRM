@@ -143,13 +143,21 @@ window.AsgardDashboardPage = (function(){
           .dash-header h2 { margin:0 0 8px; }
           .dash-period { color:var(--muted); font-size:14px; }
           
-          .dash-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:20px; margin-bottom:24px; }
-          
+          .dash-grid {
+            display:grid;
+            grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+            gap:1px;
+            margin-bottom:24px;
+            background: rgba(148,163,184,.15);
+            border:1px solid rgba(148,163,184,.15);
+            border-radius:8px;
+            overflow:hidden;
+          }
+
           .dash-card {
             position:relative;
             background: linear-gradient(135deg, rgba(13,20,40,.7), rgba(13,20,40,.5));
-            border:1px solid rgba(148,163,184,.15);
-            border-radius:6px;
+            border:none;
             padding:24px;
             overflow:hidden;
             transition: all .3s ease;
@@ -158,14 +166,13 @@ window.AsgardDashboardPage = (function(){
             content:'';
             position:absolute;
             top:0; left:0; right:0;
-            height:4px;
+            height:3px;
             background: var(--card-gradient, linear-gradient(90deg, var(--gold), var(--red)));
-            opacity:.7;
+            opacity:.6;
           }
           .dash-card:hover {
-            transform:translateY(-3px);
-            border-color:rgba(242,208,138,.3);
-            box-shadow:0 16px 50px rgba(0,0,0,.3);
+            background: linear-gradient(135deg, rgba(13,20,40,.9), rgba(13,20,40,.7));
+            box-shadow: inset 0 0 30px rgba(242,208,138,.05);
           }
           
           .dash-card-title { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:800; margin-bottom:12px; }
