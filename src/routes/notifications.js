@@ -92,7 +92,7 @@ async function routes(fastify, options) {
       try {
         const telegram = require('../services/telegram');
         await telegram.sendNotification(user.id, `🔔 *${title}*\n\n${message}`);
-      } catch(e) {}
+      } catch(e) { fastify.log.error('Telegram send error:', e.message); }
       
       sent++;
     }
@@ -129,7 +129,7 @@ async function routes(fastify, options) {
     try {
       const telegram = require('../services/telegram');
       await telegram.sendNotification(toUserId, `🔔 *${title}*\n\n${details || ''}`);
-    } catch(e) {}
+    } catch(e) { fastify.log.error('Telegram send error:', e.message); }
     
     return { success: true };
   });
@@ -184,12 +184,96 @@ async function routes(fastify, options) {
       try {
         const telegram = require('../services/telegram');
         await telegram.sendNotification(user.id, `📢 *${title}*\n\n${message}`);
-      } catch(e) {}
+      } catch(e) { fastify.log.error('Telegram send error:', e.message); }
       
       sent++;
     }
     
     return { message: `Отправлено ${sent} уведомлений` };
+  });
+
+  // ─── Flush: отправить ВСЕ непрочитанные в Telegram ───────────────────────
+  fastify.post('/flush-telegram', { preHandler: [fastify.authenticate] }, async (request) => {
+    if (!['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(request.user.role)) {
+      return { error: 'Недостаточно прав' };
+    }
+
+    const telegram = require('../services/telegram');
+    const bot = telegram.getBot();
+    if (!bot) {
+      return { error: 'Telegram бот не настроен. Установите TELEGRAM_BOT_TOKEN в .env' };
+    }
+
+    // Найти всех пользователей с привязанным Telegram
+    const linkedUsers = await db.query(
+      'SELECT id, name, telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND is_active = true'
+    );
+
+    if (linkedUsers.rows.length === 0) {
+      return { error: 'Нет пользователей с привязанным Telegram. Каждый пользователь должен написать боту /link свой_email' };
+    }
+
+    let totalSent = 0;
+    let totalFailed = 0;
+    const errors = [];
+
+    for (const user of linkedUsers.rows) {
+      // Получить непрочитанные уведомления этого пользователя
+      const unread = await db.query(
+        'SELECT id, title, message FROM notifications WHERE user_id = $1 AND is_read = false ORDER BY created_at DESC LIMIT 50',
+        [user.id]
+      );
+
+      if (unread.rows.length === 0) continue;
+
+      // Отправить сводку вместо каждого по отдельности
+      let summary = `📬 *У вас ${unread.rows.length} непрочитанных уведомлений:*\n\n`;
+      unread.rows.slice(0, 20).forEach((n, i) => {
+        summary += `${i + 1}. *${n.title || 'Уведомление'}*\n   ${(n.message || '').slice(0, 100)}\n\n`;
+      });
+      if (unread.rows.length > 20) {
+        summary += `...и ещё ${unread.rows.length - 20}\n`;
+      }
+      summary += '\n🔗 Откройте CRM для подробностей';
+
+      try {
+        await telegram.sendNotification(user.id, summary);
+        totalSent++;
+      } catch (e) {
+        totalFailed++;
+        errors.push(`${user.name}: ${e.message}`);
+      }
+    }
+
+    return {
+      success: true,
+      linked_users: linkedUsers.rows.length,
+      sent: totalSent,
+      failed: totalFailed,
+      errors: errors.length > 0 ? errors : undefined
+    };
+  });
+
+  // ─── Диагностика Telegram ───────────────────────────────────────────────
+  fastify.get('/telegram-status', { preHandler: [fastify.authenticate] }, async (request) => {
+    const telegram = require('../services/telegram');
+    const bot = telegram.getBot();
+
+    const linkedUsers = await db.query(
+      'SELECT id, name, telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND is_active = true'
+    );
+
+    const unreadCount = await db.query(
+      'SELECT COUNT(*) FROM notifications WHERE is_read = false'
+    );
+
+    return {
+      bot_active: !!bot,
+      bot_token_set: !!process.env.TELEGRAM_BOT_TOKEN,
+      linked_users: linkedUsers.rows.map(u => ({ id: u.id, name: u.name, chat_id: u.telegram_chat_id })),
+      linked_count: linkedUsers.rows.length,
+      total_unread: parseInt(unreadCount.rows[0].count, 10)
+    };
   });
 }
 

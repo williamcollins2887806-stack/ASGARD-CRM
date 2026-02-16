@@ -175,12 +175,10 @@ window.AsgardCorrespondencePage = (function(){
           .corr-kpi-card {
             position:relative;
             background: linear-gradient(135deg, rgba(13,20,40,.6) 0%, rgba(13,20,40,.4) 100%);
-            border-right: 1px solid rgba(242,208,138,.1);
             padding:18px;
             overflow:hidden;
             transition: all .3s ease;
           }
-          .corr-kpi-card:last-child { border-right:none; }
           .corr-kpi-card::before {
             content:'';
             position:absolute;

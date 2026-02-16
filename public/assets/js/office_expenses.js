@@ -116,8 +116,7 @@ window.AsgardOfficeExpensesPage = (function(){
         <style>
           .oexp-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:20px; }
           .oexp-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0; margin-bottom:20px; border:1px solid var(--line); border-radius:14px; overflow:hidden; }
-          .oexp-kpi-card { background:rgba(13,20,40,.5); padding:14px; text-align:center; border-right:1px solid var(--line); }
-          .oexp-kpi-card:last-child { border-right:none; }
+          .oexp-kpi-card { background:rgba(13,20,40,.5); padding:14px; text-align:center; }
           .oexp-kpi-label { font-size:11px; color:var(--muted); text-transform:uppercase; }
           .oexp-kpi-value { font-size:24px; font-weight:900; color:var(--gold); margin-top:4px; }
           .oexp-kpi-sub { font-size:11px; color:var(--muted); }

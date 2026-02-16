@@ -211,6 +211,17 @@ window.AsgardTelegram = (function(){
           </div>
         </details>
 
+        <details open style="margin-bottom:16px">
+          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--red)"></span> Диагностика и отправка</summary>
+          <div id="tgDiagnostics" style="margin-top:12px;padding:12px;background:var(--bg-card);border-radius:12px">
+            <div class="help">Загрузка...</div>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn primary" id="btnFlushTelegram">📤 Отправить ВСЕ непрочитанные в Telegram</button>
+            <button class="btn ghost" id="btnCheckTgStatus">🔍 Проверить статус</button>
+          </div>
+        </details>
+
         <details style="margin-bottom:16px">
           <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--green)"></span> Привязка пользователей</summary>
           <div class="tbl-wrap" style="margin-top:12px">
@@ -377,6 +388,65 @@ window.AsgardTelegram = (function(){
             ❌ Не удалось распознать SMS. Попробуйте другой формат.
           </div>
         `;
+      }
+    });
+
+    // ─── Диагностика Telegram ────────────────────────────────────────────
+    async function checkTgStatus() {
+      const diagDiv = document.getElementById('tgDiagnostics');
+      if (!diagDiv) return;
+      diagDiv.innerHTML = '<div class="help">Проверка...</div>';
+
+      try {
+        const auth = await AsgardAuth.getAuth();
+        const resp = await fetch('/api/notifications/telegram-status', {
+          headers: { 'Authorization': 'Bearer ' + auth.token }
+        });
+        const data = await resp.json();
+
+        diagDiv.innerHTML = `
+          <div style="display:grid;gap:8px">
+            <div>${data.bot_active ? '✅' : '❌'} Бот: <b>${data.bot_active ? 'Активен' : 'НЕ ЗАПУЩЕН'}</b></div>
+            <div>${data.bot_token_set ? '✅' : '❌'} Токен: <b>${data.bot_token_set ? 'Установлен' : 'НЕ УСТАНОВЛЕН (нужен TELEGRAM_BOT_TOKEN в .env)'}</b></div>
+            <div>👥 Привязанных пользователей: <b>${data.linked_count || 0}</b></div>
+            <div>📬 Всего непрочитанных: <b>${data.total_unread || 0}</b></div>
+            ${data.linked_users && data.linked_users.length > 0
+              ? '<div style="margin-top:4px"><b>Привязанные:</b> ' + data.linked_users.map(u => u.name).join(', ') + '</div>'
+              : '<div style="color:var(--red);margin-top:4px">⚠️ Ни один пользователь не привязал Telegram. Каждому нужно написать боту /link свой_email</div>'
+            }
+          </div>
+        `;
+      } catch (e) {
+        diagDiv.innerHTML = '<div style="color:var(--red)">❌ Ошибка: ' + esc(e.message) + '</div>';
+      }
+    }
+    checkTgStatus();
+
+    document.getElementById('btnCheckTgStatus')?.addEventListener('click', checkTgStatus);
+
+    // ─── Массовая отправка в Telegram ──────────────────────────────────
+    document.getElementById('btnFlushTelegram')?.addEventListener('click', async () => {
+      if (!confirm('Отправить ВСЕ непрочитанные уведомления привязанным пользователям в Telegram?')) return;
+
+      try {
+        const auth = await AsgardAuth.getAuth();
+        const resp = await fetch('/api/notifications/flush-telegram', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + auth.token
+          }
+        });
+        const data = await resp.json();
+
+        if (data.error) {
+          AsgardUI.toast('Ошибка', data.error, 'err');
+        } else {
+          AsgardUI.toast('Готово', `Отправлено: ${data.sent}, Ошибок: ${data.failed || 0}`, 'ok');
+        }
+        checkTgStatus();
+      } catch (e) {
+        AsgardUI.toast('Ошибка', 'Сетевая ошибка: ' + e.message, 'err');
       }
     });
   }

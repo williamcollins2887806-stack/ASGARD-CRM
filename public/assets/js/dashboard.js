@@ -148,13 +148,10 @@ window.AsgardDashboardPage = (function(){
           .dash-card {
             position:relative;
             background: linear-gradient(135deg, rgba(13,20,40,.7), rgba(13,20,40,.5));
-            border-right:1px solid rgba(148,163,184,.1);
-            border-bottom:1px solid rgba(148,163,184,.1);
             padding:20px;
             overflow:hidden;
             transition: all .3s ease;
           }
-          .dash-card:last-child{border-right:none}
           .dash-card::before {
             content:'';
             position:absolute;
@@ -187,10 +184,8 @@ window.AsgardDashboardPage = (function(){
           .dash-chart-row { border:1px solid rgba(148,163,184,.12); border-radius:16px; overflow:hidden; }
           .dash-chart-card {
             background: rgba(13,20,40,.5);
-            border-right:1px solid rgba(148,163,184,.08);
             padding:16px;
           }
-          .dash-chart-card:last-child{border-right:none}
           .dash-chart-title { font-size:12px; color:var(--muted); margin-bottom:12px; font-weight:700; }
           .dash-chart-canvas { width:100%; height:180px; }
           

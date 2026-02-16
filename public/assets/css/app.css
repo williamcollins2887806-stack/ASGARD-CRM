@@ -1884,11 +1884,6 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
   padding: 12px 20px;
   background: var(--bg-elevated);
   min-width: 120px;
-  border-right: 1px solid var(--border);
-}
-
-.funnel-stat:last-child {
-  border-right: none;
 }
 
 .funnel-stat.won {

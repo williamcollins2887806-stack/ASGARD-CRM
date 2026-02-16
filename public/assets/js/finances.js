@@ -147,8 +147,7 @@ window.AsgardFinancesPage = (function(){
           .fin-arrow:disabled { opacity:.3; cursor:not-allowed; }
           
           .fin-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0; margin-bottom:24px; border:1px solid var(--line); border-radius:18px; overflow:hidden; }
-          .fin-card { background:rgba(13,20,40,.5); padding:20px; border-right:1px solid var(--line); }
-          .fin-card:last-child { border-right:none; }
+          .fin-card { background:rgba(13,20,40,.5); padding:20px; }
           .fin-card-label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
           .fin-card-value { font-size:32px; font-weight:900; color:var(--gold); }
           .fin-card-sub { font-size:13px; color:var(--muted); margin-top:4px; }
