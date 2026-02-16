@@ -55,7 +55,7 @@ window.AsgardAllEstimatesPage=(function(){
   async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active); }
   async function getSettings(){
     const s = await AsgardDB.get("settings","app");
-    return s ? JSON.parse(s.value_json||"{}") : { vat_pct:20 };
+    return s ? JSON.parse(s.value_json||"{}") : { vat_pct:22 };
   }
 
   async function render({layout,title}){

@@ -11,7 +11,7 @@ window.AsgardPmCalcsPage = (function(){
 
   async function getCore(){
     const core = await AsgardDB.get("settings","app");
-    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:20, status_colors:{tender:{}, work:{}}};
+    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:22, status_colors:{tender:{}, work:{}}};
   }
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
@@ -194,7 +194,7 @@ window.AsgardPmCalcsPage = (function(){
     
     showModal("📝 Быстрый просчёт", html);
     
-    const vatPct = core.vat_pct || 20;
+    const vatPct = core.vat_pct || 22;
     const minPPD = core.calc?.min_profit_per_person_day || 20000;
     const normPPD = core.calc?.norm_profit_per_person_day || 25000;
     
@@ -497,7 +497,7 @@ window.AsgardPmCalcsPage = (function(){
       </div>
     `;
 
-    await layout(body, {title: title||"Карта Похода • Просчёты", rightBadges:[`НДС: ${core.vat_pct||20}%`]});
+    await layout(body, {title: title||"Карта Похода • Просчёты", rightBadges:[`НДС: ${core.vat_pct||22}%`]});
 
     const tb=$("#tb"), cnt=$("#cnt");
 
@@ -775,7 +775,7 @@ window.AsgardPmCalcsPage = (function(){
           <div style="display:flex; gap:10px; flex-wrap:wrap">
             <div class="pill">
               <div class="who"><b>Цена без НДС:</b> ${derived.noVat!=null?money(Math.round(derived.noVat)):"—"} ₽</div>
-              <div class="role">НДС ${core.vat_pct||20}%</div>
+              <div class="role">НДС ${core.vat_pct||22}%</div>
             </div>
             <div class="pill">
               <div class="who"><b>Маржа:</b> ${derived.margin!=null?`${Math.round(derived.margin*100)}%`:"—"}</div>

@@ -171,16 +171,16 @@ window.AsgardCorrespondencePage = (function(){
           .corr-header-actions { display:flex; gap:10px; }
           
           /* KPI Cards with Viking flair */
-          .corr-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:24px; }
-          .corr-kpi-card { 
+          .corr-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0; margin-bottom:24px; border:1px solid rgba(242,208,138,.15); border-radius:16px; overflow:hidden; }
+          .corr-kpi-card {
             position:relative;
             background: linear-gradient(135deg, rgba(13,20,40,.6) 0%, rgba(13,20,40,.4) 100%);
-            border: 1px solid rgba(242,208,138,.15);
-            border-radius:16px; 
+            border-right: 1px solid rgba(242,208,138,.1);
             padding:18px;
             overflow:hidden;
             transition: all .3s ease;
           }
+          .corr-kpi-card:last-child { border-right:none; }
           .corr-kpi-card::before {
             content:'';
             position:absolute;

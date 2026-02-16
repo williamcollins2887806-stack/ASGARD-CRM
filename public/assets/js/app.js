@@ -128,7 +128,9 @@ console.log('[ASGARD] Global period functions loaded');
   .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
   .tools .field{min-width:200px}
   .kpi{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px}
-  .kpi .k{background:var(--bg-card,rgba(13,20,40,.40)); border:1px solid var(--border,rgba(42,59,102,.85)); border-radius:var(--radius-md,12px); padding:14px}
+  .kpi:has(.k){gap:0; border:1px solid var(--border,rgba(42,59,102,.85)); border-radius:var(--radius-md,12px); overflow:hidden}
+  .kpi .k{background:var(--bg-card,rgba(13,20,40,.40)); padding:14px; border-right:1px solid var(--border,rgba(42,59,102,.85))}
+  .kpi .k:last-child{border-right:none}
   .kpi .k .t{font-size:11px; color:var(--text-muted,rgba(184,196,231,.85)); font-weight:700; text-transform:uppercase; letter-spacing:0.03em}
   .kpi .k .v{font-size:20px; font-weight:800; margin-top:6px; color:var(--primary,#dc2626)}
   .kpi .k .s{font-size:12px; color:var(--text-secondary,rgba(184,196,231,.85)); margin-top:6px}

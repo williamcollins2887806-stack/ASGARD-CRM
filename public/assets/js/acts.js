@@ -157,7 +157,7 @@ window.AsgardActsPage = (function(){
           </div>
           <div>
             <label>НДС %</label>
-            <input class="inp" type="number" id="act_vat" value="${act.vat_pct || 20}"/>
+            <input class="inp" type="number" id="act_vat" value="${act.vat_pct || 22}"/>
           </div>
         </div>
         
@@ -177,7 +177,7 @@ window.AsgardActsPage = (function(){
     
     $('#btnSaveAct')?.addEventListener('click', async () => {
       const amount = parseFloat($('#act_amount').value) || 0;
-      const vatPct = parseFloat($('#act_vat').value) || 20;
+      const vatPct = parseFloat($('#act_vat').value) || 22;
       const totalAmount = amount * (1 + vatPct / 100);
       
       const data = {

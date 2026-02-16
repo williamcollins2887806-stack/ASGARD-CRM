@@ -86,8 +86,9 @@ window.AsgardBuhRegistryPage = (function(){
         .buh-filter label { font-size:11px; color:var(--muted); text-transform:uppercase; font-weight:700; }
         .buh-filter select, .buh-filter input { padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:var(--glass); color:var(--text); }
         
-        .buh-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:20px; }
-        .buh-card { background:rgba(13,20,40,.5); border:1px solid var(--line); border-radius:16px; padding:16px; }
+        .buh-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0; margin-bottom:20px; border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+        .buh-card { background:rgba(13,20,40,.5); padding:16px; border-right:1px solid var(--line); }
+        .buh-card:last-child { border-right:none; }
         .buh-card-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
         .buh-card-value { font-size:26px; font-weight:900; color:var(--gold); margin-top:6px; }
         .buh-card-sub { font-size:12px; color:var(--muted); margin-top:4px; }

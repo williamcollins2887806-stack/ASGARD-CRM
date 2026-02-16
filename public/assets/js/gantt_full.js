@@ -46,7 +46,7 @@ window.AsgardGanttFullPage=(function(){
 
   async function getCoreSettings(){
     const s = await AsgardDB.get("settings","app");
-    return s ? JSON.parse(s.value_json||"{}") : {vat_pct:20, gantt_start_iso:"2026-01-01T00:00:00Z", status_colors:{tender:{}, work:{}}};
+    return s ? JSON.parse(s.value_json||"{}") : {vat_pct:22, gantt_start_iso:"2026-01-01T00:00:00Z", status_colors:{tender:{}, work:{}}};
   }
   function renderSafeList(items, title){
     const rows = (items||[]).map(it=>{

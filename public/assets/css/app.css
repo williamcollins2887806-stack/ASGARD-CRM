@@ -1872,16 +1872,23 @@ td .status.gold { background: var(--gold-glow); color: var(--gold); }
    ───────────────────────────────────────────────────────────────────────────── */
 .funnel-stats {
   display: flex;
-  gap: 24px;
+  gap: 0;
   flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
 .funnel-stat {
   text-align: center;
   padding: 12px 20px;
   background: var(--bg-elevated);
-  border-radius: var(--radius-md);
   min-width: 120px;
+  border-right: 1px solid var(--border);
+}
+
+.funnel-stat:last-child {
+  border-right: none;
 }
 
 .funnel-stat.won {

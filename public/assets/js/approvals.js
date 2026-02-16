@@ -21,7 +21,7 @@ window.AsgardApprovalsPage = (function(){
 
   async function getCore(){
     const core = await AsgardDB.get("settings","app");
-    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:20, status_colors:{tender:{}, work:{}}};
+    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:22, status_colors:{tender:{}, work:{}}};
   }
 
   async function getSLA(){
@@ -240,7 +240,7 @@ window.AsgardApprovalsPage = (function(){
         <div class="help" id="cnt"></div>
       </div>
     `;
-    await layout(body, {title: title||"Согласование", rightBadges:[`НДС: ${core.vat_pct||20}%`]});
+    await layout(body, {title: title||"Согласование", rightBadges:[`НДС: ${core.vat_pct||22}%`]});
 
     const tb=$("#tb"), cnt=$("#cnt");
 
@@ -363,7 +363,7 @@ window.AsgardApprovalsPage = (function(){
       // Компактная карточка быстрого просчёта
       let quickCard = '';
       if(quickCalc && !v2Summary){
-        const vatPct = core.vat_pct || 20;
+        const vatPct = core.vat_pct || 22;
         const priceNoVat = (est.price_tkp || 0) / (1 + vatPct/100);
         const profit = priceNoVat - (est.cost_plan || 0);
         const pd = (quickCalc.people_count || 1) * (quickCalc.work_days || 1);

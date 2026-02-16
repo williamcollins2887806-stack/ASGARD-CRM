@@ -115,8 +115,9 @@ window.AsgardOfficeExpensesPage = (function(){
       const body = `
         <style>
           .oexp-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:20px; }
-          .oexp-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px; }
-          .oexp-kpi-card { background:rgba(13,20,40,.5); border:1px solid var(--line); border-radius:14px; padding:14px; text-align:center; }
+          .oexp-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0; margin-bottom:20px; border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+          .oexp-kpi-card { background:rgba(13,20,40,.5); padding:14px; text-align:center; border-right:1px solid var(--line); }
+          .oexp-kpi-card:last-child { border-right:none; }
           .oexp-kpi-label { font-size:11px; color:var(--muted); text-transform:uppercase; }
           .oexp-kpi-value { font-size:24px; font-weight:900; color:var(--gold); margin-top:4px; }
           .oexp-kpi-sub { font-size:11px; color:var(--muted); }
@@ -126,8 +127,9 @@ window.AsgardOfficeExpensesPage = (function(){
           .oexp-filter label { font-size:11px; color:var(--muted); text-transform:uppercase; }
           .oexp-filter select { padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:var(--glass); color:var(--text); }
           
-          .oexp-cats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px; }
-          .oexp-cat { background:rgba(13,20,40,.4); border:1px solid var(--line); border-radius:12px; padding:12px; display:flex; align-items:center; gap:10px; }
+          .oexp-cats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0; margin-bottom:20px; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+          .oexp-cat { background:rgba(13,20,40,.4); padding:12px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line); }
+          .oexp-cat:last-child { border-bottom:none; }
           .oexp-cat-icon { font-size:24px; }
           .oexp-cat-info { flex:1; }
           .oexp-cat-label { font-size:12px; color:var(--muted); }

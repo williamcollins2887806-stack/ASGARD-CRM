@@ -104,7 +104,7 @@ window.AsgardTemplates=(function(){
     const company = await getCompany();
     const logo = await loadLogoDataUrl();
     const price = estimate?.price_tkp ?? tender?.tender_price ?? "";
-    const vat = Number(ds.vat_pct ?? 20);
+    const vat = Number(ds.vat_pct ?? 22);
     const n = Number(price||0);
     const withVat = (Number.isFinite(n) && n>0) ? Math.round(n*(1+vat/100)) : "";
     const body = `
@@ -166,7 +166,7 @@ window.AsgardTemplates=(function(){
     const app = await AsgardDB.get("settings","app");
     const base = app ? JSON.parse(app.value_json||"{}") : {};
     const ds = {
-      vat_pct: base.vat_pct ?? 20,
+      vat_pct: base.vat_pct ?? 22,
       contacts: "info@asgard-service.ru • +7 (___) ___‑__‑__",
       payment_terms: "Предоплата 50% перед выездом, остаток в течение 5 банковских дней после подписания акта.",
       request_extra: "Просим подтвердить условия доступа, требования по безопасности и контакт ответственного лица на площадке.",

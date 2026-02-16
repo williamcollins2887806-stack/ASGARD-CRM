@@ -58,7 +58,7 @@ async function actsRoutes(fastify, options) {
     const {
       act_number, act_date, status = 'draft',
       work_id, customer_name, customer_inn,
-      description, amount, vat_pct = 20, total_amount,
+      description, amount, vat_pct = 22, total_amount,
       signed_date, paid_date
     } = request.body;
     

@@ -106,7 +106,7 @@
     const profitBeforeTax = priceNoVat - costTotal;
     const profitTax = profitBeforeTax * ((s.profit_tax_pct || 20) / 100);
     const netProfit = profitBeforeTax - profitTax;
-    const priceWithVat = priceNoVat * (1 + (s.vat_pct || 20)/100);
+    const priceWithVat = priceNoVat * (1 + (s.vat_pct || 22)/100);
     const profitPerDay = (peopleCount > 0 && workDays > 0) ? netProfit / (peopleCount * workDays) : 0;
     
     let status = "red";
@@ -122,7 +122,7 @@
       transport, logistics_total: logisticsTotal, ppe_total: ppeTotal,
       base_cost: baseCost, overhead, overhead_pct: s.overhead_pct || 10, cost_total: costTotal,
       margin_pct: marginPct, price_no_vat: priceNoVat, profit_before_tax: profitBeforeTax,
-      profit_tax, net_profit: netProfit, vat_pct: s.vat_pct || 20, price_with_vat: priceWithVat,
+      profit_tax, net_profit: netProfit, vat_pct: s.vat_pct || 22, price_with_vat: priceWithVat,
       profit_per_day: profitPerDay, min_profit: s.profit_per_day_min || 20000, norm_profit: s.profit_per_day_norm || 25000, status
     };
   }
