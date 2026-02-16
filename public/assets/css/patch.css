@@ -1,0 +1,69 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ASGARD CRM — Визуальный патч v1
+   Единые рамки: KPI-блоки, таблицы, графики
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── KPI блоки: одна общая рамка вместо индивидуальных ────────────────── */
+.kpi {
+  gap: 0 !important;
+  border: 1px solid rgba(42,59,102,.85) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.kpi .k {
+  border: none !important;
+  border-radius: 0 !important;
+  border-right: 1px solid rgba(42,59,102,.25) !important;
+  border-bottom: 1px solid rgba(42,59,102,.25) !important;
+}
+
+.kpi .k:last-child {
+  border-right: none !important;
+}
+
+/* ── Таблицы: чистое разделение строк ─────────────────────────────────── */
+table.asg {
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+  border: 1px solid rgba(42,59,102,.85) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+table.asg td {
+  border: none !important;
+  border-bottom: 1px solid rgba(42,59,102,.3) !important;
+  background: transparent !important;
+}
+
+table.asg tr:last-child td {
+  border-bottom: none !important;
+}
+
+table.asg tr td:first-child {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+
+table.asg tr td:last-child {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+table.asg tr:hover td {
+  background: rgba(42,59,102,.15) !important;
+}
+
+/* ── Графики: скруглённые рамки ───────────────────────────────────────── */
+.chart {
+  border-radius: 16px !important;
+  padding: 16px !important;
+  margin-top: 8px !important;
+}
+
+.chart h3 {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  margin: 0 0 8px !important;
+}
