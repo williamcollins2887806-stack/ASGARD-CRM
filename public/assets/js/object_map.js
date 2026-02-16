@@ -128,6 +128,15 @@ window.AsgardObjectMap = (function() {
       return;
     }
 
+    // Adjust map container height for mobile bottom nav
+    const isMobile = window.innerWidth <= 768;
+    const mapContainer = document.getElementById('mapContainer');
+    if (isMobile && mapContainer) {
+      const mapHeight = 'calc(100vh - 130px - 68px)';
+      mapContainer.style.height = mapHeight;
+      mapContainer.style.minHeight = '300px';
+    }
+
     map = L.map('yaMap', {
       center: [62.0, 80.0],
       zoom: 3,

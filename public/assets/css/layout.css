@@ -763,7 +763,7 @@ body.nav-open .nav-overlay {
   .page-title { font-size: var(--text-lg); }
   .page-motto { display: none; }
 
-  .asg-content, #layout { padding: var(--sp-4); }
+  .asg-content, #layout { padding: var(--sp-4); padding-bottom: 72px; }
   .badges { gap: var(--sp-2); }
   .badges .badge:not(.bellbtn):not(.themebtn) { display: none; }
   .formrow { grid-template-columns: 1fr; }
@@ -775,6 +775,24 @@ body.nav-open .nav-overlay {
     border-radius: 0; border-left: none; border-right: none;
   }
   .bellpop { right: var(--sp-2); left: var(--sp-2); width: auto; }
+
+  /* Ensure main content area doesn't overlap bottom mobile nav */
+  .main,
+  .asg-main-wrap {
+    padding-bottom: 68px;
+  }
+
+  /* Generic fix: ensure no full-height page content extends below bottom nav */
+  body {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .chat-container,
+  .calendar-grid,
+  .calendar-view {
+    max-height: calc(100vh - 128px);
+    overflow-y: auto;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

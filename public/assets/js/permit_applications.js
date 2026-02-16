@@ -700,6 +700,11 @@ window.AsgardPermitApplications = (function(){
     // Get unique role_tags for filter
     const roleTags = [...new Set(allEmployees.map(e => e.role_tag).filter(Boolean))].sort();
 
+    // Avatar helpers
+    const _avatarColors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9'];
+    const _getAvatarColor = (name) => { if(!name) return '#888'; let h=0; for(let i=0;i<name.length;i++) h=name.charCodeAt(i)+((h<<5)-h); return _avatarColors[Math.abs(h)%_avatarColors.length]; };
+    const _getInitials = (name) => { if(!name) return '??'; return name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase(); };
+
     function renderEmpList(filter, search) {
       let filtered = allEmployees;
       if (filter) filtered = filtered.filter(e => e.role_tag === filter);
@@ -710,13 +715,14 @@ window.AsgardPermitApplications = (function(){
 
       return filtered.map(e => {
         const checked = selected.has(String(e.id)) ? 'checked' : '';
-        const highlight = checked ? 'background:var(--primary-glow);' : '';
-        return `<label style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;${highlight}"
-                 onmouseover="this.style.background=this.style.background||'var(--bg-hover)'" onmouseout="this.style.background='${checked?'var(--primary-glow)':''}'" >
+        const eName = e.fio || e.full_name || 'ID:' + e.id;
+        return `<label class="emp-selector-item">
           <input type="checkbox" class="empCheck" data-id="${e.id}" ${checked}/>
-          <div style="flex:1">
-            <div style="font-weight:600">${esc(e.fio || e.full_name || 'ID:' + e.id)}</div>
-            <div class="help" style="font-size:11px">${esc(e.role_tag||'')}${e.phone ? ' &middot; ' + esc(e.phone) : ''}</div>
+          <div class="emp-selector-check">\u2713</div>
+          <div class="emp-selector-avatar" style="background:${_getAvatarColor(eName)}">${_getInitials(eName)}</div>
+          <div class="emp-selector-info">
+            <div class="emp-selector-name">${esc(eName)}</div>
+            <div class="emp-selector-role">${esc(e.role_tag||'')}${e.phone ? ' \u00B7 ' + esc(e.phone) : ''}</div>
           </div>
         </label>`;
       }).join('');
@@ -732,18 +738,18 @@ window.AsgardPermitApplications = (function(){
           <button class="btn ghost btnClose">&times;</button>
         </div>
         <div class="modal-body" style="max-height:65vh;overflow-y:auto">
-          <div style="display:flex;gap:12px;margin-bottom:16px">
+          <div class="emp-selector-search">
             <input id="empSearch" class="inp" placeholder="Поиск по ФИО..." style="flex:1"/>
-            <select id="empFilter" class="inp" style="width:200px">
+            <select id="empFilter" class="inp" style="max-width:200px">
               <option value="">Все должности</option>
               ${filterOpts}
             </select>
           </div>
-          <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div class="emp-selector-actions">
             <button class="btn mini ghost" id="empSelectAll">Выбрать всех</button>
             <button class="btn mini ghost" id="empDeselectAll">Снять все</button>
           </div>
-          <div id="empList">${renderEmpList('', '')}</div>
+          <div class="emp-selector" id="empList" style="max-height:50vh">${renderEmpList('', '')}</div>
         </div>
         <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
           <span class="help" id="empSelectedCount">Выбрано: ${selected.size}</span>

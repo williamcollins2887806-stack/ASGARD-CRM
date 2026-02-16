@@ -5686,7 +5686,7 @@ html[data-theme="light"] .badge[style*="background"] {
     height: 56px;
     background: var(--bg-card, #132040);
     border-top: 1px solid var(--border);
-    z-index: 450;
+    z-index: 1000;
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
@@ -5854,6 +5854,44 @@ body.pwa-standalone .mob-grid-item,
 body.pwa-standalone .btn {
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   MOBILE BOTTOM NAV CLEARANCE — Prevent content overlapping mob-tabbar
+   ═══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Main content needs bottom padding for mobile nav */
+  .main-content,
+  .page-content,
+  #app > .panel,
+  #app > div {
+    padding-bottom: 72px;
+  }
+
+  /* Generic fix: ensure no full-height page content extends below bottom nav */
+  body {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .chat-container,
+  .calendar-grid,
+  .calendar-view,
+  .big-table-wrap {
+    max-height: calc(100vh - 128px);
+    overflow-y: auto;
+  }
+
+  /* Ensure bottom nav is above everything */
+  .mob-tabbar,
+  .mobile-nav,
+  .bottom-nav,
+  .nav-mobile,
+  [class*="mobile-nav"],
+  [class*="bottom-bar"] {
+    z-index: 1000 !important;
+    position: fixed !important;
+    bottom: 0 !important;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -6527,10 +6565,11 @@ html[data-theme="light"] .sidebar-search-btn:hover {
 
 /* ─── Mobile ─── */
 @media (max-width: 768px) {
-  .map-page { height: calc(100vh - 60px - 60px - 16px); }
+  .map-page { height: calc(100vh - 60px - 60px - 68px) !important; padding-bottom: 0 !important; }
   .map-toolbar { flex-direction: column; align-items: stretch; }
   .map-filters { overflow-x: auto; flex-wrap: nowrap; }
   .site-summary { grid-template-columns: repeat(2, 1fr); }
+  .map-container { height: calc(100vh - 130px - 68px) !important; min-height: 300px; }
 }
 
 /* ─── Light theme ─── */

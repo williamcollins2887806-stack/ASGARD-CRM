@@ -1925,12 +1925,24 @@ ${docsHtml}</div>
       try { staffList = (await AsgardDB.all('users')) || []; } catch(_) {}
     }
 
-    const staffOptions = staffList.map(s =>
-      `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer">
-        <input type="checkbox" class="pass-staff-cb" value="${s.id}" data-name="${(s.name||s.login||'').replace(/"/g,'&quot;')}" data-position="${(s.position||s.role||'').replace(/"/g,'&quot;')}" />
-        <span>${(s.name||s.login||'—')} <span class="help" style="font-size:11px">(${s.position||s.role||''})</span></span>
-      </label>`
-    ).join('');
+    // Avatar helpers
+    const _avatarColors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9'];
+    const _getAvatarColor = (name) => { if(!name) return '#888'; let h=0; for(let i=0;i<name.length;i++) h=name.charCodeAt(i)+((h<<5)-h); return _avatarColors[Math.abs(h)%_avatarColors.length]; };
+    const _getInitials = (name) => { if(!name) return '??'; return name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase(); };
+
+    const staffOptions = staffList.map(s => {
+      const sName = s.name||s.login||'—';
+      const sPos = s.position||s.role||'';
+      return `<label class="emp-selector-item">
+        <input type="checkbox" class="pass-staff-cb" value="${s.id}" data-name="${(s.name||s.login||'').replace(/"/g,'&quot;')}" data-position="${(sPos).replace(/"/g,'&quot;')}" />
+        <div class="emp-selector-check">\u2713</div>
+        <div class="emp-selector-avatar" style="background:${_getAvatarColor(sName)}">${_getInitials(sName)}</div>
+        <div class="emp-selector-info">
+          <div class="emp-selector-name">${esc(sName)}</div>
+          <div class="emp-selector-role">${esc(sPos)}</div>
+        </div>
+      </label>`;
+    }).join('');
 
     // Получаем email заказчика
     let customerEmail = '';
@@ -1964,7 +1976,8 @@ ${docsHtml}</div>
 
       <hr class="hr"/>
       <div class="help"><b>Сотрудники</b> — выберите из списка или введите вручную</div>
-      <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border,#333);border-radius:6px;padding:8px;margin:8px 0" id="staffSelectBox">
+      <input type="text" class="inp" placeholder="Поиск сотрудников..." id="passStaffSearch" style="margin:8px 0;width:100%">
+      <div class="emp-selector" style="max-height:240px;" id="staffSelectBox">
         ${staffOptions || '<div class="muted">Список сотрудников не загружен</div>'}
       </div>
       <div class="formrow"><div style="grid-column:1/-1">
@@ -1986,6 +1999,20 @@ ${docsHtml}</div>
       </div>`;
 
     showModal('Заявка на пропуск', html);
+
+    // Staff search filter
+    const passStaffSearch = document.getElementById('passStaffSearch');
+    if (passStaffSearch) {
+      passStaffSearch.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        const items = document.querySelectorAll('#staffSelectBox .emp-selector-item');
+        items.forEach(item => {
+          const name = (item.querySelector('.emp-selector-name')?.textContent || '').toLowerCase();
+          const role = (item.querySelector('.emp-selector-role')?.textContent || '').toLowerCase();
+          item.style.display = (name.includes(q) || role.includes(q)) ? '' : 'none';
+        });
+      });
+    }
 
     $('#btnCreatePassReq')?.addEventListener('click', async () => {
       // Собираем выбранных сотрудников

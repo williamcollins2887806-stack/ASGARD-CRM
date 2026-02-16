@@ -581,14 +581,16 @@ window.AsgardChatGroups = (function(){
         </div>
         <div class="form-group">
           <label>Участники (${activeUsers.length} доступно)</label>
-          <div class="chat-member-picker">
+          <input type="text" class="inp" placeholder="Поиск сотрудников..." id="memberSearch" style="margin-bottom:12px;width:100%">
+          <div class="emp-selector" id="memberList">
             ${activeUsers.length > 0 ? activeUsers.map(u => `
-              <label class="chat-member-option">
+              <label class="emp-selector-item">
                 <input type="checkbox" name="chat-members" value="${u.id}">
-                <div class="chat-member-option-avatar" style="background: ${getAvatarColor(u.name)};">${getInitials(u.name)}</div>
-                <div class="chat-member-option-info">
-                  <span class="chat-member-option-name">${esc(u.name)}</span>
-                  <span class="chat-member-option-role">${esc(u.role || '')}</span>
+                <div class="emp-selector-check">\u2713</div>
+                <div class="emp-selector-avatar" style="background: ${getAvatarColor(u.name)};">${getInitials(u.name)}</div>
+                <div class="emp-selector-info">
+                  <div class="emp-selector-name">${esc(u.name)}</div>
+                  <div class="emp-selector-role">${esc(u.role || '')}</div>
                 </div>
               </label>
             `).join('') : '<div class="text-muted" style="padding: 12px;">Нет доступных пользователей</div>'}
@@ -602,6 +604,20 @@ window.AsgardChatGroups = (function(){
     `;
 
     showModal('Создать групповой чат', html);
+
+    // Member search filter
+    const memberSearchInput = document.getElementById('memberSearch');
+    if (memberSearchInput) {
+      memberSearchInput.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        const items = document.querySelectorAll('#memberList .emp-selector-item');
+        items.forEach(item => {
+          const name = (item.querySelector('.emp-selector-name')?.textContent || '').toLowerCase();
+          const role = (item.querySelector('.emp-selector-role')?.textContent || '').toLowerCase();
+          item.style.display = (name.includes(q) || role.includes(q)) ? '' : 'none';
+        });
+      });
+    }
   }
 
   async function createChat() {
