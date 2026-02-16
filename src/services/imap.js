@@ -156,8 +156,10 @@ async function syncAccount(accountId) {
   let newCount = 0;
   let updatedCount = 0;
   let attachmentsSaved = 0;
+  let aiTriaged = 0;
   let aiProcessed = 0;
-  const emailsNeedingAI = []; // Collect for Phase 2
+  const emailsNeedingTriage = [];  // Phase 2: unknown → AI quick classification
+  const emailsNeedingAnalysis = []; // Phase 3: confirmed applications → deep AI
 
   try {
     client = await createClient(account);
@@ -195,18 +197,24 @@ async function syncAccount(accountId) {
           fetched++;
           if (result.isNew) {
             newCount++;
-            // Queue for AI analysis if needed
-            if (result.needsAI && result.emailId) {
-              emailsNeedingAI.push({
-                emailId: result.emailId,
-                emailType: result.emailType,
-                subject: parsed.subject,
-                bodyText: parsed.text,
-                fromEmail: parsed.from?.value?.[0]?.address,
-                fromName: parsed.from?.value?.[0]?.name,
-                attachmentNames: (parsed.attachments || []).map(a => a.filename || 'file')
-              });
+            const emailData = {
+              emailId: result.emailId,
+              emailType: result.emailType,
+              subject: parsed.subject,
+              bodyText: parsed.text,
+              fromEmail: parsed.from?.value?.[0]?.address,
+              fromName: parsed.from?.value?.[0]?.name,
+              attachmentNames: (parsed.attachments || []).map(a => a.filename || 'file')
+            };
+            // Route based on rule-based classification:
+            if (result.confirmedApplication && result.emailId) {
+              // Rules confirmed it's an application → straight to Phase 3 (deep analysis)
+              emailsNeedingAnalysis.push(emailData);
+            } else if (result.needsTriage && result.emailId) {
+              // Unknown type → Phase 2 (AI triage: application or not?)
+              emailsNeedingTriage.push(emailData);
             }
+            // If confirmedSkip (spam/personal/info) → no AI at all
           } else {
             updatedCount++;
           }
@@ -216,7 +224,7 @@ async function syncAccount(accountId) {
 
           // Progress logging every 100 emails
           if (count % 100 === 0) {
-            console.log(`[IMAP] Account #${accountId}: ${count} fetched, ${newCount} new, ${emailsNeedingAI.length} queued for AI...`);
+            console.log(`[IMAP] Account #${accountId}: ${count} fetched, ${newCount} new, ${emailsNeedingTriage.length} for triage, ${emailsNeedingAnalysis.length} for analysis...`);
           }
         } catch (parseErr) {
           errors.push({ uid: msg.uid, error: parseErr.message });
@@ -244,14 +252,56 @@ async function syncAccount(accountId) {
     activeClients.delete(accountId);
     client = null;
 
-    // ══ Phase 2: Parallel AI analysis ══════════════════════════════
-    if (emailsNeedingAI.length > 0 && aiAnalyzer) {
-      console.log(`[IMAP] Phase 2: AI analysis for ${emailsNeedingAI.length} emails (batches of ${AI_BATCH_SIZE})...`);
+    // ══ Phase 2: AI triage for unknown emails (application or not?) ══
+    if (emailsNeedingTriage.length > 0 && aiAnalyzer) {
+      console.log(`[IMAP] Phase 2: AI triage for ${emailsNeedingTriage.length} unknown emails (batches of ${AI_BATCH_SIZE})...`);
 
-      for (let i = 0; i < emailsNeedingAI.length; i += AI_BATCH_SIZE) {
+      for (let i = 0; i < emailsNeedingTriage.length; i += AI_BATCH_SIZE) {
         if (isShuttingDown) break;
 
-        const batch = emailsNeedingAI.slice(i, i + AI_BATCH_SIZE);
+        const batch = emailsNeedingTriage.slice(i, i + AI_BATCH_SIZE);
+        const batchResults = await Promise.allSettled(
+          batch.map(email => aiAnalyzer.triageEmail({
+            emailId: email.emailId,
+            subject: email.subject,
+            bodyText: email.bodyText,
+            fromEmail: email.fromEmail,
+            fromName: email.fromName
+          }))
+        );
+
+        for (let j = 0; j < batchResults.length; j++) {
+          const result = batchResults[j];
+          if (result.status === 'fulfilled' && result.value) {
+            aiTriaged++;
+            const triage = result.value;
+            // If AI confirmed it's an application → queue for Phase 3 (deep analysis)
+            if (['direct_request', 'platform_tender'].includes(triage.type)) {
+              const email = batch[j];
+              email.emailType = triage.type;
+              emailsNeedingAnalysis.push(email);
+            }
+          } else if (result.status === 'rejected') {
+            errors.push({ phase: 'triage', error: result.reason?.message || 'Triage error' });
+          }
+        }
+
+        console.log(`[IMAP] Triage batch ${Math.floor(i / AI_BATCH_SIZE) + 1}: ${aiTriaged} triaged, ${emailsNeedingAnalysis.length} confirmed applications`);
+
+        if (i + AI_BATCH_SIZE < emailsNeedingTriage.length && AI_BATCH_DELAY_MS > 0) {
+          await new Promise(r => setTimeout(r, AI_BATCH_DELAY_MS));
+        }
+      }
+    }
+
+    // ══ Phase 3: Deep AI analysis for confirmed applications ═════════
+    if (emailsNeedingAnalysis.length > 0 && aiAnalyzer) {
+      console.log(`[IMAP] Phase 3: Deep AI analysis for ${emailsNeedingAnalysis.length} applications (batches of ${AI_BATCH_SIZE})...`);
+
+      for (let i = 0; i < emailsNeedingAnalysis.length; i += AI_BATCH_SIZE) {
+        if (isShuttingDown) break;
+
+        const batch = emailsNeedingAnalysis.slice(i, i + AI_BATCH_SIZE);
         const batchResults = await Promise.allSettled(
           batch.map(email => processEmailAI(email))
         );
@@ -260,14 +310,13 @@ async function syncAccount(accountId) {
           if (result.status === 'fulfilled' && result.value) {
             aiProcessed++;
           } else if (result.status === 'rejected') {
-            errors.push({ phase: 'ai', error: result.reason?.message || 'Unknown AI error' });
+            errors.push({ phase: 'analysis', error: result.reason?.message || 'Analysis error' });
           }
         }
 
-        console.log(`[IMAP] AI batch ${Math.floor(i / AI_BATCH_SIZE) + 1}: ${aiProcessed} processed so far`);
+        console.log(`[IMAP] Analysis batch ${Math.floor(i / AI_BATCH_SIZE) + 1}: ${aiProcessed} analyzed`);
 
-        // Small delay between batches to avoid API rate limits
-        if (i + AI_BATCH_SIZE < emailsNeedingAI.length && AI_BATCH_DELAY_MS > 0) {
+        if (i + AI_BATCH_SIZE < emailsNeedingAnalysis.length && AI_BATCH_DELAY_MS > 0) {
           await new Promise(r => setTimeout(r, AI_BATCH_DELAY_MS));
         }
       }
@@ -287,11 +336,11 @@ async function syncAccount(accountId) {
     );
 
     const durationSec = ((Date.now() - startMs) / 1000).toFixed(1);
-    console.log(`[IMAP] Sync account #${accountId} complete: ${newCount} new, ${updatedCount} updated, ${aiProcessed} AI analyzed, ${attachmentsSaved} attachments in ${durationSec}s`);
+    console.log(`[IMAP] Sync account #${accountId} complete: ${newCount} new, ${updatedCount} updated, ${aiTriaged} triaged, ${aiProcessed} applications analyzed, ${attachmentsSaved} attachments in ${durationSec}s`);
 
     // Return whether there might be more emails (for adaptive polling)
     const hitLimit = count >= (account.sync_max_emails || DEFAULT_SYNC_MAX);
-    return { fetched, newCount, updatedCount, attachmentsSaved, aiProcessed, hitLimit };
+    return { fetched, newCount, updatedCount, attachmentsSaved, aiTriaged, aiProcessed, hitLimit };
 
   } catch (err) {
     console.error(`[IMAP] Sync error account #${accountId}:`, err.message);
@@ -313,7 +362,7 @@ async function syncAccount(accountId) {
     }
   }
 
-  return { fetched, newCount, updatedCount, attachmentsSaved, aiProcessed };
+  return { fetched, newCount, updatedCount, attachmentsSaved, aiTriaged, aiProcessed };
 }
 
 /**
@@ -446,10 +495,15 @@ async function saveEmailFast(account, msg, parsed) {
     }
   }
 
-  // Determine if AI analysis is needed
-  const needsAI = ['direct_request', 'platform_tender'].includes(emailType);
+  // Determine routing:
+  // - confirmed application (rules matched) → Phase 3 directly
+  // - confirmed skip (spam, personal, info) → no AI
+  // - unknown → Phase 2 (AI triage needed)
+  const confirmedApplication = ['direct_request', 'platform_tender'].includes(emailType);
+  const confirmedSkip = ['spam', 'personal', 'information'].includes(emailType);
+  const needsTriage = !confirmedApplication && !confirmedSkip; // "unknown", "other", "commercial_offer", etc.
 
-  return { isNew: true, needsAI, emailId, emailType, attachmentCount };
+  return { isNew: true, confirmedApplication, confirmedSkip, needsTriage, emailId, emailType, attachmentCount };
 }
 
 /**

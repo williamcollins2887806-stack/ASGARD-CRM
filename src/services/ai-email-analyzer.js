@@ -56,7 +56,57 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 
 ВАЖНО: Отвечай ТОЛЬКО JSON, без markdown-форматирования, без \`\`\`json блоков.`;
 
-// ── Анализ письма ────────────────────────────────────────────────────
+// ── Быстрая AI-сортировка (Phase 2: заявка или нет?) ─────────────────
+
+const TRIAGE_SYSTEM_PROMPT = `Ты — сортировщик входящей почты компании АСГАРД СЕРВИС (нефтегазовый сервис).
+Твоя ЕДИНСТВЕННАЯ задача — определить, является ли письмо заявкой на выполнение работ или тендером.
+
+Заявка (direct_request): Клиент просит выполнить работы, запрашивает коммерческое предложение, приглашает к участию.
+Тендер (platform_tender): Уведомление с тендерной площадки (закупки, аукцион, конкурс).
+Не заявка: Внутренняя переписка, спам, рассылки, информационные письма, личная почта, реклама, отчёты, счета, акты.
+
+Ответь СТРОГО одним JSON:
+{"type":"direct_request"|"platform_tender"|"not_application","confidence":0.0-1.0}`;
+
+/**
+ * Quick AI triage — is this email an application or not?
+ * Uses minimal tokens (fast, cheap). Called only for unclassified emails.
+ */
+async function triageEmail({ emailId, subject, bodyText, fromEmail, fromName }) {
+  try {
+    const shortBody = (bodyText || '').slice(0, 1000); // Only first 1000 chars for triage
+    const msg = `От: ${fromName || '?'} <${fromEmail || '?'}>\nТема: ${subject || '(без темы)'}\n\n${shortBody}`;
+
+    const response = await aiProvider.complete({
+      system: TRIAGE_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: msg }],
+      maxTokens: 60,
+      temperature: 0.1
+    });
+
+    let text = (response.text || '').trim();
+    if (text.startsWith('```')) text = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+
+    const parsed = JSON.parse(text);
+    const type = parsed.type || 'not_application';
+    const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0.5;
+
+    console.log(`[AI-Triage] Email #${emailId}: ${type} (conf: ${confidence})`);
+
+    // Update email type in DB
+    await db.query(
+      'UPDATE emails SET email_type = $1, classification_confidence = $2, ai_triaged = true, updated_at = NOW() WHERE id = $3',
+      [type === 'not_application' ? 'other' : type, confidence, emailId]
+    ).catch(e => console.error('[AI-Triage] DB update error:', e.message));
+
+    return { type, confidence };
+  } catch (err) {
+    console.error('[AI-Triage] Error for email #' + emailId + ':', err.message);
+    return { type: 'unknown', confidence: 0 };
+  }
+}
+
+// ── Глубокий AI-анализ заявки (Phase 3) ──────────────────────────────
 
 async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, attachmentNames }) {
   try {
@@ -305,9 +355,11 @@ async function generateReport({ subject, bodyText, fromEmail, fromName, attachme
 }
 
 module.exports = {
+  triageEmail,
   analyzeEmail,
   generateReport,
   getWorkloadData,
   parseAIResponse,
-  ANALYSIS_SYSTEM_PROMPT
+  ANALYSIS_SYSTEM_PROMPT,
+  TRIAGE_SYSTEM_PROMPT
 };
