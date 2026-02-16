@@ -28,6 +28,11 @@
   box-shadow: none !important;
 }
 
+/* Убираем фон у значений карточки */
+.dash-card-value {
+  background: transparent !important;
+}
+
 /* Убираем рамку с подстрок внутри карточки */
 .dash-card-row {
   border-top: none !important;
