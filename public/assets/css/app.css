@@ -4163,27 +4163,26 @@ html[data-theme="light"] .inp {
 html[data-theme="light"] table.asg td {
   padding: 12px 14px;
   background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: none;
 }
 
 html[data-theme="light"] table.asg tr td:first-child {
   border-top-left-radius: 12px;
   border-bottom-left-radius: 12px;
-  border-left-width: 1px;
+  border-left: 3px solid transparent;
 }
 
 html[data-theme="light"] table.asg tr td:last-child {
   border-top-right-radius: 12px;
   border-bottom-right-radius: 12px;
-  border-right-width: 1px;
 }
 
 /* Softer KPI cards */
 html[data-theme="light"] .kpi .k {
   background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: none;
   border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 html[data-theme="light"] .kpi .k .t {
@@ -4597,12 +4596,9 @@ body::after {
   );
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(59, 130, 246, 0.1);
+  border: none;
   border-radius: var(--radius-xl);
-  box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.3),
-    0 1px 0 rgba(255, 255, 255, 0.03) inset,
-    0 -1px 0 rgba(0, 0, 0, 0.2) inset;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
   position: relative;
   overflow: hidden;
 }
@@ -4624,11 +4620,9 @@ body::after {
 }
 
 .card:hover, .panel:hover {
-  border-color: rgba(220, 38, 38, 0.2);
   box-shadow:
     0 8px 40px rgba(0, 0, 0, 0.4),
-    0 0 30px rgba(220, 38, 38, 0.05),
-    0 1px 0 rgba(255, 255, 255, 0.05) inset;
+    0 0 30px rgba(220, 38, 38, 0.05);
   transform: translateY(-2px);
 }
 
@@ -4943,14 +4937,13 @@ table.asg td {
   padding: 16px;
   background: rgba(14, 31, 61, 0.5);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(59, 130, 246, 0.08);
+  border: none;
   transition: all var(--transition-fast);
 }
 
 table.asg tr td:first-child {
   border-radius: var(--radius-lg) 0 0 var(--radius-lg);
-  border-left-width: 3px;
-  border-left-color: transparent;
+  border-left: 3px solid transparent;
 }
 
 table.asg tr td:last-child {
@@ -4959,7 +4952,6 @@ table.asg tr td:last-child {
 
 table.asg tr:hover td {
   background: rgba(14, 31, 61, 0.8);
-  border-color: rgba(59, 130, 246, 0.15);
 }
 
 table.asg tr:hover td:first-child {
@@ -6166,14 +6158,15 @@ html[data-theme="light"] .sidebar-search-btn:hover {
   .responsive-cards tbody tr {
     display: block;
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: none;
     border-radius: 6px;
     padding: 12px 14px;
     margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   }
 
   .responsive-cards tbody tr:hover {
-    border-color: var(--gold-border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   }
 
   .responsive-cards tbody td {
@@ -6182,7 +6175,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
     align-items: baseline;
     padding: 4px 0;
     border: none;
-    border-bottom: 1px solid var(--border);
+    border-bottom: none;
     font-size: 13px;
   }
 
@@ -6207,7 +6200,7 @@ html[data-theme="light"] .sidebar-search-btn:hover {
     font-size: 14px;
     color: var(--gold);
     display: block;
-    border-bottom: 1px solid var(--border);
+    border-bottom: none;
     padding-bottom: 8px;
     margin-bottom: 4px;
   }
@@ -6219,7 +6212,8 @@ html[data-theme="light"] .sidebar-search-btn:hover {
   /* Light theme */
   html[data-theme="light"] .responsive-cards tbody tr {
     background: #ffffff;
-    border-color: rgba(0, 0, 0, 0.06);
+    border: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   }
 
   html[data-theme="light"] .responsive-cards tbody td:first-child {
@@ -7236,7 +7230,7 @@ html[data-theme="light"] .status-unified.secondary {
 /* Cards */
 .card {
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -7248,7 +7242,7 @@ html[data-theme="light"] .status-unified.secondary {
   gap: 12px;
   padding: var(--sp-4) var(--sp-5);
   background: var(--glass-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   font-family: var(--font-heading);
   font-weight: 700;
   color: var(--text-primary);
@@ -7264,7 +7258,7 @@ html[data-theme="light"] .status-unified.secondary {
 
 .card-footer {
   padding: var(--sp-3) var(--sp-5);
-  border-top: 1px solid var(--border);
+  border-top: none;
   background: var(--glass-bg);
 }
 
