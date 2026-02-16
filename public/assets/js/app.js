@@ -125,12 +125,6 @@ console.log('[ASGARD] Global period functions loaded');
 
   window.__ASG_SHARED_TABLE_CSS__ = `
 <style>
-  table.asg{width:100%; border-collapse:separate; border-spacing:0 8px; font-size:13px}
-  table.asg th{font-size:11px; color:var(--text-muted,rgba(184,196,231,.92)); font-weight:700; text-transform:uppercase; letter-spacing:0.05em; text-align:left; padding:0 10px}
-  table.asg td{padding:12px; background:var(--bg-card,rgba(13,20,40,.40)); border:1px solid var(--border,rgba(42,59,102,.85)); vertical-align:top; color:var(--text-primary,#f1f5f9)}
-  table.asg tr td:first-child{border-top-left-radius:var(--radius-md,12px);border-bottom-left-radius:var(--radius-md,12px)}
-  table.asg tr td:last-child{border-top-right-radius:var(--radius-md,12px);border-bottom-right-radius:var(--radius-md,12px)}
-  table.asg tbody tr:hover td{background:var(--bg-hover,rgba(26,51,88,.5))}
   .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
   .tools .field{min-width:200px}
   .kpi{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px}

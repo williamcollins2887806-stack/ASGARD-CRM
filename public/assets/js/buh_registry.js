@@ -92,12 +92,11 @@ window.AsgardBuhRegistryPage = (function(){
         .buh-card-value { font-size:26px; font-weight:900; color:var(--gold); margin-top:6px; }
         .buh-card-sub { font-size:12px; color:var(--muted); margin-top:4px; }
         
-        .buh-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
-        .buh-table th { font-size:11px; color:var(--muted); text-align:left; padding:8px 12px; font-weight:800; text-transform:uppercase; }
-        .buh-table td { padding:12px; background:rgba(13,20,40,.4); border:1px solid var(--line); vertical-align:top; }
-        .buh-table tr td:first-child { border-top-left-radius:12px; border-bottom-left-radius:12px; }
-        .buh-table tr td:last-child { border-top-right-radius:12px; border-bottom-right-radius:12px; }
-        .buh-table tr:hover td { background:rgba(59,130,246,.1); }
+        .buh-table { width:100%; border-collapse:separate; border-spacing:0; }
+        .buh-table th { font-size:11px; color:var(--gold); text-align:left; padding:12px 14px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; border-bottom:1px solid var(--border); }
+        .buh-table td { padding:12px 14px; background:var(--bg-card); border-bottom:1px solid var(--border); vertical-align:top; color:var(--text-primary); }
+        .buh-table tbody tr:last-child td { border-bottom:none; }
+        .buh-table tr:hover td { background:var(--gold-glow,rgba(59,130,246,.1)); }
         
         .buh-cat-badge { display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:700; }
         .buh-status { padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; }

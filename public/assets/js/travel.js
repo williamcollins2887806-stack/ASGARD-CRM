@@ -136,21 +136,22 @@ window.AsgardTravelPage = (function(){
             color:var(--text); font-size:13px;
           }
           
-          .travel-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
+          .travel-table { width:100%; border-collapse:separate; border-spacing:0; }
           .travel-table th {
-            font-size:10px; color:var(--muted); font-weight:800;
-            text-align:left; padding:10px 12px;
-            text-transform:uppercase; letter-spacing:1px;
+            font-size:10px; color:var(--text-muted,var(--muted)); font-weight:700;
+            text-align:left; padding:12px 14px;
+            text-transform:uppercase; letter-spacing:0.05em;
+            color:var(--gold); border-bottom:1px solid var(--border);
           }
           .travel-table td {
-            padding:14px 12px;
-            background:linear-gradient(135deg, rgba(13,20,40,.5), rgba(13,20,40,.35));
-            border:1px solid rgba(148,163,184,.1);
-            transition: all .2s ease;
+            padding:14px;
+            background:var(--bg-card);
+            border-bottom:1px solid var(--border);
+            color:var(--text-primary);
+            transition: background .2s ease;
           }
-          .travel-table tr td:first-child { border-radius:12px 0 0 12px; }
-          .travel-table tr td:last-child { border-radius:0 12px 12px 0; }
-          .travel-table tr:hover td { background:rgba(59,130,246,.08); border-color:rgba(242,208,138,.2); }
+          .travel-table tbody tr:last-child td { border-bottom:none; }
+          .travel-table tr:hover td { background:var(--gold-glow,rgba(59,130,246,.08)); }
           
           .travel-type {
             display:inline-flex; align-items:center; gap:6px;

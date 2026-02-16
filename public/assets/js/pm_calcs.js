@@ -422,11 +422,6 @@ window.AsgardPmCalcsPage = (function(){
 
     const body = `
       <style>
-        table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-        table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-        table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85);}
-        table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-        table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
         .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
         .tools .field{min-width:220px}
         .st{display:inline-flex; align-items:center; gap:8px}

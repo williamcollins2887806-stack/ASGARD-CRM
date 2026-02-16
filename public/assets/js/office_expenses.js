@@ -133,12 +133,11 @@ window.AsgardOfficeExpensesPage = (function(){
           .oexp-cat-label { font-size:12px; color:var(--muted); }
           .oexp-cat-value { font-size:16px; font-weight:700; color:var(--gold); }
           
-          .oexp-table { width:100%; border-collapse:separate; border-spacing:0 6px; }
-          .oexp-table th { font-size:11px; color:var(--muted); font-weight:700; text-align:left; padding:8px 10px; text-transform:uppercase; }
-          .oexp-table td { padding:10px; background:rgba(13,20,40,.4); border:1px solid var(--line); }
-          .oexp-table tr td:first-child { border-radius:10px 0 0 10px; }
-          .oexp-table tr td:last-child { border-radius:0 10px 10px 0; }
-          .oexp-table tr:hover td { background:rgba(59,130,246,.1); }
+          .oexp-table { width:100%; border-collapse:separate; border-spacing:0; }
+          .oexp-table th { font-size:11px; color:var(--gold); font-weight:700; text-align:left; padding:12px 14px; text-transform:uppercase; letter-spacing:0.05em; border-bottom:1px solid var(--border); }
+          .oexp-table td { padding:12px 14px; background:var(--bg-card); border-bottom:1px solid var(--border); color:var(--text-primary); }
+          .oexp-table tbody tr:last-child td { border-bottom:none; }
+          .oexp-table tr:hover td { background:var(--gold-glow,rgba(59,130,246,.1)); }
           
           .oexp-status { display:inline-block; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; }
           .oexp-status.draft { background:rgba(100,116,139,.2); color:#94a3b8; }

@@ -183,14 +183,9 @@ window.AsgardApprovalsPage = (function(){
 
     const body = `
       <style>
-        table.asg{width:100%; border-collapse:separate; border-spacing:0 10px;}
-        table.asg th{font-size:11px; color:rgba(184,196,231,.92); font-weight:800; text-align:left; padding:0 10px;}
-        table.asg td{padding:10px; background:rgba(13,20,40,.40); border:1px solid rgba(42,59,102,.85);}
-        table.asg tr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
-        table.asg tr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
         .tools{display:flex; gap:10px; flex-wrap:wrap; align-items:end}
         .tools .field{min-width:220px}
-        tr.overdue td{border-color:rgba(239,68,68,.85); background:rgba(239,68,68,.10);}
+        tr.overdue td{border-bottom-color:rgba(239,68,68,.4); background:rgba(239,68,68,.06);}
         tr.overdue td:first-child{box-shadow: inset 4px 0 0 rgba(239,68,68,.85);}
       </style>
 

@@ -223,26 +223,25 @@ window.AsgardCorrespondencePage = (function(){
           }
           
           /* Table with Viking styling */
-          .corr-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
-          .corr-table th { 
-            font-size:10px; color:var(--muted); font-weight:800; 
-            text-align:left; padding:10px 14px; 
-            text-transform:uppercase; letter-spacing:1px;
-            border-bottom: 2px solid rgba(242,208,138,.2);
+          .corr-table { width:100%; border-collapse:separate; border-spacing:0; }
+          .corr-table th {
+            font-size:10px; color:var(--gold); font-weight:700;
+            text-align:left; padding:12px 14px;
+            text-transform:uppercase; letter-spacing:0.05em;
+            border-bottom: 1px solid var(--border);
           }
-          .corr-table td { 
-            padding:14px; 
-            background: linear-gradient(135deg, rgba(13,20,40,.5), rgba(13,20,40,.35));
-            border:1px solid rgba(148,163,184,.1);
-            transition: all .2s ease;
+          .corr-table td {
+            padding:14px;
+            background: var(--bg-card);
+            border-bottom:1px solid var(--border);
+            color:var(--text-primary);
+            transition: background .2s ease;
           }
-          .corr-table tr td:first-child { border-radius:12px 0 0 12px; border-left:3px solid transparent; }
-          .corr-table tr td:last-child { border-radius:0 12px 12px 0; }
-          .corr-table tr:hover td { 
-            background: rgba(59,130,246,.08);
-            border-color: rgba(242,208,138,.2);
+          .corr-table tbody tr:last-child td { border-bottom:none; }
+          .corr-table tr:hover td {
+            background: var(--gold-glow,rgba(59,130,246,.08));
           }
-          .corr-table tr:hover td:first-child { border-left-color: var(--gold); }
+          .corr-table tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
           
           /* Direction badge */
           .corr-dir { 
