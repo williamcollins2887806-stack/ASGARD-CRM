@@ -4,9 +4,16 @@
 
 /* ── ДАШБОРД РУКОВОДИТЕЛЯ ─────────────────────────────────────────────── */
 
-/* Убираем рамку с каждой карточки */
+/* Убираем рамку и фон с каждой карточки */
 .dash-card {
   border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* Убираем затемнение при наведении */
+.dash-card:hover {
+  background: transparent !important;
   box-shadow: none !important;
 }
 
