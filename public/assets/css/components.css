@@ -507,7 +507,7 @@ label {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  border: none;
 }
 
 /* Base Table */
@@ -531,7 +531,7 @@ table.asg th {
   letter-spacing: 0.05em;
   color: var(--gold);
   background: var(--table-header-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -544,7 +544,7 @@ table td,
 table.asg td {
   padding: var(--table-cell-padding-y) var(--table-cell-padding-x);
   background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
   vertical-align: middle;
   transition: background var(--transition-fast);
@@ -612,8 +612,9 @@ table.asg th {
 }
 
 table.asg td {
-  border: 1px solid var(--border);
+  border: none;
   background: var(--bg-elevated);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 table.asg tr td:first-child {
@@ -631,7 +632,7 @@ table.asg tr td:last-child {
 .card,
 .panel {
   background: var(--bg-card);
-  border: 1px solid var(--border-card);
+  border: none;
   border-radius: var(--card-radius);
   box-shadow: var(--shadow-sm);
   position: relative;
@@ -661,7 +662,6 @@ table.asg tr td:last-child {
 
 .card:hover,
 .panel:hover {
-  border-color: var(--border-hover);
   box-shadow: var(--shadow-md);
 }
 
@@ -687,7 +687,7 @@ table.asg tr td:last-child {
   flex-direction: column;
   gap: var(--sp-2);
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: 8px;
   padding: 16px 20px;
   position: relative;
@@ -973,7 +973,7 @@ table.asg tr td:last-child {
   width: min(900px, 95vw);
   max-height: 90vh;
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--modal-radius);
   box-shadow: var(--shadow-xl);
   display: flex;
@@ -1008,7 +1008,7 @@ table.asg tr td:last-child {
   justify-content: space-between;
   gap: var(--sp-4);
   padding: var(--sp-4) var(--modal-padding);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   background: var(--glass-bg);
   position: relative;
 }

@@ -597,11 +597,11 @@ a:hover {
    ───────────────────────────────────────────────────────────────────────────── */
 .card, .panel, .widget, [class*="-card"] {
   background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   position: relative;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: box-shadow 0.2s;
 }
 /* overflow:hidden only for containers with ::before decorations, NOT content cards */
 .card, .panel, .widget {
@@ -609,7 +609,7 @@ a:hover {
 }
 
 .card:hover, .panel:hover, .widget:hover {
-  border-color: var(--gold-border, rgba(212,168,70,.4));
+  box-shadow: var(--shadow-lg);
 }
 
 .card::before, .panel::before {
@@ -828,7 +828,7 @@ table.asg th {
   letter-spacing: 0.05em;
   color: var(--gold);
   background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -845,7 +845,7 @@ table.asg th:last-child {
 table.asg td {
   padding: 14px 16px;
   background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
   transition: background var(--transition-fast);
 }
@@ -5091,7 +5091,7 @@ table.asg tr:hover td:first-child {
   );
   backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
-  border: 1px solid rgba(59, 130, 246, 0.15);
+  border: none;
   border-radius: var(--radius-xl);
   box-shadow:
     0 25px 80px rgba(0, 0, 0, 0.5),
@@ -5117,7 +5117,7 @@ table.asg tr:hover td:first-child {
     rgba(220, 38, 38, 0.05) 0%,
     rgba(37, 99, 235, 0.05) 100%
   );
-  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+  border-bottom: none;
   padding: 20px 24px;
 }
 
@@ -6697,7 +6697,7 @@ input[type="file"]::file-selector-button:hover {
 
 .cash-balance-card {
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-lg);
   padding: var(--sp-5);
   text-align: center;
@@ -6707,8 +6707,7 @@ input[type="file"]::file-selector-button:hover {
 }
 
 .cash-balance-card:hover {
-  border-color: var(--border-hover);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .cash-balance-card::before {
@@ -6748,7 +6747,7 @@ input[type="file"]::file-selector-button:hover {
   padding: 4px;
   background: var(--glass-bg);
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
+  border: none;
   margin-bottom: var(--sp-6);
 }
 
@@ -6782,7 +6781,7 @@ input[type="file"]::file-selector-button:hover {
 /* Cash page card wrapper */
 .cash-card {
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-lg);
   overflow: hidden;
   margin-bottom: var(--sp-6);
@@ -6795,7 +6794,7 @@ input[type="file"]::file-selector-button:hover {
   gap: var(--sp-4);
   padding: var(--sp-4) var(--sp-6);
   background: var(--glass-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   flex-wrap: wrap;
 }
 
@@ -6895,7 +6894,7 @@ input[type="file"]::file-selector-button:hover {
   color: var(--gold);
   margin: var(--sp-6) 0 var(--sp-3) 0;
   padding-bottom: var(--sp-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Cash messages list */
@@ -6951,7 +6950,7 @@ input[type="file"]::file-selector-button:hover {
 
 .kpi-works-page .hr {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   margin: var(--sp-6) 0;
 }
 
@@ -6979,7 +6978,7 @@ input[type="file"]::file-selector-button:hover {
 .kpi-works-page .tools select {
   padding: 8px 12px;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -7002,7 +7001,7 @@ input[type="file"]::file-selector-button:hover {
 
 .kpi-works-page .kpi .k {
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-md);
   padding: var(--sp-4);
   text-align: center;
@@ -7010,7 +7009,6 @@ input[type="file"]::file-selector-button:hover {
 }
 
 .kpi-works-page .kpi .k:hover {
-  border-color: var(--gold-border);
   box-shadow: var(--shadow-glow-gold);
 }
 
@@ -7037,7 +7035,7 @@ input[type="file"]::file-selector-button:hover {
 
 .kpi-works-page .chart {
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-lg);
   padding: var(--sp-6);
   margin-bottom: var(--sp-6);
@@ -7053,13 +7051,13 @@ input[type="file"]::file-selector-button:hover {
 
 .kpi-works-page .pill {
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-md);
   transition: all var(--transition-fast);
 }
 
 .kpi-works-page .pill:hover {
-  border-color: var(--gold-border);
+  box-shadow: var(--shadow-sm);
 }
 
 .kpi-works-page .pill .who b {
@@ -7370,12 +7368,12 @@ html[data-theme="light"] .status-unified.secondary {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   background: var(--glass-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .table td {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   font-size: var(--text-sm);
 }
 
@@ -7547,4 +7545,111 @@ html[data-theme="light"] .form-control,
 html[data-theme="light"] .form-select {
   background: #fff;
   border-color: rgba(0,0,0,0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   GLOBAL VISUAL POLISH — убираем рамки, смягчаем фоны
+   Этот блок в конце файла перекрывает все предыдущие border-правила
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* --- Карточки, панели, виджеты — без рамок --- */
+.card, .panel, .widget,
+[class*="-card"],
+.cash-card, .cash-balance-card, .cash-tabs,
+.kpi-works-page .kpi .k,
+.kpi-works-page .chart,
+.kpi-works-page .pill,
+.kpi-works-page .panel {
+  border: none;
+}
+
+/* --- Заголовки карточек — мягче фон, без нижней рамки --- */
+.card-header,
+.cash-card-header,
+.mh,
+.modal-header {
+  border-bottom: none;
+}
+
+/* --- Подвалы карточек — без верхней рамки --- */
+.card-footer {
+  border-top: none;
+}
+
+/* --- Таблицы — ячейки без рамок, тонкий разделитель --- */
+table.asg td,
+table td,
+.tbl td,
+.table td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+table.asg th,
+table th,
+.tbl th,
+.table th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* --- Обёртки таблиц — без внешних рамок --- */
+.table-wrap,
+.tablewrap {
+  border: none;
+}
+
+/* --- Секции кассы --- */
+.cash-section-title {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* --- Модальные окна — без рамок --- */
+.modal,
+.modal-content {
+  border: none;
+}
+
+/* --- Формы — разделитель действий мягче --- */
+.asg-form-actions {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* --- KPI карточки на всех страницах --- */
+.kpi .k {
+  border: none;
+}
+
+/* --- Разделители .hr --- */
+.kpi-works-page .hr {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* --- Селекты/инпуты в фильтрах --- */
+.kpi-works-page .tools select {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* --- Горизонтальные линии --- */
+hr, .divider {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* --- Light-тема: вернуть видимые но мягкие рамки --- */
+html[data-theme="light"] .card,
+html[data-theme="light"] .panel,
+html[data-theme="light"] [class*="-card"],
+html[data-theme="light"] .cash-card,
+html[data-theme="light"] .cash-balance-card {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="light"] table td,
+html[data-theme="light"] table.asg td,
+html[data-theme="light"] .tbl td,
+html[data-theme="light"] .table td {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="light"] .modal,
+html[data-theme="light"] .modal-content {
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
