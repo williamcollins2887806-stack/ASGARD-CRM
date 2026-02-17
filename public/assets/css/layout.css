@@ -891,6 +891,8 @@ body.nav-open .nav-overlay {
   }
 
   .chat-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 100% !important;

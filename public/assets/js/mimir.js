@@ -338,10 +338,15 @@ window.AsgardMimir = (function(){
       .mimir-drop-text { color:#f5d78e; font-size:16px; font-weight:600; }
 
       @media (max-width:600px) {
-        .mimir-panel { width:calc(100vw - 24px); right:-12px; bottom:76px; height:calc(100vh - 120px); }
+        .mimir-panel { width:calc(100vw - 24px); right:-12px; bottom:76px; height:calc(100vh - 200px); }
         .mimir-sidebar.open { width:160px; }
-        .mimir-widget { bottom:16px; right:16px; }
-        .mimir-toggle { width:56px; height:56px; }
+        .mimir-widget { bottom:80px; right:16px; }
+        .mimir-toggle { width:48px; height:48px; }
+      }
+      @media (max-width:768px) {
+        .mimir-widget { bottom:80px; right:16px; }
+        .mimir-toggle { width:48px; height:48px; }
+        .mimir-panel { bottom:64px; height:calc(100vh - 200px); }
       }
     </style>
   `;
