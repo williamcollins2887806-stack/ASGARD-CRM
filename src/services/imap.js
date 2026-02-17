@@ -407,8 +407,8 @@ async function analyzeOneEmail(email) {
     if (skipCheck.skip) {
       console.log(`[IMAP-AI] Skipping email #${emailId}: ${skipCheck.reason} (from: ${email.from_email})`);
       await db.query(
-        `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, ai_classification = 'other', ai_color = 'red', updated_at = NOW() WHERE id = $2`,
-        [`[Пропущено: ${skipCheck.reason}]`, emailId]
+        `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, ai_classification = $2::jsonb, ai_color = 'red', updated_at = NOW() WHERE id = $3`,
+        [`[Пропущено: ${skipCheck.reason}]`, JSON.stringify('other'), emailId]
       );
       return true; // Считаем обработанным, но НЕ создаём inbox_application
     }
@@ -433,11 +433,11 @@ async function analyzeOneEmail(email) {
     // Update the emails table with AI results
     await db.query(`
       UPDATE emails SET
-        ai_classification = $1, ai_color = $2, ai_summary = $3,
+        ai_classification = $1::jsonb, ai_color = $2, ai_summary = $3,
         ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
       WHERE id = $5
     `, [
-      analysis.classification, analysis.color,
+      JSON.stringify(analysis.classification), analysis.color,
       analysis.summary, analysis.recommendation,
       emailId
     ]);
@@ -465,7 +465,7 @@ async function analyzeOneEmail(email) {
         email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
         analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
         analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
-        JSON.stringify(analysis.keywords || []), analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
+        analysis.keywords || [], analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
         JSON.stringify(workload), email.attachment_count || 0
       ]);
 
