@@ -114,7 +114,8 @@ async function callAnthropic({ system, messages, maxTokens, temperature, stream 
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2024-10-22',
+        'anthropic-beta': 'pdfs-2024-09-25'
       },
       body: JSON.stringify(body),
       signal: controller.signal

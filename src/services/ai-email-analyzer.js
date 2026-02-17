@@ -235,19 +235,33 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
 
       // PDF
       if (a.mime_type === 'application/pdf' || a.file_path.endsWith('.pdf')) {
+        const buf = fs.readFileSync(absPath);
+        let pdfTextOk = false;
+
+        // Try text extraction first
         try {
           const pdfParse = require('pdf-parse');
-          const buf = fs.readFileSync(absPath);
           console.log(`[AI-Analyzer] Parsing PDF: "${a.original_filename}" (${buf.length} bytes)`);
           const result = await pdfParse(buf);
-          if (result.text) {
+          const cleanText = (result.text || '').replace(/\s+/g, ' ').trim();
+          if (cleanText.length > 100) {
             texts.push(`[${a.original_filename}]\n${result.text.slice(0, maxPerFile)}`);
-            console.log(`[AI-Analyzer] Extracted PDF: "${a.original_filename}" → ${result.text.length} chars, ${result.numpages || '?'} pages`);
+            console.log(`[AI-Analyzer] Extracted PDF text: "${a.original_filename}" → ${result.text.length} chars, ${result.numpages || '?'} pages`);
+            pdfTextOk = true;
           } else {
-            console.warn(`[AI-Analyzer] PDF parsed but no text: "${a.original_filename}" (may be scanned/image PDF)`);
+            console.warn(`[AI-Analyzer] PDF has too little text (${cleanText.length} chars) — likely scanned/image PDF: "${a.original_filename}"`);
           }
         } catch (pdfErr) {
-          console.error(`[AI-Analyzer] PDF extraction error for "${a.original_filename}":`, pdfErr.message);
+          console.error(`[AI-Analyzer] PDF text extraction error for "${a.original_filename}":`, pdfErr.message);
+        }
+
+        // Fallback: send scanned PDF as document block for Claude Vision
+        if (!pdfTextOk && buf.length <= 30 * 1024 * 1024) {
+          imageBlocks.push({
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') }
+          });
+          console.log(`[AI-Analyzer] Added scanned PDF as document block for Vision: "${a.original_filename}" (${buf.length} bytes)`);
         }
         continue;
       }
@@ -362,7 +376,7 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
     let messageContent;
     if (imageBlocks.length > 0 && config.hasAnthropicKey) {
       messageContent = [
-        { type: 'text', text: userMessage + '\n\nК письму приложены изображения. Учти их содержимое при классификации.' },
+        { type: 'text', text: userMessage + '\n\nК письму приложены файлы (изображения/документы). Проанализируй их содержимое при классификации.' },
         ...imageBlocks
       ];
     } else {
