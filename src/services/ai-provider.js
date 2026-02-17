@@ -64,7 +64,39 @@ async function _loadKeysFromDB() {
 }
 
 /**
+ * Convert multimodal content blocks to OpenAI format.
+ * - 'text' blocks → kept as-is
+ * - 'image' blocks → converted to OpenAI image_url format
+ * - 'document' blocks (PDF) → skipped (OpenAI doesn't support PDF documents)
+ */
+function _convertContentForOpenAI(contentArray) {
+  if (!Array.isArray(contentArray)) return contentArray;
+
+  const result = [];
+  for (const block of contentArray) {
+    if (block.type === 'text') {
+      result.push(block);
+    } else if (block.type === 'image' && block.source?.type === 'base64') {
+      result.push({
+        type: 'image_url',
+        image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` }
+      });
+    } else if (block.type === 'document') {
+      // OpenAI doesn't support PDF documents — skip with warning
+      console.warn('[AI Provider] Skipping document block — OpenAI does not support PDF document input');
+    }
+  }
+
+  // If only text blocks remain, simplify to string
+  if (result.length === 1 && result[0].type === 'text') {
+    return result[0].text;
+  }
+  return result.length > 0 ? result : '';
+}
+
+/**
  * Получить текущую конфигурацию AI
+ * Note: DB keys are loaded lazily in complete() — values here may be stale before first AI call
  */
 function getConfig() {
   return {
@@ -177,7 +209,7 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
   }
   openaiMessages.push(...messages.map(m => ({
     role: m.role,
-    content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+    content: typeof m.content === 'string' ? m.content : _convertContentForOpenAI(m.content)
   })));
 
   const body = {
@@ -246,8 +278,18 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
  */
 async function complete({ system, messages, maxTokens, temperature }) {
   await _loadKeysFromDB();
-  const provider = AI_PROVIDER;
+  let provider = AI_PROVIDER;
   const startTime = Date.now();
+
+  // Smart provider selection: if messages contain document blocks (scanned PDFs),
+  // prefer Anthropic which supports native PDF document input
+  const hasDocumentBlocks = messages.some(m =>
+    Array.isArray(m.content) && m.content.some(b => b.type === 'document')
+  );
+  if (hasDocumentBlocks && ANTHROPIC_API_KEY && provider !== 'anthropic') {
+    console.log('[AI Provider] Switching to Anthropic for this request — document blocks require Claude PDF support');
+    provider = 'anthropic';
+  }
 
   // Demo mode: if no API keys configured, return a mock response
   if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) {
