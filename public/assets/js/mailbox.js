@@ -391,9 +391,21 @@ window.AsgardMailboxPage = (function(){
   // ═══════════════════════════════════════════════════════════════════
   // EMAIL DETAIL
   // ═══════════════════════════════════════════════════════════════════
+  // Close detail panel on mobile (back button)
+  function closeDetailMobile() {
+    const panel = document.getElementById('mail-detail-panel');
+    if (panel) panel.classList.remove('mail-detail-open');
+  }
+
   async function selectEmail(id) {
     state.selectedId = id;
     renderEmailList(); // highlight
+
+    // On mobile: show the detail panel as overlay
+    const panel = document.getElementById('mail-detail-panel');
+    if (panel && window.innerWidth <= 768) {
+      panel.classList.add('mail-detail-open');
+    }
 
     const detailEl = $('#mail-detail');
     if (!detailEl) return;
@@ -531,6 +543,7 @@ window.AsgardMailboxPage = (function(){
       <div style="padding:20px 24px;">
         <!-- Toolbar -->
         <div style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+          <button id="mail-back-btn" class="btn ghost" style="display:none;" onclick="AsgardMailboxPage.closeDetailMobile()">&#8592; Назад</button>
           <button class="btn ghost mail-action-btn" data-action="reply">Ответить</button>
           <button class="btn ghost mail-action-btn" data-action="reply_all">Ответить всем</button>
           <button class="btn ghost mail-action-btn" data-action="forward">Переслать</button>
@@ -613,6 +626,12 @@ window.AsgardMailboxPage = (function(){
         } catch (_) {}
       });
       bodyFrame.src = 'about:blank';
+    }
+
+    // Show back button on mobile
+    const backBtn = detailEl.querySelector('#mail-back-btn');
+    if (backBtn && window.innerWidth <= 768) {
+      backBtn.style.display = '';
     }
 
     // Bind action buttons
@@ -967,5 +986,5 @@ window.AsgardMailboxPage = (function(){
     document.body.appendChild(overlay);
   }
 
-  return { render, _showAiPopup };
+  return { render, _showAiPopup, closeDetailMobile };
 })();

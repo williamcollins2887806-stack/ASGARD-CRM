@@ -990,6 +990,107 @@ body.nav-open .nav-overlay {
   body:has(.chat-visible-mobile) .topbar {
     display: none;
   }
+
+  /* ═══════════════════════════════════════════════════════════
+     MOBILE FIX: Modals ABOVE bottom navigation
+     ═══════════════════════════════════════════════════════════ */
+  .modalback,
+  .modal-overlay,
+  .modal-backdrop {
+    z-index: 1100 !important;
+  }
+
+  .modal,
+  .modal-content,
+  .modal-dialog,
+  .modalback .modal {
+    z-index: 1200 !important;
+  }
+
+  /* Toast above bottom nav */
+  .toastwrap {
+    bottom: 80px !important;
+    z-index: 1050 !important;
+    right: 8px;
+    left: 8px;
+    max-width: none;
+  }
+
+  /* Drawer above bottom nav */
+  .drawer,
+  .drawer-overlay {
+    z-index: 1100 !important;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MOBILE FIX: Mailbox 3-panel → single panel
+     ═══════════════════════════════════════════════════════════ */
+  #mail-sidebar {
+    display: none !important;
+  }
+
+  #mail-list-panel {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    border-right: none !important;
+  }
+
+  #mail-detail-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1050;
+    background: var(--bg-main);
+    display: none;
+  }
+
+  #mail-detail-panel.mail-detail-open {
+    display: flex !important;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MOBILE FIX: Force grids to 1-2 columns
+     ═══════════════════════════════════════════════════════════ */
+  .kpi,
+  [class*="kpi"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MOBILE FIX: Dropdown menus stay on screen
+     ═══════════════════════════════════════════════════════════ */
+  .dropdown-menu {
+    max-width: calc(100vw - 16px) !important;
+    right: 8px !important;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MOBILE FIX: Tables always horizontally scrollable
+     ═══════════════════════════════════════════════════════════ */
+  table.tbl,
+  table.t {
+    min-width: 0 !important;
+  }
+
+  .tbl-wrap,
+  .table-wrap,
+  .tablewrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MOBILE FIX: Modal inline styles with min-width
+     ═══════════════════════════════════════════════════════════ */
+  .modalback [style*="min-width"],
+  .modal-overlay [style*="min-width"] {
+    min-width: 0 !important;
+    width: calc(100vw - 32px) !important;
+    max-width: calc(100vw - 32px) !important;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

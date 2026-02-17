@@ -372,6 +372,8 @@
         .k .t{font-size:11px;color:var(--muted)}
         .k .v{font-size:18px;font-weight:700;color:var(--gold)}
         .mini{padding:4px 8px;font-size:11px}
+        @media(max-width:768px){.kpi3{grid-template-columns:repeat(2,1fr)}.kpi4{grid-template-columns:repeat(2,1fr)}}
+        @media(max-width:480px){.kpi3{grid-template-columns:1fr}.kpi4{grid-template-columns:1fr}}
       </style>
       <div class="help" style="margin-bottom:12px"><b>ᚱ ${CALC_NAME}</b> — ${esc(st.customer_name)}</div>
       ${tabs(tab)}
@@ -505,8 +507,12 @@
           .calc-bottom-bar{margin-top:16px;padding:16px;background:rgba(13,20,40,.5);border-radius:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
           @media(max-width:768px){
             .calc-bottom-bar{flex-direction:column;text-align:center}
-            .kpi3{grid-template-columns:1fr}
+            .kpi3{grid-template-columns:repeat(2,1fr)}
             .kpi4{grid-template-columns:repeat(2,1fr)}
+          }
+          @media(max-width:480px){
+            .kpi3{grid-template-columns:1fr}
+            .kpi4{grid-template-columns:1fr}
           }
         </style>
         <div class="calc-page">
