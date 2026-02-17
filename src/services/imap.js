@@ -391,6 +391,48 @@ const AI_PROCESS_INTERVAL = 30000; // run every 30 sec
 let aiProcessorTimer = null;
 let aiProcessorRunning = false;
 
+// Self-healing helper: update ai_classification regardless of column type (jsonb, json, or text)
+async function updateEmailAiClassification(emailId, classification, color, summary, recommendation) {
+  const classStr = String(classification || 'other');
+  const jsonVal = JSON.stringify(classStr);
+  const params = [color || 'yellow', summary || '', recommendation || '', emailId];
+
+  // Try 1: JSONB cast (correct for jsonb column)
+  try {
+    await db.query(`
+      UPDATE emails SET
+        ai_classification = $1::jsonb, ai_color = $2, ai_summary = $3,
+        ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+      WHERE id = $5
+    `, [jsonVal, ...params]);
+    return;
+  } catch (e) {
+    if (!e.message.includes('invalid input syntax for type json')) throw e;
+    console.warn(`[IMAP-AI] JSONB cast failed for email #${emailId}, falling back to text`);
+  }
+
+  // Try 2: plain text (for text/varchar column)
+  try {
+    await db.query(`
+      UPDATE emails SET
+        ai_classification = $1, ai_color = $2, ai_summary = $3,
+        ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+      WHERE id = $5
+    `, [classStr, ...params]);
+    return;
+  } catch (e2) {
+    console.warn(`[IMAP-AI] Text insert also failed for email #${emailId}: ${e2.message}, trying plain string`);
+  }
+
+  // Try 3: last resort — store as plain string without JSON wrapping
+  await db.query(`
+    UPDATE emails SET
+      ai_classification = $1, ai_color = $2, ai_summary = $3,
+      ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+    WHERE id = $5
+  `, [jsonVal, ...params]);
+}
+
 /**
  * Process a single email with AI analysis.
  * Updates emails table and creates inbox_application.
@@ -406,10 +448,7 @@ async function analyzeOneEmail(email) {
     });
     if (skipCheck.skip) {
       console.log(`[IMAP-AI] Skipping email #${emailId}: ${skipCheck.reason} (from: ${email.from_email})`);
-      await db.query(
-        `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, ai_classification = $2::jsonb, ai_color = 'red', updated_at = NOW() WHERE id = $3`,
-        [`[Пропущено: ${skipCheck.reason}]`, JSON.stringify('other'), emailId]
-      );
+      await updateEmailAiClassification(emailId, 'other', 'red', `[Пропущено: ${skipCheck.reason}]`, null);
       return true; // Считаем обработанным, но НЕ создаём inbox_application
     }
 
@@ -419,6 +458,7 @@ async function analyzeOneEmail(email) {
     );
     const attNames = attRes.rows.map(a => a.original_filename || 'file');
 
+    console.log(`[IMAP-AI] #${emailId} step 1: calling analyzeEmail...`);
     const analysis = await aiAnalyzer.analyzeEmail({
       emailId,
       subject: email.subject,
@@ -427,20 +467,17 @@ async function analyzeOneEmail(email) {
       fromName: email.from_name,
       attachmentNames: attNames
     });
+    console.log(`[IMAP-AI] #${emailId} step 2: analyzeEmail returned classification=${analysis.classification}, color=${analysis.color}`);
 
     const workload = await aiAnalyzer.getWorkloadData();
+    console.log(`[IMAP-AI] #${emailId} step 3: calling updateEmailAiClassification...`);
 
     // Update the emails table with AI results
-    await db.query(`
-      UPDATE emails SET
-        ai_classification = $1::jsonb, ai_color = $2, ai_summary = $3,
-        ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
-      WHERE id = $5
-    `, [
-      JSON.stringify(analysis.classification), analysis.color,
-      analysis.summary, analysis.recommendation,
-      emailId
-    ]);
+    await updateEmailAiClassification(
+      emailId, analysis.classification, analysis.color,
+      analysis.summary, analysis.recommendation
+    );
+    console.log(`[IMAP-AI] #${emailId} step 4: update done`);
 
     // Create inbox_application ONLY for genuine work proposals/tenders
     const applicationTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
@@ -498,6 +535,7 @@ async function analyzeOneEmail(email) {
     return true;
   } catch (err) {
     console.error(`[IMAP-AI] Error processing email #${emailId}:`, err.message);
+    console.error(`[IMAP-AI] Stack trace:`, err.stack);
     // Mark as failed so we don't retry endlessly
     await db.query(
       `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, updated_at = NOW() WHERE id = $2`,
