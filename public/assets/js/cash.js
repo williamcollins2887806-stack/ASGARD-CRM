@@ -1,7 +1,6 @@
 /**
- * ASGARD CRM — Касса (страница РП)
- * Авансовые отчёты и расчёты
- * Redesigned to use ASGARD Design System
+ * ASGARD CRM — Казна Дружины (страница РП)
+ * Карточный вид с progress-шагами и категориями расходов
  */
 
 window.CashPage = (function() {
@@ -10,23 +9,13 @@ window.CashPage = (function() {
   const { showModal, hideModal, toast, esc } = AsgardUI;
 
   const STATUS_LABELS = {
-    requested: 'Ожидает согласования',
+    requested: 'Ожидает',
     approved: 'Согласовано',
     received: 'Получено',
     reporting: 'Отчёт',
     closed: 'Закрыто',
     rejected: 'Отклонено',
-    question: 'Вопрос директора'
-  };
-
-  const STATUS_COLORS = {
-    requested: 'warning',
-    approved: 'success',
-    received: 'info',
-    reporting: 'info',
-    closed: 'secondary',
-    rejected: 'danger',
-    question: 'warning'
+    question: 'Вопрос'
   };
 
   const TYPE_LABELS = {
@@ -34,36 +23,41 @@ window.CashPage = (function() {
     loan: 'Долг до ЗП'
   };
 
-  const TYPE_COLORS = {
-    advance: 'info',
-    loan: 'warning'
-  };
+  const EXPENSE_CATEGORIES = [
+    { value: 'materials', label: 'Материалы', icon: '🧱' },
+    { value: 'transport', label: 'Транспорт', icon: '🚗' },
+    { value: 'food', label: 'Питание', icon: '🍽️' },
+    { value: 'housing', label: 'Проживание', icon: '🏨' },
+    { value: 'tools', label: 'Инструмент', icon: '🔧' },
+    { value: 'fuel', label: 'Топливо', icon: '⛽' },
+    { value: 'other', label: 'Прочее', icon: '📦' }
+  ];
+
+  // Status step order
+  const ADVANCE_STEPS = ['requested', 'approved', 'received', 'reporting', 'closed'];
+  const LOAN_STEPS = ['requested', 'approved', 'received', 'closed'];
+  const STEP_LABELS = { requested: 'Заявка', approved: 'Согласов.', received: 'Получено', reporting: 'Отчёт', closed: 'Закрыто' };
 
   let currentRequests = [];
   let works = [];
 
   // ─────────────────────────────────────────────────────────────────
-  // RENDER PAGE
+  // RENDER
   // ─────────────────────────────────────────────────────────────────
   async function render(container) {
     container.innerHTML = `
-      <div class="page-header">
-        <h1>Касса</h1>
-        <p style="color:var(--text-muted); font-size:var(--text-sm); margin:0">Авансовые отчёты и расчёты</p>
+      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <h1>Казна Дружины</h1>
+          <p style="color:var(--text-muted);font-size:var(--text-sm);margin:0">Авансы, расходы и расчёты</p>
+        </div>
+        <button class="btn primary" onclick="CashPage.showCreateModal()">+ Новая заявка</button>
       </div>
 
       <div id="cash-balance-widget"></div>
 
-      <div class="cash-card">
-        <div class="cash-card-header">
-          <span class="card-title">Мои заявки</span>
-          <button class="btn primary" onclick="CashPage.showCreateModal()">+ Новая заявка</button>
-        </div>
-        <div class="cash-card-body">
-          <div id="cash-requests-list">
-            <div style="text-align:center; padding:24px; color:var(--text-muted)">Загрузка...</div>
-          </div>
-        </div>
+      <div id="cash-requests-list">
+        <div style="text-align:center;padding:40px;color:var(--text-muted)">Загрузка...</div>
       </div>
     `;
 
@@ -87,32 +81,32 @@ window.CashPage = (function() {
     try {
       const resp = await fetch('/api/cash/my-balance', { headers: getHeaders() });
       if (!resp.ok) return;
-      const data = await resp.json();
+      const d = await resp.json();
       const widget = document.getElementById('cash-balance-widget');
       if (!widget) return;
 
       widget.innerHTML = `
         <div class="cash-balance-grid">
           <div class="cash-balance-card info">
-            <div class="balance-value">${formatMoney(data.issued)}</div>
+            <div class="balance-value">${fmtMoney(d.issued)}</div>
             <div class="balance-label">Получено</div>
           </div>
           <div class="cash-balance-card warning">
-            <div class="balance-value">${formatMoney(data.spent)}</div>
+            <div class="balance-value">${fmtMoney(d.spent)}</div>
             <div class="balance-label">Потрачено</div>
           </div>
           <div class="cash-balance-card success">
-            <div class="balance-value">${formatMoney(data.returned)}</div>
+            <div class="balance-value">${fmtMoney(d.returned)}</div>
             <div class="balance-label">Возвращено</div>
           </div>
-          <div class="cash-balance-card ${data.balance > 0 ? 'danger' : 'secondary'}">
-            <div class="balance-value">${formatMoney(data.balance)}</div>
+          <div class="cash-balance-card ${d.balance > 0 ? 'danger' : 'secondary'}">
+            <div class="balance-value">${fmtMoney(d.balance)}</div>
             <div class="balance-label">На руках</div>
           </div>
         </div>
       `;
     } catch (e) {
-      console.error('loadBalance error', e);
+      console.error('loadBalance', e);
     }
   }
 
@@ -121,69 +115,128 @@ window.CashPage = (function() {
       const resp = await fetch('/api/works?limit=500', { headers: getHeaders() });
       const data = await resp.json();
       works = data.works || data || [];
-    } catch (e) {
-      console.error('loadWorks error', e);
-    }
+    } catch (e) { console.error('loadWorks', e); }
   }
 
   async function loadRequests() {
     try {
       const resp = await fetch('/api/cash/my', { headers: getHeaders() });
       currentRequests = await resp.json();
-      renderRequestsList();
+      renderCards();
     } catch (e) {
-      console.error('loadRequests error', e);
+      console.error('loadRequests', e);
       document.getElementById('cash-requests-list').innerHTML =
-        '<div style="text-align:center; padding:24px; color:var(--danger)">Ошибка загрузки</div>';
+        '<div style="text-align:center;padding:40px;color:var(--danger)">Ошибка загрузки</div>';
     }
   }
 
-  function renderRequestsList() {
+  // ─────────────────────────────────────────────────────────────────
+  // CARD RENDERING
+  // ─────────────────────────────────────────────────────────────────
+  function renderCards() {
     const container = document.getElementById('cash-requests-list');
-
     if (!currentRequests.length) {
-      container.innerHTML = AsgardUI.emptyState({ icon: '💰', title: 'Нет заявок', desc: 'Создайте первую заявку на аванс' });
+      container.innerHTML = AsgardUI.emptyState({ icon: '💰', title: 'Нет заявок', desc: 'Создайте первую заявку на аванс или долг' });
       return;
     }
 
-    container.innerHTML = `
-      <div style="overflow-x:auto">
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Тип</th>
-              <th>Проект</th>
-              <th>Сумма</th>
-              <th>Статус</th>
-              <th>Баланс</th>
-              <th>Дата</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${currentRequests.map(r => {
-              const isLoan = r.type === 'loan';
-              const balanceVal = r.balance ? r.balance.remainder : 0;
-              const balanceDisplay = isLoan && balanceVal > 0 ? `-${formatMoney(balanceVal)}` : formatMoney(balanceVal);
-              const balanceColor = isLoan ? (balanceVal > 0 ? 'var(--danger)' : 'var(--success)') : (balanceVal > 0 ? 'var(--warning)' : 'var(--success)');
+    // Sort: active first, then closed
+    const active = currentRequests.filter(r => !['closed', 'rejected'].includes(r.status));
+    const done = currentRequests.filter(r => ['closed', 'rejected'].includes(r.status));
 
-              return `
-              <tr onclick="CashPage.showDetail(${r.id})" style="cursor:pointer">
-                <td>${r.id}</td>
-                <td><span class="status status-${TYPE_COLORS[r.type] === 'info' ? 'blue' : 'yellow'}">${esc(TYPE_LABELS[r.type] || r.type)}</span></td>
-                <td>${esc(r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные' : '-')))}</td>
-                <td><strong>${formatMoney(r.amount)}</strong></td>
-                <td><span class="status status-${statusCssClass(r.status)}">${esc(STATUS_LABELS[r.status])}</span></td>
-                <td><span style="color:${balanceColor};font-weight:600">${r.balance ? balanceDisplay : '-'}</span></td>
-                <td>${formatDate(r.created_at)}</td>
-                <td>
-                  <button class="btn ghost mini" onclick="event.stopPropagation(); CashPage.showDetail(${r.id})">Открыть</button>
-                </td>
-              </tr>
-            `;}).join('')}
-          </tbody>
-        </table>
+    let html = '';
+    if (active.length) {
+      html += `<div class="cash-section-title" style="margin-top:0">Активные заявки</div>`;
+      html += `<div class="cash-cards-grid">${active.map(r => renderCard(r)).join('')}</div>`;
+    }
+    if (done.length) {
+      html += `<div class="cash-section-title">Завершённые</div>`;
+      html += `<div class="cash-cards-grid">${done.map(r => renderCard(r)).join('')}</div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function renderCard(r) {
+    const isLoan = r.type === 'loan';
+    const steps = isLoan ? LOAN_STEPS : ADVANCE_STEPS;
+    const currentStep = steps.indexOf(r.status);
+    const isRejected = r.status === 'rejected';
+    const isQuestion = r.status === 'question';
+    const balanceVal = r.balance ? r.balance.remainder : 0;
+    const typeColor = isLoan ? 'var(--warning)' : 'var(--info)';
+    const projectName = r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные средства' : ''));
+
+    // Quick actions
+    const canReceive = r.status === 'approved';
+    const canAddExpense = !isLoan && ['received', 'reporting'].includes(r.status);
+    const canReturn = ['received', 'reporting'].includes(r.status) && balanceVal > 0;
+    const canReply = r.status === 'question';
+
+    // Progress steps
+    const stepsHtml = steps.map((s, i) => {
+      let cls = 'cash-step';
+      if (isRejected) cls += ' rejected';
+      else if (i < currentStep) cls += ' done';
+      else if (i === currentStep) cls += ' active';
+      return `<div class="${cls}"><div class="cash-step-dot"></div><div class="cash-step-label">${STEP_LABELS[s]}</div></div>`;
+    }).join('');
+
+    // Actions
+    let actionsHtml = '';
+    const actions = [];
+    if (canReceive) actions.push(`<button class="btn green mini" onclick="event.stopPropagation();CashPage.confirmReceive(${r.id})">Подтвердить получение</button>`);
+    if (canAddExpense) actions.push(`<button class="btn primary mini" onclick="event.stopPropagation();CashPage.showExpenseModal(${r.id})">+ Расход</button>`);
+    if (canReturn) actions.push(`<button class="btn amber mini" onclick="event.stopPropagation();CashPage.showReturnModal(${r.id}, ${balanceVal})">${isLoan ? 'Погасить' : 'Вернуть'}</button>`);
+    if (canReply) actions.push(`<button class="btn blue mini" onclick="event.stopPropagation();CashPage.showReplyModal(${r.id})">Ответить</button>`);
+    if (actions.length) {
+      actionsHtml = `<div class="cash-card-actions">${actions.join('')}</div>`;
+    }
+
+    // Balance display
+    let balanceHtml = '';
+    if (r.balance) {
+      if (isLoan) {
+        balanceHtml = balanceVal > 0
+          ? `<span style="color:var(--danger);font-weight:700">Долг: ${fmtMoney(balanceVal)}</span>`
+          : `<span style="color:var(--success);font-weight:600">Погашен</span>`;
+      } else {
+        const pct = r.balance.approved > 0 ? Math.round(r.balance.spent / r.balance.approved * 100) : 0;
+        balanceHtml = `
+          <div class="cash-card-balance-bar">
+            <div class="cash-card-balance-fill" style="width:${Math.min(pct, 100)}%"></div>
+          </div>
+          <div class="cash-card-balance-info">
+            <span>Израсходовано ${pct}%</span>
+            <span style="font-weight:600">Ост. ${fmtMoney(balanceVal)}</span>
+          </div>
+        `;
+      }
+    }
+
+    return `
+      <div class="cash-req-card ${isRejected ? 'rejected' : ''} ${isQuestion ? 'question' : ''}" onclick="CashPage.showDetail(${r.id})">
+        <div class="cash-card-top">
+          <div class="cash-card-type" style="color:${typeColor}">
+            ${isLoan ? '🪙' : '📋'} ${esc(TYPE_LABELS[r.type])}
+          </div>
+          <div class="cash-card-date">${fmtDate(r.created_at)}</div>
+        </div>
+
+        ${projectName ? `<div class="cash-card-project">${esc(projectName)}</div>` : ''}
+
+        <div class="cash-card-amount">${fmtMoney(r.amount)}</div>
+
+        ${isRejected ? `
+          <div class="cash-card-rejected">Отклонено${r.director_comment ? ': ' + esc(r.director_comment) : ''}</div>
+        ` : isQuestion ? `
+          <div class="cash-card-question">Вопрос от директора${r.director_comment ? ': ' + esc(r.director_comment) : ''}</div>
+        ` : `
+          <div class="cash-steps">${stepsHtml}</div>
+        `}
+
+        ${balanceHtml ? `<div class="cash-card-balance">${balanceHtml}</div>` : ''}
+        ${actionsHtml}
       </div>
     `;
   }
@@ -201,7 +254,7 @@ window.CashPage = (function() {
       works.map(w => `<option value="${w.id}">${esc(w.work_title || 'Проект #' + w.id)}</option>`).join('');
 
     showModal({
-      title: 'Новая заявка на выдачу',
+      title: 'Новая заявка',
       html: `
         <form id="cashCreateForm">
           <div class="asg-form-group">
@@ -225,7 +278,7 @@ window.CashPage = (function() {
           </div>
           <div class="asg-form-group">
             <label>Сопроводительное письмо (опционально)</label>
-            <textarea name="cover_letter" rows="3" placeholder="Дополнительная информация"></textarea>
+            <textarea name="cover_letter" rows="2" placeholder="Дополнительная информация"></textarea>
           </div>
           <div class="asg-form-actions">
             <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
@@ -282,12 +335,12 @@ window.CashPage = (function() {
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // DETAIL
+  // DETAIL (modal)
   // ─────────────────────────────────────────────────────────────────
   async function showDetail(id) {
     showModal({
       title: 'Заявка #' + id,
-      html: '<div style="text-align:center; padding:24px; color:var(--text-muted)">Загрузка...</div>'
+      html: '<div style="text-align:center;padding:24px;color:var(--text-muted)">Загрузка...</div>'
     });
 
     try {
@@ -298,7 +351,7 @@ window.CashPage = (function() {
       if (body) body.innerHTML = renderDetail(req);
     } catch (e) {
       const body = document.getElementById('modalBody');
-      if (body) body.innerHTML = `<div style="text-align:center; padding:24px; color:var(--danger)">${esc(e.message)}</div>`;
+      if (body) body.innerHTML = `<div style="text-align:center;padding:24px;color:var(--danger)">${esc(e.message)}</div>`;
     }
   }
 
@@ -308,74 +361,98 @@ window.CashPage = (function() {
     const canAddExpense = !isLoan && ['received', 'reporting'].includes(req.status);
     const canReturn = ['received', 'reporting'].includes(req.status) && req.balance?.remainder > 0;
     const canReply = req.status === 'question';
-
     const balanceVal = req.balance?.remainder || 0;
-    const balanceDisplay = isLoan && balanceVal > 0 ? `-${formatMoney(balanceVal)}` : formatMoney(balanceVal);
-    const balanceLabel = isLoan ? 'Долг' : 'Остаток';
+
+    // Progress bar
+    const steps = isLoan ? LOAN_STEPS : ADVANCE_STEPS;
+    const currentStep = steps.indexOf(req.status);
+    const isRejected = req.status === 'rejected';
+    const stepsHtml = steps.map((s, i) => {
+      let cls = 'cash-step';
+      if (isRejected) cls += ' rejected';
+      else if (i < currentStep) cls += ' done';
+      else if (i === currentStep) cls += ' active';
+      return `<div class="${cls}"><div class="cash-step-dot"></div><div class="cash-step-label">${STEP_LABELS[s]}</div></div>`;
+    }).join('');
 
     let html = `
+      <div class="cash-steps" style="margin-bottom:20px">${stepsHtml}</div>
+
       <div class="cash-detail-grid">
         <div>
-          <div class="cash-detail-item"><span class="label">Тип</span><span class="value"><span class="status status-${TYPE_COLORS[req.type] === 'info' ? 'blue' : 'yellow'}">${esc(TYPE_LABELS[req.type] || req.type)}</span></span></div>
-          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Проект</span><span class="value">${esc(req.work_title || (req.work_id ? '#' + req.work_id : (isLoan ? 'Личные средства' : '-')))}</span></div>
-          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Сумма</span><span class="value" style="font-size:var(--text-lg);color:var(--gold)">${formatMoney(req.amount)}</span></div>
+          <div class="cash-detail-item"><span class="label">Тип</span><span class="value"><span class="status status-${isLoan ? 'yellow' : 'blue'}">${esc(TYPE_LABELS[req.type] || req.type)}</span></span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Проект</span><span class="value">${esc(req.work_title || (req.work_id ? '#' + req.work_id : (isLoan ? 'Личные' : '-')))}</span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Сумма</span><span class="value" style="font-size:var(--text-lg);color:var(--gold)">${fmtMoney(req.amount)}</span></div>
           <div class="cash-detail-item" style="margin-top:12px"><span class="label">Цель</span><span class="value">${esc(req.purpose)}</span></div>
           ${req.cover_letter ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Письмо</span><span class="value">${esc(req.cover_letter)}</span></div>` : ''}
         </div>
         <div>
           <div class="cash-detail-item"><span class="label">Статус</span><span class="value"><span class="status status-${statusCssClass(req.status)}">${esc(STATUS_LABELS[req.status])}</span></span></div>
-          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Создано</span><span class="value">${formatDateTime(req.created_at)}</span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Создано</span><span class="value">${fmtDateTime(req.created_at)}</span></div>
           ${req.director_name ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Директор</span><span class="value">${esc(req.director_name)}</span></div>` : ''}
           ${req.director_comment ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Комментарий</span><span class="value">${esc(req.director_comment)}</span></div>` : ''}
-          ${req.received_at ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Получено</span><span class="value">${formatDateTime(req.received_at)}</span></div>` : ''}
-          ${req.closed_at ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Закрыто</span><span class="value">${formatDateTime(req.closed_at)}</span></div>` : ''}
+          ${req.received_at ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Получено</span><span class="value">${fmtDateTime(req.received_at)}</span></div>` : ''}
         </div>
       </div>
     `;
 
-    // Balance alert
+    // Balance
     if (req.balance) {
       const alertType = req.balance.remainder > 0 ? (isLoan ? 'danger' : 'warning') : 'success';
       html += `<div class="cash-alert ${alertType}">`;
       if (isLoan) {
-        html += `<strong>Долг:</strong> Получено: ${formatMoney(req.balance.approved)} | Возвращено: ${formatMoney(req.balance.returned)} | <strong>${balanceLabel}: ${balanceDisplay}</strong>${balanceVal > 0 ? ' (будет удержан из ЗП)' : ' (погашен)'}`;
+        html += `<strong>Долг:</strong> Получено: ${fmtMoney(req.balance.approved)} | Возвращено: ${fmtMoney(req.balance.returned)} | <strong>${balanceVal > 0 ? 'Осталось: ' + fmtMoney(balanceVal) : 'Погашен'}</strong>`;
       } else {
-        html += `<strong>Баланс:</strong> Выдано: ${formatMoney(req.balance.approved)} | Потрачено: ${formatMoney(req.balance.spent)} | Возвращено: ${formatMoney(req.balance.returned)} | <strong>${balanceLabel}: ${balanceDisplay}</strong>`;
+        html += `<strong>Баланс:</strong> Выдано: ${fmtMoney(req.balance.approved)} | Потрачено: ${fmtMoney(req.balance.spent)} | Возвращено: ${fmtMoney(req.balance.returned)} | <strong>Остаток: ${fmtMoney(balanceVal)}</strong>`;
       }
       html += '</div>';
-    }
-
-    if (isLoan) {
-      html += `<div class="cash-alert info"><strong>Долг до ЗП</strong> — личные деньги без авансового отчёта. Необходим полный возврат (из ЗП или наличными).</div>`;
     }
 
     // Actions
     const actions = [];
     if (canReceive) actions.push(`<button class="btn green" onclick="CashPage.confirmReceive(${req.id})">Подтвердить получение</button>`);
-    if (canAddExpense) actions.push(`<button class="btn primary" onclick="CashPage.showExpenseModal(${req.id})">Добавить расход</button>`);
-    if (canReturn) actions.push(`<button class="btn ${isLoan ? 'red' : 'amber'}" onclick="CashPage.showReturnModal(${req.id}, ${req.balance?.remainder || 0})">${isLoan ? 'Погасить долг' : 'Вернуть остаток'}</button>`);
+    if (canAddExpense) actions.push(`<button class="btn primary" onclick="CashPage.showExpenseModal(${req.id})">+ Добавить расход</button>`);
+    if (canReturn) actions.push(`<button class="btn ${isLoan ? 'red' : 'amber'}" onclick="CashPage.showReturnModal(${req.id}, ${balanceVal})">${isLoan ? 'Погасить долг' : 'Вернуть остаток'}</button>`);
     if (canReply) actions.push(`<button class="btn blue" onclick="CashPage.showReplyModal(${req.id})">Ответить</button>`);
-
     if (actions.length) {
       html += `<div class="cash-actions">${actions.join('')}</div>`;
     }
 
-    // Expenses
+    // Expenses with category totals
     if (!isLoan && req.expenses?.length) {
-      html += `<div class="cash-section-title">Расходы (авансовый отчёт)</div>
-        <div style="overflow-x:auto; margin-bottom:16px">
+      // Group by category
+      const byCat = {};
+      req.expenses.forEach(e => {
+        const cat = e.category || 'other';
+        if (!byCat[cat]) byCat[cat] = 0;
+        byCat[cat] += parseFloat(e.amount);
+      });
+
+      const catSummary = Object.entries(byCat).map(([cat, sum]) => {
+        const catInfo = EXPENSE_CATEGORIES.find(c => c.value === cat) || { icon: '📦', label: cat };
+        return `<span class="cash-cat-badge">${catInfo.icon} ${catInfo.label}: ${fmtMoney(sum)}</span>`;
+      }).join('');
+
+      html += `<div class="cash-section-title">Расходы (авансовый отчёт)</div>`;
+      if (catSummary) html += `<div class="cash-cat-summary">${catSummary}</div>`;
+      html += `
+        <div style="overflow-x:auto;margin-bottom:16px">
           <table class="tbl">
-            <thead><tr><th>Дата</th><th>Описание</th><th>Сумма</th><th>Чек</th>${canAddExpense ? '<th></th>' : ''}</tr></thead>
+            <thead><tr><th>Дата</th><th>Категория</th><th>Описание</th><th>Сумма</th><th>Чек</th>${canAddExpense ? '<th></th>' : ''}</tr></thead>
             <tbody>
-              ${req.expenses.map(e => `
-                <tr>
-                  <td>${formatDate(e.expense_date)}</td>
-                  <td>${esc(e.description)}</td>
-                  <td>${formatMoney(e.amount)}</td>
-                  <td>${e.receipt_file ? `<a href="/api/cash/${req.id}/receipt/${e.receipt_file}" target="_blank" style="color:var(--gold)">${esc(e.receipt_original_name || 'Чек')}</a>` : '-'}</td>
-                  ${canAddExpense ? `<td><button class="btn red mini" onclick="CashPage.deleteExpense(${req.id}, ${e.id})">Удалить</button></td>` : ''}
-                </tr>
-              `).join('')}
+              ${req.expenses.map(e => {
+                const catInfo = EXPENSE_CATEGORIES.find(c => c.value === (e.category || 'other')) || { icon: '📦', label: 'Прочее' };
+                return `
+                  <tr>
+                    <td>${fmtDate(e.expense_date)}</td>
+                    <td>${catInfo.icon} ${esc(catInfo.label)}</td>
+                    <td>${esc(e.description)}</td>
+                    <td>${fmtMoney(e.amount)}</td>
+                    <td>${e.receipt_file ? `<a href="/api/cash/${req.id}/receipt/${e.receipt_file}" target="_blank" style="color:var(--gold)">${esc(e.receipt_original_name || 'Чек')}</a>` : '-'}</td>
+                    ${canAddExpense ? `<td><button class="btn red mini" onclick="CashPage.deleteExpense(${req.id}, ${e.id})">Удалить</button></td>` : ''}
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         </div>`;
@@ -384,16 +461,16 @@ window.CashPage = (function() {
     // Returns
     if (req.returns?.length) {
       html += `<div class="cash-section-title">Возвраты</div>
-        <div style="overflow-x:auto; margin-bottom:16px">
+        <div style="overflow-x:auto;margin-bottom:16px">
           <table class="tbl">
             <thead><tr><th>Дата</th><th>Сумма</th><th>Комментарий</th><th>Подтверждено</th></tr></thead>
             <tbody>
               ${req.returns.map(r => `
                 <tr>
-                  <td>${formatDateTime(r.created_at)}</td>
-                  <td>${formatMoney(r.amount)}</td>
+                  <td>${fmtDateTime(r.created_at)}</td>
+                  <td>${fmtMoney(r.amount)}</td>
                   <td>${esc(r.note || '-')}</td>
-                  <td>${r.confirmed_at ? `${formatDateTime(r.confirmed_at)} (${esc(r.confirmed_by_name || '')})` : '<span class="status status-yellow">Ожидает</span>'}</td>
+                  <td>${r.confirmed_at ? `${fmtDateTime(r.confirmed_at)}` : '<span class="status status-yellow">Ожидает</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -407,7 +484,7 @@ window.CashPage = (function() {
         <div class="cash-messages">
           ${req.messages.map(m => `
             <div class="cash-message">
-              <div class="meta">${formatDateTime(m.created_at)} — ${esc(m.user_name)} (${esc(m.user_role)})</div>
+              <div class="meta">${fmtDateTime(m.created_at)} — ${esc(m.user_name)}</div>
               <div class="text">${esc(m.message)}</div>
             </div>
           `).join('')}
@@ -422,33 +499,32 @@ window.CashPage = (function() {
   // ─────────────────────────────────────────────────────────────────
   async function confirmReceive(id) {
     if (!confirm('Подтвердить получение денег?')) return;
-
     try {
-      const resp = await fetch(`/api/cash/${id}/receive`, {
-        method: 'PUT',
-        headers: getHeaders()
-      });
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error || 'Ошибка');
-      }
+      const resp = await fetch(`/api/cash/${id}/receive`, { method: 'PUT', headers: getHeaders() });
+      if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Ошибка'); }
       toast('Получение подтверждено', '', 'ok');
       await showDetail(id);
       await loadBalance();
       await loadRequests();
-    } catch (e) {
-      toast('Ошибка', e.message, 'err');
-    }
+    } catch (e) { toast('Ошибка', e.message, 'err'); }
   }
 
   function showExpenseModal(requestId) {
     hideModal();
     setTimeout(() => {
+      const categoryOptions = EXPENSE_CATEGORIES.map(c =>
+        `<option value="${c.value}">${c.icon} ${c.label}</option>`
+      ).join('');
+
       showModal({
         title: 'Добавить расход',
         html: `
           <form id="cashExpenseForm">
             <input type="hidden" name="request_id" value="${requestId}">
+            <div class="asg-form-group">
+              <label>Категория</label>
+              <select name="category">${categoryOptions}</select>
+            </div>
             <div class="asg-form-group">
               <label>Сумма</label>
               <input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00">
@@ -463,7 +539,8 @@ window.CashPage = (function() {
             </div>
             <div class="asg-form-group">
               <label>Фото чека</label>
-              <input type="file" name="receipt" accept="image/*,.pdf" required>
+              <input type="file" name="receipt" accept="image/*,.pdf" capture="environment">
+              <small style="color:var(--text-muted);display:block;margin-top:4px">На телефоне откроется камера</small>
             </div>
             <div class="asg-form-actions">
               <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
@@ -490,41 +567,25 @@ window.CashPage = (function() {
         headers: { 'Authorization': 'Bearer ' + (auth?.token || '') },
         body: formData
       });
-
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error || 'Ошибка');
-      }
-
+      if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Ошибка'); }
       hideModal();
       toast('Расход добавлен', '', 'ok');
       await showDetail(parseInt(requestId));
       await loadBalance();
       await loadRequests();
-    } catch (e) {
-      toast('Ошибка', e.message, 'err');
-    }
+    } catch (e) { toast('Ошибка', e.message, 'err'); }
   }
 
   async function deleteExpense(requestId, expenseId) {
     if (!confirm('Удалить расход?')) return;
-
     try {
-      const resp = await fetch(`/api/cash/${requestId}/expense/${expenseId}`, {
-        method: 'DELETE',
-        headers: getHeaders()
-      });
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error || 'Ошибка');
-      }
+      const resp = await fetch(`/api/cash/${requestId}/expense/${expenseId}`, { method: 'DELETE', headers: getHeaders() });
+      if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Ошибка'); }
       toast('Расход удалён', '', 'ok');
       await showDetail(requestId);
       await loadBalance();
       await loadRequests();
-    } catch (e) {
-      toast('Ошибка', e.message, 'err');
-    }
+    } catch (e) { toast('Ошибка', e.message, 'err'); }
   }
 
   function showReturnModal(requestId, remainder) {
@@ -535,9 +596,7 @@ window.CashPage = (function() {
         html: `
           <form id="cashReturnForm">
             <input type="hidden" name="request_id" value="${requestId}">
-            <div class="cash-alert info" style="margin-bottom:16px">
-              Остаток: <strong>${formatMoney(remainder)}</strong>
-            </div>
+            <div class="cash-alert info" style="margin-bottom:16px">Остаток: <strong>${fmtMoney(remainder)}</strong></div>
             <div class="asg-form-group">
               <label>Сумма возврата</label>
               <input type="number" name="amount" step="0.01" min="0.01" max="${remainder}" value="${remainder}" required>
@@ -561,30 +620,18 @@ window.CashPage = (function() {
     if (!form) return;
     const requestId = form.querySelector('[name="request_id"]').value;
     const data = Object.fromEntries(new FormData(form));
-
     try {
       const resp = await fetch(`/api/cash/${requestId}/return`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
-          amount: parseFloat(data.amount),
-          note: data.note || null
-        })
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ amount: parseFloat(data.amount), note: data.note || null })
       });
-
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error || 'Ошибка');
-      }
-
+      if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Ошибка'); }
       hideModal();
       toast('Возврат зарегистрирован', '', 'ok');
       await showDetail(parseInt(requestId));
       await loadBalance();
       await loadRequests();
-    } catch (e) {
-      toast('Ошибка', e.message, 'err');
-    }
+    } catch (e) { toast('Ошибка', e.message, 'err'); }
   }
 
   function showReplyModal(requestId) {
@@ -614,62 +661,40 @@ window.CashPage = (function() {
     if (!form) return;
     const requestId = form.querySelector('[name="request_id"]').value;
     const data = Object.fromEntries(new FormData(form));
-
     try {
       const resp = await fetch(`/api/cash/${requestId}/reply`, {
-        method: 'POST',
-        headers: getHeaders(),
+        method: 'POST', headers: getHeaders(),
         body: JSON.stringify({ message: data.message })
       });
-
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error || 'Ошибка');
-      }
-
+      if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Ошибка'); }
       hideModal();
       toast('Ответ отправлен', '', 'ok');
       await showDetail(parseInt(requestId));
       await loadRequests();
-    } catch (e) {
-      toast('Ошибка', e.message, 'err');
-    }
+    } catch (e) { toast('Ошибка', e.message, 'err'); }
   }
 
   // ─────────────────────────────────────────────────────────────────
   // HELPERS
   // ─────────────────────────────────────────────────────────────────
-  function formatMoney(val) {
+  function fmtMoney(val) {
     const num = parseFloat(val) || 0;
-    return num.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' \u20BD';
+    return num.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' \u20BD';
   }
 
-  function formatDate(val) {
+  function fmtDate(val) {
     if (!val) return '-';
     return new Date(val).toLocaleDateString('ru-RU');
   }
 
-  function formatDateTime(val) {
+  function fmtDateTime(val) {
     if (!val) return '-';
     return new Date(val).toLocaleString('ru-RU');
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // PUBLIC API
-  // ─────────────────────────────────────────────────────────────────
   return {
-    render,
-    showCreateModal,
-    onTypeChange,
-    submitCreate,
-    showDetail,
-    confirmReceive,
-    showExpenseModal,
-    submitExpense,
-    deleteExpense,
-    showReturnModal,
-    submitReturn,
-    showReplyModal,
-    submitReply
+    render, showCreateModal, onTypeChange, submitCreate, showDetail,
+    confirmReceive, showExpenseModal, submitExpense, deleteExpense,
+    showReturnModal, submitReturn, showReplyModal, submitReply
   };
 })();

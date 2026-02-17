@@ -419,12 +419,16 @@ async function ensureTables() {
       request_id INTEGER NOT NULL REFERENCES cash_requests(id),
       amount NUMERIC(12,2) NOT NULL,
       description TEXT,
+      category VARCHAR(50) DEFAULT 'other',
       receipt_file VARCHAR(500),
       receipt_original_name VARCHAR(255),
       expense_date DATE,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  // Add category column if missing (migration for existing installs)
+  await db.query(`ALTER TABLE cash_expenses ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'other'`);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS cash_returns (

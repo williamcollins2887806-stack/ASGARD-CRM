@@ -1,7 +1,7 @@
 /**
- * ASGARD CRM — Касса (страница директора)
+ * ASGARD CRM — Казна — Управление (страница директора)
  * Согласование и контроль авансовых отчётов
- * Redesigned to use ASGARD Design System
+ * Карточный вид с KPI, progress-шагами и быстрыми действиями
  */
 
 window.CashAdminPage = (function() {
@@ -20,7 +20,7 @@ window.CashAdminPage = (function() {
   };
 
   const TYPE_LABELS = {
-    advance: 'Аванс',
+    advance: 'Аванс на проект',
     loan: 'Долг до ЗП'
   };
 
@@ -29,9 +29,13 @@ window.CashAdminPage = (function() {
     loan: 'warning'
   };
 
+  const ADVANCE_STEPS = ['requested', 'approved', 'received', 'reporting', 'closed'];
+  const LOAN_STEPS = ['requested', 'approved', 'received', 'closed'];
+  const STEP_LABELS = { requested: 'Заявка', approved: 'Согласов.', received: 'Получено', reporting: 'Отчёт', closed: 'Закрыто' };
+
   let currentRequests = [];
   let currentSummary = [];
-  let currentFilter = { status: '' };
+  let currentFilter = { status: '', type: '' };
   let activeTab = 'requests';
 
   function statusCssClass(status) {
@@ -40,14 +44,72 @@ window.CashAdminPage = (function() {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────────────────────────
+  function fmtMoney(val) {
+    const num = parseFloat(val) || 0;
+    return num.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' \u20BD';
+  }
+
+  function fmtDate(val) {
+    if (!val) return '-';
+    return new Date(val).toLocaleDateString('ru-RU');
+  }
+
+  function fmtDateTime(val) {
+    if (!val) return '-';
+    return new Date(val).toLocaleString('ru-RU');
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // PROGRESS STEPS
+  // ─────────────────────────────────────────────────────────────────
+  function renderProgressSteps(r) {
+    const isLoan = r.type === 'loan';
+    const steps = isLoan ? LOAN_STEPS : ADVANCE_STEPS;
+    const currentStep = steps.indexOf(r.status);
+    const isRejected = r.status === 'rejected';
+    const isQuestion = r.status === 'question';
+
+    if (isRejected) {
+      return `<div class="cash-steps">${steps.map((s, i) => {
+        return `<div class="cash-step rejected"><div class="cash-step-dot"></div><div class="cash-step-label">${STEP_LABELS[s]}</div></div>`;
+      }).join('')}</div>`;
+    }
+
+    if (isQuestion) {
+      // Show steps up to current position but mark current as question
+      return `<div class="cash-steps">${steps.map((s, i) => {
+        let cls = 'cash-step';
+        if (i < currentStep) cls += ' done';
+        else if (i === currentStep) cls += ' active';
+        return `<div class="${cls}"><div class="cash-step-dot"></div><div class="cash-step-label">${STEP_LABELS[s]}</div></div>`;
+      }).join('')}</div>`;
+    }
+
+    return `<div class="cash-steps">${steps.map((s, i) => {
+      let cls = 'cash-step';
+      if (i < currentStep) cls += ' done';
+      else if (i === currentStep) cls += ' active';
+      return `<div class="${cls}"><div class="cash-step-dot"></div><div class="cash-step-label">${STEP_LABELS[s]}</div></div>`;
+    }).join('')}</div>`;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // RENDER PAGE
   // ─────────────────────────────────────────────────────────────────
   async function render(container) {
     container.innerHTML = `
       <div class="page-header">
-        <h1>Касса (управление)</h1>
+        <h1>Казна — Управление</h1>
         <p style="color:var(--text-muted); font-size:var(--text-sm); margin:0">Согласование и контроль авансовых отчётов</p>
       </div>
+
+      <div id="cash-admin-kpi" style="margin-bottom:24px"></div>
+
+      <div id="cash-admin-pending-section" style="margin-bottom:24px"></div>
+
+      <div id="cash-admin-pending-returns-section" style="margin-bottom:24px"></div>
 
       <div class="cash-tabs">
         <button class="cash-tab active" id="tab-btn-requests" onclick="CashAdminPage.switchTab('requests')">Заявки</button>
@@ -58,7 +120,12 @@ window.CashAdminPage = (function() {
         <div class="cash-card">
           <div class="cash-card-header">
             <span class="card-title">Все заявки</span>
-            <div class="cash-filter-bar">
+            <div class="cash-filter-bar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select id="cashAdminFilterType" onchange="CashAdminPage.onFilterChange()" style="padding:8px 12px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); font-family:var(--font-sans); font-size:var(--text-sm); min-width:140px;">
+                <option value="">Все типы</option>
+                <option value="advance">Аванс</option>
+                <option value="loan">Долг до ЗП</option>
+              </select>
               <select id="cashAdminFilter" onchange="CashAdminPage.onFilterChange()" style="padding:8px 12px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); font-family:var(--font-sans); font-size:var(--text-sm); min-width:180px;">
                 <option value="">Все статусы</option>
                 <option value="requested">Ожидают согласования</option>
@@ -107,6 +174,134 @@ window.CashAdminPage = (function() {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // KPI CARDS
+  // ─────────────────────────────────────────────────────────────────
+  function renderKPI() {
+    const kpiContainer = document.getElementById('cash-admin-kpi');
+    if (!kpiContainer) return;
+
+    const pendingCount = currentRequests.filter(r => r.status === 'requested').length;
+    const activeCount = currentRequests.filter(r => !['closed', 'rejected'].includes(r.status)).length;
+    const totalBalance = currentSummary.reduce((sum, s) => sum + (parseFloat(s.balance) || 0), 0);
+
+    kpiContainer.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">
+        <div style="background:var(--bg-surface);border:1px solid ${pendingCount > 0 ? 'var(--danger)' : 'var(--border)'};border-radius:var(--radius-md);padding:20px;text-align:center;${pendingCount > 0 ? 'box-shadow:0 0 12px rgba(239,68,68,0.15)' : ''}">
+          <div style="font-size:32px;font-weight:800;color:${pendingCount > 0 ? 'var(--danger)' : 'var(--text-primary)'}">${pendingCount}</div>
+          <div style="font-size:var(--text-sm);color:var(--text-muted);margin-top:4px">\u26A1 Ожидают решения</div>
+        </div>
+        <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;text-align:center">
+          <div style="font-size:32px;font-weight:800;color:var(--info)">${activeCount}</div>
+          <div style="font-size:var(--text-sm);color:var(--text-muted);margin-top:4px">Активных заявок</div>
+        </div>
+        <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;text-align:center">
+          <div style="font-size:32px;font-weight:800;color:${totalBalance > 0 ? 'var(--warning)' : 'var(--success)'}">${fmtMoney(totalBalance)}</div>
+          <div style="font-size:var(--text-sm);color:var(--text-muted);margin-top:4px">На руках у РП</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // PENDING DECISIONS SECTION
+  // ─────────────────────────────────────────────────────────────────
+  function renderPendingSection() {
+    const container = document.getElementById('cash-admin-pending-section');
+    if (!container) return;
+
+    const pending = currentRequests.filter(r => r.status === 'requested');
+    if (!pending.length) {
+      container.innerHTML = '';
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="background:var(--bg-surface);border:1px solid var(--danger);border-radius:var(--radius-md);padding:20px;border-left:4px solid var(--danger)">
+        <div style="font-size:var(--text-lg);font-weight:700;color:var(--danger);margin-bottom:16px">\u26A1 ТРЕБУЮТ РЕШЕНИЯ</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+          ${pending.map(r => renderPendingCard(r)).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderPendingCard(r) {
+    const isLoan = r.type === 'loan';
+    const typeColor = isLoan ? 'var(--warning)' : 'var(--info)';
+    const typeIcon = isLoan ? '\uD83E\uDE99' : '\uD83D\uDCCB';
+    const projectName = r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные средства' : '-'));
+
+    return `
+      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;cursor:pointer" onclick="CashAdminPage.showDetail(${r.id})">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div>
+            <div style="font-weight:700;color:var(--text-primary)">${esc(r.user_name)}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${esc(r.user_role || '')}</div>
+          </div>
+          <div style="font-size:var(--text-xs);color:var(--text-muted)">${fmtDate(r.created_at)}</div>
+        </div>
+        <div style="margin-bottom:8px">
+          <span style="color:${typeColor};font-weight:600;font-size:var(--text-sm)">${typeIcon} ${esc(TYPE_LABELS[r.type] || r.type)}</span>
+          ${projectName !== '-' ? `<span style="color:var(--text-muted);font-size:var(--text-sm)"> — ${esc(projectName)}</span>` : ''}
+        </div>
+        <div style="font-size:var(--text-xl);font-weight:800;color:var(--gold);margin-bottom:12px">${fmtMoney(r.amount)}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
+          <button class="btn green mini" onclick="CashAdminPage.approve(${r.id})">&#10003; Согласовать</button>
+          <button class="btn red mini" onclick="CashAdminPage.showRejectModal(${r.id})">&#10007; Отклонить</button>
+          <button class="btn amber mini" onclick="CashAdminPage.showQuestionModal(${r.id})">? Вопрос</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // PENDING RETURNS SECTION
+  // ─────────────────────────────────────────────────────────────────
+  function renderPendingReturns() {
+    const container = document.getElementById('cash-admin-pending-returns-section');
+    if (!container) return;
+
+    // Collect requests that have unconfirmed returns
+    const withPendingReturns = currentRequests.filter(r =>
+      r.returns && r.returns.some(ret => !ret.confirmed_at)
+    );
+
+    if (!withPendingReturns.length) {
+      container.innerHTML = '';
+      return;
+    }
+
+    let cardsHtml = '';
+    withPendingReturns.forEach(r => {
+      const pendingRets = r.returns.filter(ret => !ret.confirmed_at);
+      pendingRets.forEach(ret => {
+        cardsHtml += `
+          <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+            <div>
+              <div style="font-weight:700;color:var(--text-primary)">${esc(r.user_name)}</div>
+              <div style="font-size:var(--text-sm);color:var(--text-muted)">Заявка #${r.id} — ${fmtDateTime(ret.created_at)}</div>
+              ${ret.note ? `<div style="font-size:var(--text-sm);color:var(--text-muted);margin-top:4px">${esc(ret.note)}</div>` : ''}
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-size:var(--text-lg);font-weight:700;color:var(--gold)">${fmtMoney(ret.amount)}</span>
+              <button class="btn green mini" onclick="CashAdminPage.confirmReturn(${r.id}, ${ret.id})">Подтвердить</button>
+            </div>
+          </div>
+        `;
+      });
+    });
+
+    container.innerHTML = `
+      <div style="background:var(--bg-surface);border:1px solid var(--warning);border-radius:var(--radius-md);padding:20px;border-left:4px solid var(--warning)">
+        <div style="font-size:var(--text-lg);font-weight:700;color:var(--warning);margin-bottom:16px">\uD83D\uDCE5 ОЖИДАЮТ ПОДТВЕРЖДЕНИЯ ВОЗВРАТОВ</div>
+        <div style="display:grid;gap:12px">
+          ${cardsHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // API
   // ─────────────────────────────────────────────────────────────────
   function getHeaders() {
@@ -120,17 +315,20 @@ window.CashAdminPage = (function() {
   async function loadRequests() {
     try {
       let url = '/api/cash/all';
-      if (currentFilter.status) {
-        url += '?status=' + currentFilter.status;
-      }
+      const params = [];
+      if (currentFilter.status) params.push('status=' + currentFilter.status);
+      if (params.length) url += '?' + params.join('&');
 
       const resp = await fetch(url, { headers: getHeaders() });
       currentRequests = await resp.json();
+      renderKPI();
+      renderPendingSection();
+      renderPendingReturns();
       renderRequestsList();
     } catch (e) {
       console.error('loadRequests error', e);
-      document.getElementById('cash-admin-requests-list').innerHTML =
-        '<div style="text-align:center; padding:24px; color:var(--danger)">Ошибка загрузки</div>';
+      const el = document.getElementById('cash-admin-requests-list');
+      if (el) el.innerHTML = '<div style="text-align:center; padding:24px; color:var(--danger)">Ошибка загрузки</div>';
     }
   }
 
@@ -138,85 +336,137 @@ window.CashAdminPage = (function() {
     try {
       const resp = await fetch('/api/cash/summary', { headers: getHeaders() });
       currentSummary = await resp.json();
+      renderKPI();
       renderSummary();
     } catch (e) {
       console.error('loadSummary error', e);
-      document.getElementById('cash-admin-summary').innerHTML =
-        '<div style="text-align:center; padding:24px; color:var(--danger)">Ошибка загрузки</div>';
+      const el = document.getElementById('cash-admin-summary');
+      if (el) el.innerHTML = '<div style="text-align:center; padding:24px; color:var(--danger)">Ошибка загрузки</div>';
     }
   }
 
   function onFilterChange() {
-    currentFilter.status = document.getElementById('cashAdminFilter').value;
+    const statusEl = document.getElementById('cashAdminFilter');
+    const typeEl = document.getElementById('cashAdminFilterType');
+    if (statusEl) currentFilter.status = statusEl.value;
+    if (typeEl) currentFilter.type = typeEl.value;
     loadRequests();
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  // CARD RENDERING — REQUESTS LIST
+  // ─────────────────────────────────────────────────────────────────
   function renderRequestsList() {
     const container = document.getElementById('cash-admin-requests-list');
+    if (!container) return;
 
-    if (!currentRequests.length) {
-      container.innerHTML = AsgardUI.emptyState({ icon: '💰', title: 'Нет заявок', desc: 'Заявки появятся здесь' });
+    let filtered = currentRequests;
+    if (currentFilter.type) {
+      filtered = filtered.filter(r => r.type === currentFilter.type);
+    }
+
+    if (!filtered.length) {
+      container.innerHTML = AsgardUI.emptyState({ icon: '\uD83D\uDCB0', title: 'Нет заявок', desc: 'Заявки появятся здесь' });
       return;
     }
 
-    container.innerHTML = `
-      <div style="overflow-x:auto">
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Сотрудник</th>
-              <th>Тип</th>
-              <th>Проект</th>
-              <th>Сумма</th>
-              <th>Статус</th>
-              <th>Баланс</th>
-              <th>Дата</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${currentRequests.map(r => {
-              const isLoan = r.type === 'loan';
-              const balanceVal = r.balance ? r.balance.remainder : 0;
-              const balanceDisplay = isLoan && balanceVal > 0 ? `-${formatMoney(balanceVal)}` : formatMoney(balanceVal);
-              const balanceColor = isLoan ? (balanceVal > 0 ? 'var(--danger)' : 'var(--success)') : (balanceVal > 0 ? 'var(--warning)' : 'var(--success)');
-              const isUrgent = r.status === 'requested';
+    const active = filtered.filter(r => !['closed', 'rejected'].includes(r.status));
+    const done = filtered.filter(r => ['closed', 'rejected'].includes(r.status));
 
-              return `
-              <tr onclick="CashAdminPage.showDetail(${r.id})" style="cursor:pointer;${isUrgent ? 'border-left:3px solid var(--warning)' : ''}">
-                <td>${r.id}</td>
-                <td><strong>${esc(r.user_name)}</strong><br><span style="font-size:11px;color:var(--text-muted)">${esc(r.user_role)}</span></td>
-                <td><span class="status status-${TYPE_COLORS[r.type] === 'info' ? 'blue' : 'yellow'}">${esc(TYPE_LABELS[r.type] || r.type)}</span></td>
-                <td>${esc(r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные' : '-')))}</td>
-                <td><strong>${formatMoney(r.amount)}</strong></td>
-                <td><span class="status status-${statusCssClass(r.status)}">${esc(STATUS_LABELS[r.status])}</span></td>
-                <td><span style="color:${balanceColor};font-weight:600">${r.balance ? balanceDisplay : '-'}</span></td>
-                <td>${formatDate(r.created_at)}</td>
-                <td>
-                  <button class="btn ghost mini" onclick="event.stopPropagation(); CashAdminPage.showDetail(${r.id})">Открыть</button>
-                </td>
-              </tr>
-            `;}).join('')}
-          </tbody>
-        </table>
+    let html = '';
+    if (active.length) {
+      html += `<div class="cash-section-title" style="margin-top:0">Активные заявки</div>`;
+      html += `<div class="cash-cards-grid">${active.map(r => renderAdminCard(r)).join('')}</div>`;
+    }
+    if (done.length) {
+      html += `<div class="cash-section-title">Завершённые</div>`;
+      html += `<div class="cash-cards-grid">${done.map(r => renderAdminCard(r)).join('')}</div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function renderAdminCard(r) {
+    const isLoan = r.type === 'loan';
+    const typeColor = isLoan ? 'var(--warning)' : 'var(--info)';
+    const typeIcon = isLoan ? '\uD83E\uDE99' : '\uD83D\uDCCB';
+    const projectName = r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные средства' : ''));
+    const balanceVal = r.balance ? r.balance.remainder : 0;
+    const isRejected = r.status === 'rejected';
+    const isQuestion = r.status === 'question';
+
+    // Progress steps
+    let stepsHtml = '';
+    if (!isRejected && !isQuestion) {
+      stepsHtml = renderProgressSteps(r);
+    } else if (isRejected) {
+      stepsHtml = `<div class="cash-card-rejected">Отклонено${r.director_comment ? ': ' + esc(r.director_comment) : ''}</div>`;
+    } else if (isQuestion) {
+      stepsHtml = `<div class="cash-card-question">Вопрос от директора${r.director_comment ? ': ' + esc(r.director_comment) : ''}</div>`;
+    }
+
+    // Balance display
+    let balanceHtml = '';
+    if (r.balance && !isRejected) {
+      if (isLoan) {
+        balanceHtml = balanceVal > 0
+          ? `<span style="color:var(--danger);font-weight:700">Долг: ${fmtMoney(balanceVal)}</span>`
+          : `<span style="color:var(--success);font-weight:600">Погашен</span>`;
+      } else {
+        const pct = r.balance.approved > 0 ? Math.round(r.balance.spent / r.balance.approved * 100) : 0;
+        balanceHtml = `
+          <div class="cash-card-balance-bar">
+            <div class="cash-card-balance-fill" style="width:${Math.min(pct, 100)}%"></div>
+          </div>
+          <div class="cash-card-balance-info">
+            <span>Израсходовано ${pct}%</span>
+            <span style="font-weight:600">Ост. ${fmtMoney(balanceVal)}</span>
+          </div>
+        `;
+      }
+    }
+
+    return `
+      <div class="cash-req-card ${isRejected ? 'rejected' : ''} ${isQuestion ? 'question' : ''}" onclick="CashAdminPage.showDetail(${r.id})">
+        <div class="cash-card-top">
+          <div>
+            <div style="font-weight:700;color:var(--text-primary)">${esc(r.user_name)}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${esc(r.user_role || '')}</div>
+          </div>
+          <div class="cash-card-date">${fmtDate(r.created_at)}</div>
+        </div>
+
+        <div style="margin:6px 0">
+          <span style="color:${typeColor};font-weight:600;font-size:var(--text-sm)">${typeIcon} ${esc(TYPE_LABELS[r.type] || r.type)}</span>
+          ${projectName ? `<span style="color:var(--text-muted);font-size:var(--text-sm)"> — ${esc(projectName)}</span>` : ''}
+        </div>
+
+        <div class="cash-card-amount">${fmtMoney(r.amount)}</div>
+
+        ${stepsHtml}
+
+        ${balanceHtml ? `<div class="cash-card-balance">${balanceHtml}</div>` : ''}
       </div>
     `;
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  // SUMMARY RENDERING
+  // ─────────────────────────────────────────────────────────────────
   function renderSummary() {
     const container = document.getElementById('cash-admin-summary');
+    if (!container) return;
 
     if (!currentSummary.length) {
-      container.innerHTML = AsgardUI.emptyState({ icon: '📊', title: 'Нет данных', desc: 'Сводка будет доступна после создания заявок' });
+      container.innerHTML = AsgardUI.emptyState({ icon: '\uD83D\uDCCA', title: 'Нет данных', desc: 'Сводка будет доступна после создания заявок' });
       return;
     }
 
     const totals = currentSummary.reduce((acc, r) => {
-      acc.issued += r.total_issued;
-      acc.spent += r.total_spent;
-      acc.returned += r.total_returned;
-      acc.balance += r.balance;
+      acc.issued += parseFloat(r.total_issued) || 0;
+      acc.spent += parseFloat(r.total_spent) || 0;
+      acc.returned += parseFloat(r.total_returned) || 0;
+      acc.balance += parseFloat(r.balance) || 0;
       return acc;
     }, { issued: 0, spent: 0, returned: 0, balance: 0 });
 
@@ -238,20 +488,20 @@ window.CashAdminPage = (function() {
               <tr>
                 <td><strong>${esc(r.user_name)}</strong></td>
                 <td><span class="status status-blue">${esc(r.user_role)}</span></td>
-                <td style="text-align:right">${formatMoney(r.total_issued)}</td>
-                <td style="text-align:right">${formatMoney(r.total_spent)}</td>
-                <td style="text-align:right">${formatMoney(r.total_returned)}</td>
-                <td style="text-align:right;${r.balance > 0 ? 'color:var(--danger);font-weight:700' : ''}">${formatMoney(r.balance)}</td>
+                <td style="text-align:right">${fmtMoney(r.total_issued)}</td>
+                <td style="text-align:right">${fmtMoney(r.total_spent)}</td>
+                <td style="text-align:right">${fmtMoney(r.total_returned)}</td>
+                <td style="text-align:right;${parseFloat(r.balance) > 0 ? 'color:var(--danger);font-weight:700' : ''}">${fmtMoney(r.balance)}</td>
               </tr>
             `).join('')}
           </tbody>
           <tfoot>
             <tr style="background:var(--bg-elevated); font-weight:700">
               <td colspan="2">ИТОГО</td>
-              <td style="text-align:right">${formatMoney(totals.issued)}</td>
-              <td style="text-align:right">${formatMoney(totals.spent)}</td>
-              <td style="text-align:right">${formatMoney(totals.returned)}</td>
-              <td style="text-align:right;${totals.balance > 0 ? 'color:var(--danger)' : ''}">${formatMoney(totals.balance)}</td>
+              <td style="text-align:right">${fmtMoney(totals.issued)}</td>
+              <td style="text-align:right">${fmtMoney(totals.spent)}</td>
+              <td style="text-align:right">${fmtMoney(totals.returned)}</td>
+              <td style="text-align:right;${totals.balance > 0 ? 'color:var(--danger)' : ''}">${fmtMoney(totals.balance)}</td>
             </tr>
           </tfoot>
         </table>
@@ -285,24 +535,28 @@ window.CashAdminPage = (function() {
     const canReject = ['requested', 'approved'].includes(req.status);
     const canQuestion = ['requested', 'received', 'reporting'].includes(req.status);
     const canClose = ['received', 'reporting'].includes(req.status);
+    const isLoan = req.type === 'loan';
 
+    // Progress steps at top
     let html = `
+      <div style="margin-bottom:20px">${renderProgressSteps(req)}</div>
+
       <div class="cash-detail-grid">
         <div>
           <div class="cash-detail-item"><span class="label">Сотрудник</span><span class="value">${esc(req.user_name)} (${esc(req.user_role)})</span></div>
           <div class="cash-detail-item" style="margin-top:12px"><span class="label">Тип</span><span class="value"><span class="status status-${TYPE_COLORS[req.type] === 'info' ? 'blue' : 'yellow'}">${esc(TYPE_LABELS[req.type] || req.type)}</span></span></div>
           <div class="cash-detail-item" style="margin-top:12px"><span class="label">Проект</span><span class="value">${esc(req.work_title || (req.work_id ? '#' + req.work_id : '-'))}</span></div>
-          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Сумма</span><span class="value" style="font-size:var(--text-lg);color:var(--gold)">${formatMoney(req.amount)}</span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Сумма</span><span class="value" style="font-size:var(--text-lg);color:var(--gold)">${fmtMoney(req.amount)}</span></div>
           <div class="cash-detail-item" style="margin-top:12px"><span class="label">Цель</span><span class="value">${esc(req.purpose)}</span></div>
           ${req.cover_letter ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Письмо</span><span class="value">${esc(req.cover_letter)}</span></div>` : ''}
         </div>
         <div>
           <div class="cash-detail-item"><span class="label">Статус</span><span class="value"><span class="status status-${statusCssClass(req.status)}">${esc(STATUS_LABELS[req.status])}</span></span></div>
-          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Создано</span><span class="value">${formatDateTime(req.created_at)}</span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Создано</span><span class="value">${fmtDateTime(req.created_at)}</span></div>
           ${req.director_name ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Директор</span><span class="value">${esc(req.director_name)}</span></div>` : ''}
           ${req.director_comment ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Комментарий</span><span class="value">${esc(req.director_comment)}</span></div>` : ''}
-          ${req.received_at ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Получено</span><span class="value">${formatDateTime(req.received_at)}</span></div>` : ''}
-          ${req.closed_at ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Закрыто</span><span class="value">${formatDateTime(req.closed_at)}</span></div>` : ''}
+          ${req.received_at ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Получено</span><span class="value">${fmtDateTime(req.received_at)}</span></div>` : ''}
+          ${req.closed_at ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Закрыто</span><span class="value">${fmtDateTime(req.closed_at)}</span></div>` : ''}
         </div>
       </div>
     `;
@@ -311,10 +565,10 @@ window.CashAdminPage = (function() {
       const alertType = req.balance.remainder > 0 ? 'warning' : 'success';
       html += `<div class="cash-alert ${alertType}">
         <strong>Баланс:</strong>
-        Выдано: ${formatMoney(req.balance.approved)} |
-        Потрачено: ${formatMoney(req.balance.spent)} |
-        Возвращено: ${formatMoney(req.balance.returned)} |
-        <strong>Остаток: ${formatMoney(req.balance.remainder)}</strong>
+        Выдано: ${fmtMoney(req.balance.approved)} |
+        Потрачено: ${fmtMoney(req.balance.spent)} |
+        Возвращено: ${fmtMoney(req.balance.returned)} |
+        <strong>Остаток: ${fmtMoney(req.balance.remainder)}</strong>
       </div>`;
     }
 
@@ -338,9 +592,9 @@ window.CashAdminPage = (function() {
             <tbody>
               ${req.expenses.map(e => `
                 <tr>
-                  <td>${formatDate(e.expense_date)}</td>
+                  <td>${fmtDate(e.expense_date)}</td>
                   <td>${esc(e.description)}</td>
-                  <td>${formatMoney(e.amount)}</td>
+                  <td>${fmtMoney(e.amount)}</td>
                   <td>${e.receipt_file ? `<a href="/api/cash/${req.id}/receipt/${e.receipt_file}" target="_blank" style="color:var(--gold)">${esc(e.receipt_original_name || 'Чек')}</a>` : '-'}</td>
                 </tr>
               `).join('')}
@@ -358,10 +612,10 @@ window.CashAdminPage = (function() {
             <tbody>
               ${req.returns.map(r => `
                 <tr>
-                  <td>${formatDateTime(r.created_at)}</td>
-                  <td>${formatMoney(r.amount)}</td>
+                  <td>${fmtDateTime(r.created_at)}</td>
+                  <td>${fmtMoney(r.amount)}</td>
                   <td>${esc(r.note || '-')}</td>
-                  <td>${r.confirmed_at ? `<span class="status status-green">Подтверждено ${formatDateTime(r.confirmed_at)}</span>` : '<span class="status status-yellow">Ожидает</span>'}</td>
+                  <td>${r.confirmed_at ? `<span class="status status-green">Подтверждено ${fmtDateTime(r.confirmed_at)}</span>` : '<span class="status status-yellow">Ожидает</span>'}</td>
                   <td>${!r.confirmed_at ? `<button class="btn green mini" onclick="CashAdminPage.confirmReturn(${req.id}, ${r.id})">Подтвердить</button>` : ''}</td>
                 </tr>
               `).join('')}
@@ -376,7 +630,7 @@ window.CashAdminPage = (function() {
         <div class="cash-messages">
           ${req.messages.map(m => `
             <div class="cash-message">
-              <div class="meta">${formatDateTime(m.created_at)} — ${esc(m.user_name)} (${esc(m.user_role)})</div>
+              <div class="meta">${fmtDateTime(m.created_at)} — ${esc(m.user_name)} (${esc(m.user_role)})</div>
               <div class="text">${esc(m.message)}</div>
             </div>
           `).join('')}
@@ -403,7 +657,6 @@ window.CashAdminPage = (function() {
         throw new Error(err.error || 'Ошибка');
       }
       toast('Заявка согласована', '', 'ok');
-      await showDetail(id);
       await loadRequests();
     } catch (e) {
       toast('Ошибка', e.message, 'err');
@@ -511,7 +764,7 @@ window.CashAdminPage = (function() {
           <form id="cashCloseForm">
             <input type="hidden" name="request_id" value="${id}">
             <input type="hidden" name="has_remainder" value="${remainder > 0 ? '1' : '0'}">
-            ${remainder > 0 ? `<div class="cash-alert warning" style="margin-bottom:16px">Остаток: <strong>${formatMoney(remainder)}</strong> — заявка будет закрыта принудительно.</div>` : ''}
+            ${remainder > 0 ? `<div class="cash-alert warning" style="margin-bottom:16px">Остаток: <strong>${fmtMoney(remainder)}</strong> — заявка будет закрыта принудительно.</div>` : ''}
             <div class="asg-form-group">
               <label>Комментарий (опционально)</label>
               <textarea name="comment" rows="2" placeholder="Дополнительная информация"></textarea>
@@ -564,30 +817,11 @@ window.CashAdminPage = (function() {
         throw new Error(err.error || 'Ошибка');
       }
       toast('Возврат подтверждён', '', 'ok');
-      await showDetail(requestId);
       await loadRequests();
       await loadSummary();
     } catch (e) {
       toast('Ошибка', e.message, 'err');
     }
-  }
-
-  // ─────────────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────────────
-  function formatMoney(val) {
-    const num = parseFloat(val) || 0;
-    return num.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' \u20BD';
-  }
-
-  function formatDate(val) {
-    if (!val) return '-';
-    return new Date(val).toLocaleDateString('ru-RU');
-  }
-
-  function formatDateTime(val) {
-    if (!val) return '-';
-    return new Date(val).toLocaleString('ru-RU');
   }
 
   // ─────────────────────────────────────────────────────────────────

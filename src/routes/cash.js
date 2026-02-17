@@ -575,6 +575,7 @@ module.exports = async function(fastify) {
     const amount = parseFloat(fields.amount);
     const description = fields.description;
     const expense_date = fields.expense_date || null;
+    const category = fields.category || 'other';
 
     if (!amount || amount <= 0) {
       return reply.code(400).send({ error: 'Сумма должна быть больше 0' });
@@ -595,10 +596,10 @@ module.exports = async function(fastify) {
 
     // Записываем в БД
     const { rows } = await db.query(`
-      INSERT INTO cash_expenses (request_id, amount, description, receipt_file, receipt_original_name, expense_date)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO cash_expenses (request_id, amount, description, category, receipt_file, receipt_original_name, expense_date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
-    `, [id, amount, description.trim(), filename, data.filename, expense_date]);
+    `, [id, amount, description.trim(), category, filename, data.filename, expense_date]);
 
     // Переводим в reporting если был received
     if (check.rows[0].status === 'received') {
