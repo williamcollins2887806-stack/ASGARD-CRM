@@ -22,7 +22,7 @@ const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '60000', 10); // 60 
 
 // API endpoints
 const ANTHROPIC_URL = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
-const OPENAI_URL = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
+let OPENAI_URL = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
 
 // DB settings cache
 let _dbKeysLoaded = false;
@@ -53,6 +53,10 @@ async function _loadKeysFromDB() {
       if (cfg.provider) AI_PROVIDER = cfg.provider;
       if (cfg.anthropic_model) ANTHROPIC_MODEL = cfg.anthropic_model;
       if (cfg.openai_model) OPENAI_MODEL = cfg.openai_model;
+      if (cfg.openai_url) {
+        OPENAI_URL = cfg.openai_url;
+        console.log('[AI Provider] Custom OpenAI URL:', OPENAI_URL);
+      }
     }
   } catch (e) {
     // settings table may not have ai_config key yet — that's fine
