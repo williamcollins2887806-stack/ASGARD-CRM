@@ -279,11 +279,9 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/engineer-dashboard",l:"Кузница Инженера",d:"Склад, оборудование, ТО",roles:["ADMIN","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"backup",p:"engineer_dashboard",g:"analytics"},
     {r:"/object-map",l:"Карта объектов",d:"География работ",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"kpiworks",p:"object_map",g:"analytics"},
 
-    // Фаза 8: Почта
-    {r:"/mailbox",l:"Почтовый ящик",d:"Входящие / исходящие письма",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"workers",p:"mailbox",g:"comm"},
+    // Фаза 8+9: Почта + AI-анализ заявок (объединено)
+    {r:"/mailbox",l:"Почта и заявки",d:"Входящие / исходящие + AI-анализ",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"workers",p:"mailbox",g:"comm"},
     {r:"/mail-settings",l:"Настройки почты",d:"Аккаунты, правила, шаблоны",roles:["ADMIN","DIRECTOR_GEN"],i:"backup",p:"mail_settings",g:"comm"},
-    // Фаза 9: AI-анализ входящих заявок
-    {r:"/inbox-applications",l:"Входящие заявки (AI)",d:"AI-анализ и классификация писем",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"],i:"alerts",p:"inbox_applications",g:"comm"},
 
     // Фаза 10: Интеграции
     {r:"/integrations",l:"Интеграции",d:"Банк/1С, Тендерные площадки, ERP",roles:["ADMIN","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO","TO"],i:"backup",p:"integrations",g:"comm"},

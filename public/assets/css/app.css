@@ -5574,10 +5574,11 @@ td, th { word-break: break-word; }
    BUG-8: Mobile modal adaptation
    ───────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .modalback, .modal-overlay { padding: 0; align-items: stretch; }
+  .modalback, .modal-overlay { padding: 8px; align-items: flex-start; }
   .modal, .modal-content {
-    width: 100vw; max-width: 100vw;
-    max-height: 100vh; border-radius: 0;
+    width: 100%; max-width: 100%;
+    max-height: calc(100vh - 16px); border-radius: 8px;
+    overflow-y: auto;
   }
   .tasks-page { grid-template-columns: 1fr !important; }
 }

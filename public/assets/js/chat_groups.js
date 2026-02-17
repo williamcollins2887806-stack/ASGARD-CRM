@@ -668,7 +668,7 @@ window.AsgardChatGroups = (function(){
     const activeUsers = users.filter(u => u.is_active && u.id !== myId);
 
     const html = `
-      <div style="min-width: 420px; max-width: 520px;">
+      <div style="min-width: min(420px, calc(100vw - 32px)); max-width: min(520px, calc(100vw - 32px));">
         <div style="display:flex;gap:10px;margin-bottom:20px;">
           <button class="btn primary" id="tabDirect" onclick="document.getElementById('directPanel').style.display='';document.getElementById('groupPanel').style.display='none';this.classList.add('primary');document.getElementById('tabGroup').classList.remove('primary')">
             Личное сообщение
@@ -804,7 +804,7 @@ window.AsgardChatGroups = (function(){
     const activeUsers = users.filter(u => u.is_active);
 
     const html = `
-      <div style="min-width: 420px; max-width: 520px;">
+      <div style="min-width: min(420px, calc(100vw - 32px)); max-width: min(520px, calc(100vw - 32px));">
         <div class="form-group">
           <label>Название чата *</label>
           <input type="text" id="new-chat-name" class="input" placeholder="Например: Проект Альфа" autofocus>
@@ -918,7 +918,7 @@ window.AsgardChatGroups = (function(){
     ` : '';
 
     const html = `
-      <div style="min-width: 380px;">
+      <div style="min-width: min(380px, calc(100vw - 32px));">
         <div style="max-height: 350px; overflow-y: auto;">
           ${membersHtml}
         </div>
@@ -967,7 +967,7 @@ window.AsgardChatGroups = (function(){
 
   async function showSettingsModal(chatId) {
     const html = `
-      <div style="min-width: 320px;">
+      <div style="min-width: min(320px, calc(100vw - 32px));">
         <div class="form-group">
           <label>Уведомления</label>
           <div class="row" style="gap: 8px; flex-wrap: wrap;">

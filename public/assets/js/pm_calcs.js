@@ -88,13 +88,13 @@ window.AsgardPmCalcsPage = (function(){
     
     const html = `
       <style>
-        .qc-form{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+        .qc-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
         .qc-form>div{display:flex;flex-direction:column}
         .qc-form label{font-size:12px;color:var(--muted);margin-bottom:4px}
         .qc-form .full{grid-column:1/-1}
         .qc-section{background:var(--bg-card);border:none;border-radius:var(--radius-md);padding:16px;margin-bottom:16px}
         .qc-section h4{margin:0 0 12px;font-size:14px;color:var(--gold)}
-        .qc-kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+        .qc-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-top:16px}
         .qc-kpi .k{background:rgba(13,20,40,.5);border-radius:6px;padding:12px;text-align:center}
         .qc-kpi .k .t{font-size:11px;color:var(--muted)}
         .qc-kpi .k .v{font-size:18px;font-weight:700;color:var(--gold)}

@@ -127,10 +127,11 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 
 // ── Извлечение текста из вложений для классификации ──────────────────
 
-const MAX_EXTRACT_PER_FILE = 3000;
+const MAX_EXTRACT_PER_FILE = 15000; // For classification (short analysis)
+const MAX_EXTRACT_PER_FILE_REPORT = 100000; // For reports — full TZ documents (50+ pages)
 const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
-async function extractAttachmentTexts(emailId) {
+async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FILE } = {}) {
   if (!emailId) return { texts: [], imageBlocks: [] };
   try {
     const attRes = await db.query(
@@ -143,9 +144,10 @@ async function extractAttachmentTexts(emailId) {
     const imageBlocks = [];
 
     for (const a of attRes.rows) {
-      if (!a.file_path) continue;
+      if (!a.file_path) { console.log(`[AI-Analyzer] No file_path for attachment: ${a.original_filename}`); continue; }
       const absPath = path.join(__dirname, '..', '..', a.file_path);
-      if (!fs.existsSync(absPath)) continue;
+      if (!fs.existsSync(absPath)) { console.log(`[AI-Analyzer] File not found: ${absPath} (original: ${a.original_filename})`); continue; }
+      console.log(`[AI-Analyzer] Extracting: ${a.original_filename} (${a.mime_type}) from ${absPath}`);
 
       // Изображения — готовим для Vision
       if (IMAGE_MIMES.includes(a.mime_type) && imageBlocks.length < 3) {
@@ -183,7 +185,7 @@ async function extractAttachmentTexts(emailId) {
               if (vals.length) lines.push(vals.join(' | '));
             });
           });
-          if (lines.length) texts.push(`[${a.original_filename}]\n${lines.join('\n').slice(0, MAX_EXTRACT_PER_FILE)}`);
+          if (lines.length) texts.push(`[${a.original_filename}]\n${lines.join('\n').slice(0, maxPerFile)}`);
         } catch (_) {}
         continue;
       }
@@ -194,7 +196,7 @@ async function extractAttachmentTexts(emailId) {
           const pdfParse = require('pdf-parse');
           const buf = fs.readFileSync(absPath);
           const result = await pdfParse(buf);
-          if (result.text) texts.push(`[${a.original_filename}]\n${result.text.slice(0, MAX_EXTRACT_PER_FILE)}`);
+          if (result.text) texts.push(`[${a.original_filename}]\n${result.text.slice(0, maxPerFile)}`);
         } catch (_) {}
         continue;
       }
@@ -205,7 +207,28 @@ async function extractAttachmentTexts(emailId) {
           const mammoth = require('mammoth');
           const buf = fs.readFileSync(absPath);
           const result = await mammoth.extractRawText({ buffer: buf });
-          if (result.value) texts.push(`[${a.original_filename}]\n${result.value.slice(0, MAX_EXTRACT_PER_FILE)}`);
+          if (result.value) texts.push(`[${a.original_filename}]\n${result.value.slice(0, maxPerFile)}`);
+        } catch (_) {}
+        continue;
+      }
+
+      // TXT, RTF, CSV and other text-based files
+      if (a.file_path.endsWith('.txt') || a.file_path.endsWith('.rtf') || a.file_path.endsWith('.csv')
+          || a.mime_type?.startsWith('text/') || a.mime_type === 'application/rtf') {
+        try {
+          const content = fs.readFileSync(absPath, 'utf-8');
+          if (content) texts.push(`[${a.original_filename}]\n${content.slice(0, maxPerFile)}`);
+        } catch (_) {}
+        continue;
+      }
+
+      // DOC (old Word format) — try reading as text
+      if (a.file_path.endsWith('.doc') || a.mime_type === 'application/msword') {
+        try {
+          const buf = fs.readFileSync(absPath);
+          // Extract readable text from binary DOC (basic approach)
+          const text = buf.toString('utf-8').replace(/[^\x20-\x7E\u0400-\u04FF\n\r\t]/g, ' ').replace(/\s{3,}/g, ' ').trim();
+          if (text.length > 50) texts.push(`[${a.original_filename}]\n${text.slice(0, maxPerFile)}`);
         } catch (_) {}
       }
     }
@@ -348,7 +371,7 @@ function buildAnalysisMessage({ subject, bodyText, fromEmail, fromName, attachme
 
   // Извлечённое содержимое вложений (PDF, DOCX, XLSX)
   if (attachmentTexts?.length) {
-    msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${attachmentTexts.join('\n\n').slice(0, 8000)}\n\n`;
+    msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${attachmentTexts.join('\n\n').slice(0, 20000)}\n\n`;
   }
 
   if (workload) {
@@ -486,23 +509,28 @@ async function logAnalysis({ entityType, entityId, analysisType, promptTokens, c
 const REPORT_SYSTEM_PROMPT = `Ты — AI-ассистент компании АСГАРД СЕРВИС (нефтегазовый сервис).
 Составь краткий деловой отчёт по входящему запросу.
 
+ВАЖНО: Отчёт должен быть КРАТКИМ — максимум 1-2 страницы (не более 3000 символов).
+Даже если вложения содержат 50+ страниц ТЗ — твоя задача ВЫДЕЛИТЬ ГЛАВНОЕ и изложить кратко.
+
 СТРУКТУРА ОТЧЁТА:
 1. Заказчик — название организации, контактное лицо
-2. Суть запроса — что хотят, какие работы
+2. Суть запроса — что хотят, какие работы (2-3 предложения)
 3. Объект — где нужно выполнить работы (город, предприятие, цех)
-4. Объём работ — что именно нужно сделать (перечень)
+4. Объём работ — КЛЮЧЕВЫЕ позиции из ТЗ (перечень основных работ, не больше 10-15 пунктов)
 5. Сроки — когда нужно, дедлайны
 6. Особые условия — допуски, требования безопасности, специфика
+7. Вложения — какие документы приложены, их суть в 1-2 предложениях
 
 НЕ ВКЛЮЧАЙ цены, стоимость, суммы.
+НЕ ПЕРЕПИСЫВАЙ всё ТЗ дословно — только ключевые пункты и суть.
 Пиши кратко, по делу, деловым языком.
 Если информации недостаточно — укажи "Данные отсутствуют" для соответствующего пункта.
 Отвечай простым текстом без markdown-форматирования.`;
 
 async function generateReport({ emailId, subject, bodyText, fromEmail, fromName, attachmentNames }) {
   try {
-    // Извлекаем содержимое вложений (PDF, DOCX, XLSX, изображения)
-    const { texts: attachmentTexts, imageBlocks } = await extractAttachmentTexts(emailId);
+    // Извлекаем содержимое вложений с БОЛЬШИМ лимитом для полного анализа ТЗ
+    const { texts: attachmentTexts, imageBlocks } = await extractAttachmentTexts(emailId, { maxPerFile: MAX_EXTRACT_PER_FILE_REPORT });
 
     let msg = `ВХОДЯЩЕЕ ПИСЬМО:\n`;
     msg += `От: ${fromName || 'Неизвестно'} <${fromEmail || '?'}>\n`;
@@ -520,10 +548,10 @@ async function generateReport({ emailId, subject, bodyText, fromEmail, fromName,
 
     // Включаем извлечённое содержимое вложений
     if (attachmentTexts?.length) {
-      msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ (ТЗ, спецификации, документы):\n${attachmentTexts.join('\n\n').slice(0, 10000)}\n\n`;
+      msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ (ТЗ, спецификации, документы):\n${attachmentTexts.join('\n\n').slice(0, 80000)}\n\n`;
     }
 
-    msg += 'Составь деловой отчёт по этому запросу. Обязательно используй данные из вложений (ТЗ, спецификации), если они есть.';
+    msg += 'Составь КРАТКИЙ деловой отчёт (1-2 страницы, не более 3000 символов) по этому запросу.\nОБЯЗАТЕЛЬНО прочитай и проанализируй ВСЕ вложения (ТЗ, спецификации). Выдели из них ключевые работы, объекты, сроки.\nНЕ переписывай ТЗ дословно — только суть и ключевые пункты.';
 
     // Формируем content: текст + (опционально) изображения
     const config = aiProvider.getConfig();
@@ -540,7 +568,7 @@ async function generateReport({ emailId, subject, bodyText, fromEmail, fromName,
     const response = await aiProvider.complete({
       system: REPORT_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: messageContent }],
-      maxTokens: 2048,
+      maxTokens: 4096,
       temperature: 0.3
     });
 

@@ -65,6 +65,39 @@ window.AsgardMailboxPage = (function(){
     return resp.json();
   }
 
+  // API helper for inbox applications
+  async function appApi(path, opts = {}) {
+    const auth = await AsgardAuth.getAuth();
+    const headers = { 'Authorization': 'Bearer ' + (auth?.token || '') };
+    if (opts.body) headers['Content-Type'] = 'application/json';
+    const resp = await fetch('/api/inbox-applications' + path, {
+      method: opts.method || 'GET',
+      headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    return resp.json();
+  }
+
+  // Color map for AI analysis
+  const AI_COLOR_MAP = {
+    green:  { bg: 'rgba(22,163,74,0.13)', border: '#16a34a', icon: '&#128994;', label: 'Наш профиль' },
+    yellow: { bg: 'rgba(234,179,8,0.13)', border: '#eab308', icon: '&#128993;', label: 'Требует оценки' },
+    red:    { bg: 'rgba(220,38,38,0.13)', border: '#dc2626', icon: '&#128308;', label: 'Не наш профиль' }
+  };
+
+  const AI_STATUS_MAP = {
+    new:           { label: 'Новая',          color: '#3b82f6' },
+    ai_processed:  { label: 'AI обработана',  color: '#8b5cf6' },
+    under_review:  { label: 'На рассмотрении', color: '#eab308' },
+    accepted:      { label: 'Принята',        color: '#16a34a' },
+    rejected:      { label: 'Отклонена',      color: '#dc2626' },
+    archived:      { label: 'Архив',          color: '#94a3b8' }
+  };
+
+  function money(n) {
+    return Math.round(Number(n || 0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' &#8381;';
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // RENDER — Main Layout
   // ═══════════════════════════════════════════════════════════════════
@@ -358,9 +391,21 @@ window.AsgardMailboxPage = (function(){
   // ═══════════════════════════════════════════════════════════════════
   // EMAIL DETAIL
   // ═══════════════════════════════════════════════════════════════════
+  // Close detail panel on mobile (back button)
+  function closeDetailMobile() {
+    const panel = document.getElementById('mail-detail-panel');
+    if (panel) panel.classList.remove('mail-detail-open');
+  }
+
   async function selectEmail(id) {
     state.selectedId = id;
     renderEmailList(); // highlight
+
+    // On mobile: show the detail panel as overlay
+    const panel = document.getElementById('mail-detail-panel');
+    if (panel && window.innerWidth <= 768) {
+      panel.classList.add('mail-detail-open');
+    }
 
     const detailEl = $('#mail-detail');
     if (!detailEl) return;
@@ -404,16 +449,101 @@ window.AsgardMailboxPage = (function(){
     const e = data.email;
     const attachments = data.attachments || [];
     const thread = data.thread || [];
+    const app = data.application || null;
     const t = EMAIL_TYPES[e.email_type] || EMAIL_TYPES.unknown;
     const date = e.email_date ? new Date(e.email_date).toLocaleString('ru-RU') : '';
 
     const toList = parseEmailList(e.to_emails);
     const ccList = parseEmailList(e.cc_emails);
 
+    // AI application section
+    const col = app ? (AI_COLOR_MAP[app.ai_color] || {}) : {};
+    const appSt = app ? (AI_STATUS_MAP[app.status] || AI_STATUS_MAP.new) : null;
+    const isInbound = e.direction === 'inbound';
+
+    let aiSectionHtml = '';
+    if (app && app.ai_summary) {
+      aiSectionHtml = `
+        <div style="padding:12px 24px;">
+          <!-- AI Status Badge -->
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+            <span style="padding:3px 10px; border-radius:6px; background:${appSt.color}22; color:${appSt.color}; font-size:12px; font-weight:700;">${esc(appSt.label)}</span>
+            ${col.icon ? '<span>' + col.icon + ' ' + esc(col.label || '') + '</span>' : ''}
+            <span style="color:var(--text-muted); font-size:11px;">Заявка #${app.id}</span>
+          </div>
+
+          <!-- AI Analysis Block -->
+          <div style="background:${col.bg || 'var(--bg-elevated)'}; border:1px solid ${col.border || 'var(--border)'}; border-radius:6px; padding:16px; margin-bottom:12px;">
+            <div style="font-weight:700; margin-bottom:8px; font-size:13px;">AI Анализ</div>
+            <div style="margin-bottom:8px; font-size:13px;">${esc(app.ai_summary)}</div>
+            <div style="font-size:12px; color:var(--text-muted);">
+              <b>Рекомендация:</b> ${esc(app.ai_recommendation || '—')}
+              ${app.ai_work_type ? '<br><b>Тип работ:</b> ' + esc(app.ai_work_type) : ''}
+              ${app.ai_estimated_budget ? '<br><b>Бюджет:</b> ~' + money(app.ai_estimated_budget) : ''}
+              ${app.ai_estimated_days ? '<br><b>Срок:</b> ~' + app.ai_estimated_days + ' дней' : ''}
+              ${app.ai_keywords?.length ? '<br><b>Ключевые:</b> ' + app.ai_keywords.map(k => esc(k)).join(', ') : ''}
+              <br><b>Уверенность:</b> ${app.ai_confidence ? Math.round(app.ai_confidence * 100) + '%' : '—'}
+              ${app.ai_model ? '<br><b>Модель:</b> ' + esc(app.ai_model) : ''}
+            </div>
+          </div>
+
+          <!-- AI Report -->
+          ${app.ai_report ? `
+          <details style="margin-bottom:12px;" open>
+            <summary style="cursor:pointer; font-weight:700; font-size:13px;">AI-отчёт</summary>
+            <div style="margin-top:8px; padding:12px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:6px; font-size:13px; white-space:pre-wrap; line-height:1.5;">${esc(app.ai_report)}</div>
+          </details>` : ''}
+
+          <!-- Decision info -->
+          ${app.decision_by_name ? `
+          <div style="padding:10px; background:var(--bg-elevated); border-radius:6px; font-size:12px; margin-bottom:12px;">
+            <b>Решение:</b> ${esc(app.decision_by_name)} &middot; ${app.decision_at ? new Date(app.decision_at).toLocaleString('ru-RU') : ''}
+            ${app.decision_notes ? '<br>' + esc(app.decision_notes) : ''}
+            ${app.rejection_reason ? '<br><b>Причина:</b> ' + esc(app.rejection_reason) : ''}
+            ${app.linked_tender_id ? '<br><a href="#/tenders/' + app.linked_tender_id + '" style="color:var(--primary);">Тендер #' + app.linked_tender_id + '</a>' : ''}
+          </div>` : ''}
+
+          <!-- Action Buttons -->
+          <div style="display:flex; gap:8px; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border);">
+            ${['new','ai_processed','under_review'].includes(app.status) ? `
+              <button class="app-action-btn" data-app-action="accept" style="padding:8px 16px; border-radius:6px; border:none; background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; font-weight:700; cursor:pointer; font-size:12px;">Принять</button>
+              <button class="app-action-btn" data-app-action="reject" style="padding:8px 16px; border-radius:6px; border:none; background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; font-weight:700; cursor:pointer; font-size:12px;">Отклонить</button>
+            ` : ''}
+            ${['new','ai_processed'].includes(app.status) ? `
+              <button class="app-action-btn" data-app-action="review" style="padding:8px 16px; border-radius:6px; border:none; background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; font-weight:700; cursor:pointer; font-size:12px;">На рассмотрение</button>
+            ` : ''}
+            <button class="app-action-btn" data-app-action="reanalyze" style="padding:8px 16px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); font-weight:600; cursor:pointer; font-size:12px;">Переанализировать</button>
+            ${app.status !== 'archived' ? '<button class="app-action-btn" data-app-action="archive" style="padding:8px 16px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); cursor:pointer; font-size:12px;">В архив</button>' : ''}
+          </div>
+        </div>
+      `;
+    } else if (app && !app.ai_summary) {
+      // Application exists but no AI analysis yet
+      aiSectionHtml = `
+        <div style="padding:12px 24px;">
+          <div style="background:var(--bg-elevated); border-radius:6px; padding:16px; text-align:center;">
+            <div style="color:var(--text-muted); font-size:13px; margin-bottom:8px;">AI-анализ не проводился (Заявка #${app.id})</div>
+            <button class="app-action-btn" data-app-action="reanalyze" style="padding:8px 16px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); font-weight:600; cursor:pointer; font-size:12px;">Запустить анализ</button>
+          </div>
+        </div>
+      `;
+    } else if (!app && isInbound) {
+      // No application for this inbound email
+      aiSectionHtml = `
+        <div style="padding:12px 24px;">
+          <div style="background:var(--bg-elevated); border-radius:6px; padding:16px; text-align:center;">
+            <div style="color:var(--text-muted); font-size:13px; margin-bottom:8px;">Заявка не создана</div>
+            <button id="btn-create-app" style="padding:8px 16px; border-radius:6px; border:none; background:var(--primary); color:#fff; font-weight:600; cursor:pointer; font-size:12px;">Создать заявку и запустить AI-анализ</button>
+          </div>
+        </div>
+      `;
+    }
+
     detailEl.innerHTML = `
       <div style="padding:20px 24px;">
         <!-- Toolbar -->
         <div style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+          <button id="mail-back-btn" class="btn ghost" style="display:none;" onclick="AsgardMailboxPage.closeDetailMobile()">&#8592; Назад</button>
           <button class="btn ghost mail-action-btn" data-action="reply">Ответить</button>
           <button class="btn ghost mail-action-btn" data-action="reply_all">Ответить всем</button>
           <button class="btn ghost mail-action-btn" data-action="forward">Переслать</button>
@@ -439,6 +569,9 @@ window.AsgardMailboxPage = (function(){
         </div>
         ${ccList.length > 0 ? `<div style="font-size:12px; color:var(--text-muted);"><strong style="color:var(--text-primary);">Копия:</strong> ${ccList.map(a => esc(a.address || a)).join(', ')}</div>` : ''}
       </div>
+
+      <!-- AI Analysis Section -->
+      ${aiSectionHtml}
 
       <!-- Body (sandboxed iframe to prevent XSS from email HTML) -->
       <div style="padding:20px 24px; flex:1;">
@@ -495,6 +628,12 @@ window.AsgardMailboxPage = (function(){
       bodyFrame.src = 'about:blank';
     }
 
+    // Show back button on mobile
+    const backBtn = detailEl.querySelector('#mail-back-btn');
+    if (backBtn && window.innerWidth <= 768) {
+      backBtn.style.display = '';
+    }
+
     // Bind action buttons
     detailEl.querySelectorAll('.mail-action-btn').forEach(btn => {
       btn.addEventListener('click', () => handleDetailAction(btn.dataset.action, e));
@@ -504,6 +643,88 @@ window.AsgardMailboxPage = (function(){
     detailEl.querySelectorAll('.mail-thread-item').forEach(el => {
       el.addEventListener('click', () => selectEmail(parseInt(el.dataset.id)));
     });
+
+    // App action buttons (AI analysis actions)
+    detailEl.querySelectorAll('.app-action-btn').forEach(btn => {
+      btn.addEventListener('click', () => handleAppAction(btn.dataset.appAction, app, e));
+    });
+
+    // Create application button
+    const btnCreateApp = detailEl.querySelector('#btn-create-app');
+    if (btnCreateApp) {
+      btnCreateApp.addEventListener('click', async () => {
+        btnCreateApp.disabled = true;
+        btnCreateApp.textContent = 'Создание...';
+        try {
+          const res = await appApi('/from-email', { method: 'POST', body: { email_id: e.id, auto_analyze: true } });
+          if (res.success) {
+            toast('Заявка создана и проанализирована');
+            selectEmail(e.id); // reload detail
+          } else {
+            toast(res.error || 'Ошибка создания заявки', 'error');
+            btnCreateApp.disabled = false;
+            btnCreateApp.textContent = 'Создать заявку и запустить AI-анализ';
+          }
+        } catch (err) {
+          toast(err.message || 'Ошибка', 'error');
+          btnCreateApp.disabled = false;
+          btnCreateApp.textContent = 'Создать заявку и запустить AI-анализ';
+        }
+      });
+    }
+  }
+
+  // Handle inbox application actions
+  async function handleAppAction(action, app, email) {
+    if (!app && action !== 'create') return;
+
+    switch (action) {
+      case 'accept': {
+        if (!confirm('Принять заявку и создать тендер?')) return;
+        try {
+          const res = await appApi('/' + app.id + '/accept', { method: 'POST', body: { create_tender: true, send_email: true } });
+          if (res.success) {
+            toast(res.tender_id ? 'Заявка принята, тендер #' + res.tender_id + ' создан' : 'Заявка принята');
+            selectEmail(email.id);
+          } else { toast(res.error || 'Ошибка', 'error'); }
+        } catch (err) { toast(err.message, 'error'); }
+        break;
+      }
+      case 'reject': {
+        const reason = prompt('Причина отклонения:');
+        if (reason === null) return;
+        try {
+          const res = await appApi('/' + app.id + '/reject', { method: 'POST', body: { reason, send_email: true } });
+          if (res.success) { toast('Заявка отклонена'); selectEmail(email.id); }
+          else { toast(res.error || 'Ошибка', 'error'); }
+        } catch (err) { toast(err.message, 'error'); }
+        break;
+      }
+      case 'review': {
+        try {
+          const res = await appApi('/' + app.id + '/review', { method: 'POST' });
+          if (res.success) { toast('Взято на рассмотрение'); selectEmail(email.id); }
+        } catch (err) { toast(err.message, 'error'); }
+        break;
+      }
+      case 'reanalyze': {
+        const btns = document.querySelectorAll('[data-app-action="reanalyze"]');
+        btns.forEach(b => { b.disabled = true; b.textContent = 'Анализ...'; });
+        try {
+          const res = await appApi('/' + app.id + '/analyze', { method: 'POST' });
+          if (res.success) { toast('Анализ завершён'); selectEmail(email.id); }
+          else { toast(res.error || 'Ошибка AI', 'error'); btns.forEach(b => { b.disabled = false; b.textContent = 'Переанализировать'; }); }
+        } catch (err) { toast(err.message, 'error'); btns.forEach(b => { b.disabled = false; b.textContent = 'Переанализировать'; }); }
+        break;
+      }
+      case 'archive': {
+        try {
+          const res = await appApi('/' + app.id + '/archive', { method: 'POST' });
+          if (res.success) { toast('Заявка архивирована'); selectEmail(email.id); }
+        } catch (err) { toast(err.message, 'error'); }
+        break;
+      }
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -765,5 +986,5 @@ window.AsgardMailboxPage = (function(){
     document.body.appendChild(overlay);
   }
 
-  return { render, _showAiPopup };
+  return { render, _showAiPopup, closeDetailMobile };
 })();

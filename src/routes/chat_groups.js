@@ -63,50 +63,56 @@ module.exports = async function(fastify) {
   // Direct Chat — find or create 1-to-1 chat
   // ═══════════════════════════════════════════════════════════════
   fastify.post('/direct', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const { user_id } = request.body; // the other user
-    const myId = request.user.id;
+    try {
+      const body = request.body || {};
+      const user_id = body.user_id ? parseInt(body.user_id) : null;
+      const myId = request.user.id;
 
-    if (!user_id || user_id === myId) {
-      return reply.code(400).send({ error: 'Некорректный пользователь' });
+      if (!user_id || user_id === myId) {
+        return reply.code(400).send({ error: 'Некорректный пользователь' });
+      }
+
+      // Find existing direct chat between these two users
+      const existing = await db.query(`
+        SELECT c.* FROM chats c
+        JOIN chat_group_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
+        JOIN chat_group_members m2 ON m2.chat_id = c.id AND m2.user_id = $2
+        WHERE c.is_group = false AND c.type = 'direct'
+        LIMIT 1
+      `, [myId, user_id]);
+
+      if (existing.rows.length > 0) {
+        return { chat: existing.rows[0] };
+      }
+
+      // Create new direct chat
+      const otherUser = await db.query('SELECT id, name FROM users WHERE id = $1', [user_id]);
+      if (otherUser.rows.length === 0) {
+        return reply.code(404).send({ error: 'Пользователь не найден' });
+      }
+
+      const myUser = await db.query('SELECT id, name FROM users WHERE id = $1', [myId]);
+      const chatName = `${myUser.rows[0].name} — ${otherUser.rows[0].name}`;
+
+      const result = await db.query(`
+        INSERT INTO chats (name, type, is_group, created_by, created_at, last_message_at)
+        VALUES ($1, 'direct', false, $2, NOW(), NOW())
+        RETURNING *
+      `, [chatName, myId]);
+
+      const chat = result.rows[0];
+
+      // Add both members
+      await db.query(`
+        INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+        VALUES ($1, $2, 'owner', NOW()), ($1, $3, 'member', NOW())
+      `, [chat.id, myId, user_id]);
+
+      return { chat, created: true };
+    } catch (err) {
+      fastify.log.error('Direct chat error:', err.message);
+      return reply.code(500).send({ error: 'Ошибка создания чата: ' + err.message });
     }
-
-    // Find existing direct chat between these two users
-    const existing = await db.query(`
-      SELECT c.* FROM chats c
-      JOIN chat_group_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
-      JOIN chat_group_members m2 ON m2.chat_id = c.id AND m2.user_id = $2
-      WHERE c.is_group = false AND c.type = 'direct'
-      LIMIT 1
-    `, [myId, user_id]);
-
-    if (existing.rows.length > 0) {
-      return { chat: existing.rows[0] };
-    }
-
-    // Create new direct chat
-    const otherUser = await db.query('SELECT id, name FROM users WHERE id = $1', [user_id]);
-    if (otherUser.rows.length === 0) {
-      return reply.code(404).send({ error: 'Пользователь не найден' });
-    }
-
-    const myUser = await db.query('SELECT id, name FROM users WHERE id = $1', [myId]);
-    const chatName = `${myUser.rows[0].name} — ${otherUser.rows[0].name}`;
-
-    const result = await db.query(`
-      INSERT INTO chats (name, type, is_group, created_by, created_at, last_message_at)
-      VALUES ($1, 'direct', false, $2, NOW(), NOW())
-      RETURNING *
-    `, [chatName, myId]);
-
-    const chat = result.rows[0];
-
-    // Add both members
-    await db.query(`
-      INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
-      VALUES ($1, $2, 'owner', NOW()), ($1, $3, 'member', NOW())
-    `, [chat.id, myId, user_id]);
-
-    return { chat, created: true };
   });
 
   // ╔═══════════════════════════════════════════════════════════════╗

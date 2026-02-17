@@ -153,7 +153,7 @@ window.AsgardSettingsPage = (function(){
         <div class="grid2">
           <div class="card">
             <h3>Параметры приложения</h3>
-            <div class="formrow" style="grid-template-columns:repeat(3,1fr)">
+            <div class="formrow" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
               <div>
                 <label for="s_vat">НДС, %</label>
                 <input id="s_vat" type="number" min="0" max="30" step="0.01" value="${esc(String(app.vat_pct ?? 20))}"/>
@@ -202,7 +202,7 @@ window.AsgardSettingsPage = (function(){
           <div class="card">
             <h3>SLA / уведомления и лимиты (под этап 3)</h3>
             <div class="help">Сейчас сохраняем параметры. Движок уведомлений будет использовать их на этапе 3.</div>
-            <div class="formrow" style="grid-template-columns:repeat(3,1fr)">
+            <div class="formrow" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
               <div>
                 <label for="sla_docs">Дедлайн заявки: напоминать за N дней</label>
                 <input id="sla_docs" type="number" min="0" step="1" value="${esc(String(sla.docs_deadline_notice_days ?? 5))}"/>
@@ -338,7 +338,7 @@ window.AsgardSettingsPage = (function(){
 
           <div class="card">
             <h3>ᚱ Рунический Калькулятор — нормы и коэффициенты</h3>
-            <div class="formrow" style="grid-template-columns:repeat(4,1fr)">
+            <div class="formrow" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
               <div>
                 <label for="c_minppd">Мин. прибыль/чел‑день (жёлтая), ₽</label>
                 <input id="c_minppd" type="number" min="0" step="1000" value="${esc(String(calc.min_profit_per_person_day ?? 20000))}"/>
