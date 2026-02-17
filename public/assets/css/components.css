@@ -2331,7 +2331,7 @@ button:focus-visible {
   max-width: 320px;
   display: flex;
   flex-direction: column;
-  background: var(--glass-bg);
+  background: transparent;
   border: none;
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -2361,7 +2361,7 @@ button:focus-visible {
   min-width: 24px;
   height: 24px;
   padding: 0 var(--sp-2);
-  background: var(--gold-glow);
+  background: transparent;
   border: none;
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
@@ -2387,16 +2387,16 @@ button:focus-visible {
   position: relative;
   padding: var(--sp-4);
   margin-bottom: var(--sp-3);
-  background: var(--bg-card);
+  background: transparent;
   border: none;
   border-radius: var(--radius-md);
   cursor: grab;
   transition: all var(--transition-normal);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  box-shadow: none;
 }
 
 .kanban-card:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
   transform: translateY(-2px);
 }
 
@@ -2407,7 +2407,7 @@ button:focus-visible {
 .kanban-card.dragging {
   opacity: 0.5;
   transform: rotate(3deg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: none;
 }
 
 .kanban-card-priority {
@@ -2463,7 +2463,7 @@ button:focus-visible {
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  background: var(--glass-bg);
+  background: transparent;
   border-radius: var(--radius-sm);
 }
 
@@ -2486,7 +2486,7 @@ button:focus-visible {
 
 .kanban-tag {
   padding: 2px 8px;
-  background: var(--glass-bg);
+  background: transparent;
   border: none;
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
@@ -2505,7 +2505,7 @@ button:focus-visible {
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-4);
-  background: var(--glass-bg);
+  background: transparent;
   border: none;
   border-radius: var(--radius-lg);
   margin-bottom: var(--sp-4);
@@ -3738,11 +3738,11 @@ button:focus-visible {
    LIGHT THEME OVERRIDES FOR PHASE 2
    ───────────────────────────────────────────────────────────────────────────────── */
 html[data-theme="light"] .kanban-column {
-  background: rgba(255, 255, 255, 0.9);
+  background: transparent;
 }
 
 html[data-theme="light"] .kanban-card {
-  background: white;
+  background: transparent;
 }
 
 html[data-theme="light"] .chat-container {
@@ -4529,7 +4529,7 @@ html[data-theme="light"] .dash-widget-header {
 
 .pt-kanban-col {
   flex: 0 0 280px;
-  background: var(--bg-elevated, #1a1f2e);
+  background: transparent;
   border-radius: var(--radius-lg, 8px);
   display: flex;
   flex-direction: column;
@@ -4553,7 +4553,7 @@ html[data-theme="light"] .dash-widget-header {
 }
 
 .pt-kanban-col-header .count {
-  background: var(--bg-card, #141822);
+  background: transparent;
   border-radius: 10px;
   padding: 2px 8px;
   font-size: 11px;
@@ -4573,19 +4573,19 @@ html[data-theme="light"] .dash-widget-header {
 }
 
 .pt-kanban-card {
-  background: var(--bg-card, #141822);
-  border: 1px solid var(--border, #2a3040);
+  background: transparent;
+  border: none;
   border-radius: var(--radius-md, 6px);
   padding: 10px 12px;
   margin-bottom: 8px;
   cursor: grab;
-  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  transition: transform 0.15s, border-color 0.15s;
   user-select: none;
 }
 
 .pt-kanban-card:hover {
-  border-color: var(--gold, #D4A846);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .pt-kanban-card:active {
