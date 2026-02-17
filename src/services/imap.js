@@ -440,17 +440,7 @@ async function updateEmailAiClassification(emailId, classification, color, summa
 async function analyzeOneEmail(email) {
   const emailId = email.id;
   try {
-    // Pre-filter: пропускаем bounce, internal, system emails БЕЗ обращения к AI
-    const skipCheck = aiAnalyzer.shouldSkipEmail({
-      fromEmail: email.from_email,
-      subject: email.subject,
-      bodyText: email.body_text
-    });
-    if (skipCheck.skip) {
-      console.log(`[IMAP-AI] Skipping email #${emailId}: ${skipCheck.reason} (from: ${email.from_email})`);
-      await updateEmailAiClassification(emailId, 'other', 'red', `[Пропущено: ${skipCheck.reason}]`, null);
-      return true; // Считаем обработанным, но НЕ создаём inbox_application
-    }
+    // Все входящие обрабатываются AI — он сам решает, заявка это или переписка
 
     const attRes = await db.query(
       'SELECT original_filename FROM email_attachments WHERE email_id = $1',
@@ -554,18 +544,16 @@ async function processUnanalyzedEmails() {
   aiProcessorRunning = true;
 
   try {
-    // Find emails that need AI analysis
-    const typePlaceholders = AI_SKIP_TYPES.map((_, i) => `$${i + 1}`).join(',');
+    // Find ALL inbound emails that need AI analysis (без фильтрации по типу — AI сам решает)
     const res = await db.query(`
       SELECT id, subject, body_text, from_email, from_name, email_type, attachment_count
       FROM emails
       WHERE ai_processed_at IS NULL
         AND direction = 'inbound'
-        AND (email_type IS NULL OR email_type NOT IN (${typePlaceholders}))
         AND is_deleted = false
       ORDER BY email_date DESC
-      LIMIT $${AI_SKIP_TYPES.length + 1}
-    `, [...AI_SKIP_TYPES, AI_BATCH_SIZE]);
+      LIMIT $1
+    `, [AI_BATCH_SIZE]);
 
     if (res.rows.length === 0) {
       aiProcessorRunning = false;
@@ -582,14 +570,6 @@ async function processUnanalyzedEmails() {
     const ok = results.filter(r => r.status === 'fulfilled' && r.value).length;
     const fail = results.length - ok;
     console.log(`[IMAP-AI] Batch done: ${ok} ok, ${fail} failed`);
-
-    // Also mark skippable types as processed (no AI needed)
-    await db.query(`
-      UPDATE emails SET ai_processed_at = NOW(), ai_summary = '[Пропущено — тип не требует AI]'
-      WHERE ai_processed_at IS NULL
-        AND direction = 'inbound'
-        AND email_type IN (${typePlaceholders})
-    `, AI_SKIP_TYPES).catch(() => {});
   } catch (err) {
     console.error('[IMAP-AI] Batch processor error:', err.message);
   } finally {

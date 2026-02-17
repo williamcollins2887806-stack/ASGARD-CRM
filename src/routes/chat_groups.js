@@ -174,6 +174,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('chat_groups', 'read')]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
 
     const member = await getChatMembership(chatId, userId);
@@ -281,6 +282,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('chat_groups', 'write')]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
 
     if (!await isGroupOwnerOrAdmin(chatId, userId)) {
@@ -318,6 +320,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('chat_groups', 'write')]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
     const { user_id, role = 'member' } = request.body;
 
@@ -361,6 +364,7 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
     const targetUserId = parseInt(request.params.userId);
+    if (isNaN(chatId) || isNaN(targetUserId)) return reply.code(400).send({ error: 'Некорректный ID' });
     const userId = request.user.id;
 
     // Можно удалить себя или если owner/admin
@@ -401,6 +405,7 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
     const targetUserId = parseInt(request.params.userId);
+    if (isNaN(chatId) || isNaN(targetUserId)) return reply.code(400).send({ error: 'Некорректный ID' });
     const userId = request.user.id;
     const { role } = request.body;
 
@@ -428,6 +433,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('chat_groups', 'write')]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
     const { until } = request.body; // ISO date string or null to unmute
 
@@ -446,6 +452,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('chat_groups', 'write')]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
     const { archive } = request.body;
 
@@ -472,6 +479,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('chat_groups', 'read')]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
     const { limit = 50, before_id, search } = request.query;
 
@@ -523,6 +531,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('chat_groups', 'write')]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
     const { text, reply_to_id } = request.body;
 
@@ -582,6 +591,7 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const chatId = parseInt(request.params.chatId);
     const messageId = parseInt(request.params.id);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
     const userId = request.user.id;
     const { text } = request.body;
 
@@ -612,6 +622,7 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const chatId = parseInt(request.params.chatId);
     const messageId = parseInt(request.params.id);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
     const userId = request.user.id;
 
     // Автор или админ чата может удалить
@@ -645,6 +656,7 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const chatId = parseInt(request.params.chatId);
     const messageId = parseInt(request.params.id);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
     const userId = request.user.id;
     const { emoji } = request.body;
 
@@ -687,6 +699,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
 
     // Verify membership
     const member = await db.query(
@@ -735,6 +748,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
 
     const member = await db.query(
       'SELECT 1 FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
@@ -804,6 +818,7 @@ module.exports = async function(fastify) {
   // ───────────────────────────────────────────────────────────────
   fastify.get('/:id/settings', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const member = await db.query(
       'SELECT role, muted_until, last_read_at FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
       [chatId, request.user.id]
@@ -821,6 +836,7 @@ module.exports = async function(fastify) {
     preHandler: [fastify.requirePermission('chat_groups', 'delete')]
   }, async (request, reply) => {
     const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
 
     const member = await getChatMembership(chatId, userId);
