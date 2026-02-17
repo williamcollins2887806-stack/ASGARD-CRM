@@ -371,10 +371,10 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
       subject, bodyText, fromEmail, fromName, attachmentNames, workload, attachmentTexts
     });
 
-    // Формируем content: текст + (опционально) изображения
-    const config = aiProvider.getConfig();
+    // Формируем content: текст + (опционально) изображения/документы
     let messageContent;
-    if (imageBlocks.length > 0 && config.hasAnthropicKey) {
+    if (imageBlocks.length > 0) {
+      console.log(`[AI-Analyzer] Including ${imageBlocks.length} image/document blocks in classification request`);
       messageContent = [
         { type: 'text', text: userMessage + '\n\nК письму приложены файлы (изображения/документы). Проанализируй их содержимое при классификации.' },
         ...imageBlocks
@@ -641,10 +641,10 @@ async function generateReport({ emailId, subject, bodyText, fromEmail, fromName,
 
     msg += 'Составь КРАТКИЙ деловой отчёт (1-2 страницы, не более 3000 символов) по этому запросу.\nОБЯЗАТЕЛЬНО прочитай и проанализируй ВСЕ вложения (ТЗ, спецификации). Выдели из них ключевые работы, объекты, сроки.\nНЕ переписывай ТЗ дословно — только суть и ключевые пункты.';
 
-    // Формируем content: текст + (опционально) изображения
-    const config = aiProvider.getConfig();
+    // Формируем content: текст + (опционально) изображения/документы
     let messageContent;
-    if (imageBlocks.length > 0 && config.hasAnthropicKey) {
+    if (imageBlocks.length > 0) {
+      console.log(`[AI-Analyzer] Including ${imageBlocks.length} image/document blocks in report request`);
       messageContent = [
         { type: 'text', text: msg },
         ...imageBlocks
