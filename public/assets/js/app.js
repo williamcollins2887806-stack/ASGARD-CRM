@@ -257,8 +257,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","HR_MANAGER","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
 
     // ── КОММУНИКАЦИИ ──
-    {r:"/chat",l:"Чат дружины",d:"Общение и согласования",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"correspondence",p:"chat",g:"comm"},
-    {r:"/chat-groups",l:"Групповые чаты",d:"Командная коммуникация",roles:ALL_ROLES,i:"correspondence",p:"chat_groups",g:"comm"},
+    {r:"/messenger",l:"Мессенджер",d:"Личные и групповые чаты",roles:ALL_ROLES,i:"correspondence",p:"chat_groups",g:"comm"},
     {r:"/meetings",l:"Совещания",d:"Планирование и протоколы",roles:ALL_ROLES,i:"schedule",p:"meetings",g:"comm"},
     {r:"/alerts",l:"Уведомления",d:"Воронья почта",roles:ALL_ROLES,i:"alerts",p:"alerts",g:"comm"},
     {r:"/telegram",l:"Telegram",d:"Уведомления и SMS",roles:["ADMIN"],i:"alerts",p:"telegram_admin",g:"comm"},
@@ -1877,13 +1876,16 @@ try{
       await AsgardKanban.render({layout});
     }, {auth:true, roles:ALL_ROLES});
 
-    AsgardRouter.add("/chat-groups", async ()=>{
-      if (!AsgardAuth.hasPermission('chat_groups', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
+    // Unified Messenger (both direct + group chats)
+    AsgardRouter.add("/messenger", async ()=>{
       await AsgardChatGroups.render({layout});
+    }, {auth:true, roles:ALL_ROLES});
+    // Backward compatibility aliases
+    AsgardRouter.add("/chat-groups", async ()=>{
+      location.hash = '#/messenger';
+    }, {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/chat", async ()=>{
+      location.hash = '#/messenger';
     }, {auth:true, roles:ALL_ROLES});
 
     AsgardRouter.add("/meetings", async ()=>{

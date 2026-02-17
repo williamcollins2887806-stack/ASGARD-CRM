@@ -59,6 +59,56 @@ module.exports = async function(fastify) {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // Direct Chat — find or create 1-to-1 chat
+  // ═══════════════════════════════════════════════════════════════
+  fastify.post('/direct', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { user_id } = request.body; // the other user
+    const myId = request.user.id;
+
+    if (!user_id || user_id === myId) {
+      return reply.code(400).send({ error: 'Некорректный пользователь' });
+    }
+
+    // Find existing direct chat between these two users
+    const existing = await db.query(`
+      SELECT c.* FROM chats c
+      JOIN chat_group_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
+      JOIN chat_group_members m2 ON m2.chat_id = c.id AND m2.user_id = $2
+      WHERE c.is_group = false AND c.type = 'direct'
+      LIMIT 1
+    `, [myId, user_id]);
+
+    if (existing.rows.length > 0) {
+      return { chat: existing.rows[0] };
+    }
+
+    // Create new direct chat
+    const otherUser = await db.query('SELECT id, name FROM users WHERE id = $1', [user_id]);
+    if (otherUser.rows.length === 0) {
+      return reply.code(404).send({ error: 'Пользователь не найден' });
+    }
+
+    const myUser = await db.query('SELECT id, name FROM users WHERE id = $1', [myId]);
+    const chatName = `${myUser.rows[0].name} — ${otherUser.rows[0].name}`;
+
+    const result = await db.query(`
+      INSERT INTO chats (name, type, is_group, created_by, created_at, last_message_at)
+      VALUES ($1, 'direct', false, $2, NOW(), NOW())
+      RETURNING *
+    `, [chatName, myId]);
+
+    const chat = result.rows[0];
+
+    // Add both members
+    await db.query(`
+      INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+      VALUES ($1, $2, 'owner', NOW()), ($1, $3, 'member', NOW())
+    `, [chat.id, myId, user_id]);
+
+    return { chat, created: true };
+  });
+
   // ╔═══════════════════════════════════════════════════════════════╗
   // ║                    ГРУППОВЫЕ ЧАТЫ                            ║
   // ╚═══════════════════════════════════════════════════════════════╝
@@ -73,13 +123,28 @@ module.exports = async function(fastify) {
     const { archived = 'false', search } = request.query;
 
     let sql = `
-      SELECT c.*, m.role as my_role, m.muted_until, m.last_read_at,
+      SELECT c.*,
+        m.role as my_role,
+        m.muted_until,
+        m.last_read_at,
         (SELECT COUNT(*) FROM chat_group_members WHERE chat_id = c.id) as member_count,
         (SELECT COUNT(*) FROM chat_messages
-         WHERE chat_id = c.id AND created_at > COALESCE(m.last_read_at, '1970-01-01')) as unread_count
+         WHERE chat_id = c.id AND created_at > COALESCE(m.last_read_at, '1970-01-01')) as unread_count,
+        -- For direct chats, get the OTHER user's name
+        CASE WHEN c.is_group = false THEN (
+          SELECT u.name FROM chat_group_members cm
+          JOIN users u ON u.id = cm.user_id
+          WHERE cm.chat_id = c.id AND cm.user_id != $1
+          LIMIT 1
+        ) ELSE NULL END as direct_user_name,
+        CASE WHEN c.is_group = false THEN (
+          SELECT cm.user_id FROM chat_group_members cm
+          WHERE cm.chat_id = c.id AND cm.user_id != $1
+          LIMIT 1
+        ) ELSE NULL END as direct_user_id
       FROM chats c
-      JOIN chat_group_members m ON c.id = m.chat_id AND m.user_id = $1
-      WHERE c.is_group = true
+      JOIN chat_group_members m ON m.chat_id = c.id AND m.user_id = $1
+      WHERE 1=1
     `;
     const params = [userId];
     let idx = 2;
@@ -117,7 +182,7 @@ module.exports = async function(fastify) {
     const { rows: [chat] } = await db.query(`
       SELECT c.*
       FROM chats c
-      WHERE c.id = $1 AND c.is_group = true
+      WHERE c.id = $1
     `, [chatId]);
 
     if (!chat) return reply.code(404).send({ error: 'Чат не найден' });
@@ -613,6 +678,140 @@ module.exports = async function(fastify) {
     );
 
     return { reactions };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/upload — Загрузка файла в чат
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/upload', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+
+    // Verify membership
+    const member = await db.query(
+      'SELECT 1 FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, request.user.id]
+    );
+    if (member.rows.length === 0) {
+      return reply.code(403).send({ error: 'Вы не участник чата' });
+    }
+
+    // For now, accept file info as JSON (actual file upload via existing upload mechanism)
+    const { file_name, file_path, file_size, mime_type, message_text } = request.body;
+
+    // Create message with attachment info
+    const msgResult = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, created_at)
+      VALUES ($1, $2, $3, NOW())
+      RETURNING *
+    `, [chatId, request.user.id, message_text || '']);
+
+    const msg = msgResult.rows[0];
+
+    if (file_name) {
+      await db.query(`
+        INSERT INTO chat_attachments (message_id, file_name, file_path, file_size, mime_type, created_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+      `, [msg.id, file_name, file_path || '', file_size || 0, mime_type || 'application/octet-stream']);
+    }
+
+    // Update last_message_at
+    await db.query('UPDATE chats SET last_message_at = NOW() WHERE id = $1', [chatId]);
+
+    // Get user info for response
+    const user = await db.query('SELECT name FROM users WHERE id = $1', [request.user.id]);
+
+    return {
+      message: { ...msg, user_name: user.rows[0]?.name },
+      attachment: file_name ? { file_name, file_path, file_size, mime_type } : null
+    };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/upload-file — Загрузка файла (multipart)
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/upload-file', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+
+    const member = await db.query(
+      'SELECT 1 FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, request.user.id]
+    );
+    if (member.rows.length === 0) {
+      return reply.code(403).send({ error: 'Вы не участник чата' });
+    }
+
+    try {
+      const data = await request.file();
+      if (!data) {
+        return reply.code(400).send({ error: 'Файл не найден' });
+      }
+
+      const fs = require('fs');
+      const path = require('path');
+      const uploadDir = path.join(__dirname, '../../uploads/chat');
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+      const ext = path.extname(data.filename);
+      const safeName = Date.now() + '_' + Math.random().toString(36).substring(2, 8) + ext;
+      const filePath = path.join(uploadDir, safeName);
+
+      const chunks = [];
+      for await (const chunk of data.file) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+      fs.writeFileSync(filePath, buffer);
+
+      const fileUrl = '/uploads/chat/' + safeName;
+      const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(data.filename);
+      const messageText = isImage
+        ? `📷 [Фото: ${data.filename}](${fileUrl})`
+        : `📎 [${data.filename}](${fileUrl})`;
+
+      const msgResult = await db.query(`
+        INSERT INTO chat_messages (chat_id, user_id, message, created_at)
+        VALUES ($1, $2, $3, NOW())
+        RETURNING *
+      `, [chatId, request.user.id, messageText]);
+
+      const msg = msgResult.rows[0];
+
+      await db.query(`
+        INSERT INTO chat_attachments (message_id, file_name, file_path, file_size, mime_type, created_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+      `, [msg.id, data.filename, fileUrl, buffer.length, data.mimetype || 'application/octet-stream']);
+
+      await db.query('UPDATE chats SET last_message_at = NOW() WHERE id = $1', [chatId]);
+
+      const user = await db.query('SELECT name FROM users WHERE id = $1', [request.user.id]);
+
+      return {
+        message: { ...msg, user_name: user.rows[0]?.name },
+        attachment: { file_name: data.filename, file_path: fileUrl, file_size: buffer.length, mime_type: data.mimetype }
+      };
+    } catch (e) {
+      fastify.log.error('Chat file upload error:', e.message);
+      return reply.code(500).send({ error: 'Ошибка загрузки файла' });
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/chat-groups/:id/settings — Настройки уведомлений чата
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/:id/settings', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    const member = await db.query(
+      'SELECT role, muted_until, last_read_at FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, request.user.id]
+    );
+    if (member.rows.length === 0) {
+      return reply.code(403).send({ error: 'Не участник' });
+    }
+    return { settings: member.rows[0] };
   });
 
   // ───────────────────────────────────────────────────────────────

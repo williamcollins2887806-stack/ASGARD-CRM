@@ -1,15 +1,15 @@
 /**
- * ASGARD CRM — Групповые чаты (M3)
+ * ASGARD CRM — Мессенджер (Unified Messenger)
  *
  * Функционал:
- * - Список групповых чатов с превью последнего сообщения
- * - Создание чата
- * - Сообщения с ответами и реакциями
- * - Управление участниками
- * - Typing indicator
- * - Online status
- * - Auto-scroll to bottom
- * - Read receipts
+ * - Личные и групповые чаты в одном месте
+ * - Отправка текста, фото и файлов
+ * - Ответы на сообщения, реакции
+ * - Управление участниками (группы)
+ * - Настройки уведомлений (мут)
+ * - Typing indicator, Online status
+ * - Auto-scroll, Read receipts
+ * - Поиск по чатам
  */
 window.AsgardChatGroups = (function(){
   const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
@@ -21,6 +21,7 @@ window.AsgardChatGroups = (function(){
   let _replyToId = null;
   let _replyToText = '';
   let _replyToUser = '';
+  let _currentChatData = null; // cached chat info
 
   // ═══════════════════════════════════════════════════════════════
   // API
@@ -117,6 +118,30 @@ window.AsgardChatGroups = (function(){
         body: JSON.stringify({ emoji })
       });
       return res.json();
+    },
+
+    async openDirect(userId) {
+      const res = await fetch('/api/chat-groups/direct', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + localStorage.getItem('asgard_token'),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ user_id: userId })
+      });
+      return res.json();
+    },
+
+    async uploadFile(chatId, file, messageText) {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (messageText) formData.append('message_text', messageText);
+      const res = await fetch(`/api/chat-groups/${chatId}/upload-file`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') },
+        body: formData
+      });
+      return res.json();
     }
   };
 
@@ -163,6 +188,7 @@ window.AsgardChatGroups = (function(){
     if (layout) _savedLayout = layout;
     const auth = await AsgardAuth.requireUser();
     if (!auth) { location.hash = '#/login'; return; }
+    const myId = auth.user.id;
 
     stopPolling();
 
@@ -171,15 +197,21 @@ window.AsgardChatGroups = (function(){
 
     const chatListHtml = chats.length > 0 ? chats.map(c => {
       const lastTime = formatChatTime(c.last_message_at || c.created_at);
-      const memberText = c.member_count + ' участник' + (c.member_count === 1 ? '' : c.member_count < 5 ? 'а' : 'ов');
+      const isDirect = !c.is_group;
+      const displayName = isDirect ? (c.direct_user_name || c.name) : c.name;
+      const avatarLetter = displayName?.[0] || '?';
+      const avatarColor = isDirect ? getAvatarColor(displayName) : '';
+      const avatarClass = isDirect ? '' : ' group';
+      const previewText = isDirect ? 'Личное сообщение' : (c.member_count + ' участник' + (c.member_count === 1 ? '' : c.member_count < 5 ? 'а' : 'ов'));
+
       return `
-        <div class="chat-item ${currentChatId == c.id ? 'active' : ''}" onclick="AsgardChatGroups.openChat(${c.id})">
-          <div class="chat-item-avatar group">
-            <span class="chat-item-avatar-letter">${esc(c.name?.[0] || '?')}</span>
+        <div class="chat-item ${currentChatId == c.id ? 'active' : ''}" onclick="AsgardChatGroups.openChat(${c.id})" data-chat-type="${isDirect ? 'direct' : 'group'}">
+          <div class="chat-item-avatar${avatarClass}" ${isDirect ? `style="background:${avatarColor}"` : ''}>
+            <span class="chat-item-avatar-letter">${esc(avatarLetter)}</span>
           </div>
           <div class="chat-item-info">
-            <div class="chat-item-name">${esc(c.name)}</div>
-            <div class="chat-item-preview">${esc(memberText)}</div>
+            <div class="chat-item-name">${esc(displayName)}${isDirect ? '' : ' <span class="chat-item-type-badge">группа</span>'}</div>
+            <div class="chat-item-preview">${c.last_message_text ? esc(c.last_message_text.substring(0, 40)) : esc(previewText)}</div>
           </div>
           <div class="chat-item-meta">
             <span class="chat-item-time">${lastTime}</span>
@@ -190,9 +222,8 @@ window.AsgardChatGroups = (function(){
     }).join('') : `
       <div class="chat-empty-state">
         <div class="chat-empty-icon">💬</div>
-        <div class="chat-empty-title">Нет групповых чатов</div>
-        <div class="chat-empty-desc">Создайте первый чат для команды</div>
-        <button class="btn primary" onclick="AsgardChatGroups.showCreateModal()" style="margin-top: 12px;">+ Создать чат</button>
+        <div class="chat-empty-title">Нет чатов</div>
+        <div class="chat-empty-desc">Начните переписку или создайте группу</div>
       </div>
     `;
 
@@ -202,14 +233,14 @@ window.AsgardChatGroups = (function(){
           <div class="chat-sidebar-header">
             <div class="chat-sidebar-title">
               <span class="chat-sidebar-icon">💬</span>
-              Чаты
+              Мессенджер
             </div>
-            <button class="chat-create-btn" onclick="AsgardChatGroups.showCreateModal()" title="Создать чат">
+            <button class="chat-create-btn" onclick="AsgardChatGroups.showNewChatMenu()" title="Новый чат">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
             </button>
           </div>
           <div class="chat-search-bar">
-            <input type="text" class="chat-search-input" placeholder="Поиск чата..." oninput="AsgardChatGroups.filterChats(this.value)">
+            <input type="text" class="chat-search-input" placeholder="Поиск..." oninput="AsgardChatGroups.filterChats(this.value)">
           </div>
           <div class="chat-list" id="chat-list-container">
             ${chatListHtml}
@@ -219,13 +250,13 @@ window.AsgardChatGroups = (function(){
           <div class="chat-welcome">
             <div class="chat-welcome-icon">💬</div>
             <div class="chat-welcome-title">ASGARD Messenger</div>
-            <div class="chat-welcome-desc">Выберите чат слева или создайте новый</div>
+            <div class="chat-welcome-desc">Выберите чат или начните новую переписку</div>
           </div>
         </div>
       </div>
     `;
 
-    await layout(html, { title: 'Групповые чаты', motto: 'Командная коммуникация' });
+    await layout(html, { title: 'Мессенджер', motto: 'Чаты и коммуникация' });
 
     if (currentChatId) {
       await loadChatMessages(currentChatId);
@@ -274,6 +305,9 @@ window.AsgardChatGroups = (function(){
     const messages = msgsResp?.messages || [];
     const auth = await AsgardAuth.getAuth();
     const userId = auth.user.id;
+    const isDirect = !chat.is_group;
+
+    _currentChatData = chat;
 
     // Check if new messages arrived (for smart scroll)
     const shouldScroll = messages.length !== _lastMessageCount;
@@ -287,10 +321,36 @@ window.AsgardChatGroups = (function(){
       messagesHtml += msgs.map(m => renderMessage(m, userId, members)).join('');
     }
 
-    const memberCount = members.length;
-    const onlineCount = members.filter(m => m.is_active).length;
-    const memberText = memberCount + ' участник' + (memberCount === 1 ? '' : memberCount < 5 ? 'а' : 'ов');
-    const statusText = `${memberText}, ${onlineCount} онлайн`;
+    // Header: different for direct vs group
+    let headerTitle, headerStatus, headerAvatar, headerActions;
+    if (isDirect) {
+      const otherMember = members.find(m => m.user_id !== userId) || {};
+      const otherName = otherMember.name || chat.direct_user_name || chat.name;
+      const isOnline = otherMember.is_active;
+      headerTitle = esc(otherName);
+      headerStatus = isOnline ? '<span class="chat-online-dot"></span> в сети' : 'не в сети';
+      headerAvatar = `<div class="chat-header-avatar" style="background:${getAvatarColor(otherName)}"><span>${getInitials(otherName)}</span></div>`;
+      headerActions = `
+        <button class="chat-header-btn" onclick="AsgardChatGroups.showSettingsModal(${chatId})" title="Настройки уведомлений">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+      `;
+    } else {
+      const memberCount = members.length;
+      const onlineCount = members.filter(m => m.is_active).length;
+      const memberText = memberCount + ' участник' + (memberCount === 1 ? '' : memberCount < 5 ? 'а' : 'ов');
+      headerTitle = esc(chat.name);
+      headerStatus = `<span class="chat-online-dot"></span> ${memberText}, ${onlineCount} онлайн`;
+      headerAvatar = `<div class="chat-header-avatar group"><span>${esc(chat.name?.[0] || '?')}</span></div>`;
+      headerActions = `
+        <button class="chat-header-btn" onclick="AsgardChatGroups.showMembersModal(${chatId})" title="Участники">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </button>
+        <button class="chat-header-btn" onclick="AsgardChatGroups.showSettingsModal(${chatId})" title="Настройки">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      `;
+    }
 
     const replyBarHtml = _replyToId ? `
       <div class="chat-reply-bar" id="chat-reply-bar">
@@ -305,31 +365,19 @@ window.AsgardChatGroups = (function(){
     mainArea.innerHTML = `
       <div class="chat-header">
         <div class="chat-header-info">
-          <div class="chat-header-avatar group">
-            <span>${esc(chat.name?.[0] || '?')}</span>
-          </div>
+          ${headerAvatar}
           <div class="chat-header-details">
-            <div class="chat-header-title">${esc(chat.name)}</div>
-            <div class="chat-header-status">
-              <span class="chat-online-dot"></span>
-              ${statusText}
-            </div>
+            <div class="chat-header-title">${headerTitle}</div>
+            <div class="chat-header-status">${headerStatus}</div>
           </div>
         </div>
-        <div class="chat-header-actions">
-          <button class="chat-header-btn" onclick="AsgardChatGroups.showMembersModal(${chatId})" title="Участники">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          </button>
-          <button class="chat-header-btn" onclick="AsgardChatGroups.showSettingsModal(${chatId})" title="Настройки">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          </button>
-        </div>
+        <div class="chat-header-actions">${headerActions}</div>
       </div>
       <div class="chat-messages" id="chat-messages-container">
         ${messagesHtml || `
           <div class="chat-no-messages">
-            <div class="chat-no-messages-icon">🔒</div>
-            <div class="chat-no-messages-text">Сообщения зашифрованы. Напишите первое сообщение!</div>
+            <div class="chat-no-messages-icon">${isDirect ? '👋' : '🔒'}</div>
+            <div class="chat-no-messages-text">${isDirect ? 'Начните переписку!' : 'Напишите первое сообщение в группу!'}</div>
           </div>
         `}
         <div class="chat-typing-indicator" id="chat-typing" style="display: none;">
@@ -344,6 +392,10 @@ window.AsgardChatGroups = (function(){
         <button class="chat-emoji-btn" onclick="AsgardChatGroups.toggleEmojiPicker()" title="Emoji">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
         </button>
+        <button class="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()" title="Прикрепить файл">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <input type="file" id="chat-file-input" style="display:none" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar" onchange="AsgardChatGroups.handleFileSelect(this, ${chatId})">
         <textarea id="chat-message-input" class="chat-input" placeholder="Написать сообщение..." rows="1"
           onkeydown="AsgardChatGroups.handleKeyDown(event, ${chatId})"
           oninput="AsgardChatGroups.autoResizeInput(this)"></textarea>
@@ -365,8 +417,7 @@ window.AsgardChatGroups = (function(){
 
     // Update active state in sidebar
     $$('.chat-item').forEach(el => el.classList.remove('active'));
-    const items = $$('.chat-item');
-    items.forEach(el => {
+    $$('.chat-item').forEach(el => {
       if (el.getAttribute('onclick')?.includes(chatId)) {
         el.classList.add('active');
       }
@@ -422,7 +473,7 @@ window.AsgardChatGroups = (function(){
         <div class="chat-message-bubble">
           ${!isOwn ? `<div class="chat-message-sender" style="color: ${avatarColor};">${esc(msg.user_name)}</div>` : ''}
           ${replyHtml}
-          <div class="chat-message-text">${esc(messageText)}</div>
+          <div class="chat-message-text">${renderMessageContent(messageText)}</div>
           <div class="chat-message-footer">
             <span class="chat-message-time">${time}${msg.edited_at ? ' (изм.)' : ''}</span>
             ${readHtml}
@@ -435,6 +486,25 @@ window.AsgardChatGroups = (function(){
         </div>
       </div>
     `;
+  }
+
+  function renderMessageContent(text) {
+    if (!text) return '';
+    // Render images: 📷 [Фото: name](url) -> <img>
+    const imgMatch = text.match(/📷\s*\[Фото:\s*([^\]]+)\]\(([^)]+)\)/);
+    if (imgMatch) {
+      return `<img src="${esc(imgMatch[2])}" alt="${esc(imgMatch[1])}" style="max-width:300px;max-height:300px;border-radius:8px;cursor:pointer;display:block;margin:4px 0" onclick="window.open('${esc(imgMatch[2])}','_blank')">`;
+    }
+    // Render files: 📎 [name](url) -> link
+    const fileMatch = text.match(/📎\s*\[([^\]]+)\]\(([^)]+)\)/);
+    if (fileMatch) {
+      return `<a href="${esc(fileMatch[2])}" target="_blank" download="${esc(fileMatch[1])}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:rgba(255,255,255,0.06);border-radius:8px;color:var(--gold);text-decoration:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        ${esc(fileMatch[1])}
+      </a>`;
+    }
+    // Regular text
+    return esc(text);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -564,6 +634,148 @@ window.AsgardChatGroups = (function(){
   // ═══════════════════════════════════════════════════════════════
   // Modals
   // ═══════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════
+  // New Chat Menu (Direct + Group)
+  // ═══════════════════════════════════════════════════════════════
+
+  async function showNewChatMenu() {
+    const users = await AsgardDB.getAll('users') || [];
+    const auth = await AsgardAuth.getAuth();
+    const myId = auth.user.id;
+    const activeUsers = users.filter(u => u.is_active && u.id !== myId);
+
+    const html = `
+      <div style="min-width: 420px; max-width: 520px;">
+        <div style="display:flex;gap:10px;margin-bottom:20px;">
+          <button class="btn primary" id="tabDirect" onclick="document.getElementById('directPanel').style.display='';document.getElementById('groupPanel').style.display='none';this.classList.add('primary');document.getElementById('tabGroup').classList.remove('primary')">
+            Личное сообщение
+          </button>
+          <button class="btn" id="tabGroup" onclick="document.getElementById('groupPanel').style.display='';document.getElementById('directPanel').style.display='none';this.classList.add('primary');document.getElementById('tabDirect').classList.remove('primary')">
+            Создать группу
+          </button>
+        </div>
+
+        <div id="directPanel">
+          <input type="text" class="inp" placeholder="Поиск сотрудника..." id="directUserSearch" style="margin-bottom:12px;width:100%">
+          <div class="emp-selector" id="directUserList" style="max-height:350px">
+            ${activeUsers.map(u => `
+              <div class="emp-selector-item" onclick="AsgardChatGroups.startDirect(${u.id})" style="cursor:pointer">
+                <div class="emp-selector-avatar" style="background: ${getAvatarColor(u.name)};">${getInitials(u.name)}</div>
+                <div class="emp-selector-info">
+                  <div class="emp-selector-name">${esc(u.name)}</div>
+                  <div class="emp-selector-role">${esc(u.role || u.position || '')}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div id="groupPanel" style="display:none">
+          <div class="form-group">
+            <label>Название группы *</label>
+            <input type="text" id="new-chat-name" class="input" placeholder="Например: Проект Альфа">
+          </div>
+          <div class="form-group">
+            <label>Описание</label>
+            <textarea id="new-chat-desc" class="input" rows="2" placeholder="Краткое описание..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Участники</label>
+            <input type="text" class="inp" placeholder="Поиск..." id="memberSearch" style="margin-bottom:8px;width:100%">
+            <div class="emp-selector" id="memberList" style="max-height:250px">
+              ${activeUsers.map(u => `
+                <label class="emp-selector-item">
+                  <input type="checkbox" name="chat-members" value="${u.id}">
+                  <div class="emp-selector-check">\u2713</div>
+                  <div class="emp-selector-avatar" style="background: ${getAvatarColor(u.name)};">${getInitials(u.name)}</div>
+                  <div class="emp-selector-info">
+                    <div class="emp-selector-name">${esc(u.name)}</div>
+                    <div class="emp-selector-role">${esc(u.role || '')}</div>
+                  </div>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="row between mt-3">
+            <button class="btn" onclick="AsgardUI.closeModal()">Отмена</button>
+            <button class="btn primary" onclick="AsgardChatGroups.createChat()">Создать группу</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    showModal('Новый чат', html);
+
+    // Search filters
+    const directSearch = document.getElementById('directUserSearch');
+    if (directSearch) {
+      directSearch.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        document.querySelectorAll('#directUserList .emp-selector-item').forEach(item => {
+          const name = (item.querySelector('.emp-selector-name')?.textContent || '').toLowerCase();
+          item.style.display = name.includes(q) ? '' : 'none';
+        });
+      });
+      directSearch.focus();
+    }
+
+    const memberSearchInput = document.getElementById('memberSearch');
+    if (memberSearchInput) {
+      memberSearchInput.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        document.querySelectorAll('#memberList .emp-selector-item').forEach(item => {
+          const name = (item.querySelector('.emp-selector-name')?.textContent || '').toLowerCase();
+          item.style.display = name.includes(q) ? '' : 'none';
+        });
+      });
+    }
+  }
+
+  async function startDirect(userId) {
+    try {
+      const result = await API.openDirect(userId);
+      if (result.error) {
+        toast(result.error, 'error');
+        return;
+      }
+      closeModal();
+      currentChatId = result.chat.id;
+      await refresh();
+    } catch (e) {
+      toast('Ошибка создания чата', 'error');
+    }
+  }
+
+  async function handleFileSelect(input, chatId) {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    // Max 25MB
+    if (file.size > 25 * 1024 * 1024) {
+      toast('Файл слишком большой (макс. 25 МБ)', 'error');
+      input.value = '';
+      return;
+    }
+
+    const sendBtn = $('.chat-send-btn');
+    if (sendBtn) sendBtn.classList.add('sending');
+
+    try {
+      const result = await API.uploadFile(chatId, file, '');
+      if (result.error) {
+        toast(result.error, 'error');
+      } else {
+        toast('Файл отправлен', 'success');
+        await loadChatMessages(chatId);
+      }
+    } catch (e) {
+      toast('Ошибка отправки файла', 'error');
+    } finally {
+      if (sendBtn) sendBtn.classList.remove('sending');
+      input.value = '';
+    }
+  }
 
   async function showCreateModal() {
     const users = await AsgardDB.getAll('users') || [];
@@ -787,7 +999,7 @@ window.AsgardChatGroups = (function(){
 
   // Cleanup polling on navigation (hashchange)
   window.addEventListener('hashchange', () => {
-    if (!location.hash.includes('/chat-groups')) stopPolling();
+    if (!location.hash.includes('/messenger') && !location.hash.includes('/chat-groups')) stopPolling();
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -802,8 +1014,11 @@ window.AsgardChatGroups = (function(){
     handleKeyDown,
     autoResizeInput,
     react,
+    showNewChatMenu,
     showCreateModal,
     createChat,
+    startDirect,
+    handleFileSelect,
     showMembersModal,
     addMember,
     leaveChat,
