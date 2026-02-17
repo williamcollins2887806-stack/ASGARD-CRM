@@ -95,10 +95,10 @@ module.exports = async function(fastify) {
       const chatName = `${myUser.rows[0].name} — ${otherUser.rows[0].name}`;
 
       const result = await db.query(`
-        INSERT INTO chats (name, type, is_group, created_by, created_at, last_message_at)
-        VALUES ($1, 'direct', false, $2, NOW(), NOW())
+        INSERT INTO chats (name, type, is_group, created_at, last_message_at)
+        VALUES ($1, 'direct', false, NOW(), NOW())
         RETURNING *
-      `, [chatName, myId]);
+      `, [chatName]);
 
       const chat = result.rows[0];
 
