@@ -498,6 +498,24 @@ async function analyzeOneEmail(email) {
         ]);
 
         console.log(`[IMAP-AI] Created application for email #${emailId}: ${analysis.color} / ${analysis.classification}`);
+
+        // Generate detailed AI report (reads attachment contents: PDF, DOCX, XLSX)
+        try {
+          const aiReport = await aiAnalyzer.generateReport({
+            emailId,
+            subject: email.subject,
+            bodyText: email.body_text,
+            fromEmail: email.from_email,
+            fromName: email.from_name,
+            attachmentNames: attNames
+          });
+          if (aiReport) {
+            await db.query('UPDATE inbox_applications SET ai_report = $1 WHERE email_id = $2', [aiReport, emailId]);
+            console.log(`[IMAP-AI] Generated AI report for email #${emailId} (${aiReport.length} chars)`);
+          }
+        } catch (reportErr) {
+          console.error(`[IMAP-AI] AI report generation error for email #${emailId}:`, reportErr.message);
+        }
       } catch (appErr) {
         console.error(`[IMAP-AI] inbox_application INSERT error for email #${emailId}:`, appErr.message);
         // Don't fail the whole email — AI analysis was saved successfully

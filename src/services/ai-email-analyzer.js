@@ -499,8 +499,11 @@ const REPORT_SYSTEM_PROMPT = `Ты — AI-ассистент компании А
 Если информации недостаточно — укажи "Данные отсутствуют" для соответствующего пункта.
 Отвечай простым текстом без markdown-форматирования.`;
 
-async function generateReport({ subject, bodyText, fromEmail, fromName, attachmentNames }) {
+async function generateReport({ emailId, subject, bodyText, fromEmail, fromName, attachmentNames }) {
   try {
+    // Извлекаем содержимое вложений (PDF, DOCX, XLSX, изображения)
+    const { texts: attachmentTexts, imageBlocks } = await extractAttachmentTexts(emailId);
+
     let msg = `ВХОДЯЩЕЕ ПИСЬМО:\n`;
     msg += `От: ${fromName || 'Неизвестно'} <${fromEmail || '?'}>\n`;
     msg += `Тема: ${subject || '(без темы)'}\n\n`;
@@ -515,11 +518,28 @@ async function generateReport({ subject, bodyText, fromEmail, fromName, attachme
       msg += `ВЛОЖЕНИЯ: ${attachmentNames.join(', ')}\n\n`;
     }
 
-    msg += 'Составь деловой отчёт по этому запросу.';
+    // Включаем извлечённое содержимое вложений
+    if (attachmentTexts?.length) {
+      msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ (ТЗ, спецификации, документы):\n${attachmentTexts.join('\n\n').slice(0, 10000)}\n\n`;
+    }
+
+    msg += 'Составь деловой отчёт по этому запросу. Обязательно используй данные из вложений (ТЗ, спецификации), если они есть.';
+
+    // Формируем content: текст + (опционально) изображения
+    const config = aiProvider.getConfig();
+    let messageContent;
+    if (imageBlocks.length > 0 && config.hasAnthropicKey) {
+      messageContent = [
+        { type: 'text', text: msg },
+        ...imageBlocks
+      ];
+    } else {
+      messageContent = msg;
+    }
 
     const response = await aiProvider.complete({
       system: REPORT_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: msg }],
+      messages: [{ role: 'user', content: messageContent }],
       maxTokens: 2048,
       temperature: 0.3
     });
