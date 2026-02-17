@@ -213,10 +213,27 @@ async function routes(fastify, options) {
       thread = threadRes.rows;
     }
 
+    // Get inbox application (AI analysis) if exists
+    let application = null;
+    try {
+      const appRes = await db.query(`
+        SELECT ia.*, u.name as decision_by_name
+        FROM inbox_applications ia
+        LEFT JOIN users u ON u.id = ia.decision_by
+        WHERE ia.email_id = $1
+      `, [id]);
+      if (appRes.rows.length > 0) {
+        application = appRes.rows[0];
+      }
+    } catch (e) {
+      // inbox_applications table may not exist yet
+    }
+
     return {
       email,
       attachments: attRes.rows,
-      thread
+      thread,
+      application
     };
   });
 

@@ -127,7 +127,7 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 
 // ── Извлечение текста из вложений для классификации ──────────────────
 
-const MAX_EXTRACT_PER_FILE = 3000;
+const MAX_EXTRACT_PER_FILE = 15000;
 const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
 async function extractAttachmentTexts(emailId) {
@@ -143,9 +143,10 @@ async function extractAttachmentTexts(emailId) {
     const imageBlocks = [];
 
     for (const a of attRes.rows) {
-      if (!a.file_path) continue;
+      if (!a.file_path) { console.log(`[AI-Analyzer] No file_path for attachment: ${a.original_filename}`); continue; }
       const absPath = path.join(__dirname, '..', '..', a.file_path);
-      if (!fs.existsSync(absPath)) continue;
+      if (!fs.existsSync(absPath)) { console.log(`[AI-Analyzer] File not found: ${absPath} (original: ${a.original_filename})`); continue; }
+      console.log(`[AI-Analyzer] Extracting: ${a.original_filename} (${a.mime_type}) from ${absPath}`);
 
       // Изображения — готовим для Vision
       if (IMAGE_MIMES.includes(a.mime_type) && imageBlocks.length < 3) {
@@ -206,6 +207,27 @@ async function extractAttachmentTexts(emailId) {
           const buf = fs.readFileSync(absPath);
           const result = await mammoth.extractRawText({ buffer: buf });
           if (result.value) texts.push(`[${a.original_filename}]\n${result.value.slice(0, MAX_EXTRACT_PER_FILE)}`);
+        } catch (_) {}
+        continue;
+      }
+
+      // TXT, RTF, CSV and other text-based files
+      if (a.file_path.endsWith('.txt') || a.file_path.endsWith('.rtf') || a.file_path.endsWith('.csv')
+          || a.mime_type?.startsWith('text/') || a.mime_type === 'application/rtf') {
+        try {
+          const content = fs.readFileSync(absPath, 'utf-8');
+          if (content) texts.push(`[${a.original_filename}]\n${content.slice(0, MAX_EXTRACT_PER_FILE)}`);
+        } catch (_) {}
+        continue;
+      }
+
+      // DOC (old Word format) — try reading as text
+      if (a.file_path.endsWith('.doc') || a.mime_type === 'application/msword') {
+        try {
+          const buf = fs.readFileSync(absPath);
+          // Extract readable text from binary DOC (basic approach)
+          const text = buf.toString('utf-8').replace(/[^\x20-\x7E\u0400-\u04FF\n\r\t]/g, ' ').replace(/\s{3,}/g, ' ').trim();
+          if (text.length > 50) texts.push(`[${a.original_filename}]\n${text.slice(0, MAX_EXTRACT_PER_FILE)}`);
         } catch (_) {}
       }
     }
@@ -348,7 +370,7 @@ function buildAnalysisMessage({ subject, bodyText, fromEmail, fromName, attachme
 
   // Извлечённое содержимое вложений (PDF, DOCX, XLSX)
   if (attachmentTexts?.length) {
-    msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${attachmentTexts.join('\n\n').slice(0, 8000)}\n\n`;
+    msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${attachmentTexts.join('\n\n').slice(0, 20000)}\n\n`;
   }
 
   if (workload) {
@@ -520,7 +542,7 @@ async function generateReport({ emailId, subject, bodyText, fromEmail, fromName,
 
     // Включаем извлечённое содержимое вложений
     if (attachmentTexts?.length) {
-      msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ (ТЗ, спецификации, документы):\n${attachmentTexts.join('\n\n').slice(0, 10000)}\n\n`;
+      msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ (ТЗ, спецификации, документы):\n${attachmentTexts.join('\n\n').slice(0, 25000)}\n\n`;
     }
 
     msg += 'Составь деловой отчёт по этому запросу. Обязательно используй данные из вложений (ТЗ, спецификации), если они есть.';
