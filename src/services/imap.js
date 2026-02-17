@@ -391,29 +391,46 @@ const AI_PROCESS_INTERVAL = 30000; // run every 30 sec
 let aiProcessorTimer = null;
 let aiProcessorRunning = false;
 
-// Self-healing helper: update ai_classification regardless of column type (jsonb or text)
+// Self-healing helper: update ai_classification regardless of column type (jsonb, json, or text)
 async function updateEmailAiClassification(emailId, classification, color, summary, recommendation) {
-  const jsonVal = JSON.stringify(classification || 'other');
-  // Try JSONB cast first (correct for jsonb column)
+  const classStr = String(classification || 'other');
+  const jsonVal = JSON.stringify(classStr);
+  const params = [color || 'yellow', summary || '', recommendation || '', emailId];
+
+  // Try 1: JSONB cast (correct for jsonb column)
   try {
     await db.query(`
       UPDATE emails SET
         ai_classification = $1::jsonb, ai_color = $2, ai_summary = $3,
         ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
       WHERE id = $5
-    `, [jsonVal, color || 'yellow', summary || '', recommendation || '', emailId]);
+    `, [jsonVal, ...params]);
     return;
   } catch (e) {
     if (!e.message.includes('invalid input syntax for type json')) throw e;
     console.warn(`[IMAP-AI] JSONB cast failed for email #${emailId}, falling back to text`);
   }
-  // Fallback: store as plain text (for text/varchar column)
+
+  // Try 2: plain text (for text/varchar column)
+  try {
+    await db.query(`
+      UPDATE emails SET
+        ai_classification = $1, ai_color = $2, ai_summary = $3,
+        ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+      WHERE id = $5
+    `, [classStr, ...params]);
+    return;
+  } catch (e2) {
+    console.warn(`[IMAP-AI] Text insert also failed for email #${emailId}: ${e2.message}, trying plain string`);
+  }
+
+  // Try 3: last resort — store as plain string without JSON wrapping
   await db.query(`
     UPDATE emails SET
       ai_classification = $1, ai_color = $2, ai_summary = $3,
       ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
     WHERE id = $5
-  `, [jsonVal, color || 'yellow', summary || '', recommendation || '', emailId]);
+  `, [jsonVal, ...params]);
 }
 
 /**

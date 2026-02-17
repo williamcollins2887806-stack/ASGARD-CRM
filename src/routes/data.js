@@ -397,8 +397,8 @@ async function dataRoutes(fastify, options) {
 
       // Truncate overly long string fields to prevent varchar overflow
       for (const key of Object.keys(data)) {
-        if (typeof data[key] === 'string' && data[key].length > 1000 && !['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'].includes(key)) {
-          data[key] = data[key].substring(0, 1000);
+        if (typeof data[key] === 'string' && data[key].length > 500 && !['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'].includes(key)) {
+          data[key] = data[key].substring(0, 500);
         }
       }
 
@@ -497,6 +497,13 @@ async function dataRoutes(fastify, options) {
       delete data.id;  // И id тоже
       delete data.created_at; // Не меняем дату создания
       delete data.created_by; // Не меняем автора
+
+      // Truncate overly long string fields to prevent varchar overflow
+      for (const key of Object.keys(data)) {
+        if (typeof data[key] === 'string' && data[key].length > 500 && !['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'].includes(key)) {
+          data[key] = data[key].substring(0, 500);
+        }
+      }
 
       // Фильтруем ключи: только валидные имена И существующие колонки
       const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k) && tableCols.has(k));
