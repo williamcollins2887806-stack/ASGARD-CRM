@@ -393,6 +393,51 @@ async function ensureTables() {
     )
   `);
 
+  // Cash (Касса) tables
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS cash_requests (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      work_id INTEGER,
+      type VARCHAR(20) DEFAULT 'advance',
+      amount NUMERIC(12,2) NOT NULL,
+      purpose TEXT,
+      cover_letter TEXT,
+      status VARCHAR(30) DEFAULT 'requested',
+      director_id INTEGER,
+      director_comment TEXT,
+      received_at TIMESTAMP,
+      closed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS cash_expenses (
+      id SERIAL PRIMARY KEY,
+      request_id INTEGER NOT NULL REFERENCES cash_requests(id),
+      amount NUMERIC(12,2) NOT NULL,
+      description TEXT,
+      receipt_file VARCHAR(500),
+      receipt_original_name VARCHAR(255),
+      expense_date DATE,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS cash_returns (
+      id SERIAL PRIMARY KEY,
+      request_id INTEGER NOT NULL REFERENCES cash_requests(id),
+      amount NUMERIC(12,2) NOT NULL,
+      note TEXT,
+      confirmed_at TIMESTAMP,
+      confirmed_by INTEGER,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
   // Staff plan table
   await db.query(`
     CREATE TABLE IF NOT EXISTS staff_plan (

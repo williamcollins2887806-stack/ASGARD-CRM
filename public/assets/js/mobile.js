@@ -28,7 +28,6 @@ window.AsgardMobile = (function(){
   
   // Инициализация мобильного меню
   function initMobileMenu() {
-    // Используем существующую кнопку #btnMenu из app.js (не создаём дубль)
     // Создаём оверлей если его нет
     if (!$('#mobileOverlay')) {
       const overlay = document.createElement('div');
@@ -47,6 +46,62 @@ window.AsgardMobile = (function(){
         if (isMobile) closeMenu();
       });
     });
+
+    // Мобильная нижняя навигация
+    createBottomNav();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // BOTTOM NAV — Мобильная нижняя панель навигации
+  // ═══════════════════════════════════════════════════════════════
+  function createBottomNav() {
+    if ($('#mobileBottomNav')) return;
+
+    const nav = document.createElement('div');
+    nav.id = 'mobileBottomNav';
+    nav.className = 'mobile-bottom-nav';
+    nav.innerHTML = `
+      <a href="#/home" class="mobile-nav-item" data-route="/home">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Главная</span>
+      </a>
+      <a href="#/works" class="mobile-nav-item" data-route="/works">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        <span>Работы</span>
+      </a>
+      <a href="#/messenger" class="mobile-nav-item mobile-nav-center" data-route="/messenger">
+        <div class="mobile-nav-fab">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <span>Хугинн</span>
+      </a>
+      <a href="#/alerts" class="mobile-nav-item" data-route="/alerts">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span>Вести</span>
+      </a>
+      <a href="javascript:void(0)" class="mobile-nav-item" onclick="AsgardMobile.toggleMenu()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <span>Меню</span>
+      </a>
+    `;
+
+    document.body.appendChild(nav);
+
+    // Highlight active route
+    function updateActiveNav() {
+      const currentRoute = location.hash.replace('#', '') || '/home';
+      nav.querySelectorAll('.mobile-nav-item').forEach(item => {
+        const route = item.getAttribute('data-route');
+        if (route && currentRoute.startsWith(route)) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+    }
+
+    updateActiveNav();
+    window.addEventListener('hashchange', updateActiveNav);
   }
   
   function toggleMenu() {

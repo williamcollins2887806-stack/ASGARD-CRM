@@ -257,7 +257,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","HR_MANAGER","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
 
     // ── КОММУНИКАЦИИ ──
-    {r:"/messenger",l:"Мессенджер",d:"Личные и групповые чаты",roles:ALL_ROLES,i:"correspondence",p:"chat_groups",g:"comm"},
+    {r:"/messenger",l:"Хугинн",d:"Вороний Вестник — чаты",roles:ALL_ROLES,i:"correspondence",p:"chat_groups",g:"comm"},
     {r:"/meetings",l:"Совещания",d:"Планирование и протоколы",roles:ALL_ROLES,i:"schedule",p:"meetings",g:"comm"},
     {r:"/alerts",l:"Уведомления",d:"Воронья почта",roles:ALL_ROLES,i:"alerts",p:"alerts",g:"comm"},
     {r:"/telegram",l:"Telegram",d:"Уведомления и SMS",roles:["ADMIN"],i:"alerts",p:"telegram_admin",g:"comm"},

@@ -1,5 +1,8 @@
 /**
- * ASGARD CRM — Мессенджер (Unified Messenger)
+ * ASGARD CRM — Вороний Вестник (Huginn Messenger)
+ *
+ * Единый мессенджер в стиле Telegram/WhatsApp
+ * Назван в честь ворона Хугина — посланника Одина
  *
  * Функционал:
  * - Личные и групповые чаты в одном месте
@@ -10,6 +13,7 @@
  * - Typing indicator, Online status
  * - Auto-scroll, Read receipts
  * - Поиск по чатам
+ * - Мобильная адаптация
  */
 window.AsgardChatGroups = (function(){
   const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
@@ -210,7 +214,7 @@ window.AsgardChatGroups = (function(){
             <span class="chat-item-avatar-letter">${esc(avatarLetter)}</span>
           </div>
           <div class="chat-item-info">
-            <div class="chat-item-name">${esc(displayName)}${isDirect ? '' : ' <span class="chat-item-type-badge">группа</span>'}</div>
+            <div class="chat-item-name">${esc(displayName)}${isDirect ? '' : ' <span class="chat-item-type-badge">дружина</span>'}</div>
             <div class="chat-item-preview">${c.last_message_text ? esc(c.last_message_text.substring(0, 40)) : esc(previewText)}</div>
           </div>
           <div class="chat-item-meta">
@@ -221,19 +225,19 @@ window.AsgardChatGroups = (function(){
       `;
     }).join('') : `
       <div class="chat-empty-state">
-        <div class="chat-empty-icon">💬</div>
-        <div class="chat-empty-title">Нет чатов</div>
-        <div class="chat-empty-desc">Начните переписку или создайте группу</div>
+        <div class="chat-empty-icon">🐦‍⬛</div>
+        <div class="chat-empty-title">Тишина в чертогах</div>
+        <div class="chat-empty-desc">Отправьте весть соратнику или создайте совет</div>
       </div>
     `;
 
     const html = `
       <div class="chat-container">
-        <div class="chat-sidebar">
+        <div class="chat-sidebar" id="chat-sidebar">
           <div class="chat-sidebar-header">
             <div class="chat-sidebar-title">
-              <span class="chat-sidebar-icon">💬</span>
-              Мессенджер
+              <span class="chat-sidebar-icon">🐦‍⬛</span>
+              Хугинн
             </div>
             <button class="chat-create-btn" onclick="AsgardChatGroups.showNewChatMenu()" title="Новый чат">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
@@ -248,15 +252,15 @@ window.AsgardChatGroups = (function(){
         </div>
         <div class="chat-main" id="chat-main-area">
           <div class="chat-welcome">
-            <div class="chat-welcome-icon">💬</div>
-            <div class="chat-welcome-title">ASGARD Messenger</div>
-            <div class="chat-welcome-desc">Выберите чат или начните новую переписку</div>
+            <div class="chat-welcome-icon">🐦‍⬛</div>
+            <div class="chat-welcome-title">Хугинн — Вороний Вестник</div>
+            <div class="chat-welcome-desc">Выберите чат или отправьте новую весть</div>
           </div>
         </div>
       </div>
     `;
 
-    await layout(html, { title: 'Мессенджер', motto: 'Чаты и коммуникация' });
+    await layout(html, { title: 'Хугинн', motto: 'Вороний Вестник' });
 
     if (currentChatId) {
       await loadChatMessages(currentChatId);
@@ -289,8 +293,23 @@ window.AsgardChatGroups = (function(){
     _replyToId = null;
     _replyToText = '';
     _replyToUser = '';
+    // On mobile: hide sidebar, show main
+    const sidebar = $('#chat-sidebar');
+    const main = $('#chat-main-area');
+    if (sidebar) sidebar.classList.add('chat-hidden-mobile');
+    if (main) main.classList.add('chat-visible-mobile');
     await loadChatMessages(chatId);
     startPolling();
+  }
+
+  function backToList() {
+    // On mobile: show sidebar, hide main
+    const sidebar = $('#chat-sidebar');
+    const main = $('#chat-main-area');
+    if (sidebar) sidebar.classList.remove('chat-hidden-mobile');
+    if (main) main.classList.remove('chat-visible-mobile');
+    currentChatId = null;
+    stopPolling();
   }
 
   async function loadChatMessages(chatId) {
@@ -364,6 +383,9 @@ window.AsgardChatGroups = (function(){
 
     mainArea.innerHTML = `
       <div class="chat-header">
+        <button class="chat-back-btn" onclick="AsgardChatGroups.backToList()" title="Назад">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
         <div class="chat-header-info">
           ${headerAvatar}
           <div class="chat-header-details">
@@ -1010,6 +1032,7 @@ window.AsgardChatGroups = (function(){
     render,
     refresh,
     openChat,
+    backToList,
     sendMessage,
     handleKeyDown,
     autoResizeInput,

@@ -750,8 +750,91 @@ body.nav-open .nav-overlay {
 /* ═══════════════════════════════════════════════════════════════════════════════
    RESPONSIVE - MOBILE
    ═══════════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE BOTTOM NAV
+   ═══════════════════════════════════════════════════════════════ */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  z-index: 1000;
+  justify-content: space-around;
+  align-items: center;
+  padding: 0 4px;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  gap: 2px;
+  flex: 1;
+  padding: 6px 0;
+  transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-nav-item.active {
+  color: var(--gold);
+}
+
+.mobile-nav-item.active svg {
+  stroke: var(--gold);
+}
+
+.mobile-nav-item span {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Center FAB button (chat) */
+.mobile-nav-center {
+  position: relative;
+}
+
+.mobile-nav-fab {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--gradient-gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -24px;
+  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.mobile-nav-fab svg {
+  stroke: var(--bg-main) !important;
+}
+
+.mobile-nav-center.active .mobile-nav-fab {
+  transform: scale(1.08);
+  box-shadow: 0 6px 24px rgba(212, 175, 55, 0.6);
+}
+
+.mobile-nav-center span {
+  margin-top: 2px;
+}
+
 @media (max-width: 768px) {
-  /* Sidebar hidden on mobile — Stage 6 tab bar handles navigation */
+  /* Show bottom nav on mobile */
+  .mobile-bottom-nav { display: flex; }
+
+  /* Sidebar hidden on mobile — bottom tab bar handles navigation */
   .sidenav { display: none !important; }
   .nav-overlay { display: none !important; }
 
@@ -763,7 +846,7 @@ body.nav-open .nav-overlay {
   .page-title { font-size: var(--text-lg); }
   .page-motto { display: none; }
 
-  .asg-content, #layout { padding: var(--sp-4); padding-bottom: 72px; }
+  .asg-content, #layout { padding: var(--sp-4); padding-bottom: 80px; }
   .badges { gap: var(--sp-2); }
   .badges .badge:not(.bellbtn):not(.themebtn) { display: none; }
   .formrow { grid-template-columns: 1fr; }
@@ -779,7 +862,7 @@ body.nav-open .nav-overlay {
   /* Ensure main content area doesn't overlap bottom mobile nav */
   .main,
   .asg-main-wrap {
-    padding-bottom: 68px;
+    padding-bottom: 80px;
   }
 
   /* Generic fix: ensure no full-height page content extends below bottom nav */
@@ -787,11 +870,123 @@ body.nav-open .nav-overlay {
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
-  .chat-container,
   .calendar-grid,
   .calendar-view {
-    max-height: calc(100vh - 128px);
+    max-height: calc(100vh - 140px);
     overflow-y: auto;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     MESSENGER — MOBILE LAYOUT (Telegram-style)
+     Two views: sidebar (chat list) & main (messages)
+     ═══════════════════════════════════════════════════════════ */
+  .chat-container {
+    flex-direction: column;
+    height: calc(100vh - 140px);
+    height: calc(var(--vh, 1vh) * 100 - 140px);
+    border-radius: 0;
+    margin: calc(-1 * var(--sp-4));
+    margin-bottom: 0;
+    border: none;
+  }
+
+  .chat-sidebar {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    flex: 1;
+  }
+
+  .chat-main {
+    display: none;
+    width: 100% !important;
+    flex: 1;
+  }
+
+  /* When a chat is opened on mobile */
+  .chat-sidebar.chat-hidden-mobile {
+    display: none !important;
+  }
+
+  .chat-main.chat-visible-mobile {
+    display: flex !important;
+    flex-direction: column;
+  }
+
+  /* Back button — only visible on mobile */
+  .chat-back-btn {
+    display: flex !important;
+  }
+
+  /* Header compact */
+  .chat-header {
+    padding: 8px 12px !important;
+  }
+
+  .chat-header-title {
+    font-size: 15px !important;
+  }
+
+  .chat-header-status {
+    font-size: 11px !important;
+  }
+
+  .chat-header-avatar {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 14px !important;
+  }
+
+  /* Input area compact */
+  .chat-input-area {
+    padding: 8px !important;
+    gap: 4px !important;
+  }
+
+  .chat-input {
+    font-size: 15px !important;
+    padding: 8px 12px !important;
+  }
+
+  .chat-emoji-btn,
+  .chat-attach-btn,
+  .chat-send-btn {
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  /* Messages */
+  .chat-message-bubble {
+    max-width: 85% !important;
+  }
+
+  .chat-message-text {
+    font-size: 14px !important;
+  }
+
+  /* Sidebar items */
+  .chat-sidebar-header {
+    padding: 12px 16px !important;
+  }
+
+  .chat-item {
+    padding: 10px 12px !important;
+  }
+
+  /* Hide bottom nav when in chat view */
+  body:has(.chat-visible-mobile) .mobile-bottom-nav {
+    display: none;
+  }
+
+  body:has(.chat-visible-mobile) .chat-container {
+    height: calc(100vh - 60px);
+    height: calc(var(--vh, 1vh) * 100 - 60px);
+  }
+
+  body:has(.chat-visible-mobile) .topbar {
+    display: none;
   }
 }
 
