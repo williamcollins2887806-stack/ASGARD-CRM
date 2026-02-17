@@ -441,6 +441,7 @@ async function analyzeOneEmail(email) {
     );
     const attNames = attRes.rows.map(a => a.original_filename || 'file');
 
+    console.log(`[IMAP-AI] #${emailId} step 1: calling analyzeEmail...`);
     const analysis = await aiAnalyzer.analyzeEmail({
       emailId,
       subject: email.subject,
@@ -449,14 +450,17 @@ async function analyzeOneEmail(email) {
       fromName: email.from_name,
       attachmentNames: attNames
     });
+    console.log(`[IMAP-AI] #${emailId} step 2: analyzeEmail returned classification=${analysis.classification}, color=${analysis.color}`);
 
     const workload = await aiAnalyzer.getWorkloadData();
+    console.log(`[IMAP-AI] #${emailId} step 3: calling updateEmailAiClassification...`);
 
     // Update the emails table with AI results
     await updateEmailAiClassification(
       emailId, analysis.classification, analysis.color,
       analysis.summary, analysis.recommendation
     );
+    console.log(`[IMAP-AI] #${emailId} step 4: update done`);
 
     // Create inbox_application ONLY for genuine work proposals/tenders
     const applicationTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
@@ -514,6 +518,7 @@ async function analyzeOneEmail(email) {
     return true;
   } catch (err) {
     console.error(`[IMAP-AI] Error processing email #${emailId}:`, err.message);
+    console.error(`[IMAP-AI] Stack trace:`, err.stack);
     // Mark as failed so we don't retry endlessly
     await db.query(
       `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, updated_at = NOW() WHERE id = $2`,
