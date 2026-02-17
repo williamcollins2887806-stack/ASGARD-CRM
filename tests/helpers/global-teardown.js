@@ -1,8 +1,13 @@
 /**
- * Jest global teardown for integration tests.
- * Currently a no-op placeholder. Real integration tests would
- * drop the test database / clean up here.
+ * ASGARD CRM — Глобальный teardown после интеграционных тестов
  */
+
+'use strict';
+
+require('./env-setup');
+
 module.exports = async function globalTeardown() {
-  // No-op for now
+  // Очистка тестовых данных (опционально)
+  // В CI тестовая БД удаляется вместе с контейнером
+  console.log('[GlobalTeardown] Интеграционные тесты завершены');
 };
