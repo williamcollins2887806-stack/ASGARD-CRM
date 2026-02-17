@@ -556,6 +556,26 @@ async function processUnanalyzedEmails() {
     `, [AI_BATCH_SIZE]);
 
     if (res.rows.length === 0) {
+      // Diagnostic: log why there are 0 emails to process (run every ~5 minutes)
+      if (!processUnanalyzedEmails._lastDiag || Date.now() - processUnanalyzedEmails._lastDiag > 300000) {
+        processUnanalyzedEmails._lastDiag = Date.now();
+        try {
+          const diag = await db.query(`
+            SELECT
+              COUNT(*) FILTER (WHERE direction = 'inbound') as total_inbound,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false) as inbound_not_deleted,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_processed_at IS NULL) as need_ai,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_processed_at IS NOT NULL) as already_processed,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_summary LIKE '%Пропущено%') as skipped,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_summary LIKE '%Ошибка%') as errored
+            FROM emails
+          `);
+          const d = diag.rows[0];
+          console.log(`[IMAP-AI] Diagnostic: total_inbound=${d.total_inbound}, not_deleted=${d.inbound_not_deleted}, need_ai=${d.need_ai}, already_processed=${d.already_processed}, skipped=${d.skipped}, errored=${d.errored}`);
+        } catch (diagErr) {
+          console.warn('[IMAP-AI] Diagnostic query failed:', diagErr.message);
+        }
+      }
       aiProcessorRunning = false;
       return;
     }
@@ -582,8 +602,18 @@ function startAiProcessor() {
   aiProcessorTimer = setInterval(() => {
     if (!isShuttingDown) processUnanalyzedEmails().catch(() => {});
   }, AI_PROCESS_INTERVAL);
-  // Also run once immediately after a short delay
-  setTimeout(() => processUnanalyzedEmails().catch(() => {}), 10000);
+  // On startup: reset skipped/errored emails then start processing
+  setTimeout(async () => {
+    try {
+      const resetCount = await resetSkippedEmails();
+      if (resetCount > 0) {
+        console.log(`[IMAP-AI] Auto-reset ${resetCount} previously skipped/errored emails on startup`);
+      }
+    } catch (e) {
+      console.warn('[IMAP-AI] Reset skipped emails error:', e.message);
+    }
+    processUnanalyzedEmails().catch(() => {});
+  }, 10000);
   console.log(`[IMAP-AI] Background AI processor started (every ${AI_PROCESS_INTERVAL / 1000}s, batch=${AI_BATCH_SIZE})`);
 }
 
@@ -780,6 +810,29 @@ async function shutdown() {
   activeClients.clear();
 }
 
+/**
+ * Reset emails that were skipped or errored during AI processing so they get reprocessed.
+ * Clears ai_processed_at for emails with skip/error markers.
+ */
+async function resetSkippedEmails() {
+  const result = await db.query(`
+    UPDATE emails SET ai_processed_at = NULL, ai_summary = NULL, ai_classification = NULL, ai_color = NULL, updated_at = NOW()
+    WHERE direction = 'inbound'
+      AND is_deleted = false
+      AND ai_processed_at IS NOT NULL
+      AND (
+        ai_summary LIKE '%Пропущено%'
+        OR ai_summary LIKE '%Ошибка%'
+        OR ai_summary LIKE '%skipped%'
+        OR ai_classification IS NULL
+        OR ai_classification = ''
+        OR ai_classification = '"other"'
+      )
+  `);
+  console.log(`[IMAP-AI] Reset ${result.rowCount} skipped/errored emails for reprocessing`);
+  return result.rowCount;
+}
+
 module.exports = {
   init,
   syncAccount,
@@ -791,5 +844,6 @@ module.exports = {
   shutdown,
   encrypt,
   decrypt,
-  processUnanalyzedEmails
+  processUnanalyzedEmails,
+  resetSkippedEmails
 };

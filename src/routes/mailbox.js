@@ -1113,6 +1113,19 @@ async function routes(fastify, options) {
       return { number: `АС-ИСХ-${new Date().getFullYear()}-??????`, preview: true };
     }
   });
+
+  // ── POST /api/mailbox/ai/reset-skipped — Reset skipped/errored emails for AI reprocessing ──
+  fastify.post('/ai/reset-skipped', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    if (!hasRole(request.user, ADMIN_ROLES)) {
+      return reply.code(403).send({ error: 'Только администратор' });
+    }
+    try {
+      const count = await imapService.resetSkippedEmails();
+      return { success: true, reset_count: count };
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
 }
 
 module.exports = routes;
