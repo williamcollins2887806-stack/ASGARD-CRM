@@ -14,11 +14,24 @@ const pool = new Pool({
 });
 
 async function main() {
-  // 1. Count errored emails
+  // 1. Show error details for diagnostics
+  const errors = await pool.query(`
+    SELECT id, from_email, subject, ai_summary
+    FROM emails
+    WHERE ai_summary LIKE '%Ошибка AI%'
+    ORDER BY id DESC
+    LIMIT 10
+  `);
+  console.log(`=== Последние ошибки AI (до 10) ===`);
+  for (const row of errors.rows) {
+    console.log(`  #${row.id} from=${row.from_email || '?'} subj="${(row.subject || '').slice(0, 40)}" err="${(row.ai_summary || '').slice(0, 120)}"`);
+  }
+
+  // 2. Count errored emails
   const before = await pool.query(`
     SELECT COUNT(*) as cnt FROM emails WHERE ai_summary LIKE '%Ошибка AI%'
   `);
-  console.log(`Писем с ошибкой AI: ${before.rows[0].cnt}`);
+  console.log(`\nПисем с ошибкой AI: ${before.rows[0].cnt}`);
 
   if (parseInt(before.rows[0].cnt) === 0) {
     console.log('Нечего сбрасывать.');
@@ -26,7 +39,7 @@ async function main() {
     return;
   }
 
-  // 2. Reset them: clear ai fields so IMAP processor will retry
+  // 3. Reset them: clear ai fields so IMAP processor will retry
   const result = await pool.query(`
     UPDATE emails
     SET ai_processed_at = NULL,
@@ -42,12 +55,20 @@ async function main() {
   console.log(`Сброшено ${result.rowCount} писем для повторной AI-обработки:`);
   console.log(`  IDs: ${result.rows.map(r => r.id).join(', ')}`);
 
-  // 3. Verify
+  // 4. Show queue status
   const after = await pool.query(`
     SELECT COUNT(*) as cnt FROM emails WHERE ai_processed_at IS NULL AND direction = 'inbound'
   `);
   console.log(`\nВсего писем в очереди на AI-обработку: ${after.rows[0].cnt}`);
-  console.log('Сервер подхватит их автоматически при следующем цикле IMAP.');
+
+  // 5. Show emails stuck with NULL email_type
+  const nullType = await pool.query(`
+    SELECT COUNT(*) as cnt FROM emails
+    WHERE ai_processed_at IS NULL AND direction = 'inbound' AND email_type IS NULL
+  `);
+  console.log(`Из них с NULL email_type: ${nullType.rows[0].cnt}`);
+
+  console.log('\nСервер подхватит их автоматически при следующем цикле (30 сек).');
 
   await pool.end();
 }

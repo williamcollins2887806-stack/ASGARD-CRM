@@ -445,31 +445,36 @@ async function analyzeOneEmail(email) {
     // Create inbox_application ONLY for genuine work proposals/tenders
     const applicationTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
     if (applicationTypes.includes(analysis.classification) && !analysis._skipped) {
-      await db.query(`
-        INSERT INTO inbox_applications (
-          email_id, source, source_email, source_name, subject, body_preview,
-          ai_classification, ai_color, ai_summary, ai_recommendation,
-          ai_work_type, ai_estimated_budget, ai_estimated_days,
-          ai_keywords, ai_confidence, ai_raw_json, ai_analyzed_at, ai_model,
-          workload_snapshot, attachment_count, status
-        ) VALUES (
-          $1, 'email', $2, $3, $4, $5,
-          $6, $7, $8, $9,
-          $10, $11, $12,
-          $13, $14, $15, NOW(), $16,
-          $17, $18, 'ai_processed'
-        ) ON CONFLICT DO NOTHING
-      `, [
-        emailId,
-        email.from_email || '', email.from_name || '',
-        email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
-        analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
-        analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
-        analysis.keywords || [], analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
-        JSON.stringify(workload), email.attachment_count || 0
-      ]);
+      try {
+        await db.query(`
+          INSERT INTO inbox_applications (
+            email_id, source, source_email, source_name, subject, body_preview,
+            ai_classification, ai_color, ai_summary, ai_recommendation,
+            ai_work_type, ai_estimated_budget, ai_estimated_days,
+            ai_keywords, ai_confidence, ai_raw_json, ai_analyzed_at, ai_model,
+            workload_snapshot, attachment_count, status
+          ) VALUES (
+            $1, 'email', $2, $3, $4, $5,
+            $6, $7, $8, $9,
+            $10, $11, $12,
+            $13, $14, $15, NOW(), $16,
+            $17, $18, 'ai_processed'
+          ) ON CONFLICT DO NOTHING
+        `, [
+          emailId,
+          email.from_email || '', email.from_name || '',
+          email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
+          analysis.classification, analysis.color, analysis.summary || '', analysis.recommendation || '',
+          analysis.work_type || null, analysis.estimated_budget || null, analysis.estimated_days || null,
+          analysis.keywords || [], analysis.confidence || 0, JSON.stringify(analysis), analysis._raw?.model || null,
+          JSON.stringify(workload), email.attachment_count || 0
+        ]);
 
-      console.log(`[IMAP-AI] Created application for email #${emailId}: ${analysis.color} / ${analysis.classification}`);
+        console.log(`[IMAP-AI] Created application for email #${emailId}: ${analysis.color} / ${analysis.classification}`);
+      } catch (appErr) {
+        console.error(`[IMAP-AI] inbox_application INSERT error for email #${emailId}:`, appErr.message);
+        // Don't fail the whole email — AI analysis was saved successfully
+      }
 
       // Create pre-tender request
       try {
@@ -518,7 +523,7 @@ async function processUnanalyzedEmails() {
       FROM emails
       WHERE ai_processed_at IS NULL
         AND direction = 'inbound'
-        AND email_type NOT IN (${typePlaceholders})
+        AND (email_type IS NULL OR email_type NOT IN (${typePlaceholders}))
         AND is_deleted = false
       ORDER BY email_date DESC
       LIMIT $${AI_SKIP_TYPES.length + 1}
