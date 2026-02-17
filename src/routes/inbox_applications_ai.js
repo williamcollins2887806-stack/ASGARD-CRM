@@ -411,26 +411,30 @@ module.exports = async function (fastify) {
 
     // Создать тендер-черновик из заявки
     if (create_tender) {
-      const tenderNotes = [
+      const now = new Date();
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      const commentTo = [
         app.ai_report || app.ai_summary || '',
+        `Источник: ${app.source_email || 'email'}`,
         `Создано из входящей заявки #${id}.`,
         notes || ''
       ].filter(Boolean).join('\n\n').trim();
 
       const tenderRes = await db.query(`
         INSERT INTO tenders (
-          tender_title, customer_name, tender_status, source, source_email,
-          work_type, estimated_budget, notes,
-          created_by, created_at, updated_at
-        ) VALUES ($1, $2, 'Черновик', 'inbox_ai', $3, $4, $5, $6, $7, NOW(), NOW())
+          tender_title, customer_name, tender_type, tender_status,
+          tender_price, comment_to, period,
+          created_by, created_at
+        ) VALUES ($1, $2, $3, 'Черновик', $4, $5, $6, $7, NOW())
         RETURNING id
       `, [
         app.subject || 'Заявка из почты #' + id,
         app.source_name || app.source_email || 'Не указан',
-        app.source_email || '',
-        app.ai_work_type || '',
-        app.ai_estimated_budget || 0,
-        tenderNotes,
+        app.ai_work_type || 'Прямой запрос',
+        app.ai_estimated_budget || null,
+        commentTo,
+        period,
         user.id
       ]);
       tenderId = tenderRes.rows[0].id;
