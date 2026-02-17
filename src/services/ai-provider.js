@@ -8,12 +8,14 @@
 
 'use strict';
 
-// Конфигурация из переменных окружения
-const AI_PROVIDER = process.env.AI_PROVIDER || 'anthropic';
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
+const db = require('./db');
+
+// Конфигурация из переменных окружения (начальные значения)
+let AI_PROVIDER = process.env.AI_PROVIDER || 'anthropic';
+let ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+let ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+let OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+let OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
 const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '4096', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
 const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '60000', 10); // 60 sec default
@@ -21,6 +23,41 @@ const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '60000', 10); // 60 
 // API endpoints
 const ANTHROPIC_URL = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
 const OPENAI_URL = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
+
+// DB settings cache
+let _dbKeysLoaded = false;
+
+/**
+ * Загрузить AI ключи из БД settings (key = 'ai_config')
+ * Вызывается один раз при первом запросе
+ */
+async function _loadKeysFromDB() {
+  if (_dbKeysLoaded) return;
+  _dbKeysLoaded = true;
+
+  try {
+    const result = await db.query("SELECT value_json FROM settings WHERE key = 'ai_config'");
+    if (result.rows[0]?.value_json) {
+      let parsed = JSON.parse(result.rows[0].value_json);
+      // IndexedDB sync может хранить вложенно
+      const cfg = parsed.value_json ? JSON.parse(parsed.value_json) : parsed;
+
+      if (cfg.anthropic_api_key && !ANTHROPIC_API_KEY) {
+        ANTHROPIC_API_KEY = cfg.anthropic_api_key;
+        console.log('[AI Provider] Anthropic API key loaded from DB settings');
+      }
+      if (cfg.openai_api_key && !OPENAI_API_KEY) {
+        OPENAI_API_KEY = cfg.openai_api_key;
+        console.log('[AI Provider] OpenAI API key loaded from DB settings');
+      }
+      if (cfg.provider) AI_PROVIDER = cfg.provider;
+      if (cfg.anthropic_model) ANTHROPIC_MODEL = cfg.anthropic_model;
+      if (cfg.openai_model) OPENAI_MODEL = cfg.openai_model;
+    }
+  } catch (e) {
+    // settings table may not have ai_config key yet — that's fine
+  }
+}
 
 /**
  * Получить текущую конфигурацию AI
@@ -203,6 +240,7 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
  * @returns {Promise<{text: string, usage: {inputTokens: number, outputTokens: number}, model: string}>}
  */
 async function complete({ system, messages, maxTokens, temperature }) {
+  await _loadKeysFromDB();
   const provider = AI_PROVIDER;
   const startTime = Date.now();
 
@@ -273,6 +311,7 @@ async function complete({ system, messages, maxTokens, temperature }) {
  * @returns {Promise<Response>} - Raw Response с SSE stream
  */
 async function stream({ system, messages, maxTokens, temperature }) {
+  await _loadKeysFromDB();
   const provider = AI_PROVIDER;
 
   try {
