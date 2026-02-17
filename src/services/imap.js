@@ -391,6 +391,31 @@ const AI_PROCESS_INTERVAL = 30000; // run every 30 sec
 let aiProcessorTimer = null;
 let aiProcessorRunning = false;
 
+// Self-healing helper: update ai_classification regardless of column type (jsonb or text)
+async function updateEmailAiClassification(emailId, classification, color, summary, recommendation) {
+  const jsonVal = JSON.stringify(classification || 'other');
+  // Try JSONB cast first (correct for jsonb column)
+  try {
+    await db.query(`
+      UPDATE emails SET
+        ai_classification = $1::jsonb, ai_color = $2, ai_summary = $3,
+        ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+      WHERE id = $5
+    `, [jsonVal, color || 'yellow', summary || '', recommendation || '', emailId]);
+    return;
+  } catch (e) {
+    if (!e.message.includes('invalid input syntax for type json')) throw e;
+    console.warn(`[IMAP-AI] JSONB cast failed for email #${emailId}, falling back to text`);
+  }
+  // Fallback: store as plain text (for text/varchar column)
+  await db.query(`
+    UPDATE emails SET
+      ai_classification = $1, ai_color = $2, ai_summary = $3,
+      ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+    WHERE id = $5
+  `, [jsonVal, color || 'yellow', summary || '', recommendation || '', emailId]);
+}
+
 /**
  * Process a single email with AI analysis.
  * Updates emails table and creates inbox_application.
@@ -406,10 +431,7 @@ async function analyzeOneEmail(email) {
     });
     if (skipCheck.skip) {
       console.log(`[IMAP-AI] Skipping email #${emailId}: ${skipCheck.reason} (from: ${email.from_email})`);
-      await db.query(
-        `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, ai_classification = $2::jsonb, ai_color = 'red', updated_at = NOW() WHERE id = $3`,
-        [`[Пропущено: ${skipCheck.reason}]`, JSON.stringify('other'), emailId]
-      );
+      await updateEmailAiClassification(emailId, 'other', 'red', `[Пропущено: ${skipCheck.reason}]`, null);
       return true; // Считаем обработанным, но НЕ создаём inbox_application
     }
 
@@ -431,16 +453,10 @@ async function analyzeOneEmail(email) {
     const workload = await aiAnalyzer.getWorkloadData();
 
     // Update the emails table with AI results
-    await db.query(`
-      UPDATE emails SET
-        ai_classification = $1::jsonb, ai_color = $2, ai_summary = $3,
-        ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
-      WHERE id = $5
-    `, [
-      JSON.stringify(analysis.classification), analysis.color,
-      analysis.summary, analysis.recommendation,
-      emailId
-    ]);
+    await updateEmailAiClassification(
+      emailId, analysis.classification, analysis.color,
+      analysis.summary, analysis.recommendation
+    );
 
     // Create inbox_application ONLY for genuine work proposals/tenders
     const applicationTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
