@@ -237,7 +237,7 @@ module.exports = async function (fastify) {
         `, [
           analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
           analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
-          analysis.keywords, analysis.confidence, JSON.stringify(analysis),
+          JSON.stringify(analysis.keywords || []), analysis.confidence, JSON.stringify(analysis),
           analysis._raw?.model || null,
           JSON.stringify(workload),
           appId
@@ -324,7 +324,7 @@ module.exports = async function (fastify) {
     `, [
       analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
       analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
-      analysis.keywords, analysis.confidence, JSON.stringify(analysis),
+      JSON.stringify(analysis.keywords || []), analysis.confidence, JSON.stringify(analysis),
       analysis._raw?.model || null,
       JSON.stringify(workload),
       id

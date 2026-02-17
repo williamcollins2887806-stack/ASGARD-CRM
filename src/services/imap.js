@@ -465,7 +465,7 @@ async function analyzeOneEmail(email) {
         email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
         analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
         analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
-        analysis.keywords, analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
+        JSON.stringify(analysis.keywords || []), analysis.confidence, JSON.stringify(analysis), analysis._raw?.model || null,
         JSON.stringify(workload), email.attachment_count || 0
       ]);
 
