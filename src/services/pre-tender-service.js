@@ -483,7 +483,7 @@ async function getWorkloadInfo() {
   try {
     const [works, employees] = await Promise.all([
       db.query(`SELECT COUNT(*) as cnt FROM works WHERE work_status IN ('В работе','Мобилизация','На объекте')`),
-      db.query(`SELECT COUNT(*) as cnt FROM employees WHERE status = 'Свободен' AND is_active = true`)
+      db.query(`SELECT COUNT(*) as cnt FROM employees WHERE is_active = true`)
     ]);
     const activeWorks = parseInt(works.rows[0]?.cnt || 0);
     const freeWorkers = parseInt(employees.rows[0]?.cnt || 0);

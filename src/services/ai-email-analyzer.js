@@ -392,7 +392,7 @@ function parseAIResponse(text) {
       confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5
     };
   } catch (e) {
-    console.error('[AI-Analyzer] JSON parse error:', e.message);
+    console.warn('[AI-Analyzer] JSON parse error:', e.message, '| raw:', clean.slice(0, 80));
     return fallbackResult();
   }
 }
@@ -444,7 +444,7 @@ async function getWorkloadData() {
     const [worksRes, tendersRes, employeesRes] = await Promise.all([
       db.query(`SELECT COUNT(*) as cnt FROM works WHERE work_status IN ('В работе','Мобилизация','На объекте')`),
       db.query(`SELECT COUNT(*) as cnt FROM tenders WHERE tender_status IN ('Новый','В работе','Готовим КП')`),
-      db.query(`SELECT COUNT(*) as cnt FROM employees WHERE status = 'Свободен' AND is_active = true`)
+      db.query(`SELECT COUNT(*) as cnt FROM employees WHERE is_active = true`)
     ]);
 
     return {
