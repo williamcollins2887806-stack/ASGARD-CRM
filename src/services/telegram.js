@@ -12,9 +12,26 @@ let bot = null;
 // Initialize Bot
 // ─────────────────────────────────────────────────────────────────────────────
 async function init() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  let token = process.env.TELEGRAM_BOT_TOKEN;
+
+  // Fallback: читаем токен из таблицы settings (если пользователь сохранил через UI)
   if (!token) {
-    console.warn('TELEGRAM_BOT_TOKEN not set, bot disabled');
+    try {
+      const result = await db.query("SELECT value_json FROM settings WHERE key = 'telegram'");
+      if (result.rows[0]?.value_json) {
+        const settings = JSON.parse(result.rows[0].value_json);
+        if (settings.bot_token && settings.enabled !== false) {
+          token = settings.bot_token;
+          console.log('[Telegram] Bot token loaded from DB settings');
+        }
+      }
+    } catch (e) {
+      // settings table may not have telegram key yet
+    }
+  }
+
+  if (!token) {
+    console.warn('TELEGRAM_BOT_TOKEN not set and no token in DB, bot disabled');
     return;
   }
 
@@ -191,6 +208,10 @@ async function init() {
 // Send Notification
 // ─────────────────────────────────────────────────────────────────────────────
 async function sendNotification(userId, message, options = {}) {
+  // Ленивая инициализация: если бот не запущен, пробуем инициализировать
+  if (!bot) {
+    try { await init(); } catch (e) { /* ignore */ }
+  }
   if (!bot) return false;
   
   try {

@@ -643,11 +643,15 @@ const start = async () => {
     setTimeout(cleanupCompletedReminders, 10_000);
     fastify.log.info('[Cron] Автоочистка напоминаний запланирована');
 
-    // Initialize Telegram bot if token provided
-    if (process.env.TELEGRAM_BOT_TOKEN) {
+    // Initialize Telegram bot (from env var or DB settings)
+    try {
       const telegram = require('./services/telegram');
       await telegram.init();
-      fastify.log.info('Telegram bot started');
+      if (telegram.getBot()) {
+        fastify.log.info('Telegram bot started');
+      }
+    } catch (e) {
+      fastify.log.warn('Telegram bot init failed:', e.message);
     }
 
     // Initialize IMAP mail collection service
