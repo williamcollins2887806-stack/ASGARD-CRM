@@ -625,7 +625,7 @@ const start = async () => {
         const result = await db.query(
           `DELETE FROM reminders
            WHERE (completed = true OR dismissed = true)
-             AND remind_at < NOW() - INTERVAL '1 hour' * $1
+             AND due_date < NOW() - INTERVAL '1 hour' * $1
            RETURNING id`,
           [hours]
         );
