@@ -131,23 +131,60 @@ const MAX_EXTRACT_PER_FILE = 15000; // For classification (short analysis)
 const MAX_EXTRACT_PER_FILE_REPORT = 100000; // For reports — full TZ documents (50+ pages)
 const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
+/**
+ * Resolve attachment file path — tries multiple base directories for robustness
+ * (handles PM2, Docker, and different cwd scenarios)
+ */
+function resolveAttachmentPath(filePath) {
+  // Candidate base directories
+  const bases = [
+    path.join(__dirname, '..', '..'),           // src/services/../../ → project root
+    process.cwd(),                               // Current working directory (PM2 may change this)
+    path.resolve('.'),                           // Explicit resolve of '.'
+    '/app',                                      // Docker container path
+  ];
+
+  for (const base of bases) {
+    const candidate = path.join(base, filePath);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Also try absolute path as-is (in case file_path is already absolute)
+  if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
+    return filePath;
+  }
+
+  return null;
+}
+
 async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FILE } = {}) {
-  if (!emailId) return { texts: [], imageBlocks: [] };
+  if (!emailId) {
+    console.log('[AI-Analyzer] extractAttachmentTexts: no emailId provided');
+    return { texts: [], imageBlocks: [] };
+  }
   try {
     const attRes = await db.query(
       'SELECT original_filename, mime_type, size, file_path FROM email_attachments WHERE email_id = $1',
       [emailId]
     );
+    console.log(`[AI-Analyzer] Email #${emailId}: found ${attRes.rows.length} attachments in DB`);
     if (!attRes.rows.length) return { texts: [], imageBlocks: [] };
 
     const texts = [];
     const imageBlocks = [];
 
     for (const a of attRes.rows) {
-      if (!a.file_path) { console.log(`[AI-Analyzer] No file_path for attachment: ${a.original_filename}`); continue; }
-      const absPath = path.join(__dirname, '..', '..', a.file_path);
-      if (!fs.existsSync(absPath)) { console.log(`[AI-Analyzer] File not found: ${absPath} (original: ${a.original_filename})`); continue; }
-      console.log(`[AI-Analyzer] Extracting: ${a.original_filename} (${a.mime_type}) from ${absPath}`);
+      console.log(`[AI-Analyzer] Processing attachment: "${a.original_filename}" mime=${a.mime_type} file_path=${a.file_path}`);
+      if (!a.file_path) { console.log(`[AI-Analyzer] SKIP: no file_path for "${a.original_filename}"`); continue; }
+
+      const absPath = resolveAttachmentPath(a.file_path);
+      if (!absPath) {
+        console.error(`[AI-Analyzer] FILE NOT FOUND for "${a.original_filename}": tried file_path="${a.file_path}", __dirname=${__dirname}, cwd=${process.cwd()}`);
+        continue;
+      }
+      console.log(`[AI-Analyzer] Resolved path: ${absPath} (${fs.statSync(absPath).size} bytes)`);
 
       // Изображения — готовим для Vision
       if (IMAGE_MIMES.includes(a.mime_type) && imageBlocks.length < 3) {
@@ -158,6 +195,7 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
             type: 'image',
             source: { type: 'base64', media_type: a.mime_type, data: buf.toString('base64') }
           });
+          console.log(`[AI-Analyzer] Added image: "${a.original_filename}" (${stats.size} bytes)`);
         }
         continue;
       }
@@ -185,8 +223,13 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
               if (vals.length) lines.push(vals.join(' | '));
             });
           });
-          if (lines.length) texts.push(`[${a.original_filename}]\n${lines.join('\n').slice(0, maxPerFile)}`);
-        } catch (_) {}
+          if (lines.length) {
+            texts.push(`[${a.original_filename}]\n${lines.join('\n').slice(0, maxPerFile)}`);
+            console.log(`[AI-Analyzer] Extracted XLSX: "${a.original_filename}" → ${lines.length} lines`);
+          }
+        } catch (xlsErr) {
+          console.error(`[AI-Analyzer] XLSX extraction error for "${a.original_filename}":`, xlsErr.message);
+        }
         continue;
       }
 
@@ -195,9 +238,17 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
         try {
           const pdfParse = require('pdf-parse');
           const buf = fs.readFileSync(absPath);
+          console.log(`[AI-Analyzer] Parsing PDF: "${a.original_filename}" (${buf.length} bytes)`);
           const result = await pdfParse(buf);
-          if (result.text) texts.push(`[${a.original_filename}]\n${result.text.slice(0, maxPerFile)}`);
-        } catch (_) {}
+          if (result.text) {
+            texts.push(`[${a.original_filename}]\n${result.text.slice(0, maxPerFile)}`);
+            console.log(`[AI-Analyzer] Extracted PDF: "${a.original_filename}" → ${result.text.length} chars, ${result.numpages || '?'} pages`);
+          } else {
+            console.warn(`[AI-Analyzer] PDF parsed but no text: "${a.original_filename}" (may be scanned/image PDF)`);
+          }
+        } catch (pdfErr) {
+          console.error(`[AI-Analyzer] PDF extraction error for "${a.original_filename}":`, pdfErr.message);
+        }
         continue;
       }
 
@@ -207,8 +258,13 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
           const mammoth = require('mammoth');
           const buf = fs.readFileSync(absPath);
           const result = await mammoth.extractRawText({ buffer: buf });
-          if (result.value) texts.push(`[${a.original_filename}]\n${result.value.slice(0, maxPerFile)}`);
-        } catch (_) {}
+          if (result.value) {
+            texts.push(`[${a.original_filename}]\n${result.value.slice(0, maxPerFile)}`);
+            console.log(`[AI-Analyzer] Extracted DOCX: "${a.original_filename}" → ${result.value.length} chars`);
+          }
+        } catch (docxErr) {
+          console.error(`[AI-Analyzer] DOCX extraction error for "${a.original_filename}":`, docxErr.message);
+        }
         continue;
       }
 
@@ -217,8 +273,13 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
           || a.mime_type?.startsWith('text/') || a.mime_type === 'application/rtf') {
         try {
           const content = fs.readFileSync(absPath, 'utf-8');
-          if (content) texts.push(`[${a.original_filename}]\n${content.slice(0, maxPerFile)}`);
-        } catch (_) {}
+          if (content) {
+            texts.push(`[${a.original_filename}]\n${content.slice(0, maxPerFile)}`);
+            console.log(`[AI-Analyzer] Extracted text: "${a.original_filename}" → ${content.length} chars`);
+          }
+        } catch (txtErr) {
+          console.error(`[AI-Analyzer] Text extraction error for "${a.original_filename}":`, txtErr.message);
+        }
         continue;
       }
 
@@ -228,14 +289,20 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
           const buf = fs.readFileSync(absPath);
           // Extract readable text from binary DOC (basic approach)
           const text = buf.toString('utf-8').replace(/[^\x20-\x7E\u0400-\u04FF\n\r\t]/g, ' ').replace(/\s{3,}/g, ' ').trim();
-          if (text.length > 50) texts.push(`[${a.original_filename}]\n${text.slice(0, maxPerFile)}`);
-        } catch (_) {}
+          if (text.length > 50) {
+            texts.push(`[${a.original_filename}]\n${text.slice(0, maxPerFile)}`);
+            console.log(`[AI-Analyzer] Extracted DOC: "${a.original_filename}" → ${text.length} chars`);
+          }
+        } catch (docErr) {
+          console.error(`[AI-Analyzer] DOC extraction error for "${a.original_filename}":`, docErr.message);
+        }
       }
     }
 
+    console.log(`[AI-Analyzer] Email #${emailId}: extracted ${texts.length} text blocks, ${imageBlocks.length} images`);
     return { texts, imageBlocks };
   } catch (err) {
-    console.warn('[AI-Analyzer] Attachment extraction error:', err.message);
+    console.error('[AI-Analyzer] Attachment extraction error:', err.message, err.stack);
     return { texts: [], imageBlocks: [] };
   }
 }
@@ -528,9 +595,16 @@ const REPORT_SYSTEM_PROMPT = `Ты — AI-ассистент компании А
 Отвечай простым текстом без markdown-форматирования.`;
 
 async function generateReport({ emailId, subject, bodyText, fromEmail, fromName, attachmentNames }) {
+  console.log(`[AI-Analyzer] generateReport called: emailId=${emailId}, subject="${(subject || '').slice(0, 80)}"`);
   try {
     // Извлекаем содержимое вложений с БОЛЬШИМ лимитом для полного анализа ТЗ
     const { texts: attachmentTexts, imageBlocks } = await extractAttachmentTexts(emailId, { maxPerFile: MAX_EXTRACT_PER_FILE_REPORT });
+    console.log(`[AI-Analyzer] Report: got ${attachmentTexts.length} text blocks, ${imageBlocks.length} images for email #${emailId}`);
+    if (attachmentTexts.length > 0) {
+      console.log(`[AI-Analyzer] Report: attachment text total = ${attachmentTexts.join('').length} chars`);
+    } else {
+      console.warn(`[AI-Analyzer] Report: NO attachment text extracted for email #${emailId} — report will lack TZ content`);
+    }
 
     let msg = `ВХОДЯЩЕЕ ПИСЬМО:\n`;
     msg += `От: ${fromName || 'Неизвестно'} <${fromEmail || '?'}>\n`;
