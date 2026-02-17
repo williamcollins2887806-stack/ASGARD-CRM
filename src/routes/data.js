@@ -140,12 +140,8 @@ async function dataRoutes(fastify, options) {
   // users убран: HIDDEN_COLS уже скрывает password_hash/pin_hash, а ФИО нужны всем ролям
   const READ_SENSITIVE_TABLES = ['audit_log'];
 
-  // Role inheritance map: child roles inherit parent role permissions
-  const ROLE_INHERIT = {
-    'HEAD_TO': 'TO',
-    'HR_MANAGER': 'HR',
-    'CHIEF_ENGINEER': 'WAREHOUSE'
-  };
+  // NOTE: HEAD_TO, HR_MANAGER, CHIEF_ENGINEER используют выделенные API-маршруты,
+  // а не универсальный data API. Наследование ролей работает в requireRoles (index.js).
 
   function checkAccess(role, table, operation) {
     // ADMIN и DIRECTOR_GEN имеют полный доступ
@@ -163,11 +159,8 @@ async function dataRoutes(fastify, options) {
       return false;
     }
 
-    // Check direct role first, then inherited parent role
-    let matrix = ACCESS_MATRIX[role];
-    if (!matrix && ROLE_INHERIT[role]) {
-      matrix = ACCESS_MATRIX[ROLE_INHERIT[role]];
-    }
+    // Только прямое совпадение роли — без наследования
+    const matrix = ACCESS_MATRIX[role];
     if (!matrix) return false;
 
     const tablesAllowed = matrix.tables === 'all' || matrix.tables.includes(table);
