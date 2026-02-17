@@ -989,6 +989,9 @@ try{
             <button class="btn welcome-btn" id="btnShowLogin" type="button" style="touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;position:relative;z-index:10">Войти</button>
           </div>
 
+          <!-- Биометрический вход (Phase 3) -->
+          <div id="biometricLoginContainer" style="display:none"></div>
+
           <!-- Форма входа: Шаг 1 - логин/пароль -->
           <div class="welcome-form" id="loginForm" style="display:none">
             <div class="welcome-form-title">Вход в Асгард</div>
@@ -1080,6 +1083,16 @@ try{
       setupForm.style.display = "none";
       loginForm.style.display = "block";
       setTimeout(()=>$("#w_login")?.focus(), 100);
+
+      // Show biometric login button if available (Phase 3)
+      (async function(){
+        try {
+          if (window.AsgardWebAuthn && await AsgardWebAuthn.isSupported() && AsgardWebAuthn.getLastUsername()) {
+            var bCont = document.getElementById('biometricLoginContainer');
+            if (bCont) { bCont.style.display = 'block'; AsgardWebAuthn.renderLoginButton('biometricLoginContainer'); }
+          }
+        } catch(e){}
+      })();
     }
 
     function showPin(){
@@ -1129,6 +1142,7 @@ try{
         const result = await AsgardAuth.loginStep1({login, password:pass});
         loginState.userId = result.userId;
         loginState.userName = result.userName;
+        loginState.login = login;
         loginState.remember = remember;
 
         if(result.status === 'ok'){
@@ -1225,6 +1239,15 @@ try{
     // Ждём 2.5 секунды и переходим на главную
     await new Promise(r => setTimeout(r, 2500));
     location.hash = "#/home";
+
+    // Post-login: save username for biometric, init push, show biometric prompt
+    try {
+      if (loginState.login && window.AsgardWebAuthn) {
+        AsgardWebAuthn.saveLastUsername(loginState.login);
+      }
+    } catch(e) {}
+    try { if (window.AsgardPush) AsgardPush.init(); } catch(e) {}
+    try { if (window.AsgardWebAuthn) AsgardWebAuthn.showRegistrationPrompt(); } catch(e) {}
   }
 
   async function backupModal(){

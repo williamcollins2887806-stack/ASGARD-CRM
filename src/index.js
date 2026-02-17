@@ -60,10 +60,31 @@ fastify.register(require('@fastify/multipart'), {
   }
 });
 
-// Static files (frontend)
+// Static files (frontend) with cache-busting headers
 fastify.register(require('@fastify/static'), {
   root: path.join(__dirname, '../public'),
-  prefix: '/'
+  prefix: '/',
+  setHeaders(res, filePath) {
+    // HTML files: always revalidate (browser checks freshness each time)
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+      return;
+    }
+    // SW: must not be cached aggressively
+    if (filePath.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'no-cache');
+      return;
+    }
+    // JS, CSS, images, fonts: cache 30 days (?v= in URL guarantees freshness)
+    if (/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+      return;
+    }
+    // manifest.json
+    if (filePath.endsWith('.json')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
 });
 
 // Rate limiting
@@ -229,6 +250,8 @@ fastify.register(require('./routes/tkp'), { prefix: '/api/tkp' });
 fastify.register(require('./routes/pass_requests'), { prefix: '/api/pass-requests' });
 fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
 fastify.register(require('./routes/sse'), { prefix: '/api/sse' });
+fastify.register(require('./routes/push'), { prefix: '/api/push' });
+fastify.register(require('./routes/webauthn'), { prefix: '/api/webauthn' });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health Check
@@ -485,6 +508,61 @@ async function ensureTables() {
         ALTER TABLE users ADD COLUMN telegram_chat_id BIGINT;
       END IF;
     END $$;
+  `);
+
+  // Push Subscriptions table (Phase 2)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      device_info VARCHAR(255),
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_push_sub_user_id ON push_subscriptions(user_id)`);
+
+  // Add url/body columns to notifications if missing (Phase 2)
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='notifications' AND column_name='url') THEN
+        ALTER TABLE notifications ADD COLUMN url VARCHAR(500);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='notifications' AND column_name='body') THEN
+        ALTER TABLE notifications ADD COLUMN body TEXT;
+      END IF;
+    END $$;
+  `);
+
+  // WebAuthn Credentials table (Phase 3)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS webauthn_credentials (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id INTEGER NOT NULL,
+      credential_id TEXT NOT NULL UNIQUE,
+      public_key BYTEA NOT NULL,
+      counter BIGINT NOT NULL DEFAULT 0,
+      device_name VARCHAR(255) DEFAULT 'Устройство',
+      transports TEXT[],
+      created_at TIMESTAMP DEFAULT NOW(),
+      last_used_at TIMESTAMP
+    )
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_webauthn_user_id ON webauthn_credentials(user_id)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_webauthn_cred_id ON webauthn_credentials(credential_id)`);
+
+  // WebAuthn Challenges table (temporary, TTL 5 min)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS webauthn_challenges (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      challenge TEXT NOT NULL,
+      type VARCHAR(20) NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
   `);
 }
 

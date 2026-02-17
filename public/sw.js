@@ -1,8 +1,12 @@
 // ASGARD CRM Service Worker
-// Stage 20: PWA + Stage 22: Offline
+// Cache Busting + Push Notifications + Offline Support
 
-const CACHE_NAME = 'asgard-crm-v24';
-const STATIC_ASSETS = [
+const CACHE_NAME = 'asgard-crm-v1.0.0';
+
+// ─────────────────────────────────────────────────────────────────────
+// Install: precache critical shell assets
+// ─────────────────────────────────────────────────────────────────────
+const SHELL_ASSETS = [
   './',
   './index.html',
   './manifest.json',
@@ -12,252 +16,200 @@ const STATIC_ASSETS = [
   './assets/css/app.css',
   './assets/img/logo.png',
   './assets/img/asgard_logo.png',
-  './assets/img/asgard_emblem.png',
-  './assets/img/watermark.svg',
-  './assets/img/watermark_dark.svg'
+  './assets/img/asgard_emblem.png'
 ];
 
-// JS файлы для кэширования
-const JS_ASSETS = [
-  './assets/js/db.js',
-  './assets/js/auth.js',
-  './assets/js/ui.js',
-  './assets/js/router.js',
-  './assets/js/seed.js',
-  './assets/js/app.js',
-  './assets/js/charts.js',
-  './assets/js/tenders.js',
-  './assets/js/pm_calcs.js',
-  './assets/js/pm_works.js',
-  './assets/js/all_works.js',
-  './assets/js/all_estimates.js',
-  './assets/js/finances.js',
-  './assets/js/approvals.js',
-  './assets/js/alerts.js',
-  './assets/js/birthdays.js',
-  './assets/js/personnel.js',
-  './assets/js/employee.js',
-  './assets/js/customers.js',
-  './assets/js/settings.js',
-  './assets/js/backup.js',
-  './assets/js/gantt.js',
-  './assets/js/gantt_full.js',
-  './assets/js/calc_cities.js',
-  './assets/js/calc_norms.js',
-  './assets/js/calc_equipment.js',
-  './assets/js/calculator_v2.js',
-  './assets/js/calculator.js',
-  './assets/js/templates.js',
-  './assets/js/docs_pack.js',
-  './assets/js/kpi_works.js',
-  './assets/js/kpi_money.js',
-  './assets/js/sla.js',
-  './assets/js/booking.js',
-  './assets/js/hr_requests.js',
-  './assets/js/hr_rating.js',
-  './assets/js/staff_schedule.js',
-  './assets/js/office_schedule.js',
-  './assets/js/proc_requests.js',
-  './assets/js/buh_registry.js',
-  './assets/js/work_expenses.js',
-  './assets/js/office_expenses.js',
-  './assets/js/correspondence.js',
-  './assets/js/proxies.js',
-  './assets/js/travel.js',
-  './assets/js/user_requests.js',
-  './assets/js/dashboard.js',
-  './assets/js/pm_consents.js',
-  './assets/js/confirm.js',
-  './assets/js/validate.js',
-  './assets/js/diag.js',
-  './assets/js/safe_mode.js',
-  './assets/js/theme.js',
-  './assets/js/build_info.js',
-  './assets/js/acts.js',
-  './assets/js/auto_reports.js',
-  './assets/js/bank_import.js',
-  './assets/js/big_screen.js',
-  './assets/js/bonus_approval.js',
-  './assets/js/calendar.js',
-  './assets/js/cash.js',
-  './assets/js/cash_admin.js',
-  './assets/js/chat.js',
-  './assets/js/chat_groups.js',
-  './assets/js/contracts.js',
-  './assets/js/custom_dashboard.js',
-  './assets/js/email.js',
-  './assets/js/email_compose.js',
-  './assets/js/engineer_dashboard.js',
-  './assets/js/equipment.js',
-  './assets/js/export.js',
-  './assets/js/funnel.js',
-  './assets/js/fx.js',
-  './assets/js/geo_score.js',
-  './assets/js/global_search.js',
-  './assets/js/inbox_applications.js',
-  './assets/js/integrations.js',
-  './assets/js/invoices.js',
-  './assets/js/object_map.js',
-  './assets/js/kanban.js',
-  './assets/js/mail_settings.js',
-  './assets/js/mailbox.js',
-  './assets/js/mango.js',
-  './assets/js/meetings_page.js',
-  './assets/js/mimir.js',
-  './assets/js/mobile.js',
-  './assets/js/my_equipment.js',
-  './assets/js/notifications_helper.js',
-  './assets/js/payroll.js',
-  './assets/js/permit_applications.js',
-  './assets/js/permits.js',
-  './assets/js/pm_analytics.js',
-  './assets/js/pre_tenders.js',
-  './assets/js/qr_codes.js',
-  './assets/js/receipt_scanner.js',
-  './assets/js/reminders.js',
-  './assets/js/seals.js',
-  './assets/js/sync.js',
-  './assets/js/tasks.js',
-  './assets/js/tasks_admin.js',
-  './assets/js/telegram.js',
-  './assets/js/tkp_followup.js',
-  './assets/js/to_analytics.js',
-  './assets/js/warehouse.js'
-];
-
-// Иконки навигации
-const ICON_ASSETS = [
-  './assets/icons/nav/home.svg',
-  './assets/icons/nav/tenders.svg',
-  './assets/icons/nav/pmcalcs.svg',
-  './assets/icons/nav/pmworks.svg',
-  './assets/icons/nav/allworks.svg',
-  './assets/icons/nav/allestimates.svg',
-  './assets/icons/nav/finances.svg',
-  './assets/icons/nav/approvals.svg',
-  './assets/icons/nav/alerts.svg',
-  './assets/icons/nav/birthdays.svg',
-  './assets/icons/nav/workers.svg',
-  './assets/icons/nav/customers.svg',
-  './assets/icons/nav/settings.svg',
-  './assets/icons/nav/backup.svg',
-  './assets/icons/nav/ganttworks.svg',
-  './assets/icons/nav/ganttcalcs.svg',
-  './assets/icons/nav/kpiworks.svg',
-  './assets/icons/nav/kpimoney.svg',
-  './assets/icons/nav/rating.svg',
-  './assets/icons/nav/office.svg',
-  './assets/icons/nav/buh.svg',
-  './assets/icons/nav/diag.svg'
-];
-
-const ALL_ASSETS = [...STATIC_ASSETS, ...JS_ASSETS, ...ICON_ASSETS];
-
-// Установка SW
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing...');
+  console.log('[SW] Installing', CACHE_NAME);
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('[SW] Caching assets...');
-        return cache.addAll(ALL_ASSETS);
-      })
+      .then((cache) => cache.addAll(SHELL_ASSETS))
       .then(() => {
-        console.log('[SW] Install complete');
-        return self.skipWaiting();
+        console.log('[SW] Shell cached');
+        // Don't skipWaiting automatically — let the update banner control it
       })
-      .catch((err) => {
-        console.error('[SW] Install failed:', err);
-      })
+      .catch((err) => console.error('[SW] Install failed:', err))
   );
 });
 
-// Активация SW - очистка старых кэшей
+// ─────────────────────────────────────────────────────────────────────
+// Activate: clean up old caches
+// ─────────────────────────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating...');
+  console.log('[SW] Activating', CACHE_NAME);
   event.waitUntil(
-    caches.keys()
-      .then((cacheNames) => {
-        return Promise.all(
-          cacheNames
-            .filter((name) => name !== CACHE_NAME)
-            .map((name) => {
-              console.log('[SW] Deleting old cache:', name);
-              return caches.delete(name);
-            })
-        );
-      })
-      .then(() => {
-        console.log('[SW] Activated');
-        return self.clients.claim();
-      })
+    caches.keys().then((names) => {
+      return Promise.all(
+        names
+          .filter((name) => name.startsWith('asgard-crm-') && name !== CACHE_NAME)
+          .map((name) => {
+            console.log('[SW] Deleting old cache:', name);
+            return caches.delete(name);
+          })
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
-// Стратегия: Cache First, затем Network
+// ─────────────────────────────────────────────────────────────────────
+// Fetch strategies:
+//   HTML & API  → Network First (always try fresh, fallback to cache)
+//   JS/CSS/img  → Stale While Revalidate (fast from cache, update in bg)
+// ─────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  
-  // Только GET запросы
-  if (event.request.method !== 'GET') return;
-  
-  // Игнорируем внешние запросы
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Only handle GET requests from same origin
+  if (request.method !== 'GET') return;
   if (url.origin !== location.origin) return;
 
-  // Не кэшируем API-запросы — они всегда должны идти на сервер
+  // API requests — always network, no caching
   if (url.pathname.startsWith('/api/')) return;
 
-  event.respondWith(
-    caches.match(event.request)
-      .then((cachedResponse) => {
-        if (cachedResponse) {
-          // Возвращаем из кэша, но обновляем в фоне
-          fetchAndCache(event.request);
-          return cachedResponse;
-        }
-        
-        // Нет в кэше - идём в сеть
-        return fetchAndCache(event.request);
-      })
-      .catch(() => {
-        // Офлайн и нет в кэше - возвращаем fallback для HTML
-        if (event.request.headers.get('accept')?.includes('text/html')) {
-          return caches.match('./index.html');
-        }
-        return new Response('Offline', { status: 503 });
-      })
-  );
+  // HTML requests → Network First
+  const acceptHeader = request.headers.get('accept') || '';
+  if (acceptHeader.includes('text/html') || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  // Static assets (JS, CSS, images, fonts) → Stale While Revalidate
+  event.respondWith(staleWhileRevalidate(request));
 });
 
-// Загрузка и кэширование
-async function fetchAndCache(request) {
+async function networkFirst(request) {
   try {
     const response = await fetch(request);
-    
-    // Кэшируем только успешные ответы
     if (response.ok) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }
-    
     return response;
   } catch (err) {
-    // Сеть недоступна
     const cached = await caches.match(request);
     if (cached) return cached;
-    throw err;
+    // Fallback: serve index.html for SPA navigation
+    const fallback = await caches.match('./index.html');
+    if (fallback) return fallback;
+    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
   }
 }
 
-// Сообщения от клиента
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+
+  // Always try to fetch fresh version in background
+  const fetchPromise = fetch(request).then((response) => {
+    if (response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  }).catch(() => null);
+
+  // Return cached immediately if available, otherwise wait for network
+  if (cached) {
+    // Fire and forget the background update
+    fetchPromise;
+    return cached;
+  }
+
+  const response = await fetchPromise;
+  if (response) return response;
+
+  return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Messages from client
+// ─────────────────────────────────────────────────────────────────────
 self.addEventListener('message', (event) => {
   if (event.data === 'skipWaiting') {
     self.skipWaiting();
   }
-  
   if (event.data === 'getVersion') {
     event.ports[0].postMessage({ version: CACHE_NAME });
   }
 });
 
-console.log('[SW] Service Worker loaded');
+// ─────────────────────────────────────────────────────────────────────
+// Push Notifications (Phase 2)
+// ─────────────────────────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch (e) {
+    payload = { title: 'АСГАРД CRM', body: event.data.text() };
+  }
+
+  const options = {
+    body: payload.body || '',
+    icon: payload.icon || './assets/img/icon-192.png',
+    badge: './assets/img/icon-96.png',
+    tag: payload.tag || 'asgard-notification',
+    data: { url: payload.url || '/' },
+    vibrate: [200, 100, 200],
+    actions: payload.actions || []
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title || 'АСГАРД CRM', options)
+      .then(() => {
+        // Update app badge if supported
+        if (payload.badge_count !== undefined && 'setAppBadge' in navigator) {
+          if (payload.badge_count > 0) {
+            return navigator.setAppBadge(payload.badge_count);
+          } else {
+            return navigator.clearAppBadge();
+          }
+        }
+      })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Try to focus existing window
+        for (const client of clientList) {
+          if (new URL(client.url).origin === location.origin) {
+            client.focus();
+            client.postMessage({ type: 'NOTIFICATION_CLICK', url: targetUrl });
+            return;
+          }
+        }
+        // No existing window — open new one
+        return clients.openWindow(targetUrl);
+      })
+  );
+});
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  // Auto-resubscribe when subscription expires or keys rotate
+  event.waitUntil(
+    self.registration.pushManager.subscribe(event.oldSubscription.options)
+      .then((newSub) => {
+        // Notify server about the new subscription
+        return fetch('/api/push/resubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            old_endpoint: event.oldSubscription?.endpoint,
+            new_subscription: newSub.toJSON()
+          })
+        });
+      })
+      .catch((err) => console.error('[SW] Resubscribe failed:', err))
+  );
+});
+
+console.log('[SW] Service Worker loaded:', CACHE_NAME);

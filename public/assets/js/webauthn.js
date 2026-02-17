@@ -1,0 +1,394 @@
+/**
+ * ASGARD CRM - WebAuthn (Biometric Login) Client Module
+ * Uses @simplewebauthn/browser from CDN (global: SimpleWebAuthnBrowser)
+ */
+window.AsgardWebAuthn = (function() {
+
+  const DISMISSED_KEY = 'webauthn_dismissed';
+  const LAST_USER_KEY = 'asgard_last_login';
+
+  // ── Feature Detection ──
+  async function isSupported() {
+    if (!window.PublicKeyCredential) return false;
+    try {
+      return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ── Detect device type for button label ──
+  function getBiometricLabel() {
+    var ua = navigator.userAgent;
+    if (/iPhone|iPad/.test(ua)) return 'Войти через Face ID';
+    if (/Android/.test(ua)) return 'Войти по отпечатку';
+    if (/Macintosh/.test(ua)) return 'Войти через Touch ID';
+    return 'Войти с биометрией';
+  }
+
+  function getBiometricIcon() {
+    var ua = navigator.userAgent;
+    if (/iPhone|iPad/.test(ua)) return '👤';
+    if (/Android/.test(ua)) return '👆';
+    if (/Macintosh/.test(ua)) return '👆';
+    return '🔐';
+  }
+
+  // ── Get last logged-in username ──
+  function getLastUsername() {
+    return localStorage.getItem(LAST_USER_KEY) || '';
+  }
+
+  function saveLastUsername(username) {
+    localStorage.setItem(LAST_USER_KEY, username);
+  }
+
+  // ── Register Biometric (after normal login) ──
+  async function registerBiometric() {
+    var swab = window.SimpleWebAuthnBrowser;
+    if (!swab) throw new Error('SimpleWebAuthn library not loaded');
+
+    var auth = window.AsgardAuth ? AsgardAuth.getAuth() : null;
+    if (!auth) throw new Error('Not authenticated');
+
+    // 1. Get registration options from server
+    var resp = await fetch('/api/webauthn/register/options', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + auth.token
+      }
+    });
+
+    if (!resp.ok) {
+      var err = await resp.json().catch(function() { return {}; });
+      throw new Error(err.error || 'Failed to get registration options');
+    }
+
+    var options = await resp.json();
+
+    // 2. Create credential via browser API
+    var attResp;
+    try {
+      attResp = await swab.startRegistration({ optionsJSON: options });
+    } catch (e) {
+      if (e.name === 'NotAllowedError') throw new Error('cancelled');
+      throw e;
+    }
+
+    // 3. Verify with server
+    var verifyResp = await fetch('/api/webauthn/register/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + auth.token
+      },
+      body: JSON.stringify(attResp)
+    });
+
+    if (!verifyResp.ok) {
+      var verifyErr = await verifyResp.json().catch(function() { return {}; });
+      throw new Error(verifyErr.error || 'Verification failed');
+    }
+
+    return await verifyResp.json();
+  }
+
+  // ── Login with Biometric ──
+  async function loginWithBiometric(username) {
+    var swab = window.SimpleWebAuthnBrowser;
+    if (!swab) throw new Error('SimpleWebAuthn library not loaded');
+
+    if (!username) throw new Error('Username is required');
+
+    // 1. Get authentication options
+    var resp = await fetch('/api/webauthn/login/options', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username })
+    });
+
+    if (!resp.ok) {
+      var err = await resp.json().catch(function() { return {}; });
+      throw new Error(err.error || 'Failed to get login options');
+    }
+
+    var data = await resp.json();
+    var userId = data.userId;
+
+    // 2. Authenticate via browser API
+    var authResp;
+    try {
+      authResp = await swab.startAuthentication({ optionsJSON: data });
+    } catch (e) {
+      if (e.name === 'NotAllowedError') throw new Error('cancelled');
+      throw e;
+    }
+
+    // 3. Verify with server
+    var verifyResp = await fetch('/api/webauthn/login/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...authResp, userId: userId })
+    });
+
+    if (!verifyResp.ok) {
+      var verifyErr = await verifyResp.json().catch(function() { return {}; });
+      throw new Error(verifyErr.error || 'Authentication failed');
+    }
+
+    var result = await verifyResp.json();
+
+    // 4. Save session (same as normal login)
+    if (result.token) {
+      localStorage.setItem('asgard_token', result.token);
+    }
+    if (result.user) {
+      localStorage.setItem('asgard_user', JSON.stringify(result.user));
+      if (result.user.permissions) {
+        localStorage.setItem('asgard_permissions', JSON.stringify(result.user.permissions));
+      }
+      if (result.user.menu_settings) {
+        localStorage.setItem('asgard_menu_settings', JSON.stringify(result.user.menu_settings));
+      }
+    }
+
+    saveLastUsername(username);
+    return result;
+  }
+
+  // ── Check if current device has credentials for user ──
+  async function hasCredentialsForUser() {
+    var auth = window.AsgardAuth ? AsgardAuth.getAuth() : null;
+    if (!auth) return false;
+
+    try {
+      var resp = await fetch('/api/webauthn/credentials', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
+      if (!resp.ok) return false;
+      var data = await resp.json();
+      return data.credentials && data.credentials.length > 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ── Show registration prompt after normal login ──
+  async function showRegistrationPrompt() {
+    var supported = await isSupported();
+    if (!supported) return;
+
+    // Check dismissals
+    var dismissed = parseInt(localStorage.getItem(DISMISSED_KEY) || '0', 10);
+    if (dismissed >= 3) return;
+
+    // Check if already has credentials
+    var hasCreds = await hasCredentialsForUser();
+    if (hasCreds) return;
+
+    // Show after 3 seconds
+    setTimeout(function() {
+      if (!window.AsgardUI) return;
+
+      var el = document.createElement('div');
+      el.id = 'webauthn-prompt';
+      el.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:var(--bg-elevated,#1e293b);border:1px solid var(--gold,#D4AF37);border-radius:10px;font-size:13px;color:var(--text-primary,#e5e7eb);box-shadow:0 4px 20px rgba(0,0,0,.3);position:fixed;bottom:80px;right:20px;z-index:9998;max-width:380px">'
+        + '<span>' + getBiometricIcon() + ' Хотите входить быстрее через ' + (getBiometricLabel().replace('Войти через ', '').replace('Войти по ', '').replace('Войти с ', '')) + '?</span>'
+        + '<button id="webauthnYes" style="background:var(--gold,#D4AF37);color:#0d1428;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;white-space:nowrap;font-size:12px">Привязать</button>'
+        + '<button id="webauthnLater" style="background:transparent;color:var(--text-muted,#9ca3af);border:none;cursor:pointer;font-size:11px;padding:4px;white-space:nowrap">Позже</button>'
+        + '</div>';
+      document.body.appendChild(el);
+
+      document.getElementById('webauthnYes').addEventListener('click', async function() {
+        el.remove();
+        try {
+          var result = await registerBiometric();
+          if (result.verified) {
+            AsgardUI.toast('Биометрия', 'Устройство привязано! Теперь можете входить через ' + getBiometricLabel().replace('Войти через ', '').replace('Войти по ', ''), 'ok');
+          }
+        } catch (e) {
+          if (e.message === 'cancelled') return;
+          AsgardUI.toast('Биометрия', 'Ошибка: ' + e.message, 'err');
+        }
+      });
+
+      document.getElementById('webauthnLater').addEventListener('click', function() {
+        el.remove();
+        var c = parseInt(localStorage.getItem(DISMISSED_KEY) || '0', 10);
+        localStorage.setItem(DISMISSED_KEY, String(c + 1));
+      });
+
+      // Auto-dismiss
+      setTimeout(function() { if (el.parentNode) el.remove(); }, 20000);
+    }, 3000);
+  }
+
+  // ── Render login button for login page ──
+  function renderLoginButton(containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    var lastUser = getLastUsername();
+    if (!lastUser) return;
+
+    var html = '<div style="text-align:center;margin:12px 0">';
+    html += '<button class="btn" id="btnBiometricLogin" type="button" style="width:100%;padding:12px;font-size:15px;background:linear-gradient(135deg,#1e3a5f,#0d1428);border:1px solid var(--gold,#D4AF37);color:var(--gold,#D4AF37);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">';
+    html += '<span style="font-size:20px">' + getBiometricIcon() + '</span>';
+    html += '<span>' + getBiometricLabel() + '</span>';
+    html += '</button>';
+    html += '<div style="margin-top:8px;font-size:11px;color:var(--text-muted,#9ca3af)">' + lastUser + '</div>';
+    html += '</div>';
+    html += '<div style="text-align:center;margin:8px 0;font-size:12px;color:var(--text-muted,#9ca3af)">или войдите с паролем</div>';
+
+    container.innerHTML = html;
+
+    document.getElementById('btnBiometricLogin').addEventListener('click', async function() {
+      var btn = this;
+      btn.disabled = true;
+      btn.textContent = 'Проверка...';
+
+      try {
+        var result = await loginWithBiometric(lastUser);
+        if (result.status === 'ok') {
+          location.hash = '#/home';
+        }
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '<span style="font-size:20px">' + getBiometricIcon() + '</span><span>' + getBiometricLabel() + '</span>';
+        if (e.message === 'cancelled') return;
+        if (window.AsgardUI) AsgardUI.toast('Биометрия', e.message, 'err');
+      }
+    });
+  }
+
+  // ── Render device management for settings/profile page ──
+  function renderDevicesSection() {
+    return '<div class="card" style="margin-top:14px" id="webauthn-devices-section">'
+      + '<h3>🔐 Устройства для быстрого входа</h3>'
+      + '<div id="webauthn-devices-list"><div class="help">Загрузка...</div></div>'
+      + '</div>';
+  }
+
+  async function loadDevices() {
+    var container = document.getElementById('webauthn-devices-list');
+    if (!container) return;
+
+    var supported = await isSupported();
+    var auth = window.AsgardAuth ? AsgardAuth.getAuth() : null;
+    if (!auth) {
+      container.innerHTML = '<div class="help">Требуется авторизация</div>';
+      return;
+    }
+
+    try {
+      var resp = await fetch('/api/webauthn/credentials', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
+      if (!resp.ok) throw new Error('Failed to load');
+      var data = await resp.json();
+      var creds = data.credentials || [];
+
+      if (creds.length === 0) {
+        var html = '<div class="help" style="margin-bottom:12px">Биометрический вход позволяет входить через Face ID, отпечаток пальца или Touch ID без ввода пароля и PIN.</div>';
+        if (supported) {
+          html += '<button class="btn" id="btnAddDevice">Привязать текущее устройство</button>';
+        } else {
+          html += '<div class="help">Это устройство не поддерживает биометрическую аутентификацию.</div>';
+        }
+        container.innerHTML = html;
+      } else {
+        var html = '<table class="tbl" style="width:100%;margin-bottom:12px">';
+        html += '<thead><tr><th>Устройство</th><th>Привязано</th><th>Последний вход</th><th></th></tr></thead>';
+        html += '<tbody>';
+        creds.forEach(function(c) {
+          var created = c.created_at ? new Date(c.created_at).toLocaleDateString('ru') : '—';
+          var lastUsed = c.last_used_at ? new Date(c.last_used_at).toLocaleDateString('ru') : 'Нет';
+          html += '<tr>';
+          html += '<td><input class="inp" value="' + (c.device_name || '').replace(/"/g, '&quot;') + '" data-rename-id="' + c.id + '" style="max-width:200px;border:1px solid transparent" onfocus="this.style.borderColor=\'var(--gold)\'" onblur="this.style.borderColor=\'transparent\'"/></td>';
+          html += '<td>' + created + '</td>';
+          html += '<td>' + lastUsed + '</td>';
+          html += '<td><button class="btn ghost" data-delete-id="' + c.id + '" style="color:var(--red,#ef4444);padding:4px 8px;font-size:12px">Удалить</button></td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+
+        if (supported) {
+          html += '<button class="btn ghost" id="btnAddDevice">+ Привязать ещё устройство</button>';
+        }
+
+        container.innerHTML = html;
+      }
+
+      // Bind events
+      var addBtn = document.getElementById('btnAddDevice');
+      if (addBtn) {
+        addBtn.addEventListener('click', async function() {
+          try {
+            var result = await registerBiometric();
+            if (result.verified) {
+              window.AsgardUI && AsgardUI.toast('Биометрия', 'Устройство привязано!', 'ok');
+              loadDevices(); // Refresh
+            }
+          } catch (e) {
+            if (e.message === 'cancelled') return;
+            window.AsgardUI && AsgardUI.toast('Ошибка', e.message, 'err');
+          }
+        });
+      }
+
+      // Delete buttons
+      container.querySelectorAll('[data-delete-id]').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+          if (!confirm('Удалить устройство?')) return;
+          var id = btn.dataset.deleteId;
+          try {
+            await fetch('/api/webauthn/credentials/' + id, {
+              method: 'DELETE',
+              headers: { 'Authorization': 'Bearer ' + auth.token }
+            });
+            window.AsgardUI && AsgardUI.toast('Удалено', 'Устройство отвязано', 'ok');
+            loadDevices();
+          } catch (e) {
+            window.AsgardUI && AsgardUI.toast('Ошибка', e.message, 'err');
+          }
+        });
+      });
+
+      // Rename inputs (on blur)
+      container.querySelectorAll('[data-rename-id]').forEach(function(inp) {
+        inp.addEventListener('blur', async function() {
+          var newName = inp.value.trim();
+          if (!newName) return;
+          try {
+            await fetch('/api/webauthn/credentials/' + inp.dataset.renameId, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + auth.token
+              },
+              body: JSON.stringify({ device_name: newName })
+            });
+          } catch (e) { /* silent */ }
+        });
+      });
+
+    } catch (e) {
+      container.innerHTML = '<div class="help" style="color:var(--red)">Ошибка загрузки: ' + e.message + '</div>';
+    }
+  }
+
+  return {
+    isSupported: isSupported,
+    getBiometricLabel: getBiometricLabel,
+    getLastUsername: getLastUsername,
+    saveLastUsername: saveLastUsername,
+    registerBiometric: registerBiometric,
+    loginWithBiometric: loginWithBiometric,
+    hasCredentialsForUser: hasCredentialsForUser,
+    showRegistrationPrompt: showRegistrationPrompt,
+    renderLoginButton: renderLoginButton,
+    renderDevicesSection: renderDevicesSection,
+    loadDevices: loadDevices
+  };
+})();

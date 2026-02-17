@@ -517,6 +517,11 @@ window.AsgardSettingsPage = (function(){
           </div>
         </div>
 
+        <div class="grid2" style="margin-top:14px">
+          ${window.AsgardPush ? '<div id="pushSettingsSection">' + AsgardPush.renderSettingsSection() + '</div>' : ''}
+          ${window.AsgardWebAuthn ? AsgardWebAuthn.renderDevicesSection() : ''}
+        </div>
+
         <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px; flex-wrap:wrap">
           <button class="btn ghost" id="btnReset">Сбросить к дефолту</button>
           <button class="btn" id="btnSave">Сохранить</button>
@@ -525,6 +530,10 @@ window.AsgardSettingsPage = (function(){
     `;
 
     await layout(html, { title: title || "Кузница Настроек" });
+
+    // Init push notification settings and WebAuthn device management
+    try { if (window.AsgardPush) AsgardPush.bindSettingsEvents(); } catch(e) {}
+    try { if (window.AsgardWebAuthn) AsgardWebAuthn.loadDevices(); } catch(e) {}
 
     // Sync color pickers <-> HEX inputs (for easy copy/paste)
     document.querySelectorAll("[data-color-copy]").forEach((inp)=>{
