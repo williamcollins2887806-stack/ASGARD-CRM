@@ -158,7 +158,7 @@ async function routes(fastify, options) {
           e.has_attachments, e.attachment_count,
           e.linked_tender_id, e.linked_work_id,
           e.email_date, e.account_id,
-          e.ai_processed_at, e.ai_color, e.ai_summary,
+          e.ai_processed_at, e.ai_color, e.ai_summary, e.ai_classification, e.ai_recommendation,
           ea.name as account_name
         FROM emails e
         LEFT JOIN email_accounts ea ON ea.id = e.account_id

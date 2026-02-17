@@ -252,7 +252,7 @@ module.exports = async function (fastify) {
         // Generate AI report
         try {
           const aiReport = await aiAnalyzer.generateReport({
-            subject: email.subject, bodyText: email.body_text,
+            emailId: email_id, subject: email.subject, bodyText: email.body_text,
             fromEmail: email.from_email, fromName: email.from_name, attachmentNames
           });
           if (aiReport) {
@@ -339,7 +339,7 @@ module.exports = async function (fastify) {
     let aiReport = null;
     try {
       aiReport = await aiAnalyzer.generateReport({
-        subject, bodyText, fromEmail, fromName, attachmentNames
+        emailId: app.email_id, subject, bodyText, fromEmail, fromName, attachmentNames
       });
       if (aiReport) {
         await db.query('UPDATE inbox_applications SET ai_report = $1 WHERE id = $2', [aiReport, id]);

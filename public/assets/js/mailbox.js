@@ -70,6 +70,34 @@ window.AsgardMailboxPage = (function(){
   // ═══════════════════════════════════════════════════════════════════
   async function render({ layout, title }) {
     const html = `
+    <style>
+      .ai-summary-line:hover {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        background: var(--bg-elevated, rgba(0,0,0,0.06));
+        position: relative;
+        z-index: 2;
+      }
+      .ai-popup-overlay {
+        position: fixed; top:0; left:0; right:0; bottom:0;
+        z-index: 9998; background: transparent;
+      }
+      .ai-popup {
+        position: fixed; z-index: 9999;
+        background: var(--bg-card, #1e293b); border: 1px solid var(--border, #334155);
+        border-radius: 8px; padding: 16px; max-width: 420px; min-width: 280px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4); font-size: 13px; color: var(--text-primary, #e2e8f0);
+        line-height: 1.5;
+      }
+      .ai-popup-title {
+        font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+        margin-bottom: 8px; color: var(--text-muted, #94a3b8);
+      }
+      .ai-popup-field { margin-bottom: 6px; }
+      .ai-popup-label { font-weight: 600; color: var(--text-muted, #94a3b8); font-size: 11px; }
+      .ai-popup-value { margin-top: 1px; }
+    </style>
     <div style="display:flex; height:calc(100vh - 56px); overflow:hidden;">
       <!-- LEFT SIDEBAR -->
       <div id="mail-sidebar" style="width:220px; min-width:220px; background:var(--bg-deep); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto;">
@@ -260,7 +288,7 @@ window.AsgardMailboxPage = (function(){
         : `<span title="${esc(aiTitle)}" style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:4px; background:rgba(148,163,184,.12); color:#94a3b8; font-weight:600; white-space:nowrap;">&#9202; Ждёт AI</span>`;
 
       const aiSummaryLine = aiProcessed && e.ai_summary
-        ? `<div style="font-size:11px; color:${aiDotColor || '#94a3b8'}; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">AI: ${esc(e.ai_summary)}</div>`
+        ? `<div class="ai-summary-line" data-email-id="${e.id}" style="font-size:11px; color:${aiDotColor || '#94a3b8'}; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; transition:all 0.2s; border-radius:4px; padding:1px 4px; margin-left:-4px;" onclick="event.stopPropagation(); AsgardMailboxPage._showAiPopup(this, ${e.id})">AI: ${esc(e.ai_summary)}</div>`
         : '';
 
       return `
@@ -682,5 +710,60 @@ window.AsgardMailboxPage = (function(){
     return `padding:6px 12px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:${color || 'var(--text-primary)'}; cursor:pointer; font-size:12px; white-space:nowrap;`;
   }
 
-  return { render };
+  // ═══════════════════════════════════════════════════════════════════
+  // AI POPUP — show full AI analysis on click
+  // ═══════════════════════════════════════════════════════════════════
+  function _showAiPopup(triggerEl, emailId) {
+    // Remove existing popup
+    const old = document.querySelector('.ai-popup-overlay');
+    if (old) old.remove();
+
+    const email = state.emails.find(e => e.id === emailId);
+    if (!email) return;
+
+    const aiColorMap = { green: '#4ade80', yellow: '#fbbf24', red: '#f87171' };
+    const colorHex = email.ai_color ? (aiColorMap[email.ai_color] || '#94a3b8') : '#94a3b8';
+    const colorLabel = { green: 'Зелёный — заявка на работу', yellow: 'Жёлтый — требует внимания', red: 'Красный — спам/неважное' };
+
+    // Build popup content
+    let fields = '';
+    fields += `<div class="ai-popup-field"><div class="ai-popup-label">Цвет</div><div class="ai-popup-value"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${colorHex};margin-right:6px;vertical-align:middle;"></span>${esc(colorLabel[email.ai_color] || email.ai_color || '—')}</div></div>`;
+    if (email.ai_classification) {
+      const classLabel = { direct_request: 'Прямой запрос', platform_tender: 'Тендер с площадки', commercial_offer: 'Коммерческое предложение', newsletter: 'Рассылка', spam: 'Спам', internal: 'Внутренняя', bounce_or_auto_reply: 'Автоответ/Bounce', other: 'Прочее' };
+      const cls = String(email.ai_classification).replace(/"/g, '');
+      fields += `<div class="ai-popup-field"><div class="ai-popup-label">Классификация</div><div class="ai-popup-value">${esc(classLabel[cls] || cls)}</div></div>`;
+    }
+    if (email.ai_summary) {
+      fields += `<div class="ai-popup-field"><div class="ai-popup-label">Резюме AI</div><div class="ai-popup-value">${esc(email.ai_summary)}</div></div>`;
+    }
+    if (email.ai_recommendation) {
+      fields += `<div class="ai-popup-field"><div class="ai-popup-label">Рекомендация</div><div class="ai-popup-value">${esc(email.ai_recommendation)}</div></div>`;
+    }
+
+    // Position popup near trigger
+    const rect = triggerEl.getBoundingClientRect();
+    let top = rect.bottom + 6;
+    let left = rect.left;
+
+    // Ensure popup stays within viewport
+    if (top + 250 > window.innerHeight) top = rect.top - 260;
+    if (left + 420 > window.innerWidth) left = window.innerWidth - 430;
+    if (left < 10) left = 10;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'ai-popup-overlay';
+    overlay.addEventListener('click', () => overlay.remove());
+
+    const popup = document.createElement('div');
+    popup.className = 'ai-popup';
+    popup.style.top = top + 'px';
+    popup.style.left = left + 'px';
+    popup.innerHTML = `<div class="ai-popup-title">Анализ AI</div>${fields}`;
+    popup.addEventListener('click', (e) => e.stopPropagation());
+
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+  }
+
+  return { render, _showAiPopup };
 })();
