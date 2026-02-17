@@ -19,7 +19,9 @@ async function init() {
     try {
       const result = await db.query("SELECT value_json FROM settings WHERE key = 'telegram'");
       if (result.rows[0]?.value_json) {
-        const settings = JSON.parse(result.rows[0].value_json);
+        let parsed = JSON.parse(result.rows[0].value_json);
+        // IndexedDB sync хранит данные вложенно: { key, value_json: "{...}", updated_at }
+        const settings = parsed.value_json ? JSON.parse(parsed.value_json) : parsed;
         if (settings.bot_token && settings.enabled !== false) {
           token = settings.bot_token;
           console.log('[Telegram] Bot token loaded from DB settings');
