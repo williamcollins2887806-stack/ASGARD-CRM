@@ -13,8 +13,6 @@ RUN npm ci --only=production
 # Copy source
 COPY src ./src
 COPY migrations ./migrations
-COPY config ./config
-
 # Create directories
 RUN mkdir -p uploads public
 
