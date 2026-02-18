@@ -50,7 +50,7 @@ async function dataRoutes(fastify, options) {
         'sync_meta', 'employee_assignments', 'employee_plan', 'reminders',
         'bonus_requests', 'doc_sets', 'qa_messages', 'user_dashboard',
         'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
-        'permits'
+        'permits', 'tasks'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -60,7 +60,7 @@ async function dataRoutes(fastify, options) {
         'tenders', 'estimates', 'customers', 'calendar_events', 'documents',
         'correspondence', 'chats', 'chat_messages', 'notifications',
         'sync_meta', 'reminders', 'doc_sets', 'user_dashboard',
-        'permits'
+        'permits', 'tasks'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -140,8 +140,31 @@ async function dataRoutes(fastify, options) {
   // users убран: HIDDEN_COLS уже скрывает password_hash/pin_hash, а ФИО нужны всем ролям
   const READ_SENSITIVE_TABLES = ['audit_log'];
 
-  // NOTE: HEAD_TO, HR_MANAGER, CHIEF_ENGINEER используют выделенные API-маршруты,
-  // а не универсальный data API. Наследование ролей работает в requireRoles (index.js).
+  // Role inheritance for data API (mirrors requireRoles logic)
+  ACCESS_MATRIX.HEAD_TO = {
+    tables: [...(ACCESS_MATRIX.TO?.tables || []), 'pre_tender_requests', 'tasks'],
+    ops: ACCESS_MATRIX.TO?.ops || ['read', 'create', 'update']
+  };
+  // HR_MANAGER and CHIEF_ENGINEER use dedicated API routes (/api/staff/*, /api/equipment/*)
+  // Data API access is limited to core tables they explicitly need
+  ACCESS_MATRIX.HR_MANAGER = {
+    tables: [
+      'users', 'employees', 'employee_reviews', 'employee_assignments', 'employee_plan',
+      'staff', 'staff_plan', 'staff_requests', 'staff_request_messages', 'staff_replacements',
+      'employee_permits', 'calendar_events', 'chats', 'chat_messages', 'notifications',
+      'sync_meta', 'reminders', 'user_dashboard', 'permits'
+    ],
+    ops: ['read', 'create', 'update']
+  };
+  ACCESS_MATRIX.CHIEF_ENGINEER = {
+    tables: [
+      'users', 'equipment', 'equipment_categories', 'equipment_movements',
+      'equipment_requests', 'equipment_maintenance', 'equipment_reservations',
+      'warehouses', 'objects', 'chats', 'chat_messages', 'notifications',
+      'sync_meta', 'reminders', 'user_dashboard'
+    ],
+    ops: ['read', 'create', 'update']
+  };
 
   function checkAccess(role, table, operation) {
     // ADMIN и DIRECTOR_GEN имеют полный доступ
@@ -193,6 +216,9 @@ async function dataRoutes(fastify, options) {
   const NO_ID_TABLES = ['customers', 'call_history', 'settings', 'user_call_status', 'sync_meta', 'user_dashboard'];
 
   function isAllowed(table) {
+    // SECURITY: Strict validation — only alphanumeric and underscore, must be in allowlist
+    if (!table || !/^[a-z][a-z0-9_]*$/i.test(table)) return false;
+    if (table.includes('..') || table.includes(';') || table.includes('/')) return false;
     return ALLOWED_TABLES.includes(table);
   }
 
@@ -507,6 +533,9 @@ async function dataRoutes(fastify, options) {
 
       // Фильтруем ключи: только валидные имена И существующие колонки
       const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k) && tableCols.has(k));
+      if (keys.length === 0) {
+        return reply.code(400).send({ error: 'Нет валидных полей для обновления' });
+      }
       const values = keys.map(k => data[k]);
       const setParts = keys.map((k, i) => `${k} = $${i + 1}`);
 

@@ -60,6 +60,27 @@ fastify.register(require('@fastify/multipart'), {
   }
 });
 
+// SECURITY: Block path traversal and sensitive paths early (before static handler)
+fastify.addHook('onRequest', async (request, reply) => {
+  if (request.url.startsWith('/api/')) return; // API routes handled by their own auth
+  const rawUrl = request.raw.url || request.url;
+  const url = decodeURIComponent(rawUrl).replace(/\\/g, '/');
+  if (url.includes('..') ||
+      /\/\.env/i.test(url) ||
+      /\/node_modules/i.test(url) ||
+      /\/package[\w.-]*\.json/i.test(url) ||
+      /\/etc\/(passwd|shadow|hosts)/i.test(url) ||
+      /\/proc\//i.test(url) ||
+      /\/var\/log/i.test(url) ||
+      /\/(server|app|index)\.(js|ts)/i.test(url) ||
+      /\/docker-compose/i.test(url) ||
+      /\/Dockerfile/i.test(url) ||
+      /\/(db|config|migrations|tests|scripts|src)\/?$/i.test(url) ||
+      /\/(db|config|migrations|tests|scripts|src)\//i.test(url)) {
+    reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
+  }
+});
+
 // Static files (frontend) with cache-busting headers
 fastify.register(require('@fastify/static'), {
   root: path.join(__dirname, '../public'),
@@ -281,10 +302,25 @@ fastify.get('/api/health', async (request, reply) => {
 fastify.setNotFoundHandler((request, reply) => {
   if (request.url.startsWith('/api/')) {
     reply.code(404).send({ error: 'Not Found', message: 'Endpoint не найден' });
-  } else {
-    // Serve index.html for SPA routing
-    reply.sendFile('index.html');
+    return;
   }
+
+  // SECURITY: Block path traversal and sensitive file access
+  const decodedUrl = decodeURIComponent(request.url).replace(/\\/g, '/');
+  if (decodedUrl.includes('..') ||
+      decodedUrl.includes('/node_modules') ||
+      /\/\.env/i.test(decodedUrl) ||
+      /\/\.[a-z]/i.test(decodedUrl) ||
+      /\/package\.json/i.test(decodedUrl) ||
+      /\/src\//i.test(decodedUrl) ||
+      /\/migrations\//i.test(decodedUrl) ||
+      /\/tests\//i.test(decodedUrl)) {
+    reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
+    return;
+  }
+
+  // Serve index.html for SPA routing
+  reply.sendFile('index.html');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
