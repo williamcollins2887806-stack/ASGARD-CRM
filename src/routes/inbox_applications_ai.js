@@ -243,7 +243,7 @@ module.exports = async function (fastify) {
           WHERE id = $13
         `, [
           (analysis.classification || '').slice(0, 100), (analysis.color || '').slice(0, 50), (analysis.summary || '').slice(0, 2000), (analysis.recommendation || '').slice(0, 2000),
-          (analysis.work_type || '').slice(0, 100), (analysis.estimated_budget || '').slice(0, 100), (analysis.estimated_days || '').slice(0, 100),
+          (analysis.work_type || '').slice(0, 100), analysis.estimated_budget ? String(analysis.estimated_budget).slice(0, 100) : null, analysis.estimated_days ? String(analysis.estimated_days).slice(0, 100) : null,
           analysis.keywords || [], parseFloat(analysis.confidence) || 0, JSON.stringify(analysis),
           (analysis._raw?.model || '').slice(0, 100),
           JSON.stringify(workload),
@@ -335,8 +335,8 @@ module.exports = async function (fastify) {
         (analysis.summary || '').slice(0, 2000),
         (analysis.recommendation || '').slice(0, 2000),
         (analysis.work_type || '').slice(0, 100),
-        (analysis.estimated_budget || '').slice(0, 100),
-        (analysis.estimated_days || '').slice(0, 100),
+        analysis.estimated_budget ? String(analysis.estimated_budget).slice(0, 100) : null,
+        analysis.estimated_days ? String(analysis.estimated_days).slice(0, 100) : null,
         analysis.keywords || [],
         parseFloat(analysis.confidence) || 0,
         JSON.stringify(analysis),
