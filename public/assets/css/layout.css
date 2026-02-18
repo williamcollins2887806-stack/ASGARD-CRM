@@ -662,8 +662,8 @@ html[data-theme="light"] .themebtn .icon-moon { display: block; }
 .breadcrumbs {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
   color: var(--t3);
   margin-bottom: 2px;
 }
@@ -680,7 +680,7 @@ html[data-theme="light"] .themebtn .icon-moon { display: block; }
 
 .bc-current {
   color: var(--t2);
-  font-weight: 500;
+  font-weight: var(--fw-med);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

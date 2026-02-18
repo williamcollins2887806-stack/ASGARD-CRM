@@ -161,15 +161,15 @@ a:hover {
 }
 
 .card h3 {
-  margin: 0 0 12px;
-  font-size: 15px;
-  font-weight: 600;
+  margin: 0 0 var(--sp-3);
+  font-size: var(--text-base);
+  font-weight: var(--fw-semi);
   color: var(--t1);
 }
 
 .card p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--t2);
   line-height: 1.5;
 }
@@ -201,29 +201,29 @@ a:hover {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--sp-4);
 }
 
 .kpi .v {
-  font-size: 28px;
-  font-weight: 800;
+  font-size: var(--text-2xl);
+  font-weight: var(--fw-extra);
   color: var(--t1);
 }
 
 .kpi .t {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--t2);
 }
 
 .kpi .delta {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-family: var(--ff-mono);
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-xs);
 }
 
 .kpi .delta.up {
-  color: var(--green);
+  color: var(--ok-t);
   background: var(--ok-bg);
 }
 
@@ -428,18 +428,18 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
   background: var(--bg3);
   border-radius: var(--r-md);
   border: 1px solid var(--brd);
-  margin-bottom: 20px;
+  margin-bottom: var(--sp-5);
 }
 
 .tab {
   flex: 1;
-  padding: 12px 20px;
+  padding: var(--sp-3) var(--sp-5);
   border-radius: var(--r-sm);
   border: none;
   background: transparent;
   color: var(--t2);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-semi);
   cursor: pointer;
   transition: all var(--fast);
 }
@@ -460,7 +460,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px;
+  padding: var(--sp-2);
   background: var(--bg3);
   border-radius: var(--r-md);
   border: 1px solid var(--brd);
@@ -468,7 +468,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 
 .tabs-vertical .tab {
   text-align: left;
-  padding: 14px 18px;
+  padding: var(--sp-3) var(--sp-4);
 }
 
 /* Toast styles moved to components.css */
@@ -1176,10 +1176,10 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 .funnel-cards {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .funnel-cards.drag-over {
@@ -1188,9 +1188,9 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 
 .funnel-card {
   background: var(--bg4);
-  border: 1px solid rgba(148,163,184,0.25);
-  border-radius: 6px;
-  padding: 12px;
+  border: 1px solid var(--brd);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3);
   cursor: grab;
   transition: all var(--fast);
 }
@@ -1214,8 +1214,8 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-1);
   background: none;
   border: none;
   border-radius: 0;
@@ -1223,9 +1223,9 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 }
 
 .funnel-card-customer {
-  font-size: 13px;
-  color: var(--bg5);
-  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--t1);
+  font-weight: var(--fw-semi);
   flex: 1;
   min-width: 0;
   white-space: nowrap;
@@ -1238,8 +1238,8 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 }
 
 .funnel-card-sum {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--text-xs);
+  font-weight: var(--fw-bold);
   color: var(--gold);
   white-space: nowrap;
   background: none;
@@ -1249,9 +1249,9 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 }
 
 .funnel-card-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--t3);
-  margin-bottom: 6px;
+  margin-bottom: var(--sp-1);
   line-height: 1.3;
   background: none;
   border: none;
@@ -1262,7 +1262,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 .funnel-card-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--t3);
   background: none;
   border: none;
@@ -1280,7 +1280,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 /* Light theme overrides for funnel cards */
 html[data-theme="light"] .funnel-card {
   background: var(--bg2);
-  border: 1px solid rgba(0,0,0,0.12);
+  border: 1px solid var(--brd);
 }
 html[data-theme="light"] .funnel-card-customer {
   color: var(--t1);
@@ -2160,15 +2160,15 @@ html[data-theme="light"] .funnel-card-meta {
   /* Статистика / KPI блоки */
   .stats-grid, .kpi-grid {
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: var(--sp-3);
   }
-  
+
   .stat-card, .kpi-card {
-    padding: 12px 16px;
+    padding: var(--sp-3) var(--sp-4);
   }
-  
+
   .stat-value, .kpi-value {
-    font-size: 20px;
+    font-size: var(--text-xl);
   }
   
   /* Графики */
@@ -4337,19 +4337,19 @@ table.asg tr:hover td:first-child {
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%) translateY(4px);
-  padding: 8px 12px;
-  background: rgba(30, 41, 59, 0.95);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg0);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: var(--r-sm);
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--t1);
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
   transition: all var(--fast);
   z-index: var(--z-tooltip);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-lg);
 }
 
 [data-tooltip]::before {
@@ -4359,7 +4359,7 @@ table.asg tr:hover td:first-child {
   left: 50%;
   transform: translateX(-50%);
   border: 6px solid transparent;
-  border-top-color: rgba(30, 41, 59, 0.95);
+  border-top-color: var(--bg0);
   opacity: 0;
   transition: all var(--fast);
   z-index: var(--z-tooltip);
@@ -4568,8 +4568,8 @@ table.asg tr:hover td:first-child {
 .breadcrumbs {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: var(--sp-2);
+  font-size: var(--text-sm);
   color: var(--t3);
 }
 
@@ -4589,7 +4589,7 @@ table.asg tr:hover td:first-child {
 
 .breadcrumbs .current {
   color: var(--t1);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -4723,14 +4723,14 @@ html[data-theme="light"] .toggle {
 }
 
 html[data-theme="light"] [data-tooltip]::after {
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--bg2);
+  border: 1px solid var(--brd);
   color: var(--t1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-lg);
 }
 
 html[data-theme="light"] [data-tooltip]::before {
-  border-top-color: rgba(255, 255, 255, 0.98);
+  border-top-color: var(--bg2);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -6217,7 +6217,7 @@ input[type="file"]::file-selector-button:hover {
 .cash-card-header .card-title {
   font-family: var(--ff-head);
   font-size: var(--text-lg);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: var(--t1);
 }
 
@@ -6974,12 +6974,12 @@ html[data-theme="light"] .status-unified.secondary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-5);
   background: var(--bg3);
   border-bottom: none;
   font-family: var(--ff-head);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: var(--t1);
 }
 
@@ -7319,14 +7319,14 @@ table.asg td,
 table td,
 .tbl td,
 .table td {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--brd-m);
 }
 
 table.asg th,
 table th,
 .tbl th,
 .table th {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--brd);
 }
 
 /* --- Обёртки таблиц — без внешних рамок --- */

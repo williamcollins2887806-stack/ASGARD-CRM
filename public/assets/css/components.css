@@ -666,7 +666,7 @@ table.asg tr td:last-child {
   background: var(--bg2);
   border: 1px solid var(--brd);
   border-radius: var(--r-md);
-  padding: 16px 20px;
+  padding: var(--sp-4) var(--sp-5);
   position: relative;
   overflow: hidden;
 }
@@ -692,12 +692,12 @@ table.asg tr td:last-child {
 }
 
 .stat-card .stat-delta.up {
-  color: var(--success);
+  color: var(--ok-t);
   background: var(--ok-bg);
 }
 
 .stat-card .stat-delta.down {
-  color: var(--danger);
+  color: var(--err-t);
   background: var(--err-bg);
 }
 
@@ -729,12 +729,12 @@ table.asg tr td:last-child {
 }
 
 .kpi .delta.up {
-  color: var(--success);
+  color: var(--ok-t);
   background: var(--ok-bg);
 }
 
 .kpi .delta.down {
-  color: var(--danger);
+  color: var(--err-t);
   background: var(--err-bg);
 }
 
@@ -1464,7 +1464,7 @@ html[data-theme="light"] .tbl.zebra tbody tr:nth-child(even) {
 .dropdown-divider {
   height: 1px;
   margin: var(--sp-1) 0;
-  background: var(--border);
+  background: var(--brd);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -4266,10 +4266,10 @@ html[data-theme="light"] .inp:focus {
 
 .dash-widget {
   background: transparent;
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   border: none;
   overflow: hidden;
-  transition: box-shadow 0.2s, opacity 0.2s, transform 0.2s;
+  transition: box-shadow var(--fast), opacity var(--fast), transform var(--fast);
 }
 
 .dash-widget:hover {
@@ -4287,17 +4287,17 @@ html[data-theme="light"] .inp:focus {
 }
 
 .dash-widget-header {
-  padding: 14px 20px 0;
+  padding: var(--sp-4) var(--sp-5) 0;
   background: transparent;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   border-bottom: none;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .dash-widget-content {
-  padding: 16px 20px 20px;
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
   min-height: 80px;
 }
 
@@ -4320,7 +4320,7 @@ html[data-theme="light"] .inp:focus {
 .drag-handle {
   cursor: grab;
   color: var(--t3);
-  font-size: 14px;
+  font-size: var(--text-base);
   opacity: 0.4;
   transition: opacity var(--fast);
 }
