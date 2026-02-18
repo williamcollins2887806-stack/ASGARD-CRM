@@ -13,8 +13,8 @@ window.AsgardConfirm=(function(){
         html: `
           <div class="confirm-body">${body}</div>
           <div class="confirm-actions">
-            <button id="cfCancel" class="btn btn-ghost">${esc(cancelText)}</button>
-            <button id="cfOk" class="btn ${danger?'btn-danger':'btn-primary'}">${esc(okText)}</button>
+            <button id="cfCancel" class="btn ghost">${esc(cancelText)}</button>
+            <button id="cfOk" class="btn ${danger?'danger':'primary'}">${esc(okText)}</button>
           </div>
         `,
         onMount: (root)=>{

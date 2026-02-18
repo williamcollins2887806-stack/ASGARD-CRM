@@ -264,7 +264,7 @@ window.AsgardMeetings = (function(){
             ${responsible ? `<span class="text-muted">→ ${esc(responsible)}</span>` : ''}
           </div>
           ${m.item_type === 'action' && !m.task_id && m.responsible_user_id ? `
-            <button class="btn btn-sm" onclick="AsgardMeetings.createTaskFromMinutes(${meeting.id}, ${m.id})">Создать задачу</button>
+            <button class="btn mini" onclick="AsgardMeetings.createTaskFromMinutes(${meeting.id}, ${m.id})">Создать задачу</button>
           ` : ''}
           ${m.task_id ? `<a href="#/kanban?id=${m.task_id}" class="text-gold">→ Задача #${m.task_id}</a>` : ''}
         </div>

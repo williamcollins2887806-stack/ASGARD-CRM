@@ -141,8 +141,8 @@ window.AsgardWorkExpenses = (function(){
             ${e.doc_number ? `<span class="badge">#${esc(e.doc_number)}</span>` : ''}
           </div>
           <div class="exp-item-actions">
-            <button class="btn ghost sm" data-edit="${e.id}">✎</button>
-            <button class="btn ghost sm red" data-del="${e.id}">✕</button>
+            <button class="btn ghost mini" data-edit="${e.id}">✎</button>
+            <button class="btn ghost mini red" data-del="${e.id}">✕</button>
           </div>
         </div>
       `).join('') : '<div class="help" style="padding:8px 0">Нет записей</div>';
@@ -153,8 +153,8 @@ window.AsgardWorkExpenses = (function(){
             <span class="exp-cat-icon">${c.icon}</span>
             <span class="exp-cat-label">${c.label}</span>
             <span class="exp-cat-total">${money(total)} ₽</span>
-            <button class="btn ghost sm" data-add-cat="${c.key}">+ Добавить</button>
-            ${c.key === 'fot' ? `<button class="btn ghost sm" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
+            <button class="btn ghost mini" data-add-cat="${c.key}">+ Добавить</button>
+            ${c.key === 'fot' ? `<button class="btn ghost mini" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
           </div>
           <div class="exp-cat-items">${itemsHtml}</div>
         </div>

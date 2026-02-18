@@ -128,7 +128,7 @@ window.AsgardKpiWorksPage=(function(){
               <select id="f_pm"><option value="">Все</option>${pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end">
-              <button class="btn ghost sm" id="btnGantt">Гантт (все работы)</button>
+              <button class="btn ghost mini" id="btnGantt">Гантт (все работы)</button>
             </div>
           </div>
         </div>

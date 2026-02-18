@@ -41,7 +41,7 @@ window.AsgardTmcRequestsPage = (function() {
             <button class="btn primary" id="btnNewTmc">+ Новая заявка</button>
           </div>
         </div>
-        <div class="table-wrap">
+        <div class="tbl-wrap">
           <table class="data-table">
             <thead><tr>
               <th>№</th><th>Название</th><th>Проект</th><th>Сумма</th><th>Приоритет</th><th>Статус</th><th>Дата</th><th></th>
@@ -58,8 +58,8 @@ window.AsgardTmcRequestsPage = (function() {
                 <td><span style="color:${st.color};font-weight:600">${st.label}</span></td>
                 <td>${i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : ''}</td>
                 <td>
-                  <button class="btn ghost btn-sm" data-action="excel" data-id="${i.id}" title="Excel">📥</button>
-                  <button class="btn ghost btn-sm" data-action="edit" data-id="${i.id}" title="Открыть">✏️</button>
+                  <button class="btn ghost mini" data-action="excel" data-id="${i.id}" title="Excel">📥</button>
+                  <button class="btn ghost mini" data-action="edit" data-id="${i.id}" title="Открыть">✏️</button>
                 </td>
               </tr>`;
             }).join('')}</tbody>

@@ -65,7 +65,7 @@ window.AsgardPersonnelPage=(function(){
         </div>
 
         <div class="tablewrap" style="margin-top:12px">
-          <table class="table">
+          <table class="tbl">
             <thead>
               <tr>
                 <th style="width:42px">#</th>
@@ -87,7 +87,7 @@ window.AsgardPersonnelPage=(function(){
                   <td>${esc(e.phone||"")}</td>
                   <td>${e.rating_avg!=null && e.rating_avg!==''? `<span class="badge"><span class="dot" style="background:#22c55e"></span>${Number(e.rating_avg).toFixed(1)}</span>` : `<span class="badge"><span class="dot" style="background:#94a3b8"></span>—</span>`}</td>
                   <td class="right">
-                    <button class="btn sm ghost" data-open="${e.id}">Открыть</button>
+                    <button class="btn mini ghost" data-open="${e.id}">Открыть</button>
                   </td>
                 </tr>
               `).join("") || `<tr><td colspan="7" class="muted">Нет данных</td></tr>`}

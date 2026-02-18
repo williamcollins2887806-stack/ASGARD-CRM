@@ -270,13 +270,13 @@ window.AsgardTasksPage = (function() {
     let actionsHtml = '';
     if (t.status === 'new') {
       actionsHtml = `
-        <button class="btn btn-sm" onclick="AsgardTasksPage.acceptTask(${t.id})">👍 Принять</button>
-        <button class="btn btn-sm ghost" onclick="AsgardTasksPage.startTask(${t.id})">▶ Начать</button>
+        <button class="btn mini" onclick="AsgardTasksPage.acceptTask(${t.id})">👍 Принять</button>
+        <button class="btn mini ghost" onclick="AsgardTasksPage.startTask(${t.id})">▶ Начать</button>
       `;
     } else if (t.status === 'accepted') {
-      actionsHtml = `<button class="btn btn-sm" onclick="AsgardTasksPage.startTask(${t.id})">▶ Начать работу</button>`;
+      actionsHtml = `<button class="btn mini" onclick="AsgardTasksPage.startTask(${t.id})">▶ Начать работу</button>`;
     } else if (t.status === 'in_progress' || t.status === 'overdue') {
-      actionsHtml = `<button class="btn btn-sm" onclick="AsgardTasksPage.showCompleteModal(${t.id})">✅ Завершить</button>`;
+      actionsHtml = `<button class="btn mini" onclick="AsgardTasksPage.showCompleteModal(${t.id})">✅ Завершить</button>`;
     } else if (t.status === 'done') {
       actionsHtml = `<div style="color:var(--green)">✅ Выполнено ${formatDateTime(t.completed_at)}</div>`;
       if (t.assignee_comment) {
@@ -549,7 +549,7 @@ window.AsgardTasksPage = (function() {
         <div class="todo-item" style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); ${item.done ? 'opacity:0.6' : ''}">
           <input type="checkbox" ${item.done ? 'checked' : ''} onchange="AsgardTasksPage.toggleTodo(${item.id})" style="cursor:pointer"/>
           <span ondblclick="AsgardTasksPage.editTodo(${item.id})" style="flex:1; cursor:pointer; ${item.done ? 'text-decoration:line-through; color:var(--dim)' : ''}">${escapeHtml(item.text)}${timerHtml}</span>
-          <button class="btn ghost btn-sm" onclick="AsgardTasksPage.deleteTodo(${item.id})" style="padding:2px 6px; opacity:0.5" title="Удалить">×</button>
+          <button class="btn ghost mini" onclick="AsgardTasksPage.deleteTodo(${item.id})" style="padding:2px 6px; opacity:0.5" title="Удалить">×</button>
         </div>
       `;
     }).join('');

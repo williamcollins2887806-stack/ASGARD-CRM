@@ -30,7 +30,7 @@ window.AsgardPassRequestsPage = (function() {
           <h3 style="margin:0">Заявки на пропуск (${items.length})</h3>
           <button class="btn primary" id="btnNewPass">+ Новая заявка</button>
         </div>
-        <div class="table-wrap">
+        <div class="tbl-wrap">
           <table class="data-table">
             <thead><tr>
               <th>№</th><th>Объект</th><th>Период</th><th>Сотрудники</th><th>Статус</th><th>Дата</th><th></th>
@@ -46,8 +46,8 @@ window.AsgardPassRequestsPage = (function() {
                 <td><span style="color:${st.color};font-weight:600">${st.label}</span></td>
                 <td>${i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : ''}</td>
                 <td>
-                  <button class="btn ghost btn-sm" data-action="pdf" data-id="${i.id}" title="PDF">📄</button>
-                  <button class="btn ghost btn-sm" data-action="edit" data-id="${i.id}" title="Открыть">✏️</button>
+                  <button class="btn ghost mini" data-action="pdf" data-id="${i.id}" title="PDF">📄</button>
+                  <button class="btn ghost mini" data-action="edit" data-id="${i.id}" title="Открыть">✏️</button>
                 </td>
               </tr>`;
             }).join('')}</tbody>

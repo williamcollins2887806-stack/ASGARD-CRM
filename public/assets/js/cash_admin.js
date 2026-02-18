@@ -4,7 +4,7 @@
  * Карточный вид с KPI, progress-шагами и быстрыми действиями
  */
 
-window.CashAdminPage = (function() {
+window.AsgardCashAdminPage = (function() {
   'use strict';
 
   const { showModal, hideModal, toast, esc } = AsgardUI;
@@ -112,8 +112,8 @@ window.CashAdminPage = (function() {
       <div id="cash-admin-pending-returns-section" style="margin-bottom:24px"></div>
 
       <div class="cash-tabs">
-        <button class="cash-tab active" id="tab-btn-requests" onclick="CashAdminPage.switchTab('requests')">Заявки</button>
-        <button class="cash-tab" id="tab-btn-summary" onclick="CashAdminPage.switchTab('summary')">Сводка по РП</button>
+        <button class="cash-tab active" id="tab-btn-requests" onclick="AsgardCashAdminPage.switchTab('requests')">Заявки</button>
+        <button class="cash-tab" id="tab-btn-summary" onclick="AsgardCashAdminPage.switchTab('summary')">Сводка по РП</button>
       </div>
 
       <div id="tab-requests">
@@ -121,12 +121,12 @@ window.CashAdminPage = (function() {
           <div class="cash-card-header">
             <span class="card-title">Все заявки</span>
             <div class="cash-filter-bar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <select id="cashAdminFilterType" onchange="CashAdminPage.onFilterChange()" style="padding:8px 12px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); font-family:var(--font-sans); font-size:var(--text-sm); min-width:140px;">
+              <select id="cashAdminFilterType" onchange="AsgardCashAdminPage.onFilterChange()" style="padding:8px 12px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); font-family:var(--font-sans); font-size:var(--text-sm); min-width:140px;">
                 <option value="">Все типы</option>
                 <option value="advance">Аванс</option>
                 <option value="loan">Долг до ЗП</option>
               </select>
-              <select id="cashAdminFilter" onchange="CashAdminPage.onFilterChange()" style="padding:8px 12px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); font-family:var(--font-sans); font-size:var(--text-sm); min-width:180px;">
+              <select id="cashAdminFilter" onchange="AsgardCashAdminPage.onFilterChange()" style="padding:8px 12px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); font-family:var(--font-sans); font-size:var(--text-sm); min-width:180px;">
                 <option value="">Все статусы</option>
                 <option value="requested">Ожидают согласования</option>
                 <option value="approved">Согласованы</option>
@@ -136,7 +136,7 @@ window.CashAdminPage = (function() {
                 <option value="closed">Закрыты</option>
                 <option value="rejected">Отклонены</option>
               </select>
-              <button class="btn ghost sm" onclick="CashAdminPage.loadRequests()">Обновить</button>
+              <button class="btn ghost mini" onclick="AsgardCashAdminPage.loadRequests()">Обновить</button>
             </div>
           </div>
           <div class="cash-card-body">
@@ -232,7 +232,7 @@ window.CashAdminPage = (function() {
     const projectName = r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные средства' : '-'));
 
     return `
-      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;cursor:pointer" onclick="CashAdminPage.showDetail(${r.id})">
+      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;cursor:pointer" onclick="AsgardCashAdminPage.showDetail(${r.id})">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
           <div>
             <div style="font-weight:700;color:var(--text-primary)">${esc(r.user_name)}</div>
@@ -246,9 +246,9 @@ window.CashAdminPage = (function() {
         </div>
         <div style="font-size:var(--text-xl);font-weight:800;color:var(--gold);margin-bottom:12px">${fmtMoney(r.amount)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
-          <button class="btn green mini" onclick="CashAdminPage.approve(${r.id})">&#10003; Согласовать</button>
-          <button class="btn red mini" onclick="CashAdminPage.showRejectModal(${r.id})">&#10007; Отклонить</button>
-          <button class="btn amber mini" onclick="CashAdminPage.showQuestionModal(${r.id})">? Вопрос</button>
+          <button class="btn green mini" onclick="AsgardCashAdminPage.approve(${r.id})">&#10003; Согласовать</button>
+          <button class="btn red mini" onclick="AsgardCashAdminPage.showRejectModal(${r.id})">&#10007; Отклонить</button>
+          <button class="btn amber mini" onclick="AsgardCashAdminPage.showQuestionModal(${r.id})">? Вопрос</button>
         </div>
       </div>
     `;
@@ -284,7 +284,7 @@ window.CashAdminPage = (function() {
             </div>
             <div style="display:flex;align-items:center;gap:12px">
               <span style="font-size:var(--text-lg);font-weight:700;color:var(--gold)">${fmtMoney(ret.amount)}</span>
-              <button class="btn green mini" onclick="CashAdminPage.confirmReturn(${r.id}, ${ret.id})">Подтвердить</button>
+              <button class="btn green mini" onclick="AsgardCashAdminPage.confirmReturn(${r.id}, ${ret.id})">Подтвердить</button>
             </div>
           </div>
         `;
@@ -427,7 +427,7 @@ window.CashAdminPage = (function() {
     }
 
     return `
-      <div class="cash-req-card ${isRejected ? 'rejected' : ''} ${isQuestion ? 'question' : ''}" onclick="CashAdminPage.showDetail(${r.id})">
+      <div class="cash-req-card ${isRejected ? 'rejected' : ''} ${isQuestion ? 'question' : ''}" onclick="AsgardCashAdminPage.showDetail(${r.id})">
         <div class="cash-card-top">
           <div>
             <div style="font-weight:700;color:var(--text-primary)">${esc(r.user_name)}</div>
@@ -574,10 +574,10 @@ window.CashAdminPage = (function() {
 
     // Actions
     const actions = [];
-    if (canApprove) actions.push(`<button class="btn green" onclick="CashAdminPage.approve(${req.id})">Согласовать</button>`);
-    if (canReject) actions.push(`<button class="btn red" onclick="CashAdminPage.showRejectModal(${req.id})">Отклонить</button>`);
-    if (canQuestion) actions.push(`<button class="btn amber" onclick="CashAdminPage.showQuestionModal(${req.id})">Задать вопрос</button>`);
-    if (canClose) actions.push(`<button class="btn primary" onclick="CashAdminPage.showCloseModal(${req.id}, ${req.balance?.remainder || 0})">Закрыть</button>`);
+    if (canApprove) actions.push(`<button class="btn green" onclick="AsgardCashAdminPage.approve(${req.id})">Согласовать</button>`);
+    if (canReject) actions.push(`<button class="btn red" onclick="AsgardCashAdminPage.showRejectModal(${req.id})">Отклонить</button>`);
+    if (canQuestion) actions.push(`<button class="btn amber" onclick="AsgardCashAdminPage.showQuestionModal(${req.id})">Задать вопрос</button>`);
+    if (canClose) actions.push(`<button class="btn primary" onclick="AsgardCashAdminPage.showCloseModal(${req.id}, ${req.balance?.remainder || 0})">Закрыть</button>`);
 
     if (actions.length) {
       html += `<div class="cash-actions">${actions.join('')}</div>`;
@@ -616,7 +616,7 @@ window.CashAdminPage = (function() {
                   <td>${fmtMoney(r.amount)}</td>
                   <td>${esc(r.note || '-')}</td>
                   <td>${r.confirmed_at ? `<span class="status status-green">Подтверждено ${fmtDateTime(r.confirmed_at)}</span>` : '<span class="status status-yellow">Ожидает</span>'}</td>
-                  <td>${!r.confirmed_at ? `<button class="btn green mini" onclick="CashAdminPage.confirmReturn(${req.id}, ${r.id})">Подтвердить</button>` : ''}</td>
+                  <td>${!r.confirmed_at ? `<button class="btn green mini" onclick="AsgardCashAdminPage.confirmReturn(${req.id}, ${r.id})">Подтвердить</button>` : ''}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -677,7 +677,7 @@ window.CashAdminPage = (function() {
             </div>
             <div class="asg-form-actions">
               <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
-              <button type="button" class="btn red" onclick="CashAdminPage.submitReject()">Отклонить</button>
+              <button type="button" class="btn red" onclick="AsgardCashAdminPage.submitReject()">Отклонить</button>
             </div>
           </form>
         `
@@ -723,7 +723,7 @@ window.CashAdminPage = (function() {
             </div>
             <div class="asg-form-actions">
               <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
-              <button type="button" class="btn amber" onclick="CashAdminPage.submitQuestion()">Отправить вопрос</button>
+              <button type="button" class="btn amber" onclick="AsgardCashAdminPage.submitQuestion()">Отправить вопрос</button>
             </div>
           </form>
         `
@@ -771,7 +771,7 @@ window.CashAdminPage = (function() {
             </div>
             <div class="asg-form-actions">
               <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
-              <button type="button" class="btn green" onclick="CashAdminPage.submitClose()">Закрыть заявку</button>
+              <button type="button" class="btn green" onclick="AsgardCashAdminPage.submitClose()">Закрыть заявку</button>
             </div>
           </form>
         `

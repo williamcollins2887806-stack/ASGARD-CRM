@@ -347,7 +347,7 @@ window.AsgardEmployeePage=(function(){
 
         <div class="kpi"><span class="dot" style="background:#3b82f6"></span> История работ</div>
         <div class="tablewrap" style="margin-top:10px">
-          <table class="table">
+          <table class="tbl">
             <thead><tr><th>С</th><th>По</th><th>Контракт</th><th>Роль на объекте</th></tr></thead>
             <tbody>${assignHtml}</tbody>
           </table>

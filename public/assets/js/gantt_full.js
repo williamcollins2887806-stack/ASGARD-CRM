@@ -61,11 +61,11 @@ window.AsgardGanttFullPage=(function(){
       <div class="card">
         <div class="muted">Safe-mode включён: Гантт отключён, показан список периодов.</div>
         <div class="actions" style="margin-top:10px">
-          <button class="btn btn-ghost" id="btnSafeOff">Выключить safe-mode</button>
+          <button class="btn ghost" id="btnSafeOff">Выключить safe-mode</button>
         </div>
       </div>
       <div class="card" style="margin-top:12px">
-        <table class="table">
+        <table class="tbl">
           <thead><tr><th>Проект</th><th>Старт</th><th>Финиш</th><th>Статус</th></tr></thead>
           <tbody>${rows || `<tr><td colspan="4" class="muted">нет данных</td></tr>`}</tbody>
         </table>

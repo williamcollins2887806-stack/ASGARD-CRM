@@ -72,8 +72,8 @@ window.AsgardDiagPage=(function(){
           <div class="kv"><div>Собрано</div><div class="mono">${esc(builtAt)}</div></div>
           <div class="kv"><div>Safe-mode</div><div class="mono">${esc(safe)}</div></div>
           <div class="actions">
-            <button id="btnSafeToggle" class="btn btn-ghost">Переключить safe-mode</button>
-            <a class="btn btn-ghost" href="#/backup">Backup/Import</a>
+            <button id="btnSafeToggle" class="btn ghost">Переключить safe-mode</button>
+            <a class="btn ghost" href="#/backup">Backup/Import</a>
           </div>
         </div>
 
@@ -84,7 +84,7 @@ window.AsgardDiagPage=(function(){
           <div class="kv"><div>Storage estimate</div><div class="mono">${esc(est? (fmtBytes(est.usage)+" / "+fmtBytes(est.quota)) : "—")}</div></div>
           <details>
             <summary>По таблицам</summary>
-            <table class="table">
+            <table class="tbl">
               <thead><tr><th>store</th><th>count</th></tr></thead>
               <tbody>${storeRows}</tbody>
             </table>
@@ -95,15 +95,15 @@ window.AsgardDiagPage=(function(){
           <h3>Self-test</h3>
           <p class="muted">Запустите быстрый самотест. Отчёт откроется в новой вкладке.</p>
           <div class="actions">
-            <a class="btn btn-primary" href="tools/selftest.html" target="_blank" rel="noopener">Открыть self-test</a>
-            <button id="btnRunSelf" class="btn btn-ghost">Прогнать self-test тут</button>
+            <a class="btn primary" href="tools/selftest.html" target="_blank" rel="noopener">Открыть self-test</a>
+            <button id="btnRunSelf" class="btn ghost">Прогнать self-test тут</button>
           </div>
           <pre id="selfInline" class="pre"></pre>
         </div>
 
         <div class="card">
           <h3>Последние события audit_log</h3>
-          <table class="table">
+          <table class="tbl">
             <thead><tr><th>when</th><th>action</th><th>type</th><th>id</th><th>actor</th></tr></thead>
             <tbody>${auditRows || "<tr><td colspan='5' class='muted'>нет данных</td></tr>"}</tbody>
           </table>

@@ -1849,7 +1849,7 @@ try{
         return;
       }
       await layout('<div id="cash-page"></div>', {title:"Касса"});
-      CashPage.render(document.getElementById('cash-page'));
+      AsgardCashPage.render(document.getElementById('cash-page'));
     }, {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/cash-admin", async ()=>{
       if (!AsgardAuth.hasPermission('cash_admin', 'read')) {
@@ -1858,7 +1858,7 @@ try{
         return;
       }
       await layout('<div id="cash-admin-page"></div>', {title:"Касса (управление)"});
-      CashAdminPage.render(document.getElementById('cash-admin-page'));
+      AsgardCashAdminPage.render(document.getElementById('cash-admin-page'));
     }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
 
     // Расчёты с рабочими (Фаза 4)

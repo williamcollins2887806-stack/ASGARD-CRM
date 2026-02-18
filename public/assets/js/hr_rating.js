@@ -114,7 +114,7 @@ window.AsgardHrRatingPage=(function(){
         </div>
 
         <div class="tablewrap" style="margin-top:12px">
-          <table class="table">
+          <table class="tbl">
             <thead>
               <tr>
                 <th style="width:42px">#</th>
@@ -141,7 +141,7 @@ window.AsgardHrRatingPage=(function(){
                     <td><span class="badge"><span class="dot" style="background:${dot}"></span>${esc(fmtAvg(avg))}</span></td>
                     <td>${esc(String(e.rating_count||0))}</td>
                     <td>${esc(when)}</td>
-                    <td class="right"><button class="btn sm ghost" data-open="${e.id}">Открыть</button></td>
+                    <td class="right"><button class="btn mini ghost" data-open="${e.id}">Открыть</button></td>
                   </tr>
                 `;
               }).join("") || `<tr><td colspan="8" class="muted">Нет данных</td></tr>`}

@@ -35,7 +35,7 @@ window.AsgardTkpPage = (function() {
           <h3 style="margin:0">ТКП (${items.length})</h3>
           <button class="btn primary" id="btnNewTkp">+ Создать ТКП</button>
         </div>
-        <div class="table-wrap">
+        <div class="tbl-wrap">
           <table class="data-table">
             <thead><tr>
               <th>№</th><th>Название</th><th>Заказчик</th><th>Сумма</th><th>Статус</th><th>Дата</th><th></th>
@@ -50,9 +50,9 @@ window.AsgardTkpPage = (function() {
                 <td><span style="color:${st.color};font-weight:600">${st.label}</span></td>
                 <td>${i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : ''}</td>
                 <td>
-                  <button class="btn ghost btn-sm" data-action="send" data-id="${i.id}" title="Отправить ТКП по email">📨</button>
-                  <button class="btn ghost btn-sm" data-action="pdf" data-id="${i.id}" title="PDF">📄</button>
-                  <button class="btn ghost btn-sm" data-action="edit" data-id="${i.id}" title="Редактировать">✏️</button>
+                  <button class="btn ghost mini" data-action="send" data-id="${i.id}" title="Отправить ТКП по email">📨</button>
+                  <button class="btn ghost mini" data-action="pdf" data-id="${i.id}" title="PDF">📄</button>
+                  <button class="btn ghost mini" data-action="edit" data-id="${i.id}" title="Редактировать">✏️</button>
                 </td>
               </tr>`;
             }).join('')}</tbody>

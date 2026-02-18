@@ -3,7 +3,7 @@
  * Карточный вид с progress-шагами и категориями расходов
  */
 
-window.CashPage = (function() {
+window.AsgardCashPage = (function() {
   'use strict';
 
   const { showModal, hideModal, toast, esc } = AsgardUI;
@@ -51,7 +51,7 @@ window.CashPage = (function() {
           <h1>Казна Дружины</h1>
           <p style="color:var(--text-muted);font-size:var(--text-sm);margin:0">Авансы, расходы и расчёты</p>
         </div>
-        <button class="btn primary" onclick="CashPage.showCreateModal()">+ Новая заявка</button>
+        <button class="btn primary" onclick="AsgardCashPage.showCreateModal()">+ Новая заявка</button>
       </div>
 
       <div id="cash-balance-widget"></div>
@@ -185,10 +185,10 @@ window.CashPage = (function() {
     // Actions
     let actionsHtml = '';
     const actions = [];
-    if (canReceive) actions.push(`<button class="btn green mini" onclick="event.stopPropagation();CashPage.confirmReceive(${r.id})">Подтвердить получение</button>`);
-    if (canAddExpense) actions.push(`<button class="btn primary mini" onclick="event.stopPropagation();CashPage.showExpenseModal(${r.id})">+ Расход</button>`);
-    if (canReturn) actions.push(`<button class="btn amber mini" onclick="event.stopPropagation();CashPage.showReturnModal(${r.id}, ${balanceVal})">${isLoan ? 'Погасить' : 'Вернуть'}</button>`);
-    if (canReply) actions.push(`<button class="btn blue mini" onclick="event.stopPropagation();CashPage.showReplyModal(${r.id})">Ответить</button>`);
+    if (canReceive) actions.push(`<button class="btn green mini" onclick="event.stopPropagation();AsgardCashPage.confirmReceive(${r.id})">Подтвердить получение</button>`);
+    if (canAddExpense) actions.push(`<button class="btn primary mini" onclick="event.stopPropagation();AsgardCashPage.showExpenseModal(${r.id})">+ Расход</button>`);
+    if (canReturn) actions.push(`<button class="btn amber mini" onclick="event.stopPropagation();AsgardCashPage.showReturnModal(${r.id}, ${balanceVal})">${isLoan ? 'Погасить' : 'Вернуть'}</button>`);
+    if (canReply) actions.push(`<button class="btn blue mini" onclick="event.stopPropagation();AsgardCashPage.showReplyModal(${r.id})">Ответить</button>`);
     if (actions.length) {
       actionsHtml = `<div class="cash-card-actions">${actions.join('')}</div>`;
     }
@@ -215,7 +215,7 @@ window.CashPage = (function() {
     }
 
     return `
-      <div class="cash-req-card ${isRejected ? 'rejected' : ''} ${isQuestion ? 'question' : ''}" onclick="CashPage.showDetail(${r.id})">
+      <div class="cash-req-card ${isRejected ? 'rejected' : ''} ${isQuestion ? 'question' : ''}" onclick="AsgardCashPage.showDetail(${r.id})">
         <div class="cash-card-top">
           <div class="cash-card-type" style="color:${typeColor}">
             ${isLoan ? '🪙' : '📋'} ${esc(TYPE_LABELS[r.type])}
@@ -259,7 +259,7 @@ window.CashPage = (function() {
         <form id="cashCreateForm">
           <div class="asg-form-group">
             <label>Тип</label>
-            <select name="type" id="cashType" onchange="CashPage.onTypeChange()">
+            <select name="type" id="cashType" onchange="AsgardCashPage.onTypeChange()">
               <option value="advance">Аванс на проект</option>
               <option value="loan">Личный долг до ЗП</option>
             </select>
@@ -282,7 +282,7 @@ window.CashPage = (function() {
           </div>
           <div class="asg-form-actions">
             <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
-            <button type="button" class="btn primary" onclick="CashPage.submitCreate()">Создать</button>
+            <button type="button" class="btn primary" onclick="AsgardCashPage.submitCreate()">Создать</button>
           </div>
         </form>
       `
@@ -410,10 +410,10 @@ window.CashPage = (function() {
 
     // Actions
     const actions = [];
-    if (canReceive) actions.push(`<button class="btn green" onclick="CashPage.confirmReceive(${req.id})">Подтвердить получение</button>`);
-    if (canAddExpense) actions.push(`<button class="btn primary" onclick="CashPage.showExpenseModal(${req.id})">+ Добавить расход</button>`);
-    if (canReturn) actions.push(`<button class="btn ${isLoan ? 'red' : 'amber'}" onclick="CashPage.showReturnModal(${req.id}, ${balanceVal})">${isLoan ? 'Погасить долг' : 'Вернуть остаток'}</button>`);
-    if (canReply) actions.push(`<button class="btn blue" onclick="CashPage.showReplyModal(${req.id})">Ответить</button>`);
+    if (canReceive) actions.push(`<button class="btn green" onclick="AsgardCashPage.confirmReceive(${req.id})">Подтвердить получение</button>`);
+    if (canAddExpense) actions.push(`<button class="btn primary" onclick="AsgardCashPage.showExpenseModal(${req.id})">+ Добавить расход</button>`);
+    if (canReturn) actions.push(`<button class="btn ${isLoan ? 'red' : 'amber'}" onclick="AsgardCashPage.showReturnModal(${req.id}, ${balanceVal})">${isLoan ? 'Погасить долг' : 'Вернуть остаток'}</button>`);
+    if (canReply) actions.push(`<button class="btn blue" onclick="AsgardCashPage.showReplyModal(${req.id})">Ответить</button>`);
     if (actions.length) {
       html += `<div class="cash-actions">${actions.join('')}</div>`;
     }
@@ -449,7 +449,7 @@ window.CashPage = (function() {
                     <td>${esc(e.description)}</td>
                     <td>${fmtMoney(e.amount)}</td>
                     <td>${e.receipt_file ? `<a href="/api/cash/${req.id}/receipt/${e.receipt_file}" target="_blank" style="color:var(--gold)">${esc(e.receipt_original_name || 'Чек')}</a>` : '-'}</td>
-                    ${canAddExpense ? `<td><button class="btn red mini" onclick="CashPage.deleteExpense(${req.id}, ${e.id})">Удалить</button></td>` : ''}
+                    ${canAddExpense ? `<td><button class="btn red mini" onclick="AsgardCashPage.deleteExpense(${req.id}, ${e.id})">Удалить</button></td>` : ''}
                   </tr>
                 `;
               }).join('')}
@@ -544,7 +544,7 @@ window.CashPage = (function() {
             </div>
             <div class="asg-form-actions">
               <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
-              <button type="button" class="btn primary" onclick="CashPage.submitExpense()">Добавить</button>
+              <button type="button" class="btn primary" onclick="AsgardCashPage.submitExpense()">Добавить</button>
             </div>
           </form>
         `
@@ -607,7 +607,7 @@ window.CashPage = (function() {
             </div>
             <div class="asg-form-actions">
               <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
-              <button type="button" class="btn green" onclick="CashPage.submitReturn()">Вернуть</button>
+              <button type="button" class="btn green" onclick="AsgardCashPage.submitReturn()">Вернуть</button>
             </div>
           </form>
         `
@@ -648,7 +648,7 @@ window.CashPage = (function() {
             </div>
             <div class="asg-form-actions">
               <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
-              <button type="button" class="btn primary" onclick="CashPage.submitReply()">Отправить</button>
+              <button type="button" class="btn primary" onclick="AsgardCashPage.submitReply()">Отправить</button>
             </div>
           </form>
         `

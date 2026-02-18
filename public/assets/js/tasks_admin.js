@@ -62,7 +62,7 @@ window.AsgardTasksAdminPage = (function() {
       <div class="tasks-admin-page">
         <div class="page-header">
           <h1>Управление задачами</h1>
-          <button class="btn btn-primary" onclick="AsgardTasksAdminPage.showCreateModal()">
+          <button class="btn primary" onclick="AsgardTasksAdminPage.showCreateModal()">
             + Создать задачу
           </button>
         </div>
@@ -97,7 +97,7 @@ window.AsgardTasksAdminPage = (function() {
               <option value="">Все</option>
             </select>
           </div>
-          <button class="btn btn-secondary" onclick="AsgardTasksAdminPage.resetFilters()">
+          <button class="btn ghost" onclick="AsgardTasksAdminPage.resetFilters()">
             Сбросить
           </button>
         </div>
@@ -154,7 +154,7 @@ window.AsgardTasksAdminPage = (function() {
                           placeholder="Подробное описание задачи"></textarea>
               </div>
 
-              <div class="form-row">
+              <div class="formrow">
                 <div class="form-group">
                   <label for="taskDeadline">Дедлайн</label>
                   <input type="datetime-local" id="taskDeadline">
@@ -183,9 +183,9 @@ window.AsgardTasksAdminPage = (function() {
               </div>
 
               <div class="form-actions">
-                <button type="button" class="btn btn-secondary"
+                <button type="button" class="btn ghost"
                         onclick="AsgardTasksAdminPage.closeModal()">Отмена</button>
-                <button type="submit" class="btn btn-primary" id="taskSubmitBtn">
+                <button type="submit" class="btn primary" id="taskSubmitBtn">
                   Создать
                 </button>
               </div>
@@ -973,7 +973,7 @@ window.AsgardTasksAdminPage = (function() {
         color: var(--text-primary);
       }
 
-      .form-row {
+      .formrow {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 16px;
@@ -1083,21 +1083,21 @@ window.AsgardTasksAdminPage = (function() {
         transition: background 0.2s;
       }
 
-      .btn-primary {
-        background: #3b82f6;
+      .btn.primary {
+        background: var(--blue);
         color: #fff;
       }
 
-      .btn-primary:hover {
-        background: #2563eb;
+      .btn.primary:hover {
+        background: var(--blue-l);
       }
 
-      .btn-secondary {
+      .btn.ghost {
         background: rgba(59, 130, 246, 0.15);
         color: var(--gold);
       }
 
-      .btn-secondary:hover {
+      .btn.ghost:hover {
         background: rgba(59, 130, 246, 0.2);
       }
 
@@ -1111,7 +1111,7 @@ window.AsgardTasksAdminPage = (function() {
           width: 100%;
         }
 
-        .form-row {
+        .formrow {
           grid-template-columns: 1fr;
         }
 

@@ -209,7 +209,7 @@ window.AsgardWarehouse = (function(){
         
         <!-- Таблица оборудования -->
         <div class="card">
-          <div class="table-container">
+          <div class="tbl-wrap">
             <table class="tbl" id="equipmentTable">
               <thead>
                 <tr>
@@ -819,7 +819,7 @@ window.AsgardWarehouse = (function(){
     
     const html = `
       <form id="addEquipmentForm" class="form-grid">
-        <div class="form-row">
+        <div class="formrow">
           <div class="form-group">
             <label>Наименование *</label>
             <input type="text" name="name" class="inp" required/>
@@ -833,7 +833,7 @@ window.AsgardWarehouse = (function(){
           </div>
         </div>
         
-        <div class="form-row">
+        <div class="formrow">
           <div class="form-group">
             <label>Серийный номер</label>
             <input type="text" name="serial_number" class="inp"/>
@@ -844,7 +844,7 @@ window.AsgardWarehouse = (function(){
           </div>
         </div>
         
-        <div class="form-row">
+        <div class="formrow">
           <div class="form-group">
             <label>Количество</label>
             <input type="number" name="quantity" class="inp" value="1" step="0.01"/>
@@ -861,7 +861,7 @@ window.AsgardWarehouse = (function(){
           </div>
         </div>
         
-        <div class="form-row">
+        <div class="formrow">
           <div class="form-group">
             <label>Стоимость (руб)</label>
             <input type="number" name="purchase_price" class="inp" step="0.01"/>
@@ -872,7 +872,7 @@ window.AsgardWarehouse = (function(){
           </div>
         </div>
         
-        <div class="form-row">
+        <div class="formrow">
           <div class="form-group">
             <label>Гарантия до</label>
             <input type="date" name="warranty_end" class="inp"/>
@@ -903,10 +903,10 @@ window.AsgardWarehouse = (function(){
       
       <style>
         .form-grid { display: grid; gap: 16px; }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .formrow { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         .form-group label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--text-muted); }
         .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
-        @media (max-width: 500px) { .form-row { grid-template-columns: 1fr; } }
+        @media (max-width: 500px) { .formrow { grid-template-columns: 1fr; } }
       </style>
     `;
     
@@ -1005,7 +1005,7 @@ window.AsgardWarehouse = (function(){
           <textarea name="notes" class="inp" rows="3" required placeholder="Укажите что именно нужно..."></textarea>
         </div>
 
-        <button type="submit" class="btn btn-primary w-full">📝 Отправить заявку</button>
+        <button type="submit" class="btn primary w-full">📝 Отправить заявку</button>
       </form>
     `;
 

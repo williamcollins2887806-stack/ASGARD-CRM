@@ -350,7 +350,7 @@ window.AsgardKanban = (function(){
         ` : `
           <div class="info-row">
             <span>👁️ Ознакомление</span>
-            <button class="btn btn-sm" onclick="AsgardKanban.acknowledge(${task.id})">Подтвердить</button>
+            <button class="btn mini" onclick="AsgardKanban.acknowledge(${task.id})">Подтвердить</button>
           </div>
         `}
 

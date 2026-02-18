@@ -65,7 +65,7 @@ window.AsgardActsPage = (function(){
           <button class="btn primary" id="btnAddAct">➕ Новый акт</button>
         </div>
         
-        <div class="table-wrap" style="background:var(--bg-card);border-radius:6px;overflow:hidden">
+        <div class="tbl-wrap" style="background:var(--bg-card);border-radius:6px;overflow:hidden">
           <table class="tbl">
             <thead>
               <tr>
