@@ -235,10 +235,10 @@ module.exports = async function (fastify) {
             updated_at = NOW()
           WHERE id = $13
         `, [
-          analysis.classification, analysis.color, analysis.summary, analysis.recommendation,
-          analysis.work_type, analysis.estimated_budget, analysis.estimated_days,
-          analysis.keywords || [], analysis.confidence, JSON.stringify(analysis),
-          analysis._raw?.model || null,
+          (analysis.classification || '').slice(0, 100), (analysis.color || '').slice(0, 50), (analysis.summary || '').slice(0, 2000), (analysis.recommendation || '').slice(0, 2000),
+          (analysis.work_type || '').slice(0, 100), (analysis.estimated_budget || '').slice(0, 100), (analysis.estimated_days || '').slice(0, 100),
+          analysis.keywords || [], parseFloat(analysis.confidence) || 0, JSON.stringify(analysis),
+          (analysis._raw?.model || '').slice(0, 100),
           JSON.stringify(workload),
           appId
         ]);
@@ -247,7 +247,7 @@ module.exports = async function (fastify) {
         await db.query(`
           INSERT INTO ai_analysis_log (entity_type, entity_id, analysis_type, model, provider, duration_ms, output_json, created_by)
           VALUES ('inbox_application', $1, 'email_classification', $2, $3, $4, $5, $6)
-        `, [appId, analysis._raw?.model, analysis._raw?.provider, analysis._raw?.durationMs, JSON.stringify(analysis), user.id]);
+        `, [appId, (analysis._raw?.model || '').slice(0, 100), (analysis._raw?.provider || '').slice(0, 50), parseInt(analysis._raw?.durationMs) || null, JSON.stringify(analysis), user.id]);
 
         // Generate AI report
         try {
@@ -280,82 +280,91 @@ module.exports = async function (fastify) {
     const { id } = request.params;
     const user = request.user;
 
-    const appRes = await db.query('SELECT * FROM inbox_applications WHERE id = $1', [id]);
-    if (!appRes.rows.length) return reply.code(404).send({ error: 'Заявка не найдена' });
-    const app = appRes.rows[0];
-
-    // Получаем текст письма
-    let subject = app.subject;
-    let bodyText = app.body_preview;
-    let fromEmail = app.source_email;
-    let fromName = app.source_name;
-    let attachmentNames = [];
-
-    if (app.email_id) {
-      const emailRes = await db.query('SELECT subject, body_text, from_email, from_name FROM emails WHERE id = $1', [app.email_id]);
-      if (emailRes.rows.length) {
-        const e = emailRes.rows[0];
-        subject = e.subject || subject;
-        bodyText = e.body_text || bodyText;
-        fromEmail = e.from_email || fromEmail;
-        fromName = e.from_name || fromName;
-      }
-      const attRes = await db.query('SELECT original_filename FROM email_attachments WHERE email_id = $1', [app.email_id]);
-      attachmentNames = attRes.rows.map(r => r.original_filename);
-    }
-
-    const analysis = await aiAnalyzer.analyzeEmail({
-      emailId: app.email_id,
-      subject, bodyText, fromEmail, fromName, attachmentNames
-    });
-
-    const workload = await aiAnalyzer.getWorkloadData();
-
-    await db.query(`
-      UPDATE inbox_applications SET
-        ai_classification = $1, ai_color = $2, ai_summary = $3, ai_recommendation = $4,
-        ai_work_type = $5, ai_estimated_budget = $6, ai_estimated_days = $7,
-        ai_keywords = $8, ai_confidence = $9, ai_raw_json = $10,
-        ai_analyzed_at = NOW(), ai_model = $11,
-        workload_snapshot = $12,
-        status = CASE WHEN status = 'new' THEN 'ai_processed' ELSE status END,
-        updated_at = NOW()
-      WHERE id = $13
-    `, [
-      (analysis.classification || '').slice(0, 100),
-      (analysis.color || '').slice(0, 50),
-      analysis.summary,
-      analysis.recommendation,
-      (analysis.work_type || '').slice(0, 100),
-      (analysis.estimated_budget || '').slice(0, 100),
-      (analysis.estimated_days || '').slice(0, 100),
-      analysis.keywords || [],
-      analysis.confidence,
-      JSON.stringify(analysis),
-      (analysis._raw?.model || '').slice(0, 100),
-      JSON.stringify(workload),
-      id
-    ]);
-
-    await db.query(`
-      INSERT INTO ai_analysis_log (entity_type, entity_id, analysis_type, model, provider, duration_ms, output_json, created_by)
-      VALUES ('inbox_application', $1, 'email_classification', $2, $3, $4, $5, $6)
-    `, [id, (analysis._raw?.model || '').slice(0, 100), (analysis._raw?.provider || '').slice(0, 50), analysis._raw?.durationMs, JSON.stringify(analysis), user.id]);
-
-    // Generate AI report (separate call)
-    let aiReport = null;
     try {
-      aiReport = await aiAnalyzer.generateReport({
-        emailId: app.email_id, subject, bodyText, fromEmail, fromName, attachmentNames
-      });
-      if (aiReport) {
-        await db.query('UPDATE inbox_applications SET ai_report = $1 WHERE id = $2', [aiReport, id]);
-      }
-    } catch (reportErr) {
-      console.error('[InboxApp] AI report generation error:', reportErr.message);
-    }
+      const appRes = await db.query('SELECT * FROM inbox_applications WHERE id = $1', [id]);
+      if (!appRes.rows.length) return reply.code(404).send({ error: 'Заявка не найдена' });
+      const app = appRes.rows[0];
 
-    return { success: true, analysis, ai_report: aiReport };
+      // Получаем текст письма
+      let subject = app.subject;
+      let bodyText = app.body_preview;
+      let fromEmail = app.source_email;
+      let fromName = app.source_name;
+      let attachmentNames = [];
+
+      if (app.email_id) {
+        const emailRes = await db.query('SELECT subject, body_text, from_email, from_name FROM emails WHERE id = $1', [app.email_id]);
+        if (emailRes.rows.length) {
+          const e = emailRes.rows[0];
+          subject = e.subject || subject;
+          bodyText = e.body_text || bodyText;
+          fromEmail = e.from_email || fromEmail;
+          fromName = e.from_name || fromName;
+        }
+        const attRes = await db.query('SELECT original_filename FROM email_attachments WHERE email_id = $1', [app.email_id]);
+        attachmentNames = attRes.rows.map(r => r.original_filename);
+      }
+
+      const analysis = await aiAnalyzer.analyzeEmail({
+        emailId: app.email_id,
+        subject, bodyText, fromEmail, fromName, attachmentNames
+      });
+
+      const workload = await aiAnalyzer.getWorkloadData();
+
+      await db.query(`
+        UPDATE inbox_applications SET
+          ai_classification = $1, ai_color = $2, ai_summary = $3, ai_recommendation = $4,
+          ai_work_type = $5, ai_estimated_budget = $6, ai_estimated_days = $7,
+          ai_keywords = $8, ai_confidence = $9, ai_raw_json = $10,
+          ai_analyzed_at = NOW(), ai_model = $11,
+          workload_snapshot = $12,
+          status = CASE WHEN status = 'new' THEN 'ai_processed' ELSE status END,
+          updated_at = NOW()
+        WHERE id = $13
+      `, [
+        (analysis.classification || '').slice(0, 100),
+        (analysis.color || '').slice(0, 50),
+        (analysis.summary || '').slice(0, 2000),
+        (analysis.recommendation || '').slice(0, 2000),
+        (analysis.work_type || '').slice(0, 100),
+        (analysis.estimated_budget || '').slice(0, 100),
+        (analysis.estimated_days || '').slice(0, 100),
+        analysis.keywords || [],
+        parseFloat(analysis.confidence) || 0,
+        JSON.stringify(analysis),
+        (analysis._raw?.model || '').slice(0, 100),
+        JSON.stringify(workload),
+        id
+      ]);
+
+      await db.query(`
+        INSERT INTO ai_analysis_log (entity_type, entity_id, analysis_type, model, provider, duration_ms, output_json, created_by)
+        VALUES ('inbox_application', $1, 'email_classification', $2, $3, $4, $5, $6)
+      `, [id, (analysis._raw?.model || '').slice(0, 100), (analysis._raw?.provider || '').slice(0, 50), parseInt(analysis._raw?.durationMs) || null, JSON.stringify(analysis), user.id]);
+
+      // Generate AI report (separate call)
+      let aiReport = null;
+      try {
+        aiReport = await aiAnalyzer.generateReport({
+          emailId: app.email_id, subject, bodyText, fromEmail, fromName, attachmentNames
+        });
+        if (aiReport) {
+          await db.query('UPDATE inbox_applications SET ai_report = $1 WHERE id = $2', [aiReport, id]);
+        }
+      } catch (reportErr) {
+        console.error('[InboxApp] AI report generation error:', reportErr.message);
+      }
+
+      return { success: true, analysis, ai_report: aiReport };
+    } catch (err) {
+      console.error(`[InboxApp] Analyze error for application #${id}:`, err.message, err.stack);
+      return reply.code(500).send({
+        error: 'Ошибка анализа заявки',
+        message: err.message,
+        detail: err.detail || null
+      });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════════
