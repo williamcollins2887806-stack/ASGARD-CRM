@@ -15,10 +15,10 @@ window.AsgardPreTendersPage = (function(){
   };
 
   const COLOR = {
-    green:  { dot: '#22c55e', bg: 'rgba(34,197,94,.08)',  border: '#22c55e', icon: '🟢', tip: 'Наш профиль, рекомендуем брать' },
-    yellow: { dot: '#eab308', bg: 'rgba(234,179,8,.08)',  border: '#eab308', icon: '🟡', tip: 'Частично наш профиль / риски' },
-    red:    { dot: '#ef4444', bg: 'rgba(239,68,68,.08)',  border: '#ef4444', icon: '🔴', tip: 'Не наш профиль / невыполнимо' },
-    gray:   { dot: '#94a3b8', bg: 'rgba(148,163,184,.08)', border: '#94a3b8', icon: '⚪', tip: 'Без AI-анализа' }
+    green:  { dot: 'var(--ok-t)', bg: 'rgba(34,197,94,.08)',  border: 'var(--ok-t)', icon: '🟢', tip: 'Наш профиль, рекомендуем брать' },
+    yellow: { dot: 'var(--amber)', bg: 'rgba(234,179,8,.08)',  border: 'var(--amber)', icon: '🟡', tip: 'Частично наш профиль / риски' },
+    red:    { dot: 'var(--err-t)', bg: 'rgba(239,68,68,.08)',  border: 'var(--err-t)', icon: '🔴', tip: 'Не наш профиль / невыполнимо' },
+    gray:   { dot: 'var(--t2)', bg: 'rgba(148,163,184,.08)', border: 'var(--t2)', icon: '⚪', tip: 'Без AI-анализа' }
   };
 
   const REJECT_REASONS = [
@@ -130,9 +130,9 @@ window.AsgardPreTendersPage = (function(){
 
         /* AI enhanced card */
         .pt-ai-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
-        .pt-ai-urgency-high{background:rgba(239,68,68,.12);color:#ef4444}
-        .pt-ai-urgency-medium{background:rgba(234,179,8,.12);color:#eab308}
-        .pt-ai-urgency-low{background:rgba(34,197,94,.12);color:#22c55e}
+        .pt-ai-urgency-high{background:rgba(239,68,68,.12);color:var(--err-t)}
+        .pt-ai-urgency-medium{background:rgba(234,179,8,.12);color:var(--amber)}
+        .pt-ai-urgency-low{background:rgba(34,197,94,.12);color:var(--ok-t)}
 
         /* View toggle active */
         .view-active{background:var(--gold) !important;color:#000 !important}
@@ -203,11 +203,11 @@ window.AsgardPreTendersPage = (function(){
       const d = await api('/stats');
       if (!d.success) return;
       el.innerHTML = `
-        <div class="pt-stat"><div class="v" style="color:#3b82f6">${d.total_new || 0}</div><div class="l">Новые</div></div>
-        <div class="pt-stat"><div class="v" style="color:#eab308">${d.total_in_review || 0}</div><div class="l">На рассмотрении</div></div>
-        <div class="pt-stat"><div class="v" style="color:#22c55e">${d.by_color?.green || 0}</div><div class="l">🟢 Зелёные</div></div>
-        <div class="pt-stat"><div class="v" style="color:#eab308">${d.by_color?.yellow || 0}</div><div class="l">🟡 Жёлтые</div></div>
-        <div class="pt-stat"><div class="v" style="color:#ef4444">${d.by_color?.red || 0}</div><div class="l">🔴 Красные</div></div>
+        <div class="pt-stat"><div class="v" style="color:var(--info)">${d.total_new || 0}</div><div class="l">Новые</div></div>
+        <div class="pt-stat"><div class="v" style="color:var(--amber)">${d.total_in_review || 0}</div><div class="l">На рассмотрении</div></div>
+        <div class="pt-stat"><div class="v" style="color:var(--ok-t)">${d.by_color?.green || 0}</div><div class="l">🟢 Зелёные</div></div>
+        <div class="pt-stat"><div class="v" style="color:var(--amber)">${d.by_color?.yellow || 0}</div><div class="l">🟡 Жёлтые</div></div>
+        <div class="pt-stat"><div class="v" style="color:var(--err-t)">${d.by_color?.red || 0}</div><div class="l">🔴 Красные</div></div>
         <div class="pt-stat"><div class="v">${d.total_accepted || 0}</div><div class="l">Принято</div></div>
       `;
     } catch(e) {}
@@ -272,10 +272,10 @@ window.AsgardPreTendersPage = (function(){
   // ═══════════════════════════════════════════════════════════════════
 
   const KANBAN_COLS = [
-    { status: 'new',       label: 'Новые',            color: '#3b82f6' },
-    { status: 'in_review', label: 'На рассмотрении',  color: '#eab308' },
-    { status: 'need_docs', label: 'Нужны документы',    color: '#f97316' },
-    { status: 'accepted',  label: 'Решение принято',   color: '#22c55e' }
+    { status: 'new',       label: 'Новые',            color: 'var(--info)' },
+    { status: 'in_review', label: 'На рассмотрении',  color: 'var(--amber)' },
+    { status: 'need_docs', label: 'Нужны документы',    color: 'var(--orange)' },
+    { status: 'accepted',  label: 'Решение принято',   color: 'var(--ok-t)' }
   ];
 
   async function loadKanban() {
@@ -351,9 +351,9 @@ window.AsgardPreTendersPage = (function(){
     const canDrag = ['new', 'in_review', 'need_docs'].includes(it.status);
     const aiSuggestion = it.ai_auto_suggestion;
     let aiLabel = '';
-    if (aiSuggestion === 'accept_green') aiLabel = '<span class="kc-ai" style="background:rgba(34,197,94,.12);color:#22c55e">AI: принять</span>';
-    else if (aiSuggestion === 'reject_red') aiLabel = '<span class="kc-ai" style="background:rgba(239,68,68,.12);color:#ef4444">AI: отклонить</span>';
-    else if (aiSuggestion === 'need_info') aiLabel = '<span class="kc-ai" style="background:rgba(234,179,8,.12);color:#eab308">AI: нужна инфо</span>';
+    if (aiSuggestion === 'accept_green') aiLabel = '<span class="kc-ai" style="background:rgba(34,197,94,.12);color:var(--ok-t)">AI: принять</span>';
+    else if (aiSuggestion === 'reject_red') aiLabel = '<span class="kc-ai" style="background:rgba(239,68,68,.12);color:var(--err-t)">AI: отклонить</span>';
+    else if (aiSuggestion === 'need_info') aiLabel = '<span class="kc-ai" style="background:rgba(234,179,8,.12);color:var(--amber)">AI: нужна инфо</span>';
 
     const urgencyBadge = it.ai_urgency === 'high' ? '<span class="pt-ai-badge pt-ai-urgency-high">СРОЧНО</span>' : '';
 
@@ -435,7 +435,7 @@ window.AsgardPreTendersPage = (function(){
     const c = COLOR[it.ai_color] || COLOR.gray;
     const st = STATUS[it.status] || STATUS.new;
     const score = it.ai_work_match_score || 0;
-    const scoreColor = score >= 70 ? '#22c55e' : score >= 30 ? '#eab308' : '#ef4444';
+    const scoreColor = score >= 70 ? 'var(--ok-t)' : score >= 30 ? 'var(--amber)' : 'var(--err-t)';
     const canEdit = ['new','in_review','need_docs'].includes(it.status);
 
     // Вспомогательная функция для редактируемого поля
@@ -490,9 +490,9 @@ window.AsgardPreTendersPage = (function(){
             <span style="font-size:11px;color:var(--text-muted)">${it.ai_processed_at ? new Date(it.ai_processed_at).toLocaleString('ru-RU') : ''}</span>
           </div>
         </div>
-        ${it.ai_auto_suggestion === 'accept_green' ? '<div style="padding:8px 12px;background:rgba(34,197,94,.12);border-radius:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#22c55e">✅ AI рекомендует принять в работу</div>' : ''}
-        ${it.ai_auto_suggestion === 'reject_red' ? '<div style="padding:8px 12px;background:rgba(239,68,68,.12);border-radius:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#ef4444">❌ AI рекомендует отклонить</div>' : ''}
-        ${it.ai_auto_suggestion === 'need_info' ? '<div style="padding:8px 12px;background:rgba(234,179,8,.12);border-radius:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#eab308">⚠️ Недостаточно данных для оценки</div>' : ''}
+        ${it.ai_auto_suggestion === 'accept_green' ? '<div style="padding:8px 12px;background:rgba(34,197,94,.12);border-radius:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:var(--ok-t)">✅ AI рекомендует принять в работу</div>' : ''}
+        ${it.ai_auto_suggestion === 'reject_red' ? '<div style="padding:8px 12px;background:rgba(239,68,68,.12);border-radius:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:var(--err-t)">❌ AI рекомендует отклонить</div>' : ''}
+        ${it.ai_auto_suggestion === 'need_info' ? '<div style="padding:8px 12px;background:rgba(234,179,8,.12);border-radius:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:var(--amber)">⚠️ Недостаточно данных для оценки</div>' : ''}
         <div style="font-size:13px;line-height:1.6;margin-bottom:12px;white-space:pre-line">${esc(it.ai_summary)}</div>
         ${it.ai_recommendation ? `<div style="font-size:12px;padding:8px 12px;background:var(--bg-elevated);border-radius:6px;margin-bottom:8px"><b>Рекомендация:</b> ${esc(it.ai_recommendation)}</div>` : ''}
         <div style="font-size:12px;margin-bottom:4px"><b>Соответствие профилю:</b> ${score}%</div>
@@ -724,7 +724,7 @@ window.AsgardPreTendersPage = (function(){
         </div>
 
         <!-- Превью письма -->
-        <div id="accEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:6px;border-left:3px solid #22c55e;font-size:12px">
+        <div id="accEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:6px;border-left:3px solid var(--ok-t);font-size:12px">
           <div style="font-weight:700;margin-bottom:6px">Превью письма:</div>
           <div style="color:var(--text-muted);margin-bottom:4px"><b>Кому:</b> ${esc(pt.customer_email || '—')}</div>
           <div style="color:var(--text-muted);margin-bottom:4px"><b>Тема:</b> ${emailSubject}</div>
@@ -801,22 +801,22 @@ window.AsgardPreTendersPage = (function(){
 
     const mHtml = `
       <div style="max-width:550px">
-        <div style="padding:12px;background:linear-gradient(135deg,rgba(212,168,70,.08),rgba(212,168,70,.02));border-radius:8px;border-left:4px solid #D4A846;margin-bottom:16px">
+        <div style="padding:12px;background:linear-gradient(135deg,rgba(212,168,70,.08),rgba(212,168,70,.02));border-radius:8px;border-left:4px solid var(--gold);margin-bottom:16px">
           <div style="font-size:13px;line-height:1.5">
             Заявка от <b>${esc(pt.customer_name || pt.customer_email || '—')}</b> будет принята
             и <b>сразу отправлена РП на просчёт</b>.
           </div>
           <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
-            Тендер появится в Саге со статусом <span style="color:#D4A846;font-weight:700">«Отправлено на просчёт»</span>.
+            Тендер появится в Саге со статусом <span style="color:var(--gold);font-weight:700">«Отправлено на просчёт»</span>.
           </div>
           ${aiRec}
         </div>
 
         <div style="display:grid;gap:14px">
           <div>
-            <label style="font-size:12px;font-weight:700;color:var(--text-primary)">Назначить РП <span style="color:#ef4444">*</span></label>
+            <label style="font-size:12px;font-weight:700;color:var(--text-primary)">Назначить РП <span style="color:var(--err-t)">*</span></label>
             <select id="ftPM" class="inp" style="margin-top:4px">${pmOptions}</select>
-            <div id="ftPmError" style="font-size:11px;color:#ef4444;margin-top:2px;display:none">Необходимо выбрать РП</div>
+            <div id="ftPmError" style="font-size:11px;color:var(--err-t);margin-top:2px;display:none">Необходимо выбрать РП</div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             <div>
@@ -841,7 +841,7 @@ window.AsgardPreTendersPage = (function(){
         </div>
 
         <!-- Превью письма -->
-        <div id="ftEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:6px;border-left:3px solid #D4A846;font-size:12px">
+        <div id="ftEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:6px;border-left:3px solid var(--gold);font-size:12px">
           <div style="font-weight:700;margin-bottom:6px">Превью письма:</div>
           <div style="color:var(--text-muted);margin-bottom:4px"><b>Кому:</b> ${esc(pt.customer_email || '—')}</div>
           <div style="border-top:1px solid var(--line);padding-top:6px;margin-top:4px;line-height:1.5">
@@ -941,7 +941,7 @@ window.AsgardPreTendersPage = (function(){
         </div>
 
         <!-- Превью письма -->
-        <div id="rejEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:6px;border-left:3px solid #ef4444;font-size:12px">
+        <div id="rejEmailPreview" style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:6px;border-left:3px solid var(--err-t);font-size:12px">
           <div style="font-weight:700;margin-bottom:6px">Превью письма:</div>
           <div style="color:var(--text-muted);margin-bottom:4px"><b>Кому:</b> ${esc(pt.customer_email || '—')}</div>
           <div style="color:var(--text-muted);margin-bottom:4px"><b>Тема:</b> ${emailSubject}</div>

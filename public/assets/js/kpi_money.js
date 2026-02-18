@@ -11,22 +11,22 @@ window.AsgardKpiMoneyPage = (function(){
   const DIRECTOR_ROLES = ['DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
   
   const EXPENSE_CATEGORIES = {
-    fot: { label: 'ФОТ', color: '#3b82f6' },
-    materials: { label: 'Материалы', color: '#22c55e' },
-    chemistry: { label: 'Химия', color: '#f59e0b' },
-    equipment: { label: 'Оборудование', color: '#8b5cf6' },
-    transport: { label: 'Транспорт', color: '#ef4444' },
-    accommodation: { label: 'Проживание', color: '#06b6d4' },
+    fot: { label: 'ФОТ', color: 'var(--info)' },
+    materials: { label: 'Материалы', color: 'var(--ok-t)' },
+    chemistry: { label: 'Химия', color: 'var(--amber)' },
+    equipment: { label: 'Оборудование', color: 'var(--purple)' },
+    transport: { label: 'Транспорт', color: 'var(--err-t)' },
+    accommodation: { label: 'Проживание', color: 'var(--cyan)' },
     tickets: { label: 'Билеты', color: '#ec4899' },
     daily: { label: 'Суточные', color: '#84cc16' },
-    office: { label: 'Офис', color: '#f97316' },
-    other: { label: 'Прочее', color: '#64748b' }
+    office: { label: 'Офис', color: 'var(--orange)' },
+    other: { label: 'Прочее', color: 'var(--t2)' }
   };
 
   const INCOME_TYPES = {
-    advance: { label: 'Аванс', color: '#22c55e' },
-    postpay: { label: 'Постоплата', color: '#3b82f6' },
-    other: { label: 'Прочее', color: '#f59e0b' }
+    advance: { label: 'Аванс', color: 'var(--ok-t)' },
+    postpay: { label: 'Постоплата', color: 'var(--info)' },
+    other: { label: 'Прочее', color: 'var(--amber)' }
   };
 
   // === Утилиты ===
@@ -394,7 +394,7 @@ window.AsgardKpiMoneyPage = (function(){
         for(const [cat, amount] of pieData){
           const angle = (amount / total) * 360;
           const endAngle = startAngle + angle;
-          const catInfo = categories[cat] || { color: '#64748b', label: cat };
+          const catInfo = categories[cat] || { color: 'var(--t2)', label: cat };
           
           const largeArc = angle > 180 ? 1 : 0;
           const x1 = 100 + 80 * Math.cos((startAngle - 90) * Math.PI / 180);
@@ -409,7 +409,7 @@ window.AsgardKpiMoneyPage = (function(){
       }
 
       const legendHtml = pieData.map(([cat, amount]) => {
-        const catInfo = categories[cat] || { color: '#64748b', label: cat };
+        const catInfo = categories[cat] || { color: 'var(--t2)', label: cat };
         const pct = total > 0 ? ((amount / total) * 100).toFixed(1) : 0;
         return `
           <div style="display:flex; align-items:center; gap:8px; margin:4px 0">
@@ -436,7 +436,7 @@ window.AsgardKpiMoneyPage = (function(){
             </thead>
             <tbody>
               ${monthItems.map(item => {
-                const catInfo = categories[item[categoryField]] || { label: item[categoryField], color: '#64748b' };
+                const catInfo = categories[item[categoryField]] || { label: item[categoryField], color: 'var(--t2)' };
                 return `
                   <tr>
                     <td>${item.date || '—'}</td>

@@ -7,14 +7,14 @@ window.AsgardBuhRegistryPage = (function(){
 
   // Категории расходов
   const EXPENSE_CATEGORIES = [
-    { key: 'fot', label: 'ФОТ', color: '#ef4444', icon: '👷' },
-    { key: 'logistics', label: 'Логистика', color: '#f59e0b', icon: '🚚' },
-    { key: 'accommodation', label: 'Проживание', color: '#8b5cf6', icon: '🏨' },
-    { key: 'transfer', label: 'Трансфер', color: '#06b6d4', icon: '🚗' },
-    { key: 'chemicals', label: 'Химия', color: '#22c55e', icon: '🧪' },
-    { key: 'equipment', label: 'Оборудование', color: '#3b82f6', icon: '🔧' },
+    { key: 'fot', label: 'ФОТ', color: 'var(--err-t)', icon: '👷' },
+    { key: 'logistics', label: 'Логистика', color: 'var(--amber)', icon: '🚚' },
+    { key: 'accommodation', label: 'Проживание', color: 'var(--purple)', icon: '🏨' },
+    { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗' },
+    { key: 'chemicals', label: 'Химия', color: 'var(--ok-t)', icon: '🧪' },
+    { key: 'equipment', label: 'Оборудование', color: 'var(--info)', icon: '🔧' },
     { key: 'subcontract', label: 'Субподряд', color: '#ec4899', icon: '🤝' },
-    { key: 'other', label: 'Прочее', color: '#64748b', icon: '📦' }
+    { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
 
   function money(x){ 
@@ -101,13 +101,13 @@ window.AsgardBuhRegistryPage = (function(){
         
         .buh-cat-badge { display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:700; }
         .buh-status { padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; }
-        .buh-status.need { background:rgba(245,158,11,.2); color:#f59e0b; }
-        .buh-status.got { background:rgba(34,197,94,.2); color:#22c55e; }
-        .buh-status.none { background:rgba(100,116,139,.2); color:#94a3b8; }
+        .buh-status.need { background:rgba(245,158,11,.2); color:var(--amber); }
+        .buh-status.got { background:rgba(34,197,94,.2); color:var(--ok-t); }
+        .buh-status.none { background:rgba(100,116,139,.2); color:var(--t2); }
         
         .buh-work-status { padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600; }
-        .buh-work-closed { background:rgba(34,197,94,.2); color:#22c55e; }
-        .buh-work-open { background:rgba(59,130,246,.2); color:#3b82f6; }
+        .buh-work-closed { background:rgba(34,197,94,.2); color:var(--ok-t); }
+        .buh-work-open { background:rgba(59,130,246,.2); color:var(--info); }
         
         .buh-actions { display:flex; gap:6px; }
         .buh-btn { padding:6px 10px; border-radius:6px; border:1px solid var(--line); background:var(--glass); color:var(--text); font-size:12px; cursor:pointer; }
@@ -277,12 +277,12 @@ window.AsgardBuhRegistryPage = (function(){
         </div>
         <div class="buh-card">
           <div class="buh-card-label">Ожидают СФ</div>
-          <div class="buh-card-value" style="color:#f59e0b">${needInvoice}</div>
+          <div class="buh-card-value" style="color:var(--amber)">${needInvoice}</div>
           <div class="buh-card-sub">записей без счёт-фактуры</div>
         </div>
         <div class="buh-card">
           <div class="buh-card-label">СФ получены</div>
-          <div class="buh-card-value" style="color:#22c55e">${gotInvoice}</div>
+          <div class="buh-card-value" style="color:var(--ok-t)">${gotInvoice}</div>
           <div class="buh-card-sub">документов закрыто</div>
         </div>
         ${topCats.map(c => `

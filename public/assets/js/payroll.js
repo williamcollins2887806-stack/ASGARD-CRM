@@ -21,12 +21,12 @@ window.AsgardPayrollPage = (function(){
   function num(x){ if(x===null||x===undefined||x==="") return null; const n=Number(String(x).replace(/\s/g,"").replace(",",".")); return isNaN(n)?null:n; }
 
   const STATUSES = {
-    draft:    { label:'Черновик',        bg:'rgba(100,116,139,.2)', color:'#94a3b8' },
-    pending:  { label:'На согласовании', bg:'rgba(245,158,11,.2)',  color:'#f59e0b' },
-    approved: { label:'Согласовано',     bg:'rgba(59,130,246,.2)',  color:'#3b82f6' },
-    rework:   { label:'Доработка',       bg:'rgba(239,68,68,.15)', color:'#ef4444' },
-    paid:     { label:'Оплачено',        bg:'rgba(34,197,94,.2)',  color:'#22c55e' },
-    cancelled:{ label:'Отменено',        bg:'rgba(100,116,139,.15)',color:'#64748b' }
+    draft:    { label:'Черновик',        bg:'rgba(100,116,139,.2)', color:'var(--t2)' },
+    pending:  { label:'На согласовании', bg:'rgba(245,158,11,.2)',  color:'var(--amber)' },
+    approved: { label:'Согласовано',     bg:'rgba(59,130,246,.2)',  color:'var(--info)' },
+    rework:   { label:'Доработка',       bg:'rgba(239,68,68,.15)', color:'var(--err-t)' },
+    paid:     { label:'Оплачено',        bg:'rgba(34,197,94,.2)',  color:'var(--ok-t)' },
+    cancelled:{ label:'Отменено',        bg:'rgba(100,116,139,.15)',color:'var(--t2)' }
   };
 
   const PAYMENT_TYPES = {
@@ -77,7 +77,7 @@ window.AsgardPayrollPage = (function(){
 .payroll-tab{padding:8px 16px;border-radius:6px;border:none;background:transparent;color:var(--muted);font-weight:700;cursor:pointer;transition:all .2s;font-size:13px}
 .payroll-tab:hover{color:var(--text)}
 .payroll-tab.active{background:linear-gradient(135deg,rgba(59,130,246,.3),rgba(34,197,94,.2));color:var(--text)}
-.payroll-tab .count{font-size:11px;background:rgba(245,158,11,.3);color:#f59e0b;padding:2px 6px;border-radius:6px;margin-left:4px}
+.payroll-tab .count{font-size:11px;background:rgba(245,158,11,.3);color:var(--amber);padding:2px 6px;border-radius:6px;margin-left:4px}
 .payroll-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
 .payroll-kpi .k{background:rgba(13,20,40,.5);border:none;border-radius:6px;padding:14px}
 .payroll-kpi .k .t{font-size:11px;color:rgba(184,196,231,.85);font-weight:800;text-transform:uppercase}
@@ -87,7 +87,7 @@ window.AsgardPayrollPage = (function(){
 .payroll-card:hover{border-color:rgba(242,208,138,.5);transform:translateY(-2px)}
 .payroll-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700}
 .payroll-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
-.payroll-director-comment{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-left:4px solid #ef4444;border-radius:6px;padding:12px 16px;margin-bottom:16px}
+.payroll-director-comment{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-left:4px solid var(--err-t);border-radius:6px;padding:12px 16px;margin-bottom:16px}
 .payroll-inline-input{background:rgba(13,20,40,.3);border:1px solid var(--border-input);border-radius:6px;padding:4px 8px;color:var(--text);width:80px;text-align:right;font-size:13px}
 .payroll-inline-input:focus{border-color:rgba(242,208,138,.6);outline:none}
 .payroll-inline-input:read-only{background:transparent;border-color:transparent;cursor:default}
@@ -95,10 +95,10 @@ window.AsgardPayrollPage = (function(){
 .se-card .se-name{font-size:16px;font-weight:800;color:var(--text)}
 .se-card .se-inn{font-size:13px;color:var(--muted);font-family:monospace}
 .otp-card{background:rgba(13,20,40,.45);border:none;border-radius:6px;padding:16px;margin-bottom:12px;border-left:4px solid transparent}
-.otp-card[data-status="pending"]{border-left-color:#f59e0b}
-.otp-card[data-status="approved"]{border-left-color:#3b82f6}
-.otp-card[data-status="paid"]{border-left-color:#22c55e}
-.otp-card[data-status="rejected"]{border-left-color:#ef4444}
+.otp-card[data-status="pending"]{border-left-color:var(--amber)}
+.otp-card[data-status="approved"]{border-left-color:var(--info)}
+.otp-card[data-status="paid"]{border-left-color:var(--ok-t)}
+.otp-card[data-status="rejected"]{border-left-color:var(--err-t)}
 .payroll-table{width:100%;border-collapse:collapse;font-size:13px}
 .payroll-table th{text-align:left;padding:8px 6px;font-size:11px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.06);white-space:nowrap}
 .payroll-table td{padding:6px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
@@ -168,9 +168,9 @@ window.AsgardPayrollPage = (function(){
 
         <div class="payroll-kpi">
           <div class="k"><div class="t">Всего ведомостей</div><div class="v">${sheets.length}</div></div>
-          <div class="k"><div class="t">Ожидают согл.</div><div class="v" style="color:#f59e0b">${pendingCount}</div></div>
+          <div class="k"><div class="t">Ожидают согл.</div><div class="v" style="color:var(--amber)">${pendingCount}</div></div>
           <div class="k"><div class="t">К выплате</div><div class="v">${moneyShort(totalPayout)} \u20BD</div></div>
-          <div class="k"><div class="t">Выплачено</div><div class="v" style="color:#22c55e">${moneyShort(paidTotal)} \u20BD</div></div>
+          <div class="k"><div class="t">Выплачено</div><div class="v" style="color:var(--ok-t)">${moneyShort(paidTotal)} \u20BD</div></div>
         </div>
 
         <div class="payroll-tabs" id="payrollTabs">
@@ -370,7 +370,7 @@ window.AsgardPayrollPage = (function(){
 
       // Items table
       let tableRows = items.map((item, idx)=>{
-        const seTag = item.is_self_employed || item.emp_se ? ' <span style="font-size:10px;background:rgba(59,130,246,.2);color:#3b82f6;padding:1px 5px;border-radius:4px">СЗ</span>' : '';
+        const seTag = item.is_self_employed || item.emp_se ? ' <span style="font-size:10px;background:rgba(59,130,246,.2);color:var(--info);padding:1px 5px;border-radius:4px">СЗ</span>' : '';
         if(isEditable){
           return `<tr data-item-id="${item.id}">
             <td>${idx+1}</td>
@@ -426,8 +426,8 @@ window.AsgardPayrollPage = (function(){
 
         <div class="payroll-kpi">
           <div class="k"><div class="t">Начислено</div><div class="v">${money(totalAccrued)}</div></div>
-          <div class="k"><div class="t">Премии</div><div class="v" style="color:#3b82f6">${money(totalBonus)}</div></div>
-          <div class="k"><div class="t">Удержания</div><div class="v" style="color:#ef4444">${money(totalPenalty)}</div></div>
+          <div class="k"><div class="t">Премии</div><div class="v" style="color:var(--info)">${money(totalBonus)}</div></div>
+          <div class="k"><div class="t">Удержания</div><div class="v" style="color:var(--err-t)">${money(totalPenalty)}</div></div>
           <div class="k"><div class="t">К выплате</div><div class="v">${money(totalPayout)}</div></div>
           <div class="k"><div class="t">Рабочих</div><div class="v">${items.length}</div></div>
           <div class="k"><div class="t">Ср. ставка</div><div class="v">${money(avgRate)}/д</div></div>
@@ -710,7 +710,7 @@ window.AsgardPayrollPage = (function(){
         <div id="seList">
           ${items.length===0 ? '<div style="text-align:center;color:var(--muted);padding:40px">Нет самозанятых</div>' :
             items.map(se=>{
-              const statusColor = se.npd_status==='active' ? '#22c55e' : se.npd_status==='suspended' ? '#f59e0b' : '#ef4444';
+              const statusColor = se.npd_status==='active' ? 'var(--ok-t)' : se.npd_status==='suspended' ? 'var(--amber)' : 'var(--err-t)';
               return `<div class="se-card">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
                   <div>
@@ -890,11 +890,11 @@ window.AsgardPayrollPage = (function(){
                   Запросил: ${esc(otp.requester_name||'')} &middot; ${fmtDate(otp.created_at)}
                 </div>
                 <div style="margin-top:6px;font-size:13px">${esc(otp.reason||'')}</div>
-                ${otp.director_comment?`<div style="margin-top:6px;font-size:12px;color:#f59e0b">${esc(otp.director_comment)}</div>`:''}
+                ${otp.director_comment?`<div style="margin-top:6px;font-size:12px;color:var(--amber)">${esc(otp.director_comment)}</div>`:''}
                 ${otp.status==='pending' && isDirector ? `
                   <div style="margin-top:10px;display:flex;gap:8px">
                     <button class="btn primary" style="font-size:12px" data-approve-otp="${otp.id}">Согласовать</button>
-                    <button class="btn" style="font-size:12px;color:#ef4444" data-reject-otp="${otp.id}">Отклонить</button>
+                    <button class="btn" style="font-size:12px;color:var(--err-t)" data-reject-otp="${otp.id}">Отклонить</button>
                   </div>
                 ` : ''}
                 ${otp.status==='approved' && (isDirector||user.role==='BUH') ? `

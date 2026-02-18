@@ -326,7 +326,7 @@ window.AsgardMailSettingsPage = (function(){
     rules = data.rules || [];
 
     const RULE_TYPES = { domain: 'Домен', keyword_subject: 'Ключ.слово (тема)', keyword_body: 'Ключ.слово (тело)', header: 'Заголовок', from_pattern: 'От кого', combined: 'Комбинированное' };
-    const CLASS_COLORS = { direct_request: '#22c55e', platform_tender: '#eab308', newsletter: '#94a3b8', internal: '#3b82f6', spam: '#ef4444' };
+    const CLASS_COLORS = { direct_request: 'var(--ok-t)', platform_tender: 'var(--amber)', newsletter: 'var(--t2)', internal: 'var(--info)', spam: 'var(--err-t)' };
 
     container.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -353,7 +353,7 @@ window.AsgardMailSettingsPage = (function(){
             <td style="padding:6px 8px;color:var(--text-primary);">${esc(RULE_TYPES[r.rule_type] || r.rule_type)}</td>
             <td style="padding:6px 8px;color:var(--text-primary);max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.pattern)}">${esc(r.pattern)}</td>
             <td style="padding:6px 8px;color:var(--text-muted);">${esc(r.match_mode)}</td>
-            <td style="padding:6px 8px;"><span style="color:${CLASS_COLORS[r.classification] || '#64748b'};font-weight:600;">${esc(r.classification)}</span></td>
+            <td style="padding:6px 8px;"><span style="color:${CLASS_COLORS[r.classification] || 'var(--t2)'};font-weight:600;">${esc(r.classification)}</span></td>
             <td style="padding:6px 8px;text-align:center;color:var(--text-primary);">${r.confidence}%</td>
             <td style="padding:6px 8px;text-align:center;color:var(--text-primary);">${r.priority}</td>
             <td style="padding:6px 8px;text-align:center;color:var(--text-muted);">${r.times_matched || 0}</td>
@@ -557,7 +557,7 @@ window.AsgardMailSettingsPage = (function(){
     const data = await apiFetch('/api/mailbox/sync-log?limit=100');
     syncLogs = data.logs || [];
 
-    const statusColors = { running: 'var(--amber)', success: 'var(--green)', error: 'var(--red)', partial: '#f59e0b' };
+    const statusColors = { running: 'var(--amber)', success: 'var(--green)', error: 'var(--red)', partial: 'var(--amber)' };
 
     container.innerHTML = `
       <div style="margin-bottom:12px;color:var(--text-muted);font-size:13px;">${syncLogs.length} записей</div>

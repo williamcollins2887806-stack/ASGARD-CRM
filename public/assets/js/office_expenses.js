@@ -6,24 +6,24 @@ window.AsgardOfficeExpensesPage = (function(){
 
   // 10 категорий офисных расходов
   const CATEGORIES = [
-    { key: 'rent', label: 'Аренда офиса', color: '#ef4444', icon: '🏢' },
-    { key: 'utilities', label: 'Коммунальные', color: '#f59e0b', icon: '💡' },
-    { key: 'office_supplies', label: 'Канцелярия', color: '#8b5cf6', icon: '📎' },
-    { key: 'communication', label: 'Связь и интернет', color: '#06b6d4', icon: '📡' },
-    { key: 'transport', label: 'Транспорт/такси', color: '#22c55e', icon: '🚕' },
-    { key: 'household', label: 'Хозтовары', color: '#3b82f6', icon: '🧹' },
+    { key: 'rent', label: 'Аренда офиса', color: 'var(--err-t)', icon: '🏢' },
+    { key: 'utilities', label: 'Коммунальные', color: 'var(--amber)', icon: '💡' },
+    { key: 'office_supplies', label: 'Канцелярия', color: 'var(--purple)', icon: '📎' },
+    { key: 'communication', label: 'Связь и интернет', color: 'var(--cyan)', icon: '📡' },
+    { key: 'transport', label: 'Транспорт/такси', color: 'var(--ok-t)', icon: '🚕' },
+    { key: 'household', label: 'Хозтовары', color: 'var(--info)', icon: '🧹' },
     { key: 'office_equipment', label: 'Оборудование офиса', color: '#ec4899', icon: '🖥️' },
-    { key: 'software', label: 'ПО и подписки', color: '#a855f7', icon: '💿' },
+    { key: 'software', label: 'ПО и подписки', color: 'var(--purple)', icon: '💿' },
     { key: 'representation', label: 'Представительские', color: '#14b8a6', icon: '🎁' },
-    { key: 'other', label: 'Прочее', color: '#64748b', icon: '📦' }
+    { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
 
   // Статусы согласования
   const STATUSES = {
-    draft: { label: 'Черновик', color: '#64748b' },
-    pending: { label: 'На согласовании', color: '#f59e0b' },
-    approved: { label: 'Согласовано', color: '#22c55e' },
-    rejected: { label: 'Отклонено', color: '#ef4444' }
+    draft: { label: 'Черновик', color: 'var(--t2)' },
+    pending: { label: 'На согласовании', color: 'var(--amber)' },
+    approved: { label: 'Согласовано', color: 'var(--ok-t)' },
+    rejected: { label: 'Отклонено', color: 'var(--err-t)' }
   };
 
   const MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -39,7 +39,7 @@ window.AsgardOfficeExpensesPage = (function(){
   function today(){ return new Date().toISOString().slice(0,10); }
 
   function getCatInfo(key){
-    return CATEGORIES.find(c => c.key === key) || { label: key, icon: '📦', color: '#64748b' };
+    return CATEGORIES.find(c => c.key === key) || { label: key, icon: '📦', color: 'var(--t2)' };
   }
 
   async function render({layout, title}){
@@ -142,10 +142,10 @@ window.AsgardOfficeExpensesPage = (function(){
           .oexp-table tr:hover td { background:rgba(59,130,246,.1); }
           
           .oexp-status { display:inline-block; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:700; }
-          .oexp-status.draft { background:rgba(100,116,139,.2); color:#94a3b8; }
-          .oexp-status.pending { background:rgba(245,158,11,.2); color:#f59e0b; }
-          .oexp-status.approved { background:rgba(34,197,94,.2); color:#22c55e; }
-          .oexp-status.rejected { background:rgba(239,68,68,.2); color:#ef4444; }
+          .oexp-status.draft { background:rgba(100,116,139,.2); color:var(--t2); }
+          .oexp-status.pending { background:rgba(245,158,11,.2); color:var(--amber); }
+          .oexp-status.approved { background:rgba(34,197,94,.2); color:var(--ok-t); }
+          .oexp-status.rejected { background:rgba(239,68,68,.2); color:var(--err-t); }
           
           .oexp-amount { font-weight:700; color:var(--gold); }
           .oexp-cat-badge { font-size:12px; }
@@ -154,8 +154,8 @@ window.AsgardOfficeExpensesPage = (function(){
           .oexp-actions { display:flex; gap:4px; }
           .oexp-btn { padding:4px 8px; border-radius:6px; border:1px solid var(--line); background:var(--glass); color:var(--text); font-size:11px; cursor:pointer; }
           .oexp-btn:hover { border-color:var(--gold); }
-          .oexp-btn.green { border-color:#22c55e; color:#22c55e; }
-          .oexp-btn.red { border-color:#ef4444; color:#ef4444; }
+          .oexp-btn.green { border-color:var(--ok-t); color:var(--ok-t); }
+          .oexp-btn.red { border-color:var(--err-t); color:var(--err-t); }
           
           .oexp-empty { text-align:center; padding:40px; color:var(--muted); }
         </style>
@@ -180,7 +180,7 @@ window.AsgardOfficeExpensesPage = (function(){
             </div>
             <div class="oexp-kpi-card">
               <div class="oexp-kpi-label">На согласовании</div>
-              <div class="oexp-kpi-value" style="color:${pending > 0 ? '#f59e0b' : '#22c55e'}">${pending}</div>
+              <div class="oexp-kpi-value" style="color:${pending > 0 ? 'var(--amber)' : 'var(--ok-t)'}">${pending}</div>
             </div>
             <div class="oexp-kpi-card">
               <div class="oexp-kpi-label">Согласовано</div>
@@ -514,7 +514,7 @@ window.AsgardOfficeExpensesPage = (function(){
           <div><label><input type="checkbox" id="exp_inv_need" ${expense.invoice_needed ? 'checked' : ''} style="width:auto"/> Нужна СФ</label></div>
           <div><label><input type="checkbox" id="exp_inv_got" ${expense.invoice_received ? 'checked' : ''} style="width:auto"/> СФ получена</label></div>
         </div>
-        ${expense.reject_reason ? `<div class="help" style="color:#ef4444; margin-top:10px">Причина отклонения: ${esc(expense.reject_reason)}</div>` : ''}
+        ${expense.reject_reason ? `<div class="help" style="color:var(--err-t); margin-top:10px">Причина отклонения: ${esc(expense.reject_reason)}</div>` : ''}
         <hr class="hr"/>
         <div style="display:flex; gap:10px">
           <button class="btn" id="btnSave">Сохранить</button>

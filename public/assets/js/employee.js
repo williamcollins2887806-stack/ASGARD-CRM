@@ -74,12 +74,12 @@ window.AsgardEmployeePage=(function(){
       const w = workMap.get(r.work_id);
       const who = r.pm_id ? `РП #${r.pm_id}` : "РП";
       return `<div class="pill" style="align-items:flex-start; gap:10px">
-        <div style="margin-top:3px"><span class="dot" style="background:#ef4444"></span></div>
+        <div style="margin-top:3px"><span class="dot" style="background:var(--err-t)"></span></div>
         <div style="flex:1">
           <div class="who"><b>${esc(who)}</b> <span class="help">${esc(new Date(r.created_at).toLocaleString("ru-RU"))}</span></div>
           <div class="row" style="gap:8px; margin-top:6px; flex-wrap:wrap">
-            <span class="badge"><span class="dot" style="background:#22c55e"></span>${esc(String(r.score_1_10 ?? '—'))}/10</span>
-            <span class="badge"><span class="dot" style="background:#3b82f6"></span>${w?esc(w.work_title||""):"—"}</span>
+            <span class="badge"><span class="dot" style="background:var(--ok-t)"></span>${esc(String(r.score_1_10 ?? '—'))}/10</span>
+            <span class="badge"><span class="dot" style="background:var(--info)"></span>${w?esc(w.work_title||""):"—"}</span>
           </div>
           <div class="help" style="margin-top:6px">${esc(r.comment||"")}</div>
         </div>
@@ -90,7 +90,7 @@ window.AsgardEmployeePage=(function(){
       <div class="panel">
         <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
           <div>
-            <div class="kpi"><span class="dot" style="background:#ef4444"></span>${esc(emp.fio||"")}</div>
+            <div class="kpi"><span class="dot" style="background:var(--err-t)"></span>${esc(emp.fio||"")}</div>
             <div class="help">Роль: <b>${esc(emp.role_tag||"—")}</b> · Разряд: <b>${esc(emp.grade||"—")}</b> · Рейтинг: <b>${emp.rating_avg!=null?esc(Number(emp.rating_avg).toFixed(1)):"—"}</b></div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
@@ -102,7 +102,7 @@ window.AsgardEmployeePage=(function(){
 
         <!-- Основная информация -->
         <details open style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:#3b82f6"></span> Основная информация</summary>
+          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--info)"></span> Основная информация</summary>
           <div class="formrow" style="margin-top:12px">
             <div>
               <label>ФИО (полностью)</label>
@@ -137,7 +137,7 @@ window.AsgardEmployeePage=(function(){
 
         <!-- Документы -->
         <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:#f59e0b"></span> Документы</summary>
+          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--amber)"></span> Документы</summary>
           <div class="formrow" style="margin-top:12px">
             <div>
               <label>Паспорт: серия</label>
@@ -180,7 +180,7 @@ window.AsgardEmployeePage=(function(){
 
         <!-- Адреса и контакты -->
         <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:#22c55e"></span> Адреса и контакты</summary>
+          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--ok-t)"></span> Адреса и контакты</summary>
           <div class="formrow" style="margin-top:12px">
             <div style="grid-column:1/-1">
               <label>Адрес регистрации (прописка)</label>
@@ -211,7 +211,7 @@ window.AsgardEmployeePage=(function(){
 
         <!-- Экстренные контакты -->
         <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:#ef4444"></span> Экстренные контакты</summary>
+          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--err-t)"></span> Экстренные контакты</summary>
           <div class="formrow" style="margin-top:12px">
             <div>
               <label>ФИО супруга(и)</label>
@@ -238,7 +238,7 @@ window.AsgardEmployeePage=(function(){
 
         <!-- Дополнительно -->
         <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:#8b5cf6"></span> Дополнительно</summary>
+          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--purple)"></span> Дополнительно</summary>
           <div class="formrow" style="margin-top:12px">
             <div>
               <label>Образование</label>
@@ -296,7 +296,7 @@ window.AsgardEmployeePage=(function(){
 
         <!-- Допуски и разрешения -->
         <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:#06b6d4"></span> Допуски и разрешения</summary>
+          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--cyan)"></span> Допуски и разрешения</summary>
           <div style="margin-top:12px">
             <div class="row" style="flex-wrap:wrap; gap:8px">
               ${(permits||[]).map(p=>{
@@ -313,7 +313,7 @@ window.AsgardEmployeePage=(function(){
 
         <!-- Комментарии -->
         <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:#94a3b8"></span> Комментарии (${(emp.comments||[]).length})</summary>
+          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--t2)"></span> Комментарии (${(emp.comments||[]).length})</summary>
           <div style="margin-top:12px">
             ${canEdit ? `
               <div class="row" style="gap:8px;margin-bottom:12px">
@@ -334,7 +334,7 @@ window.AsgardEmployeePage=(function(){
 
         <!-- Ссылка на документы -->
         <details style="margin-top:16px">
-          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:#f97316"></span> Документы (файлы)</summary>
+          <summary class="kpi" style="cursor:pointer"><span class="dot" style="background:var(--orange)"></span> Документы (файлы)</summary>
           <div class="formrow" style="margin-top:12px">
             <div style="grid-column:1/-1">
               <label>Ссылка на папку документов сотрудника</label>
@@ -345,7 +345,7 @@ window.AsgardEmployeePage=(function(){
 
         <hr class="hr"/>
 
-        <div class="kpi"><span class="dot" style="background:#3b82f6"></span> История работ</div>
+        <div class="kpi"><span class="dot" style="background:var(--info)"></span> История работ</div>
         <div class="tablewrap" style="margin-top:10px">
           <table class="tbl">
             <thead><tr><th>С</th><th>По</th><th>Контракт</th><th>Роль на объекте</th></tr></thead>
@@ -355,7 +355,7 @@ window.AsgardEmployeePage=(function(){
 
         <hr class="hr"/>
 
-        <div class="kpi"><span class="dot" style="background:#22c55e"></span> Отзывы РП</div>
+        <div class="kpi"><span class="dot" style="background:var(--ok-t)"></span> Отзывы РП</div>
         <div style="margin-top:10px">${revHtml}</div>
 
         <div class="help" style="margin-top:10px">ᚱ Хороший воин ценится делом, а не словами.</div>

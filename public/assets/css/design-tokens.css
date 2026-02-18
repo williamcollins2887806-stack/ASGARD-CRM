@@ -214,6 +214,17 @@
   --success:       var(--ok);
   --warning:       var(--warn);
 
+  /* Дополнительные акценты (используются в карточках сотрудников, бейджах) */
+  --purple:      #8B5CF6;
+  --purple-l:    #A78BFA;
+  --purple-bg:   rgba(139,92,246,0.12);
+  --cyan:        #06B6D4;
+  --cyan-l:      #22D3EE;
+  --cyan-bg:     rgba(6,182,212,0.12);
+  --orange:      #F97316;
+  --orange-l:    #FB923C;
+  --orange-bg:   rgba(249,115,22,0.12);
+
   /* Gold aliases */
   --gold-light:  var(--gold-l);
   --gold-dim:    rgba(212,168,67,0.7);

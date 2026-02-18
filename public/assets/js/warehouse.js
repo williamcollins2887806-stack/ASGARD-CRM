@@ -14,21 +14,21 @@ window.AsgardWarehouse = (function(){
   
   // Статусы оборудования
   const STATUSES = {
-    'on_warehouse': { label: 'На складе', color: '#22c55e', icon: '📦' },
-    'issued': { label: 'Выдано', color: '#3b82f6', icon: '👤' },
-    'in_transit': { label: 'В пути', color: '#f59e0b', icon: '🚚' },
-    'repair': { label: 'В ремонте', color: '#f97316', icon: '🔧' },
-    'broken': { label: 'Сломано', color: '#ef4444', icon: '❌' },
-    'written_off': { label: 'Списано', color: '#6b7280', icon: '🗑️' }
+    'on_warehouse': { label: 'На складе', color: 'var(--ok-t)', icon: '📦' },
+    'issued': { label: 'Выдано', color: 'var(--info)', icon: '👤' },
+    'in_transit': { label: 'В пути', color: 'var(--amber)', icon: '🚚' },
+    'repair': { label: 'В ремонте', color: 'var(--orange)', icon: '🔧' },
+    'broken': { label: 'Сломано', color: 'var(--err-t)', icon: '❌' },
+    'written_off': { label: 'Списано', color: 'var(--t2)', icon: '🗑️' }
   };
   
   // Состояния
   const CONDITIONS = {
-    'new': { label: 'Новое', color: '#22c55e' },
-    'good': { label: 'Хорошее', color: '#3b82f6' },
-    'satisfactory': { label: 'Удовл.', color: '#f59e0b' },
-    'poor': { label: 'Плохое', color: '#f97316' },
-    'broken': { label: 'Сломано', color: '#ef4444' }
+    'new': { label: 'Новое', color: 'var(--ok-t)' },
+    'good': { label: 'Хорошее', color: 'var(--info)' },
+    'satisfactory': { label: 'Удовл.', color: 'var(--amber)' },
+    'poor': { label: 'Плохое', color: 'var(--orange)' },
+    'broken': { label: 'Сломано', color: 'var(--err-t)' }
   };
   
   // ============================================
@@ -134,7 +134,7 @@ window.AsgardWarehouse = (function(){
           </div>
           ${isDirector ? `
             <div style="background:linear-gradient(135deg,#1e3a5f,#2a3b66);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--accent)">
-              <div style="font-size:22px;font-weight:700;color:#f5d78e">${formatMoney(stats.total_book_value)}</div>
+              <div style="font-size:22px;font-weight:700;color:var(--gold-l)">${formatMoney(stats.total_book_value)}</div>
               <div style="font-size:11px;color:rgba(255,255,255,0.7)">Балансовая стоимость</div>
               <div style="font-size:10px;color:var(--text-muted);margin-top:4px">
                 Закупка: ${formatMoney(stats.total_purchase_value)}
@@ -451,13 +451,13 @@ window.AsgardWarehouse = (function(){
         `;
       } else {
         resultDiv.innerHTML = `
-          <div style="padding:16px;background:#fef2f2;border-radius:6px;color:#dc2626;text-align:center">
+          <div style="padding:16px;background:var(--err-bg);border-radius:6px;color:var(--red);text-align:center">
             ❌ Оборудование не найдено
           </div>
         `;
       }
     } catch(e) {
-      resultDiv.innerHTML = `<div style="color:#ef4444">Ошибка: ${esc(e.message)}</div>`;
+      resultDiv.innerHTML = `<div style="color:var(--err-t)">Ошибка: ${esc(e.message)}</div>`;
     }
   }
   
@@ -503,11 +503,11 @@ window.AsgardWarehouse = (function(){
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(item.qr_uuid || item.inventory_number)}`;
       
       return `
-        <div class="qr-print-card" style="width:200px;padding:16px;border:1px solid #ccc;text-align:center;page-break-inside:avoid;display:inline-block;margin:8px">
+        <div class="qr-print-card" style="width:200px;padding:16px;border:1px solid var(--brd);text-align:center;page-break-inside:avoid;display:inline-block;margin:8px">
           <img src="${qrUrl}" alt="QR" style="width:150px;height:150px"/>
           <div style="font-weight:700;font-size:14px;margin-top:8px">${esc(item.inventory_number)}</div>
-          <div style="font-size:11px;color:#666;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</div>
-          ${item.serial_number ? `<div style="font-size:10px;color:#999">S/N: ${esc(item.serial_number)}</div>` : ''}
+          <div style="font-size:11px;color:var(--t2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</div>
+          ${item.serial_number ? `<div style="font-size:10px;color:var(--t3)">S/N: ${esc(item.serial_number)}</div>` : ''}
         </div>
       `;
     }).join('');
@@ -1151,14 +1151,14 @@ window.AsgardWarehouse = (function(){
       
       const movementsHtml = movements.length ? movements.map(m => {
         const type = {
-          'issue': { label: 'Выдача', icon: '📤', color: '#3b82f6' },
-          'return': { label: 'Возврат', icon: '📥', color: '#22c55e' },
-          'transfer_out': { label: 'Передача (отдал)', icon: '➡️', color: '#f59e0b' },
-          'transfer_in': { label: 'Передача (принял)', icon: '⬅️', color: '#f59e0b' },
-          'write_off': { label: 'Списание', icon: '🗑️', color: '#ef4444' },
-          'repair_start': { label: 'В ремонт', icon: '🔧', color: '#f97316' },
-          'repair_end': { label: 'Из ремонта', icon: '✅', color: '#22c55e' }
-        }[m.movement_type] || { label: m.movement_type, icon: '📋', color: '#6b7280' };
+          'issue': { label: 'Выдача', icon: '📤', color: 'var(--info)' },
+          'return': { label: 'Возврат', icon: '📥', color: 'var(--ok-t)' },
+          'transfer_out': { label: 'Передача (отдал)', icon: '➡️', color: 'var(--amber)' },
+          'transfer_in': { label: 'Передача (принял)', icon: '⬅️', color: 'var(--amber)' },
+          'write_off': { label: 'Списание', icon: '🗑️', color: 'var(--err-t)' },
+          'repair_start': { label: 'В ремонт', icon: '🔧', color: 'var(--orange)' },
+          'repair_end': { label: 'Из ремонта', icon: '✅', color: 'var(--ok-t)' }
+        }[m.movement_type] || { label: m.movement_type, icon: '📋', color: 'var(--t2)' };
         
         const date = new Date(m.created_at).toLocaleDateString('ru-RU');
         const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });

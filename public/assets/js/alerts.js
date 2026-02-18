@@ -15,7 +15,7 @@ window.AsgardAlertsPage=(function(){
       <div class="card">
         <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
           <div>
-            <div class="kpi"><span class="dot" style="background:#3b82f6"></span> Воронья почта • Уведомления</div>
+            <div class="kpi"><span class="dot" style="background:var(--info)"></span> Воронья почта • Уведомления</div>
             <div class="help">Сообщения о передаче, согласовании, ответах персонала и закупок.</div>
           </div>
           <div class="row" style="gap:8px">
@@ -69,7 +69,7 @@ window.AsgardAlertsPage=(function(){
     function card(n){
       const when = n.created_at ? new Date(n.created_at).toLocaleString("ru-RU") : "—";
       const cls = n.is_read ? "pill read" : "pill unread";
-      const dot = n.is_read ? `<span class="dot" style="background:#64748b"></span>` : `<span class="dot" style="background:#f59e0b"></span>`;
+      const dot = n.is_read ? `<span class="dot" style="background:var(--t2)"></span>` : `<span class="dot" style="background:var(--amber)"></span>`;
       const link = n.link_hash || n.link || "#/home";
       return `<div class="${cls}" style="gap:10px; align-items:flex-start">
         <div style="margin-top:3px">${dot}</div>

@@ -213,8 +213,8 @@ window.AsgardPmCalcsPage = (function(){
       const profitPD = pd > 0 ? profit / pd : 0;
       
       let status = "red", statusLabel = "🔴 КРАСНАЯ ЗОНА", statusColor = "#e03a4a";
-      if(profitPD >= normPPD) { status = "green"; statusLabel = "🟢 ЗЕЛЁНАЯ ЗОНА"; statusColor = "#22c55e"; }
-      else if(profitPD >= minPPD) { status = "yellow"; statusLabel = "🟡 ЖЁЛТАЯ ЗОНА"; statusColor = "#f59e0b"; }
+      if(profitPD >= normPPD) { status = "green"; statusLabel = "🟢 ЗЕЛЁНАЯ ЗОНА"; statusColor = "var(--ok-t)"; }
+      else if(profitPD >= minPPD) { status = "yellow"; statusLabel = "🟡 ЖЁЛТАЯ ЗОНА"; statusColor = "var(--amber)"; }
       
       $("#qc_kpi_block").innerHTML = `
         <div class="k"><div class="t">Цена без НДС</div><div class="v">${money(Math.round(priceNoVat))}</div></div>
@@ -501,7 +501,7 @@ window.AsgardPmCalcsPage = (function(){
     const tb=$("#tb"), cnt=$("#cnt");
 
     function statusCell(s){
-      const c = (core.status_colors?.tender||{})[s] || "#94a3b8";
+      const c = (core.status_colors?.tender||{})[s] || "var(--t2)";
       return `<span class="st"><span class="dot" style="background:${c}"></span>${esc(s||"")}</span>`;
     }
 
@@ -622,7 +622,7 @@ window.AsgardPmCalcsPage = (function(){
       }
 
       const pm = byId.get(tender.responsible_pm_id)||{};
-      const statusColor = (core.status_colors?.tender||{})[tender.tender_status] || "#94a3b8";
+      const statusColor = (core.status_colors?.tender||{})[tender.tender_status] || "var(--t2)";
       const canEditStatus = (isPM && tender.responsible_pm_id===user.id) || user.role==="ADMIN";
 
       const est = await latestEstimate(tenderId, tender.responsible_pm_id);

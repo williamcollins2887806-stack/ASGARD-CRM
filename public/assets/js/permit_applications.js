@@ -18,14 +18,14 @@ window.AsgardPermitApplications = (function(){
   };
 
   const CATEGORIES = {
-    safety:    { name: 'Безопасность',    color: '#22c55e' },
-    electric:  { name: 'Электрика',       color: '#f59e0b' },
-    special:   { name: 'Спецработы',      color: '#3b82f6' },
-    medical:   { name: 'Медицина',        color: '#ef4444' },
-    attest:    { name: 'Аттестация',      color: '#8b5cf6' },
-    offshore:  { name: 'Шельф / Морские', color: '#06b6d4' },
-    gas:       { name: 'Газоопасные',     color: '#f97316' },
-    transport: { name: 'Транспорт',       color: '#64748b' }
+    safety:    { name: 'Безопасность',    color: 'var(--ok-t)' },
+    electric:  { name: 'Электрика',       color: 'var(--amber)' },
+    special:   { name: 'Спецработы',      color: 'var(--info)' },
+    medical:   { name: 'Медицина',        color: 'var(--err-t)' },
+    attest:    { name: 'Аттестация',      color: 'var(--purple)' },
+    offshore:  { name: 'Шельф / Морские', color: 'var(--cyan)' },
+    gas:       { name: 'Газоопасные',     color: 'var(--orange)' },
+    transport: { name: 'Транспорт',       color: 'var(--t2)' }
   };
 
   const PRESETS = {
@@ -440,7 +440,7 @@ window.AsgardPermitApplications = (function(){
         const badges = (item.permit_type_ids || []).map(tid => {
           const pt = permitTypes.find(t => t.id === tid);
           if (!pt) return '';
-          const cat = CATEGORIES[pt.category] || { color: '#888' };
+          const cat = CATEGORIES[pt.category] || { color: 'var(--t3)' };
           return `<span class="badge" style="background:${cat.color}20;color:${cat.color};font-size:11px;padding:3px 8px">${shortPermitName(pt.name)}</span>`;
         }).join('');
 
@@ -702,7 +702,7 @@ window.AsgardPermitApplications = (function(){
 
     // Avatar helpers
     const _avatarColors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9'];
-    const _getAvatarColor = (name) => { if(!name) return '#888'; let h=0; for(let i=0;i<name.length;i++) h=name.charCodeAt(i)+((h<<5)-h); return _avatarColors[Math.abs(h)%_avatarColors.length]; };
+    const _getAvatarColor = (name) => { if(!name) return 'var(--t3)'; let h=0; for(let i=0;i<name.length;i++) h=name.charCodeAt(i)+((h<<5)-h); return _avatarColors[Math.abs(h)%_avatarColors.length]; };
     const _getInitials = (name) => { if(!name) return '??'; return name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase(); };
 
     function renderEmpList(filter, search) {
@@ -835,7 +835,7 @@ window.AsgardPermitApplications = (function(){
 
     function renderCategories() {
       return Object.entries(byCategory).map(([cat, types]) => {
-        const catInfo = CATEGORIES[cat] || { name: cat, color: '#888' };
+        const catInfo = CATEGORIES[cat] || { name: cat, color: 'var(--t3)' };
         const selectedInCat = types.filter(t => selected.has(t.id)).length;
 
         const items = types.map(t => {

@@ -304,7 +304,7 @@ window.AsgardReports = (function(){
     preview.style.display = 'block';
     
     const d = report.data || {};
-    const profitColor = (d.profit || 0) >= 0 ? '#22c55e' : '#ef4444';
+    const profitColor = (d.profit || 0) >= 0 ? 'var(--ok-t)' : 'var(--err-t)';
     
     content.innerHTML = `
       <h2 style="margin-bottom:20px">📊 ${esc(report.period)}</h2>
@@ -330,12 +330,12 @@ window.AsgardReports = (function(){
         
         <div class="stat-card">
           <div class="stat-label">Доходы</div>
-          <div class="stat-value" style="color:#22c55e">${fmtMoney(d.incomes?.total)}</div>
+          <div class="stat-value" style="color:var(--ok-t)">${fmtMoney(d.incomes?.total)}</div>
         </div>
         
         <div class="stat-card">
           <div class="stat-label">Расходы</div>
-          <div class="stat-value" style="color:#ef4444">${fmtMoney(d.expenses?.total)}</div>
+          <div class="stat-value" style="color:var(--err-t)">${fmtMoney(d.expenses?.total)}</div>
         </div>
         
         <div class="stat-card" style="grid-column: span 2">

@@ -269,7 +269,7 @@ window.AsgardPush = (function() {
       html += '<div class="help" style="color:var(--red,#ef4444)">Push-уведомления заблокированы в настройках браузера. Разрешите их в настройках сайта.</div>';
     } else {
       html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">';
-      html += '<span>Статус: ' + (subscribed ? '<b style="color:#22c55e">Включены</b>' : '<b style="color:#9ca3af">Выключены</b>') + '</span>';
+      html += '<span>Статус: ' + (subscribed ? '<b style="color:var(--ok-t)">Включены</b>' : '<b style="color:var(--t3)">Выключены</b>') + '</span>';
       if (subscribed) {
         html += '<button class="btn ghost" id="btnPushOff">Отключить</button>';
       } else {

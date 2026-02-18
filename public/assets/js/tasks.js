@@ -15,11 +15,11 @@ window.AsgardTasksPage = (function() {
   };
 
   const STATUS_COLORS = {
-    new: '#eab308',
-    accepted: '#3b82f6',
-    in_progress: '#f97316',
-    done: '#22c55e',
-    overdue: '#ef4444'
+    new: 'var(--amber)',
+    accepted: 'var(--info)',
+    in_progress: 'var(--orange)',
+    done: 'var(--ok-t)',
+    overdue: 'var(--err-t)'
   };
 
   function getStatusClass(status) {
@@ -39,10 +39,10 @@ window.AsgardTasksPage = (function() {
   };
 
   const PRIORITY_COLORS = {
-    urgent: '#ef4444',
-    high: '#f97316',
-    normal: '#3b82f6',
-    low: '#6b7280'
+    urgent: 'var(--err-t)',
+    high: 'var(--orange)',
+    normal: 'var(--info)',
+    low: 'var(--t2)'
   };
 
   let currentTasks = [];
@@ -262,7 +262,7 @@ window.AsgardTasksPage = (function() {
 
   function renderTaskCard(t) {
     const priorityColor = PRIORITY_COLORS[t.priority] || PRIORITY_COLORS.normal;
-    const statusColor = STATUS_COLORS[t.status] || '#6b7280';
+    const statusColor = STATUS_COLORS[t.status] || 'var(--t2)';
     const statusLabel = STATUS_LABELS[t.status] || t.status;
     const deadlineOverdue = t.status !== 'done' && isOverdue(t.deadline);
     const isExpanded = expandedTaskId === t.id;
@@ -330,7 +330,7 @@ window.AsgardTasksPage = (function() {
     container.innerHTML = `
       <div style="max-height:300px; overflow-y:auto">
         ${tasks.map(t => {
-          const statusColor = STATUS_COLORS[t.status] || '#6b7280';
+          const statusColor = STATUS_COLORS[t.status] || 'var(--t2)';
           const statusLabel = STATUS_LABELS[t.status] || t.status;
           return `
             <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border)">

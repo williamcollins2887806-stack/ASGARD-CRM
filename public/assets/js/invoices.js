@@ -42,10 +42,10 @@ window.AsgardInvoicesPage = (function(){
     await loadData();
     
     const STATUSES = {
-      'pending': { label: 'Ожидает', color: '#f59e0b' },
-      'partial': { label: 'Частично', color: '#3b82f6' },
-      'paid': { label: 'Оплачен', color: '#22c55e' },
-      'cancelled': { label: 'Отменён', color: '#ef4444' }
+      'pending': { label: 'Ожидает', color: 'var(--amber)' },
+      'partial': { label: 'Частично', color: 'var(--info)' },
+      'paid': { label: 'Оплачен', color: 'var(--ok-t)' },
+      'cancelled': { label: 'Отменён', color: 'var(--err-t)' }
     };
     
     const formatMoney = n => (n||0).toLocaleString('ru-RU') + ' ₽';

@@ -30,14 +30,14 @@ window.AsgardPermitsPage = (function(){
   ];
 
   const CATEGORIES = {
-    safety: { name: 'Безопасность', color: '#22c55e' },
-    electric: { name: 'Электрика', color: '#f59e0b' },
-    special: { name: 'Спецработы', color: '#3b82f6' },
-    medical: { name: 'Медицина', color: '#ef4444' },
-    attest: { name: 'Аттестация', color: '#8b5cf6' },
-    offshore: { name: 'Шельф / Морские', color: '#06b6d4' },
-    gas: { name: 'Газоопасные', color: '#f97316' },
-    transport: { name: 'Транспорт', color: '#64748b' }
+    safety: { name: 'Безопасность', color: 'var(--ok-t)' },
+    electric: { name: 'Электрика', color: 'var(--amber)' },
+    special: { name: 'Спецработы', color: 'var(--info)' },
+    medical: { name: 'Медицина', color: 'var(--err-t)' },
+    attest: { name: 'Аттестация', color: 'var(--purple)' },
+    offshore: { name: 'Шельф / Морские', color: 'var(--cyan)' },
+    gas: { name: 'Газоопасные', color: 'var(--orange)' },
+    transport: { name: 'Транспорт', color: 'var(--t2)' }
   };
 
   // Кэш типов с сервера
@@ -194,7 +194,7 @@ window.AsgardPermitsPage = (function(){
 
       permits.forEach(p => {
         const type = getTypeById(types, p.type_id);
-        const cat = CATEGORIES[type.category] || { color: '#94a3b8' };
+        const cat = CATEGORIES[type.category] || { color: 'var(--t2)' };
         const status = p.computed_status || computeStatus(p).status;
         const daysLeft = p.days_left;
 
@@ -593,7 +593,7 @@ window.AsgardPermitsPage = (function(){
 
       permits.forEach(p => {
         const type = getTypeById(types, p.type_id);
-        const cat = CATEGORIES[type.category] || { color: '#94a3b8' };
+        const cat = CATEGORIES[type.category] || { color: 'var(--t2)' };
 
         html += `
           <tr data-id="${p.id}">
@@ -786,7 +786,7 @@ window.AsgardPermitsPage = (function(){
         types.forEach(t => {
           const cat = CATEGORIES[t.category] || {};
           const mandatory = required && required[t.id] === true;
-          html += `<th style="writing-mode:vertical-rl;text-orientation:mixed;padding:8px 4px;border-left:3px solid ${cat.color || '#94a3b8'}" title="${esc(t.name)}">${mandatory ? '<strong>*</strong>' : ''}${esc(t.name.substring(0, 20))}</th>`;
+          html += `<th style="writing-mode:vertical-rl;text-orientation:mixed;padding:8px 4px;border-left:3px solid ${cat.color || 'var(--t2)'}" title="${esc(t.name)}">${mandatory ? '<strong>*</strong>' : ''}${esc(t.name.substring(0, 20))}</th>`;
         });
         html += '</tr></thead><tbody>';
 
@@ -1104,7 +1104,7 @@ window.AsgardPermitsPage = (function(){
     function renderTypesList() {
       return types.map(t => `
         <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border)">
-          <span class="dot" style="background:${(CATEGORIES[t.category]||{}).color||'#888'}"></span>
+          <span class="dot" style="background:${(CATEGORIES[t.category]||{}).color||'var(--t3)'}"></span>
           <div style="flex:1">
             <div style="font-size:13px;font-weight:500">${esc(t.name)}</div>
             <div class="help" style="font-size:11px">${esc(t.code)} &middot; ${(CATEGORIES[t.category]||{}).name||t.category}</div>

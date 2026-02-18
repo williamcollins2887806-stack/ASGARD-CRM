@@ -177,7 +177,7 @@ window.AsgardChatGroups = (function(){
   }
 
   function getAvatarColor(name) {
-    if (!name) return '#888';
+    if (!name) return 'var(--t3)';
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'];
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);

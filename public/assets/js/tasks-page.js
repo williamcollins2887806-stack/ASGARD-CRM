@@ -11,10 +11,10 @@ window.AsgardTasksCrudPage = (function(){
 
   const STATUSES = ['Новая', 'В работе', 'Выполнена', 'Закрыта'];
   const STATUS_COLORS = {
-    'Новая': '#3b82f6',
-    'В работе': '#f59e0b',
-    'Выполнена': '#22c55e',
-    'Закрыта': '#64748b'
+    'Новая': 'var(--info)',
+    'В работе': 'var(--amber)',
+    'Выполнена': 'var(--ok-t)',
+    'Закрыта': 'var(--t2)'
   };
   const PRIORITIES = { high: '🔴 Высокий', medium: '🟡 Средний', low: '🟢 Низкий' };
 
@@ -50,7 +50,7 @@ window.AsgardTasksCrudPage = (function(){
     function taskRow(t) {
       const assignee = usersMap.get(t.assigned_to);
       const author = usersMap.get(t.created_by);
-      const color = STATUS_COLORS[t.status] || '#64748b';
+      const color = STATUS_COLORS[t.status] || 'var(--t2)';
       const prioLabel = PRIORITIES[t.priority] || '🟡 Средний';
       const overdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'Закрыта' && t.status !== 'Выполнена';
 
@@ -186,7 +186,7 @@ window.AsgardTasksCrudPage = (function(){
         <div class="card">
           <div class="row" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px">
             <div>
-              <div class="kpi"><span class="dot" style="background:#3b82f6"></span> Задачи</div>
+              <div class="kpi"><span class="dot" style="background:var(--info)"></span> Задачи</div>
               <div class="help">Создавайте, назначайте и отслеживайте задачи.</div>
             </div>
             <button class="btn primary" id="btnNewTask">+ Новая задача</button>

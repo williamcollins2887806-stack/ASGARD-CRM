@@ -12,9 +12,9 @@ window.AsgardIntegrationsPage = (function(){
   };
 
   const TX_STATUS = {
-    new:{l:'Новая',c:'#eab308'}, classified:{l:'Классиф.',c:'#3b82f6'},
-    confirmed:{l:'Подтверждена',c:'#22c55e'}, distributed:{l:'Разнесена',c:'#10b981'},
-    exported_1c:{l:'Экспорт 1С',c:'#94a3b8'}, skipped:{l:'Пропущена',c:'#6b7280'}
+    new:{l:'Новая',c:'var(--amber)'}, classified:{l:'Классиф.',c:'var(--info)'},
+    confirmed:{l:'Подтверждена',c:'var(--ok-t)'}, distributed:{l:'Разнесена',c:'var(--ok)'},
+    exported_1c:{l:'Экспорт 1С',c:'var(--t2)'}, skipped:{l:'Пропущена',c:'var(--t2)'}
   };
 
   function esc(s){return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -89,10 +89,10 @@ window.AsgardIntegrationsPage = (function(){
 
     el.innerHTML = '<div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">' +
-        '<div class="int-card int-stat"><div class="val" style="color:#22c55e">' + money(s.total_income || 0) + '</div><div class="lbl">Доходы</div></div>' +
-        '<div class="int-card int-stat"><div class="val" style="color:#ef4444">' + money(s.total_expense || 0) + '</div><div class="lbl">Расходы</div></div>' +
+        '<div class="int-card int-stat"><div class="val" style="color:var(--ok-t)">' + money(s.total_income || 0) + '</div><div class="lbl">Доходы</div></div>' +
+        '<div class="int-card int-stat"><div class="val" style="color:var(--err-t)">' + money(s.total_expense || 0) + '</div><div class="lbl">Расходы</div></div>' +
         '<div class="int-card int-stat"><div class="val" style="color:var(--gold)">' + money(s.balance || 0) + '</div><div class="lbl">Баланс</div></div>' +
-        '<div class="int-card int-stat"><div class="val" style="color:#eab308">' + (s.unclassified_count || 0) + '</div><div class="lbl">Неразнесённых</div></div>' +
+        '<div class="int-card int-stat"><div class="val" style="color:var(--amber)">' + (s.unclassified_count || 0) + '</div><div class="lbl">Неразнесённых</div></div>' +
       '</div>' +
 
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
@@ -150,7 +150,7 @@ window.AsgardIntegrationsPage = (function(){
         return '<div class="tx-row" style="grid-template-columns:30px 90px 100px 1fr 120px 100px 80px;background:'+bg+'" data-id="'+tx.id+'">' +
           '<div><input type="checkbox" class="tx-chk" data-id="'+tx.id+'"/></div>' +
           '<div>'+esc(tx.transaction_date?.slice(0,10))+'</div>' +
-          '<div style="font-weight:700;color:'+(tx.direction==='income'?'#22c55e':'#ef4444')+'">'+(tx.direction==='income'?'+':'-')+money(tx.amount).replace('₽','')+'</div>' +
+          '<div style="font-weight:700;color:'+(tx.direction==='income'?'var(--ok-t)':'var(--err-t)')+'">'+(tx.direction==='income'?'+':'-')+money(tx.amount).replace('₽','')+'</div>' +
           '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(tx.payment_purpose)+'">'+esc(tx.counterparty_name || '—')+'</div>' +
           '<div style="font-size:11px">'+(ARTICLES[tx.article] || tx.article || '<span style="color:var(--amber)">—</span>')+'</div>' +
           '<div style="font-size:11px">'+(tx.work_number || '—')+'</div>' +
@@ -213,10 +213,10 @@ window.AsgardIntegrationsPage = (function(){
             '<div style="font-weight:700;margin-bottom:8px">✅ Загружено! Формат: '+esc(r.format)+'</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">' +
               '<div>Всего строк: <b>'+r.stats.total+'</b></div>' +
-              '<div>Новых: <b style="color:#22c55e">'+r.stats.new+'</b></div>' +
-              '<div>Дубликатов: <b style="color:#ef4444">'+r.stats.duplicates+'</b></div>' +
-              '<div>Авто-классиф.: <b style="color:#3b82f6">'+r.stats.auto+'</b></div>' +
-              '<div>Требуют разноски: <b style="color:#eab308">'+r.stats.manual+'</b></div>' +
+              '<div>Новых: <b style="color:var(--ok-t)">'+r.stats.new+'</b></div>' +
+              '<div>Дубликатов: <b style="color:var(--err-t)">'+r.stats.duplicates+'</b></div>' +
+              '<div>Авто-классиф.: <b style="color:var(--info)">'+r.stats.auto+'</b></div>' +
+              '<div>Требуют разноски: <b style="color:var(--amber)">'+r.stats.manual+'</b></div>' +
             '</div>' +
           '</div>';
           AsgardUI.toast('Импорт', r.stats.new+' новых транзакций загружено');
@@ -258,14 +258,14 @@ window.AsgardIntegrationsPage = (function(){
     el.innerHTML = '<div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">' +
         '<div class="int-card int-stat"><div class="val" style="color:var(--gold)">'+(s.total||0)+'</div><div class="lbl">Всего парсингов</div></div>' +
-        ((s.upcoming_deadlines||[]).length ? '<div class="int-card int-stat"><div class="val" style="color:#ef4444">'+s.upcoming_deadlines.length+'</div><div class="lbl">Дедлайнов &lt;7 дней</div></div>' : '') +
+        ((s.upcoming_deadlines||[]).length ? '<div class="int-card int-stat"><div class="val" style="color:var(--err-t)">'+s.upcoming_deadlines.length+'</div><div class="lbl">Дедлайнов &lt;7 дней</div></div>' : '') +
       '</div>' +
 
       ((s.upcoming_deadlines||[]).length ? '<div class="int-card" style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:8px">⏰ Ближайшие дедлайны</div>' +
         s.upcoming_deadlines.map(function(d) {
           return '<div style="padding:4px 0;font-size:12px;display:flex;justify-content:space-between">' +
             '<span>'+esc(d.purchase_number||'—')+' · '+esc(d.customer_name||'—')+'</span>' +
-            '<span style="color:#ef4444;font-weight:700">'+new Date(d.application_deadline).toLocaleDateString('ru-RU')+(d.nmck?' · '+money(d.nmck):'')+'</span>' +
+            '<span style="color:var(--err-t);font-weight:700">'+new Date(d.application_deadline).toLocaleDateString('ru-RU')+(d.nmck?' · '+money(d.nmck):'')+'</span>' +
           '</div>';
         }).join('') + '</div>' : '') +
 
@@ -309,7 +309,7 @@ window.AsgardIntegrationsPage = (function(){
     var data = await api('/platforms' + params);
     if (!data.success || !data.items?.length) { list.innerHTML = '<div class="help" style="text-align:center;padding:20px">Нет данных</div>'; return; }
 
-    var relColors = { h:'#22c55e', m:'#eab308', l:'#ef4444' };
+    var relColors = { h:'var(--ok-t)', m:'var(--amber)', l:'var(--err-t)' };
 
     list.innerHTML = data.items.map(function(it) {
       var score = it.ai_relevance_score || 0;
@@ -320,7 +320,7 @@ window.AsgardIntegrationsPage = (function(){
         '<div style="font-size:11px;color:var(--text-muted)">'+esc(it.platform_name||'—')+'</div>' +
         '<div><div style="font-weight:600;font-size:13px">'+esc(it.customer_name||it.email_subject||'—')+'</div><div class="help" style="font-size:11px">'+esc((it.object_description||'').slice(0,60))+'</div></div>' +
         '<div style="font-size:12px;font-weight:700">'+(it.nmck?money(it.nmck):'—')+'</div>' +
-        '<div style="font-size:12px;color:#ef4444">'+dl+'</div>' +
+        '<div style="font-size:12px;color:var(--err-t)">'+dl+'</div>' +
         '<div style="font-size:11px">'+score+'%</div>' +
       '</div>';
     }).join('');
@@ -335,7 +335,7 @@ window.AsgardIntegrationsPage = (function(){
     if (!d.success) return;
     var it = d.item;
     var score = it.ai_relevance_score || 0;
-    var relC = score >= 70 ? '#22c55e' : score >= 40 ? '#eab308' : '#ef4444';
+    var relC = score >= 70 ? 'var(--ok-t)' : score >= 40 ? 'var(--amber)' : 'var(--err-t)';
 
     var html = '<div style="max-width:650px">' +
       '<div class="int-card">' +
@@ -397,7 +397,7 @@ window.AsgardIntegrationsPage = (function(){
       (conns.length ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px">' +
         conns.map(function(c) {
           var icon = c.erp_type === '1c' ? '🟡' : c.erp_type === 'sap' ? '🔵' : c.erp_type === 'galaxy' ? '🟣' : '⚙️';
-          var statusColor = c.last_sync_status === 'ok' ? '#22c55e' : c.last_sync_status === 'error' ? '#ef4444' : '#94a3b8';
+          var statusColor = c.last_sync_status === 'ok' ? 'var(--ok-t)' : c.last_sync_status === 'error' ? 'var(--err-t)' : 'var(--t2)';
           return '<div class="int-card">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
               '<span style="font-size:18px">'+icon+' <b>'+esc(c.name)+'</b></span>' +
@@ -405,7 +405,7 @@ window.AsgardIntegrationsPage = (function(){
             '</div>' +
             '<div style="font-size:12px;color:var(--text-muted)">Тип: '+esc(c.erp_type)+' · '+esc(c.sync_direction)+'</div>' +
             (c.last_sync_at ? '<div style="font-size:11px;color:var(--text-muted)">Синхр.: '+new Date(c.last_sync_at).toLocaleString('ru-RU')+'</div>' : '') +
-            (c.last_sync_error ? '<div style="font-size:11px;color:#ef4444">'+esc(c.last_sync_error)+'</div>' : '') +
+            (c.last_sync_error ? '<div style="font-size:11px;color:var(--err-t)">'+esc(c.last_sync_error)+'</div>' : '') +
             '<div style="display:flex;gap:6px;margin-top:10px">' +
               '<button class="btn mini ghost" data-test-conn="'+c.id+'">🔌 Тест</button>' +
               '<button class="btn mini ghost" data-export-conn="'+c.id+'">📤 Экспорт</button>' +
@@ -416,7 +416,7 @@ window.AsgardIntegrationsPage = (function(){
 
       (logs.length ? '<div class="int-card"><div style="font-weight:700;margin-bottom:8px">📋 Последние синхронизации</div>' +
         logs.map(function(l) {
-          var sc = l.status === 'completed' ? '#22c55e' : l.status === 'failed' ? '#ef4444' : '#eab308';
+          var sc = l.status === 'completed' ? 'var(--ok-t)' : l.status === 'failed' ? 'var(--err-t)' : 'var(--amber)';
           return '<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;display:flex;justify-content:space-between">' +
             '<span>'+esc(l.connection_name||'—')+' · '+esc(l.entity_type)+' · '+esc(l.direction)+'</span>' +
             '<span><span style="color:'+sc+'">'+esc(l.status)+'</span> · '+l.records_success+'/'+l.records_total+' · '+new Date(l.started_at).toLocaleDateString('ru-RU')+'</span>' +

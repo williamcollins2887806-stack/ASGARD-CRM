@@ -224,7 +224,7 @@ window.AsgardDashboardPage = (function(){
             padding:20px;
             margin-bottom:24px;
           }
-          .dash-alerts-title { font-size:12px; color:#f87171; font-weight:800; margin-bottom:10px; text-transform:uppercase; }
+          .dash-alerts-title { font-size:12px; color:var(--err-t); font-weight:800; margin-bottom:10px; text-transform:uppercase; }
           .dash-alert-item { display:flex; align-items:center; gap:8px; padding:10px 0; font-size:13px; }
           .dash-alert-item:last-child { padding-bottom:0; }
           
@@ -234,10 +234,10 @@ window.AsgardDashboardPage = (function(){
           }
           .dash-progress-bar { height:100%; border-radius:4px; transition:width .5s ease; }
           
-          .green { color:#4ade80; }
-          .red { color:#f87171; }
+          .green { color:var(--ok-t); }
+          .red { color:var(--err-t); }
           .amber { color:#fbbf24; }
-          .blue { color:#60a5fa; }
+          .blue { color:var(--info-t); }
           .gold { color:var(--gold); }
         </style>
 
@@ -257,7 +257,7 @@ window.AsgardDashboardPage = (function(){
 
           <div class="dash-grid">
             <!-- Тендеры -->
-            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, #3b82f6, #8b5cf6)">
+            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, var(--info), var(--purple))">
               <div class="dash-card-title">Тендеры ${currentYear}</div>
               <div class="dash-card-value blue">${stats.tendersTotal}</div>
               <div class="dash-card-sub">Конверсия: <strong class="green">${stats.conversionRate}%</strong></div>
@@ -270,13 +270,13 @@ window.AsgardDashboardPage = (function(){
             </div>
 
             <!-- Работы -->
-            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, #22c55e, #06b6d4)">
+            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, var(--ok-t), var(--cyan))">
               <div class="dash-card-title">Работы ${currentYear}</div>
               <div class="dash-card-value green">${stats.worksTotal}</div>
               <div class="dash-card-sub">Завершено: <strong>${pct(stats.worksDone, stats.worksTotal)}</strong></div>
               <div class="dash-card-icon">🏗️</div>
               <div class="dash-progress">
-                <div class="dash-progress-bar" style="width:${stats.worksTotal ? (stats.worksDone/stats.worksTotal*100) : 0}%; background:linear-gradient(90deg, #22c55e, #4ade80)"></div>
+                <div class="dash-progress-bar" style="width:${stats.worksTotal ? (stats.worksDone/stats.worksTotal*100) : 0}%; background:linear-gradient(90deg, var(--ok-t), var(--ok-t))"></div>
               </div>
               <div class="dash-card-row">
                 <div class="mini"><div class="mini-label">Завершено</div><div class="mini-value green">${stats.worksDone}</div></div>
@@ -286,7 +286,7 @@ window.AsgardDashboardPage = (function(){
             </div>
 
             <!-- Выручка -->
-            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, var(--gold), #f59e0b)">
+            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, var(--gold), var(--amber))">
               <div class="dash-card-title">Выручка (контракты)</div>
               <div class="dash-card-value gold">${shortMoney(stats.contractSum)}</div>
               <div class="dash-card-sub">${money(stats.contractSum)}</div>
@@ -294,7 +294,7 @@ window.AsgardDashboardPage = (function(){
             </div>
 
             <!-- Прибыль -->
-            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, ${stats.profit >= 0 ? '#22c55e, #10b981' : '#ef4444, #f87171'})">
+            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, ${stats.profit >= 0 ? 'var(--ok-t), var(--ok)' : 'var(--err-t), var(--err-t)'})">
               <div class="dash-card-title">Прибыль (факт)</div>
               <div class="dash-card-value ${stats.profit >= 0 ? 'green' : 'red'}">${shortMoney(stats.profit)}</div>
               <div class="dash-card-sub">План: ${money(stats.profitPlan)}</div>
@@ -302,7 +302,7 @@ window.AsgardDashboardPage = (function(){
             </div>
 
             <!-- Расходы -->
-            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, #ef4444, #f97316)">
+            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, var(--err-t), var(--orange))">
               <div class="dash-card-title">Расходы (всего)</div>
               <div class="dash-card-value red">${shortMoney(stats.workExpensesSum + stats.officeExpensesSum + stats.travelExpensesSum)}</div>
               <div class="dash-card-icon">💸</div>
@@ -314,9 +314,9 @@ window.AsgardDashboardPage = (function(){
             </div>
 
             <!-- Команда -->
-            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, #8b5cf6, #a855f7)">
+            <div class="dash-card" style="--card-gradient:linear-gradient(90deg, var(--purple), var(--purple))">
               <div class="dash-card-title">Команда</div>
-              <div class="dash-card-value" style="color:#a78bfa">${stats.usersActive}</div>
+              <div class="dash-card-value" style="color:var(--purple-l)">${stats.usersActive}</div>
               <div class="dash-card-sub">активных сотрудников</div>
               <div class="dash-card-icon">👥</div>
             </div>
@@ -421,8 +421,8 @@ window.AsgardDashboardPage = (function(){
         const rows = monthlyData.map(m => ({
           label: m.label,
           parts: [
-            { key: 'won', value: m.won, color: '#22c55e', label: 'Выиграно' },
-            { key: 'other', value: m.tenders - m.won, color: '#3b82f6', label: 'Прочие' }
+            { key: 'won', value: m.won, color: 'var(--ok-t)', label: 'Выиграно' },
+            { key: 'other', value: m.tenders - m.won, color: 'var(--info)', label: 'Прочие' }
           ]
         }));
         stackedBar(canvasTenders, rows, { legend: true });
@@ -434,7 +434,7 @@ window.AsgardDashboardPage = (function(){
         const rows = monthlyData.map(m => ({
           label: m.label,
           parts: [
-            { key: 'works', value: m.works, color: '#8b5cf6', label: 'Работы' }
+            { key: 'works', value: m.works, color: 'var(--purple)', label: 'Работы' }
           ]
         }));
         stackedBar(canvasWorks, rows, { legend: true });

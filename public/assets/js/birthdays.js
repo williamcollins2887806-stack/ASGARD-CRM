@@ -122,7 +122,7 @@ window.AsgardBirthdaysPage=(function(){
                 const when = r.nb ? r.nb.toLocaleDateString('ru-RU') : '—';
                 const who = esc(getName(r.it));
                 const role = esc(getRole(r.it)||'');
-                const d = (r.days===0) ? '<span class="badge" style="background:#22c55e">сегодня</span>' : esc(String(r.days));
+                const d = (r.days===0) ? '<span class="badge" style="background:var(--ok-t)">сегодня</span>' : esc(String(r.days));
                 return `<tr><td>${when}</td><td>${who}</td><td>${role}</td><td>${d}</td></tr>`;
               }).join('')}
             </tbody>
@@ -161,7 +161,7 @@ window.AsgardBirthdaysPage=(function(){
   function topTabs({activeTab, canWorkers}){
     const mk = (tab, label)=>{
       const is = tab===activeTab;
-      return `<a class="badge" href="#/birthdays?tab=${tab}" style="text-decoration:none; cursor:pointer; ${is?'background:#3b82f6':''}">${esc(label)}</a>`;
+      return `<a class="badge" href="#/birthdays?tab=${tab}" style="text-decoration:none; cursor:pointer; ${is?'background:var(--info)':''}">${esc(label)}</a>`;
     };
     return `
       <div class="row" style="gap:10px; flex-wrap:wrap">

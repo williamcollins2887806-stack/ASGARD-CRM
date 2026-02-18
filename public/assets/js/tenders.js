@@ -1050,7 +1050,7 @@ async function getRefs(){
             <input id="e_customer" value="${esc((t&&t.customer_name)||"")}" ${full?"":"disabled"} placeholder="Название организации / ИНН" list="custNameList" />
             <datalist id="custNameList"></datalist>
             <div class="help">Начните вводить название или ИНН — выбирайте из списка. Если ИНН нет в базе, создайте карточку в «Карта Контрагентов».</div>
-            <div class="help" id="innWarn" style="display:none; margin-top:6px; color:#ffb4b4">ИНН не найден в базе. Создайте карточку контрагента.</div>
+            <div class="help" id="innWarn" style="display:none; margin-top:6px; color:var(--err-t)">ИНН не найден в базе. Создайте карточку контрагента.</div>
             <div class="row" id="innCreateRow" style="display:none; justify-content:flex-start; gap:8px; margin-top:8px">
               <a class="btn ghost" id="btnCreateCustomer" href="#/customers" style="padding:6px 10px">Создать карточку</a>
             </div>
@@ -1762,7 +1762,7 @@ ${docsHtml}</div>
               ids.forEach(fid => {
                 const el = document.getElementById(fid);
                 if (el) {
-                  el.style.border = '2px solid #ef4444';
+                  el.style.border = '2px solid var(--err-t)';
                   el.addEventListener('input', () => { el.style.border = ''; }, { once: true });
                 }
               });
@@ -1927,7 +1927,7 @@ ${docsHtml}</div>
 
     // Avatar helpers
     const _avatarColors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9'];
-    const _getAvatarColor = (name) => { if(!name) return '#888'; let h=0; for(let i=0;i<name.length;i++) h=name.charCodeAt(i)+((h<<5)-h); return _avatarColors[Math.abs(h)%_avatarColors.length]; };
+    const _getAvatarColor = (name) => { if(!name) return 'var(--t3)'; let h=0; for(let i=0;i<name.length;i++) h=name.charCodeAt(i)+((h<<5)-h); return _avatarColors[Math.abs(h)%_avatarColors.length]; };
     const _getInitials = (name) => { if(!name) return '??'; return name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase(); };
 
     const staffOptions = staffList.map(s => {

@@ -300,8 +300,8 @@ window.AsgardApprovalsPage = (function(){
               const open = msgs.filter(m=>m.type==="question" && m.is_open).length;
               const answered = msgs.filter(m=>m.type==="answer").length;
               const badges=[];
-              if(open>0) badges.push(`<span class="badge"><span class="dot" style="background:#f59e0b"></span>Ожидает ответа (${open})</span>`);
-              if(answered>0) badges.push(`<span class="badge"><span class="dot" style="background:#22c55e"></span>Есть ответы (${answered})</span>`);
+              if(open>0) badges.push(`<span class="badge"><span class="dot" style="background:var(--amber)"></span>Ожидает ответа (${open})</span>`);
+              if(answered>0) badges.push(`<span class="badge"><span class="dot" style="background:var(--ok-t)"></span>Есть ответы (${answered})</span>`);
               return badges.length? `<div class="row" style="gap:6px; flex-wrap:wrap; margin-top:6px">${badges.join("")}</div>`:"";
             })()}
           </td>
@@ -373,8 +373,8 @@ window.AsgardApprovalsPage = (function(){
         const normPPD = core.calc?.norm_profit_per_person_day || 25000;
         
         let status = "red", statusLabel = "🔴 КРАСНАЯ ЗОНА", statusColor = "#e03a4a";
-        if(profitPD >= normPPD) { status = "green"; statusLabel = "🟢 ЗЕЛЁНАЯ ЗОНА"; statusColor = "#22c55e"; }
-        else if(profitPD >= minPPD) { status = "yellow"; statusLabel = "🟡 ЖЁЛТАЯ ЗОНА"; statusColor = "#f59e0b"; }
+        if(profitPD >= normPPD) { status = "green"; statusLabel = "🟢 ЗЕЛЁНАЯ ЗОНА"; statusColor = "var(--ok-t)"; }
+        else if(profitPD >= minPPD) { status = "yellow"; statusLabel = "🟡 ЖЁЛТАЯ ЗОНА"; statusColor = "var(--amber)"; }
         
         quickCard = `
           <div style="background:rgba(13,20,40,.6); border-radius:6px; padding:16px; margin-bottom:16px">
@@ -408,8 +408,8 @@ window.AsgardApprovalsPage = (function(){
               ${quickCalc.city ? `<span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">Город: ${esc(quickCalc.city)} (${quickCalc.distance_km||0} км)</span>` : ''}
               ${quickCalc.work_type ? `<span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">${esc(quickCalc.work_type)}</span>` : ''}
             </div>
-            ${(quickCalc.assumptions || est.assumptions) ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:6px; border-left:3px solid #f59e0b">
-              <div style="font-size:11px; color:#f59e0b; font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
+            ${(quickCalc.assumptions || est.assumptions) ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:6px; border-left:3px solid var(--amber)">
+              <div style="font-size:11px; color:var(--amber); font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
               <div style="font-size:12px; color:var(--muted)">${esc(quickCalc.assumptions || est.assumptions)}</div>
             </div>` : ''}
           </div>
@@ -438,9 +438,9 @@ window.AsgardApprovalsPage = (function(){
               <div style="font-size:18px; font-weight:700; color:var(--gold)">${money(v2Summary.price_with_vat)}</div>
             </div>
           </div>
-          <div style="background:${v2Summary.status==='green'?'rgba(34,197,94,.2)':v2Summary.status==='yellow'?'rgba(245,158,11,.2)':'rgba(224,58,74,.2)'}; border:2px solid ${v2Summary.status==='green'?'#22c55e':v2Summary.status==='yellow'?'#f59e0b':'#e03a4a'}; border-radius:6px; padding:12px; margin-top:12px; text-align:center">
-            <div style="font-size:13px; font-weight:700; color:${v2Summary.status==='green'?'#22c55e':v2Summary.status==='yellow'?'#f59e0b':'#e03a4a'}">${v2Summary.status==='green'?'🟢 ЗЕЛЁНАЯ':v2Summary.status==='yellow'?'🟡 ЖЁЛТАЯ':'🔴 КРАСНАЯ'} ЗОНА</div>
-            <div style="font-size:22px; font-weight:700; color:${v2Summary.status==='green'?'#22c55e':v2Summary.status==='yellow'?'#f59e0b':'#e03a4a'}; margin-top:4px">${money(v2Summary.profit_per_day)}</div>
+          <div style="background:${v2Summary.status==='green'?'rgba(34,197,94,.2)':v2Summary.status==='yellow'?'rgba(245,158,11,.2)':'rgba(224,58,74,.2)'}; border:2px solid ${v2Summary.status==='green'?'var(--ok-t)':v2Summary.status==='yellow'?'var(--amber)':'#e03a4a'}; border-radius:6px; padding:12px; margin-top:12px; text-align:center">
+            <div style="font-size:13px; font-weight:700; color:${v2Summary.status==='green'?'var(--ok-t)':v2Summary.status==='yellow'?'var(--amber)':'#e03a4a'}">${v2Summary.status==='green'?'🟢 ЗЕЛЁНАЯ':v2Summary.status==='yellow'?'🟡 ЖЁЛТАЯ':'🔴 КРАСНАЯ'} ЗОНА</div>
+            <div style="font-size:22px; font-weight:700; color:${v2Summary.status==='green'?'var(--ok-t)':v2Summary.status==='yellow'?'var(--amber)':'#e03a4a'}; margin-top:4px">${money(v2Summary.profit_per_day)}</div>
             <div style="font-size:11px; color:var(--muted)">прибыль / чел-день</div>
           </div>
           <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; font-size:12px">
@@ -448,8 +448,8 @@ window.AsgardApprovalsPage = (function(){
             <span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">Чистая прибыль: ${money(v2Summary.net_profit)}</span>
             <span style="background:rgba(42,59,102,.4); padding:4px 8px; border-radius:6px">Город: ${esc(calcV2.city||'—')} (${calcV2.distance_km||0} км)</span>
           </div>
-          ${calcV2.assumptions ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:6px; border-left:3px solid #f59e0b">
-            <div style="font-size:11px; color:#f59e0b; font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
+          ${calcV2.assumptions ? `<div style="margin-top:12px; padding:10px; background:rgba(245,158,11,.1); border-radius:6px; border-left:3px solid var(--amber)">
+            <div style="font-size:11px; color:var(--amber); font-weight:600; margin-bottom:4px">⚠️ ДОПУЩЕНИЯ И РИСКИ</div>
             <div style="font-size:12px; color:var(--muted)">${esc(calcV2.assumptions)}</div>
           </div>` : ''}
         </div>

@@ -49,7 +49,7 @@ window.AsgardPersonnelPage=(function(){
       <div class="panel">
         <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
           <div>
-            <div class="kpi"><span class="dot" style="background:#3b82f6"></span> Персонал</div>
+            <div class="kpi"><span class="dot" style="background:var(--info)"></span> Персонал</div>
             <div class="help">50 тестовых бойцов уже в базе. Рейтинг считается по оценкам РП.</div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
@@ -85,7 +85,7 @@ window.AsgardPersonnelPage=(function(){
                   <td>${esc(e.role_tag||"")}</td>
                   <td>${esc(e.city||"")}</td>
                   <td>${esc(e.phone||"")}</td>
-                  <td>${e.rating_avg!=null && e.rating_avg!==''? `<span class="badge"><span class="dot" style="background:#22c55e"></span>${Number(e.rating_avg).toFixed(1)}</span>` : `<span class="badge"><span class="dot" style="background:#94a3b8"></span>—</span>`}</td>
+                  <td>${e.rating_avg!=null && e.rating_avg!==''? `<span class="badge"><span class="dot" style="background:var(--ok-t)"></span>${Number(e.rating_avg).toFixed(1)}</span>` : `<span class="badge"><span class="dot" style="background:var(--t2)"></span>—</span>`}</td>
                   <td class="right">
                     <button class="btn mini ghost" data-open="${e.id}">Открыть</button>
                   </td>

@@ -40,9 +40,9 @@ window.AsgardTemplates=(function(){
 
   function wrapLetter({title, subtitle, bodyHtml, footerHtml, logoDataUrl, company}){
     const css = `
-      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; color:#0f172a; margin:0; background:#fff;}
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; color:#0D1117; margin:0; background:#fff;}
       .page{padding:34px 42px;}
-      .top{display:flex; gap:18px; align-items:center; border-bottom:2px solid #0f172a; padding-bottom:12px; margin-bottom:18px;}
+      .top{display:flex; gap:18px; align-items:center; border-bottom:2px solid #0D1117; padding-bottom:12px; margin-bottom:18px;}
       .logo{width:92px; height:auto;}
       .h1{font-size:18px; font-weight:800; letter-spacing:.3px;}
       .h2{font-size:12px; color:#334155; margin-top:4px;}
@@ -50,7 +50,7 @@ window.AsgardTemplates=(function(){
       .p{font-size:13px; line-height:1.5; margin:10px 0;}
       .muted{color:#475569; font-size:12px;}
       .sig{margin-top:18px; display:flex; justify-content:space-between; gap:20px; align-items:flex-end;}
-      .line{border-bottom:1px solid #0f172a; width:240px; height:18px;}
+      .line{border-bottom:1px solid #0D1117; width:240px; height:18px;}
       .stamp{font-size:11px; color:#475569;}
       .rune{margin:16px 0; border-top:1px dashed #94a3b8;}
     `;

@@ -4,18 +4,28 @@ window.AsgardStaffSchedulePage=(function(){
 
   const STATUS = [
     {code:"free",  label:"Свободен",            defColor:"#334155"},
-    {code:"office",label:"Офис",               defColor:"#2563eb"},
-    {code:"trip",  label:"Командировка",       defColor:"#8b5cf6"},
-    {code:"work",  label:"Работа (контракт)",  defColor:"#16a34a"},
-    {code:"note",  label:"Заметка",            defColor:"#f59e0b"}
+    {code:"office",label:"Офис",               defColor:"var(--blue-l)"},
+    {code:"trip",  label:"Командировка",       defColor:"var(--purple)"},
+    {code:"work",  label:"Работа (контракт)",  defColor:"var(--ok)"},
+    {code:"note",  label:"Заметка",            defColor:"var(--amber)"}
   ];
 
   const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
+  function resolveColor(col){
+    if(!col || !String(col).includes('var(')) return col;
+    const el=document.createElement('div');
+    el.style.color=col;
+    document.body.appendChild(el);
+    const resolved=getComputedStyle(el).color;
+    el.remove();
+    return resolved;
+  }
   function parseToRGB(col){
     if(!col) return null;
     let c=String(col).trim();
     if(!c) return null;
+    if(c.includes('var(')) c=resolveColor(c);
     if(/^rgba?\(/i.test(c)){
       const m=c.match(/rgba?\(([^)]+)\)/i);
       if(!m) return null;
@@ -40,8 +50,8 @@ window.AsgardStaffSchedulePage=(function(){
   }
   function safeBaseColor(col){
     const rgb=parseToRGB(col);
-    if(!rgb) return "#94a3b8";
-    if(luminance(rgb) > 0.92) return "#94a3b8";
+    if(!rgb) return "var(--t2)";
+    if(luminance(rgb) > 0.92) return "var(--t2)";
     return col;
   }
   function toRGBA(col, a){
@@ -380,7 +390,7 @@ window.AsgardStaffSchedulePage=(function(){
           planMap.set(`${empId}|${dateIso}`, Object.assign({}, payload, {employee_id:empId, date:dateIso}));
           const code = payload.kind;
           btn.dataset.code = code;
-          const def = (STATUS.find(s=>s.code===code)||{}).defColor || "#94a3b8";
+          const def = (STATUS.find(s=>s.code===code)||{}).defColor || "var(--t2)";
           const raw = (colors && colors[code]) ? colors[code] : def;
           const base = safeBaseColor(raw);
           btn.style.background = toRGBA(base, 0.5);

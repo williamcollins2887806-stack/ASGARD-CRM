@@ -4,14 +4,14 @@ window.AsgardWorkExpenses = (function(){
 
   // 8 категорий расходов по работам
   const EXPENSE_CATEGORIES = [
-    { key: 'fot', label: 'ФОТ', color: '#ef4444', icon: '👷' },
-    { key: 'logistics', label: 'Логистика', color: '#f59e0b', icon: '🚚' },
-    { key: 'accommodation', label: 'Проживание', color: '#8b5cf6', icon: '🏨' },
-    { key: 'transfer', label: 'Трансфер', color: '#06b6d4', icon: '🚗' },
-    { key: 'chemicals', label: 'Химия', color: '#22c55e', icon: '🧪' },
-    { key: 'equipment', label: 'Оборудование', color: '#3b82f6', icon: '🔧' },
+    { key: 'fot', label: 'ФОТ', color: 'var(--err-t)', icon: '👷' },
+    { key: 'logistics', label: 'Логистика', color: 'var(--amber)', icon: '🚚' },
+    { key: 'accommodation', label: 'Проживание', color: 'var(--purple)', icon: '🏨' },
+    { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗' },
+    { key: 'chemicals', label: 'Химия', color: 'var(--ok-t)', icon: '🧪' },
+    { key: 'equipment', label: 'Оборудование', color: 'var(--info)', icon: '🔧' },
     { key: 'subcontract', label: 'Субподряд', color: '#ec4899', icon: '🤝' },
-    { key: 'other', label: 'Прочее', color: '#64748b', icon: '📦' }
+    { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
 
   function isoNow(){ return new Date().toISOString(); }
@@ -187,8 +187,8 @@ window.AsgardWorkExpenses = (function(){
         .exp-item-flags { display:flex; gap:4px; }
         .exp-item-actions { display:flex; gap:4px; }
         .btn.sm { padding:4px 8px; font-size:11px; }
-        .badge.ok { background:rgba(34,197,94,.2); color:#22c55e; }
-        .badge.warn { background:rgba(245,158,11,.2); color:#f59e0b; }
+        .badge.ok { background:rgba(34,197,94,.2); color:var(--ok-t); }
+        .badge.warn { background:rgba(245,158,11,.2); color:var(--amber); }
       </style>
 
       <div class="exp-summary">
@@ -202,7 +202,7 @@ window.AsgardWorkExpenses = (function(){
         </div>
         <div class="exp-summary-item">
           <div class="exp-summary-label">Отклонение</div>
-          <div class="exp-summary-value" style="color:${grandTotal > Number(work.cost_plan||0) ? '#ef4444' : '#22c55e'}">${grandTotal > Number(work.cost_plan||0) ? '+' : ''}${money(grandTotal - Number(work.cost_plan||0))} ₽</div>
+          <div class="exp-summary-value" style="color:${grandTotal > Number(work.cost_plan||0) ? 'var(--err-t)' : 'var(--ok-t)'}">${grandTotal > Number(work.cost_plan||0) ? '+' : ''}${money(grandTotal - Number(work.cost_plan||0))} ₽</div>
         </div>
       </div>
 

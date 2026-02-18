@@ -3,11 +3,11 @@ window.AsgardTkpPage = (function() {
   const { $, esc, toast, showModal, hideModal } = AsgardUI;
 
   const STATUS_MAP = {
-    draft: { label: 'Черновик', color: '#64748b' },
-    sent: { label: 'Отправлено', color: '#3b82f6' },
-    accepted: { label: 'Принято', color: '#22c55e' },
-    rejected: { label: 'Отклонено', color: '#ef4444' },
-    expired: { label: 'Просрочено', color: '#f59e0b' }
+    draft: { label: 'Черновик', color: 'var(--t2)' },
+    sent: { label: 'Отправлено', color: 'var(--info)' },
+    accepted: { label: 'Принято', color: 'var(--ok-t)' },
+    rejected: { label: 'Отклонено', color: 'var(--err-t)' },
+    expired: { label: 'Просрочено', color: 'var(--amber)' }
   };
 
   // Типы ТКП

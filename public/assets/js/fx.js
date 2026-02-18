@@ -18,7 +18,7 @@ window.AsgardFX = (function(){
       particleCount: 100,
       spread: 70,
       origin: { x: 0.5, y: 0.5 },
-      colors: ['#c0392b', '#f5d78e', '#2a3b66', '#22c55e', '#3b82f6'],
+      colors: ['#c0392b', 'var(--gold-l)', '#2a3b66', 'var(--ok-t)', 'var(--info)'],
       duration: 3000
     };
     

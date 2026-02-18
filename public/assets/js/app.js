@@ -822,7 +822,7 @@ try{
         }
         list.innerHTML = items.map(n=>{
           const when = n.created_at ? new Date(n.created_at).toLocaleString("ru-RU") : "—";
-          const dot = n.is_read ? `<span class="dot" style="background:#64748b"></span>` : `<span class="dot" style="background:#f59e0b"></span>`;
+          const dot = n.is_read ? `<span class="dot" style="background:var(--t2)"></span>` : `<span class="dot" style="background:var(--amber)"></span>`;
           const link = n.link || n.link_hash || "#/alerts";
           return `<a class="bellitem" href="${esc(link)}" data-nid="${n.id}">
             <div class="belli">${dot}</div>
@@ -919,19 +919,19 @@ try{
         <!-- Море -->
         <ellipse cx="200" cy="185" rx="180" ry="20" fill="url(#seaGrad)" opacity="0.7"/>
         <!-- Волны -->
-        <path d="M20,175 Q60,165 100,175 T180,175 T260,175 T340,175 T380,175" stroke="#3b82f6" stroke-width="2" fill="none" opacity="0.5"/>
-        <path d="M30,180 Q70,170 110,180 T190,180 T270,180 T350,180" stroke="#60a5fa" stroke-width="1.5" fill="none" opacity="0.4"/>
+        <path d="M20,175 Q60,165 100,175 T180,175 T260,175 T340,175 T380,175" stroke="var(--info)" stroke-width="2" fill="none" opacity="0.5"/>
+        <path d="M30,180 Q70,170 110,180 T190,180 T270,180 T350,180" stroke="var(--info-t)" stroke-width="1.5" fill="none" opacity="0.4"/>
         <!-- Корпус -->
         <path d="M60,150 Q80,170 200,175 Q320,170 340,150 L320,150 Q200,160 80,150 Z" fill="url(#hullGrad)" stroke="#78350f" stroke-width="2"/>
         <!-- Щиты на борту -->
         <circle cx="100" cy="152" r="8" fill="#fbbf24" stroke="#78350f" stroke-width="1.5"/>
-        <circle cx="130" cy="155" r="8" fill="#dc2626" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="130" cy="155" r="8" fill="var(--red)" stroke="#78350f" stroke-width="1.5"/>
         <circle cx="160" cy="157" r="8" fill="#fbbf24" stroke="#78350f" stroke-width="1.5"/>
-        <circle cx="190" cy="158" r="8" fill="#dc2626" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="190" cy="158" r="8" fill="var(--red)" stroke="#78350f" stroke-width="1.5"/>
         <circle cx="220" cy="158" r="8" fill="#fbbf24" stroke="#78350f" stroke-width="1.5"/>
-        <circle cx="250" cy="157" r="8" fill="#dc2626" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="250" cy="157" r="8" fill="var(--red)" stroke="#78350f" stroke-width="1.5"/>
         <circle cx="280" cy="155" r="8" fill="#fbbf24" stroke="#78350f" stroke-width="1.5"/>
-        <circle cx="310" cy="152" r="8" fill="#dc2626" stroke="#78350f" stroke-width="1.5"/>
+        <circle cx="310" cy="152" r="8" fill="var(--red)" stroke="#78350f" stroke-width="1.5"/>
         <!-- Нос корабля - голова дракона -->
         <path d="M340,150 Q360,140 370,120 Q375,100 365,90 Q355,85 350,95 Q345,85 335,90 L340,105 Q335,115 340,130 Z" fill="#451a03" stroke="#78350f" stroke-width="2"/>
         <circle cx="355" cy="100" r="3" fill="#fbbf24"/>
@@ -1567,7 +1567,7 @@ try{
             const formatMoney = (v) => (parseFloat(v) || 0).toLocaleString('ru-RU', {minimumFractionDigits: 2}) + ' руб.';
             document.getElementById('cashBalanceData').innerHTML = `
               <div class="kpi" style="grid-template-columns:repeat(2,1fr)">
-                <div class="k"><div class="t">На руках</div><div class="v" style="color:${data.balance > 0 ? '#ef4444' : '#22c55e'}">${formatMoney(data.balance)}</div></div>
+                <div class="k"><div class="t">На руках</div><div class="v" style="color:${data.balance > 0 ? 'var(--err-t)' : 'var(--ok-t)'}">${formatMoney(data.balance)}</div></div>
                 <div class="k"><div class="t">Активных заявок</div><div class="v">${data.active_requests}</div></div>
               </div>
             `;
@@ -1594,16 +1594,16 @@ try{
             if (activeTasks.length === 0) {
               document.getElementById('tasksWidgetContent').innerHTML = '<div class="text-muted">Нет активных задач</div>';
             } else {
-              const priorityColors = {urgent: '#ef4444', high: '#f97316', normal: '#3b82f6', low: '#6b7280'};
+              const priorityColors = {urgent: 'var(--err-t)', high: 'var(--orange)', normal: 'var(--info)', low: 'var(--t2)'};
               const statusLabels = {new: 'Новая', accepted: 'Принята', in_progress: 'В работе'};
               document.getElementById('tasksWidgetContent').innerHTML = activeTasks.map(t => {
                 const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleDateString('ru-RU') : '';
                 const isOverdue = t.deadline && new Date(t.deadline) < new Date();
-                return `<div style="padding:12px 16px; margin-bottom:8px; background:rgba(42,59,102,.35); border-left:3px solid ${priorityColors[t.priority] || '#3b82f6'}; border-radius:6px">
+                return `<div style="padding:12px 16px; margin-bottom:8px; background:rgba(42,59,102,.35); border-left:3px solid ${priorityColors[t.priority] || 'var(--info)'}; border-radius:6px">
                   <div style="font-weight:600">${esc(t.title)}</div>
                   <div style="font-size:12px; color:rgba(184,196,231,.85); margin-top:4px">
-                    <span style="background:${priorityColors[t.priority] || '#3b82f6'}20; color:${priorityColors[t.priority] || '#3b82f6'}; border:1px solid ${priorityColors[t.priority] || '#3b82f6'}40; padding:2px 6px; border-radius:3px; font-size:10px">${statusLabels[t.status] || t.status}</span>
-                    ${deadlineStr ? `<span style="margin-left:8px; ${isOverdue ? 'color:#ef4444' : ''}">${deadlineStr}</span>` : ''}
+                    <span style="background:${priorityColors[t.priority] || 'var(--info)'}20; color:${priorityColors[t.priority] || 'var(--info)'}; border:1px solid ${priorityColors[t.priority] || 'var(--info)'}40; padding:2px 6px; border-radius:3px; font-size:10px">${statusLabels[t.status] || t.status}</span>
+                    ${deadlineStr ? `<span style="margin-left:8px; ${isOverdue ? 'color:var(--err-t)' : ''}">${deadlineStr}</span>` : ''}
                   </div>
                 </div>`;
               }).join('');
@@ -1635,7 +1635,7 @@ try{
             } else {
               document.getElementById('todoWidgetContent').innerHTML = activeTodos.map(t =>
                 `<div style="padding:12px 16px; margin-bottom:6px; background:rgba(42,59,102,.25); border-radius:4px; display:flex; align-items:center; gap:8px">
-                  <span style="color:#3b82f6">○</span>
+                  <span style="color:var(--info)">○</span>
                   <span>${esc(t.text)}</span>
                 </div>`
               ).join('');

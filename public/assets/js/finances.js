@@ -7,28 +7,28 @@ window.AsgardFinancesPage = (function(){
 
   // Категории расходов по работам
   const EXPENSE_CATEGORIES = [
-    { key: 'fot', label: 'ФОТ', color: '#ef4444', icon: '👷' },
-    { key: 'logistics', label: 'Логистика', color: '#f59e0b', icon: '🚚' },
-    { key: 'accommodation', label: 'Проживание', color: '#8b5cf6', icon: '🏨' },
-    { key: 'transfer', label: 'Трансфер', color: '#06b6d4', icon: '🚗' },
-    { key: 'chemicals', label: 'Химия', color: '#22c55e', icon: '🧪' },
-    { key: 'equipment', label: 'Оборудование', color: '#3b82f6', icon: '🔧' },
+    { key: 'fot', label: 'ФОТ', color: 'var(--err-t)', icon: '👷' },
+    { key: 'logistics', label: 'Логистика', color: 'var(--amber)', icon: '🚚' },
+    { key: 'accommodation', label: 'Проживание', color: 'var(--purple)', icon: '🏨' },
+    { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗' },
+    { key: 'chemicals', label: 'Химия', color: 'var(--ok-t)', icon: '🧪' },
+    { key: 'equipment', label: 'Оборудование', color: 'var(--info)', icon: '🔧' },
     { key: 'subcontract', label: 'Субподряд', color: '#ec4899', icon: '🤝' },
-    { key: 'other', label: 'Прочее', color: '#64748b', icon: '📦' }
+    { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
 
   // Категории офисных расходов
   const OFFICE_EXPENSE_CATEGORIES = [
-    { key: 'rent', label: 'Аренда офиса', color: '#ef4444', icon: '🏢' },
-    { key: 'utilities', label: 'Коммунальные', color: '#f59e0b', icon: '💡' },
-    { key: 'office_supplies', label: 'Канцелярия', color: '#8b5cf6', icon: '📎' },
-    { key: 'communication', label: 'Связь и интернет', color: '#06b6d4', icon: '📡' },
-    { key: 'transport', label: 'Транспорт/такси', color: '#22c55e', icon: '🚕' },
-    { key: 'household', label: 'Хозтовары', color: '#3b82f6', icon: '🧹' },
+    { key: 'rent', label: 'Аренда офиса', color: 'var(--err-t)', icon: '🏢' },
+    { key: 'utilities', label: 'Коммунальные', color: 'var(--amber)', icon: '💡' },
+    { key: 'office_supplies', label: 'Канцелярия', color: 'var(--purple)', icon: '📎' },
+    { key: 'communication', label: 'Связь и интернет', color: 'var(--cyan)', icon: '📡' },
+    { key: 'transport', label: 'Транспорт/такси', color: 'var(--ok-t)', icon: '🚕' },
+    { key: 'household', label: 'Хозтовары', color: 'var(--info)', icon: '🧹' },
     { key: 'office_equipment', label: 'Оборудование офиса', color: '#ec4899', icon: '🖥️' },
-    { key: 'software', label: 'ПО и подписки', color: '#a855f7', icon: '💿' },
+    { key: 'software', label: 'ПО и подписки', color: 'var(--purple)', icon: '💿' },
     { key: 'representation', label: 'Представительские', color: '#14b8a6', icon: '🎁' },
-    { key: 'other_office', label: 'Прочее', color: '#64748b', icon: '📦' }
+    { key: 'other_office', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
 
   function money(x){ 
@@ -228,8 +228,8 @@ window.AsgardFinancesPage = (function(){
 
     function renderYearChart(currentData, maxMonth){
       const barColor = mode === 'expenses' ? 
-        'linear-gradient(180deg, #ef4444, #dc2626)' : 
-        'linear-gradient(180deg, #22c55e, #16a34a)';
+        'linear-gradient(180deg, var(--err-t), var(--red))' : 
+        'linear-gradient(180deg, var(--ok-t), var(--ok))';
 
       return `
         <div class="fin-chart-container">
@@ -365,7 +365,7 @@ window.AsgardFinancesPage = (function(){
           <div class="fin-pie-container" style="margin-top:20px">
             <div class="fin-pie">
               <svg viewBox="0 0 200 200" style="transform:rotate(-90deg)">
-                ${svgPaths || '<circle cx="100" cy="100" r="80" fill="none" stroke="#64748b" stroke-width="32"/>'}
+                ${svgPaths || '<circle cx="100" cy="100" r="80" fill="none" stroke="var(--t2)" stroke-width="32"/>'}
               </svg>
               <div class="fin-pie-center">
                 <div class="fin-pie-total">${moneyShort(total)}</div>

@@ -33,18 +33,18 @@ window.AsgardReminders = (function(){
   }
   
   const REMINDER_TYPES = {
-    deadline: { label: 'Дедлайн', icon: '⏰', color: '#f59e0b' },
-    invoice: { label: 'Счёт', icon: '💰', color: '#ef4444' },
-    work: { label: 'Работа', icon: '🔧', color: '#3b82f6' },
-    tender: { label: 'Тендер', icon: '📋', color: '#8b5cf6' },
-    custom: { label: 'Напоминание', icon: '🔔', color: '#6b7280' }
+    deadline: { label: 'Дедлайн', icon: '⏰', color: 'var(--amber)' },
+    invoice: { label: 'Счёт', icon: '💰', color: 'var(--err-t)' },
+    work: { label: 'Работа', icon: '🔧', color: 'var(--info)' },
+    tender: { label: 'Тендер', icon: '📋', color: 'var(--purple)' },
+    custom: { label: 'Напоминание', icon: '🔔', color: 'var(--t2)' }
   };
   
   const REMINDER_PRIORITIES = {
-    low: { label: 'Низкий', color: '#6b7280' },
-    normal: { label: 'Обычный', color: '#3b82f6' },
-    high: { label: 'Высокий', color: '#f59e0b' },
-    urgent: { label: 'Срочный', color: '#ef4444' }
+    low: { label: 'Низкий', color: 'var(--t2)' },
+    normal: { label: 'Обычный', color: 'var(--info)' },
+    high: { label: 'Высокий', color: 'var(--amber)' },
+    urgent: { label: 'Срочный', color: 'var(--err-t)' }
   };
   
   // CRUD

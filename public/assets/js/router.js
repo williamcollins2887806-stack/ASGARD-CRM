@@ -58,7 +58,7 @@ window.AsgardRouter=(function(){
       try{ AsgardUI.toast("Ошибка","Сбой рендера страницы: "+(e?.message||e),"err",6000); }catch(_){ }
       try{
         const app=document.getElementById("app");
-        if(app) app.innerHTML = `<div style="padding:18px;color:#fff"><b>Ошибка рендера</b><div style="opacity:.85;margin-top:6px">${(e?.message||String(e)).replace(/</g,"&lt;")}</div><div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap"><a href="#/home" style="color:#9bd">На главную</a><a href="#/diag" style="color:#9bd">Диагностика</a><button id="btnSafeMode" style="background:#111827;border:1px solid #374151;color:#e5e7eb;padding:6px 10px;border-radius:6px;cursor:pointer">Включить safe-mode</button></div></div>`;
+        if(app) app.innerHTML = `<div style="padding:18px;color:#fff"><b>Ошибка рендера</b><div style="opacity:.85;margin-top:6px">${(e?.message||String(e)).replace(/</g,"&lt;")}</div><div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap"><a href="#/home" style="color:#9bd">На главную</a><a href="#/diag" style="color:#9bd">Диагностика</a><button id="btnSafeMode" style="background:var(--bg1);border:1px solid var(--bg5);color:#e5e7eb;padding:6px 10px;border-radius:6px;cursor:pointer">Включить safe-mode</button></div></div>`;
         try{
           const b = document.getElementById("btnSafeMode");
           if(b){ b.onclick = ()=>{ try{ localStorage.setItem("asgard_safe_mode","1"); }catch(_){} location.hash="#/home"; }; }

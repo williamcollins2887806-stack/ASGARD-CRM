@@ -52,14 +52,14 @@ window.AsgardBigScreen = (function(){
         .bs-hdr{padding:20px 40px;display:flex;align-items:center;background:linear-gradient(180deg,rgba(242,208,138,.06) 0%,transparent 100%);border-bottom:1px solid rgba(242,208,138,.1);flex-shrink:0;gap:20px}
         .bs-brand{display:flex;align-items:center;gap:14px;flex-shrink:0}
         .bs-brand-icon{font-size:28px}
-        .bs-brand-name{font-size:22px;font-weight:900;color:#f2d08a;letter-spacing:3px;text-transform:uppercase}
+        .bs-brand-name{font-size:22px;font-weight:900;color:var(--gold-l);letter-spacing:3px;text-transform:uppercase}
         .bs-brand-sub{font-size:11px;color:rgba(255,255,255,.3);letter-spacing:1px;margin-top:2px}
         .bs-hdr-spacer{flex:1}
         .bs-clock{text-align:right;flex-shrink:0}
         .bs-clock-time{font-size:32px;font-weight:300;color:rgba(255,255,255,.9);font-variant-numeric:tabular-nums;letter-spacing:1px}
         .bs-clock-date{font-size:13px;color:rgba(255,255,255,.35);margin-top:2px}
         .bs-exit{flex-shrink:0;margin-left:16px;background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.25);width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:14px;transition:all .3s;display:flex;align-items:center;justify-content:center}
-        .bs-exit:hover{border-color:#f2d08a;color:#f2d08a}
+        .bs-exit:hover{border-color:var(--gold-l);color:var(--gold-l)}
 
         /* ── Body ── */
         .bs-body{flex:1;display:flex;align-items:center;justify-content:center;padding:24px 40px;overflow:hidden}
@@ -68,7 +68,7 @@ window.AsgardBigScreen = (function(){
 
         /* ── Slide title ── */
         .bs-title{text-align:center;margin-bottom:28px}
-        .bs-title h2{font-size:26px;font-weight:800;color:#f2d08a;margin:0 0 4px;letter-spacing:1px}
+        .bs-title h2{font-size:26px;font-weight:800;color:var(--gold-l);margin:0 0 4px;letter-spacing:1px}
         .bs-title .bs-subtitle{font-size:13px;color:rgba(255,255,255,.3)}
 
         /* ── Footer (dots + page indicator) ── */
@@ -76,28 +76,28 @@ window.AsgardBigScreen = (function(){
         .bs-dots{display:flex;gap:8px}
         .bs-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.1);transition:all .4s;cursor:pointer}
         .bs-dot:hover{background:rgba(255,255,255,.25)}
-        .bs-dot.active{background:#f2d08a;width:24px;border-radius:4px}
+        .bs-dot.active{background:var(--gold-l);width:24px;border-radius:4px}
         .bs-page{font-size:11px;color:rgba(255,255,255,.2);font-variant-numeric:tabular-nums}
-        .bs-progress{position:absolute;bottom:0;left:0;height:2px;background:linear-gradient(90deg,#f2d08a,#c9302c);transition:width linear}
+        .bs-progress{position:absolute;bottom:0;left:0;height:2px;background:linear-gradient(90deg,var(--gold-l),#c9302c);transition:width linear}
 
         /* ── KPI Cards ── */
         .bs-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:rgba(148,163,184,.06);border-radius:12px;overflow:hidden;border:1px solid rgba(148,163,184,.08)}
         .bs-kpi-card{background:rgba(15,22,42,.85);border:none;border-radius:0;padding:28px 24px;text-align:center;position:relative;overflow:hidden}
         .bs-kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
-        .bs-kpi-card.c-blue::before{background:linear-gradient(90deg,#3b82f6,#60a5fa)}
-        .bs-kpi-card.c-gold::before{background:linear-gradient(90deg,#f2d08a,#d4a853)}
-        .bs-kpi-card.c-green::before{background:linear-gradient(90deg,#22c55e,#4ade80)}
-        .bs-kpi-card.c-purple::before{background:linear-gradient(90deg,#8b5cf6,#a78bfa)}
-        .bs-kpi-card.c-red::before{background:linear-gradient(90deg,#ef4444,#f87171)}
-        .bs-kpi-card.c-amber::before{background:linear-gradient(90deg,#f59e0b,#fbbf24)}
-        .bs-kpi-card.c-cyan::before{background:linear-gradient(90deg,#06b6d4,#22d3ee)}
+        .bs-kpi-card.c-blue::before{background:linear-gradient(90deg,var(--info),var(--info-t))}
+        .bs-kpi-card.c-gold::before{background:linear-gradient(90deg,var(--gold-l),#d4a853)}
+        .bs-kpi-card.c-green::before{background:var(--grad-green, linear-gradient(90deg,var(--ok),var(--ok-t)))}
+        .bs-kpi-card.c-purple::before{background:linear-gradient(90deg,var(--purple),var(--purple-l))}
+        .bs-kpi-card.c-red::before{background:linear-gradient(90deg,var(--err-t),var(--err-t))}
+        .bs-kpi-card.c-amber::before{background:linear-gradient(90deg,var(--amber),#fbbf24)}
+        .bs-kpi-card.c-cyan::before{background:linear-gradient(90deg,var(--cyan),var(--cyan-l))}
         .bs-kpi-card.c-pink::before{background:linear-gradient(90deg,#ec4899,#f472b6)}
         .bs-kpi-lbl{font-size:11px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:2px;font-weight:800;margin-bottom:12px}
         .bs-kpi-val{font-size:48px;font-weight:900;line-height:1.1}
         .bs-kpi-sub{font-size:13px;color:rgba(255,255,255,.35);margin-top:10px}
         .bs-kpi-delta{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-top:8px}
-        .bs-kpi-delta.up{background:rgba(34,197,94,.15);color:#4ade80}
-        .bs-kpi-delta.down{background:rgba(239,68,68,.15);color:#f87171}
+        .bs-kpi-delta.up{background:rgba(34,197,94,.15);color:var(--ok-t)}
+        .bs-kpi-delta.down{background:rgba(239,68,68,.15);color:var(--err-t)}
 
         /* ── Table ── */
         .bs-tbl{width:100%;border-collapse:separate;border-spacing:0 6px}
@@ -106,7 +106,7 @@ window.AsgardBigScreen = (function(){
         .bs-tbl tr td:first-child{border-radius:8px 0 0 8px}
         .bs-tbl tr td:last-child{border-radius:0 8px 8px 0}
         .bs-tbl .rank{font-size:13px;color:rgba(255,255,255,.2);font-weight:700;width:40px}
-        .bs-tbl .highlight{color:#f2d08a;font-weight:700}
+        .bs-tbl .highlight{color:var(--gold-l);font-weight:700}
 
         /* ── Bar chart ── */
         .bs-bar{display:flex;align-items:center;gap:16px;margin:10px 0}
@@ -123,9 +123,9 @@ window.AsgardBigScreen = (function(){
         .bs-status{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}
 
         /* ── Colors ── */
-        .c-green{color:#4ade80} .c-red{color:#f87171} .c-amber{color:#fbbf24}
-        .c-blue{color:#60a5fa} .c-gold{color:#f2d08a} .c-purple{color:#a78bfa}
-        .c-cyan{color:#22d3ee} .c-white{color:rgba(255,255,255,.85)}
+        .c-green{color:var(--ok-t)} .c-red{color:var(--err-t)} .c-amber{color:#fbbf24}
+        .c-blue{color:var(--info-t)} .c-gold{color:var(--gold-l)} .c-purple{color:var(--purple-l)}
+        .c-cyan{color:var(--cyan-l)} .c-white{color:rgba(255,255,255,.85)}
 
         @media (max-width:1200px){
           .bs-kpi{grid-template-columns:repeat(2,1fr)}
@@ -380,7 +380,7 @@ window.AsgardBigScreen = (function(){
         <div class="bs-kpi-card c-amber" style="grid-column:span 2"><div class="bs-kpi-lbl">Касса: выдано (не закрыто)</div><div class="bs-kpi-val c-amber">${_m(cashOut)}</div><div class="bs-kpi-sub">Ожидает выдачи: ${_m(cashPending)}</div></div>
         <div class="bs-kpi-card c-cyan" style="grid-column:span 2"><div class="bs-kpi-lbl">Собираемость</div>
           <div style="margin-top:14px;background:rgba(255,255,255,.06);border-radius:8px;height:24px;overflow:hidden">
-            <div style="height:100%;width:${receivedPct}%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${receivedPct}%</div>
+            <div style="height:100%;width:${receivedPct}%;background:var(--grad-green, linear-gradient(90deg,var(--ok),var(--ok-t)));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${receivedPct}%</div>
           </div>
           <div class="bs-kpi-sub" style="margin-top:10px">Получено ${_m(received)} из ${_m(contractTotal)}</div>
         </div>
@@ -394,12 +394,12 @@ window.AsgardBigScreen = (function(){
   function slideFunnel(d) {
     const yT = d.tenders.filter(t => String(t.year) === String(d.y) || (t.period || '').startsWith(d.y));
     const stages = [
-      { name: 'Новый', statuses: ['Новый','Получен'], color: '#64748b' },
-      { name: 'Отправлено на просчёт', statuses: ['Отправлено на просчёт','В просчёте','На просчёте'], color: '#3b82f6' },
-      { name: 'КП отправлено', statuses: ['КП отправлено','ТКП отправлено'], color: '#8b5cf6' },
-      { name: 'Переговоры', statuses: ['Переговоры','На согласовании'], color: '#f59e0b' },
-      { name: 'Выиграли', statuses: ['Выиграли','Контракт','Клиент согласился'], color: '#22c55e' },
-      { name: 'Проиграли', statuses: ['Проиграли','Клиент отказался','Отказ'], color: '#ef4444' }
+      { name: 'Новый', statuses: ['Новый','Получен'], color: 'var(--t2)' },
+      { name: 'Отправлено на просчёт', statuses: ['Отправлено на просчёт','В просчёте','На просчёте'], color: 'var(--info)' },
+      { name: 'КП отправлено', statuses: ['КП отправлено','ТКП отправлено'], color: 'var(--purple)' },
+      { name: 'Переговоры', statuses: ['Переговоры','На согласовании'], color: 'var(--amber)' },
+      { name: 'Выиграли', statuses: ['Выиграли','Контракт','Клиент согласился'], color: 'var(--ok-t)' },
+      { name: 'Проиграли', statuses: ['Проиграли','Клиент отказался','Отказ'], color: 'var(--err-t)' }
     ];
     const data = stages.map(s => ({ ...s, count: yT.filter(t => s.statuses.includes(t.tender_status)).length }));
     const max = Math.max(...data.map(s => s.count), 1);
@@ -438,16 +438,16 @@ window.AsgardBigScreen = (function(){
               return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
                 <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.7)">${m.total}</div>
                 <div style="width:100%;display:flex;flex-direction:column;justify-content:flex-end;height:${h}px;border-radius:6px;overflow:hidden">
-                  <div style="height:${h - wh}px;background:#3b82f6"></div>
-                  <div style="height:${wh}px;background:#22c55e"></div>
+                  <div style="height:${h - wh}px;background:var(--info)"></div>
+                  <div style="height:${wh}px;background:var(--ok-t)"></div>
                 </div>
                 <div style="font-size:11px;color:rgba(255,255,255,.3)">${esc(m.label)}</div>
               </div>`;
             }).join('')}
           </div>
           <div style="display:flex;gap:16px;margin-top:12px;justify-content:center;font-size:11px">
-            <span><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:2px;margin-right:4px"></span>Всего</span>
-            <span><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:2px;margin-right:4px"></span>Выиграно</span>
+            <span><span style="display:inline-block;width:10px;height:10px;background:var(--info);border-radius:2px;margin-right:4px"></span>Всего</span>
+            <span><span style="display:inline-block;width:10px;height:10px;background:var(--ok-t);border-radius:2px;margin-right:4px"></span>Выиграно</span>
           </div>
         </div>
       </div>
@@ -497,8 +497,8 @@ window.AsgardBigScreen = (function(){
       .slice(0, 10);
 
     const statusColors = {
-      'В работе': '#22c55e', 'Мобилизация': '#3b82f6', 'Подготовка': '#8b5cf6',
-      'На объекте': '#06b6d4', 'Демобилизация': '#f59e0b'
+      'В работе': 'var(--ok-t)', 'Мобилизация': 'var(--info)', 'Подготовка': 'var(--purple)',
+      'На объекте': 'var(--cyan)', 'Демобилизация': 'var(--amber)'
     };
 
     return `
@@ -506,7 +506,7 @@ window.AsgardBigScreen = (function(){
       <table class="bs-tbl">
         <thead><tr><th>#</th><th>Работа</th><th>Заказчик</th><th>РП</th><th>Статус</th><th>Сумма</th></tr></thead>
         <tbody>${activeW.map((w, i) => {
-          const sc = statusColors[w.work_status] || '#94a3b8';
+          const sc = statusColors[w.work_status] || 'var(--t2)';
           return `<tr>
             <td class="rank">${i + 1}</td>
             <td style="font-weight:600;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.work_title || w.work_name || '')}</td>
@@ -533,13 +533,13 @@ window.AsgardBigScreen = (function(){
         <div class="bs-title"><h2>Контроль сроков</h2></div>
         <div style="text-align:center;padding:60px 0">
           <div style="font-size:80px;margin-bottom:20px">&#9989;</div>
-          <div style="font-size:28px;color:#4ade80;font-weight:700">Все работы в графике</div>
+          <div style="font-size:28px;color:var(--ok-t);font-weight:700">Все работы в графике</div>
           <div style="font-size:14px;color:rgba(255,255,255,.3);margin-top:12px">Просроченных работ нет</div>
         </div>`;
     }
 
     return `
-      <div class="bs-title"><h2 style="color:#f87171">Просроченные работы</h2><div class="bs-subtitle">${overdue.length} работ требуют внимания</div></div>
+      <div class="bs-title"><h2 style="color:var(--err-t)">Просроченные работы</h2><div class="bs-subtitle">${overdue.length} работ требуют внимания</div></div>
       <table class="bs-tbl">
         <thead><tr><th>#</th><th>Работа</th><th>Заказчик</th><th>РП</th><th>Дедлайн</th><th>Просрочка</th></tr></thead>
         <tbody>${overdue.map((w, i) => {
@@ -592,7 +592,7 @@ window.AsgardBigScreen = (function(){
           ${roleData.map(([role, count]) => `
             <div class="bs-bar">
               <div class="bs-bar-lbl">${roleNames[role] || role}</div>
-              <div class="bs-bar-track"><div class="bs-bar-fill" style="width:${Math.round((count/maxRole)*100)}%;background:#3b82f6">${count}</div></div>
+              <div class="bs-bar-track"><div class="bs-bar-fill" style="width:${Math.round((count/maxRole)*100)}%;background:var(--info)">${count}</div></div>
               <div class="bs-bar-val c-blue">${count}</div>
             </div>
           `).join('')}
@@ -642,11 +642,11 @@ window.AsgardBigScreen = (function(){
         <div class="bs-col-title" style="text-align:center">Касса — статусы заявок</div>
         <div style="display:flex;gap:16px;justify-content:center;margin-top:12px;flex-wrap:wrap">
           ${[
-            { key:'requested', label:'Запрошено', color:'#3b82f6' },
-            { key:'approved', label:'Одобрено', color:'#f59e0b' },
-            { key:'received', label:'Получено', color:'#22c55e' },
-            { key:'reporting', label:'Отчёт', color:'#8b5cf6' },
-            { key:'closed', label:'Закрыто', color:'#94a3b8' }
+            { key:'requested', label:'Запрошено', color:'var(--info)' },
+            { key:'approved', label:'Одобрено', color:'var(--amber)' },
+            { key:'received', label:'Получено', color:'var(--ok-t)' },
+            { key:'reporting', label:'Отчёт', color:'var(--purple)' },
+            { key:'closed', label:'Закрыто', color:'var(--t2)' }
           ].map(s => `
             <div style="text-align:center;min-width:100px">
               <div style="font-size:32px;font-weight:900;color:${s.color}">${cashByStatus[s.key] || 0}</div>

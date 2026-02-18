@@ -3,23 +3,33 @@ window.AsgardOfficeSchedulePage=(function(){
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(String(r||"" )==="DIRECTOR"||String(r||"" ).startsWith("DIRECTOR_"));
 
   const STATUS = [
-    {code:"оф", label:"В офисе",             color:"#2563eb"},
+    {code:"оф", label:"В офисе",             color:"var(--blue-l)"},
     {code:"уд", label:"Удалёнка",           color:"#0ea5e9"},
-    {code:"бн", label:"На больничном",      color:"#ef4444"},
-    {code:"сс", label:"За свой счёт",       color:"#f59e0b"},
-    {code:"км", label:"Командировка",       color:"#8b5cf6"},
-    {code:"пг", label:"Встреча/переговоры", color:"#22c55e"},
-    {code:"уч", label:"Учёба",              color:"#10b981"},
-    {code:"ск", label:"Склад",              color:"#64748b"},
+    {code:"бн", label:"На больничном",      color:"var(--err-t)"},
+    {code:"сс", label:"За свой счёт",       color:"var(--amber)"},
+    {code:"км", label:"Командировка",       color:"var(--purple)"},
+    {code:"пг", label:"Встреча/переговоры", color:"var(--ok-t)"},
+    {code:"уч", label:"Учёба",              color:"var(--ok)"},
+    {code:"ск", label:"Склад",              color:"var(--t2)"},
     {code:"вх", label:"Выходной",           color:"#334155"},
   ];
 
   const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
+  function resolveColor(col){
+    if(!col || !String(col).includes('var(')) return col;
+    const el=document.createElement('div');
+    el.style.color=col;
+    document.body.appendChild(el);
+    const resolved=getComputedStyle(el).color;
+    el.remove();
+    return resolved;
+  }
   function parseToRGB(col){
     if(!col) return null;
     let c=String(col).trim();
     if(!c) return null;
+    if(c.includes('var(')) c=resolveColor(c);
     if(/^rgba?\(/i.test(c)){
       const m=c.match(/rgba?\(([^)]+)\)/i);
       if(!m) return null;
@@ -44,8 +54,8 @@ window.AsgardOfficeSchedulePage=(function(){
   }
   function safeBaseColor(col){
     const rgb=parseToRGB(col);
-    if(!rgb) return "#94a3b8";
-    if(luminance(rgb) > 0.92) return "#94a3b8";
+    if(!rgb) return "var(--t2)";
+    if(luminance(rgb) > 0.92) return "var(--t2)";
     return col;
   }
   function toRGBA(col, a){
@@ -328,7 +338,7 @@ window.AsgardOfficeSchedulePage=(function(){
           if(finalCode){
             planMap.set(`${staffId}|${dateIso}`, finalCode);
             btn.dataset.code = finalCode;
-            const def = (STATUS.find(s=>s.code===finalCode)||{}).color || "#94a3b8";
+            const def = (STATUS.find(s=>s.code===finalCode)||{}).color || "var(--t2)";
             const raw = (colors && colors[finalCode]) ? colors[finalCode] : def;
             const base = safeBaseColor(raw);
             btn.style.background = toRGBA(base, 0.5);

@@ -233,7 +233,7 @@ window.AsgardWebAuthn = (function() {
     if (!lastUser) return;
 
     var html = '<div style="text-align:center;margin:12px 0">';
-    html += '<button class="btn" id="btnBiometricLogin" type="button" style="width:100%;padding:12px;font-size:15px;background:linear-gradient(135deg,#1e3a5f,#0d1428);border:1px solid var(--gold,#D4AF37);color:var(--gold,#D4AF37);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">';
+    html += '<button class="btn" id="btnBiometricLogin" type="button" style="width:100%;padding:12px;font-size:15px;background:var(--grad-corp);border:1px solid var(--gold,#D4AF37);color:var(--gold,#D4AF37);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">';
     html += '<span style="font-size:20px">' + getBiometricIcon() + '</span>';
     html += '<span>' + getBiometricLabel() + '</span>';
     html += '</button>';

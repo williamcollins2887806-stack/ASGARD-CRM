@@ -393,14 +393,14 @@ window.AsgardGeoScore = (function(){
    */
   function getScoreBadge(scoreData) {
     if (!scoreData || scoreData.conversion?.isNew) {
-      return `<span class="badge" style="background:#6b7280;color:#fff" title="Новый клиент">НД</span>`;
+      return `<span class="badge" style="background:var(--t2);color:#fff" title="Новый клиент">НД</span>`;
     }
     
     const colors = {
-      green: '#22c55e',
-      yellow: '#f59e0b',
-      red: '#ef4444',
-      gray: '#6b7280'
+      green: 'var(--ok-t)',
+      yellow: 'var(--amber)',
+      red: 'var(--err-t)',
+      gray: 'var(--t2)'
     };
     
     const bgColor = colors[scoreData.color] || colors.gray;
@@ -423,15 +423,15 @@ window.AsgardGeoScore = (function(){
     
     if (conv?.isNew) {
       return `
-        <div class="card" style="padding:12px;border-left:4px solid #6b7280">
+        <div class="card" style="padding:12px;border-left:4px solid var(--t2)">
           <div style="font-weight:600">⚪ ${customerName || 'Клиент'}</div>
           <div class="muted">Новый клиент — нет истории</div>
         </div>
       `;
     }
     
-    const colors = { green: '#22c55e', yellow: '#f59e0b', red: '#ef4444' };
-    const borderColor = colors[scoreData.color] || '#6b7280';
+    const colors = { green: 'var(--ok-t)', yellow: 'var(--amber)', red: 'var(--err-t)' };
+    const borderColor = colors[scoreData.color] || 'var(--t2)';
     
     return `
       <div class="card" style="padding:12px;border-left:4px solid ${borderColor}">

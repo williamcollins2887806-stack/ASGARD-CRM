@@ -12,13 +12,13 @@ window.AsgardMailboxPage = (function(){
 
   // Type colors & labels
   const EMAIL_TYPES = {
-    direct_request:   { name: 'Прямой запрос',   color: '#22c55e', bg: 'rgba(34,197,94,0.12)',  icon: 'M' },
-    platform_tender:  { name: 'Тендерная площадка', color: '#eab308', bg: 'rgba(234,179,8,0.12)', icon: 'T' },
-    newsletter:       { name: 'Рассылка',         color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', icon: 'R' },
-    internal:         { name: 'Внутренняя',       color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', icon: 'I' },
-    crm_outbound:     { name: 'Исходящее',        color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)', icon: 'O' },
-    unknown:          { name: 'Неизвестно',        color: '#64748b', bg: 'rgba(100,116,139,0.12)', icon: '?' },
-    spam:             { name: 'Спам',              color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  icon: 'S' }
+    direct_request:   { name: 'Прямой запрос',   color: 'var(--ok-t)', bg: 'rgba(34,197,94,0.12)',  icon: 'M' },
+    platform_tender:  { name: 'Тендерная площадка', color: 'var(--amber)', bg: 'rgba(234,179,8,0.12)', icon: 'T' },
+    newsletter:       { name: 'Рассылка',         color: 'var(--t2)', bg: 'rgba(148,163,184,0.12)', icon: 'R' },
+    internal:         { name: 'Внутренняя',       color: 'var(--info)', bg: 'rgba(59,130,246,0.12)', icon: 'I' },
+    crm_outbound:     { name: 'Исходящее',        color: 'var(--purple)', bg: 'rgba(139,92,246,0.12)', icon: 'O' },
+    unknown:          { name: 'Неизвестно',        color: 'var(--t2)', bg: 'rgba(100,116,139,0.12)', icon: '?' },
+    spam:             { name: 'Спам',              color: 'var(--err-t)', bg: 'rgba(239,68,68,0.12)',  icon: 'S' }
   };
 
   const FOLDERS = [
@@ -80,18 +80,18 @@ window.AsgardMailboxPage = (function(){
 
   // Color map for AI analysis
   const AI_COLOR_MAP = {
-    green:  { bg: 'rgba(22,163,74,0.13)', border: '#16a34a', icon: '&#128994;', label: 'Наш профиль' },
-    yellow: { bg: 'rgba(234,179,8,0.13)', border: '#eab308', icon: '&#128993;', label: 'Требует оценки' },
-    red:    { bg: 'rgba(220,38,38,0.13)', border: '#dc2626', icon: '&#128308;', label: 'Не наш профиль' }
+    green:  { bg: 'rgba(22,163,74,0.13)', border: 'var(--ok)', icon: '&#128994;', label: 'Наш профиль' },
+    yellow: { bg: 'rgba(234,179,8,0.13)', border: 'var(--amber)', icon: '&#128993;', label: 'Требует оценки' },
+    red:    { bg: 'rgba(220,38,38,0.13)', border: 'var(--red)', icon: '&#128308;', label: 'Не наш профиль' }
   };
 
   const AI_STATUS_MAP = {
-    new:           { label: 'Новая',          color: '#3b82f6' },
-    ai_processed:  { label: 'AI обработана',  color: '#8b5cf6' },
-    under_review:  { label: 'На рассмотрении', color: '#eab308' },
-    accepted:      { label: 'Принята',        color: '#16a34a' },
-    rejected:      { label: 'Отклонена',      color: '#dc2626' },
-    archived:      { label: 'Архив',          color: '#94a3b8' }
+    new:           { label: 'Новая',          color: 'var(--info)' },
+    ai_processed:  { label: 'AI обработана',  color: 'var(--purple)' },
+    under_review:  { label: 'На рассмотрении', color: 'var(--amber)' },
+    accepted:      { label: 'Принята',        color: 'var(--ok)' },
+    rejected:      { label: 'Отклонена',      color: 'var(--red)' },
+    archived:      { label: 'Архив',          color: 'var(--t2)' }
   };
 
   function money(n) {
@@ -212,9 +212,9 @@ window.AsgardMailboxPage = (function(){
     if (stats.unread_direct > 0 || stats.unread_tender > 0) {
       container.innerHTML += `
         <div style="padding:12px 16px 4px; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">По типу</div>
-        ${stats.unread_direct > 0 ? `<div class="mail-type-item" data-type="direct_request" style="padding:4px 16px; cursor:pointer; font-size:12px; color:#22c55e; display:flex; justify-content:space-between;">
+        ${stats.unread_direct > 0 ? `<div class="mail-type-item" data-type="direct_request" style="padding:4px 16px; cursor:pointer; font-size:12px; color:var(--ok-t); display:flex; justify-content:space-between;">
           <span>Прямые запросы</span><span>${stats.unread_direct}</span></div>` : ''}
-        ${stats.unread_tender > 0 ? `<div class="mail-type-item" data-type="platform_tender" style="padding:4px 16px; cursor:pointer; font-size:12px; color:#eab308; display:flex; justify-content:space-between;">
+        ${stats.unread_tender > 0 ? `<div class="mail-type-item" data-type="platform_tender" style="padding:4px 16px; cursor:pointer; font-size:12px; color:var(--amber); display:flex; justify-content:space-between;">
           <span>Тендерные</span><span>${stats.unread_tender}</span></div>` : ''}
       `;
     }
@@ -310,18 +310,18 @@ window.AsgardMailboxPage = (function(){
 
       // AI processing status indicator
       const aiProcessed = !!e.ai_processed_at;
-      const aiColorMap = { green: '#4ade80', yellow: '#fbbf24', red: '#f87171' };
-      const aiDotColor = aiProcessed && e.ai_color ? (aiColorMap[e.ai_color] || '#94a3b8') : '';
+      const aiColorMap = { green: 'var(--ok-t)', yellow: '#fbbf24', red: 'var(--err-t)' };
+      const aiDotColor = aiProcessed && e.ai_color ? (aiColorMap[e.ai_color] || 'var(--t2)') : '';
       const aiTitle = aiProcessed
         ? (e.ai_summary ? `AI: ${e.ai_summary}` : 'AI обработано')
         : 'Ожидает AI-анализа';
 
       const aiBadge = aiProcessed
-        ? `<span title="${esc(aiTitle)}" style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:4px; background:${aiDotColor ? aiDotColor + '22' : 'rgba(148,163,184,.15)'}; color:${aiDotColor || '#94a3b8'}; font-weight:700; white-space:nowrap;">&#10003; AI</span>`
-        : `<span title="${esc(aiTitle)}" style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:4px; background:rgba(148,163,184,.12); color:#94a3b8; font-weight:600; white-space:nowrap;">&#9202; Ждёт AI</span>`;
+        ? `<span title="${esc(aiTitle)}" style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:4px; background:${aiDotColor ? aiDotColor + '22' : 'rgba(148,163,184,.15)'}; color:${aiDotColor || 'var(--t2)'}; font-weight:700; white-space:nowrap;">&#10003; AI</span>`
+        : `<span title="${esc(aiTitle)}" style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:4px; background:rgba(148,163,184,.12); color:var(--t2); font-weight:600; white-space:nowrap;">&#9202; Ждёт AI</span>`;
 
       const aiSummaryLine = aiProcessed && e.ai_summary
-        ? `<div class="ai-summary-line" data-email-id="${e.id}" style="font-size:11px; color:${aiDotColor || '#94a3b8'}; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; transition:all 0.2s; border-radius:4px; padding:1px 4px; margin-left:-4px;" onclick="event.stopPropagation(); AsgardMailboxPage._showAiPopup(this, ${e.id})">AI: ${esc(e.ai_summary)}</div>`
+        ? `<div class="ai-summary-line" data-email-id="${e.id}" style="font-size:11px; color:${aiDotColor || 'var(--t2)'}; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; transition:all 0.2s; border-radius:4px; padding:1px 4px; margin-left:-4px;" onclick="event.stopPropagation(); AsgardMailboxPage._showAiPopup(this, ${e.id})">AI: ${esc(e.ai_summary)}</div>`
         : '';
 
       return `
@@ -347,7 +347,7 @@ window.AsgardMailboxPage = (function(){
             </div>
             ${aiSummaryLine}
           </div>
-          ${e.is_starred ? '<span style="color:#eab308; font-size:14px;" title="Избранное">&#9733;</span>' : ''}
+          ${e.is_starred ? '<span style="color:var(--amber); font-size:14px;" title="Избранное">&#9733;</span>' : ''}
         </div>`;
     }).join('');
 
@@ -429,7 +429,7 @@ window.AsgardMailboxPage = (function(){
       // Refresh stats (unread count)
       loadStats().then(renderFolders);
     } catch (e) {
-      detailEl.innerHTML = `<div style="padding:20px; color:#ef4444; font-size:14px;">Ошибка загрузки: ${esc(e.message || 'неизвестная ошибка')}</div>`;
+      detailEl.innerHTML = `<div style="padding:20px; color:var(--err-t); font-size:14px;">Ошибка загрузки: ${esc(e.message || 'неизвестная ошибка')}</div>`;
     }
   }
 
@@ -506,11 +506,11 @@ window.AsgardMailboxPage = (function(){
           <!-- Action Buttons -->
           <div style="display:flex; gap:8px; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border);">
             ${['new','ai_processed','under_review'].includes(app.status) ? `
-              <button class="app-action-btn" data-app-action="accept" style="padding:8px 16px; border-radius:6px; border:none; background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; font-weight:700; cursor:pointer; font-size:12px;">Принять</button>
-              <button class="app-action-btn" data-app-action="reject" style="padding:8px 16px; border-radius:6px; border:none; background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; font-weight:700; cursor:pointer; font-size:12px;">Отклонить</button>
+              <button class="app-action-btn" data-app-action="accept" style="padding:8px 16px; border-radius:6px; border:none; background:var(--grad-green, linear-gradient(135deg,var(--ok),var(--ok))); color:#fff; font-weight:700; cursor:pointer; font-size:12px;">Принять</button>
+              <button class="app-action-btn" data-app-action="reject" style="padding:8px 16px; border-radius:6px; border:none; background:var(--grad-red, linear-gradient(135deg,var(--red),var(--red-h))); color:#fff; font-weight:700; cursor:pointer; font-size:12px;">Отклонить</button>
             ` : ''}
             ${['new','ai_processed'].includes(app.status) ? `
-              <button class="app-action-btn" data-app-action="review" style="padding:8px 16px; border-radius:6px; border:none; background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; font-weight:700; cursor:pointer; font-size:12px;">На рассмотрение</button>
+              <button class="app-action-btn" data-app-action="review" style="padding:8px 16px; border-radius:6px; border:none; background:var(--grad-blue); color:#fff; font-weight:700; cursor:pointer; font-size:12px;">На рассмотрение</button>
             ` : ''}
             <button class="app-action-btn" data-app-action="reanalyze" style="padding:8px 16px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); font-weight:600; cursor:pointer; font-size:12px;">Переанализировать</button>
             ${app.status !== 'archived' ? '<button class="app-action-btn" data-app-action="archive" style="padding:8px 16px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); cursor:pointer; font-size:12px;">В архив</button>' : ''}
@@ -575,7 +575,7 @@ window.AsgardMailboxPage = (function(){
 
       <!-- Body (sandboxed iframe to prevent XSS from email HTML) -->
       <div style="padding:20px 24px; flex:1;">
-        <iframe id="mail-body-frame" sandbox="allow-same-origin" style="background:#fff; border-radius:6px; border:none; width:100%; min-height:200px; color:#1e293b; font-size:14px; line-height:1.6;"></iframe>
+        <iframe id="mail-body-frame" sandbox="allow-same-origin" style="background:#fff; border-radius:6px; border:none; width:100%; min-height:200px; color:var(--bg3); font-size:14px; line-height:1.6;"></iframe>
       </div>
 
       <!-- Attachments -->
@@ -613,13 +613,13 @@ window.AsgardMailboxPage = (function(){
     // Inject email body into sandboxed iframe
     const bodyFrame = detailEl.querySelector('#mail-body-frame');
     if (bodyFrame) {
-      const bodyContent = e.body_html || esc(e.body_text || '').replace(/\n/g, '<br>').replace(/ {2}/g, '&nbsp; ') || '<em style="color:#94a3b8;">Пустое письмо</em>';
+      const bodyContent = e.body_html || esc(e.body_text || '').replace(/\n/g, '<br>').replace(/ {2}/g, '&nbsp; ') || '<em style="color:var(--t2);">Пустое письмо</em>';
       bodyFrame.addEventListener('load', function onLoad() {
         bodyFrame.removeEventListener('load', onLoad);
         try {
           const doc = bodyFrame.contentDocument;
           doc.open();
-          doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:16px;font-family:system-ui,sans-serif;font-size:14px;line-height:1.6;color:#1e293b}img{max-width:100%}</style></head><body>' + bodyContent + '</body></html>');
+          doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:16px;font-family:system-ui,sans-serif;font-size:14px;line-height:1.6;color:var(--bg3)}img{max-width:100%}</style></head><body>' + bodyContent + '</body></html>');
           doc.close();
           // Auto-resize iframe to content height
           bodyFrame.style.height = (doc.body.scrollHeight + 40) + 'px';
@@ -942,8 +942,8 @@ window.AsgardMailboxPage = (function(){
     const email = state.emails.find(e => e.id === emailId);
     if (!email) return;
 
-    const aiColorMap = { green: '#4ade80', yellow: '#fbbf24', red: '#f87171' };
-    const colorHex = email.ai_color ? (aiColorMap[email.ai_color] || '#94a3b8') : '#94a3b8';
+    const aiColorMap = { green: 'var(--ok-t)', yellow: '#fbbf24', red: 'var(--err-t)' };
+    const colorHex = email.ai_color ? (aiColorMap[email.ai_color] || 'var(--t2)') : 'var(--t2)';
     const colorLabel = { green: 'Зелёный — заявка на работу', yellow: 'Жёлтый — требует внимания', red: 'Красный — спам/неважное' };
 
     // Build popup content

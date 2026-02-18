@@ -99,7 +99,7 @@ window.AsgardHrRatingPage=(function(){
       <div class="panel">
         <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
           <div>
-            <div class="kpi"><span class="dot" style="background:#22c55e"></span>Рейтинг дружины</div>
+            <div class="kpi"><span class="dot" style="background:var(--ok-t)"></span>Рейтинг дружины</div>
             <div class="help">Оценки РП 1–10. Средний балл = сумма/кол-во оценок. Фильтр по допускам — из настроек.</div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
@@ -130,7 +130,7 @@ window.AsgardHrRatingPage=(function(){
             <tbody>
               ${rows.map((e,idx)=>{
                 const avg = e.rating_avg_calc;
-                const dot = (avg==null) ? "#64748b" : (avg>=8?"#22c55e":(avg>=6?"#f59e0b":"#ef4444"));
+                const dot = (avg==null) ? "var(--t2)" : (avg>=8?"var(--ok-t)":(avg>=6?"var(--amber)":"var(--err-t)"));
                 const when = e.last_review_at ? new Date(e.last_review_at).toLocaleDateString("ru-RU") : "—";
                 return `
                   <tr>

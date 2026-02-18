@@ -5,12 +5,12 @@ window.AsgardCalendarPage = (function(){
   const DAYS_RU = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
   
   const EVENT_TYPES = [
-    {code: 'meeting', label: 'Совещание', color: '#2563eb'},
-    {code: 'call', label: 'Звонок', color: '#8b5cf6'},
-    {code: 'visit', label: 'Встреча с клиентом', color: '#16a34a'},
-    {code: 'deadline', label: 'Дедлайн', color: '#dc2626'},
-    {code: 'reminder', label: 'Напоминание', color: '#f59e0b'},
-    {code: 'other', label: 'Другое', color: '#64748b'}
+    {code: 'meeting', label: 'Совещание', color: 'var(--blue-l)'},
+    {code: 'call', label: 'Звонок', color: 'var(--purple)'},
+    {code: 'visit', label: 'Встреча с клиентом', color: 'var(--ok)'},
+    {code: 'deadline', label: 'Дедлайн', color: 'var(--red)'},
+    {code: 'reminder', label: 'Напоминание', color: 'var(--amber)'},
+    {code: 'other', label: 'Другое', color: 'var(--t2)'}
   ];
   
   function ymd(d) {

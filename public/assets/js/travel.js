@@ -6,18 +6,18 @@ window.AsgardTravelPage = (function(){
 
   // Типы расходов
   const EXPENSE_TYPES = [
-    { key: 'housing', label: 'Жильё', icon: '🏠', color: '#3b82f6' },
-    { key: 'flight', label: 'Авиабилет', icon: '✈️', color: '#8b5cf6' },
-    { key: 'train', label: 'Ж/Д билет', icon: '🚂', color: '#06b6d4' },
-    { key: 'hotel', label: 'Гостиница', icon: '🏨', color: '#f59e0b' },
-    { key: 'transfer', label: 'Трансфер', icon: '🚐', color: '#10b981' }
+    { key: 'housing', label: 'Жильё', icon: '🏠', color: 'var(--info)' },
+    { key: 'flight', label: 'Авиабилет', icon: '✈️', color: 'var(--purple)' },
+    { key: 'train', label: 'Ж/Д билет', icon: '🚂', color: 'var(--cyan)' },
+    { key: 'hotel', label: 'Гостиница', icon: '🏨', color: 'var(--amber)' },
+    { key: 'transfer', label: 'Трансфер', icon: '🚐', color: 'var(--ok)' }
   ];
 
   function isoNow(){ return new Date().toISOString(); }
   function today(){ return new Date().toISOString().slice(0,10); }
 
   function getTypeInfo(key){
-    return EXPENSE_TYPES.find(t => t.key === key) || { label: key, icon: '💰', color: '#888' };
+    return EXPENSE_TYPES.find(t => t.key === key) || { label: key, icon: '💰', color: 'var(--t3)' };
   }
 
   function fmtMoney(n){
@@ -193,7 +193,7 @@ window.AsgardTravelPage = (function(){
           </div>
 
           <div class="travel-kpi">
-            <div class="travel-kpi-card" style="--card-accent:#f2d08a">
+            <div class="travel-kpi-card" style="--card-accent:var(--gold-l)">
               <div class="travel-kpi-label">Всего расходов</div>
               <div class="travel-kpi-value" style="color:var(--gold)">${fmtMoney(stats.total)}</div>
               <div class="travel-kpi-icon">💰</div>

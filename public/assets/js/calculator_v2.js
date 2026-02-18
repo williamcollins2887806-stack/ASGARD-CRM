@@ -293,7 +293,7 @@
   }
   
   function tabTotals(st, s, sum) {
-    const col = { red: '#e03a4a', yellow: '#f59e0b', green: '#22c55e' };
+    const col = { red: '#e03a4a', yellow: 'var(--amber)', green: 'var(--ok-t)' };
     const lbl = { red: '🔴 КРАСНАЯ', yellow: '🟡 ЖЁЛТАЯ', green: '🟢 ЗЕЛЁНАЯ' };
     return `<div class="csec"><h3>📊 Себестоимость</h3>
       <table class="tbl"><tbody>
@@ -380,7 +380,7 @@
       <div id="tabContent">${content}</div>
       <div style="margin-top:16px;padding:12px;background:rgba(13,20,40,.5);border-radius:6px;display:flex;justify-content:space-between">
         <div><span style="color:var(--muted)">Цена с НДС:</span> <b style="font-size:18px;color:var(--gold)">${money(sum.price_with_vat)}</b></div>
-        <div><span style="color:var(--muted)">Прибыль/чел-день:</span> <b style="font-size:18px;color:${sum.status==='green'?'#22c55e':sum.status==='yellow'?'#f59e0b':'#e03a4a'}">${money(sum.profit_per_day)}</b></div>
+        <div><span style="color:var(--muted)">Прибыль/чел-день:</span> <b style="font-size:18px;color:${sum.status==='green'?'var(--ok-t)':sum.status==='yellow'?'var(--amber)':'#e03a4a'}">${money(sum.profit_per_day)}</b></div>
       </div>`;
       
       showModal("Калькулятор просчёта", html, { wide: true });
@@ -528,7 +528,7 @@
             </div>
             <div>
               <span style="color:var(--muted)">Прибыль/чел-день:</span>
-              <b style="font-size:18px;color:${sum.status==='green'?'#22c55e':sum.status==='yellow'?'#f59e0b':'#e03a4a'}">${money(sum.profit_per_day)}</b>
+              <b style="font-size:18px;color:${sum.status==='green'?'var(--ok-t)':sum.status==='yellow'?'var(--amber)':'#e03a4a'}">${money(sum.profit_per_day)}</b>
             </div>
           </div>
         </div>`;

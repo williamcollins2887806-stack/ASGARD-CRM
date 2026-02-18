@@ -21,7 +21,7 @@ window.AsgardBackupPage=(function(){
 
     const body = `
       <div class="card">
-        <div class="kpi"><span class="dot" style="background:#38bdf8"></span> Камень Хроник • Резерв</div>
+        <div class="kpi"><span class="dot" style="background:var(--info-t)"></span> Камень Хроник • Резерв</div>
         <div class="help">Экспорт и импорт базы CRM одним JSON-файлом. Для тестов и переноса на другой ПК.</div>
         <hr class="hr"/>
 

@@ -16,11 +16,11 @@ window.AsgardTasksAdminPage = (function() {
   };
 
   const STATUS_COLORS = {
-    new: '#eab308',
-    accepted: '#3b82f6',
-    in_progress: '#f97316',
-    done: '#22c55e',
-    overdue: '#ef4444'
+    new: 'var(--amber)',
+    accepted: 'var(--info)',
+    in_progress: 'var(--orange)',
+    done: 'var(--ok-t)',
+    overdue: 'var(--err-t)'
   };
 
   function getStatusClass(status) {
@@ -40,10 +40,10 @@ window.AsgardTasksAdminPage = (function() {
   };
 
   const PRIORITY_COLORS = {
-    urgent: '#ef4444',
-    high: '#f97316',
-    normal: '#3b82f6',
-    low: '#6b7280'
+    urgent: 'var(--err-t)',
+    high: 'var(--orange)',
+    normal: 'var(--info)',
+    low: 'var(--t2)'
   };
 
   let allTasks = [];
@@ -863,7 +863,7 @@ window.AsgardTasksAdminPage = (function() {
       }
 
       .overdue-text {
-        color: #ef4444 !important;
+        color: var(--err-t) !important;
         font-weight: 600;
       }
 
@@ -894,7 +894,7 @@ window.AsgardTasksAdminPage = (function() {
       }
 
       .error {
-        color: #ef4444;
+        color: var(--err-t);
       }
 
       /* Modal */

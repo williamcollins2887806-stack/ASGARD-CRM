@@ -23,20 +23,20 @@ window.AsgardWarehouse = (function(){
   
   // Статусы оборудования
   const STATUS_MAP = {
-    'on_warehouse': { label: 'На складе', color: '#22c55e', icon: '📦' },
-    'issued': { label: 'Выдано', color: '#3b82f6', icon: '👷' },
-    'in_transit': { label: 'В пути', color: '#f59e0b', icon: '🚚' },
-    'repair': { label: 'Ремонт', color: '#ef4444', icon: '🔧' },
-    'broken': { label: 'Сломано', color: '#dc2626', icon: '❌' },
-    'written_off': { label: 'Списано', color: '#6b7280', icon: '🗑️' }
+    'on_warehouse': { label: 'На складе', color: 'var(--ok-t)', icon: '📦' },
+    'issued': { label: 'Выдано', color: 'var(--info)', icon: '👷' },
+    'in_transit': { label: 'В пути', color: 'var(--amber)', icon: '🚚' },
+    'repair': { label: 'Ремонт', color: 'var(--err-t)', icon: '🔧' },
+    'broken': { label: 'Сломано', color: 'var(--red)', icon: '❌' },
+    'written_off': { label: 'Списано', color: 'var(--t2)', icon: '🗑️' }
   };
   
   const CONDITION_MAP = {
-    'new': { label: 'Новое', color: '#22c55e' },
-    'good': { label: 'Хорошее', color: '#3b82f6' },
-    'satisfactory': { label: 'Удовл.', color: '#f59e0b' },
-    'poor': { label: 'Плохое', color: '#ef4444' },
-    'broken': { label: 'Сломано', color: '#dc2626' }
+    'new': { label: 'Новое', color: 'var(--ok-t)' },
+    'good': { label: 'Хорошее', color: 'var(--info)' },
+    'satisfactory': { label: 'Удовл.', color: 'var(--amber)' },
+    'poor': { label: 'Плохое', color: 'var(--err-t)' },
+    'broken': { label: 'Сломано', color: 'var(--red)' }
   };
   
   // Форматирование
@@ -251,9 +251,9 @@ window.AsgardWarehouse = (function(){
           border: 1px solid var(--border);
         }
         
-        .stat-card.green { border-left: 4px solid #22c55e; }
-        .stat-card.blue { border-left: 4px solid #3b82f6; }
-        .stat-card.orange { border-left: 4px solid #f59e0b; }
+        .stat-card.green { border-left: 4px solid var(--ok-t); }
+        .stat-card.blue { border-left: 4px solid var(--info); }
+        .stat-card.orange { border-left: 4px solid var(--amber); }
         
         .stat-icon { font-size: 32px; }
         .stat-value { font-size: 24px; font-weight: 700; color: var(--text); }
@@ -283,7 +283,7 @@ window.AsgardWarehouse = (function(){
         .pending-requests {
           padding: 16px;
           margin-bottom: 20px;
-          border-left: 4px solid #f59e0b;
+          border-left: 4px solid var(--amber);
         }
         
         .pending-requests h3 {
@@ -346,10 +346,10 @@ window.AsgardWarehouse = (function(){
           transition: all 0.2s;
         }
         
-        .action-btn.issue { background: #22c55e; color: white; }
-        .action-btn.return { background: #3b82f6; color: white; }
-        .action-btn.transfer { background: #f59e0b; color: white; }
-        .action-btn.repair { background: #ef4444; color: white; }
+        .action-btn.issue { background: var(--ok-t); color: white; }
+        .action-btn.return { background: var(--info); color: white; }
+        .action-btn.transfer { background: var(--amber); color: white; }
+        .action-btn.repair { background: var(--err-t); color: white; }
         
         @media (max-width: 768px) {
           .warehouse-stats { grid-template-columns: repeat(2, 1fr); }
@@ -1410,7 +1410,7 @@ window.AsgardWarehouse = (function(){
     } else {
       // Fallback - показываем данные
       container.innerHTML = `
-        <div style="padding:20px;background:#f0f0f0;border-radius:6px;font-family:monospace;font-size:12px">
+        <div style="padding:20px;background:var(--bg3);border-radius:6px;font-family:monospace;font-size:12px">
           ${esc(qrData)}
         </div>
         <p style="font-size:11px;color:var(--text-muted);margin-top:8px">

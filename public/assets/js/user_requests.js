@@ -104,10 +104,10 @@ window.AsgardUserRequestsPage = (function(){
           .ur-info h3 { margin:0 0 6px; font-size:16px; display:flex; align-items:center; gap:8px; }
           .ur-role { 
             font-size:10px; padding:3px 8px; border-radius:6px; 
-            background:rgba(59,130,246,.2); color:#60a5fa;
+            background:rgba(59,130,246,.2); color:var(--info-t);
             font-weight:800;
           }
-          .ur-role.admin { background:rgba(239,68,68,.2); color:#f87171; }
+          .ur-role.admin { background:rgba(239,68,68,.2); color:var(--err-t); }
           .ur-role.director { background:rgba(242,208,138,.2); color:var(--gold); }
           
           .ur-meta { display:flex; flex-wrap:wrap; gap:12px; color:var(--muted); font-size:12px; }

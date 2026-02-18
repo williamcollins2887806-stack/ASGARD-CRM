@@ -131,7 +131,7 @@ window.AsgardEmailCompose = (function(){
                       padding:8px 12px; background:rgba(212,168,70,0.08);
                       border:1px solid rgba(212,168,70,0.25); border-radius:6px">
             <span style="font-size:12px; color:var(--text-muted);">Рег. номер:</span>
-            <span style="font-weight:700; color:#D4A846; font-family:var(--font-mono); font-size:13px">${esc(previewNumber)}</span>
+            <span style="font-weight:700; color:var(--gold); font-family:var(--font-mono); font-size:13px">${esc(previewNumber)}</span>
             <span style="font-size:11px; color:var(--text-muted)">(присвоится при отправке)</span>
           </div>
           ` : ''}

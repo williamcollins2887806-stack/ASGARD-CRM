@@ -25,9 +25,9 @@ window.AsgardInboxApplicationsPage = (function(){
   };
 
   const COLOR_MAP = {
-    green:  { bg: '#16a34a22', border: '#16a34a', icon: '🟢', label: 'Наш профиль' },
-    yellow: { bg: '#eab30822', border: '#eab308', icon: '🟡', label: 'Требует оценки' },
-    red:    { bg: '#dc262622', border: '#dc2626', icon: '🔴', label: 'Не наш профиль' }
+    green:  { bg: '#16a34a22', border: 'var(--ok)', icon: '🟢', label: 'Наш профиль' },
+    yellow: { bg: '#eab30822', border: 'var(--amber)', icon: '🟡', label: 'Требует оценки' },
+    red:    { bg: '#dc262622', border: 'var(--red)', icon: '🔴', label: 'Не наш профиль' }
   };
 
   let currentFilter = { status: '', color: '', search: '' };
@@ -99,19 +99,19 @@ window.AsgardInboxApplicationsPage = (function(){
         .inbox-card .ic-subject{font-weight:700;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .inbox-card .ic-meta{font-size:12px;color:var(--text-muted);display:flex;gap:12px;flex-wrap:wrap}
         .inbox-card .ic-ai{font-size:12px;margin-top:8px;padding:8px 12px;border-radius:6px}
-        .badge-info{background:#3b82f622;color:#3b82f6;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
-        .badge-primary{background:#8b5cf622;color:#8b5cf6;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
-        .badge-warning{background:#eab30822;color:#eab308;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
-        .badge-success{background:#16a34a22;color:#16a34a;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
-        .badge-danger{background:#dc262622;color:#dc2626;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
-        .badge-muted{background:#94a3b822;color:#94a3b8;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
+        .badge-info{background:#3b82f622;color:var(--info);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
+        .badge-primary{background:#8b5cf622;color:var(--purple);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
+        .badge-warning{background:#eab30822;color:var(--amber);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
+        .badge-success{background:#16a34a22;color:var(--ok);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
+        .badge-danger{background:#dc262622;color:var(--red);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
+        .badge-muted{background:#94a3b822;color:var(--t2);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
         .inbox-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
         .inbox-actions .btn{min-width:120px;padding:10px 20px;font-size:13px;font-weight:700;letter-spacing:.3px}
-        .inbox-actions .btn.success{background:linear-gradient(135deg,#16a34a,#15803d);border-color:#16a34a;color:#fff}
+        .inbox-actions .btn.success{background:var(--grad-green, linear-gradient(135deg,var(--ok),var(--ok)));border-color:var(--ok);color:#fff}
         .inbox-actions .btn.success:hover{box-shadow:0 4px 15px rgba(22,163,74,.35);transform:translateY(-1px)}
-        .inbox-actions .btn.danger{background:linear-gradient(135deg,#dc2626,#b91c1c);border-color:#dc2626;color:#fff}
+        .inbox-actions .btn.danger{background:var(--grad-red, linear-gradient(135deg,var(--red),var(--red-h)));border-color:var(--red);color:#fff}
         .inbox-actions .btn.danger:hover{box-shadow:0 4px 15px rgba(220,38,38,.35);transform:translateY(-1px)}
-        .inbox-actions .btn.secondary{background:linear-gradient(135deg,#3b82f6,#2563eb);border-color:#3b82f6;color:#fff}
+        .inbox-actions .btn.secondary{background:var(--grad-blue);border-color:var(--info);color:#fff}
         .inbox-actions .btn.secondary:hover{box-shadow:0 4px 15px rgba(59,130,246,.35);transform:translateY(-1px)}
       </style>
     `;
@@ -144,10 +144,10 @@ window.AsgardInboxApplicationsPage = (function(){
       const s = data.stats;
       el.innerHTML = `
         <div class="inbox-stat"><div class="val" style="color:var(--gold)">${s.total || 0}</div><div class="lbl">Всего</div></div>
-        <div class="inbox-stat"><div class="val" style="color:#3b82f6">${(s.byStatus?.new || 0) + (s.byStatus?.ai_processed || 0)}</div><div class="lbl">Новые</div></div>
-        <div class="inbox-stat"><div class="val" style="color:#16a34a">${s.byColor?.green || 0}</div><div class="lbl">🟢 Зелёные</div></div>
-        <div class="inbox-stat"><div class="val" style="color:#eab308">${s.byColor?.yellow || 0}</div><div class="lbl">🟡 Жёлтые</div></div>
-        <div class="inbox-stat"><div class="val" style="color:#dc2626">${s.byColor?.red || 0}</div><div class="lbl">🔴 Красные</div></div>
+        <div class="inbox-stat"><div class="val" style="color:var(--info)">${(s.byStatus?.new || 0) + (s.byStatus?.ai_processed || 0)}</div><div class="lbl">Новые</div></div>
+        <div class="inbox-stat"><div class="val" style="color:var(--ok)">${s.byColor?.green || 0}</div><div class="lbl">🟢 Зелёные</div></div>
+        <div class="inbox-stat"><div class="val" style="color:var(--amber)">${s.byColor?.yellow || 0}</div><div class="lbl">🟡 Жёлтые</div></div>
+        <div class="inbox-stat"><div class="val" style="color:var(--red)">${s.byColor?.red || 0}</div><div class="lbl">🔴 Красные</div></div>
         <div class="inbox-stat"><div class="val">${s.recentWeek || 0}</div><div class="lbl">За неделю</div></div>
       `;
     } catch(e) { el.innerHTML = ''; }

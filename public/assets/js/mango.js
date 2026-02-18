@@ -231,7 +231,7 @@ window.AsgardMango = (function(){
         }
         
         .call-toggle-switch input:checked + .call-toggle-slider {
-          background: linear-gradient(135deg, var(--green), #15803d);
+          background: linear-gradient(135deg, var(--green), var(--ok));
           border-color: var(--green);
         }
         
@@ -352,7 +352,7 @@ window.AsgardMango = (function(){
         }
         
         .call-popup-content {
-          background: linear-gradient(135deg, #1a1a2e, #0d1428);
+          background: linear-gradient(135deg, var(--bg2), #0d1428);
           border: 2px solid var(--green);
           border-radius: 6px;
           padding: 20px;
@@ -377,7 +377,7 @@ window.AsgardMango = (function(){
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          background: linear-gradient(135deg, var(--green), #15803d);
+          background: linear-gradient(135deg, var(--green), var(--ok));
           display: flex;
           align-items: center;
           justify-content: center;
@@ -439,7 +439,7 @@ window.AsgardMango = (function(){
         
         .call-accept {
           flex: 1;
-          background: linear-gradient(135deg, var(--green), #15803d) !important;
+          background: linear-gradient(135deg, var(--green), var(--ok)) !important;
           border: none !important;
           color: #fff !important;
           padding: 14px !important;
@@ -452,7 +452,7 @@ window.AsgardMango = (function(){
         
         .call-reject {
           flex: 1;
-          background: linear-gradient(135deg, var(--red), #b91c1c) !important;
+          background: linear-gradient(135deg, var(--red), var(--red-h)) !important;
           border: none !important;
           color: #fff !important;
           padding: 14px !important;

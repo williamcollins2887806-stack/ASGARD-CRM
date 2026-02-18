@@ -16,11 +16,11 @@ window.AsgardObjectMap = (function() {
   // PIN COLORS BY STATUS
   // ═════════════════════════════════════════════════════════════
   const PIN_COLORS = {
-    active:   '#22c55e',
-    tender:   '#f59e0b',
-    done:     '#94a3b8',
-    pending:  '#ef4444',
-    unknown:  '#3b82f6'
+    active:   'var(--ok-t)',
+    tender:   'var(--amber)',
+    done:     'var(--t2)',
+    pending:  'var(--err-t)',
+    unknown:  'var(--info)'
   };
 
   function getSiteStatus(site) {
@@ -216,11 +216,11 @@ window.AsgardObjectMap = (function() {
         const popupContent = `
           <div style="min-width:200px;font-family:Inter,sans-serif">
             <div style="font-weight:700;font-size:14px;margin-bottom:4px">${esc(s.name)}</div>
-            <div style="font-size:12px;color:#666;margin-bottom:8px">${esc(s.customer_name || '')}</div>
+            <div style="font-size:12px;color:var(--t2);margin-bottom:8px">${esc(s.customer_name || '')}</div>
             <div style="font-size:12px">
               Работ: <b>${s.works_count || 0}</b> · Активных: <b style="color:${color}">${s.active_works || 0}</b>
             </div>
-            ${s.region ? `<div style="font-size:11px;color:#999;margin-top:4px">${esc(s.region)}</div>` : ''}
+            ${s.region ? `<div style="font-size:11px;color:var(--t3);margin-top:4px">${esc(s.region)}</div>` : ''}
           </div>
         `;
         marker.bindPopup(popupContent);

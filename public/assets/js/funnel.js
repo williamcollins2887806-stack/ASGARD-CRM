@@ -3,13 +3,13 @@ window.AsgardFunnelPage = (function(){
   
   // Стадии воронки
   const STAGES = [
-    {id: 'draft', label: 'Черновики', color: '#94a3b8', statuses: ['Черновик']},
-    {id: 'new', label: 'Новые', color: '#64748b', statuses: ['Новый', 'Получен']},
-    {id: 'calc', label: 'В просчёте', color: '#2563eb', statuses: ['В просчёте', 'На просчёте']},
-    {id: 'tkp', label: 'КП отправлено', color: '#8b5cf6', statuses: ['КП отправлено', 'ТКП отправлено', 'Согласование ТКП']},
-    {id: 'negotiation', label: 'Переговоры', color: '#f59e0b', statuses: ['Переговоры', 'На согласовании', 'ТКП согласовано']},
-    {id: 'won', label: 'Выиграли', color: '#16a34a', statuses: ['Выиграли', 'Клиент согласился', 'Контракт']},
-    {id: 'lost', label: 'Проиграли', color: '#dc2626', statuses: ['Проиграли', 'Клиент отказался', 'Отказ']}
+    {id: 'draft', label: 'Черновики', color: 'var(--t2)', statuses: ['Черновик']},
+    {id: 'new', label: 'Новые', color: 'var(--t2)', statuses: ['Новый', 'Получен']},
+    {id: 'calc', label: 'В просчёте', color: 'var(--blue-l)', statuses: ['В просчёте', 'На просчёте']},
+    {id: 'tkp', label: 'КП отправлено', color: 'var(--purple)', statuses: ['КП отправлено', 'ТКП отправлено', 'Согласование ТКП']},
+    {id: 'negotiation', label: 'Переговоры', color: 'var(--amber)', statuses: ['Переговоры', 'На согласовании', 'ТКП согласовано']},
+    {id: 'won', label: 'Выиграли', color: 'var(--ok)', statuses: ['Выиграли', 'Клиент согласился', 'Контракт']},
+    {id: 'lost', label: 'Проиграли', color: 'var(--red)', statuses: ['Проиграли', 'Клиент отказался', 'Отказ']}
   ];
   
   function getStageForStatus(status) {

@@ -5,12 +5,12 @@
 window.AsgardTkpFollowup = (function(){
   
   const FOLLOWUP_STATUSES = {
-    ok: { label: 'Цена устроила / готовы дальше', color: '#22c55e' },
-    expensive: { label: 'Дорого / отказ', color: '#ef4444' },
-    thinking: { label: 'Думают / вернутся позже', color: '#f59e0b' },
-    rework: { label: 'Нужны правки ТКП', color: '#3b82f6' },
-    no_answer: { label: 'Не дозвонился', color: '#8b5cf6' },
-    other: { label: 'Прочее', color: '#64748b' }
+    ok: { label: 'Цена устроила / готовы дальше', color: 'var(--ok-t)' },
+    expensive: { label: 'Дорого / отказ', color: 'var(--err-t)' },
+    thinking: { label: 'Думают / вернутся позже', color: 'var(--amber)' },
+    rework: { label: 'Нужны правки ТКП', color: 'var(--info)' },
+    no_answer: { label: 'Не дозвонился', color: 'var(--purple)' },
+    other: { label: 'Прочее', color: 'var(--t2)' }
   };
 
   const DIRECTOR_ROLES = ['DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];

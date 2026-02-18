@@ -31,11 +31,11 @@ window.AsgardMyEquipment = (function(){
     } catch(e) {}
     
     const CONDITIONS = {
-      'new': { label: 'Новое', color: '#22c55e' },
-      'good': { label: 'Хорошее', color: '#3b82f6' },
-      'satisfactory': { label: 'Удовл.', color: '#f59e0b' },
-      'poor': { label: 'Плохое', color: '#f97316' },
-      'broken': { label: 'Сломано', color: '#ef4444' }
+      'new': { label: 'Новое', color: 'var(--ok-t)' },
+      'good': { label: 'Хорошее', color: 'var(--info)' },
+      'satisfactory': { label: 'Удовл.', color: 'var(--amber)' },
+      'poor': { label: 'Плохое', color: 'var(--orange)' },
+      'broken': { label: 'Сломано', color: 'var(--err-t)' }
     };
     
     const html = `

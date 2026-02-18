@@ -7,8 +7,8 @@ window.AsgardCorrespondencePage = (function(){
 
   // Направления
   const DIRECTIONS = {
-    incoming: { label: 'Входящее', icon: '📥', color: '#3b82f6' },
-    outgoing: { label: 'Исходящее', icon: '📤', color: '#22c55e' }
+    incoming: { label: 'Входящее', icon: '📥', color: 'var(--info)' },
+    outgoing: { label: 'Исходящее', icon: '📤', color: 'var(--ok-t)' }
   };
 
   // Типы документов
@@ -231,8 +231,8 @@ window.AsgardCorrespondencePage = (function(){
             padding:5px 10px; border-radius:6px; 
             font-size:11px; font-weight:700;
           }
-          .corr-dir.incoming { background:rgba(59,130,246,.15); color:#60a5fa; }
-          .corr-dir.outgoing { background:rgba(34,197,94,.15); color:#4ade80; }
+          .corr-dir.incoming { background:rgba(59,130,246,.15); color:var(--info-t); }
+          .corr-dir.outgoing { background:rgba(34,197,94,.15); color:var(--ok-t); }
           
           /* Type badge */
           .corr-type { font-size:12px; display:flex; align-items:center; gap:4px; }
@@ -321,12 +321,12 @@ window.AsgardCorrespondencePage = (function(){
             </div>
             <div class="corr-kpi-card">
               <div class="corr-kpi-label">Входящие</div>
-              <div class="corr-kpi-value" style="color:#60a5fa">${stats.incoming}</div>
+              <div class="corr-kpi-value" style="color:var(--info-t)">${stats.incoming}</div>
               <div class="corr-kpi-icon">📥</div>
             </div>
             <div class="corr-kpi-card">
               <div class="corr-kpi-label">Исходящие</div>
-              <div class="corr-kpi-value" style="color:#4ade80">${stats.outgoing}</div>
+              <div class="corr-kpi-value" style="color:var(--ok-t)">${stats.outgoing}</div>
               <div class="corr-kpi-icon">📤</div>
             </div>
           </div>
@@ -472,7 +472,7 @@ window.AsgardCorrespondencePage = (function(){
           <div><label>Дата</label><input id="corr_date" type="date" value="${today()}"/></div>
           <div>
             <label>Номер ${isOutgoing ? '(авто: АС-ИСХ-ГГГГ-NNNNNN)' : ''}</label>
-            <input id="corr_number" value="${esc(autoNumber)}" ${isOutgoing ? 'readonly style="background:rgba(212,175,55,.15);color:#D4AF37;font-weight:600"' : ''}/>
+            <input id="corr_number" value="${esc(autoNumber)}" ${isOutgoing ? 'readonly style="background:rgba(212,175,55,.15);color:var(--gold);font-weight:600"' : ''}/>
           </div>
           <div><label>Тип документа</label>
             <select id="corr_type">

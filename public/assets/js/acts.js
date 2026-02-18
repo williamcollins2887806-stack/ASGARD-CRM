@@ -42,10 +42,10 @@ window.AsgardActsPage = (function(){
     await loadData();
     
     const STATUSES = {
-      'draft': { label: 'Черновик', color: '#6b7280' },
-      'sent': { label: 'Отправлен', color: '#3b82f6' },
-      'signed': { label: 'Подписан', color: '#22c55e' },
-      'paid': { label: 'Оплачен', color: '#10b981' }
+      'draft': { label: 'Черновик', color: 'var(--t2)' },
+      'sent': { label: 'Отправлен', color: 'var(--info)' },
+      'signed': { label: 'Подписан', color: 'var(--ok-t)' },
+      'paid': { label: 'Оплачен', color: 'var(--ok)' }
     };
     
     const formatMoney = n => (n||0).toLocaleString('ru-RU') + ' ₽';

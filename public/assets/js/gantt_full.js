@@ -92,7 +92,7 @@ window.AsgardGanttFullPage=(function(){
       <div class="card">
         <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
           <div>
-            <div class="kpi"><span class="dot" style="background:#3b82f6"></span> Гантт • Просчёты</div>
+            <div class="kpi"><span class="dot" style="background:var(--info)"></span> Гантт • Просчёты</div>
             <div class="help">Шкала: недели. Линия «сегодня» отмечает текущую дату. Старт: ${esc(core.gantt_start_iso ? core.gantt_start_iso.slice(0,10) : "2026-01-01"||"2026-01-01")}.</div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
@@ -304,7 +304,7 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
       <div class="card">
         <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
           <div>
-            <div class="kpi"><span class="dot" style="background:#ef4444"></span> Гантт • Работы</div>
+            <div class="kpi"><span class="dot" style="background:var(--err-t)"></span> Гантт • Работы</div>
             <div class="help">Шкала: недели. Линия «сегодня». Старт: ${esc(core.gantt_start_iso ? core.gantt_start_iso.slice(0,10) : "2026-01-01"||"2026-01-01")}.</div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
@@ -439,7 +439,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
         startIso,
         weeks,
         rows,
-        getColor: (r)=> statusColors[r.status] || "#ef4444"
+        getColor: (r)=> statusColors[r.status] || "var(--err-t)"
       });
       $("#g").innerHTML=html;
 
@@ -525,13 +525,13 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
         <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
           <div>
             <div class="kpi">
-              <span class="dot" style="background:#3b82f6;border:2px dashed #60a5fa"></span>
-              <span class="dot" style="background:#22c55e;margin-left:4px"></span>
+              <span class="dot" style="background:var(--info);border:2px dashed var(--info-t)"></span>
+              <span class="dot" style="background:var(--ok-t);margin-left:4px"></span>
               Гантт — Единая шкала
             </div>
             <div class="help">
-              <span style="display:inline-block;width:12px;height:12px;background:#3b82f6;border:2px dashed #60a5fa;border-radius:2px;vertical-align:middle"></span> Просчёты (тендеры)
-              <span style="display:inline-block;width:12px;height:12px;background:#22c55e;border-radius:2px;vertical-align:middle;margin-left:12px"></span> Работы (контракты)
+              <span style="display:inline-block;width:12px;height:12px;background:var(--info);border:2px dashed var(--info-t);border-radius:2px;vertical-align:middle"></span> Просчёты (тендеры)
+              <span style="display:inline-block;width:12px;height:12px;background:var(--ok-t);border-radius:2px;vertical-align:middle;margin-left:12px"></span> Работы (контракты)
             </div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
@@ -711,8 +711,8 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
         return da - db;
       });
 
-      const tenderColor = '#3b82f6';
-      const workColor = '#22c55e';
+      const tenderColor = 'var(--info)';
+      const workColor = 'var(--ok-t)';
       const tenderStatusColors = core.status_colors?.tender || {};
       const workStatusColors = core.status_colors?.work || {};
 

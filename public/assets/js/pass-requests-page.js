@@ -3,12 +3,12 @@ window.AsgardPassRequestsPage = (function() {
   const { $, esc, toast, showModal, hideModal } = AsgardUI;
 
   const STATUS_MAP = {
-    draft: { label: 'Черновик', color: '#64748b' },
-    submitted: { label: 'Подана', color: '#3b82f6' },
-    approved: { label: 'Одобрена', color: '#22c55e' },
-    rejected: { label: 'Отклонена', color: '#ef4444' },
-    issued: { label: 'Выдан', color: '#8b5cf6' },
-    expired: { label: 'Просрочен', color: '#f59e0b' }
+    draft: { label: 'Черновик', color: 'var(--t2)' },
+    submitted: { label: 'Подана', color: 'var(--info)' },
+    approved: { label: 'Одобрена', color: 'var(--ok-t)' },
+    rejected: { label: 'Отклонена', color: 'var(--err-t)' },
+    issued: { label: 'Выдан', color: 'var(--purple)' },
+    expired: { label: 'Просрочен', color: 'var(--amber)' }
   };
 
   async function render({ layout, title }) {

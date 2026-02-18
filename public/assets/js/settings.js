@@ -192,7 +192,7 @@ window.AsgardSettingsPage = (function(){
               </div>
               <div>
                 <label>Пример следующего номера</label>
-                <div style="padding:10px;background:rgba(212,175,55,.15);border-radius:6px;font-family:monospace;color:#D4AF37;font-weight:600">
+                <div style="padding:10px;background:rgba(212,175,55,.15);border-radius:6px;font-family:monospace;color:var(--gold);font-weight:600">
                   АС-ИСХ-${new Date().getFullYear()}-${String(app.correspondence_start_number ?? 1).padStart(6,'0')}
                 </div>
               </div>
@@ -397,7 +397,7 @@ window.AsgardSettingsPage = (function(){
         <div class="grid2" style="margin-top:14px">
           <div class="card">
             <h3>🤖 AI-ассистент (YandexGPT)</h3>
-            <div class="help">Настройка подключения к YandexGPT для AI-помощника. Получите ключи в <a href="https://console.cloud.yandex.ru" target="_blank" style="color:#60a5fa">Yandex Cloud Console</a>.</div>
+            <div class="help">Настройка подключения к YandexGPT для AI-помощника. Получите ключи в <a href="https://console.cloud.yandex.ru" target="_blank" style="color:var(--info-t)">Yandex Cloud Console</a>.</div>
             <div class="formrow" style="grid-template-columns:1fr">
               <div>
                 <label for="ai_folder">Folder ID (идентификатор каталога)</label>

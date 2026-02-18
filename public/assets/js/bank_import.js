@@ -240,9 +240,9 @@ window.AsgardBankImport = (function(){
           <div id="import_stats" style="display:none">
             <div class="card" style="padding:12px;display:flex;gap:20px;flex-wrap:wrap">
               <div>📊 Всего: <b id="stat_total">0</b></div>
-              <div style="color:#22c55e">✅ Авто: <b id="stat_auto">0</b></div>
-              <div style="color:#f59e0b">⚠️ Вручную: <b id="stat_manual">0</b></div>
-              <div style="color:#ef4444">🔄 Дубли: <b id="stat_dupes">0</b></div>
+              <div style="color:var(--ok-t)">✅ Авто: <b id="stat_auto">0</b></div>
+              <div style="color:var(--amber)">⚠️ Вручную: <b id="stat_manual">0</b></div>
+              <div style="color:var(--err-t)">🔄 Дубли: <b id="stat_dupes">0</b></div>
             </div>
           </div>
           
@@ -271,9 +271,9 @@ window.AsgardBankImport = (function(){
             </div>
             
             <div class="help" style="margin-top:8px">
-              <span style="color:#22c55e">✅</span> Распознано автоматически &nbsp;
-              <span style="color:#f59e0b">⚠️</span> Требует ручного разнесения &nbsp;
-              <span style="color:#ef4444">🔄</span> Дубль (уже импортировано)
+              <span style="color:var(--ok-t)">✅</span> Распознано автоматически &nbsp;
+              <span style="color:var(--amber)">⚠️</span> Требует ручного разнесения &nbsp;
+              <span style="color:var(--err-t)">🔄</span> Дубль (уже импортировано)
             </div>
           </div>
           
@@ -344,7 +344,7 @@ window.AsgardBankImport = (function(){
             tbody.innerHTML = filtered.slice(0, 100).map((row) => {
               const isIncome = row.type === 'income';
               const opts = isIncome ? incomeOpts : expenseOpts;
-              const amtStyle = isIncome ? 'color:#22c55e' : 'color:#ef4444';
+              const amtStyle = isIncome ? 'color:var(--ok-t)' : 'color:var(--err-t)';
               
               let rowStyle = '';
               let statusIcon = '';
@@ -355,10 +355,10 @@ window.AsgardBankImport = (function(){
                 statusIcon = '🔄';
                 checkDisabled = 'disabled';
               } else if (row.status === 'pending') {
-                rowStyle = 'background:rgba(245,158,11,0.08);border-left:3px solid #f59e0b';
+                rowStyle = 'background:rgba(245,158,11,0.08);border-left:3px solid var(--amber)';
                 statusIcon = '⚠️';
               } else {
-                rowStyle = 'border-left:3px solid #22c55e';
+                rowStyle = 'border-left:3px solid var(--ok-t)';
                 statusIcon = '✅';
               }
               

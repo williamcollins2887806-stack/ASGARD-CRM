@@ -151,7 +151,7 @@ window.AsgardReceiptScanner = (function(){
           position: absolute;
           width: 24px;
           height: 24px;
-          border: 3px solid #f5d78e;
+          border: 3px solid var(--gold-l);
         }
         
         .scanner-corner.tl { top: -3px; left: -3px; border-right: none; border-bottom: none; border-radius: 6px 0 0 0; }
@@ -689,7 +689,7 @@ window.AsgardReceiptScanner = (function(){
           height: 56px;
           border-radius: 50%;
           background: linear-gradient(135deg, #c0392b, #8e2c22);
-          border: 2px solid #f5d78e;
+          border: 2px solid var(--gold-l);
           font-size: 24px;
           cursor: pointer;
           box-shadow: 0 4px 20px rgba(192, 57, 43, 0.4);

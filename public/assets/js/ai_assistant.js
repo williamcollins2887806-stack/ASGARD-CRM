@@ -59,9 +59,9 @@ window.AsgardAI = (function(){
         right: 0;
         width: 14px;
         height: 14px;
-        background: #22c55e;
+        background: var(--ok-t);
         border-radius: 50%;
-        border: 2px solid #1a1a2e;
+        border: 2px solid var(--bg2);
       }
       
       .ai-panel {
@@ -72,7 +72,7 @@ window.AsgardAI = (function(){
         max-width: calc(100vw - 48px);
         height: 500px;
         max-height: calc(100vh - 120px);
-        background: linear-gradient(180deg, #1a1a2e 0%, #16162a 100%);
+        background: linear-gradient(180deg, var(--bg2) 0%, #16162a 100%);
         border-radius: 6px;
         border: 1px solid rgba(192, 57, 43, 0.3);
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -198,7 +198,7 @@ window.AsgardAI = (function(){
       }
       
       .ai-message.assistant a {
-        color: #60a5fa;
+        color: var(--info-t);
       }
       
       .ai-message-files {
