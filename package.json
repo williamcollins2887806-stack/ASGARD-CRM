@@ -41,6 +41,8 @@
     "@fastify/multipart": "^8.1.0",
     "@fastify/rate-limit": "^9.1.0",
     "@fastify/static": "^7.0.0",
+    "@simplewebauthn/server": "^11.0.0",
+    "adm-zip": "^0.5.16",
     "bcryptjs": "^2.4.3",
     "crypto-js": "^4.2.0",
     "dayjs": "^1.11.10",
@@ -60,8 +62,7 @@
     "sanitize-html": "^2.17.0",
     "uuid": "^9.0.1",
     "web-push": "^3.6.7",
-    "xlsx": "^0.18.5",
-    "@simplewebauthn/server": "^11.0.0"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "eslint": "^8.57.1",
