@@ -238,6 +238,84 @@
 
   /* --- Stage colors (funnel) --- */
   --stage-color: var(--blue);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     15. EXTENDED BACKWARD-COMPATIBLE ALIASES
+     Переменные из v2.0 (Nordic Enterprise), используемые в CSS-компонентах.
+     Будут заменены при переработке каждого компонента (Этапы 3-14).
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  /* --- Accent color aliases (v2.0 compat) --- */
+  --accent-primary:       var(--blue);
+  --accent-primary-hover: var(--blue-h);
+  --accent-primary-light: var(--blue-l);
+  --accent-primary-bg:    var(--blue-bg);
+  --accent-primary-glow:  var(--blue-glow);
+  --accent-secondary:       var(--gold);
+  --accent-secondary-hover: var(--gold-h);
+  --accent-secondary-bg:    var(--gold-bg);
+  --accent-danger:       var(--red);
+  --accent-danger-hover: var(--red-h);
+  --danger-bg:           var(--red-bg);
+  --secondary:           var(--gold);
+  --accent:              var(--red);
+  --text-on-accent:      #FFFFFF;
+
+  /* --- Extended border aliases --- */
+  --border-strong: var(--t3);
+  --border-accent: var(--blue);
+  --border-hover:  var(--t3);
+  --border-light:  var(--brd-m);
+  --border-input:  var(--brd);
+
+  /* --- Shadow glow aliases --- */
+  --shadow-glow-blue:  var(--blue-glow);
+  --shadow-glow-gold:  var(--gold-glow);
+  --shadow-glow-red:   var(--red-glow);
+  --shadow-glow-green: 0 0 24px rgba(45,134,89,0.25);
+
+  /* --- Typography size aliases --- */
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 14px;
+  --text-md:   15px;
+  --text-lg:   16px;
+  --text-xl:   18px;
+  --text-2xl:  22px;
+  --text-3xl:  28px;
+
+  /* --- Font weight aliases --- */
+  --font-semibold: 600;
+  --font-bold:     700;
+  --leading-normal: 1.5;
+
+  /* --- Button component tokens --- */
+  --btn-padding-y:    10px;
+  --btn-padding-x:    18px;
+  --btn-radius:       var(--r-md);
+  --btn-font-size:    13px;
+  --btn-font-weight:  500;
+
+  /* --- Input component tokens --- */
+  --input-padding-y:     10px;
+  --input-padding-x:     14px;
+  --input-radius:        var(--r-md);
+  --input-border-width:  1px;
+  --input-font-size:     13px;
+  --bg-input:            var(--bg3);
+  --bg-surface:          var(--bg2);
+
+  /* --- Extended radius aliases --- */
+  --radius-xs: 3px;
+
+  /* --- Layout aliases (v2.0 compat) --- */
+  --sidebar-width:     var(--sidebar-w);
+  --sidebar-flyout:    220px;
+  --sidebar-collapsed: var(--sidebar-w);
+  --header-height:     var(--topbar-h);
+
+  /* --- Additional semantic color aliases --- */
+  --success-dark: #22724A;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────────

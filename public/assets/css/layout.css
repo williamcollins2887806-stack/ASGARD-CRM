@@ -483,13 +483,13 @@
 
 /* Light theme */
 html[data-theme="light"] .topbar-search {
-  background: #f1f5f9;
-  border-color: rgba(0, 0, 0, 0.08);
+  background: var(--bg3);
+  border-color: var(--brd);
 }
 
 html[data-theme="light"] .topbar-search:hover {
-  background: #e2e8f0;
-  border-color: rgba(0, 0, 0, 0.15);
+  background: var(--bg4);
+  border-color: var(--brd);
 }
 
 /* Header Badges/Actions */
@@ -1075,6 +1075,6 @@ body.nav-open .nav-overlay {
   .app, .asg-app { display: block; }
   .main, .asg-main-wrap { margin-left: 0; }
   .asg-content, #layout { padding: 0; max-width: 100%; }
-  .card, .panel { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
+  .card, .panel { box-shadow: none; border: 1px solid var(--brd); break-inside: avoid; }
   body { background: white; color: black; }
 }
