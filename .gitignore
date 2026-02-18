@@ -18,6 +18,7 @@ uploads/
 public/uploads/
 *.sql
 !migrations/*.sql
+!db/*.sql
 *.dump
 
 # Бэкапы (содержат секреты и дубликаты)
