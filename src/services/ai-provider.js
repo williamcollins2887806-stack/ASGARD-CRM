@@ -11,18 +11,18 @@
 const db = require('./db');
 
 // Конфигурация из переменных окружения (начальные значения)
-let AI_PROVIDER = process.env.AI_PROVIDER || 'anthropic';
+let AI_PROVIDER = process.env.AI_PROVIDER || 'openai';
 let ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 let ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 let OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-let OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
+let OPENAI_MODEL = process.env.OPENAI_MODEL || 'anthropic/claude-sonnet-4-5-20250514';
 const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '4096', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
 const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '60000', 10); // 60 sec default
 
-// API endpoints
+// API endpoints (default: routerai.ru — OpenAI-compatible proxy to Claude)
 const ANTHROPIC_URL = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
-let OPENAI_URL = process.env.OPENAI_URL || 'https://api.openai.com/v1/chat/completions';
+let OPENAI_URL = process.env.OPENAI_URL || 'https://routerai.ru/api/v1/chat/completions';
 
 // DB settings cache
 let _dbKeysLoaded = false;
