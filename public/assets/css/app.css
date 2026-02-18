@@ -63,16 +63,16 @@ a:hover {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border-default);
-  background: var(--bg-tertiary);
+  border-radius: var(--r-full);
+  border: 1px solid var(--brd);
+  background: var(--bg3);
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--t2);
 }
 
 .pill.unread {
-  background: var(--accent-primary-bg);
-  border-color: var(--accent-primary);
+  background: var(--blue-bg);
+  border-color: var(--blue);
 }
 
 .pill.read {
@@ -80,25 +80,25 @@ a:hover {
 }
 
 .pill .who {
-  color: var(--text-primary);
+  color: var(--t1);
 }
 
 .pill .role {
-  font-family: var(--font-mono);
+  font-family: var(--mono);
   font-size: 10px;
   font-weight: 700;
-  color: var(--accent-primary-light);
-  padding: 2px 8px;
-  background: var(--accent-primary-bg);
-  border-radius: 4px;
+  color: var(--blue-l);
+  padding: 2px var(--sp-sm);
+  background: var(--blue-bg);
+  border-radius: var(--r-sm);
 }
 
 /* [FIX] .main, .topbar, .badges, .bellbtn, .bellpop — layout.css controls these */
 
 .badge.draft {
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  border: 1px dashed var(--border-default);
+  background: var(--bg4);
+  color: var(--t3);
+  border: 1px dashed var(--brd);
   font-style: italic;
 }
 
@@ -108,16 +108,16 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-default);
-  background: var(--bg-tertiary);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd);
+  background: var(--bg3);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--fast);
 }
 
 .xbtn:hover {
-  border-color: var(--accent-danger);
-  color: var(--accent-danger);
+  border-color: var(--red);
+  color: var(--red);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -130,12 +130,12 @@ a:hover {
    CARDS — Карточки
    ───────────────────────────────────────────────────────────────────────────── */
 .card, .panel, .widget {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-sm);
   position: relative;
-  transition: box-shadow 0.2s, border-color 0.2s;
+  transition: box-shadow var(--base), border-color var(--base);
 }
 
 .card, .panel, .widget {
@@ -144,7 +144,7 @@ a:hover {
 
 .card:hover, .panel:hover, .widget:hover {
   box-shadow: var(--shadow-md);
-  border-color: var(--border-accent);
+  border-color: var(--blue);
 }
 
 /* No gradient top accent bar */
@@ -153,24 +153,24 @@ a:hover {
 }
 
 .card {
-  padding: 20px;
+  padding: var(--sp-lg);
 }
 
 .panel {
-  padding: 24px;
+  padding: var(--sp-lg);
 }
 
 .card h3 {
   margin: 0 0 12px;
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--t1);
 }
 
 .card p {
   margin: 0;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--t2);
   line-height: 1.5;
 }
 
@@ -178,8 +178,8 @@ a:hover {
 .grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
-  gap: 20px;
-  margin-top: 20px;
+  gap: var(--sp-lg);
+  margin-top: var(--sp-lg);
 }
 
 .card.span-3 { grid-column: span 3; }
