@@ -1,0 +1,480 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ASGARD CRM — DESIGN TOKENS v2.5
+   Дизайн-система: Nordic Dark + Red/Blue/Gold
+   Спецификация: ASGARD DS v2.5
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   DARK THEME (Default)
+   ───────────────────────────────────────────────────────────────────────────────── */
+:root {
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     1. КОРПОРАТИВНЫЕ ЦВЕТА — Red / Blue / Gold (равноправные акценты)
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  /* Красный */
+  --red:      #C8293B;
+  --red-h:    #A82233;
+  --red-l:    #E8475A;
+  --red-bg:   rgba(200,41,59,0.10);
+  --red-glow: 0 0 20px rgba(200,41,59,0.25);
+
+  /* Синий */
+  --blue:      #1E4D8C;
+  --blue-h:    #163E72;
+  --blue-l:    #4A90D9;
+  --blue-bg:   rgba(30,77,140,0.10);
+  --blue-glow: 0 0 20px rgba(30,77,140,0.25);
+
+  /* Золотой (третий акцент, VIP) */
+  --gold:      #D4A843;
+  --gold-h:    #B8922E;
+  --gold-l:    #E8C35A;
+  --gold-bg:   rgba(212,168,67,0.10);
+  --gold-glow: 0 0 20px rgba(212,168,67,0.25);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     2. ФОНЫ — Nordic Dark (от тёмного к светлому)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --bg0: #08090C;           /* Самый тёмный (оверлеи, Command Palette) */
+  --bg1: #0D1117;           /* Основной фон приложения (body) */
+  --bg2: #151922;           /* Карточки, панели, сайдбар, модалки */
+  --bg3: #1C2130;           /* Вложенные элементы, hover, dropdown */
+  --bg4: #222838;           /* Заголовки таблиц, тулбары, elevated */
+  --bg5: #2A3248;           /* Самый светлый фон (редко) */
+  --overlay: rgba(8,9,12,0.88);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     3. ТЕКСТ
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --t1: rgba(255,255,255,0.95);  /* Основной (заголовки, контент) */
+  --t2: rgba(255,255,255,0.65);  /* Вспомогательный (подписи, лейблы) */
+  --t3: rgba(255,255,255,0.40);  /* Приглушённый (плейсхолдеры, hint) */
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     4. СЕМАНТИЧЕСКИЕ ЦВЕТА
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --ok:      #2D8659;
+  --ok-t:    #4ADE80;
+  --ok-bg:   rgba(45,134,89,0.12);
+
+  --warn:    #D4A843;
+  --warn-t:  #D4A843;
+  --warn-bg: rgba(212,168,67,0.12);
+
+  --err:     #C8293B;
+  --err-t:   #F87171;
+  --err-bg:  rgba(200,41,59,0.12);
+
+  --info:    #3B82F6;
+  --info-t:  #60A5FA;
+  --info-bg: rgba(59,130,246,0.12);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     5. ГРАНИЦЫ
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --brd:   rgba(255,255,255,0.08);  /* Основные (карточки, таблицы, инпуты) */
+  --brd-m: rgba(255,255,255,0.04);  /* Приглушённые (внутренние разделители) */
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     6. ТИПОГРАФИКА
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --ff:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ff-head: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ff-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  --font: var(--ff);
+  --mono: var(--ff-mono);
+
+  --fw-med:   500;
+  --fw-semi:  600;
+  --fw-bold:  700;
+  --fw-extra: 800;
+  --fw-black: 900;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     7. SPACING — сетка 8px
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --sp-1:   4px;
+  --sp-2:   8px;
+  --sp-3:   12px;
+  --sp-4:   16px;
+  --sp-5:   20px;
+  --sp-6:   24px;
+  --sp-7:   28px;
+  --sp-8:   32px;
+  --sp-10:  40px;
+  --sp-12:  48px;
+  --sp-16:  64px;
+  /* Legacy aliases */
+  --sp-xs:  var(--sp-1);
+  --sp-sm:  var(--sp-2);
+  --sp-md:  var(--sp-4);
+  --sp-lg:  var(--sp-6);
+  --sp-xl:  var(--sp-8);
+  --sp-2xl: var(--sp-12);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     8. BORDER-RADIUS
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --r-xs:   4px;
+  --r-sm:   6px;
+  --r-md:   8px;
+  --r-lg:   12px;
+  --r-xl:   16px;
+  --r-full: 9999px;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     9. ТЕНИ (elevation)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
+  --shadow-lg: 0 8px 28px rgba(0,0,0,0.45);
+  --shadow-xl: 0 20px 50px rgba(0,0,0,0.55);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     10. TRANSITIONS
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --fast: 100ms ease;
+  --base: 200ms ease;
+  --slow: 400ms ease;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     11. Z-INDEX
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --z-dropdown: 100;
+  --z-sticky:   200;
+  --z-sidebar:  300;
+  --z-overlay:  400;
+  --z-modal:    500;
+  --z-notif:    600;
+  --z-confirm:  700;
+  --z-palette:  800;
+  --z-toast:    900;
+  --z-demo:     999;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     12. LAYOUT
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --sidebar-w:      64px;
+  --sidebar-w-open: 248px;
+  --topbar-h:       56px;
+  --content-max-w:  1400px;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     13. ГРАДИЕНТЫ
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --grad-corp: linear-gradient(135deg, #C8293B, #1E4D8C);
+  --grad-corp-90: linear-gradient(90deg, #C8293B, #1E4D8C);
+  --grad-red:  linear-gradient(90deg, #C8293B, #E8475A);
+  --grad-blue: linear-gradient(90deg, #1E4D8C, #4A90D9);
+  --grad-gold: linear-gradient(90deg, #D4A843, #E8C35A);
+  /* Aliases for backward compat */
+  --gradient-gold:    var(--grad-gold);
+  --gradient-primary: var(--grad-corp);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     14. BACKWARD-COMPATIBLE ALIASES
+     Эти переменные используются в JS-коде и должны быть сохранены.
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  /* --- Background aliases --- */
+  --bg:          var(--bg1);
+  --bg-main:     var(--bg1);
+  --bg-primary:  var(--bg1);
+  --bg-card:     var(--bg2);
+  --bg-secondary: var(--bg2);
+  --bg-tertiary: var(--bg3);
+  --bg-elevated: var(--bg4);
+  --bg-hover:    var(--bg3);
+  --bg-deep:     var(--bg0);
+  --bg-base:     var(--bg1);
+  --bg-header:   var(--bg2);
+
+  /* --- Text aliases --- */
+  --text-primary:   var(--t1);
+  --text-secondary: var(--t2);
+  --text-muted:     var(--t3);
+  --text:           var(--t1);
+  --muted:          var(--t3);
+  --dim:            var(--t3);
+
+  /* --- Border aliases --- */
+  --border:         var(--brd);
+  --border-default: var(--brd);
+  --border-muted:   var(--brd-m);
+  --border-card:    var(--brd);
+  --line:           var(--brd-m);
+
+  /* --- Color aliases (JS-referenced) --- */
+  --primary:       var(--blue);
+  --amber:         #D4A843;
+  --green:         var(--ok);
+  --danger:        var(--red);
+  --success:       var(--ok);
+  --warning:       var(--warn);
+
+  /* Дополнительные акценты (используются в карточках сотрудников, бейджах) */
+  --purple:      #8B5CF6;
+  --purple-l:    #A78BFA;
+  --purple-bg:   rgba(139,92,246,0.12);
+  --cyan:        #06B6D4;
+  --cyan-l:      #22D3EE;
+  --cyan-bg:     rgba(6,182,212,0.12);
+  --orange:      #F97316;
+  --orange-l:    #FB923C;
+  --orange-bg:   rgba(249,115,22,0.12);
+
+  /* Gold aliases */
+  --gold-light:  var(--gold-l);
+  --gold-dim:    rgba(212,168,67,0.7);
+  --gold-border: rgba(212,168,67,0.35);
+
+  /* --- Typography aliases --- */
+  --font-sans:         var(--ff);
+  --font-family-base:  var(--ff);
+  --font-heading:      var(--ff-head);
+  --font-mono:         var(--ff-mono);
+
+  /* --- Radius aliases --- */
+  --radius-sm:   var(--r-sm);
+  --radius-md:   var(--r-md);
+  --radius-lg:   var(--r-lg);
+  --radius-xl:   var(--r-xl);
+  --radius-full: var(--r-full);
+
+  /* --- Spacing aliases (backward compat, now primary above) --- */
+
+  /* --- Transition aliases --- */
+  --transition-fast:   var(--fast);
+  --transition-normal: var(--base);
+  --transition-slow:   var(--slow);
+
+  /* --- Z-index aliases --- */
+  --z-max: var(--z-toast);
+
+  /* --- Misc aliases (glass, card-gradient, etc.) --- */
+  --glass-bg:  var(--bg3);
+  --glass:     var(--bg3);
+  --glass-blur: blur(12px);
+  --card:      var(--bg2);
+
+  /* --- Semantic status aliases (for existing status pills) --- */
+  --green-glow: var(--ok-bg);
+  --red-glow:   var(--err-bg);
+  --amber-glow: var(--warn-bg);
+  --blue-glow:  var(--info-bg);
+
+  /* --- Stage colors (funnel) --- */
+  --stage-color: var(--blue);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     15. EXTENDED BACKWARD-COMPATIBLE ALIASES
+     Переменные, используемые в JS-коде и CSS-компонентах.
+     Сохранены для совместимости.
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  /* --- Accent color aliases --- */
+  --accent-primary:       var(--blue);
+  --accent-primary-hover: var(--blue-h);
+  --accent-primary-light: var(--blue-l);
+  --accent-primary-bg:    var(--blue-bg);
+  --accent-primary-glow:  var(--blue-glow);
+  --accent-secondary:       var(--gold);
+  --accent-secondary-hover: var(--gold-h);
+  --accent-secondary-bg:    var(--gold-bg);
+  --accent-danger:       var(--red);
+  --accent-danger-hover: var(--red-h);
+  --danger-bg:           var(--red-bg);
+  --secondary:           var(--gold);
+  --accent:              var(--red);
+  --text-on-accent:      #FFFFFF;
+
+  /* --- Extended border aliases --- */
+  --border-strong: var(--t3);
+  --border-accent: var(--blue);
+  --border-hover:  var(--t3);
+  --border-light:  var(--brd-m);
+  --border-input:  var(--brd);
+
+  /* --- Shadow glow aliases --- */
+  --shadow-glow-blue:  var(--blue-glow);
+  --shadow-glow-gold:  var(--gold-glow);
+  --shadow-glow-red:   var(--red-glow);
+  --shadow-glow-green: 0 0 24px rgba(45,134,89,0.25);
+
+  /* --- Typography size aliases --- */
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 14px;
+  --text-md:   15px;
+  --text-lg:   16px;
+  --text-xl:   18px;
+  --text-2xl:  22px;
+  --text-3xl:  28px;
+
+  /* --- Font weight aliases --- */
+  --font-medium:    var(--fw-med);
+  --font-semibold:  var(--fw-semi);
+  --font-bold:      var(--fw-bold);
+  --font-extrabold: var(--fw-extra);
+  --font-black:     var(--fw-black);
+  --leading-normal: 1.5;
+
+  /* --- Button component tokens --- */
+  --btn-padding-y:    10px;
+  --btn-padding-x:    18px;
+  --btn-radius:       var(--r-md);
+  --btn-font-size:    13px;
+  --btn-font-weight:  500;
+
+  /* --- Input component tokens --- */
+  --input-padding-y:     10px;
+  --input-padding-x:     14px;
+  --input-radius:        var(--r-md);
+  --input-border-width:  1px;
+  --input-font-size:     13px;
+  --bg-input:            var(--bg3);
+  --bg-surface:          var(--bg2);
+
+  /* --- Extended radius aliases --- */
+  --radius-xs: var(--r-xs);
+
+  /* --- Layout aliases --- */
+  --sidebar-width:     var(--sidebar-w);
+  --sidebar-flyout:    220px;
+  --sidebar-collapsed: var(--sidebar-w);
+  --header-height:     var(--topbar-h);
+
+  /* --- Additional semantic color aliases --- */
+  --success-dark: #22724A;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   GLOBAL BASE STYLES
+   ───────────────────────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--ff);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--t1);
+  background: var(--bg1);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--brd);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--t3);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--brd) transparent;
+}
+
+/* ─── Links ─── */
+a {
+  color: var(--blue-l);
+  text-decoration: none;
+  transition: color var(--fast);
+}
+
+a:hover {
+  color: var(--t1);
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: rgba(30,77,140,0.3);
+  color: var(--t1);
+}
+
+/* ─── Accessibility: reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0ms !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   LIGHT THEME
+   ───────────────────────────────────────────────────────────────────────────────── */
+html[data-theme="light"] {
+
+  /* Фоны */
+  --bg0: #E8EDF2;
+  --bg1: #F2F5F8;
+  --bg2: #FFFFFF;
+  --bg3: #F0F2F5;
+  --bg4: #E8EBF0;
+  --bg5: #DCE0E8;
+  --overlay: rgba(0,0,0,0.45);
+
+  /* Текст */
+  --t1: #1A1D24;
+  --t2: #5A6170;
+  --t3: #8890A0;
+
+  /* Границы */
+  --brd: #D0D5DE;
+  --brd-m: #E0E4EB;
+
+  /* Тени */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 28px rgba(0,0,0,0.10);
+  --shadow-xl: 0 20px 50px rgba(0,0,0,0.14);
+
+  /* Красный (light mode) */
+  --red-bg:  rgba(200,41,59,0.08);
+  --red-glow: 0 0 20px rgba(200,41,59,0.15);
+
+  /* Синий (light mode) */
+  --blue-bg:  rgba(30,77,140,0.08);
+  --blue-glow: 0 0 20px rgba(30,77,140,0.18);
+
+  /* Золотой (light mode) */
+  --gold-bg:  rgba(212,168,67,0.08);
+  --gold-glow: 0 0 20px rgba(212,168,67,0.12);
+
+  /* Семантические (light mode) */
+  --ok-bg:   rgba(45,134,89,0.08);
+  --warn-bg: rgba(212,168,67,0.08);
+  --err-bg:  rgba(200,41,59,0.08);
+  --info-bg: rgba(59,130,246,0.08);
+
+  /* Обновляем зависимые алиасы */
+  --glass-bg: var(--bg3);
+  --glass:    var(--bg3);
+}
