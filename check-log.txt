@@ -1,0 +1,63 @@
+nohup: ignoring input
+╔══════════════════════════════════════════════╗
+║  🔍  ASGARD — Targeted Screenshot Check      ║
+╚══════════════════════════════════════════════╝
+  Checks: 32 pages
+
+  Found 13 real users
+
+
+━━━ ADMIN ━━━
+  ❌ /home (2 err) — 401 ошибки виджетов
+  ✅ /reminders — layout.setMain crash
+  ✅ /office-schedule — staff_plan 500
+  ✅ /tasks — белые карточки + тост danger + todo 400
+  ✅ /mailbox — email send 400 валидация
+
+━━━ PM ━━━
+  ❌ /home (14 err) — PM 403 на home
+  ❌ /bonus-approval (3 err) — PM 403
+  ✅ /chat — PM 403
+  ❌ /travel (3 err) — PM 403
+  ❌ /office-schedule (7 err) — PM 403
+
+━━━ TO ━━━
+  ❌ /calendar (12 err) — TO 403
+  ❌ /funnel (12 err) — TO 403
+  ❌ /tenders (6 err) — TO 403
+
+━━━ HR ━━━
+  ❌ /hr-requests (35 err) — HR 403
+  ❌ /travel (15 err) — HR 403
+
+━━━ BUH ━━━
+  ❌ /finances (14 err) — BUH 400
+  ❌ /buh-registry (3 err) — BUH 400
+  ✅ /acts — BUH 400
+
+━━━ ADMIN ━━━
+  ❌ /funnel (3 err) — текст не виден в колонках
+  ✅ /tasks-admin — были белые фоны
+  ✅ /cash — серые формы Bootstrap
+  ✅ /cash-admin — серые секции
+  ✅ /finances — stat-карточки круглые рамки
+  ✅ /buh-registry — stat-карточки белёсые
+  ✅ /invoices — полосатые строки
+  ✅ /office-expenses — полосатые строки
+  ✅ /all-works — линия на текст + 0 из 16
+  ✅ /big-screen — border-radius 20px
+  ✅ /warehouse — stat-card белые
+  ✅ /hr-rating — SQL-инъекции в ФИО
+  ✅ /payroll — зависание табов
+  ✅ /dashboard — контроль — должен быть ОК
+
+══════════════════════════════════════════════════
+  ✅ PASS: 19
+  ❌ FAIL: 13
+  💥 CRASH: 0
+  📁 /var/www/asgard-crm/screenshots-check/
+  📄 /var/www/asgard-crm/screenshots-check/report.txt
+══════════════════════════════════════════════════
+
+  tar -czf screenshots-check.tar.gz screenshots-check/
+

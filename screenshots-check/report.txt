@@ -1,0 +1,50 @@
+╔══════════════════════════════════════════════════╗
+║  ASGARD — Targeted Check Report                  ║
+╚══════════════════════════════════════════════════╝
+Date: 2026-02-11T15:12:21.194Z
+Total checks: 32
+PASS: 31
+FAIL: 1
+CRASH: 0
+
+| Роль | Маршрут | Проблема | Ошибки | Статус |
+|------|---------|----------|--------|--------|
+| ADMIN | /home | 401 ошибки виджетов | 3: Failed to load resource: the server responded with... | ❌ |
+| ADMIN | /reminders | layout.setMain crash | 0 | ✅ |
+| ADMIN | /office-schedule | staff_plan 500 | 0 | ✅ |
+| ADMIN | /tasks | белые карточки + тост danger + todo 400 | 0 | ✅ |
+| ADMIN | /mailbox | email send 400 валидация | 0 | ✅ |
+| PM | /home | PM 403 на home | 0 | ✅ |
+| PM | /bonus-approval | PM 403 | 0 | ✅ |
+| PM | /chat | PM 403 | 0 | ✅ |
+| PM | /travel | PM 403 | 0 | ✅ |
+| PM | /office-schedule | PM 403 | 0 | ✅ |
+| TO | /calendar | TO 403 | 0 | ✅ |
+| TO | /funnel | TO 403 | 0 | ✅ |
+| TO | /tenders | TO 403 | 0 | ✅ |
+| HR | /hr-requests | HR 403 | 0 | ✅ |
+| HR | /travel | HR 403 | 0 | ✅ |
+| BUH | /finances | BUH 400 | 0 | ✅ |
+| BUH | /buh-registry | BUH 400 | 0 | ✅ |
+| BUH | /acts | BUH 400 | 0 | ✅ |
+| ADMIN | /funnel | текст не виден в колонках | 0 | ✅ |
+| ADMIN | /tasks-admin | были белые фоны | 0 | ✅ |
+| ADMIN | /cash | серые формы Bootstrap | 0 | ✅ |
+| ADMIN | /cash-admin | серые секции | 0 | ✅ |
+| ADMIN | /finances | stat-карточки круглые рамки | 0 | ✅ |
+| ADMIN | /buh-registry | stat-карточки белёсые | 0 | ✅ |
+| ADMIN | /invoices | полосатые строки | 0 | ✅ |
+| ADMIN | /office-expenses | полосатые строки | 0 | ✅ |
+| ADMIN | /all-works | линия на текст + 0 из 16 | 0 | ✅ |
+| ADMIN | /big-screen | border-radius 20px | 0 | ✅ |
+| ADMIN | /warehouse | stat-card белые | 0 | ✅ |
+| ADMIN | /hr-rating | SQL-инъекции в ФИО | 0 | ✅ |
+| ADMIN | /payroll | зависание табов | 0 | ✅ |
+| ADMIN | /dashboard | контроль — должен быть ОК | 0 | ✅ |
+
+─── Детали ошибок ───
+
+ADMIN /home (401 ошибки виджетов):
+  • Failed to load resource: the server responded with a status of 401 (Unauthorized)
+  • Failed to load resource: the server responded with a status of 401 (Unauthorized)
+  • Failed to load resource: the server responded with a status of 401 (Unauthorized)

@@ -1,0 +1,262 @@
+[
+  {
+    "role": "ADMIN",
+    "route": "/home",
+    "issue": "401 ошибки виджетов",
+    "errors": [
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    ],
+    "status": "FAIL",
+    "screenshot": "ADMIN_home.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/reminders",
+    "issue": "layout.setMain crash",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_reminders.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/office-schedule",
+    "issue": "staff_plan 500",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_office-schedule.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/tasks",
+    "issue": "белые карточки + тост danger + todo 400",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_tasks.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/mailbox",
+    "issue": "email send 400 валидация",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_mailbox.png"
+  },
+  {
+    "role": "PM",
+    "route": "/home",
+    "issue": "PM 403 на home",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "PM_home.png"
+  },
+  {
+    "role": "PM",
+    "route": "/bonus-approval",
+    "issue": "PM 403",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "PM_bonus-approval.png"
+  },
+  {
+    "role": "PM",
+    "route": "/chat",
+    "issue": "PM 403",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "PM_chat.png"
+  },
+  {
+    "role": "PM",
+    "route": "/travel",
+    "issue": "PM 403",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "PM_travel.png"
+  },
+  {
+    "role": "PM",
+    "route": "/office-schedule",
+    "issue": "PM 403",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "PM_office-schedule.png"
+  },
+  {
+    "role": "TO",
+    "route": "/calendar",
+    "issue": "TO 403",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "TO_calendar.png"
+  },
+  {
+    "role": "TO",
+    "route": "/funnel",
+    "issue": "TO 403",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "TO_funnel.png"
+  },
+  {
+    "role": "TO",
+    "route": "/tenders",
+    "issue": "TO 403",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "TO_tenders.png"
+  },
+  {
+    "role": "HR",
+    "route": "/hr-requests",
+    "issue": "HR 403",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "HR_hr-requests.png"
+  },
+  {
+    "role": "HR",
+    "route": "/travel",
+    "issue": "HR 403",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "HR_travel.png"
+  },
+  {
+    "role": "BUH",
+    "route": "/finances",
+    "issue": "BUH 400",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "BUH_finances.png"
+  },
+  {
+    "role": "BUH",
+    "route": "/buh-registry",
+    "issue": "BUH 400",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "BUH_buh-registry.png"
+  },
+  {
+    "role": "BUH",
+    "route": "/acts",
+    "issue": "BUH 400",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "BUH_acts.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/funnel",
+    "issue": "текст не виден в колонках",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_funnel.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/tasks-admin",
+    "issue": "были белые фоны",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_tasks-admin.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/cash",
+    "issue": "серые формы Bootstrap",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_cash.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/cash-admin",
+    "issue": "серые секции",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_cash-admin.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/finances",
+    "issue": "stat-карточки круглые рамки",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_finances.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/buh-registry",
+    "issue": "stat-карточки белёсые",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_buh-registry.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/invoices",
+    "issue": "полосатые строки",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_invoices.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/office-expenses",
+    "issue": "полосатые строки",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_office-expenses.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/all-works",
+    "issue": "линия на текст + 0 из 16",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_all-works.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/big-screen",
+    "issue": "border-radius 20px",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_big-screen.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/warehouse",
+    "issue": "stat-card белые",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_warehouse.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/hr-rating",
+    "issue": "SQL-инъекции в ФИО",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_hr-rating.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/payroll",
+    "issue": "зависание табов",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_payroll.png"
+  },
+  {
+    "role": "ADMIN",
+    "route": "/dashboard",
+    "issue": "контроль — должен быть ОК",
+    "errors": [],
+    "status": "PASS",
+    "screenshot": "ADMIN_dashboard.png"
+  }
+]
