@@ -3914,7 +3914,7 @@ html[data-theme="light"] *:focus-visible {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   MODERN DESIGN SYSTEM v2.0 — 2026 Trends
+   ASGARD CRM — MODERN UI POLISH v2.5
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -4452,20 +4452,16 @@ table.asg tr:hover td:first-child {
    ───────────────────────────────────────────────────────────────────────────── */
 
 .modal {
-  background: linear-gradient(
-    180deg,
-    rgba(14, 31, 61, 0.98) 0%,
-    rgba(10, 22, 40, 0.99) 100%
-  );
+  background: var(--bg2);
   backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
-  border: none;
+  border: 1px solid var(--brd);
   border-radius: var(--r-xl);
   box-shadow:
     0 25px 80px rgba(0, 0, 0, 0.5),
-    0 0 50px rgba(37, 99, 235, 0.1),
+    var(--blue-glow),
     0 1px 0 rgba(255, 255, 255, 0.05) inset;
-  animation: modalEnter 0.3s ease-out;
+  animation: modalEnter var(--base);
 }
 
 @keyframes modalEnter {

@@ -166,9 +166,12 @@
      ═══════════════════════════════════════════════════════════════════════════ */
   --grad-corp: linear-gradient(135deg, #C8293B, #1E4D8C);
   --grad-corp-90: linear-gradient(90deg, #C8293B, #1E4D8C);
-  --grad-red:  linear-gradient(90deg, #C8293B, #D94452);
-  --grad-blue: linear-gradient(90deg, #1E4D8C, #2B6BC4);
+  --grad-red:  linear-gradient(90deg, #C8293B, #E8475A);
+  --grad-blue: linear-gradient(90deg, #1E4D8C, #4A90D9);
   --grad-gold: linear-gradient(90deg, #D4A843, #E8C35A);
+  /* Aliases for backward compat */
+  --gradient-gold:    var(--grad-gold);
+  --gradient-primary: var(--grad-corp);
 
   /* ═══════════════════════════════════════════════════════════════════════════
      14. BACKWARD-COMPATIBLE ALIASES
@@ -256,11 +259,11 @@
 
   /* ═══════════════════════════════════════════════════════════════════════════
      15. EXTENDED BACKWARD-COMPATIBLE ALIASES
-     Переменные из v2.0 (Nordic Enterprise), используемые в CSS-компонентах.
-     Будут заменены при переработке каждого компонента (Этапы 3-14).
+     Переменные, используемые в JS-коде и CSS-компонентах.
+     Сохранены для совместимости.
      ═══════════════════════════════════════════════════════════════════════════ */
 
-  /* --- Accent color aliases (v2.0 compat) --- */
+  /* --- Accent color aliases --- */
   --accent-primary:       var(--blue);
   --accent-primary-hover: var(--blue-h);
   --accent-primary-light: var(--blue-l);
@@ -326,7 +329,7 @@
   /* --- Extended radius aliases --- */
   --radius-xs: var(--r-xs);
 
-  /* --- Layout aliases (v2.0 compat) --- */
+  /* --- Layout aliases --- */
   --sidebar-width:     var(--sidebar-w);
   --sidebar-flyout:    220px;
   --sidebar-collapsed: var(--sidebar-w);

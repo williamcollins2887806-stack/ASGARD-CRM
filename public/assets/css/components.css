@@ -1734,35 +1734,6 @@ details > *:not(summary) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   EMPTY STATE
-   ═══════════════════════════════════════════════════════════════════════════════ */
-
-.empty-state {
-  text-align: center;
-  padding: var(--sp-16) var(--sp-5);
-  color: var(--t3);
-}
-
-.empty-state .icon {
-  font-size: 48px;
-  margin-bottom: var(--sp-4);
-  opacity: 0.5;
-}
-
-.empty-state .title {
-  font-size: var(--text-lg);
-  font-weight: var(--fw-semi);
-  color: var(--t2);
-  margin-bottom: var(--sp-2);
-}
-
-.empty-state .desc {
-  font-size: var(--text-sm);
-  max-width: 400px;
-  margin: 0 auto;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════════
    UTILITIES
    ═══════════════════════════════════════════════════════════════════════════════ */
 
@@ -4203,7 +4174,7 @@ html[data-theme="light"] .status-gold {
   transform: scale(0.998);
 }
 
-/* Input focus — Fjord Blue ring */
+/* Input focus — Blue accent ring */
 input:focus,
 select:focus,
 textarea:focus,
@@ -4514,7 +4485,7 @@ html[data-theme="light"] .dash-widget-header {
   overflow-y: auto;
   padding: 8px;
   min-height: 100px;
-  transition: background .2s;
+  transition: background var(--base);
 }
 
 .pt-kanban-col-body.drag-over {
