@@ -213,7 +213,7 @@
   --border-active: rgba(212, 168, 70, 0.5);
   --border-focus: rgba(212, 168, 70, 0.6);
   --border-input: rgba(45, 74, 122, 0.25);
-  --border-card: rgba(255, 255, 255, 0.04);
+  --border-card: rgba(255, 255, 255, 0.10);
 
   /* ═══════════════════════════════════════════════════════════════════════════
      SHADOWS
@@ -544,7 +544,7 @@ html[data-theme="light"] {
   --border-active: rgba(185, 28, 28, 0.5);
   --border-focus: rgba(185, 28, 28, 0.4);
   --border-input: rgba(0, 0, 0, 0.15);
-  --border-card: rgba(0, 0, 0, 0.08);
+  --border-card: rgba(0, 0, 0, 0.12);
 
   /* ═══════════════════════════════════════════════════════════════════════════
      SHADOWS (light mode)

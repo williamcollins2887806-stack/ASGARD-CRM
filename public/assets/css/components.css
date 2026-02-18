@@ -632,7 +632,7 @@ table.asg tr td:last-child {
 .card,
 .panel {
   background: var(--bg-card);
-  border: none;
+  border: 1px solid var(--border-card);
   border-radius: var(--card-radius);
   box-shadow: var(--shadow-sm);
   position: relative;
@@ -663,6 +663,7 @@ table.asg tr td:last-child {
 .card:hover,
 .panel:hover {
   box-shadow: var(--shadow-md);
+  border-color: var(--border-hover);
 }
 
 .card h3,

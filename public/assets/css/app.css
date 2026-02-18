@@ -521,11 +521,12 @@ a:hover {
    ───────────────────────────────────────────────────────────────────────────── */
 .card, .panel, .widget {
   background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
-  border: none;
+  border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   position: relative;
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s, border-color 0.2s;
+  margin-bottom: 16px;
 }
 /* overflow:hidden only for containers with ::before decorations, NOT content cards */
 .card, .panel, .widget {
@@ -534,6 +535,7 @@ a:hover {
 
 .card:hover, .panel:hover, .widget:hover {
   box-shadow: var(--shadow-lg);
+  border-color: var(--border-hover);
 }
 
 .card::before, .panel::before {
@@ -2967,16 +2969,19 @@ html[data-theme="light"] header {
 
 /* Cards */
 html[data-theme="light"] .card,
-html[data-theme="light"] .panel {
+html[data-theme="light"] .panel,
+html[data-theme="light"] .widget,
+html[data-theme="light"] [class*="-card"] {
   background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-card);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 html[data-theme="light"] .card:hover,
-html[data-theme="light"] .panel:hover {
-  border-color: rgba(220, 38, 38, 0.2);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+html[data-theme="light"] .panel:hover,
+html[data-theme="light"] .widget:hover {
+  border-color: rgba(220, 38, 38, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
 /* Buttons */
@@ -7870,32 +7875,39 @@ html[data-theme="light"] .form-select {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   GLOBAL VISUAL POLISH — убираем рамки, смягчаем фоны
-   Этот блок в конце файла перекрывает все предыдущие border-правила
+   GLOBAL VISUAL POLISH — стильные рамки и отступы для карточек
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-/* --- Карточки, панели, виджеты — без рамок --- */
+/* --- Карточки, панели, виджеты — тонкая рамка + отступы --- */
 .card, .panel, .widget,
 [class*="-card"],
-.cash-card, .cash-balance-card, .cash-tabs,
+.cash-card, .cash-balance-card, .cash-tabs {
+  border: 1px solid var(--border-card);
+  margin-bottom: 16px;
+}
+
 .kpi-works-page .kpi .k,
 .kpi-works-page .chart,
 .kpi-works-page .pill,
 .kpi-works-page .panel {
-  border: none;
+  border: 1px solid var(--border-card);
+  margin-bottom: 12px;
 }
 
-/* --- Заголовки карточек — мягче фон, без нижней рамки --- */
+/* --- Заголовки карточек — тонкий разделитель --- */
 .card-header,
 .cash-card-header,
-.mh,
+.mh {
+  border-bottom: 1px solid var(--border-card);
+}
+
 .modal-header {
   border-bottom: none;
 }
 
-/* --- Подвалы карточек — без верхней рамки --- */
+/* --- Подвалы карточек — тонкий разделитель --- */
 .card-footer {
-  border-top: none;
+  border-top: 1px solid var(--border-card);
 }
 
 /* --- Таблицы — ячейки без рамок, тонкий разделитель --- */
@@ -7937,7 +7949,8 @@ table th,
 
 /* --- KPI карточки на всех страницах --- */
 .kpi .k {
-  border: none;
+  border: 1px solid var(--border-card);
+  margin-bottom: 12px;
 }
 
 /* --- Разделители .hr --- */
