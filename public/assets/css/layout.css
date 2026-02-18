@@ -192,7 +192,7 @@
   opacity: 0;
   visibility: hidden;
   transform: translateX(-8px);
-  transition: opacity 150ms ease, transform 150ms ease, visibility 150ms;
+  transition: opacity var(--fast) ease, transform var(--fast) ease, visibility var(--fast);
   pointer-events: none;
 }
 

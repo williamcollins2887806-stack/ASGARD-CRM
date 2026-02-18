@@ -2110,7 +2110,7 @@ details > *:not(summary) {
 
 /* Table Row Hover Effect */
 .tbl tbody tr {
-  transition: background-color 0.2s ease, transform 0.15s ease;
+  transition: background-color var(--base) ease, transform var(--fast) ease;
 }
 
 .tbl tbody tr:hover {
@@ -2480,7 +2480,7 @@ details > *:not(summary) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: all var(--base) ease;
   box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
 }
 
@@ -2503,7 +2503,7 @@ details > *:not(summary) {
   color: var(--t1);
   font-size: 13px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color var(--base);
 }
 
 .chat-search-input:focus {
@@ -2536,7 +2536,7 @@ details > *:not(summary) {
   gap: 12px;
   padding: 10px 16px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--fast) ease;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   position: relative;
 }
@@ -2712,7 +2712,7 @@ details > *:not(summary) {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.15s;
+  transition: all var(--fast);
   margin-right: 4px;
 }
 
@@ -2793,7 +2793,7 @@ details > *:not(summary) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: all var(--fast) ease;
 }
 
 .chat-header-btn:hover {
@@ -3000,7 +3000,7 @@ details > *:not(summary) {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--fast);
 }
 
 .chat-msg-reaction:hover {
@@ -3044,7 +3044,7 @@ details > *:not(summary) {
   justify-content: center;
   font-size: 14px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transition: all 0.15s;
+  transition: all var(--fast);
 }
 
 .chat-msg-action-btn:hover {
@@ -3074,7 +3074,7 @@ details > *:not(summary) {
   cursor: pointer;
   padding: 4px;
   border-radius: 8px;
-  transition: transform 0.1s;
+  transition: transform var(--fast);
 }
 
 .chat-reaction-option:hover {
@@ -3099,7 +3099,7 @@ details > *:not(summary) {
   padding: 6px;
   border-radius: 8px;
   text-align: center;
-  transition: transform 0.1s, background 0.15s;
+  transition: transform var(--fast), background var(--fast);
 }
 
 .chat-emoji-option:hover {
@@ -3149,7 +3149,7 @@ details > *:not(summary) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: all var(--fast);
 }
 
 .chat-reply-bar-close:hover {
@@ -3222,7 +3222,7 @@ details > *:not(summary) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: all var(--fast) ease;
   flex-shrink: 0;
 }
 
@@ -3259,7 +3259,7 @@ details > *:not(summary) {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.15s;
+  transition: all var(--fast);
 }
 
 .chat-attach-btn:hover {
@@ -3290,7 +3290,7 @@ details > *:not(summary) {
   resize: none;
   max-height: 120px;
   line-height: 1.4;
-  transition: border-color 0.2s;
+  transition: border-color var(--base);
 }
 
 .chat-input:focus {
@@ -3318,7 +3318,7 @@ details > *:not(summary) {
   gap: 10px;
   padding: 8px 12px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--fast);
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
@@ -3349,7 +3349,7 @@ details > *:not(summary) {
   font-weight: 700;
   color: white;
   flex-shrink: 0;
-  transition: box-shadow 0.15s;
+  transition: box-shadow var(--fast);
 }
 
 .chat-member-option-info {
@@ -3361,7 +3361,7 @@ details > *:not(summary) {
   font-size: 13px;
   font-weight: 600;
   color: var(--t1);
-  transition: color 0.15s;
+  transition: color var(--fast);
 }
 
 .chat-member-option-role {
@@ -3867,7 +3867,7 @@ html[data-theme="light"] .widget-meeting-mini {
   z-index: var(--z-overlay);
   opacity: 0;
   visibility: hidden;
-  transition: opacity 250ms ease, visibility 250ms;
+  transition: opacity var(--base) ease, visibility var(--base);
 }
 
 .drawer-overlay.open {
@@ -3888,7 +3888,7 @@ html[data-theme="light"] .widget-meeting-mini {
   display: flex;
   flex-direction: column;
   transform: translateX(100%);
-  transition: transform 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform var(--base) cubic-bezier(0.32, 0.72, 0, 1);
   overflow: hidden;
 }
 
@@ -4528,7 +4528,7 @@ html[data-theme="light"] .dash-widget-header {
   padding: 10px 12px;
   margin-bottom: 8px;
   cursor: grab;
-  transition: transform 0.15s, border-color 0.15s;
+  transition: transform var(--fast), border-color var(--fast);
   user-select: none;
 }
 
@@ -4602,7 +4602,7 @@ html[data-theme="light"] .dash-widget-header {
   padding: 10px 14px;
   border-radius: var(--r-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--fast) ease;
   border: 1px solid transparent;
   position: relative;
 }
@@ -4631,7 +4631,7 @@ html[data-theme="light"] .dash-widget-header {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: all var(--fast) ease;
   font-size: 12px;
   color: transparent;
 }
