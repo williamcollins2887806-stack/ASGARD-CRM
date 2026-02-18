@@ -24,7 +24,9 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: var(--sidebar-w);
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
   background: var(--bg2);
   border-right: 1px solid var(--brd);
   display: flex;
@@ -52,13 +54,17 @@
 }
 
 .brand {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  max-width: 48px;
+  max-height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
   border-radius: var(--r-md);
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid var(--brd);
   background: var(--bg2);
   text-decoration: none;
@@ -67,6 +73,7 @@
   padding: 0;
   margin: 0;
   gap: 0;
+  aspect-ratio: 1 / 1;
 }
 
 .brand:hover {
@@ -76,11 +83,17 @@
 .brand img {
   width: 36px;
   height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  max-width: 36px;
+  max-height: 36px;
+  object-fit: contain;
   border-radius: 6px;
+  display: block;
+  aspect-ratio: 1 / 1;
   border: none;
   background: none;
   padding: 0;
-  object-fit: contain;
 }
 
 /* Hide text in icon rail */
@@ -368,11 +381,14 @@
    ═══════════════════════════════════════════════════════════════ */
 .main,
 .asg-main-wrap {
-  margin-left: var(--sidebar-w);
+  margin-left: 64px !important;
   min-height: 100vh;
+  width: calc(100% - 64px);
+  max-width: calc(100% - 64px);
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -386,15 +402,16 @@
    ═══════════════════════════════════════════════════════════════════════════════ */
 .topbar,
 .asg-header {
+  height: 56px;
+  min-height: 56px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-lg);
-  height: var(--topbar-h);
-  padding: 0 var(--sp-lg);
   background: var(--bg2);
   backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--brd);
@@ -418,6 +435,7 @@
 .title {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .title h1,
@@ -427,6 +445,13 @@
   font-weight: 700;
   color: var(--t1);
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badges {
+  flex-shrink: 0;
 }
 
 /* Hide motto on desktop — breadcrumbs replace it */
@@ -689,11 +714,12 @@ html[data-theme="light"] .themebtn .icon-moon { display: block; }
 .asg-content,
 #layout {
   flex: 1;
-  padding: var(--sp-8) var(--sp-8) var(--sp-8) var(--sp-8);
+  padding: 24px 32px;
   max-width: var(--content-max-w);
   width: 100%;
   position: relative;
   z-index: 1;
+  overflow-x: hidden;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -812,7 +838,7 @@ body.nav-open .nav-overlay {
   .sidenav { display: none !important; }
   .nav-overlay { display: none !important; }
 
-  .main { margin-left: 0; }
+  .main { margin-left: 0 !important; width: 100% !important; max-width: 100% !important; }
 
   .mnav { display: none; }
 

@@ -244,15 +244,27 @@ select,
 textarea,
 .inp {
   width: 100%;
-  padding: 10px 14px;
+  height: 40px;
+  padding: 0 14px;
   border-radius: var(--r-md);
   border: 1px solid var(--brd);
   background: var(--bg3);
   color: var(--t1);
   font-family: inherit;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 40px;
   transition: all var(--fast);
+}
+
+textarea {
+  height: auto;
+  min-height: 100px;
+  line-height: 1.5;
+  padding: 10px 14px;
+}
+
+select {
+  cursor: pointer;
 }
 
 input:hover,
@@ -629,11 +641,11 @@ table.asg tr td:last-child {
 }
 
 .card {
-  padding: var(--sp-5);
+  padding: 20px;
 }
 
 .panel {
-  padding: var(--sp-6);
+  padding: 20px;
 }
 
 .card:hover,
@@ -742,15 +754,17 @@ table.asg tr td:last-child {
 .kpi-row,
 .kpi.row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
 }
 
 .kpi .k {
   background: var(--bg2);
   border: 1px solid var(--brd);
   border-radius: var(--r-lg);
-  padding: var(--sp-4);
+  padding: 16px 20px;
+  position: relative;
+  overflow: hidden;
 }
 
 .kpi .k .t {
@@ -984,7 +998,8 @@ table.asg tr td:last-child {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
-  padding: var(--sp-4) var(--sp-6);
+  padding: 16px 24px;
+  min-height: 56px;
   border-bottom: 1px solid var(--brd);
   background: var(--bg2);
   position: relative;
@@ -998,7 +1013,7 @@ table.asg tr td:last-child {
 .mh .ttl,
 .modal-header h2,
 .modal-header .title {
-  font-size: var(--text-lg);
+  font-size: 18px;
   font-weight: 700;
   color: var(--t1);
   margin: 0;
@@ -1008,7 +1023,7 @@ table.asg tr td:last-child {
 .mc,
 .modal-body {
   flex: 1;
-  padding: var(--sp-6);
+  padding: 24px;
   overflow-y: auto;
 }
 
@@ -1019,7 +1034,7 @@ table.asg tr td:last-child {
   align-items: center;
   justify-content: flex-end;
   gap: var(--sp-3);
-  padding: var(--sp-4) var(--sp-6);
+  padding: 16px 24px;
   border-top: 1px solid var(--brd);
   background: var(--bg2);
 }
