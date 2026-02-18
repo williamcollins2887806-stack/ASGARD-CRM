@@ -323,11 +323,16 @@ window.AsgardInboxApplicationsPage = (function(){
         const btnAccept = document.getElementById('btnAcceptApp');
         if (btnAccept) btnAccept.addEventListener('click', async () => {
           if (!confirm('Принять заявку и создать тендер?')) return;
+          btnAccept.disabled = true;
+          btnAccept.textContent = '⏳ Создание...';
           const res = await api('/' + id + '/accept', { method: 'POST', body: { create_tender: true, send_email: true } });
           if (res.success) {
             toast('Заявка принята', res.tender_id ? 'Тендер #' + res.tender_id + ' создан' : '');
             hideModal(); loadStats(); loadList();
-          } else { toast('Ошибка', res.error || 'Не удалось', 'err'); }
+          } else if (res.tender_id) {
+            toast('Уже обработана', 'Заявка уже принята. Тендер #' + res.tender_id, 'warn');
+            hideModal(); loadStats(); loadList();
+          } else { toast('Ошибка', res.error || 'Не удалось', 'err'); btnAccept.disabled = false; btnAccept.textContent = 'Принять'; }
         });
 
         const btnReject = document.getElementById('btnRejectApp');

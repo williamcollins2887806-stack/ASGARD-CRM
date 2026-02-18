@@ -18,9 +18,14 @@
 
 'use strict';
 
+const fs = require('fs').promises;
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 const db = require('../services/db');
 const aiAnalyzer = require('../services/ai-email-analyzer');
 const { createNotification } = require('../services/notify');
+
+const uploadDir = process.env.UPLOAD_DIR || './uploads';
 
 module.exports = async function (fastify) {
 
@@ -423,9 +428,18 @@ module.exports = async function (fastify) {
     if (!appRes.rows.length) return reply.code(404).send({ error: 'Заявка не найдена' });
     const app = appRes.rows[0];
 
+    // Проверяем что заявка ещё не обработана
+    if (app.status === 'accepted' && app.linked_tender_id) {
+      return reply.code(409).send({
+        error: 'Заявка уже принята',
+        message: `Заявка уже принята ранее. Тендер #${app.linked_tender_id}`,
+        tender_id: app.linked_tender_id
+      });
+    }
+
     let tenderId = null;
 
-    // Создать тендер-черновик из заявки
+    // Создать тендер из заявки
     if (create_tender) {
       const now = new Date();
       const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -442,7 +456,7 @@ module.exports = async function (fastify) {
           tender_title, customer_name, tender_type, tender_status,
           tender_price, comment_to, period,
           created_by, created_at
-        ) VALUES ($1, $2, $3, 'Черновик', $4, $5, $6, $7, NOW())
+        ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, NOW())
         RETURNING id
       `, [
         app.subject || 'Заявка из почты #' + id,
@@ -454,6 +468,37 @@ module.exports = async function (fastify) {
         user.id
       ]);
       tenderId = tenderRes.rows[0].id;
+
+      // Прикрепляем вложения из письма к тендеру (копируем файлы в uploads)
+      if (app.email_id) {
+        try {
+          const attRes = await db.query(
+            'SELECT filename, original_filename, mime_type, size, file_path FROM email_attachments WHERE email_id = $1 AND is_inline = false',
+            [app.email_id]
+          );
+          for (const att of attRes.rows) {
+            const ext = path.extname(att.original_filename || '').toLowerCase() || '.bin';
+            const newFilename = `${uuidv4()}${ext}`;
+            const srcPath = path.resolve(att.file_path);
+            const dstPath = path.join(path.resolve(uploadDir), newFilename);
+            try {
+              await fs.copyFile(srcPath, dstPath);
+            } catch (cpErr) {
+              console.error(`[InboxApp] Failed to copy file ${srcPath}: ${cpErr.message}`);
+              continue;
+            }
+            await db.query(`
+              INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, created_at)
+              VALUES ($1, $2, $3, $4, 'ТЗ', $5, $6, NOW())
+            `, [newFilename, att.original_filename, att.mime_type, att.size || 0, tenderId, user.id]);
+          }
+          if (attRes.rows.length) {
+            console.log(`[InboxApp] Attached ${attRes.rows.length} files from email #${app.email_id} to tender #${tenderId}`);
+          }
+        } catch (attErr) {
+          console.error('[InboxApp] Error attaching files to tender:', attErr.message);
+        }
+      }
     }
 
     // Обновляем заявку

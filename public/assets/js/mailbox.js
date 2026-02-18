@@ -686,6 +686,9 @@ window.AsgardMailboxPage = (function(){
           if (res.success) {
             toast(res.tender_id ? 'Заявка принята, тендер #' + res.tender_id + ' создан' : 'Заявка принята');
             selectEmail(email.id);
+          } else if (res.tender_id) {
+            toast('Заявка уже принята. Тендер #' + res.tender_id, 'warn');
+            selectEmail(email.id);
           } else { toast(res.error || 'Ошибка', 'error'); }
         } catch (err) { toast(err.message, 'error'); }
         break;
