@@ -11,6 +11,8 @@ ALTER TABLE reminders ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE reminders ADD COLUMN IF NOT EXISTS reminder_date TIMESTAMPTZ;
 ALTER TABLE reminders ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
 ALTER TABLE reminders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE reminders ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFAULT false;
+ALTER TABLE reminders ADD COLUMN IF NOT EXISTS dismissed BOOLEAN DEFAULT false;
 
 -- Employee assignments: add missing role column (payroll needs it)
 ALTER TABLE employee_assignments ADD COLUMN IF NOT EXISTS role VARCHAR(100);

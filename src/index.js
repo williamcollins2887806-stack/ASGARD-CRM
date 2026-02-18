@@ -575,6 +575,19 @@ async function ensureTables() {
     END $$;
   `);
 
+  // Reminders: add missing columns (completed, dismissed)
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reminders' AND column_name='completed') THEN
+        ALTER TABLE reminders ADD COLUMN completed BOOLEAN DEFAULT false;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reminders' AND column_name='dismissed') THEN
+        ALTER TABLE reminders ADD COLUMN dismissed BOOLEAN DEFAULT false;
+      END IF;
+    END $$;
+  `);
+
   // Push Subscriptions table (Phase 2)
   await db.query(`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
