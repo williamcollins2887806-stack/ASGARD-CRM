@@ -589,11 +589,41 @@ window.AsgardPmCalcsPage = (function(){
       apply();
     });
 
-    tb.addEventListener("click", (e)=>{
+    tb.addEventListener("click", async (e)=>{
       const tr=e.target.closest("tr[data-id]");
       if(!tr) return;
+      const tenderId = Number(tr.getAttribute("data-id"));
       if(e.target.getAttribute("data-act")==="open"){
-        openTender(Number(tr.getAttribute("data-id")));
+        openTender(tenderId);
+      }
+      if(e.target.getAttribute("data-act")==="docs"){
+        // Открыть комплект документов для тендера
+        const tender = tenders.find(t => t.id === tenderId);
+        const workRes = tender ? await AsgardDB.byIndex("works","tender_id", tenderId) : [];
+        const work = workRes[0] || null;
+        if (typeof openDocsPack === 'function') {
+          openDocsPack({ tender_id: tenderId, work_id: work?.id, purchase_url: tender?.purchase_url });
+        } else if (typeof AsgardDocsPack !== 'undefined') {
+          await AsgardDocsPack.ensurePack({ tender_id: tenderId, work_id: work?.id });
+          const docs = await AsgardDocsPack.docsFor({ tender_id: tenderId, work_id: work?.id });
+          const html = docs.length
+            ? docs.map(d => `<div style="padding:6px 0;font-size:13px"><b>${AsgardUI.esc(d.type||'Документ')}</b> — <a target="_blank" href="${AsgardUI.esc(d.data_url||'#')}">${AsgardUI.esc(d.name||'ссылка')}</a></div>`).join('')
+            : '<div class="help">Документов пока нет</div>';
+          AsgardUI.showModal({ title: 'Комплект документов', html: `<div>${html}</div>`, wide: false });
+        } else {
+          // Fallback: показать файлы из API
+          try {
+            const auth = await AsgardAuth.getAuth();
+            const res = await fetch(`/api/files/?tender_id=${tenderId}`, { headers: { 'Authorization': 'Bearer ' + auth.token } });
+            const data = await res.json();
+            if (data.files?.length) {
+              const html = data.files.map(f => `<div style="padding:6px 0;font-size:13px">📄 <a href="/api/files/download/${f.filename}" target="_blank">${AsgardUI.esc(f.original_name)}</a> <span class="help">(${f.type||'Документ'})</span></div>`).join('');
+              AsgardUI.showModal({ title: 'Документы тендера', html: `<div>${html}</div>` });
+            } else {
+              AsgardUI.toast('Документы', 'Нет прикреплённых документов');
+            }
+          } catch(err) { AsgardUI.toast('Ошибка', err.message, 'err'); }
+        }
       }
     });
 

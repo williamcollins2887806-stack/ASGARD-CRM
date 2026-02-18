@@ -102,15 +102,54 @@ async function routes(fastify, options) {
   });
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { tender_id, work_id, type, limit = 50 } = request.query;
-    let sql = 'SELECT * FROM documents WHERE 1=1';
+    const { tender_id, work_id, type, limit = 50, cascade = 'true' } = request.query;
     const params = [];
     let idx = 1;
+
+    // Каскад: при запросе по work_id — также подтягиваем документы из тендера
+    // При запросе по tender_id — также подтягиваем документы из связанных работ
+    if (cascade !== 'false' && (work_id || tender_id)) {
+      const conditions = [];
+
+      if (work_id) {
+        conditions.push(`work_id = $${idx}`);
+        params.push(work_id);
+        idx++;
+        // Найти tender_id из работы и подтянуть его документы
+        const workRes = await db.query('SELECT tender_id FROM works WHERE id = $1', [work_id]);
+        if (workRes.rows.length && workRes.rows[0].tender_id) {
+          conditions.push(`tender_id = $${idx}`);
+          params.push(workRes.rows[0].tender_id);
+          idx++;
+        }
+      } else if (tender_id) {
+        conditions.push(`tender_id = $${idx}`);
+        params.push(tender_id);
+        idx++;
+        // Подтянуть документы из связанных работ
+        const worksRes = await db.query('SELECT id FROM works WHERE tender_id = $1', [tender_id]);
+        for (const w of worksRes.rows) {
+          conditions.push(`work_id = $${idx}`);
+          params.push(w.id);
+          idx++;
+        }
+      }
+
+      let sql = `SELECT * FROM documents WHERE (${conditions.join(' OR ')})`;
+      if (type) { sql += ` AND type = $${idx}`; params.push(type); idx++; }
+      sql += ` ORDER BY created_at DESC LIMIT $${idx}`;
+      params.push(parseInt(limit));
+      const result = await db.query(sql, params);
+      return { files: result.rows };
+    }
+
+    // Простой запрос без каскада
+    let sql = 'SELECT * FROM documents WHERE 1=1';
     if (tender_id) { sql += ` AND tender_id = $${idx}`; params.push(tender_id); idx++; }
     if (work_id) { sql += ` AND work_id = $${idx}`; params.push(work_id); idx++; }
     if (type) { sql += ` AND type = $${idx}`; params.push(type); idx++; }
     sql += ` ORDER BY created_at DESC LIMIT $${idx}`;
-    params.push(limit);
+    params.push(parseInt(limit));
     const result = await db.query(sql, params);
     return { files: result.rows };
   });

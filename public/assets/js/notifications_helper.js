@@ -78,14 +78,14 @@ window.AsgardNotify = (function(){
         bonusRequest.pm_id,
         '✅ Премии одобрены',
         `Ваш запрос на премии одобрен директором.`,
-        '#/pm-works/' + bonusRequest.work_id
+        '#/pm-works?id=' + bonusRequest.work_id
       );
     } else if (action === 'rejected') {
       await notifyUser(
         bonusRequest.pm_id,
         '❌ Премии отклонены',
         `Ваш запрос на премии отклонён. Причина: ${bonusRequest.reject_reason || 'Не указана'}`,
-        '#/pm-works/' + bonusRequest.work_id
+        '#/pm-works?id=' + bonusRequest.work_id
       );
     }
   }
@@ -101,7 +101,7 @@ window.AsgardNotify = (function(){
           admin.id,
           '👥 Заявка на персонал',
           `РП ${pm?.name || '?'} запросил персонал.\nДолжность: ${request.position || '?'}\nКоличество: ${request.quantity || 1}`,
-          '#/staff-requests'
+          '#/hr-requests'
         );
       }
     } else if (action === 'approved') {
@@ -109,14 +109,14 @@ window.AsgardNotify = (function(){
         request.pm_id,
         '✅ Заявка на персонал одобрена',
         `Ваша заявка на персонал одобрена.`,
-        '#/staff-requests/' + request.id
+        '#/hr-requests?id=' + request.id
       );
     } else if (action === 'rejected') {
       await notifyUser(
         request.pm_id,
         '❌ Заявка отклонена',
         `Заявка на персонал отклонена.`,
-        '#/staff-requests/' + request.id
+        '#/hr-requests?id=' + request.id
       );
     }
   }
@@ -132,7 +132,7 @@ window.AsgardNotify = (function(){
           admin.id,
           '🛒 Заявка на закупку',
           `РП ${pm?.name || '?'} создал заявку на закупку.\n${request.description || ''}`,
-          '#/purchase-requests'
+          '#/proc-requests'
         );
       }
     } else if (action === 'approved') {
@@ -140,7 +140,7 @@ window.AsgardNotify = (function(){
         request.pm_id,
         '✅ Закупка одобрена',
         `Заявка на закупку одобрена.`,
-        '#/purchase-requests/' + request.id
+        '#/proc-requests?id=' + request.id
       );
     }
   }
@@ -152,7 +152,7 @@ window.AsgardNotify = (function(){
       pmId,
       '📋 Новый тендер на просчёт',
       `Вам передан тендер: ${tender.customer || tender.customer_name || 'Без названия'}\nДедлайн: ${fmtDate(tender.docs_deadline)}`,
-      '#/tenders/' + tender.id
+      '#/tenders?open=' + tender.id
     );
   }
   
@@ -174,7 +174,7 @@ window.AsgardNotify = (function(){
           participantId,
           '💬 Новое сообщение',
           `${sender?.name || 'Пользователь'}: ${(messageText || '').slice(0, 100)}`,
-          '#/chat/' + chatId
+          '#/messenger'
         );
       }
     } catch(e) {
