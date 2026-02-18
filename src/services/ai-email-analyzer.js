@@ -14,6 +14,141 @@ const db = require('./db');
 const aiProvider = require('./ai-provider');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+
+// ── Распаковка архивов (ZIP, RAR, 7Z, TAR.GZ) с рекурсией ─────────────
+
+const ARCHIVE_EXTENSIONS = ['.zip', '.rar', '.7z', '.tar', '.gz', '.tgz', '.tar.gz', '.bz2', '.tar.bz2'];
+const ARCHIVE_MIMES = [
+  'application/zip', 'application/x-zip-compressed', 'application/x-rar-compressed',
+  'application/x-rar', 'application/vnd.rar', 'application/x-7z-compressed',
+  'application/gzip', 'application/x-gzip', 'application/x-tar',
+  'application/x-bzip2', 'application/x-compressed'
+];
+const MAX_ARCHIVE_DEPTH = 3; // макс. уровень вложенности архивов
+const MAX_EXTRACTED_FILES = 30; // макс. файлов из всех архивов суммарно
+
+function isArchiveFile(filename, mimeType) {
+  const ext = (filename || '').toLowerCase();
+  if (ARCHIVE_MIMES.includes(mimeType)) return true;
+  return ARCHIVE_EXTENSIONS.some(e => ext.endsWith(e));
+}
+
+/**
+ * Рекурсивно извлекает файлы из архива во временную папку.
+ * Поддерживает: ZIP (adm-zip), RAR (unrar CLI), 7Z (7z CLI), TAR/GZ (tar CLI).
+ * Архивы внутри архивов распаковываются рекурсивно до MAX_ARCHIVE_DEPTH уровней.
+ * @returns {Array<{filename: string, absPath: string}>} — список извлечённых файлов
+ */
+function extractArchiveRecursive(archivePath, originalFilename, depth = 0) {
+  if (depth >= MAX_ARCHIVE_DEPTH) {
+    console.log(`[Archive] Max depth ${MAX_ARCHIVE_DEPTH} reached, skipping: "${originalFilename}"`);
+    return [];
+  }
+
+  const ext = (originalFilename || archivePath).toLowerCase();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `archive-d${depth}-`));
+  let extracted = [];
+
+  try {
+    // ZIP
+    if (ext.endsWith('.zip') || ext.endsWith('.jar')) {
+      try {
+        const AdmZip = require('adm-zip');
+        const zip = new AdmZip(archivePath);
+        zip.extractAllTo(tmpDir, true);
+        console.log(`[Archive] ZIP extracted: "${originalFilename}" → ${tmpDir}`);
+      } catch (zipErr) {
+        console.error(`[Archive] ZIP error "${originalFilename}":`, zipErr.message);
+        cleanupDir(tmpDir);
+        return [];
+      }
+    }
+    // RAR
+    else if (ext.endsWith('.rar')) {
+      try {
+        const { execSync } = require('child_process');
+        execSync(`unrar x -o+ -y "${archivePath}" "${tmpDir}/"`, { timeout: 60000, stdio: 'pipe' });
+        console.log(`[Archive] RAR extracted: "${originalFilename}" → ${tmpDir}`);
+      } catch (rarErr) {
+        console.error(`[Archive] RAR error "${originalFilename}":`, rarErr.message);
+        cleanupDir(tmpDir);
+        return [];
+      }
+    }
+    // 7Z
+    else if (ext.endsWith('.7z')) {
+      try {
+        const { execSync } = require('child_process');
+        execSync(`7z x -y -o"${tmpDir}" "${archivePath}"`, { timeout: 60000, stdio: 'pipe' });
+        console.log(`[Archive] 7Z extracted: "${originalFilename}" → ${tmpDir}`);
+      } catch (szErr) {
+        console.error(`[Archive] 7Z error "${originalFilename}":`, szErr.message);
+        cleanupDir(tmpDir);
+        return [];
+      }
+    }
+    // TAR, TAR.GZ, TGZ, TAR.BZ2
+    else if (ext.endsWith('.tar') || ext.endsWith('.tar.gz') || ext.endsWith('.tgz')
+          || ext.endsWith('.tar.bz2') || ext.endsWith('.gz') || ext.endsWith('.bz2')) {
+      try {
+        const { execSync } = require('child_process');
+        execSync(`tar xf "${archivePath}" -C "${tmpDir}"`, { timeout: 60000, stdio: 'pipe' });
+        console.log(`[Archive] TAR extracted: "${originalFilename}" → ${tmpDir}`);
+      } catch (tarErr) {
+        console.error(`[Archive] TAR error "${originalFilename}":`, tarErr.message);
+        cleanupDir(tmpDir);
+        return [];
+      }
+    }
+    else {
+      cleanupDir(tmpDir);
+      return [];
+    }
+
+    // Сканируем извлечённые файлы
+    const files = listFilesRecursive(tmpDir);
+    for (const filePath of files) {
+      if (extracted.length >= MAX_EXTRACTED_FILES) break;
+      const fname = path.basename(filePath);
+
+      // Если это вложенный архив — рекурсия
+      if (isArchiveFile(fname, '')) {
+        const nested = extractArchiveRecursive(filePath, fname, depth + 1);
+        for (const n of nested) {
+          if (extracted.length < MAX_EXTRACTED_FILES) extracted.push(n);
+        }
+      } else {
+        extracted.push({ filename: fname, absPath: filePath, tmpDir });
+      }
+    }
+  } catch (err) {
+    console.error(`[Archive] General error extracting "${originalFilename}":`, err.message);
+  }
+
+  // НЕ удаляем tmpDir здесь — файлы ещё нужны для чтения. Удалим позже.
+  return extracted;
+}
+
+function listFilesRecursive(dir) {
+  let results = [];
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results = results.concat(listFilesRecursive(fullPath));
+      } else if (entry.isFile()) {
+        results.push(fullPath);
+      }
+    }
+  } catch (_) {}
+  return results;
+}
+
+function cleanupDir(dir) {
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+}
 
 // ── Фильтрация писем ДО отправки в AI ────────────────────────────────
 
@@ -358,6 +493,137 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
           }
         } catch (docErr) {
           console.error(`[AI-Analyzer] DOC extraction error for "${a.original_filename}":`, docErr.message);
+        }
+        continue;
+      }
+
+      // АРХИВЫ (ZIP, RAR, 7Z, TAR.GZ) — рекурсивная распаковка
+      if (isArchiveFile(a.original_filename, a.mime_type)) {
+        console.log(`[AI-Analyzer] Archive detected: "${a.original_filename}" — extracting...`);
+        const tmpDirsSet = new Set();
+        try {
+          const extracted = extractArchiveRecursive(absPath, a.original_filename, 0);
+          console.log(`[AI-Analyzer] Archive "${a.original_filename}": ${extracted.length} files extracted`);
+
+          for (const ef of extracted) {
+            if (ef.tmpDir) tmpDirsSet.add(ef.tmpDir);
+            const efExt = ef.filename.toLowerCase();
+
+            // PDF из архива
+            if (efExt.endsWith('.pdf')) {
+              try {
+                const pdfParse = require('pdf-parse');
+                const buf = fs.readFileSync(ef.absPath);
+                const result = await pdfParse(buf);
+                if (result.text && result.text.trim().length > 50) {
+                  texts.push(`[${a.original_filename} → ${ef.filename}]\n${result.text.slice(0, maxPerFile)}`);
+                  console.log(`[AI-Analyzer] Archive PDF: "${ef.filename}" → ${result.text.length} chars`);
+                }
+              } catch (pdfErr) {
+                console.error(`[AI-Analyzer] Archive PDF error "${ef.filename}":`, pdfErr.message);
+              }
+              continue;
+            }
+
+            // DOCX из архива
+            if (efExt.endsWith('.docx')) {
+              try {
+                const mammoth = require('mammoth');
+                const buf = fs.readFileSync(ef.absPath);
+                const result = await mammoth.extractRawText({ buffer: buf });
+                if (result.value) {
+                  texts.push(`[${a.original_filename} → ${ef.filename}]\n${result.value.slice(0, maxPerFile)}`);
+                  console.log(`[AI-Analyzer] Archive DOCX: "${ef.filename}" → ${result.value.length} chars`);
+                }
+              } catch (docxErr) {
+                console.error(`[AI-Analyzer] Archive DOCX error "${ef.filename}":`, docxErr.message);
+              }
+              continue;
+            }
+
+            // XLSX из архива
+            if (efExt.endsWith('.xlsx') || efExt.endsWith('.xls')) {
+              try {
+                const ExcelJS = require('exceljs');
+                const buf = fs.readFileSync(ef.absPath);
+                const workbook = new ExcelJS.Workbook();
+                await workbook.xlsx.load(buf);
+                const lines = [];
+                workbook.eachSheet((sheet, sheetId) => {
+                  if (sheetId > 2) return;
+                  lines.push(`[${sheet.name}]`);
+                  let cnt = 0;
+                  sheet.eachRow((row) => {
+                    if (cnt++ > 100) return;
+                    const vals = [];
+                    row.eachCell((cell) => {
+                      const v = cell.text || cell.value;
+                      if (v != null && v !== '') vals.push(String(v).trim());
+                    });
+                    if (vals.length) lines.push(vals.join(' | '));
+                  });
+                });
+                if (lines.length) {
+                  texts.push(`[${a.original_filename} → ${ef.filename}]\n${lines.join('\n').slice(0, maxPerFile)}`);
+                  console.log(`[AI-Analyzer] Archive XLSX: "${ef.filename}" → ${lines.length} lines`);
+                }
+              } catch (xlsErr) {
+                console.error(`[AI-Analyzer] Archive XLSX error "${ef.filename}":`, xlsErr.message);
+              }
+              continue;
+            }
+
+            // DOC из архива
+            if (efExt.endsWith('.doc')) {
+              try {
+                const buf = fs.readFileSync(ef.absPath);
+                const text = buf.toString('utf-8').replace(/[^\x20-\x7E\u0400-\u04FF\n\r\t]/g, ' ').replace(/\s{3,}/g, ' ').trim();
+                if (text.length > 50) {
+                  texts.push(`[${a.original_filename} → ${ef.filename}]\n${text.slice(0, maxPerFile)}`);
+                  console.log(`[AI-Analyzer] Archive DOC: "${ef.filename}" → ${text.length} chars`);
+                }
+              } catch (docErr) {
+                console.error(`[AI-Analyzer] Archive DOC error "${ef.filename}":`, docErr.message);
+              }
+              continue;
+            }
+
+            // Текстовые файлы из архива
+            if (efExt.endsWith('.txt') || efExt.endsWith('.csv') || efExt.endsWith('.rtf')) {
+              try {
+                const content = fs.readFileSync(ef.absPath, 'utf-8');
+                if (content && content.length > 10) {
+                  texts.push(`[${a.original_filename} → ${ef.filename}]\n${content.slice(0, maxPerFile)}`);
+                  console.log(`[AI-Analyzer] Archive text: "${ef.filename}" → ${content.length} chars`);
+                }
+              } catch (txtErr) {
+                console.error(`[AI-Analyzer] Archive text error "${ef.filename}":`, txtErr.message);
+              }
+              continue;
+            }
+
+            // Изображения из архива
+            if (efExt.endsWith('.jpg') || efExt.endsWith('.jpeg') || efExt.endsWith('.png')) {
+              try {
+                const stats = fs.statSync(ef.absPath);
+                if (stats.size <= 5 * 1024 * 1024 && imageBlocks.length < 5) {
+                  const buf = fs.readFileSync(ef.absPath);
+                  const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png' };
+                  const mime = mimeMap[path.extname(efExt)] || 'image/jpeg';
+                  imageBlocks.push({
+                    type: 'image',
+                    source: { type: 'base64', media_type: mime, data: buf.toString('base64') }
+                  });
+                  console.log(`[AI-Analyzer] Archive image: "${ef.filename}" (${stats.size} bytes)`);
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (archErr) {
+          console.error(`[AI-Analyzer] Archive extraction error "${a.original_filename}":`, archErr.message);
+        } finally {
+          // Cleanup all temp dirs from archive extraction
+          for (const td of tmpDirsSet) cleanupDir(td);
         }
       }
     }
