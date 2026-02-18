@@ -62,13 +62,13 @@ window.AsgardBigScreen = (function(){
         .bs-exit:hover{border-color:var(--gold-l);color:var(--gold-l)}
 
         /* ── Body ── */
-        .bs-body{flex:1;display:flex;align-items:center;justify-content:center;padding:24px 40px;overflow:hidden}
-        .bs-slide{width:100%;max-width:1600px;animation:bsIn .6s cubic-bezier(.16,1,.3,1)}
+        .bs-body{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:24px 40px;overflow-y:auto;overflow-x:hidden}
+        .bs-slide{width:100%;max-width:1600px;animation:bsIn .6s cubic-bezier(.16,1,.3,1);max-height:100%;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(212,168,67,.3) transparent}
         @keyframes bsIn{from{opacity:0;transform:translateY(30px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 
         /* ── Slide title ── */
-        .bs-title{text-align:center;margin-bottom:28px}
-        .bs-title h2{font-size:26px;font-weight:800;color:var(--gold-l);margin:0 0 4px;letter-spacing:1px}
+        .bs-title{text-align:center;margin-bottom:28px;flex-shrink:0}
+        .bs-title h2{font-size:26px;font-weight:800;color:var(--gold-l);margin:0 0 4px;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .bs-title .bs-subtitle{font-size:13px;color:rgba(255,255,255,.3)}
 
         /* ── Footer (dots + page indicator) ── */
@@ -100,9 +100,9 @@ window.AsgardBigScreen = (function(){
         .bs-kpi-delta.down{background:rgba(239,68,68,.15);color:var(--err-t)}
 
         /* ── Table ── */
-        .bs-tbl{width:100%;border-collapse:separate;border-spacing:0 6px}
-        .bs-tbl th{font-size:11px;color:rgba(255,255,255,.25);text-transform:uppercase;letter-spacing:1px;text-align:left;padding:8px 16px;font-weight:700}
-        .bs-tbl td{padding:14px 16px;background:rgba(15,22,42,.6);font-size:15px;color:rgba(255,255,255,.85)}
+        .bs-tbl{width:100%;border-collapse:separate;border-spacing:0 6px;table-layout:fixed}
+        .bs-tbl th{font-size:11px;color:rgba(255,255,255,.25);text-transform:uppercase;letter-spacing:1px;text-align:left;padding:8px 16px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .bs-tbl td{padding:14px 16px;background:rgba(15,22,42,.6);font-size:15px;color:rgba(255,255,255,.85);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
         .bs-tbl tr td:first-child{border-radius:8px 0 0 8px}
         .bs-tbl tr td:last-child{border-radius:0 8px 8px 0}
         .bs-tbl .rank{font-size:13px;color:rgba(255,255,255,.2);font-weight:700;width:40px}

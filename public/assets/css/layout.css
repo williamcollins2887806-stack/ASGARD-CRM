@@ -689,7 +689,7 @@ html[data-theme="light"] .themebtn .icon-moon { display: block; }
 .asg-content,
 #layout {
   flex: 1;
-  padding: var(--sp-lg);
+  padding: var(--sp-8) var(--sp-8) var(--sp-8) var(--sp-8);
   max-width: var(--content-max-w);
   width: 100%;
   position: relative;

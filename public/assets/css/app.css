@@ -7463,3 +7463,771 @@ html[data-theme="light"] .kpi-card,
 html[data-theme="light"] .chart {
   border: 1px solid var(--brd) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   UNIFIED VIKING THEME v3.0
+   Единый стиль для ВСЕХ модулей CRM на основе модуля Касса.
+   Цвета: Синий (#1E4D8C), Красный (#C8293B), Золотой (#D4A843) + градиенты
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   1. ГЛОБАЛЬНЫЕ КАРТОЧКИ — Viking style (как в Кассе)
+   Все .card, .panel — единый вид с золотой верхней полоской
+   ───────────────────────────────────────────────────────────────────────────── */
+.card,
+.panel,
+.widget,
+.cash-card,
+.cash-balance-card,
+.cash-req-card,
+.funnel-stat,
+.funnel-column,
+.birthday-month,
+.stat-card,
+.upcoming-event,
+.sched-wrap,
+[class*="kpi"] .k {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+  position: relative;
+  overflow: hidden;
+  transition: all var(--base) !important;
+}
+
+/* Золотая верхняя полоска (как в Кассе) */
+.card::before,
+.panel::before,
+.widget::before,
+.stat-card::before,
+.funnel-stat::before,
+.birthday-month::before,
+[class*="kpi"] .k::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 3px !important;
+  background: var(--grad-gold) !important;
+  opacity: 0.7 !important;
+  z-index: 1 !important;
+}
+
+/* Hover эффект для всех карточек */
+.card:hover,
+.panel:hover,
+.widget:hover,
+.stat-card:hover,
+.funnel-stat:hover,
+.birthday-month:hover,
+[class*="kpi"] .k:hover {
+  box-shadow: var(--shadow-md), 0 0 20px rgba(212, 168, 67, 0.08) !important;
+  transform: translateY(-2px);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   2. ЗАГОЛОВКИ СТРАНИЦ — Viking heading style
+   ───────────────────────────────────────────────────────────────────────────── */
+.page-title,
+.title h1 {
+  background: var(--grad-corp);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 800 !important;
+  letter-spacing: 0.02em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   3. SECTION TITLES — Золотой стиль (как .cash-section-title)
+   ───────────────────────────────────────────────────────────────────────────── */
+.card h3,
+.panel h3,
+.chart h3,
+.section-title,
+.form-section,
+.cash-section-title,
+.birthday-month-title,
+.funnel-column-title,
+.cal-title,
+.sched-period {
+  font-family: var(--ff-head) !important;
+  font-weight: 700 !important;
+  color: var(--gold) !important;
+}
+
+/* Subheaders */
+.card-header .card-title,
+.cash-card-header .card-title {
+  font-family: var(--ff-head) !important;
+  color: var(--t1) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   4. CARD HEADERS — Viking gradient background (как в Кассе)
+   ───────────────────────────────────────────────────────────────────────────── */
+.card-header,
+.cash-card-header,
+.mh,
+.modal-header,
+.funnel-column-header {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.08), rgba(200, 41, 59, 0.04)) !important;
+  border-bottom: 1px solid rgba(212, 168, 67, 0.12) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   5. КНОПКИ — Viking color scheme
+   ───────────────────────────────────────────────────────────────────────────── */
+.btn.primary {
+  background: linear-gradient(135deg, var(--blue), var(--blue-h)) !important;
+  border: none !important;
+  box-shadow: var(--blue-glow) !important;
+}
+
+.btn.primary:hover {
+  background: linear-gradient(135deg, var(--blue-h), var(--blue)) !important;
+  box-shadow: 0 0 24px rgba(30, 77, 140, 0.4) !important;
+}
+
+.btn.gold,
+.btn.secondary.gold {
+  background: var(--grad-gold) !important;
+  border: none !important;
+  color: var(--bg0) !important;
+  box-shadow: var(--gold-glow) !important;
+}
+
+.btn.red,
+.btn.danger {
+  background: linear-gradient(135deg, var(--red), var(--red-h)) !important;
+  border: none !important;
+  box-shadow: var(--red-glow) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   6. TABS — Viking gold accent (как .cash-tabs)
+   ───────────────────────────────────────────────────────────────────────────── */
+.tabs,
+.cash-tabs {
+  background: var(--bg3) !important;
+  border: none !important;
+  border-radius: var(--r-md) !important;
+  padding: 4px !important;
+}
+
+.tab.active,
+.tab-btn.active,
+.cash-tab.active {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.15), rgba(200, 41, 59, 0.08)) !important;
+  color: var(--gold) !important;
+  box-shadow: var(--shadow-sm) !important;
+  border: none !important;
+}
+
+.tab.active::after,
+.tab-btn.active::after {
+  background: var(--grad-corp) !important;
+}
+
+.tab:hover,
+.tab-btn:hover,
+.cash-tab:hover {
+  background: rgba(212, 168, 67, 0.06) !important;
+  color: var(--t1) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   7. ТАБЛИЦЫ — Viking clean style
+   ───────────────────────────────────────────────────────────────────────────── */
+table th,
+.tbl th,
+table.asg th {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.1), rgba(200, 41, 59, 0.04)) !important;
+  color: var(--gold) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  border-bottom: 2px solid rgba(212, 168, 67, 0.15) !important;
+}
+
+table tbody tr:hover td,
+.tbl tbody tr:hover td,
+table.asg tbody tr:hover td {
+  background: rgba(30, 77, 140, 0.05) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   8. BADGES & STATUS — Viking colors
+   ───────────────────────────────────────────────────────────────────────────── */
+.badge.gold,
+.saga-badge {
+  background: linear-gradient(135deg, rgba(212, 168, 67, 0.15), rgba(212, 168, 67, 0.08)) !important;
+  border: 1px solid rgba(212, 168, 67, 0.3) !important;
+  color: var(--gold) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   9. KPI CARDS — Viking KPI (единый стиль)
+   ───────────────────────────────────────────────────────────────────────────── */
+.kpi .k,
+.kpi-card,
+.stat-card {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+  padding: var(--sp-5) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.kpi .k .v,
+.kpi-card .v,
+.stat-card .stat-value {
+  font-family: var(--ff-head) !important;
+  font-weight: 900 !important;
+  background: var(--grad-corp) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+.kpi .k .t,
+.kpi-card .t,
+.stat-card .stat-label {
+  font-size: var(--text-xs) !important;
+  color: var(--gold) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  font-weight: 700 !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   10. PROGRESS BARS — Viking gradient
+   ───────────────────────────────────────────────────────────────────────────── */
+.progress-bar,
+.cash-card-balance-fill {
+  background: var(--grad-corp) !important;
+}
+
+.progress,
+.progress-bg,
+.cash-card-balance-bar {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-radius: var(--r-full) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   11. МОДАЛКИ — Viking modal style
+   ───────────────────────────────────────────────────────────────────────────── */
+.modal,
+.modal-content {
+  border: none !important;
+  border-radius: var(--r-xl) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(30, 77, 140, 0.1) !important;
+  overflow: hidden !important;
+}
+
+.modal::before,
+.modal-content::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 3px !important;
+  background: var(--grad-corp) !important;
+  z-index: 10 !important;
+}
+
+.mh,
+.modal-header {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.08), rgba(200, 41, 59, 0.04)) !important;
+  border-bottom: 1px solid rgba(212, 168, 67, 0.12) !important;
+}
+
+.mh .ttl,
+.modal-header h2,
+.modal-header .title {
+  font-family: var(--ff-head) !important;
+  color: var(--t1) !important;
+  font-weight: 700 !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   12. ФОРМЫ — Viking input style
+   ───────────────────────────────────────────────────────────────────────────── */
+input:focus,
+select:focus,
+textarea:focus,
+.inp:focus {
+  border-color: var(--blue) !important;
+  box-shadow: 0 0 0 3px rgba(30, 77, 140, 0.15), 0 0 12px rgba(30, 77, 140, 0.1) !important;
+}
+
+label {
+  color: var(--gold-dim) !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  font-size: 11px !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   13. SIDEBAR — Viking navigation accent
+   ───────────────────────────────────────────────────────────────────────────── */
+.sidenav {
+  background: linear-gradient(180deg, var(--bg2) 0%, rgba(13, 17, 23, 0.98) 100%) !important;
+  border-right: 1px solid rgba(212, 168, 67, 0.08) !important;
+}
+
+.nav-group.has-active > .nav-group-header {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.15), rgba(200, 41, 59, 0.08)) !important;
+  border-color: var(--blue) !important;
+}
+
+.nav-group.has-active > .nav-group-header::after {
+  background: var(--grad-corp) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   14. TOPBAR — Viking gradient accent
+   ───────────────────────────────────────────────────────────────────────────── */
+.topbar,
+.asg-header {
+  background: linear-gradient(135deg, var(--bg2) 0%, rgba(30, 77, 140, 0.03) 100%) !important;
+  border-bottom: 1px solid rgba(212, 168, 67, 0.1) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   15. RUNE SEPARATORS — Viking ornaments
+   ───────────────────────────────────────────────────────────────────────────── */
+.hr {
+  background: linear-gradient(90deg, transparent, rgba(212, 168, 67, 0.3), transparent) !important;
+}
+
+.runesep {
+  color: var(--gold) !important;
+  opacity: 0.4;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   16. EMPTY STATE — Viking style
+   ───────────────────────────────────────────────────────────────────────────── */
+.empty-state .icon {
+  color: var(--gold) !important;
+  text-shadow: 0 0 20px rgba(212, 168, 67, 0.3);
+}
+
+.empty-state .title {
+  color: var(--gold) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   17. FUNNEL / KANBAN — Viking style
+   ───────────────────────────────────────────────────────────────────────────── */
+.funnel-column {
+  background: var(--bg1) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.funnel-column-header {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.06), rgba(200, 41, 59, 0.03)) !important;
+  border-bottom: 3px solid var(--stage-color, var(--gold)) !important;
+}
+
+.funnel-card {
+  background: var(--bg3) !important;
+  border: none !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.funnel-card:hover {
+  background: var(--bg4) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   18. CALENDAR — Viking style
+   ───────────────────────────────────────────────────────────────────────────── */
+.cal-weekday,
+.calendar-header {
+  color: var(--gold) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+}
+
+.cal-day.today,
+.calendar-day.today {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.12), rgba(200, 41, 59, 0.06)) !important;
+  border: 1px solid var(--blue) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   19. ALERTS — Viking alert style (как .cash-alert)
+   ───────────────────────────────────────────────────────────────────────────── */
+.alert,
+.cash-alert {
+  border-radius: var(--r-md) !important;
+  font-size: var(--text-sm) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   20. SCHEDULE GRID — Viking style
+   ───────────────────────────────────────────────────────────────────────────── */
+.sched-head .sched-name {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.1), rgba(200, 41, 59, 0.04)) !important;
+  color: var(--gold) !important;
+}
+
+.sched-day {
+  background: var(--bg3) !important;
+}
+
+.sched-day.today {
+  background: var(--blue) !important;
+  color: white !important;
+  font-weight: 700 !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   21. DROPDOWN MENUS — Viking style
+   ───────────────────────────────────────────────────────────────────────────── */
+.dropdown-menu {
+  background: var(--bg2) !important;
+  border: 1px solid rgba(212, 168, 67, 0.1) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(30, 77, 140, 0.05) !important;
+}
+
+.dropdown-item:hover {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.08), rgba(200, 41, 59, 0.04)) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   22. TOAST — Viking accent
+   ───────────────────────────────────────────────────────────────────────────── */
+.toast {
+  border: none !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 1px rgba(212, 168, 67, 0.2) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   23. ЧАТЫ — Viking style
+   ───────────────────────────────────────────────────────────────────────────── */
+.chat-container {
+  border: none !important;
+  box-shadow: var(--shadow-md) !important;
+  border-radius: var(--r-lg) !important;
+}
+
+.chat-sidebar {
+  background: var(--bg2) !important;
+  border-right: 1px solid rgba(212, 168, 67, 0.08) !important;
+}
+
+.chat-header {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.08), rgba(200, 41, 59, 0.04)) !important;
+  border-bottom: 1px solid rgba(212, 168, 67, 0.1) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   24. BODY ACCENT LINE — Viking gradient (top of page)
+   ───────────────────────────────────────────────────────────────────────────── */
+body::before {
+  height: 3px !important;
+  background: linear-gradient(90deg, var(--red), var(--gold), var(--blue)) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   25. SCROLLBAR — Viking accent
+   ───────────────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar-thumb {
+  background: rgba(30, 77, 140, 0.3) !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 168, 67, 0.4) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   26. GENERIC PAGE CONTAINERS — единый отступ
+   ───────────────────────────────────────────────────────────────────────────── */
+.cash-page,
+.cash-admin-page,
+.kpi-works-page,
+.map-page {
+  padding: 0 !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   27. SELECTION — Viking blue
+   ───────────────────────────────────────────────────────────────────────────── */
+::selection {
+  background: rgba(30, 77, 140, 0.35) !important;
+  color: var(--t1) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   28. LIGHT THEME — Viking light overrides
+   ───────────────────────────────────────────────────────────────────────────── */
+html[data-theme="light"] .card,
+html[data-theme="light"] .panel,
+html[data-theme="light"] .widget,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] [class*="kpi"] .k {
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+html[data-theme="light"] .card::before,
+html[data-theme="light"] .panel::before,
+html[data-theme="light"] .widget::before,
+html[data-theme="light"] .stat-card::before,
+html[data-theme="light"] [class*="kpi"] .k::before {
+  opacity: 0.5 !important;
+}
+
+html[data-theme="light"] table th,
+html[data-theme="light"] .tbl th {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.06), rgba(200, 41, 59, 0.02)) !important;
+  color: var(--blue) !important;
+}
+
+html[data-theme="light"] label {
+  color: var(--blue) !important;
+}
+
+html[data-theme="light"] body::before {
+  background: linear-gradient(90deg, var(--red), var(--gold), var(--blue)) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   NUCLEAR FIX: Override inline style="background:transparent" in JS modules
+   Many JS modules set background:transparent inline, making cards invisible.
+   These rules use !important to force Viking-style backgrounds.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Fix all JS-rendered card-like elements with transparent backgrounds */
+.asg-content [style*="background: transparent"],
+.asg-content [style*="background:transparent"],
+#layout [style*="background: transparent"],
+#layout [style*="background:transparent"] {
+  background: var(--bg2) !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* Exclude inner elements that should remain transparent */
+.asg-content [style*="background: transparent"] [style*="background: transparent"],
+.asg-content [style*="background:transparent"] [style*="background:transparent"],
+.asg-content [style*="background: transparent"] span,
+.asg-content [style*="background: transparent"] div:not([class]),
+#layout [style*="background: transparent"] [style*="background: transparent"],
+#layout [style*="background:transparent"] [style*="background:transparent"] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Fix all card-like divs inside page content that are invisible */
+.asg-content > .panel,
+#layout > .panel,
+.asg-content > .card,
+#layout > .card {
+  background: var(--bg2) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   JS MODULE SPECIFIC FIXES
+   Override styles commonly set inline by JS modules
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Generic module card containers */
+.pm-card,
+.se-card,
+.otp-card,
+.payroll-card,
+.task-card,
+.calc-card,
+.tkp-card,
+.permit-card,
+.req-card,
+.travel-card,
+.inv-card,
+.act-card,
+.exp-card,
+[class*="-card"]:not(.funnel-card):not(.nav):not(.bs-kpi-card):not(.cash-card):not(.cash-req-card):not(.dash-card) {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Card-header pattern across modules */
+[class*="-card-header"],
+[class*="-header"]:not(.topbar):not(.asg-header):not(.bs-hdr):not(.chat-header):not(.sidebar-header):not(.sched-header):not(.cal-header):not(.bellpop-head):not(.modal-header):not(.mh) {
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.06), rgba(200, 41, 59, 0.03)) !important;
+}
+
+/* Section titles across all modules */
+[class*="-section-title"],
+[class*="section-title"],
+.csec h3,
+.section h3,
+.card h3,
+.panel h3 {
+  color: var(--gold) !important;
+  font-family: var(--ff-head) !important;
+  font-weight: 700 !important;
+}
+
+/* Stats rows (used in many modules) */
+.stats-row,
+.stats-grid,
+.summary-row,
+.summary-grid,
+.kpi-row {
+  gap: 16px !important;
+}
+
+.stats-row > div,
+.stats-grid > div,
+.summary-row > div,
+.summary-grid > div {
+  background: var(--bg2) !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ensure card-body has no background issues */
+[class*="-card-body"],
+[class*="-body"]:not(.bs-body):not(.modal-body):not(.mc):not(.sched-body) {
+  background: transparent !important;
+}
+
+/* Viking gold accent for all module section titles */
+.csec .ttl,
+.csec > h3,
+.section > h3,
+h3[class*="title"] {
+  color: var(--gold) !important;
+}
+
+/* Fix filter bars across all modules */
+[class*="filter-bar"],
+[class*="toolbar"],
+.filter-row,
+.tools-row {
+  background: transparent !important;
+  padding: var(--sp-3) 0 !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PAGE-SPECIFIC VIKING OVERRIDES
+   Ensure every page gets the Viking treatment
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Personnel page */
+.employee-card,
+.employee-detail {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+}
+
+/* Equipment page */
+.eq-card,
+.equipment-card {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+}
+
+/* Meetings page */
+.meeting-card {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+}
+
+/* Gantt chart */
+.gantt-container {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+}
+
+.gantt-bar {
+  background: var(--grad-corp) !important;
+  border-radius: var(--r-sm) !important;
+}
+
+/* Warehouse */
+.warehouse-card,
+.wh-card {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+}
+
+/* Contracts & Seals */
+.contract-card,
+.seal-card,
+.proxy-card {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+}
+
+/* Settings page */
+.settings-section,
+.settings-card {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+}
+
+/* Approvals page */
+.approval-card {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+}
+
+/* Travel / Housing page */
+.travel-card,
+.housing-card {
+  background: var(--bg2) !important;
+  border: none !important;
+  border-radius: var(--r-lg) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   CONSISTENT GRID GAPS
+   All grids should use the same spacing as Касса module
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.grid,
+.card-grid,
+.cards-grid,
+[class*="-grid"]:not(.cal-grid):not(.calendar-grid):not(.sched-grid):not(.bs-kpi):not(.dash-grid):not(.cash-balance-grid):not(.cash-detail-grid):not(.cash-cards-grid):not(.form-grid) {
+  gap: 20px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   VIKING RUNE ANIMATION (for decoration)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+@keyframes rune-pulse {
+  0%, 100% { opacity: 0.6; text-shadow: 0 0 8px rgba(212, 168, 67, 0.3); }
+  50% { opacity: 1; text-shadow: 0 0 20px rgba(212, 168, 67, 0.6); }
+}

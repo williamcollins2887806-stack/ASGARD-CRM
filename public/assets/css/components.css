@@ -4262,29 +4262,29 @@ html[data-theme="light"] .inp:focus {
 .dash-widget {
   background: var(--bg2);
   border-radius: var(--r-lg);
-  border: 1px solid var(--brd);
+  border: none;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
   transition: box-shadow var(--base), border-color var(--base), transform var(--base);
   position: relative;
 }
 
-/* Gold top accent line */
+/* Viking gradient top accent line */
 .dash-widget::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--gold), var(--gold-h), transparent);
-  opacity: 0.5;
+  height: 3px;
+  background: linear-gradient(90deg, var(--red), var(--gold), var(--blue));
+  opacity: 0.6;
+  z-index: 1;
 }
 
 .dash-widget:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: rgba(212, 168, 67, 0.3);
+  box-shadow: var(--shadow-md), 0 0 20px rgba(212, 168, 67, 0.08);
 }
 
 .dash-widget.wide {
@@ -4299,13 +4299,14 @@ html[data-theme="light"] .inp:focus {
 /* ── Widget header ── */
 .dash-widget-header {
   padding: 14px 18px 0;
-  background: transparent;
+  background: linear-gradient(135deg, rgba(30, 77, 140, 0.06), rgba(200, 41, 59, 0.03));
   display: flex;
   align-items: center;
   gap: 10px;
   border-bottom: none;
   font-size: var(--text-sm);
-  color: var(--t1);
+  color: var(--gold);
+  font-weight: 700;
 }
 
 .dash-widget-header > span:first-of-type {
