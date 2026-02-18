@@ -47,6 +47,22 @@ window.AsgardMobile = (function(){
       });
     });
 
+    // Hamburger button in topbar
+    const hamburger = $('.mnav .iconbtn') || $('.mnav');
+    if (hamburger) {
+      hamburger.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleMenu();
+      });
+    }
+
+    // Close drawer on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isMenuOpen) {
+        closeMenu();
+      }
+    });
+
     // Мобильная нижняя навигация
     createBottomNav();
   }
@@ -132,6 +148,9 @@ window.AsgardMobile = (function(){
     }
 
     document.body.classList.toggle('nav-open', isMenuOpen);
+
+    // Lock/unlock body scroll when drawer is open
+    document.body.style.overflow = isMenuOpen ? 'hidden' : '';
   }
   
   // Свайп для открытия/закрытия меню
@@ -210,11 +229,31 @@ window.AsgardMobile = (function(){
     // Обёртка для горизонтального скролла
     $$('table.tbl').forEach(table => {
       if (table.parentElement?.classList.contains('tbl-wrap')) return;
-      
+
       const wrapper = document.createElement('div');
       wrapper.className = 'tbl-wrap';
       table.parentNode.insertBefore(wrapper, table);
       wrapper.appendChild(table);
+    });
+
+    // Mark scrollable wrappers for CSS scroll indicator
+    $$('.tbl-wrap').forEach(wrap => {
+      if (wrap.scrollWidth > wrap.clientWidth) {
+        wrap.setAttribute('data-scrollable', 'true');
+      }
+    });
+
+    // Add data-label attributes for responsive-cards tables
+    $$('table.responsive-cards, table.tbl.responsive-cards').forEach(table => {
+      const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+      if (!headers.length) return;
+      table.querySelectorAll('tbody tr').forEach(tr => {
+        tr.querySelectorAll('td').forEach((td, i) => {
+          if (headers[i] && !td.hasAttribute('data-label')) {
+            td.setAttribute('data-label', headers[i]);
+          }
+        });
+      });
     });
   }
   
@@ -289,11 +328,13 @@ window.AsgardMobile = (function(){
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      z-index: 999;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 1099;
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.3s;
+      transition: opacity 0.3s ease;
+      -webkit-backdrop-filter: blur(2px);
+      backdrop-filter: blur(2px);
     }
 
     .mobile-overlay.active {
