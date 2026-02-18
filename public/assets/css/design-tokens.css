@@ -15,30 +15,31 @@
 
   /* Красный */
   --red:      #C8293B;
-  --red-h:    #B52235;
-  --red-l:    #D94452;
-  --red-bg:   rgba(200,41,59,0.12);
-  --red-glow: 0 0 24px rgba(200,41,59,0.25);
+  --red-h:    #A82233;
+  --red-l:    #E8475A;
+  --red-bg:   rgba(200,41,59,0.10);
+  --red-glow: 0 0 20px rgba(200,41,59,0.25);
 
   /* Синий */
   --blue:      #1E4D8C;
-  --blue-h:    #1A4379;
-  --blue-l:    #2B6BC4;
-  --blue-bg:   rgba(30,77,140,0.12);
-  --blue-glow: 0 0 24px rgba(30,77,140,0.3);
+  --blue-h:    #163E72;
+  --blue-l:    #4A90D9;
+  --blue-bg:   rgba(30,77,140,0.10);
+  --blue-glow: 0 0 20px rgba(30,77,140,0.25);
 
   /* Золотой (третий акцент, VIP) */
   --gold:      #D4A843;
-  --gold-h:    #C49B38;
-  --gold-bg:   rgba(212,168,67,0.12);
-  --gold-glow: 0 0 20px rgba(212,168,67,0.2);
+  --gold-h:    #B8922E;
+  --gold-l:    #E8C35A;
+  --gold-bg:   rgba(212,168,67,0.10);
+  --gold-glow: 0 0 20px rgba(212,168,67,0.25);
 
   /* ═══════════════════════════════════════════════════════════════════════════
      2. ФОНЫ — Nordic Dark (от тёмного к светлому)
      ═══════════════════════════════════════════════════════════════════════════ */
   --bg0: #08090C;           /* Самый тёмный (оверлеи, Command Palette) */
   --bg1: #0D1117;           /* Основной фон приложения (body) */
-  --bg2: #151921;           /* Карточки, панели, сайдбар, модалки */
+  --bg2: #151922;           /* Карточки, панели, сайдбар, модалки */
   --bg3: #1C2130;           /* Вложенные элементы, hover, dropdown */
   --bg4: #222838;           /* Заголовки таблиц, тулбары, elevated */
   --bg5: #2A3248;           /* Самый светлый фон (редко) */
@@ -47,9 +48,9 @@
   /* ═══════════════════════════════════════════════════════════════════════════
      3. ТЕКСТ
      ═══════════════════════════════════════════════════════════════════════════ */
-  --t1: #E8EDF4;            /* Основной (заголовки, контент) */
-  --t2: #8B93A1;            /* Вспомогательный (подписи, лейблы) */
-  --t3: #5C6370;            /* Приглушённый (плейсхолдеры, hint) */
+  --t1: rgba(255,255,255,0.95);  /* Основной (заголовки, контент) */
+  --t2: rgba(255,255,255,0.65);  /* Вспомогательный (подписи, лейблы) */
+  --t3: rgba(255,255,255,0.40);  /* Приглушённый (плейсхолдеры, hint) */
 
   /* ═══════════════════════════════════════════════════════════════════════════
      4. СЕМАНТИЧЕСКИЕ ЦВЕТА
@@ -73,29 +74,51 @@
   /* ═══════════════════════════════════════════════════════════════════════════
      5. ГРАНИЦЫ
      ═══════════════════════════════════════════════════════════════════════════ */
-  --brd:   #2A3042;          /* Основные (карточки, таблицы, инпуты) */
-  --brd-m: #1E2433;          /* Приглушённые (внутренние разделители) */
+  --brd:   rgba(255,255,255,0.08);  /* Основные (карточки, таблицы, инпуты) */
+  --brd-m: rgba(255,255,255,0.04);  /* Приглушённые (внутренние разделители) */
 
   /* ═══════════════════════════════════════════════════════════════════════════
      6. ТИПОГРАФИКА
      ═══════════════════════════════════════════════════════════════════════════ */
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  --ff:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ff-head: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ff-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  --font: var(--ff);
+  --mono: var(--ff-mono);
+
+  --fw-med:   500;
+  --fw-semi:  600;
+  --fw-bold:  700;
+  --fw-extra: 800;
+  --fw-black: 900;
 
   /* ═══════════════════════════════════════════════════════════════════════════
      7. SPACING — сетка 8px
      ═══════════════════════════════════════════════════════════════════════════ */
-  --sp-xs:  4px;
-  --sp-sm:  8px;
-  --sp-md:  16px;
-  --sp-lg:  24px;
-  --sp-xl:  32px;
-  --sp-2xl: 48px;
+  --sp-1:   4px;
+  --sp-2:   8px;
+  --sp-3:   12px;
+  --sp-4:   16px;
+  --sp-5:   20px;
+  --sp-6:   24px;
+  --sp-7:   28px;
+  --sp-8:   32px;
+  --sp-10:  40px;
+  --sp-12:  48px;
+  --sp-16:  64px;
+  /* Legacy aliases */
+  --sp-xs:  var(--sp-1);
+  --sp-sm:  var(--sp-2);
+  --sp-md:  var(--sp-4);
+  --sp-lg:  var(--sp-6);
+  --sp-xl:  var(--sp-8);
+  --sp-2xl: var(--sp-12);
 
   /* ═══════════════════════════════════════════════════════════════════════════
      8. BORDER-RADIUS
      ═══════════════════════════════════════════════════════════════════════════ */
-  --r-sm:   4px;
+  --r-xs:   4px;
+  --r-sm:   6px;
   --r-md:   8px;
   --r-lg:   12px;
   --r-xl:   16px;
@@ -112,9 +135,9 @@
   /* ═══════════════════════════════════════════════════════════════════════════
      10. TRANSITIONS
      ═══════════════════════════════════════════════════════════════════════════ */
-  --fast: 150ms ease;
+  --fast: 100ms ease;
   --base: 200ms ease;
-  --slow: 300ms ease;
+  --slow: 400ms ease;
 
   /* ═══════════════════════════════════════════════════════════════════════════
      11. Z-INDEX
@@ -189,15 +212,15 @@
   --warning:       var(--warn);
 
   /* Gold aliases */
-  --gold-light:  #E8C35A;
+  --gold-light:  var(--gold-l);
   --gold-dim:    rgba(212,168,67,0.7);
   --gold-border: rgba(212,168,67,0.35);
 
   /* --- Typography aliases --- */
-  --font-sans:         var(--font);
-  --font-family-base:  var(--font);
-  --font-heading:      var(--font);
-  --font-mono:         var(--mono);
+  --font-sans:         var(--ff);
+  --font-family-base:  var(--ff);
+  --font-heading:      var(--ff-head);
+  --font-mono:         var(--ff-mono);
 
   /* --- Radius aliases --- */
   --radius-sm:   var(--r-sm);
@@ -206,15 +229,7 @@
   --radius-xl:   var(--r-xl);
   --radius-full: var(--r-full);
 
-  /* --- Spacing aliases --- */
-  --sp-1: var(--sp-xs);
-  --sp-2: var(--sp-sm);
-  --sp-3: 12px;
-  --sp-4: var(--sp-md);
-  --sp-5: 20px;
-  --sp-6: var(--sp-lg);
-  --sp-7: 28px;
-  --sp-8: var(--sp-xl);
+  /* --- Spacing aliases (backward compat, now primary above) --- */
 
   /* --- Transition aliases --- */
   --transition-fast:   var(--fast);
@@ -285,8 +300,11 @@
   --text-3xl:  28px;
 
   /* --- Font weight aliases --- */
-  --font-semibold: 600;
-  --font-bold:     700;
+  --font-medium:    var(--fw-med);
+  --font-semibold:  var(--fw-semi);
+  --font-bold:      var(--fw-bold);
+  --font-extrabold: var(--fw-extra);
+  --font-black:     var(--fw-black);
   --leading-normal: 1.5;
 
   /* --- Button component tokens --- */
@@ -306,7 +324,7 @@
   --bg-surface:          var(--bg2);
 
   /* --- Extended radius aliases --- */
-  --radius-xs: 3px;
+  --radius-xs: var(--r-xs);
 
   /* --- Layout aliases (v2.0 compat) --- */
   --sidebar-width:     var(--sidebar-w);
@@ -335,7 +353,7 @@ html {
 }
 
 body {
-  font-family: var(--font);
+  font-family: var(--ff);
   font-size: 14px;
   line-height: 1.5;
   color: var(--t1);
@@ -426,11 +444,11 @@ html[data-theme="light"] {
 
   /* Красный (light mode) */
   --red-bg:  rgba(200,41,59,0.08);
-  --red-glow: 0 0 24px rgba(200,41,59,0.15);
+  --red-glow: 0 0 20px rgba(200,41,59,0.15);
 
   /* Синий (light mode) */
   --blue-bg:  rgba(30,77,140,0.08);
-  --blue-glow: 0 0 24px rgba(30,77,140,0.18);
+  --blue-glow: 0 0 20px rgba(30,77,140,0.18);
 
   /* Золотой (light mode) */
   --gold-bg:  rgba(212,168,67,0.08);
