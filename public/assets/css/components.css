@@ -2381,12 +2381,12 @@ details > *:not(summary) {
 }
 
 .kanban-card-deadline.overdue {
-  background: rgba(239, 68, 68, 0.2);
+  background: var(--err-bg);
   color: var(--red);
 }
 
 .kanban-card-deadline.soon {
-  background: rgba(245, 158, 11, 0.2);
+  background: var(--warn-bg);
   color: var(--warn-t);
 }
 
@@ -2409,7 +2409,7 @@ details > *:not(summary) {
 /* Kanban Column Colors — only top accent, no extra borders */
 .kanban-column[data-column="new"] { border-top: 3px solid var(--blue); }
 .kanban-column[data-column="in_progress"] { border-top: 3px solid var(--gold); }
-.kanban-column[data-column="review"] { border-top: 3px solid #8b5cf6; }
+.kanban-column[data-column="review"] { border-top: 3px solid #A855F7; }
 .kanban-column[data-column="done"] { border-top: 3px solid var(--ok-t); }
 
 /* Kanban Filters */
@@ -3532,19 +3532,19 @@ details > *:not(summary) {
 }
 
 .meeting-rsvp-btn.accepted {
-  background: rgba(34, 197, 94, 0.2);
+  background: var(--ok-bg);
   border-color: var(--ok-t);
   color: var(--ok-t);
 }
 
 .meeting-rsvp-btn.declined {
-  background: rgba(239, 68, 68, 0.2);
+  background: var(--err-bg);
   border-color: var(--red);
   color: var(--red);
 }
 
 .meeting-rsvp-btn.tentative {
-  background: rgba(245, 158, 11, 0.2);
+  background: var(--warn-bg);
   border-color: var(--warn-t);
   color: var(--warn-t);
 }
@@ -3560,10 +3560,10 @@ details > *:not(summary) {
   font-weight: var(--fw-semi);
 }
 
-.meeting-status.scheduled { background: rgba(59, 130, 246, 0.2); color: var(--blue); }
-.meeting-status.in_progress { background: rgba(34, 197, 94, 0.2); color: var(--ok-t); animation: status-pulse 2s ease-in-out infinite; }
+.meeting-status.scheduled { background: var(--info-bg); color: var(--blue); }
+.meeting-status.in_progress { background: var(--ok-bg); color: var(--ok-t); animation: status-pulse 2s ease-in-out infinite; }
 .meeting-status.completed { background: var(--bg3); color: var(--text-tertiary); }
-.meeting-status.cancelled { background: rgba(239, 68, 68, 0.2); color: var(--red); text-decoration: line-through; }
+.meeting-status.cancelled { background: var(--err-bg); color: var(--red); text-decoration: line-through; }
 
 @keyframes status-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
@@ -4149,7 +4149,7 @@ html[data-theme="light"] .status-gold {
 
 .status-dot.gray { background: var(--t3); }
 .status-dot.blue { background: var(--info); }
-.status-dot.purple { background: #8b5cf6; }
+.status-dot.purple { background: #A855F7; }
 .status-dot.yellow { background: var(--warn); }
 .status-dot.green { background: var(--ok-t); }
 .status-dot.red { background: var(--err-t); }

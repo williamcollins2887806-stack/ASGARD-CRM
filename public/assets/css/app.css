@@ -2531,7 +2531,7 @@ html[data-theme="light"] .help {
 /* Details / Summary */
 html[data-theme="light"] details {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 html[data-theme="light"] summary {
@@ -2539,7 +2539,7 @@ html[data-theme="light"] summary {
 }
 
 html[data-theme="light"] details[open] summary {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid var(--brd);
 }
 
 /* Dots */
@@ -2605,13 +2605,13 @@ html[data-theme="light"] .stat-label {
 /* Chart containers */
 html[data-theme="light"] .chart-wrap {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 /* HR / Dividers */
 html[data-theme="light"] hr,
 html[data-theme="light"] .hr {
-  border-color: rgba(0, 0, 0, 0.08);
+  border-color: var(--brd);
 }
 
 /* Form rows */
@@ -2649,7 +2649,7 @@ html[data-theme="light"] code,
 html[data-theme="light"] pre {
   background: var(--bg4);
   color: var(--t1);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 /* Alert boxes */
@@ -2666,7 +2666,7 @@ html[data-theme="light"] .alert-info { background: rgba(37, 99, 235, 0.1); borde
 /* Widget cards */
 html[data-theme="light"] .dashboard-widget {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .dashboard-widget:hover {
@@ -2675,7 +2675,7 @@ html[data-theme="light"] .dashboard-widget:hover {
 
 html[data-theme="light"] .widget-header {
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.05), rgba(37, 99, 235, 0.03));
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .widget-stat-value {
@@ -2684,7 +2684,7 @@ html[data-theme="light"] .widget-stat-value {
 
 html[data-theme="light"] .widget-action-btn {
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.08), rgba(37, 99, 235, 0.06));
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
   color: var(--t1);
 }
 
@@ -2696,13 +2696,13 @@ html[data-theme="light"] .widget-action-btn:hover {
 /* Chat — Light Theme (app.css overrides) */
 html[data-theme="light"] .chat-container {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
 
 html[data-theme="light"] .chat-sidebar {
   background: var(--bg3);
-  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-right: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .chat-item {
@@ -2784,7 +2784,7 @@ html[data-theme="light"] .gantt-bar {
 /* Calendar */
 html[data-theme="light"] .cal-day {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--brd);
   color: var(--t1);
 }
 
@@ -2800,13 +2800,13 @@ html[data-theme="light"] .cal-day.today {
 /* Table wrapper */
 html[data-theme="light"] .tbl-wrap {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 /* Funnel */
 html[data-theme="light"] .funnel-stage {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 /* Theme toggle button */
@@ -2969,7 +2969,7 @@ html[data-theme="light"] .group-title {
 html[data-theme="light"] .topbar {
   background: rgba(255, 255, 255, 0.98);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .topbar h1,
@@ -3044,7 +3044,7 @@ html[data-theme="light"] .pagination .page-btn.active {
 /* Filters */
 html[data-theme="light"] .filter-group {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .filter-label {
@@ -3128,7 +3128,7 @@ html[data-theme="light"] .notifications-panel {
 }
 
 html[data-theme="light"] .notification-item {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .notification-item:hover {
@@ -3142,7 +3142,7 @@ html[data-theme="light"] .notification-item.unread {
 /* Quick stats */
 html[data-theme="light"] .quick-stat {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .quick-stat-value {
@@ -3161,7 +3161,7 @@ html[data-theme="light"] .mimir-panel {
 
 html[data-theme="light"] .mimir-header {
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.08), rgba(37, 99, 235, 0.05));
-  border-bottom-color: rgba(0, 0, 0, 0.08);
+  border-bottom-color: var(--brd);
 }
 
 html[data-theme="light"] .mimir-header-title {
@@ -3175,7 +3175,7 @@ html[data-theme="light"] .mimir-header-status {
 html[data-theme="light"] .mimir-message.assistant {
   background: var(--bg4);
   color: var(--t1);
-  border-color: rgba(0, 0, 0, 0.08);
+  border-color: var(--brd);
 }
 
 html[data-theme="light"] .mimir-message.user {
@@ -3206,7 +3206,7 @@ html[data-theme="light"] .mimir-suggestion:hover {
 
 html[data-theme="light"] .mimir-wisdom {
   color: var(--t3);
-  border-top-color: rgba(0, 0, 0, 0.08);
+  border-top-color: var(--brd);
 }
 
 /* Scanner modal */
@@ -3215,7 +3215,7 @@ html[data-theme="light"] .scanner-container {
 }
 
 html[data-theme="light"] .scanner-header {
-  border-bottom-color: rgba(0, 0, 0, 0.08);
+  border-bottom-color: var(--brd);
 }
 
 html[data-theme="light"] .scanner-ocr {
@@ -3256,7 +3256,7 @@ html[data-theme="light"] legend {
 /* List items */
 html[data-theme="light"] .list-item {
   background: var(--bg2);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .list-item:hover {
@@ -3266,7 +3266,7 @@ html[data-theme="light"] .list-item:hover {
 /* Stats grid */
 html[data-theme="light"] .stats-grid .stat {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 /* Info boxes */
@@ -3306,7 +3306,7 @@ html[data-theme="light"] .offline-banner {
 html[data-theme="light"] footer,
 html[data-theme="light"] .footer {
   background: var(--bg2);
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid var(--brd);
   color: var(--t2);
 }
 
@@ -3566,7 +3566,7 @@ html[data-theme="light"] .kpi .k .s {
 /* Better sidebar for light theme */
 html[data-theme="light"] .sidenav {
   background: linear-gradient(180deg, var(--bg2), var(--bg3));
-  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  border-right: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .sidenav::before {
@@ -3594,7 +3594,7 @@ html[data-theme="light"] .navitem.active .lbl .name {
 /* Better pill styling */
 html[data-theme="light"] .pill {
   border-radius: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
   background: var(--bg3);
 }
 
@@ -3623,7 +3623,7 @@ html[data-theme="light"] .btn.red:hover {
 /* Bell button */
 html[data-theme="light"] .bellbtn {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
   color: var(--t2);
   border-radius: 6px;
 }
@@ -3648,7 +3648,7 @@ html[data-theme="light"] .bellpop {
 
 html[data-theme="light"] .bellpop-head {
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.04), rgba(37, 99, 235, 0.02));
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--brd);
   color: var(--t1);
 }
 
@@ -3672,14 +3672,14 @@ html[data-theme="light"] .tools {
 /* Chart areas */
 html[data-theme="light"] .chart {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--brd);
   border-radius: 6px;
 }
 
 /* Grid cards */
 html[data-theme="light"] .grid .card {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--brd);
   border-radius: 6px;
 }
 
@@ -4634,7 +4634,7 @@ html[data-theme="light"] .panel {
     rgba(255, 255, 255, 0.95) 0%,
     rgba(248, 250, 252, 0.98) 100%
   );
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--brd);
   box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.06),
     0 1px 0 rgba(255, 255, 255, 0.8) inset;
@@ -4702,7 +4702,7 @@ html[data-theme="light"] .kpi .k {
     rgba(255, 255, 255, 0.95) 0%,
     rgba(248, 250, 252, 0.98) 100%
   );
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .kpi .k .v {
@@ -5016,7 +5016,7 @@ html[data-theme="light"] .modal-overlay {
 html[data-theme="light"] .modal,
 html[data-theme="light"] .modal-content {
   background: var(--bg2);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
 }
 
@@ -5024,7 +5024,7 @@ html[data-theme="light"] .modal-content {
 html[data-theme="light"] .mh,
 html[data-theme="light"] .modal-header {
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.04), rgba(37, 99, 235, 0.03));
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .mh .h,
@@ -5044,7 +5044,7 @@ html[data-theme="light"] .modal-body {
 html[data-theme="light"] .mf,
 html[data-theme="light"] .modal-footer {
   background: var(--bg3);
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: 1px solid var(--brd);
 }
 
 /* Form inputs */
@@ -5517,7 +5517,7 @@ html[data-theme="light"] .search-modal {
    ═══════════════════════════════════════════════════════════════════════════════ */
 html[data-theme="light"] .nav-group-items {
   background: var(--bg2);
-  border-color: rgba(0, 0, 0, 0.08);
+  border-color: var(--brd);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
 }
 
@@ -5542,7 +5542,7 @@ html[data-theme="light"] .nav-group.has-active > .nav-group-header::after {
 
 html[data-theme="light"] .sidenav {
   background: var(--bg2);
-  border-right-color: rgba(0, 0, 0, 0.08);
+  border-right-color: var(--brd);
 }
 
 html[data-theme="light"] .sidebar-search-btn:hover {
@@ -7379,19 +7379,19 @@ html[data-theme="light"] .panel,
 html[data-theme="light"] [class*="-card"],
 html[data-theme="light"] .cash-card,
 html[data-theme="light"] .cash-balance-card {
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--brd);
 }
 
 html[data-theme="light"] table td,
 html[data-theme="light"] table.asg td,
 html[data-theme="light"] .tbl td,
 html[data-theme="light"] .table td {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--brd);
 }
 
 html[data-theme="light"] .modal,
 html[data-theme="light"] .modal-content {
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brd);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -7465,5 +7465,5 @@ html[data-theme="light"] .panel,
 html[data-theme="light"] .kpi .k,
 html[data-theme="light"] .kpi-card,
 html[data-theme="light"] .chart {
-  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border: 1px solid var(--brd) !important;
 }
