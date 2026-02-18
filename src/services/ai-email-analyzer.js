@@ -159,6 +159,50 @@ function resolveAttachmentPath(filePath) {
   return null;
 }
 
+/**
+ * Convert PDF pages to PNG images using pdftoppm (poppler-utils).
+ * Returns array of image blocks suitable for Vision API (both OpenAI and Anthropic).
+ * Renders first 4 pages at 150 DPI to keep size manageable.
+ */
+async function convertPdfToImages(pdfPath, filename) {
+  const { execSync } = require('child_process');
+  const os = require('os');
+  const images = [];
+
+  let tmpDir;
+  try {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-ocr-'));
+    const outPrefix = path.join(tmpDir, 'page');
+
+    // Convert first 4 pages at 150 DPI to PNG
+    execSync(`pdftoppm -png -r 150 -l 4 "${pdfPath}" "${outPrefix}"`, {
+      timeout: 30000,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    // Read generated page images (sorted)
+    const files = fs.readdirSync(tmpDir).filter(f => f.startsWith('page-') && f.endsWith('.png')).sort();
+    for (const f of files) {
+      const imgBuf = fs.readFileSync(path.join(tmpDir, f));
+      // Skip if single image is too large (> 4MB)
+      if (imgBuf.length > 4 * 1024 * 1024) continue;
+      images.push({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/png', data: imgBuf.toString('base64') }
+      });
+    }
+    console.log(`[AI-Analyzer] pdftoppm: converted "${filename}" → ${files.length} pages, ${images.length} usable images`);
+  } catch (err) {
+    console.error(`[AI-Analyzer] pdftoppm conversion failed for "${filename}":`, err.message);
+  } finally {
+    // Cleanup temp directory
+    if (tmpDir) {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+    }
+  }
+  return images;
+}
+
 async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FILE } = {}) {
   if (!emailId) {
     console.log('[AI-Analyzer] extractAttachmentTexts: no emailId provided');
@@ -255,13 +299,18 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
           console.error(`[AI-Analyzer] PDF text extraction error for "${a.original_filename}":`, pdfErr.message);
         }
 
-        // Fallback: send scanned PDF as document block for Claude Vision
+        // Fallback: convert scanned PDF pages to PNG images for Vision API
+        // Works with both OpenAI (GPT-4o) and Anthropic (Claude)
         if (!pdfTextOk && buf.length <= 30 * 1024 * 1024) {
-          imageBlocks.push({
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') }
-          });
-          console.log(`[AI-Analyzer] Added scanned PDF as document block for Vision: "${a.original_filename}" (${buf.length} bytes)`);
+          const pdfImages = await convertPdfToImages(absPath, a.original_filename);
+          if (pdfImages.length > 0) {
+            for (const img of pdfImages) {
+              if (imageBlocks.length < 5) imageBlocks.push(img); // limit total images
+            }
+            console.log(`[AI-Analyzer] Converted scanned PDF to ${pdfImages.length} page images: "${a.original_filename}"`);
+          } else {
+            console.warn(`[AI-Analyzer] Could not convert scanned PDF to images: "${a.original_filename}" — install poppler-utils (apt install poppler-utils)`);
+          }
         }
         continue;
       }
