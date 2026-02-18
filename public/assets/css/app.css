@@ -544,9 +544,10 @@ a:hover {
   top: 0;
   left: 0;
   right: 0;
-  height: 1px;
+  height: 3px;
   background: var(--gradient-primary);
-  opacity: 0.5;
+  opacity: 0.8;
+  z-index: 1;
 }
 
 .card {
@@ -4098,7 +4099,8 @@ html[data-theme="light"] body {
 /* Increase border radius globally */
 html[data-theme="light"] .card,
 html[data-theme="light"] .panel {
-  border-radius: 6px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.02);
 }
 
@@ -6702,7 +6704,7 @@ input[type="file"]::file-selector-button:hover {
 
 .cash-balance-card {
   background: var(--bg-card);
-  border: none;
+  border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
   padding: var(--sp-5);
   text-align: center;
@@ -6752,7 +6754,7 @@ input[type="file"]::file-selector-button:hover {
   padding: 4px;
   background: var(--glass-bg);
   border-radius: var(--radius-md);
-  border: none;
+  border: 1px solid var(--border-card);
   margin-bottom: var(--sp-6);
 }
 
@@ -6786,7 +6788,7 @@ input[type="file"]::file-selector-button:hover {
 /* Cash page card wrapper */
 .cash-card {
   background: var(--bg-card);
-  border: none;
+  border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
   overflow: hidden;
   margin-bottom: var(--sp-6);
@@ -7285,7 +7287,7 @@ input[type="file"]::file-selector-button:hover {
 
 .kpi-works-page .kpi .k {
   background: var(--bg-card);
-  border: none;
+  border: 1px solid var(--border-card);
   border-radius: var(--radius-md);
   padding: var(--sp-4);
   text-align: center;
@@ -7319,7 +7321,7 @@ input[type="file"]::file-selector-button:hover {
 
 .kpi-works-page .chart {
   background: var(--bg-card);
-  border: none;
+  border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
   padding: var(--sp-6);
   margin-bottom: var(--sp-6);
@@ -7335,7 +7337,7 @@ input[type="file"]::file-selector-button:hover {
 
 .kpi-works-page .pill {
   background: var(--bg-card);
-  border: none;
+  border: 1px solid var(--border-card);
   border-radius: var(--radius-md);
   transition: all var(--transition-fast);
 }

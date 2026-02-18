@@ -647,9 +647,10 @@ table.asg tr td:last-child {
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 3px;
   background: var(--gradient-primary);
-  opacity: 0.6;
+  opacity: 0.8;
+  z-index: 1;
 }
 
 .card {
@@ -688,11 +689,17 @@ table.asg tr td:last-child {
   flex-direction: column;
   gap: var(--sp-2);
   background: var(--bg-card);
-  border: none;
-  border-radius: 8px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
   padding: 16px 20px;
   position: relative;
   overflow: hidden;
+  transition: all var(--transition-fast);
+}
+
+.stat-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
 }
 
 .stat-card .stat-value {
@@ -772,9 +779,15 @@ table.asg tr td:last-child {
 
 .kpi .k {
   background: var(--bg-elevated);
-  border: none;
+  border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
   padding: var(--sp-4);
+  transition: all var(--transition-fast);
+}
+
+.kpi .k:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
 }
 
 .kpi .k .t {
@@ -4369,16 +4382,17 @@ html[data-theme="light"] .inp:focus {
 }
 
 .dash-widget {
-  background: transparent;
-  border-radius: 10px;
-  border: none;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-card);
   overflow: hidden;
-  transition: box-shadow 0.2s, opacity 0.2s, transform 0.2s;
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
 }
 
 .dash-widget:hover {
   transform: translateY(-2px);
-  box-shadow: none;
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
 }
 
 .dash-widget.wide {
@@ -4438,13 +4452,14 @@ html[data-theme="light"] .inp:focus {
 
 /* Light theme */
 html[data-theme="light"] .dash-widget {
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  background: #ffffff;
+  border: 1px solid var(--border-card);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 html[data-theme="light"] .dash-widget:hover {
-  box-shadow: none;
+  border-color: rgba(220, 38, 38, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
 html[data-theme="light"] .dash-widget-header {
