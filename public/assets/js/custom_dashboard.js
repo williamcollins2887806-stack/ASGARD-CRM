@@ -113,7 +113,6 @@ window.AsgardCustomDashboard = (function(){
       return w.roles.some(wr => {
         if (wr.endsWith('*')) return r.startsWith(wr.slice(0, -1));
         if (wr === r) return true;
-        // HEAD_TO наследует TO виджеты
         if (r === 'HEAD_TO' && wr === 'TO') return true;
         if (r === 'HEAD_PM' && wr === 'PM') return true;
         if (r === 'HR_MANAGER' && wr === 'HR') return true;
@@ -123,14 +122,17 @@ window.AsgardCustomDashboard = (function(){
     });
 
     const html = '<div class="custom-dash">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">' +
-        '<h2 style="margin:0;color:var(--gold)">Мой дашборд</h2>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:12px">' +
+        '<div>' +
+          '<h2 style="margin:0;color:var(--gold)">&#5765; Зал Ярла</h2>' +
+          '<div class="dash-subtitle">&#5765; &#9670; &#5765; &#9670; &#5765;</div>' +
+        '</div>' +
         '<div style="display:flex;gap:8px">' +
-          '<button class="btn ghost" id="btnAddW">+ Виджет</button>' +
-          '<button class="btn ghost" id="btnResetW">↺ Сброс</button>' +
+          '<button class="btn ghost" id="btnAddW" style="border:1px solid var(--brd)">+ Виджет</button>' +
+          '<button class="btn ghost" id="btnResetW" style="border:1px solid var(--brd)">&#8634; Сброс</button>' +
         '</div>' +
       '</div>' +
-      '<div class="help" style="margin-bottom:16px;font-size:12px">Перетаскивайте виджеты для изменения порядка</div>' +
+      '<div class="dash-rune-divider">&#5765; &#9670; &#9671; &#9670; &#5765;</div>' +
       '<div class="dash-grid" id="dashGrid">' +
         userLayout.map(id => {
           const w = WIDGET_TYPES[id];
@@ -209,13 +211,13 @@ window.AsgardCustomDashboard = (function(){
       const avail = available.filter(([id]) => !curr.has(id));
       const html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">' +
         avail.map(([id, w]) =>
-          '<div class="widget-pick" data-id="' + id + '" style="padding:16px;border:1px solid var(--line);border-radius:6px;text-align:center;cursor:pointer">' +
-            '<div style="font-size:32px">' + w.icon + '</div>' +
-            '<div style="font-size:13px;font-weight:600">' + w.name + '</div>' +
-            (w.size === 'wide' ? '<div style="font-size:10px;color:var(--text-muted);margin-top:4px">широкий</div>' : '') +
+          '<div class="widget-pick" data-id="' + id + '" style="padding:16px;border:1px solid var(--brd);border-radius:var(--r-md);text-align:center;cursor:pointer;background:var(--bg3);transition:all 0.15s ease">' +
+            '<div style="font-size:32px;margin-bottom:6px">' + w.icon + '</div>' +
+            '<div style="font-size:13px;font-weight:600;color:var(--t1)">' + w.name + '</div>' +
+            (w.size === 'wide' ? '<div style="font-size:10px;color:var(--t3);margin-top:4px">широкий</div>' : '') +
           '</div>'
         ).join('') +
-        (avail.length === 0 ? '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted)">Все виджеты добавлены</div>' : '') +
+        (avail.length === 0 ? '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--t3)">Все виджеты добавлены</div>' : '') +
       '</div>';
       AsgardUI.showModal('Добавить виджет', html);
       document.querySelectorAll('.widget-pick').forEach(el => {
@@ -238,58 +240,102 @@ window.AsgardCustomDashboard = (function(){
 
   async function renderWelcome(el, user) {
     const hour = new Date().getHours();
-    let greeting = 'Добрый день';
-    if (hour >= 6 && hour < 12) greeting = 'Доброе утро';
-    else if (hour >= 18 && hour < 22) greeting = 'Добрый вечер';
-    else if (hour >= 22 || hour < 6) greeting = 'Доброй ночи';
+    const name = user.name || user.login;
 
-    el.innerHTML = `
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">
-        <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0">
-          ${(user.name || 'U')[0].toUpperCase()}
-        </div>
-        <div>
-          <div style="font-size:16px;font-weight:700;color:var(--text-primary)">${greeting}, ${esc(user.name || user.login)}!</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${esc(user.role)} · ${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-        </div>
-      </div>
-    `;
+    // Viking greetings by time of day
+    const greetings = {
+      morning: [
+        'Вель комен, {n}! Солнце встаёт — и твоя слава.',
+        'Хайль, {n}! Утро несёт новые битвы.',
+        'Слава Одину, {n} здесь! Да будет день богатым.',
+        'Восход приветствует тебя, {n}! К делам!'
+      ],
+      day: [
+        'Хайль, воин {n}! Путь до Вальгаллы идёт через дела.',
+        'Тор благословляет, {n}! Продолжай свой поход.',
+        'Дружина сильна, {n} на посту! За работу.',
+        '{n}, день в разгаре — время крепить славу!'
+      ],
+      evening: [
+        'Вечер, {n}! Время считать добычу дня.',
+        'Хайль, {n}! Сумерки близки, но дела не ждут.',
+        '{n}, закат зовёт — заверши начатое.',
+        'Валькирии поют, {n}. Заканчивай достойно.'
+      ],
+      night: [
+        'Поздний час, {n}! Истинные воины не спят.',
+        'Ночь тиха, {n}. Время для мудрых решений.',
+        '{n} бодрствует! Один тоже не дремлет.',
+        'Звёзды смотрят, {n}. Работай во славу!'
+      ]
+    };
+
+    let pool;
+    if (hour >= 6 && hour < 12) pool = greetings.morning;
+    else if (hour >= 12 && hour < 18) pool = greetings.day;
+    else if (hour >= 18 && hour < 22) pool = greetings.evening;
+    else pool = greetings.night;
+    const greeting = pool[Math.floor(Math.random() * pool.length)].replace('{n}', esc(name));
+
+    const sagas = [
+      'План — щит. Факт — сталь.',
+      'Срок не ждёт. Действие решает.',
+      'Казна любит порядок — держи цифры честными.',
+      'Клятва дана — доведи дело до конца.',
+      'Время — клинок. Береги его.',
+      'Сильнейший — тот, кто держит слово.',
+      'Честь дороже золота. Но золото тоже считай.'
+    ];
+    const saga = sagas[Math.floor(Math.random() * sagas.length)];
+
+    const dateStr = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    el.innerHTML =
+      '<div class="viking-welcome">' +
+        '<span class="vw-rune">\u16DF</span>' +
+        '<div class="vw-greeting">' + greeting + '</div>' +
+        '<div class="vw-role">' + esc(user.role) + ' \u00B7 ' + esc(dateStr) + '</div>' +
+        '<div class="vw-saga-wrap">' +
+          '<div class="vw-saga-label">\u16B1 Сага дня</div>' +
+          '<div class="vw-saga-text">' + esc(saga) + '</div>' +
+        '</div>' +
+        '<div class="vw-runes-row">\u16DF \u16B1 \u16A2 \u16C7 \u16D2</div>' +
+      '</div>';
   }
 
   async function renderNotifications(el, user) {
     const n = (await AsgardDB.byIndex('notifications','user_id',user.id)||[]).filter(x=>!x.is_read).slice(0,5);
-    if (!n.length) { el.innerHTML = '<div class="help" style="text-align:center">Нет уведомлений</div>'; return; }
-    el.innerHTML = n.map(x=>'<div style="padding:10px 0"><div style="font-weight:600;font-size:13px">'+esc(x.title)+'</div><div class="help" style="font-size:12px">'+esc((x.message||'').slice(0,50))+'</div></div>').join('');
+    if (!n.length) { el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет уведомлений</div>'; return; }
+    el.innerHTML = n.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--gold)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc((x.message||'').slice(0,60))+'</div></div>').join('');
   }
 
   async function renderMyWorks(el, user) {
     const w = (await AsgardDB.getAll('works')||[]).filter(x=>x.pm_id===user.id&&x.work_status!=='Завершена').slice(0,5);
-    if (!w.length) { el.innerHTML = '<div class="help" style="text-align:center">Нет работ</div>'; return; }
-    el.innerHTML = w.map(x=>'<div style="padding:10px 0"><div style="font-weight:600;font-size:13px">'+esc(x.work_name||x.work_title)+'</div><div class="help">'+esc(x.customer_name)+' · '+esc(x.work_status)+'</div></div>').join('');
+    if (!w.length) { el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет активных работ</div>'; return; }
+    el.innerHTML = w.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--red)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.work_name||x.work_title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(x.customer_name)+' \u00B7 '+esc(x.work_status)+'</div></div>').join('');
   }
 
   async function renderFunnel(el, user) {
     const t = await AsgardDB.getAll('tenders')||[];
-    // Показываем ВСЕ тендеры, без фильтра по периоду
     const total = t.length;
     const sts = [
-      {name: 'Новый', color: 'var(--t2)'},
+      {name: 'Новый', color: 'var(--gold)'},
       {name: 'Клиент согласился', color: 'var(--ok)'},
       {name: 'Клиент отказался', color: 'var(--red)'},
-      {name: 'Другое', color: 'var(--t2)'}
+      {name: 'Другое', color: 'var(--t3)'}
     ];
     const maxCount = Math.max(...sts.map(s => t.filter(x=>x.tender_status===s.name).length), 1);
-    el.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px">'+
-      '<div class="help" style="margin-bottom:4px">Всего: '+total+' тендеров</div>'+
+    el.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">'+
+      '<div style="font-size:12px;color:var(--t2);margin-bottom:2px">Всего: <span style="font-weight:700;color:var(--gold)">'+total+'</span> тендеров</div>'+
       sts.map(s=>{
         const c = t.filter(x=>x.tender_status===s.name).length;
         const pct = Math.round((c / maxCount) * 100);
         return '<div style="display:flex;gap:10px;align-items:center">'+
-          '<div style="width:110px;font-size:12px;white-space:nowrap">'+s.name+'</div>'+
-          '<div style="flex:1;background:var(--bg-elevated);border-radius:4px;height:20px;overflow:hidden">'+
-            '<div style="height:100%;width:'+pct+'%;background:'+s.color+';transition:width 0.3s"></div>'+
+          '<div style="width:120px;font-size:12px;white-space:nowrap;color:var(--t2)">'+s.name+'</div>'+
+          '<div style="flex:1;background:var(--bg3);border-radius:4px;height:22px;overflow:hidden;border:1px solid var(--brd)">'+
+            '<div style="height:100%;width:'+pct+'%;background:'+s.color+';transition:width 0.3s;border-radius:3px"></div>'+
           '</div>'+
-          '<div style="width:35px;text-align:right;font-weight:600">'+c+'</div>'+
+          '<div style="width:35px;text-align:right;font-weight:700;font-size:13px;color:var(--t1)">'+c+'</div>'+
         '</div>';
       }).join('')+'</div>';
   }
@@ -298,7 +344,7 @@ window.AsgardCustomDashboard = (function(){
     const w = await AsgardDB.getAll('works')||[];
     const y = new Date().getFullYear();
     const sum = w.filter(x=>(x.contract_date||'').startsWith(y)).reduce((s,x)=>s+(Number(x.balance_received)||0)+(Number(x.advance_received)||0),0);
-    el.innerHTML = '<div style="text-align:center"><div style="font-size:24px;font-weight:700;color:var(--green)">'+formatMoney(sum)+'</div><div class="help">Поступило ('+y+')</div></div>';
+    el.innerHTML = '<div style="text-align:center;padding:8px 0"><div style="font-size:26px;font-weight:900;color:var(--gold)">'+formatMoney(sum)+'</div><div style="font-size:12px;color:var(--t3);margin-top:6px">Поступило за '+y+' г.</div></div>';
   }
 
   async function renderBirthdays(el, user) {
@@ -316,12 +362,12 @@ window.AsgardCustomDashboard = (function(){
 
   async function renderApprovals(el, user) {
     const b = (await AsgardDB.getAll('bonus_requests')||[]).filter(x=>x.status==='pending');
-    el.innerHTML = '<div style="text-align:center"><div style="font-size:48px;font-weight:700;color:'+(b.length?'var(--amber)':'var(--green)')+'">'+b.length+'</div><div class="help">Ожидают</div>'+(b.length?'<a href="#/bonus-approval" class="btn mini" style="margin-top:12px">Перейти</a>':'')+'</div>';
+    el.innerHTML = '<div style="text-align:center;padding:8px 0"><div style="font-size:48px;font-weight:900;color:'+(b.length?'var(--gold)':'var(--ok-t)')+'">'+b.length+'</div><div style="font-size:12px;color:var(--t3);margin-top:4px">Ожидают согласования</div>'+(b.length?'<a href="#/bonus-approval" class="btn mini" style="margin-top:14px;border:1px solid var(--gold);color:var(--gold)">Перейти</a>':'')+'</div>';
   }
 
   async function renderCalendar(el, user) {
     const d = new Date();
-    el.innerHTML = '<div style="text-align:center"><div style="font-size:14px;color:var(--gold)">'+d.toLocaleString('ru-RU',{month:'long',year:'numeric'})+'</div><div style="font-size:64px;font-weight:700">'+d.getDate()+'</div><div class="help">'+d.toLocaleString('ru-RU',{weekday:'long'})+'</div><a href="#/calendar" class="btn mini ghost" style="margin-top:12px">Календарь</a></div>';
+    el.innerHTML = '<div style="text-align:center;padding:4px 0"><div style="font-size:13px;color:var(--gold);text-transform:capitalize;font-weight:600">'+d.toLocaleString('ru-RU',{month:'long',year:'numeric'})+'</div><div style="font-size:60px;font-weight:900;color:var(--t1);line-height:1.1;margin:8px 0">'+d.getDate()+'</div><div style="font-size:13px;color:var(--t3);text-transform:capitalize">'+d.toLocaleString('ru-RU',{weekday:'long'})+'</div><a href="#/calendar" class="btn mini ghost" style="margin-top:14px;border:1px solid var(--brd)">Календарь</a></div>';
   }
 
   async function renderQuickActions(el, user) {
@@ -329,8 +375,8 @@ window.AsgardCustomDashboard = (function(){
     if (['ADMIN','TO'].includes(user.role)||user.role?.startsWith('DIRECTOR')) acts.push({i:'📋',l:'Тендер',h:'#/tenders?new=1'});
     if (user.role==='PM') acts.push({i:'📷',l:'Чек',a:'scan'});
     acts.push({i:'💬',l:'Чат',h:'#/chat'});
-    el.innerHTML = '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">'+acts.map(a=>
-      '<button class="btn ghost" '+(a.h?'onclick="location.hash=\''+a.h+'\'"':'data-action="'+a.a+'"')+' style="flex:1;min-width:80px;flex-direction:column"><span style="font-size:20px">'+a.i+'</span><span style="font-size:11px">'+a.l+'</span></button>'
+    el.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">'+acts.map(a=>
+      '<button class="btn ghost" '+(a.h?'onclick="location.hash=\''+a.h+'\'"':'data-action="'+a.a+'"')+' style="flex:1;min-width:80px;flex-direction:column;display:flex;align-items:center;padding:14px 10px;border:1px solid var(--brd);border-radius:var(--r-md);background:var(--bg3)"><span style="font-size:22px;margin-bottom:4px">'+a.i+'</span><span style="font-size:11px;color:var(--t2)">'+a.l+'</span></button>'
     ).join('')+'</div>';
     el.querySelector('[data-action="scan"]')?.addEventListener('click',()=>{if(window.AsgardReceiptScanner)AsgardReceiptScanner.openScanner();});
   }
@@ -502,18 +548,18 @@ window.AsgardCustomDashboard = (function(){
         const h = Math.max(4, Math.round((m.total / max) * 80));
         const wh = m.total > 0 ? Math.round((m.won / m.total) * h) : 0;
         return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">' +
-          '<div style="font-size:10px;font-weight:700">' + m.total + '</div>' +
+          '<div style="font-size:10px;font-weight:700;color:var(--t1)">' + m.total + '</div>' +
           '<div style="width:100%;height:' + h + 'px;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">' +
-            '<div style="height:' + (h - wh) + 'px;background:var(--blue)"></div>' +
-            '<div style="height:' + wh + 'px;background:var(--green)"></div>' +
+            '<div style="height:' + (h - wh) + 'px;background:var(--red)"></div>' +
+            '<div style="height:' + wh + 'px;background:var(--ok)"></div>' +
           '</div>' +
-          '<div style="font-size:10px;color:var(--text-muted)">' + esc(m.label) + '</div>' +
+          '<div style="font-size:10px;color:var(--t3)">' + esc(m.label) + '</div>' +
         '</div>';
       }).join('') +
     '</div>' +
-    '<div style="display:flex;gap:12px;margin-top:8px;font-size:10px">' +
-      '<span><span style="display:inline-block;width:8px;height:8px;background:var(--blue);border-radius:2px;margin-right:4px"></span>Всего</span>' +
-      '<span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:2px;margin-right:4px"></span>Выиграно</span>' +
+    '<div style="display:flex;gap:12px;margin-top:10px;font-size:10px;color:var(--t2)">' +
+      '<span><span style="display:inline-block;width:8px;height:8px;background:var(--red);border-radius:2px;margin-right:4px"></span>Всего</span>' +
+      '<span><span style="display:inline-block;width:8px;height:8px;background:var(--ok);border-radius:2px;margin-right:4px"></span>Выиграно</span>' +
     '</div>';
   }
 
@@ -534,10 +580,10 @@ window.AsgardCustomDashboard = (function(){
     const done = yWorks.filter(w => w.work_status === 'Работы сдали').length;
 
     el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Тендеров</div><div style="font-size:24px;font-weight:900;color:var(--blue)">' + yTenders.length + '</div></div>' +
-      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Конверсия</div><div style="font-size:24px;font-weight:900;color:var(--green)">' + conv + '%</div></div>' +
-      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Выручка</div><div style="font-size:18px;font-weight:900;color:var(--gold)">' + formatMoney(revenue) + '</div></div>' +
-      '<div style="text-align:center;padding:14px 18px"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:800">Сдано работ</div><div style="font-size:24px;font-weight:900;color:var(--green)">' + done + '/' + yWorks.length + '</div></div>' +
+      '<div style="text-align:center;padding:14px 18px;background:var(--bg3);border-radius:var(--r-md);border:1px solid var(--brd)"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;font-weight:800;letter-spacing:0.05em">Тендеров</div><div style="font-size:24px;font-weight:900;color:var(--red)">' + yTenders.length + '</div></div>' +
+      '<div style="text-align:center;padding:14px 18px;background:var(--bg3);border-radius:var(--r-md);border:1px solid var(--brd)"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;font-weight:800;letter-spacing:0.05em">Конверсия</div><div style="font-size:24px;font-weight:900;color:var(--ok-t)">' + conv + '%</div></div>' +
+      '<div style="text-align:center;padding:14px 18px;background:var(--bg3);border-radius:var(--r-md);border:1px solid var(--brd)"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;font-weight:800;letter-spacing:0.05em">Выручка</div><div style="font-size:18px;font-weight:900;color:var(--gold)">' + formatMoney(revenue) + '</div></div>' +
+      '<div style="text-align:center;padding:14px 18px;background:var(--bg3);border-radius:var(--r-md);border:1px solid var(--brd)"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;font-weight:800;letter-spacing:0.05em">Сдано работ</div><div style="font-size:24px;font-weight:900;color:var(--ok-t)">' + done + '/' + yWorks.length + '</div></div>' +
     '</div>';
   }
 
