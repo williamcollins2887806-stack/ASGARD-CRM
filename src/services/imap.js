@@ -395,7 +395,7 @@ let aiProcessorRunning = false;
 async function updateEmailAiClassification(emailId, classification, color, summary, recommendation) {
   const classStr = String(classification || 'other');
   const jsonVal = JSON.stringify(classStr);
-  const params = [color || 'yellow', summary || '', recommendation || '', emailId];
+  const params = [(color || 'yellow').slice(0, 50), (summary || '').slice(0, 2000), (recommendation || '').slice(0, 2000), emailId];
 
   // Try 1: JSONB cast (correct for jsonb column)
   try {
@@ -491,8 +491,8 @@ async function analyzeOneEmail(email) {
           emailId,
           email.from_email || '', email.from_name || '',
           email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
-          analysis.classification, analysis.color, analysis.summary || '', analysis.recommendation || '',
-          analysis.work_type || null, analysis.estimated_budget || null, analysis.estimated_days || null,
+          (analysis.classification || '').slice(0, 100), (analysis.color || '').slice(0, 50), (analysis.summary || '').slice(0, 2000), (analysis.recommendation || '').slice(0, 2000),
+          (analysis.work_type || '').slice(0, 100), (analysis.estimated_budget || '').slice(0, 100), (analysis.estimated_days || '').slice(0, 100),
           analysis.keywords || [], analysis.confidence || 0, JSON.stringify(analysis), analysis._raw?.model || null,
           JSON.stringify(workload), email.attachment_count || 0
         ]);
