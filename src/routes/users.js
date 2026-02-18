@@ -256,6 +256,41 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/users/:id/block - Block user (Admin only)
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:id/block', {
+    preHandler: [fastify.requireRoles(['ADMIN'])]
+  }, async (request, reply) => {
+    const userId = parseInt(request.params.id, 10);
+    if (isNaN(userId)) return reply.code(400).send({ error: 'Invalid user id' });
+    if (request.user.id === userId) return reply.code(400).send({ error: 'Нельзя заблокировать свой аккаунт' });
+
+    const result = await db.query(
+      'UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id, login, name, role, is_active',
+      [userId]
+    );
+    if (!result.rows[0]) return reply.code(404).send({ error: 'Пользователь не найден' });
+    return { user: result.rows[0], message: 'Пользователь заблокирован' };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/users/:id/unblock - Unblock user (Admin only)
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:id/unblock', {
+    preHandler: [fastify.requireRoles(['ADMIN'])]
+  }, async (request, reply) => {
+    const userId = parseInt(request.params.id, 10);
+    if (isNaN(userId)) return reply.code(400).send({ error: 'Invalid user id' });
+
+    const result = await db.query(
+      'UPDATE users SET is_active = true, updated_at = NOW() WHERE id = $1 RETURNING id, login, name, role, is_active',
+      [userId]
+    );
+    if (!result.rows[0]) return reply.code(404).send({ error: 'Пользователь не найден' });
+    return { user: result.rows[0], message: 'Пользователь разблокирован' };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/users/roles - Get available roles
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.get('/roles/list', {
