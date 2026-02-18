@@ -192,6 +192,8 @@ window.AsgardInboxApplicationsPage = (function(){
     const col = COLOR_MAP[item.ai_color] || {};
     const date = item.created_at ? new Date(item.created_at).toLocaleDateString('ru-RU') : '';
     const borderStyle = col.border ? `border-left:4px solid ${col.border}` : '';
+    const creatorName = item.created_by_name || 'МиМир (AI)';
+    const isAI = !item.created_by;
 
     return `
       <div class="inbox-card" data-id="${item.id}" style="${borderStyle}">
@@ -205,6 +207,7 @@ window.AsgardInboxApplicationsPage = (function(){
           ${item.ai_confidence ? '<span>AI: ' + Math.round(item.ai_confidence * 100) + '%</span>' : ''}
           <span>${date}</span>
           ${item.attachment_count ? '<span>📎 ' + item.attachment_count + '</span>' : ''}
+          <span style="color:${isAI ? '#8b5cf6' : 'var(--text-muted)'}">${isAI ? '🤖 ' : ''}${esc(creatorName)}</span>
         </div>
         ${item.ai_summary ? `<div class="ic-ai" style="background:${col.bg || 'var(--bg-elevated)'}">${esc(item.ai_summary)}</div>` : ''}
       </div>
@@ -239,6 +242,7 @@ window.AsgardInboxApplicationsPage = (function(){
           <div style="margin-bottom:16px;font-size:13px">
             <b>От:</b> ${esc(item.source_name || '')} &lt;${esc(item.source_email || '')}&gt;
             <br><b>Дата:</b> ${item.created_at ? new Date(item.created_at).toLocaleString('ru-RU') : '—'}
+            <br><b>Внёс:</b> ${item.created_by ? esc(item.created_by_name || '—') : '<span style="color:#8b5cf6">🤖 МиМир (AI)</span>'}
             ${item.attachment_count ? '<br><b>Вложения:</b> ' + item.attachment_count + ' файлов' : ''}
           </div>
 
@@ -289,7 +293,7 @@ window.AsgardInboxApplicationsPage = (function(){
             <b>Решение:</b> ${esc(item.decision_by_name)} · ${item.decision_at ? new Date(item.decision_at).toLocaleString('ru-RU') : ''}
             ${item.decision_notes ? '<br>' + esc(item.decision_notes) : ''}
             ${item.rejection_reason ? '<br><b>Причина:</b> ' + esc(item.rejection_reason) : ''}
-            ${item.linked_tender_id ? '<br><a href="#/tenders/' + item.linked_tender_id + '">Тендер #' + item.linked_tender_id + '</a>' : ''}
+            ${item.linked_tender_id ? '<br><a href="#/tenders?open=' + item.linked_tender_id + '">Тендер #' + item.linked_tender_id + ' →</a>' : ''}
           </div>` : ''}
 
           <!-- Действия -->
@@ -323,11 +327,16 @@ window.AsgardInboxApplicationsPage = (function(){
         const btnAccept = document.getElementById('btnAcceptApp');
         if (btnAccept) btnAccept.addEventListener('click', async () => {
           if (!confirm('Принять заявку и создать тендер?')) return;
+          btnAccept.disabled = true;
+          btnAccept.textContent = '⏳ Создание...';
           const res = await api('/' + id + '/accept', { method: 'POST', body: { create_tender: true, send_email: true } });
           if (res.success) {
             toast('Заявка принята', res.tender_id ? 'Тендер #' + res.tender_id + ' создан' : '');
             hideModal(); loadStats(); loadList();
-          } else { toast('Ошибка', res.error || 'Не удалось', 'err'); }
+          } else if (res.tender_id) {
+            toast('Уже обработана', 'Заявка уже принята. Тендер #' + res.tender_id, 'warn');
+            hideModal(); loadStats(); loadList();
+          } else { toast('Ошибка', res.error || 'Не удалось', 'err'); btnAccept.disabled = false; btnAccept.textContent = 'Принять'; }
         });
 
         const btnReject = document.getElementById('btnRejectApp');
