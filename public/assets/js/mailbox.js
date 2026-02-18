@@ -500,7 +500,7 @@ window.AsgardMailboxPage = (function(){
             <b>Решение:</b> ${esc(app.decision_by_name)} &middot; ${app.decision_at ? new Date(app.decision_at).toLocaleString('ru-RU') : ''}
             ${app.decision_notes ? '<br>' + esc(app.decision_notes) : ''}
             ${app.rejection_reason ? '<br><b>Причина:</b> ' + esc(app.rejection_reason) : ''}
-            ${app.linked_tender_id ? '<br><a href="#/tenders/' + app.linked_tender_id + '" style="color:var(--primary);">Тендер #' + app.linked_tender_id + '</a>' : ''}
+            ${app.linked_tender_id ? '<br><a href="#/tenders?open=' + app.linked_tender_id + '" style="color:var(--primary);">Тендер #' + app.linked_tender_id + ' →</a>' : ''}
           </div>` : ''}
 
           <!-- Action Buttons -->

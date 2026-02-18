@@ -546,7 +546,7 @@ window.AsgardPreTendersPage = (function(){
         <b>Решение:</b> ${esc(it.decision_by_name)} · ${it.decision_at ? new Date(it.decision_at).toLocaleString('ru-RU') : ''}
         ${it.decision_comment ? '<br><b>Комментарий:</b> ' + esc(it.decision_comment) : ''}
         ${it.reject_reason ? '<br><b>Причина:</b> ' + esc(it.reject_reason) : ''}
-        ${it.created_tender_id ? '<br><a href="#/tenders/' + it.created_tender_id + '" style="color:var(--blue)">Тендер #' + it.created_tender_id + ' →</a>' : ''}
+        ${it.created_tender_id ? '<br><a href="#/tenders?open=' + it.created_tender_id + '" style="color:var(--blue)">Тендер #' + it.created_tender_id + ' →</a>' : ''}
       </div>` : ''}
 
       <!-- Блок 5: Действия -->

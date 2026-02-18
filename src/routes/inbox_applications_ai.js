@@ -60,9 +60,11 @@ module.exports = async function (fastify) {
     const dataRes = await db.query(`
       SELECT ia.*,
         u_dec.name as decision_by_name,
+        u_cr.name as created_by_name,
         e.body_text as email_body_text
       FROM inbox_applications ia
       LEFT JOIN users u_dec ON u_dec.id = ia.decision_by
+      LEFT JOIN users u_cr ON u_cr.id = ia.created_by
       LEFT JOIN emails e ON e.id = ia.email_id
       ${where}
       ORDER BY ia.${sortCol} ${sortOrder}
@@ -390,6 +392,11 @@ module.exports = async function (fastify) {
 
     if (!fields.length) return reply.code(400).send({ error: 'Нет полей для обновления' });
 
+    // Если AI создал — при первом редактировании назначаем реального сотрудника
+    const user = request.user;
+    fields.push(`created_by = COALESCE(created_by, $${idx++})`);
+    vals.push(user.id);
+
     fields.push(`updated_at = NOW()`);
     vals.push(id);
 
@@ -407,7 +414,11 @@ module.exports = async function (fastify) {
     const user = request.user;
 
     await db.query(`
-      UPDATE inbox_applications SET status = 'under_review', decision_by = $1, updated_at = NOW()
+      UPDATE inbox_applications SET
+        status = 'under_review',
+        decision_by = $1,
+        created_by = COALESCE(created_by, $1),
+        updated_at = NOW()
       WHERE id = $2 AND status IN ('new', 'ai_processed')
     `, [user.id, id]);
 
@@ -501,12 +512,13 @@ module.exports = async function (fastify) {
       }
     }
 
-    // Обновляем заявку
+    // Обновляем заявку (created_by = COALESCE: если AI создал, заменяем на реального сотрудника)
     await db.query(`
       UPDATE inbox_applications SET
         status = 'accepted',
         decision_by = $1, decision_at = NOW(), decision_notes = $2,
         linked_tender_id = $3,
+        created_by = COALESCE(created_by, $1),
         updated_at = NOW()
       WHERE id = $4
     `, [user.id, notes || null, tenderId, id]);
@@ -575,6 +587,7 @@ module.exports = async function (fastify) {
         status = 'rejected',
         decision_by = $1, decision_at = NOW(),
         rejection_reason = $2, decision_notes = $3,
+        created_by = COALESCE(created_by, $1),
         updated_at = NOW()
       WHERE id = $4
     `, [user.id, reason || 'Не указана', reason || null, id]);
