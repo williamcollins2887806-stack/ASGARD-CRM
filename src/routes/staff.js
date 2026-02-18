@@ -25,6 +25,12 @@ function filterData(data, allowedSet) {
 async function routes(fastify, options) {
   const db = fastify.db;
 
+  // GET /api/staff — root list (alias for /employees)
+  fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
+    const { rows } = await db.query('SELECT * FROM employees ORDER BY id DESC LIMIT 100');
+    return { employees: rows };
+  });
+
   // Employees
   fastify.get('/employees', { preHandler: [fastify.authenticate] }, async (request) => {
     const { role_tag, search, limit = 100, offset = 0 } = request.query;

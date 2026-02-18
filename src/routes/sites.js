@@ -181,7 +181,7 @@ module.exports = async function(fastify, options) {
       return { found: false };
     } catch (err) {
       fastify.log.error('Geocode fetch error:', err.message);
-      return reply.code(500).send({ error: 'Geocoding failed', detail: err.message });
+      return { found: false, error: 'Geocoding service unavailable', detail: err.message };
     }
   });
 };

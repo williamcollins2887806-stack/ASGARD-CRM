@@ -57,6 +57,23 @@ module.exports = async function(fastify) {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // GET /api/cash — root list (alias for /my)
+  // ─────────────────────────────────────────────────────────────────
+  fastify.get('/', {
+    preHandler: [fastify.requirePermission('cash', 'read')]
+  }, async (request) => {
+    const userId = request.user.id;
+    const { rows } = await db.query(`
+      SELECT cr.*, w.work_title
+      FROM cash_requests cr
+      LEFT JOIN works w ON w.id = cr.work_id
+      WHERE cr.user_id = $1
+      ORDER BY cr.created_at DESC
+    `, [userId]);
+    return rows;
+  });
+
+  // ─────────────────────────────────────────────────────────────────
   // GET /api/cash/my — Мои заявки (для РП)
   // ─────────────────────────────────────────────────────────────────
   fastify.get('/my', {
