@@ -237,8 +237,8 @@ module.exports = async function (fastify) {
         `, [
           (analysis.classification || '').slice(0, 100), (analysis.color || '').slice(0, 50), (analysis.summary || '').slice(0, 2000), (analysis.recommendation || '').slice(0, 2000),
           (analysis.work_type || '').slice(0, 100), (analysis.estimated_budget || '').slice(0, 100), (analysis.estimated_days || '').slice(0, 100),
-          analysis.keywords || [], analysis.confidence, JSON.stringify(analysis),
-          analysis._raw?.model || null,
+          analysis.keywords || [], parseFloat(analysis.confidence) || 0, JSON.stringify(analysis),
+          (analysis._raw?.model || '').slice(0, 100),
           JSON.stringify(workload),
           appId
         ]);
@@ -247,7 +247,7 @@ module.exports = async function (fastify) {
         await db.query(`
           INSERT INTO ai_analysis_log (entity_type, entity_id, analysis_type, model, provider, duration_ms, output_json, created_by)
           VALUES ('inbox_application', $1, 'email_classification', $2, $3, $4, $5, $6)
-        `, [appId, analysis._raw?.model, analysis._raw?.provider, analysis._raw?.durationMs, JSON.stringify(analysis), user.id]);
+        `, [appId, (analysis._raw?.model || '').slice(0, 100), (analysis._raw?.provider || '').slice(0, 50), parseInt(analysis._raw?.durationMs) || null, JSON.stringify(analysis), user.id]);
 
         // Generate AI report
         try {
@@ -331,7 +331,7 @@ module.exports = async function (fastify) {
         (analysis.estimated_budget || '').slice(0, 100),
         (analysis.estimated_days || '').slice(0, 100),
         analysis.keywords || [],
-        analysis.confidence,
+        parseFloat(analysis.confidence) || 0,
         JSON.stringify(analysis),
         (analysis._raw?.model || '').slice(0, 100),
         JSON.stringify(workload),
@@ -341,7 +341,7 @@ module.exports = async function (fastify) {
       await db.query(`
         INSERT INTO ai_analysis_log (entity_type, entity_id, analysis_type, model, provider, duration_ms, output_json, created_by)
         VALUES ('inbox_application', $1, 'email_classification', $2, $3, $4, $5, $6)
-      `, [id, (analysis._raw?.model || '').slice(0, 100), (analysis._raw?.provider || '').slice(0, 50), analysis._raw?.durationMs, JSON.stringify(analysis), user.id]);
+      `, [id, (analysis._raw?.model || '').slice(0, 100), (analysis._raw?.provider || '').slice(0, 50), parseInt(analysis._raw?.durationMs) || null, JSON.stringify(analysis), user.id]);
 
       // Generate AI report (separate call)
       let aiReport = null;
