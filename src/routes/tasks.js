@@ -51,6 +51,28 @@ module.exports = async function(fastify) {
   // ╚═══════════════════════════════════════════════════════════════╝
 
   // ───────────────────────────────────────────────────────────────
+  // GET /api/tasks — root list (alias for /my)
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request) => {
+    const { status, limit = 50, offset = 0 } = request.query;
+    let sql = `
+      SELECT t.*, u_creator.name as creator_name
+      FROM tasks t
+      LEFT JOIN users u_creator ON t.creator_id = u_creator.id
+      WHERE t.assignee_id = $1
+    `;
+    const params = [request.user.id];
+    let idx = 2;
+    if (status) { sql += ` AND t.status = $${idx}`; params.push(status); idx++; }
+    sql += ` ORDER BY t.created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`;
+    params.push(parseInt(limit), parseInt(offset));
+    const { rows } = await db.query(sql, params);
+    return { tasks: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
   // GET /api/tasks/my — Мои задачи (назначенные мне)
   // ───────────────────────────────────────────────────────────────
   fastify.get('/my', {

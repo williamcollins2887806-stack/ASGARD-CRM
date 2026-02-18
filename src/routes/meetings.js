@@ -241,13 +241,20 @@ module.exports = async function(fastify) {
       notify_before_minutes || 15
     ]);
 
+    // Добавить организатора как участника (принято автоматически)
+    await db.query(`
+      INSERT INTO meeting_participants (meeting_id, user_id, rsvp_status, created_at)
+      VALUES ($1, $2, 'accepted', NOW())
+      ON CONFLICT (meeting_id, user_id) DO NOTHING
+    `, [meeting.id, organizerId]);
+
     // Добавить участников и отправить приглашения
     if (Array.isArray(participant_ids)) {
       const organizerName = request.user.name || request.user.login;
       const startTimeStr = new Date(start_time).toLocaleString('ru-RU');
 
       for (const pId of participant_ids) {
-        if (pId !== organizerId) {
+        if (parseInt(pId) !== organizerId) {
           await db.query(`
             INSERT INTO meeting_participants (meeting_id, user_id, rsvp_status, created_at)
             VALUES ($1, $2, 'pending', NOW())

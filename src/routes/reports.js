@@ -11,8 +11,22 @@ const ExcelJS = require('exceljs');
 async function routes(fastify, options) {
   const db = fastify.db;
 
+  // === ROOT LIST ===
+  fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
+    return {
+      reports: [
+        { type: 'monthly', label: 'Месячный отчёт', url: '/api/reports/monthly' },
+        { type: 'quarterly', label: 'Квартальный отчёт', url: '/api/reports/generate/quarterly' },
+        { type: 'yearly', label: 'Годовой отчёт', url: '/api/reports/generate/yearly' },
+        { type: 'dashboard', label: 'Дашборд', url: '/api/reports/dashboard' },
+        { type: 'pm-performance', label: 'Эффективность PM', url: '/api/reports/pm-performance' },
+        { type: 'funnel', label: 'Воронка', url: '/api/reports/funnel' }
+      ]
+    };
+  });
+
   // === АВТООТЧЁТЫ ===
-  
+
   // Генерация месячного отчёта
   fastify.get('/generate/monthly', { preHandler: [fastify.authenticate] }, async (request) => {
     const { year, month } = request.query;

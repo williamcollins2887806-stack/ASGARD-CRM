@@ -321,7 +321,7 @@ async function routes(fastify, options) {
       if (existing.rows.length === 0) return reply.code(404).send({ error: 'Заявка не найдена' });
 
       const app = existing.rows[0];
-      if (app.status !== 'draft') {
+      if (app.status !== 'draft' && user.role !== 'ADMIN') {
         return reply.code(409).send({ error: 'Редактировать можно только черновик' });
       }
       if (app.created_by !== user.id && user.role !== 'ADMIN') {
@@ -383,7 +383,7 @@ async function routes(fastify, options) {
     try {
       const existing = await db.query('SELECT * FROM permit_applications WHERE id = $1', [id]);
       if (existing.rows.length === 0) return reply.code(404).send({ error: 'Заявка не найдена' });
-      if (existing.rows[0].status !== 'draft') {
+      if (existing.rows[0].status !== 'draft' && user.role !== 'ADMIN') {
         return reply.code(409).send({ error: 'Удалить можно только черновик' });
       }
 

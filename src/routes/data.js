@@ -7,6 +7,15 @@
 async function dataRoutes(fastify, options) {
   const db = fastify.db;
 
+  // SECURITY: Reject raw URLs containing injection characters (;, ..)
+  // Fastify strips matrix parameters (;) and normalizes .., so we must check raw URL
+  fastify.addHook('onRequest', async (request, reply) => {
+    const rawPath = (request.raw.url || '').split('?')[0];
+    if (rawPath.includes(';') || rawPath.includes('..')) {
+      return reply.code(400).send({ error: 'Недопустимый запрос' });
+    }
+  });
+
   // Разрешённые таблицы (защита от SQL injection)
   const ALLOWED_TABLES = [
     'users', 'settings', 'tenders', 'estimates', 'works',
@@ -50,7 +59,7 @@ async function dataRoutes(fastify, options) {
         'sync_meta', 'employee_assignments', 'employee_plan', 'reminders',
         'bonus_requests', 'doc_sets', 'qa_messages', 'user_dashboard',
         'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
-        'permits'
+        'permits', 'tasks'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -60,9 +69,9 @@ async function dataRoutes(fastify, options) {
         'tenders', 'estimates', 'customers', 'calendar_events', 'documents',
         'correspondence', 'chats', 'chat_messages', 'notifications',
         'sync_meta', 'reminders', 'doc_sets', 'user_dashboard',
-        'permits'
+        'permits', 'tasks'
       ],
-      ops: ['read', 'create', 'update']
+      ops: ['read']
     },
     BUH: {
       tables: [
@@ -140,18 +149,15 @@ async function dataRoutes(fastify, options) {
   // users убран: HIDDEN_COLS уже скрывает password_hash/pin_hash, а ФИО нужны всем ролям
   const READ_SENSITIVE_TABLES = ['audit_log'];
 
-  // NOTE: HEAD_TO, HR_MANAGER, CHIEF_ENGINEER используют выделенные API-маршруты,
-  // а не универсальный data API. Наследование ролей работает в requireRoles (index.js).
-
   function checkAccess(role, table, operation) {
-    // ADMIN и DIRECTOR_GEN имеют полный доступ
-    if (role === 'ADMIN' || role === 'DIRECTOR_GEN') {
-      return true;
-    }
-
-    // Защита от записи в критичные таблицы
+    // Защита от записи в критичные таблицы — применяется ко ВСЕМ ролям, включая ADMIN
     if (WRITE_PROTECTED_TABLES.includes(table) && operation !== 'read') {
       return false;
+    }
+
+    // ADMIN и DIRECTOR_GEN имеют полный доступ (для незащищённых таблиц)
+    if (role === 'ADMIN' || role === 'DIRECTOR_GEN') {
+      return true;
     }
 
     // Защита чувствительных таблиц от чтения
@@ -193,6 +199,9 @@ async function dataRoutes(fastify, options) {
   const NO_ID_TABLES = ['customers', 'call_history', 'settings', 'user_call_status', 'sync_meta', 'user_dashboard'];
 
   function isAllowed(table) {
+    // SECURITY: Strict validation — only alphanumeric and underscore, must be in allowlist
+    if (!table || !/^[a-z][a-z0-9_]*$/i.test(table)) return false;
+    if (table.includes('..') || table.includes(';') || table.includes('/')) return false;
     return ALLOWED_TABLES.includes(table);
   }
 
@@ -240,7 +249,12 @@ async function dataRoutes(fastify, options) {
   }, async (request, reply) => {
     const { table } = request.params;
     const { limit: rawLimit = 500, offset: rawOffset = 0, orderBy, desc, where } = request.query;
-    const limit = Math.max(1, Math.min(parseInt(rawLimit) || 500, 500)); // B9: cap at 500, floor at 1
+    const parsedLimit = parseInt(rawLimit);
+    if (parsedLimit === 0) {
+      // limit=0 means "no items"
+      return { [table]: [], total: 0, limit: 0, offset: 0 };
+    }
+    const limit = Math.max(1, Math.min(parsedLimit || 500, 500)); // B9: cap at 500, floor at 1
     const offset = Math.max(parseInt(rawOffset) || 0, 0); // Sanitize offset: NaN → 0
 
     if (!isAllowed(table)) {
@@ -395,10 +409,11 @@ async function dataRoutes(fastify, options) {
       // Получаем реальные колонки таблицы
       const tableCols = await getTableColumns(dbTable);
 
-      // Truncate overly long string fields to prevent varchar overflow
+      // SECURITY: Reject overly long string fields (VARCHAR overflow protection)
+      const TEXT_FIELDS = ['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'];
       for (const key of Object.keys(data)) {
-        if (typeof data[key] === 'string' && data[key].length > 500 && !['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'].includes(key)) {
-          data[key] = data[key].substring(0, 500);
+        if (typeof data[key] === 'string' && data[key].length > 1000 && !TEXT_FIELDS.includes(key)) {
+          return reply.code(400).send({ error: 'Значение поля слишком длинное', field: key });
         }
       }
 
@@ -498,15 +513,19 @@ async function dataRoutes(fastify, options) {
       delete data.created_at; // Не меняем дату создания
       delete data.created_by; // Не меняем автора
 
-      // Truncate overly long string fields to prevent varchar overflow
+      // SECURITY: Reject overly long string fields (VARCHAR overflow protection)
+      const TEXT_FIELDS = ['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'];
       for (const key of Object.keys(data)) {
-        if (typeof data[key] === 'string' && data[key].length > 500 && !['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'].includes(key)) {
-          data[key] = data[key].substring(0, 500);
+        if (typeof data[key] === 'string' && data[key].length > 1000 && !TEXT_FIELDS.includes(key)) {
+          return reply.code(400).send({ error: 'Значение поля слишком длинное', field: key });
         }
       }
 
       // Фильтруем ключи: только валидные имена И существующие колонки
       const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k) && tableCols.has(k));
+      if (keys.length === 0) {
+        return reply.code(400).send({ error: 'Нет валидных полей для обновления' });
+      }
       const values = keys.map(k => data[k]);
       const setParts = keys.map((k, i) => `${k} = $${i + 1}`);
 

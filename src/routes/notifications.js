@@ -30,6 +30,15 @@ async function routes(fastify, options) {
     };
   });
 
+  // GET /api/notifications/unread-count — Количество непрочитанных уведомлений
+  fastify.get('/unread-count', { preHandler: [fastify.authenticate] }, async (request) => {
+    const { rows } = await db.query(
+      'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false',
+      [request.user.id]
+    );
+    return { unread_count: parseInt(rows[0].count, 10) };
+  });
+
   // Создать уведомление (внутренний API)
   // SECURITY: Проверка прав на создание уведомления (HIGH-10)
   fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {

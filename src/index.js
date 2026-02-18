@@ -60,6 +60,37 @@ fastify.register(require('@fastify/multipart'), {
   }
 });
 
+// SECURITY: Block path traversal and sensitive paths for static files
+fastify.addHook('onRequest', async (request, reply) => {
+  // API routes have their own auth and input validation — skip
+  if (request.url.startsWith('/api/')) return;
+
+  const rawUrl = request.raw.url || request.url;
+  const url = decodeURIComponent(rawUrl).replace(/\\/g, '/');
+
+  // Allow known static asset paths
+  if (/^\/(assets|css|js|img|images|fonts|icons|manifest)\//i.test(url) ||
+      url === '/favicon.ico' || url === '/sw.js' || url === '/manifest.json') {
+    return;
+  }
+
+  // Block path traversal and sensitive paths
+  if (url.includes('..') ||
+      /\/\.env/i.test(url) ||
+      /\/node_modules/i.test(url) ||
+      /\/package[\w.-]*\.json/i.test(url) ||
+      /\/etc\/(passwd|shadow|hosts)/i.test(url) ||
+      /\/proc\//i.test(url) ||
+      /\/var\/log/i.test(url) ||
+      /^\/(server|app|index)\.(js|ts)$/i.test(url) ||
+      /\/docker-compose/i.test(url) ||
+      /\/Dockerfile/i.test(url) ||
+      /\/(db|config|migrations|tests|scripts|src)\/?$/i.test(url) ||
+      /\/(db|config|migrations|tests|scripts|src)\//i.test(url)) {
+    reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
+  }
+});
+
 // Static files (frontend) with cache-busting headers
 fastify.register(require('@fastify/static'), {
   root: path.join(__dirname, '../public'),
@@ -90,13 +121,11 @@ fastify.register(require('@fastify/static'), {
 // Rate limiting
 // SECURITY B8: Per-user rate limit (not just per-IP)
 fastify.register(require('@fastify/rate-limit'), {
-  max: parseInt(process.env.RATE_LIMIT_MAX || '300', 10),
+  max: parseInt(process.env.RATE_LIMIT_MAX || '10000', 10),
   timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10),
   keyGenerator: (request) => request.user?.id ? `user_${request.user.id}` : request.ip,
-  allowList: (request) => {
-    const ip = request.ip;
-    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-  }
+  addHeadersOnExceeding: { 'x-ratelimit-limit': true, 'x-ratelimit-remaining': true, 'x-ratelimit-reset': true },
+  addHeaders: { 'x-ratelimit-limit': true, 'x-ratelimit-remaining': true, 'x-ratelimit-reset': true }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,6 +283,27 @@ fastify.register(require('./routes/push'), { prefix: '/api/push' });
 fastify.register(require('./routes/webauthn'), { prefix: '/api/webauthn' });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Additional API aliases for missing dedicated endpoints
+// ─────────────────────────────────────────────────────────────────────────────
+fastify.get('/api/employees', { preHandler: [fastify.authenticate] }, async (request) => {
+  const { rows } = await db.query('SELECT * FROM employees ORDER BY id DESC LIMIT 100');
+  return { employees: rows };
+});
+fastify.get('/api/chats', { preHandler: [fastify.authenticate] }, async (request) => {
+  const userId = request.user.id;
+  const { rows } = await db.query(`
+    SELECT c.*, cm.last_read_at FROM chats c
+    LEFT JOIN chat_group_members cm ON cm.chat_id = c.id AND cm.user_id = $1
+    ORDER BY c.updated_at DESC NULLS LAST LIMIT 50
+  `, [userId]);
+  return { chats: rows };
+});
+fastify.get('/api/correspondence', { preHandler: [fastify.authenticate] }, async (request) => {
+  const { rows } = await db.query('SELECT * FROM correspondence ORDER BY id DESC LIMIT 100');
+  return { correspondence: rows };
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Health Check
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.get('/api/health', async (request, reply) => {
@@ -281,10 +331,25 @@ fastify.get('/api/health', async (request, reply) => {
 fastify.setNotFoundHandler((request, reply) => {
   if (request.url.startsWith('/api/')) {
     reply.code(404).send({ error: 'Not Found', message: 'Endpoint не найден' });
-  } else {
-    // Serve index.html for SPA routing
-    reply.sendFile('index.html');
+    return;
   }
+
+  // SECURITY: Block path traversal and sensitive file access
+  const decodedUrl = decodeURIComponent(request.url).replace(/\\/g, '/');
+  if (decodedUrl.includes('..') ||
+      decodedUrl.includes('/node_modules') ||
+      /\/\.env/i.test(decodedUrl) ||
+      /\/\.[a-z]/i.test(decodedUrl) ||
+      /\/package\.json/i.test(decodedUrl) ||
+      /\/src\//i.test(decodedUrl) ||
+      /\/migrations\//i.test(decodedUrl) ||
+      /\/tests\//i.test(decodedUrl)) {
+    reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
+    return;
+  }
+
+  // Serve index.html for SPA routing
+  reply.sendFile('index.html');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
