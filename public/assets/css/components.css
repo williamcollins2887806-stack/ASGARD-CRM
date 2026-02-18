@@ -4835,3 +4835,170 @@ html[data-theme="light"] .emp-selector-item:has(input:checked) {
 html[data-theme="light"] .emp-selector-name {
   color: var(--t1);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PHASE 2: CORPORATE RED/BLUE/GOLD IDENTITY + RUNIC STYLE
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Runic Divider ── */
+.rune-divider {
+  text-align: center;
+  padding: 8px 0;
+  color: var(--gold);
+  font-size: 12px;
+  letter-spacing: 0.5em;
+  opacity: 0.4;
+  user-select: none;
+}
+
+.rune-divider::before {
+  content: "ᚱ ◆ ᚨ ◆ ᚷ";
+}
+
+/* ── Section Titles (runic uppercase) ── */
+.form-section,
+.section-title,
+.card h3,
+.dash-widget-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+/* ── Modal top accent stripe ── */
+.modal::before,
+.modal-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--red), var(--gold) 50%, var(--blue));
+  z-index: 1;
+}
+
+/* ── Dashboard widget top accent stripe ── */
+.dash-widget {
+  position: relative;
+  overflow: hidden;
+}
+
+.dash-widget::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--red), var(--gold) 50%, var(--blue));
+  opacity: 0.7;
+  z-index: 1;
+}
+
+.dash-widget:hover::before {
+  opacity: 1;
+}
+
+/* ── KPI card individual color stripes ── */
+.kpi .k::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.kpi .k:nth-child(1)::before { background: var(--red); }
+.kpi .k:nth-child(2)::before { background: var(--blue); }
+.kpi .k:nth-child(3)::before { background: var(--gold); }
+.kpi .k:nth-child(4)::before { background: var(--ok); }
+.kpi .k:nth-child(5)::before { background: var(--red); }
+.kpi .k:nth-child(6)::before { background: var(--blue); }
+
+/* ── Card hover accent stripe ── */
+.card::before,
+.panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--red), var(--blue));
+  opacity: 0;
+  transition: opacity var(--base);
+  z-index: 1;
+}
+
+.card:hover::before,
+.panel:hover::before {
+  opacity: 0.6;
+}
+
+/* ── Button glow effects ── */
+.btn.primary:hover {
+  box-shadow: 0 0 20px rgba(30,77,140,0.35), 0 4px 12px rgba(30,77,140,0.25);
+}
+
+.btn.danger:hover,
+.btn.red:hover {
+  box-shadow: 0 0 20px rgba(200,41,59,0.35), 0 4px 12px rgba(200,41,59,0.25);
+}
+
+.btn.gold:hover {
+  box-shadow: 0 0 20px rgba(212,168,67,0.35), 0 4px 12px rgba(212,168,67,0.25);
+}
+
+/* ── Table hover accent ── */
+.tbl tbody tr:hover td:first-child,
+table.asg tbody tr:hover td:first-child {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+/* Table header gradient */
+.tbl thead th,
+table.asg th {
+  background: linear-gradient(180deg, var(--bg4), var(--bg3));
+}
+
+/* Monospaced numbers */
+.kpi .v,
+.kpi .k .v,
+.stat-value,
+td.num,
+td.mono {
+  font-family: var(--ff-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Toast color stripes ── */
+.toast {
+  border-left: 3px solid var(--brd);
+}
+.toast-success { border-left-color: var(--ok); }
+.toast-error   { border-left-color: var(--red); }
+.toast-warning { border-left-color: var(--gold); }
+.toast-info    { border-left-color: var(--blue); }
+
+/* ── Card/Panel/Widget hover effects ── */
+.card:hover,
+.panel:hover,
+.dash-widget:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--blue);
+  transition: all var(--base);
+}
+
+/* ── KPI card hover ── */
+.kpi .k:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  transition: all var(--base);
+}

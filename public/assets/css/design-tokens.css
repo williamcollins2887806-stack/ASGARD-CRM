@@ -164,8 +164,8 @@
   /* ═══════════════════════════════════════════════════════════════════════════
      13. ГРАДИЕНТЫ
      ═══════════════════════════════════════════════════════════════════════════ */
-  --grad-corp: linear-gradient(135deg, #C8293B, #1E4D8C);
-  --grad-corp-90: linear-gradient(90deg, #C8293B, #1E4D8C);
+  --grad-corp: linear-gradient(135deg, #C8293B, #D4A843 50%, #1E4D8C);
+  --grad-corp-90: linear-gradient(90deg, #C8293B, #D4A843 50%, #1E4D8C);
   --grad-red:  linear-gradient(90deg, #C8293B, #E8475A);
   --grad-blue: linear-gradient(90deg, #1E4D8C, #4A90D9);
   --grad-gold: linear-gradient(90deg, #D4A843, #E8C35A);
