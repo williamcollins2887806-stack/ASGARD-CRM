@@ -27,7 +27,7 @@ async function authLoginStep1(login, password) {
 
 function authGetAuth() {
   if (typeof AsgardAuth !== 'undefined' && AsgardAuth.getAuth) {
-    return authGetAuth();
+    return AsgardAuth.getAuth();
   }
   const token = localStorage.getItem('auth_token');
   const userStr = localStorage.getItem('asgard_mobile_state');
