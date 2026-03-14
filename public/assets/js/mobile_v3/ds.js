@@ -795,6 +795,30 @@ html.asgard-mobile ::-webkit-scrollbar {
 html.asgard-mobile * {
   scrollbar-width: none;
 }
+
+/* ═══════ PORTRAIT LOCK ═══════ */
+@media (orientation: landscape) and (max-height: 500px) {
+  html.asgard-mobile .asgard-shell {
+    display: none !important;
+  }
+  html.asgard-mobile .asgard-rotate-hint {
+    display: flex !important;
+  }
+}
+
+.asgard-rotate-hint {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: var(--bg, #0D0D0F);
+  color: var(--text, #F5F5F7);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
     `;
   }
 

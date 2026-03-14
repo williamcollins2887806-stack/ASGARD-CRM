@@ -257,6 +257,14 @@ const Layout = (() => {
     // Mark HTML element for CSS isolation from desktop styles
     document.documentElement.classList.add('asgard-mobile');
 
+    // Portrait lock — rotate hint
+    const rotateHint = document.createElement('div');
+    rotateHint.className = 'asgard-rotate-hint';
+    rotateHint.innerHTML = '<div style="font-size:48px;animation:asgardSpin 2s ease infinite">📱</div>'
+      + '<div style="font-size:16px;font-weight:600">Поверните телефон</div>'
+      + '<div style="font-size:13px;opacity:0.5">ASGARD CRM работает в портретном режиме</div>';
+    document.body.appendChild(rotateHint);
+
     // Setup pull-to-refresh
     Gestures.setupPullToRefresh(contentZone);
     // Setup swipe-back
@@ -1063,14 +1071,13 @@ const App = (() => {
     if (flags.MOBILE_V3_ENABLED === false) return false;
 
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const isNarrow = window.innerWidth <= 768;
     const hasTouch = 'ontouchstart' in window;
 
-    // If flag is explicitly true — activate for mobile or narrow screens
-    if (flags.MOBILE_V3_ENABLED === true) return isMobile || isNarrow;
+    // Если явно включено — активировать для мобильных устройств
+    if (flags.MOBILE_V3_ENABLED === true) return isMobile || (hasTouch && window.innerWidth <= 1024);
 
-    // Auto-detect: must be mobile device + narrow + touch
-    return isMobile && isNarrow && hasTouch;
+    // Авто-детект: мобильное устройство + тач
+    return isMobile && hasTouch;
   }
 
   async function init() {
