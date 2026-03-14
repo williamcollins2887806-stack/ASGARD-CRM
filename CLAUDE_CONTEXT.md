@@ -1,7 +1,7 @@
 # ASGARD CRM — Mobile v3 Context Journal
 
 > Межсессионный журнал для Claude. Обновляется в конце каждой сессии.
-> Последнее обновление: **14.03.2026 — Сессия 0 (аудит и планирование)**
+> Последнее обновление: **14.03.2026 — Сессия 1 (Foundation: DS + Components + Showcase)**
 
 ---
 
@@ -128,21 +128,23 @@ responsive.css   (120KB)  — Адаптив
 |25 | MimirBanner   | Баннер AI-подсказок                          |
 |26 | SearchBar     | Поиск с debounce и очисткой                  |
 
-### Нужно добавить для v3
+### Нужно добавить для v3 — ДОБАВЛЕНЫ В СЕССИИ 1 ✅
 | # | Компонент      | Зачем                                      |
 |---|----------------|--------------------------------------------|
-|27 | ActionSheet    | iOS-стиль меню действий (замена десктопных dropdown) |
-|28 | DatePicker     | Выбор даты (нативный + кастомный fallback) |
-|29 | Avatar         | Аватар пользователя с инициалами/фото      |
-|30 | NotificationCard | Карточка уведомления с иконкой и временем |
-|31 | StepWizard     | Пошаговая форма (для длинных создания заявок) |
-|32 | Timeline       | Лента событий / активности                 |
-|33 | ChatBubble     | Пузырь сообщения (свой/чужой)              |
-|34 | MessageComposer| Поле ввода сообщения с прикреплением       |
-|35 | Chip           | Маленький тег (multi-select значения)      |
-|36 | SegmentControl | Переключатель сегментов (альт. табам)      |
-|37 | PullToRefresh  | Индикатор обновления (уже в Gestures, нужна визуальная часть) |
-|38 | SwipeCard      | Карточка с явным swipe-демо для витрины    |
+|27 | ActionSheet    | iOS-стиль меню действий ✅                  |
+|28 | DatePicker     | Выбор даты (нативный + кастомный fallback) ✅|
+|29 | Avatar         | Аватар пользователя с инициалами/фото ✅    |
+|30 | NotificationCard | Карточка уведомления с иконкой ✅          |
+|31 | StepWizard     | Пошаговая форма ✅                          |
+|32 | Timeline       | Лента событий / активности ✅               |
+|33 | ChatBubble     | Пузырь сообщения (свой/чужой) ✅            |
+|34 | MessageComposer| Поле ввода сообщения с прикреплением ✅     |
+|35 | Chip           | Маленький тег (multi-select значения) ✅    |
+|36 | SegmentControl | Переключатель сегментов ✅                  |
+|37 | PullToRefresh  | Визуальный индикатор обновления ✅          |
+|38 | SwipeCard      | Карточка с touch swipe-демо ✅              |
+|39 | DonutChart     | Прогресс-кольцо (SVG) — НОВЫЙ ✅           |
+|40 | BurgerMenu     | Полноэкранное меню — НОВЫЙ ✅              |
 
 ---
 
@@ -303,12 +305,52 @@ responsive.css   (120KB)  — Адаптив
 - [x] Создание CLAUDE_CONTEXT.md
 - [x] Определение недостающих компонентов
 
-### Сессия 1 — Design System + Component Showcase
-- [ ] Создать ветку `mobile-v3`
-- [ ] Скопировать ds.js, components.js, core.js из mobile_v2
-- [ ] Добавить новые компоненты (#27-38)
-- [ ] Собрать полную витрину /test со ВСЕМИ компонентами
-- [ ] Nick утверждает визуал на iPhone
+### Сессия 1 ✅ (14.03.2026) — Foundation: DS + Components + Showcase
+- [x] Создана папка `public/assets/js/mobile_v3/`
+- [x] Скопированы из v2: ds.js (740 строк), components.js, core.js, auth.js
+- [x] ds.js обновлён до v3 (header, версия)
+- [x] Добавлены 14 новых компонентов (#27-40) в components.js (3089 строк):
+  - #27 ActionSheet — iOS-стиль меню действий
+  - #28 DatePicker — выбор даты с нативным fallback
+  - #29 Avatar — аватар с инициалами/фото/статусом
+  - #30 NotificationCard — карточка уведомления
+  - #31 StepWizard — пошаговая форма
+  - #32 Timeline — лента событий
+  - #33 ChatBubble — пузырь сообщения
+  - #34 MessageComposer — поле ввода с отправкой/прикреплением
+  - #35 Chip — тег с удалением
+  - #36 SegmentControl — переключатель сегментов
+  - #37 PullToRefresh — визуальный индикатор
+  - #38 SwipeCard — карточка с touch swipe
+  - #39 DonutChart — прогресс-кольцо (SVG)
+  - #40 BurgerMenu — полноэкранное меню со ВСЕМИ разделами CRM
+- [x] Создан `mobile_v3.css` (364 строк) — keyframes, safe-area, backdrop-filter, transitions
+- [x] Полностью новый `test.js` (349 строк) — витрина 17 блоков:
+  - Навигация (TabBar + Burger + Header варианты)
+  - Кнопки (Primary/Ghost/Danger/Success/Warning/Loading/Mini)
+  - Pill-статусы (12 статусов CRM)
+  - Карточки (тендер/работа/аванс/согласование/уведомление/сотрудник)
+  - Avatar & Chip
+  - SegmentControl & Tabs
+  - Формы (Input/Select/Toggle/DatePicker/StepWizard)
+  - Bottom Sheet & Action Sheet & Confirm
+  - Свайп-карточки & Empty state
+  - Toast-уведомления
+  - Скелетоны (hero/stats/card/list)
+  - Графики (Stats/BarChart/DonutChart/ProgressBar/Sparkline)
+  - Timeline
+  - Чат (ChatBubble + MessageComposer)
+  - Quick Actions & MimirBanner
+  - Виджеты дашборда (приветствие/финансы/воронка/задачи/касса/просрочки/ДР/дедлайны)
+  - DetailFields
+- [x] Создан `public/mobile-test.html` — standalone тест-страница с TabBar
+- [x] Обновлён `index.html` — флаг MOBILE_V3_ENABLED + подключение скриптов
+- [x] CLAUDE_CONTEXT.md обновлён
+
+**Тестирование:** Открыть `https://92.242.61.184/mobile-test.html` на iPhone Safari.
+**Dark/Light:** Кнопка солнца в хедере + тогл-переключатель.
+**Burger:** Таб «Ещё» или кнопка в Block 1.
+**Итого:** 40 компонентов (модуль M), 6572 строк JS+CSS.
 
 ### Сессия 2 — Shell + Navigation + Auth
 - [ ] Финализировать Layout/Shell/TabBar
