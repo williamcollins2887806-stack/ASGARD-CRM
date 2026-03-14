@@ -559,11 +559,136 @@ const TestPage = {
     });
     page.appendChild(tpWrap);
 
+    // ═══ BLOCK 23: MISSING DASHBOARD WIDGETS ═══
+    page.appendChild(sec('Виджеты (продолжение)', 'Уведомления, работы, согласования, допуски, KPI, подотчётные, оборудование, ведомости, заявки AI, ТМЦ'));
+
+    // 23.1 Notifications list
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '🔔 Уведомления (виджет)')));
+    const notifW = el('div', { display: 'flex', flexDirection: 'column', gap: '6px', padding: '0 20px' });
+    notifW.appendChild(M.NotificationCard({ title: 'Новое согласование', text: 'Просчёт ЯНПЗ ожидает решения', time: '5м', type: 'task' }));
+    notifW.appendChild(M.NotificationCard({ title: 'Аванс одобрен: 85 000 ₽', text: 'Командировка Уфа — Петров И.С.', time: '20м', type: 'money' }));
+    notifW.appendChild(M.NotificationCard({ title: 'Дедлайн завтра', text: 'ТОАЗ — сдать акт выполненных работ', time: '1ч', type: 'warning', read: true }));
+    page.appendChild(notifW); page.appendChild(gap(8));
+
+    // 23.2 My works
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '🔧 Мои работы')));
+    const myWorksW = el('div', { display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 20px' });
+    [{ title: 'Архбум — Цилиндр ПГ-М 1100', badge: 'В работе', bc: 'info', pct: 65 },
+     { title: 'НОВАТЭК — Промывка АВО', badge: 'Подготовка', bc: 'warning', pct: 20 },
+     { title: 'МНПЗ — Котлы КТД 65/32300', badge: 'Завершено', bc: 'success', pct: 100 }
+    ].forEach(w => {
+      const c = M.Card({ title: w.title, badge: w.badge, badgeColor: w.bc, fields: [] });
+      const p = el('div', { padding: '8px 0 0' }); p.appendChild(M.ProgressBar({ value: w.pct, label: w.pct + '%' })); c.appendChild(p);
+      myWorksW.appendChild(c);
+    });
+    page.appendChild(myWorksW); page.appendChild(gap(8));
+
+    // 23.3 Approvals waiting
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '✍️ Согласования (ожидающие)')));
+    const apprW = el('div', { display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 20px' });
+    [{ title: 'Просчёт: ЯНПЗ — ПТО', from: 'Андросов → Директор', sum: '4.23 млн' },
+     { title: 'Аванс: командировка Кемерово', from: 'Козлов → Директор', sum: '120 000 ₽' },
+     { title: 'Ведомость: бригада №5 март', from: 'Петров → Бухгалтерия', sum: '890 000 ₽' }
+    ].forEach(a => {
+      const c = M.Card({ title: a.title, subtitle: a.from, badge: 'Ожидает', badgeColor: 'warning', fields: [{ label: 'Сумма', value: a.sum }] });
+      apprW.appendChild(c);
+    });
+    page.appendChild(apprW); page.appendChild(gap(8));
+
+    // 23.4 Expiring permits
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '🛡 Истекающие допуски')));
+    const permW = el('div', { display: 'flex', flexDirection: 'column', gap: '6px', padding: '0 20px' });
+    [{ name: 'Иванов П.А.', permit: 'Промбезопасность А', days: 5, color: t.red },
+     { name: 'Козлов Д.М.', permit: 'Высотные работы', days: 12, color: t.orange },
+     { name: 'Сидоров А.В.', permit: 'Сварка НАКС', days: 18, color: t.gold }
+    ].forEach(p => {
+      const row = el('div', { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', background: t.surface, borderRadius: '12px', border: '1px solid ' + t.border });
+      row.appendChild(el('div', { width: '8px', height: '8px', borderRadius: '50%', background: p.color, flexShrink: 0 }));
+      const info = el('div', { flex: 1, minWidth: 0 });
+      info.appendChild(el('div', { ...DS.font('sm'), fontWeight: 600, color: t.text }, p.name));
+      info.appendChild(el('div', { ...DS.font('xs'), color: t.textSec }, p.permit));
+      row.appendChild(info);
+      row.appendChild(M.Badge({ text: p.days + ' дн', color: p.days <= 7 ? 'danger' : p.days <= 14 ? 'warning' : 'gold' }));
+      permW.appendChild(row);
+    });
+    page.appendChild(permW); page.appendChild(gap(8));
+
+    // 23.5 KPI summary
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '📈 KPI сводка')));
+    page.appendChild(M.Stats({ items: [
+      { icon: '🎯', value: 47, label: 'Тендеров подано', color: t.blue },
+      { icon: '🏗', value: 23, label: 'Работ завершено', color: t.green },
+      { icon: '💹', value: '42%', label: 'Средняя маржа', color: t.gold },
+      { icon: '⏱', value: '3.2', label: 'Дней на просчёт', color: t.orange },
+    ] }));
+    page.appendChild(gap(8));
+
+    // 23.6 My accountable funds
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '💼 Мои подотчётные')));
+    const accFunds = el('div', { padding: '16px', margin: '0 20px', borderRadius: '16px', background: t.surface, border: '1px solid ' + t.border });
+    const accGrid = el('div', { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', textAlign: 'center' });
+    [{ val: '85 000', lbl: 'На руках', cl: t.blue }, { val: '72 400', lbl: 'Потрачено', cl: t.orange }, { val: '2', lbl: 'Активных', cl: t.green }].forEach(a => {
+      const cell = el('div');
+      cell.appendChild(el('div', { ...DS.font('md'), color: a.cl, fontWeight: 700 }, a.val));
+      cell.appendChild(el('div', { ...DS.font('xs'), color: t.textSec, marginTop: '2px' }, a.lbl));
+      accGrid.appendChild(cell);
+    });
+    accFunds.appendChild(accGrid);
+    page.appendChild(accFunds); page.appendChild(gap(8));
+
+    // 23.7 Equipment alerts
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '🛠 Оборудование • Алерты')));
+    const eqW = el('div', { display: 'flex', flexDirection: 'column', gap: '6px', padding: '0 20px' });
+    [{ eq: 'WOMA 150/120', alert: 'ТО через 48 моточасов', color: t.orange },
+     { eq: 'Установка ГНП-40', alert: 'Замена фильтра просрочена', color: t.red },
+     { eq: 'Компрессор Atlas Copco', alert: 'Сертификат истекает 20.03', color: t.gold }
+    ].forEach(e => {
+      const row = el('div', { display: 'flex', gap: '10px', padding: '10px 14px', background: t.surface, borderRadius: '12px', border: '1px solid ' + t.border, alignItems: 'center' });
+      row.appendChild(el('div', { fontSize: '18px', flexShrink: 0 }, '⚠️'));
+      const info = el('div', { flex: 1 });
+      info.appendChild(el('div', { ...DS.font('sm'), fontWeight: 600, color: t.text }, e.eq));
+      info.appendChild(el('div', { ...DS.font('xs'), color: e.color }, e.alert));
+      row.appendChild(info);
+      eqW.appendChild(row);
+    });
+    page.appendChild(eqW); page.appendChild(gap(8));
+
+    // 23.8 Payroll waiting
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '📋 Ведомости (ожидание)')));
+    const payrollCard = el('div', { display: 'flex', gap: '14px', alignItems: 'center', padding: '16px', margin: '0 20px', borderRadius: '16px', background: t.surface, border: '1px solid ' + t.border });
+    payrollCard.appendChild(el('div', { ...DS.font('hero'), color: t.orange }, '3'));
+    const payInfo = el('div', { flex: 1 });
+    payInfo.appendChild(el('div', { ...DS.font('md'), color: t.text }, 'Ведомости на согласовании'));
+    payInfo.appendChild(el('div', { ...DS.font('sm'), color: t.textSec }, 'Общая сумма: 2 340 000 ₽'));
+    payrollCard.appendChild(payInfo);
+    page.appendChild(payrollCard); page.appendChild(gap(8));
+
+    // 23.9 Pre-tender requests with AI color
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '🤖 Заявки (AI-оценка)')));
+    const aiReqW = el('div', { display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 20px' });
+    [{ title: 'Газпромнефть — очистка резервуаров', ai: 'Высокий шанс', aiColor: 'success', sum: '15 млн' },
+     { title: 'Лукойл-НВН — гидропромывка', ai: 'Средний шанс', aiColor: 'warning', sum: '8 млн' },
+     { title: 'ТНК — пескоструй трубопроводов', ai: 'Низкий шанс', aiColor: 'danger', sum: '3 млн' }
+    ].forEach(r => {
+      aiReqW.appendChild(M.Card({ title: r.title, badge: r.ai, badgeColor: r.aiColor, fields: [{ label: 'НМЦК', value: r.sum }] }));
+    });
+    page.appendChild(aiReqW); page.appendChild(gap(8));
+
+    // 23.10 TMC balance
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '📦 Стоимость ТМЦ')));
+    const tmcCard = el('div', { padding: '16px', margin: '0 20px', borderRadius: '16px', background: t.surface, border: '1px solid ' + t.border });
+    tmcCard.appendChild(M.BigNumber({ value: 8750000, suffix: ' ₽', label: 'ТМЦ на балансе компании', icon: '📦' }));
+    const tmcRow = el('div', { display: 'flex', gap: '10px', marginTop: '10px' });
+    tmcRow.appendChild(M.Badge({ text: 'Реагенты: 4.2 млн', color: 'info' }));
+    tmcRow.appendChild(M.Badge({ text: 'Оборудование: 4.5 млн', color: 'gold' }));
+    tmcCard.appendChild(tmcRow);
+    page.appendChild(tmcCard);
+
     // ═══ FOOTER ═══
     page.appendChild(gap(24));
     const ft = el('div', { textAlign: 'center', padding: '24px 20px 40px', borderTop: '1px solid ' + t.border });
-    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer }, 'ASGARD CRM • Mobile v3.0 • Session 1.1'));
-    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, marginTop: '4px' }, '40 компонентов • 22 блока • 5 auth-экранов • Dark/Light'));
+    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer }, 'ASGARD CRM • Mobile v3.0 • Session 1.2'));
+    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, marginTop: '4px' }, '40 компонентов • 23 блока • 27 виджетов • 4 auth-экрана • Dark/Light'));
     page.appendChild(ft);
 
     return page;
