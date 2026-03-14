@@ -144,8 +144,26 @@ window.MobileFunnel = (function () {
     });
     page.appendChild(scroll);
 
+    // Show skeleton while loading
+    scroll.appendChild(M.Skeleton({ type: 'card', count: 5 }));
+
     // Load data
-    var tenders = await loadTenders();
+    var tenders = [];
+    try {
+      tenders = await loadTenders();
+    } catch (e) {
+      M.Toast({ message: 'Ошибка загрузки тендеров', type: 'error' });
+    }
+    scroll.replaceChildren();
+
+    // Empty state when no tenders at all
+    if (!tenders.length) {
+      scroll.replaceChildren();
+      scroll.style.display = 'flex';
+      scroll.style.justifyContent = 'center';
+      scroll.appendChild(M.Empty({ text: 'Нет тендеров в воронке', icon: '📊' }));
+      return page;
+    }
 
     // Group by stage
     var groups = {};
@@ -170,7 +188,7 @@ window.MobileFunnel = (function () {
 
     // Render columns
     function renderColumns() {
-      scroll.innerHTML = '';
+      scroll.replaceChildren();
       STAGES.forEach(function (stage, si) {
         var items = groups[stage.id] || [];
         var colSum = 0;

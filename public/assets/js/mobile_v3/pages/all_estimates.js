@@ -146,27 +146,22 @@ window.MobileAllEstimates = (function () {
       ],
       empty: M.Empty({ text: 'Нет расчётов', icon: '📄' }),
       onRefresh: async function () {
-        tenders = await loadTenders();
-        return await loadItems();
+        try {
+          tenders = await loadTenders();
+          var loaded = await loadItems();
+          loaded.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
+          return loaded;
+        } catch (e) {
+          M.Toast({ message: 'Ошибка загрузки расчётов', type: 'error' });
+          return [];
+        }
       },
     });
 
-    try {
-      tenders = await loadTenders();
-      var loaded = await loadItems();
-      loaded.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
-      items.push.apply(items, loaded);
-
-      // Update stats dynamically
-      var counts = { total: loaded.length, approved: 0, sent: 0, rejected: 0 };
-      loaded.forEach(function (e) {
-        if (e.approval_status === 'approved') counts.approved++;
-        if (e.approval_status === 'sent') counts.sent++;
-        if (e.approval_status === 'rejected') counts.rejected++;
-      });
-
-      window.dispatchEvent(new Event('asgard:refresh'));
-    } catch (_) {}
+    // Show skeleton while initial data loads
+    var listEl = page.querySelector('.asgard-table-page__list');
+    if (listEl) listEl.replaceChildren(M.Skeleton({ type: 'card', count: 5 }));
+    setTimeout(function () { window.dispatchEvent(new Event('asgard:refresh')); }, 0);
 
     return page;
   }

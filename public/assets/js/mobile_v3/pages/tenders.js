@@ -184,20 +184,26 @@ window.MobileTenders = (function () {
         },
       },
       empty: M.Empty({ text: 'Нет тендеров', icon: '🏆' }),
-      onRefresh: loadItems,
+      onRefresh: async function () {
+        try {
+          var loaded = await loadItems();
+          loaded.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
+          return loaded;
+        } catch (e) {
+          M.Toast({ message: 'Ошибка загрузки тендеров', type: 'error' });
+          return [];
+        }
+      },
       actions: [{
         icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
         onClick: function () { Router.navigate('/funnel'); },
       }],
     });
 
-    try {
-      var loaded = await loadItems();
-      // Sort by created_at desc
-      loaded.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
-      items.push.apply(items, loaded);
-      window.dispatchEvent(new Event('asgard:refresh'));
-    } catch (_) {}
+    // Show skeleton while initial data loads
+    var listEl = page.querySelector('.asgard-table-page__list');
+    if (listEl) listEl.replaceChildren(M.Skeleton({ type: 'card', count: 5 }));
+    setTimeout(function () { window.dispatchEvent(new Event('asgard:refresh')); }, 0);
 
     return page;
   }

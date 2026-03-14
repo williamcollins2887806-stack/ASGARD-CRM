@@ -206,18 +206,24 @@ window.MobileCustomers = (function () {
       items: items,
       renderItem: renderCard,
       empty: M.Empty({ text: 'Нет контрагентов', icon: '🏢' }),
-      onRefresh: loadItems,
+      onRefresh: async function () {
+        try {
+          return await loadItems();
+        } catch (e) {
+          M.Toast({ message: 'Ошибка загрузки контрагентов', type: 'error' });
+          return [];
+        }
+      },
       fab: {
         icon: '+',
         onClick: function () { openEditForm(null); },
       },
     });
 
-    try {
-      var loaded = await loadItems();
-      items.push.apply(items, loaded);
-      window.dispatchEvent(new Event('asgard:refresh'));
-    } catch (_) {}
+    // Show skeleton while initial data loads
+    var listEl = page.querySelector('.asgard-table-page__list');
+    if (listEl) listEl.replaceChildren(M.Skeleton({ type: 'card', count: 5 }));
+    setTimeout(function () { window.dispatchEvent(new Event('asgard:refresh')); }, 0);
 
     return page;
   }

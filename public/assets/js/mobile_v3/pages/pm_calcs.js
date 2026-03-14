@@ -190,9 +190,19 @@ window.MobilePmCalcs = (function () {
       },
       empty: M.Empty({ text: 'Нет просчётов', icon: '🧮' }),
       onRefresh: async function () {
-        var d = await loadData();
-        tenders = d.tenders;
-        return d.estimates;
+        try {
+          var d = await loadData();
+          tenders = d.tenders;
+          var ests = d.estimates;
+          if (params && params.tender_id) {
+            ests = ests.filter(function (e) { return String(e.tender_id) === String(params.tender_id); });
+          }
+          ests.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
+          return ests;
+        } catch (e) {
+          M.Toast({ message: 'Ошибка загрузки просчётов', type: 'error' });
+          return [];
+        }
       },
       fab: {
         icon: '+',
@@ -200,18 +210,10 @@ window.MobilePmCalcs = (function () {
       },
     });
 
-    try {
-      var data = await loadData();
-      tenders = data.tenders;
-      var ests = data.estimates;
-      // Filter by tender_id if passed in query
-      if (params && params.tender_id) {
-        ests = ests.filter(function (e) { return String(e.tender_id) === String(params.tender_id); });
-      }
-      ests.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
-      items.push.apply(items, ests);
-      window.dispatchEvent(new Event('asgard:refresh'));
-    } catch (_) {}
+    // Show skeleton while initial data loads
+    var listEl = page.querySelector('.asgard-table-page__list');
+    if (listEl) listEl.replaceChildren(M.Skeleton({ type: 'card', count: 5 }));
+    setTimeout(function () { window.dispatchEvent(new Event('asgard:refresh')); }, 0);
 
     return page;
   }

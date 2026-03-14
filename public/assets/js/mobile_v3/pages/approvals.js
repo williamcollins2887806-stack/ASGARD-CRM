@@ -87,6 +87,11 @@ window.MobileApprovals = (function () {
 
   /* ── Действие согласования ── */
   async function doAction(est, action, comment) {
+    // Деструктивное действие — подтверждение
+    if (action === 'rejected') {
+      var ok = await M.Confirm({ title: 'Отклонить просчёт?', message: 'Это действие нельзя отменить. Вы уверены?', okText: 'Отклонить', cancelText: 'Отмена', danger: true });
+      if (!ok) return;
+    }
     try {
       var newStatus = action;
       if (typeof AsgardDB !== 'undefined') {
@@ -281,22 +286,24 @@ window.MobileApprovals = (function () {
       renderItem: function (item, idx) { return renderCard(item, idx, tenders, users); },
       empty: M.Empty({ text: 'Нет заявок на согласование', icon: '✍️' }),
       onRefresh: async function () {
-        var d = await loadData();
-        tenders = d.tenders;
-        users = d.users;
-        return d.estimates.filter(function (e) { return e.approval_status === 'sent'; });
+        try {
+          var d = await loadData();
+          tenders = d.tenders;
+          users = d.users;
+          var pending = d.estimates.filter(function (e) { return e.approval_status === 'sent'; });
+          pending.sort(function (a, b) { return new Date(b.sent_for_approval_at || b.created_at || 0) - new Date(a.sent_for_approval_at || a.created_at || 0); });
+          return pending;
+        } catch (e) {
+          M.Toast({ message: 'Ошибка загрузки согласований', type: 'error' });
+          return [];
+        }
       },
     });
 
-    try {
-      var data = await loadData();
-      tenders = data.tenders;
-      users = data.users;
-      var pending = data.estimates.filter(function (e) { return e.approval_status === 'sent'; });
-      pending.sort(function (a, b) { return new Date(b.sent_for_approval_at || b.created_at || 0) - new Date(a.sent_for_approval_at || a.created_at || 0); });
-      items.push.apply(items, pending);
-      window.dispatchEvent(new Event('asgard:refresh'));
-    } catch (_) {}
+    // Show skeleton while initial data loads
+    var listEl = page.querySelector('.asgard-table-page__list');
+    if (listEl) listEl.replaceChildren(M.Skeleton({ type: 'card', count: 5 }));
+    setTimeout(function () { window.dispatchEvent(new Event('asgard:refresh')); }, 0);
 
     return page;
   }

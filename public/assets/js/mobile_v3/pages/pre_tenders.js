@@ -281,21 +281,24 @@ window.MobilePreTenders = (function () {
         },
       },
       empty: M.Empty({ text: 'Нет заявок', icon: '📋' }),
-      onRefresh: loadItems,
+      onRefresh: async function () {
+        try {
+          return await loadItems();
+        } catch (e) {
+          M.Toast({ message: 'Ошибка загрузки заявок', type: 'error' });
+          return [];
+        }
+      },
       fab: {
         icon: '+',
         onClick: function () { M.Toast({ message: 'Создание заявки — в разработке', type: 'info' }); },
       },
     });
 
-    // Async load
-    try {
-      var loaded = await loadItems();
-      if (loaded.length) {
-        items.push.apply(items, loaded);
-        window.dispatchEvent(new Event('asgard:refresh'));
-      }
-    } catch (_) {}
+    // Show skeleton while initial data loads
+    var listEl = page.querySelector('.asgard-table-page__list');
+    if (listEl) listEl.replaceChildren(M.Skeleton({ type: 'card', count: 5 }));
+    setTimeout(function () { window.dispatchEvent(new Event('asgard:refresh')); }, 0);
 
     return page;
   }
