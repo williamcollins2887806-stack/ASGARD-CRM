@@ -466,9 +466,9 @@ const LoginPage = {
     if (autoFocus) input.setAttribute('autofocus', '');
     Object.assign(input.style, {
       width: '100%', padding: '22px 16px 10px', boxSizing: 'border-box',
-      ...DS.font('base'), color: DS.t.text,
-      background: DS.t.surface,
-      border: '1.5px solid ' + (DS.t.border || 'rgba(255,255,255,0.1)'),
+      ...DS.font('base'), color: '#1A1A1F',
+      background: 'rgba(255,255,255,0.85)',
+      border: '1.5px solid rgba(0,0,0,0.08)',
       borderRadius: DS.radius.md + 'px', outline: 'none',
       transition: 'border-color 0.2s, box-shadow 0.2s',
     });
@@ -478,19 +478,19 @@ const LoginPage = {
     Object.assign(lbl.style, {
       position: 'absolute', left: '16px', top: '50%',
       transform: 'translateY(-50%)', transformOrigin: 'left center',
-      ...DS.font('base'), color: DS.t.textSec,
+      ...DS.font('base'), color: 'rgba(0,0,0,0.45)',
       pointerEvents: 'none', transition: 'all 0.2s ease',
     });
 
-    const up   = () => { lbl.style.cssText += 'top:12px;transform:translateY(0) scale(0.72);color:'+DS.t.blue+';'; input.style.borderColor=DS.t.blue; input.style.boxShadow='0 0 0 3px '+DS.t.blue+'1A'; };
-    const down = () => { if (input.value) return; lbl.style.cssText += 'top:50%;transform:translateY(-50%) scale(1);color:'+DS.t.textSec+';'; input.style.borderColor = DS.t.border || 'rgba(255,255,255,0.1)'; input.style.boxShadow='none'; };
+    const up   = () => { lbl.style.cssText += 'top:12px;transform:translateY(0) scale(0.72);color:#1E5A99;'; input.style.borderColor='#1E5A99'; input.style.boxShadow='0 0 0 3px rgba(30,90,153,0.1)'; };
+    const down = () => { if (input.value) return; lbl.style.cssText += 'top:50%;transform:translateY(-50%) scale(1);color:rgba(0,0,0,0.45);'; input.style.borderColor = 'rgba(0,0,0,0.08)'; input.style.boxShadow='none'; };
     input.addEventListener('focus', up);
     input.addEventListener('blur', down);
 
     // Safari autofill detection — float label when autofilled
     input.addEventListener('animationstart', (e) => {
       if (e.animationName === 'onAutoFillStart' || input.matches(':-webkit-autofill')) {
-        lbl.style.cssText += 'top:12px;transform:translateY(0) scale(0.72);color:'+DS.t.textSec+';';
+        lbl.style.cssText += 'top:12px;transform:translateY(0) scale(0.72);color:rgba(0,0,0,0.45);';
       }
     });
 

@@ -2559,8 +2559,9 @@ const M = (() => {
         flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border)',
         borderRadius: '20px', padding: '10px 16px', color: 'var(--text)',
         fontSize: '14px', fontFamily: 'inherit', resize: 'none',
+        height: '40px', overflow: 'hidden',
         maxHeight: '100px', lineHeight: 1.4, outline: 'none',
-        transition: 'border-color 0.2s ease',
+        transition: 'border-color 0.2s ease, height 0.15s ease',
       },
     });
     input.addEventListener('input', () => {
