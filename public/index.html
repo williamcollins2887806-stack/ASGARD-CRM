@@ -74,9 +74,9 @@
   <!-- Theme initialization (before render) -->
   <script>(function(){try{var t=localStorage.getItem("asgard_theme")||"dark";document.documentElement.dataset.theme=t==="light"?"light":"dark";}catch(e){}})();</script>
   <script>
-    window.ASGARD_FLAGS = Object.assign({}, window.ASGARD_FLAGS, { MOBILE_V3_ENABLED: true });
-    // MOBILE_V2 removed. V3 is the only mobile version.
-    window.ASGARD_SHELL_VERSION = '8.9.3-corrective1';
+    window.ASGARD_FLAGS = Object.assign({}, window.ASGARD_FLAGS, { MOBILE_V2_ENABLED: false, MOBILE_V3_ENABLED: true });
+    // MOBILE_V2 explicitly false — prevents desktop app.js from activating legacy mobile init
+    window.ASGARD_SHELL_VERSION = '8.9.4-mobile-v3';
   </script>
 
   <!-- Leaflet Map (OpenStreetMap - free, no API key) -->

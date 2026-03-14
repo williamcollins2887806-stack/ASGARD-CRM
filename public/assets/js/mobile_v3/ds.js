@@ -782,17 +782,12 @@ html.asgard-mobile input[type="radio"] {
   padding: unset;
 }
 
-/* Сбросить responsive.css button overrides */
+/* touch-action for all mobile interactive elements */
 html.asgard-mobile button,
-html.asgard-mobile [role="button"] {
-  min-height: unset !important;
-  padding: unset !important;
-  border-radius: unset !important;
-  font-size: unset !important;
-  border: unset !important;
-  background: unset !important;
-  color: unset !important;
+html.asgard-mobile [role="button"],
+html.asgard-mobile a {
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Toggle — явные стили чтобы ничего не перебило */

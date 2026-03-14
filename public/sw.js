@@ -1,7 +1,7 @@
 // ASGARD CRM Service Worker
 // Shell caching + Push Notifications + Offline Support
 
-const SHELL_VERSION = '8.9.3-corrective1';
+const SHELL_VERSION = '8.9.4-mobile-v3';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 
 // Keep the shell asset list aligned with versioned URLs from index.html.

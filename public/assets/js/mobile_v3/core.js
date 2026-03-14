@@ -257,6 +257,14 @@ const Layout = (() => {
     // Mark HTML element for CSS isolation from desktop styles
     document.documentElement.classList.add('asgard-mobile');
 
+    // Disable desktop responsive.css — it has !important rules on button/input
+    // that override our inline styles. Mobile v3 doesn't need it.
+    document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+      if (link.href && link.href.includes('responsive.css')) {
+        link.disabled = true;
+      }
+    });
+
     // Portrait lock — rotate hint
     const rotateHint = document.createElement('div');
     rotateHint.className = 'asgard-rotate-hint';
