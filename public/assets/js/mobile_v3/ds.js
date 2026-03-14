@@ -765,13 +765,11 @@ html.asgard-mobile textarea {
   border-radius: unset;
 }
 
-/* Убить десктопный focus-glow (мобильные компоненты ставят свой через JS) */
+/* Убить десктопный focus-outline (мобильные компоненты ставят свой через JS) */
 html.asgard-mobile input:focus,
 html.asgard-mobile select:focus,
 html.asgard-mobile textarea:focus {
-  outline: none !important;
-  box-shadow: none !important;
-  border-color: unset !important;
+  outline: none;
 }
 
 /* Сбросить десктопный checkbox/radio размер */
@@ -862,13 +860,6 @@ html.asgard-mobile input:-webkit-autofill:focus {
   caret-color: var(--text, #F5F5F7);
 }
 
-/* ═══════ AUTH INPUT ISOLATION ═══════ */
-html.asgard-mobile .auth-credentials input,
-html.asgard-mobile .auth-credentials textarea {
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
     `;
   }
 

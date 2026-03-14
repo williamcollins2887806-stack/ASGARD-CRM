@@ -2184,7 +2184,7 @@ const M = (() => {
         width: size + 'px', height: size + 'px', borderRadius: '50%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         flexShrink: 0, position: 'relative', cursor: onClick ? 'pointer' : 'default',
-        overflow: 'hidden',
+        overflow: 'visible',
       },
     });
     if (onClick) wrap.addEventListener('click', onClick);
@@ -2552,21 +2552,17 @@ const M = (() => {
       }));
     }
 
-    const input = el('textarea', {
+    const input = el('input', {
+      type: 'text',
       placeholder,
-      rows: 1,
       style: {
         flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border)',
         borderRadius: '20px', padding: '10px 16px', color: 'var(--text)',
-        fontSize: '14px', fontFamily: 'inherit', resize: 'none',
-        height: '40px', overflow: 'hidden',
-        maxHeight: '100px', lineHeight: 1.4, outline: 'none',
-        transition: 'border-color 0.2s ease, height 0.15s ease',
+        fontSize: '14px', fontFamily: 'inherit', outline: 'none',
+        height: '40px', lineHeight: '1',
+        transition: 'border-color 0.2s ease',
+        boxSizing: 'border-box',
       },
-    });
-    input.addEventListener('input', () => {
-      input.style.height = 'auto';
-      input.style.height = Math.min(input.scrollHeight, 100) + 'px';
     });
     input.addEventListener('focus', () => input.style.borderColor = 'var(--blue)');
     input.addEventListener('blur', () => input.style.borderColor = 'var(--border)');
