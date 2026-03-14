@@ -1,15 +1,15 @@
 # ASGARD CRM — Mobile v3 Context Journal
 
 > Межсессионный журнал для Claude. Обновляется в конце каждой сессии.
-> Последнее обновление: **14.03.2026 — Сессия 1.2 (Foundation + Auth + All 27 Widgets)**
+> Последнее обновление: **14.03.2026 — Сессия 2 (Router integration, v2 archived, CSS unified, a11y, touch targets)**
 
 ---
 
 ## 1. ПРОЕКТ
 
 **Цель:** Полный перезапуск мобильного фронтенда ASGARD CRM.
-Mobile v2 отключён флагом `MOBILE_V2_ENABLED = false` после повреждений от GPT Codex.
-Mobile v3 — чистый рестарт с переиспользованием проверенных v2-компонентов.
+Mobile v2 **архивирован** в `public/_deprecated/` (повреждён GPT Codex).
+Mobile v3 — чистый рестарт. Работает через hash-router внутри `index.html`.
 
 **Стек:** Vanilla JS SPA, CSS Custom Properties, hash-router.
 **Сервер:** 92.242.61.184, Node.js/Fastify/PostgreSQL.
@@ -42,7 +42,13 @@ system.js       — Профиль, настройки, диагностика
 
 ### CSS
 ```
-mobile_v3.css   — Мобильные стили (отдельный файл, ~15-20KB)
+mobile_v3.css   — УДАЛЁН в Сессии 2. Стили мигрированы в ds.js generateCSS().
+```
+
+### Архив (НЕ ИСПОЛЬЗОВАТЬ)
+```
+public/_deprecated/mobile_v2_archived_20260314/  — 28 JS файлов mobile_v2
+public/_deprecated/mobile_v2.css*                — 5 CSS файлов mobile_v2
 ```
 
 ### Desktop CSS (НЕ ТРОГАТЬ!)
@@ -249,22 +255,20 @@ responsive.css   (120KB)  — Адаптив
 
 ## 8. CSS АРХИТЕКТУРА
 
-### Принцип: 95% стилей через JS, CSS только для невозможного в JS
+### Принцип: 100% стилей через JS (ds.js generateCSS)
 
-**Зачем нужен mobile_v3.css (~10-15KB):**
-- `@keyframes` — shimmer-анимация скелетонов, пульсация FAB, slide-in
-- `::before / ::after` — декоративные элементы, градиентные overlay
-- `:active / :hover` — состояния нажатия (нельзя через inline style)
-- `env(safe-area-inset-*)` — вырез iPhone
-- `@supports` — проверка возможностей браузера
-- `::-webkit-scrollbar { display: none }` — скрытие скроллбаров
-- `backdrop-filter: blur()` — стеклянный эффект для TabBar и модалок
+**Начиная с Сессии 2 — `mobile_v3.css` удалён.** Все стили в `ds.js generateCSS()`:
+- `@keyframes` — 20 анимаций (shimmer, slide, fade, bounce, breath, etc.)
+- `::before / ::after` — sheet-handle, ripple
+- `:active` — pressable, card-hover, btn, btn-mini, fab, tabbar
+- `env(safe-area-inset-*)` — content, tabbar, safe-top/bottom/x
+- `backdrop-filter: blur()` — tabbar, header
+- `::-webkit-scrollbar { display: none }` — scrollbar hiding
+- `.asgard-text-safe/clamp-1/2/3` — text utilities
+- `@media print` — hide tabbar/header/fab
+- `::selection` — синяя подсветка выделения
 
-**Зачем остальное в JS (через DS):**
-- Мгновенное переключение тем — DS.setTheme() меняет все CSS-переменные
-- Компоненты самодостаточны — стиль идёт рядом с логикой
-- Нет конфликтов с desktop CSS — ничего не пересекается
-- Легче дебажить — стиль виден прямо в элементе
+**Единый CSS-prefix: `asgard-`** — никаких `mc-`, `mv3-`.
 
 **Desktop CSS — НЕ ТРОГАТЬ:**
 - app.css (277KB), theme.css (261KB), components.css (110KB)
@@ -438,11 +442,79 @@ responsive.css   (120KB)  — Адаптив
 **Полный аудит Auth (5 экранов):**
 ✅ Welcome, Login, PIN Setup/Confirm, Quick PIN, Register
 
-### Сессия 2 — Shell + Navigation + Auth
-- [ ] Финализировать Layout/Shell/TabBar
-- [ ] Страница /more (меню)
-- [ ] Auth flow (welcome → login → PIN)
-- [ ] Routing для всех страниц (заглушки)
+### Сессия 2 ✅ (14.03.2026) — Router-интеграция + P0/P1 фиксы из ревью
+
+**Архивация mobile_v2:**
+- [x] `public/assets/js/mobile_v2/` (28 файлов) → `public/_deprecated/mobile_v2_archived_20260314/`
+- [x] 5 CSS файлов `mobile_v2.css*` → `public/_deprecated/`
+- [x] 17 закомментированных v2-строк в index.html — удалены
+- [x] Флаг `MOBILE_V2_ENABLED` — удалён полностью
+- [x] `auth.js` v3 подключён в index.html
+
+**Router-интеграция:**
+- [x] `App.shouldUseMobile()` — детектирует мобильное устройство (userAgent + width + touch)
+- [x] `App.init()` — условная инициализация: мобильный shell только на мобильных, десктоп не затронут
+- [x] Авто-инициализация через DOMContentLoaded в core.js
+- [x] Безопасная регистрация маршрутов (typeof проверки на WelcomePage/LoginPage/TestPage)
+- [x] Placeholder для /home (ссылка на витрину)
+- [x] `mobile-test.html` — удалён, витрина доступна через `#/test`
+
+**CSS-унификация (P0):**
+- [x] `mc-*` → `asgard-*` (66 вхождений в components.js)
+- [x] `mv3-*` → `asgard-*` в test.js
+- [x] `mobile_v3.css` удалён — все стили мигрированы в `ds.js generateCSS()`:
+  - Добавлены: text-safe/clamp, :active состояния, ripple, sheet-handle, header backdrop, safe-area, print, 4 уникальных keyframes (asgardFadeOut, asgardBounce, asgardBreath, asgardSlideSheetDown)
+- [x] Единый CSS-prefix `asgard-` во всех файлах
+
+**Дедупликация (P0):**
+- [x] `el()` — одна каноническая версия в `core.js (Utils.el)`
+  - `components.js` → `const el = Utils.el;`
+  - `auth.js` → `const el = Utils.el;`
+  - `test.js` → тонкая обёртка `el(tag, styleObj, children)` → `Utils.el(tag, {style}, children)`
+- [x] Keyframes — один источник в ds.js (16 общих + 4 уникальных)
+- [x] CSS reset — только в ds.js
+
+**Качество кода (P0):**
+- [x] `console.log('[MOBILE_V2]...')` — удалён
+- [x] Версии: `Mobile Core v2.0` → `v3.0`, `auth.js source: mobile_v2` → `mobile_v3`
+
+**Touch targets ≥ 44px (P1):**
+- [x] Header back button: padding 4px → 10px, min 44×44
+- [x] Header action buttons: padding 6px → 10px, min 44×44
+- [x] BottomSheet close ✕: 28px → 36px + 4px padding = 44px
+- [x] BurgerMenu close ✕: 36px → 44px
+- [x] Card action buttons: padding 4px 8px → 10px 12px, minHeight 44px
+
+**Accessibility ARIA (P1):**
+- [x] Header: `role="banner"`
+- [x] TabBar: `role="navigation"`, `aria-label="Навигация"`
+- [x] Tab items: `role="tab"`, `aria-selected` toggle
+- [x] BottomSheet: `role="dialog"`, `aria-modal="true"`
+- [x] Confirm: `role="alertdialog"`, `aria-modal="true"`
+- [x] ActionSheet: `role="dialog"`, `aria-modal="true"`
+- [x] BurgerMenu: `role="dialog"`, `aria-modal="true"`
+- [x] Toast: `role="status"`, `aria-live="polite"`
+- [x] SearchBar: `role="search"`
+- [x] Back/Close buttons: `aria-label`
+- [x] Form required: `aria-required="true"`
+- [x] Form error: `aria-invalid="true"` (set/unset)
+
+**Scroll lock (P1):**
+- [x] `Utils.lockScroll()` / `Utils.unlockScroll()` — ref-counted
+- [x] Применён в: BottomSheet, Confirm, ActionSheet, BurgerMenu
+
+**AsgardAuth fallback (P1):**
+- [x] `authLoginStep1()`, `authGetAuth()`, `authVerifyPin()` — обёртки с fallback на API.fetch
+- [x] Нет ReferenceError если десктопный auth.js не загружен
+
+**Дополнительно (P2):**
+- [x] BottomSheet drag parse bug: `replace(/[^\d]/g,'')` → `match(/translateY\(([+-]?\d+)/)` — корректный parse
+- [x] BurgerMenu accordion: `setTimeout(350)` → `transitionend` event
+
+**TODO для Сессии 3:**
+- [ ] Avatar hardcoded colors → DS tokens
+- [ ] BarChart tooltip duplication → выделить в функцию
+- [ ] Z-index scale: `DS.z = {...}` + замена magic numbers
 
 ### Сессии 3-10 — Страницы (по 2-3 страницы за сессию)
 - Сессия 3: Home + Dashboard
@@ -472,8 +544,13 @@ responsive.css   (120KB)  — Адаптив
 
 ## 12. КРИТИЧЕСКИЕ ЗАМЕТКИ
 
-- Старый GitHub-токен `ghp_zKk…` **скомпрометирован** — нужен новый перед push
+- `mobile_v2` полностью архивирован в `public/_deprecated/`. Флаг `MOBILE_V2_ENABLED` удалён.
+- `mobile_v3.css` удалён. Все стили в `ds.js generateCSS()`.
+- `mobile-test.html` удалён. Витрина: `https://asgard-crm.ru/#/test`
+- Мобильная версия активируется автоматически через `App.shouldUseMobile()` (userAgent + width ≤ 768)
+- Десктоп: `App.init()` возвращает early, `app.js` работает как раньше
+- `el()` — единственная каноническая версия в `core.js (Utils.el)`
+- `auth.js` использует fallback-обёртки для AsgardAuth (не ломается без десктопного auth.js)
 - `DS.setTheme()` — исправлен баг: теперь устанавливает `root.dataset.theme = name`
-- Мобильная версия отключена через `window.ASGARD_FLAGS.MOBILE_V2_ENABLED = false` в index.html
-- При включении v3: сменить флаг, обновить пути скриптов в index.html
+- GitHub-токен: используется текущий (Nick предоставляет при пуше)
 - Сервер: SSH ключ `C:\Users\Nikita-ASGARD\.ssh\asgard_crm_migrate`

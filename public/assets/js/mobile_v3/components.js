@@ -10,38 +10,15 @@
  */
 
 const M = (() => {
-  const el = (tag, attrs = {}, children) => {
-    const element = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) {
-      if (k === 'className') element.className = v;
-      else if (k === 'style' && typeof v === 'object') Object.assign(element.style, v);
-      else if (k === 'innerHTML') element.innerHTML = v;
-      else if (k === 'textContent') element.textContent = v;
-      else if (k.startsWith('on') && typeof v === 'function') {
-        element.addEventListener(k.slice(2).toLowerCase(), v);
-      }
-      else element.setAttribute(k, v);
-    }
-    if (children != null) {
-      if (typeof children === 'string') element.textContent = children;
-      else if (children instanceof HTMLElement) element.appendChild(children);
-      else if (Array.isArray(children)) {
-        children.forEach(c => {
-          if (c instanceof HTMLElement) element.appendChild(c);
-          else if (typeof c === 'string') element.appendChild(document.createTextNode(c));
-          else if (c != null && typeof c === 'object' && c.nodeType) element.appendChild(c);
-        });
-      }
-    }
-    return element;
-  };
+  // Use the canonical el() from Utils (core.js) — single source of truth
+  const el = Utils.el;
 
   /* ══════════════════════════════════════════════
      1. HEADER
      ══════════════════════════════════════════════ */
   function Header({ title, subtitle, back = false, backHref, actions = [], transparent = false }) {
     const header = el('header', {
-      className: 'mc-header',
+      className: 'asgard-header',
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -59,15 +36,18 @@ const M = (() => {
       },
     });
 
+    header.setAttribute('role', 'banner');
+
     // Left: back + titles
     const left = el('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 } });
 
     if (back) {
       const backBtn = el('button', {
-        className: 'mc-header__back',
+        className: 'asgard-header__back',
         style: {
-          background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
+          background: 'none', border: 'none', cursor: 'pointer', padding: '10px',
           color: 'var(--text)', display: 'flex', alignItems: 'center', flexShrink: 0,
+          minWidth: '44px', minHeight: '44px', justifyContent: 'center',
         },
         innerHTML: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>',
         onClick: () => {
@@ -75,6 +55,7 @@ const M = (() => {
           else Router.back();
         },
       });
+      backBtn.setAttribute('aria-label', 'Назад');
       left.appendChild(backBtn);
     }
 
@@ -108,9 +89,10 @@ const M = (() => {
       actions.forEach(action => {
         const btn = el('button', {
           style: {
-            background: 'none', border: 'none', cursor: 'pointer', padding: '6px',
+            background: 'none', border: 'none', cursor: 'pointer', padding: '10px',
             color: transparent ? '#fff' : 'var(--text)', display: 'flex',
             alignItems: 'center', justifyContent: 'center',
+            minWidth: '44px', minHeight: '44px',
           },
           innerHTML: action.icon,
           onClick: action.onClick,
@@ -128,7 +110,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function HeroCard({ label, value, valuePrefix = '', valueSuffix = '', details = [], gradient }) {
     const card = el('div', {
-      className: 'mc-hero',
+      className: 'asgard-hero',
       style: {
         background: gradient || 'var(--hero-grad)',
         borderRadius: 'var(--r-hero)',
@@ -231,7 +213,7 @@ const M = (() => {
     const leftBorder = badgeColor && statusBorderColors[badgeColor];
 
     const card = el('div', {
-      className: 'mc-card',
+      className: 'asgard-card',
       style: {
         background: 'var(--surface)',
         borderRadius: 'var(--r-xl)',
@@ -317,8 +299,9 @@ const M = (() => {
       actions.forEach(a => {
         const btn = el('button', {
           style: {
-            background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px',
+            background: 'none', border: 'none', cursor: 'pointer', padding: '10px 12px',
             ...DS.font('sm'), color: 'var(--blue)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
+            minHeight: '44px',
           },
           onClick: (e) => { e.stopPropagation(); a.onClick(); },
         });
@@ -352,7 +335,7 @@ const M = (() => {
     const p = presets[color] || { c: color || 'var(--text-sec)', bg: (color ? color + '15' : 'var(--surface-alt)'), border: color || 'var(--border)' };
 
     return el('span', {
-      className: 'mc-badge',
+      className: 'asgard-badge',
       style: {
         display: 'inline-flex',
         alignItems: 'center',
@@ -376,7 +359,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function FilterPills({ items, onChange }) {
     const wrap = el('div', {
-      className: 'mc-filter-pills asgard-no-scrollbar',
+      className: 'asgard-filter-pills asgard-no-scrollbar',
       style: {
         display: 'flex', gap: '8px', overflowX: 'auto', padding: '8px var(--sp-page)',
         scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch',
@@ -385,7 +368,7 @@ const M = (() => {
 
     items.forEach(item => {
       const pill = el('button', {
-        className: 'mc-pill' + (item.active ? ' mc-pill--active' : ''),
+        className: 'asgard-pill' + (item.active ? ' asgard-pill--active' : ''),
         style: {
           ...pillStyle(item.active),
           scrollSnapAlign: 'start',
@@ -394,9 +377,9 @@ const M = (() => {
         onClick: () => {
           items.forEach(i => i.active = false);
           item.active = true;
-          wrap.querySelectorAll('.mc-pill').forEach((p, idx) => {
+          wrap.querySelectorAll('.asgard-pill').forEach((p, idx) => {
             const isActive = items[idx].active;
-            p.className = 'mc-pill' + (isActive ? ' mc-pill--active' : '');
+            p.className = 'asgard-pill' + (isActive ? ' asgard-pill--active' : '');
             Object.assign(p.style, pillStyle(isActive));
           });
           if (onChange) onChange(item.value);
@@ -429,7 +412,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function Stats({ items }) {
     const grid = el('div', {
-      className: 'mc-stats',
+      className: 'asgard-stats',
     });
     // Force grid layout with !important to prevent desktop CSS overrides
     grid.style.setProperty('display', 'grid', 'important');
@@ -439,7 +422,7 @@ const M = (() => {
 
     items.forEach((item, i) => {
       const cell = el('div', {
-        className: 'mc-stat',
+        className: 'asgard-stat',
         style: {
           background: 'var(--surface)',
           borderRadius: 'var(--r-lg)',
@@ -491,7 +474,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function Section({ title, content, collapsible = false, action, collapsed: initCollapsed = false }) {
     const section = el('div', {
-      className: 'mc-section',
+      className: 'asgard-section',
       style: { marginBottom: '16px' },
     });
 
@@ -536,7 +519,7 @@ const M = (() => {
 
     // Content
     const body = el('div', {
-      className: 'mc-section__body',
+      className: 'asgard-section__body',
       style: {
         overflow: 'hidden',
         transition: 'max-height 0.35s ease, opacity 0.3s ease',
@@ -588,7 +571,7 @@ const M = (() => {
     }
 
     const list = el('div', {
-      className: 'mc-list',
+      className: 'asgard-list',
       style: { display: 'flex', flexDirection: 'column', gap: '0', padding: '0 var(--sp-page)' },
     });
 
@@ -623,7 +606,7 @@ const M = (() => {
     };
 
     return el('div', {
-      className: 'mc-empty',
+      className: 'asgard-empty',
       style: {
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         padding: '60px 20px', textAlign: 'center',
@@ -647,7 +630,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function Skeleton({ type = 'card', count = 3 }) {
     const wrap = el('div', {
-      className: 'mc-skeleton',
+      className: 'asgard-skeleton',
       style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-gap)', padding: '0 var(--sp-page)' },
     });
 
@@ -701,7 +684,7 @@ const M = (() => {
     const c = colors[type] || colors.info;
 
     const toast = el('div', {
-      className: 'mc-toast',
+      className: 'asgard-toast',
       style: {
         position: 'fixed', top: 'calc(12px + env(safe-area-inset-top, 0px))', left: '20px', right: '20px',
         padding: '12px 16px', borderRadius: 'var(--r-lg)', zIndex: 2000,
@@ -715,6 +698,8 @@ const M = (() => {
 
     toast.appendChild(el('span', { textContent: c.icon, style: { fontSize: '16px' } }));
     toast.appendChild(el('span', { textContent: message, style: { flex: 1 } }));
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
 
     // Swipe up to dismiss
     let startY = 0;
@@ -751,16 +736,18 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function BottomSheet({ title, content, fullscreen = false, onClose }) {
     const overlay = el('div', {
-      className: 'mc-sheet-overlay',
+      className: 'asgard-sheet-overlay',
       style: {
         position: 'fixed', inset: 0, zIndex: 1500,
         background: 'var(--overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
         animation: 'asgardFadeIn 0.25s ease',
       },
     });
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
 
     const sheet = el('div', {
-      className: 'mc-sheet',
+      className: 'asgard-sheet',
       style: {
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1501,
         background: 'var(--surface)', borderRadius: '20px 20px 0 0',
@@ -797,12 +784,14 @@ const M = (() => {
       const closeBtn = el('button', {
         style: {
           background: 'var(--surface-alt)', border: 'none', borderRadius: '50%',
-          width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: '36px', height: '36px', padding: '4px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', color: 'var(--text-sec)', fontSize: '16px',
         },
         textContent: '✕',
         onClick: close,
       });
+      closeBtn.setAttribute('aria-label', 'Закрыть');
       titleBar.appendChild(closeBtn);
       sheet.appendChild(titleBar);
     }
@@ -827,13 +816,15 @@ const M = (() => {
     handle.addEventListener('touchend', () => {
       if (!dragging) return;
       dragging = false;
-      const ty = parseInt(sheet.style.transform?.replace(/[^\d]/g, '') || '0');
+      const match = sheet.style.transform?.match(/translateY\(([+-]?\d+)/);
+      const ty = match ? parseInt(match[1]) : 0;
       if (ty > 100) close();
       else { sheet.style.transition = 'transform 0.3s ease'; sheet.style.transform = ''; setTimeout(() => sheet.style.transition = '', 300); }
     }, { passive: true });
 
     overlay.addEventListener('click', close);
 
+    Utils.lockScroll();
     document.body.appendChild(overlay);
     document.body.appendChild(sheet);
 
@@ -845,6 +836,7 @@ const M = (() => {
       setTimeout(() => {
         overlay.remove();
         sheet.remove();
+        Utils.unlockScroll();
         if (onClose) onClose();
       }, 300);
     }
@@ -865,6 +857,8 @@ const M = (() => {
           animation: 'asgardFadeIn 0.2s ease',
         },
       });
+      overlay.setAttribute('role', 'alertdialog');
+      overlay.setAttribute('aria-modal', 'true');
 
       const dialog = el('div', {
         style: {
@@ -891,13 +885,19 @@ const M = (() => {
 
       const btns = el('div', { style: { display: 'flex', gap: '10px' } });
 
+      function dismiss(result) {
+        overlay.remove();
+        Utils.unlockScroll();
+        resolve(result);
+      }
+
       btns.appendChild(el('button', {
         style: {
           flex: 1, padding: '12px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)',
           background: 'transparent', color: 'var(--text-sec)', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
         },
         textContent: cancelText,
-        onClick: () => { overlay.remove(); resolve(false); },
+        onClick: () => dismiss(false),
       }));
 
       btns.appendChild(el('button', {
@@ -907,14 +907,15 @@ const M = (() => {
           fontSize: '14px', fontWeight: 600, cursor: 'pointer',
         },
         textContent: okText,
-        onClick: () => { overlay.remove(); resolve(true); },
+        onClick: () => dismiss(true),
       }));
 
       dialog.appendChild(btns);
       overlay.appendChild(dialog);
       overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) { overlay.remove(); resolve(false); }
+        if (e.target === overlay) dismiss(false);
       });
+      Utils.lockScroll();
       document.body.appendChild(overlay);
     });
   }
@@ -924,7 +925,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function FAB({ icon, onClick, gradient = true, pulse = true }) {
     const fab = el('button', {
-      className: 'mc-fab',
+      className: 'asgard-fab',
       style: {
         position: 'fixed', bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))', right: '20px',
         width: '56px', height: '56px', borderRadius: '50%',
@@ -952,7 +953,7 @@ const M = (() => {
      15. TABLE PAGE (универсальная страница-список)
      ══════════════════════════════════════════════ */
   function TablePage({ title, subtitle, items = [], renderItem, search = false, filter, chart, empty, loadMore, stats, fab: fabConfig, onRefresh, back = true, backHref, actions: headerActions }) {
-    const page = el('div', { className: 'mc-table-page' });
+    const page = el('div', { className: 'asgard-table-page' });
     let filteredItems = [...items];
     let searchQuery = '';
     let currentFilter = null;
@@ -1005,7 +1006,7 @@ const M = (() => {
 
     // List
     listContainer = el('div', {
-      className: 'mc-table-page__list',
+      className: 'asgard-table-page__list',
       style: { padding: '12px 0', minHeight: '200px' },
     });
     page.appendChild(listContainer);
@@ -1170,7 +1171,7 @@ const M = (() => {
     const maxVal = Math.max(...data.map(d => dual ? Math.max(d.value, d.value2 || 0) : d.value), 1);
 
     const chart = el('div', {
-      className: 'mc-bar-chart',
+      className: 'asgard-bar-chart',
       style: {
         height: height + 'px',
         display: 'flex',
@@ -1204,10 +1205,10 @@ const M = (() => {
           },
         });
         bar1.addEventListener('click', () => {
-          const existing = chart.querySelector('.mc-bar-tooltip');
+          const existing = chart.querySelector('.asgard-bar-tooltip');
           if (existing) existing.remove();
           const tooltip = el('div', {
-            className: 'mc-bar-tooltip',
+            className: 'asgard-bar-tooltip',
             style: {
               position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
               background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px',
@@ -1232,10 +1233,10 @@ const M = (() => {
           },
         });
         bar2.addEventListener('click', () => {
-          const existing = chart.querySelector('.mc-bar-tooltip');
+          const existing = chart.querySelector('.asgard-bar-tooltip');
           if (existing) existing.remove();
           const tooltip = el('div', {
-            className: 'mc-bar-tooltip',
+            className: 'asgard-bar-tooltip',
             style: {
               position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
               background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px',
@@ -1272,10 +1273,10 @@ const M = (() => {
 
         // Tooltip
         bar.addEventListener('click', () => {
-          const existing = chart.querySelector('.mc-bar-tooltip');
+          const existing = chart.querySelector('.asgard-bar-tooltip');
           if (existing) existing.remove();
           const tooltip = el('div', {
-            className: 'mc-bar-tooltip',
+            className: 'asgard-bar-tooltip',
             style: {
               position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
               background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px',
@@ -1295,7 +1296,7 @@ const M = (() => {
 
       // Label
       const labelEl = el('div', {
-        className: 'mc-bar-label' + (dual ? ' mc-bar-label--dual' : ''),
+        className: 'asgard-bar-label' + (dual ? ' asgard-bar-label--dual' : ''),
         style: {
           fontSize: dual ? '7px' : '9px', fontWeight: 500, color: 'var(--text-ter)', marginTop: '4px',
           textAlign: 'center', position: 'absolute', bottom: 0,
@@ -1370,7 +1371,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function BigNumber({ value, label, prefix = '', suffix = '', color, icon, trend }) {
     const wrap = el('div', {
-      className: 'mc-big-num',
+      className: 'asgard-big-num',
       style: { display: 'flex', flexDirection: 'column', ...DS.anim(0.05) },
     });
 
@@ -1413,7 +1414,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function Form({ fields, onSubmit, submitLabel = 'Сохранить' }) {
     const form = el('form', {
-      className: 'mc-form',
+      className: 'asgard-form',
       style: { padding: '0 var(--sp-page)', maxWidth: '100%', overflow: 'hidden' },
       onSubmit: (e) => {
         e.preventDefault();
@@ -1449,7 +1450,7 @@ const M = (() => {
       }
 
       const group = el('div', {
-        className: 'mc-form__group',
+        className: 'asgard-form__group',
         style: { marginBottom: '14px', position: 'relative' },
       });
 
@@ -1546,7 +1547,10 @@ const M = (() => {
           value: f.value || '',
           style: inputStyle(true),
         });
-        if (f.required) input.required = true;
+        if (f.required) {
+          input.required = true;
+          input.setAttribute('aria-required', 'true');
+        }
 
         const label = el('label', {
           style: {
@@ -1597,7 +1601,7 @@ const M = (() => {
 
       // Error placeholder
       group.appendChild(el('div', {
-        className: 'mc-form__error',
+        className: 'asgard-form__error',
         style: { ...DS.font('xs'), color: 'var(--red)', marginTop: '4px', display: 'none' },
       }));
 
@@ -1631,16 +1635,18 @@ const M = (() => {
   function showFieldError(input, msg) {
     input.style.borderColor = 'var(--red)';
     input.style.animation = 'asgardShake 0.3s ease';
-    const group = input.closest('.mc-form__group');
+    input.setAttribute('aria-invalid', 'true');
+    const group = input.closest('.asgard-form__group');
     if (group) {
-      const err = group.querySelector('.mc-form__error');
+      const err = group.querySelector('.asgard-form__error');
       if (err) { err.textContent = msg; err.style.display = 'block'; }
     }
     setTimeout(() => { input.style.animation = ''; }, 300);
     input.addEventListener('input', () => {
       input.style.borderColor = 'var(--border)';
+      input.removeAttribute('aria-invalid');
       if (group) {
-        const err = group.querySelector('.mc-form__error');
+        const err = group.querySelector('.asgard-form__error');
         if (err) err.style.display = 'none';
       }
     }, { once: true });
@@ -1659,7 +1665,7 @@ const M = (() => {
     const v = variants[variant] || variants.primary;
 
     const btn = el('button', {
-      className: 'mc-btn-full',
+      className: 'asgard-btn-full',
       style: {
         width: '100%', padding: '14px', borderRadius: 'var(--r-lg)',
         ...v,
@@ -1724,7 +1730,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function DetailFields({ fields }) {
     const wrap = el('div', {
-      className: 'mc-detail-fields',
+      className: 'asgard-detail-fields',
       style: { display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 var(--sp-page)' },
     });
 
@@ -1800,7 +1806,7 @@ const M = (() => {
     const pct = Math.min(100, Math.max(0, (value / max) * 100));
 
     const wrap = el('div', {
-      className: 'mc-progress',
+      className: 'asgard-progress',
       style: { display: 'flex', alignItems: 'center', gap: '8px', width: '100%' },
     });
 
@@ -1838,7 +1844,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function Tabs({ items, active, onChange }) {
     const wrap = el('div', {
-      className: 'mc-tabs asgard-no-scrollbar',
+      className: 'asgard-tabs asgard-no-scrollbar',
       style: {
         display: 'flex', overflowX: 'auto', borderBottom: '1px solid var(--border)',
         position: 'relative', scrollSnapType: 'x mandatory',
@@ -1848,7 +1854,7 @@ const M = (() => {
     });
 
     const indicator = el('div', {
-      className: 'mc-tabs__indicator',
+      className: 'asgard-tabs__indicator',
       style: {
         position: 'absolute', bottom: '-1px', height: '2px',
         background: 'var(--red)', borderRadius: '1px',
@@ -1858,7 +1864,7 @@ const M = (() => {
 
     items.forEach((item, i) => {
       const tab = el('button', {
-        className: 'mc-tab' + (item.value === active ? ' mc-tab--active' : ''),
+        className: 'asgard-tab' + (item.value === active ? ' asgard-tab--active' : ''),
         style: {
           padding: '10px 16px', background: 'none', border: 'none',
           ...DS.font('sm'),
@@ -1870,9 +1876,9 @@ const M = (() => {
         textContent: item.label,
         onClick: () => {
           active = item.value;
-          wrap.querySelectorAll('.mc-tab').forEach((t, idx) => {
+          wrap.querySelectorAll('.asgard-tab').forEach((t, idx) => {
             const isActive = items[idx].value === active;
-            t.className = 'mc-tab' + (isActive ? ' mc-tab--active' : '');
+            t.className = 'asgard-tab' + (isActive ? ' asgard-tab--active' : '');
             t.style.color = isActive ? 'var(--text)' : 'var(--text-ter)';
           });
           updateIndicator();
@@ -1885,7 +1891,7 @@ const M = (() => {
     wrap.appendChild(indicator);
 
     function updateIndicator() {
-      const activeTab = wrap.querySelector('.mc-tab--active');
+      const activeTab = wrap.querySelector('.asgard-tab--active');
       if (activeTab) {
         indicator.style.left = activeTab.offsetLeft + 'px';
         indicator.style.width = activeTab.offsetWidth + 'px';
@@ -1901,7 +1907,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function QuickActions({ items }) {
     const wrap = el('div', {
-      className: 'mc-quick-actions asgard-no-scrollbar',
+      className: 'asgard-quick-actions asgard-no-scrollbar',
       style: {
         display: 'flex', gap: '8px', overflowX: 'auto', padding: '0 var(--sp-page)',
         scrollSnapType: 'x mandatory',
@@ -1943,7 +1949,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function MimirBanner({ title, text, icon = '⚡' }) {
     return el('div', {
-      className: 'mc-mimir-banner',
+      className: 'asgard-mimir-banner',
       style: {
         background: 'var(--gold-bg)', border: '1px solid var(--gold-border)',
         borderRadius: 'var(--r-lg)', padding: '14px 16px',
@@ -1971,7 +1977,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function SearchBar({ placeholder = 'Поиск...', onSearch, sticky = false, autoFocus = false }) {
     const wrap = el('div', {
-      className: 'mc-search',
+      className: 'asgard-search',
       style: {
         padding: '8px var(--sp-page)',
         position: sticky ? 'sticky' : 'relative',
@@ -1980,6 +1986,8 @@ const M = (() => {
         background: sticky ? 'var(--bg)' : 'transparent',
       },
     });
+
+    wrap.setAttribute('role', 'search');
 
     const inner = el('div', {
       style: {
@@ -2045,7 +2053,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function ActionSheet({ title, actions = [], cancelText = 'Отмена', onClose }) {
     const overlay = el('div', {
-      className: 'mc-action-sheet-overlay',
+      className: 'asgard-action-sheet-overlay',
       style: {
         position: 'fixed', inset: 0, zIndex: 1500,
         background: 'var(--overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
@@ -2107,13 +2115,16 @@ const M = (() => {
     sheet.appendChild(cancelBtn);
 
     overlay.appendChild(sheet);
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    Utils.lockScroll();
     document.body.appendChild(overlay);
 
     function close() {
       sheet.style.animation = 'asgardSlideSheetDown 0.25s ease forwards';
       overlay.style.animation = 'asgardFadeOut 0.25s ease forwards';
-      setTimeout(() => { overlay.remove(); if (onClose) onClose(); }, 250);
+      setTimeout(() => { overlay.remove(); Utils.unlockScroll(); if (onClose) onClose(); }, 250);
     }
 
     return overlay;
@@ -2124,7 +2135,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function DatePicker({ value, label, onChange, min, max }) {
     const wrap = el('div', {
-      className: 'mc-datepicker',
+      className: 'asgard-datepicker',
       style: { position: 'relative' },
     });
 
@@ -2192,7 +2203,7 @@ const M = (() => {
     const colorIdx = (name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length;
 
     const wrap = el('div', {
-      className: 'mc-avatar',
+      className: 'asgard-avatar',
       style: {
         width: size + 'px', height: size + 'px', borderRadius: '50%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2238,7 +2249,7 @@ const M = (() => {
     const iconText = icon || typeIcons[type] || typeIcons.info;
 
     const card = el('div', {
-      className: 'mc-notif' + (read ? '' : ' mc-notif--unread'),
+      className: 'asgard-notif' + (read ? '' : ' asgard-notif--unread'),
       style: {
         display: 'flex', gap: '12px', padding: '14px 16px',
         background: read ? 'transparent' : 'var(--blue-bg)',
@@ -2298,7 +2309,7 @@ const M = (() => {
      31. STEP WIZARD
      ══════════════════════════════════════════════ */
   function StepWizard({ steps, current = 0, onChange }) {
-    const wrap = el('div', { className: 'mc-step-wizard' });
+    const wrap = el('div', { className: 'asgard-step-wizard' });
 
     // Progress bar
     const progressWrap = el('div', {
@@ -2361,7 +2372,7 @@ const M = (() => {
 
     // Content area
     const content = el('div', {
-      className: 'mc-step-wizard__content',
+      className: 'asgard-step-wizard__content',
       style: { padding: '0 var(--sp-page)' },
     });
     if (steps[current] && steps[current].content) {
@@ -2397,7 +2408,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function Timeline({ items }) {
     const wrap = el('div', {
-      className: 'mc-timeline',
+      className: 'asgard-timeline',
       style: { padding: '0 var(--sp-page)', position: 'relative' },
     });
 
@@ -2481,7 +2492,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function ChatBubble({ text, time, mine = false, name, avatar, status }) {
     const row = el('div', {
-      className: 'mc-chat-row',
+      className: 'asgard-chat-row',
       style: {
         display: 'flex', gap: '8px', marginBottom: '8px',
         flexDirection: mine ? 'row-reverse' : 'row',
@@ -2494,7 +2505,7 @@ const M = (() => {
     }
 
     const bubble = el('div', {
-      className: 'mc-bubble' + (mine ? ' mc-bubble--mine' : ''),
+      className: 'asgard-bubble' + (mine ? ' asgard-bubble--mine' : ''),
       style: {
         maxWidth: '75%', padding: '10px 14px',
         borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
@@ -2544,7 +2555,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function MessageComposer({ placeholder = 'Сообщение...', onSend, onAttach }) {
     const wrap = el('div', {
-      className: 'mc-composer',
+      className: 'asgard-composer',
       style: {
         display: 'flex', alignItems: 'flex-end', gap: '8px',
         padding: '8px 12px', background: 'var(--surface)',
@@ -2613,7 +2624,7 @@ const M = (() => {
   function Chip({ text, color, onRemove, onClick }) {
     const sc = DS.status(color || 'neutral');
     const chip = el('span', {
-      className: 'mc-chip',
+      className: 'asgard-chip',
       style: {
         display: 'inline-flex', alignItems: 'center', gap: '4px',
         padding: '4px 10px', borderRadius: 'var(--r-pill)',
@@ -2647,7 +2658,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function SegmentControl({ items, active, onChange }) {
     const wrap = el('div', {
-      className: 'mc-segment',
+      className: 'asgard-segment',
       style: {
         display: 'flex', background: 'var(--surface-alt)',
         borderRadius: 'var(--r-md)', padding: '3px',
@@ -2657,7 +2668,7 @@ const M = (() => {
     });
 
     const slider = el('div', {
-      className: 'mc-segment__slider',
+      className: 'asgard-segment__slider',
       style: {
         position: 'absolute', top: '3px', bottom: '3px',
         borderRadius: 'calc(var(--r-md) - 2px)',
@@ -2711,7 +2722,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function PullToRefresh({ onRefresh }) {
     const indicator = el('div', {
-      className: 'mc-ptr-indicator',
+      className: 'asgard-ptr-indicator',
       style: {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         height: '0', overflow: 'hidden', transition: 'height 0.3s ease',
@@ -2751,7 +2762,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function SwipeCard({ title, subtitle, leftActions = [], rightActions = [] }) {
     const wrapper = el('div', {
-      className: 'mc-swipe-card',
+      className: 'asgard-swipe-card',
       style: { position: 'relative', overflow: 'hidden', borderRadius: 'var(--r-xl)' },
     });
 
@@ -2842,7 +2853,7 @@ const M = (() => {
     const offset = c * (1 - pct / 100);
 
     const wrap = el('div', {
-      className: 'mc-donut',
+      className: 'asgard-donut',
       style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' },
     });
 
@@ -2900,7 +2911,7 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function BurgerMenu({ user, groups = [], onClose, onNavigate }) {
     const overlay = el('div', {
-      className: 'mc-burger-overlay',
+      className: 'asgard-burger-overlay',
       style: {
         position: 'fixed', inset: 0, zIndex: 2000,
         background: 'var(--bg)', overflowY: 'auto',
@@ -2928,15 +2939,19 @@ const M = (() => {
       header.appendChild(userRow);
     }
 
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+
     const closeBtn = el('button', {
       style: {
         background: 'var(--surface-alt)', border: 'none', borderRadius: '50%',
-        width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: 'pointer', color: 'var(--text)', fontSize: '20px', flexShrink: 0,
       },
       textContent: '✕',
       onClick: close,
     });
+    closeBtn.setAttribute('aria-label', 'Закрыть');
     header.appendChild(closeBtn);
     overlay.appendChild(header);
 
@@ -3015,7 +3030,7 @@ const M = (() => {
         } else {
           items.style.maxHeight = items.scrollHeight + 'px';
           chevron.style.transform = '';
-          setTimeout(() => items.style.maxHeight = 'none', 350);
+          items.addEventListener('transitionend', () => { items.style.maxHeight = 'none'; }, { once: true });
         }
       });
 
@@ -3025,11 +3040,12 @@ const M = (() => {
     });
 
     overlay.appendChild(content);
+    Utils.lockScroll();
     document.body.appendChild(overlay);
 
     function close() {
       overlay.style.animation = 'asgardPageExit 0.25s ease forwards';
-      setTimeout(() => overlay.remove(), 250);
+      setTimeout(() => { overlay.remove(); Utils.unlockScroll(); }, 250);
       if (onClose) onClose();
     }
 

@@ -1,5 +1,5 @@
 /* ================================================================
- *  ASGARD CRM Mobile v2 — Auth Pages (v3.1.0)
+ *  ASGARD CRM Mobile v3 — Auth Pages (v3.1.0)
  *  WelcomePage  #/welcome
  *  LoginPage    #/login   (3 stages: credentials → setupPin → quickPin)
  *  RegisterPage #/register (stub → redirect)
@@ -15,6 +15,31 @@ function hashPin(pin) {
   let h = 0;
   for (let i = 0; i < pin.length; i++) h = ((h << 5) - h + pin.charCodeAt(i)) | 0;
   return 'ph_' + Math.abs(h).toString(36);
+}
+
+/* ---------- AsgardAuth fallback (if desktop auth.js not loaded) ---------- */
+async function authLoginStep1(login, password) {
+  if (typeof AsgardAuth !== 'undefined' && AsgardAuth.loginStep1) {
+    return AsgardAuth.loginStep1({ login, password });
+  }
+  return API.fetch('/auth/login', { method: 'POST', body: { login, password }, noCache: true });
+}
+
+function authGetAuth() {
+  if (typeof AsgardAuth !== 'undefined' && AsgardAuth.getAuth) {
+    return authGetAuth();
+  }
+  const token = localStorage.getItem('auth_token');
+  const userStr = localStorage.getItem('asgard_mobile_state');
+  try { const s = JSON.parse(userStr || '{}'); return { token, user: s.user }; } catch (_) {}
+  return { token, user: null };
+}
+
+async function authVerifyPin(opts) {
+  if (typeof AsgardAuth !== 'undefined' && AsgardAuth.verifyPin) {
+    return AsgardAuth.verifyPin(opts);
+  }
+  return API.fetch('/auth/verify-pin', { method: 'POST', body: opts, noCache: true });
 }
 
 /* ---------- SVG assets ---------- */
@@ -199,8 +224,8 @@ const LoginPage = {
         avatar: ctx.user,
         showAlt: true,
         onComplete: async pin => {
-          const result = await AsgardAuth.verifyPin({ userId: ctx.userId, pin, remember: true });
-          const auth = AsgardAuth.getAuth();
+          const result = await authVerifyPin({ userId: ctx.userId, pin, remember: true });
+          const auth = authGetAuth();
           const user = auth?.user || result?.user || ctx.user;
           if (user) {
             Store.set('user', { ...user, token: auth?.token || result?.token || user.token });
@@ -356,8 +381,8 @@ const LoginPage = {
         btn.setLoading(true); errBox.textContent = '';
 
         try {
-          const res = await AsgardAuth.loginStep1({ login, password });
-          const auth = AsgardAuth.getAuth();
+          const res = await authLoginStep1({ login, password });
+          const auth = authGetAuth();
           const user = auth?.user || res?.user;
           if (!user && res?.status !== 'need_setup' && res?.status !== 'need_pin') {
             throw new Error('Ошибка авторизации');
@@ -840,7 +865,7 @@ const RegisterPage = {
           company: company.input.value.trim(),
           role: selectedRole,
           note: note.input.value.trim(),
-          source: 'mobile_v2',
+          source: 'mobile_v3',
           created_at: new Date().toISOString(),
         };
         if (!payload.full_name || !payload.phone || !payload.email || !payload.company) {

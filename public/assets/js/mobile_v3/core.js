@@ -1,6 +1,5 @@
-console.log('[MOBILE_V2] core.js loaded');
 /**
- * ASGARD CRM — Mobile Core v2.0
+ * ASGARD CRM — Mobile Core v3.0
  * Архитектурное ядро мобильного фронтенда
  * Router, Layout, State, API, Gestures, Utils
  */
@@ -265,6 +264,8 @@ const Layout = (() => {
   function renderTabBar(config) {
     if (!tabBar) return;
     tabBar.innerHTML = '';
+    tabBar.setAttribute('role', 'navigation');
+    tabBar.setAttribute('aria-label', 'Навигация');
 
     config.forEach((tab, i) => {
       if (tab.type === 'fab') {
@@ -283,6 +284,8 @@ const Layout = (() => {
         btn.className = 'asgard-tabbar__item';
         btn.href = '#' + tab.href;
         btn.setAttribute('data-route', tab.href);
+        btn.setAttribute('role', 'tab');
+        btn.setAttribute('aria-selected', 'false');
         btn.innerHTML = `
           <span class="asgard-tabbar__icon">${tab.icon}</span>
           <span class="asgard-tabbar__label">${tab.label}</span>
@@ -306,7 +309,9 @@ const Layout = (() => {
     const current = Router.current().path;
     tabBar.querySelectorAll('.asgard-tabbar__item').forEach(item => {
       const route = item.getAttribute('data-route');
-      item.classList.toggle('active', current === route);
+      const isActive = current === route;
+      item.classList.toggle('active', isActive);
+      item.setAttribute('aria-selected', String(isActive));
     });
   }
 
@@ -1017,10 +1022,22 @@ const Utils = (() => {
     return element;
   }
 
+  // Scroll lock for modals (ref-counted)
+  function lockScroll() {
+    const count = parseInt(document.body.dataset.scrollLocked || '0') + 1;
+    document.body.dataset.scrollLocked = count;
+    document.body.style.overflow = 'hidden';
+  }
+  function unlockScroll() {
+    const count = parseInt(document.body.dataset.scrollLocked || '1') - 1;
+    document.body.dataset.scrollLocked = Math.max(0, count);
+    if (count <= 0) { document.body.style.overflow = ''; }
+  }
+
   return {
     formatDate, relativeTime, formatMoney, formatNumber,
     debounce, throttle, infiniteScroll, keyboardAwareScroll,
-    uid, plural, clone, $, $$, el,
+    uid, plural, clone, $, $$, el, lockScroll, unlockScroll,
   };
 })();
 
@@ -1031,8 +1048,31 @@ const Utils = (() => {
 const App = (() => {
   let initialized = false;
 
+  /**
+   * Determine if mobile shell should take over.
+   * Returns true on mobile devices / narrow screens when MOBILE_V3_ENABLED is not false.
+   */
+  function shouldUseMobile() {
+    const flags = window.ASGARD_FLAGS || {};
+    if (flags.MOBILE_V3_ENABLED === false) return false;
+
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const isNarrow = window.innerWidth <= 768;
+    const hasTouch = 'ontouchstart' in window;
+
+    // If flag is explicitly true — activate for mobile or narrow screens
+    if (flags.MOBILE_V3_ENABLED === true) return isMobile || isNarrow;
+
+    // Auto-detect: must be mobile device + narrow + touch
+    return isMobile && isNarrow && hasTouch;
+  }
+
   async function init() {
     if (initialized) return;
+
+    // Only activate mobile shell on mobile devices
+    if (!shouldUseMobile()) return;
+
     initialized = true;
 
     // Inject design system styles
@@ -1040,7 +1080,7 @@ const App = (() => {
       DS.injectStyles();
     }
 
-    // Create layout
+    // Create layout (replaces body contents — desktop app.js won't run after this)
     Layout.create();
 
     // Auth guard
@@ -1072,31 +1112,53 @@ const App = (() => {
           Layout.setBadge('/my-mail', data.count || 0);
         }
         if (data.type === 'notification') {
-          Store.set('notifications', [...Store.get('notifications'), data]);
+          Store.set('notifications', [...(Store.get('notifications') || []), data]);
         }
       });
     }
 
     // Listen for role changes
-    Store.on('user', (user) => {
-      if (!user) return;
+    Store.on('user', (u) => {
+      if (!u) return;
       Layout.renderTabBar(Layout.getDefaultTabs());
     });
 
-    // Auth & Home routes
-    Router.register('/welcome',  { render: () => WelcomePage.render() });
-    Router.register('/login',    { render: () => LoginPage.render() });
-    Router.register('/register', { render: () => RegisterPage.render() });
-    Router.register('/home',     { render: () => HomePage.render() });
+    // Auth routes (auth.js must be loaded)
+    if (typeof WelcomePage !== 'undefined') {
+      Router.register('/welcome',  { render: () => WelcomePage.render() });
+    }
+    if (typeof LoginPage !== 'undefined') {
+      Router.register('/login',    { render: () => LoginPage.render() });
+    }
+    if (typeof RegisterPage !== 'undefined') {
+      Router.register('/register', { render: () => RegisterPage.render() });
+    }
+
+    // Home page placeholder (will be replaced in Session 3)
+    Router.register('/home', {
+      render: () => {
+        if (typeof HomePage !== 'undefined') return HomePage.render();
+        const placeholder = document.createElement('div');
+        placeholder.style.cssText = 'padding:60px 20px;text-align:center;';
+        placeholder.innerHTML = `
+          <div style="font-size:48px;margin-bottom:16px;">⚔️</div>
+          <div style="color:var(--text);font-size:20px;font-weight:700;margin-bottom:8px;">ASGARD CRM</div>
+          <div style="color:var(--text-sec);font-size:14px;">Главная страница — Сессия 3</div>
+          <div style="margin-top:24px;">
+            <a href="#/test" style="color:var(--blue);font-size:14px;text-decoration:none;">Открыть витрину компонентов →</a>
+          </div>
+        `;
+        return placeholder;
+      }
+    });
 
     // Hide tab bar on auth pages, show on app pages
     window.addEventListener('asgard:route', (e) => {
       const authPaths = ['/welcome', '/login', '/register'];
       const isAuth = authPaths.includes(e.detail.path);
       document.body.classList.toggle('auth-active', isAuth);
-      const tabBar = Layout.getTabBar();
-      if (tabBar) tabBar.style.display = isAuth ? 'none' : '';
-      // For welcome page, hide main padding
+      const tb = Layout.getTabBar();
+      if (tb) tb.style.display = isAuth ? 'none' : '';
       const content = Layout.getContentZone();
       if (content) {
         content.style.paddingBottom = isAuth ? '0' : '';
@@ -1104,20 +1166,22 @@ const App = (() => {
       }
     });
 
-    // Register test routes
-    Router.register('/test', { render: (params) => TestPage.render(params) });
-    Router.register('/test-table', { render: (params) => TestTablePage.render(params) });
+    // Test routes
+    if (typeof TestPage !== 'undefined') {
+      Router.register('/test', { render: (params) => TestPage.render(params) });
+    }
+    if (typeof TestTablePage !== 'undefined') {
+      Router.register('/test-table', { render: (params) => TestTablePage.render(params) });
+    }
 
     // Init router
     Router.init();
-
-    console.log('[ASGARD] Mobile v2 initialized');
   }
 
-  return { init };
+  return { init, shouldUseMobile };
 })();
 
-// Export for ES modules
+// Global exports
 if (typeof window !== 'undefined') {
   window.Router = Router;
   window.Layout = Layout;
@@ -1127,4 +1191,13 @@ if (typeof window !== 'undefined') {
   window.Gestures = Gestures;
   window.Utils = Utils;
   window.App = App;
+}
+
+// Auto-initialization on DOM ready
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => App.init());
+  } else {
+    App.init();
+  }
 }

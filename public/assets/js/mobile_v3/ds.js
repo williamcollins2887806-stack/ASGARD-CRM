@@ -584,6 +584,103 @@ body {
   to { transform: scale(2.5); opacity: 0; }
 }
 
+/* ═══════ UNIQUE KEYFRAMES (from mobile_v3.css) ═══════ */
+@keyframes asgardFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes asgardBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes asgardBreath {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+@keyframes asgardSlideSheetDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+/* ═══════ TEXT SAFETY ═══════ */
+.asgard-text-safe {
+  word-break: break-word;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+.asgard-text-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.asgard-text-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.asgard-text-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ═══════ INTERACTIVE STATES ═══════ */
+.asgard-pressable:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+.asgard-card-hover:active {
+  transform: scale(0.98);
+  box-shadow: none;
+}
+.asgard-btn:active {
+  transform: scale(0.96);
+}
+.asgard-btn-mini:active {
+  transform: scale(0.92);
+}
+
+/* ═══════ RIPPLE ═══════ */
+.asgard-ripple {
+  position: relative;
+  overflow: hidden;
+}
+.asgard-ripple::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle, rgba(255,255,255,0.15) 10%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.asgard-ripple:active::after {
+  opacity: 1;
+}
+
+/* ═══════ BOTTOM SHEET HANDLE ═══════ */
+.asgard-sheet-handle::before {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-ter, #4A4A50);
+  margin: 10px auto 6px;
+  opacity: 0.5;
+}
+
+/* ═══════ HEADER BACKDROP ═══════ */
+.asgard-header {
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  border-bottom: 0.5px solid rgba(255,255,255,0.08);
+}
+
 /* ═══════ SELECTION ═══════ */
 ::selection { background: var(--selection); }
 
@@ -595,6 +692,16 @@ body {
   .asgard-tabbar {
     padding-bottom: calc(8px + env(safe-area-inset-bottom));
   }
+  .asgard-safe-top { padding-top: env(safe-area-inset-top); }
+  .asgard-safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .asgard-safe-x { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+}
+
+/* ═══════ PRINT ═══════ */
+@media print {
+  .asgard-tabbar, .asgard-header, .asgard-fab { display: none !important; }
+  .asgard-content { overflow: visible !important; }
+  body { position: static !important; overflow: visible !important; }
 }
     `;
   }

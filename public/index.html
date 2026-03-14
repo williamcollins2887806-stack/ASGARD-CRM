@@ -69,16 +69,14 @@
   <link rel="stylesheet" href="assets/css/layout.css?v=8.9.0"/>
   <link rel="stylesheet" href="assets/css/app.css?v=8.9.0-mobile-disable-20260312"/>
   <link rel="stylesheet" href="assets/css/responsive.css?v=8.9.0"/>
-  <!-- mobile_v2 disabled for live use: <link rel="stylesheet" href="assets/css/mobile_v2.css?v=3.3.1"/> -->
+
 
   <!-- Theme initialization (before render) -->
   <script>(function(){try{var t=localStorage.getItem("asgard_theme")||"dark";document.documentElement.dataset.theme=t==="light"?"light":"dark";}catch(e){}})();</script>
   <script>
-    window.ASGARD_FLAGS = Object.assign({}, window.ASGARD_FLAGS, { MOBILE_V2_ENABLED: false, MOBILE_V3_ENABLED: true });
+    window.ASGARD_FLAGS = Object.assign({}, window.ASGARD_FLAGS, { MOBILE_V3_ENABLED: true });
+    // MOBILE_V2 removed. V3 is the only mobile version.
     window.ASGARD_SHELL_VERSION = '8.9.3-corrective1';
-    if (window.ASGARD_FLAGS.MOBILE_V2_ENABLED === false) {
-      document.documentElement.classList.add('mobile-v2-disabled');
-    }
   </script>
 
   <!-- Leaflet Map (OpenStreetMap - free, no API key) -->
@@ -231,29 +229,13 @@
   <script src="assets/js/action_menu.js?v=8.9.0"></script>
   <script src="assets/js/site_inspections.js?v=8.9.0"></script>
   <script src="assets/js/telephony.js?v=1.2.0"></script>
-  <script src="assets/js/telephony_popup.js?v=2.0.2"></script>  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/core.js?v=3.3.6"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/ds.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/components.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/test.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/auth.js?v=3.3.9"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/home.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/dashboard.js?v=3.3.5"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/sales.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/works.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/tasks.js?v=3.3.5"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/finance.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/resources.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/people.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/comms.js?v=3.3.5"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/analytics.js?v=3.3.4"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/system.js?v=3.3.5"></script> -->
-  <!-- mobile_v2 disabled for live use: <script src="assets/js/mobile_v2/mimir.js?v=3.3.4"></script> -->
+  <script src="assets/js/telephony_popup.js?v=2.0.2"></script>
 
   <!-- ═══ Mobile v3 ═══ -->
-  <link rel="stylesheet" href="assets/css/mobile_v3.css?v=3.0.0"/>
   <script src="assets/js/mobile_v3/ds.js?v=3.0.0"></script>
   <script src="assets/js/mobile_v3/core.js?v=3.0.0"></script>
   <script src="assets/js/mobile_v3/components.js?v=3.0.0"></script>
+  <script src="assets/js/mobile_v3/auth.js?v=3.0.0"></script>
   <script src="assets/js/mobile_v3/test.js?v=3.0.0"></script>
 
   <script src="assets/js/session-guard.js?v=8.9.0"></script>

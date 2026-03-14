@@ -7,16 +7,13 @@ const TestPage = {
   render() {
     const t = DS.t;
     const page = document.createElement('div');
-    page.className = 'mv3-page';
+    page.className = 'asgard-page';
     Object.assign(page.style, { background: t.bg, paddingBottom: '120px' });
 
+    // Shorthand: el(tag, styleObj, children) → wraps Utils.el
     const el = (tag, s, ch) => {
-      const e = document.createElement(tag);
-      if (s && typeof s === 'object' && !Array.isArray(s) && !(s instanceof HTMLElement)) Object.assign(e.style, s);
-      if (typeof ch === 'string') e.textContent = ch;
-      else if (ch instanceof HTMLElement) e.appendChild(ch);
-      else if (Array.isArray(ch)) ch.forEach(c => { if (c instanceof HTMLElement) e.appendChild(c); });
-      return e;
+      const attrs = (s && typeof s === 'object' && !Array.isArray(s) && !(s instanceof HTMLElement)) ? { style: s } : {};
+      return Utils.el(tag, attrs, ch != null ? ch : []);
     };
 
     const sn = { n: 0 };
@@ -34,10 +31,10 @@ const TestPage = {
     // ═══ HEADER ═══
     const themeToggle = DS.createThemeToggle();
     page.appendChild(M.Header({ title: 'Витрина v3', subtitle: 'ASGARD MOBILE', back: false, actions: [
-      { icon: '<span id="mv3-theme-slot" style="display:flex"></span>', onClick: () => {} },
+      { icon: '<span id="asgard-theme-slot" style="display:flex"></span>', onClick: () => {} },
       { icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>', onClick: () => DS.toggleTheme() },
     ]}));
-    setTimeout(() => { const s = document.getElementById('mv3-theme-slot'); if (s) s.appendChild(themeToggle); }, 0);
+    setTimeout(() => { const s = document.getElementById('asgard-theme-slot'); if (s) s.appendChild(themeToggle); }, 0);
 
     // ═══ HERO ═══
     page.appendChild(el('div', { padding: '12px 20px' }, M.HeroCard({ label: 'ASGARD CRM • MOBILE V3', value: '40', valueSuffix: ' компонентов', details: [{ label: 'Блоков', value: '22' }, { label: 'Auth', value: '5 экранов' }, { label: 'Стандарт', value: 'Сбер/Альфа', color: '#34C759' }] })));
@@ -268,7 +265,7 @@ const TestPage = {
 
     // Birthdays
     page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, 'Дни рождения')));
-    const bw = el('div', { display: 'flex', gap: '12px', padding: '0 20px', overflowX: 'auto' }); bw.className = 'mv3-no-scrollbar';
+    const bw = el('div', { display: 'flex', gap: '12px', padding: '0 20px', overflowX: 'auto' }); bw.className = 'asgard-no-scrollbar';
     [{ n: 'Козлов Дмитрий', d: '16 мар' }, { n: 'Петрова Мария', d: '18 мар' }, { n: 'Сидоров Алексей', d: '22 мар' }].forEach(b => {
       const cd = el('div', { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '14px 16px', background: t.surface, borderRadius: '16px', border: '1px solid ' + t.border, minWidth: '100px', textAlign: 'center' });
       cd.appendChild(M.Avatar({ name: b.n, size: 40 })); cd.appendChild(el('div', { ...DS.font('sm'), color: t.text, fontWeight: 600 }, b.n.split(' ')[0])); cd.appendChild(el('div', { ...DS.font('xs'), color: t.textSec }, b.d)); cd.appendChild(el('div', { fontSize: '18px' }, '🎂'));
