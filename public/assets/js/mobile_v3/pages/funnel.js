@@ -158,7 +158,6 @@ window.MobileFunnel = (function () {
 
     // Empty state when no tenders at all
     if (!tenders.length) {
-      scroll.replaceChildren();
       scroll.style.display = 'flex';
       scroll.style.justifyContent = 'center';
       scroll.appendChild(M.Empty({ text: 'Нет тендеров в воронке', icon: '📊' }));
