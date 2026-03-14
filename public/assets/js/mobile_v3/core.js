@@ -329,11 +329,50 @@ const Layout = (() => {
     });
   }
 
+  function openMimirChat() {
+    if (typeof M === 'undefined' || !M.BottomSheet) return;
+
+    const chatContent = document.createElement('div');
+    chatContent.style.cssText = 'display:flex;flex-direction:column;gap:12px;min-height:300px;';
+
+    // Заголовок
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+    header.innerHTML = '<div style="width:36px;height:36px;border-radius:50%;background:var(--hero-grad);display:flex;align-items:center;justify-content:center;font-size:16px;">⚡</div>'
+      + '<div><div style="font-size:14px;font-weight:700;color:var(--text);">Мимир</div><div style="font-size:11px;color:var(--text-sec);">AI-ассистент ASGARD</div></div>';
+    chatContent.appendChild(header);
+
+    // Демо-сообщения
+    const msgs = [
+      { text: 'Привет! Я Мимир — AI-ассистент ASGARD CRM. Спроси меня о тендерах, задачах, финансах или попроси создать документ.', mine: false },
+      { text: 'Покажи тендеры за март дороже 1 млн', mine: true },
+      { text: '📊 Найдено 3 тендера:\n\n• ЯНПЗ — 4.23 млн ₽ (срок 25.03)\n• НОВАТЭК — 28 млн ₽ (подано)\n• КАО Азот — 15.5 млн ₽ (в работе)', mine: false },
+    ];
+    msgs.forEach(m => {
+      if (typeof M.ChatBubble === 'function') {
+        chatContent.appendChild(M.ChatBubble({ text: m.text, mine: m.mine, name: m.mine ? undefined : 'Мимир', time: '22:50' }));
+      }
+    });
+
+    // Composer
+    if (typeof M.MessageComposer === 'function') {
+      chatContent.appendChild(M.MessageComposer({
+        placeholder: 'Спросите Мимира...',
+        onSend: (text) => {
+          if (typeof M.Toast === 'function') M.Toast({ message: 'Мимир: функция в разработке', type: 'info' });
+        }
+      }));
+    }
+
+    M.BottomSheet({ title: '⚡ Мимир', content: chatContent, fullscreen: true });
+  }
+  window.openMimirChat = openMimirChat;
+
   function getDefaultTabs() {
     return [
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', label: 'Главная', href: '/home' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>', label: 'Задачи', href: '/tasks' },
-      { type: 'fab', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4m-2.93-7.07l-2.83 2.83m-8.48 8.48l-2.83 2.83m0-14.14l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>', label: 'Мимир', onClick: () => Router.navigate('/mimir') },
+      { type: 'fab', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4m-2.93-7.07l-2.83 2.83m-8.48 8.48l-2.83 2.83m0-14.14l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>', label: 'Мимир', onClick: () => openMimirChat() },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>', label: 'Почта', href: '/my-mail', badge: '' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>', label: 'Ещё', href: '/more' },
     ];

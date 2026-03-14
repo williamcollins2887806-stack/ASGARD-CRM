@@ -332,11 +332,11 @@ body {
   align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.86) 0%, var(--tab-bar-bg) 100%);
+  background: var(--tab-bar-bg);
   backdrop-filter: blur(30px) saturate(1.2);
   -webkit-backdrop-filter: blur(30px) saturate(1.2);
-  border-top: 1px solid rgba(255,255,255,0.18);
-  box-shadow: 0 -10px 32px rgba(10,18,32,0.10), inset 0 1px 0 rgba(255,255,255,0.14);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -10px 32px rgba(0,0,0,0.15);
   padding: 10px 12px 8px;
   padding-bottom: calc(8px + env(safe-area-inset-bottom));
   position: relative;
@@ -780,6 +780,32 @@ html.asgard-mobile input[type="radio"] {
   width: unset;
   height: unset;
   padding: unset;
+}
+
+/* Сбросить responsive.css button overrides */
+html.asgard-mobile button,
+html.asgard-mobile [role="button"] {
+  min-height: unset !important;
+  padding: unset !important;
+  border-radius: unset !important;
+  font-size: unset !important;
+  border: unset !important;
+  background: unset !important;
+  color: unset !important;
+  touch-action: manipulation;
+}
+
+/* Toggle — явные стили чтобы ничего не перебило */
+html.asgard-mobile .asgard-theme-toggle {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  border: none !important;
+  border-radius: 13px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+  width: 50px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
 }
 
 /* Ссылки — мобильные компоненты управляют цветом через inline */
