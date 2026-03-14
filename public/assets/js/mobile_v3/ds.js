@@ -815,6 +815,23 @@ html.asgard-mobile * {
   scrollbar-width: none;
 }
 
+/* Login demo inputs — force light on white card */
+html.asgard-mobile .auth-demo-input {
+  background: #f7f7fa !important;
+  color: #1A1A1F !important;
+  border: 1px solid rgba(0,0,0,0.1) !important;
+  border-radius: 12px !important;
+  -webkit-box-shadow: none !important;
+  box-shadow: none !important;
+}
+html.asgard-mobile .auth-demo-input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #f7f7fa inset !important;
+  -webkit-text-fill-color: #1A1A1F !important;
+}
+html.asgard-mobile .auth-demo-input::placeholder {
+  color: rgba(0,0,0,0.3) !important;
+}
+
 /* ═══════ PORTRAIT LOCK ═══════ */
 @media (orientation: landscape) and (max-height: 500px) {
   html.asgard-mobile .asgard-shell {
