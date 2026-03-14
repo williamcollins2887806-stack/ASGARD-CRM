@@ -7,7 +7,7 @@ const TestPage = {
   render() {
     const t = DS.t;
     const page = document.createElement('div');
-    page.className = 'asgard-page';
+    page.className = 'asgard-test-page';
     Object.assign(page.style, { background: t.bg, paddingBottom: '120px' });
 
     // Shorthand: el(tag, styleObj, children) → wraps Utils.el

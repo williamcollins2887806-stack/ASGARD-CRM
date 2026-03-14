@@ -414,7 +414,7 @@ const LoginPage = {
           }
         } catch (err) {
           btn.setLoading(false);
-          errBox.textContent = err.message || 'Неверный логин или пароль';
+          errBox.textContent = 'Неверный логин или пароль';
           LoginPage._shake(form);
           M.Toast({ message: 'Ошибка входа', type: 'danger' });
         }
