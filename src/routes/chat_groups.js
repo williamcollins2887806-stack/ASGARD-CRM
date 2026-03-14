@@ -1,0 +1,1050 @@
+'use strict';
+
+/**
+ * ASGARD CRM — Групповые чаты (M3)
+ *
+ * Функционал:
+ * - Создание групповых чатов
+ * - Управление участниками (добавить/удалить/роли)
+ * - Сообщения с вложениями и ответами
+ * - Мьют и архивирование
+ * - Поиск по сообщениям
+ */
+
+const path = require('path');
+const fs = require('fs').promises;
+const { randomUUID } = require('crypto');
+
+module.exports = async function(fastify) {
+  const db = fastify.db;
+  const uploadDir = process.env.UPLOAD_DIR || './uploads';
+  const uploadRootDir = path.resolve(uploadDir);
+  const chatUploadDir = path.resolve(uploadRootDir, 'chat');
+
+  function parsePositiveInt(value) {
+    const rawValue = String(value || '').trim();
+    if (!/^\d+$/.test(rawValue)) return null;
+    return parseInt(rawValue, 10);
+  }
+
+  function getSafeChatStoredFilename(filePath) {
+    if (typeof filePath !== 'string') return null;
+
+    const trimmed = filePath.trim();
+    if (!trimmed || trimmed.includes('\0')) return null;
+    if (/^(null|undefined|#)$/i.test(trimmed)) return null;
+
+    const normalized = trimmed.replace(/\\/g, '/');
+    let filename = null;
+
+    if (/^\/uploads\/chat\/[^/]+$/i.test(normalized)) {
+      filename = path.posix.basename(normalized);
+    } else if (/^chat\/[^/]+$/i.test(normalized)) {
+      filename = path.posix.basename(normalized);
+    } else if (normalized === path.posix.basename(normalized)) {
+      filename = normalized;
+    } else {
+      return null;
+    }
+
+    if (!filename || filename !== path.basename(filename)) return null;
+    if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) return null;
+
+    return filename;
+  }
+
+  function getSafeChatFilePath(filePath) {
+    const storedFilename = getSafeChatStoredFilename(filePath);
+    if (!storedFilename) return null;
+
+    const resolvedPath = path.resolve(chatUploadDir, storedFilename);
+    const relativePath = path.relative(chatUploadDir, resolvedPath);
+
+    if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return null;
+    }
+
+    return resolvedPath;
+  }
+
+  function serializeAttachment(row) {
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      file_name: typeof row.file_name === 'string' ? row.file_name.trim() : '',
+      file_path: typeof row.file_path === 'string' ? row.file_path.trim() : '',
+      file_size: Number.isFinite(Number(row.file_size)) ? Number(row.file_size) : 0,
+      mime_type: row.mime_type || 'application/octet-stream'
+    };
+  }
+
+  function buildSafeContentDisposition(filename) {
+    const preferredName = (filename || '').trim() || 'download';
+    const fallbackName = preferredName
+      .replace(/[\r\n\"]/g, '_')
+      .replace(/[^\w.()\- ]+/g, '_')
+      .trim() || 'download';
+    const encodedName = encodeURIComponent(preferredName)
+      .replace(/['()]/g, escape)
+      .replace(/\*/g, '%2A');
+
+    return `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // HELPER: Проверка доступа к чату
+  // ═══════════════════════════════════════════════════════════════
+  async function getChatMembership(chatId, userId) {
+    const { rows: [member] } = await db.query(
+      'SELECT * FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, userId]
+    );
+    return member;
+  }
+
+  async function isGroupOwnerOrAdmin(chatId, userId) {
+    const member = await getChatMembership(chatId, userId);
+    return member && (member.role === 'owner' || member.role === 'admin');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // HELPER: Уведомление
+  // ═══════════════════════════════════════════════════════════════
+  async function notify(userId, title, message, link) {
+    try {
+      const chatLink = link || '#/chat';
+
+      // 1. Push notification (web-push to all devices)
+      try {
+        const NotificationService = require('../services/NotificationService');
+        await NotificationService.send(db, {
+          user_id: userId,
+          type: 'chat_message',
+          title: title,
+          body: message,
+          url: chatLink,
+          tag: 'chat-' + (link || '').split('/').pop()
+        });
+      } catch (pushErr) {
+        // Push may fail silently — still save DB notification below
+        fastify.log.warn('Chat push error:', pushErr.message);
+        // Fallback: just insert DB notification
+        await db.query(`
+          INSERT INTO notifications (user_id, title, message, type, link, is_read, created_at)
+          VALUES ($1, $2, $3, 'chat', $4, false, NOW())
+        `, [userId, title, message, chatLink]);
+      }
+
+      // 2. Telegram notification
+      try {
+        const telegram = require('../services/telegram');
+        if (telegram && telegram.sendNotification) {
+          await telegram.sendNotification(userId, `💬 *${title}*\n\n${message}`);
+        }
+      } catch (tgErr) {
+        // Telegram may not be configured
+      }
+    } catch (e) {
+      fastify.log.error('Chat notification error:', e.message);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Direct Chat — find or create 1-to-1 chat
+  // ═══════════════════════════════════════════════════════════════
+  fastify.post('/direct', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      const body = request.body || {};
+      const user_id = body.user_id ? parseInt(body.user_id) : null;
+      const myId = request.user.id;
+
+      if (!user_id || user_id === myId) {
+        return reply.code(400).send({ error: 'Некорректный пользователь' });
+      }
+
+      // Find existing direct chat between these two users
+      const existing = await db.query(`
+        SELECT c.* FROM chats c
+        JOIN chat_group_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
+        JOIN chat_group_members m2 ON m2.chat_id = c.id AND m2.user_id = $2
+        WHERE c.is_group = false AND c.type = 'direct'
+        LIMIT 1
+      `, [myId, user_id]);
+
+      if (existing.rows.length > 0) {
+        return { chat: existing.rows[0] };
+      }
+
+      // Create new direct chat
+      const otherUser = await db.query('SELECT id, name FROM users WHERE id = $1', [user_id]);
+      if (otherUser.rows.length === 0) {
+        return reply.code(404).send({ error: 'Пользователь не найден' });
+      }
+
+      const myUser = await db.query('SELECT id, name FROM users WHERE id = $1', [myId]);
+      const chatName = `${myUser.rows[0].name} — ${otherUser.rows[0].name}`;
+
+      const result = await db.query(`
+        INSERT INTO chats (name, type, is_group, created_at, last_message_at)
+        VALUES ($1, 'direct', false, NOW(), NOW())
+        RETURNING *
+      `, [chatName]);
+
+      const chat = result.rows[0];
+
+      // Add both members
+      await db.query(`
+        INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+        VALUES ($1, $2, 'owner', NOW()), ($1, $3, 'member', NOW())
+      `, [chat.id, myId, user_id]);
+
+      return { chat, created: true };
+    } catch (err) {
+      fastify.log.error('Direct chat error:', err.message);
+      return reply.code(500).send({ error: 'Ошибка создания чата: ' + err.message });
+    }
+  });
+
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║                    ГРУППОВЫЕ ЧАТЫ                            ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/chat-groups — Список чатов пользователя
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/', {
+    preHandler: [fastify.requirePermission('chat_groups', 'read')]
+  }, async (request) => {
+    const userId = request.user.id;
+    const { archived = 'false', search } = request.query;
+
+    let sql = `
+      SELECT c.*,
+        m.role as my_role,
+        m.muted_until,
+        m.last_read_at,
+        (SELECT COUNT(*) FROM chat_group_members WHERE chat_id = c.id) as member_count,
+        (SELECT COUNT(*) FROM chat_messages
+         WHERE chat_id = c.id AND created_at > COALESCE(m.last_read_at, '1970-01-01')) as unread_count,
+        -- For direct chats, get the OTHER user's name
+        CASE WHEN c.is_group = false THEN (
+          SELECT u.name FROM chat_group_members cm
+          JOIN users u ON u.id = cm.user_id
+          WHERE cm.chat_id = c.id AND cm.user_id != $1
+          LIMIT 1
+        ) ELSE NULL END as direct_user_name,
+        CASE WHEN c.is_group = false THEN (
+          SELECT cm.user_id FROM chat_group_members cm
+          WHERE cm.chat_id = c.id AND cm.user_id != $1
+          LIMIT 1
+        ) ELSE NULL END as direct_user_id
+      FROM chats c
+      JOIN chat_group_members m ON m.chat_id = c.id AND m.user_id = $1
+      WHERE 1=1
+    `;
+    const params = [userId];
+    let idx = 2;
+
+    if (archived === 'true') {
+      sql += ` AND c.archived_at IS NOT NULL`;
+    } else {
+      sql += ` AND c.archived_at IS NULL`;
+    }
+
+    if (search) {
+      sql += ` AND c.name ILIKE $${idx}`;
+      params.push(`%${search}%`);
+      idx++;
+    }
+
+    sql += ` ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`;
+
+    const { rows } = await db.query(sql, params);
+    return { chats: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/chat-groups/:id — Детали чата
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/:id', {
+    preHandler: [fastify.requirePermission('chat_groups', 'read')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа к чату' });
+
+    const { rows: [chat] } = await db.query(`
+      SELECT c.*
+      FROM chats c
+      WHERE c.id = $1
+    `, [chatId]);
+
+    if (!chat) return reply.code(404).send({ error: 'Чат не найден' });
+
+    // Получить участников
+    const { rows: members } = await db.query(`
+      SELECT m.*, u.name, u.role as user_role, u.is_active
+      FROM chat_group_members m
+      JOIN users u ON m.user_id = u.id
+      WHERE m.chat_id = $1
+      ORDER BY
+        CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
+        u.name
+    `, [chatId]);
+
+    return { chat, members, myRole: member.role };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups — Создать групповой чат
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const { name, description, member_ids, is_readonly } = request.body;
+    const creatorId = request.user.id;
+
+    if (!name || !name.trim()) {
+      return reply.code(400).send({ error: 'Укажите название чата' });
+    }
+
+    let chat;
+    try {
+      // Создать чат
+      const { rows: [row] } = await db.query(`
+        INSERT INTO chats (name, description, type, is_group, created_at, updated_at)
+        VALUES ($1, $2, 'group', true, NOW(), NOW())
+        RETURNING *
+      `, [name.trim(), description || null]);
+      chat = row;
+    } catch (e) {
+      if (e.code === '23503') {
+        return reply.code(400).send({ error: 'Пользователь не найден в системе' });
+      }
+      throw e;
+    }
+
+    // Добавить создателя как владельца
+    try {
+      await db.query(`
+        INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+        VALUES ($1, $2, 'owner', NOW())
+      `, [chat.id, creatorId]);
+    } catch (e) {
+      if (e.code === '23503') {
+        // Cleanup orphan chat
+        await db.query('DELETE FROM chats WHERE id = $1', [chat.id]);
+        return reply.code(400).send({ error: 'Пользователь не найден в системе' });
+      }
+      throw e;
+    }
+
+    // Добавить участников
+    if (Array.isArray(member_ids)) {
+      for (const memberId of member_ids) {
+        if (memberId !== creatorId) {
+          try {
+            await db.query(`
+              INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+              VALUES ($1, $2, 'member', NOW())
+              ON CONFLICT (chat_id, user_id) DO NOTHING
+            `, [chat.id, memberId]);
+          } catch (e) {
+            if (e.code === '23503') continue; // skip non-existent users
+            throw e;
+          }
+
+          // Уведомить добавленного
+          await notify(
+            memberId,
+            '💬 Вас добавили в чат',
+            `Вы добавлены в групповой чат «${name.trim()}»`,
+            `#/messenger?id=${chat.id}`
+          );
+        }
+      }
+    }
+
+    return { chat };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/chat-groups/:id — Обновить чат (только owner/admin)
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+
+    if (!await isGroupOwnerOrAdmin(chatId, userId)) {
+      return reply.code(403).send({ error: 'Только владелец или админ может редактировать' });
+    }
+
+    const { name, description, is_readonly } = request.body;
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (name !== undefined) { updates.push(`name = $${idx}`); values.push(name.trim()); idx++; }
+    if (description !== undefined) { updates.push(`description = $${idx}`); values.push(description); idx++; }
+    if (is_readonly !== undefined) { updates.push(`is_readonly = $${idx}`); values.push(is_readonly === true); idx++; }
+
+    if (updates.length === 0) {
+      return reply.code(400).send({ error: 'Нет данных для обновления' });
+    }
+
+    updates.push('updated_at = NOW()');
+    values.push(chatId);
+
+    await db.query(
+      `UPDATE chats SET ${updates.join(', ')} WHERE id = $${idx}`,
+      values
+    );
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/members — Добавить участника
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/members', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+    const { user_id, role = 'member' } = request.body;
+
+    if (!await isGroupOwnerOrAdmin(chatId, userId)) {
+      return reply.code(403).send({ error: 'Нет прав на добавление участников' });
+    }
+
+    if (!user_id) return reply.code(400).send({ error: 'Укажите user_id' });
+
+    // Проверить что пользователь существует
+    const { rows: [targetUser] } = await db.query(
+      'SELECT id, name FROM users WHERE id = $1 AND is_active = true',
+      [parseInt(user_id)]
+    );
+    if (!targetUser) return reply.code(404).send({ error: 'Пользователь не найден' });
+
+    // Добавить
+    await db.query(`
+      INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (chat_id, user_id) DO UPDATE SET role = $3
+    `, [chatId, parseInt(user_id), role === 'admin' ? 'admin' : 'member']);
+
+    // Уведомить
+    const { rows: [chat] } = await db.query('SELECT name FROM chats WHERE id = $1', [chatId]);
+    await notify(
+      parseInt(user_id),
+      '💬 Вас добавили в чат',
+      `Вы добавлены в групповой чат «${chat.name}»`,
+      `#/messenger?id=${chatId}`
+    );
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // DELETE /api/chat-groups/:id/members/:userId — Удалить участника
+  // ───────────────────────────────────────────────────────────────
+  fastify.delete('/:id/members/:userId', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    const targetUserId = parseInt(request.params.userId);
+    if (isNaN(chatId) || isNaN(targetUserId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const userId = request.user.id;
+
+    // Можно удалить себя или если owner/admin
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const isSelf = targetUserId === userId;
+    const canRemove = isSelf || member.role === 'owner' || member.role === 'admin';
+
+    if (!canRemove) {
+      return reply.code(403).send({ error: 'Нет прав на удаление участников' });
+    }
+
+    // Нельзя удалить единственного владельца
+    if (!isSelf) {
+      const { rows: [targetMember] } = await db.query(
+        'SELECT role FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
+        [chatId, targetUserId]
+      );
+      if (targetMember?.role === 'owner' && member.role !== 'owner') {
+        return reply.code(403).send({ error: 'Нельзя удалить владельца' });
+      }
+    }
+
+    await db.query(
+      'DELETE FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, targetUserId]
+    );
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/chat-groups/:id/members/:userId/role — Изменить роль
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/members/:userId/role', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    const targetUserId = parseInt(request.params.userId);
+    if (isNaN(chatId) || isNaN(targetUserId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const userId = request.user.id;
+    const { role } = request.body;
+
+    const member = await getChatMembership(chatId, userId);
+    if (!member || member.role !== 'owner') {
+      return reply.code(403).send({ error: 'Только владелец может менять роли' });
+    }
+
+    if (!['member', 'admin'].includes(role)) {
+      return reply.code(400).send({ error: 'Роль может быть member или admin' });
+    }
+
+    await db.query(
+      'UPDATE chat_group_members SET role = $1 WHERE chat_id = $2 AND user_id = $3',
+      [role, chatId, targetUserId]
+    );
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/chat-groups/:id/mute — Замьютить чат
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/mute', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+    const { until } = request.body; // ISO date string or null to unmute
+
+    await db.query(
+      'UPDATE chat_group_members SET muted_until = $1 WHERE chat_id = $2 AND user_id = $3',
+      [until || null, chatId, userId]
+    );
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/chat-groups/:id/archive — Архивировать чат
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/archive', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+    const { archive } = request.body;
+
+    if (!await isGroupOwnerOrAdmin(chatId, userId)) {
+      return reply.code(403).send({ error: 'Только владелец или админ' });
+    }
+
+    await db.query(
+      'UPDATE chats SET archived_at = $1, updated_at = NOW() WHERE id = $2',
+      [archive ? new Date().toISOString() : null, chatId]
+    );
+
+    return { success: true };
+  });
+
+  // ╔═══════════════════════════════════════════════════════════════╗
+  // ║                    СООБЩЕНИЯ                                 ║
+  // ╚═══════════════════════════════════════════════════════════════╝
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/chat-groups/:id/messages — Получить сообщения
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/:id/messages', {
+    preHandler: [fastify.requirePermission('chat_groups', 'read')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+    const { limit = 50, before_id, search } = request.query;
+
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    let sql = `
+      SELECT m.*, u.name as user_name, u.role as user_role,
+        rm.id as reply_id, rm.message as reply_text, ru.name as reply_user_name
+      FROM chat_messages m
+      JOIN users u ON m.user_id = u.id
+      LEFT JOIN chat_messages rm ON m.reply_to = rm.id
+      LEFT JOIN users ru ON rm.user_id = ru.id
+      WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+    `;
+    const params = [chatId];
+    let idx = 2;
+
+    if (before_id) {
+      sql += ` AND m.id < $${idx}`;
+      params.push(parseInt(before_id));
+      idx++;
+    }
+
+    if (search) {
+      sql += ` AND m.message ILIKE $${idx}`;
+      params.push(`%${search}%`);
+      idx++;
+    }
+
+    sql += ` ORDER BY m.created_at DESC LIMIT $${idx}`;
+    params.push(parseInt(limit));
+
+        const { rows } = await db.query(sql, params);
+    const orderedMessages = rows.reverse();
+    const attachmentsByMessageId = new Map();
+
+    if (orderedMessages.length > 0) {
+      const messageIds = orderedMessages.map((row) => row.id);
+      const attachmentResult = await db.query(`
+        SELECT id, message_id, file_name, file_path, file_size, mime_type, created_at
+        FROM chat_attachments
+        WHERE message_id = ANY($1::int[])
+        ORDER BY id ASC
+      `, [messageIds]);
+
+      for (const attachment of attachmentResult.rows) {
+        const serializedAttachment = serializeAttachment(attachment);
+        if (!attachmentsByMessageId.has(attachment.message_id)) {
+          attachmentsByMessageId.set(attachment.message_id, []);
+        }
+        attachmentsByMessageId.get(attachment.message_id).push(serializedAttachment);
+      }
+    }
+
+    // Update last_read_at
+    await db.query(
+      'UPDATE chat_group_members SET last_read_at = NOW() WHERE chat_id = $1 AND user_id = $2',
+      [chatId, userId]
+    );
+
+    return {
+      messages: orderedMessages.map((row) => ({
+        ...row,
+        attachments: attachmentsByMessageId.get(row.id) || []
+      }))
+    };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/messages — Отправить сообщение
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/messages', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+    const { text, reply_to_id } = request.body;
+
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    // Получить данные чата
+    const { rows: [chat] } = await db.query('SELECT name FROM chats WHERE id = $1', [chatId]);
+
+    if (!text || !text.trim()) {
+      return reply.code(400).send({ error: 'Текст сообщения обязателен' });
+    }
+
+    // Создать сообщение
+    const { rows: [message] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, is_read, reply_to, created_at)
+      VALUES ($1, $2, $3, false, $4, NOW())
+      RETURNING *
+    `, [
+      chatId,
+      userId,
+      text.trim(),
+      reply_to_id ? parseInt(reply_to_id) : null
+    ]);
+
+    // Обновить метаданные чата
+    await db.query(`
+      UPDATE chats SET last_message_at = NOW(), updated_at = NOW()
+      WHERE id = $1
+    `, [chatId]);
+
+    // Уведомить участников (кроме отправителя и замьюченных)
+    const { rows: members } = await db.query(`
+      SELECT user_id FROM chat_group_members
+      WHERE chat_id = $1 AND user_id != $2
+        AND (muted_until IS NULL OR muted_until < NOW())
+    `, [chatId, userId]);
+
+    const senderName = request.user.name || request.user.login;
+    for (const m of members) {
+      await notify(
+        m.user_id,
+        `💬 ${chat.name}`,
+        `${senderName}: ${text.trim().substring(0, 100)}${text.length > 100 ? '...' : ''}`,
+        `#/messenger?id=${chatId}`
+      );
+    }
+
+    return { message };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/chat-groups/:chatId/messages/:id — Редактировать
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:chatId/messages/:id', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.chatId);
+    const messageId = parseInt(request.params.id);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const userId = request.user.id;
+    const { text } = request.body;
+
+    if (!text || !text.trim()) {
+      return reply.code(400).send({ error: 'Текст обязателен' });
+    }
+
+    // Проверить что это сообщение пользователя
+    const { rows: [msg] } = await db.query(
+      'SELECT * FROM chat_messages WHERE id = $1 AND chat_id = $2 AND user_id = $3 AND deleted_at IS NULL',
+      [messageId, chatId, userId]
+    );
+    if (!msg) return reply.code(404).send({ error: 'Сообщение не найдено' });
+
+    await db.query(`
+      UPDATE chat_messages SET message = $1, edited_at = NOW()
+      WHERE id = $2
+    `, [text.trim(), messageId]);
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // DELETE /api/chat-groups/:chatId/messages/:id — Удалить
+  // ───────────────────────────────────────────────────────────────
+  fastify.delete('/:chatId/messages/:id', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.chatId);
+    const messageId = parseInt(request.params.id);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const userId = request.user.id;
+
+    // Автор или админ чата может удалить
+    const { rows: [msg] } = await db.query(
+      'SELECT user_id FROM chat_messages WHERE id = $1 AND chat_id = $2 AND deleted_at IS NULL',
+      [messageId, chatId]
+    );
+    if (!msg) return reply.code(404).send({ error: 'Сообщение не найдено' });
+
+    const isAuthor = msg.user_id === userId;
+    const isAdmin = await isGroupOwnerOrAdmin(chatId, userId);
+
+    if (!isAuthor && !isAdmin) {
+      return reply.code(403).send({ error: 'Нет прав на удаление' });
+    }
+
+    // Мягкое удаление
+    await db.query(
+      'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1',
+      [messageId]
+    );
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:chatId/messages/:id/reaction — Реакция
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:chatId/messages/:id/reaction', {
+    preHandler: [fastify.requirePermission('chat_groups', 'write')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.chatId);
+    const messageId = parseInt(request.params.id);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const userId = request.user.id;
+    const { emoji } = request.body;
+
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    if (!emoji) return reply.code(400).send({ error: 'Укажите emoji' });
+
+    // Получить текущие реакции
+    const { rows: [msg] } = await db.query(
+      'SELECT reactions FROM chat_messages WHERE id = $1 AND chat_id = $2',
+      [messageId, chatId]
+    );
+    if (!msg) return reply.code(404).send({ error: 'Сообщение не найдено' });
+
+    const reactions = msg.reactions || {};
+    if (!reactions[emoji]) reactions[emoji] = [];
+
+    // Toggle реакцию
+    const userIndex = reactions[emoji].indexOf(userId);
+    if (userIndex >= 0) {
+      reactions[emoji].splice(userIndex, 1);
+      if (reactions[emoji].length === 0) delete reactions[emoji];
+    } else {
+      reactions[emoji].push(userId);
+    }
+
+    await db.query(
+      'UPDATE chat_messages SET reactions = $1 WHERE id = $2',
+      [JSON.stringify(reactions), messageId]
+    );
+
+    return { reactions };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/upload — Загрузка файла в чат
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/upload', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    if (chatId === null) return reply.code(400).send({ error: 'Invalid chat ID' });
+
+    const member = await db.query(
+      'SELECT 1 FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, request.user.id]
+    );
+    if (member.rows.length === 0) {
+      return reply.code(403).send({ error: 'Not a chat member' });
+    }
+
+    const body = request.body || {};
+    const fileName = typeof body.file_name === 'string' ? body.file_name.trim() : '';
+    const filePath = typeof body.file_path === 'string' ? body.file_path.trim() : '';
+    const fileSize = Number.isFinite(Number(body.file_size)) && Number(body.file_size) > 0
+      ? Number(body.file_size)
+      : 0;
+    const mimeType = typeof body.mime_type === 'string' && body.mime_type.trim()
+      ? body.mime_type.trim()
+      : 'application/octet-stream';
+    const messageText = typeof body.message_text === 'string' ? body.message_text : '';
+
+    const msgResult = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, created_at)
+      VALUES ($1, $2, $3, NOW())
+      RETURNING *
+    `, [chatId, request.user.id, messageText || '']);
+
+    const msg = msgResult.rows[0];
+    let attachment = null;
+
+    if (fileName) {
+      const attachmentResult = await db.query(`
+        INSERT INTO chat_attachments (message_id, file_name, file_path, file_size, mime_type, created_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        RETURNING id, message_id, file_name, file_path, file_size, mime_type, created_at
+      `, [msg.id, fileName, filePath, fileSize, mimeType]);
+      attachment = serializeAttachment(attachmentResult.rows[0]);
+    }
+
+    await db.query('UPDATE chats SET last_message_at = NOW() WHERE id = $1', [chatId]);
+
+    const user = await db.query('SELECT name FROM users WHERE id = $1', [request.user.id]);
+
+    return {
+      message: {
+        ...msg,
+        user_name: user.rows[0]?.name,
+        attachments: attachment ? [attachment] : []
+      },
+      attachment
+    };
+  });
+
+  // ---------------------------------------------------------------
+  // POST /api/chat-groups/:id/upload-file - multipart upload
+  // ---------------------------------------------------------------
+  fastify.post('/:id/upload-file', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    if (chatId === null) return reply.code(400).send({ error: 'Invalid chat ID' });
+
+    const member = await db.query(
+      'SELECT 1 FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, request.user.id]
+    );
+    if (member.rows.length === 0) {
+      return reply.code(403).send({ error: 'Not a chat member' });
+    }
+
+    try {
+      const data = await request.file();
+      if (!data) {
+        return reply.code(400).send({ error: 'File not found' });
+      }
+
+      await fs.mkdir(chatUploadDir, { recursive: true });
+
+      const originalName = (data.filename || '').trim() || 'attachment';
+      const ext = path.extname(originalName);
+      const safeName = Date.now() + '_' + Math.random().toString(36).substring(2, 8) + ext;
+      const filePath = path.resolve(chatUploadDir, safeName);
+      const storedFilePath = `chat/${safeName}`;
+      const messageText = typeof data.fields?.message_text?.value === 'string'
+        ? data.fields.message_text.value
+        : '';
+
+      const chunks = [];
+      for await (const chunk of data.file) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+      await fs.writeFile(filePath, buffer);
+
+      const msgResult = await db.query(`
+        INSERT INTO chat_messages (chat_id, user_id, message, created_at)
+        VALUES ($1, $2, $3, NOW())
+        RETURNING *
+      `, [chatId, request.user.id, messageText || '']);
+
+      const msg = msgResult.rows[0];
+      const attachmentResult = await db.query(`
+        INSERT INTO chat_attachments (message_id, file_name, file_path, file_size, mime_type, created_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        RETURNING id, message_id, file_name, file_path, file_size, mime_type, created_at
+      `, [msg.id, originalName, storedFilePath, buffer.length, data.mimetype || 'application/octet-stream']);
+
+      await db.query('UPDATE chats SET last_message_at = NOW() WHERE id = $1', [chatId]);
+
+      const user = await db.query('SELECT name FROM users WHERE id = $1', [request.user.id]);
+      const attachment = serializeAttachment(attachmentResult.rows[0]);
+
+      return {
+        message: {
+          ...msg,
+          user_name: user.rows[0]?.name,
+          attachments: attachment ? [attachment] : []
+        },
+        attachment
+      };
+    } catch (e) {
+      fastify.log.error('Chat file upload error:', e.message || e);
+      return reply.code(500).send({ error: 'File upload failed' });
+    }
+  });
+
+  // ---------------------------------------------------------------
+  // GET /api/chat-groups/:id/files/:filename ? ?????????? ???????? ????? ????
+  // ---------------------------------------------------------------
+  fastify.get('/:id/files/:filename', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parsePositiveInt(request.params.id);
+    const storedFilename = getSafeChatStoredFilename(request.params.filename);
+
+    if (chatId === null || !storedFilename) {
+      return reply.code(400).send({ error: 'Invalid chat file' });
+    }
+
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) {
+      return reply.code(403).send({ error: 'No chat access' });
+    }
+
+    const legacyPublicPath = `/uploads/chat/${storedFilename}`;
+    const legacyRelativePath = `chat/${storedFilename}`;
+    const attachmentResult = await db.query(`
+      SELECT a.file_name, a.file_path, a.mime_type
+      FROM chat_attachments a
+      JOIN chat_messages m ON m.id = a.message_id
+      WHERE m.chat_id = $1
+        AND (a.file_path = $2 OR a.file_path = $3 OR a.file_path = $4)
+      ORDER BY a.id DESC
+      LIMIT 1
+    `, [chatId, storedFilename, legacyRelativePath, legacyPublicPath]);
+    const attachment = attachmentResult.rows[0];
+
+    const legacyMessageResult = await db.query(`
+      SELECT id
+      FROM chat_messages
+      WHERE chat_id = $1
+        AND deleted_at IS NULL
+        AND message LIKE $2
+      ORDER BY id DESC
+      LIMIT 1
+    `, [chatId, `%(${legacyPublicPath})%`]);
+
+    if (!attachment && legacyMessageResult.rows.length === 0) {
+      return reply.code(404).send({ error: 'File not found' });
+    }
+
+    const filePath = getSafeChatFilePath(attachment?.file_path || storedFilename);
+    if (!filePath) {
+      return reply.code(404).send({ error: 'File not found' });
+    }
+
+    try {
+      await fs.access(filePath);
+    } catch (e) {
+      return reply.code(404).send({ error: 'File not found' });
+    }
+
+    const fileBuffer = await fs.readFile(filePath);
+
+    reply
+      .header('Content-Type', attachment?.mime_type || 'application/octet-stream')
+      .header('Content-Disposition', buildSafeContentDisposition(attachment?.file_name || storedFilename))
+      .send(fileBuffer);
+  });
+
+  fastify.get('/:id/settings', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const member = await db.query(
+      'SELECT role, muted_until, last_read_at FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
+      [chatId, request.user.id]
+    );
+    if (member.rows.length === 0) {
+      return reply.code(403).send({ error: 'Не участник' });
+    }
+    return { settings: member.rows[0] };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // DELETE /api/chat-groups/:id — Удалить чат (только owner)
+  // ───────────────────────────────────────────────────────────────
+  fastify.delete('/:id', {
+    preHandler: [fastify.requirePermission('chat_groups', 'delete')]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+
+    const member = await getChatMembership(chatId, userId);
+    if (!member || member.role !== 'owner') {
+      return reply.code(403).send({ error: 'Только владелец может удалить чат' });
+    }
+
+    // Удалить все связанные данные
+    await db.query('DELETE FROM chat_attachments WHERE message_id IN (SELECT id FROM chat_messages WHERE chat_id = $1)', [chatId]);
+    await db.query('DELETE FROM chat_messages WHERE chat_id = $1', [chatId]);
+    await db.query('DELETE FROM chat_group_members WHERE chat_id = $1', [chatId]);
+    await db.query('DELETE FROM chats WHERE id = $1', [chatId]);
+
+    return { success: true };
+  });
+};

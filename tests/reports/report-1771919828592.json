@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-02-24T07:57:08.592Z",
+  "summary": {
+    "passed": 0,
+    "failed": 1,
+    "total": 1,
+    "totalSteps": 1,
+    "passedSteps": 0,
+    "failedSteps": 1
+  },
+  "results": [
+    {
+      "name": "Staff Request Lifecycle",
+      "steps": [
+        {
+          "name": "PM finds a work to request staff for",
+          "status": "FAILED",
+          "error": "No works available for PM to request staff"
+        }
+      ],
+      "status": "FAILED",
+      "duration": 20426
+    }
+  ]
+}

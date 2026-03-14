@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-02-24T10:27:47.791Z",
+  "summary": {
+    "passed": 0,
+    "failed": 1,
+    "total": 1,
+    "totalSteps": 2,
+    "passedSteps": 1,
+    "failedSteps": 1
+  },
+  "results": [
+    {
+      "name": "Tender Lifecycle",
+      "steps": [
+        {
+          "name": "ADMIN creates tender",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM sees tender in tenders list",
+          "status": "FAILED",
+          "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator('#w_pin') to be visible\n    35 × locator resolved to hidden <input id=\"w_pin\" name=\"pin\" maxlength=\"4\" type=\"password\" pattern=\"[0-9]*\" placeholder=\"••••\" autocomplete=\"off\" inputmode=\"numeric\"/>\n",
+          "screenshot": null
+        }
+      ],
+      "status": "FAILED",
+      "duration": 87435
+    }
+  ]
+}

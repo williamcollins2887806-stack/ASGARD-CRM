@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-02-24T07:38:09.703Z",
+  "summary": {
+    "passed": 1,
+    "failed": 0,
+    "total": 1,
+    "totalSteps": 6,
+    "passedSteps": 6,
+    "failedSteps": 0
+  },
+  "results": [
+    {
+      "name": "22-pretender-approval-workflow",
+      "steps": [
+        {
+          "name": "TO verifies pre-tenders page loads with existing items",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19057,
+          "note": "Pre-tenders page loaded. Content length: 641, items found: 25"
+        },
+        {
+          "name": "TO accepts pre-tender → pending_approval status",
+          "status": "PASSED",
+          "error": null,
+          "duration": 22827,
+          "note": "Pending approval check: true"
+        },
+        {
+          "name": "API: TO accept returns pending_approval",
+          "status": "PASSED",
+          "error": null,
+          "duration": 236,
+          "note": "No test pre-tender found via API"
+        },
+        {
+          "name": "DIRECTOR_GEN approves pending pre-tender",
+          "status": "PASSED",
+          "error": null,
+          "duration": 0,
+          "note": "No pending pre-tender to approve, skipping"
+        },
+        {
+          "name": "DIRECTOR_GEN sees approval controls in UI",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18229,
+          "note": "Page loaded, approve buttons found: 0, total visible buttons: 21"
+        },
+        {
+          "name": "PM cannot approve pre-tenders (access control)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 170,
+          "note": "PM correctly denied access to pre-tenders"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 60519
+    }
+  ]
+}

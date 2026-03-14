@@ -1,0 +1,1002 @@
+/**
+ * ASGARD CRM — Mobile Module v2.0 (Premium)
+ * ═══════════════════════════════════════════════════════════
+ * Мобильная логика: детекция, жесты, PWA, табы, дровер,
+ * inline-grid reset, pull-to-refresh, page transitions,
+ * auto-hide header, scroll-to-top, KPI scroll hints,
+ * MutationObserver для динамического контента.
+ *
+ * Разметка (m-app, m-header, m-tabbar) рендерится в app.js.
+ * Здесь только поведение и вспомогательные функции.
+ * ═══════════════════════════════════════════════════════════
+ */
+window.AsgardMobile = (function () {
+  'use strict';
+
+  const { $, $$, toast } = AsgardUI;
+
+  // ─── Состояние ────────────────────────────────────────────
+  let isMobile = false;
+  let menuOpen = false;
+  let overlay  = null;
+  let deferredPWAPrompt = null;
+
+  // ─── Точки касания для свайпов ────────────────────────────
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+
+  // ─── Pull-to-refresh состояние ────────────────────────────
+  let ptrActive = false;
+  let ptrStartY = 0;
+  let ptrDist = 0;
+  const PTR_THRESHOLD = 70;  // px для активации
+  const PTR_MAX = 120;       // максимум вытягивания
+
+  // ─── Auto-hide header ─────────────────────────────────────
+  let lastScrollY = 0;
+  let headerHidden = false;
+  let scrollTicking = false;
+
+  // ─── MutationObserver ─────────────────────────────────────
+  let layoutObserver = null;
+
+  // ─── Конфигурация — элементы которые НЕ сбрасываем ────────
+  const GRID_EXEMPT_SELECTORS = [
+    '.sg-keypad', '.m-tabbar', '.pk-keypad', '[class*="keypad"]',
+    '.btn-group-grid', '.m-skeleton-kpi-row', '.more-menu-grid',
+    '.nav-tabs', '.tab-nav', '.m-header', '.m-header-actions',
+    '.fab-menu', '.welcome-form-actions', '.sg-dots', '.sg-center'
+  ];
+
+  // ==========================================================
+  //  1. Детекция мобильного устройства
+  // ==========================================================
+
+  function detectMobile() {
+    var uaCheck = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+    isMobile = window.innerWidth <= 768 || uaCheck;
+    return isMobile;
+  }
+
+  // ==========================================================
+  //  2. Класс на body: is-mobile / is-desktop
+  // ==========================================================
+
+  function toggleBodyClass() {
+    document.body.classList.toggle('is-mobile', isMobile);
+    document.body.classList.toggle('is-desktop', !isMobile);
+  }
+
+  // ==========================================================
+  //  3. Свайп-жесты (edge swipe для дровера)
+  // ==========================================================
+
+  function initSwipeGestures() {
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchend', onTouchEnd, { passive: true });
+  }
+
+  function onTouchStart(e) {
+    var touch = e.touches[0];
+    touchStartX    = touch.clientX;
+    touchStartY    = touch.clientY;
+    touchStartTime = Date.now();
+  }
+
+  function onTouchEnd(e) {
+    var touch  = e.changedTouches[0];
+    var deltaX = touch.clientX - touchStartX;
+    var deltaY = touch.clientY - touchStartY;
+    var elapsed = Date.now() - touchStartTime;
+
+    if (elapsed > 400 || Math.abs(deltaY) > Math.abs(deltaX)) return;
+
+    if (!menuOpen && touchStartX < 30 && deltaX > 50) {
+      openMenu();
+    } else if (menuOpen && deltaX < -50) {
+      closeMenu();
+    }
+  }
+
+  // ==========================================================
+  //  4. iOS-фикс высоты вьюпорта (--vh)
+  // ==========================================================
+
+  function setViewportHeight() {
+    var vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', vh + 'px');
+  }
+
+  function initViewportFix() {
+    setViewportHeight();
+    window.addEventListener('resize', setViewportHeight);
+  }
+
+  // ==========================================================
+  //  5. Адаптивные таблицы (расширенная версия)
+  // ==========================================================
+
+  /**
+   * Оборачиваем .tbl / .asg в .tbl-wrap и расставляем data-label.
+   * Вызывается после каждого рендера страницы и при мутациях DOM.
+   */
+  function initResponsiveTables(root) {
+    var container = root || document.getElementById('layout') || document;
+    var tables = container.querySelectorAll('table.tbl, table.asg');
+    if (!tables.length) return;
+
+    tables.forEach(function (table) {
+      // Уже обработана
+      if (table.dataset.mobileProcessed === '1') return;
+
+      // Оборачиваем в скроллируемый контейнер
+      if (!table.parentElement.classList.contains('tbl-wrap')) {
+        var wrap = document.createElement('div');
+        wrap.className = 'tbl-wrap';
+        wrap.dataset.scrollable = 'true';
+        table.parentNode.insertBefore(wrap, table);
+        wrap.appendChild(table);
+      }
+
+      // Пробрасываем заголовки в data-label для карточного режима
+      var headers = table.querySelectorAll('thead th');
+      if (!headers.length) return;
+
+      var labels = Array.from(headers).map(function (th) {
+        return th.textContent.trim();
+      });
+
+      table.querySelectorAll('tbody tr').forEach(function (row) {
+        row.querySelectorAll('td').forEach(function (td, idx) {
+          if (labels[idx] && !td.hasAttribute('data-label')) {
+            td.setAttribute('data-label', labels[idx]);
+          }
+        });
+      });
+
+      table.dataset.mobileProcessed = '1';
+    });
+  }
+
+  // ==========================================================
+  //  6. Reset Inline Grids (ключевая функция)
+  // ==========================================================
+
+  /**
+   * Сбрасывает inline grid-template-columns на 1fr для всех элементов
+   * внутри #layout, кроме исключений (keypads, tab bars, etc.)
+   *
+   * Проблема: многие JS-модули ставят grid-template-columns через
+   * element.style, что перебивает CSS. Эта функция вызывается после
+   * каждого рендера страницы и через MutationObserver.
+   */
+  function resetInlineGrids(root) {
+    if (!isMobile) return;
+
+    var container = root || document.getElementById('layout');
+    if (!container) return;
+
+    // Все элементы с inline grid-template-columns
+    var els = container.querySelectorAll('[style*="grid-template-columns"]');
+    var exemptSelector = GRID_EXEMPT_SELECTORS.join(',');
+
+    els.forEach(function (el) {
+      // Пропускаем исключения
+      if (el.closest(exemptSelector)) return;
+
+      // Сохраняем оригинальное значение для возможности восстановления
+      if (!el.dataset.origGrid) {
+        el.dataset.origGrid = el.style.gridTemplateColumns;
+      }
+
+      el.style.gridTemplateColumns = '1fr';
+    });
+
+    // Также ищем elements с inline display:grid + grid-template-columns в style
+    var gridEls = container.querySelectorAll('[style*="grid-template"]');
+    gridEls.forEach(function (el) {
+      if (el.closest(exemptSelector)) return;
+      if (el.style.gridTemplateColumns && el.style.gridTemplateColumns !== '1fr') {
+        if (!el.dataset.origGrid) {
+          el.dataset.origGrid = el.style.gridTemplateColumns;
+        }
+        el.style.gridTemplateColumns = '1fr';
+      }
+    });
+  }
+
+  /**
+   * Восстанавливает оригинальные grid значения (при переключении на десктоп)
+   */
+  function restoreInlineGrids() {
+    var els = document.querySelectorAll('[data-orig-grid]');
+    els.forEach(function (el) {
+      el.style.gridTemplateColumns = el.dataset.origGrid;
+      delete el.dataset.origGrid;
+    });
+  }
+
+  // ==========================================================
+  //  7. MutationObserver для динамического контента
+  // ==========================================================
+
+  /**
+   * Наблюдает за #layout и обрабатывает новые элементы:
+   * - Сбрасывает inline grids
+   * - Проставляет data-label на таблицах
+   * - Добавляет scroll hints на KPI-карусели
+   */
+  function initLayoutObserver() {
+    if (layoutObserver) layoutObserver.disconnect();
+
+    var layout = document.getElementById('layout');
+    if (!layout) return;
+
+    // Debounce для пакетной обработки мутаций
+    var debounceTimer = null;
+
+    layoutObserver = new MutationObserver(function (mutations) {
+      // Проверяем, есть ли реальные добавления узлов
+      var hasAdditions = false;
+      for (var i = 0; i < mutations.length; i++) {
+        if (mutations[i].addedNodes.length > 0) {
+          hasAdditions = true;
+          break;
+        }
+      }
+      if (!hasAdditions) return;
+
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () {
+        resetInlineGrids();
+        initResponsiveTables();
+        initKPIScrollHints();
+      }, 50);
+    });
+
+    layoutObserver.observe(layout, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  // ==========================================================
+  //  8. Page Transitions — Анимация при навигации
+  // ==========================================================
+
+  var _previousHash = '';
+
+  /**
+   * Добавляет анимацию fade+slide при переходе между страницами.
+   * Вызывается на hashchange.
+   */
+  function animatePageTransition() {
+    var layout = document.getElementById('layout');
+    if (!layout) return;
+
+    // Удаляем предыдущую анимацию
+    layout.classList.remove('m-page-enter');
+
+    // Триггерим reflow для рестарта анимации
+    void layout.offsetWidth;
+
+    // Добавляем анимацию
+    layout.classList.add('m-page-enter');
+
+    // Скролл к началу контента
+    var content = document.querySelector('.m-content');
+    if (content) content.scrollTop = 0;
+  }
+
+  // ==========================================================
+  //  9. Pull-to-Refresh
+  // ==========================================================
+
+  /**
+   * Инициализация pull-to-refresh на .m-content
+   * Работает только когда контент прокручен до самого верха.
+   */
+  function initPullToRefresh() {
+    var content = document.querySelector('.m-content');
+    if (!content) return;
+
+    // Создаём индикатор если его нет
+    var indicator = document.getElementById('ptrIndicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'ptrIndicator';
+      indicator.className = 'm-ptr-indicator';
+      indicator.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7-7 7 7"/></svg>';
+      content.style.position = 'relative';
+      content.insertBefore(indicator, content.firstChild);
+    }
+
+    content.addEventListener('touchstart', function (e) {
+      if (content.scrollTop <= 0) {
+        ptrActive = true;
+        ptrStartY = e.touches[0].clientY;
+        ptrDist = 0;
+      }
+    }, { passive: true });
+
+    content.addEventListener('touchmove', function (e) {
+      if (!ptrActive) return;
+
+      var currentY = e.touches[0].clientY;
+      ptrDist = currentY - ptrStartY;
+
+      // Только вниз
+      if (ptrDist < 0) {
+        ptrDist = 0;
+        return;
+      }
+
+      // Ограничиваем
+      if (ptrDist > PTR_MAX) ptrDist = PTR_MAX;
+
+      // Обновляем индикатор
+      var progress = Math.min(ptrDist / PTR_THRESHOLD, 1);
+      indicator.style.top = (ptrDist - 50) + 'px';
+      indicator.style.opacity = progress;
+      indicator.style.transform = 'translateX(-50%) rotate(' + (progress * 180) + 'deg)';
+
+      if (ptrDist > PTR_THRESHOLD) {
+        indicator.classList.add('visible');
+      }
+    }, { passive: true });
+
+    content.addEventListener('touchend', function () {
+      if (!ptrActive) return;
+      ptrActive = false;
+
+      if (ptrDist >= PTR_THRESHOLD) {
+        // Активируем рефреш
+        indicator.classList.add('loading');
+        indicator.style.top = '12px';
+
+        // Перезагружаем текущую страницу
+        setTimeout(function () {
+          var hash = window.location.hash;
+          // Принудительно перезагружаем маршрут
+          window.location.hash = '';
+          setTimeout(function () {
+            window.location.hash = hash;
+            // Убираем индикатор после загрузки
+            setTimeout(function () {
+              indicator.classList.remove('visible', 'loading');
+              indicator.style.top = '-50px';
+              indicator.style.opacity = '0';
+              indicator.style.transform = 'translateX(-50%)';
+            }, 500);
+          }, 50);
+        }, 300);
+      } else {
+        // Не достигли порога — сбрасываем
+        indicator.classList.remove('visible');
+        indicator.style.top = '-50px';
+        indicator.style.opacity = '0';
+        indicator.style.transform = 'translateX(-50%)';
+      }
+
+      ptrDist = 0;
+    }, { passive: true });
+  }
+
+  // ==========================================================
+  // 10. Auto-Hide Header на скролле
+  // ==========================================================
+
+  /**
+   * Прячем m-header при скролле вниз, показываем при скролле вверх.
+   * Как в Сбере, ВТБ и прочих премиум-приложениях.
+   */
+  function initAutoHideHeader() {
+    var content = document.querySelector('.m-content');
+    if (!content) return;
+
+    content.addEventListener('scroll', function () {
+      if (scrollTicking) return;
+
+      scrollTicking = true;
+      requestAnimationFrame(function () {
+        var currentY = content.scrollTop;
+        var header = document.querySelector('.m-header');
+        if (!header) { scrollTicking = false; return; }
+
+        var delta = currentY - lastScrollY;
+
+        if (delta > 8 && currentY > 60 && !headerHidden) {
+          // Скролл вниз — прячем
+          header.style.transform = 'translateY(-100%)';
+          header.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+          headerHidden = true;
+          // Освобождаем место
+          content.style.paddingTop = '0';
+        } else if (delta < -5 && headerHidden) {
+          // Скролл вверх — показываем
+          header.style.transform = 'translateY(0)';
+          headerHidden = false;
+          content.style.paddingTop = '';
+        }
+
+        lastScrollY = currentY;
+        scrollTicking = false;
+      });
+    }, { passive: true });
+  }
+
+  // ==========================================================
+  // 11. KPI Scroll Hints (градиентные подсказки)
+  // ==========================================================
+
+  /**
+   * Добавляет визуальные подсказки о горизонтальной прокрутке
+   * на KPI-каруселях (тень справа, когда есть непрокрученный контент).
+   */
+  function initKPIScrollHints() {
+    var kpiContainers = document.querySelectorAll(
+      '.kpi, .kpi-row, .stats-grid, .kpi-grid, .dash-kpi, [class*="stats-row"], [class*="kpi-row"]'
+    );
+
+    kpiContainers.forEach(function (container) {
+      if (container.dataset.scrollHintInit === '1') return;
+      container.dataset.scrollHintInit = '1';
+
+      // Проверяем есть ли что скроллить
+      function updateHint() {
+        var hasOverflow = container.scrollWidth > container.clientWidth + 4;
+        var atEnd = (container.scrollLeft + container.clientWidth) >= (container.scrollWidth - 4);
+
+        container.classList.toggle('m-scroll-hint', hasOverflow && !atEnd);
+      }
+
+      container.addEventListener('scroll', updateHint, { passive: true });
+      // Начальная проверка после рендера
+      setTimeout(updateHint, 100);
+    });
+  }
+
+  // ==========================================================
+  // 12. Scroll-to-Top при навигации
+  // ==========================================================
+
+  function scrollToTop() {
+    var content = document.querySelector('.m-content');
+    if (content) content.scrollTop = 0;
+
+    // Также сбрасываем header
+    var header = document.querySelector('.m-header');
+    if (header) {
+      header.style.transform = 'translateY(0)';
+      headerHidden = false;
+    }
+    lastScrollY = 0;
+  }
+
+  // ==========================================================
+  // 13. Touch Feedback — рипл-эффект при нажатии
+  // ==========================================================
+
+  /**
+   * Добавляет Material-style ripple effect на кликабельные элементы.
+   * Быстрый и лёгкий, не тормозит UI.
+   */
+  function initTouchFeedback() {
+    document.addEventListener('touchstart', function (e) {
+      var target = e.target.closest('.btn, .m-tab, .navitem, .fab-menu-item, .more-menu-item, .card[onclick], [data-click], a.card');
+      if (!target || target.classList.contains('no-ripple')) return;
+
+      var rect = target.getBoundingClientRect();
+      var touch = e.touches[0];
+      var x = touch.clientX - rect.left;
+      var y = touch.clientY - rect.top;
+
+      var ripple = document.createElement('span');
+      ripple.className = 'm-ripple';
+      ripple.style.left = x + 'px';
+      ripple.style.top = y + 'px';
+
+      target.style.position = target.style.position || 'relative';
+      target.style.overflow = 'hidden';
+      target.appendChild(ripple);
+
+      setTimeout(function () {
+        ripple.remove();
+      }, 600);
+    }, { passive: true });
+  }
+
+  // ==========================================================
+  // 14. Инъекция дополнительных мобильных CSS
+  // ==========================================================
+
+  function injectCSS() {
+    var style = document.createElement('style');
+    style.id = 'asgard-mobile-css';
+    style.textContent = [
+      /* --- Оверлей дровера --- */
+      '.mobile-overlay {',
+      '  position: fixed; top: 0; left: 0; width: 100%; height: 100%;',
+      '  background: rgba(0,0,0,0.6);',
+      '  z-index: 1099;',
+      '  opacity: 0;',
+      '  pointer-events: none;',
+      '  display: block;',
+      '  transition: opacity .25s ease;',
+      '  -webkit-backdrop-filter: blur(2px);',
+      '  backdrop-filter: blur(2px);',
+      '}',
+      '.mobile-overlay.active {',
+      '  opacity: 1;',
+      '  pointer-events: auto;',
+      '}',
+
+      /* --- Safe-area поддержка --- */
+      '@supports (padding: env(safe-area-inset-bottom)) {',
+      '  .m-tabbar { padding-bottom: env(safe-area-inset-bottom); }',
+      '  .m-app    { padding-bottom: env(safe-area-inset-bottom); }',
+      '}',
+
+      /* --- Тач-кнопки: минимальный размер 44px --- */
+      '@media (hover: none) and (pointer: coarse) {',
+      '  .btn.mini, .btn.ghost.mini {',
+      '    min-width: 44px;',
+      '    min-height: 44px;',
+      '  }',
+      '  .btn:active {',
+      '    transform: scale(0.98);',
+      '  }',
+      '}',
+
+      /* --- Page enter animation --- */
+      '.m-page-enter {',
+      '  animation: m-page-enter 0.25s ease-out both;',
+      '}',
+      '@keyframes m-page-enter {',
+      '  from { opacity: 0; transform: translateY(10px); }',
+      '  to { opacity: 1; transform: translateY(0); }',
+      '}',
+
+      /* --- Ripple effect --- */
+      '.m-ripple {',
+      '  position: absolute;',
+      '  width: 60px; height: 60px;',
+      '  margin: -30px 0 0 -30px;',
+      '  border-radius: 50%;',
+      '  background: rgba(255,255,255,0.15);',
+      '  pointer-events: none;',
+      '  animation: m-ripple-anim 0.5s ease-out forwards;',
+      '  z-index: 1;',
+      '}',
+      '@keyframes m-ripple-anim {',
+      '  from { transform: scale(0); opacity: 1; }',
+      '  to { transform: scale(4); opacity: 0; }',
+      '}',
+
+      /* --- Auto-hide header smooth --- */
+      '.m-header {',
+      '  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);',
+      '  will-change: transform;',
+      '}',
+
+      /* --- Reduced motion --- */
+      '@media (prefers-reduced-motion: reduce) {',
+      '  .m-page-enter, .m-ripple { animation: none !important; }',
+      '  .m-header { transition: none !important; }',
+      '}'
+    ].join('\n');
+
+    document.head.appendChild(style);
+  }
+
+  // ==========================================================
+  // 15. PWA Install Prompt
+  // ==========================================================
+
+  function initPWAInstall() {
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      deferredPWAPrompt = e;
+      showInstallBanner();
+    });
+
+    if (isIOS() && !isStandalone()) {
+      setTimeout(showIOSInstallHint, 3000);
+    }
+  }
+
+  function showInstallBanner() {
+    if ($('#pwaInstallBanner') || localStorage.getItem('pwa_dismissed')) return;
+
+    var banner = document.createElement('div');
+    banner.id = 'pwaInstallBanner';
+    banner.className = 'pwa-banner';
+    banner.innerHTML =
+      '<span>Установите ASGARD на главный экран</span>' +
+      '<button class="btn mini accent" id="pwaInstallBtn">Установить</button>' +
+      '<button class="btn mini ghost" id="pwaCloseBtn">&times;</button>';
+    document.body.appendChild(banner);
+
+    $('#pwaInstallBtn').addEventListener('click', function () {
+      if (deferredPWAPrompt) {
+        deferredPWAPrompt.prompt();
+        deferredPWAPrompt.userChoice.then(function (choice) {
+          if (choice.outcome === 'accepted') {
+            toast('Приложение установлено!', 'success');
+          }
+          deferredPWAPrompt = null;
+          banner.remove();
+        });
+      }
+    });
+
+    $('#pwaCloseBtn').addEventListener('click', function () {
+      localStorage.setItem('pwa_dismissed', '1');
+      banner.remove();
+    });
+  }
+
+  function showIOSInstallHint() {
+    if (localStorage.getItem('pwa_ios_hint')) return;
+    toast('Нажмите «Поделиться» → «На экран домой» для установки', 'info', 6000);
+    localStorage.setItem('pwa_ios_hint', '1');
+  }
+
+  function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  }
+
+  // ==========================================================
+  // 16. Standalone-детекция
+  // ==========================================================
+
+  function isStandalone() {
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      navigator.standalone === true
+    );
+  }
+
+  function detectStandalone() {
+    document.body.classList.toggle('pwa-standalone', isStandalone());
+    return isStandalone();
+  }
+
+  // ==========================================================
+  // 17. Вибрация
+  // ==========================================================
+
+  function vibrate(pattern) {
+    if (navigator.vibrate) {
+      navigator.vibrate(pattern || 15);
+    }
+  }
+
+  // ==========================================================
+  // 18. Активный таб в нижней панели
+  // ==========================================================
+
+  function updateActiveTab() {
+    if (typeof getMobileTabGroup !== 'function') return;
+
+    var group = getMobileTabGroup();
+    var tabs  = $$('.m-tab');
+
+    tabs.forEach(function (tab) {
+      tab.classList.toggle('active', tab.dataset.tab === group);
+    });
+  }
+
+  function initTabTracking() {
+    window.addEventListener('hashchange', function () {
+      updateActiveTab();
+    });
+    updateActiveTab();
+  }
+
+  // ==========================================================
+  // 19. Мобильный дровер (сайдбар + оверлей)
+  // ==========================================================
+
+  function ensureOverlay() {
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.className = 'mobile-overlay';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', closeMenu);
+    return overlay;
+  }
+
+  function openMenu() {
+    if (menuOpen) return;
+    menuOpen = true;
+    var nav = $('.sidenav');
+    ensureOverlay();
+
+    if (nav) nav.classList.add('open');
+    document.body.classList.add('nav-open');
+    overlay.classList.add('active');
+    vibrate(10);
+  }
+
+  function closeMenu() {
+    if (!menuOpen) return;
+    menuOpen = false;
+    var nav = $('.sidenav');
+
+    if (nav) nav.classList.remove('open');
+    document.body.classList.remove('nav-open');
+    if (overlay) overlay.classList.remove('active');
+  }
+
+  function toggleMenu() {
+    menuOpen ? closeMenu() : openMenu();
+  }
+
+  // ==========================================================
+  // 20. Post-render Hook — вызывается после каждого рендера
+  // ==========================================================
+
+  /**
+   * Главная точка входа после каждого рендера страницы.
+   * Вызывается из hashchange и через MutationObserver.
+   * Собирает все мобильные пост-процессоры в одном месте.
+   */
+  function onPageRendered() {
+    if (!isMobile) return;
+
+    // Даём странице время отрендериться (многие модули async)
+    setTimeout(function () {
+      resetInlineGrids();
+      initResponsiveTables();
+      initKPIScrollHints();
+      scrollToTop();
+      animatePageTransition();
+    }, 80);
+
+    // Повторный проход для late-rendered контента (async fetch)
+    setTimeout(function () {
+      resetInlineGrids();
+      initResponsiveTables();
+      initKPIScrollHints();
+    }, 500);
+
+    // Третий проход для очень поздних рендеров
+    setTimeout(function () {
+      resetInlineGrids();
+      initResponsiveTables();
+    }, 1500);
+  }
+
+  // ==========================================================
+  // 21. hashchange master handler
+  // ==========================================================
+
+  function onHashChange() {
+    var newHash = window.location.hash;
+    if (newHash === _previousHash) return;
+    _previousHash = newHash;
+
+    closeMenu();
+    updateActiveTab();
+    onPageRendered();
+
+    // Переинициализируем observer на новом layout
+    setTimeout(initLayoutObserver, 100);
+    // Переинициализируем pull-to-refresh (новый .m-content может быть)
+    setTimeout(initPullToRefresh, 200);
+    setTimeout(initAutoHideHeader, 200);
+  }
+
+  // ==========================================================
+  //  Инициализация
+  // ==========================================================
+
+  function init() {
+    // ═══ iPhone/iPad safe area detection ═══
+    var ua = navigator.userAgent || '';
+    if (/iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+      document.documentElement.classList.add('is-iphone');
+    }
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+      document.documentElement.classList.add('is-pwa');
+    }
+    // Dynamic viewport height (fixes iOS Safari bottom bar)
+    function setVH() {
+      document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+    }
+    setVH();
+    window.addEventListener('resize', setVH);
+    detectMobile();
+    toggleBodyClass();
+    injectCSS();
+    initViewportFix();
+    detectStandalone();
+
+    if (isMobile) {
+      initSwipeGestures();
+      initTabTracking();
+      initPWAInstall();
+      initTouchFeedback();
+
+      // Первичная обработка текущей страницы
+      onPageRendered();
+
+      // Master hashchange handler
+      window.addEventListener('hashchange', onHashChange);
+
+      // Инициализируем observer и pull-to-refresh после рендера layout
+      setTimeout(function () {
+        initLayoutObserver();
+        initPullToRefresh();
+        initAutoHideHeader();
+      }, 300);
+    }
+
+    // При ресайзе пересчитываем детекцию
+    window.addEventListener('resize', function () {
+      var was = isMobile;
+      detectMobile();
+      if (was !== isMobile) {
+        toggleBodyClass();
+        if (isMobile) {
+          // Стали мобильными — инициализируем всё
+          initSwipeGestures();
+          initTabTracking();
+          initTouchFeedback();
+          onPageRendered();
+          setTimeout(function () {
+            initLayoutObserver();
+            initPullToRefresh();
+            initAutoHideHeader();
+          }, 300);
+        } else {
+          // Стали десктопными — восстанавливаем грид
+          restoreInlineGrids();
+          if (layoutObserver) layoutObserver.disconnect();
+          // Восстанавливаем header
+          var header = document.querySelector('.m-header');
+          if (header) header.style.transform = '';
+          headerHidden = false;
+        }
+      }
+    });
+
+    // Закрываем меню при переходе на другой роут
+    window.addEventListener('hashchange', closeMenu);
+  }
+
+  // Автозапуск
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+
+  // v8.2 — Chart.js mobile defaults
+  if (typeof Chart !== 'undefined' && Chart.defaults) {
+    Chart.defaults.responsive = true;
+    Chart.defaults.maintainAspectRatio = true;
+    Chart.defaults.plugins.legend.position = 'bottom';
+    Chart.defaults.plugins.legend.labels.boxWidth = 12;
+    Chart.defaults.plugins.legend.labels.padding = 12;
+    Chart.defaults.plugins.legend.labels.font = { size: 11 };
+    Chart.defaults.plugins.tooltip.titleFont = { size: 13 };
+    Chart.defaults.plugins.tooltip.bodyFont = { size: 12 };
+    Chart.defaults.elements.point.radius = 3;
+    Chart.defaults.elements.line.borderWidth = 2;
+  }
+
+
+  }
+
+  // ─── Публичный API ────────────────────────────────────────
+
+  // v8.1.1 — Scroll input into view when keyboard opens
+  document.addEventListener('focusin', function(e) {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.contentEditable === 'true')) {
+      setTimeout(function() {
+        e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }
+  });
+
+  // v8.1.1 — iOS keyboard handling via visualViewport API
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', function() {
+      var vh = window.visualViewport.height;
+      document.documentElement.style.setProperty('--vh', vh + 'px');
+      // Adjust bottom-fixed elements when keyboard is open
+      var tabbar = document.querySelector('.m-tabbar');
+      var chatInput = document.querySelector('.m-chat-input-bar');
+      if (tabbar) {
+        tabbar.style.transform = vh < window.innerHeight * 0.7 ? 'translateY(100%)' : '';
+      }
+      if (chatInput) {
+        chatInput.style.bottom = vh < window.innerHeight * 0.7 ? (window.innerHeight - vh) + 'px' : '';
+      }
+    });
+  }
+
+    return {
+    init:                init,
+    detectMobile:        detectMobile,
+    openMenu:            openMenu,
+    closeMenu:           closeMenu,
+    toggleMenu:          toggleMenu,
+    vibrate:             vibrate,
+    isMobile:            function () { return isMobile; },
+    detectStandalone:    detectStandalone,
+    updateActiveTab:     updateActiveTab,
+    // v2.0 API
+    resetInlineGrids:    resetInlineGrids,
+    restoreInlineGrids:  restoreInlineGrids,
+    initResponsiveTables: initResponsiveTables,
+    onPageRendered:      onPageRendered,
+    scrollToTop:         scrollToTop,
+    animatePageTransition: animatePageTransition
+  };
+
+}
+
+);
+
+
+  // v8.4.0 — Global universal card detail handler
+  // Auto-opens detail sheet for any card that doesn't have a custom handler
+  document.addEventListener('click', function(e) {
+    var card = e.target.closest('.m-card[data-id]');
+    if (!card) return;
+    // Skip if this area has custom detail handling
+    if (card.closest('[data-custom-detail]')) return;
+    // Skip if a button or link was clicked inside the card
+    if (e.target.closest('button, a, .m-card-action')) return;
+
+    var id = card.dataset.id;
+    if (!id) return;
+
+    // Extract fields from card DOM
+    var fields = [];
+    card.querySelectorAll('.m-card-field').forEach(function(f) {
+      var lbl = f.querySelector('.m-card-field-label');
+      var val = f.querySelector('.m-card-field-value');
+      if (lbl && val && val.textContent.trim()) {
+        fields.push({ label: lbl.textContent.trim(), value: val.textContent.trim() });
+      }
+    });
+
+    var titleEl = card.querySelector('.m-card-title');
+    var subtEl = card.querySelector('.m-card-subtitle');
+    var badgeEl = card.querySelector('.m-badge');
+    var title = titleEl ? titleEl.textContent.trim() : 'Запись #' + id;
+
+    // Build detail HTML
+    var M = window.AsgardMobileUI || {};
+    if (!M.showSheet) return;
+
+    var html = '';
+    if (subtEl && subtEl.textContent.trim()) {
+      html += '<div style="color:var(--t2,#999);font-size:14px;margin-bottom:12px">' + subtEl.textContent.trim() + '</div>';
+    }
+    if (badgeEl) {
+      html += '<div style="margin-bottom:16px">' + badgeEl.outerHTML + '</div>';
+    }
+    if (fields.length) {
+      html += '<div class="m-detail-fields">';
+      fields.forEach(function(f) {
+        html += '<div class="m-detail-field">';
+        html += '<span class="m-detail-label">' + f.label + '</span>';
+        html += '<span class="m-detail-value">' + f.value + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="color:var(--t3);padding:20px 0;text-align:center">Нет дополнительных данных</div>';
+    }
+
+    M.showSheet(title, html);
+  }, true); // useCapture to run before module handlers
+  window._universalCardClick = true;
+

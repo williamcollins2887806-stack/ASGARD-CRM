@@ -1,0 +1,80 @@
+{
+  "timestamp": "2026-02-24T04:56:51.463Z",
+  "summary": {
+    "passed": 1,
+    "failed": 0,
+    "total": 1,
+    "totalSteps": 10,
+    "passedSteps": 10,
+    "failedSteps": 0
+  },
+  "results": [
+    {
+      "name": "Training Applications",
+      "steps": [
+        {
+          "name": "HR accesses training management",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HR creates training application",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM creates training application for team",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HEAD_PM approves training application",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "DIRECTOR_GEN approves training budget",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "BUH confirms training payment",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HR marks training as completed",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "TO views own training history",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "ADMIN views all training reports",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "WAREHOUSE has no training access (role restriction)",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 217425
+    }
+  ]
+}

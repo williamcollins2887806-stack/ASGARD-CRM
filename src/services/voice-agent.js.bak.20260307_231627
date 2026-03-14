@@ -1,0 +1,675 @@
+'use strict';
+
+const { VOICE_OPERATOR_SYSTEM, VOICE_OPERATOR_USER } = require('../prompts/voice-secretary-prompt');
+
+/**
+ * ASGARD CRM — AI Voice Operator
+ * Полноценный AI-оператор первой линии.
+ * Отвечает на ВСЕ входящие звонки, ведёт диалог, маршрутизирует.
+ */
+
+/* ── Таблица сотрудников (загружается из БД) ─── */
+const ROLE_DESCRIPTIONS = {
+  HEAD_TO: 'Начальник тендерного отдела',
+  TO: 'Тендерный специалист',
+  PM: 'Руководитель проекта',
+  HEAD_PM: 'Начальник проектного отдела',
+  PROC: 'Отдел закупок',
+  BUH: 'Бухгалтерия',
+  CHIEF_ENGINEER: 'Главный инженер',
+  WAREHOUSE: 'Склад',
+  OFFICE_MANAGER: 'Офис-менеджер',
+  DIRECTOR_GEN: 'Генеральный директор',
+  DIRECTOR_COMM: 'Коммерческий директор',
+  DIRECTOR_DEV: 'Директор по развитию',
+};
+
+const FIRST_LINE_ROLES = ['HEAD_TO', 'TO'];
+const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
+class VoiceAgent {
+  constructor(speechKit, aiProvider, db) {
+    this.speechKit = speechKit;
+    this.aiProvider = aiProvider;
+    this.db = db;
+    this.maxTurns = 8;
+    this._employeeCache = null;
+    this._employeeCacheTime = 0;
+    this.onEvent = null; // callback(type, data) — для live-мониторинга
+    this.getPendingTransfer = null; // callback() — проверка CRM-команды на перевод
+  }
+
+  _emit(type, data) {
+    if (typeof this.onEvent === 'function') {
+      try { this.onEvent(type, data || {}); } catch (e) { /* ignore */ }
+    }
+  }
+
+  /**
+   * Основной обработчик входящего звонка
+   */
+  async handleIncoming(channel, callerNumber) {
+    const context = await this._buildContext(callerNumber);
+
+    // Приветствие
+    if (context.clientName && context.responsibleManager && context.isFullWorkHours) {
+      // Известный клиент с менеджером в рабочее время
+      this._emit('greeting', { text: `Здравствуйте, ${context.clientName}! Соединяю с менеджером.`, client: context.clientName, company: context.clientCompany });
+      await this._speak(channel,
+        `Здравствуйте, ${context.clientName}! Компания Асга+рд Се+рвис. Сейчас соединю вас с вашим менеджером, ${context.responsibleManager}. Одну минуточку.`
+      );
+      return {
+        action: 'route',
+        route_to: context.managerPhone,
+        route_name: context.responsibleManager,
+        intent: 'known_client',
+        collected_data: { company: context.clientCompany },
+        fallback_phones: this._getFirstLinePhones(context.employees),
+        conversationHistory: []
+      };
+    }
+
+    // Стандартное приветствие
+    this._emit('greeting', { text: 'Здравствуйте! Компания Асгард Сервис. Чем могу помочь?' });
+    await this._speak(channel, 'Здравствуйте! Компания Асга+рд Се+рвис. Чем могу помочь?');
+
+    // Нерабочее время (глубокая ночь / выходные)
+    if (context.timeMode === 'off') {
+      await this._speak(channel,
+        'Сейчас нерабочее время. Наши часы работы — с девяти до восемнадцати, понедельник — пятница. ' +
+        'Оставьте сообщение, и мы перезвоним в ближайший рабочий день.'
+      );
+      this._emit('after_hours', { text: 'Нерабочее время — запись сообщения' });
+      return { action: 'record', intent: 'after_hours', conversationHistory: [] };
+    }
+
+    // Диалог с AI
+    return this._runConversation(channel, context, []);
+  }
+
+  /**
+   * Цикл диалога с ИИ
+   * Отдельный метод, чтобы можно было вернуться после неудачного перевода
+   */
+  async _runConversation(channel, context, conversationHistory) {
+    let collectedData = {};
+    let lastIntent = 'unknown';
+
+    for (let turn = conversationHistory.length; turn < this.maxTurns; turn++) {
+      // Проверяем CRM-инициированный перевод
+      if (typeof this.getPendingTransfer === 'function') {
+        const pt = this.getPendingTransfer();
+        if (pt) {
+          this._emit('transfer_announce', { name: pt.name, phone: pt.phone });
+          await this._speak(channel, 'Одну секунду, перевожу вас.');
+          return {
+            action: 'route',
+            route_to: pt.phone,
+            route_name: pt.name || 'Перевод из CRM',
+            intent: 'crm_transfer',
+            collected_data: collectedData,
+            fallback_phones: this._getFirstLinePhones(context.employees),
+            conversationHistory
+          };
+        }
+      }
+      this._emit('listening', { turn });
+      const clientText = await this._listenAndRecognize(channel);
+
+      if (!clientText) {
+        if (turn === 0) {
+          await this._speak(channel, 'Алло? Я вас слушаю.');
+          continue;
+        }
+        // Тишина — возможно клиент ждёт
+        if (turn <= 1) {
+          await this._speak(channel, 'Простите, не расслышал. Подскажите, чем могу помочь?');
+          continue;
+        }
+        // Повторная тишина
+        await this._speak(channel, 'Извините, не слышу вас. Если хотите, перезвоните нам позже. До свидания!');
+        return { action: 'hangup', intent: 'silence', collected_data: collectedData, conversationHistory };
+      }
+
+      conversationHistory.push({ role: 'client', text: clientText });
+      this._emit('client_speech', { text: clientText, turn });
+
+      // Генерируем ответ AI
+      this._emit('ai_thinking', { turn });
+      const response = await this.generateResponse({
+        ...context,
+        conversationHistory,
+        lastClientMessage: clientText
+      });
+
+      if (!response) {
+        // AI не ответил — fallback на первую линию с объявлением
+        await this._speak(channel, 'Секундочку, соединяю вас со специалистом.');
+        return {
+          action: 'route',
+          route_to: this._getFirstLinePhones(context.employees)[0],
+          route_name: 'специалист первой линии',
+          intent: 'fallback',
+          fallback_phones: this._getFirstLinePhones(context.employees),
+          conversationHistory
+        };
+      }
+
+      // Обновляем собранные данные
+      if (response.collected_data) {
+        collectedData = { ...collectedData, ...response.collected_data };
+      }
+      lastIntent = response.intent || lastIntent;
+
+      // Произносим ответ
+      await this._speak(channel, response.text);
+      conversationHistory.push({ role: 'secretary', text: response.text });
+      this._emit('ai_response', { text: response.text, action: response.action, route_to: response.route_to, route_name: response.route_name });
+
+      // Выполняем действие
+      if (response.action === 'route') {
+        this._emit('transfer_announce', { name: response.route_name, phone: response.route_to });
+        return {
+          action: 'route',
+          route_to: response.route_to,
+          route_name: response.route_name,
+          intent: lastIntent,
+          collected_data: collectedData,
+          fallback_phones: this._getFirstLinePhones(context.employees),
+          conversationHistory,
+          context // сохраняем контекст для возврата при неудаче
+        };
+      }
+
+      if (response.action === 'record') {
+        return {
+          action: 'record',
+          intent: lastIntent,
+          collected_data: collectedData,
+          conversationHistory
+        };
+      }
+
+      if (response.action === 'hangup') {
+        return {
+          action: 'hangup',
+          intent: lastIntent,
+          collected_data: collectedData,
+          conversationHistory
+        };
+      }
+
+      // continue — следующий ход диалога
+    }
+
+    // Максимум ходов — предупреждаем и переводим
+    await this._speak(channel, 'Сейчас соединю вас со специалистом, который поможет подробнее. Одну минутку.');
+    return {
+      action: 'route',
+      route_to: this._getFirstLinePhones(context.employees)[0],
+      route_name: 'специалист',
+      intent: lastIntent,
+      collected_data: collectedData,
+      fallback_phones: this._getFirstLinePhones(context.employees),
+      conversationHistory
+    };
+  }
+
+  /**
+   * Обработка неудачного перевода — возвращает клиента к AI
+   * Вызывается из AGI-сервера когда Dial завершился без ANSWER
+   */
+  async handleTransferFailed(channel, callerNumber, failedName, conversationHistory, originalContext) {
+    // Восстанавливаем контекст или строим заново
+    const context = originalContext || await this._buildContext(callerNumber);
+
+    // Добавляем системное сообщение в историю
+    conversationHistory.push({
+      role: 'system',
+      text: `Перевод не удался: ${failedName} не ответил(а). Предложи клиенту альтернативы.`
+    });
+
+    // Спрашиваем AI что делать
+    const response = await this.generateResponse({
+      ...context,
+      conversationHistory,
+      lastClientMessage: `[СИСТЕМА: Перевод на ${failedName} не удался — не ответил]`
+    });
+
+    if (response) {
+      // AI предложит альтернативы
+      this._emit('ai_response', { text: response.text, action: response.action, context: 'transfer_failed_recovery' });
+      await this._speak(channel, response.text);
+      conversationHistory.push({ role: 'secretary', text: response.text });
+
+      if (response.action === 'route') {
+        // AI предложил другого сотрудника
+        return response;
+      }
+      if (response.action === 'record') {
+        return { ...response, conversationHistory };
+      }
+      if (response.action === 'hangup') {
+        return { ...response, conversationHistory };
+      }
+
+      // continue — продолжаем диалог
+      return this._runConversation(channel, context, conversationHistory);
+    }
+
+    // Fallback — если AI не ответил
+    await this._speak(channel,
+      `К сожалению, ${failedName} сейчас не может ответить. Оставьте сообщение, и мы перезвоним.`
+    );
+    return { action: 'record', intent: 'transfer_failed', conversationHistory };
+  }
+
+  /**
+   * Генерация ответа через Claude API
+   */
+  async generateResponse(context) {
+    try {
+      const systemPrompt = VOICE_OPERATOR_SYSTEM(context);
+      const userPrompt = VOICE_OPERATOR_USER(context);
+
+      const response = await this.aiProvider.complete({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        maxTokens: 400,
+        temperature: 0.3
+      });
+
+      const text = typeof response === 'string' ? response : (response.text || response.content || '');
+      return this._parseResponse(text);
+    } catch (err) {
+      console.error('[VoiceAgent] AI error:', err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Построение контекста звонка
+   */
+  async _buildContext(callerNumber) {
+    const employees = await this._getEmployees();
+    const { normalizePhone } = require('./mango');
+    const normalized = normalizePhone(callerNumber);
+
+    let clientName = null;
+    let clientCompany = null;
+    let clientInn = null;
+    let responsibleManager = null;
+    let managerPhone = null;
+    let lastTender = null;
+    let lastCall = null;
+    let dadataInfo = null;
+
+    // 1. Ищем в customers по номеру
+    try {
+      const customer = await this.db.query(
+        `SELECT name, inn, contact_person FROM customers
+         WHERE phone LIKE $1 OR phone LIKE $2 LIMIT 1`,
+        [`%${normalized.slice(-10)}%`, `%${callerNumber.slice(-10)}%`]
+      );
+
+      if (customer.rows.length) {
+        clientCompany = customer.rows[0].name;
+        clientName = customer.rows[0].contact_person || clientCompany;
+        clientInn = customer.rows[0].inn;
+
+        // Ищем ответственного PM
+        const tender = await this.db.query(
+          `SELECT t.id, t.name, t.pm_id, u.name as pm_name, ucs.fallback_mobile
+           FROM tenders t
+           LEFT JOIN users u ON u.id = t.pm_id
+           LEFT JOIN user_call_status ucs ON ucs.user_id = t.pm_id
+           WHERE t.inn = $1 AND t.pm_id IS NOT NULL
+           ORDER BY t.created_at DESC LIMIT 1`,
+          [customer.rows[0].inn]
+        );
+
+        if (tender.rows.length) {
+          responsibleManager = tender.rows[0].pm_name;
+          managerPhone = tender.rows[0].fallback_mobile;
+          lastTender = `${tender.rows[0].name} (ID: ${tender.rows[0].id})`;
+        }
+      }
+    } catch (e) {
+      console.error('[VoiceAgent] CRM lookup error:', e.message);
+    }
+
+    // 2. Ищем в call_history
+    if (!clientName) {
+      try {
+        const prevCall = await this.db.query(
+          `SELECT ch.client_inn, c.name as client_name, c.contact_person,
+                  ch.dadata_region, ch.dadata_operator, ch.ai_summary
+           FROM call_history ch
+           LEFT JOIN customers c ON c.inn = ch.client_inn
+           WHERE ch.from_number LIKE $1 AND ch.client_inn IS NOT NULL
+           ORDER BY ch.created_at DESC LIMIT 1`,
+          [`%${normalized.slice(-10)}%`]
+        );
+        if (prevCall.rows.length && prevCall.rows[0].client_name) {
+          clientCompany = prevCall.rows[0].client_name;
+          clientName = prevCall.rows[0].contact_person || clientCompany;
+          clientInn = prevCall.rows[0].client_inn;
+          dadataInfo = [prevCall.rows[0].dadata_region, prevCall.rows[0].dadata_operator].filter(Boolean).join(', ');
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    // 3. DaData info
+    if (!dadataInfo) {
+      try {
+        const dd = await this.db.query(
+          `SELECT dadata_region, dadata_operator FROM call_history
+           WHERE from_number LIKE $1 AND dadata_region IS NOT NULL
+           ORDER BY created_at DESC LIMIT 1`,
+          [`%${normalized.slice(-10)}%`]
+        );
+        if (dd.rows.length) {
+          dadataInfo = [dd.rows[0].dadata_region, dd.rows[0].dadata_operator].filter(Boolean).join(', ');
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    // 4. Последний звонок
+    try {
+      const lc = await this.db.query(
+        `SELECT created_at, ai_summary FROM call_history
+         WHERE from_number LIKE $1 ORDER BY created_at DESC LIMIT 1`,
+        [`%${normalized.slice(-10)}%`]
+      );
+      if (lc.rows.length) {
+        const d = new Date(lc.rows[0].created_at);
+        lastCall = d.toLocaleDateString('ru-RU') + (lc.rows[0].ai_summary ? ': ' + lc.rows[0].ai_summary.slice(0, 80) : '');
+      }
+    } catch (e) { /* ignore */ }
+
+    // 5. Режим работы
+    const now = new Date();
+    const mskHour = now.getUTCHours() + 3;
+    const mskDay = now.getUTCDay();
+    const hour = mskHour >= 0 ? mskHour : mskHour + 24;
+    const isWeekday = mskDay >= 1 && mskDay <= 5;
+
+    let timeMode = 'off';
+    let isFullWorkHours = false;
+    if (isWeekday && hour >= 9 && hour < 24) {
+      timeMode = 'full';
+      isFullWorkHours = true;
+    } else if (isWeekday && ((hour >= 7 && hour < 9) || (hour >= 24 && hour < 25))) {
+      timeMode = 'extended';
+    }
+
+    const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+
+    let timeModeDesc = '';
+    if (timeMode === 'full') {
+      timeModeDesc = 'РЕЖИМ: Рабочее время. Переводы разрешены.';
+    } else if (timeMode === 'extended') {
+      timeModeDesc = 'РЕЖИМ: Расширенное время. Переводить ТОЛЬКО заказчиков по СРОЧНОМУ вопросу.';
+    } else {
+      timeModeDesc = 'РЕЖИМ: Нерабочее время. НЕ переводить. Только запись сообщения.';
+    }
+
+    const employeeList = this._formatEmployeeList(employees);
+    const availableEmployees = this._formatAvailableEmployees(employees, timeMode);
+
+    return {
+      callerNumber,
+      clientName,
+      clientCompany,
+      clientInn,
+      responsibleManager,
+      managerPhone,
+      lastTender,
+      lastCall,
+      dadataInfo,
+      isFullWorkHours,
+      timeMode,
+      timeModeDesc,
+      currentTime: `${String(hour).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')} МСК`,
+      dayOfWeek: days[mskDay],
+      employeeList,
+      availableEmployees,
+      employees
+    };
+  }
+
+  /**
+   * Загрузка сотрудников из БД (с кэшем 5 мин)
+   */
+  async _getEmployees() {
+    const now = Date.now();
+    if (this._employeeCache && (now - this._employeeCacheTime) < 300000) {
+      return this._employeeCache;
+    }
+
+    try {
+      const { rows } = await this.db.query(`
+        SELECT u.id, u.name, u.role, ucs.display_name, ucs.fallback_mobile,
+               ucs.accepting, ucs.busy, ucs.is_duty
+        FROM users u
+        LEFT JOIN user_call_status ucs ON ucs.user_id = u.id
+        WHERE u.is_active = true
+        ORDER BY u.role, u.name
+      `);
+
+      this._employeeCache = rows;
+      this._employeeCacheTime = now;
+      return rows;
+    } catch (e) {
+      console.error('[VoiceAgent] Employees load error:', e.message);
+      return this._employeeCache || [];
+    }
+  }
+
+  /**
+   * Форматирование списка сотрудников для промпта
+   */
+  _formatEmployeeList(employees) {
+    if (!employees || !employees.length) return '(нет данных)';
+
+    const lines = [];
+    const byRole = {};
+    for (const emp of employees) {
+      if (DIRECTOR_ROLES.includes(emp.role)) continue;
+      if (!byRole[emp.role]) byRole[emp.role] = [];
+      byRole[emp.role].push(emp);
+    }
+
+    lines.push('ПЕРВАЯ ЛИНИЯ (приём звонков):');
+    for (const role of FIRST_LINE_ROLES) {
+      for (const emp of (byRole[role] || [])) {
+        const phone = emp.fallback_mobile || '';
+        const desc = ROLE_DESCRIPTIONS[emp.role] || emp.role;
+        lines.push(`  • ${emp.display_name || emp.name} — ${desc}, тел: ${phone}`);
+      }
+    }
+
+    lines.push('');
+    lines.push('СПЕЦИАЛИСТЫ:');
+    for (const role of ['PROC', 'BUH', 'HEAD_PM', 'CHIEF_ENGINEER', 'WAREHOUSE', 'OFFICE_MANAGER']) {
+      for (const emp of (byRole[role] || [])) {
+        const phone = emp.fallback_mobile || '';
+        const desc = ROLE_DESCRIPTIONS[emp.role] || emp.role;
+        lines.push(`  • ${emp.display_name || emp.name} — ${desc}, тел: ${phone}`);
+      }
+    }
+
+    if (byRole['PM'] && byRole['PM'].length) {
+      lines.push('');
+      lines.push('РУКОВОДИТЕЛИ ПРОЕКТОВ (PM):');
+      for (const emp of byRole['PM']) {
+        const phone = emp.fallback_mobile || '';
+        lines.push(`  • ${emp.display_name || emp.name} — PM, тел: ${phone}`);
+      }
+    }
+
+    lines.push('');
+    lines.push('ДИРЕКТОРА (Кудряшов О.С., Гажилиев О.В., Сторожев А.А.) — НЕ ПЕРЕВОДИТЬ напрямую!');
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Список доступных сотрудников для текущего перевода
+   */
+  _formatAvailableEmployees(employees, timeMode) {
+    if (timeMode === 'off') return 'Нерабочее время — переводы недоступны.';
+
+    const available = employees.filter(e =>
+      !DIRECTOR_ROLES.includes(e.role) &&
+      e.role !== 'ADMIN' &&
+      e.fallback_mobile
+    );
+
+    if (timeMode === 'extended') {
+      const firstLine = available.filter(e => FIRST_LINE_ROLES.includes(e.role));
+      return firstLine.map(e => `${e.display_name || e.name} (${ROLE_DESCRIPTIONS[e.role]}): ${e.fallback_mobile}`).join('\n');
+    }
+
+    return available.map(e => `${e.display_name || e.name} (${ROLE_DESCRIPTIONS[e.role] || e.role}): ${e.fallback_mobile}`).join('\n');
+  }
+
+  /**
+   * Получить телефоны первой линии для fallback
+   */
+  _getFirstLinePhones(employees) {
+    if (!employees) return [];
+    return employees
+      .filter(e => FIRST_LINE_ROLES.includes(e.role) && e.fallback_mobile)
+      .sort((a, b) => (a.role === 'HEAD_TO' ? -1 : 1))
+      .map(e => e.fallback_mobile.replace(/[^0-9]/g, ''));
+  }
+
+  /**
+   * Парсинг JSON-ответа от AI
+   */
+  _parseResponse(text) {
+    let cleaned = text.trim();
+    if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7);
+    if (cleaned.startsWith('```')) cleaned = cleaned.slice(3);
+    if (cleaned.endsWith('```')) cleaned = cleaned.slice(0, -3);
+    cleaned = cleaned.trim();
+
+    try {
+      const data = JSON.parse(cleaned);
+
+      let routeTo = data.route_to || null;
+      if (routeTo && typeof routeTo === 'string') {
+        routeTo = routeTo.replace(/[^0-9]/g, '');
+        if (routeTo.startsWith('8') && routeTo.length === 11) {
+          routeTo = '7' + routeTo.slice(1);
+        }
+        if (routeTo.length !== 11) routeTo = null;
+      }
+
+      return {
+        text: String(data.text || '').slice(0, 300),
+        action: ['route', 'record', 'hangup', 'continue'].includes(data.action) ? data.action : 'continue',
+        route_to: routeTo,
+        route_name: data.route_name || null,
+        intent: data.intent || 'unknown',
+        collected_data: data.collected_data || {},
+        reason: data.reason || null
+      };
+    } catch (err) {
+      return { text: cleaned.slice(0, 200), action: 'continue', route_to: null, intent: 'unknown', collected_data: {} };
+    }
+  }
+
+  /**
+   * Преобразование текста в SSML для естественного звучания
+   */
+  _textToSsml(text) {
+    let ssml = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Естественные паузы
+    ssml = ssml.replace(/\.\s+/g, '. <break time="350ms"/> ');
+    ssml = ssml.replace(/!\s+/g, '! <break time="350ms"/> ');
+    ssml = ssml.replace(/\?\s+/g, '? <break time="400ms"/> ');
+    ssml = ssml.replace(/,\s+/g, ', <break time="150ms"/> ');
+    ssml = ssml.replace(/\s—\s/g, ' <break time="200ms"/> ');
+
+    return '<speak>' + ssml + '</speak>';
+  }
+
+  /**
+   * Синтез речи и воспроизведение
+   */
+  async _speak(channel, text) {
+    if (!this.speechKit || !this.speechKit.isConfigured()) {
+      console.log('[VoiceAgent] TTS (skip):', text);
+      return;
+    }
+
+    try {
+      const ssmlText = this._textToSsml(text);
+
+      const audioBuffer = await this.speechKit.synthesize(ssmlText, {
+        voice: 'madirus',
+        emotion: 'friendly',
+        speed: '0.95',
+        format: 'oggopus',
+        sampleRate: 48000,
+        ssml: true
+      });
+
+      const crypto = require('crypto');
+      const fs = require('fs');
+      const path = require('path');
+      const hash = crypto.createHash('md5').update(text).digest('hex').slice(0, 12);
+      const dir = '/var/lib/asterisk/sounds/asgard';
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, `tts_${hash}`);
+      fs.writeFileSync(filePath + '.opus', audioBuffer);
+
+      if (channel && typeof channel.streamFile === 'function') {
+        await channel.streamFile(filePath);
+      }
+    } catch (err) {
+      console.error('[VoiceAgent] TTS error:', err.message);
+    }
+  }
+
+  /**
+   * Запись речи клиента и распознавание
+   */
+  async _listenAndRecognize(channel) {
+    if (!channel || typeof channel.recordFile !== 'function') return null;
+    if (!this.speechKit || !this.speechKit.isConfigured()) return null;
+
+    try {
+      const tmpFile = `/tmp/agi_rec_${Date.now()}`;
+      const recorded = await channel.recordFile(tmpFile, "wav", "#", 15000, 0, false, 3);
+      if (!recorded) return null;
+
+      const fs = require('fs');
+      const wavPath = tmpFile + '.wav';
+      if (!fs.existsSync(wavPath)) return null;
+
+      const stat = fs.statSync(wavPath);
+      if (stat.size < 1000) return null;
+
+      const text = await this.speechKit.recognizeShort(wavPath, {
+        audioEncoding: 'lpcm',
+        sampleRate: 8000
+      });
+
+      try { fs.unlinkSync(wavPath); } catch (e) { /* ignore */ }
+
+      return text && text.trim() ? text.trim() : null;
+    } catch (err) {
+      console.error('[VoiceAgent] STT error:', err.message);
+      return null;
+    }
+  }
+}
+
+module.exports = VoiceAgent;

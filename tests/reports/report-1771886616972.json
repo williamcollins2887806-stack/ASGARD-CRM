@@ -1,0 +1,171 @@
+{
+  "timestamp": "2026-02-23T22:43:36.972Z",
+  "summary": {
+    "passed": 4,
+    "failed": 4,
+    "total": 8,
+    "totalSteps": 20,
+    "passedSteps": 16,
+    "failedSteps": 4
+  },
+  "results": [
+    {
+      "name": "Tender Lifecycle",
+      "steps": [
+        {
+          "name": "ADMIN creates tender",
+          "status": "FAILED",
+          "error": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('button, [role=\"button\"], a.btn, a[class*=\"btn\"]').filter({ hasText: /Создать|Добавить|Новый/i }).first() to be visible\n    63 × locator resolved to hidden <button id=\"mimirNewChat\" class=\"mimir-new-chat-btn\">+ Новый диалог",
+          "screenshot": null
+        }
+      ],
+      "status": "FAILED",
+      "duration": 52355
+    },
+    {
+      "name": "Work Management",
+      "steps": [
+        {
+          "name": "PM creates work via #/pm-works",
+          "status": "FAILED",
+          "error": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('button, [role=\"button\"], a.btn, a[class*=\"btn\"]').filter({ hasText: /Создать|Добавить|Новая/i }).first() to be visible\n    63 × locator resolved to hidden <button data-action=\"tkp\" class=\"mimir-quick-btn\">📝 Создать ТКП</b",
+          "screenshot": null
+        }
+      ],
+      "status": "FAILED",
+      "duration": 53162
+    },
+    {
+      "name": "Finance Pipeline",
+      "steps": [
+        {
+          "name": "BUH creates invoice via #/invoices",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "BUH creates act via #/acts",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "BUH navigates to payment section",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "DIRECTOR_GEN reviews finance pages",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 100470
+    },
+    {
+      "name": "Cash Workflow",
+      "steps": [
+        {
+          "name": "PM creates cash request via #/cash",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "HEAD_PM reviews cash requests",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "BUH processes cash request",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "DIRECTOR_GEN reviews cash requests",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "PM reports cash expenses",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "PM returns cash remainder",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 129769
+    },
+    {
+      "name": "HR Compliance",
+      "steps": [
+        {
+          "name": "HR creates employee via #/employees",
+          "status": "FAILED",
+          "error": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('button, [role=\"button\"], a.btn, a[class*=\"btn\"]').filter({ hasText: /Создать|Добавить|Новый/i }).first() to be visible\n    62 × locator resolved to hidden <button id=\"mimirNewChat\" class=\"mimir-new-chat-btn\">+ Новый диалог"
+        }
+      ],
+      "status": "FAILED",
+      "duration": 52524
+    },
+    {
+      "name": "Equipment & Warehouse",
+      "steps": [
+        {
+          "name": "WAREHOUSE creates equipment via #/warehouse",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "CHIEF_ENGINEER views engineer dashboard",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "PROC creates purchase request via #/purchases",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 105075
+    },
+    {
+      "name": "Communication",
+      "steps": [
+        {
+          "name": "PM creates task via #/tasks",
+          "status": "FAILED",
+          "error": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('button, [role=\"button\"], a.btn, a[class*=\"btn\"]').filter({ hasText: /Создать|Добавить|Новая|Новый/i }).first() to be visible\n    63 × locator resolved to hidden <button class=\"btn\" onclick=\"AsgardTasksPage.submitCreateTask"
+        }
+      ],
+      "status": "FAILED",
+      "duration": 52459
+    },
+    {
+      "name": "Admin Settings",
+      "steps": [
+        {
+          "name": "ADMIN navigates to settings",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "ADMIN manages users page",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "ADMIN verifies all menu items load",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 78892
+    }
+  ]
+}

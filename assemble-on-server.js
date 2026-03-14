@@ -1,0 +1,11 @@
+const fs = require("fs");
+const ex = fs.readFileSync("/var/www/asgard-crm/full-reimport.js", "utf8");
+const s = ex.indexOf("const PM_MAP");
+const t = ex.indexOf("async function main");
+const maps = ex.substring(s, t);
+const logic = fs.readFileSync("/var/www/asgard-crm/update-import-logic.js", "utf8");
+const NL = String.fromCharCode(10);
+const hdr = "// UPDATE IMPORT" + NL + "const { Client } = require(" + String.fromCharCode(39) + "pg" + String.fromCharCode(39) + ");" + NL + "const fs = require(" + String.fromCharCode(39) + "fs" + String.fromCharCode(39) + ");" + NL + NL + "const DB = { host: " + String.fromCharCode(39) + "localhost" + String.fromCharCode(39) + ", port: 5432, database: " + String.fromCharCode(39) + "asgard_crm" + String.fromCharCode(39) + ", user: " + String.fromCharCode(39) + "asgard" + String.fromCharCode(39) + ", password: " + String.fromCharCode(39) + "123456789" + String.fromCharCode(39) + " };" + NL + NL;
+const script = hdr + maps + NL + logic;
+fs.writeFileSync("/var/www/asgard-crm/update-import.js", script, "utf8");
+console.log("Script assembled: " + script.length + " chars");

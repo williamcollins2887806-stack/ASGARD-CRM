@@ -1,0 +1,177 @@
+{
+  "call_event_appeared": {
+    "entry_id": "MToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "call_id": "NToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "timestamp": 1709400000,
+    "seq": 1,
+    "call_state": "Appeared",
+    "location": "abonent",
+    "from": {
+      "number": "74951234567",
+      "taken_from_call_id": ""
+    },
+    "to": {
+      "number": "200",
+      "line_number": "74959876543"
+    },
+    "call_direction": 1,
+    "dct": {
+      "type": 0
+    }
+  },
+
+  "call_event_connected": {
+    "entry_id": "MToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "call_id": "NToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "timestamp": 1709400008,
+    "seq": 2,
+    "call_state": "Connected",
+    "location": "abonent",
+    "from": {
+      "number": "74951234567",
+      "taken_from_call_id": ""
+    },
+    "to": {
+      "number": "200",
+      "line_number": "74959876543"
+    },
+    "call_direction": 1,
+    "dct": {
+      "type": 0
+    }
+  },
+
+  "call_event_disconnected": {
+    "entry_id": "MToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "call_id": "NToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "timestamp": 1709400128,
+    "seq": 3,
+    "call_state": "Disconnected",
+    "location": "abonent",
+    "from": {
+      "number": "74951234567",
+      "taken_from_call_id": ""
+    },
+    "to": {
+      "number": "200",
+      "line_number": "74959876543"
+    },
+    "call_direction": 1,
+    "disconnect_reason": 1100,
+    "dct": {
+      "type": 0
+    }
+  },
+
+  "summary_event": {
+    "entry_id": "MToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "call_direction": 1,
+    "from": {
+      "number": "74951234567"
+    },
+    "to": {
+      "number": "200",
+      "line_number": "74959876543"
+    },
+    "line_number": "74959876543",
+    "create_ts": 1709400000,
+    "forward_ts": 1709400002,
+    "talk_ts": 1709400008,
+    "end_ts": 1709400128,
+    "entry_result": 1,
+    "talk_duration": 120,
+    "is_lost": 0,
+    "recording_id": "REC-2024030201-abcdef1234567890",
+    "recording_url": "https://app.mango-office.ru/vpbx/queries/recording/link/REC-2024030201-abcdef1234567890",
+    "members": [
+      {
+        "number": "74951234567",
+        "name": "",
+        "direction": 1
+      },
+      {
+        "number": "200",
+        "name": "Operator Ivanov",
+        "direction": 2
+      }
+    ]
+  },
+
+  "recording_event": {
+    "recording_id": "REC-2024030201-abcdef1234567890",
+    "entry_id": "MToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "call_direction": 1,
+    "from": {
+      "number": "74951234567"
+    },
+    "to": {
+      "number": "200",
+      "line_number": "74959876543"
+    },
+    "recording_state": "Completed",
+    "recording_duration": 120,
+    "recording_url": "https://app.mango-office.ru/vpbx/queries/recording/link/REC-2024030201-abcdef1234567890",
+    "recording_file_size": 245760,
+    "start_ts": 1709400008,
+    "end_ts": 1709400128
+  },
+
+  "dtmf_event": {
+    "entry_id": "MToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "call_id": "NToxMjM0NTY3ODkwOjE3MDk0MDAwMDA",
+    "timestamp": 1709400045,
+    "seq": 4,
+    "call_state": "Connected",
+    "location": "abonent",
+    "from": {
+      "number": "74951234567",
+      "taken_from_call_id": ""
+    },
+    "to": {
+      "number": "200",
+      "line_number": "74959876543"
+    },
+    "call_direction": 1,
+    "dtmf": {
+      "key": "1",
+      "call_id": "NToxMjM0NTY3ODkwOjE3MDk0MDAwMDA"
+    },
+    "dct": {
+      "type": 0
+    }
+  },
+
+  "missed_call_summary": {
+    "entry_id": "MToyMzQ1Njc4OTAxOjE3MDk0MDEwMDA",
+    "call_direction": 1,
+    "from": {
+      "number": "74957654321"
+    },
+    "to": {
+      "number": "201",
+      "line_number": "74959876543"
+    },
+    "line_number": "74959876543",
+    "create_ts": 1709401000,
+    "forward_ts": 1709401002,
+    "talk_ts": 0,
+    "end_ts": 1709401030,
+    "entry_result": 0,
+    "talk_duration": 0,
+    "is_lost": 1,
+    "recording_id": "",
+    "recording_url": "",
+    "members": [
+      {
+        "number": "74957654321",
+        "name": "",
+        "direction": 1
+      },
+      {
+        "number": "201",
+        "name": "Operator Petrov",
+        "direction": 2
+      }
+    ]
+  }
+}

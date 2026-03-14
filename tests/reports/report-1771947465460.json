@@ -1,0 +1,125 @@
+{
+  "timestamp": "2026-02-24T15:37:45.460Z",
+  "summary": {
+    "passed": 0,
+    "failed": 1,
+    "total": 1,
+    "totalSteps": 15,
+    "passedSteps": 2,
+    "failedSteps": 13
+  },
+  "results": [
+    {
+      "name": "31-deep-button-audit",
+      "steps": [
+        {
+          "name": "[DIRECTOR_GEN] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 7200913,
+          "note": "[DIRECTOR_GEN] Pages: 46, Btns: 6840, Clicked: 4099, Skipped: 49, Modals: 1211, Errors: 2726"
+        },
+        {
+          "name": "[DIRECTOR_COMM] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[DIRECTOR_DEV] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[HEAD_PM] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[HEAD_TO] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[PM] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 1,
+          "note": ""
+        },
+        {
+          "name": "[TO] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[HR] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[HR_MANAGER] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[BUH] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[OFFICE_MANAGER] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[PROC] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "[CHIEF_ENGINEER] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 1,
+          "note": ""
+        },
+        {
+          "name": "[WAREHOUSE] Deep button audit",
+          "status": "FAILED",
+          "error": "browser.newContext: Target page, context or browser has been closed",
+          "duration": 0,
+          "note": ""
+        },
+        {
+          "name": "AUDIT SUMMARY",
+          "status": "PASSED",
+          "error": null,
+          "duration": 0,
+          "note": "Total pages visited: 46\nTotal buttons found: 6840\nTotal buttons clicked: 4099\nTotal buttons skipped: 49\nTotal modals opened: 1211\nTotal errors detected: 2726\nConsole error groups: 32"
+        }
+      ],
+      "status": "FAILED",
+      "duration": 7200915
+    }
+  ]
+}

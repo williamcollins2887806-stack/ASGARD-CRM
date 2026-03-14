@@ -1,0 +1,1138 @@
+/**
+ * ASGARD CRM — Session Guard
+ * Блокировка по неактивности (10 мин) + виртуальная ПИН-клавиатура + анимированный сплэш
+ * Стиль: Сбербанк-онлайн
+ */
+(function(){
+  'use strict';
+
+  /* ═══════════════════════════════════════════ */
+  /*  КОНФИГУРАЦИЯ                               */
+  /* ═══════════════════════════════════════════ */
+  var IDLE_TIMEOUT   = 10 * 60 * 1000; // 10 минут
+  var SPLASH_DURATION = 2200;           // 2.2 секунды сплэш
+  var PIN_LENGTH     = 4;
+  var MAX_ATTEMPTS   = 5;
+  var THROTTLE_MOVE  = 30000;           // throttle mousemove 30с
+
+  /* Страницы-исключения (таймер не работает) */
+  var EXEMPT_HASHES = ['#/big-screen', '#/login', '#/welcome', '#/register'];
+
+  /* Цитаты — берём из window если доступны, иначе свои */
+  var QUOTES = [
+    'Драккар готовится к походу...',
+    'Один видит всё. И твои дела — тоже.',
+    'Тор куёт молнии, а мы — контракты.',
+    'Путь к Вальгалле лежит через порядок в делах.',
+    'Руны складываются... Летопись загружается.',
+    'Мьёлнир заряжается... Подождите.',
+    'Хеймдалль открывает Биврёст...',
+    'Сага продолжается... Добро пожаловать, воин!'
+  ];
+
+  /* ═══════════════════════════════════════════ */
+  /*  СОСТОЯНИЕ                                  */
+  /* ═══════════════════════════════════════════ */
+  var _timer       = null;
+  var _locked      = false;
+  var _initialized = false;
+  var _overlay      = null;
+  var _pinDigits    = [];
+  var _attempts     = 0;
+  var _lastMove     = 0;
+  var _userId       = null;
+  var _userName     = '';
+  var _userLogin    = '';
+  var _checking     = false;
+  var _biometricAvailable = false;
+
+  /* ═══════════════════════════════════════════ */
+  /*  СТИЛИ (встроенные)                         */
+  /* ═══════════════════════════════════════════ */
+  function injectStyles() {
+    if (document.getElementById('sg-styles')) return;
+    var style = document.createElement('style');
+    style.id = 'sg-styles';
+    style.textContent = '\
+/* ═══ Session Guard Overlay ═══ */\n\
+.sg-overlay {\n\
+  position: fixed;\n\
+  inset: 0;\n\
+  z-index: 100000;\n\
+  background: #060a14;\n\
+  display: flex;\n\
+  align-items: center;\n\
+  justify-content: center;\n\
+  opacity: 0;\n\
+  transition: opacity .4s ease;\n\
+  overflow: hidden;\n\
+}\n\
+.sg-overlay.visible { opacity: 1; }\n\
+\n\
+/* Фон — волны */\n\
+.sg-bg {\n\
+  position: absolute;\n\
+  inset: 0;\n\
+  overflow: hidden;\n\
+  pointer-events: none;\n\
+}\n\
+.sg-wave {\n\
+  position: absolute;\n\
+  bottom: 0;\n\
+  left: -10%;\n\
+  width: 120%;\n\
+  height: 40%;\n\
+  opacity: .06;\n\
+  border-radius: 45% 55% 40% 60% / 60% 40% 55% 45%;\n\
+  animation: sgWave 12s ease-in-out infinite alternate;\n\
+}\n\
+.sg-wave:nth-child(1) { background: #c8293b; bottom: -5%; animation-delay: 0s; }\n\
+.sg-wave:nth-child(2) { background: #d4a843; bottom: -10%; animation-delay: -3s; height: 35%; }\n\
+.sg-wave:nth-child(3) { background: #1e4d8c; bottom: -15%; animation-delay: -6s; height: 30%; }\n\
+\n\
+@keyframes sgWave {\n\
+  0%   { transform: translateX(0) rotate(0deg); }\n\
+  100% { transform: translateX(3%) rotate(2deg); }\n\
+}\n\
+\n\
+/* Центральный контейнер */\n\
+.sg-center {\n\
+  position: relative;\n\
+  z-index: 2;\n\
+  display: flex;\n\
+  flex-direction: column;\n\
+  align-items: center;\n\
+  justify-content: center;\n\
+  gap: 20px;\n\
+  width: 100%;\n\
+  max-width: 340px;\n\
+  margin: 0 auto;\n\
+  padding: 24px;\n\
+  text-align: center;\n\
+  animation: sgFadeIn .6s ease both;\n\
+}\n\
+@keyframes sgFadeIn {\n\
+  from { opacity: 0; transform: translateY(24px); }\n\
+  to   { opacity: 1; transform: translateY(0); }\n\
+}\n\
+\n\
+/* Логотип */\n\
+.sg-logo {\n\
+  width: 72px;\n\
+  height: 72px;\n\
+  animation: sgFloat 3s ease-in-out infinite;\n\
+  filter: drop-shadow(0 0 20px rgba(212,168,67,.2));\n\
+}\n\
+.sg-logo img {\n\
+  width: 100%;\n\
+  height: 100%;\n\
+  object-fit: contain;\n\
+}\n\
+@keyframes sgFloat {\n\
+  0%, 100% { transform: translateY(0); }\n\
+  50%      { transform: translateY(-8px); }\n\
+}\n\
+\n\
+/* Имя пользователя */\n\
+.sg-user {\n\
+  color: rgba(255,255,255,.7);\n\
+  font-size: 15px;\n\
+  font-weight: 500;\n\
+  letter-spacing: .3px;\n\
+  text-align: center;\n\
+}\n\
+\n\
+/* Подсказка */\n\
+.sg-hint {\n\
+  color: rgba(255,255,255,.35);\n\
+  font-size: 12px;\n\
+  text-align: center;\n\
+  min-height: 18px;\n\
+  transition: color .3s;\n\
+}\n\
+.sg-hint.error { color: #e85454; }\n\
+\n\
+/* ═══ ПИН точки ═══ */\n\
+.sg-dots {\n\
+  display: flex;\n\
+  gap: 16px;\n\
+  margin: 8px auto 4px;\n\
+  justify-content: center;\n\
+}\n\
+.sg-dot {\n\
+  width: 14px;\n\
+  height: 14px;\n\
+  border-radius: 50%;\n\
+  border: 2px solid rgba(255,255,255,.25);\n\
+  background: transparent;\n\
+  transition: all .2s cubic-bezier(.4,0,.2,1);\n\
+}\n\
+.sg-dot.filled {\n\
+  background: #d4a843;\n\
+  border-color: #d4a843;\n\
+  transform: scale(1.15);\n\
+  box-shadow: 0 0 12px rgba(212,168,67,.4);\n\
+}\n\
+.sg-dot.success {\n\
+  background: #4ade80;\n\
+  border-color: #4ade80;\n\
+  box-shadow: 0 0 12px rgba(74,222,128,.4);\n\
+}\n\
+.sg-dot.error {\n\
+  background: #e85454;\n\
+  border-color: #e85454;\n\
+  box-shadow: 0 0 12px rgba(232,84,84,.4);\n\
+}\n\
+\n\
+/* Shake анимация */\n\
+.sg-dots.shake {\n\
+  animation: sgShake .5s ease;\n\
+}\n\
+@keyframes sgShake {\n\
+  0%, 100% { transform: translateX(0); }\n\
+  15%      { transform: translateX(-12px); }\n\
+  30%      { transform: translateX(10px); }\n\
+  45%      { transform: translateX(-8px); }\n\
+  60%      { transform: translateX(6px); }\n\
+  75%      { transform: translateX(-4px); }\n\
+  90%      { transform: translateX(2px); }\n\
+}\n\
+\n\
+/* ═══ Клавиатура ═══ */\n\
+.sg-keypad {\n\
+  display: grid;\n\
+  grid-template-columns: repeat(3, 72px);\n\
+  gap: 14px;\n\
+  justify-content: center;\n\
+  justify-items: center;\n\
+  margin: 8px auto 0;\n\
+}\n\
+.sg-key {\n\
+  width: 72px;\n\
+  height: 72px;\n\
+  border-radius: 50%;\n\
+  border: 1.5px solid rgba(255,255,255,.12);\n\
+  background: rgba(255,255,255,.04);\n\
+  color: #fff;\n\
+  font-size: 26px;\n\
+  font-weight: 300;\n\
+  display: flex;\n\
+  align-items: center;\n\
+  justify-content: center;\n\
+  justify-self: center;\n\
+  cursor: pointer;\n\
+  user-select: none;\n\
+  -webkit-user-select: none;\n\
+  -webkit-tap-highlight-color: transparent;\n\
+  transition: all .15s ease;\n\
+  position: relative;\n\
+  overflow: hidden;\n\
+}\n\
+.sg-key:active {\n\
+  transform: scale(.9);\n\
+  background: rgba(255,255,255,.1);\n\
+  border-color: rgba(212,168,67,.4);\n\
+}\n\
+.sg-key.action {\n\
+  font-size: 20px;\n\
+  border-color: transparent;\n\
+  background: transparent;\n\
+}\n\
+.sg-key.action:active {\n\
+  background: rgba(255,255,255,.06);\n\
+}\n\
+.sg-key.biometric {\n\
+  border-color: rgba(212,168,67,.3);\n\
+  background: rgba(212,168,67,.06);\n\
+}\n\
+.sg-key.biometric svg {\n\
+  width: 28px;\n\
+  height: 28px;\n\
+  fill: #d4a843;\n\
+}\n\
+\n\
+/* Ripple */\n\
+.sg-key .sg-ripple {\n\
+  position: absolute;\n\
+  border-radius: 50%;\n\
+  background: rgba(212,168,67,.25);\n\
+  transform: scale(0);\n\
+  animation: sgRipple .5s ease-out;\n\
+  pointer-events: none;\n\
+}\n\
+@keyframes sgRipple {\n\
+  to { transform: scale(3); opacity: 0; }\n\
+}\n\
+\n\
+/* ═══ Выход ═══ */\n\
+.sg-logout {\n\
+  margin-top: 16px;\n\
+  color: rgba(255,255,255,.25);\n\
+  font-size: 12px;\n\
+  cursor: pointer;\n\
+  border: none;\n\
+  background: none;\n\
+  padding: 8px 16px;\n\
+  transition: color .2s;\n\
+}\n\
+.sg-logout:hover,\n\
+.sg-logout:active { color: rgba(255,255,255,.5); }\n\
+\n\
+/* ═══ Сплэш при разблокировке ═══ */\n\
+.sg-splash {\n\
+  position: absolute;\n\
+  inset: 0;\n\
+  display: flex;\n\
+  flex-direction: column;\n\
+  align-items: center;\n\
+  justify-content: center;\n\
+  gap: 24px;\n\
+  opacity: 0;\n\
+  pointer-events: none;\n\
+  transition: opacity .4s ease;\n\
+  z-index: 3;\n\
+}\n\
+.sg-splash.visible { opacity: 1; pointer-events: auto; }\n\
+\n\
+.sg-splash-logo {\n\
+  width: 96px;\n\
+  height: 96px;\n\
+  animation: sgFloat 2.5s ease-in-out infinite;\n\
+  filter: drop-shadow(0 0 30px rgba(212,168,67,.3));\n\
+}\n\
+.sg-splash-logo img {\n\
+  width: 100%;\n\
+  height: 100%;\n\
+  object-fit: contain;\n\
+}\n\
+\n\
+.sg-spinner {\n\
+  position: relative;\n\
+  width: 48px;\n\
+  height: 48px;\n\
+}\n\
+.sg-spinner-ring {\n\
+  position: absolute;\n\
+  inset: 0;\n\
+  border-radius: 50%;\n\
+  border: 2px solid transparent;\n\
+}\n\
+.sg-spinner-ring:nth-child(1) {\n\
+  border-top-color: #d4a843;\n\
+  animation: sgSpin 1.2s cubic-bezier(.5,0,.5,1) infinite;\n\
+}\n\
+.sg-spinner-ring:nth-child(2) {\n\
+  inset: 4px;\n\
+  border-right-color: #c8293b;\n\
+  animation: sgSpin 1.2s cubic-bezier(.5,0,.5,1) infinite reverse;\n\
+  animation-delay: -.4s;\n\
+}\n\
+.sg-spinner-ring:nth-child(3) {\n\
+  inset: 8px;\n\
+  border-bottom-color: #1e4d8c;\n\
+  animation: sgSpin 1.2s cubic-bezier(.5,0,.5,1) infinite;\n\
+  animation-delay: -.8s;\n\
+}\n\
+@keyframes sgSpin {\n\
+  0%   { transform: rotate(0deg); }\n\
+  100% { transform: rotate(360deg); }\n\
+}\n\
+\n\
+.sg-splash-quote {\n\
+  color: rgba(255,255,255,.45);\n\
+  font-size: 13px;\n\
+  font-style: italic;\n\
+  text-align: center;\n\
+  max-width: 280px;\n\
+  line-height: 1.5;\n\
+  animation: sgFadeIn .6s ease .3s both;\n\
+}\n\
+\n\
+.sg-splash-runes {\n\
+  color: rgba(212,168,67,.15);\n\
+  font-size: 16px;\n\
+  letter-spacing: 6px;\n\
+  animation: sgRuneGlow 2s ease-in-out infinite alternate;\n\
+}\n\
+@keyframes sgRuneGlow {\n\
+  from { opacity: .15; text-shadow: 0 0 5px rgba(212,168,67,.1); }\n\
+  to   { opacity: .4; text-shadow: 0 0 15px rgba(212,168,67,.3); }\n\
+}\n\
+\n\
+/* ═══ Адаптив (мобильные) ═══ */\n\
+@media (max-width: 768px) {\n\
+  .sg-center { gap: 16px; padding: 16px; }\n\
+  .sg-logo { width: 56px; height: 56px; }\n\
+  .sg-key { width: 64px; height: 64px; font-size: 24px; }\n\
+  .sg-keypad { gap: 10px; grid-template-columns: repeat(3, 64px); }\n\
+  .sg-dots { gap: 14px; }\n\
+  .sg-dot { width: 12px; height: 12px; }\n\
+}\n\
+\n\
+/* Safe area для iPhone */\n\
+@supports (padding: env(safe-area-inset-bottom)) {\n\
+  .sg-center { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }\n\
+}\n\
+\n/* PIN form on login page - prevent native keyboard */\n#pinKeypadContainer { -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }\n#pinKeypadContainer .sg-key { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.15); }\n#pinKeypadContainer .sg-dot { border-color:rgba(255,255,255,.3); }\n#pinForm input { display:none !important; }\n';
+    document.head.appendChild(style);
+  }
+
+
+  /* ═══════════════════════════════════════════ */
+  /*  УТИЛИТЫ                                    */
+  /* ═══════════════════════════════════════════ */
+  function esc(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function isExemptPage() {
+    var h = location.hash || '';
+    for (var i = 0; i < EXEMPT_HASHES.length; i++) {
+      if (h === EXEMPT_HASHES[i] || h.indexOf(EXEMPT_HASHES[i] + '?') === 0) return true;
+    }
+    return false;
+  }
+
+  function getQuotes() {
+    /* Пытаемся взять из глобального LOADING_QUOTES (app.js) */
+    if (window.ASGARD_LOADING_QUOTES && window.ASGARD_LOADING_QUOTES.length) {
+      return window.ASGARD_LOADING_QUOTES;
+    }
+    return QUOTES;
+  }
+
+  function randomQuote() {
+    var q = getQuotes();
+    return q[Math.floor(Math.random() * q.length)];
+  }
+
+  function vibrate(ms) {
+    try { if (navigator.vibrate) navigator.vibrate(ms); } catch(e) {}
+  }
+
+  function getLogoSrc() {
+    /* Определяем путь к логотипу */
+    var img = document.querySelector('.loading-logo img, .sidebar-logo img, .welcome-logo img');
+    if (img && img.src) return img.src;
+    return 'assets/img/logo.png';
+  }
+
+  /* Face ID SVG */
+  function biometricSVG() {
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS) {
+      /* Face ID icon */
+      return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+        '<path d="M7 2H4a2 2 0 0 0-2 2v3m18-5h-3m3 0v3m0 11v3a2 2 0 0 1-2 2h-3M2 17v3a2 2 0 0 0 2 2h3' +
+        'M9 8v2m6-2v2m-3 1v3h-1m-2 2a5 5 0 0 0 8 0"/>' +
+        '</svg>';
+    }
+    /* Fingerprint icon */
+    return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+      '<path d="M12 2a10 10 0 0 0-7.07 2.93M2 12a10 10 0 0 0 .93 4.24' +
+      'M12 2a10 10 0 0 1 7.07 2.93M22 12a10 10 0 0 1-.93 4.24' +
+      'M12 6a6 6 0 0 0-6 6c0 1.8.8 3.4 2 4.5M12 6a6 6 0 0 1 6 6c0 1.8-.8 3.4-2 4.5' +
+      'M12 10a2 2 0 0 0-2 2c0 2.2 1 4 2 5.5M12 10a2 2 0 0 1 2 2c0 2.2-1 4-2 5.5"/>' +
+      '</svg>';
+  }
+
+  function biometricLabel() {
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS) return 'Face ID';
+    if (/Android/i.test(navigator.userAgent)) return 'Отпечаток';
+    if (/Mac/i.test(navigator.platform)) return 'Touch ID';
+    return 'Биометрия';
+  }
+
+  /* ═══════════════════════════════════════════ */
+  /*  ТАЙМЕР НЕАКТИВНОСТИ                        */
+  /* ═══════════════════════════════════════════ */
+  function resetTimer() {
+    if (_locked) return;
+    if (isExemptPage()) return;
+    clearTimeout(_timer);
+    _timer = setTimeout(lock, IDLE_TIMEOUT);
+  }
+
+  function onActivity() {
+    if (_locked) return;
+    resetTimer();
+  }
+
+  function onMouseMove() {
+    var now = Date.now();
+    if (now - _lastMove < THROTTLE_MOVE) return;
+    _lastMove = now;
+    onActivity();
+  }
+
+  function onHashChange() {
+    if (_locked) return;
+    if (isExemptPage()) {
+      /* На exempt странице — останавливаем таймер */
+      clearTimeout(_timer);
+    } else {
+      resetTimer();
+    }
+  }
+
+  var EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+
+  function bindEvents() {
+    for (var i = 0; i < EVENTS.length; i++) {
+      window.addEventListener(EVENTS[i], onActivity, { passive: true });
+    }
+    window.addEventListener('mousemove', onMouseMove, { passive: true });
+    window.addEventListener('hashchange', onHashChange);
+  }
+
+  function unbindEvents() {
+    for (var i = 0; i < EVENTS.length; i++) {
+      window.removeEventListener(EVENTS[i], onActivity);
+    }
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('hashchange', onHashChange);
+  }
+
+
+  /* ═══════════════════════════════════════════ */
+  /*  ЭКРАН БЛОКИРОВКИ                           */
+  /* ═══════════════════════════════════════════ */
+  function buildOverlay() {
+    if (_overlay) return _overlay;
+
+    var el = document.createElement('div');
+    el.className = 'sg-overlay';
+    el.id = 'sg-overlay';
+
+    var logoSrc = getLogoSrc();
+    var bioBtn = _biometricAvailable
+      ? '<div class="sg-key biometric" data-action="biometric" role="button" aria-label="' + esc(biometricLabel()) + '">' + biometricSVG() + '</div>'
+      : '<div class="sg-key action" style="visibility:hidden"></div>';
+
+    el.innerHTML =
+      '<div class="sg-bg">' +
+        '<div class="sg-wave"></div>' +
+        '<div class="sg-wave"></div>' +
+        '<div class="sg-wave"></div>' +
+      '</div>' +
+      '<div class="sg-center">' +
+        '<div class="sg-logo"><img src="' + esc(logoSrc) + '" alt="ASGARD" onerror="this.style.display=\'none\'"/></div>' +
+        '<div class="sg-user" id="sg-user"></div>' +
+        '<div class="sg-dots" id="sg-dots">' +
+          '<div class="sg-dot"></div><div class="sg-dot"></div><div class="sg-dot"></div><div class="sg-dot"></div>' +
+        '</div>' +
+        '<div class="sg-hint" id="sg-hint">Введите ПИН-код</div>' +
+        '<div class="sg-keypad" id="sg-keypad">' +
+          '<div class="sg-key" data-digit="1">1</div>' +
+          '<div class="sg-key" data-digit="2">2</div>' +
+          '<div class="sg-key" data-digit="3">3</div>' +
+          '<div class="sg-key" data-digit="4">4</div>' +
+          '<div class="sg-key" data-digit="5">5</div>' +
+          '<div class="sg-key" data-digit="6">6</div>' +
+          '<div class="sg-key" data-digit="7">7</div>' +
+          '<div class="sg-key" data-digit="8">8</div>' +
+          '<div class="sg-key" data-digit="9">9</div>' +
+          '<div class="sg-key action" data-action="delete" aria-label="Удалить">' +
+            '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 18l6-6m-6 0l6 6M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' +
+          '</div>' +
+          '<div class="sg-key" data-digit="0">0</div>' +
+          bioBtn +
+        '</div>' +
+        '<button class="sg-logout" id="sg-logout">Выйти из аккаунта</button>' +
+      '</div>' +
+      '<div class="sg-splash" id="sg-splash">' +
+        '<div class="sg-splash-logo"><img src="' + esc(logoSrc) + '" alt="ASGARD" onerror="this.style.display=\'none\'"/></div>' +
+        '<div class="sg-spinner">' +
+          '<div class="sg-spinner-ring"></div>' +
+          '<div class="sg-spinner-ring"></div>' +
+          '<div class="sg-spinner-ring"></div>' +
+        '</div>' +
+        '<div class="sg-splash-quote" id="sg-splash-quote"></div>' +
+        '<div class="sg-splash-runes">\u16A0\u16A2\u16A6\u16A8\u16B1\u16B2\u16B7\u16B9\u16BA\u16BE\u16C1\u16C3\u16C7\u16C8\u16C9\u16CA\u16CF\u16D2\u16D6\u16D7\u16DA\u16DC\u16DE\u16DF</div>' +
+      '</div>';
+
+    document.body.appendChild(el);
+    _overlay = el;
+
+    /* События клавиатуры */
+    var keypad = el.querySelector('#sg-keypad');
+    keypad.addEventListener('click', function(e) {
+      var key = e.target.closest('.sg-key');
+      if (!key || _checking) return;
+
+      /* Ripple */
+      var ripple = document.createElement('span');
+      ripple.className = 'sg-ripple';
+      var rect = key.getBoundingClientRect();
+      var size = Math.max(rect.width, rect.height) * 2;
+      ripple.style.width = ripple.style.height = size + 'px';
+      ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+      ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+      key.appendChild(ripple);
+      setTimeout(function(){ ripple.remove(); }, 500);
+
+      var digit = key.getAttribute('data-digit');
+      var action = key.getAttribute('data-action');
+
+      if (digit !== null) {
+        vibrate(15);
+        addDigit(digit);
+      } else if (action === 'delete') {
+        vibrate(10);
+        removeDigit();
+      } else if (action === 'biometric') {
+        vibrate(15);
+        tryBiometric();
+      }
+    });
+
+    /* Touchstart для предотвращения задержки на iOS */
+    keypad.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      var touch = e.touches[0];
+      var el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (el) {
+        var clickEvt = new MouseEvent('click', {
+          bubbles: true,
+          clientX: touch.clientX,
+          clientY: touch.clientY
+        });
+        el.dispatchEvent(clickEvt);
+      }
+    }, { passive: false });
+
+    /* Клавиатура (физическая) */
+    el.addEventListener('keydown', function(e) {
+      if (_checking) return;
+      if (/^\d$/.test(e.key)) {
+        vibrate(15);
+        addDigit(e.key);
+      } else if (e.key === 'Backspace') {
+        vibrate(10);
+        removeDigit();
+      }
+    });
+
+    /* Выход */
+    el.querySelector('#sg-logout').addEventListener('click', function() {
+      doFullLogout();
+    });
+
+    return el;
+  }
+
+
+  /* ═══════════════════════════════════════════ */
+  /*  ПИН ЛОГИКА                                 */
+  /* ═══════════════════════════════════════════ */
+  function updateDots() {
+    if (!_overlay) return;
+    var dots = _overlay.querySelectorAll('.sg-dot');
+    for (var i = 0; i < dots.length; i++) {
+      dots[i].className = 'sg-dot' + (i < _pinDigits.length ? ' filled' : '');
+    }
+  }
+
+  function addDigit(d) {
+    if (_pinDigits.length >= PIN_LENGTH) return;
+    _pinDigits.push(d);
+    updateDots();
+
+    if (_pinDigits.length === PIN_LENGTH) {
+      submitPin();
+    }
+  }
+
+  function removeDigit() {
+    if (_pinDigits.length === 0) return;
+    _pinDigits.pop();
+    updateDots();
+  }
+
+  function clearPin() {
+    _pinDigits = [];
+    updateDots();
+  }
+
+  function setHint(text, isError) {
+    if (!_overlay) return;
+    var hint = _overlay.querySelector('#sg-hint');
+    hint.textContent = text;
+    hint.className = 'sg-hint' + (isError ? ' error' : '');
+  }
+
+  function setDotsState(state) {
+    if (!_overlay) return;
+    var dots = _overlay.querySelectorAll('.sg-dot');
+    for (var i = 0; i < dots.length; i++) {
+      dots[i].className = 'sg-dot ' + state;
+    }
+  }
+
+  async function submitPin() {
+    if (_checking) return;
+    _checking = true;
+
+    var pin = _pinDigits.join('');
+
+    try {
+      var auth = AsgardAuth.getAuth();
+      if (!auth || !auth.token) {
+        doFullLogout();
+        return;
+      }
+
+      var resp = await fetch('/api/auth/verify-pin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + auth.token
+        },
+        body: JSON.stringify({ userId: _userId, pin: pin })
+      });
+
+      var data = await resp.json();
+
+      if (!resp.ok) {
+        _attempts++;
+        vibrate(200);
+
+        /* Анимация ошибки */
+        setDotsState('error');
+        var dotsEl = _overlay.querySelector('#sg-dots');
+        dotsEl.classList.add('shake');
+
+        var remaining = MAX_ATTEMPTS - _attempts;
+        if (remaining <= 0) {
+          setHint('Превышено число попыток', true);
+          setTimeout(doFullLogout, 1000);
+          return;
+        }
+
+        setHint(
+          remaining <= 2
+            ? 'Неверный ПИН. Осталось попыток: ' + remaining
+            : 'Неверный ПИН-код',
+          true
+        );
+
+        setTimeout(function() {
+          dotsEl.classList.remove('shake');
+          clearPin();
+          _checking = false;
+        }, 600);
+        return;
+      }
+
+      /* Успех — обновляем токен */
+      if (data.token) localStorage.setItem('asgard_token', data.token);
+      if (data.user) {
+        localStorage.setItem('asgard_user', JSON.stringify(data.user));
+        if (data.user.permissions) localStorage.setItem('asgard_permissions', JSON.stringify(data.user.permissions));
+        if (data.user.menu_settings) localStorage.setItem('asgard_menu_settings', JSON.stringify(data.user.menu_settings));
+      }
+
+      /* Анимация успеха → сплэш */
+      setDotsState('success');
+      vibrate(30);
+
+      setTimeout(function() {
+        showSplash();
+      }, 400);
+
+    } catch(e) {
+      console.error('[SessionGuard] PIN error:', e);
+      setHint('Ошибка соединения', true);
+      setTimeout(function() {
+        clearPin();
+        _checking = false;
+      }, 1000);
+    }
+  }
+
+  async function tryBiometric() {
+    if (_checking) return;
+    if (!_biometricAvailable) return;
+    if (!window.AsgardWebAuthn || !AsgardWebAuthn.loginWithBiometric) return;
+
+    _checking = true;
+    setHint('Ожидание биометрии...');
+
+    try {
+      await AsgardWebAuthn.loginWithBiometric(_userLogin);
+
+      /* Успех */
+      setDotsState('success');
+      vibrate(30);
+      setTimeout(showSplash, 400);
+
+    } catch(e) {
+      console.warn('[SessionGuard] Biometric failed:', e);
+      setHint('Биометрия не удалась. Введите ПИН', true);
+      _checking = false;
+    }
+  }
+
+
+  /* ═══════════════════════════════════════════ */
+  /*  СПЛЭШ ЭКРАН                               */
+  /* ═══════════════════════════════════════════ */
+  function showSplash() {
+    if (!_overlay) return;
+
+    /* Скрываем клавиатуру */
+    var center = _overlay.querySelector('.sg-center');
+    center.style.transition = 'opacity .3s ease';
+    center.style.opacity = '0';
+
+    var splash = _overlay.querySelector('#sg-splash');
+    splash.querySelector('#sg-splash-quote').textContent = randomQuote();
+
+    setTimeout(function() {
+      center.style.display = 'none';
+      splash.classList.add('visible');
+    }, 300);
+
+    setTimeout(function() {
+      unlock();
+    }, SPLASH_DURATION);
+  }
+
+
+  /* ═══════════════════════════════════════════ */
+  /*  LOCK / UNLOCK                              */
+  /* ═══════════════════════════════════════════ */
+  function lock() {
+    if (_locked) return;
+    if (isExemptPage()) return;
+
+    /* Проверяем что пользователь залогинен */
+    var auth = AsgardAuth.getAuth();
+    if (!auth || !auth.user) return;
+
+    _locked = true;
+    _pinDigits = [];
+    _attempts = 0;
+    _checking = false;
+    _userId = auth.user.id;
+    _userName = auth.user.name || auth.user.login || '';
+    _userLogin = auth.user.login || localStorage.getItem('asgard_last_login') || '';
+
+    injectStyles();
+
+    /* Проверяем биометрию */
+    checkBiometric(function() {
+      var overlay = buildOverlay();
+
+      /* Обновляем имя */
+      overlay.querySelector('#sg-user').textContent = _userName;
+
+      /* Сбрасываем состояние */
+      clearPin();
+      setHint('Введите ПИН-код');
+
+      /* Показываем центр, скрываем сплэш */
+      var center = overlay.querySelector('.sg-center');
+      center.style.display = '';
+      center.style.opacity = '1';
+      overlay.querySelector('#sg-splash').classList.remove('visible');
+
+      /* Появление */
+      overlay.style.display = 'flex';
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          overlay.classList.add('visible');
+        });
+      });
+
+      /* Фокус для клавиатуры */
+      overlay.setAttribute('tabindex', '-1');
+      overlay.focus();
+
+      /* Автоматически предложить биометрию */
+      if (_biometricAvailable) {
+        setTimeout(function() {
+          tryBiometric();
+        }, 500);
+      }
+    });
+  }
+
+  function unlock() {
+    if (!_locked) return;
+    _locked = false;
+    _checking = false;
+    _pinDigits = [];
+    _attempts = 0;
+
+    /* Скрываем оверлей */
+    if (_overlay) {
+      _overlay.classList.remove('visible');
+      setTimeout(function() {
+        _overlay.style.display = 'none';
+        /* Сбрасываем сплэш */
+        var splash = _overlay.querySelector('#sg-splash');
+        if (splash) splash.classList.remove('visible');
+        var center = _overlay.querySelector('.sg-center');
+        if (center) {
+          center.style.display = '';
+          center.style.opacity = '1';
+        }
+      }, 400);
+    }
+
+    /* Перезапускаем таймер */
+    resetTimer();
+
+    /* Обновляем кэш auth (токен мог измениться) */
+    if (window.AsgardAuth && AsgardAuth.requireUser) {
+      AsgardAuth.requireUser();
+    }
+
+    /* Принудительно пере-рендерим текущую страницу.
+       location.reload() гарантирует чистое состояние:
+       sidebar (desktop) и m-app (mobile) рендерятся корректно.
+       dispatchEvent(hashchange) не работал надёжно — роутер
+       мог игнорировать событие если hash не менялся. */
+    setTimeout(function() {
+      location.reload();
+    }, 450);
+  }
+
+  function doFullLogout() {
+    _locked = false;
+    _checking = false;
+    destroy();
+    if (window.AsgardAuth && AsgardAuth.logout) {
+      AsgardAuth.logout();
+    }
+    if (window.AsgardUI && AsgardUI.toast) {
+      AsgardUI.toast('Сессия', 'Сессия завершена', 'info');
+    }
+    location.hash = '#/welcome';
+  }
+
+
+  /* ═══════════════════════════════════════════ */
+  /*  БИОМЕТРИЯ                                  */
+  /* ═══════════════════════════════════════════ */
+  function checkBiometric(cb) {
+    _biometricAvailable = false;
+
+    if (!window.AsgardWebAuthn || !AsgardWebAuthn.isSupported) {
+      cb();
+      return;
+    }
+
+    try {
+      var result = AsgardWebAuthn.isSupported();
+      if (result && typeof result.then === 'function') {
+        result.then(function(supported) {
+          _biometricAvailable = !!supported;
+          cb();
+        }).catch(function() { cb(); });
+      } else {
+        _biometricAvailable = !!result;
+        cb();
+      }
+    } catch(e) {
+      cb();
+    }
+  }
+
+
+  /* ═══════════════════════════════════════════ */
+  /*  ПУБЛИЧНЫЙ API                              */
+  /* ═══════════════════════════════════════════ */
+  function init() {
+    if (_initialized) return;
+
+    /* Проверяем что есть залогиненный пользователь */
+    var auth = AsgardAuth.getAuth();
+    if (!auth || !auth.user) return;
+
+    /* Проверяем что у пользователя есть ПИН (иначе нечем блокировать) */
+    var user = auth.user;
+    if (user.has_pin === false) {
+      /* У пользователя явно нет ПИН-кода — guard не активируем */
+      return;
+    }
+
+    _initialized = true;
+    _userId = user.id;
+    _userName = user.name || user.login || '';
+    _userLogin = user.login || '';
+
+    injectStyles();
+    bindEvents();
+    resetTimer();
+
+    console.log('[SessionGuard] Initialized, timeout: ' + (IDLE_TIMEOUT / 60000) + ' min');
+  }
+
+  function destroy() {
+    _initialized = false;
+    _locked = false;
+    _checking = false;
+    clearTimeout(_timer);
+    unbindEvents();
+
+    if (_overlay) {
+      _overlay.remove();
+      _overlay = null;
+    }
+  }
+
+
+  /* ═══════════════════════════════════════════ */
+  /*  ЭКСПОРТ (виртуальная клавиатура для auth)  */
+  /* ═══════════════════════════════════════════ */
+  /**
+   * Создаёт виртуальную ПИН-клавиатуру для встраивания в любой контейнер
+   * @param {HTMLElement} container — куда вставить
+   * @param {Object} opts — { onComplete(pin), onBiometric(), showBiometric, theme }
+   * @returns {{ clear(), destroy() }}
+   */
+  function createPinKeypad(container, opts) {
+    opts = opts || {};
+    var digits = [];
+    var checking = false;
+    var bioAvailable = opts.showBiometric || false;
+
+    injectStyles();
+
+    var bioBtn = bioAvailable
+      ? '<div class="sg-key biometric" data-action="biometric" role="button">' + biometricSVG() + '</div>'
+      : '<div class="sg-key action" style="visibility:hidden"></div>';
+
+    var html =
+      '<div class="sg-dots" id="pk-dots" style="margin-bottom:12px">' +
+        '<div class="sg-dot"></div><div class="sg-dot"></div><div class="sg-dot"></div><div class="sg-dot"></div>' +
+      '</div>' +
+      '<div class="sg-hint" id="pk-hint" style="margin-bottom:8px">Введите ПИН-код</div>' +
+      '<div class="sg-keypad" id="pk-keypad">' +
+        '<div class="sg-key" data-digit="1">1</div>' +
+        '<div class="sg-key" data-digit="2">2</div>' +
+        '<div class="sg-key" data-digit="3">3</div>' +
+        '<div class="sg-key" data-digit="4">4</div>' +
+        '<div class="sg-key" data-digit="5">5</div>' +
+        '<div class="sg-key" data-digit="6">6</div>' +
+        '<div class="sg-key" data-digit="7">7</div>' +
+        '<div class="sg-key" data-digit="8">8</div>' +
+        '<div class="sg-key" data-digit="9">9</div>' +
+        '<div class="sg-key action" data-action="delete">' +
+          '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 18l6-6m-6 0l6 6M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' +
+        '</div>' +
+        '<div class="sg-key" data-digit="0">0</div>' +
+        bioBtn +
+      '</div>';
+
+    container.innerHTML = html;
+
+    var dotsEl = container.querySelector('#pk-dots');
+    var hintEl = container.querySelector('#pk-hint');
+    var keypad = container.querySelector('#pk-keypad');
+
+    function updDots() {
+      var dots = dotsEl.querySelectorAll('.sg-dot');
+      for (var i = 0; i < dots.length; i++) {
+        dots[i].className = 'sg-dot' + (i < digits.length ? ' filled' : '');
+      }
+    }
+
+    function setDotsClass(cls) {
+      var dots = dotsEl.querySelectorAll('.sg-dot');
+      for (var i = 0; i < dots.length; i++) {
+        dots[i].className = 'sg-dot ' + cls;
+      }
+    }
+
+    keypad.addEventListener('click', function(e) {
+      var key = e.target.closest('.sg-key');
+      if (!key || checking) return;
+
+      var digit = key.getAttribute('data-digit');
+      var action = key.getAttribute('data-action');
+
+      if (digit !== null) {
+        vibrate(15);
+        if (digits.length < PIN_LENGTH) {
+          digits.push(digit);
+          updDots();
+          if (digits.length === PIN_LENGTH && opts.onComplete) {
+            checking = true;
+            opts.onComplete(digits.join(''), {
+              success: function() {
+                setDotsClass('success');
+                checking = false;
+              },
+              error: function(msg) {
+                vibrate(200);
+                setDotsClass('error');
+                dotsEl.classList.add('shake');
+                hintEl.textContent = msg || 'Неверный ПИН';
+                hintEl.className = 'sg-hint error';
+                setTimeout(function() {
+                  dotsEl.classList.remove('shake');
+                  digits = [];
+                  updDots();
+                  checking = false;
+                }, 600);
+              }
+            });
+          }
+        }
+      } else if (action === 'delete') {
+        vibrate(10);
+        digits.pop();
+        updDots();
+      } else if (action === 'biometric' && opts.onBiometric) {
+        vibrate(15);
+        opts.onBiometric();
+      }
+    });
+
+    keypad.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      var touch = e.touches[0];
+      var el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: touch.clientX, clientY: touch.clientY }));
+    }, { passive: false });
+
+    return {
+      clear: function() {
+        digits = [];
+        updDots();
+        hintEl.textContent = 'Введите ПИН-код';
+        hintEl.className = 'sg-hint';
+        checking = false;
+      },
+      setHint: function(text, isErr) {
+        hintEl.textContent = text;
+        hintEl.className = 'sg-hint' + (isErr ? ' error' : '');
+      },
+      destroy: function() {
+        container.innerHTML = '';
+      }
+    };
+  }
+
+
+  /* ═══════════════════════════════════════════ */
+  /*  ПУБЛИЧНЫЙ ЭКСПОРТ                          */
+  /* ═══════════════════════════════════════════ */
+  window.AsgardSessionGuard = {
+    init: init,
+    reset: resetTimer,
+    lock: lock,
+    unlock: unlock,
+    isLocked: function() { return _locked; },
+    destroy: destroy,
+    createPinKeypad: createPinKeypad
+  };
+
+})();

@@ -1,0 +1,1759 @@
+{
+  "timestamp": "2026-02-24T09:32:30.128Z",
+  "summary": {
+    "passed": 27,
+    "failed": 1,
+    "total": 28,
+    "totalSteps": 235,
+    "passedSteps": 234,
+    "failedSteps": 1
+  },
+  "results": [
+    {
+      "name": "Tender Lifecycle",
+      "steps": [
+        {
+          "name": "ADMIN creates tender",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM sees tender in tenders list",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "TO opens calculator",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HEAD_PM reviews tenders",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "DIRECTOR_GEN reviews tenders",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM views works list",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 140000
+    },
+    {
+      "name": "Work Management",
+      "steps": [
+        {
+          "name": "PM views works via #/pm-works",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM adds expense to work",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HEAD_PM sees work in #/works-all",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM changes work status",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 81680
+    },
+    {
+      "name": "Finance Pipeline",
+      "steps": [
+        {
+          "name": "BUH creates invoice via #/invoices",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "BUH creates act via #/acts",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "BUH navigates to payment section",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "DIRECTOR_GEN reviews finance pages",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 101826
+    },
+    {
+      "name": "Cash Workflow",
+      "steps": [
+        {
+          "name": "PM creates cash request via #/cash",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "HEAD_PM reviews cash requests",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "BUH processes cash request",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "DIRECTOR_GEN reviews cash requests",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "PM reports cash expenses",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "PM returns cash remainder",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 137044
+    },
+    {
+      "name": "HR Compliance",
+      "steps": [
+        {
+          "name": "HR creates employee via #/employees",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "HR creates permit via #/permits",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "HR creates staff plan",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "BUH views payroll page via #/payroll",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "PM creates bonus request",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 179707
+    },
+    {
+      "name": "Equipment & Warehouse",
+      "steps": [
+        {
+          "name": "WAREHOUSE creates equipment via #/warehouse",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "CHIEF_ENGINEER views engineer dashboard",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "PROC creates purchase request via #/purchases",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 73123
+    },
+    {
+      "name": "Communication",
+      "steps": [
+        {
+          "name": "PM creates task via #/tasks",
+          "status": "FAILED",
+          "error": "Invalid regular expression: /Создать|Добавить|Новая|Новый|Задач|задач|+|Внести|внести/i: Nothing to repeat"
+        }
+      ],
+      "status": "FAILED",
+      "duration": 19048
+    },
+    {
+      "name": "Admin Settings",
+      "steps": [
+        {
+          "name": "ADMIN navigates to settings",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "ADMIN manages users page",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "ADMIN verifies all menu items load",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 78760
+    },
+    {
+      "name": "TKP & Invoices CRUD + Approval",
+      "steps": [
+        {
+          "name": "PM creates TKP via #/tkp",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "BUH creates invoice via #/invoices",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "BUH generates invoice PDF",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "DIRECTOR_GEN reviews invoices",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "TO cannot create invoices (role restriction)",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "ADMIN views all TKP and invoices",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "BUH edits test invoice",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 193294
+    },
+    {
+      "name": "Pagination Controls",
+      "steps": [
+        {
+          "name": "ADMIN pagination on all table pages",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM pagination on all table pages",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "BUH pagination on all table pages",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "TO pagination on all table pages",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HR pagination on all table pages",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 889610
+    },
+    {
+      "name": "Tasks Archive",
+      "steps": [
+        {
+          "name": "ADMIN creates task via #/tasks",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM sees task in active list",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "ADMIN archives task manually",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "ADMIN verifies task in archive",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "ADMIN unarchives task",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "DIRECTOR_GEN views tasks and archive",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "TO cannot archive tasks they do not own",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "Auto-archive: create and complete a task",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 284464
+    },
+    {
+      "name": "Permits & Compliance",
+      "steps": [
+        {
+          "name": "HR creates employee for permit testing",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HR creates permit via #/permits",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HEAD_PM reviews permits",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "ADMIN validates full permits access",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "CHIEF_ENGINEER checks compliance overview",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "DIRECTOR_GEN views permits overview",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM views permits relevant to projects",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "TO views own permits",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "BUH views permit costs/budget",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HR edits test permit",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HR tests expiry date validation",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 359172
+    },
+    {
+      "name": "Training Applications",
+      "steps": [
+        {
+          "name": "HR accesses training management",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HR creates training application",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "PM creates training application for team",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HEAD_PM approves training application",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "DIRECTOR_GEN approves training budget",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "BUH confirms training payment",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "HR marks training as completed",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "TO views own training history",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "ADMIN views all training reports",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        },
+        {
+          "name": "WAREHOUSE has no training access (role restriction)",
+          "status": "PASSED",
+          "error": null,
+          "screenshot": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 217209
+    },
+    {
+      "name": "14-tender-full-lifecycle: Full Tender Lifecycle (Multi-Role)",
+      "steps": [
+        {
+          "name": "TO creates tender in #/tenders",
+          "status": "PASSED",
+          "error": null,
+          "duration": 32828,
+          "detail": "Tender created: TEST_AUTO_Tender_1771921765905_127"
+        },
+        {
+          "name": "TO adds estimate to the tender",
+          "status": "PASSED",
+          "error": null,
+          "duration": 21820,
+          "detail": "Tender detail checked, no estimate button (OK - estimates done via API)"
+        },
+        {
+          "name": "HEAD_TO reviews tender",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20500,
+          "detail": "HEAD_TO sees tenders page. Test tender visible: true"
+        },
+        {
+          "name": "PM views tender calculations",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24078,
+          "detail": "PM calcs page loaded, content length: 845"
+        },
+        {
+          "name": "PM creates work from tender",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24767,
+          "detail": "Work created: TEST_AUTO_Work_1771921765905_128"
+        },
+        {
+          "name": "HEAD_PM reviews and approves work",
+          "status": "PASSED",
+          "error": null,
+          "duration": 30263,
+          "detail": "HEAD_PM checked approvals and all-works. Test work visible: true, no approve button (OK - no pending approvals)"
+        },
+        {
+          "name": "DIRECTOR_GEN overview verification",
+          "status": "PASSED",
+          "error": null,
+          "duration": 29392,
+          "detail": "DIRECTOR_GEN: works visible=false, tenders visible=false"
+        },
+        {
+          "name": "DIRECTOR_COMM monitors tender pipeline",
+          "status": "PASSED",
+          "error": null,
+          "duration": 29403,
+          "detail": "DIRECTOR_COMM: tenders visible=false, checked funnel and all-works"
+        },
+        {
+          "name": "BUH verifies financial records",
+          "status": "PASSED",
+          "error": null,
+          "duration": 28827,
+          "detail": "BUH checked finances, invoices, and acts pages"
+        },
+        {
+          "name": "ADMIN verifies full visibility",
+          "status": "PASSED",
+          "error": null,
+          "duration": 23783,
+          "detail": "ADMIN: tenders=false, works=false"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 265661
+    },
+    {
+      "name": "15-cash-cross-role: Cash Workflow Cross-Role",
+      "steps": [
+        {
+          "name": "PM creates cash request",
+          "status": "PASSED",
+          "error": null,
+          "duration": 27046,
+          "detail": "Cash request created with purpose: TEST_AUTO_Cash_1771922031567_144"
+        },
+        {
+          "name": "HEAD_PM approves cash request",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24538,
+          "detail": "HEAD_PM review complete. Request found: true"
+        },
+        {
+          "name": "BUH processes cash request",
+          "status": "PASSED",
+          "error": null,
+          "duration": 29777,
+          "detail": "BUH processed cash (found=true), finances page loaded (554 chars)"
+        },
+        {
+          "name": "DIRECTOR_GEN final approval",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24036,
+          "detail": "DIRECTOR_GEN final approval done. Found request: false"
+        },
+        {
+          "name": "PM checks expense report",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19259,
+          "detail": "PM cash page loaded. Own requests visible: false"
+        },
+        {
+          "name": "BUH creates invoice",
+          "status": "PASSED",
+          "error": null,
+          "duration": 27809,
+          "detail": "Invoice created successfully by BUH"
+        },
+        {
+          "name": "BUH creates act",
+          "status": "PASSED",
+          "error": null,
+          "duration": 29287,
+          "detail": "Act created successfully by BUH"
+        },
+        {
+          "name": "DIRECTOR_GEN reviews finances overview",
+          "status": "PASSED",
+          "error": null,
+          "duration": 29322,
+          "detail": "DIRECTOR_GEN reviewed: finances(564 chars), invoices(1999 chars), acts(395 chars)"
+        },
+        {
+          "name": "OFFICE_MANAGER views office expenses",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20665,
+          "detail": "OFFICE_MANAGER expenses page loaded. Content: 2173 chars. Create button: true"
+        },
+        {
+          "name": "WAREHOUSE restricted from cash",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19611,
+          "detail": "WAREHOUSE cash access: redirected=true, accessDenied=false, minContent=false, createBtn=false, restricted=true"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 251350
+    },
+    {
+      "name": "16-hr-permits-flow: HR & Permits Full Flow",
+      "steps": [
+        {
+          "name": "HR creates new employee",
+          "status": "PASSED",
+          "error": null,
+          "duration": 28283,
+          "detail": "Employee created: TEST_AUTO_Employee_1771922282919_165"
+        },
+        {
+          "name": "HR verifies employee in list",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20933,
+          "detail": "Employee in personnel list: false"
+        },
+        {
+          "name": "HR creates permit application",
+          "status": "PASSED",
+          "error": null,
+          "duration": 84969,
+          "detail": "Permit application created"
+        },
+        {
+          "name": "HR adds employee to permit via modal",
+          "status": "PASSED",
+          "error": null,
+          "duration": 25421,
+          "detail": "Add employee button clicked. Modal appeared: true"
+        },
+        {
+          "name": "DIRECTOR_GEN reviews permits",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24069,
+          "detail": "DIRECTOR_GEN checked permits (3000 chars) and permit-applications (582 chars)"
+        },
+        {
+          "name": "ADMIN views personnel and permits",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24058,
+          "detail": "ADMIN: personnel employee visible=false, permits loaded"
+        },
+        {
+          "name": "PM views permits",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19207,
+          "detail": "PM permits page: 3000 chars content"
+        },
+        {
+          "name": "TO restricted from personnel management",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18842,
+          "detail": "TO personnel access: content=1304 chars, create=true (expected: restricted)"
+        },
+        {
+          "name": "HR creates payroll entry",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18964,
+          "detail": "Payroll page loaded (2000 chars). No create button (may be view-only)"
+        },
+        {
+          "name": "BUH reviews payroll data",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24056,
+          "detail": "BUH payroll (3000 chars), buh-registry (897 chars)"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 288804
+    },
+    {
+      "name": "17-work-multi-role: Multi-Role Work Management",
+      "steps": [
+        {
+          "name": "PM creates new work",
+          "status": "PASSED",
+          "error": null,
+          "duration": 25186,
+          "detail": "Work created: TEST_AUTO_Work_1771922571723_175"
+        },
+        {
+          "name": "PM verifies work in list",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19090,
+          "detail": "PM sees work in list: false"
+        },
+        {
+          "name": "TO views all-works and adds expense",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19088,
+          "detail": "TO tenders page loaded. No TEST_AUTO_ items found."
+        },
+        {
+          "name": "HEAD_PM reviews all works",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24226,
+          "detail": "HEAD_PM: all-works has TEST_AUTO_=true, approvals loaded (1006 chars)"
+        },
+        {
+          "name": "HEAD_TO reviews tenders and works",
+          "status": "PASSED",
+          "error": null,
+          "duration": 23946,
+          "detail": "HEAD_TO: tenders (1277), funnel (1277)"
+        },
+        {
+          "name": "DIRECTOR_DEV reviews works overview",
+          "status": "PASSED",
+          "error": null,
+          "duration": 28817,
+          "detail": "DIRECTOR_DEV: pm-works (2178), tenders (2581)"
+        },
+        {
+          "name": "PM views PM analytics",
+          "status": "PASSED",
+          "error": null,
+          "duration": 23965,
+          "detail": "PM analytics (1301 chars), gantt (984 chars)"
+        },
+        {
+          "name": "TO views TO analytics",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24138,
+          "detail": "TO analytics (1172 chars), funnel (2000 chars)"
+        },
+        {
+          "name": "PROC restricted from work creation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18907,
+          "detail": "PROC pm-works: content=745, create=false (expected: no create)"
+        },
+        {
+          "name": "CHIEF_ENGINEER views work data",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24028,
+          "detail": "CHIEF_ENGINEER: dashboard (686), schedule (889)"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 231392
+    },
+    {
+      "name": "18-equipment-procurement: Equipment & Procurement Flow",
+      "steps": [
+        {
+          "name": "WAREHOUSE creates equipment item",
+          "status": "PASSED",
+          "error": null,
+          "duration": 29508,
+          "detail": "Equipment created: TEST_AUTO_Equipment_1771922803115_180"
+        },
+        {
+          "name": "WAREHOUSE verifies equipment in list",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19049,
+          "detail": "Equipment in warehouse list: true"
+        },
+        {
+          "name": "CHIEF_ENGINEER views equipment",
+          "status": "PASSED",
+          "error": null,
+          "duration": 28985,
+          "detail": "CHIEF_ENGINEER: warehouse=5000, my-equipment=887, dashboard=686"
+        },
+        {
+          "name": "PROC creates purchase request",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19148,
+          "detail": "Purchase request created: TEST_AUTO_Purchase_1771922803115_181"
+        },
+        {
+          "name": "PROC verifies purchase request in list",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19028,
+          "detail": "Purchase request in list: false"
+        },
+        {
+          "name": "DIRECTOR_GEN reviews purchase requests",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18828,
+          "detail": "DIRECTOR_GEN proc-requests: found=false"
+        },
+        {
+          "name": "BUH views procurement in finances",
+          "status": "PASSED",
+          "error": null,
+          "duration": 23890,
+          "detail": "BUH: finances=554, proc-requests=1059"
+        },
+        {
+          "name": "PM restricted from warehouse management",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18790,
+          "detail": "PM warehouse: content=12238, create=false"
+        },
+        {
+          "name": "OFFICE_MANAGER manages office expenses",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20066,
+          "detail": "OFFICE_MANAGER office-expenses: content=2173, create=true"
+        },
+        {
+          "name": "ADMIN verifies full equipment visibility",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24010,
+          "detail": "ADMIN: warehouse equip=true, proc requests=false"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 221302
+    },
+    {
+      "name": "19-contracts-correspondence: Contracts & Correspondence",
+      "steps": [
+        {
+          "name": "PM creates correspondence",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20143,
+          "detail": "Correspondence page loaded (1585 chars), no create button"
+        },
+        {
+          "name": "DIRECTOR_COMM views correspondence",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18811,
+          "detail": "DIRECTOR_COMM correspondence: 2762 chars"
+        },
+        {
+          "name": "OFFICE_MANAGER creates proxy document",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19923,
+          "detail": "Proxies page loaded (1281 chars)"
+        },
+        {
+          "name": "ADMIN manages travel requests",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20009,
+          "detail": "Travel page loaded (946 chars)"
+        },
+        {
+          "name": "PM creates user request",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20092,
+          "detail": "User-requests page loaded (1580 chars)"
+        },
+        {
+          "name": "DIRECTOR_GEN views dashboard and big-screen",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24394,
+          "detail": "Dashboard=949, big-screen=619"
+        },
+        {
+          "name": "HR views birthdays and HR rating",
+          "status": "PASSED",
+          "error": null,
+          "duration": 23509,
+          "detail": "Birthdays=399, HR-rating=1276"
+        },
+        {
+          "name": "TO accesses messenger and chat",
+          "status": "PASSED",
+          "error": null,
+          "duration": 23965,
+          "detail": "Chat=398, messenger=398"
+        },
+        {
+          "name": "ADMIN views notifications",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19306,
+          "detail": "Alerts page: 3000 chars"
+        },
+        {
+          "name": "WAREHOUSE restricted from correspondence",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18848,
+          "detail": "WAREHOUSE correspondence: content=735, create=false"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 209000
+    },
+    {
+      "name": "20-tasks-calendar-meetings: Tasks, Calendar & Meetings",
+      "steps": [
+        {
+          "name": "PM creates task",
+          "status": "PASSED",
+          "error": null,
+          "duration": 25644,
+          "detail": "Task created"
+        },
+        {
+          "name": "TO views tasks list",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18819,
+          "detail": "TO tasks page: 378 chars, has TEST_AUTO_: false"
+        },
+        {
+          "name": "ADMIN creates and manages tasks",
+          "status": "PASSED",
+          "error": null,
+          "duration": 25194,
+          "detail": "ADMIN tasks-admin (2027 chars), created task: false"
+        },
+        {
+          "name": "HEAD_PM views tasks",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18993,
+          "detail": "HEAD_PM tasks: 997 chars"
+        },
+        {
+          "name": "PM uses calculator",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18787,
+          "detail": "Calculator page: 1156 chars, inputs: 1"
+        },
+        {
+          "name": "DIRECTOR_GEN views Gantt chart",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19355,
+          "detail": "Gantt page: 3000 chars, gantt elements: 2"
+        },
+        {
+          "name": "HR views worker schedule",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18874,
+          "detail": "Workers schedule: 3000 chars"
+        },
+        {
+          "name": "OFFICE_MANAGER creates task",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20050,
+          "detail": "Tasks page loaded, no create button"
+        },
+        {
+          "name": "DIRECTOR_COMM views KPI works",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24159,
+          "detail": "DIRECTOR_COMM home=1356, all-works=2081"
+        },
+        {
+          "name": "PROC views own tasks",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19035,
+          "detail": "PROC tasks: 372 chars, create=true"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 208910
+    },
+    {
+      "name": "21-director-reports: Director Reports & Full Overview",
+      "steps": [
+        {
+          "name": "DIRECTOR_GEN full overview",
+          "status": "PASSED",
+          "error": null,
+          "duration": 38416,
+          "detail": "#/home=1000 OK, #/tenders=1000 OK, #/all-works=1000 OK, #/finances=564 OK, #/dashboard=949 OK"
+        },
+        {
+          "name": "DIRECTOR_GEN reviews cash and approvals",
+          "status": "PASSED",
+          "error": null,
+          "duration": 29090,
+          "detail": "Cash=425, approvals=844, invoices=1999"
+        },
+        {
+          "name": "DIRECTOR_COMM full overview",
+          "status": "PASSED",
+          "error": null,
+          "duration": 38798,
+          "detail": "#/home=1000 OK, #/tenders=1000 OK, #/all-works=1000 OK, #/finances=564 OK, #/funnel=1000 OK"
+        },
+        {
+          "name": "DIRECTOR_DEV full overview",
+          "status": "PASSED",
+          "error": null,
+          "duration": 33513,
+          "detail": "#/home=1000 OK, #/tenders=1000 OK, #/pm-works=1000 OK, #/finances=564 OK"
+        },
+        {
+          "name": "Directors view personnel section",
+          "status": "PASSED",
+          "error": null,
+          "duration": 46701,
+          "detail": "Personnel access: DIRECTOR_GEN=1314, DIRECTOR_COMM=1314, DIRECTOR_DEV=1314"
+        },
+        {
+          "name": "DIRECTOR_GEN views permits and procurement",
+          "status": "PASSED",
+          "error": null,
+          "duration": 28490,
+          "detail": "Permits=2000, proc=1062, warehouse=2000"
+        },
+        {
+          "name": "ADMIN settings and user management",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19004,
+          "detail": "Settings=3000 chars, menu items=70"
+        },
+        {
+          "name": "Compare menu items across roles",
+          "status": "PASSED",
+          "error": null,
+          "duration": 91507,
+          "detail": "Menu items: ADMIN=70, DIRECTOR_GEN=70, DIRECTOR_COMM=70, DIRECTOR_DEV=70, HEAD_PM=70, HEAD_TO=70, PM=70, TO=70, HR=70, BUH=70"
+        },
+        {
+          "name": "DIRECTOR_GEN big-screen presentation mode",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19536,
+          "detail": "Big-screen: 619 chars, chart elements: 2"
+        },
+        {
+          "name": "All 14 roles can login and load home",
+          "status": "PASSED",
+          "error": null,
+          "duration": 124534,
+          "detail": "All 14/14 roles logged in successfully"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 469589
+    },
+    {
+      "name": "22-pretender-approval-workflow",
+      "steps": [
+        {
+          "name": "TO verifies pre-tenders page loads with existing items",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18938,
+          "note": "Pre-tenders page loaded. Content length: 641, items found: 25"
+        },
+        {
+          "name": "TO accepts pre-tender → pending_approval status",
+          "status": "PASSED",
+          "error": null,
+          "duration": 22831,
+          "note": "Pending approval check: true"
+        },
+        {
+          "name": "API: TO accept returns pending_approval",
+          "status": "PASSED",
+          "error": null,
+          "duration": 225,
+          "note": "No test pre-tender found via API"
+        },
+        {
+          "name": "DIRECTOR_GEN approves pending pre-tender",
+          "status": "PASSED",
+          "error": null,
+          "duration": 0,
+          "note": "No pending pre-tender to approve, skipping"
+        },
+        {
+          "name": "DIRECTOR_GEN sees approval controls in UI",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18235,
+          "note": "Page loaded, approve buttons found: 0, total visible buttons: 21"
+        },
+        {
+          "name": "PM cannot approve pre-tenders (access control)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 175,
+          "note": "PM correctly denied access to pre-tenders"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 60404
+    },
+    {
+      "name": "23-invoice-auto-numbering",
+      "steps": [
+        {
+          "name": "API: Create invoice without number → auto СЧ-ГГГГ-NNN",
+          "status": "PASSED",
+          "error": null,
+          "duration": 159,
+          "note": "Auto-number generated: СЧ-2026-007 ✓"
+        },
+        {
+          "name": "API: Second invoice gets incremented number",
+          "status": "PASSED",
+          "error": null,
+          "duration": 3,
+          "note": "Second number: СЧ-2026-008 → correctly incremented ✓"
+        },
+        {
+          "name": "API: Invoice with explicit number keeps it",
+          "status": "PASSED",
+          "error": null,
+          "duration": 3,
+          "note": "Explicit number preserved: TEST_AUTO_INV-1771923972485_200 ✓"
+        },
+        {
+          "name": "UI: BUH creates invoice, sees auto-number placeholder",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20876,
+          "note": "Number field: {\"placeholder\":\"\",\"value\":\"\"}, form fields: 7, modal buttons: ⛨, Закрыть, Отмена, Создать"
+        },
+        {
+          "name": "UI: Invoices list displays auto-numbered invoices",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18227,
+          "note": "Has auto-numbered invoices (СЧ-2026): true, table rows: 24"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 39268
+    },
+    {
+      "name": "24-pdf-templates",
+      "steps": [
+        {
+          "name": "API: Company profile has required fields",
+          "status": "PASSED",
+          "error": null,
+          "duration": 165,
+          "note": "Company profile fields present: 0/7: "
+        },
+        {
+          "name": "API: Create TKP for PDF generation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 6,
+          "note": "TKP created: id=undefined"
+        },
+        {
+          "name": "API: Generate TKP PDF",
+          "status": "PASSED",
+          "error": null,
+          "duration": 0,
+          "note": "No TKP id, skipping PDF generation"
+        },
+        {
+          "name": "API: Generate Invoice PDF",
+          "status": "PASSED",
+          "error": null,
+          "duration": 2069,
+          "note": "Invoice PDF generated, content-type: application/pdf, is PDF: true, size: 57941 bytes"
+        },
+        {
+          "name": "UI: TKP detail has PDF download button",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19952,
+          "note": "PDF buttons found: 0, all buttons: [🔍Поиск⌘K, , 🔔\n      Уведомления\n      334, + Создать ТКП, 📨, 📄, ✏️, 📨, 📄, ✏️, 📨, 📄, ✏️, 📨, 📄, ✏️, 📨, 📄, ✏️, 📨, 📄, ✏️]"
+        },
+        {
+          "name": "UI: Invoice detail has PDF download button",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20320,
+          "note": "PDF buttons found: 0, all buttons: [🔍Поиск⌘K, , 🔔\n      Уведомления\n      37, ➕ Новый счёт, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰]"
+        },
+        {
+          "name": "API: PDF HTML contains company details",
+          "status": "PASSED",
+          "error": null,
+          "duration": 0,
+          "note": "No TKP id for HTML check"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 42512
+    },
+    {
+      "name": "25-pagination-all-pages",
+      "steps": [
+        {
+          "name": "Тендеры (tenders): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18227,
+          "note": "pagination containers: 2, page-size selects: 0, page buttons: 10, showing text: Показано: 74 из 328, JS loaded: true, table rows: 20, page buttons: 58"
+        },
+        {
+          "name": "Предтендеры (pre-tenders): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18242,
+          "note": "pagination containers: 0, page-size selects: 0, page buttons: 0, showing text: none, JS loaded: true, table rows: 0, page buttons: 20"
+        },
+        {
+          "name": "Все работы (all-works): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18261,
+          "note": "pagination containers: 2, page-size selects: 0, page buttons: 4, showing text: Показано: 10 из 155, JS loaded: true, table rows: 10, page buttons: 36"
+        },
+        {
+          "name": "Все сметы (all-estimates): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18275,
+          "note": "pagination containers: 2, page-size selects: 0, page buttons: 4, showing text: Показано: 15 из 25, JS loaded: true, table rows: 15, page buttons: 56"
+        },
+        {
+          "name": "Заказчики (customers): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18274,
+          "note": "pagination containers: 2, page-size selects: 0, page buttons: 10, showing text: none, JS loaded: true, table rows: 20, page buttons: 27"
+        },
+        {
+          "name": "ТКП (tkp): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18222,
+          "note": "pagination containers: 0, page-size selects: 0, page buttons: 0, showing text: none, JS loaded: true, table rows: 17, page buttons: 68"
+        },
+        {
+          "name": "Счета (invoices): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18948,
+          "note": "pagination containers: 0, page-size selects: 0, page buttons: 0, showing text: none, JS loaded: true, table rows: 24, page buttons: 62"
+        },
+        {
+          "name": "Персонал (personnel): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18238,
+          "note": "pagination containers: 2, page-size selects: 0, page buttons: 10, showing text: none, JS loaded: true, table rows: 439, page buttons: 45"
+        },
+        {
+          "name": "Кадровые заявки (hr-requests): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18242,
+          "note": "pagination containers: 2, page-size selects: 0, page buttons: 4, showing text: Показано: 0 из 0, JS loaded: true, table rows: 0, page buttons: 19"
+        },
+        {
+          "name": "Заявки снабжения (proc-requests): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18260,
+          "note": "pagination containers: 2, page-size selects: 0, page buttons: 4, showing text: Показано: 0 из 0, JS loaded: true, table rows: 0, page buttons: 23"
+        },
+        {
+          "name": "Корреспонденция (correspondence): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18246,
+          "note": "pagination containers: 2, page-size selects: 0, page buttons: 8, showing text: Показано: 20 из 39, JS loaded: true, table rows: 20, page buttons: 66"
+        },
+        {
+          "name": "Задачи (tasks): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18301,
+          "note": "pagination containers: 0, page-size selects: 0, page buttons: 0, showing text: none, JS loaded: true, table rows: 0, page buttons: 41"
+        },
+        {
+          "name": "Касса (cash): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18226,
+          "note": "pagination containers: 0, page-size selects: 0, page buttons: 0, showing text: none, JS loaded: true, table rows: 0, page buttons: 20"
+        },
+        {
+          "name": "Допуски (permissions): pagination controls present",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18227,
+          "note": "pagination containers: 0, page-size selects: 0, page buttons: 0, showing text: none, JS loaded: true, table rows: 66, page buttons: 33"
+        },
+        {
+          "name": "Tenders: change page size (10→20→50)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18256,
+          "note": "No page size selector found"
+        },
+        {
+          "name": "Tenders: navigate between pages",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20537,
+          "note": "Page 2 loaded, rows: 20, back to page 1: 10 rows"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 294982
+    },
+    {
+      "name": "26-dadata-autocomplete",
+      "steps": [
+        {
+          "name": "API: DaData suggest by INN",
+          "status": "PASSED",
+          "error": null,
+          "duration": 16,
+          "note": "DaData suggest API: 404 {\"error\":\"Контрагент не найден\"}"
+        },
+        {
+          "name": "API: DaData suggest by company name",
+          "status": "PASSED",
+          "error": null,
+          "duration": 3,
+          "note": "Name suggest API: 404"
+        },
+        {
+          "name": "API: DaData lookup by INN",
+          "status": "PASSED",
+          "error": null,
+          "duration": 114,
+          "note": "Lookup returned: {\"found\":true,\"suggestion\":{\"inn\":\"7707083893\",\"name\":\"ПАО СБЕРБАНК\",\"full_name\":\"ПУБЛИЧНОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО \\\"СБЕРБАНК РОССИИ\\\"\",\"kpp\":\"773601001\",\"ogrn\":\"1027700132195\",\"address\":\"117312, г Моск"
+        },
+        {
+          "name": "UI: Customer form INN field has autocomplete",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19845,
+          "note": "Modal did not open"
+        },
+        {
+          "name": "UI: TKP form has customer autocomplete",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20928,
+          "note": "TKP form fields: 8 - tkpTitle, tkpCustomer, tkpEmail, tkpType, tkpSum, tkpDeadline, tkpValidity, tkpServices, buttons: ⛨, Закрыть, Создать"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 40906
+    },
+    {
+      "name": "27-dashboard-widgets",
+      "steps": [
+        {
+          "name": "ADMIN: Dashboard loads with widgets",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20307,
+          "note": "Dashboard widgets: cards=41, charts=0, tables=2"
+        },
+        {
+          "name": "ADMIN: Custom Dashboard loads",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19253,
+          "note": "Dashboard loaded: true, funnel: true, KPI: true, buttons: 16 [🏠\n            Главная\n       , 📋\n            Тендеры\n       , ⚒️\n            Работы\n        , 💰\n            Финансы\n       , 📦\n            Ресурсы\n       , 👥\n            Персонал\n      , 💬\n            Коммуникации\n  , 📊\n            Аналитика\n     , ⚙️\n            Система\n       , 🔍]"
+        },
+        {
+          "name": "Tenders funnel shows current year data",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19278,
+          "note": "Year 2026 in dashboard: true"
+        },
+        {
+          "name": "ADMIN: Big Screen mode loads",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19224,
+          "note": "Big Screen loaded: true, cards: 9, charts: 2"
+        },
+        {
+          "name": "DIRECTOR_GEN: Dashboard access",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20706,
+          "note": "Content length: 11301, menu items: 46"
+        },
+        {
+          "name": "PM: Dashboard access",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20248,
+          "note": "Content length: 9306, menu items: 25"
+        },
+        {
+          "name": "TO: Dashboard access",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20262,
+          "note": "Content length: 8247, menu items: 15"
+        },
+        {
+          "name": "BUH: Dashboard access",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20241,
+          "note": "Content length: 8171, menu items: 15"
+        },
+        {
+          "name": "HR: Dashboard access",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20251,
+          "note": "Content length: 11220, menu items: 16"
+        },
+        {
+          "name": "ADMIN: KPI pages load",
+          "status": "PASSED",
+          "error": null,
+          "duration": 23247,
+          "note": "KPI-money: loaded, KPI-works: loaded"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 203017
+    },
+    {
+      "name": "28-all-buttons-modals",
+      "steps": [
+        {
+          "name": "ADMIN: Menu items and page navigation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 53463,
+          "note": "Menu items: 68 - Дашборд руководителяСводная аналитика, Мой дашбордНастраиваемые виджеты, Большой ЭкранАвто-ротация KPI для монитора, Календарь встречСовещания и события, Дни рожденияОфисный календарь ДР, Мои задачиЗадачи и Todo-список, ЗаявкиПредварительные заявки (AI), Воронка продажКанбан тендеров, Сага ТендеровРеестр тендеров, Карта КонтрагентовСправочник организаций, Просчёты (inbox)Входящие от ТО, Калькулятор ᚱРасчёт стоимости работ, СогласованиеРешения Ярла, Согласование премийПремии рабочим, Мои работы (РП)Проекты РП, Свод КонтрактовВсе работы, Свод РасчётовВсе просчёты, Гантт: ПросчётыПересечения по срокам, Гантт: РаботыПлан и факты, Управление задачамиКонтроль задач, Канбан-доскаВизуальное управление задачами, ФинансыАналитика и реестр, Счета и оплатыВыставление и отслеживание, АктыАкты выполненных работ, Реестр расходовБухгалтерский реестр, Офисные расходыУправление и согласование, КассаАвансовые отчёты, Касса (управление)Согласование и контроль, Расчёты с рабочимиВедомости и выплаты, СамозанятыеРеестр СЗ и договора, Разовые оплатыТакси, топливо, разовые, ТКПКоммерческие предложения, Заявки на пропускОформление пропусков, Заявки на ТМЦЗакупка материалов, Склад ТМЦОборудование и инструменты, Моё оборудованиеВыданное мне, КорреспонденцияВходящие и исходящие, Реестр договоровДоговора поставщиков, Реестр печатейУчёт и передача, Доверенности7 шаблонов документов, Заявки закупокЗакупки, ДружинаСотрудники, Заявки персоналаHR-заявки, Разрешения и допускиСроки действия, матрица, Заявки на оформлениеРеестры разрешений подрядчикам, ОбучениеЗаявки на обучение, График: ОфисСтатусы по дням, График: РабочиеБронь и доступность, Рейтинг ДружиныОценки и средний балл, Жильё и билетыПроживание и транспорт, ХугиннВороний Вестник — чаты, СовещанияПланирование и протоколы, УведомленияВоронья почта, TelegramУведомления и SMS, ТелефонияМанго Телеком, Почта и заявкиВходящие / исходящие + AI-анализ, Настройки почтыАккаунты, правила, шаблоны, ИнтеграцииБанк/1С, Тендерные площадки, ERP, Аналитика ЯрлаKPI работ и денег, Заявки пользователейОдобрение регистраций, Хроники Тендерного ОтделаKPI тендерных специалисто, Хроники Руководителей ПроектовKPI и загрузка РП, Кузница ИнженераСклад, оборудование, ТО, Карта объектовГеография работ, НастройкиСправочники и цвета, Резервные копииЭкспорт/импорт базы, PostgreSQL SyncСинхронизация с сервером, ДиагностикаВерсия, база, self-test\nPages checked: 8\n  Дашборд руководителяСводная аналитика: 17 btns [🏠\n            Главная\n            7\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            11\n            ▾, 💰\n            Финансы\n            10\n            , 📦\n            Ресурсы\n            10\n            ]\n  Мой дашбордНастраиваемые виджеты: 40 btns [🏠\n            Главная\n            7\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            11\n            ▾, 💰\n            Финансы\n            10\n            , 📦\n            Ресурсы\n            10\n            ]\n  Большой ЭкранАвто-ротация KPI для монитора: 18 btns [🏠\n            Главная\n            7\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            11\n            ▾, 💰\n            Финансы\n            10\n            , 📦\n            Ресурсы\n            10\n            ]\n  Календарь встречСовещания и события: 21 btns [🏠\n            Главная\n            7\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            11\n            ▾, 💰\n            Финансы\n            10\n            , 📦\n            Ресурсы\n            10\n            ]\n  Дни рожденияОфисный календарь ДР: 19 btns [🏠\n            Главная\n            7\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            11\n            ▾, 💰\n            Финансы\n            10\n            , 📦\n            Ресурсы\n            10\n            ]\n  Мои задачиЗадачи и Todo-список: 42 btns [🏠\n            Главная\n            7\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            11\n            ▾, 💰\n            Финансы\n            10\n            , 📦\n            Ресурсы\n            10\n            ]\n  ЗаявкиПредварительные заявки (AI): 21 btns [🏠\n            Главная\n            7\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            11\n            ▾, 💰\n            Финансы\n            10\n            , 📦\n            Ресурсы\n            10\n            ]\n  Воронка продажКанбан тендеров: 17 btns [🏠\n            Главная\n            7\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            11\n            ▾, 💰\n            Финансы\n            10\n            , 📦\n            Ресурсы\n            10\n            ]"
+        },
+        {
+          "name": "DIRECTOR_GEN: Menu items and page navigation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 53372,
+          "note": "Menu items: 46 - Дашборд руководителяСводная аналитика, Мой дашбордНастраиваемые виджеты, Календарь встречСовещания и события, Дни рожденияОфисный календарь ДР, Мои задачиЗадачи и Todo-список, ЗаявкиПредварительные заявки (AI), Воронка продажКанбан тендеров, Сага ТендеровРеестр тендеров, Карта КонтрагентовСправочник организаций, Просчёты (inbox)Входящие от ТО, СогласованиеРешения Ярла, Согласование премийПремии рабочим, Мои работы (РП)Проекты РП, Свод КонтрактовВсе работы, Свод РасчётовВсе просчёты, Гантт: ПросчётыПересечения по срокам, Гантт: РаботыПлан и факты, Управление задачамиКонтроль задач, Канбан-доскаВизуальное управление задачами, ФинансыАналитика и реестр, Счета и оплатыВыставление и отслеживание, АктыАкты выполненных работ, Реестр расходовБухгалтерский реестр, Офисные расходыУправление и согласование, КассаАвансовые отчёты, Касса (управление)Согласование и контроль, Склад ТМЦОборудование и инструменты, Моё оборудованиеВыданное мне, КорреспонденцияВходящие и исходящие, Реестр договоровДоговора поставщиков, Реестр печатейУчёт и передача, Доверенности7 шаблонов документов, Заявки закупокЗакупки, ДружинаСотрудники, Заявки персоналаHR-заявки, Разрешения и допускиСроки действия, матрица, График: ОфисСтатусы по дням, График: РабочиеБронь и доступность, Рейтинг ДружиныОценки и средний балл, Жильё и билетыПроживание и транспорт, ХугиннВороний Вестник — чаты, СовещанияПланирование и протоколы, УведомленияВоронья почта, Аналитика ЯрлаKPI работ и денег, Заявки пользователейОдобрение регистраций, НастройкиСправочники и цвета\nPages checked: 8\n  Дашборд руководителяСводная аналитика: 17 btns [🏠\n            Главная\n            6\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            10\n            ▾, 💰\n            Финансы\n            7\n            ▾, 📦\n            Ресурсы\n            7\n            ▾]\n  Мой дашбордНастраиваемые виджеты: 30 btns [🏠\n            Главная\n            6\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            10\n            ▾, 💰\n            Финансы\n            7\n            ▾, 📦\n            Ресурсы\n            7\n            ▾]\n  Календарь встречСовещания и события: 21 btns [🏠\n            Главная\n            6\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            10\n            ▾, 💰\n            Финансы\n            7\n            ▾, 📦\n            Ресурсы\n            7\n            ▾]\n  Дни рожденияОфисный календарь ДР: 19 btns [🏠\n            Главная\n            6\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            10\n            ▾, 💰\n            Финансы\n            7\n            ▾, 📦\n            Ресурсы\n            7\n            ▾]\n  Мои задачиЗадачи и Todo-список: 19 btns [🏠\n            Главная\n            6\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            10\n            ▾, 💰\n            Финансы\n            7\n            ▾, 📦\n            Ресурсы\n            7\n            ▾]\n  ЗаявкиПредварительные заявки (AI): 21 btns [🏠\n            Главная\n            6\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            10\n            ▾, 💰\n            Финансы\n            7\n            ▾, 📦\n            Ресурсы\n            7\n            ▾]\n  Воронка продажКанбан тендеров: 17 btns [🏠\n            Главная\n            6\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            10\n            ▾, 💰\n            Финансы\n            7\n            ▾, 📦\n            Ресурсы\n            7\n            ▾]\n  Сага ТендеровРеестр тендеров: 58 btns [🏠\n            Главная\n            6\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            10\n            ▾, 💰\n            Финансы\n            7\n            ▾, 📦\n            Ресурсы\n            7\n            ▾]"
+        },
+        {
+          "name": "PM: Menu items and page navigation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 53523,
+          "note": "Menu items: 25 - Мой дашбордНастраиваемые виджеты, Календарь встречСовещания и события, Дни рожденияОфисный календарь ДР, Мои задачиЗадачи и Todo-список, Карта КонтрагентовСправочник организаций, Просчёты (inbox)Входящие от ТО, Согласование премийПремии рабочим, Мои работы (РП)Проекты РП, Гантт: ПросчётыПересечения по срокам, Гантт: РаботыПлан и факты, Канбан-доскаВизуальное управление задачами, Счета и оплатыВыставление и отслеживание, АктыАкты выполненных работ, КассаАвансовые отчёты, ТКПКоммерческие предложения, Заявки на пропускОформление пропусков, Заявки на ТМЦЗакупка материалов, Склад ТМЦОборудование и инструменты, Моё оборудованиеВыданное мне, Разрешения и допускиСроки действия, матрица, График: ОфисСтатусы по дням, Жильё и билетыПроживание и транспорт, ХугиннВороний Вестник — чаты, СовещанияПланирование и протоколы, УведомленияВоронья почта\nPages checked: 8\n  Мой дашбордНастраиваемые виджеты: 27 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            1\n            ▾, ⚒️\n            Работы\n            6\n            ▾, 💰\n            Финансы\n            3\n            ▾, 📦\n            Ресурсы\n            5\n            ▾]\n  Календарь встречСовещания и события: 19 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            1\n            ▾, ⚒️\n            Работы\n            6\n            ▾, 💰\n            Финансы\n            3\n            ▾, 📦\n            Ресурсы\n            5\n            ▾]\n  Дни рожденияОфисный календарь ДР: 17 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            1\n            ▾, ⚒️\n            Работы\n            6\n            ▾, 💰\n            Финансы\n            3\n            ▾, 📦\n            Ресурсы\n            5\n            ▾]\n  Мои задачиЗадачи и Todo-список: 16 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            1\n            ▾, ⚒️\n            Работы\n            6\n            ▾, 💰\n            Финансы\n            3\n            ▾, 📦\n            Ресурсы\n            5\n            ▾]\n  Карта КонтрагентовСправочник организаций: 46 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            1\n            ▾, ⚒️\n            Работы\n            6\n            ▾, 💰\n            Финансы\n            3\n            ▾, 📦\n            Ресурсы\n            5\n            ▾]\n  Просчёты (inbox)Входящие от ТО: 16 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            1\n            ▾, ⚒️\n            Работы\n            6\n            ▾, 💰\n            Финансы\n            3\n            ▾, 📦\n            Ресурсы\n            5\n            ▾]\n  Согласование премийПремии рабочим: 15 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            1\n            ▾, ⚒️\n            Работы\n            6\n            ▾, 💰\n            Финансы\n            3\n            ▾, 📦\n            Ресурсы\n            5\n            ▾]\n  Мои работы (РП)Проекты РП: 24 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            1\n            ▾, ⚒️\n            Работы\n            6\n            ▾, 💰\n            Финансы\n            3\n            ▾, 📦\n            Ресурсы\n            5\n            ▾]"
+        },
+        {
+          "name": "TO: Menu items and page navigation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 53660,
+          "note": "Menu items: 15 - Мой дашбордНастраиваемые виджеты, Календарь встречСовещания и события, Дни рожденияОфисный календарь ДР, Мои задачиЗадачи и Todo-список, ЗаявкиПредварительные заявки (AI), Воронка продажКанбан тендеров, Сага ТендеровРеестр тендеров, Карта КонтрагентовСправочник организаций, Канбан-доскаВизуальное управление задачами, Склад ТМЦОборудование и инструменты, Разрешения и допускиСроки действия, матрица, График: ОфисСтатусы по дням, ХугиннВороний Вестник — чаты, СовещанияПланирование и протоколы, УведомленияВоронья почта\nPages checked: 8\n  Мой дашбордНастраиваемые виджеты: 24 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            2\n            ]\n  Календарь встречСовещания и события: 18 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            2\n            ]\n  Дни рожденияОфисный календарь ДР: 16 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            2\n            ]\n  Мои задачиЗадачи и Todo-список: 15 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            2\n            ]\n  ЗаявкиПредварительные заявки (AI): 18 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            2\n            ]\n  Воронка продажКанбан тендеров: 14 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            2\n            ]\n  Сага ТендеровРеестр тендеров: 55 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            2\n            ]\n  Карта КонтрагентовСправочник организаций: 45 btns [🏠\n            Главная\n            5\n            ▾, 📋\n            Тендеры\n            4\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            2\n            ]"
+        },
+        {
+          "name": "HR: Menu items and page navigation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 54236,
+          "note": "Menu items: 16 - Мой дашбордНастраиваемые виджеты, Календарь встречСовещания и события, Дни рожденияОфисный календарь ДР, Мои задачиЗадачи и Todo-список, Канбан-доскаВизуальное управление задачами, Склад ТМЦОборудование и инструменты, ДружинаСотрудники, Заявки персоналаHR-заявки, Разрешения и допускиСроки действия, матрица, График: ОфисСтатусы по дням, График: РабочиеБронь и доступность, Рейтинг ДружиныОценки и средний балл, Жильё и билетыПроживание и транспорт, ХугиннВороний Вестник — чаты, СовещанияПланирование и протоколы, УведомленияВоронья почта\nPages checked: 8\n  Мой дашбордНастраиваемые виджеты: 22 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            7\n            , 💬\n            Коммуникации\n            3\n        ]\n  Календарь встречСовещания и события: 17 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            7\n            , 💬\n            Коммуникации\n            3\n        ]\n  Дни рожденияОфисный календарь ДР: 15 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            7\n            , 💬\n            Коммуникации\n            3\n        ]\n  Мои задачиЗадачи и Todo-список: 14 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            7\n            , 💬\n            Коммуникации\n            3\n        ]\n  Канбан-доскаВизуальное управление задачами: 15 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            7\n            , 💬\n            Коммуникации\n            3\n        ]\n  Склад ТМЦОборудование и инструменты: 14 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            7\n            , 💬\n            Коммуникации\n            3\n        ]\n  ДружинаСотрудники: 46 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            7\n            , 💬\n            Коммуникации\n            3\n        ]\n  Заявки персоналаHR-заявки: 20 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            7\n            , 💬\n            Коммуникации\n            3\n        ]"
+        },
+        {
+          "name": "BUH: Menu items and page navigation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 53314,
+          "note": "Menu items: 15 - Мой дашбордНастраиваемые виджеты, Календарь встречСовещания и события, Дни рожденияОфисный календарь ДР, Мои задачиЗадачи и Todo-список, Канбан-доскаВизуальное управление задачами, ФинансыАналитика и реестр, Счета и оплатыВыставление и отслеживание, АктыАкты выполненных работ, Реестр расходовБухгалтерский реестр, Склад ТМЦОборудование и инструменты, Реестр договоровДоговора поставщиков, График: ОфисСтатусы по дням, ХугиннВороний Вестник — чаты, СовещанияПланирование и протоколы, УведомленияВоронья почта\nPages checked: 8\n  Мой дашбордНастраиваемые виджеты: 22 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 💰\n            Финансы\n            4\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            ]\n  Календарь встречСовещания и события: 18 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 💰\n            Финансы\n            4\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            ]\n  Дни рожденияОфисный календарь ДР: 16 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 💰\n            Финансы\n            4\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            ]\n  Мои задачиЗадачи и Todo-список: 15 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 💰\n            Финансы\n            4\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            ]\n  Канбан-доскаВизуальное управление задачами: 16 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 💰\n            Финансы\n            4\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            ]\n  ФинансыАналитика и реестр: 19 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 💰\n            Финансы\n            4\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            ]\n  Счета и оплатыВыставление и отслеживание: 63 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 💰\n            Финансы\n            4\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            ]\n  АктыАкты выполненных работ: 15 btns [🏠\n            Главная\n            5\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 💰\n            Финансы\n            4\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            ]"
+        },
+        {
+          "name": "PROC: Menu items and page navigation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 53555,
+          "note": "Menu items: 9 - Дни рожденияОфисный календарь ДР, Мои задачиЗадачи и Todo-список, Канбан-доскаВизуальное управление задачами, Склад ТМЦОборудование и инструменты, Заявки закупокЗакупки, График: ОфисСтатусы по дням, ХугиннВороний Вестник — чаты, СовещанияПланирование и протоколы, УведомленияВоронья почта\nPages checked: 8\n  Дни рожденияОфисный календарь ДР: 15 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  Мои задачиЗадачи и Todo-список: 14 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  Канбан-доскаВизуальное управление задачами: 15 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  Склад ТМЦОборудование и инструменты: 14 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  Заявки закупокЗакупки: 20 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  График: ОфисСтатусы по дням: 3963 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  ХугиннВороний Вестник — чаты: 14 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  СовещанияПланирование и протоколы: 14 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            2\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]"
+        },
+        {
+          "name": "WAREHOUSE: Menu items and page navigation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 53671,
+          "note": "Menu items: 8 - Дни рожденияОфисный календарь ДР, Мои задачиЗадачи и Todo-список, Канбан-доскаВизуальное управление задачами, Склад ТМЦОборудование и инструменты, График: ОфисСтатусы по дням, ХугиннВороний Вестник — чаты, СовещанияПланирование и протоколы, УведомленияВоронья почта\nPages checked: 8\n  Дни рожденияОфисный календарь ДР: 15 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  Мои задачиЗадачи и Todo-список: 14 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  Канбан-доскаВизуальное управление задачами: 15 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  Склад ТМЦОборудование и инструменты: 16 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  График: ОфисСтатусы по дням: 3963 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  ХугиннВороний Вестник — чаты: 14 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  СовещанияПланирование и протоколы: 14 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]\n  УведомленияВоронья почта: 15 btns [🏠\n            Главная\n            3\n            ▾, ⚒️\n            Работы\n            1\n            ▾, 📦\n            Ресурсы\n            1\n            ▾, 👥\n            Персонал\n            1\n            , 💬\n            Коммуникации\n            3\n        ]"
+        },
+        {
+          "name": "tenders: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 21669,
+          "note": "Modal fields: 14 - e_period, e_inn, e_customer, e_title, e_type, e_pm, e_status, e_price, e_tag, e_ws, e_we, e_url, e_docs_deadline, e_c_to\nModal buttons: ⛨, Закрыть, 📎 Загрузить файл, 🔗 Добавить ссылку, Скопировать все ссылки, Открыть все, 📥 Скачать все документы, Экспорт комплекта (JSON), Импорт в комплект, Скачать запрос, Скачать ТКП, Скачать сопроводительное, Добавить запрос в комплект, Добавить ТКП в комплект, Добавить сопроводительное, Создать, 💾 Черновик"
+        },
+        {
+          "name": "pre-tenders: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24806,
+          "note": "Create button clicked but no modal appeared"
+        },
+        {
+          "name": "all-works: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20108,
+          "note": "Create button clicked but no modal appeared"
+        },
+        {
+          "name": "all-estimates: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19966,
+          "note": "Create button clicked but no modal appeared"
+        },
+        {
+          "name": "customers: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20080,
+          "note": "Create button clicked but no modal appeared"
+        },
+        {
+          "name": "tkp: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 21591,
+          "note": "Modal fields: 8 - tkpTitle, tkpCustomer, tkpEmail, tkpType, tkpSum, tkpDeadline, tkpValidity, tkpServices\nModal buttons: ⛨, Закрыть, Создать"
+        },
+        {
+          "name": "invoices: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 21431,
+          "note": "Modal fields: 7 - inv_number, inv_date, inv_customer, inv_work, inv_amount, inv_vat, inv_notes\nModal buttons: ⛨, Закрыть, Отмена, Создать"
+        },
+        {
+          "name": "cash: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 21598,
+          "note": "Modal fields: 5 - type, work_id, amount, purpose, cover_letter\nModal buttons: ⛨, Закрыть, Отмена, Создать"
+        },
+        {
+          "name": "tasks: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20885,
+          "note": "Modal fields: 6 - taskAssignee, taskTitle, taskDescription, taskDeadline, taskPriority, taskComment\nModal buttons: ×, Отмена, Создать"
+        },
+        {
+          "name": "personnel: Create modal (HR)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 21582,
+          "note": "Modal fields: 7 - e_fio, e_birth, e_role, e_city, e_phone, e_grade, e_docs\nModal buttons: ⛨, Закрыть, Сохранить"
+        },
+        {
+          "name": "hr-requests: Create modal (HR)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19735,
+          "note": "FAB clicked but no modal appeared"
+        },
+        {
+          "name": "proc-requests: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24775,
+          "note": "Create button clicked but no modal appeared"
+        },
+        {
+          "name": "correspondence: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24747,
+          "note": "Create button clicked but no modal appeared"
+        },
+        {
+          "name": "permissions: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24767,
+          "note": "Create button clicked but no modal appeared"
+        },
+        {
+          "name": "pass-requests: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 21425,
+          "note": "Modal fields: 8 - prObj, prFrom, prTo, prContact, prPhone, prEmps, prVehs, prNotes\nModal buttons: ⛨, Закрыть, ➕ Создать"
+        },
+        {
+          "name": "meetings: Create modal (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 21544,
+          "note": "Modal fields: 46 - meeting-title, meeting-start, meeting-end, meeting-location, meeting-agenda, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants, meeting-participants\nModal buttons: ⛨, Закрыть, Отмена, Создать"
+        },
+        {
+          "name": "tenders: Row click → detail (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19988,
+          "note": "No modal, current URL: https://127.0.0.1/#/tenders"
+        },
+        {
+          "name": "pre-tenders: Row click → detail (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20970,
+          "note": "Detail modal: 0 fields, buttons: ⛨, Закрыть, 🤖 Запустить AI-анализ, ✓ ПРИНЯТЬ, 🚀 ПРИНЯТЬ И НАЗНАЧИТЬ ПМ, ОТКЛОНИТЬ, Документы"
+        },
+        {
+          "name": "all-works: Row click → detail (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20184,
+          "note": "No modal, current URL: https://127.0.0.1/#/all-works"
+        },
+        {
+          "name": "customers: Row click → detail (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19934,
+          "note": "No modal, current URL: https://127.0.0.1/#/customers"
+        },
+        {
+          "name": "tkp: Row click → detail (PM)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19795,
+          "note": "No modal, current URL: https://127.0.0.1/#/tkp"
+        },
+        {
+          "name": "invoices: Row click → detail (BUH)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20281,
+          "note": "Detail modal: 0 fields, buttons: "
+        },
+        {
+          "name": "tasks: Row click → detail (ADMIN)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18211,
+          "note": "No rows in table"
+        },
+        {
+          "name": "personnel: Row click → detail (HR)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19840,
+          "note": "No modal, current URL: https://127.0.0.1/#/personnel"
+        },
+        {
+          "name": "ADMIN: Settings page tabs and buttons",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18367,
+          "note": "Settings buttons: 1706, tabs: 0 [], save buttons: 1"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 957075
+    }
+  ]
+}

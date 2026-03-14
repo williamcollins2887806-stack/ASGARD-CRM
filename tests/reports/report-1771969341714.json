@@ -1,0 +1,125 @@
+{
+  "timestamp": "2026-02-24T21:42:21.714Z",
+  "summary": {
+    "passed": 1,
+    "failed": 0,
+    "total": 1,
+    "totalSteps": 15,
+    "passedSteps": 15,
+    "failedSteps": 0
+  },
+  "results": [
+    {
+      "name": "31-deep-button-audit",
+      "steps": [
+        {
+          "name": "[DIRECTOR_GEN] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 1346503,
+          "note": "[DIRECTOR_GEN] Pages:34 Btns:949 Clicked:360 Skipped:39 Modals:301 Errors:0"
+        },
+        {
+          "name": "[DIRECTOR_COMM] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 1381972,
+          "note": "[DIRECTOR_COMM] Pages:34 Btns:959 Clicked:365 Skipped:39 Modals:306 Errors:0"
+        },
+        {
+          "name": "[DIRECTOR_DEV] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 1345731,
+          "note": "[DIRECTOR_DEV] Pages:34 Btns:941 Clicked:348 Skipped:40 Modals:297 Errors:23"
+        },
+        {
+          "name": "[HEAD_PM] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 34735,
+          "note": "[HEAD_PM] Pages:1 Btns:4 Clicked:4 Skipped:0 Modals:4 Errors:0"
+        },
+        {
+          "name": "[HEAD_TO] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 120289,
+          "note": "[HEAD_TO] Pages:2 Btns:23 Clicked:19 Skipped:0 Modals:19 Errors:0"
+        },
+        {
+          "name": "[PM] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 742182,
+          "note": "[PM] Pages:25 Btns:4554 Clicked:189 Skipped:20 Modals:178 Errors:0"
+        },
+        {
+          "name": "[TO] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 586683,
+          "note": "[TO] Pages:15 Btns:5537 Clicked:149 Skipped:60 Modals:142 Errors:0"
+        },
+        {
+          "name": "[HR] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 964928,
+          "note": "[HR] Pages:16 Btns:16386 Clicked:229 Skipped:56 Modals:222 Errors:3"
+        },
+        {
+          "name": "[HR_MANAGER] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 220173,
+          "note": "[HR_MANAGER] Pages:4 Btns:34 Clicked:31 Skipped:0 Modals:31 Errors:0"
+        },
+        {
+          "name": "[BUH] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 530172,
+          "note": "[BUH] Pages:15 Btns:4510 Clicked:137 Skipped:8 Modals:131 Errors:0"
+        },
+        {
+          "name": "[OFFICE_MANAGER] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 572213,
+          "note": "[OFFICE_MANAGER] Pages:16 Btns:4550 Clicked:148 Skipped:10 Modals:142 Errors:1"
+        },
+        {
+          "name": "[PROC] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 343172,
+          "note": "[PROC] Pages:9 Btns:4418 Clicked:91 Skipped:3 Modals:88 Errors:0"
+        },
+        {
+          "name": "[CHIEF_ENGINEER] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 220150,
+          "note": "[CHIEF_ENGINEER] Pages:4 Btns:33 Clicked:31 Skipped:0 Modals:31 Errors:0"
+        },
+        {
+          "name": "[WAREHOUSE] Deep button audit",
+          "status": "PASSED",
+          "error": null,
+          "duration": 324774,
+          "note": "[WAREHOUSE] Pages:8 Btns:4410 Clicked:86 Skipped:0 Modals:84 Errors:0"
+        },
+        {
+          "name": "AUDIT SUMMARY",
+          "status": "PASSED",
+          "error": null,
+          "duration": 1,
+          "note": "Pages: 217\nButtons found: 47308\nButtons clicked: 2187\nButtons skipped: 275\nModals opened: 1976\nReal errors: 27\nError locations: 25"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 8733679
+    }
+  ]
+}

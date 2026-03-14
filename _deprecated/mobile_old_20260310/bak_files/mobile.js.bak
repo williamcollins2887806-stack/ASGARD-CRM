@@ -1,0 +1,393 @@
+/**
+ * ASGARD CRM — Mobile Module (new_mobile.js)
+ * Мобильная логика: детекция, жесты, PWA, табы, дровер.
+ * Разметка (m-app, m-header, m-tabbar) рендерится в app.js.
+ * Здесь только поведение и вспомогательные функции.
+ */
+window.AsgardMobile = (function () {
+  'use strict';
+
+  const { $, $$, toast } = AsgardUI;
+
+  // ─── Состояние ────────────────────────────────────────────
+  let isMobile = false;
+  let menuOpen = false;
+  let overlay  = null;
+  let deferredPWAPrompt = null;
+
+  // ─── Точки касания для свайпов ────────────────────────────
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+
+  // ==========================================================
+  //  1. Детекция мобильного устройства
+  // ==========================================================
+
+  /** Определяем мобилку по ширине экрана или User-Agent */
+  function detectMobile() {
+    const uaCheck = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+    isMobile = window.innerWidth <= 768 || uaCheck;
+    return isMobile;
+  }
+
+  // ==========================================================
+  //  2. Класс на body: is-mobile / is-desktop
+  // ==========================================================
+
+  function toggleBodyClass() {
+    document.body.classList.toggle('is-mobile', isMobile);
+    document.body.classList.toggle('is-desktop', !isMobile);
+  }
+
+  // ==========================================================
+  //  3. Свайп-жесты (edge swipe для дровера)
+  // ==========================================================
+
+  function initSwipeGestures() {
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchend', onTouchEnd, { passive: true });
+  }
+
+  function onTouchStart(e) {
+    const touch = e.touches[0];
+    touchStartX    = touch.clientX;
+    touchStartY    = touch.clientY;
+    touchStartTime = Date.now();
+  }
+
+  function onTouchEnd(e) {
+    const touch  = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    const elapsed = Date.now() - touchStartTime;
+
+    // Игнорируем слишком долгие или вертикальные жесты
+    if (elapsed > 400 || Math.abs(deltaY) > Math.abs(deltaX)) return;
+
+    if (!menuOpen && touchStartX < 30 && deltaX > 50) {
+      // Свайп от левого края вправо — открыть дровер
+      openMenu();
+    } else if (menuOpen && deltaX < -50) {
+      // Свайп влево при открытом дровере — закрыть
+      closeMenu();
+    }
+  }
+
+  // ==========================================================
+  //  4. iOS-фикс высоты вьюпорта (--vh)
+  // ==========================================================
+
+  function setViewportHeight() {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', vh + 'px');
+  }
+
+  function initViewportFix() {
+    setViewportHeight();
+    window.addEventListener('resize', setViewportHeight);
+  }
+
+  // ==========================================================
+  //  5. Адаптивные таблицы
+  // ==========================================================
+
+  /** Оборачиваем .tbl в .tbl-wrap и расставляем data-label */
+  function initResponsiveTables() {
+    const tables = $$('.tbl');
+    if (!tables.length) return;
+
+    tables.forEach(function (table) {
+      // Оборачиваем в скроллируемый контейнер
+      if (!table.parentElement.classList.contains('tbl-wrap')) {
+        const wrap = document.createElement('div');
+        wrap.className = 'tbl-wrap';
+        wrap.dataset.scrollable = 'true';
+        table.parentNode.insertBefore(wrap, table);
+        wrap.appendChild(table);
+      }
+
+      // Пробрасываем заголовки в data-label для карточного режима
+      const headers = table.querySelectorAll('thead th');
+      if (!headers.length) return;
+
+      const labels = Array.from(headers).map(function (th) {
+        return th.textContent.trim();
+      });
+
+      table.querySelectorAll('tbody tr').forEach(function (row) {
+        row.querySelectorAll('td').forEach(function (td, idx) {
+          if (labels[idx]) {
+            td.setAttribute('data-label', labels[idx]);
+          }
+        });
+      });
+    });
+  }
+
+  // ==========================================================
+  //  6. Тач-таргеты (минимальный размер кнопок)
+  // ==========================================================
+
+  function injectCSS() {
+    const style = document.createElement('style');
+    style.id = 'asgard-mobile-css';
+    style.textContent = [
+      /* --- Оверлей дровера --- */
+      '.mobile-overlay {',
+      '  position: fixed; top: 0; left: 0; width: 100%; height: 100%;',
+      '  background: rgba(0,0,0,0.6);',
+      '  z-index: 1099;',
+      '  opacity: 0;',
+      '  pointer-events: none;',
+      '  display: block;',
+      '  transition: opacity .25s ease;',
+      '  -webkit-backdrop-filter: blur(2px);',
+      '  backdrop-filter: blur(2px);',
+      '}',
+      '.mobile-overlay.active {',
+      '  opacity: 1;',
+      '  pointer-events: auto;',
+      '}',
+
+      /* --- Safe-area поддержка --- */
+      '@supports (padding: env(safe-area-inset-bottom)) {',
+      '  .m-tabbar { padding-bottom: env(safe-area-inset-bottom); }',
+      '  .m-app    { padding-bottom: env(safe-area-inset-bottom); }',
+      '}',
+
+      /* --- Тач-кнопки: минимальный размер 44px --- */
+      '@media (hover: none) and (pointer: coarse) {',
+      '  .btn.mini, .btn.ghost.mini {',
+      '    min-width: 44px;',
+      '    min-height: 44px;',
+      '  }',
+      '  .btn:active {',
+      '    transform: scale(0.98);',
+      '  }',
+      '}'
+    ].join('\n');
+
+    document.head.appendChild(style);
+  }
+
+  // ==========================================================
+  //  7. PWA Install Prompt
+  // ==========================================================
+
+  function initPWAInstall() {
+    // Android — перехватываем beforeinstallprompt
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      deferredPWAPrompt = e;
+      showInstallBanner();
+    });
+
+    // iOS — предлагаем вручную добавить на экран
+    if (isIOS() && !isStandalone()) {
+      // Небольшая задержка, чтобы не мешать загрузке
+      setTimeout(showIOSInstallHint, 3000);
+    }
+  }
+
+  /** Показываем баннер установки PWA (Android) */
+  function showInstallBanner() {
+    // Если баннер уже есть или пользователь отказался — не показываем
+    if ($('#pwaInstallBanner') || localStorage.getItem('pwa_dismissed')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'pwaInstallBanner';
+    banner.className = 'pwa-banner';
+    banner.innerHTML =
+      '<span>Установите ASGARD на главный экран</span>' +
+      '<button class="btn mini accent" id="pwaInstallBtn">Установить</button>' +
+      '<button class="btn mini ghost" id="pwaCloseBtn">&times;</button>';
+    document.body.appendChild(banner);
+
+    $('#pwaInstallBtn').addEventListener('click', function () {
+      if (deferredPWAPrompt) {
+        deferredPWAPrompt.prompt();
+        deferredPWAPrompt.userChoice.then(function (choice) {
+          if (choice.outcome === 'accepted') {
+            toast('Приложение установлено!', 'success');
+          }
+          deferredPWAPrompt = null;
+          banner.remove();
+        });
+      }
+    });
+
+    $('#pwaCloseBtn').addEventListener('click', function () {
+      localStorage.setItem('pwa_dismissed', '1');
+      banner.remove();
+    });
+  }
+
+  /** Подсказка для iOS (добавить на главный экран вручную) */
+  function showIOSInstallHint() {
+    if (localStorage.getItem('pwa_ios_hint')) return;
+    toast('Нажмите «Поделиться» → «На экран домой» для установки', 'info', 6000);
+    localStorage.setItem('pwa_ios_hint', '1');
+  }
+
+  function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  }
+
+  // ==========================================================
+  //  8. Standalone-детекция
+  // ==========================================================
+
+  function isStandalone() {
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      navigator.standalone === true
+    );
+  }
+
+  function detectStandalone() {
+    document.body.classList.toggle('pwa-standalone', isStandalone());
+    return isStandalone();
+  }
+
+  // ==========================================================
+  //  9. Вибрация
+  // ==========================================================
+
+  /** Вибрация устройства (если поддерживается) */
+  function vibrate(pattern) {
+    if (navigator.vibrate) {
+      navigator.vibrate(pattern || 15);
+    }
+  }
+
+  // ==========================================================
+  // 10. Активный таб в нижней панели
+  // ==========================================================
+
+  /** Обновляем класс .active у табов по текущему маршруту */
+  function updateActiveTab() {
+    // getMobileTabGroup определён в app.js
+    if (typeof getMobileTabGroup !== 'function') return;
+
+    const group = getMobileTabGroup();
+    const tabs  = $$('.m-tab');
+
+    tabs.forEach(function (tab) {
+      tab.classList.toggle('active', tab.dataset.tab === group);
+    });
+  }
+
+  function initTabTracking() {
+    window.addEventListener('hashchange', function() {
+      updateActiveTab();
+      // Re-init responsive tables after SPA navigation
+      setTimeout(function() { initResponsiveTables(); }, 100);
+    });
+    // Первоначальная установка при загрузке
+    updateActiveTab();
+  }
+
+  // ==========================================================
+  // 11. Мобильный дровер (сайдбар + оверлей)
+  // ==========================================================
+
+  /** Создаём элемент оверлея (один раз) */
+  function ensureOverlay() {
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.className = 'mobile-overlay';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', closeMenu);
+    return overlay;
+  }
+
+  /** Открыть боковое меню */
+  function openMenu() {
+    if (menuOpen) return;
+    menuOpen = true;
+    const nav = $('.sidenav');
+    ensureOverlay();
+
+    if (nav) nav.classList.add('open');
+    document.body.classList.add('nav-open');
+    overlay.classList.add('active');
+    vibrate(10);
+  }
+
+  /** Закрыть боковое меню */
+  function closeMenu() {
+    if (!menuOpen) return;
+    menuOpen = false;
+    const nav = $('.sidenav');
+
+    if (nav) nav.classList.remove('open');
+    document.body.classList.remove('nav-open');
+    if (overlay) overlay.classList.remove('active');
+  }
+
+  /** Переключить меню */
+  function toggleMenu() {
+    menuOpen ? closeMenu() : openMenu();
+  }
+
+  // ==========================================================
+  //  Инициализация
+  // ==========================================================
+
+  function init() {
+    detectMobile();
+    toggleBodyClass();
+    injectCSS();
+    initViewportFix();
+    detectStandalone();
+
+    if (isMobile) {
+      initSwipeGestures();
+      initResponsiveTables();
+      initTabTracking();
+      initPWAInstall();
+    }
+
+    // При ресайзе пересчитываем детекцию
+    window.addEventListener('resize', function () {
+      const was = isMobile;
+      detectMobile();
+      if (was !== isMobile) {
+        toggleBodyClass();
+        // Если стали мобильными — инициализируем жесты и таблицы
+        if (isMobile) {
+          initSwipeGestures();
+          initResponsiveTables();
+          initTabTracking();
+        }
+      }
+    });
+
+    // Закрываем меню при переходе на другой роут
+    window.addEventListener('hashchange', closeMenu);
+  }
+
+  // Автозапуск
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // ─── Публичный API ────────────────────────────────────────
+  return {
+    init:              init,
+    detectMobile:      detectMobile,
+    openMenu:          openMenu,
+    closeMenu:         closeMenu,
+    toggleMenu:        toggleMenu,
+    vibrate:           vibrate,
+    isMobile:          function () { return isMobile; },
+    detectStandalone:  detectStandalone,
+    updateActiveTab:   updateActiveTab
+  };
+
+})();

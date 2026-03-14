@@ -1,0 +1,1139 @@
+/**
+ * ASGARD CRM — IMAP Mail Collection Service
+ * Фоновый сервис сбора входящей почты по IMAP (imapflow)
+ */
+
+const { ImapFlow } = require('imapflow');
+const { simpleParser } = require('mailparser');
+const sanitizeHtml = require('sanitize-html');
+const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
+const db = require('./db');
+const classifier = require('./email-classifier');
+const aiAnalyzer = require('./ai-email-analyzer');
+const preTenderService = require('./pre-tender-service');
+const platformParser = require('./platform-parser');
+
+// ── Encryption helpers (AES-256-CBC, key from ENV) ──────────────────────
+const ENC_ALGO = 'aes-256-cbc';
+function getEncKey() {
+  const raw = process.env.MAIL_ENC_KEY || process.env.DB_PASSWORD || 'asgard-default-enc-key-32ch!';
+  return crypto.createHash('sha256').update(raw).digest();
+}
+
+function encrypt(text) {
+  if (!text) return '';
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(ENC_ALGO, getEncKey(), iv);
+  let enc = cipher.update(text, 'utf8', 'hex');
+  enc += cipher.final('hex');
+  return iv.toString('hex') + ':' + enc;
+}
+
+function decrypt(stored) {
+  if (!stored || !stored.includes(':')) return stored || '';
+  try {
+    const [ivHex, enc] = stored.split(':');
+    const decipher = crypto.createDecipheriv(ENC_ALGO, getEncKey(), Buffer.from(ivHex, 'hex'));
+    let dec = decipher.update(enc, 'hex', 'utf8');
+    dec += decipher.final('utf8');
+    return dec;
+  } catch (e) {
+    console.error('[IMAP] Decrypt error:', e.message);
+    return '';
+  }
+}
+
+// ── State ────────────────────────────────────────────────────────────────
+const pollingTimers = new Map();   // accountId → timeoutId
+const activeClients = new Map();   // accountId → ImapFlow instance
+let isShuttingDown = false;
+
+// ── Uploads path helper ─────────────────────────────────────────────────
+const UPLOADS_BASE = path.join(__dirname, '..', '..', 'uploads', 'mail');
+
+function getAttachmentDir() {
+  const date = new Date().toISOString().slice(0, 10);
+  const uuid = crypto.randomUUID();
+  const dir = path.join(UPLOADS_BASE, date, uuid);
+  fs.mkdirSync(dir, { recursive: true });
+  return { dir, relBase: `uploads/mail/${date}/${uuid}` };
+}
+
+function safeName(filename) {
+  if (!filename) return 'attachment';
+  return filename.replace(/[^\w.\-а-яА-ЯёЁ ]/gi, '_').slice(0, 200);
+}
+
+// ── HTML sanitisation ───────────────────────────────────────────────────
+function cleanHtml(html) {
+  if (!html) return '';
+  return sanitizeHtml(html, {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'style', 'span', 'div', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'br', 'hr', 'font', 'center']),
+    allowedAttributes: {
+      ...sanitizeHtml.defaults.allowedAttributes,
+      '*': ['style', 'class', 'id', 'align', 'valign', 'width', 'height', 'bgcolor', 'color', 'border', 'cellpadding', 'cellspacing'],
+      img: ['src', 'alt', 'width', 'height', 'style'],
+      a: ['href', 'target', 'rel', 'style'],
+      font: ['color', 'size', 'face']
+    },
+    allowedSchemes: ['http', 'https', 'mailto', 'cid']
+  });
+}
+
+// ── Thread ID computation ───────────────────────────────────────────────
+function computeThreadId(messageId, inReplyTo, referencesHeader) {
+  // Use first reference as thread root, fallback to inReplyTo, fallback to own messageId
+  if (referencesHeader) {
+    const refs = referencesHeader.match(/<[^>]+>/g);
+    if (refs && refs.length > 0) return refs[0].replace(/[<>]/g, '');
+  }
+  if (inReplyTo) return inReplyTo.replace(/[<>]/g, '');
+  return messageId ? messageId.replace(/[<>]/g, '') : null;
+}
+
+// ── Snippet ─────────────────────────────────────────────────────────────
+function makeSnippet(text, maxLen = 250) {
+  if (!text) return '';
+  return text.replace(/\s+/g, ' ').trim().slice(0, maxLen);
+}
+
+// ── Core: connect & sync one account ────────────────────────────────────
+async function createClient(account) {
+  const client = new ImapFlow({
+    host: account.imap_host,
+    port: account.imap_port || 993,
+    secure: account.imap_tls !== false,
+    auth: {
+      user: account.imap_user,
+      pass: decrypt(account.imap_pass_encrypted)
+    },
+    logger: false,
+    emitLogs: false,
+    greetingTimeout: 15000,
+    socketTimeout: 60000
+  });
+  return client;
+}
+
+/**
+ * Sync a single IMAP account — fetch new messages since last_sync_uid
+ */
+async function syncAccount(accountId) {
+  if (isShuttingDown) return { fetched: 0, newCount: 0 };
+
+  // Load account from DB
+  const accRes = await db.query('SELECT * FROM email_accounts WHERE id = $1 AND is_active = true', [accountId]);
+  if (accRes.rows.length === 0) return { fetched: 0, newCount: 0 };
+  const account = accRes.rows[0];
+
+  // Create sync log entry
+  const logRes = await db.query(
+    `INSERT INTO email_sync_log (account_id, sync_type, status) VALUES ($1, 'incremental', 'running') RETURNING id`,
+    [accountId]
+  );
+  const syncLogId = logRes.rows[0].id;
+  const startMs = Date.now();
+  const errors = [];
+
+  let client;
+  let fetched = 0;
+  let newCount = 0;
+  let updatedCount = 0;
+  let attachmentsSaved = 0;
+
+  try {
+    client = await createClient(account);
+    activeClients.set(accountId, client);
+    await client.connect();
+
+    const folder = account.imap_folder || 'INBOX';
+    const lock = await client.getMailboxLock(folder);
+
+    try {
+      const lastUid = account.last_sync_uid || 0;
+      const maxEmails = account.sync_max_emails || 200;
+
+      // Fetch messages with UID > lastSyncUid
+      const range = lastUid > 0 ? `${lastUid + 1}:*` : '1:*';
+      let maxUid = lastUid;
+      let count = 0;
+
+      for await (const msg of client.fetch(range, {
+        uid: true,
+        flags: true,
+        envelope: true,
+        source: true,
+        bodyStructure: true
+      })) {
+        if (isShuttingDown) break;
+        if (count >= maxEmails) break;
+        count++;
+
+        try {
+          const parsed = await simpleParser(msg.source);
+          const result = await saveEmail(account, msg, parsed);
+          fetched++;
+          if (result.isNew) newCount++;
+          else updatedCount++;
+          attachmentsSaved += result.attachmentCount || 0;
+
+          if (msg.uid > maxUid) maxUid = msg.uid;
+        } catch (parseErr) {
+          errors.push({ uid: msg.uid, error: parseErr.message });
+          console.error(`[IMAP] Parse error uid=${msg.uid} account=${accountId}:`, parseErr.message);
+        }
+      }
+
+      // Update last sync UID
+      if (maxUid > lastUid) {
+        await db.query(
+          'UPDATE email_accounts SET last_sync_uid = $1, last_sync_at = NOW(), last_sync_error = NULL, updated_at = NOW() WHERE id = $2',
+          [maxUid, accountId]
+        );
+      } else {
+        await db.query(
+          'UPDATE email_accounts SET last_sync_at = NOW(), last_sync_error = NULL, updated_at = NOW() WHERE id = $1',
+          [accountId]
+        );
+      }
+    } finally {
+      lock.release();
+    }
+
+    await client.logout();
+
+    // Update sync log
+    await db.query(
+      `UPDATE email_sync_log SET status = $1, emails_fetched = $2, emails_new = $3, emails_updated = $4,
+       attachments_saved = $5, errors_count = $6, error_details = $7, duration_ms = $8, completed_at = NOW()
+       WHERE id = $9`,
+      [
+        errors.length > 0 ? 'partial' : 'success',
+        fetched, newCount, updatedCount, attachmentsSaved,
+        errors.length, JSON.stringify(errors), Date.now() - startMs,
+        syncLogId
+      ]
+    );
+
+    console.log(`[IMAP] Sync account #${accountId}: ${newCount} new, ${updatedCount} updated, ${attachmentsSaved} attachments`);
+  } catch (err) {
+    console.error(`[IMAP] Sync error account #${accountId}:`, err.message);
+    if (err.message.includes('auth') || err.message.includes('login') || err.message.includes('credentials')) {
+      console.error(`[IMAP] ⚠️  Authentication failed for account #${accountId}. Check IMAP_USER/IMAP_PASS or email_accounts credentials.`);
+    }
+    if (err.message.includes('ECONNREFUSED') || err.message.includes('ETIMEDOUT') || err.message.includes('getaddrinfo')) {
+      console.error(`[IMAP] ⚠️  Connection failed for account #${accountId}. Check IMAP_HOST and network access.`);
+    }
+
+    await db.query(
+      'UPDATE email_accounts SET last_sync_error = $1, updated_at = NOW() WHERE id = $2',
+      [err.message, accountId]
+    ).catch((dbErr) => { console.error('[IMAP] DB error saving sync error:', dbErr.message); });
+
+    await db.query(
+      `UPDATE email_sync_log SET status = 'error', errors_count = $1, error_details = $2,
+       duration_ms = $3, completed_at = NOW() WHERE id = $4`,
+      [1, JSON.stringify([{ error: err.message }]), Date.now() - startMs, syncLogId]
+    ).catch((dbErr) => { console.error('[IMAP] DB error saving sync log:', dbErr.message); });
+  } finally {
+    activeClients.delete(accountId);
+    if (client) {
+      try { await client.logout(); } catch (_) {}
+    }
+  }
+
+  return { fetched, newCount, updatedCount, attachmentsSaved };
+}
+
+/**
+ * Save a single parsed email to DB, with deduplication and classification
+ */
+async function saveEmail(account, msg, parsed) {
+  const messageId = parsed.messageId || null;
+  const inReplyTo = parsed.inReplyTo || null;
+  const referencesHeader = Array.isArray(parsed.references)
+    ? parsed.references.join(' ')
+    : (parsed.references || '');
+
+  // Deduplication check
+  if (messageId) {
+    const exists = await db.query('SELECT id FROM emails WHERE message_id = $1', [messageId]);
+    if (exists.rows.length > 0) {
+      // Update flags only
+      const flags = msg.flags ? Array.from(msg.flags).join(',') : '';
+      await db.query(
+        'UPDATE emails SET imap_flags = $1, updated_at = NOW() WHERE id = $2',
+        [flags, exists.rows[0].id]
+      );
+      return { isNew: false, attachmentCount: 0 };
+    }
+  }
+
+  // Extract fields
+  const fromAddr = parsed.from?.value?.[0] || {};
+  const toEmails = (parsed.to?.value || []).map(a => ({ address: a.address, name: a.name || '' }));
+  const ccEmails = (parsed.cc?.value || []).map(a => ({ address: a.address, name: a.name || '' }));
+  const bccEmails = (parsed.bcc?.value || []).map(a => ({ address: a.address, name: a.name || '' }));
+  const replyToEmail = parsed.replyTo?.value?.[0]?.address || null;
+
+  const bodyText = parsed.text || '';
+  const bodyHtmlRaw = parsed.html || '';
+  const bodyHtml = cleanHtml(bodyHtmlRaw);
+  const snippet = makeSnippet(bodyText);
+  const threadId = computeThreadId(messageId, inReplyTo, referencesHeader);
+  const flags = msg.flags ? Array.from(msg.flags).join(',') : '';
+  const isRead = msg.flags?.has('\\Seen') || false;
+
+  // Build raw headers string for classification
+  const rawHeaders = parsed.headerLines
+    ? parsed.headerLines.map(h => `${h.key}: ${h.line}`).join('\n')
+    : '';
+
+  // Classify
+  let emailType = 'unknown';
+  let classConfidence = 0;
+  let classRuleId = null;
+  try {
+    const cls = await classifier.classify({
+      from_email: fromAddr.address || '',
+      subject: parsed.subject || '',
+      body_text: bodyText,
+      raw_headers: rawHeaders
+    });
+    emailType = cls.type;
+    classConfidence = cls.confidence;
+    classRuleId = cls.rule_id;
+  } catch (e) {
+    console.error('[IMAP] Classification error:', e.message);
+  }
+
+  // Determine attachments
+  const attachments = parsed.attachments || [];
+  const hasAttachments = attachments.length > 0;
+  const totalAttSize = attachments.reduce((sum, a) => sum + (a.size || 0), 0);
+
+  // Insert email
+  const emailRes = await db.query(`
+    INSERT INTO emails (
+      account_id, direction, message_id, in_reply_to, references_header, thread_id,
+      from_email, from_name, to_emails, cc_emails, bcc_emails, reply_to_email,
+      subject, body_text, body_html, body_html_raw, snippet,
+      email_type, classification_confidence, classification_rule_id,
+      is_read, has_attachments, attachment_count, total_attachments_size,
+      imap_uid, imap_folder, imap_flags, raw_headers,
+      email_date, synced_at
+    ) VALUES (
+      $1, 'inbound', $2, $3, $4, $5,
+      $6, $7, $8, $9, $10, $11,
+      $12, $13, $14, $15, $16,
+      $17, $18, $19,
+      $20, $21, $22, $23,
+      $24, $25, $26, $27,
+      $28, NOW()
+    ) RETURNING id
+  `, [
+    account.id, messageId, inReplyTo, referencesHeader, threadId,
+    fromAddr.address || '', fromAddr.name || '', JSON.stringify(toEmails), JSON.stringify(ccEmails), JSON.stringify(bccEmails), replyToEmail,
+    parsed.subject || '(без темы)', bodyText, bodyHtml, bodyHtmlRaw, snippet,
+    emailType, classConfidence, classRuleId,
+    isRead, hasAttachments, attachments.length, totalAttSize,
+    msg.uid, account.imap_folder || 'INBOX', flags, rawHeaders,
+    parsed.date || new Date()
+  ]);
+
+  const emailId = emailRes.rows[0].id;
+  let attachmentCount = 0;
+
+  // Save attachments
+  if (hasAttachments) {
+    const { dir, relBase } = getAttachmentDir();
+
+    for (const att of attachments) {
+      try {
+        const safeFn = safeName(att.filename);
+        const filePath = path.join(dir, safeFn);
+        fs.writeFileSync(filePath, att.content);
+
+        const checksum = crypto.createHash('sha256').update(att.content).digest('hex');
+
+        await db.query(`
+          INSERT INTO email_attachments (
+            email_id, filename, original_filename, mime_type, size, file_path,
+            content_id, content_disposition, is_inline, checksum_sha256
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `, [
+          emailId, safeFn, att.filename || safeFn, att.contentType || 'application/octet-stream',
+          att.size || 0, `${relBase}/${safeFn}`,
+          att.contentId || null, att.contentDisposition || 'attachment',
+          !!(att.contentId && att.contentDisposition === 'inline'),
+          checksum
+        ]);
+
+        attachmentCount++;
+      } catch (attErr) {
+        console.error(`[IMAP] Attachment save error: ${att.filename}`, attErr.message);
+      }
+    }
+  }
+
+  // AI analysis is now decoupled — runs asynchronously after sync completes
+  // (see processUnanalyzedEmails below)
+
+  return { isNew: true, attachmentCount };
+}
+
+// ── Async AI processing (decoupled from sync loop) ──────────────────────
+const AI_SKIP_TYPES = ['internal', 'spam', 'newsletter', 'notification', 'auto_reply'];
+const AI_BATCH_SIZE = 5;       // process N emails concurrently
+const AI_PROCESS_INTERVAL = 30000; // run every 30 sec
+let aiProcessorTimer = null;
+let aiProcessorRunning = false;
+
+// Self-healing helper: update ai_classification regardless of column type (jsonb, json, or text)
+async function updateEmailAiClassification(emailId, classification, color, summary, recommendation) {
+  const classStr = String(classification || 'other');
+  const jsonVal = JSON.stringify(classStr);
+  const params = [(color || 'yellow').slice(0, 50), (summary || '').slice(0, 2000), (recommendation || '').slice(0, 2000), emailId];
+
+  // Try 1: JSONB cast (correct for jsonb column)
+  try {
+    await db.query(`
+      UPDATE emails SET
+        ai_classification = $1::jsonb, ai_color = $2, ai_summary = $3,
+        ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+      WHERE id = $5
+    `, [jsonVal, ...params]);
+    return;
+  } catch (e) {
+    if (!e.message.includes('invalid input syntax for type json')) throw e;
+    console.warn(`[IMAP-AI] JSONB cast failed for email #${emailId}, falling back to text`);
+  }
+
+  // Try 2: plain text (for text/varchar column)
+  try {
+    await db.query(`
+      UPDATE emails SET
+        ai_classification = $1, ai_color = $2, ai_summary = $3,
+        ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+      WHERE id = $5
+    `, [classStr, ...params]);
+    return;
+  } catch (e2) {
+    console.warn(`[IMAP-AI] Text insert also failed for email #${emailId}: ${e2.message}, trying plain string`);
+  }
+
+  // Try 3: last resort — store as plain string without JSON wrapping
+  await db.query(`
+    UPDATE emails SET
+      ai_classification = $1, ai_color = $2, ai_summary = $3,
+      ai_recommendation = $4, ai_processed_at = NOW(), updated_at = NOW()
+    WHERE id = $5
+  `, [jsonVal, ...params]);
+}
+
+/**
+ * Process a single email with AI analysis.
+ * Updates emails table and creates inbox_application.
+ */
+async function analyzeOneEmail(email) {
+  const emailId = email.id;
+  try {
+    // Все входящие обрабатываются AI — он сам решает, заявка это или переписка
+
+    const attRes = await db.query(
+      'SELECT original_filename FROM email_attachments WHERE email_id = $1',
+      [emailId]
+    );
+    const attNames = attRes.rows.map(a => a.original_filename || 'file');
+
+    console.log(`[IMAP-AI] #${emailId} step 1: calling analyzeEmail...`);
+    const analysis = await aiAnalyzer.analyzeEmail({
+      emailId,
+      subject: email.subject,
+      bodyText: email.body_text,
+      fromEmail: email.from_email,
+      fromName: email.from_name,
+      attachmentNames: attNames
+    });
+    console.log(`[IMAP-AI] #${emailId} step 2: analyzeEmail returned classification=${analysis.classification}, color=${analysis.color}`);
+
+    const workload = await aiAnalyzer.getWorkloadData();
+    console.log(`[IMAP-AI] #${emailId} step 3: calling updateEmailAiClassification...`);
+
+    // Update the emails table with AI results
+    await updateEmailAiClassification(
+      emailId, analysis.classification, analysis.color,
+      analysis.summary, analysis.recommendation
+    );
+    console.log(`[IMAP-AI] #${emailId} step 4: update done`);
+
+    // Create inbox_application ONLY for genuine work proposals/tenders
+    const applicationTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
+    if (applicationTypes.includes(analysis.classification) && !analysis._skipped) {
+      try {
+        await db.query(`
+          INSERT INTO inbox_applications (
+            email_id, source, source_email, source_name, subject, body_preview,
+            ai_classification, ai_color, ai_summary, ai_recommendation,
+            ai_work_type, ai_estimated_budget, ai_estimated_days,
+            ai_keywords, ai_confidence, ai_raw_json, ai_analyzed_at, ai_model,
+            workload_snapshot, attachment_count, status
+          ) VALUES (
+            $1, 'email', $2, $3, $4, $5,
+            $6, $7, $8, $9,
+            $10, $11, $12,
+            $13, $14, $15, NOW(), $16,
+            $17, $18, 'ai_processed'
+          ) ON CONFLICT DO NOTHING
+        `, [
+          emailId,
+          email.from_email || '', email.from_name || '',
+          email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
+          (analysis.classification || '').slice(0, 100), (analysis.color || '').slice(0, 50), (analysis.summary || '').slice(0, 2000), (analysis.recommendation || '').slice(0, 2000),
+          (analysis.work_type || '').slice(0, 100), analysis.estimated_budget ? String(analysis.estimated_budget).slice(0, 100) : null, analysis.estimated_days ? String(analysis.estimated_days).slice(0, 100) : null,
+          analysis.keywords || [], parseFloat(analysis.confidence) || 0, JSON.stringify(analysis), analysis._raw?.model || null,
+          JSON.stringify(workload), email.attachment_count || 0
+        ]);
+
+        console.log(`[IMAP-AI] Created application for email #${emailId}: ${analysis.color} / ${analysis.classification}`);
+
+        // Generate detailed AI report (reads attachment contents: PDF, DOCX, XLSX)
+        try {
+          const aiReport = await aiAnalyzer.generateReport({
+            emailId,
+            subject: email.subject,
+            bodyText: email.body_text,
+            fromEmail: email.from_email,
+            fromName: email.from_name,
+            attachmentNames: attNames
+          });
+          if (aiReport) {
+            await db.query('UPDATE inbox_applications SET ai_report = $1 WHERE email_id = $2', [aiReport, emailId]);
+            console.log(`[IMAP-AI] Generated AI report for email #${emailId} (${aiReport.length} chars)`);
+          }
+        } catch (reportErr) {
+          console.error(`[IMAP-AI] AI report generation error for email #${emailId}:`, reportErr.message);
+        }
+      } catch (appErr) {
+        console.error(`[IMAP-AI] inbox_application INSERT error for email #${emailId}:`, appErr.message);
+        // Don't fail the whole email — AI analysis was saved successfully
+      }
+
+      // Create pre-tender request
+      try {
+        await preTenderService.createPreTenderFromEmail(emailId);
+      } catch (ptErr) {
+        console.error('[IMAP-AI] Pre-tender error:', ptErr.message);
+      }
+
+      // Parse platform tenders
+      if (email.email_type === 'platform_tender' || analysis.classification === 'platform_tender') {
+        try {
+          await platformParser.parseAndSave(emailId);
+        } catch (ppErr) {
+          console.error('[IMAP-AI] Platform parse error:', ppErr.message);
+        }
+      }
+    } else {
+      console.log(`[IMAP-AI] Skipped application creation for email #${emailId}: ${analysis.classification} (not a work proposal)`);
+    }
+
+    return true;
+  } catch (err) {
+    console.error(`[IMAP-AI] Error processing email #${emailId}:`, err.message);
+    console.error(`[IMAP-AI] Stack trace:`, err.stack);
+    // Mark as failed so we don't retry endlessly
+    await db.query(
+      `UPDATE emails SET ai_processed_at = NOW(), ai_summary = $1, updated_at = NOW() WHERE id = $2`,
+      ['[Ошибка AI-анализа: ' + err.message.slice(0, 200) + ']', emailId]
+    ).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * Process unanalyzed emails in batches with concurrency.
+ * This runs independently from the IMAP sync loop.
+ */
+async function processUnanalyzedEmails() {
+  if (isShuttingDown || aiProcessorRunning) return;
+  aiProcessorRunning = true;
+
+  try {
+    // Find ALL inbound emails that need AI analysis (без фильтрации по типу — AI сам решает)
+    const res = await db.query(`
+      SELECT id, subject, body_text, from_email, from_name, email_type, attachment_count
+      FROM emails
+      WHERE ai_processed_at IS NULL
+        AND direction = 'inbound'
+        AND is_deleted = false
+      ORDER BY email_date DESC
+      LIMIT $1
+    `, [AI_BATCH_SIZE]);
+
+    if (res.rows.length === 0) {
+      // Diagnostic: log why there are 0 emails to process (run every ~5 minutes)
+      if (!processUnanalyzedEmails._lastDiag || Date.now() - processUnanalyzedEmails._lastDiag > 300000) {
+        processUnanalyzedEmails._lastDiag = Date.now();
+        try {
+          const diag = await db.query(`
+            SELECT
+              COUNT(*) FILTER (WHERE direction = 'inbound') as total_inbound,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false) as inbound_not_deleted,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_processed_at IS NULL) as need_ai,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_processed_at IS NOT NULL) as already_processed,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_summary LIKE '%Пропущено%') as skipped,
+              COUNT(*) FILTER (WHERE direction = 'inbound' AND is_deleted = false AND ai_summary LIKE '%Ошибка%') as errored
+            FROM emails
+          `);
+          const d = diag.rows[0];
+          console.log(`[IMAP-AI] Diagnostic: total_inbound=${d.total_inbound}, not_deleted=${d.inbound_not_deleted}, need_ai=${d.need_ai}, already_processed=${d.already_processed}, skipped=${d.skipped}, errored=${d.errored}`);
+        } catch (diagErr) {
+          console.warn('[IMAP-AI] Diagnostic query failed:', diagErr.message);
+        }
+      }
+      aiProcessorRunning = false;
+      return;
+    }
+
+    console.log(`[IMAP-AI] Processing ${res.rows.length} unanalyzed emails...`);
+
+    // Process batch concurrently
+    const results = await Promise.allSettled(
+      res.rows.map(email => analyzeOneEmail(email))
+    );
+
+    const ok = results.filter(r => r.status === 'fulfilled' && r.value).length;
+    const fail = results.length - ok;
+    console.log(`[IMAP-AI] Batch done: ${ok} ok, ${fail} failed`);
+  } catch (err) {
+    console.error('[IMAP-AI] Batch processor error:', err.message);
+  } finally {
+    aiProcessorRunning = false;
+  }
+}
+
+function startAiProcessor() {
+  if (aiProcessorTimer) return;
+  aiProcessorTimer = setInterval(() => {
+    if (!isShuttingDown) processUnanalyzedEmails().catch(() => {});
+  }, AI_PROCESS_INTERVAL);
+  // On startup: reset skipped/errored emails then start processing
+  setTimeout(async () => {
+    try {
+      const resetCount = await resetSkippedEmails();
+      if (resetCount > 0) {
+        console.log(`[IMAP-AI] Auto-reset ${resetCount} previously skipped/errored emails on startup`);
+      }
+    } catch (e) {
+      console.warn('[IMAP-AI] Reset skipped emails error:', e.message);
+    }
+    processUnanalyzedEmails().catch(() => {});
+  }, 10000);
+  console.log(`[IMAP-AI] Background AI processor started (every ${AI_PROCESS_INTERVAL / 1000}s, batch=${AI_BATCH_SIZE})`);
+}
+
+function stopAiProcessor() {
+  if (aiProcessorTimer) {
+    clearInterval(aiProcessorTimer);
+    aiProcessorTimer = null;
+  }
+}
+
+// ── Polling loop ────────────────────────────────────────────────────────
+function startPolling(accountId, intervalSec) {
+  if (pollingTimers.has(accountId)) return; // already polling
+
+  const interval = (intervalSec || 120) * 1000;
+
+  async function poll() {
+    if (isShuttingDown) return;
+    try {
+      await syncAccount(accountId);
+    } catch (e) {
+      console.error(`[IMAP] Poll error account #${accountId}:`, e.message);
+    }
+    // Trigger AI processing after sync
+    processUnanalyzedEmails().catch(() => {});
+    if (!isShuttingDown && pollingTimers.has(accountId)) {
+      const timerId = setTimeout(poll, interval);
+      pollingTimers.set(accountId, timerId);
+    }
+  }
+
+  // Start first poll with small delay
+  const timerId = setTimeout(poll, 5000);
+  pollingTimers.set(accountId, timerId);
+  console.log(`[IMAP] Polling started for account #${accountId} every ${intervalSec}s`);
+}
+
+function stopPolling(accountId) {
+  const timerId = pollingTimers.get(accountId);
+  if (timerId) {
+    clearTimeout(timerId);
+    pollingTimers.delete(accountId);
+    console.log(`[IMAP] Polling stopped for account #${accountId}`);
+  }
+}
+
+function stopAllPolling() {
+  for (const [accountId, timerId] of pollingTimers) {
+    clearTimeout(timerId);
+    console.log(`[IMAP] Polling stopped for account #${accountId}`);
+  }
+  pollingTimers.clear();
+}
+
+// ── Auto-provision email account from ENV if none exist ──────────────────
+async function autoProvisionFromEnv() {
+  const imapHost = process.env.IMAP_HOST;
+  const imapUser = process.env.IMAP_USER;
+  const imapPass = process.env.IMAP_PASS;
+
+  if (!imapHost || !imapUser || !imapPass) {
+    return false;
+  }
+
+  // Check if any account already exists
+  const existing = await db.query('SELECT id FROM email_accounts LIMIT 1');
+  if (existing.rows.length > 0) {
+    return false; // accounts exist, don't auto-provision
+  }
+
+  console.log(`[IMAP] Auto-provisioning email account from ENV: ${imapUser}@${imapHost}`);
+
+  const smtpHost = process.env.SMTP_HOST || '';
+  const smtpUser = process.env.SMTP_USER || imapUser;
+  const smtpPass = process.env.SMTP_PASS || imapPass;
+  const emailAddress = imapUser.includes('@') ? imapUser : `${imapUser}@${imapHost.replace(/^imap\./, '')}`;
+
+  try {
+    await db.query(`
+      INSERT INTO email_accounts (
+        name, email_address, account_type,
+        imap_host, imap_port, imap_user, imap_pass_encrypted, imap_tls, imap_folder,
+        smtp_host, smtp_port, smtp_user, smtp_pass_encrypted, smtp_tls, smtp_from_name,
+        sync_enabled, sync_interval_sec, sync_max_emails,
+        is_active
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+    `, [
+      'Основной почтовый ящик', emailAddress, 'primary',
+      imapHost,
+      parseInt(process.env.IMAP_PORT || '993'),
+      imapUser,
+      encrypt(imapPass),
+      process.env.IMAP_TLS !== 'false',
+      process.env.IMAP_FOLDER || 'INBOX',
+      smtpHost,
+      parseInt(process.env.SMTP_PORT || '587'),
+      smtpUser,
+      encrypt(smtpPass),
+      process.env.SMTP_SECURE === 'true',
+      process.env.SMTP_FROM_NAME || 'ООО «Асгард Сервис»',
+      true, 120, 200,
+      true
+    ]);
+    console.log('[IMAP] Email account auto-provisioned successfully');
+    return true;
+  } catch (e) {
+    console.error('[IMAP] Auto-provision error:', e.message);
+    return false;
+  }
+}
+
+// ── Init: start polling for all active accounts ─────────────────────────
+async function init() {
+  try {
+    // Auto-provision from ENV if no accounts exist
+    await autoProvisionFromEnv();
+
+    const result = await db.query(
+      'SELECT id, email_address, imap_host, sync_interval_sec FROM email_accounts WHERE is_active = true AND sync_enabled = true'
+    );
+
+    if (result.rows.length === 0) {
+      console.log('[IMAP] No active email accounts to sync');
+      console.log('[IMAP] To enable: set IMAP_HOST, IMAP_USER, IMAP_PASS in .env or add account via /api/mailbox/accounts');
+      return;
+    }
+
+    for (const acc of result.rows) {
+      console.log(`[IMAP] Starting sync for ${acc.email_address} via ${acc.imap_host}`);
+      startPolling(acc.id, acc.sync_interval_sec);
+    }
+
+    // Start background AI processor
+    startAiProcessor();
+
+    console.log(`[IMAP] Initialized polling for ${result.rows.length} account(s)`);
+  } catch (e) {
+    console.error('[IMAP] Init error:', e.message);
+  }
+}
+
+// ── Test connection (for settings UI) ───────────────────────────────────
+async function testConnection(config) {
+  const client = new ImapFlow({
+    host: config.imap_host,
+    port: config.imap_port || 993,
+    secure: config.imap_tls !== false,
+    auth: {
+      user: config.imap_user,
+      pass: config.imap_pass || decrypt(config.imap_pass_encrypted)
+    },
+    logger: false,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
+  });
+
+  try {
+    await client.connect();
+    const status = await client.status(config.imap_folder || 'INBOX', { messages: true, unseen: true });
+    await client.logout();
+    return { success: true, messages: status.messages, unseen: status.unseen };
+  } catch (e) {
+    try { await client.logout(); } catch (_) {}
+    return { success: false, error: e.message };
+  }
+}
+
+// ── Manual sync trigger ─────────────────────────────────────────────────
+async function manualSync(accountId) {
+  // Create a manual sync log
+  const logRes = await db.query(
+    `UPDATE email_sync_log SET sync_type = 'manual' WHERE id = (
+      SELECT id FROM email_sync_log WHERE account_id = $1 ORDER BY started_at DESC LIMIT 1
+    ) RETURNING id`, [accountId]
+  ).catch(() => null);
+
+  return syncAccount(accountId);
+}
+
+// ── Graceful shutdown ───────────────────────────────────────────────────
+async function shutdown() {
+  console.log('[IMAP] Shutting down...');
+  isShuttingDown = true;
+  stopAllPolling();
+  stopAiProcessor();
+
+  // Close active IMAP connections
+  for (const [accountId, client] of activeClients) {
+    try {
+      await client.logout();
+      console.log(`[IMAP] Closed connection for account #${accountId}`);
+    } catch (_) {}
+  }
+  activeClients.clear();
+}
+
+/**
+ * Reset emails that were skipped or errored during AI processing so they get reprocessed.
+ * Clears ai_processed_at for emails with skip/error markers.
+ */
+async function resetSkippedEmails() {
+  const result = await db.query(`
+    UPDATE emails SET ai_processed_at = NULL, ai_summary = NULL, ai_classification = NULL, ai_color = NULL, updated_at = NOW()
+    WHERE direction = 'inbound'
+      AND is_deleted = false
+      AND ai_processed_at IS NOT NULL
+      AND (
+        ai_summary LIKE '%Пропущено%'
+        OR ai_summary LIKE '%Ошибка%'
+        OR ai_summary LIKE '%skipped%'
+        OR ai_classification IS NULL
+        OR ai_classification = ''
+        OR ai_classification = '"other"'
+      )
+  `);
+  console.log(`[IMAP-AI] Reset ${result.rowCount} skipped/errored emails for reprocessing`);
+  return result.rowCount;
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PERSONAL USER ACCOUNTS — IMAP sync for user_email_accounts
+// ═══════════════════════════════════════════════════════════════════
+const personalTimers = new Map();   // userAccountId → timeoutId
+const personalClients = new Map();  // userAccountId → ImapFlow
+
+const MAX_PERSONAL_CONNECTIONS = 10;
+let activePersonalConnections = 0;
+
+/**
+ * Sync a personal user email account
+ */
+async function syncUserAccount(userAccountId) {
+  if (isShuttingDown) return { fetched: 0, newCount: 0 };
+  if (activePersonalConnections >= MAX_PERSONAL_CONNECTIONS) {
+    console.log(`[IMAP-Personal] Connection pool full, skipping account ${userAccountId}`);
+    return { fetched: 0, newCount: 0, skipped: true };
+  }
+
+  const accRes = await db.query('SELECT * FROM user_email_accounts WHERE id = $1 AND is_active = true', [userAccountId]);
+  if (accRes.rows.length === 0) return { fetched: 0, newCount: 0 };
+  const account = accRes.rows[0];
+
+  let client;
+  let fetched = 0;
+  let newCount = 0;
+
+  try {
+    activePersonalConnections++;
+
+    client = new (require('imapflow').ImapFlow)({
+      host: account.imap_host || 'imap.yandex.ru',
+      port: account.imap_port || 993,
+      secure: account.imap_tls !== false,
+      auth: {
+        user: account.imap_user,
+        pass: decrypt(account.imap_pass_encrypted)
+      },
+      logger: false,
+      emitLogs: false,
+      greetingTimeout: 15000,
+      socketTimeout: 60000
+    });
+
+    personalClients.set(userAccountId, client);
+    await client.connect();
+
+    // Sync INBOX
+    const lock = await client.getMailboxLock('INBOX');
+    try {
+      const lastUid = account.last_sync_uid || 0;
+      const maxEmails = 100;
+      const range = lastUid > 0 ? `${lastUid + 1}:*` : '1:*';
+      let maxUid = lastUid;
+      let count = 0;
+
+      // Get inbox folder id
+      const inboxFolder = await db.query(
+        "SELECT id FROM email_folders WHERE user_account_id = $1 AND folder_type = 'inbox'",
+        [userAccountId]
+      );
+      const inboxFolderId = inboxFolder.rows[0]?.id || null;
+
+      for await (const msg of client.fetch(range, {
+        uid: true, flags: true, envelope: true, source: true
+      })) {
+        if (isShuttingDown || count >= maxEmails) break;
+        count++;
+
+        try {
+          const { simpleParser } = require('mailparser');
+          const parsed = await simpleParser(msg.source);
+
+          // Check if already exists
+          const existing = await db.query(
+            'SELECT id FROM emails WHERE message_id = $1 AND user_account_id = $2',
+            [parsed.messageId, userAccountId]
+          );
+          if (existing.rows.length > 0) {
+            if (msg.uid > maxUid) maxUid = msg.uid;
+            continue;
+          }
+
+          // Save email
+          const fromAddr = parsed.from?.value?.[0]?.address || '';
+          const fromName = parsed.from?.value?.[0]?.name || '';
+          const toEmails = (parsed.to?.value || []).map(t => ({ address: t.address, name: t.name || '' }));
+          const ccEmails = (parsed.cc?.value || []).map(c => ({ address: c.address, name: c.name || '' }));
+          const bodyText = parsed.text || '';
+          const bodyHtml = parsed.html || '';
+          const snippet = bodyText.replace(/\s+/g, ' ').trim().slice(0, 250);
+
+          // Thread
+          const inReplyTo = parsed.inReplyTo || null;
+          const refsHeader = parsed.references ? (Array.isArray(parsed.references) ? parsed.references.join(' ') : parsed.references) : null;
+          let threadId = null;
+          if (refsHeader) {
+            const refs = refsHeader.match(/<[^>]+>/g);
+            if (refs && refs.length > 0) threadId = refs[0].replace(/[<>]/g, '');
+          } else if (inReplyTo) {
+            threadId = inReplyTo.replace(/[<>]/g, '');
+          }
+
+          // Attachments
+          const attachments = parsed.attachments || [];
+          const hasAttachments = attachments.length > 0;
+
+          // Classify
+          let emailType = 'unknown';
+          let confidence = 0;
+          try {
+            const classResult = await classifier.classify({
+              from_email: fromAddr,
+              subject: parsed.subject || '',
+              body_text: bodyText
+            });
+            emailType = classResult.type;
+            confidence = classResult.confidence;
+          } catch (e) { /* ignore */ }
+
+          const insertRes = await db.query(`
+            INSERT INTO emails (
+              user_account_id, owner_user_id, folder_id,
+              direction, message_id, in_reply_to, references_header, thread_id,
+              from_email, from_name, to_emails, cc_emails,
+              subject, body_text, body_html, snippet,
+              email_type, classification_confidence,
+              is_read, has_attachments, attachment_count,
+              imap_uid, imap_folder,
+              email_date, synced_at
+            ) VALUES (
+              $1, $2, $3,
+              'inbound', $4, $5, $6, $7,
+              $8, $9, $10, $11,
+              $12, $13, $14, $15,
+              $16, $17,
+              false, $18, $19,
+              $20, 'INBOX',
+              $21, NOW()
+            ) RETURNING id
+          `, [
+            userAccountId, account.user_id, inboxFolderId,
+            parsed.messageId, inReplyTo, refsHeader, threadId,
+            fromAddr, fromName, JSON.stringify(toEmails), JSON.stringify(ccEmails),
+            parsed.subject || '', bodyText, bodyHtml, snippet,
+            emailType, confidence,
+            hasAttachments, attachments.length,
+            msg.uid,
+            parsed.date || new Date()
+          ]);
+
+          // Save attachments to disk
+          if (hasAttachments && insertRes.rows[0]) {
+            const emailId = insertRes.rows[0].id;
+            const date = new Date().toISOString().slice(0, 10);
+            const uuid = require('crypto').randomUUID();
+            const dir = require('path').join(__dirname, '..', '..', 'uploads', 'mail', date, uuid);
+            require('fs').mkdirSync(dir, { recursive: true });
+
+            for (const att of attachments) {
+              const safeFn = (att.filename || 'attachment').replace(/[^\w.\-а-яА-ЯёЁ ]/gi, '_').slice(0, 200);
+              const fpath = require('path').join(dir, safeFn);
+              require('fs').writeFileSync(fpath, att.content);
+              const relPath = `uploads/mail/${date}/${uuid}/${safeFn}`;
+
+              await db.query(`
+                INSERT INTO email_attachments (email_id, filename, original_filename, file_path, mime_type, size, content_id, is_inline)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              `, [emailId, safeFn, att.filename || safeFn, relPath, att.contentType || 'application/octet-stream', att.size || 0, att.contentId || null, att.contentDisposition === 'inline']);
+            }
+          }
+
+          newCount++;
+          fetched++;
+          if (msg.uid > maxUid) maxUid = msg.uid;
+        } catch (parseErr) {
+          console.error(`[IMAP-Personal] Parse error uid=${msg.uid} account=${userAccountId}:`, parseErr.message);
+        }
+      }
+
+      // Update last sync UID
+      if (maxUid > lastUid) {
+        await db.query(
+          'UPDATE user_email_accounts SET last_sync_uid = $1, last_sync_at = NOW(), last_sync_error = NULL, updated_at = NOW() WHERE id = $2',
+          [maxUid, userAccountId]
+        );
+      } else {
+        await db.query(
+          'UPDATE user_email_accounts SET last_sync_at = NOW(), last_sync_error = NULL, updated_at = NOW() WHERE id = $1',
+          [userAccountId]
+        );
+      }
+
+      // Update folder counts
+      if (inboxFolderId) {
+        const counts = await db.query(
+          'SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE is_read = false) as unread FROM emails WHERE user_account_id = $1 AND folder_id = $2 AND is_deleted = false',
+          [userAccountId, inboxFolderId]
+        );
+        await db.query(
+          'UPDATE email_folders SET total_count = $1, unread_count = $2 WHERE id = $3',
+          [parseInt(counts.rows[0].total), parseInt(counts.rows[0].unread), inboxFolderId]
+        );
+      }
+
+    } finally {
+      lock.release();
+    }
+
+    await client.logout();
+  } catch (error) {
+    console.error(`[IMAP-Personal] Sync error account=${userAccountId}:`, error.message);
+    await db.query(
+      'UPDATE user_email_accounts SET last_sync_error = $1, updated_at = NOW() WHERE id = $2',
+      [error.message, userAccountId]
+    ).catch(() => {});
+  } finally {
+    activePersonalConnections--;
+    personalClients.delete(userAccountId);
+    if (client) try { await client.logout(); } catch (e) {}
+  }
+
+  return { fetched, newCount };
+}
+
+/**
+ * Start polling for all active personal accounts
+ */
+async function startPersonalPolling() {
+  try {
+    const accounts = await db.query('SELECT id, sync_interval_sec FROM user_email_accounts WHERE is_active = true');
+    for (const acc of accounts.rows) {
+      schedulePersonalSync(acc.id, (acc.sync_interval_sec || 120) * 1000);
+    }
+    console.log(`[IMAP-Personal] Started polling for ${accounts.rows.length} personal accounts`);
+  } catch (e) {
+    console.error('[IMAP-Personal] Failed to start polling:', e.message);
+  }
+}
+
+function schedulePersonalSync(accountId, intervalMs) {
+  if (personalTimers.has(accountId)) clearTimeout(personalTimers.get(accountId));
+  if (isShuttingDown) return;
+
+  const timer = setTimeout(async () => {
+    try {
+      await syncUserAccount(accountId);
+    } catch (e) {
+      console.error(`[IMAP-Personal] Scheduled sync error for ${accountId}:`, e.message);
+    }
+    if (!isShuttingDown) schedulePersonalSync(accountId, intervalMs);
+  }, intervalMs);
+
+  personalTimers.set(accountId, timer);
+}
+
+function stopPersonalPolling() {
+  for (const [id, timer] of personalTimers) {
+    clearTimeout(timer);
+  }
+  personalTimers.clear();
+  for (const [id, client] of personalClients) {
+    try { client.logout(); } catch (e) {}
+  }
+  personalClients.clear();
+}
+
+module.exports = {
+  init,
+  syncAccount,
+  manualSync,
+  startPolling,
+  stopPolling,
+  stopAllPolling,
+  testConnection,
+  shutdown,
+  encrypt,
+  decrypt,
+  processUnanalyzedEmails,
+  resetSkippedEmails,
+  syncUserAccount,
+  startPersonalPolling,
+  stopPersonalPolling
+};

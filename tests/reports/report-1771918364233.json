@@ -1,0 +1,90 @@
+{
+  "timestamp": "2026-02-24T07:32:44.233Z",
+  "summary": {
+    "passed": 1,
+    "failed": 0,
+    "total": 1,
+    "totalSteps": 10,
+    "passedSteps": 10,
+    "failedSteps": 0
+  },
+  "results": [
+    {
+      "name": "14-tender-full-lifecycle: Full Tender Lifecycle (Multi-Role)",
+      "steps": [
+        {
+          "name": "TO creates tender in #/tenders",
+          "status": "PASSED",
+          "error": null,
+          "duration": 32608,
+          "detail": "Tender created: TEST_AUTO_Tender_1771918098012_1"
+        },
+        {
+          "name": "TO adds estimate to the tender",
+          "status": "PASSED",
+          "error": null,
+          "duration": 21685,
+          "detail": "Tender detail checked, no estimate button (OK - estimates done via API)"
+        },
+        {
+          "name": "HEAD_TO reviews tender",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20387,
+          "detail": "HEAD_TO sees tenders page. Test tender visible: true"
+        },
+        {
+          "name": "PM views tender calculations",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24252,
+          "detail": "PM calcs page loaded, content length: 845"
+        },
+        {
+          "name": "PM creates work from tender",
+          "status": "PASSED",
+          "error": null,
+          "duration": 24899,
+          "detail": "Work created: TEST_AUTO_Work_1771918098012_2"
+        },
+        {
+          "name": "HEAD_PM reviews and approves work",
+          "status": "PASSED",
+          "error": null,
+          "duration": 31434,
+          "detail": "HEAD_PM checked approvals and all-works. Test work visible: true"
+        },
+        {
+          "name": "DIRECTOR_GEN overview verification",
+          "status": "PASSED",
+          "error": null,
+          "duration": 29505,
+          "detail": "DIRECTOR_GEN: works visible=false, tenders visible=false"
+        },
+        {
+          "name": "DIRECTOR_COMM monitors tender pipeline",
+          "status": "PASSED",
+          "error": null,
+          "duration": 28870,
+          "detail": "DIRECTOR_COMM: tenders visible=false, checked funnel and all-works"
+        },
+        {
+          "name": "BUH verifies financial records",
+          "status": "PASSED",
+          "error": null,
+          "duration": 29123,
+          "detail": "BUH checked finances, invoices, and acts pages"
+        },
+        {
+          "name": "ADMIN verifies full visibility",
+          "status": "PASSED",
+          "error": null,
+          "duration": 23416,
+          "detail": "ADMIN: tenders=false, works=false"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 266179
+    }
+  ]
+}

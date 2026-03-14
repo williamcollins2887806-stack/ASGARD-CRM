@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-02-24T19:15:43.206Z",
+  "summary": {
+    "passed": 0,
+    "failed": 1,
+    "total": 1,
+    "totalSteps": 1,
+    "passedSteps": 0,
+    "failedSteps": 1
+  },
+  "results": [
+    {
+      "name": "run",
+      "status": "FAILED",
+      "steps": [
+        {
+          "name": "initialization",
+          "status": "FAILED",
+          "error": "sc.mod.run is not a function"
+        }
+      ],
+      "duration": 0,
+      "error": "sc.mod.run is not a function"
+    }
+  ]
+}

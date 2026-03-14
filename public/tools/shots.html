@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ASGARD CRM - Helper</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial; padding:24px; background:#0b1220; color:#e5e7eb}
+    code{background:#111827; padding:2px 6px; border-radius:6px}
+    a{color:#93c5fd}
+  </style>
+</head>
+<body>
+  <h2>ASGARD CRM - helper</h2>
+  <p>Использование: <code>tools/shots.html?u=LOGIN&r=ROUTE</code></p>
+  <div id="out" style="margin-top:16px"></div>
+
+<script>
+(function(){
+  const DB_NAME="asgard_crm";
+  const LS_KEY="asgard_session";
+  const p = new URLSearchParams(location.search);
+  const login = (p.get("u")||"").trim();
+  const route = (p.get("r")||"home").trim();
+
+  const out = document.getElementById("out");
+  function msg(html){ out.innerHTML = html; }
+
+  if(!login) {
+    msg("<p><b>Нет параметра u.</b></p>");
+    return;
+  }
+
+  function openDB() {
+    return new Promise((resolve,reject)=>{
+      const req = indexedDB.open(DB_NAME);
+      req.onerror=()=>reject(req.error);
+      req.onsuccess=()=>resolve(req.result);
+      req.onupgradeneeded=()=>{ /* если база ещё не создана — значит seed не запускался */ };
+    });
+  }
+
+  function findUser(db) {
+    return new Promise((resolve,reject)=>{
+      try {
+        const tx=db.transaction("users","readonly");
+        const st=tx.objectStore("users");
+        const r=st.getAll();
+        r.onsuccess=()=>{
+          const all=r.result||[];
+          const u=all.find(x=>String(x.login||"").toLowerCase()===login.toLowerCase());
+          resolve(u||null);
+        };
+        r.onerror=()=>reject(r.error);
+      } catch(e) { resolve(null); }
+    });
+  }
+
+  (async ()=>{
+    msg("<p>Ищу пользователя <b>"+login+"</b>...</p>");
+    let db=null;
+    try { db = await openDB(); } catch(e) { db=null; }
+    if(!db) {
+      msg("<p>База ещё не инициализирована. Откройте <a href='../index.html#/login'>приложение</a> один раз, затем повторите.</p>");
+      return;
+    }
+    const u = await findUser(db);
+    if(!u) {
+      msg("<p>Пользователь не найден в базе. Откройте <a href='../index.html#/login'>логин</a> и выполните вход вручную.</p>");
+      return;
+    }
+    const token = { user_id:u.id, role:u.role, issued_at: new Date().toISOString() };
+    localStorage.setItem(LS_KEY, JSON.stringify(token));
+    location.href = "../index.html#/" + encodeURIComponent(route);
+  })();
+})();
+</script>
+</body>
+</html>

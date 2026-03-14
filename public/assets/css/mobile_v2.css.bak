@@ -1,0 +1,408 @@
+/* ═══════════════════════════════════════════════════════════════
+   ASGARD CRM — Mobile v2.0 Stylesheet
+   Дополнительные стили, не включённые в DS.injectStyles()
+   Управление темой через CSS-переменные из mobile_ds.js
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ───────── Reset & Base ───────── */
+/* Prevent desktop .card::before accent stripe from showing */
+.asgard-shell .card::before,
+.asgard-shell .mc-card::before {
+  display: none !important;
+}
+/* Hide any rogue fixed/absolute bars from desktop CSS */
+#asgard-shell > .loading-bar,
+#asgard-shell > .progress-bar {
+  display: none !important;
+}
+
+.mc-header a,
+.mc-card a,
+.mc-detail-fields a {
+  text-decoration: none;
+  color: inherit;
+}
+
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ───────── Card hover / press ───────── */
+.mc-card:active {
+  transform: scale(0.98);
+  box-shadow: var(--shadow);
+}
+
+/* ───────── Form toggle custom ───────── */
+.mc-form__group input[type="checkbox"] {
+  position: relative;
+  cursor: pointer;
+}
+.mc-form__group input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  top: 1px;
+  left: 1px;
+  transition: transform 0.3s cubic-bezier(.34,1.56,.64,1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.mc-form__group input[type="checkbox"]:checked::after {
+  transform: translateX(20px);
+}
+
+/* ───────── Tabs indicator smooth ───────── */
+.mc-tabs {
+  scrollbar-width: none;
+}
+.mc-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* ───────── Filter pills scroll ───────── */
+.mc-filter-pills {
+  scrollbar-width: none;
+}
+.mc-filter-pills::-webkit-scrollbar {
+  display: none;
+}
+
+/* ───────── Quick actions scroll ───────── */
+.mc-quick-actions {
+  scrollbar-width: none;
+}
+.mc-quick-actions::-webkit-scrollbar {
+  display: none;
+}
+
+/* ───────── Hero card pattern overlay — DISABLED ───────── */
+/* .mc-hero::before removed — no star pattern */
+
+/* ───────── Skeleton shimmer (uses inline styles now) ───────── */
+
+/* ───────── Toast slide ───────── */
+.mc-toast {
+  will-change: transform, opacity;
+}
+
+/* ───────── Sheet backdrop ───────── */
+.mc-sheet-overlay {
+  will-change: opacity;
+}
+.mc-sheet {
+  will-change: transform;
+}
+
+/* ───────── Bar chart ───────── */
+.mc-bar-chart > div {
+  position: relative;
+}
+
+/* ───────── Swipe actions rounding ───────── */
+.asgard-swipe-actions {
+  border-radius: 0 var(--r-xl) var(--r-xl) 0;
+  overflow: hidden;
+}
+.asgard-swipe-action:last-child {
+  border-radius: 0 var(--r-xl) var(--r-xl) 0;
+}
+
+/* ───────── Badge row gap ───────── */
+.mc-badge + .mc-badge {
+  margin-left: 0;
+}
+
+/* ───────── Bottom sheet safe area ───────── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .mc-sheet {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ───────── iOS input zoom prevention ───────── */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="search"],
+  input[type="date"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ───────── Print (hide mobile shell) ───────── */
+@media print {
+  .asgard-tabbar,
+  .asgard-overlay,
+  .mc-fab,
+  .mc-toast {
+    display: none !important;
+  }
+  .asgard-content {
+    overflow: visible;
+  }
+  .asgard-shell {
+    height: auto;
+  }
+}
+
+/* ───────── Reduced motion ───────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ───────── Landscape phone adjustments ───────── */
+@media (orientation: landscape) and (max-height: 500px) {
+  .asgard-tabbar {
+    padding: 4px 0;
+    padding-bottom: calc(4px + env(safe-area-inset-bottom));
+  }
+  .asgard-tabbar__fab {
+    width: 42px;
+    height: 42px;
+    margin-top: -16px;
+  }
+  .asgard-tabbar__label {
+    display: none;
+  }
+}
+
+/* ───────── Tablet grid (2 columns) ───────── */
+@media (min-width: 429px) {
+  .mc-table-page__list > div {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .mc-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ───────── iPad Pro (3 columns) ───────── */
+@media (min-width: 768px) {
+  .mc-table-page__list > div {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .mc-stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+/* ================================================================
+ *  ASGARD CRM Mobile v2 — Auth & Home CSS (v3.1.0)
+ * ================================================================ */
+
+/* ---- Welcome: floating runes ---- */
+.welcome-runes {
+  position: absolute; inset: 0;
+  overflow: hidden; pointer-events: none;
+}
+.welcome-rune {
+  position: absolute;
+  color: #fff; opacity: 0.03;
+  font-family: 'Segoe UI Historic', 'Noto Sans Runic', serif;
+  animation: runeFloat 16s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes runeFloat {
+  0%   { transform: translateY(0)     rotate(0deg);   opacity: 0.025; }
+  25%  { transform: translateY(-18px) rotate(6deg);   opacity: 0.05;  }
+  50%  { transform: translateY(-32px) rotate(-4deg);  opacity: 0.035; }
+  75%  { transform: translateY(-12px) rotate(8deg);   opacity: 0.055; }
+  100% { transform: translateY(0)     rotate(0deg);   opacity: 0.025; }
+}
+
+/* ---- Auth: shake ---- */
+@keyframes authShake {
+  0%, 100% { transform: translateX(0); }
+  15%, 45%, 75% { transform: translateX(-5px); }
+  30%, 60%, 90% { transform: translateX(5px); }
+}
+
+/* ---- PIN: dot shake on error ---- */
+@keyframes pinShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+/* ---- Auth field focus ring ---- */
+.auth-field input:focus {
+  outline: none;
+}
+
+/* ---- PIN numpad ripple (subtle) ---- */
+.pin-key {
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  overflow: hidden;
+}
+.pin-key::after {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+  opacity: 0; transform: scale(0);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.pin-key:active::after {
+  opacity: 1; transform: scale(2.5);
+  transition: none;
+}
+
+/* ---- Home page ---- */
+.home-page {
+  background: var(--bg);
+}
+
+/* ---- Home greeting avatar glow ---- */
+.home-avatar {
+  position: relative;
+}
+.home-avatar::after {
+  content: '';
+  position: absolute; inset: -3px;
+  border-radius: 50%;
+  background: var(--hero-grad);
+  opacity: 0.2;
+  z-index: -1;
+  filter: blur(6px);
+}
+
+/* ---- Safe-area support for auth pages ---- */
+.auth-welcome, .auth-pin-page, .auth-credentials {
+  padding-top: max(env(safe-area-inset-top, 0px), 16px);
+}
+
+/* ---- Welcome buttons bottom safe area ---- */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .welcome-buttons {
+    padding-bottom: max(env(safe-area-inset-bottom), 44px) !important;
+  }
+}
+
+/* ---- Hide tab bar on auth routes ---- */
+body.auth-active nav.asgard-tab-bar,
+body.auth-active .asgard-tab-bar {
+  display: none !important;
+}
+
+/* ---- Landscape orientation adjustments ---- */
+@media (orientation: landscape) and (max-height: 500px) {
+  .auth-pin-page { padding-top: 32px !important; }
+  .pin-dots { margin-bottom: 24px !important; }
+  .pin-numpad { gap: 8px !important; }
+  .pin-key { width: 56px !important; height: 56px !important; }
+  .pin-avatar { width: 56px !important; height: 56px !important; }
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .welcome-rune { animation: none !important; opacity: 0.03 !important; }
+  .welcome-center, .welcome-title, .welcome-buttons,
+  .auth-credentials, .auth-pin-page {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ───────── Swipe actions containment ───────── */
+.mc-card {
+  overflow: hidden !important;
+}
+.asgard-swipe-inner {
+  border-radius: inherit;
+}
+
+/* ───────── Bar chart labels fix ───────── */
+/* Dual chart: скрыть каждый чётный label на всех экранах < 480px */
+@media (max-width: 480px) {
+  .mc-bar-label--dual[data-even] {
+    visibility: hidden;
+  }
+}
+@media (max-width: 380px) {
+  .mc-bar-label {
+    font-size: 7px !important;
+  }
+  .mc-bar-label[data-even] {
+    visibility: hidden;
+  }
+}
+@media (max-width: 320px) {
+  .mc-bar-label {
+    font-size: 6px !important;
+  }
+}
+
+
+/* ═══════ LIGHT THEME OVERRIDES (Patch #3) ═══════ */
+/* Гарантировать что мобильные CSS-переменные не перебиваются десктопом */
+.asgard-shell,
+.asgard-shell * {
+  --bg: var(--bg);
+  --surface: var(--surface);
+  --surface-alt: var(--surface-alt);
+  --text: var(--text);
+  --text-sec: var(--text-sec);
+  --text-ter: var(--text-ter);
+  --border: var(--border);
+  --input-bg: var(--input-bg);
+  --shimmer-grad: var(--shimmer-grad);
+}
+
+/* Force input backgrounds in mobile shell */
+.asgard-shell input,
+.asgard-shell textarea,
+.asgard-shell select {
+  background: var(--input-bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* Force form section headers */
+.asgard-shell .mc-form > div[style*="font-weight"] {
+  color: var(--text) !important;
+}
+
+/* Force skeleton shimmer in both themes */
+.asgard-shell .mc-skeleton > div,
+.asgard-shell .mc-skeleton div[style*="shimmer"] {
+  background: var(--shimmer-grad) !important;
+  background-size: 200% 100% !important;
+}
+
+/* Force card surface */
+.asgard-shell .mc-card {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+/* Force labels and section titles */
+.asgard-shell .mc-form label {
+  color: var(--text-sec) !important;
+}
+
+/* SearchBar input */
+.asgard-shell .mc-search input {
+  background: none !important;
+  color: var(--text) !important;
+}
+.asgard-shell .mc-search > div {
+  background: var(--surface-alt) !important;
+  border-color: var(--border) !important;
+}

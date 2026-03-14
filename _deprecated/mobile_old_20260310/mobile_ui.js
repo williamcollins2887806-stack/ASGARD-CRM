@@ -1,0 +1,1646 @@
+/**
+ * ASGARD CRM — AsgardMobileUI v8.0.0 (Premium)
+ * Component library for mobile rendering
+ */
+(function(W) {
+  'use strict';
+
+  /* ── Utility ── */
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  /**
+   * linkify — Convert URLs in escaped text to clickable links
+   */
+  function linkify(escapedText) {
+    return escapedText.replace(/(https?:\/\/[^\s<&]+)/g,
+      '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">$1</a>');
+  }
+
+  // v8.1.1 — Relative time helper
+  function timeAgo(dateStr) {
+    if (!dateStr) return '';
+    var date = new Date(dateStr);
+    if (isNaN(date.getTime())) return String(dateStr);
+    var now = new Date();
+    var diff = Math.floor((now - date) / 1000);
+    if (diff < 60) return 'только что';
+    if (diff < 3600) return Math.floor(diff / 60) + ' мин';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' ч';
+    if (diff < 172800) return 'вчера';
+    return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  }
+
+
+
+  /**
+   * isEmojiOnly — Detect if text contains only emoji (for large display)
+   */
+  function isEmojiOnly(text) {
+    if (!text || text.length > 20) return false;
+    var stripped = text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{27BF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{200D}\u{20E3}\u{FE0F}\s]/gu, '');
+    return stripped.length === 0;
+  }
+
+
+
+  function uid() { return 'm_' + Math.random().toString(36).substring(2, 9); }
+
+  function isMobile() {
+    return window.innerWidth <= 768 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  }
+
+  function getTimeGreeting() {
+    var h = new Date().getHours();
+    var svgSun = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--gold, #D4A843)" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/></svg>';
+    var svgMoon = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--gold, #D4A843)" stroke-width="1.5"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    var svgSunset = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--gold, #D4A843)" stroke-width="1.5"><path d="M17 18a5 5 0 0 0-10 0"/><line x1="12" y1="9" x2="12" y2="2"/><path d="M4.22 10.22l1.42 1.42m12.72 0l1.42-1.42M1 18h22"/></svg>';
+    if (h >= 5 && h < 12) return {text: '\u0414\u043E\u0431\u0440\u043E\u0435 \u0443\u0442\u0440\u043E', icon: svgSun};
+    if (h >= 12 && h < 17) return {text: '\u0414\u043E\u0431\u0440\u044B\u0439 \u0434\u0435\u043D\u044C', icon: svgSun};
+    if (h >= 17 && h < 22) return {text: '\u0414\u043E\u0431\u0440\u044B\u0439 \u0432\u0435\u0447\u0435\u0440', icon: svgSunset};
+    return {text: '\u0414\u043E\u0431\u0440\u043E\u0439 \u043D\u043E\u0447\u0438', icon: svgMoon};
+  }
+
+  function statusColor(status) {
+    var s = String(status || '').toLowerCase();
+    var map = {
+      'active': 'var(--ok-t, #2EA043)', 'approved': 'var(--ok-t, #2EA043)', 'completed': 'var(--ok-t, #2EA043)',
+      'won': 'var(--ok-t, #2EA043)', 'done': 'var(--ok-t, #2EA043)', 'success': 'var(--ok-t, #2EA043)',
+      'pending': 'var(--gold, #F0C000)', 'in_progress': 'var(--gold, #F0C000)', 'draft': 'var(--muted, #8B949E)',
+      'rejected': 'var(--err-t, #F85149)', 'cancelled': 'var(--err-t, #F85149)', 'failed': 'var(--err-t, #F85149)',
+      'lost': 'var(--err-t, #F85149)', 'overdue': 'var(--err-t, #F85149)',
+      'new': 'var(--primary, #58A6FF)', 'open': 'var(--primary, #58A6FF)'
+    };
+    return map[s] || 'var(--muted, #8B949E)';
+  }
+
+
+  /* === Wave 2: Status badge mapping === */
+  var STATUS_BADGE_MAP = {
+    // Works
+    "В работе": "warning",
+    "Завершена": "success",
+    "Закрыт": "danger",
+    "Закрыта": "danger",
+    "Приостановлена": "neutral",
+    // Tenders
+    "Новый": "info",
+    "В проработке": "warning",
+    "Подан": "info",
+    "Выигран": "success",
+    "Проигран": "danger",
+    "Отменён": "neutral",
+    "На согласовании": "warning",
+    // Contracts
+    "Активный": "success",
+    "Черновик": "neutral",
+    // Notifications
+    "Прочитано": "neutral",
+    "Непрочитано": "warning",
+    "Новое": "warning",
+    // Permits
+    "ИСТЁК": "danger",
+    "Истекает": "warning",
+    "Действует": "success",
+    // English keys (for compatibility)
+    "active": "success", "approved": "success", "completed": "success",
+    "won": "success", "done": "success",
+    "pending": "warning", "in_progress": "warning",
+    "draft": "neutral",
+    "rejected": "danger", "cancelled": "danger", "failed": "danger",
+    "lost": "danger", "overdue": "danger",
+    "new": "info", "open": "info"
+  };
+
+  function getStatusBadgeClass(status) {
+    var s = String(status || "");
+    var variant = STATUS_BADGE_MAP[s] || STATUS_BADGE_MAP[s.toLowerCase()] || "neutral";
+    return "m-badge m-badge--" + variant;
+  }
+
+  W.STATUS_BADGE_MAP = STATUS_BADGE_MAP;
+  W.getStatusBadgeClass = getStatusBadgeClass;
+
+    /* ── Notifications / Toasts ── */
+  
+  // v8.1.2 — Custom confirm dialog (Sber/Yandex style)
+  function mConfirm(title, message, opts) {
+    opts = opts || {};
+    return new Promise(function(resolve) {
+      var overlay = document.createElement('div');
+      overlay.className = 'm-confirm-overlay';
+      overlay.innerHTML =
+        '<div class="m-confirm-dialog">' +
+          '<div class="m-confirm-title">' + (title || '\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u0435') + '</div>' +
+          (message ? '<div class="m-confirm-message">' + message + '</div>' : '') +
+          '<div class="m-confirm-actions">' +
+            '<button class="m-confirm-btn m-confirm-cancel">' + (opts.cancelText || '\u041E\u0442\u043C\u0435\u043D\u0430') + '</button>' +
+            '<button class="m-confirm-btn m-confirm-ok">' + (opts.okText || '\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C') + '</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      requestAnimationFrame(function() { overlay.classList.add('visible'); });
+
+      function close(result) {
+        overlay.classList.remove('visible');
+        setTimeout(function() { overlay.remove(); }, 200);
+        if (navigator.vibrate) navigator.vibrate(10);
+        resolve(result);
+      }
+
+      overlay.querySelector('.m-confirm-cancel').addEventListener('click', function() { close(false); });
+      overlay.querySelector('.m-confirm-ok').addEventListener('click', function() { close(true); });
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) close(false); });
+    });
+  }
+
+  
+  // v8.1.2 — Inline loading spinner
+  function mSpinner(size) {
+    size = size || 24;
+    return '<div class="m-spinner" style="width:' + size + 'px;height:' + size + 'px"></div>';
+  }
+
+  // v8.1.2 — Full-page loading overlay
+  function mPageLoading(show) {
+    var existing = document.querySelector('.m-page-loading');
+    if (!show) {
+      if (existing) {
+        existing.classList.add('hiding');
+        setTimeout(function() { existing.remove(); }, 300);
+      }
+      return;
+    }
+    if (existing) return;
+    var el = document.createElement('div');
+    el.className = 'm-page-loading';
+    el.innerHTML = '<div class="m-spinner" style="width:32px;height:32px"></div>';
+    document.body.appendChild(el);
+  }
+
+  function showToast(msg, type) {
+    var existing = document.querySelector('.m-toast');
+    if (existing) existing.remove();
+    var el = document.createElement('div');
+    el.className = 'm-toast'; el.setAttribute('role', 'alert') + (type === 'ok' ? ' m-toast-ok' : type === 'err' ? ' m-toast-err' : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    requestAnimationFrame(function() { el.classList.add('visible'); });
+    setTimeout(function() {
+      el.classList.remove('visible');
+      setTimeout(function() { el.remove(); }, 300);
+    }, 2500);
+  }
+
+  function showSuccess(msg) { showToast(msg || 'Готово', 'ok'); }
+  function showError(msg) { showToast(msg || 'Ошибка', 'err'); }
+
+  function showSuccessAnimation(el) {
+    if (!el) return;
+    el.classList.add('m-success-pulse');
+    setTimeout(function() { el.classList.remove('m-success-pulse'); }, 600);
+  }
+
+  /* ── Sheet (bottom sheet / detail modal) ── */
+  var activeSheet = null;
+  function showSheet(title, contentHtml, opts) {
+    opts = opts || {};
+    hideSheet();
+    var overlay = document.createElement('div');
+    overlay.className = 'm-sheet-overlay';
+    var sheet = document.createElement('div');
+    sheet.className = 'm-sheet';
+    sheet.innerHTML =
+      '<div class="m-sheet-handle"></div>' +
+      '<div class="m-sheet-header">' +
+        '<span class="m-sheet-title">' + esc(title) + '</span>' +
+        '<button class="m-sheet-close" id="mSheetClose">\u2715</button>' +
+      '</div>' +
+      '<div class="m-sheet-body">' + (contentHtml || '') + '</div>';
+    if (opts.actions) {
+      sheet.innerHTML += '<div class="m-sheet-actions">' + opts.actions + '</div>';
+    }
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+    requestAnimationFrame(function() { overlay.classList.add('visible'); });
+    activeSheet = overlay;
+    overlay.querySelector('#mSheetClose').addEventListener('click', hideSheet);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) hideSheet(); });
+
+    // v8.1.1 — Drag-to-dismiss
+    var sheetEl = overlay.querySelector('.m-sheet');
+    if (sheetEl) {
+      var dragStartY = 0, dragging = false, sheetStartH = 0;
+      var header = sheetEl.querySelector('.m-sheet-header');
+      if (header) {
+        header.addEventListener('touchstart', function(e) {
+          dragStartY = e.touches[0].clientY;
+          dragging = true;
+          sheetStartH = sheetEl.offsetHeight;
+          sheetEl.style.transition = 'none';
+        }, { passive: true });
+
+        header.addEventListener('touchmove', function(e) {
+          if (!dragging) return;
+          var dy = e.touches[0].clientY - dragStartY;
+          if (dy > 0) {
+            sheetEl.style.transform = 'translateY(' + dy + 'px)';
+          }
+        }, { passive: true });
+
+        header.addEventListener('touchend', function(e) {
+          if (!dragging) return;
+          dragging = false;
+          sheetEl.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+          var dy = e.changedTouches[0].clientY - dragStartY;
+          if (dy > sheetStartH * 0.3) {
+            // Dismiss
+            hideSheet();
+            if (navigator.vibrate) navigator.vibrate(10);
+          } else {
+            // Snap back
+            sheetEl.style.transform = '';
+          }
+        });
+      }
+    }
+
+    return overlay;
+  }
+
+  function hideSheet() {
+    if (activeSheet) {
+      activeSheet.classList.remove('visible');
+      var s = activeSheet;
+      setTimeout(function() { s.remove(); }, 300);
+      activeSheet = null;
+    }
+  }
+
+  /* ── Core Components ── */
+
+
+  /* v8.8.2 — Status/role translation for mobile */
+  var _STATUS_MAP = {
+    'APPROVED': 'Одобрено', 'approved': 'Одобрено',
+    'PENDING': 'На рассмотрении', 'pending': 'На рассмотрении',
+    'ACTIVE': 'Активен', 'active': 'Активен',
+    'INACTIVE': 'Неактивен', 'inactive': 'Неактивен',
+    'OUTGOING': 'Исходящий', 'outgoing': 'Исходящий',
+    'INCOMING': 'Входящий', 'incoming': 'Входящий',
+    'PERMIT': 'Допуск', 'permit': 'Допуск',
+    'REJECTED': 'Отклонено', 'rejected': 'Отклонено',
+    'DRAFT': 'Черновик', 'draft': 'Черновик',
+    'CLOSED': 'Закрыт', 'closed': 'Закрыт',
+    'EXPIRED': 'Истёк', 'expired': 'Истёк',
+    'COMPLETED': 'Выполнено', 'completed': 'Выполнено',
+    'IN_PROGRESS': 'В работе', 'in_progress': 'В работе',
+    'CANCELLED': 'Отменено', 'cancelled': 'Отменено',
+    'SENT': 'Отправлено', 'sent': 'Отправлено',
+    'PAID': 'Оплачено', 'paid': 'Оплачено',
+    'OVERDUE': 'Просрочено', 'overdue': 'Просрочено',
+    'worker': 'Рабочий', 'WORKER': 'Рабочий',
+    'foreman': 'Бригадир', 'FOREMAN': 'Бригадир',
+    'engineer': 'Инженер', 'ENGINEER': 'Инженер',
+    'master': 'Мастер', 'MASTER': 'Мастер',
+    'specialist': 'Специалист', 'SPECIALIST': 'Специалист',
+    'manager': 'Менеджер', 'MANAGER': 'Менеджер',
+    'ЗАКРЫТ': 'Закрыт', 'В РАБОТЕ': 'В работе',
+    'NEW': 'Новый', 'new': 'Новый'
+  };
+  function _translateStatus(s) {
+    if (!s) return '';
+    return _STATUS_MAP[s] || _STATUS_MAP[s.trim()] || s;
+  }
+  W._translateStatus = _translateStatus;
+
+  function mCard(opts) {
+    opts = opts || {};
+    var id = opts.id ? ' data-id="' + esc(opts.id) + '"' : '';
+    var onClick = ' data-clickable="1"';
+    var accent = opts.accentColor ? ' style="border-left:3px solid ' + esc(opts.accentColor) + '"' : '';
+    var badge = '';
+    if (opts.badge) {
+      var _badgeText = _translateStatus(opts.badge);
+      var _badgeCls = getStatusBadgeClass(_badgeText);
+      badge = '<span class="' + _badgeCls + '">' + esc(_badgeText) + '</span>';
+    }
+    var subtitle = opts.subtitle ? '<div class="m-card-subtitle">' + esc(opts.subtitle) + '</div>' : '';
+    var html = '<div class="m-card"' + id + onClick + accent + '>';
+    html += '<div class="m-card-header">';
+    html += '<div class="m-card-title">' + (opts.titleHtml ? opts.titleHtml : esc(opts.title || '')) + badge + '</div>';
+    html += subtitle;
+    html += '</div>';
+
+    // Fields grid
+    if (opts.fields && opts.fields.length) {
+      var maxVisible = opts.maxFields || 3;
+      var hasMore = opts.fields.length > maxVisible && !opts.noCollapse;
+      html += '<div class="m-card-fields">';
+      for (var i = 0; i < opts.fields.length; i++) {
+        var f = opts.fields[i];
+        var fullCls = f.full ? ' m-field-full' : '';
+        var monoCls = f.mono ? ' m-field-mono' : '';
+        var hiddenCls = (hasMore && i >= maxVisible) ? ' m-card-field-hidden' : '';
+        html += '<div class="m-card-field' + fullCls + hiddenCls + '">';
+        if (f.label) html += '<div class="m-card-field-label">' + esc(f.label) + '</div>';
+        html += '<div class="m-card-field-value' + monoCls + '">' + (f.valueHtml ? f.valueHtml : esc(String(f.value || '\u2014'))) + '</div>';
+        html += '</div>';
+      }
+      if (hasMore) {
+        html += '<button class="m-card-expand-btn" data-expanded="0" data-max="' + maxVisible + '">\u041F\u043E\u0434\u0440\u043E\u0431\u043D\u0435\u0435 (' + (opts.fields.length - maxVisible) + ')</button>';
+      }
+      html += '</div>';
+    }
+
+    // Action row
+    if (opts.actions) {
+      html += '<div class="m-card-actions">' + opts.actions + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  var PAGE_SIZE = 20;
+
+  function mList(items, renderFn, opts) {
+    opts = opts || {};
+    var listId = opts.id || uid();
+    var pageSize = opts.pageSize || PAGE_SIZE;
+
+    if (!items || !items.length) {
+      return '<div class="m-list" id="' + listId + '">' +
+        mEmpty(opts.emptyText || '\u041D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445', opts.emptyIcon) +
+        '</div>';
+    }
+
+    // Pagination: show first pageSize items, rest hidden behind Load More
+    var showAll = opts.noPagination || items.length <= pageSize;
+    var visibleCount = showAll ? items.length : pageSize;
+
+    var html = '<div class="m-list" id="' + listId + '" data-total="' + items.length + '" data-shown="' + visibleCount + '">';
+    for (var i = 0; i < items.length; i++) {
+      var hidden = (!showAll && i >= pageSize) ? ' class="m-list-hidden" style="display:none"' : '';
+      html += '<div' + hidden + ' data-list-idx="' + i + '">' + renderFn(items[i], i) + '</div>';
+    }
+    html += '</div>';
+
+    // Load More button
+    if (!showAll) {
+      html += mLoadMore({ id: listId + '_more', shown: pageSize, total: items.length });
+    }
+
+    return html;
+  }
+
+  /* Auto-bind Load More buttons */
+  var _loadMoreInit = false;
+  function initLoadMore() {
+    if (_loadMoreInit) return;
+    _loadMoreInit = true;
+    document.addEventListener('click', function(e) {
+      var btn = e.target.closest('.m-load-more-btn');
+      if (!btn) return;
+      var wrap = btn.closest('.m-load-more');
+      if (!wrap) return;
+      var listId = wrap.id.replace('_more', '');
+      var list = document.getElementById(listId);
+      if (!list) return;
+
+      var shown = parseInt(list.dataset.shown || '0', 10);
+      var total = parseInt(list.dataset.total || '0', 10);
+      var newShown = Math.min(shown + PAGE_SIZE, total);
+
+      // Reveal next batch
+      var items = list.querySelectorAll('.m-list-hidden');
+      var revealed = 0;
+      for (var i = 0; i < items.length && revealed < PAGE_SIZE; i++) {
+        items[i].classList.remove('m-list-hidden');
+        items[i].style.display = '';
+        items[i].style.animation = 'm-page-enter 0.3s ease ' + (revealed * 30) + 'ms both';
+        revealed++;
+      }
+
+      list.dataset.shown = String(newShown);
+
+      // Update button text or hide
+      if (newShown >= total) {
+        wrap.style.display = 'none';
+      } else {
+        var info = wrap.querySelector('.m-load-more-info');
+        if (info) info.textContent = '\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u043E ' + newShown + ' \u0438\u0437 ' + total;
+        btn.dataset.shown = String(newShown);
+      }
+    });
+  }
+
+  // Auto-init on load
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initLoadMore);
+    } else {
+      initLoadMore();
+    }
+  }
+
+  /* Card expand/collapse handler */
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.m-card-expand-btn');
+    if (!btn) return;
+    var fields = btn.parentNode;
+    var hidden = fields.querySelectorAll('.m-card-field-hidden');
+    var maxV = parseInt(btn.dataset.max || '3', 10);
+    if (btn.dataset.expanded === '0') {
+      hidden.forEach(function(f) { f.classList.remove('m-card-field-hidden'); });
+      btn.dataset.expanded = '1';
+      btn.textContent = '\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C';
+    } else {
+      var allFields = fields.querySelectorAll('.m-card-field');
+      allFields.forEach(function(f, i) {
+        if (i >= maxV) f.classList.add('m-card-field-hidden');
+      });
+      btn.dataset.expanded = '0';
+      var count = allFields.length - maxV;
+      btn.textContent = '\u041F\u043E\u0434\u0440\u043E\u0431\u043D\u0435\u0435 (' + count + ')';
+    }
+  });
+
+  
+  /* v8.6.0 Viking-themed empty state illustrations */
+  var VIKING_EMPTY = {
+    tasks: '<svg width="80" height="80" viewBox="0 0 80 80" fill="none"><defs><linearGradient id="mjG" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#D4A843"/><stop offset="100%" stop-color="#8B6914"/></linearGradient></defs><rect x="36" y="8" width="8" height="32" rx="2" fill="url(#mjG)" opacity=".8"/><rect x="22" y="36" width="36" height="20" rx="4" fill="url(#mjG)" opacity=".9"/><rect x="26" y="40" width="28" height="12" rx="2" fill="none" stroke="#1A1A2E" stroke-width="1.5"/><path d="M38 8L42 8L43 4L37 4Z" fill="#D4A843" opacity=".6"/></svg>',
+    chat: '<svg width="80" height="80" viewBox="0 0 80 80" fill="none"><ellipse cx="40" cy="42" rx="18" ry="16" fill="#6E7681" opacity=".3"/><ellipse cx="40" cy="32" rx="12" ry="11" fill="#6E7681" opacity=".4"/><circle cx="36" cy="30" r="2" fill="#E6EDF3" opacity=".9"/><circle cx="36" cy="30" r="1" fill="#0D1117"/><path d="M44 32Q50 28 48 24" stroke="#6E7681" stroke-width="2" fill="none"/><path d="M30 45Q22 55 18 58" stroke="#6E7681" stroke-width="2.5" fill="none"/><path d="M50 45Q58 55 62 58" stroke="#6E7681" stroke-width="2.5" fill="none"/></svg>',
+    mail: '<svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="20" y="16" width="40" height="48" rx="3" fill="#D4A843" opacity=".08"/><rect x="22" y="18" width="36" height="44" rx="2" fill="none" stroke="#D4A843" stroke-width="1" opacity=".3"/><ellipse cx="20" cy="16" rx="4" ry="6" fill="#D4A843" opacity=".2"/><ellipse cx="60" cy="16" rx="4" ry="6" fill="#D4A843" opacity=".2"/><line x1="28" y1="28" x2="52" y2="28" stroke="#D4A843" stroke-width="1" opacity=".25"/><line x1="28" y1="34" x2="48" y2="34" stroke="#D4A843" stroke-width="1" opacity=".2"/><line x1="28" y1="40" x2="50" y2="40" stroke="#D4A843" stroke-width="1" opacity=".15"/></svg>',
+    data: '<svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="28" stroke="#D4A843" stroke-width="1" opacity=".2"/><circle cx="40" cy="40" r="20" stroke="#D4A843" stroke-width="1" opacity=".15"/><circle cx="40" cy="40" r="3" fill="#D4A843" opacity=".4"/><line x1="40" y1="12" x2="40" y2="68" stroke="#D4A843" stroke-width=".75" opacity=".2"/><line x1="12" y1="40" x2="68" y2="40" stroke="#D4A843" stroke-width=".75" opacity=".2"/><path d="M40 12L43 22L40 18L37 22Z" fill="#D4A843" opacity=".35"/><path d="M40 68L43 58L40 62L37 58Z" fill="#D4A843" opacity=".25"/></svg>',
+    shield: '<svg width="80" height="80" viewBox="0 0 80 80" fill="none"><path d="M40 10L62 20L62 45Q62 65 40 72Q18 65 18 45L18 20Z" fill="none" stroke="#D4A843" stroke-width="1.5" opacity=".3"/><path d="M40 16L56 24L56 43Q56 59 40 66Q24 59 24 43L24 24Z" fill="#D4A843" opacity=".05"/><circle cx="40" cy="36" r="6" stroke="#D4A843" stroke-width="1" opacity=".25" fill="none"/></svg>',
+    search: '<svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="34" cy="34" r="16" stroke="#D4A843" stroke-width="1.5" opacity=".3" fill="none"/><line x1="46" y1="46" x2="62" y2="62" stroke="#D4A843" stroke-width="2" opacity=".3"/><circle cx="34" cy="34" r="8" stroke="#D4A843" stroke-width=".75" opacity=".15" fill="none"/></svg>'
+  };
+  W.VIKING_EMPTY = VIKING_EMPTY;
+
+  function mEmpty(text, icon, type) {
+    /* v8.6.0 — Viking-themed empty states */
+    var vikingIcon = '';
+    if (icon) {
+      vikingIcon = icon;
+    } else if (type && VIKING_EMPTY[type]) {
+      vikingIcon = VIKING_EMPTY[type];
+    } else {
+      vikingIcon = VIKING_EMPTY.shield;
+    }
+    return '<div class="m-empty">' +
+      '<div class="m-empty-icon">' + vikingIcon + '</div>' +
+      '<div class="m-empty-text">' + esc(text || '\u041D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445') + '</div>' +
+    '</div>';
+  }
+
+  function mSkeleton(type, count) {
+    count = count || 3;
+    var html = '';
+    if (type === 'stats') {
+      html += '<div class="m-stats-row m-skel-row">';
+      for (var i = 0; i < count; i++) {
+        html += '<div class="m-stat-card m-skel"><div class="m-skel m-skel-text"></div><div class="m-skel m-skel-text-lg m-skel-w60"></div></div>';
+      }
+      html += '</div>';
+    } else if (type === 'list') {
+      for (var j = 0; j < count; j++) {
+        html += '<div class="m-card m-skel m-skel--list-card">' +
+          '<div class="m-skel-list-header"><div class="m-skel m-skel-text" style="width:65%"></div><div class="m-skel m-skel-text" style="width:60px;height:20px;border-radius:10px"></div></div>' +
+          '<div class="m-skel m-skel-text" style="width:45%;margin-top:8px"></div>' +
+          '<div class="m-skel-list-fields"><div class="m-skel m-skel-text m-skel-w40"></div><div class="m-skel m-skel-text m-skel-w40"></div></div>' +
+          '</div>';
+      }
+    } else {
+      for (var j = 0; j < count; j++) {
+        html += '<div class="m-card m-skel"><div class="m-skel m-skel-text"></div><div class="m-skel m-skel-text-lg"></div><div class="m-skel m-skel-text m-skel-w40"></div></div>';
+      }
+    }
+    return html;
+  }
+
+  function mStats(stats) {
+    if (!stats || !stats.length) return '';
+    var html = '<div class="m-stats-row">';
+    for (var i = 0; i < stats.length; i++) {
+      var s = stats[i];
+      var colorStyle = s.color ? ' style="--stat-accent:' + esc(s.color) + '"' : '';
+      html += '<div class="m-stat-card"' + colorStyle + (s.href ? ' data-href="' + esc(s.href) + '"' : '') + '>';
+      if (s.icon) html += '<div class="m-stat-icon">' + s.icon + '</div>';
+      var _sv = String(s.value != null ? s.value : 0); var _svCls = _sv.length > 14 ? ' m-stat-value-xs' : (_sv.length > 10 ? ' m-stat-value-sm' : (_sv.length > 6 ? ' m-stat-value-md' : '')); html += '<div class="m-stat-value' + _svCls + '">' + esc(_sv) + '</div>';
+      var _sl = s.label || ''; var _slCls = _sl.length > 10 ? ' m-stat-label-sm' : ''; html += '<div class="m-stat-label' + _slCls + '">' + esc(_sl) + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function mSection(title, contentHtml, opts) {
+    opts = opts || {};
+    if (typeof opts === 'string') opts = {};
+    var sectionId = opts.id || '';
+    var cls = 'm-section' + (opts.collapsible ? ' m-section-collapsible' : '') + (opts.collapsed ? ' collapsed' : '');
+    var html = '<div class="' + cls + '"' + (sectionId ? ' id="' + esc(sectionId) + '"' : '') + '>';
+    html += '<div class="m-section-header"' + (opts.collapsible ? ' onclick="this.parentElement.classList.toggle(\'collapsed\')"' : '') + '>';
+    html += '<span class="m-section-title">' + esc(title) + '</span>';
+    if (opts.action) {
+      html += '<a class="m-section-action" href="' + esc(opts.actionHref || '#') + '"' + (opts.actionClick ? ' onclick="' + opts.actionClick + '"' : '') + '>' + esc(opts.action) + '</a>';
+    }
+    if (opts.actionIcon) {
+      html += '<button class="m-section-icon-btn" onclick="event.stopPropagation();' + (opts.actionIconClick || '') + '">' + opts.actionIcon + '</button>';
+    }
+    if (opts.collapsible) {
+      html += '<svg class="m-section-collapse-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>';
+    }
+    html += '</div>';
+    html += '<div class="m-section-body">' + (contentHtml || '') + '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  function mBadge(text, color) {
+    var cls = getStatusBadgeClass(text);
+    return '<span class="' + cls + '">' + esc(text) + '</span>';
+  }
+
+  function mProgressBar(pct, color) {
+    var p = Math.max(0, Math.min(100, parseFloat(pct) || 0));
+    var c = color;
+    if (!c) {
+      if (p < 25) c = 'var(--m-status-danger)';
+      else if (p < 75) c = 'var(--m-status-warning)';
+      else c = 'var(--m-status-success)';
+    }
+    return '<div class="m-progress">' +
+      '<div class="m-progress-fill" style="width:' + p + '%;background:' + c + '"></div>' +
+    '</div>';
+  }
+
+  function mToolbar(opts) {
+    // v8.8.0: Inject global search button
+    if (!opts._noSearch) {
+      opts.rightHtml = (opts.rightHtml || '') + '<button class="m-header-search m-search-trigger" id="mHeaderSearch" style="background:none;border:none;padding:8px;cursor:pointer;color:inherit;opacity:.7"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.8"/><path d="M13.5 13.5L17 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>';
+    }
+    opts = opts || {};
+    var html = '<div class="m-toolbar">';
+    if (opts.search) {
+      html += '<div class="m-search-wrap"><input class="m-search-input" id="' + esc(opts.search.id || 'mSearch') + '" placeholder="' + esc(opts.search.placeholder || '\u041F\u043E\u0438\u0441\u043A...') + '"><button class="m-search-clear" type="button" aria-label="\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C">\u00D7</button></div>';
+    }
+    if (opts.filters) {
+      html += '<div class="m-toolbar-filters">';
+      (opts.filters || []).forEach(function(f) {
+        html += '<button class="m-toolbar-filter' + (f.active ? ' active' : '') + '" data-filter="' + esc(f.value || f.label) + '">' + esc(f.label) + '</button>';
+      });
+      html += '</div>';
+    }
+    if (opts.actions) {
+      html += '<div class="m-toolbar-actions">' + opts.actions + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function mForm(fields) {
+    if (!fields || !fields.length) return '';
+    var html = '<div class="m-form">';
+    fields.forEach(function(f) {
+      html += '<div class="m-form-group">';
+      if (f.label) html += '<label class="m-form-label">' + esc(f.label) + '</label>';
+      if (f.type === 'textarea') {
+        html += '<textarea class="m-form-control" id="' + esc(f.id || '') + '" placeholder="' + esc(f.placeholder || '') + '">' + esc(f.value || '') + '</textarea>';
+      } else if (f.type === 'select' && f.options) {
+        html += '<select class="m-form-control" id="' + esc(f.id || '') + '">';
+        f.options.forEach(function(o) {
+          var sel = o.value === f.value ? ' selected' : '';
+          html += '<option value="' + esc(o.value) + '"' + sel + '>' + esc(o.label) + '</option>';
+        });
+        html += '</select>';
+      } else {
+        html += '<input class="m-form-control" type="' + esc(f.type || 'text') + '" id="' + esc(f.id || '') + '" placeholder="' + esc(f.placeholder || '') + '" value="' + esc(f.value || '') + '">';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function mDetailFields(fields) {
+    if (!fields || !fields.length) return '';
+    var html = '<div class="m-detail-fields">';
+    fields.forEach(function(f) {
+      html += '<div class="m-detail-row"><span class="m-detail-label">' + esc(f.label) + '</span><span class="m-detail-value">' + esc(String(f.value || '\u2014')) + '</span></div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function mActionRow(actions) {
+    if (!actions || !actions.length) return '';
+    var html = '<div class="m-action-row">';
+    actions.forEach(function(a) {
+      var cls = a.cls ? ' ' + a.cls : '';
+      var id = a.id ? ' id="' + esc(a.id) + '"' : '';
+      html += '<button class="m-action-btn' + cls + '"' + id + '>' +
+        (a.icon ? '<span class="m-action-icon">' + a.icon + '</span>' : '') +
+        esc(a.label) + '</button>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function mTablePage(opts) {
+    opts = opts || {};
+    var html = '<div class="m-page" data-mobile-native="1">';
+    if (opts.bigNumber) html += opts.bigNumber;
+    if (opts.chart) html += opts.chart;
+    if (opts.pills) html += opts.pills;
+    if (opts.stats) html += mStats(opts.stats);
+
+    /* ── Toolbar ── */
+    var tb = opts.toolbar;
+    if (tb !== false) {
+      if (tb && typeof tb === 'object') {
+        /* New format: toolbar: { search, filters, actions } */
+        var tbHtml = '<div class="m-toolbar">';
+        if (tb.search) {
+          tbHtml += '<input class="m-search-input" id="' + esc(tb.search.id || 'mSearch') + '" placeholder="' + esc(tb.search.placeholder || 'Поиск...') + '">';
+        }
+        if (tb.filters && tb.filters.length) {
+          tbHtml += '<div class="m-toolbar-filters">';
+          tb.filters.forEach(function(f) {
+            if (f.options) {
+              tbHtml += '<select class="m-toolbar-select" id="' + esc(f.id || '') + '">';
+              f.options.forEach(function(o) {
+                tbHtml += '<option value="' + esc(o.value != null ? o.value : '') + '">' + esc(o.text || o.label || '') + '</option>';
+              });
+              tbHtml += '</select>';
+            } else {
+              tbHtml += '<button class="m-toolbar-filter' + (f.active ? ' active' : '') + '" data-filter="' + esc(f.value || f.label || '') + '">' + esc(f.label || '') + '</button>';
+            }
+          });
+          tbHtml += '</div>';
+        }
+        if (tb.actions && tb.actions.length) {
+          tbHtml += '<div class="m-toolbar-actions">';
+          tb.actions.forEach(function(a) {
+            tbHtml += '<button class="m-toolbar-btn' + (a.cls ? ' m-btn-' + a.cls : '') + '" id="' + esc(a.id || '') + '">' +
+              (a.icon ? '<span class="m-btn-icon">' + a.icon + '</span>' : '') +
+              esc(a.label || '') + '</button>';
+          });
+          tbHtml += '</div>';
+        }
+        tbHtml += '</div>';
+        html += tbHtml;
+      } else {
+        /* Legacy/fallback format */
+        html += mToolbar({
+          search: opts.search !== false ? { id: opts.searchId || 'mSearch', placeholder: opts.searchPlaceholder || 'Поиск...' } : null,
+          filters: opts.filters,
+          actions: opts.toolbarActions
+        });
+      }
+    }
+
+    /* ── List content ── */
+    var listId = opts.listId || 'mPageList';
+    html += '<div class="m-page-list" id="' + esc(listId) + '">';
+    if (opts.items && opts.renderCard) {
+      /* Use mList() for automatic pagination with Load More */
+      html += mList(opts.items, opts.renderCard, {
+        id: 'mobileList',
+        emptyText: opts.emptyText,
+        pageSize: opts.pageSize || PAGE_SIZE
+      });
+    } else {
+      html += opts.content || opts.listHtml || '';
+    }
+    html += '</div>';
+        html += '</div>'; /* close m-page */
+    return html;
+  }
+
+  /* ═══════════════════════════════════════════════════════ */
+  /* v8.0.0 — LOAD MORE + CHAT + MAIL COMPONENTS           */
+  /* ═══════════════════════════════════════════════════════ */
+
+  /**
+   * mLoadMore — Load More button with counter
+   */
+  function mLoadMore(opts) {
+    var id = opts.id || 'mLoadMore';
+    var shown = opts.shown || 0;
+    var total = opts.total || 0;
+    var text = opts.text || '\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0435\u0449\u0451';
+    var remaining = total - shown;
+    if (remaining <= 0) return '';
+    return '<div class="m-load-more" id="' + id + '">' +
+      '<button class="m-load-more-btn" data-shown="' + shown + '" data-total="' + total + '">' +
+        text + '</button>' +
+      '<span class="m-load-more-info">\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u043E ' + shown + ' \u0438\u0437 ' + total + '</span>' +
+    '</div>';
+  }
+
+  /**
+   * mChatListItem — Chat list row
+   */
+  function mChatListItem(chat) {
+    var initials = (chat.name || '?').split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
+    var avatarContent = chat.avatar
+      ? '<img src="' + esc(chat.avatar) + '" alt="">'
+      : initials;
+    var onlineDot = chat.online ? '<span class="m-chat-online"></span>' : '';
+    var unreadBadge = chat.unread ? '<span class="m-chat-unread">' + esc(String(chat.unread)) + '</span>' : '';
+    return '<div class="m-chat-list-item" data-chat-id="' + esc(String(chat.id)) + '">' +
+      '<div class="m-chat-avatar">' + avatarContent + onlineDot + '</div>' +
+      '<div class="m-chat-info">' +
+        '<div class="m-chat-top-row">' +
+          '<span class="m-chat-name">' + esc(chat.name) + '</span>' +
+          '<span class="m-chat-time">' + timeAgo(chat.time || chat.updated_at || '') + '</span>' +
+        '</div>' +
+        '<div class="m-chat-bottom-row">' +
+          '<span class="m-chat-preview">' + esc(chat.lastMessage || '') + '</span>' +
+          unreadBadge +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /**
+   * mChatBubble — Message bubble
+   */
+  function mChatBubble(msg) {
+    var cls = msg.isMine ? 'mine' : 'other';
+    var sender = (!msg.isMine && msg.senderName)
+      ? '<div class="m-chat-bubble-sender">' + esc(msg.senderName) + '</div>'
+      : '';
+    var reply = msg.replyTo
+      ? '<div class="m-chat-reply-ref"><strong>' + esc(msg.replyTo.name || '') + '</strong><br>' + esc((msg.replyTo.text || '').substring(0, 80)) + '</div>'
+      : '';
+    var status = msg.isMine
+      ? '<span class="m-chat-bubble-status">' + (msg.status === 'read' ? '\u2713\u2713' : '\u2713') + '</span>'
+      : '';
+    // Determine content by message type
+    var content = '';
+    if (msg.image || msg.media_url) {
+      var imgSrc = esc(msg.image || msg.media_url);
+      content = '<img class="m-chat-bubble-img" src="' + imgSrc + '" alt="' + esc(msg.text || 'Изображение') + '" loading="lazy">';
+      if (msg.text) content += '<div class="m-chat-bubble-text">' + linkify(esc(msg.text)) + '</div>';
+    } else if (msg.voice || msg.audio_url) {
+      var audioSrc = esc(msg.voice || msg.audio_url);
+      content = '<div class="m-chat-bubble-voice">' +
+        '<button class="m-chat-voice-play" data-src="' + audioSrc + '" aria-label="Воспроизвести"><i class="bi bi-play-fill"></i></button>' +
+        '<div class="m-chat-voice-wave"><span></span><span></span><span></span><span></span><span></span></div>' +
+        '<span class="m-chat-voice-dur">' + esc(msg.duration || '0:00') + '</span>' +
+      '</div>';
+    } else if (msg.file || msg.attachment) {
+      var file = msg.file || msg.attachment;
+      content = '<a class="m-chat-bubble-file" href="' + esc(file.url || '#') + '" target="_blank" rel="noopener">' +
+        '<i class="bi bi-file-earmark"></i>' +
+        '<span class="m-chat-file-name">' + esc(file.name || file.filename || 'Файл') + '</span>' +
+        (file.size ? '<span class="m-chat-file-size">' + esc(file.size) + '</span>' : '') +
+      '</a>';
+    } else {
+      var rawText = msg.text || '';
+      var emojiCls = isEmojiOnly(rawText) ? ' m-chat-emoji-only' : '';
+      content = '<div class="m-chat-bubble-text' + emojiCls + '">' + linkify(esc(rawText)) + '</div>';
+    }
+
+    return '<div class="m-chat-bubble ' + cls + '" data-msg-id="' + esc(String(msg.id)) + '" data-id="' + esc(String(msg.id)) + '">' +
+      sender + reply + content +
+      '<div class="m-chat-bubble-time">' + esc(msg.time || '') + status + '</div>' +
+    '</div>';
+  }
+
+  function mChatDateSep(text) {
+    return '<div class="m-chat-date-sep"><span>' + esc(text) + '</span></div>';
+  }
+
+  function mChatInput() {
+    return '<div class="m-chat-reply-bar" id="chatReplyBar" style="display:none">' +
+        '<div><div class="m-chat-reply-bar-name" id="chatReplyName"></div>' +
+        '<div class="m-chat-reply-bar-text" id="chatReplyText"></div></div>' +
+        '<button class="m-chat-reply-bar-close" id="chatReplyClose">\u2715</button>' +
+      '</div>' +
+      '<div class="m-chat-input-bar">' +
+        '<button class="m-chat-attach-btn" id="chatAttachBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>' +
+        '<textarea class="m-chat-input-field" id="chatInput" rows="1" placeholder="\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435..."></textarea>' +
+        '<button class="m-chat-voice-btn" id="chatVoiceBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></button>' +
+        '<button class="m-chat-send-btn" id="chatSendBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></button>' +
+      '</div>';
+  }
+
+  function mChatHeader(opts) {
+    var initials = (opts.name || '?').split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
+    var statusCls = opts.online ? 'online' : '';
+    var statusText = opts.online ? '\u0432 \u0441\u0435\u0442\u0438' : (opts.lastSeen || '');
+    var onlineDot = opts.online ? '<span class="m-chat-online-sm"></span>' : '';
+    return '<div class="m-chat-conv-header">' +
+      '<button class="m-chat-back-btn" id="chatBackBtn">\u2190</button>' +
+      '<div class="m-chat-conv-avatar">' + initials + onlineDot + '</div>' +
+      '<div class="m-chat-conv-info">' +
+        '<div class="m-chat-conv-name">' + esc(opts.name || '') + '</div>' +
+        '<div class="m-chat-conv-status ' + statusCls + '">' + esc(statusText) + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function mTypingIndicator(name) {
+    return '<div class="m-chat-typing" id="chatTyping" style="display:none">' +
+      '<span class="m-chat-typing-name">' + esc(name || '') + ' \u043F\u0435\u0447\u0430\u0442\u0430\u0435\u0442</span>' +
+      '<div class="m-chat-typing-dots"><span></span><span></span><span></span></div>' +
+    '</div>';
+  }
+
+  function mChatContextMenu() {
+    return '<div class="m-chat-ctx-menu" id="chatCtxMenu" role="menu" aria-label="Действия">' +
+      '<div class="m-chat-ctx-item" data-action="reply"><span class="ctx-icon">\u21A9</span> \u041E\u0442\u0432\u0435\u0442\u0438\u0442\u044C</div>' +
+      '<div class="m-chat-ctx-item" data-action="forward"><span class="ctx-icon">\u21AA</span> \u041F\u0435\u0440\u0435\u0441\u043B\u0430\u0442\u044C</div>' +
+      '<div class="m-chat-ctx-item" data-action="copy"><span class="ctx-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span> \u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C</div>' +
+      '<div class="m-chat-ctx-item" data-action="delete"><span class="ctx-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></span> \u0423\u0434\u0430\u043B\u0438\u0442\u044C</div>' +
+    '</div>';
+  }
+
+  function mMailItem(mail) {
+    var initial = (mail.from || '?')[0].toUpperCase();
+    var colors = ['#4A9EFF','#2EA043','#F0C000','#F85149','#A371F7','#39D2C0','#F778BA'];
+    var colorIdx = 0;
+    for (var ci = 0; ci < (mail.from||'').length; ci++) colorIdx += (mail.from||'').charCodeAt(ci);
+    var bgColor = colors[colorIdx % colors.length];
+    var unreadCls = mail.unread ? ' unread' : '';
+    var starCls = mail.starred ? ' active' : '';
+    var attachIcon = mail.hasAttachment ? ' <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>' : '';
+    return '<div class="m-mail-swipe-wrap" data-mail-id="' + esc(String(mail.id)) + '">' +
+      '<div class="m-mail-swipe-bg left">\u2705</div>' +
+      '<div class="m-mail-swipe-bg right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></div>' +
+      '<div class="m-mail-item' + unreadCls + '">' +
+        '<div class="m-mail-avatar" style="background:' + bgColor + '">' + initial + '</div>' +
+        '<div class="m-mail-body">' +
+          '<div class="m-mail-top-row">' +
+            '<span class="m-mail-sender">' + esc(mail.from || '') + '</span>' +
+            '<span class="m-mail-time">' + esc(mail.time || '') + '</span>' +
+          '</div>' +
+          '<div class="m-mail-subject">' + esc(mail.subject || '(\u0431\u0435\u0437 \u0442\u0435\u043C\u044B)') + attachIcon + '</div>' +
+          '<div class="m-mail-snippet">' + esc(mail.snippet || '') + '</div>' +
+        '</div>' +
+        '<span class="m-mail-star' + starCls + '" data-mail-star="' + esc(String(mail.id)) + '">\u2606</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function mMailFolders(folders) {
+    var icons = { inbox: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>', sent: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>', drafts: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>', spam: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>', trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>', archive: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>' };
+    var items = (folders || []).map(function(f) {
+      var icon = icons[f.id] || '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
+      var badge = f.count ? '<span class="m-mail-folder-badge">' + esc(String(f.count)) + '</span>' : '';
+      var activeCls = f.active ? ' active' : '';
+      return '<div class="m-mail-folder-item' + activeCls + '" data-folder="' + esc(f.id) + '">' +
+        '<span class="m-mail-folder-icon">' + icon + '</span>' +
+        '<span>' + esc(f.label) + '</span>' + badge +
+      '</div>';
+    }).join('');
+    return '<div class="m-mail-drawer-overlay" id="mailDrawerOverlay"></div>' +
+      '<div class="m-mail-drawer" id="mailDrawer">' +
+        '<div class="m-mail-drawer-header">\u041F\u0430\u043F\u043A\u0438</div>' + items +
+      '</div>';
+  }
+
+  function mMailCompose() {
+    return '<div class="m-mail-compose" id="mailCompose">' +
+      '<div class="m-mail-compose-header">' +
+        '<button class="m-chat-back-btn" id="mailComposeClose">\u2715</button>' +
+        '<span class="m-mail-compose-title">\u041D\u043E\u0432\u043E\u0435 \u043F\u0438\u0441\u044C\u043C\u043E</span>' +
+        '<button class="m-mail-send-btn" id="mailComposeSend">\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C</button>' +
+      '</div>' +
+      '<div class="m-mail-compose-body">' +
+        '<div class="m-mail-compose-field"><label>\u041A\u043E\u043C\u0443:</label><input id="mailTo" type="email" multiple placeholder="email@example.com"><span class="m-mail-cc-toggle" id="mailCcToggle">Cc</span></div>' +
+        '<div class="m-mail-cc-field" id="mailCcField" style="display:none">' +
+          '<div class="m-mail-compose-field"><label>\u041A\u043E\u043F\u0438\u044F:</label><input type="text" id="mailCc" placeholder="\u041A\u043E\u043F\u0438\u044F (CC)..."></div>' +
+        '</div>' +
+        '<div class="m-mail-compose-field"><label>\u0422\u0435\u043C\u0430:</label><input id="mailSubject" placeholder="\u0422\u0435\u043C\u0430 \u043F\u0438\u0441\u044C\u043C\u0430"></div>' +
+        '<textarea class="m-mail-compose-textarea" id="mailBody" placeholder="\u0422\u0435\u043A\u0441\u0442 \u043F\u0438\u0441\u044C\u043C\u0430..."></textarea>' +
+        '<div class="m-mail-rich-toolbar">' +
+          '<button class="m-mail-tb-btn" data-cmd="bold"><b>B</b></button>' +
+          '<button class="m-mail-tb-btn" data-cmd="italic"><i>I</i></button>' +
+          '<button class="m-mail-tb-btn" data-cmd="underline"><u>U</u></button>' +
+          '<span class="m-mail-tb-sep"></span>' +
+          '<button class="m-mail-tb-btn m-mail-attach-btn" id="mailAttachBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* ═══ Search handler ═══ */
+  function initMobileSearch() {
+    document.addEventListener('input', function(e) {
+      var input = e.target;
+      if (!input.classList.contains('m-search-input')) return;
+      var q = input.value.toLowerCase();
+      var list = input.closest('.m-page, .m-section, [data-mobile-native]');
+      if (!list) return;
+      var cards = list.querySelectorAll('.m-card, .m-chat-list-item, .m-mail-swipe-wrap');
+      var empty = list.querySelector('.m-search-empty');
+      var visible = 0;
+      cards.forEach(function(c) {
+        var text = c.textContent.toLowerCase();
+        var show = text.indexOf(q) >= 0;
+        c.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      if (!visible && q) {
+        if (!empty) {
+          empty = document.createElement('div');
+          empty.className = 'm-search-empty m-empty';
+          empty.innerHTML = '<div class="m-empty-icon m-empty-icon-lg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div><div class="m-empty-text">\u041D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E</div>';
+          list.appendChild(empty);
+        }
+        empty.style.display = '';
+      } else if (empty) {
+        empty.style.display = 'none';
+      }
+    });
+  }
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initMobileSearch);
+    } else {
+      initMobileSearch();
+    }
+  }
+
+  /* ── Expose ── */
+  W.esc = esc;
+  W.isMobile = isMobile;
+  W.getTimeGreeting = getTimeGreeting;
+  W.statusColor = statusColor;
+  W.showToast = showToast;
+  W.showSuccess = showSuccess;
+  W.showError = showError;
+  W.showSuccessAnimation = showSuccessAnimation;
+  W.showSheet = showSheet;
+  W.hideSheet = hideSheet;
+  
+  // v8.1.1 — Universal card detail view handler
+  // When a card with onClick is tapped and no specific handler catches it,
+  // show all visible fields in a detail bottom sheet
+  document.addEventListener('click', function(e) {
+    var card = e.target.closest('.m-card[data-id]');
+    if (!card) return;
+
+    // Skip if a specific handler already caught this (check for sheet)
+    if (document.querySelector('.m-sheet-overlay')) return;
+
+    // Delay slightly to allow specific handlers to fire first
+    setTimeout(function() {
+      if (document.querySelector('.m-sheet-overlay')) return;
+
+      // Extract card data
+      var title = card.querySelector('.m-card-title');
+      var subtitle = card.querySelector('.m-card-sub');
+      var badge = card.querySelector('.m-badge');
+      var fields = card.querySelectorAll('.m-card-field');
+
+      var titleText = title ? title.textContent : 'Подробности';
+      var detailFields = [];
+
+      if (badge) {
+        detailFields.push({ label: 'Статус', html: badge.outerHTML });
+      }
+      if (subtitle) {
+        detailFields.push({ label: 'Дата', value: subtitle.textContent });
+      }
+
+      fields.forEach(function(f) {
+        var lbl = f.querySelector('.m-card-field-label');
+        var val = f.querySelector('.m-card-field-value');
+        if (lbl && val) {
+          detailFields.push({ label: lbl.textContent, value: val.textContent, full: val.textContent.length > 50 });
+        }
+      });
+
+      if (detailFields.length > 0) {
+        if (navigator.vibrate) navigator.vibrate(10);
+        showSheet(titleText, mDetailFields(detailFields));
+      }
+    }, 50);
+  });
+
+
+  W.mCard = mCard;
+  W.mList = mList;
+  W.mEmpty = mEmpty;
+  W.mSkeleton = mSkeleton;
+  W.mStats = mStats;
+  W.mSection = mSection;
+  W.mBadge = mBadge;
+  W.mProgressBar = mProgressBar;
+  W.mToolbar = mToolbar;
+  W.mForm = mForm;
+  W.mDetailFields = mDetailFields;
+  W.mActionRow = mActionRow;
+  
+  // v8.1.2 — Search clear button handler
+  (function initSearchClear() {
+    document.addEventListener('click', function(e) {
+      if (e.target.classList && e.target.classList.contains('m-search-clear')) {
+        var wrap = e.target.closest('.m-search-wrap');
+        if (wrap) {
+          var input = wrap.querySelector('.m-search-input');
+          if (input) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); }
+        }
+      }
+    });
+    document.addEventListener('input', function(e) {
+      if (e.target.classList && e.target.classList.contains('m-search-input')) {
+        var wrap = e.target.closest('.m-search-wrap');
+        if (wrap) {
+          var btn = wrap.querySelector('.m-search-clear');
+          if (btn) btn.style.display = e.target.value ? 'flex' : 'none';
+        }
+      }
+    });
+  })();
+
+  
+  // v8.1.2 — Auto-paginate long lists
+  var _autoPaginateInit = false;
+  function autoPaginate() {
+    if (_autoPaginateInit) return;
+    _autoPaginateInit = true;
+    // After each hashchange, check for long lists and paginate them
+    window.addEventListener('hashchange', function() {
+      _autoPaginateInit = false;
+      setTimeout(autoPaginateNow, 300);
+    });
+    autoPaginateNow();
+  }
+  function autoPaginateNow() {
+    _autoPaginateInit = true;
+    var containers = document.querySelectorAll('.m-page .m-list, .m-page .m-section-content');
+    containers.forEach(function(list) {
+      if (list.dataset.paginated) return;
+      var cards = list.querySelectorAll(':scope > .m-card');
+      if (cards.length <= 20) return;
+
+      list.dataset.paginated = '1';
+      list.dataset.shown = '20';
+      list.dataset.total = String(cards.length);
+
+      // Hide cards after 20th
+      for (var i = 20; i < cards.length; i++) {
+        cards[i].classList.add('m-list-hidden');
+        cards[i].style.display = 'none';
+      }
+
+      // Add LoadMore button
+      var listId = 'pag-' + Math.random().toString(36).substr(2, 6);
+      list.id = listId;
+      var btn = document.createElement('div');
+      btn.className = 'm-load-more';
+      btn.id = listId + '_more';
+      btn.innerHTML = '<button class="m-load-more-btn">\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0435\u0449\u0451</button>' +
+        '<div class="m-load-more-info">\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u043E 20 \u0438\u0437 ' + cards.length + '</div>';
+      list.parentNode.insertBefore(btn, list.nextSibling);
+    });
+  }
+
+  
+  // v8.2 — Sber-style widget grid (2-column)
+  function mWidgetGrid(items) {
+    if (!items || !items.length) return '';
+    var html = '<div class="m-widget-grid">';
+    items.forEach(function(item) {
+      html += '<div class="m-widget-card" ' + (item.onClick ? 'onclick="' + item.onClick + '"' : '') + '>';
+      if (item.icon) html += '<div class="m-widget-card-icon">' + item.icon + '</div>';
+      if (item.value) html += '<div class="m-widget-card-value">' + esc(String(item.value)) + '</div>';
+      html += '<div class="m-widget-card-title">' + esc(item.title || '') + '</div>';
+      if (item.subtitle) html += '<div class="m-widget-card-subtitle">' + esc(item.subtitle) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  
+  // v8.2 — Sber-style quick action circles (horizontal scroll)
+  function mQuickActions(items) {
+    if (!items || !items.length) return '';
+    var html = '<div class="m-widget-scroll">';
+    items.forEach(function(item) {
+      html += '<div class="m-quick-action"' + (item.href ? ' data-href="' + esc(item.href) + '"' : (item.onClick ? ' onclick="' + item.onClick + '"' : '')) + '>';
+      html += '<div class="m-quick-action-icon">' + (item.icon || '') + '</div>';
+      html += '<div class="m-quick-action-label">' + esc(item.label || '') + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  
+  // v8.2 — Horizontal scroll cards (like Sber account cards)
+  function mWidgetScroll(items, renderFn) {
+    if (!items || !items.length) return '';
+    var html = '<div class="m-widget-scroll">';
+    items.forEach(function(item, i) {
+      html += renderFn(item, i);
+    });
+    html += '</div>';
+    return html;
+  }
+
+
+  // v8.3 — Sber-style big number (integer bold 32px, decimal lighter)
+  function mBigNumber(opts) {
+    opts = opts || {};
+    var val = String(opts.value || '0');
+    var parts = val.split(/([.,])/);
+    var integer = parts[0] || '0';
+    var sep = parts[1] || '';
+    var decimal = parts[2] || '';
+    var html = '<div class="m-big-number">';
+    html += '<span class="m-big-number-int">' + esc(integer) + '</span>';
+    if (sep && decimal) {
+      html += '<span class="m-big-number-dec">' + esc(sep + decimal) + '</span>';
+    }
+    if (opts.suffix) html += '<span class="m-big-number-dec"> ' + esc(opts.suffix) + '</span>';
+    html += '</div>';
+    if (opts.subtitleHtml) html += '<div class="m-big-number-sub">' + opts.subtitleHtml + '</div>';
+    else if (opts.subtitle) html += '<div class="m-big-number-sub">' + esc(opts.subtitle) + '</div>';
+    return html;
+  }
+  W.mBigNumber = mBigNumber;
+
+
+  // v8.3 — Sber-style filter pills (toggle buttons row)
+  function mFilterPills(pills, opts) {
+    opts = opts || {};
+    var id = opts.id || 'mPills';
+    var html = '<div class="m-filter-pills" id="' + esc(id) + '">';
+    pills.forEach(function(p, i) {
+      var active = (opts.active === p.value || (!opts.active && i === 0)) ? ' active' : '';
+      html += '<button class="m-filter-pill' + active + '" data-value="' + esc(p.value || '') + '">';
+      if (p.icon) html += '<span class="m-filter-pill-icon">' + p.icon + '</span>';
+      html += esc(p.label || '') + '</button>';
+    });
+    html += '</div>';
+    return html;
+  }
+  W.mFilterPills = mFilterPills;
+
+
+  // v8.3 — Sber-style mini chart (inline bars for widget cards)
+  function mMiniChart(data, opts) {
+    opts = opts || {};
+    if (!data || !data.length) return '';
+    var max = Math.max.apply(null, data.map(function(d) { return d.value || 0; }));
+    if (max === 0) max = 1;
+    var barW = opts.barWidth || 12;
+    var barGap = opts.barGap || 4;
+    var h = opts.height || 60;
+    var w = data.length * (barW + barGap);
+    var highlight = opts.highlight != null ? opts.highlight : data.length - 1;
+    var html = '<div class="m-mini-chart" style="height:' + h + 'px;width:' + w + 'px">';
+    data.forEach(function(d, i) {
+      var barH = Math.max(4, Math.round((d.value / max) * (h - 4)));
+      var color = i === highlight ? (opts.accentColor || 'var(--ok-t, #21bf73)') : (opts.barColor || 'rgba(255,255,255,0.15)');
+      html += '<div class="m-mini-bar" style="width:' + barW + 'px;height:' + barH + 'px;background:' + color + '" title="' + esc(d.label || '') + ': ' + esc(String(d.value || 0)) + '"></div>';
+    });
+    html += '</div>';
+    return html;
+  }
+  W.mMiniChart = mMiniChart;
+
+
+  // v8.3 — Sber-style collapsible section (title + ^ arrow + optional + button)
+  function mCollapseSection(opts) {
+    opts = opts || {};
+    var id = opts.id || 'sec-' + Math.random().toString(36).substr(2, 6);
+    var collapsed = opts.collapsed ? ' collapsed' : '';
+    var html = '<div class="m-collapse-section' + collapsed + '" id="' + esc(id) + '">';
+    html += '<div class="m-collapse-header" onclick="toggleCollapseSection(\'' + esc(id) + '\')">';
+    html += '<span class="m-collapse-title">' + esc(opts.title || '') + '</span>';
+    html += '<div class="m-collapse-actions">';
+    if (opts.actionIcon && opts.actionClick) {
+      html += '<button class="m-collapse-action-btn" onclick="event.stopPropagation();' + opts.actionClick + '">' + opts.actionIcon + '</button>';
+    }
+    html += '<svg class="m-collapse-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>';
+    html += '</div></div>';
+    html += '<div class="m-collapse-body">' + (opts.content || '') + '</div>';
+    html += '</div>';
+    return html;
+  }
+  W.mCollapseSection = mCollapseSection;
+
+  // Toggle collapse section
+  W.toggleCollapseSection = function(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('collapsed');
+  };
+
+
+  // v8.3 — Sber-style info banner (icon + text + close button)
+  function mInfoBanner(opts) {
+    opts = opts || {};
+    var id = opts.id || 'banner-' + Math.random().toString(36).substr(2, 6);
+    var html = '<div class="m-info-banner" id="' + esc(id) + '">';
+    if (opts.icon) html += '<div class="m-info-banner-icon">' + opts.icon + '</div>';
+    html += '<div class="m-info-banner-text">';
+    html += '<div class="m-info-banner-title">' + esc(opts.title || '') + '</div>';
+    if (opts.subtitle) html += '<div class="m-info-banner-sub">' + esc(opts.subtitle) + '</div>';
+    if (opts.link) html += '<a class="m-info-banner-link" href="' + esc(opts.link.href || '#') + '">' + esc(opts.link.text || '') + '</a>';
+    html += '</div>';
+    html += '<button class="m-info-banner-close" onclick="document.getElementById(\'' + esc(id) + '\').remove()" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+    html += '</div>';
+    return html;
+  }
+  W.mInfoBanner = mInfoBanner;
+
+
+  // v8.3 — Sber-style category item (icon in circle + label + value + percentage)
+  function mCategoryItem(opts) {
+    opts = opts || {};
+    var html = '<div class="m-category-item"' + (opts.onClick ? ' onclick="' + opts.onClick + '"' : '') + '>';
+    html += '<div class="m-category-icon" style="background:' + esc(opts.iconBg || 'rgba(255,255,255,0.08)') + '">';
+    html += (opts.icon || '');
+    html += '</div>';
+    html += '<div class="m-category-info">';
+    html += '<div class="m-category-name">' + esc(opts.name || '') + '</div>';
+    html += '<div class="m-category-amount">' + esc(opts.amount || '') + '</div>';
+    html += '</div>';
+    if (opts.right) {
+      html += '<div class="m-category-right">';
+      if (opts.right.value) html += '<div class="m-category-right-val">' + esc(opts.right.value) + '</div>';
+      if (opts.right.sub) html += '<div class="m-category-right-sub">' + esc(opts.right.sub) + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+  W.mCategoryItem = mCategoryItem;
+
+
+  // v8.3 — Sber-style full-width section button
+  function mFullWidthBtn(label, opts) {
+    opts = opts || {};
+    var cls = 'm-fw-btn' + (opts.cls ? ' ' + opts.cls : '');
+    var click = opts.onClick ? ' onclick="' + opts.onClick + '"' : '';
+    var href = opts.href ? ' onclick="location.hash=\'' + esc(opts.href) + '\'"' : '';
+    return '<div class="m-fw-btn-wrap"><button class="' + cls + '"' + (click || href) + '>' + esc(label) + '</button></div>';
+  }
+  W.mFullWidthBtn = mFullWidthBtn;
+
+
+  // v8.3.1 — Sber-style bar chart with Y-axis, grid lines, and month labels
+  function mBarChart(data, opts) {
+    opts = opts || {};
+    if (!data || !data.length) return '';
+    var max = Math.max.apply(null, data.map(function(d) { return d.value || 0; }));
+    if (max === 0) max = 1;
+    var h = opts.height || 160;
+    var highlight = opts.highlight != null ? opts.highlight : data.length - 1;
+    var accentColor = opts.accentColor || 'var(--ok-t, #21bf73)';
+    var barColor = opts.barColor || 'rgba(255,255,255,0.12)';
+
+    // Y-axis: 3 ticks (0, mid, max)
+    var yMax = max;
+    var yMid = Math.round(max / 2);
+    var fmtY = opts.formatY || function(v) { return v >= 1000000 ? Math.round(v/1000000) + ' млн' : v >= 1000 ? Math.round(v/1000) + ' тыс' : String(Math.round(v)); };
+    if (opts.suffix) {
+      var origFmt = fmtY;
+      fmtY = function(v) { return origFmt(v) + ' ' + opts.suffix; };
+    }
+
+    var html = '<div class="m-bar-chart" style="height:' + (h + 40) + 'px">';
+
+    // Y-axis labels
+    html += '<div class="m-bar-y-axis">';
+    html += '<span class="m-bar-y-label" style="bottom:' + h + 'px">' + esc(fmtY(yMax)) + '</span>';
+    html += '<span class="m-bar-y-label" style="bottom:' + Math.round(h/2) + 'px">' + esc(fmtY(yMid)) + '</span>';
+    html += '<span class="m-bar-y-label" style="bottom:0">' + esc(fmtY(0)) + '</span>';
+    html += '</div>';
+
+    // Chart area
+    html += '<div class="m-bar-chart-area" style="height:' + h + 'px">';
+
+    // Grid lines (dashed)
+    html += '<div class="m-bar-grid-line" style="bottom:' + h + 'px"></div>';
+    html += '<div class="m-bar-grid-line" style="bottom:' + Math.round(h/2) + 'px"></div>';
+    html += '<div class="m-bar-grid-line" style="bottom:0"></div>';
+
+    // Bars
+    html += '<div class="m-bar-bars">';
+    data.forEach(function(d, i) {
+      var barH = Math.max(2, Math.round((d.value / max) * (h - 8)));
+      var color = i === highlight ? accentColor : barColor;
+      html += '<div class="m-bar-col">';
+      html += '<div class="m-bar" style="height:' + barH + 'px;background:' + color + '"></div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '</div>';
+
+    // X-axis labels
+    html += '<div class="m-bar-x-labels">';
+    data.forEach(function(d, i) {
+      var cls = i === highlight ? ' active' : '';
+      html += '<span class="m-bar-x-label' + cls + '">' + esc(d.label || '') + '</span>';
+    });
+    html += '</div>';
+
+    html += '</div>';
+    return html;
+  }
+  W.mBarChart = mBarChart;
+
+
+  // v8.3.1 — Sber-style dropdown select (rounded with arrow)
+  function mDropdownSelect(opts) {
+    opts = opts || {};
+    var id = opts.id || 'mSelect';
+    var html = '<div class="m-dropdown-select">';
+    html += '<select class="m-dropdown-select-input" id="' + esc(id) + '">';
+    (opts.options || []).forEach(function(o, i) {
+      var sel = (opts.value === o.value || (!opts.value && i === 0)) ? ' selected' : '';
+      html += '<option value="' + esc(o.value || '') + '"' + sel + '>' + esc(o.label || '') + '</option>';
+    });
+    html += '</select>';
+    html += '<svg class="m-dropdown-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
+    html += '</div>';
+    return html;
+  }
+  W.mDropdownSelect = mDropdownSelect;
+
+
+  // v8.3.1 — Sber-style section with subtitle and dropdown
+  function mSectionPro(opts) {
+    opts = opts || {};
+    var cls = 'm-section' + (opts.collapsible ? ' m-section-collapsible' : '') + (opts.collapsed ? ' collapsed' : '');
+    var html = '<div class="' + cls + '"' + (opts.id ? ' id="' + esc(opts.id) + '"' : '') + '>';
+    html += '<div class="m-section-header"' + (opts.collapsible ? ' onclick="this.parentElement.classList.toggle(\'collapsed\')"' : '') + '>';
+    html += '<div class="m-section-header-left">';
+    html += '<span class="m-section-title">' + esc(opts.title || '') + '</span>';
+    if (opts.subtitle) html += '<span class="m-section-subtitle">' + esc(opts.subtitle) + '</span>';
+    html += '</div>';
+    if (opts.dropdown) {
+      html += mDropdownSelect(opts.dropdown);
+    }
+    if (opts.action) {
+      html += '<a class="m-section-action" href="' + esc(opts.actionHref || '#') + '">' + esc(opts.action) + '</a>';
+    }
+    if (opts.collapsible) {
+      html += '<svg class="m-section-collapse-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>';
+    }
+    html += '</div>';
+    html += '<div class="m-section-body">' + (opts.content || '') + '</div>';
+    html += '</div>';
+    return html;
+  }
+  W.mSectionPro = mSectionPro;
+
+  
+  // v8.4.0 — Universal card detail handler (auto-opens sheet for any card)
+  function mUniversalCardDetail(container, dataItems, opts) {
+    opts = opts || {};
+    if (!container) return;
+    container.addEventListener('click', function(e) {
+      var card = e.target.closest('.m-card[data-id]');
+      if (!card) return;
+      // Don't handle if page has its own handler
+      if (card.closest('[data-custom-detail]')) return;
+      var id = card.dataset.id;
+      if (!id) return;
+      // Find item in data
+      var item = null;
+      if (dataItems && dataItems.length) {
+        item = dataItems.find(function(d) { return String(d.id) === String(id); });
+      }
+      if (!item) {
+        // Fallback: extract from card DOM
+        var fields = [];
+        card.querySelectorAll('.m-card-field').forEach(function(f) {
+          var lbl = f.querySelector('.m-card-field-label');
+          var val = f.querySelector('.m-card-field-value');
+          if (lbl && val) fields.push({ label: lbl.textContent, value: val.textContent });
+        });
+        var titleEl = card.querySelector('.m-card-title');
+        var subtEl = card.querySelector('.m-card-subtitle');
+        var badgeEl = card.querySelector('.m-badge');
+        var title = titleEl ? titleEl.textContent : 'Запись #' + id;
+        var html = '';
+        if (subtEl) html += '<div style="color:var(--t2);margin-bottom:12px">' + esc(subtEl.textContent) + '</div>';
+        if (badgeEl) html += '<div style="margin-bottom:12px">' + badgeEl.outerHTML + '</div>';
+        html += '<div class="m-detail-fields">';
+        fields.forEach(function(f) {
+          html += '<div class="m-detail-field"><span class="m-detail-label">' + esc(f.label) + '</span><span class="m-detail-value">' + esc(f.value) + '</span></div>';
+        });
+        html += '</div>';
+        M.showSheet(esc(title), html);
+        return;
+      }
+      // Build detail from item data
+      var titleField = item.name || item.title || item.customer_name || item.tender_title || item.work_title || item.description || item.subject || item.full_name || ('Запись #' + id);
+      var fields = [];
+      var skipKeys = ['id', 'created_at', 'updated_at', '__v', '_id'];
+      var labelMap = {
+        'name': 'Название', 'title': 'Заголовок', 'status': 'Статус', 'amount': 'Сумма',
+        'date': 'Дата', 'description': 'Описание', 'customer_name': 'Заказчик',
+        'tender_title': 'Тендер', 'tender_price': 'Цена тендера', 'tender_status': 'Статус тендера',
+        'work_title': 'Работа', 'work_status': 'Статус работы', 'contract_value': 'Контракт',
+        'responsible_pm_id': 'РП', 'number': 'Номер', 'type': 'Тип',
+        'phone': 'Телефон', 'email': 'Email', 'position': 'Должность', 'department': 'Отдел',
+        'city': 'Город', 'rating': 'Рейтинг', 'comment': 'Комментарий', 'notes': 'Примечания',
+        'priority': 'Приоритет', 'deadline': 'Дедлайн', 'assigned_to': 'Исполнитель',
+        'category': 'Категория', 'paid_amount': 'Оплачено', 'cost_fact': 'Себестоимость',
+        'cost_plan': 'План затрат', 'margin': 'Маржа', 'period': 'Период',
+        'full_name': 'ФИО', 'hire_date': 'Дата найма', 'salary': 'Оклад',
+        'quantity': 'Количество', 'unit': 'Единица', 'location': 'Локация',
+        'start_date': 'Дата начала', 'end_date': 'Дата окончания', 'subject': 'Тема',
+        'sender': 'Отправитель', 'recipient': 'Получатель', 'body': 'Содержание'
+      };
+      Object.keys(item).forEach(function(k) {
+        if (skipKeys.indexOf(k) !== -1) return;
+        var val = item[k];
+        if (val === null || val === undefined || val === '') return;
+        if (typeof val === 'object') return; // skip nested objects
+        var label = labelMap[k] || k.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+        // Format values
+        var fmtVal = String(val);
+        if (k.indexOf('amount') !== -1 || k.indexOf('price') !== -1 || k.indexOf('salary') !== -1 || k.indexOf('cost') !== -1 || k.indexOf('value') !== -1 || k.indexOf('sum') !== -1) {
+          if (!isNaN(val)) fmtVal = money(Number(val));
+        }
+        if (k.indexOf('date') !== -1 || k.indexOf('_at') !== -1) {
+          if (val && !isNaN(Date.parse(val))) fmtVal = fmtDate(val);
+        }
+        fields.push({ label: label, value: fmtVal, full: fmtVal.length > 40 });
+      });
+      M.showSheet(esc(String(titleField)), M.mDetailFields(fields));
+    });
+  }
+  W.mUniversalCardDetail = mUniversalCardDetail;
+
+  
+  // v8.4.0 — Pull-to-refresh (Sber-style)
+  function mPullToRefresh(callback) {
+    var startY = 0, pulling = false;
+    var indicator = document.createElement('div');
+    indicator.className = 'm-ptr-indicator';
+    indicator.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>';
+    document.body.appendChild(indicator);
+
+    document.addEventListener('touchstart', function(e) {
+      if (window.scrollY === 0) {
+        startY = e.touches[0].clientY;
+        pulling = true;
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function(e) {
+      if (!pulling) return;
+      var dy = e.touches[0].clientY - startY;
+      if (dy > 0 && dy < 120) {
+        indicator.style.transform = 'translateY(' + Math.min(dy - 40, 40) + 'px) rotate(' + (dy * 3) + 'deg)';
+        indicator.style.opacity = Math.min(dy / 80, 1);
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', function() {
+      if (!pulling) return;
+      pulling = false;
+      indicator.style.transform = '';
+      indicator.style.opacity = '0';
+      var dy = parseInt(indicator.style.transform) || 0;
+      if (callback && window.scrollY === 0) {
+        // Trigger refresh only if pulled enough
+        var el = indicator.getBoundingClientRect();
+        if (el.top > 10) {
+          indicator.classList.add('refreshing');
+          setTimeout(function() {
+            callback();
+            indicator.classList.remove('refreshing');
+          }, 500);
+        }
+      }
+    }, { passive: true });
+  }
+  W.mPullToRefresh = mPullToRefresh;
+
+  W.mWidgetGrid = mWidgetGrid;
+  W.mQuickActions = mQuickActions;
+  // v8.8.6 — Delegated click handler for data-href navigation
+  document.addEventListener('click', function(e) {
+    var el = e.target.closest('[data-href]');
+    if (el && (el.classList.contains('m-quick-action') || el.classList.contains('m-stat-card'))) {
+      e.preventDefault();
+      e.stopPropagation();
+      location.hash = el.getAttribute('data-href');
+    }
+  });
+
+  W.mWidgetScroll = mWidgetScroll;
+  W.autoPaginate = autoPaginate;
+  // v8.7.2: _showMore removed (initLoadMore handles Load More via event delegation)
+  W.initLoadMore = initLoadMore;
+  W.mConfirm = mConfirm;
+  W.mSpinner = mSpinner;
+  W.mPageLoading = mPageLoading;
+  W.timeAgo = timeAgo;
+  W.mTablePage = mTablePage;
+  W.mLoadMore = mLoadMore;
+    W.mChatListItem = mChatListItem;
+  W.mChatBubble = mChatBubble;
+  W.mChatDateSep = mChatDateSep;
+  W.mChatInput = mChatInput;
+  W.mChatHeader = mChatHeader;
+  W.mTypingIndicator = mTypingIndicator;
+  W.mChatContextMenu = mChatContextMenu;
+  W.mMailItem = mMailItem;
+  W.mMailFolders = mMailFolders;
+  W.mMailCompose = mMailCompose;
+  W.mChatList = mChatList;
+  W.mChatReplyPreview = mChatReplyPreview;
+  W.mChatSearchBar = mChatSearchBar;
+  W.mMailThread = mMailThread;
+
+
+
+  /* ═══════════════════════════════════════════════════════ */
+  /* v8.0.1 — ADDITIONAL COMPONENTS (plan compliance)       */
+  /* ═══════════════════════════════════════════════════════ */
+
+  /**
+   * mChatList — Render full chat list from array of groups
+   */
+  function mChatList(groups, renderItemFn) {
+    if (!groups || !groups.length) {
+      return '<div class="m-empty-state"><i class="bi bi-chat-dots"></i><p>\u041D\u0435\u0442 \u0447\u0430\u0442\u043E\u0432</p></div>';
+    }
+    var html = '<div class="m-chat-list">';
+    for (var i = 0; i < groups.length; i++) {
+      html += renderItemFn ? renderItemFn(groups[i]) : mChatListItem(groups[i]);
+    }
+    html += '</div>';
+    return html;
+  }
+
+  /**
+   * mChatReplyPreview — Reply preview bar above input
+   */
+  function mChatReplyPreview(msg) {
+    if (!msg) return '';
+    var name = msg.sender_name || msg.user_name || '\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435';
+    var raw = msg.content || msg.message || '';
+    var text = raw.length > 80 ? raw.substring(0, 80) + '...' : raw;
+    return '<div class="m-chat-reply-preview">' +
+      '<div class="m-chat-reply-preview-line">' +
+        '<span class="m-chat-reply-preview-name">' + esc(name) + '</span>' +
+        '<button class="m-chat-reply-preview-close" id="chatReplyClose">&times;</button>' +
+      '</div>' +
+      '<div class="m-chat-reply-preview-text">' + esc(text) + '</div>' +
+    '</div>';
+  }
+
+  /**
+   * mChatSearchBar — Search bar for chat list / messages
+   */
+  function mChatSearchBar(placeholder) {
+    return '<div class="m-chat-search-bar">' +
+      '<i class="bi bi-search m-chat-search-icon"></i>' +
+      '<input type="text" class="m-chat-search-field" placeholder="' + (placeholder || '\u041F\u043E\u0438\u0441\u043A...') + '">' +
+    '</div>';
+  }
+
+  /**
+   * mMailThread — Email thread/conversation view
+   */
+  function mMailThread(messages) {
+    if (!messages || !messages.length) {
+      return '<div class="m-empty-state"><i class="bi bi-envelope"></i><p>\u041D\u0435\u0442 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0439</p></div>';
+    }
+    var html = '<div class="m-mail-thread">';
+    for (var i = 0; i < messages.length; i++) {
+      var m = messages[i];
+      var date = m.date ? timeAgo(m.date) : '';
+      var expanded = i === messages.length - 1 ? ' expanded' : '';
+      html += '<div class="m-mail-thread-item' + expanded + '" data-idx="' + i + '">' +
+        '<div class="m-mail-thread-header">' +
+          '<span class="m-mail-thread-sender">' + esc(m.from_name || m.from || '') + '</span>' +
+          '<span class="m-mail-thread-date">' + date + '</span>' +
+        '</div>' +
+        '<div class="m-mail-thread-body">' + (m.body_html || m.body_text || m.snippet || '') + '</div>';
+      if (m.attachments && m.attachments.length) {
+        html += '<div class="m-mail-thread-attachments">';
+        for (var j = 0; j < m.attachments.length; j++) {
+          var a = m.attachments[j];
+          html += '<span class="m-mail-thread-attach-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> ' + esc(a.filename || a.name || 'file') + '</span>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  console.info('[MobileUI] v8.0.0 \u2014 Premium component library loaded');
+
+})(window.AsgardMobileUI = window.AsgardMobileUI || {});

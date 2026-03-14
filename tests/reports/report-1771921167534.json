@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-02-24T08:19:27.534Z",
+  "summary": {
+    "passed": 1,
+    "failed": 0,
+    "total": 1,
+    "totalSteps": 10,
+    "passedSteps": 10,
+    "failedSteps": 0
+  },
+  "results": [
+    {
+      "name": "Staff Request Lifecycle",
+      "steps": [
+        {
+          "name": "РП авторизуется и находит работу",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "РП открывает карточку работы и запрашивает персонал",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "HR видит запрос на странице #/hr-requests",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "HR открывает запрос и видит детали",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "HR подбирает сотрудников и отвечает РП",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "HR отправляет сообщение в чат запроса",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "РП видит ответ HR в карточке работы",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "Фильтры и сортировка на странице HR-запросов",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "График дружины (workers-schedule) загружается",
+          "status": "PASSED",
+          "error": null
+        },
+        {
+          "name": "ADMIN может просматривать HR-запросы",
+          "status": "PASSED",
+          "error": null
+        }
+      ],
+      "status": "PASSED",
+      "duration": 272957
+    }
+  ]
+}

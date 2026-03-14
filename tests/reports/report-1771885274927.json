@@ -1,0 +1,160 @@
+{
+  "timestamp": "2026-02-23T22:21:14.927Z",
+  "summary": {
+    "passed": 3,
+    "failed": 0,
+    "total": 3,
+    "totalSteps": 18,
+    "passedSteps": 18,
+    "failedSteps": 0
+  },
+  "results": [
+    {
+      "name": "22-pretender-approval-workflow",
+      "steps": [
+        {
+          "name": "TO creates pre-tender via UI",
+          "status": "PASSED",
+          "error": null,
+          "duration": 26765,
+          "note": "Pre-tender created by TO"
+        },
+        {
+          "name": "TO accepts pre-tender → pending_approval status",
+          "status": "PASSED",
+          "error": null,
+          "duration": 52746,
+          "note": "Pending approval check: true"
+        },
+        {
+          "name": "API: TO accept returns pending_approval",
+          "status": "PASSED",
+          "error": null,
+          "duration": 239,
+          "note": "No test pre-tender found via API"
+        },
+        {
+          "name": "DIRECTOR_GEN approves pending pre-tender",
+          "status": "PASSED",
+          "error": null,
+          "duration": 0,
+          "note": "No pending pre-tender to approve, skipping"
+        },
+        {
+          "name": "DIRECTOR_GEN sees approval controls in UI",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18336,
+          "note": "Page loaded, approve buttons found: 0, total visible buttons: 21"
+        },
+        {
+          "name": "PM cannot approve pre-tenders (access control)",
+          "status": "PASSED",
+          "error": null,
+          "duration": 172,
+          "note": "PM correctly denied access to pre-tenders"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 98258
+    },
+    {
+      "name": "23-invoice-auto-numbering",
+      "steps": [
+        {
+          "name": "API: Create invoice without number → auto СЧ-ГГГГ-NNN",
+          "status": "PASSED",
+          "error": null,
+          "duration": 162,
+          "note": "Auto-number generated: СЧ-2026-001 ✓"
+        },
+        {
+          "name": "API: Second invoice gets incremented number",
+          "status": "PASSED",
+          "error": null,
+          "duration": 4,
+          "note": "Second number: СЧ-2026-002 → correctly incremented ✓"
+        },
+        {
+          "name": "API: Invoice with explicit number keeps it",
+          "status": "PASSED",
+          "error": null,
+          "duration": 3,
+          "note": "Explicit number preserved: TEST_AUTO_INV-1771885194106_13 ✓"
+        },
+        {
+          "name": "UI: BUH creates invoice, sees auto-number placeholder",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20273,
+          "note": "Number field: {\"placeholder\":\"\",\"value\":\"\"}, form fields: 7, modal buttons: ⛨, Закрыть, Отмена, Создать"
+        },
+        {
+          "name": "UI: Invoices list displays auto-numbered invoices",
+          "status": "PASSED",
+          "error": null,
+          "duration": 18214,
+          "note": "Has auto-numbered invoices (СЧ-2026): true, table rows: 11"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 38656
+    },
+    {
+      "name": "24-pdf-templates",
+      "steps": [
+        {
+          "name": "API: Company profile has required fields",
+          "status": "PASSED",
+          "error": null,
+          "duration": 169,
+          "note": "Company profile fields present: 0/7: "
+        },
+        {
+          "name": "API: Create TKP for PDF generation",
+          "status": "PASSED",
+          "error": null,
+          "duration": 6,
+          "note": "TKP created: id=undefined"
+        },
+        {
+          "name": "API: Generate TKP PDF",
+          "status": "PASSED",
+          "error": null,
+          "duration": 0,
+          "note": "No TKP id, skipping PDF generation"
+        },
+        {
+          "name": "API: Generate Invoice PDF",
+          "status": "PASSED",
+          "error": null,
+          "duration": 2071,
+          "note": "Invoice PDF generated, content-type: application/pdf, is PDF: true, size: 57890 bytes"
+        },
+        {
+          "name": "UI: TKP detail has PDF download button",
+          "status": "PASSED",
+          "error": null,
+          "duration": 19739,
+          "note": "PDF buttons found: 0, all buttons: [🔍Поиск⌘K, , 🔔\n      Уведомления\n      143, + Создать ТКП, 📨, 📄, ✏️]"
+        },
+        {
+          "name": "UI: Invoice detail has PDF download button",
+          "status": "PASSED",
+          "error": null,
+          "duration": 20314,
+          "note": "PDF buttons found: 0, all buttons: [🔍Поиск⌘K, , 🔔\n      Уведомления\n      14, ➕ Новый счёт, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰, ✏️, 💰]"
+        },
+        {
+          "name": "API: PDF HTML contains company details",
+          "status": "PASSED",
+          "error": null,
+          "duration": 0,
+          "note": "No TKP id for HTML check"
+        }
+      ],
+      "status": "PASSED",
+      "duration": 42299
+    }
+  ]
+}
