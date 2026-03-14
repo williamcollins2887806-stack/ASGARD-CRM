@@ -244,6 +244,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/office-expenses",l:"Офисные расходы",d:"Управление и согласование",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"office",p:"office_expenses",g:"finance"},
     {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"finances",p:"cash",g:"finance"},
     {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"cash_admin",g:"finance"},
+    {r:"/approval-payment",l:"Очередь оплаты",d:"Оплата согласованных заявок",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"approval_payment",g:"finance"},
     {r:"/payroll",l:"Расчёты с рабочими",d:"Ведомости и выплаты",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
     {r:"/self-employed",l:"Самозанятые",d:"Реестр СЗ и договора",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
     {r:"/one-time-pay",l:"Разовые оплаты",d:"Такси, топливо, разовые",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
@@ -2083,6 +2084,11 @@ var _setupPinKeypad = null;
       }
       await layout('<div id="cash-admin-page"></div>', {title:"Касса (управление)"});
       AsgardCashAdminPage.render(document.getElementById('cash-admin-page'));
+    }, {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+
+    AsgardRouter.add("/approval-payment", async ()=>{
+      await layout('<div id="approval-payment-page" data-page="approval-payment"></div>', {title:"Очередь оплаты"});
+      AsgardApprovalPaymentPage.render(document.getElementById('approval-payment-page'));
     }, {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
 
     AsgardRouter.add("/payroll", ()=>AsgardPayrollPage.render({layout, title:"Расчёты с рабочими"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});

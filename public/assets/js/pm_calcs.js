@@ -9,7 +9,7 @@ window.AsgardPmCalcsPage = (function(){
   function money(n){ if(n===null||n===undefined) return "—"; return Number(n).toLocaleString("ru-RU"); }
   function norm(s){ return String(s||"").toLowerCase().trim(); }
   function approvalStatusLabel(status){
-    const map = { draft:"Черновик", sent:"На согласовании у директора", accounting_review:"На согласовании у бухгалтерии", payment_pending:"Ожидает оплаты", approved:"Согласовано", approved_final:"Согласовано", paid:"Оплачено", rework:"На доработке", question:"Вопрос от согласующего", rejected:"Отклонено", cancelled:"Отменено РП" };
+    const map = { draft:"Черновик", sent:"На согласовании", approved:"Согласовано", approved_final:"Согласовано", rework:"На доработке", question:"Вопрос", rejected:"Отклонено", cancelled:"Отменено" };
     return map[String(status||"draft")] || String(status||"Черновик");
   }
 
@@ -1062,7 +1062,7 @@ window.AsgardPmCalcsPage = (function(){
         await AsgardDB.put("tenders", cur);
         await audit(user.id,"tender",tenderId,"status_change_auto",{before, after:"Согласование ТКП"});
 
-        toast("Согласование","Смета отправлена на согласование");
+        toast("Согласование","Просчёт отправлен на согласование");
         // refresh list
         tendersAll.splice(tendersAll.findIndex(x=>x.id===tenderId),1,cur);
         tenders = tenders.map(x=>x.id===tenderId?cur:x);

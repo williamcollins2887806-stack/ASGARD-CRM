@@ -6,11 +6,9 @@
 
 async function dataRoutes(fastify, options) {
   const db = fastify.db;
-  const estimateApprovalWorkflow = require('../services/estimateApprovalWorkflow');
 
-  function extractRequiresPayment(body) {
-    return estimateApprovalWorkflow.extractRequiresPayment(body || {});
-  }
+  // Поля согласования — только через /api/approval маршруты
+  const APPROVAL_FIELDS = new Set(['approval_status','approval_comment','reject_reason','is_approved','approved_by','approved_at','sent_for_approval_at','decided_at','decided_by_user_id']);
 
   // SECURITY: Reject raw URLs containing injection characters (;, ..)
   // Fastify strips matrix parameters (;) and normalizes .., so we must check raw URL
@@ -480,28 +478,19 @@ async function dataRoutes(fastify, options) {
     try {
       const tableCols = await getTableColumns(dbTable);
 
-      const requestedEstimateApprovalStatus = table === 'estimates'
-        ? estimateApprovalWorkflow.normalizeLegacyStatus(data.approval_status)
+      const requestedEstimateApprovalStatus = (table === 'estimates')
+        ? String(data.approval_status || '').trim().toLowerCase()
         : '';
-      const shouldSubmitEstimateWorkflow = table === 'estimates' && ['sent', 'pending'].includes(requestedEstimateApprovalStatus);
 
-      if (table === 'estimates' && requestedEstimateApprovalStatus && !['draft', 'sent', 'pending'].includes(requestedEstimateApprovalStatus)) {
-        return reply.code(409).send({ error: 'Создание записи возможно только в черновике или через маршрут согласования' });
-      }
-
-      if (table === 'estimates') {
-        data.approval_status = shouldSubmitEstimateWorkflow
-          ? 'draft'
-          : (requestedEstimateApprovalStatus || data.approval_status || 'draft');
+      // Просчёт: если отправляют на согласование — ставим 'sent'
+      if (table === 'estimates' && ['sent', 'pending'].includes(requestedEstimateApprovalStatus)) {
+        data.approval_status = 'sent';
+        data.sent_for_approval_at = new Date().toISOString();
+        data.is_approved = false;
         data.approved_by = null;
         data.approved_at = null;
-        data.reject_reason = null;
-        data.decided_at = null;
-        data.decided_by_user_id = null;
-        data.is_approved = false;
-        if (shouldSubmitEstimateWorkflow) {
-          data.sent_for_approval_at = null;
-        }
+      } else if (table === 'estimates') {
+        data.approval_status = requestedEstimateApprovalStatus || 'draft';
       }
 
       const TEXT_FIELDS = ['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'];
@@ -550,28 +539,6 @@ async function dataRoutes(fastify, options) {
       }
 
       const result = await db.query(query, values);
-
-      if (table === 'estimates' && shouldSubmitEstimateWorkflow) {
-        try {
-          const workflowResult = await estimateApprovalWorkflow.submit(db, {
-            estimateId: result.rows[0][pk],
-            actor: request.user,
-            comment: data.approval_comment || data.comment || '',
-            requiresPayment: extractRequiresPayment(data),
-            source: 'data_api_create'
-          });
-
-          return {
-            success: true,
-            item: workflowResult.estimate,
-            id: workflowResult.estimate.id,
-            approval: workflowResult.request
-          };
-        } catch (workflowErr) {
-          await db.query('DELETE FROM estimates WHERE id = $1', [result.rows[0][pk]]);
-          throw workflowErr;
-        }
-      }
 
       return { success: true, item: result.rows[0], id: result.rows[0][pk] };
     } catch (err) {
@@ -627,40 +594,9 @@ async function dataRoutes(fastify, options) {
 
       let approvalRequest = null;
       if (table === 'estimates') {
-        const currentResult = await db.query(`SELECT * FROM ${dbTable} WHERE ${pk} = $1`, [id]);
-        const existingEstimate = currentResult.rows[0];
-        if (!existingEstimate) {
-          return reply.code(404).send({ error: 'Запись не найдена' });
-        }
-
-        const requestedStatus = estimateApprovalWorkflow.normalizeLegacyStatus(data.approval_status);
-        const currentStatus = estimateApprovalWorkflow.normalizeLegacyStatus(existingEstimate.approval_status);
-        if (requestedStatus && requestedStatus !== currentStatus) {
-          const workflowResult = await estimateApprovalWorkflow.applyLegacyMutation(db, {
-            estimateId: Number(id),
-            actor: request.user,
-            patch: data,
-            source: 'data_api_update'
-          });
-
-          return {
-            success: true,
-            item: workflowResult.estimate,
-            approval: workflowResult.request
-          };
-        }
-
-        approvalRequest = await estimateApprovalWorkflow.getApprovalRequest(db, Number(id));
-        if (approvalRequest) {
-          const ownerId = estimateApprovalWorkflow.getRequesterId(existingEstimate);
-          const canEditInRework = approvalRequest.current_stage === estimateApprovalWorkflow.STAGES.PM_REWORK
-            && (request.user.role === 'ADMIN' || Number(request.user.id) === Number(ownerId));
-
-          if (!canEditInRework) {
-            return reply.code(409).send({
-              error: 'Документ уже участвует в согласовании. Используйте действия согласования для смены статуса.'
-            });
-          }
+        // Поля согласования нельзя менять через generic CRUD — используйте /api/approval
+        for (const field of APPROVAL_FIELDS) {
+          delete data[field];
         }
       }
 
@@ -680,7 +616,7 @@ async function dataRoutes(fastify, options) {
       }
 
       if (table === 'estimates') {
-        for (const field of estimateApprovalWorkflow.APPROVAL_MUTATION_FIELDS) {
+        for (const field of APPROVAL_FIELDS) {
           delete data[field];
         }
       }

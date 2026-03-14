@@ -46,6 +46,10 @@ window.AsgardCustomDashboard = (function(){
       name: 'Баланс КАССА', icon: '💵', size: 'normal',
       roles: ['ADMIN','BUH','DIRECTOR_*'], render: renderCashBalance
     },
+    my_cash_balance: {
+      name: 'Мои подотчётные', icon: '💰', size: 'normal',
+      roles: ['*'], render: renderMyCashBalance
+    },
     equipment_alerts: {
       name: 'Оборудование • Алерты', icon: '🔧', size: 'normal',
       roles: ['ADMIN','CHIEF_ENGINEER','WAREHOUSE','DIRECTOR_*'], render: renderEquipmentAlerts
@@ -80,7 +84,7 @@ window.AsgardCustomDashboard = (function(){
 
   const DEFAULT_LAYOUTS = {
     ADMIN: ['welcome','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
-    PM: ['welcome','quick_actions','my_works','gantt_mini','todo','my_mail','notifications','birthdays'],
+    PM: ['welcome','quick_actions','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
     TO: ['welcome','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
     HEAD_TO: ['welcome','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
     HEAD_PM: ['welcome','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
@@ -848,6 +852,38 @@ window.AsgardCustomDashboard = (function(){
       '</div>';
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center">Нет данных КАССА</div>';
+    }
+  }
+
+  async function renderMyCashBalance(el, user) {
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch('/api/cash/my-balance', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
+      if (!resp.ok) { el.innerHTML = '<div class="help" style="text-align:center">—</div>'; return; }
+      const d = await resp.json();
+      const hasBalance = d.balance > 0;
+      const hasActive = d.active_requests > 0;
+      if (!hasBalance && !hasActive) {
+        el.innerHTML = '<div style="text-align:center;padding:12px">' +
+          '<div style="font-size:32px;margin-bottom:8px">✅</div>' +
+          '<div class="help">Нет подотчётных средств</div>' +
+          '<a href="#/cash" class="btn mini ghost" style="margin-top:8px;font-size:11px">Касса →</a></div>';
+        return;
+      }
+      el.innerHTML = '<div style="text-align:center">' +
+        '<div style="font-size:28px;font-weight:700;color:' + (hasBalance ? 'var(--amber)' : 'var(--green)') + '">' +
+          formatMoney(d.balance) + ' ₽</div>' +
+        '<div class="help" style="margin-top:4px">На руках</div>' +
+        '<div style="display:flex;gap:12px;justify-content:center;margin-top:12px;font-size:12px">' +
+          '<div><span style="color:var(--t3)">Получено:</span> <b>' + formatMoney(d.issued) + '</b></div>' +
+          '<div><span style="color:var(--t3)">Потрачено:</span> <b>' + formatMoney(d.spent) + '</b></div>' +
+        '</div>' +
+        (d.active_requests > 0 ? '<div style="margin-top:8px;font-size:12px;color:var(--amber)">' + d.active_requests + ' активных заявок</div>' : '') +
+        '<a href="#/cash" class="btn mini ghost" style="margin-top:10px;font-size:11px">Касса →</a></div>';
+    } catch(e) {
+      el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }
   }
 

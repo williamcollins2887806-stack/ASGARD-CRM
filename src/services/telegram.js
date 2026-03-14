@@ -1,337 +1,252 @@
 /**
- * Telegram Bot Service
- * ═══════════════════════════════════════════════════════════════════════════
+ * Telegram Bot Service v2.0
+ * ═══════════════════════════════════════════════════════════════
+ * Полная переработка: универсальные согласования, двухшаговые диалоги,
+ * чистая кириллица, интеграция с approvalService.
  */
 
 const TelegramBot = require('node-telegram-bot-api');
 const db = require('./db');
+const approvalService = require('./approvalService');
 
 let bot = null;
 
-// ─────────────────────────────────────────────────────────────────────────────
+// Состояние диалогов (chatId → ожидаемый ввод)
+const pendingInput = new Map();
+
+// ─────────────────────────────────────────────────────────────────
 // Initialize Bot
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 async function init() {
   let token = process.env.TELEGRAM_BOT_TOKEN;
 
-  // Fallback: читаем токен из таблицы settings (если пользователь сохранил через UI)
   if (!token) {
     try {
       const result = await db.query("SELECT value_json FROM settings WHERE key = 'telegram'");
       if (result.rows[0]?.value_json) {
         let parsed = JSON.parse(result.rows[0].value_json);
-        // IndexedDB sync хранит данные вложенно: { key, value_json: "{...}", updated_at }
         const settings = parsed.value_json ? JSON.parse(parsed.value_json) : parsed;
         if (settings.bot_token && settings.enabled !== false) {
           token = settings.bot_token;
-          console.log('[Telegram] Bot token loaded from DB settings');
+          console.log('[Telegram] Token loaded from DB');
         }
       }
-    } catch (e) {
-      // settings table may not have telegram key yet
-    }
+    } catch (e) { /* no telegram settings */ }
   }
 
   if (!token) {
-    console.warn('TELEGRAM_BOT_TOKEN not set and no token in DB, bot disabled');
+    console.warn('[Telegram] No token, bot disabled');
     return;
   }
 
   bot = new TelegramBot(token, { polling: false });
-  // Handle polling errors gracefully
-  bot.on("polling_error", (err) => {
-    console.error("[Telegram] Polling error:", err.code, err.message, JSON.stringify(err.response ? {status: err.response.statusCode, body: err.response.body} : "no-resp"));
+  bot.on('polling_error', (err) => {
+    console.error('[Telegram] Polling error:', err.code, err.message);
   });
-  
-  // Start command
+
+  // /start
   bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
-    const username = msg.from.username || msg.from.first_name;
-    
     await bot.sendMessage(chatId, `
 🏰 *Добро пожаловать в ASGARD CRM Bot!*
 
 Я помогу вам:
 • Получать уведомления о задачах
-• Проверять статусы тендеров
+• Согласовывать заявки прямо из Telegram
 • Быстро связаться с системой
 
-*Для привязки аккаунта:*
-Введите команду /link и ваш email из CRM
-
-*Доступные команды:*
-/link email@example.com - привязать аккаунт
-/status - статус системы
-/my - мои задачи
-/help - справка
+*Команды:*
+/link email@example.com — привязать аккаунт
+/status — статус системы
+/my — мои задачи
+/help — справка
     `, { parse_mode: 'Markdown' });
-    
-    // Save chat_id for future notifications
-    console.log(`New Telegram user: ${username} (${chatId})`);
   });
 
-  // Link account command
+  // /link
   bot.onText(/\/link (.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
     const email = match[1].trim().toLowerCase();
-    
     try {
-      // Find user by email
       const result = await db.query(
         'SELECT id, name FROM users WHERE LOWER(email) = $1 OR LOWER(login) = $1',
         [email]
       );
-      
-      if (result.rows.length === 0) {
-        await bot.sendMessage(chatId, '❌ Пользователь с таким email не найден в системе.');
-        return;
+      if (!result.rows.length) {
+        return bot.sendMessage(chatId, '❌ Пользователь не найден.');
       }
-      
       const user = result.rows[0];
-      
-      // Update user's telegram_chat_id
-      await db.query(
-        'UPDATE users SET telegram_chat_id = $1, updated_at = NOW() WHERE id = $2',
-        [chatId.toString(), user.id]
-      );
-      
-      await bot.sendMessage(chatId, `
-✅ *Аккаунт привязан!*
-
-Пользователь: ${user.name}
-Теперь вы будете получать уведомления в Telegram.
-      `, { parse_mode: 'Markdown' });
-      
+      await db.query('UPDATE users SET telegram_chat_id = $1, updated_at = NOW() WHERE id = $2',
+        [chatId.toString(), user.id]);
+      await bot.sendMessage(chatId, `✅ *Аккаунт привязан!*\nПользователь: ${user.name}`, { parse_mode: 'Markdown' });
     } catch (err) {
-      console.error('Link error:', err);
-      await bot.sendMessage(chatId, '❌ Ошибка при привязке аккаунта. Попробуйте позже.');
+      console.error('[Telegram] Link error:', err);
+      await bot.sendMessage(chatId, '❌ Ошибка привязки.');
     }
   });
 
-  // Status command
+  // /status
   bot.onText(/\/status/, async (msg) => {
     const chatId = msg.chat.id;
-    
     try {
-      const [tenders, works, estimates] = await Promise.all([
+      const [tenders, works] = await Promise.all([
         db.query('SELECT COUNT(*) FROM tenders'),
-        db.query('SELECT COUNT(*) FROM works'),
-        db.query('SELECT COUNT(*) FROM estimates')
+        db.query('SELECT COUNT(*) FROM works')
       ]);
-      
       await bot.sendMessage(chatId, `
-📊 *Статус системы ASGARD CRM*
-
+📊 *ASGARD CRM*
 🏷 Тендеров: ${tenders.rows[0].count}
 📋 Работ: ${works.rows[0].count}
-📄 Расчётов: ${estimates.rows[0].count}
-
-✅ Система работает нормально
+✅ Система работает
       `, { parse_mode: 'Markdown' });
-      
     } catch (err) {
-      await bot.sendMessage(chatId, '❌ Ошибка получения статуса');
+      await bot.sendMessage(chatId, '❌ Ошибка');
     }
   });
 
-  // My tasks command
+  // /my
   bot.onText(/\/my/, async (msg) => {
     const chatId = msg.chat.id;
-    
     try {
-      // Find user by chat_id
       const userResult = await db.query(
-        'SELECT id, name, role FROM users WHERE telegram_chat_id = $1',
-        [chatId.toString()]
+        'SELECT id, name, role FROM users WHERE telegram_chat_id = $1', [chatId.toString()]
       );
-      
-      if (userResult.rows.length === 0) {
-        await bot.sendMessage(chatId, '❌ Аккаунт не привязан. Используйте /link email@example.com');
-        return;
+      if (!userResult.rows.length) {
+        return bot.sendMessage(chatId, '❌ Аккаунт не привязан. /link email');
       }
-      
       const user = userResult.rows[0];
-      
-      // Get active tasks based on role
-      let tasks = [];
-      
-      if (user.role === 'PM' || user.role === 'ADMIN') {
-        const result = await db.query(`
-          SELECT t.id, t.customer, t.tender_status, t.deadline
-          FROM tenders t
-          WHERE t.responsible_pm_id = $1 AND t.tender_status NOT IN ('Выиграли', 'Проиграли')
-          ORDER BY t.deadline ASC NULLS LAST
-          LIMIT 5
-        `, [user.id]);
-        tasks = result.rows;
+      const tasks = await db.query(`
+        SELECT t.id, t.customer, t.tender_status, t.deadline
+        FROM tenders t WHERE t.responsible_pm_id = $1
+        AND t.tender_status NOT IN ('Выиграли', 'Проиграли')
+        ORDER BY t.deadline ASC NULLS LAST LIMIT 5
+      `, [user.id]);
+      if (!tasks.rows.length) {
+        return bot.sendMessage(chatId, `👤 ${user.name}\n\n✨ Активных задач нет`);
       }
-      
-      if (tasks.length === 0) {
-        await bot.sendMessage(chatId, `👤 ${user.name}\n\n✨ Активных задач нет`);
-        return;
-      }
-      
-      let message = `👤 *${user.name}*\n\n📋 *Активные тендеры:*\n\n`;
-      
-      tasks.forEach((t, i) => {
-        const deadline = t.deadline ? new Date(t.deadline).toLocaleDateString('ru-RU') : 'не указан';
-        message += `${i + 1}. ${t.customer || 'Без названия'}\n   📌 ${t.tender_status || 'Новый'} | ⏰ ${deadline}\n\n`;
+      let msg2 = `👤 *${user.name}*\n\n📋 *Активные тендеры:*\n\n`;
+      tasks.rows.forEach((t, i) => {
+        const dl = t.deadline ? new Date(t.deadline).toLocaleDateString('ru-RU') : 'не указан';
+        msg2 += `${i + 1}. ${t.customer || '—'}\n   📌 ${t.tender_status || 'Новый'} | ⏰ ${dl}\n\n`;
       });
-      
-      await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-      
+      await bot.sendMessage(chatId, msg2, { parse_mode: 'Markdown' });
     } catch (err) {
-      console.error('My tasks error:', err);
-      await bot.sendMessage(chatId, '❌ Ошибка получения задач');
+      await bot.sendMessage(chatId, '❌ Ошибка');
     }
   });
 
-  // Help command
+  // /help
   bot.onText(/\/help/, async (msg) => {
-    const chatId = msg.chat.id;
-    
-    await bot.sendMessage(chatId, `
-📚 *Справка по командам:*
+    await bot.sendMessage(msg.chat.id, `
+📚 *Команды:*
+/start — начало
+/link email — привязать аккаунт
+/status — статус системы
+/my — мои задачи
+/help — справка
 
-/start - Начало работы
-/link email - Привязать аккаунт CRM
-/status - Статус системы
-/my - Мои активные задачи
-/help - Эта справка
-
-💡 После привязки аккаунта вы будете получать уведомления о:
-• Новых тендерах
-• Изменениях статусов
-• Приближающихся дедлайнах
-• Напоминаниях из календаря
+💡 Согласования приходят автоматически с кнопками действий.
     `, { parse_mode: 'Markdown' });
   });
 
-  // Initialize inline approval button handler
+  // Обработка текстовых ответов (двухшаговый диалог)
+  bot.on('message', async (msg) => {
+    if (msg.text && msg.text.startsWith('/')) return; // Команды обрабатываются выше
+    const chatId = msg.chat.id;
+    const pending = pendingInput.get(chatId);
+    if (!pending) return;
+
+    pendingInput.delete(chatId);
+    const comment = msg.text?.trim();
+    if (!comment) {
+      return bot.sendMessage(chatId, '❌ Комментарий не может быть пустым. Попробуйте ещё раз.');
+    }
+
+    try {
+      const user = await getUserByChatId(chatId);
+      if (!user) return bot.sendMessage(chatId, '❌ Аккаунт не привязан');
+
+      const { action, entityType, entityId, messageId } = pending;
+
+      let result;
+      if (action === 'question') {
+        result = await approvalService.askQuestion(db, {
+          entityType, entityId, actor: user, comment
+        });
+      } else if (action === 'rework') {
+        result = await approvalService.requestRework(db, {
+          entityType, entityId, actor: user, comment
+        });
+      } else if (action === 'reject') {
+        result = await approvalService.directorReject(db, {
+          entityType, entityId, actor: user, comment
+        });
+      } else if (action === 'issue_cash') {
+        const amount = parseFloat(comment.replace(/[^\d.,]/g, '').replace(',', '.'));
+        if (!amount || amount <= 0) {
+          return bot.sendMessage(chatId, '❌ Введите корректную сумму (число больше 0).');
+        }
+        result = await approvalService.issueCash(db, {
+          entityType, entityId, actor: user, amount, comment: `Выдано ${amount} ₽ через Telegram`
+        });
+      }
+
+      const actionLabel = action === 'question' ? '❓ Вопрос отправлен'
+        : action === 'rework' ? '🔄 Возвращено на доработку'
+        : action === 'reject' ? '❌ Отклонено'
+        : action === 'issue_cash' ? `💵 Выдано ${comment} ₽ из кассы`
+        : '✅ Выполнено';
+
+      await bot.sendMessage(chatId, `${actionLabel}\n\nВаш комментарий: ${comment}`);
+
+      // Убираем кнопки с оригинального сообщения
+      if (messageId) {
+        try {
+          await bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+            chat_id: chatId, message_id: messageId
+          });
+        } catch (e) { /* message too old */ }
+      }
+    } catch (err) {
+      await bot.sendMessage(chatId, `❌ Ошибка: ${err.message}`);
+    }
+  });
+
+  // Callback-кнопки
   initCallbackHandler();
 
   await bot.startPolling({ restart: false });
-  console.log('Telegram bot initialized (with inline approvals)');
+  console.log('[Telegram] Bot started (v2.0 universal approvals)');
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Send Notification
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// Send Notification (простое текстовое сообщение)
+// ─────────────────────────────────────────────────────────────────
 async function sendNotification(userId, message, options = {}) {
-  // Ленивая инициализация: если бот не запущен, пробуем инициализировать
-  if (!bot) {
-    try { await init(); } catch (e) { /* ignore */ }
-  }
+  if (!bot) { try { await init(); } catch (e) { /* */ } }
   if (!bot) return false;
-  
   try {
-    // Get user's telegram_chat_id
-    const result = await db.query(
-      'SELECT telegram_chat_id FROM users WHERE id = $1',
-      [userId]
-    );
-    
-    if (!result.rows[0]?.telegram_chat_id) {
-      return false;
-    }
-    
-    const chatId = result.rows[0].telegram_chat_id;
-    await bot.sendMessage(chatId, message, { parse_mode: 'Markdown', ...options });
+    const result = await db.query('SELECT telegram_chat_id FROM users WHERE id = $1', [userId]);
+    if (!result.rows[0]?.telegram_chat_id) return false;
+    await bot.sendMessage(result.rows[0].telegram_chat_id, message, { parse_mode: 'Markdown', ...options });
     return true;
-    
   } catch (err) {
-    // Suppress 400 errors (blocked bot, invalid chat_id) - just log as debug
-      if (err?.response?.body?.error_code === 400 || err?.response?.statusCode === 400) {
-        // Silent: user blocked bot or invalid chat_id
-      } else {
-        console.error('Send notification error:', err);
-      }
+    if (err?.response?.body?.error_code !== 400) {
+      console.error('[Telegram] sendNotification error:', err.message);
+    }
     return false;
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Send to Multiple Users
-// ─────────────────────────────────────────────────────────────────────────────
-async function broadcast(userIds, message, options = {}) {
-  const results = await Promise.all(
-    userIds.map(id => sendNotification(id, message, options))
-  );
-  return results.filter(Boolean).length;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Send Temporary Password
-// ─────────────────────────────────────────────────────────────────────────────
-async function sendTempPassword(userId, password) {
-  const message = `
-🔐 *Ваш временный пароль для ASGARD CRM:*
-
-\`${password}\`
-
-⚠️ Пароль действителен 24 часа.
-После входа рекомендуем сменить пароль в настройках.
-  `;
-  
-  return sendNotification(userId, message);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Send Deadline Reminder
-// ─────────────────────────────────────────────────────────────────────────────
-async function sendDeadlineReminder(userId, tender) {
-  const deadline = new Date(tender.deadline).toLocaleDateString('ru-RU');
-  const message = `
-⏰ *Напоминание о дедлайне!*
-
-📋 Тендер: ${tender.customer || 'Без названия'}
-📌 Статус: ${tender.tender_status || 'Новый'}
-📅 Дедлайн: ${deadline}
-
-Не забудьте завершить работу вовремя!
-  `;
-  
-  return sendNotification(userId, message);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Send Calendar Reminder
-// ─────────────────────────────────────────────────────────────────────────────
-async function sendCalendarReminder(userId, event) {
-  const message = `
-📅 *Напоминание о событии!*
-
-📌 ${event.title}
-🕐 ${event.date} ${event.time || ''}
-${event.participants ? `👥 ${event.participants}` : ''}
-${event.description ? `\n📝 ${event.description}` : ''}
-  `;
-  
-  return sendNotification(userId, message);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Inline Approval Buttons (callback_query)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Send an approval request with inline buttons to a director's Telegram.
- * @param {number} userId - Director's user ID
- * @param {string} message - Notification message text (Markdown)
- * @param {object} approvalData - { type: 'pre_tender'|'estimate'|'bonus', id: number }
- */
+// ─────────────────────────────────────────────────────────────────
+// Send Approval Request (с кнопками действий)
+// ─────────────────────────────────────────────────────────────────
 async function sendApprovalRequest(userId, message, approvalData) {
-  if (!bot) {
-    try { await init(); } catch (e) { /* ignore */ }
-  }
+  if (!bot) { try { await init(); } catch (e) { /* */ } }
   if (!bot) return false;
 
   try {
-    const result = await db.query(
-      'SELECT telegram_chat_id FROM users WHERE id = $1',
-      [userId]
-    );
-
+    const result = await db.query('SELECT telegram_chat_id FROM users WHERE id = $1', [userId]);
     if (!result.rows[0]?.telegram_chat_id) return false;
 
     const chatId = result.rows[0].telegram_chat_id;
@@ -341,41 +256,49 @@ async function sendApprovalRequest(userId, message, approvalData) {
     const requiresPayment = Boolean(approvalData.requires_payment);
 
     let buttons;
-    if (type === 'estimate' && stage === 'accounting') {
+
+    if (stage === 'accounting' || stage === 'buh') {
+      // Кнопки для бухгалтерии
       buttons = [
         [
-          { text: '\u041f\u0440\u0438\u043d\u044f\u0442\u044c', callback_data: `wf_${type}_accept_accounting_${itemId}` },
-          { text: '\u041d\u0430 \u0434\u043e\u0440\u0430\u0431\u043e\u0442\u043a\u0443', callback_data: `wf_${type}_request_rework_${itemId}` }
+          { text: '💳 Оплатить ПП', callback_data: `ap_paybank_${type}_${itemId}` },
+          { text: '💵 Выдать наличные', callback_data: `ap_cash_${type}_${itemId}` }
         ],
         [
-          { text: '\u0412\u043e\u043f\u0440\u043e\u0441', callback_data: `wf_${type}_question_${itemId}` }
+          { text: '🔄 На доработку', callback_data: `ap_rework_${type}_${itemId}` },
+          { text: '❓ Вопрос', callback_data: `ap_question_${type}_${itemId}` }
         ]
       ];
     } else if (type === 'estimate') {
+      // Просчёт — без бухгалтерии
       buttons = [
         [
-          { text: '\u0421\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u0442\u044c', callback_data: `wf_${type}_approve_to_accounting_${itemId}` },
-          { text: '\u041d\u0430 \u0434\u043e\u0440\u0430\u0431\u043e\u0442\u043a\u0443', callback_data: `wf_${type}_request_rework_${itemId}` }
+          { text: '✅ Согласовать', callback_data: `ap_approve_${type}_${itemId}` },
+          { text: '🔄 Доработка', callback_data: `ap_rework_${type}_${itemId}` }
         ],
         [
-          { text: '\u0412\u043e\u043f\u0440\u043e\u0441', callback_data: `wf_${type}_question_${itemId}` },
-          { text: '\u041e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c', callback_data: `wf_${type}_reject_${itemId}` }
+          { text: '❓ Вопрос', callback_data: `ap_question_${type}_${itemId}` },
+          { text: '❌ Отклонить', callback_data: `ap_reject_${type}_${itemId}` }
         ]
       ];
     } else {
+      // Стандартные кнопки директора (с учётом requires_payment)
+      const approveLabel = requiresPayment ? '✅ Согласовать → бухгалтерия' : '✅ Согласовать';
       buttons = [
         [
-          { text: 'Одобрить', callback_data: `approve_${type}_${itemId}` },
-          { text: 'Отклонить', callback_data: `reject_${type}_${itemId}` }
+          { text: approveLabel, callback_data: `ap_approve_${type}_${itemId}` },
+          { text: '🔄 Доработка', callback_data: `ap_rework_${type}_${itemId}` }
+        ],
+        [
+          { text: '❓ Вопрос', callback_data: `ap_question_${type}_${itemId}` },
+          { text: '❌ Отклонить', callback_data: `ap_reject_${type}_${itemId}` }
         ]
       ];
     }
 
     await bot.sendMessage(chatId, message, {
       parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: buttons
-      }
+      reply_markup: { inline_keyboard: buttons }
     });
 
     return true;
@@ -387,271 +310,287 @@ async function sendApprovalRequest(userId, message, approvalData) {
   }
 }
 
-/**
- * Initialize callback_query handler for inline approval buttons.
- * Called automatically from init() after bot is created.
- */
+// ─────────────────────────────────────────────────────────────────
+// Callback Handler (кнопки в сообщениях)
+// ─────────────────────────────────────────────────────────────────
 function initCallbackHandler() {
   if (!bot) return;
 
   bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     const messageId = query.message.message_id;
-    const data = query.data; // format: "action_type_id"
+    const data = query.data;
 
     try {
-      // Parse callback data
+      // Формат: ap_ACTION_TYPE_ID
       const parts = data.split('_');
-      let action;
-      let type;
-      let itemId;
-
-      if (parts[0] === 'wf' && parts.length >= 4) {
-        type = parts[1];
-        itemId = parseInt(parts[parts.length - 1], 10);
-        action = parts.slice(2, -1).join('_');
-      } else {
-        if (parts.length < 3) {
-          await bot.answerCallbackQuery(query.id, { text: 'Неверный формат команды' });
-          return;
-        }
-        action = parts[0];
-        type = parts[1];
-        itemId = parseInt(parts.slice(2).join('_'), 10);
+      if (parts[0] !== 'ap' || parts.length < 4) {
+        // Legacy format support: approve_TYPE_ID / reject_TYPE_ID
+        return handleLegacyCallback(query);
       }
+
+      const action = parts[1];
+      const entityType = parts[2];
+      const itemId = parseInt(parts[3], 10);
 
       if (isNaN(itemId)) {
-        await bot.answerCallbackQuery(query.id, { text: 'Некорректный идентификатор' });
-        return;
+        return bot.answerCallbackQuery(query.id, { text: 'Ошибка: некорректный ID' });
       }
 
-      // Find director user by chat_id
-      const userResult = await db.query(
-        'SELECT id, name, role FROM users WHERE telegram_chat_id = $1',
-        [chatId.toString()]
-      );
-
-      if (!userResult.rows.length) {
-        await bot.answerCallbackQuery(query.id, { text: '\u274c \u0410\u043a\u043a\u0430\u0443\u043d\u0442 \u043d\u0435 \u043f\u0440\u0438\u0432\u044f\u0437\u0430\u043d' });
-        return;
+      const user = await getUserByChatId(chatId);
+      if (!user) {
+        return bot.answerCallbackQuery(query.id, { text: '❌ Аккаунт не привязан' });
       }
 
-      const director = userResult.rows[0];
-      const dirRole = director.role || '';
+      // Маппинг entityType из Telegram callback → имя таблицы
+      const tableMap = {
+        'estimate': 'estimates',
+        'estimates': 'estimates',
+        'pre_tender': 'pre_tender_requests',
+        'pretender': 'pre_tender_requests',
+        'bonus': 'bonus_requests',
+        'cash': 'cash_requests',
+        'work_expense': 'work_expenses',
+        'office_expense': 'office_expenses',
+        'expense': 'expenses',
+        'one_time': 'one_time_payments',
+        'tmc': 'tmc_requests',
+        'payroll': 'payroll_sheets',
+        'trip': 'business_trips',
+        'travel': 'travel_expenses',
+        'training': 'training_applications',
+        'staff': 'staff_requests'
+      };
 
-      const isDirectorActor = dirRole === 'ADMIN' || dirRole.startsWith('DIRECTOR');
-      const isEstimateActor = isDirectorActor || dirRole === 'BUH';
-      if (type === 'estimate' && !isEstimateActor) {
-        await bot.answerCallbackQuery(query.id, { text: 'У вас нет прав для работы с этим согласованием' });
-        return;
-      }
-      if (type !== 'estimate' && !isDirectorActor) {
-        await bot.answerCallbackQuery(query.id, { text: 'Это действие доступно только руководителю' });
-        return;
-      }
-
+      const tableName = tableMap[entityType] || entityType;
       let resultText = '';
 
-      // ═══ Process Pre-Tender Approval ═══
-      if (type === 'pre' || type === 'pretender' || data.includes('pre_tender')) {
-        const ptId = itemId;
-        if (action === 'approve') {
-          await db.query(
-            `UPDATE pre_tender_requests SET status = 'accepted', decision_by = $1, decision_at = NOW(), decision_comment = '\u0421\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u043e \u0447\u0435\u0440\u0435\u0437 Telegram', updated_at = NOW() WHERE id = $2`,
-            [director.id, ptId]
-          );
-          resultText = '\u2705 \u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0434\u043e\u0431\u0440\u0435\u043d\u0430';
-
-          // Notify requester
-          const ptResult = await db.query('SELECT approval_requested_by FROM pre_tender_requests WHERE id = $1', [ptId]);
-          if (ptResult.rows[0]?.approval_requested_by) {
-            await sendNotification(ptResult.rows[0].approval_requested_by,
-              `\u2705 *\u0417\u0430\u044f\u0432\u043a\u0430 #${ptId} \u043e\u0434\u043e\u0431\u0440\u0435\u043d\u0430*\n\n\u0420\u0443\u043a\u043e\u0432\u043e\u0434\u0438\u0442\u0435\u043b\u044c ${director.name} \u0441\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043b \u0437\u0430\u044f\u0432\u043a\u0443 \u0447\u0435\u0440\u0435\u0437 Telegram.`
-            );
-          }
-        } else {
-          await db.query(
-            `UPDATE pre_tender_requests SET status = 'in_review', decision_by = $1, decision_at = NOW(), decision_comment = '\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e \u0447\u0435\u0440\u0435\u0437 Telegram', updated_at = NOW() WHERE id = $2`,
-            [director.id, ptId]
-          );
-          resultText = '\u274c \u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u0430';
-
-          const ptResult = await db.query('SELECT approval_requested_by FROM pre_tender_requests WHERE id = $1', [ptId]);
-          if (ptResult.rows[0]?.approval_requested_by) {
-            await sendNotification(ptResult.rows[0].approval_requested_by,
-              `\u274c *\u0417\u0430\u044f\u0432\u043a\u0430 #${ptId} \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u0430*\n\n\u0420\u0443\u043a\u043e\u0432\u043e\u0434\u0438\u0442\u0435\u043b\u044c ${director.name} \u043e\u0442\u043a\u043b\u043e\u043d\u0438\u043b \u0437\u0430\u044f\u0432\u043a\u0443 \u0447\u0435\u0440\u0435\u0437 Telegram.`
-            );
-          }
-        }
-      }
-
-      // ═══ Process Estimate Approval ═══
-      else if (type === 'estimate') {
-        const estimateApprovalWorkflow = require('./estimateApprovalWorkflow');
-        const estId = itemId;
-        let workflowAction = action;
-        let reworkKind = 'rework';
-        let workflowComment = '';
-
-        if (action === 'approve') {
-          workflowAction = dirRole === 'BUH' ? 'accept_accounting' : 'approve_to_accounting';
-        } else if (action === 'rework') {
-          workflowAction = 'request_rework';
-        } else if (action === 'question') {
-          workflowAction = 'request_rework';
-          reworkKind = 'question';
+      switch (action) {
+        case 'approve': {
+          const result = await approvalService.directorApprove(db, {
+            entityType: tableName, entityId: itemId, actor: user
+          });
+          resultText = result.payment_status
+            ? '✅ Согласовано, передано в бухгалтерию'
+            : '✅ Согласовано';
+          break;
         }
 
-        if (workflowAction === 'approve_to_accounting') {
-          workflowComment = '\u0421\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u043e \u0447\u0435\u0440\u0435\u0437 Telegram';
-          const workflowResult = await estimateApprovalWorkflow.approveToAccounting(db, {
-            estimateId: estId,
-            actor: director,
-            comment: workflowComment,
-            source: 'telegram_callback'
+        case 'rework': {
+          // Двухшаговый диалог — запрашиваем комментарий
+          pendingInput.set(chatId, {
+            action: 'rework', entityType: tableName, entityId: itemId, messageId
           });
-          resultText = workflowResult.request?.current_stage === 'approved_final'
-            ? '\u0421\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u043e'
-            : '\u0421\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u043e, \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u044d\u0442\u0430\u043f: \u0431\u0443\u0445\u0433\u0430\u043b\u0442\u0435\u0440\u0438\u044f';
-        } else if (workflowAction === 'accept_accounting' || workflowAction === 'approve_final') {
-          workflowComment = '\u041f\u0440\u0438\u043d\u044f\u0442\u043e \u0431\u0443\u0445\u0433\u0430\u043b\u0442\u0435\u0440\u0438\u0435\u0439 \u0447\u0435\u0440\u0435\u0437 Telegram';
-          await estimateApprovalWorkflow.acceptAccounting(db, {
-            estimateId: estId,
-            actor: director,
-            comment: workflowComment,
-            source: 'telegram_callback'
-          });
-          resultText = 'Принято бухгалтерией, следующий этап: оплата';
-        } else if (workflowAction === 'request_rework') {
-          workflowComment = reworkKind === 'question' ? '\u0412\u043e\u043f\u0440\u043e\u0441 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u0447\u0435\u0440\u0435\u0437 Telegram' : '\u0412\u043e\u0437\u0432\u0440\u0430\u0442 \u043d\u0430 \u0434\u043e\u0440\u0430\u0431\u043e\u0442\u043a\u0443 \u0447\u0435\u0440\u0435\u0437 Telegram';
-          await estimateApprovalWorkflow.requestRework(db, {
-            estimateId: estId,
-            actor: director,
-            comment: workflowComment,
-            reworkKind,
-            source: 'telegram_callback'
-          });
-          resultText = reworkKind === 'question' ? '\u0412\u043e\u043f\u0440\u043e\u0441 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d' : '\u0412\u043e\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043e \u043d\u0430 \u0434\u043e\u0440\u0430\u0431\u043e\u0442\u043a\u0443';
-        } else if (workflowAction === 'reject') {
-          workflowComment = '\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e \u0447\u0435\u0440\u0435\u0437 Telegram';
-          await estimateApprovalWorkflow.reject(db, {
-            estimateId: estId,
-            actor: director,
-            comment: workflowComment,
-            source: 'telegram_callback'
-          });
-          resultText = '\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e';
-        } else {
-          await bot.answerCallbackQuery(query.id, { text: 'Действие не поддерживается' });
+          await bot.answerCallbackQuery(query.id, { text: 'Напишите комментарий...' });
+          await bot.sendMessage(chatId,
+            '🔄 *На доработку*\n\nНапишите комментарий (что нужно исправить):',
+            { parse_mode: 'Markdown' }
+          );
           return;
         }
-      }
 
-      // ═══ Process Bonus Approval ═══
-      else if (type === 'bonus') {
-        const bonusId = itemId;
-        if (action === 'approve') {
-          await db.query(
-            `UPDATE bonus_requests SET status = 'approved', director_id = $1, decided_at = NOW(), director_comment = '\u041e\u0434\u043e\u0431\u0440\u0435\u043d\u043e \u0447\u0435\u0440\u0435\u0437 Telegram', updated_at = NOW() WHERE id = $2`,
-            [director.id, bonusId]
+        case 'question': {
+          pendingInput.set(chatId, {
+            action: 'question', entityType: tableName, entityId: itemId, messageId
+          });
+          await bot.answerCallbackQuery(query.id, { text: 'Напишите вопрос...' });
+          await bot.sendMessage(chatId,
+            '❓ *Вопрос*\n\nВведите ваш вопрос:',
+            { parse_mode: 'Markdown' }
           );
-          resultText = '\u2705 \u041f\u0440\u0435\u043c\u0438\u044f \u043e\u0434\u043e\u0431\u0440\u0435\u043d\u0430';
-
-          // Auto-create work expenses for approved bonuses
-          try {
-            const bonusResult = await db.query('SELECT * FROM bonus_requests WHERE id = $1', [bonusId]);
-            if (bonusResult.rows[0]) {
-              const bonus = bonusResult.rows[0];
-              const bonuses = typeof bonus.bonuses_json === 'string' ? JSON.parse(bonus.bonuses_json) : (bonus.bonuses_json || []);
-              for (const b of bonuses) {
-                if (b.amount && b.amount > 0) {
-                  await db.query(
-                    `INSERT INTO work_expenses (work_id, category, description, amount, date, created_by, created_at, updated_at) VALUES ($1, 'fot_bonus', $2, $3, NOW(), $4, NOW(), NOW())`,
-                    [bonus.work_id, '\u041f\u0440\u0435\u043c\u0438\u044f: ' + (b.name || '\u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a'), b.amount, director.id]
-                  );
-                }
-              }
-            }
-          } catch (bonusErr) {
-            console.error('[Telegram] Bonus expense creation error:', bonusErr.message);
-          }
-
-          // Notify PM
-          const bonusResult = await db.query('SELECT user_id FROM bonus_requests WHERE id = $1', [bonusId]);
-          if (bonusResult.rows[0]?.user_id) {
-            await sendNotification(bonusResult.rows[0].user_id,
-              `\u2705 *\u041f\u0440\u0435\u043c\u0438\u044f \u043e\u0434\u043e\u0431\u0440\u0435\u043d\u0430!*\n\n${director.name} \u043e\u0434\u043e\u0431\u0440\u0438\u043b \u0432\u0430\u0448 \u0437\u0430\u043f\u0440\u043e\u0441 \u043d\u0430 \u043f\u0440\u0435\u043c\u0438\u044e \u0447\u0435\u0440\u0435\u0437 Telegram.`
-            );
-          }
-        } else {
-          await db.query(
-            `UPDATE bonus_requests SET status = 'rejected', director_id = $1, decided_at = NOW(), director_comment = '\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e \u0447\u0435\u0440\u0435\u0437 Telegram', updated_at = NOW() WHERE id = $2`,
-            [director.id, bonusId]
-          );
-          resultText = '\u274c \u041f\u0440\u0435\u043c\u0438\u044f \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u0430';
-
-          const bonusResult = await db.query('SELECT user_id FROM bonus_requests WHERE id = $1', [bonusId]);
-          if (bonusResult.rows[0]?.user_id) {
-            await sendNotification(bonusResult.rows[0].user_id,
-              `\u274c *\u041f\u0440\u0435\u043c\u0438\u044f \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u0430*\n\n${director.name} \u043e\u0442\u043a\u043b\u043e\u043d\u0438\u043b \u0437\u0430\u043f\u0440\u043e\u0441 \u043d\u0430 \u043f\u0440\u0435\u043c\u0438\u044e.`
-            );
-          }
+          return;
         }
+
+        case 'reject': {
+          pendingInput.set(chatId, {
+            action: 'reject', entityType: tableName, entityId: itemId, messageId
+          });
+          await bot.answerCallbackQuery(query.id, { text: 'Укажите причину...' });
+          await bot.sendMessage(chatId,
+            '❌ *Отклонение*\n\nУкажите причину отклонения:',
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+
+        case 'paybank': {
+          const result = await approvalService.payByBankTransfer(db, {
+            entityType: tableName, entityId: itemId, actor: user, comment: 'Оплачено через Telegram'
+          });
+          resultText = '💳 Оплачено через ПП';
+          break;
+        }
+
+        case 'cash': {
+          // Показываем баланс кассы и просим ввести сумму
+          const balance = await approvalService.getCashBalance(db);
+          pendingInput.set(chatId, {
+            action: 'issue_cash', entityType: tableName, entityId: itemId, messageId
+          });
+          await bot.answerCallbackQuery(query.id, { text: 'Введите сумму...' });
+          await bot.sendMessage(chatId,
+            `💵 *Выдача наличных*\n\n💰 Баланс кассы: *${balance.toLocaleString('ru-RU')} ₽*\n\nВведите сумму для выдачи:`,
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+
+        default:
+          return bot.answerCallbackQuery(query.id, { text: 'Неизвестное действие' });
       }
 
-      // Answer callback and update message
+      // Ответ и обновление сообщения
       await bot.answerCallbackQuery(query.id, { text: resultText });
-
-      // Edit original message to show result (remove buttons)
-      const updatedText = query.message.text + '\n\n' + resultText + '\n\u0420\u0435\u0448\u0435\u043d\u0438\u0435: ' + director.name;
       try {
+        const updatedText = query.message.text + '\n\n' + resultText + '\n👤 ' + user.name;
         await bot.editMessageText(updatedText, {
-          chat_id: chatId,
-          message_id: messageId,
+          chat_id: chatId, message_id: messageId,
           parse_mode: 'Markdown',
           reply_markup: { inline_keyboard: [] }
         });
-      } catch (editErr) {
-        // Message might be too old to edit
-        console.error('[Telegram] Edit message error:', editErr.message);
-      }
-
-      // Log the action
-      try {
-        await db.query(
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES ($1, $2, $3, $4, $5, NOW())`,
-          [director.id, action, type, itemId, JSON.stringify({ via: 'telegram', director: director.name })]
-        );
-      } catch (logErr) {
-        // audit_log might not exist
-      }
+      } catch (e) { /* message too old */ }
 
     } catch (err) {
-      console.error('[Telegram] Callback query error:', err.message);
+      console.error('[Telegram] Callback error:', err.message);
       try {
-        await bot.answerCallbackQuery(query.id, { text: '\u274c \u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438' });
+        await bot.answerCallbackQuery(query.id, { text: '❌ ' + (err.message || 'Ошибка').substring(0, 100) });
       } catch (_) {}
     }
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// Legacy callback support (approve_TYPE_ID / reject_TYPE_ID)
+// ─────────────────────────────────────────────────────────────────
+async function handleLegacyCallback(query) {
+  const chatId = query.message.chat.id;
+  const messageId = query.message.message_id;
+  const data = query.data;
+  const parts = data.split('_');
 
-// Graceful shutdown
-async function shutdown() {
-  if (bot) {
-    try {
-      await bot.stopPolling();
-      console.log("[Telegram] Polling stopped");
-    } catch (e) {
-      console.error("[Telegram] Error stopping polling:", e.message);
+  try {
+    const user = await getUserByChatId(chatId);
+    if (!user) return bot.answerCallbackQuery(query.id, { text: '❌ Аккаунт не привязан' });
+
+    let action, type, itemId;
+
+    // Legacy: wf_estimate_approve_to_accounting_123
+    if (parts[0] === 'wf') {
+      type = parts[1];
+      itemId = parseInt(parts[parts.length - 1], 10);
+      const rawAction = parts.slice(2, -1).join('_');
+      // Map old actions to new
+      if (rawAction.includes('approve') || rawAction.includes('accept')) action = 'approve';
+      else if (rawAction.includes('rework')) action = 'rework';
+      else if (rawAction.includes('question')) action = 'question';
+      else if (rawAction.includes('reject')) action = 'reject';
+      else action = rawAction;
+    } else {
+      // Legacy: approve_pre_tender_123
+      action = parts[0];
+      type = parts.slice(1, -1).join('_');
+      itemId = parseInt(parts[parts.length - 1], 10);
     }
-    bot = null;
+
+    if (isNaN(itemId)) return bot.answerCallbackQuery(query.id, { text: 'Ошибка формата' });
+
+    const tableMap = {
+      'estimate': 'estimates', 'pre_tender': 'pre_tender_requests',
+      'pretender': 'pre_tender_requests', 'bonus': 'bonus_requests'
+    };
+    const tableName = tableMap[type] || type;
+
+    let resultText;
+    if (action === 'approve') {
+      await approvalService.directorApprove(db, { entityType: tableName, entityId: itemId, actor: user });
+      resultText = '✅ Согласовано';
+    } else if (action === 'reject') {
+      // Legacy reject без комментария
+      try {
+        await approvalService.directorReject(db, { entityType: tableName, entityId: itemId, actor: user, comment: 'Отклонено через Telegram' });
+      } catch (e) {
+        // Fallback для pre_tender (прямой UPDATE)
+        await db.query(
+          "UPDATE pre_tender_requests SET status = 'in_review', decision_by = $1, decision_at = NOW(), decision_comment = 'Отклонено через Telegram', updated_at = NOW() WHERE id = $2",
+          [user.id, itemId]
+        );
+      }
+      resultText = '❌ Отклонено';
+    } else {
+      return bot.answerCallbackQuery(query.id, { text: 'Устаревший формат кнопки' });
+    }
+
+    await bot.answerCallbackQuery(query.id, { text: resultText });
+    try {
+      await bot.editMessageText(query.message.text + '\n\n' + resultText + '\n👤 ' + user.name, {
+        chat_id: chatId, message_id: messageId, parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [] }
+      });
+    } catch (e) { /* message too old */ }
+
+  } catch (err) {
+    console.error('[Telegram] Legacy callback error:', err.message);
+    try { await bot.answerCallbackQuery(query.id, { text: '❌ Ошибка' }); } catch (_) {}
   }
 }
 
-// Export
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────
+async function getUserByChatId(chatId) {
+  const result = await db.query(
+    'SELECT id, name, role FROM users WHERE telegram_chat_id = $1', [chatId.toString()]
+  );
+  return result.rows[0] || null;
+}
+
+async function broadcast(userIds, message, options = {}) {
+  const results = await Promise.all(
+    userIds.map(id => sendNotification(id, message, options))
+  );
+  return results.filter(Boolean).length;
+}
+
+async function sendTempPassword(userId, password) {
+  return sendNotification(userId, `
+🔐 *Временный пароль ASGARD CRM:*
+
+\`${password}\`
+
+⚠️ Действителен 24 часа. Смените после входа.
+  `);
+}
+
+async function sendDeadlineReminder(userId, tender) {
+  const deadline = new Date(tender.deadline).toLocaleDateString('ru-RU');
+  return sendNotification(userId, `
+⏰ *Напоминание о дедлайне!*
+
+📋 Тендер: ${tender.customer || '—'}
+📌 Статус: ${tender.tender_status || 'Новый'}
+📅 Дедлайн: ${deadline}
+  `);
+}
+
+async function sendCalendarReminder(userId, event) {
+  return sendNotification(userId, `
+📅 *Напоминание!*
+
+📌 ${event.title}
+🕐 ${event.date} ${event.time || ''}
+${event.participants ? '👥 ' + event.participants : ''}
+${event.description ? '\n📝 ' + event.description : ''}
+  `);
+}
+
+async function shutdown() {
+  if (bot) {
+    try { await bot.stopPolling(); } catch (e) {}
+    bot = null;
+  }
+  pendingInput.clear();
+}
+
 module.exports = {
   init,
   sendNotification,

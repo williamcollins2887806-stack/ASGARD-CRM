@@ -525,6 +525,10 @@ window.AsgardCorrespondencePage = (function(){
           <div style="grid-column:1/-1"><label>Примечание</label><textarea id="corr_note" rows="2" placeholder="Дополнительная информация..."></textarea></div>
         </div>
         <hr class="hr"/>
+        <div style="margin-bottom:12px">
+          <label style="font-size:13px;font-weight:600">📎 Вложение (скан, PDF, файл)</label>
+          <input type="file" id="corr_file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.zip,.rar" style="margin-top:6px"/>
+        </div>
         <div style="display:flex; gap:10px">
           <button class="btn" id="btnSaveCorr">Сохранить</button>
         </div>
@@ -547,6 +551,26 @@ window.AsgardCorrespondencePage = (function(){
         const subject = $('#corr_subject')?.value?.trim();
         if(!subject){ toast('Ошибка', 'Укажите тему документа', 'err'); return; }
 
+        // Загрузить файл если есть
+        let filePath = null;
+        const fileInput = document.getElementById('corr_file');
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          try {
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('type', 'Корреспонденция');
+            const uploadResp = await fetch('/api/files/upload', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '') },
+              body: formData
+            });
+            if (uploadResp.ok) {
+              const uploadData = await uploadResp.json();
+              filePath = uploadData.download_url || uploadData.filename || null;
+            }
+          } catch(ue) { console.error('[Corr] File upload error:', ue); }
+        }
+
         const item = {
           direction,
           date: $('#corr_date')?.value || today(),
@@ -556,6 +580,7 @@ window.AsgardCorrespondencePage = (function(){
           contact_person: $('#corr_contact')?.value?.trim() || '',
           note: $('#corr_note')?.value?.trim() || ''
         };
+        if (filePath) item.file_path = filePath;
         if(!isOutgoing){
           item.number = $('#corr_number')?.value?.trim() || '';
         }
@@ -614,6 +639,15 @@ window.AsgardCorrespondencePage = (function(){
           <div style="grid-column:1/-1"><label>Примечание</label><textarea id="corr_note" rows="2">${esc(item.note || '')}</textarea></div>
         </div>
         <hr class="hr"/>
+        <div style="margin-bottom:12px">
+          <label style="font-size:13px;font-weight:600">📎 Вложение</label>
+          ${item.file_path ? `<div style="margin:6px 0;padding:8px 12px;border-radius:6px;background:var(--bg2);display:flex;align-items:center;gap:8px">
+            <span>📄</span>
+            <a href="${esc(item.file_path)}" target="_blank" style="color:var(--blue);font-size:13px" download>Скачать текущий файл</a>
+          </div>` : '<div class="help" style="margin:4px 0;font-size:12px">Файл не прикреплён</div>'}
+          <input type="file" id="corr_file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.zip,.rar" style="margin-top:4px"/>
+          <div class="help" style="font-size:11px;margin-top:2px">Загрузите новый файл чтобы заменить текущий</div>
+        </div>
         <div style="display:flex; gap:10px; justify-content:space-between">
           <button class="btn" id="btnUpdateCorr">Сохранить изменения</button>
           <button class="btn red" id="btnDeleteCorr">Удалить</button>
@@ -626,6 +660,26 @@ window.AsgardCorrespondencePage = (function(){
         const subject = $('#corr_subject')?.value?.trim();
         if(!subject){ toast('Ошибка', 'Укажите тему документа', 'err'); return; }
 
+        // Загрузить новый файл если выбран
+        let filePath = null;
+        const fileInput = document.getElementById('corr_file');
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          try {
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('type', 'Корреспонденция');
+            const uploadResp = await fetch('/api/files/upload', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '') },
+              body: formData
+            });
+            if (uploadResp.ok) {
+              const uploadData = await uploadResp.json();
+              filePath = uploadData.download_url || uploadData.filename || null;
+            }
+          } catch(ue) { console.error('[Corr] File upload error:', ue); }
+        }
+
         const oldNumber = item.number;
         const payload = {
           date: $('#corr_date')?.value || today(),
@@ -635,6 +689,7 @@ window.AsgardCorrespondencePage = (function(){
           contact_person: $('#corr_contact')?.value?.trim() || '',
           note: $('#corr_note')?.value?.trim() || ''
         };
+        if (filePath) payload.file_path = filePath;
         if(!isOutgoing){
           payload.number = $('#corr_number')?.value?.trim() || '';
         }
@@ -702,6 +757,13 @@ window.AsgardCorrespondencePage = (function(){
         ${item.note ? `
           <hr class="hr"/>
           <div><label>Примечание</label><div class="help">${esc(item.note)}</div></div>
+        ` : ''}
+        ${item.file_path ? `
+          <hr class="hr"/>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:20px">📎</span>
+            <a href="${esc(item.file_path)}" target="_blank" download style="color:var(--blue);font-weight:600;font-size:14px">Скачать вложение</a>
+          </div>
         ` : ''}
         <hr class="hr"/>
         <div class="help" style="font-size:11px; color:var(--muted)">

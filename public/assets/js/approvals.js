@@ -18,6 +18,21 @@ window.AsgardApprovalsPage = (function(){
   function norm(s){ return String(s||"").toLowerCase().trim(); }
   function num(x){ if(x===null||x===undefined||x==="") return null; const n=Number(String(x).replace(/\s/g,"").replace(",", ".")); return Number.isFinite(n)?n:null; }
   function money(n){ if(n===null||n===undefined) return "—"; return Number(n).toLocaleString("ru-RU"); }
+
+  // Цветные pill-стили для статусов
+  const STATUS_COLORS = {
+    draft:    { color:'#6b7280', bg:'rgba(107,114,128,.12)' },
+    sent:     { color:'#3b82f6', bg:'rgba(59,130,246,.12)' },
+    approved: { color:'#22c55e', bg:'rgba(34,197,94,.12)' },
+    rework:   { color:'#f59e0b', bg:'rgba(245,158,11,.12)' },
+    question: { color:'#a855f7', bg:'rgba(168,85,247,.12)' },
+    rejected: { color:'#ef4444', bg:'rgba(239,68,68,.12)' },
+    cancelled:{ color:'#6b7280', bg:'rgba(107,114,128,.12)' }
+  };
+  function statusPill(status, label) {
+    const s = STATUS_COLORS[status] || STATUS_COLORS.draft;
+    return `<span style="display:inline-block;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;color:${s.color};background:${s.bg};border:1px solid ${s.color}30">${esc(label)}</span>`;
+  }
   function normalizeLinkValue(value){
     const raw = String(value || '').trim();
     if(!raw) return '';
@@ -331,7 +346,7 @@ window.AsgardApprovalsPage = (function(){
           <td><b>${esc(t.customer_name||"")}</b><div class="help">${esc(t.tender_title||"")}</div></td>
           <td>${esc(pm.name||"")}</td>
           <td>
-            <div>v${esc(String(e.version_no||0))} · <b>${esc(({ draft:"Черновик", sent:"На согласовании у директора", accounting_review:"На согласовании у бухгалтерии", approved:"Согласована", rework:"На доработке", question:"Вопрос от согласующего", rejected:"Отклонена", cancelled:"Отменена РП" }[e.approval_status||"draft"]) || (e.approval_status||""))}</b></div>
+            <div>v${esc(String(e.version_no||0))} · ${statusPill(e.approval_status||"draft", ({ draft:"Черновик", sent:"На согласовании", approved:"Согласована", rework:"На доработке", question:"Вопрос", rejected:"Отклонена", cancelled:"Отменена" }[e.approval_status||"draft"]) || (e.approval_status||""))}</div>
             ${(()=>{
               const msgs=(qaByEstimate.get(e.id)||[]);
               const open = msgs.filter(m=>m.type==="question" && m.is_open).length;
@@ -550,9 +565,10 @@ window.AsgardApprovalsPage = (function(){
         </div>
 
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
-          <button class="btn" id="btnApprove">Согласовать</button>
-          <button class="btn red" id="btnRework">Доработка</button>
-          <button class="btn ghost" id="btnQuestion">Вопрос</button>
+          <button class="btn" id="btnApprove" style="background:#22c55e;color:#fff;border:none">✅ Согласовать</button>
+          <button class="btn" id="btnRework" style="background:#f59e0b;color:#fff;border:none">🔄 Доработка</button>
+          <button class="btn" id="btnQuestion" style="background:#a855f7;color:#fff;border:none">❓ Вопрос</button>
+          <button class="btn" id="btnReject" style="background:#ef4444;color:#fff;border:none">❌ Отклонить</button>
         </div>
 
         <div class="help" style="margin-top:10px">Решение фиксируется в журнале и отправляет уведомление РП.</div>
@@ -588,6 +604,8 @@ window.AsgardApprovalsPage = (function(){
 
       document.getElementById("btnApprove").addEventListener("click", ()=>decide("approved", false));
       document.getElementById("btnRework").addEventListener("click", ()=>decide("rework", true));
+      const btnReject = document.getElementById("btnReject");
+      if(btnReject) btnReject.addEventListener("click", ()=>decide("rejected", true));
       document.getElementById("btnQuestion").addEventListener("click", async ()=>{
         const comm = document.getElementById("a_comm").value.trim();
         if(!comm){ toast("Проверка","Нужен вопрос (комментарий)","err"); return; }
