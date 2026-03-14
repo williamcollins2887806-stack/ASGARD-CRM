@@ -40,7 +40,7 @@ const TestPage = {
     setTimeout(() => { const s = document.getElementById('mv3-theme-slot'); if (s) s.appendChild(themeToggle); }, 0);
 
     // ═══ HERO ═══
-    page.appendChild(el('div', { padding: '12px 20px' }, M.HeroCard({ label: 'ASGARD CRM • MOBILE V3', value: '40', valueSuffix: ' компонентов', details: [{ label: 'Виджетов', value: '27' }, { label: 'Секций', value: '17' }, { label: 'Стандарт', value: 'Сбер/Альфа', color: '#34C759' }] })));
+    page.appendChild(el('div', { padding: '12px 20px' }, M.HeroCard({ label: 'ASGARD CRM • MOBILE V3', value: '40', valueSuffix: ' компонентов', details: [{ label: 'Блоков', value: '22' }, { label: 'Auth', value: '5 экранов' }, { label: 'Стандарт', value: 'Сбер/Альфа', color: '#34C759' }] })));
 
     // ═══ BLOCK 1: NAV ═══
     page.appendChild(sec('Навигация', 'TabBar внизу, Header, Burger-меню'));
@@ -299,11 +299,271 @@ const TestPage = {
       { label: 'Готовность', value: 65, type: 'progress' },
     ] }));
 
+    // ═══ BLOCK 18: AUTH SCREENS ═══
+    page.appendChild(sec('Экраны входа', 'Welcome, Login, PIN, Quick PIN, Register'));
+
+    // 18.1 Welcome screen (mini)
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '18.1 Welcome (приветствие)')));
+    const welc = el('div', { background: 'var(--hero-grad)', borderRadius: '20px', padding: '32px 20px', textAlign: 'center', position: 'relative', overflow: 'hidden', margin: '0 20px' });
+    // Floating runes
+    const runeStr = 'ᚨᚱᚦᚹᛏᛒᛗᚠᚢᚲ';
+    for (let i = 0; i < 8; i++) { const rn = el('span', { position: 'absolute', left: (Math.random()*80+10)+'%', top: (Math.random()*80+10)+'%', fontSize: (14+Math.random()*20)+'px', color: 'rgba(255,255,255,0.08)', fontWeight: 700 }, runeStr[i%runeStr.length]); welc.appendChild(rn); }
+    // Shield
+    const shieldSvg = el('div', { marginBottom: '12px' });
+    shieldSvg.innerHTML = '<svg viewBox="0 0 60 72" width="60" height="72" fill="none"><path d="M30 3L57 15V42Q57 59 30 69Q3 59 3 42V15Z" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" fill="rgba(255,255,255,0.06)"/><text x="30" y="46" text-anchor="middle" fill="white" font-size="28" font-weight="800" font-family="system-ui">ᚨ</text></svg>';
+    welc.appendChild(shieldSvg);
+    welc.appendChild(el('div', { ...DS.font('hero'), color: '#fff', letterSpacing: '6px', marginBottom: '4px' }, 'ASGARD'));
+    welc.appendChild(el('div', { ...DS.font('xs'), color: 'rgba(255,255,255,0.5)', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '24px' }, 'Система управления'));
+    const welcBtns = el('div', { display: 'flex', flexDirection: 'column', gap: '10px' });
+    const mkWBtn = (label, primary) => { const b = el('button', { width: '100%', padding: '14px', borderRadius: '18px', border: primary ? '1px solid rgba(255,255,255,0.25)' : '1px solid rgba(255,255,255,0.12)', background: primary ? 'rgba(255,255,255,0.18)' : 'transparent', color: primary ? '#fff' : 'rgba(255,255,255,0.6)', fontSize: '15px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }, label); return b; };
+    welcBtns.appendChild(mkWBtn('Войти', true));
+    welcBtns.appendChild(mkWBtn('Оставить заявку', false));
+    welcBtns.appendChild(mkWBtn('О системе', false));
+    welc.appendChild(welcBtns);
+    page.appendChild(welc);
+    page.appendChild(gap());
+
+    // 18.2 Login form
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '18.2 Login (логин + пароль)')));
+    const loginDemo = el('div', { background: 'var(--hero-grad)', borderRadius: '20px', padding: '24px 18px', margin: '0 20px', position: 'relative' });
+    loginDemo.appendChild(el('div', { ...DS.font('xl'), color: '#fff', marginBottom: '4px' }, 'Вход в систему'));
+    loginDemo.appendChild(el('div', { ...DS.font('sm'), color: 'rgba(255,255,255,0.65)', marginBottom: '18px' }, 'Введите данные аккаунта'));
+    const loginForm = el('div', { background: 'rgba(255,255,255,0.92)', borderRadius: '20px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' });
+    // Login input
+    const mkInput = (lbl, type) => { const w = el('div', { position: 'relative' }); const inp = el('input', { width: '100%', padding: '20px 16px 8px', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.1)', background: '#f7f7fa', fontSize: '14px', color: '#1A1A1F', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }); inp.type = type || 'text'; inp.placeholder = ' '; const lb = el('label', { position: 'absolute', left: '16px', top: '6px', fontSize: '10px', fontWeight: 500, color: '#6E6E78', pointerEvents: 'none' }, lbl); w.appendChild(inp); w.appendChild(lb); return w; };
+    loginForm.appendChild(mkInput('Логин или email', 'text'));
+    loginForm.appendChild(mkInput('Пароль', 'password'));
+    const loginBtn = el('button', { width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: 'var(--hero-grad)', color: '#fff', fontSize: '16px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }, 'Войти');
+    loginForm.appendChild(loginBtn);
+    loginForm.appendChild(el('div', { textAlign: 'center', ...DS.font('sm'), color: '#6E6E78' }, 'Забыли пароль?'));
+    loginDemo.appendChild(loginForm);
+    page.appendChild(loginDemo);
+    page.appendChild(gap());
+
+    // 18.3 PIN screen
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '18.3 PIN-код (быстрый вход)')));
+    const pinDemo = el('div', { background: 'var(--hero-grad)', borderRadius: '20px', padding: '28px 20px', textAlign: 'center', margin: '0 20px' });
+    // Avatar
+    const pinAv = el('div', { width: '64px', height: '64px', borderRadius: '50%', background: 'linear-gradient(135deg, #4A90D9, #E53935)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: '22px', fontWeight: 700, color: '#fff', boxShadow: '0 4px 20px rgba(74,144,217,0.3)' }, 'НА');
+    pinDemo.appendChild(pinAv);
+    pinDemo.appendChild(el('div', { ...DS.font('lg'), color: '#fff', marginBottom: '4px' }, 'Андросов Никита'));
+    pinDemo.appendChild(el('div', { ...DS.font('sm'), color: 'rgba(255,255,255,0.5)', marginBottom: '28px' }, 'Введите PIN-код'));
+    // Dots
+    const pinDots = el('div', { display: 'flex', gap: '18px', justifyContent: 'center', marginBottom: '28px' });
+    let pinVal = '';
+    const dots = [];
+    for (let i = 0; i < 4; i++) { const d = el('div', { width: '14px', height: '14px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.25)', background: 'transparent', transition: 'all 0.25s cubic-bezier(0.34,1.56,0.64,1)' }); dots.push(d); pinDots.appendChild(d); }
+    pinDemo.appendChild(pinDots);
+    // Numpad
+    const numpad = el('div', { display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' });
+    const pinDigit = (d) => { if (pinVal.length >= 4) return; pinVal += d; dots.forEach((dot, i) => { const on = i < pinVal.length; dot.style.background = on ? '#4A90D9' : 'transparent'; dot.style.borderColor = on ? '#4A90D9' : 'rgba(255,255,255,0.25)'; dot.style.transform = on ? 'scale(1.25)' : 'scale(1)'; }); if (pinVal.length === 4) setTimeout(() => { M.Toast({ message: 'PIN введён: ' + pinVal, type: 'success' }); pinVal = ''; dots.forEach(d => { d.style.background = 'transparent'; d.style.borderColor = 'rgba(255,255,255,0.25)'; d.style.transform = 'scale(1)'; }); }, 300); };
+    const pinDel = () => { if (!pinVal) return; pinVal = pinVal.slice(0,-1); dots.forEach((dot, i) => { const on = i < pinVal.length; dot.style.background = on ? '#4A90D9' : 'transparent'; dot.style.borderColor = on ? '#4A90D9' : 'rgba(255,255,255,0.25)'; dot.style.transform = on ? 'scale(1.25)' : 'scale(1)'; }); };
+    [['1','2','3'],['4','5','6'],['7','8','9'],['🔐','0','⌫']].forEach(row => {
+      const r = el('div', { display: 'flex', gap: '12px', justifyContent: 'center' });
+      row.forEach(key => {
+        const k = el('button', { width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: 'none', fontFamily: 'inherit', fontSize: key === '⌫' || key === '🔐' ? '18px' : '20px', fontWeight: 600, transition: 'all 0.12s ease' });
+        if (key === '🔐') { Object.assign(k.style, { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.14)' }); }
+        else if (key === '⌫') { Object.assign(k.style, { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.14)' }); k.addEventListener('click', pinDel); }
+        else { Object.assign(k.style, { background: 'rgba(255,255,255,0.16)', color: '#fff', border: '1px solid rgba(255,255,255,0.22)', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }); k.addEventListener('click', () => pinDigit(key)); }
+        k.textContent = key;
+        r.appendChild(k);
+      });
+      numpad.appendChild(r);
+    });
+    pinDemo.appendChild(numpad);
+    pinDemo.appendChild(el('div', { ...DS.font('sm'), color: 'rgba(74,144,217,0.9)', marginTop: '16px', cursor: 'pointer' }, 'Войти другим способом'));
+    page.appendChild(pinDemo);
+    page.appendChild(gap());
+
+    // 18.4 Register (заявка на доступ)
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, '18.4 Register (заявка на доступ)')));
+    const regDemo = el('div', { margin: '0 20px', borderRadius: '20px', overflow: 'hidden' });
+    const regHero = el('div', { background: 'var(--hero-grad)', padding: '18px', color: '#fff', position: 'relative' });
+    regHero.appendChild(el('div', { ...DS.font('label'), color: 'rgba(255,255,255,0.6)', marginBottom: '6px' }, 'ДОСТУП'));
+    regHero.appendChild(el('div', { ...DS.font('lg'), color: '#fff', marginBottom: '4px' }, 'Запрос в ASGARD'));
+    regHero.appendChild(el('div', { ...DS.font('sm'), color: 'rgba(255,255,255,0.65)' }, 'Оставьте данные, администратор свяжется'));
+    regHero.appendChild(el('div', { position: 'absolute', right: '16px', top: '14px', fontSize: '44px', fontWeight: 800, color: 'rgba(255,255,255,0.12)' }, 'ᚨ'));
+    regDemo.appendChild(regHero);
+    const regForm = el('div', { padding: '16px', background: t.surface, border: '1px solid ' + t.border, display: 'flex', flexDirection: 'column', gap: '12px' });
+    regForm.appendChild(el('div', { ...DS.font('md'), color: t.text }, 'Новая заявка'));
+    ['Имя и фамилия', 'Телефон', 'Email', 'Компания'].forEach(lbl => { const inp = el('input', { width: '100%', padding: '14px 16px', borderRadius: '14px', border: '1px solid ' + t.border, background: t.inputBg, color: t.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }); inp.placeholder = lbl; regForm.appendChild(inp); });
+    const roleRow = el('div', { display: 'flex', flexWrap: 'wrap', gap: '6px' });
+    ['Тендеры', 'РП', 'HR', 'Бухгалтерия', 'Склад'].forEach((r, i) => { const b = el('button', { padding: '8px 12px', borderRadius: '20px', border: '1px solid ' + (i === 0 ? t.blueBorder : t.border), background: i === 0 ? t.blueBg : t.surfaceAlt, color: i === 0 ? t.blue : t.textSec, fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }, r); roleRow.appendChild(b); });
+    regForm.appendChild(roleRow);
+    regForm.appendChild(el('button', { width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: 'var(--hero-grad)', color: '#fff', fontSize: '15px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }, 'Отправить заявку'));
+    regDemo.appendChild(regForm);
+    page.appendChild(regDemo);
+
+    // ═══ BLOCK 19: ACCOUNTING MODALS ═══
+    page.appendChild(sec('Модалки бухгалтерии', 'Выбор ПП/Наличные, подтверждение, отчёт, возврат'));
+
+    const accBtns = el('div', { display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 20px' });
+
+    // 19.1 Payment type modal
+    accBtns.appendChild(M.FullWidthBtn({ label: '💳 Модалка оплаты (ПП / Наличные)', variant: 'secondary', onClick: () => {
+      const cnt = document.createElement('div');
+      const mkPayCard = (icon, title, desc, onClick) => { const c = el('div', { padding: '16px', borderRadius: '16px', border: '1px solid ' + t.border, background: t.surface, cursor: 'pointer', display: 'flex', gap: '14px', alignItems: 'center', marginBottom: '10px', transition: 'transform 0.15s ease' }); c.addEventListener('touchstart', () => c.style.transform = 'scale(0.98)', { passive: true }); c.addEventListener('touchend', () => c.style.transform = '', { passive: true }); c.addEventListener('click', onClick); c.appendChild(el('div', { fontSize: '32px' }, icon)); const txt = el('div', { flex: 1 }); txt.appendChild(el('div', { ...DS.font('md'), color: t.text }, title)); txt.appendChild(el('div', { ...DS.font('sm'), color: t.textSec }, desc)); c.appendChild(txt); return c; };
+      cnt.appendChild(mkPayCard('🏦', 'Платёжное поручение', 'Безналичная оплата по счёту', () => M.Toast({ message: 'Оплата ПП', type: 'success' })));
+      cnt.appendChild(mkPayCard('💵', 'Наличные из кассы', 'Баланс: 2 450 000 ₽', () => M.Toast({ message: 'Выдача наличных', type: 'info' })));
+      cnt.appendChild(el('div', { padding: '12px', borderRadius: '12px', background: t.surfaceAlt, textAlign: 'center', ...DS.font('sm'), color: t.textSec }, '💰 Сумма к оплате: 85 000 ₽'));
+      M.BottomSheet({ title: 'Способ оплаты', content: cnt });
+    }}));
+
+    // 19.2 Cash confirmation
+    accBtns.appendChild(M.FullWidthBtn({ label: '💵 Подтверждение получения наличных', variant: 'secondary', onClick: async () => {
+      const ok = await M.Confirm({ title: '💵 Получение наличных', message: 'Петров И.С. подтверждает получение 85 000 ₽ из кассы?\n\nНажмите «Получено» для подтверждения.', okText: 'Получено ✓', cancelText: 'Отмена', danger: false });
+      M.Toast({ message: ok ? 'Наличные выданы' : 'Отменено', type: ok ? 'success' : 'info' });
+    }}));
+
+    // 19.3 Expense report
+    accBtns.appendChild(M.FullWidthBtn({ label: '📎 Отчёт о расходах', variant: 'secondary', onClick: () => {
+      const cnt = document.createElement('div');
+      cnt.appendChild(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '12px' }, 'Прикрепите документы и опишите расходы'));
+      const fileZone = el('div', { padding: '28px', borderRadius: '16px', border: '2px dashed ' + t.border, textAlign: 'center', cursor: 'pointer', marginBottom: '14px' });
+      fileZone.appendChild(el('div', { fontSize: '32px', marginBottom: '8px' }, '📎'));
+      fileZone.appendChild(el('div', { ...DS.font('sm'), color: t.textSec }, 'Нажмите для загрузки чека'));
+      fileZone.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, marginTop: '4px' }, 'JPG, PNG, PDF до 10 МБ'));
+      fileZone.addEventListener('click', () => M.Toast({ message: 'Выбор файла', type: 'info' }));
+      cnt.appendChild(fileZone);
+      const ta = el('textarea', { width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid ' + t.border, background: t.inputBg, color: t.text, fontSize: '14px', fontFamily: 'inherit', resize: 'vertical', minHeight: '80px', outline: 'none', boxSizing: 'border-box' }); ta.placeholder = 'Комментарий к расходам...';
+      cnt.appendChild(ta);
+      const sb = el('div', { display: 'flex', gap: '10px', marginTop: '14px' });
+      sb.appendChild(M.FullWidthBtn({ label: 'Отправить отчёт', onClick: () => M.Toast({ message: 'Отчёт отправлен', type: 'success' }) }));
+      cnt.appendChild(sb);
+      M.BottomSheet({ title: 'Отчёт о расходах', content: cnt, fullscreen: true });
+    }}));
+
+    // 19.4 Return modal
+    accBtns.appendChild(M.FullWidthBtn({ label: '↩ Возврат средств', variant: 'secondary', onClick: () => {
+      const cnt = document.createElement('div');
+      cnt.appendChild(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '14px' }, 'Введите сумму возврата неиспользованных средств'));
+      const inp = el('input', { width: '100%', padding: '18px 16px', borderRadius: '14px', border: '1px solid ' + t.border, background: t.inputBg, color: t.text, fontSize: '24px', fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }); inp.type = 'number'; inp.placeholder = '0 ₽';
+      cnt.appendChild(inp);
+      cnt.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, textAlign: 'center', marginTop: '8px' }, 'На руках: 85 000 ₽ • Потрачено: 72 400 ₽'));
+      cnt.appendChild(el('div', { marginTop: '16px' }));
+      cnt.lastChild.appendChild(M.FullWidthBtn({ label: 'Вернуть в кассу', onClick: () => M.Toast({ message: 'Возврат оформлен', type: 'success' }) }));
+      M.BottomSheet({ title: '↩ Возврат в кассу', content: cnt });
+    }}));
+    page.appendChild(accBtns);
+
+    // ═══ BLOCK 20: MISSING FORM INPUTS ═══
+    page.appendChild(sec('Формы (дополнительные)', 'Checkbox, Radio, File upload'));
+
+    const formExtra = el('div', { display: 'flex', flexDirection: 'column', gap: '14px', padding: '0 20px' });
+
+    // Checkboxes
+    formExtra.appendChild(el('div', { ...DS.font('sm'), color: t.textSec }, 'Checkbox'));
+    ['Химическая очистка', 'Гидродинамическая очистка', 'Пескоструйная обработка'].forEach((lbl, i) => {
+      const row = el('div', { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', cursor: 'pointer' });
+      let checked = i === 0;
+      const box = el('div', { width: '22px', height: '22px', borderRadius: '6px', border: checked ? 'none' : '2px solid ' + t.border, background: checked ? t.blue : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '13px', fontWeight: 700, transition: 'all 0.2s ease', flexShrink: 0 }, checked ? '✓' : '');
+      row.appendChild(box);
+      row.appendChild(el('div', { ...DS.font('base'), color: t.text }, lbl));
+      row.addEventListener('click', () => { checked = !checked; box.style.background = checked ? t.blue : 'transparent'; box.style.border = checked ? 'none' : '2px solid ' + t.border; box.textContent = checked ? '✓' : ''; });
+      formExtra.appendChild(row);
+    });
+
+    // Radio
+    formExtra.appendChild(el('div', { ...DS.font('sm'), color: t.textSec, marginTop: '8px' }, 'Radio'));
+    let selectedRadio = 0;
+    const radios = [];
+    ['До 1 млн ₽', '1–5 млн ₽', 'Более 5 млн ₽'].forEach((lbl, i) => {
+      const row = el('div', { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', cursor: 'pointer' });
+      const circle = el('div', { width: '22px', height: '22px', borderRadius: '50%', border: '2px solid ' + (i === selectedRadio ? t.blue : t.border), display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease', flexShrink: 0 });
+      const inner = el('div', { width: '10px', height: '10px', borderRadius: '50%', background: i === selectedRadio ? t.blue : 'transparent', transition: 'all 0.2s ease' });
+      circle.appendChild(inner);
+      row.appendChild(circle);
+      row.appendChild(el('div', { ...DS.font('base'), color: t.text }, lbl));
+      radios.push({ circle, inner });
+      row.addEventListener('click', () => { selectedRadio = i; radios.forEach((r, j) => { r.circle.style.borderColor = j === i ? t.blue : t.border; r.inner.style.background = j === i ? t.blue : 'transparent'; }); });
+      formExtra.appendChild(row);
+    });
+
+    // File upload
+    formExtra.appendChild(el('div', { ...DS.font('sm'), color: t.textSec, marginTop: '8px' }, 'Загрузка файла'));
+    const fileZone = el('div', { padding: '24px', borderRadius: '16px', border: '2px dashed ' + t.border, textAlign: 'center', cursor: 'pointer', background: t.surfaceAlt, transition: 'border-color 0.2s ease' });
+    fileZone.appendChild(el('div', { fontSize: '28px', marginBottom: '8px' }, '📂'));
+    fileZone.appendChild(el('div', { ...DS.font('sm'), color: t.textSec }, 'Нажмите или перетащите файл'));
+    fileZone.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, marginTop: '4px' }, 'PDF, DOC, XLS, JPG — до 25 МБ'));
+    fileZone.addEventListener('click', () => M.Toast({ message: 'Выбор файла', type: 'info' }));
+    formExtra.appendChild(fileZone);
+
+    page.appendChild(formExtra);
+
+    // ═══ BLOCK 21: MINI CALENDAR ═══
+    page.appendChild(sec('Мини-календарь', 'Текущий месяц'));
+    const calWrap = el('div', { padding: '16px', margin: '0 20px', borderRadius: '16px', background: t.surface, border: '1px solid ' + t.border });
+    calWrap.appendChild(el('div', { ...DS.font('md'), color: t.text, textAlign: 'center', marginBottom: '12px' }, 'Март 2026'));
+    const calGrid = el('div', { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', textAlign: 'center' });
+    ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].forEach(d => calGrid.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, padding: '6px 0', fontWeight: 600 }, d)));
+    const startDay = 6; // March 2026 starts on Sunday, offset=6
+    for (let i = 0; i < startDay; i++) calGrid.appendChild(el('div'));
+    for (let d = 1; d <= 31; d++) {
+      const isToday = d === 14;
+      const hasEvent = [14, 25, 28].includes(d);
+      const cell = el('div', { padding: '6px 0', borderRadius: '10px', fontSize: '13px', fontWeight: isToday ? 700 : 400, color: isToday ? '#fff' : hasEvent ? t.blue : t.text, background: isToday ? t.red : 'transparent', cursor: 'pointer', position: 'relative', transition: 'background 0.15s ease', lineHeight: '1.6' }, '' + d);
+      if (hasEvent && !isToday) { const dot = el('div', { width: '4px', height: '4px', borderRadius: '50%', background: t.blue, margin: '-2px auto 0', }); cell.appendChild(dot); }
+      calGrid.appendChild(cell);
+    }
+    calWrap.appendChild(calGrid);
+    page.appendChild(calWrap);
+
+    // ═══ BLOCK 22: MISSING WIDGETS ═══
+    page.appendChild(sec('Виджеты (остальные)', 'Сканер, телефония, почта, банк, площадки'));
+
+    // Scanner
+    const scanCard = el('div', { display: 'flex', gap: '14px', alignItems: 'center', padding: '14px 16px', background: t.surface, borderRadius: '16px', border: '1px solid ' + t.border, margin: '0 20px', cursor: 'pointer' });
+    scanCard.appendChild(el('div', { width: '48px', height: '48px', borderRadius: '14px', background: t.redBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0 }, '📷'));
+    const scanTxt = el('div', { flex: 1 }); scanTxt.appendChild(el('div', { ...DS.font('md'), color: t.text }, 'Сканер чеков')); scanTxt.appendChild(el('div', { ...DS.font('xs'), color: t.textSec }, 'Последний: 12 мар — 4 580 ₽'));
+    scanCard.appendChild(scanTxt);
+    scanCard.addEventListener('click', () => M.Toast({ message: 'Открыть камеру', type: 'info' }));
+    page.appendChild(scanCard); page.appendChild(gap(8));
+
+    // Telephony
+    const telCard = el('div', { display: 'flex', gap: '14px', alignItems: 'center', padding: '14px 16px', background: t.surface, borderRadius: '16px', border: '1px solid ' + t.border, margin: '0 20px' });
+    telCard.appendChild(el('div', { width: '48px', height: '48px', borderRadius: '14px', background: t.greenBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0 }, '📞'));
+    const telTxt = el('div', { flex: 1 }); telTxt.appendChild(el('div', { ...DS.font('md'), color: t.text }, 'Телефония')); telTxt.appendChild(el('div', { ...DS.font('xs'), color: t.green, fontWeight: 600 }, '● Онлайн'));
+    telCard.appendChild(telTxt);
+    page.appendChild(telCard); page.appendChild(gap(8));
+
+    // My mail
+    const mailWrap = el('div', { display: 'flex', flexDirection: 'column', gap: '0', margin: '0 20px', borderRadius: '16px', border: '1px solid ' + t.border, overflow: 'hidden', background: t.surface });
+    [{ from: 'tender@yanpz.ru', subj: 'Итоги конкурса №11-178', time: '12:30', unread: true },
+     { from: 'Рустам (Новойл)', subj: 'Встреча по проекту очистки', time: '10:15', unread: true },
+     { from: 'buh@asgard.ru', subj: 'Акт сверки за февраль', time: 'Вчера', unread: false }
+    ].forEach((m, i) => {
+      const row = el('div', { display: 'flex', gap: '10px', padding: '12px 14px', borderBottom: i < 2 ? '1px solid ' + t.border : 'none', alignItems: 'center' });
+      row.appendChild(el('div', { width: '8px', height: '8px', borderRadius: '50%', background: m.unread ? t.blue : 'transparent', flexShrink: 0 }));
+      const body = el('div', { flex: 1, minWidth: 0 });
+      body.appendChild(el('div', { ...DS.font('sm'), fontWeight: m.unread ? 600 : 400, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, m.from));
+      body.appendChild(el('div', { ...DS.font('sm'), color: t.textSec, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, m.subj));
+      row.appendChild(body);
+      row.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, flexShrink: 0 }, m.time));
+      mailWrap.appendChild(row);
+    });
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, 'Моя почта')));
+    page.appendChild(mailWrap); page.appendChild(gap(8));
+
+    // Bank balance
+    const bankCard = el('div', { padding: '16px', margin: '0 20px', borderRadius: '16px', background: t.surface, border: '1px solid ' + t.border });
+    bankCard.appendChild(M.BigNumber({ value: 12850000, suffix: ' ₽', label: 'Расчётный счёт ООО «Асгард Сервис»', icon: '🏦' }));
+    page.appendChild(bankCard); page.appendChild(gap(8));
+
+    // Tender platforms
+    page.appendChild(pad(el('div', { ...DS.font('sm'), color: t.textSec, marginBottom: '8px' }, 'Тендерные площадки')));
+    const tpWrap = el('div', { display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 20px' });
+    [{ pl: 'Закупки.гов', title: 'Хим. очистка котлов — Салаватнефтеоргсинтез', sum: '8.2 млн', days: 5 },
+     { pl: 'B2B-Center', title: 'Гидропромывка АВО — Сургутнефтегаз', sum: '12.5 млн', days: 3 }
+    ].forEach(tp => {
+      tpWrap.appendChild(M.Card({ title: tp.title, subtitle: tp.pl, badge: tp.days + ' дн', badgeColor: tp.days <= 3 ? 'danger' : 'warning', fields: [{ label: 'НМЦК', value: tp.sum }] }));
+    });
+    page.appendChild(tpWrap);
+
     // ═══ FOOTER ═══
     page.appendChild(gap(24));
     const ft = el('div', { textAlign: 'center', padding: '24px 20px 40px', borderTop: '1px solid ' + t.border });
-    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer }, 'ASGARD CRM • Mobile v3.0 • Session 1'));
-    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, marginTop: '4px' }, '40 компонентов • 27 виджетов • Dark/Light'));
+    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer }, 'ASGARD CRM • Mobile v3.0 • Session 1.1'));
+    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, marginTop: '4px' }, '40 компонентов • 22 блока • 5 auth-экранов • Dark/Light'));
     page.appendChild(ft);
 
     return page;
