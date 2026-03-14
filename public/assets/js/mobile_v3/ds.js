@@ -432,7 +432,7 @@ body {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: linear-gradient(180deg, var(--redBright) 0%, var(--red) 100%);
+  background: linear-gradient(180deg, var(--red-bright) 0%, var(--red) 100%);
   border: 4px solid rgba(255,255,255,0.72);
   display: flex;
   align-items: center;
@@ -819,6 +819,35 @@ html.asgard-mobile * {
   gap: 16px;
   font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
+
+/* ═══════ CALENDAR GRID ═══════ */
+html.asgard-mobile .asgard-calendar-grid {
+  display: grid !important;
+  grid-template-columns: repeat(7, 1fr) !important;
+  gap: 2px !important;
+  text-align: center !important;
+}
+
+/* ═══════ SAFARI AUTOFILL FIX ═══════ */
+@keyframes onAutoFillStart { from {} to {} }
+html.asgard-mobile input:-webkit-autofill { animation-name: onAutoFillStart; }
+
+html.asgard-mobile input:-webkit-autofill,
+html.asgard-mobile input:-webkit-autofill:hover,
+html.asgard-mobile input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg, #222228) inset !important;
+  -webkit-text-fill-color: var(--text, #F5F5F7) !important;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: var(--text, #F5F5F7);
+}
+
+/* ═══════ AUTH INPUT ISOLATION ═══════ */
+html.asgard-mobile .auth-credentials input,
+html.asgard-mobile .auth-credentials textarea {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
     `;
   }
 
@@ -874,7 +903,7 @@ html.asgard-mobile * {
       height: '26px',
       borderRadius: '13px',
       border: 'none',
-      padding: '1px',
+      padding: '0',
       cursor: 'pointer',
       position: 'relative',
       transition: 'background 0.3s ease',

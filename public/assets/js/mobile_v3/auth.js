@@ -487,6 +487,13 @@ const LoginPage = {
     input.addEventListener('focus', up);
     input.addEventListener('blur', down);
 
+    // Safari autofill detection — float label when autofilled
+    input.addEventListener('animationstart', (e) => {
+      if (e.animationName === 'onAutoFillStart' || input.matches(':-webkit-autofill')) {
+        lbl.style.cssText += 'top:12px;transform:translateY(0) scale(0.72);color:'+DS.t.textSec+';';
+      }
+    });
+
     wrap.appendChild(input);
     wrap.appendChild(lbl);
     return { wrap, input, lbl };

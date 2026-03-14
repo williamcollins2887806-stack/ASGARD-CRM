@@ -491,7 +491,8 @@ const TestPage = {
     page.appendChild(sec('Мини-календарь', 'Текущий месяц'));
     const calWrap = el('div', { padding: '16px', margin: '0 20px', borderRadius: '16px', background: t.surface, border: '1px solid ' + t.border });
     calWrap.appendChild(el('div', { ...DS.font('md'), color: t.text, textAlign: 'center', marginBottom: '12px' }, 'Март 2026'));
-    const calGrid = el('div', { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', textAlign: 'center' });
+    const calGrid = document.createElement('div');
+    calGrid.className = 'asgard-calendar-grid';
     ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].forEach(d => calGrid.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, padding: '6px 0', fontWeight: 600 }, d)));
     const startDay = 6; // March 2026 starts on Sunday, offset=6
     for (let i = 0; i < startDay; i++) calGrid.appendChild(el('div'));
@@ -687,6 +688,19 @@ const TestPage = {
     ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer }, 'ASGARD CRM • Mobile v3.0 • Session 1.2'));
     ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, marginTop: '4px' }, '40 компонентов • 23 блока • 27 виджетов • 4 auth-экрана • Dark/Light'));
     page.appendChild(ft);
+
+    // Re-render on theme change (inline styles use DS.t values)
+    const themeHandler = () => {
+      const content = document.getElementById('asgard-content');
+      if (!content) return;
+      const pg = content.querySelector('.asgard-page');
+      if (pg) {
+        pg.innerHTML = '';
+        const fresh = TestPage.render();
+        while (fresh.firstChild) pg.appendChild(fresh.firstChild);
+      }
+    };
+    window.addEventListener('asgard:theme', themeHandler, { once: true });
 
     return page;
   },
