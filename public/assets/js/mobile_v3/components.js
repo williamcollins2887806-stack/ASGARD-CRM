@@ -29,7 +29,7 @@ const M = (() => {
         borderBottom: transparent ? 'none' : '1px solid var(--border)',
         position: 'sticky',
         top: 0,
-        zIndex: 50,
+        zIndex: DS.z.sticky,
         backdropFilter: transparent ? 'none' : 'blur(20px)',
         WebkitBackdropFilter: transparent ? 'none' : 'blur(20px)',
         minHeight: '52px',
@@ -687,7 +687,7 @@ const M = (() => {
       className: 'asgard-toast',
       style: {
         position: 'fixed', top: 'calc(12px + env(safe-area-inset-top, 0px))', left: '20px', right: '20px',
-        padding: '12px 16px', borderRadius: 'var(--r-lg)', zIndex: 2000,
+        padding: '12px 16px', borderRadius: 'var(--r-lg)', zIndex: DS.z.modal,
         background: c.bg, border: `1px solid ${c.border}`, color: c.color,
         display: 'flex', alignItems: 'center', gap: '10px',
         fontSize: '14px', fontWeight: 600, backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
@@ -738,7 +738,7 @@ const M = (() => {
     const overlay = el('div', {
       className: 'asgard-sheet-overlay',
       style: {
-        position: 'fixed', inset: 0, zIndex: 1500,
+        position: 'fixed', inset: 0, zIndex: DS.z.sheet,
         background: 'var(--overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
         animation: 'asgardFadeIn 0.25s ease',
       },
@@ -749,7 +749,7 @@ const M = (() => {
     const sheet = el('div', {
       className: 'asgard-sheet',
       style: {
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1501,
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: DS.z.sheet + 1,
         background: 'var(--surface)', borderRadius: '20px 20px 0 0',
         maxHeight: fullscreen ? '95vh' : '70vh',
         animation: 'asgardSlideSheetUp 0.35s cubic-bezier(.34,1.56,.64,1)',
@@ -851,7 +851,7 @@ const M = (() => {
     return new Promise((resolve) => {
       const overlay = el('div', {
         style: {
-          position: 'fixed', inset: 0, zIndex: 2000,
+          position: 'fixed', inset: 0, zIndex: DS.z.modal,
           background: 'var(--overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
           animation: 'asgardFadeIn 0.2s ease',
@@ -934,7 +934,7 @@ const M = (() => {
         color: gradient ? '#fff' : 'var(--text)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         boxShadow: gradient ? 'var(--fab-shadow)' : 'var(--shadow)',
-        cursor: 'pointer', zIndex: 90,
+        cursor: 'pointer', zIndex: DS.z.fab,
         animation: pulse ? 'asgardFabPulse 3s infinite' : 'none',
         transition: 'transform 0.2s ease',
         fontSize: '24px',
@@ -1170,6 +1170,24 @@ const M = (() => {
     const { height = 130, color, dual = false } = opts;
     const maxVal = Math.max(...data.map(d => dual ? Math.max(d.value, d.value2 || 0) : d.value), 1);
 
+    function showTooltip(chartEl, parent, value) {
+      const existing = chartEl.querySelector('.asgard-bar-tooltip');
+      if (existing) existing.remove();
+      const tooltip = el('div', {
+        className: 'asgard-bar-tooltip',
+        style: {
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px',
+          padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--text)',
+          whiteSpace: 'nowrap', boxShadow: 'var(--shadow)', zIndex: DS.z.dropdown, marginBottom: '4px',
+          ...DS.animPop(0),
+        },
+        textContent: typeof value === 'number' ? Utils.formatNumber(value) : value,
+      });
+      parent.appendChild(tooltip);
+      setTimeout(() => tooltip.remove(), 2000);
+    }
+
     const chart = el('div', {
       className: 'asgard-bar-chart',
       style: {
@@ -1205,21 +1223,7 @@ const M = (() => {
           },
         });
         bar1.addEventListener('click', () => {
-          const existing = chart.querySelector('.asgard-bar-tooltip');
-          if (existing) existing.remove();
-          const tooltip = el('div', {
-            className: 'asgard-bar-tooltip',
-            style: {
-              position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px',
-              padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--text)',
-              whiteSpace: 'nowrap', boxShadow: 'var(--shadow)', zIndex: 10, marginBottom: '4px',
-              ...DS.animPop(0),
-            },
-            textContent: typeof d.value === 'number' ? Utils.formatNumber(d.value) : d.value,
-          });
-          bar1.appendChild(tooltip);
-          setTimeout(() => tooltip.remove(), 2000);
+          showTooltip(chart, bar1, d.value);
         });
         barWrap.appendChild(bar1);
 
@@ -1233,21 +1237,7 @@ const M = (() => {
           },
         });
         bar2.addEventListener('click', () => {
-          const existing = chart.querySelector('.asgard-bar-tooltip');
-          if (existing) existing.remove();
-          const tooltip = el('div', {
-            className: 'asgard-bar-tooltip',
-            style: {
-              position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px',
-              padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--text)',
-              whiteSpace: 'nowrap', boxShadow: 'var(--shadow)', zIndex: 10, marginBottom: '4px',
-              ...DS.animPop(0),
-            },
-            textContent: typeof d.value2 === 'number' ? Utils.formatNumber(d.value2) : (d.value2 || 0),
-          });
-          bar2.appendChild(tooltip);
-          setTimeout(() => tooltip.remove(), 2000);
+          showTooltip(chart, bar2, d.value2 || 0);
         });
         barWrap.appendChild(bar2);
 
@@ -1273,21 +1263,7 @@ const M = (() => {
 
         // Tooltip
         bar.addEventListener('click', () => {
-          const existing = chart.querySelector('.asgard-bar-tooltip');
-          if (existing) existing.remove();
-          const tooltip = el('div', {
-            className: 'asgard-bar-tooltip',
-            style: {
-              position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px',
-              padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--text)',
-              whiteSpace: 'nowrap', boxShadow: 'var(--shadow)', zIndex: 10, marginBottom: '4px',
-              ...DS.animPop(0),
-            },
-            textContent: typeof d.value === 'number' ? Utils.formatNumber(d.value) : d.value,
-          });
-          bar.appendChild(tooltip);
-          setTimeout(() => tooltip.remove(), 2000);
+          showTooltip(chart, bar, d.value);
         });
 
         group.appendChild(bar);
@@ -2055,7 +2031,7 @@ const M = (() => {
     const overlay = el('div', {
       className: 'asgard-action-sheet-overlay',
       style: {
-        position: 'fixed', inset: 0, zIndex: 1500,
+        position: 'fixed', inset: 0, zIndex: DS.z.sheet,
         background: 'var(--overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
         animation: 'asgardFadeIn 0.2s ease',
       },
@@ -2063,7 +2039,7 @@ const M = (() => {
 
     const sheet = el('div', {
       style: {
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1501,
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: DS.z.sheet + 1,
         padding: '0 8px', paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
         animation: 'asgardSlideSheetUp 0.3s cubic-bezier(.34,1.56,.64,1)',
       },
@@ -2198,7 +2174,7 @@ const M = (() => {
      29. AVATAR
      ══════════════════════════════════════════════ */
   function Avatar({ name, src, size = 40, status, onClick }) {
-    const colors = ['#E53935', '#4A90D9', '#34C759', '#FF9500', '#D4A843', '#A855F7', '#14B8A6'];
+    const colors = [DS.t.red, DS.t.blue, DS.t.green, DS.t.orange, DS.t.gold, '#A855F7', '#14B8A6'];
     const initials = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
     const colorIdx = (name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length;
 
@@ -2913,7 +2889,7 @@ const M = (() => {
     const overlay = el('div', {
       className: 'asgard-burger-overlay',
       style: {
-        position: 'fixed', inset: 0, zIndex: 2000,
+        position: 'fixed', inset: 0, zIndex: DS.z.modal,
         background: 'var(--bg)', overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
         animation: 'asgardSlideLeft 0.3s cubic-bezier(.34,1.56,.64,1)',

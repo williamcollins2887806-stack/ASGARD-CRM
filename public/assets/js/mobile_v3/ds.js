@@ -131,6 +131,18 @@ const DS = (() => {
     xs: 4, sm: 8, md: 12, lg: 14, xl: 18, xxl: 20, hero: 20, pill: 44,
   };
 
+  /* ──────────────── Z-INDEX SCALE ──────────────── */
+  const zIndex = {
+    base: 0,
+    dropdown: 10,
+    sticky: 50,
+    fab: 90,
+    overlay: 1000,
+    sheet: 1500,
+    modal: 2000,
+    toast: 2500,
+  };
+
   /* ──────────────── ТЕКУЩАЯ ТЕМА ──────────────── */
   let currentTheme = 'dark';
   let t = themes.dark;
@@ -703,6 +715,86 @@ body {
   .asgard-content { overflow: visible !important; }
   body { position: static !important; overflow: visible !important; }
 }
+
+/* ═══════ DESKTOP CSS ISOLATION ═══════
+   Когда мобильный shell активен, нейтрализуем десктопные глобальные стили.
+   Без этого: body::before (градиент), Inter шрифт, input focus glow,
+   и другие desktop CSS правила ломают мобильный UI.
+   ═══════════════════════════════════════ */
+
+/* Убить десктопную accent-полоску */
+html.asgard-mobile body::before {
+  display: none !important;
+}
+
+/* Сбросить body — мобильный shell управляет через inline */
+html.asgard-mobile body {
+  min-height: unset !important;
+  overflow: hidden !important;
+  position: fixed !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Вернуть системный шрифт — Inter не нужен на мобильном */
+html.asgard-mobile,
+html.asgard-mobile body,
+html.asgard-mobile button,
+html.asgard-mobile select,
+html.asgard-mobile input,
+html.asgard-mobile textarea,
+html.asgard-mobile h1, html.asgard-mobile h2,
+html.asgard-mobile h3, html.asgard-mobile h4,
+html.asgard-mobile h5, html.asgard-mobile h6 {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif !important;
+}
+
+/* Сбросить desktop input/select/textarea стили */
+html.asgard-mobile input,
+html.asgard-mobile select,
+html.asgard-mobile textarea {
+  width: unset;
+  padding: unset;
+  border: unset;
+  background: unset;
+  color: unset;
+  font-size: unset;
+  transition: unset;
+  border-radius: unset;
+}
+
+/* Убить десктопный focus-glow (мобильные компоненты ставят свой через JS) */
+html.asgard-mobile input:focus,
+html.asgard-mobile select:focus,
+html.asgard-mobile textarea:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: unset !important;
+}
+
+/* Сбросить десктопный checkbox/radio размер */
+html.asgard-mobile input[type="checkbox"],
+html.asgard-mobile input[type="radio"] {
+  width: unset;
+  height: unset;
+  padding: unset;
+}
+
+/* Ссылки — мобильные компоненты управляют цветом через inline */
+html.asgard-mobile a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Скроллбар — скрыть полностью на мобильных */
+html.asgard-mobile ::-webkit-scrollbar {
+  display: none;
+}
+html.asgard-mobile * {
+  scrollbar-width: none;
+}
     `;
   }
 
@@ -778,7 +870,11 @@ body {
       updateToggleVisual(toggle);
     });
 
-    window.addEventListener('asgard:theme', () => updateToggleVisual(toggle));
+    const themeHandler = () => updateToggleVisual(toggle);
+    window.addEventListener('asgard:theme', themeHandler);
+
+    // Expose cleanup method
+    toggle._cleanup = () => window.removeEventListener('asgard:theme', themeHandler);
 
     return toggle;
   }
@@ -828,6 +924,7 @@ body {
     typography,
     spacing,
     radius,
+    z: zIndex,
     setTheme,
     toggleTheme,
     getTheme,

@@ -1,7 +1,7 @@
 # ASGARD CRM — Mobile v3 Context Journal
 
 > Межсессионный журнал для Claude. Обновляется в конце каждой сессии.
-> Последнее обновление: **14.03.2026 — Сессия 2 (Router integration, v2 archived, CSS unified, a11y, touch targets)**
+> Последнее обновление: **14.03.2026 — Сессия 2.5 (CSS isolation from desktop, P2/P3 fixes: avatar, tooltip, z-index, PIN SHA-256, memory leaks)**
 
 ---
 
@@ -512,9 +512,37 @@ responsive.css   (120KB)  — Адаптив
 - [x] BurgerMenu accordion: `setTimeout(350)` → `transitionend` event
 
 **TODO для Сессии 3:**
-- [ ] Avatar hardcoded colors → DS tokens
-- [ ] BarChart tooltip duplication → выделить в функцию
-- [ ] Z-index scale: `DS.z = {...}` + замена magic numbers
+- [x] Avatar hardcoded colors → DS tokens ✅ (Сессия 2.5)
+- [x] BarChart tooltip duplication → выделить в функцию ✅ (Сессия 2.5)
+- [x] Z-index scale: `DS.z = {...}` + замена magic numbers ✅ (Сессия 2.5)
+
+### Сессия 2.5 ✅ (14.03.2026) — CSS-изоляция от десктопа + P2/P3 фиксы
+
+**CSS-изоляция десктопных стилей:**
+- [x] `html.asgard-mobile` класс добавляется в `Layout.create()`
+- [x] 22 CSS-правила в `ds.js generateCSS()` через `html.asgard-mobile`:
+  - `body::before` (градиент-полоска) — скрыта
+  - `body` — сброс min-height/overflow/position/width/height
+  - Шрифт: системный `-apple-system` вместо Inter на всех элементах
+  - `input/select/textarea` — сброс десктопных стилей (width, padding, border, background)
+  - `input:focus` — убран двойной focus-glow (box-shadow: none)
+  - `checkbox/radio` — сброс десктопного размера
+  - `a` — цвет inherit, без decoration
+  - `::-webkit-scrollbar` + `scrollbar-width: none` — полное скрытие скроллбаров
+
+**P2/P3 фиксы:**
+- [x] FIX-1: Avatar — hardcoded цвета → `DS.t.red/blue/green/orange/gold` (theme-aware)
+- [x] FIX-2: BarChart — 3 дублированных tooltip-блока → единая `showTooltip()` функция
+- [x] FIX-3: Z-index scale `DS.z` = {base:0, dropdown:10, sticky:50, fab:90, overlay:1000, sheet:1500, modal:2000, toast:2500}
+  - Заменены 10 magic numbers в components.js
+- [x] FIX-4: PIN hash → SHA-256 (`crypto.subtle.digest`), async, salt `asgard_pin_salt_`, prefix `ph2_`
+  - Все вызовы переведены на `await hashPin(pin)`
+  - Старые PIN `ph_*` автоматически инвалидируются (re-login required)
+- [x] FIX-5: Memory leaks — listener cleanup:
+  - `renderTabBar()` → cleanup предыдущего `asgard:route` listener через `_routeHandler`
+  - `createThemeToggle()` → cleanup через `toggle._cleanup()`, `asgard:theme` listener
+
+**Статус:** Тестовая страница `#/test` готова к утверждению дизайна. CSS-изоляция обеспечивает 1:1 вид со standalone HTML.
 
 ### Сессии 3-10 — Страницы (по 2-3 страницы за сессию)
 - Сессия 3: Home + Dashboard
@@ -550,6 +578,9 @@ responsive.css   (120KB)  — Адаптив
 - Мобильная версия активируется автоматически через `App.shouldUseMobile()` (userAgent + width ≤ 768)
 - Десктоп: `App.init()` возвращает early, `app.js` работает как раньше
 - `el()` — единственная каноническая версия в `core.js (Utils.el)`
+- `DS.z` — z-index scale: base(0), dropdown(10), sticky(50), fab(90), overlay(1000), sheet(1500), modal(2000), toast(2500)
+- `hashPin()` — async SHA-256, prefix `ph2_`, salt `asgard_pin_salt_`. Старые `ph_` PIN невалидны.
+- `html.asgard-mobile` класс — CSS-изоляция мобильного shell от десктопных 860KB стилей
 - `auth.js` использует fallback-обёртки для AsgardAuth (не ломается без десктопного auth.js)
 - `DS.setTheme()` — исправлен баг: теперь устанавливает `root.dataset.theme = name`
 - GitHub-токен: используется текущий (Nick предоставляет при пуше)

@@ -224,6 +224,7 @@ const Layout = (() => {
   let contentZone = null;
   let tabBar = null;
   let overlayZone = null;
+  let _routeHandler = null;
 
   function create() {
     shell = document.createElement('div');
@@ -252,6 +253,9 @@ const Layout = (() => {
     // Replace body contents for mobile
     document.body.innerHTML = '';
     document.body.appendChild(shell);
+
+    // Mark HTML element for CSS isolation from desktop styles
+    document.documentElement.classList.add('asgard-mobile');
 
     // Setup pull-to-refresh
     Gestures.setupPullToRefresh(contentZone);
@@ -301,7 +305,9 @@ const Layout = (() => {
     });
 
     updateActiveTab();
-    window.addEventListener('asgard:route', updateActiveTab);
+    if (_routeHandler) window.removeEventListener('asgard:route', _routeHandler);
+    _routeHandler = updateActiveTab;
+    window.addEventListener('asgard:route', _routeHandler);
   }
 
   function updateActiveTab() {

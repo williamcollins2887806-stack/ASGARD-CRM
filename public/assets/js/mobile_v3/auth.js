@@ -10,11 +10,11 @@
 const el = Utils.el;
 const vibrate = ms => navigator.vibrate && navigator.vibrate(ms || 10);
 
-/* ---------- PIN hash (client-side only) ---------- */
-function hashPin(pin) {
-  let h = 0;
-  for (let i = 0; i < pin.length; i++) h = ((h << 5) - h + pin.charCodeAt(i)) | 0;
-  return 'ph_' + Math.abs(h).toString(36);
+/* ---------- PIN hash (client-side only, SHA-256) ---------- */
+async function hashPin(pin) {
+  const data = new TextEncoder().encode('asgard_pin_salt_' + pin);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return 'ph2_' + Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /* ---------- AsgardAuth fallback (if desktop auth.js not loaded) ---------- */
@@ -208,9 +208,9 @@ const LoginPage = {
       }),
       confirmPin:  ()  => LoginPage._pinScreen({
         title: 'Подтвердите PIN-код', subtitle: 'Введите PIN-код повторно',
-        onComplete: pin => {
+        onComplete: async pin => {
           if (pin === ctx.firstPin) {
-            localStorage.setItem('asgard_pin_' + ctx.user.id, hashPin(pin));
+            localStorage.setItem('asgard_pin_' + ctx.user.id, await hashPin(pin));
             M.Toast({ message: 'PIN-код установлен', type: 'success' });
             Router.navigate('/home', { replace: true });
           } else {
@@ -238,7 +238,7 @@ const LoginPage = {
             }));
             const pinKey = 'asgard_pin_' + user.id;
             if (!localStorage.getItem(pinKey)) {
-              localStorage.setItem(pinKey, hashPin(pin));
+              localStorage.setItem(pinKey, await hashPin(pin));
             }
           }
           M.Toast({ message: 'PIN-код подтвержден', type: 'success' });
@@ -254,7 +254,7 @@ const LoginPage = {
         showAlt: true,
         onComplete: async pin => {
           const stored = localStorage.getItem('asgard_pin_' + ctx.lastUser?.id);
-          if (!stored || stored !== hashPin(pin)) {
+          if (!stored || stored !== await hashPin(pin)) {
             M.Toast({ message: 'Неверный PIN-код', type: 'danger' }); vibrate(100);
             return;
           }
