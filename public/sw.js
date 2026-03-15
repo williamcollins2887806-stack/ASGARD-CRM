@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '15.0.0-mobile-v3';
+const SHELL_VERSION = '15.5.0-mobile-v3';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v1';
 
@@ -38,6 +38,7 @@ const SHELL_ASSETS = [
   './assets/js/mobile_v3/core.js',
   './assets/js/mobile_v3/ds.js',
   './assets/js/mobile_v3/test.js',
+  './assets/js/mobile_v3/router.js',
   // ── Mobile v3: Pages (51 files) ──
   './assets/js/mobile_v3/pages/acts.js',
   './assets/js/mobile_v3/pages/alerts.js',

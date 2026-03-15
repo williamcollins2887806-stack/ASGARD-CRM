@@ -523,7 +523,20 @@ try{
        window.matchMedia('(orientation: landscape) and (hover: none)').matches);
 
     // ═══════════════════════════════════════════════════════════════
-    // MOBILE LAYOUT — полностью отдельный UI при ≤768px
+    // MOBILE V3 — если mobile v3 активна, передаём управление core.js
+    // ═══════════════════════════════════════════════════════════════
+    const MOBILE_V3_ACTIVE = window.ASGARD_FLAGS?.MOBILE_V3_ENABLED === true;
+    if (MOBILE_V3_ACTIVE && _isMobile && window.App && window.Router && window.DS) {
+      try { if (window.AsgardSessionGuard) AsgardSessionGuard.destroy(); } catch(e) {}
+      window.removeEventListener('hashchange', window.__ASG_MOBILE_HASH__);
+      window.removeEventListener('hashchange', window._flyoutHashHandler);
+      // App.init() вызывается из core.js на DOMContentLoaded — здесь просто выходим
+      console.log('[ASGARD] Mobile v3 active — desktop app.js yielding control');
+      return;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MOBILE V2 (LEGACY) — полностью отдельный UI при ≤768px
     // ═══════════════════════════════════════════════════════════════
     const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/self-employed','/one-time-pay','/pass-requests','/tmc-requests','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/proc-requests','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/object-map','/calendar','/settings','/backup','/sync','/diag','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
     if (MOBILE_V2_ENABLED && _isMobile && window.App && window.M && window.DS && mobileV2Routes.has(cur)) {
@@ -1491,6 +1504,8 @@ var _setupPinKeypad = null;
   }
 
   function shouldUseMobileV2Entry() {
+    // Mobile v3 takes over completely
+    if (window.ASGARD_FLAGS?.MOBILE_V3_ENABLED === true) return false;
     const _isMobile = window.innerWidth <= 768 ||
       (window.innerWidth <= 1024 && window.innerHeight <= 500 &&
        window.matchMedia('(orientation: landscape) and (hover: none)').matches);
