@@ -9,11 +9,22 @@ window.MobileWidgets.notifications = {
     var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'list', count: 3 }));
     _load();
+    function _fetch() {
+      if (typeof AsgardDB !== 'undefined' && AsgardDB.byIndex) {
+        return AsgardDB.byIndex('notifications', 'user_id', user.id).then(function (data) {
+          if (data && data.length) return data;
+          return _api();
+        }).catch(function () { return _api(); });
+      }
+      return _api();
+    }
+    function _api() {
+      return API.fetch('/notifications').then(function (d) {
+        return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []);
+      });
+    }
     function _load() {
-      var p = (typeof AsgardDB !== 'undefined' && AsgardDB.byIndex)
-        ? AsgardDB.byIndex('notifications', 'user_id', user.id)
-        : Promise.resolve([]);
-      p.then(function (all) {
+      _fetch().then(function (all) {
         var items = (all || []).filter(function (x) { return !x.is_read; })
           .sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); })
           .slice(0, 5);
@@ -34,7 +45,6 @@ window.MobileWidgets.notifications = {
       }).catch(function (e) {
         console.error('[notifications]', e);
         container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' }));
-        M.Toast({ message: 'Уведомления: ошибка', type: 'error' });
       });
     }
   }

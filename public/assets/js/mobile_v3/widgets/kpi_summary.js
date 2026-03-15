@@ -5,11 +5,22 @@ window.MobileWidgets.kpi_summary = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'stats', count: 1 }));
     _load();
+    function _dbOrApi(table, apiPath) {
+      if (typeof AsgardDB !== 'undefined') {
+        return AsgardDB.getAll(table).then(function (data) {
+          if (data && data.length) return data;
+          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+        }).catch(function () {
+          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+        });
+      }
+      return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+    }
     function _load() {
       Promise.all([
-        (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('tenders') : Promise.resolve([]),
-        (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('works') : Promise.resolve([]),
-        (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('estimates') : Promise.resolve([])
+        _dbOrApi('tenders', '/data/tenders'),
+        _dbOrApi('works', '/works'),
+        _dbOrApi('estimates', '/data/estimates')
       ]).then(function (res) {
         var y = new Date().getFullYear();
         var tenders = (res[0] || []).filter(function (x) { return String(x.year) === String(y) || (x.period || '').indexOf(String(y)) === 0; });
@@ -24,7 +35,7 @@ window.MobileWidgets.kpi_summary = {
         ] }));
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/analytics'); };
-      }).catch(function (e) { console.error('[kpi_summary]', e); container.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[kpi_summary]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
     }
   }
 };

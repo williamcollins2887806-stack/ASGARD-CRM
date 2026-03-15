@@ -5,10 +5,21 @@ window.MobileWidgets.permits_expiry = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'list', count: 3 }));
     _load();
+    function _dbOrApi(table, apiPath) {
+      if (typeof AsgardDB !== 'undefined') {
+        return AsgardDB.getAll(table).then(function (data) {
+          if (data && data.length) return data;
+          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+        }).catch(function () {
+          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+        });
+      }
+      return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+    }
     function _load() {
       Promise.all([
-        (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('permits') : Promise.resolve([]),
-        (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('employees') : Promise.resolve([])
+        _dbOrApi('permits', '/data/permits'),
+        _dbOrApi('employees', '/data/users')
       ]).then(function (res) {
         var empMap = {}; (res[1] || []).forEach(function (e) { empMap[e.id] = e.full_name || e.fio || e.name || ''; });
         var now = new Date();
@@ -36,7 +47,7 @@ window.MobileWidgets.permits_expiry = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/permits'); };
-      }).catch(function (e) { console.error('[permits_expiry]', e); container.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[permits_expiry]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
     }
   }
 };

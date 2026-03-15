@@ -23,7 +23,7 @@ window.MobileWidgets.my_mail = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/my-mail'); };
-      }).catch(function (e) { console.error('[my_mail]', e); container.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' })); M.Toast({ message: 'Почта: ошибка загрузки', type: 'error' }); });
+      }).catch(function (e) { console.error('[my_mail]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
     }
   }
 };

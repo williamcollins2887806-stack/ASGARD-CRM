@@ -5,9 +5,20 @@ window.MobileWidgets.birthdays = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'list', count: 2 }));
     _load();
+    function _fetch() {
+      if (typeof AsgardDB !== 'undefined') {
+        return AsgardDB.getAll('employees').then(function (data) {
+          if (data && data.length) return data;
+          return _api();
+        }).catch(function () { return _api(); });
+      }
+      return _api();
+    }
+    function _api() {
+      return API.fetch('/data/users').then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+    }
     function _load() {
-      var p = (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('employees') : Promise.resolve([]);
-      p.then(function (emps) {
+      _fetch().then(function (emps) {
         var today = new Date();
         var upcoming = (emps || []).filter(function (e) { return !!e.birth_date; }).map(function (e) {
           var bd = new Date(e.birth_date); var ty = new Date(today.getFullYear(), bd.getMonth(), bd.getDate());
@@ -26,7 +37,7 @@ window.MobileWidgets.birthdays = {
           scroll.appendChild(card);
         });
         container.replaceChildren(scroll);
-      }).catch(function (e) { console.error('[birthdays]', e); container.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[birthdays]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
     }
   }
 };

@@ -5,9 +5,20 @@ window.MobileWidgets.tenders_funnel = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'stats', count: 1 }));
     _load();
+    function _fetch() {
+      if (typeof AsgardDB !== 'undefined') {
+        return AsgardDB.getAll('tenders').then(function (data) {
+          if (data && data.length) return data;
+          return _api();
+        }).catch(function () { return _api(); });
+      }
+      return _api();
+    }
+    function _api() {
+      return API.fetch('/data/tenders').then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+    }
     function _load() {
-      var p = (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('tenders') : Promise.resolve([]);
-      p.then(function (all) {
+      _fetch().then(function (all) {
         var y = new Date().getFullYear();
         var tenders = (all || []).filter(function (x) { return String(x.year) === String(y) || (x.period || '').indexOf(String(y)) === 0; });
         var stages = [

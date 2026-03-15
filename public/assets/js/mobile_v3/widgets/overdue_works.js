@@ -5,9 +5,20 @@ window.MobileWidgets.overdue_works = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'card', count: 2 }));
     _load();
+    function _fetch() {
+      if (typeof AsgardDB !== 'undefined') {
+        return AsgardDB.getAll('works').then(function (data) {
+          if (data && data.length) return data;
+          return _api();
+        }).catch(function () { return _api(); });
+      }
+      return _api();
+    }
+    function _api() {
+      return API.fetch('/works').then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+    }
     function _load() {
-      var p = (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('works') : Promise.resolve([]);
-      p.then(function (all) {
+      _fetch().then(function (all) {
         var now = new Date();
         var overdue = (all || []).filter(function (w) {
           if (!w.end_plan) return false;
@@ -28,7 +39,7 @@ window.MobileWidgets.overdue_works = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/all-works'); };
-      }).catch(function (e) { console.error('[overdue_works]', e); container.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[overdue_works]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
     }
   }
 };

@@ -5,10 +5,21 @@ window.MobileWidgets.approvals = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'card', count: 1 }));
     _load();
+    function _dbOrApi(table, apiPath) {
+      if (typeof AsgardDB !== 'undefined') {
+        return AsgardDB.getAll(table).then(function (data) {
+          if (data && data.length) return data;
+          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+        }).catch(function () {
+          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+        });
+      }
+      return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+    }
     function _load() {
       Promise.all([
-        (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('bonus_requests') : Promise.resolve([]),
-        (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('estimates') : Promise.resolve([])
+        _dbOrApi('bonus_requests', '/data/bonus-requests'),
+        _dbOrApi('estimates', '/data/estimates')
       ]).then(function (res) {
         var bonus = (res[0] || []).filter(function (x) { return x.status === 'pending'; });
         var ests = (res[1] || []).filter(function (x) { return x.status === 'sent' || x.status === 'pending'; });
@@ -26,7 +37,7 @@ window.MobileWidgets.approvals = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/approvals'); };
-      }).catch(function (e) { console.error('[approvals]', e); container.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[approvals]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
     }
   }
 };

@@ -5,9 +5,20 @@ window.MobileWidgets.tender_dynamics = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'stats', count: 1 }));
     _load();
+    function _fetch() {
+      if (typeof AsgardDB !== 'undefined') {
+        return AsgardDB.getAll('tenders').then(function (data) {
+          if (data && data.length) return data;
+          return _api();
+        }).catch(function () { return _api(); });
+      }
+      return _api();
+    }
+    function _api() {
+      return API.fetch('/data/tenders').then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+    }
     function _load() {
-      var p = (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('tenders') : Promise.resolve([]);
-      p.then(function (all) {
+      _fetch().then(function (all) {
         var y = new Date().getFullYear();
         var months = [0,0,0,0,0,0,0,0,0,0,0,0];
         (all || []).forEach(function (x) {
@@ -22,7 +33,7 @@ window.MobileWidgets.tender_dynamics = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/to-analytics'); };
-      }).catch(function (e) { console.error('[tender_dynamics]', e); container.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[tender_dynamics]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
     }
   }
 };

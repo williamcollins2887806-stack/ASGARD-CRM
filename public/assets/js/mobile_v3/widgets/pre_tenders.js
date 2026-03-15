@@ -5,9 +5,20 @@ window.MobileWidgets.pre_tenders = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'card', count: 2 }));
     _load();
+    function _fetch() {
+      if (typeof AsgardDB !== 'undefined') {
+        return AsgardDB.getAll('pre_tender_requests').then(function (data) {
+          if (data && data.length) return data;
+          return _api();
+        }).catch(function () { return _api(); });
+      }
+      return _api();
+    }
+    function _api() {
+      return API.fetch('/data/pre-tenders').then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+    }
     function _load() {
-      var p = (typeof AsgardDB !== 'undefined') ? AsgardDB.getAll('pre_tender_requests') : Promise.resolve([]);
-      p.then(function (all) {
+      _fetch().then(function (all) {
         var items = (all || []).filter(function (x) { return x.status === 'new' || x.status === 'in_review'; }).slice(0, 3);
         if (!items.length) { container.replaceChildren(M.Empty({ text: 'Нет новых заявок', icon: '📨' })); return; }
         var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } });
@@ -22,7 +33,7 @@ window.MobileWidgets.pre_tenders = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/pre-tenders'); };
-      }).catch(function (e) { console.error('[pre_tenders]', e); container.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[pre_tenders]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
     }
   }
 };

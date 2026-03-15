@@ -5,10 +5,21 @@ window.MobileWidgets.payroll_pending = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'card', count: 1 }));
     _load();
+    function _dbOrApi(table, apiPath) {
+      if (typeof AsgardDB !== 'undefined' && AsgardDB.getAll) {
+        return AsgardDB.getAll(table).then(function (data) {
+          if (data && data.length) return data;
+          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+        }).catch(function () {
+          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+        });
+      }
+      return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+    }
     function _load() {
       Promise.all([
-        (typeof AsgardDB !== 'undefined' && AsgardDB.getAll) ? AsgardDB.getAll('payroll_sheets') : Promise.resolve([]),
-        (typeof AsgardDB !== 'undefined' && AsgardDB.getAll) ? AsgardDB.getAll('one_time_payments') : Promise.resolve([])
+        _dbOrApi('payroll_sheets', '/payroll/sheets'),
+        _dbOrApi('one_time_payments', '/data/users')
       ]).then(function (res) {
         var sheets = (res[0] || []).filter(function (x) { return x.status === 'pending'; });
         var payments = (res[1] || []).filter(function (x) { return x.status === 'pending'; });
@@ -23,7 +34,7 @@ window.MobileWidgets.payroll_pending = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/payroll'); };
-      }).catch(function (e) { console.error('[payroll_pending]', e); container.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[payroll_pending]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
     }
   }
 };
