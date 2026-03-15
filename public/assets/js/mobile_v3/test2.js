@@ -325,6 +325,129 @@
     w5.appendChild(diagCard);
 
     frag.appendChild(w5);
+
+    // ══════════════════════════════════════════════
+    // ПРОПУЩЕННЫЕ КОМПОНЕНТЫ (используются на страницах)
+    // ══════════════════════════════════════════════
+    frag.appendChild(subTitle('Пропущенные компоненты (используются на страницах)'));
+    var wMissing = cardWrap();
+
+    // ── 1. DetailFields (34 использования!) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginBottom: '4px' }) }, 'DetailFields (34×)'));
+    wMissing.appendChild(M.DetailFields({
+      fields: [
+        { label: 'Заказчик', value: 'Газпромнефть-МНПЗ' },
+        { label: 'Объект', value: 'Котельная инв.767' },
+        { label: 'Сумма', value: '3 520 000 ₽' },
+        { label: 'РП', value: 'Андросов Н.А.' },
+        { label: 'Дедлайн', value: '15.04.2026' },
+        { label: 'Статус', value: M.Badge({ text: 'В работе', color: 'info' }) },
+      ]
+    }));
+
+    // ── 2. TablePage (16 использований) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'TablePage (16×)'));
+    wMissing.appendChild(M.TablePage({
+      title: 'Тендеры в работе',
+      columns: ['Название', 'Заказчик', 'Сумма'],
+      rows: [
+        ['Чистка котлов ЦТД 65', 'Газпромнефть', '4 300 000 ₽'],
+        ['Чистка ПТ NT250', 'ЯНПЗ', '3 520 000 ₽'],
+        ['АВОК корпус 3', 'ЛУКОЙЛ', '1 800 000 ₽'],
+        ['Пескоструй РВС-1000', 'Башнефть', '2 150 000 ₽'],
+      ]
+    }));
+
+    // ── 3. Stats (10 использований) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'Stats (10×)'));
+    wMissing.appendChild(M.Stats({
+      items: [
+        { label: 'Тендеры', value: '24', color: 'info' },
+        { label: 'Работы', value: '12', color: 'success' },
+        { label: 'Маржа', value: '38%', color: 'warning' },
+        { label: 'Просрочено', value: '2', color: 'danger' },
+      ]
+    }));
+
+    // ── 4. FAB (9 использований) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'FAB (9×) — см. плавающую кнопку внизу'));
+    // FAB добавляется отдельно — он fixed-позиционированный
+
+    // ── 5. SearchBar (7 использований) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'SearchBar (7×)'));
+    wMissing.appendChild(M.SearchBar({ placeholder: 'Поиск по тендерам...', onInput: function (v) { console.log('search:', v); } }));
+
+    // ── 6. ProgressBar (7 использований) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'ProgressBar (7×)'));
+    wMissing.appendChild(M.ProgressBar({ value: 15, label: 'Начато' }));
+    wMissing.appendChild(M.ProgressBar({ value: 65, label: 'Выполнено' }));
+    wMissing.appendChild(M.ProgressBar({ value: 100, label: 'Завершено' }));
+
+    // ── 7. Timeline (4 использования) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'Timeline (4×)'));
+    wMissing.appendChild(M.Timeline({
+      items: [
+        { title: 'Создано', subtitle: 'Андросов Н.А.', time: '10:30', color: 'neutral' },
+        { title: 'На согласовании', subtitle: 'Отправлено директору', time: '11:15', color: 'info' },
+        { title: 'Согласовано', subtitle: 'Кудряшов О.С.', time: '14:00', color: 'success' },
+        { title: 'Оплачено', subtitle: 'Бухгалтерия', time: '16:30', color: 'success' },
+      ]
+    }));
+
+    // ── 8. Section (3 использования) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'Section (3×)'));
+    wMissing.appendChild(M.Section({
+      title: 'Информация по объекту',
+      children: [
+        el('div', { style: Object.assign({}, DS.font('sm'), { color: 'var(--text-sec)', padding: '8px 0' }) }, 'Котельная инв.767, ЯНПЗ — химическая очистка теплообменника NT250LH/B'),
+      ],
+    }));
+
+    // ── 9. Chip (3 использования) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'Chip (3×)'));
+    var chipWrap = el('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px' } });
+    chipWrap.appendChild(M.Chip({ text: 'Химическая очистка', removable: true }));
+    chipWrap.appendChild(M.Chip({ text: 'Гидродинамическая', removable: true }));
+    chipWrap.appendChild(M.Chip({ text: 'АВОК', active: true }));
+    chipWrap.appendChild(M.Chip({ text: 'Пескоструй' }));
+    chipWrap.appendChild(M.Chip({ text: 'Монтаж' }));
+    wMissing.appendChild(chipWrap);
+
+    // ── 10. ChatBubble (2 использования) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'ChatBubble (2×)'));
+    var chatWrap = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
+    chatWrap.appendChild(M.ChatBubble({ text: 'Добрый день! КП готово?', time: '10:30', incoming: true, author: 'Иванов А.А.' }));
+    chatWrap.appendChild(M.ChatBubble({ text: 'Да, отправил на почту.', time: '10:32', incoming: false }));
+    chatWrap.appendChild(M.ChatBubble({ text: 'Отлично, спасибо! Жду оригиналы.', time: '10:33', incoming: true, author: 'Иванов А.А.' }));
+    wMissing.appendChild(chatWrap);
+
+    // ── 11. BigNumber (2 использования) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'BigNumber (2×)'));
+    var bnWrap = el('div', { style: { display: 'flex', gap: '8px' } });
+    bnWrap.appendChild(M.BigNumber({ value: '3 520 000', label: 'Выручка, ₽', color: 'success' }));
+    bnWrap.appendChild(M.BigNumber({ value: '24', label: 'Активных тендеров', color: 'info' }));
+    wMissing.appendChild(bnWrap);
+
+    // ── 12. BarChart (2 использования) ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'BarChart (2×)'));
+    wMissing.appendChild(M.BarChart({
+      items: [
+        { label: 'Иванов', value: 8, max: 15 },
+        { label: 'Петров', value: 12, max: 15 },
+        { label: 'Сидоров', value: 5, max: 15 },
+      ]
+    }));
+
+    // ── 13. MessageComposer ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'MessageComposer'));
+    wMissing.appendChild(M.MessageComposer({ placeholder: 'Написать сообщение...', onSend: function (txt) { M.Toast({ message: 'Отправлено: ' + txt, type: 'success' }); } }));
+
+    // ── 14. MimirBanner ──
+    wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'MimirBanner'));
+    wMissing.appendChild(M.MimirBanner({ text: 'Мимир проанализировал 12 тендеров и нашёл 3 перспективных.' }));
+
+    frag.appendChild(wMissing);
+
     return frag;
   }
 
@@ -451,6 +574,20 @@
     wrap.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '8px' }) }, 'Кнопка с загрузкой'));
     var loadingBtn = M.FullWidthBtn({ label: 'Обработка...', variant: 'primary', loading: true });
     wrap.appendChild(loadingBtn);
+
+    // FAB (Floating Action Button) — 9 использований
+    wrap.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px' }) }, 'FAB (9×) — плавающая кнопка'));
+    var fabDemo = el('div', { style: { position: 'relative', height: '80px', background: 'var(--bg1)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' } });
+    var fab = M.FAB({ icon: '+', onClick: function () { M.Toast({ message: 'FAB нажата!', type: 'info' }); } });
+    fab.style.position = 'absolute';
+    fab.style.bottom = '12px';
+    fab.style.right = '12px';
+    fabDemo.appendChild(fab);
+    wrap.appendChild(fabDemo);
+
+    // SearchBar — 7 использований
+    wrap.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px' }) }, 'SearchBar (7×)'));
+    wrap.appendChild(M.SearchBar({ placeholder: 'Поиск по клиентам...', onInput: function (v) { console.log('search:', v); } }));
 
     frag.appendChild(wrap);
     return frag;
@@ -841,6 +978,14 @@
     ptr.setRefreshing(true);
     ptrWrap.appendChild(ptr);
     wrap.appendChild(ptrWrap);
+
+    // ProgressBar — 7 использований
+    wrap.appendChild(subTitle('ProgressBar (7×)'));
+    var pbWrap = el('div', { style: { padding: '0 var(--sp-page)', display: 'flex', flexDirection: 'column', gap: '8px' } });
+    pbWrap.appendChild(M.ProgressBar({ value: 15, label: 'Начато' }));
+    pbWrap.appendChild(M.ProgressBar({ value: 65, label: 'Выполнено' }));
+    pbWrap.appendChild(M.ProgressBar({ value: 100, label: 'Завершено' }));
+    wrap.appendChild(pbWrap);
 
     frag.appendChild(wrap);
     return frag;
