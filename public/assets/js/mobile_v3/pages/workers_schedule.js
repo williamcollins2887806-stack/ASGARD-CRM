@@ -11,10 +11,10 @@ const WorkersSchedulePage = {
     const STATUS_KINDS = [
       { code: 'free',    label: 'Свободен',          color: t.textTer,  bg: 'transparent' },
       { code: 'office',  label: 'Офис',              color: t.blue,     bg: t.blueBg },
-      { code: 'trip',    label: 'Командировка',      color: '#9333ea',  bg: 'rgba(147,51,234,0.1)' },
+      { code: 'trip',    label: 'Командировка',      color: 'var(--purple, #9333ea)',  bg: 'rgba(147,51,234,0.1)' },
       { code: 'work',    label: 'Работа (контракт)', color: t.green,    bg: t.greenBg },
       { code: 'note',    label: 'Заметка',           color: t.orange,   bg: t.orangeBg },
-      { code: 'reserve', label: 'Бронь',             color: '#9333ea',  bg: 'rgba(147,51,234,0.1)' },
+      { code: 'reserve', label: 'Бронь',             color: 'var(--purple, #9333ea)',  bg: 'rgba(147,51,234,0.1)' },
     ];
 
     const MONTHS_RU = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -69,7 +69,7 @@ const WorkersSchedulePage = {
     // Status filter (horizontal pills)
     const filterWrap = el('div', { style: { padding: '8px 20px' } });
     function renderFilter() {
-      filterWrap.innerHTML = '';
+      filterWrap.replaceChildren();
       const pills = [{ label: 'Все', value: 'all' }, ...STATUS_KINDS.map(s => ({ label: s.label, value: s.code }))];
       filterWrap.appendChild(M.FilterPills({
         items: pills.map(p => ({ ...p, active: p.value === filterStatus })),
@@ -124,7 +124,7 @@ const WorkersSchedulePage = {
 
     // ── Render grid ──
     function renderGrid() {
-      gridContainer.innerHTML = '';
+      gridContainer.replaceChildren();
       const numDays = daysInMonth(viewYear, viewMonth);
       const planMap = buildPlanMap();
 
@@ -382,7 +382,7 @@ const WorkersSchedulePage = {
     // ── Load and render ──
     async function loadAndRender() {
       monthLabel.textContent = MONTHS_RU[viewMonth] + ' ' + viewYear;
-      gridContainer.innerHTML = '';
+      gridContainer.replaceChildren();
       gridContainer.appendChild(M.Skeleton({ type: 'card', count: 5 }));
       await loadData();
       renderFilter();
