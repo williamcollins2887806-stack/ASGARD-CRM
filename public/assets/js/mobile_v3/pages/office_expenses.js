@@ -3,230 +3,207 @@
  * Route: #/office-expenses
  * API: GET /api/expenses/office, POST /api/expenses/office
  */
-const OfficeExpensesPage = {
-  async render() {
-    const el = Utils.el;
-    const t = DS.t;
+var OfficeExpensesPage = (function () {
+  'use strict';
 
-    // Categories from desktop finances.js
-    const CATEGORIES = [
-      'Аренда', 'Коммунальные', 'Связь/Интернет', 'Канцелярия',
-      'Хоз. нужды', 'ПО/Подписки', 'Транспорт', 'Питание',
-      'Оборудование офис', 'Маркетинг', 'Юридические', 'Прочее',
-    ];
+  var el = Utils.el;
 
-    const page = el('div', { style: { paddingBottom: '100px' } });
-    page.appendChild(M.Header({
-      title: 'Офис расходы',
-      subtitle: 'ФИНАНСЫ',
-      back: true,
-      backHref: '/finances',
+  var CATEGORIES = [
+    'Аренда', 'Коммунальные', 'Связь/Интернет', 'Канцелярия',
+    'Хоз. нужды', 'ПО/Подписки', 'Транспорт', 'Питание',
+    'Оборудование офис', 'Маркетинг', 'Юридические', 'Прочее',
+  ];
+
+  function buildMonthlyData(expenses) {
+    var months = {};
+    var now = new Date();
+    for (var i = 5; i >= 0; i--) {
+      var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      var key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      months[key] = { label: d.toLocaleDateString('ru-RU', { month: 'short' }), value: 0 };
+    }
+    expenses.forEach(function (e) {
+      if (!e.created_at) return;
+      var dd = new Date(e.created_at);
+      var k = dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0');
+      if (months[k]) months[k].value += parseFloat(e.amount || 0);
+    });
+    return Object.values(months);
+  }
+
+  function openDetail(e) {
+    var content = el('div');
+    content.appendChild(M.DetailFields({
+      fields: [
+        { label: 'Описание', value: e.description || '—' },
+        { label: 'Категория', value: e.category || '—' },
+        { label: 'Сумма', value: Utils.formatMoney(parseFloat(e.amount || 0)) + ' ₽' },
+        { label: 'Дата', value: e.created_at ? Utils.formatDate(e.created_at) : '—' },
+        { label: 'Автор', value: e.user_name || '—' },
+        { label: 'Комментарий', value: e.comment || e.notes || '—' },
+      ],
     }));
+    M.BottomSheet({ title: 'Расход #' + e.id, content: content });
+  }
 
-    const body = el('div');
-    body.appendChild(M.Skeleton({ type: 'card', count: 4 }));
-    page.appendChild(body);
+  function openCreateModal() {
+    var content = el('div');
+    content.appendChild(M.Form({
+      fields: [
+        { id: 'category', label: 'Категория', type: 'select', required: true, placeholder: 'Выберите категорию', options: CATEGORIES.map(function (c) { return { value: c, label: c }; }) },
+        { id: 'amount', label: 'Сумма, ₽', type: 'number', required: true, placeholder: '5000' },
+        { id: 'description', label: 'Описание', type: 'text', required: true, placeholder: 'На что потрачено' },
+        { id: 'comment', label: 'Комментарий', type: 'textarea', placeholder: 'Дополнительно...' },
+      ],
+      submitLabel: '💸 Добавить расход',
+      onSubmit: async function (data) {
+        try {
+          await API.fetch('/expenses/office', {
+            method: 'POST',
+            body: { category: data.category, amount: parseFloat(data.amount), description: data.description, comment: data.comment },
+          });
+          sheetRef.close();
+          M.Toast({ message: 'Расход добавлен', type: 'success' });
+          Router.navigate('/office-expenses', { replace: true });
+        } catch (e) {
+          M.Toast({ message: 'Ошибка: ' + (e.message || 'Сеть'), type: 'error' });
+        }
+      },
+    }));
+    var sheetRef = M.BottomSheet({ title: 'Новый расход', content: content, fullscreen: true });
+  }
 
-    let expenses = [];
-    let currentFilter = 'all';
+  return {
+    render: function () {
+      var t = DS.t;
+      var page = el('div', { style: { paddingBottom: '100px' } });
+      page.appendChild(M.Header({ title: 'Офис расходы', subtitle: 'ФИНАНСЫ', back: true, backHref: '/finances' }));
 
-    try {
-      const data = await API.fetch('/expenses/office');
-      expenses = Array.isArray(data) ? data : (data.data || data.expenses || []);
+      var body = el('div');
+      body.appendChild(M.Skeleton({ type: 'hero', count: 1 }));
+      body.appendChild(el('div', { style: { height: '12px' } }));
+      body.appendChild(M.Skeleton({ type: 'card', count: 4 }));
+      page.appendChild(body);
 
-      body.innerHTML = '';
-
-      // Total
-      const total = expenses.reduce((s, e) => s + (parseFloat(e.amount || 0)), 0);
-
-      // Category breakdown
-      const byCat = {};
-      expenses.forEach(e => {
-        const cat = e.category || 'Прочее';
-        byCat[cat] = (byCat[cat] || 0) + parseFloat(e.amount || 0);
-      });
-      const topCats = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 4);
-
-      // Hero
-      const heroWrap = el('div', { style: { padding: '12px 20px' } });
-      heroWrap.appendChild(M.HeroCard({
-        label: 'ОФИСНЫЕ РАСХОДЫ',
-        value: Utils.formatMoney(total),
-        valueSuffix: ' ₽',
-        details: topCats.slice(0, 3).map(([cat, sum]) => ({
-          label: cat, value: Utils.formatMoney(sum) + ' ₽',
-        })),
-      }));
-      body.appendChild(heroWrap);
-
-      // Stats
-      const thisMonth = expenses.filter(e => {
-        if (!e.created_at) return false;
-        const d = new Date(e.created_at);
-        const now = new Date();
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      });
-      const thisMonthTotal = thisMonth.reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-
-      body.appendChild(el('div', { style: { margin: '12px 0 4px' } }, M.Stats({
-        items: [
-          { icon: '💸', label: 'Всего', value: Utils.formatMoney(total) },
-          { icon: '📅', label: 'Этот месяц', value: Utils.formatMoney(thisMonthTotal), color: 'var(--orange)' },
-          { icon: '📋', label: 'Записей', value: expenses.length },
-          { icon: '📊', label: 'Категорий', value: Object.keys(byCat).length },
-        ],
-      })));
-
-      // Category filter
-      const catPills = [
-        { label: 'Все', value: 'all', active: true },
-        ...topCats.map(([cat]) => ({ label: cat, value: cat })),
-      ];
-
-      body.appendChild(M.FilterPills({
-        items: catPills,
-        onChange: (val) => { currentFilter = val; renderList(); },
+      page.appendChild(M.FAB({
+        icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+        onClick: function () { openCreateModal(); },
       }));
 
-      // Monthly chart
-      const monthlyData = buildMonthlyData(expenses);
-      if (monthlyData.length > 1) {
-        body.appendChild(M.Section({
-          title: 'По месяцам',
-          collapsible: true,
-          content: M.BarChart({ data: monthlyData, opts: { height: 120 } }),
-        }));
-      }
+      setTimeout(async function () {
+        try {
+          var data = await API.fetch('/expenses/office');
+          var expenses = Array.isArray(data) ? data : (data.data || data.expenses || []);
 
-      // List
-      const listContainer = el('div', { style: { padding: '12px 0' } });
-      body.appendChild(listContainer);
+          body.replaceChildren();
 
-      function renderList() {
-        listContainer.innerHTML = '';
-        let filtered = expenses;
-        if (currentFilter !== 'all') {
-          filtered = expenses.filter(e => e.category === currentFilter);
-        }
+          var total = expenses.reduce(function (s, e) { return s + parseFloat(e.amount || 0); }, 0);
+          var byCat = {};
+          expenses.forEach(function (e) {
+            var cat = e.category || 'Прочее';
+            byCat[cat] = (byCat[cat] || 0) + parseFloat(e.amount || 0);
+          });
+          var topCats = Object.entries(byCat).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 4);
 
-        if (!filtered.length) {
-          listContainer.appendChild(M.Empty({ text: 'Нет расходов', type: 'search' }));
-          return;
-        }
+          // Hero
+          var heroWrap = el('div', { style: { padding: '12px 20px' } });
+          heroWrap.appendChild(M.HeroCard({
+            label: 'ОФИСНЫЕ РАСХОДЫ',
+            value: Utils.formatMoney(total),
+            valueSuffix: ' ₽',
+            details: topCats.slice(0, 3).map(function (c) { return { label: c[0], value: Utils.formatMoney(c[1]) + ' ₽' }; }),
+          }));
+          body.appendChild(heroWrap);
 
-        const sorted = [...filtered].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-        const list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 20px' } });
+          // Stats
+          var now = new Date();
+          var thisMonth = expenses.filter(function (e) {
+            if (!e.created_at) return false;
+            var d = new Date(e.created_at);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+          });
+          var thisMonthTotal = thisMonth.reduce(function (s, e) { return s + parseFloat(e.amount || 0); }, 0);
 
-        sorted.slice(0, 40).forEach((e, i) => {
-          list.appendChild(M.Card({
-            title: e.description || e.category || 'Расход',
-            subtitle: e.category || '',
-            badge: Utils.formatMoney(parseFloat(e.amount || 0)) + ' ₽',
-            badgeColor: 'danger',
-            fields: [
-              { label: 'Дата', value: e.created_at ? Utils.formatDate(e.created_at) : '—' },
-              ...(e.user_name ? [{ label: 'Автор', value: e.user_name }] : []),
+          body.appendChild(el('div', { style: { margin: '12px 0 4px' } }, M.Stats({
+            items: [
+              { icon: '💸', label: 'Всего', value: Utils.formatMoney(total) },
+              { icon: '📅', label: 'Этот месяц', value: Utils.formatMoney(thisMonthTotal), color: 'var(--orange)' },
+              { icon: '📋', label: 'Записей', value: expenses.length },
+              { icon: '📊', label: 'Категорий', value: Object.keys(byCat).length },
             ],
-            animDelay: i * 0.02,
-            onClick: () => openDetail(e),
+          })));
+
+          // Category filter
+          var currentFilter = 'all';
+          var catPills = [{ label: 'Все', value: 'all', active: true }].concat(topCats.map(function (c) { return { label: c[0], value: c[0] }; }));
+
+          body.appendChild(M.FilterPills({
+            items: catPills,
+            onChange: function (val) { currentFilter = val; renderList(); },
           }));
-        });
 
-        if (sorted.length > 40) {
-          list.appendChild(el('div', {
-            style: { ...DS.font('sm'), color: t.textTer, textAlign: 'center', padding: '12px' },
-            textContent: 'Показаны 40 из ' + sorted.length,
-          }));
-        }
-
-        listContainer.appendChild(list);
-      }
-
-      renderList();
-
-    } catch (e) {
-      body.innerHTML = '';
-      body.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
-    }
-
-    // FAB — new expense
-    page.appendChild(M.FAB({
-      icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
-      onClick: () => openCreateModal(),
-    }));
-
-    function openDetail(e) {
-      const content = el('div');
-      content.appendChild(M.DetailFields({
-        fields: [
-          { label: 'Описание', value: e.description || '—' },
-          { label: 'Категория', value: e.category || '—' },
-          { label: 'Сумма', value: Utils.formatMoney(parseFloat(e.amount || 0)) + ' ₽' },
-          { label: 'Дата', value: e.created_at ? Utils.formatDate(e.created_at) : '—' },
-          { label: 'Автор', value: e.user_name || '—' },
-          { label: 'Комментарий', value: e.comment || e.notes || '—' },
-        ],
-      }));
-      M.BottomSheet({ title: 'Расход #' + e.id, content });
-    }
-
-    function openCreateModal() {
-      const content = el('div');
-      content.appendChild(M.Form({
-        fields: [
-          {
-            id: 'category', label: 'Категория', type: 'select', required: true,
-            placeholder: 'Выберите категорию',
-            options: CATEGORIES.map(c => ({ value: c, label: c })),
-          },
-          { id: 'amount', label: 'Сумма, ₽', type: 'number', required: true, placeholder: '5000' },
-          { id: 'description', label: 'Описание', type: 'text', required: true, placeholder: 'На что потрачено' },
-          { id: 'comment', label: 'Комментарий', type: 'textarea', placeholder: 'Дополнительно...' },
-        ],
-        submitLabel: '💸 Добавить расход',
-        onSubmit: async (data) => {
-          try {
-            await API.fetch('/expenses/office', {
-              method: 'POST',
-              body: {
-                category: data.category,
-                amount: parseFloat(data.amount),
-                description: data.description,
-                comment: data.comment,
-              },
-            });
-            sheetRef.close();
-            M.Toast({ message: 'Расход добавлен', type: 'success' });
-            Router.navigate('/office-expenses', { replace: true });
-          } catch (e) {
-            M.Toast({ message: 'Ошибка: ' + (e.message || 'Сеть'), type: 'error' });
+          // Chart
+          var monthlyData = buildMonthlyData(expenses);
+          if (monthlyData.length > 1) {
+            body.appendChild(M.Section({
+              title: 'По месяцам',
+              collapsible: true,
+              content: M.BarChart({ data: monthlyData, opts: { height: 120 } }),
+            }));
           }
-        },
-      }));
 
-      const sheetRef = M.BottomSheet({ title: 'Новый расход', content, fullscreen: true });
-    }
+          var listContainer = el('div', { style: { padding: '12px 0' } });
+          body.appendChild(listContainer);
 
-    function buildMonthlyData(expenses) {
-      const months = {};
-      const now = new Date();
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-        months[key] = { label: d.toLocaleDateString('ru-RU', { month: 'short' }), value: 0 };
-      }
-      expenses.forEach(e => {
-        if (!e.created_at) return;
-        const d = new Date(e.created_at);
-        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-        if (months[key]) months[key].value += parseFloat(e.amount || 0);
-      });
-      return Object.values(months);
-    }
+          function renderList() {
+            listContainer.replaceChildren();
+            var filtered = currentFilter === 'all' ? expenses : expenses.filter(function (e) { return e.category === currentFilter; });
 
-    return page;
-  },
-};
+            if (!filtered.length) {
+              listContainer.appendChild(M.Empty({ text: 'Нет расходов', type: 'search' }));
+              return;
+            }
+
+            var sorted = filtered.slice().sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
+            var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 20px' } });
+
+            sorted.slice(0, 40).forEach(function (e, i) {
+              list.appendChild(M.Card({
+                title: e.description || e.category || 'Расход',
+                subtitle: e.category || '',
+                badge: Utils.formatMoney(parseFloat(e.amount || 0)) + ' ₽',
+                badgeColor: 'danger',
+                fields: [
+                  { label: 'Дата', value: e.created_at ? Utils.formatDate(e.created_at) : '—' },
+                ].concat(e.user_name ? [{ label: 'Автор', value: e.user_name }] : []),
+                animDelay: i * 0.02,
+                onClick: function () { openDetail(e); },
+              }));
+            });
+
+            if (sorted.length > 40) {
+              list.appendChild(el('div', {
+                style: { ...DS.font('sm'), color: t.textTer, textAlign: 'center', padding: '12px' },
+                textContent: 'Показаны 40 из ' + sorted.length,
+              }));
+            }
+
+            listContainer.appendChild(list);
+          }
+
+          renderList();
+
+        } catch (e) {
+          body.replaceChildren();
+          body.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+          M.Toast({ message: 'Ошибка загрузки: ' + (e.message || e), type: 'error' });
+        }
+      }, 0);
+
+      return page;
+    },
+  };
+})();
 
 Router.register('/office-expenses', OfficeExpensesPage);
 if (typeof window !== 'undefined') window.OfficeExpensesPage = OfficeExpensesPage;
