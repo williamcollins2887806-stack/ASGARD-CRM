@@ -312,10 +312,7 @@ window.MobileApproval = (function () {
 
     // File input
     var ppFileWrap = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
-    var ppFileInput = document.createElement('input');
-    ppFileInput.type = 'file';
-    ppFileInput.accept = '.pdf,.jpg,.jpeg,.png,.doc,.docx';
-    ppFileInput.style.display = 'none';
+    var ppFileInput = el('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.doc,.docx', style: { display: 'none' } });
 
     var ppFileBtn = el('button', {
       style: {
@@ -703,10 +700,7 @@ window.MobileApproval = (function () {
     content.appendChild(header);
 
     // File upload zone
-    var fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx';
-    fileInput.style.display = 'none';
+    var fileInput = el('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx', style: { display: 'none' } });
 
     var fileZone = el('div', {
       style: {
@@ -932,9 +926,10 @@ window.MobileApproval = (function () {
   // ── Инъекция CSS-анимации bounce (один раз) ──
   function injectBounceAnim() {
     if (document.getElementById('asg-mobile-bounce-css')) return;
-    var style = document.createElement('style');
-    style.id = 'asg-mobile-bounce-css';
-    style.textContent = '@keyframes asgBounceIcon { 0% { transform: scale(0.6); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }';
+    var style = el('style', {
+      id: 'asg-mobile-bounce-css',
+      textContent: '@keyframes asgBounceIcon { 0% { transform: scale(0.6); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }'
+    });
     document.head.appendChild(style);
   }
 

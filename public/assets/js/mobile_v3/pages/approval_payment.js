@@ -69,22 +69,23 @@ window.MobileApprovalPayment = (function () {
         return API.fetch('/approval/pending-buh', { noCache: true }).then(function (data) {
           renderItems(data);
         }).catch(function (err) {
-          listWrap.innerHTML = '';
+          listWrap.replaceChildren();
           if (err && err.status === 403) {
             listWrap.appendChild(M.Empty({ text: 'Доступ только для бухгалтерии', icon: '🔒' }));
           } else {
             listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' }));
+            M.Toast({ message: 'Ошибка загрузки платежей', type: 'error' });
           }
         });
       }
 
       function renderItems(data) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
         var items = (data && data.items) || [];
         var cashBal = (data && data.cash_balance) || 0;
 
         // Обновить баланс
-        balanceWrap.innerHTML = '';
+        balanceWrap.replaceChildren();
         var bCard = el('div', {
           style: {
             padding: '16px', borderRadius: '16px',
