@@ -294,6 +294,7 @@ fastify.register(require('./routes/sse'), { prefix: '/api/sse' });
 fastify.register(require('./routes/push'), { prefix: '/api/push' });
 fastify.register(require('./routes/webauthn'), { prefix: '/api/webauthn' });
 fastify.register(require("./routes/training_applications"), { prefix: "/api/training-applications" });
+fastify.register(require('./routes/travel'), { prefix: '/api/travel' });
 fastify.register(require("./routes/site_inspections"), { prefix: "/api/site-inspections" });
 fastify.register(require("./routes/telephony"), { prefix: "/api/telephony" });
 fastify.register(require("./routes/approval"), { prefix: "/api/approval" });

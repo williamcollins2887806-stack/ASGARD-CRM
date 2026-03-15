@@ -206,7 +206,7 @@ const WorkersSchedulePage = {
           const isToday = dateStr === ymd(now);
 
           const cell = el('div', { style: {
-            minWidth: '28px', height: '36px',
+            minWidth: '32px', height: '44px',
             borderRadius: '6px', display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             background: plan && plan.kind !== 'free' ? kind.bg : (isWeekend ? t.surfaceAlt : 'transparent'),

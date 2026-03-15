@@ -1958,7 +1958,7 @@ const M = (() => {
         padding: '8px var(--sp-page)',
         position: sticky ? 'sticky' : 'relative',
         top: sticky ? '0' : 'auto',
-        zIndex: sticky ? 40 : 'auto',
+        zIndex: sticky ? DS.z.sticky : 'auto',
         background: sticky ? 'var(--bg)' : 'transparent',
       },
     });
