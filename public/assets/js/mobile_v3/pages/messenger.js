@@ -35,20 +35,20 @@ const MessengerPage = {
     let chats = [];
 
     async function loadChats() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'list', count: 6 }));
       try {
         chats = await API.fetch('/chat-groups');
         if (!Array.isArray(chats)) chats = chats.data || [];
         renderList('');
       } catch (e) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
         listWrap.appendChild(M.Empty({ text: 'Не удалось загрузить чаты', type: 'error' }));
       }
     }
 
     function renderList(query) {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       const q = (query || '').toLowerCase();
       const filtered = chats.filter(c => {
         const name = (c.name || c.title || '').toLowerCase();
@@ -183,9 +183,7 @@ async function renderChat(chatId) {
       }
     },
     onAttach: () => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '*/*';
+      const input = Utils.el('input', { type: 'file', accept: '*/*' });
       input.onchange = async () => {
         if (!input.files[0]) return;
         const fd = new FormData();
@@ -221,7 +219,7 @@ function chatActionsSheet(chatId) {
 }
 
 function createChatSheet() {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.Form({
     fields: [
       { id: 'name', label: 'Название чата', type: 'text', required: true },

@@ -30,20 +30,20 @@ const ProxiesPage = {
     page.appendChild(listWrap);
 
     async function load() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
         const resp = await API.fetch('/proxies?limit=100');
         items = Array.isArray(resp) ? resp : (resp.data || []);
         renderList();
       } catch (_) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
         listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
       }
     }
 
     function renderList() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       const now = Date.now();
       const filtered = items.filter(p => {
         if (filter === 'active') return !p.end_date || new Date(p.end_date) >= now;
@@ -88,7 +88,7 @@ const ProxiesPage = {
 };
 
 function viewProxySheet(p) {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.DetailFields({
     fields: [
       { label: 'Название', value: p.title || '—' },
@@ -103,7 +103,7 @@ function viewProxySheet(p) {
   }));
 
   if (p.file_url || p.file_id) {
-    const btn = document.createElement('div');
+    const btn = Utils.el('div');
     btn.style.marginTop = '16px';
     btn.appendChild(M.FullWidthBtn({
       label: '📥 Скачать',
@@ -117,7 +117,7 @@ function viewProxySheet(p) {
 }
 
 function createProxySheet() {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.Form({
     fields: [
       { id: 'template', label: 'Шаблон', type: 'select', options: [

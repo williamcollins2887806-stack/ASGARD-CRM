@@ -32,20 +32,20 @@ const TravelPage = {
     page.appendChild(listWrap);
 
     async function load() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
         const resp = await API.fetch('/travel?limit=100');
         items = Array.isArray(resp) ? resp : (resp.data || []);
         renderList();
       } catch (_) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
         listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
       }
     }
 
     function renderList() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       const now = Date.now();
       const filtered = items.filter(trip => {
         if (filter === 'active') return new Date(trip.start_date) <= now && new Date(trip.end_date) >= now;
@@ -140,10 +140,7 @@ function viewTripSheet(trip) {
     label: '📎 Загрузить билет / чек',
     variant: 'secondary',
     onClick: () => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.pdf,.jpg,.jpeg,.png';
-      input.multiple = true;
+      const input = Utils.el('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png', multiple: true });
       input.onchange = async () => {
         for (const file of input.files) {
           const fd = new FormData();
@@ -167,7 +164,7 @@ function viewTripSheet(trip) {
 }
 
 function createTripSheet() {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.Form({
     fields: [
       { id: 'destination', label: 'Направление', type: 'text', required: true },

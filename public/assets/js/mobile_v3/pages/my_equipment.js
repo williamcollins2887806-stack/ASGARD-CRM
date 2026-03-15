@@ -23,7 +23,7 @@ const MyEquipmentPage = {
     page.appendChild(listWrap);
 
     async function load() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
         const user = Store.get('user') || {};
@@ -31,7 +31,7 @@ const MyEquipmentPage = {
         const items = Array.isArray(resp) ? resp : (resp.data || resp.items || []);
 
         // Stats
-        statsWrap.innerHTML = '';
+        statsWrap.replaceChildren();
         const totalValue = items.reduce((s, i) => s + (parseFloat(i.price) || 0), 0);
         statsWrap.appendChild(M.Stats({
           items: [
@@ -42,13 +42,14 @@ const MyEquipmentPage = {
 
         renderList(items);
       } catch (_) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
+        M.Toast({ message: 'Ошибка загрузки', type: 'error' });
         listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
       }
     }
 
     function renderList(items) {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       if (!items.length) {
         listWrap.appendChild(M.Empty({ text: 'Нет выданного оборудования', icon: '🛠' }));
         return;
@@ -82,7 +83,7 @@ const MyEquipmentPage = {
 };
 
 function viewEquipSheet(item) {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.DetailFields({
     fields: [
       { label: 'Название', value: item.name || '—' },

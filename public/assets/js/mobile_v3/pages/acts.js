@@ -41,14 +41,14 @@ const ActsPage = {
     page.appendChild(listWrap);
 
     async function load() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
         const resp = await API.fetch('/acts?limit=200');
         items = Array.isArray(resp) ? resp : (resp.data || []);
 
         // Stats
-        statsWrap.innerHTML = '';
+        statsWrap.replaceChildren();
         const totalSum = items.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
         const signedCount = items.filter(a => a.status === 'signed' || a.status === 'paid').length;
         statsWrap.appendChild(M.Stats({
@@ -61,13 +61,14 @@ const ActsPage = {
 
         renderList('');
       } catch (_) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
+        M.Toast({ message: 'Ошибка загрузки', type: 'error' });
         listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
       }
     }
 
     function renderList(query) {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       const q = (query || '').toLowerCase();
       const filtered = items.filter(a => {
         if (filter !== 'all' && a.status !== filter) return false;
@@ -108,7 +109,7 @@ const ActsPage = {
 };
 
 function viewActSheet(act) {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.DetailFields({
     fields: [
       { label: '№', value: act.number || '—' },
@@ -124,7 +125,7 @@ function viewActSheet(act) {
   }));
 
   if (act.file_url || act.file_id) {
-    const btn = document.createElement('div');
+    const btn = Utils.el('div');
     btn.style.marginTop = '16px';
     btn.appendChild(M.FullWidthBtn({
       label: '📥 Скачать акт',

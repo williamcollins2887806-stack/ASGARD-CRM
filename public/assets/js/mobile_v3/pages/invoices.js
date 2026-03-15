@@ -40,14 +40,14 @@ const InvoicesPage = {
     page.appendChild(listWrap);
 
     async function load() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 5 }));
       try {
         const resp = await API.fetch('/invoices?limit=200');
         items = Array.isArray(resp) ? resp : (resp.data || []);
 
         // Stats
-        statsWrap.innerHTML = '';
+        statsWrap.replaceChildren();
         const totalSum = items.reduce((s, inv) => s + (parseFloat(inv.amount) || 0), 0);
         const paidSum = items.filter(inv => inv.status === 'paid').reduce((s, inv) => s + (parseFloat(inv.amount) || 0), 0);
         const unpaidSum = totalSum - paidSum;
@@ -61,13 +61,14 @@ const InvoicesPage = {
 
         renderList('');
       } catch (_) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
+        M.Toast({ message: 'Ошибка загрузки', type: 'error' });
         listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
       }
     }
 
     function renderList(query) {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       const q = (query || '').toLowerCase();
       const filtered = items.filter(inv => {
         if (filter !== 'all' && inv.status !== filter) return false;

@@ -21,20 +21,20 @@ const SealsPage = {
     page.appendChild(listWrap);
 
     async function load() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 3 }));
       try {
         const resp = await API.fetch('/seals?limit=100');
         items = Array.isArray(resp) ? resp : (resp.data || []);
         renderList();
       } catch (_) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
         listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
       }
     }
 
     function renderList() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       if (!items.length) {
         listWrap.appendChild(M.Empty({ text: 'Нет печатей', icon: '🔏' }));
         return;
@@ -67,7 +67,7 @@ const SealsPage = {
 };
 
 function viewSealSheet(seal) {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.DetailFields({
     fields: [
       { label: 'Название', value: seal.name || seal.title || '—' },
@@ -82,7 +82,7 @@ function viewSealSheet(seal) {
 
   // Transfer history
   if (seal.history && seal.history.length) {
-    const wrap = document.createElement('div');
+    const wrap = Utils.el('div');
     wrap.style.marginTop = '16px';
     wrap.appendChild(M.Timeline({
       items: seal.history.map(h => ({
@@ -98,7 +98,7 @@ function viewSealSheet(seal) {
 }
 
 function transferSheet(seal) {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.Form({
     fields: [
       { id: 'to_user_id', label: 'Кому передать', type: 'text', required: true, placeholder: 'ФИО сотрудника' },

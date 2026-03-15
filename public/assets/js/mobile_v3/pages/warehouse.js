@@ -37,7 +37,7 @@ const WarehousePage = {
     page.appendChild(listWrap);
 
     async function load() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 5 }));
       try {
         const [eqResp, whResp, catResp] = await Promise.all([
@@ -50,7 +50,7 @@ const WarehousePage = {
         categories = Array.isArray(catResp) ? catResp : (catResp.data || []);
 
         // Render warehouse filter
-        pillsWrap.innerHTML = '';
+        pillsWrap.replaceChildren();
         const pills = [{ label: 'Все', value: 'all', active: true }];
         warehouses.forEach(w => pills.push({ label: w.name || w.title || 'Склад', value: String(w.id) }));
         pillsWrap.appendChild(M.FilterPills({
@@ -60,13 +60,13 @@ const WarehousePage = {
 
         renderList('');
       } catch (_) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
         listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
       }
     }
 
     function renderList(query) {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       const q = (query || '').toLowerCase();
       const filtered = items.filter(item => {
         if (activeWarehouse !== 'all' && String(item.warehouse_id) !== activeWarehouse) return false;
@@ -161,7 +161,7 @@ const WarehousePage = {
 };
 
 function viewItemSheet(item) {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.DetailFields({
     fields: [
       { label: 'Название', value: item.name || '—' },

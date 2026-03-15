@@ -38,7 +38,7 @@ const AlertsPage = {
     page.appendChild(listWrap);
 
     async function load() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'list', count: 6 }));
       try {
         const resp = await API.fetch('/notifications?limit=200');
@@ -52,7 +52,7 @@ const AlertsPage = {
     }
 
     function renderList() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       const filtered = items.filter(n => {
         if (activeFilter === 'unread') return !n.read && !n.is_read;
         if (activeFilter !== 'all') return (n.type || n.category) === activeFilter;
@@ -125,6 +125,8 @@ const AlertsPage = {
     }
 
     async function deleteNotif(notif) {
+      const ok = await M.Confirm({ title: 'Удалить уведомление?', danger: true, okText: 'Удалить' });
+      if (!ok) return;
       try {
         await API.fetch('/notifications/' + notif.id, { method: 'DELETE' });
       } catch (_) {}

@@ -37,20 +37,21 @@ const ContractsPage = {
     page.appendChild(listWrap);
 
     async function load() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
         const resp = await API.fetch('/contracts?limit=100');
         items = Array.isArray(resp) ? resp : (resp.data || []);
         renderList('');
       } catch (_) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
+        M.Toast({ message: 'Ошибка загрузки', type: 'error' });
         listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
       }
     }
 
     function renderList(query) {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       const q = (query || '').toLowerCase();
       const filtered = items.filter(c => {
         if (filter !== 'all' && c.status !== filter) return false;
@@ -92,7 +93,7 @@ const ContractsPage = {
 };
 
 function viewContractSheet(c) {
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.DetailFields({
     fields: [
       { label: 'Название', value: c.title || '—' },
@@ -109,7 +110,7 @@ function viewContractSheet(c) {
   }));
 
   if (c.file_url || c.file_id) {
-    const btn = document.createElement('div');
+    const btn = Utils.el('div');
     btn.style.marginTop = '16px';
     btn.appendChild(M.FullWidthBtn({
       label: '📥 Скачать договор',

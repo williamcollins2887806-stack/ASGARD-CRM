@@ -37,20 +37,20 @@ const MyMailPage = {
     let mails = [];
 
     async function loadMails() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'list', count: 5 }));
       try {
         const resp = await API.fetch('/my-mail/folders/' + activeFolder + '/messages?limit=50');
         mails = Array.isArray(resp) ? resp : (resp.data || resp.messages || []);
         renderMails();
       } catch (e) {
-        listWrap.innerHTML = '';
+        listWrap.replaceChildren();
         listWrap.appendChild(M.Empty({ text: 'Не удалось загрузить почту', type: 'error' }));
       }
     }
 
     function renderMails() {
-      listWrap.innerHTML = '';
+      listWrap.replaceChildren();
       if (!mails.length) {
         listWrap.appendChild(M.Empty({ text: 'Нет писем', icon: '📭' }));
         return;
@@ -173,7 +173,7 @@ function openMailSheet(mail) {
 
 function composeSheet(defaults) {
   defaults = defaults || {};
-  const content = document.createElement('div');
+  const content = Utils.el('div');
   content.appendChild(M.Form({
     fields: [
       { id: 'to', label: 'Кому', type: 'email', required: true, value: defaults.to || '' },
