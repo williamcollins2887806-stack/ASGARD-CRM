@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>АСГАРД CRM — Офлайн</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0e1a;--t1:#f0f2f5;--t2:#8b95a8;--grad:linear-gradient(135deg,#1E4D8C 0%,#C8293B 100%);--card:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08)}
+body{min-height:100dvh;background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;overflow:hidden;position:relative}
+body::before{content:'';position:absolute;top:-40%;left:-20%;width:140%;height:140%;background:radial-gradient(ellipse at 30% 20%,rgba(30,77,140,0.15) 0%,transparent 60%),radial-gradient(ellipse at 70% 80%,rgba(200,41,59,0.1) 0%,transparent 50%);pointer-events:none;z-index:0}
+.container{position:relative;z-index:1;text-align:center;max-width:380px;width:100%}
+.shield{width:100px;height:100px;margin:0 auto 28px;position:relative}
+.shield-bg{width:100%;height:100%;border-radius:24px;background:var(--grad);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 40px rgba(30,77,140,0.3),0 2px 12px rgba(200,41,59,0.2);animation:pulse 3s ease-in-out infinite}
+.shield-bg svg{width:52px;height:52px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:0.9}
+@keyframes pulse{0%,100%{transform:scale(1);box-shadow:0 8px 40px rgba(30,77,140,0.3),0 2px 12px rgba(200,41,59,0.2)}50%{transform:scale(1.03);box-shadow:0 12px 50px rgba(30,77,140,0.4),0 4px 16px rgba(200,41,59,0.3)}}
+h1{font-size:22px;font-weight:800;letter-spacing:-0.5px;line-height:1.2;margin-bottom:10px;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.sub{font-size:14px;line-height:1.5;color:var(--t2);margin-bottom:32px}
+.btn-retry{display:inline-flex;align-items:center;gap:8px;height:52px;padding:0 32px;border:none;border-radius:16px;background:var(--grad);color:#fff;font-size:15px;font-weight:700;letter-spacing:-0.2px;cursor:pointer;box-shadow:0 4px 20px rgba(30,77,140,0.35);transition:transform 0.15s,box-shadow 0.15s;-webkit-tap-highlight-color:transparent}
+.btn-retry:active{transform:scale(0.96);box-shadow:0 2px 12px rgba(30,77,140,0.25)}
+.btn-retry svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.cached-section{margin-top:36px;text-align:left}
+.cached-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--t2);margin-bottom:12px}
+.cached-list{display:grid;gap:8px}
+.cached-item{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:14px;background:var(--card);border:1px solid var(--border);color:var(--t1);text-decoration:none;font-size:13px;font-weight:600;transition:background 0.15s}
+.cached-item:active{background:rgba(255,255,255,0.08)}
+.cached-item .dot{width:8px;height:8px;border-radius:50%;background:var(--grad);flex-shrink:0}
+.version{position:fixed;bottom:env(safe-area-inset-bottom,12px);left:0;right:0;text-align:center;font-size:10px;color:rgba(255,255,255,0.15);letter-spacing:0.5px;z-index:1}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="shield">
+    <div class="shield-bg">
+      <!-- Wi-Fi off icon -->
+      <svg viewBox="0 0 24 24">
+        <line x1="2" y1="2" x2="22" y2="22"/>
+        <path d="M8.5 16.5a5 5 0 0 1 7 0"/>
+        <path d="M2 8.82a15 15 0 0 1 4.17-2.65"/>
+        <path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/>
+        <path d="M16.85 11.25a10 10 0 0 1 2.22 1.68"/>
+        <path d="M5 12.86a10 10 0 0 1 5.17-2.95"/>
+        <circle cx="12" cy="20" r="1"/>
+      </svg>
+    </div>
+  </div>
+  <h1>Связь с Мидгардом потеряна</h1>
+  <p class="sub">Проверьте подключение к интернету и попробуйте снова. Кэшированные страницы доступны ниже.</p>
+  <button class="btn-retry" onclick="location.reload()">
+    <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    Попробовать снова
+  </button>
+
+  <div class="cached-section" id="cachedSection" style="display:none">
+    <div class="cached-title">Доступны офлайн</div>
+    <div class="cached-list" id="cachedList"></div>
+  </div>
+</div>
+
+<div class="version" id="swVersion"></div>
+
+<script>
+(function() {
+  // Show cached pages
+  var PAGES = [
+    { url: '#/home', label: 'Главная' },
+    { url: '#/tasks', label: 'Задачи' },
+    { url: '#/tenders', label: 'Тендеры' },
+    { url: '#/customers', label: 'Клиенты' },
+    { url: '#/approvals', label: 'Согласования' },
+    { url: '#/messenger', label: 'Мессенджер' },
+    { url: '#/profile', label: 'Профиль' }
+  ];
+
+  if ('caches' in window) {
+    caches.keys().then(function(names) {
+      var shellCache = names.find(function(n) { return n.startsWith('asgard-crm-shell-'); });
+      if (shellCache) {
+        var section = document.getElementById('cachedSection');
+        var list = document.getElementById('cachedList');
+        section.style.display = 'block';
+        PAGES.forEach(function(p) {
+          var a = document.createElement('a');
+          a.href = '/' + p.url;
+          a.className = 'cached-item';
+          a.innerHTML = '<span class="dot"></span>' + p.label;
+          list.appendChild(a);
+        });
+      }
+    });
+  }
+
+  // Show SW version
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    var mc = new MessageChannel();
+    mc.port1.onmessage = function(e) {
+      if (e.data && e.data.shellVersion) {
+        document.getElementById('swVersion').textContent = 'ASGARD CRM v' + e.data.shellVersion;
+      }
+    };
+    navigator.serviceWorker.controller.postMessage('getVersion', [mc.port2]);
+  }
+})();
+</script>
+</body>
+</html>
