@@ -148,10 +148,18 @@ function createMeetingSheet() {
     submitLabel: 'Создать совещание',
     onSubmit: async (data) => {
       try {
-        await API.fetch('/meetings', { method: 'POST', body: data });
+        var body = {
+          title: data.topic,
+          start_time: data.date && data.time ? data.date + 'T' + data.time : data.date,
+          location: data.location,
+          description: data.description,
+        };
+        await API.fetch('/meetings', { method: 'POST', body: body });
         M.Toast({ message: 'Совещание создано', type: 'success' });
+        document.querySelectorAll('.asgard-sheet-overlay').forEach(function (o) { o.remove(); });
+        Utils.unlockScroll();
         Router.navigate('/meetings');
-      } catch (_) { M.Toast({ message: 'Ошибка', type: 'error' }); }
+      } catch (e) { M.Toast({ message: 'Ошибка: ' + (e.message || 'сервер недоступен'), type: 'error' }); }
     },
   }));
   M.BottomSheet({ title: '📹 Новое совещание', content, fullscreen: true });

@@ -177,7 +177,7 @@ var TasksPage = {
       rowEl.children[1].style.textDecoration = item.is_done ? 'line-through' : 'none';
       rowEl.children[1].style.color = item.is_done ? t.textTer : t.text;
       try { navigator.vibrate(10); } catch (_) {}
-      API.fetch('/tasks/todo', { method: 'PUT', body: { id: item.id, is_done: item.is_done } }).catch(function () {});
+      API.fetch('/tasks/todo/' + item.id + '/toggle', { method: 'PUT' }).catch(function () {});
     }
 
     function openTaskDetail(task) {

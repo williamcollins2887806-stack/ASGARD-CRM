@@ -99,9 +99,9 @@ var TasksAdminPage = {
         btns.appendChild(M.FullWidthBtn({
           label: '✓ Закрыть задачу',
           onClick: function () {
-            API.fetch('/tasks/' + task.id, { method: 'PUT', body: { status: 'done' } })
-              .then(function () { M.Toast({ message: 'Задача закрыта', type: 'success' }); })
-              .catch(function (e) { M.Toast({ message: 'Ошибка: ' + e.message, type: 'error' }); });
+            API.fetch('/tasks/' + task.id + '/complete', { method: 'POST' })
+              .then(function () { M.Toast({ message: 'Задача закрыта', type: 'success' }); window.dispatchEvent(new Event('asgard:refresh')); })
+              .catch(function (e) { M.Toast({ message: 'Ошибка: ' + (e.message || 'сервер недоступен'), type: 'error' }); });
           },
         }));
         btns.appendChild(M.FullWidthBtn({

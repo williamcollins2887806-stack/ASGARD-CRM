@@ -211,7 +211,7 @@ function chatActionsSheet(chatId) {
   M.ActionSheet({
     title: 'Действия',
     actions: [
-      { icon: '🔇', label: 'Выключить уведомления', onClick: () => API.fetch('/chat-groups/' + chatId + '/mute', { method: 'POST' }).then(() => M.Toast({ message: 'Уведомления выключены', type: 'info' })) },
+      { icon: '🔇', label: 'Выключить уведомления', onClick: () => API.fetch('/chat-groups/' + chatId + '/mute', { method: 'POST' }).then(() => M.Toast({ message: 'Уведомления выключены', type: 'info' })).catch(() => M.Toast({ message: 'Ошибка', type: 'error' })) },
       { icon: '👥', label: 'Участники', onClick: () => Router.navigate('/messenger/' + chatId + '?tab=members') },
       { icon: '📎', label: 'Файлы', onClick: () => Router.navigate('/messenger/' + chatId + '?tab=files') },
     ],
