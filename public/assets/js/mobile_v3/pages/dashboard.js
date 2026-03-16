@@ -226,7 +226,7 @@ var DashboardPage = {
         try { widgetMod.render(content, state.user); }
         catch (e) {
           console.error('[Dashboard] refresh "' + wid + '" error:', e);
-          content.replaceChildren(M.Empty({ text: 'Ошибка', icon: '⚠️' }));
+          content.replaceChildren(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
         }
       }
     });

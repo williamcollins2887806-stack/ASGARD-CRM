@@ -169,7 +169,11 @@ const Router = (() => {
         }
       } catch (e) {
         console.error('[Router] Render error:', path, e);
-        newPage.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--text-sec)">Ошибка загрузки страницы</div>`;
+        if (typeof M !== 'undefined' && M.ErrorBanner) {
+          newPage.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(path, { replace: true }); } }));
+        } else {
+          newPage.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-sec);font-size:13px">Не удалось загрузить</div>`;
+        }
       }
 
       // Transition old page out, new page in

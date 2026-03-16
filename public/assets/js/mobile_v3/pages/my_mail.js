@@ -45,7 +45,7 @@ const MyMailPage = {
         renderMails();
       } catch (e) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.Empty({ text: 'Не удалось загрузить почту', type: 'error' }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       }
     }
 

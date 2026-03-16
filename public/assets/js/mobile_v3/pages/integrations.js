@@ -59,7 +59,7 @@ var IntegrationsPage = {
         renderBankTab(contentWrap, stats, batches);
       }).catch(function () {
         contentWrap.replaceChildren();
-        contentWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' }));
+        contentWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       });
     }
 

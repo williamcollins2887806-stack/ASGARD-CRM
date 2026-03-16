@@ -61,7 +61,7 @@ const WarehousePage = {
         renderList('');
       } catch (_) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       }
     }
 

@@ -43,7 +43,7 @@ const MessengerPage = {
         renderList('');
       } catch (e) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.Empty({ text: 'Не удалось загрузить чаты', type: 'error' }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       }
     }
 
@@ -167,7 +167,7 @@ async function renderChat(chatId) {
       setTimeout(() => { messagesWrap.scrollTop = messagesWrap.scrollHeight; }, 100);
     }
   } catch (_) {
-    messagesWrap.appendChild(M.Empty({ text: 'Ошибка загрузки сообщений', type: 'error' }));
+    messagesWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
   }
 
   // Composer

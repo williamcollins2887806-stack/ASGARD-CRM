@@ -41,7 +41,7 @@ var SettingsPage = {
         renderSettings(contentWrap, settings, refs);
       }).catch(function () {
         contentWrap.replaceChildren();
-        contentWrap.appendChild(M.Empty({ text: 'Ошибка загрузки настроек', icon: '⚠️' }));
+        contentWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       });
     }, 0);
 

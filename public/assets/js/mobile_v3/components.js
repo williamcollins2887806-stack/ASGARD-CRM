@@ -3059,6 +3059,51 @@ const M = (() => {
   }
 
   /* ══════════════════════════════════════════════
+     ERROR BANNER — Sber-style compact retry strip
+     ══════════════════════════════════════════════ */
+  function ErrorBanner({ text, onRetry } = {}) {
+    const banner = el('div', {
+      className: 'asgard-error-banner',
+      style: {
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '12px 16px', borderRadius: '12px',
+        background: `color-mix(in srgb, ${DS.t.red} 8%, transparent)`,
+        margin: '8px 0',
+      },
+    });
+
+    // WiFi-off icon
+    const icon = el('div', {
+      style: { width: '20px', height: '20px', color: DS.t.red, flexShrink: '0', opacity: '0.7' },
+    });
+    icon.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M13.83 10.17A10 10 0 0 1 19 12.86"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+    banner.appendChild(icon);
+
+    // Text
+    banner.appendChild(el('div', {
+      style: { ...DS.font('sm'), color: DS.t.textSec, flex: '1' },
+      textContent: text || 'Не удалось загрузить',
+    }));
+
+    // Retry button
+    if (onRetry) {
+      const btn = el('button', {
+        style: {
+          ...DS.font('sm'), fontWeight: '600', color: DS.t.blue,
+          background: 'none', border: 'none', padding: '4px 8px',
+          cursor: 'pointer', flexShrink: '0', borderRadius: '8px',
+          WebkitTapHighlightColor: 'transparent',
+        },
+        textContent: 'Повторить',
+      });
+      btn.addEventListener('click', onRetry);
+      banner.appendChild(btn);
+    }
+
+    return banner;
+  }
+
+  /* ══════════════════════════════════════════════
      PUBLIC API
      ══════════════════════════════════════════════ */
   return {
@@ -3102,6 +3147,7 @@ const M = (() => {
     SwipeCard,
     DonutChart,
     BurgerMenu,
+    ErrorBanner,
   };
 })();
 
