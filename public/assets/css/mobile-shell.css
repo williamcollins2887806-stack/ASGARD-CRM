@@ -231,3 +231,50 @@
 .asgard-no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ═══ Huginn animations (18D-2) ═══ */
+
+/* ── Message slide in ── */
+.asgard-msg-enter {
+  animation: asgard-msg-slide-in 0.2s ease-out;
+}
+@keyframes asgard-msg-slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Reaction popup ── */
+.asgard-react-popup {
+  animation: asgard-react-pop 0.15s ease-out;
+}
+@keyframes asgard-react-pop {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ── Voice message waveform placeholder ── */
+.asgard-voice-wave {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 20px;
+}
+.asgard-voice-wave span {
+  width: 2px;
+  background: rgba(255,255,255,0.5);
+  border-radius: 1px;
+}
+
+/* ── Swipe reply hint ── */
+.asgard-chat-row {
+  transition: transform 0.15s ease;
+}
+
+/* ── Composer input override — disable shell constraints ── */
+.asgard-shell .asgard-composer input,
+.asgard-shell .asgard-messenger-page input[type="text"] {
+  min-height: 36px !important;
+  padding: 0 12px 0 36px !important;
+  font-size: 14px !important;
+  border-radius: 12px !important;
+}

@@ -350,98 +350,9 @@ const Layout = (() => {
     });
   }
 
+  // Мимир теперь на отдельной странице /mimir (pages/mimir.js)
   function openMimirChat() {
-    if (typeof M === 'undefined' || !M.BottomSheet) return;
-
-    const chatContent = document.createElement('div');
-    Object.assign(chatContent.style, { display: 'flex', flexDirection: 'column', height: '100%' });
-
-    // Заголовок
-    const header = Utils.el('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexShrink: 0 } });
-    header.appendChild(Utils.el('div', { style: {
-      width: '36px', height: '36px', borderRadius: '50%', background: 'var(--hero-grad)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px',
-    } }, '⚡'));
-    const headerInfo = Utils.el('div');
-    headerInfo.appendChild(Utils.el('div', { style: Object.assign({}, DS.font('md'), { color: 'var(--text)', fontWeight: 700 }) }, 'Мимир'));
-    headerInfo.appendChild(Utils.el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-sec)' }) }, 'AI-ассистент ASGARD'));
-    header.appendChild(headerInfo);
-    chatContent.appendChild(header);
-
-    // Messages area
-    const messagesWrap = Utils.el('div', { style: {
-      flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px',
-      padding: '8px 0', WebkitOverflowScrolling: 'touch',
-    } });
-    chatContent.appendChild(messagesWrap);
-
-    let _convId = null;
-    let _sending = false;
-
-    // Приветственное сообщение
-    if (typeof M.ChatBubble === 'function') {
-      messagesWrap.appendChild(M.ChatBubble({
-        text: 'Привет! Я Мимир — AI-ассистент ASGARD CRM. Спроси меня о тендерах, задачах, сотрудниках, финансах или попроси найти информацию.',
-        mine: false, name: 'Мимир',
-      }));
-    }
-
-    // Composer
-    if (typeof M.MessageComposer === 'function') {
-      chatContent.appendChild(M.MessageComposer({
-        placeholder: 'Спросите Мимира...',
-        onSend: async (text) => {
-          if (_sending || !text.trim()) return;
-          _sending = true;
-
-          // Show user message
-          messagesWrap.appendChild(M.ChatBubble({ text: text, mine: true }));
-          messagesWrap.scrollTop = messagesWrap.scrollHeight;
-
-          // Show typing indicator — animated dots
-          const typing = Utils.el('div', { className: 'asgard-mimir-typing', style: {
-            alignSelf: 'flex-start', maxWidth: '80%', padding: '12px 18px',
-            background: 'var(--surface-alt)', borderRadius: '16px 16px 16px 4px',
-          } });
-          const dots = Utils.el('div', { className: 'asgard-typing-dots' });
-          dots.appendChild(Utils.el('span'));
-          dots.appendChild(Utils.el('span'));
-          dots.appendChild(Utils.el('span'));
-          typing.appendChild(dots);
-          messagesWrap.appendChild(typing);
-          messagesWrap.scrollTop = messagesWrap.scrollHeight;
-
-          try {
-            const resp = await API.fetch('/mimir/chat', {
-              method: 'POST',
-              body: { message: text, conversation_id: _convId },
-            });
-            typing.remove();
-
-            if (resp.success && resp.response) {
-              _convId = resp.conversation_id || _convId;
-              messagesWrap.appendChild(M.ChatBubble({
-                text: resp.response, mine: false, name: 'Мимир',
-              }));
-            } else {
-              messagesWrap.appendChild(M.ChatBubble({
-                text: resp.message || 'Не удалось получить ответ', mine: false, name: 'Мимир',
-              }));
-            }
-          } catch (e) {
-            typing.remove();
-            var errMsg = (e.body && e.body.message) || e.message || 'Ошибка связи';
-            messagesWrap.appendChild(M.ChatBubble({
-              text: 'Ошибка: ' + errMsg, mine: false, name: 'Мимир',
-            }));
-          }
-          messagesWrap.scrollTop = messagesWrap.scrollHeight;
-          _sending = false;
-        }
-      }));
-    }
-
-    M.BottomSheet({ title: '⚡ Мимир', content: chatContent, fullscreen: true });
+    Router.navigate('/mimir');
   }
   window.openMimirChat = openMimirChat;
 
@@ -450,7 +361,7 @@ const Layout = (() => {
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', label: 'Главная', href: '/home' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>', label: 'Задачи', href: '/tasks' },
       { type: 'fab', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>', label: 'Хугин', href: '/messenger' },
-      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 000 20 14.5 14.5 0 000-20"/><path d="M2 12h20"/></svg>', label: 'Мимир', href: '/mimir-page', onClick: function() { if (typeof openMimirChat === 'function') openMimirChat(); } },
+      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 000 20 14.5 14.5 0 000-20"/><path d="M2 12h20"/></svg>', label: 'Мимир', href: '/mimir' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>', label: 'Ещё', href: '/more' },
     ];
   }
@@ -1317,11 +1228,10 @@ const App = (() => {
       Router.register('/register', { render: () => RegisterPage.render() });
     }
 
-    // Mimir page — fallback route that opens the Mimir chat bottom sheet
+    // Mimir page — redirect legacy route to /mimir
     Router.register('/mimir-page', {
       render: function () {
-        if (typeof openMimirChat === 'function') openMimirChat();
-        Router.navigate('/home', { replace: true });
+        Router.navigate('/mimir', { replace: true });
         return document.createElement('div');
       }
     });
