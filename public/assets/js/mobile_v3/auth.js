@@ -77,6 +77,7 @@ const WelcomePage = {
     for (let i = 0; i < 24; i++) {
       var r = el('span');
       r.textContent = runes[i % runes.length];
+      var drift = (6 + Math.random() * 14).toFixed(1);
       Object.assign(r.style, {
         position: 'absolute',
         left: Math.random() * 100 + '%',
@@ -84,7 +85,8 @@ const WelcomePage = {
         fontSize: (20 + Math.random() * 40) + 'px',
         color: '#fff',
         fontWeight: '300',
-        transform: 'rotate(' + (Math.random() * 40 - 20) + 'deg)',
+        animation: 'asgard-rune-drift ' + drift + 's ease-in-out infinite alternate',
+        animationDelay: (Math.random() * 8).toFixed(1) + 's',
       });
       runesLayer.appendChild(r);
     }
@@ -648,7 +650,7 @@ const LoginPage = {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: 'pointer', WebkitTapHighlightColor: 'transparent', userSelect: 'none',
         WebkitAppearance: 'none', appearance: 'none', padding: '0', margin: '0',
-        transition: 'all 0.12s ease', boxSizing: 'border-box', flex: '0 0 72px'
+        transition: 'all 0.12s ease', boxSizing: 'border-box', flex: '0 0 auto'
       });
 
       if (!key) {

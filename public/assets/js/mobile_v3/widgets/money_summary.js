@@ -56,7 +56,7 @@ window.MobileWidgets.money_summary = {
         }
         requestAnimationFrame(animateCount);
 
-        /* sparkline — monthly data approximation */
+        /* sparkline — real monthly revenue data */
         var sparkData = [];
         for (var m = 0; m < 12; m++) {
           var mRev = yWorks.filter(function (x) {
@@ -85,17 +85,6 @@ window.MobileWidgets.money_summary = {
 
         hero.addEventListener('click', function () { Router.navigate('/finances'); });
         container.replaceChildren(hero);
-        /* remove parent card styles — hero IS the card */
-        var parentCard = container.closest('[data-wid="money_summary"]');
-        if (parentCard) {
-          parentCard.style.background = 'transparent';
-          parentCard.style.border = 'none';
-          parentCard.style.boxShadow = 'none';
-          parentCard.style.padding = '0';
-          var hdr = parentCard.querySelector('div:first-child');
-          if (hdr && hdr.querySelector('span')) hdr.style.display = 'none';
-          container.style.padding = '0';
-        }
       }).catch(function (e) { console.error('[money_summary]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }

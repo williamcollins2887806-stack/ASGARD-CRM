@@ -12,16 +12,40 @@ window.MobileWidgets.kpi_summary = {
         API.fetchCached('estimates', '/data/estimates')
       ]).then(function (res) {
         var y = new Date().getFullYear();
-        var tenders = (res[0] || []).filter(function (x) { return String(x.year) === String(y) || (x.period || '').indexOf(String(y)) === 0; });
-        var works = (res[1] || []).filter(function (w) { return ['Завершена','Работы сдали','Закрыт'].indexOf(w.work_status) === -1; });
-        var margins = (res[2] || []).filter(function (e) { return e.margin_percent; }).map(function (e) { return Number(e.margin_percent) || 0; });
+        var allTenders = res[0] || [];
+        var tenders = allTenders.filter(function (x) { return String(x.year) === String(y) || (x.period || '').indexOf(String(y)) === 0; });
+        var allWorks = res[1] || [];
+        var works = allWorks.filter(function (w) { return ['Завершена','Работы сдали','Закрыт'].indexOf(w.work_status) === -1; });
+        var allEstimates = res[2] || [];
+        var margins = allEstimates.filter(function (e) { return e.margin_percent; }).map(function (e) { return Number(e.margin_percent) || 0; });
         var avgMargin = margins.length ? Math.round(margins.reduce(function (a, b) { return a + b; }, 0) / margins.length) : 0;
 
+        /* Build real monthly sparkline data */
+        function monthlyCount(arr, dateField) {
+          var counts = [0,0,0,0,0,0,0,0,0,0,0,0];
+          arr.forEach(function (item) {
+            var d = item[dateField] || item.created_at;
+            if (d) { var m = new Date(d).getMonth(); counts[m]++; }
+          });
+          return counts;
+        }
+        var tendersByMonth = monthlyCount(tenders, 'created_at');
+        var worksByMonth = monthlyCount(allWorks, 'start_fact');
+        var estByMonth = monthlyCount(allEstimates, 'created_at');
+        /* margin by month — average per-month from estimates with margin */
+        var marginByMonth = [];
+        for (var mi = 0; mi < 12; mi++) {
+          var mMargins = allEstimates.filter(function (e) {
+            var d = e.created_at; return d && new Date(d).getMonth() === mi && e.margin_percent;
+          }).map(function (e) { return Number(e.margin_percent) || 0; });
+          marginByMonth.push(mMargins.length ? Math.round(mMargins.reduce(function (a, b) { return a + b; }, 0) / mMargins.length) : 0);
+        }
+
         var items = [
-          { value: tenders.length, label: 'Тендеров', color: t.blue, data: [3,5,8,12,9,15,tenders.length] },
-          { value: works.length, label: 'В работе', color: t.green, data: [2,4,6,5,8,7,works.length] },
-          { value: avgMargin + '%', label: 'Ср. маржа', color: t.gold, data: [10,15,12,18,14,20,avgMargin] },
-          { value: (res[2] || []).length, label: 'Просчётов', color: t.orange, data: [1,3,2,5,4,6,(res[2]||[]).length] },
+          { value: tenders.length, label: 'Тендеров', color: t.blue, data: tendersByMonth },
+          { value: works.length, label: 'В работе', color: t.green, data: worksByMonth },
+          { value: avgMargin + '%', label: 'Ср. маржа', color: t.gold, data: marginByMonth },
+          { value: allEstimates.length, label: 'Просчётов', color: t.orange, data: estByMonth },
         ];
 
         /* carousel container */

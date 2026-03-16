@@ -1317,6 +1317,15 @@ const App = (() => {
       Router.register('/register', { render: () => RegisterPage.render() });
     }
 
+    // Mimir page — fallback route that opens the Mimir chat bottom sheet
+    Router.register('/mimir-page', {
+      render: function () {
+        if (typeof openMimirChat === 'function') openMimirChat();
+        Router.navigate('/home', { replace: true });
+        return document.createElement('div');
+      }
+    });
+
     // Home page — registered by dashboard.js via Router.register('/home', DashboardPage)
 
     // Hide tab bar on auth pages, show on app pages

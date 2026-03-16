@@ -10,7 +10,7 @@ var DashboardPage = {
     notifications:    { name: 'Уведомления',          icon: '🔔', size: 'normal', roles: ['*'] },
     my_works:         { name: 'Мои работы',            icon: '🔧', size: 'normal', roles: ['PM','HEAD_PM'] },
     tenders_funnel:   { name: 'Воронка',               icon: '📊', size: 'normal', roles: ['ADMIN','TO','HEAD_TO','PM','DIRECTOR_*'] },
-    money_summary:    { name: 'Финансы',               icon: '💰', size: 'normal', roles: ['ADMIN','DIRECTOR_*'] },
+    money_summary:    { name: 'Финансы',               icon: '💰', size: 'normal', roles: ['ADMIN','DIRECTOR_*'], hero: true },
     equipment_value:  { name: 'Стоимость ТМЦ',        icon: '📦', size: 'normal', roles: ['ADMIN','CHIEF_ENGINEER','DIRECTOR_*'] },
     birthdays:        { name: 'Дни рождения',          icon: '🎂', size: 'normal', roles: ['*'] },
     approvals:        { name: 'Согласования',          icon: '✍️', size: 'normal', roles: ['ADMIN','HEAD_PM','DIRECTOR_*'] },
@@ -165,33 +165,36 @@ var DashboardPage = {
       if (!wType) return;
       if (!self._roleMatch(user.role, wType.roles)) return;
 
-      // Card wrapper — Sber-style depth
+      // Card wrapper — Sber-style depth (hero widgets get transparent wrapper)
       var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      var isHero = !!wType.hero;
       var card = el('div', {
         'data-wid': widgetId,
         'data-idx': '' + index,
         style: {
-          background: t.surface,
-          borderRadius: '16px',
-          border: isDark ? '0.5px solid rgba(255,255,255,0.06)' : 'none',
+          background: isHero ? 'transparent' : t.surface,
+          borderRadius: isHero ? '0' : '16px',
+          border: isHero ? 'none' : (isDark ? '0.5px solid rgba(255,255,255,0.06)' : 'none'),
           overflow: 'hidden',
-          boxShadow: isDark
+          boxShadow: isHero ? 'none' : (isDark
             ? '0 1px 2px rgba(0,0,0,0.2), 0 2px 8px rgba(0,0,0,0.15)'
-            : '0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.06)',
+            : '0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.06)'),
           transition: 'transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease'
         }
       });
 
-      // Widget header bar — clean Sber-style
-      var hdr = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '14px 16px 0' } });
-      hdr.appendChild(el('span', { style: { fontSize: '14px', lineHeight: '1' } }, wType.icon));
-      hdr.appendChild(el('span', { style: Object.assign({}, DS.font('sm'), { color: t.textSec, flex: '1', fontWeight: '600', letterSpacing: '0.2px' }) }, wType.name));
-      card.appendChild(hdr);
+      // Widget header bar — skip for hero widgets (they render their own header)
+      if (!isHero) {
+        var hdr = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '14px 16px 0' } });
+        hdr.appendChild(el('span', { style: { fontSize: '14px', lineHeight: '1' } }, wType.icon));
+        hdr.appendChild(el('span', { style: Object.assign({}, DS.font('sm'), { color: t.textSec, flex: '1', fontWeight: '600', letterSpacing: '0.2px' }) }, wType.name));
+        card.appendChild(hdr);
+      }
 
       // Widget content zone
       var content = el('div', {
         className: 'asgard-widget-body',
-        style: { padding: '12px 16px 16px', minHeight: '60px' }
+        style: { padding: isHero ? '0' : '12px 16px 16px', minHeight: isHero ? '0' : '60px' }
       });
       content.appendChild(M.Skeleton({ type: 'card', count: 1 }));
       card.appendChild(content);
