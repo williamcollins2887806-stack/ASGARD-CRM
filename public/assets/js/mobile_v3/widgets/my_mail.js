@@ -9,7 +9,7 @@ window.MobileWidgets.my_mail = {
       API.fetch('/my-mail/inbox?limit=5').then(function (data) {
         var emails = (data && data.emails) || (data && data.items) || (Array.isArray(data) ? data : []);
         if (!emails.length) { container.replaceChildren(M.Empty({ text: 'Нет писем', icon: '📧' })); return; }
-        var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '0', borderRadius: '14px', border: '1px solid ' + t.border, overflow: 'hidden', background: t.surface } });
+        var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '0', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg3, ' + t.surfaceAlt + ')' } });
         emails.slice(0, 5).forEach(function (m, i) {
           var row = el('div', { style: { display: 'flex', gap: '10px', padding: '12px 14px', borderBottom: i < Math.min(emails.length, 5) - 1 ? '1px solid ' + t.border : 'none', alignItems: 'center' } });
           row.appendChild(el('div', { style: { width: '8px', height: '8px', borderRadius: '50%', background: m.is_read ? 'transparent' : t.blue, flexShrink: '0' } }));
@@ -23,7 +23,7 @@ window.MobileWidgets.my_mail = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/my-mail'); };
-      }).catch(function (e) { console.error('[my_mail]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[my_mail]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

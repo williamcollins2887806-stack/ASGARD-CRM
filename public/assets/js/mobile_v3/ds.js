@@ -877,6 +877,36 @@ html.asgard-mobile input:-webkit-autofill:focus {
   caret-color: var(--text, #F5F5F7);
 }
 
+/* ═══════ SBER-STYLE POLISH ═══════ */
+
+/* Widget card tap feedback */
+html.asgard-mobile .asgard-dash-grid > [data-wid]:active {
+  transform: scale(0.98) !important;
+  transition: transform 0.1s ease !important;
+}
+
+/* Dashboard subtle bg */
+html.asgard-mobile .asgard-dash-grid {
+  padding-bottom: 80px;
+}
+
+/* Compact empty states */
+html.asgard-mobile .asgard-empty {
+  max-height: 120px !important;
+  padding: 20px 16px !important;
+}
+
+/* Auth pages — ensure no bleed-through */
+html.asgard-mobile body.auth-active .asgard-content {
+  overflow: hidden !important;
+}
+
+/* Widget card header — consistent style */
+html.asgard-mobile .asgard-widget-body {
+  padding: 12px 16px 14px;
+  min-height: 50px;
+}
+
     `;
   }
 

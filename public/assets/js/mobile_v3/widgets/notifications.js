@@ -44,7 +44,7 @@ window.MobileWidgets.notifications = {
         container.onclick = function () { Router.navigate('/alerts'); };
       }).catch(function (e) {
         console.error('[notifications]', e);
-        container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' }));
+        container.replaceChildren(M.Empty({ text: 'Нет данных' }));
       });
     }
   }

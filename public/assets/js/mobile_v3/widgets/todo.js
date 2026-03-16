@@ -31,7 +31,7 @@ window.MobileWidgets.todo = {
           list.appendChild(row);
         });
         container.replaceChildren(list);
-      }).catch(function (e) { console.error('[todo]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[todo]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

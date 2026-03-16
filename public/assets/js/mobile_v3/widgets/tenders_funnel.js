@@ -34,7 +34,7 @@ window.MobileWidgets.tenders_funnel = {
         counts.forEach(function (s, i) {
           var pct = Math.max(Math.round((s.c / maxC) * 100), 8);
           var row = el('div', { style: Object.assign({ display: 'flex', alignItems: 'center', gap: '10px' }, DS.anim(i * 0.05)) });
-          var bar = el('div', { style: { height: '28px', borderRadius: '8px', width: pct + '%', background: s.cl, display: 'flex', alignItems: 'center', padding: '0 10px', minWidth: '40px', transition: 'width 0.5s ease' } });
+          var bar = el('div', { style: { height: '28px', borderRadius: '8px', width: pct + '%', background: s.cl, opacity: '0.85', display: 'flex', alignItems: 'center', padding: '0 10px', minWidth: '40px', transition: 'width 0.5s ease' } });
           bar.appendChild(el('span', { style: { fontSize: '11px', fontWeight: '700', color: '#fff' } }, '' + s.c));
           row.appendChild(bar);
           row.appendChild(el('span', { style: Object.assign({}, DS.font('xs'), { color: t.textSec }) }, s.l));
@@ -43,7 +43,7 @@ window.MobileWidgets.tenders_funnel = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/funnel'); };
-      }).catch(function (e) { console.error('[tenders_funnel]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[tenders_funnel]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

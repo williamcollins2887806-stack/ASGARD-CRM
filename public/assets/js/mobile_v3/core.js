@@ -1145,11 +1145,11 @@ const App = (() => {
 
     // Auth guard
     Router.addGuard((path) => {
-      const publicRoutes = ['/login', '/register', '/welcome', '/test', '/test-table'];
+      const publicRoutes = ['/login', '/register', '/welcome', '/test', '/test-table', '/test2'];
       if (publicRoutes.includes(path)) return true;
       const user = Store.get('user');
       if (!user || !user.token) {
-        Router.navigate('/login', { replace: true });
+        Router.navigate('/welcome', { replace: true });
         return false;
       }
       return true;
@@ -1194,23 +1194,7 @@ const App = (() => {
       Router.register('/register', { render: () => RegisterPage.render() });
     }
 
-    // Home page placeholder (will be replaced in Session 3)
-    Router.register('/home', {
-      render: () => {
-        if (typeof HomePage !== 'undefined') return HomePage.render();
-        const placeholder = document.createElement('div');
-        placeholder.style.cssText = 'padding:60px 20px;text-align:center;';
-        placeholder.innerHTML = `
-          <div style="font-size:48px;margin-bottom:16px;">⚔️</div>
-          <div style="color:var(--text);font-size:20px;font-weight:700;margin-bottom:8px;">ASGARD CRM</div>
-          <div style="color:var(--text-sec);font-size:14px;">Главная страница — Сессия 3</div>
-          <div style="margin-top:24px;">
-            <a href="#/test" style="color:var(--blue);font-size:14px;text-decoration:none;">Открыть витрину компонентов →</a>
-          </div>
-        `;
-        return placeholder;
-      }
-    });
+    // Home page — registered by dashboard.js via Router.register('/home', DashboardPage)
 
     // Hide tab bar on auth pages, show on app pages
     window.addEventListener('asgard:route', (e) => {

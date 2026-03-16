@@ -33,7 +33,7 @@ window.MobileWidgets.money_summary = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/finances'); };
-      }).catch(function (e) { console.error('[money_summary]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[money_summary]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

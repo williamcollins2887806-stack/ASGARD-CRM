@@ -295,5 +295,4 @@
   window.MobileMenuSections = MENU_SECTIONS;
   window.MobileMatchRole = matchRole;
 
-  console.log('[MobileRouter] Burger menu registered · /more');
 })();

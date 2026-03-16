@@ -42,7 +42,7 @@ window.MobileWidgets.team_workload = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/pm-analytics'); };
-      }).catch(function (e) { console.error('[team_workload]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[team_workload]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

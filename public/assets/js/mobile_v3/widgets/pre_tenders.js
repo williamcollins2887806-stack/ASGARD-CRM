@@ -33,7 +33,7 @@ window.MobileWidgets.pre_tenders = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/pre-tenders'); };
-      }).catch(function (e) { console.error('[pre_tenders]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[pre_tenders]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

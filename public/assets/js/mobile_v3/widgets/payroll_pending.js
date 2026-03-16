@@ -34,7 +34,7 @@ window.MobileWidgets.payroll_pending = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/payroll'); };
-      }).catch(function (e) { console.error('[payroll_pending]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[payroll_pending]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

@@ -685,7 +685,7 @@ const TestPage = {
     // ═══ FOOTER ═══
     page.appendChild(gap(24));
     const ft = el('div', { textAlign: 'center', padding: '24px 20px 40px', borderTop: '1px solid ' + t.border });
-    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer }, 'ASGARD CRM • Mobile v3.0 • Session 1.2'));
+    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer }, 'ASGARD CRM • Mobile v3.0'));
     ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, marginTop: '4px' }, '40 компонентов • 23 блока • 27 виджетов • 4 auth-экрана • Dark/Light'));
     page.appendChild(ft);
 

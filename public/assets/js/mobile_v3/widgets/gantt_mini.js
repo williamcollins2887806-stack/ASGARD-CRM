@@ -40,7 +40,7 @@ window.MobileWidgets.gantt_mini = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/gantt'); };
-      }).catch(function (e) { console.error('[gantt_mini]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[gantt_mini]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

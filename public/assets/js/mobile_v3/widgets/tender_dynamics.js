@@ -33,7 +33,7 @@ window.MobileWidgets.tender_dynamics = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/to-analytics'); };
-      }).catch(function (e) { console.error('[tender_dynamics]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[tender_dynamics]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

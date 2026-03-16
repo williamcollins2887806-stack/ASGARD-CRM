@@ -37,7 +37,7 @@ window.MobileWidgets.approvals = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/approvals'); };
-      }).catch(function (e) { console.error('[approvals]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[approvals]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

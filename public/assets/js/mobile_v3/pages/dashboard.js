@@ -1,6 +1,6 @@
 /**
  * ASGARD CRM — Mobile v3 / Dashboard
- * Сессия 3 — 27 виджетов, drag-drop, add/remove, pull-to-refresh
+ * 27 виджетов, drag-drop, add/remove, pull-to-refresh
  */
 var DashboardPage = {
 
@@ -125,8 +125,8 @@ var DashboardPage = {
       }]
     }));
 
-    // Grid
-    var grid = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px 16px' } });
+    // Grid — Sber-style compact
+    var grid = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px 12px' } });
     grid.className = 'asgard-dash-grid';
 
     // Skeletons
@@ -134,8 +134,7 @@ var DashboardPage = {
     page.appendChild(grid);
     state.grid = grid;
 
-    // FAB +
-    page.appendChild(M.FAB({ icon: '+', onClick: function () { self._showAddSheet(); } }));
+    // FAB removed — "+" already in header actions
 
     // Fire-and-forget: load real layout → render widgets
     self._loadLayout(user.id, user.role).then(function (layout) {
@@ -166,23 +165,27 @@ var DashboardPage = {
       if (!wType) return;
       if (!self._roleMatch(user.role, wType.roles)) return;
 
-      // Card wrapper
+      // Card wrapper — Sber-style depth
+      var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
       var card = el('div', {
         'data-wid': widgetId,
         'data-idx': '' + index,
         style: {
           background: t.surface,
-          borderRadius: '18px',
-          border: '1px solid ' + t.border,
+          borderRadius: '16px',
+          border: isDark ? '0.5px solid rgba(255,255,255,0.06)' : 'none',
           overflow: 'hidden',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease'
+          boxShadow: isDark
+            ? '0 1px 2px rgba(0,0,0,0.2), 0 2px 8px rgba(0,0,0,0.15)'
+            : '0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.06)',
+          transition: 'transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease'
         }
       });
 
-      // Widget header bar
-      var hdr = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px 0' } });
-      hdr.appendChild(el('span', { style: { fontSize: '16px' } }, wType.icon));
-      hdr.appendChild(el('span', { style: Object.assign({}, DS.font('sm'), { color: t.textSec, flex: '1' }) }, wType.name));
+      // Widget header bar — clean Sber-style
+      var hdr = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '14px 16px 0' } });
+      hdr.appendChild(el('span', { style: { fontSize: '14px', lineHeight: '1' } }, wType.icon));
+      hdr.appendChild(el('span', { style: Object.assign({}, DS.font('sm'), { color: t.textSec, flex: '1', fontWeight: '600', letterSpacing: '0.2px' }) }, wType.name));
       card.appendChild(hdr);
 
       // Widget content zone

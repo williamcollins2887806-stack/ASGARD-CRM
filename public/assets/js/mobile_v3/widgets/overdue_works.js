@@ -39,7 +39,7 @@ window.MobileWidgets.overdue_works = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/all-works'); };
-      }).catch(function (e) { console.error('[overdue_works]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[overdue_works]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };
