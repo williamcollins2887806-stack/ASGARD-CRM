@@ -136,6 +136,7 @@ window.MobileFunnel = (function () {
 
     // Render columns
     function renderColumns() {
+      var t = DS.t; // always read fresh — survives theme changes
       scroll.replaceChildren();
       STAGES.forEach(function (stage, si) {
         var items = groups[stage.id] || [];
@@ -238,6 +239,7 @@ window.MobileFunnel = (function () {
 
     // Load data in background
     loadTenders().then(function (loaded) {
+      var t = DS.t; // read fresh at render time
       tenders = loaded;
       scroll.replaceChildren();
 

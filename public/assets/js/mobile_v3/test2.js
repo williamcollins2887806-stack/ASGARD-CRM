@@ -1147,12 +1147,26 @@
     }
   }
 
-  // /test2 redirects to /test (which embeds audit sections via MobileTest2.render)
+  // /test2 redirects to /test
   Router.register('/test2', { render: function () {
     Router.navigate('/test', { replace: true });
     return document.createElement('div');
   } });
 
-  // Expose render so /test can embed audit sections
-  window.MobileTest2 = { render: render };
+  // Public API: render() for standalone route, sections(page) for embedding into /test
+  window.MobileTest2 = {
+    render: render,
+    sections: function (page) {
+      page.appendChild(section1_Cards());
+      page.appendChild(section2_Pills());
+      page.appendChild(section3_Buttons());
+      page.appendChild(section4_Modals());
+      page.appendChild(section5_Forms());
+      page.appendChild(section6_Widgets());
+      page.appendChild(section7_Navigation());
+      page.appendChild(section8_Empty());
+      page.appendChild(section9_Loading());
+      page.appendChild(section10_Theme());
+    },
+  };
 })();

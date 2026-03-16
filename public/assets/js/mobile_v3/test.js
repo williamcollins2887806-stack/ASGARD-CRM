@@ -702,24 +702,13 @@ const TestPage = {
     };
     window.addEventListener('asgard:theme', themeHandler, { once: true });
 
-    // Append visual audit sections from /test2 after paint
-    setTimeout(function () {
-      if (window.MobileTest2 && typeof window.MobileTest2.render === 'function') {
-        var divider = document.createElement('div');
-        Object.assign(divider.style, { margin: '32px 20px 0', borderTop: '3px solid var(--red)', paddingTop: '20px' });
-        var divLabel = document.createElement('div');
-        Object.assign(divLabel.style, { fontSize: '11px', fontWeight: 700, letterSpacing: '2px', color: 'var(--red)', textTransform: 'uppercase', marginBottom: '4px' });
-        divLabel.textContent = 'ВИЗУАЛЬНЫЙ АУДИТ — СЕССИЯ 16';
-        divider.appendChild(divLabel);
-        page.appendChild(divider);
-        Promise.resolve(window.MobileTest2.render()).then(function (auditPage) {
-          if (!auditPage) return;
-          // Skip auditPage header/hero — append inner sections only
-          var children = Array.from(auditPage.children);
-          children.slice(2).forEach(function (child) { page.appendChild(child); });
-        });
-      }
-    }, 50);
+    // Append visual audit sections from test2 (synchronous, no hacks)
+    if (window.MobileTest2 && typeof window.MobileTest2.sections === 'function') {
+      const auditDivider = el('div', { borderTop: '3px solid var(--red)', margin: '32px 20px 8px', paddingTop: '16px' });
+      auditDivider.appendChild(el('div', { ...DS.font('xs'), color: t.red, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase' }, 'ВИЗУАЛЬНЫЙ АУДИТ — СЕССИЯ 16'));
+      page.appendChild(auditDivider);
+      window.MobileTest2.sections(page);
+    }
 
     return page;
   },
