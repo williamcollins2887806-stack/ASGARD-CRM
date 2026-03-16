@@ -47,7 +47,7 @@ var TrainingPage = {
       fab: { icon: '+', onClick: function () { openCreateForm(); } },
       onRefresh: function () {
         return API.fetch('/training-applications', { noCache: true }).catch(function () { return { items: [] }; }).then(function (resp) {
-          return resp.items || resp.data || (Array.isArray(resp) ? resp : []);
+          return API.extractRows(resp);
         }).catch(function (e) { M.Toast({ message: 'Ошибка загрузки', type: 'error' }); return []; });
       },
     });

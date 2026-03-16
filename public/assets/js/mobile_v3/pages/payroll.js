@@ -123,7 +123,7 @@ var PayrollPage = (function () {
 
         try {
           var data = await API.fetch('/payroll/sheets');
-          sheets = Array.isArray(data) ? data : (data.sheets || data.data || []);
+          sheets = API.extractRows(data);
 
           body.replaceChildren();
 

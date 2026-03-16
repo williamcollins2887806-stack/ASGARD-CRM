@@ -66,8 +66,8 @@ var TasksAdminPage = {
           API.fetch('/tasks/all', { noCache: true }),
           API.fetch('/users').catch(function () { return []; }),
         ]).then(function (results) {
-          allTasks = Array.isArray(results[0]) ? results[0] : (results[0].tasks || results[0].items || []);
-          users = Array.isArray(results[1]) ? results[1] : (results[1].users || results[1].items || []);
+          allTasks = API.extractRows(results[0]);
+          users = API.extractRows(results[1]);
           userMap = new Map(users.map(function (u) { return [u.id, u.name || u.fio || 'Без имени']; }));
           return allTasks;
         }).catch(function (e) {

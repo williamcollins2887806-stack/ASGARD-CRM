@@ -48,12 +48,12 @@ var HrRequestsPage = {
       fab: { icon: '+', onClick: function () { openCreateForm(); } },
       onRefresh: function () {
         return Promise.all([
-          API.fetch('/hr-requests', { noCache: true }).catch(function () { return API.fetch('/staff/requests', { noCache: true }).catch(function () { return { items: [] }; }); }),
+          API.fetch('/data/hr_requests', { noCache: true }),
           API.fetch('/users').catch(function () { return []; }),
         ]).then(function (results) {
           var resp = results[0];
-          var items = resp.items || resp.data || (Array.isArray(resp) ? resp : []);
-          users = Array.isArray(results[1]) ? results[1] : (results[1].users || []);
+          var items = API.extractRows(resp);
+          users = API.extractRows(results[1]);
           userMap = new Map(users.map(function (u) { return [u.id, u.name || u.fio || '—']; }));
           return items;
         }).catch(function (e) { M.Toast({ message: 'Ошибка загрузки', type: 'error' }); return []; });
@@ -84,14 +84,14 @@ var HrRequestsPage = {
       if (canApprove && item.status === 'pending') {
         var btns = el('div', { style: { display: 'flex', gap: '8px', marginTop: '16px' } });
         btns.appendChild(M.FullWidthBtn({ label: '✓ Одобрить', onClick: function () {
-          API.fetch('/hr-requests/' + item.id, { method: 'PUT', body: { status: 'approved' } })
+          API.fetch('/data/hr_requests/' + item.id, { method: 'PUT', body: { status: 'approved' } })
             .then(function () { M.Toast({ message: 'Одобрено', type: 'success' }); })
             .catch(function () { M.Toast({ message: 'Ошибка', type: 'error' }); });
         } }));
         btns.appendChild(M.FullWidthBtn({ label: '✕ Отклонить', variant: 'danger', onClick: function () {
           M.Confirm({ title: 'Отклонить заявку?', danger: true }).then(function (ok) {
             if (!ok) return;
-            API.fetch('/hr-requests/' + item.id, { method: 'PUT', body: { status: 'rejected' } })
+            API.fetch('/data/hr_requests/' + item.id, { method: 'PUT', body: { status: 'rejected' } })
               .then(function () { M.Toast({ message: 'Отклонено', type: 'success' }); })
               .catch(function () { M.Toast({ message: 'Ошибка', type: 'error' }); });
           });
@@ -114,7 +114,7 @@ var HrRequestsPage = {
         ],
         submitLabel: 'Создать заявку',
         onSubmit: function (data) {
-          API.fetch('/hr-requests', { method: 'POST', body: data })
+          API.fetch('/data/hr_requests', { method: 'POST', body: data })
             .then(function () { M.Toast({ message: 'Заявка создана', type: 'success' }); })
             .catch(function (e) { M.Toast({ message: 'Ошибка: ' + e.message, type: 'error' }); });
         },

@@ -40,8 +40,8 @@ const ContractsPage = {
       listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
-        const resp = await API.fetch('/contracts?limit=100');
-        items = Array.isArray(resp) ? resp : (resp.data || []);
+        const resp = await API.fetch('/data/contracts?limit=100');
+        items = API.extractRows(resp);
         renderList('');
       } catch (_) {
         listWrap.replaceChildren();

@@ -40,8 +40,7 @@ window.MobileFunnel = (function () {
     } catch (_) {}
     try {
       var data = await API.fetch('/data/tenders');
-      if (Array.isArray(data)) return data;
-      if (data && data.items) return data.items;
+      return API.extractRows(data);
     } catch (_) {}
     return [];
   }

@@ -142,7 +142,7 @@ var CashPage = (function () {
           ]);
           var balance = results[0] || {};
           var requests = results[1];
-          var reqList = Array.isArray(requests) ? requests : (requests.requests || requests.data || []);
+          var reqList = API.extractRows(requests);
 
           body.replaceChildren();
 

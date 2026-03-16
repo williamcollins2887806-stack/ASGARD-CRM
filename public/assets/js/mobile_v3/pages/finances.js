@@ -54,9 +54,9 @@ var FinancesPage = (function () {
             API.fetch('/expenses/office').catch(function () { return []; }),
           ]);
 
-          var worksList = Array.isArray(results[0]) ? results[0] : (results[0].works || results[0].data || []);
-          var wExpList = Array.isArray(results[1]) ? results[1] : (results[1].data || []);
-          var oExpList = Array.isArray(results[2]) ? results[2] : (results[2].data || []);
+          var worksList = API.extractRows(results[0]);
+          var wExpList = API.extractRows(results[1]);
+          var oExpList = API.extractRows(results[2]);
 
           body.replaceChildren();
 

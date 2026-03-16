@@ -38,8 +38,7 @@ window.MobilePreTenders = (function () {
   async function loadItems() {
     try {
       const data = await API.fetch('/pre-tenders');
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.items)) return data.items;
+      return API.extractRows(data);
     } catch (_) { /* fallback to IDB */ }
     try {
       if (typeof AsgardDB !== 'undefined') {

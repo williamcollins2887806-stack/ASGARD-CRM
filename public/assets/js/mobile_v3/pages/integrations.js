@@ -158,7 +158,7 @@ var IntegrationsPage = {
     // ═══ ТЕНДЕРНЫЕ ПЛОЩАДКИ ═══
     function loadPlatformsTab() {
       API.fetch('/integrations/platforms').catch(function () { return []; }).then(function (data) {
-        var platforms = Array.isArray(data) ? data : (data.platforms || []);
+        var platforms = API.extractRows(data);
         contentWrap.replaceChildren();
         renderPlatformsTab(contentWrap, platforms);
       });

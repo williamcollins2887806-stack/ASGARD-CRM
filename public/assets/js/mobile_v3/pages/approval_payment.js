@@ -81,7 +81,7 @@ window.MobileApprovalPayment = (function () {
 
       function renderItems(data) {
         listWrap.replaceChildren();
-        var items = (data && data.items) || [];
+        var items = API.extractRows(data);
         var cashBal = (data && data.cash_balance) || 0;
 
         // Обновить баланс

@@ -44,7 +44,7 @@ const InvoicesPage = {
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 5 }));
       try {
         const resp = await API.fetch('/invoices?limit=200');
-        items = Array.isArray(resp) ? resp : (resp.data || []);
+        items = API.extractRows(resp);
 
         // Stats
         statsWrap.replaceChildren();

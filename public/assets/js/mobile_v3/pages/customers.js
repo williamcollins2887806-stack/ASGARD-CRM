@@ -17,7 +17,7 @@ window.MobileCustomers = (function () {
     } catch (_) {}
     try {
       var data = await API.fetch('/data/customers');
-      var items = Array.isArray(data) ? data : (data && data.items ? data.items : []);
+      var items = API.extractRows(data);
       return items.sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
     } catch (_) {}
     return [];

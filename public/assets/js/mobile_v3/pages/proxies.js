@@ -33,8 +33,8 @@ const ProxiesPage = {
       listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
-        const resp = await API.fetch('/proxies?limit=100');
-        items = Array.isArray(resp) ? resp : (resp.data || []);
+        const resp = await API.fetch('/data/proxies?limit=100');
+        items = API.extractRows(resp);
         renderList();
       } catch (_) {
         listWrap.replaceChildren();
@@ -134,7 +134,7 @@ function createProxySheet() {
     submitLabel: 'Создать',
     onSubmit: async (data) => {
       try {
-        await API.fetch('/proxies', { method: 'POST', body: data });
+        await API.fetch('/data/proxies', { method: 'POST', body: data });
         M.Toast({ message: 'Доверенность создана', type: 'success' });
         Router.navigate('/proxies');
       } catch (_) { M.Toast({ message: 'Ошибка', type: 'error' }); }

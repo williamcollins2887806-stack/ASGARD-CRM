@@ -148,7 +148,7 @@ var CashAdminPage = (function () {
           ]);
           var balanceData = results[0] || {};
           var reqData = results[1];
-          allRequests = Array.isArray(reqData) ? reqData : (reqData.requests || reqData.data || []);
+          allRequests = API.extractRows(reqData);
 
           body.replaceChildren();
 

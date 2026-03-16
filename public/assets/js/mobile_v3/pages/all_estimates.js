@@ -24,8 +24,7 @@ window.MobileAllEstimates = (function () {
   async function loadItems() {
     try {
       var data = await API.fetch('/estimates', { noCache: true });
-      if (Array.isArray(data)) return data;
-      if (data && data.items) return data.items;
+      return API.extractRows(data);
     } catch (_) {}
     try {
       if (typeof AsgardDB !== 'undefined') {

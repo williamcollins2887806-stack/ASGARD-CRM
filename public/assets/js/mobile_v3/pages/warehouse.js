@@ -45,9 +45,9 @@ const WarehousePage = {
           API.fetch('/equipment/warehouses').catch(() => []),
           API.fetch('/equipment/categories').catch(() => []),
         ]);
-        items = Array.isArray(eqResp) ? eqResp : (eqResp.data || eqResp.items || []);
-        warehouses = Array.isArray(whResp) ? whResp : (whResp.data || []);
-        categories = Array.isArray(catResp) ? catResp : (catResp.data || []);
+        items = API.extractRows(eqResp);
+        warehouses = API.extractRows(whResp);
+        categories = API.extractRows(catResp);
 
         // Render warehouse filter
         pillsWrap.replaceChildren();

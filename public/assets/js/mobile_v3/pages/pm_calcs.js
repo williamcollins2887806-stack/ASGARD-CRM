@@ -36,13 +36,13 @@ window.MobilePmCalcs = (function () {
     if (!estimates.length) {
       try {
         var data = await API.fetch('/data/estimates');
-        estimates = Array.isArray(data) ? data : (data && data.items ? data.items : []);
+        estimates = API.extractRows(data);
       } catch (_) {}
     }
     if (!tenders.length) {
       try {
         var data2 = await API.fetch('/data/tenders');
-        tenders = Array.isArray(data2) ? data2 : (data2 && data2.items ? data2.items : []);
+        tenders = API.extractRows(data2);
       } catch (_) {}
     }
     return { estimates: estimates, tenders: tenders };

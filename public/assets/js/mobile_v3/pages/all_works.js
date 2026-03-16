@@ -23,7 +23,7 @@ var AllWorksPage = (function () {
 
       async function loadData() {
         var data = await API.fetch('/works?limit=500');
-        works = Array.isArray(data) ? data : (data.works || data.data || []);
+        works = API.extractRows(data);
         return works;
       }
 

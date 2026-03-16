@@ -42,7 +42,7 @@ const AlertsPage = {
       listWrap.appendChild(M.Skeleton({ type: 'list', count: 6 }));
       try {
         const resp = await API.fetch('/notifications?limit=200');
-        items = Array.isArray(resp) ? resp : (resp.data || resp.notifications || []);
+        items = API.extractRows(resp);
         renderList();
       } catch (_) {
         // Fallback to Store

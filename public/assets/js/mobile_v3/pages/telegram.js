@@ -38,7 +38,7 @@ var TelegramPage = {
         }
 
         API.fetch('/users').catch(function () { return []; }).then(function (users) {
-          var userList = Array.isArray(users) ? users : (users.users || users.items || []);
+          var userList = API.extractRows(users);
           contentWrap.replaceChildren();
           renderTelegram(contentWrap, cfg, userList);
         });

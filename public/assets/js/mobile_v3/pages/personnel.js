@@ -44,7 +44,7 @@ var PersonnelPage = {
       empty: M.Empty({ text: 'Дружина пуста', icon: '⚔️' }),
       onRefresh: function () {
         return API.fetch('/staff/employees?limit=1000').catch(function () { return API.fetch('/data/employees'); }).then(function (resp) {
-          employees = resp.items || resp.data || (Array.isArray(resp) ? resp : []);
+          employees = API.extractRows(resp);
           employees.sort(function (a, b) { return (b.rating_avg || 0) - (a.rating_avg || 0) || String(a.fio || '').localeCompare(String(b.fio || ''), 'ru'); });
           // Build role pills dynamically
           var roleSet = new Set();

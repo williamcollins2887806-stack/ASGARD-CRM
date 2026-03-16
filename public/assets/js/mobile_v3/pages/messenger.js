@@ -39,7 +39,7 @@ const MessengerPage = {
       listWrap.appendChild(M.Skeleton({ type: 'list', count: 6 }));
       try {
         chats = await API.fetch('/chat-groups');
-        if (!Array.isArray(chats)) chats = chats.data || [];
+        if (!Array.isArray(chats)) chats = API.extractRows(chats);
         renderList('');
       } catch (e) {
         listWrap.replaceChildren();
@@ -150,7 +150,7 @@ async function renderChat(chatId) {
   const userId = (Store.get('user') || {}).id;
   try {
     const msgs = await API.fetch('/chat-groups/' + chatId + '/messages?limit=50');
-    const list = Array.isArray(msgs) ? msgs : (msgs.data || []);
+    const list = API.extractRows(msgs);
     if (!list.length) {
       messagesWrap.appendChild(M.Empty({ text: 'Начните диалог', icon: '💬' }));
     } else {

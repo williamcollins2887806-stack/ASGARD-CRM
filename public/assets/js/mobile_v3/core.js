@@ -177,11 +177,18 @@ const Router = (() => {
       }
 
       // Transition old page out, new page in
+      // Clear ALL children — login stages may not be wrapped in .asgard-page
       const oldPage = content.querySelector('.asgard-page');
       if (oldPage) {
         oldPage.classList.add('asgard-page-exit');
         setTimeout(() => oldPage.remove(), 350);
       }
+      // Remove any non-.asgard-page children (e.g. login stages inserted by _goto)
+      Array.from(content.children).forEach(child => {
+        if (!child.classList.contains('asgard-page')) {
+          child.remove();
+        }
+      });
       content.appendChild(newPage);
 
       // Scroll to top
@@ -202,7 +209,8 @@ const Router = (() => {
   function init() {
     window.addEventListener('hashchange', handleRoute);
     if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
-      window.location.hash = '#/home';
+      const user = Store.get('user');
+      window.location.hash = (user && user.token) ? '#/home' : '#/welcome';
     }
     handleRoute();
   }

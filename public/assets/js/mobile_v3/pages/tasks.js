@@ -58,8 +58,8 @@ var TasksPage = {
         API.fetch('/tasks/my'),
         API.fetch('/tasks/todo'),
       ]).then(function (results) {
-        tasks = Array.isArray(results[0]) ? results[0] : (results[0].tasks || results[0].items || []);
-        todo = Array.isArray(results[1]) ? results[1] : (results[1].items || []);
+        tasks = API.extractRows(results[0]);
+        todo = API.extractRows(results[1]);
         renderContent();
       }).catch(function (e) {
         M.Toast({ message: 'Ошибка загрузки задач', type: 'error' });

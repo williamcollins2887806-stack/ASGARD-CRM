@@ -46,11 +46,11 @@ var ProcRequestsPage = {
       fab: { icon: '+', onClick: function () { M.Toast({ message: 'Создание закупок — с десктопа', type: 'info' }); } },
       onRefresh: function () {
         return Promise.all([
-          API.fetch('/procurement-requests', { noCache: true }).catch(function () { return API.fetch('/proc-requests', { noCache: true }).catch(function () { return { items: [] }; }); }),
+          API.fetch('/data/proc_requests', { noCache: true }),
           API.fetch('/users').catch(function () { return []; }),
         ]).then(function (results) {
           var resp = results[0];
-          items = resp.items || resp.data || (Array.isArray(resp) ? resp : []);
+          items = API.extractRows(resp);
           users = Array.isArray(results[1]) ? results[1] : (results[1].users || []);
           userMap = new Map(users.map(function (u) { return [u.id, u.name || u.fio || '—']; }));
           return items;

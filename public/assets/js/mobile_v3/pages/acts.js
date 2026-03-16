@@ -45,7 +45,7 @@ const ActsPage = {
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
         const resp = await API.fetch('/acts?limit=200');
-        items = Array.isArray(resp) ? resp : (resp.data || []);
+        items = API.extractRows(resp);
 
         // Stats
         statsWrap.replaceChildren();

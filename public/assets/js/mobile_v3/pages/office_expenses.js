@@ -93,7 +93,7 @@ var OfficeExpensesPage = (function () {
       setTimeout(async function () {
         try {
           var data = await API.fetch('/expenses/office');
-          var expenses = Array.isArray(data) ? data : (data.data || data.expenses || []);
+          var expenses = API.extractRows(data);
 
           body.replaceChildren();
 

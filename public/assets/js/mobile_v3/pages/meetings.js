@@ -34,7 +34,7 @@ const MeetingsPage = {
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
         const resp = await API.fetch('/meetings?limit=100');
-        items = Array.isArray(resp) ? resp : (resp.data || []);
+        items = API.extractRows(resp);
         renderList();
       } catch (_) {
         listWrap.replaceChildren();

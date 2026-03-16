@@ -39,7 +39,7 @@ window.MobileTenders = (function () {
     } catch (_) {}
     try {
       var data = await API.fetch('/data/tenders');
-      return Array.isArray(data) ? data : (data && data.items ? data.items : []);
+      return API.extractRows(data);
     } catch (_) {}
     return [];
   }

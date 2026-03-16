@@ -25,13 +25,13 @@ window.MobileApprovals = (function () {
     if (!estimates.length) {
       try {
         var d = await API.fetch('/data/estimates');
-        estimates = Array.isArray(d) ? d : (d && d.items ? d.items : []);
+        estimates = API.extractRows(d);
       } catch (_) {}
     }
     if (!tenders.length) {
       try {
         var d2 = await API.fetch('/data/tenders');
-        tenders = Array.isArray(d2) ? d2 : (d2 && d2.items ? d2.items : []);
+        tenders = API.extractRows(d2);
       } catch (_) {}
     }
     return { estimates: estimates, tenders: tenders, users: users };

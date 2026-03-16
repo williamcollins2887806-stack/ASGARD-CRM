@@ -40,8 +40,8 @@ const MyMailPage = {
       listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'list', count: 5 }));
       try {
-        const resp = await API.fetch('/my-mail/folders/' + activeFolder + '/messages?limit=50');
-        mails = Array.isArray(resp) ? resp : (resp.data || resp.messages || []);
+        const resp = await API.fetch('/my-mail/emails?folder_id=' + activeFolder + '&limit=50');
+        mails = API.extractRows(resp);
         renderMails();
       } catch (e) {
         listWrap.replaceChildren();
@@ -93,7 +93,7 @@ const MyMailPage = {
 
     async function archiveMail(mail) {
       try {
-        await API.fetch('/my-mail/messages/' + mail.id + '/move', { method: 'POST', body: { folder: 'archive' } });
+        await API.fetch('/my-mail/emails/' + mail.id + '/move', { method: 'POST', body: { folder: 'archive' } });
         M.Toast({ message: 'В архив', type: 'info' });
         loadMails();
       } catch (_) { M.Toast({ message: 'Ошибка', type: 'error' }); }
@@ -103,7 +103,7 @@ const MyMailPage = {
       const ok = await M.Confirm({ title: 'Удалить письмо?', message: mail.subject || '', danger: true, okText: 'Удалить' });
       if (!ok) return;
       try {
-        await API.fetch('/my-mail/messages/' + mail.id, { method: 'DELETE' });
+        await API.fetch('/my-mail/emails/bulk', { method: 'POST', body: { action: 'delete', email_ids: [mail.id] } });
         M.Toast({ message: 'Удалено', type: 'success' });
         loadMails();
       } catch (_) { M.Toast({ message: 'Ошибка', type: 'error' }); }
@@ -165,7 +165,7 @@ function openMailSheet(mail) {
 
   // Mark as read
   if (mail.id && !(mail.is_read || mail.seen)) {
-    API.fetch('/my-mail/messages/' + mail.id + '/read', { method: 'POST' }).catch(() => {});
+    API.fetch('/my-mail/emails/bulk', { method: 'POST', body: { action: 'read', email_ids: [mail.id] } }).catch(() => {});
   }
 
   M.BottomSheet({ title: '📧 Письмо', content, fullscreen: true });
