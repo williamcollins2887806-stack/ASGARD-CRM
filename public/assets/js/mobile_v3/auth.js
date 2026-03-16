@@ -258,12 +258,12 @@ const LoginPage = {
             M.Toast({ message: 'Неверный PIN-код', type: 'danger' }); vibrate(100);
             return;
           }
+          // Сразу навигируем — dashboard покажет скелетоны, refresh сессии в фоне
+          Router.navigate('/home', { replace: true });
           try {
             const res = await API.fetch('/auth/session', { noCache: true });
-            if (res?.user) { Store.set('user', res.user); Router.navigate('/home', { replace: true }); return; }
-          } catch { /* session expired */ }
-          M.Toast({ message: 'Сессия истекла, войдите заново', type: 'warning' });
-          LoginPage._goto('credentials', {});
+            if (res?.user) { Store.set('user', res.user); }
+          } catch { /* сессия истекла — guard перенаправит */ }
         },
         onAlt: () => LoginPage._goto('credentials', {}),
       }),

@@ -177,13 +177,11 @@ const Router = (() => {
       }
 
       // Transition old page out, new page in
-      // Clear ALL children — login stages may not be wrapped in .asgard-page
-      const oldPage = content.querySelector('.asgard-page');
-      if (oldPage) {
-        oldPage.classList.add('asgard-page-exit');
-        setTimeout(() => oldPage.remove(), 350);
-      }
-      // Remove any non-.asgard-page children (e.g. login stages inserted by _goto)
+      // Remove ALL accumulated .asgard-page elements (not just first) + non-page children
+      Array.from(content.querySelectorAll('.asgard-page')).forEach(old => {
+        old.classList.add('asgard-page-exit');
+        setTimeout(() => { if (old.parentNode) old.remove(); }, 350);
+      });
       Array.from(content.children).forEach(child => {
         if (!child.classList.contains('asgard-page')) {
           child.remove();
@@ -193,6 +191,7 @@ const Router = (() => {
 
       // Scroll to top
       content.scrollTop = 0;
+      window.scrollTo(0, 0);
 
       // Fire event
       window.dispatchEvent(new CustomEvent('asgard:route', { detail: { path, params: allParams } }));

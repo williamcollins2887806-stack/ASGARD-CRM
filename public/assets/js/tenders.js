@@ -1184,12 +1184,12 @@ async function getRefs(){
       const docList = (await AsgardDB.byIndex("documents","tender_id", tenderId||-1)) || [];
       const docsHtml = docList.length ? docList.map(d=>`
         <div class="pill" style="gap:10px">
-          <div class="who"><b>${esc(d.type||"????????")}</b> ? ${renderDocumentAnchor(d)}</div>
+          <div class="who"><b>${esc(d.type||"Документ")}</b> — ${renderDocumentAnchor(d)}</div>
           <button class="btn ghost" style="padding:6px 10px" data-del-doc="${d.id}">Удалить</button>
         </div>
       `).join("") : `<div class="help">Пока нет документов. Добавляйте ссылки на Я.Диск/площадку.</div>`;
 
-      const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>?</b> ???????? ? ???????: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
+      const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>🔒</b> Передано в ТО: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
       const canReassign = (isDirRole(user.role) || user.role==="ADMIN");
 
       const full = rights.full || isNew;
@@ -1318,7 +1318,7 @@ ${docsHtml}</div>
       if (isNew) {
         const draft = loadDraft();
         if (draft && (draft.customer_name || draft.tender_title || draft.customer_inn)) {
-          const draftAge = draft.saved_at ? formatDateTime(draft.saved_at) : '??????????';
+          const draftAge = draft.saved_at ? formatDateTime(draft.saved_at) : 'неизвестно';
           const useIt = confirm(`Найден черновик от ${draftAge}.\n\nЗаказчик: ${draft.customer_name || '—'}\nТендер: ${draft.tender_title || '—'}\n\nВосстановить?`);
           if (useIt) {
             setTimeout(() => restoreDraftToForm(draft), 50);
@@ -1564,7 +1564,7 @@ ${docsHtml}</div>
         return arr[0]||null;
       };
       const docs = tenderId ? ((await AsgardDB.byIndex("documents","tender_id", tenderId)) || []) : [];
-      const linksAll = (docs||[]).map(d=>{ const url = buildDocumentLink(d); return url ? `${d.type||"????????"}: ${url}` : ""; }).filter(Boolean).join("\n");
+      const linksAll = (docs||[]).map(d=>{ const url = buildDocumentLink(d); return url ? `${d.type||"Документ"}: ${url}` : ""; }).filter(Boolean).join("\n");
       const bCopy = document.getElementById("copyAllDocs");
       if(bCopy) bCopy.addEventListener("click", ()=>AsgardUI.copyToClipboard(linksAll||""));
       const bOpenAll = document.getElementById("openAllDocs");
@@ -1577,11 +1577,11 @@ ${docsHtml}</div>
       if(bDownloadAll) bDownloadAll.addEventListener("click", async ()=>{
         const validDocs = (docs || []).filter(d => buildDocumentLink(d));
         if(validDocs.length === 0) {
-          toast("?????????", "??? ?????????? ??? ??????????", "err");
+          toast("Документы", "Нет документов для скачивания", "err");
           return;
         }
 
-        toast("??????????", `??????? ???????? ${validDocs.length} ??????????...`, "ok");
+        toast("Документы", `Начинаю скачивание ${validDocs.length} документов...`, "ok");
 
         let downloadCount = 0;
         for(const d of validDocs) {
@@ -1593,7 +1593,7 @@ ${docsHtml}</div>
           }
         }
 
-        toast("??????????", `??????? ${downloadCount} ??????????`, "ok");
+        toast("Документы", `Скачано ${downloadCount} документов`, "ok");
       });
 
       const bPackExp = document.getElementById("btnPackExport");
