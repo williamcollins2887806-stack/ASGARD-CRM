@@ -244,4 +244,5 @@ var BackupPage = {
   },
 };
 
-Router.register('/backup', BackupPage);
+// Route disabled — /api/backup/export does not exist on backend
+// Router.register('/backup', BackupPage);

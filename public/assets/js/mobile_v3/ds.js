@@ -719,8 +719,49 @@ body {
 /* ═══════ DESKTOP CSS ISOLATION ═══════
    Когда мобильный shell активен, нейтрализуем десктопные глобальные стили.
    Без этого: body::before (градиент), Inter шрифт, input focus glow,
-   и другие desktop CSS правила ломают мобильный UI.
+   .card, .badge, .btn, .modal и другие desktop CSS правила ломают мобильный UI.
    ═══════════════════════════════════════ */
+
+/* NUCLEAR RESET: Все элементы внутри мобильного shell — сброс desktop CSS */
+html.asgard-mobile .asgard-shell *:not(svg):not(svg *) {
+  box-sizing: border-box;
+}
+
+/* Desktop .card, .panel, .widget, .badge, .btn — полный сброс внутри мобильного shell */
+html.asgard-mobile .asgard-shell .card,
+html.asgard-mobile .asgard-shell .panel,
+html.asgard-mobile .asgard-shell .widget,
+html.asgard-mobile .asgard-shell .btn,
+html.asgard-mobile .asgard-shell .modal,
+html.asgard-mobile .asgard-shell .badge {
+  all: revert !important;
+  box-sizing: border-box !important;
+}
+
+/* Desktop table styles — сброс */
+html.asgard-mobile .asgard-shell table,
+html.asgard-mobile .asgard-shell th,
+html.asgard-mobile .asgard-shell td {
+  all: revert !important;
+}
+
+/* Desktop h1-h6 — сброс margins/padding от app.css */
+html.asgard-mobile .asgard-shell h1,
+html.asgard-mobile .asgard-shell h2,
+html.asgard-mobile .asgard-shell h3,
+html.asgard-mobile .asgard-shell h4,
+html.asgard-mobile .asgard-shell h5,
+html.asgard-mobile .asgard-shell h6 {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+/* Desktop z-index conflicts — мобильные слои выше всего десктопного */
+html.asgard-mobile .asgard-shell {
+  z-index: 1 !important;
+  isolation: isolate !important;
+}
 
 /* Убить десктопную accent-полоску */
 html.asgard-mobile body::before {
