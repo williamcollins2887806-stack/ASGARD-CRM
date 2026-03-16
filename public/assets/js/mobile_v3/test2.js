@@ -1147,9 +1147,12 @@
     }
   }
 
-  // Register route
-  Router.register('/test2', { render: render });
+  // /test2 redirects to /test (which embeds audit sections via MobileTest2.render)
+  Router.register('/test2', { render: function () {
+    Router.navigate('/test', { replace: true });
+    return document.createElement('div');
+  } });
 
-  // Expose for debugging
+  // Expose render so /test can embed audit sections
   window.MobileTest2 = { render: render };
 })();
