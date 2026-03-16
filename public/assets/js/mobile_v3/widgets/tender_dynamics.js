@@ -5,20 +5,8 @@ window.MobileWidgets.tender_dynamics = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'stats', count: 1 }));
     _load();
-    function _fetch() {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll('tenders').then(function (data) {
-          if (data && data.length) return data;
-          return _api();
-        }).catch(function () { return _api(); });
-      }
-      return _api();
-    }
-    function _api() {
-      return API.fetch('/data/tenders').then(function (d) { return API.extractRows(d); });
-    }
     function _load() {
-      _fetch().then(function (all) {
+      API.fetchCached('tenders', '/data/tenders').then(function (all) {
         var y = new Date().getFullYear();
         var months = [0,0,0,0,0,0,0,0,0,0,0,0];
         (all || []).forEach(function (x) {

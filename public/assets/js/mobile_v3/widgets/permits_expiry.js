@@ -5,21 +5,10 @@ window.MobileWidgets.permits_expiry = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'list', count: 3 }));
     _load();
-    function _dbOrApi(table, apiPath) {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll(table).then(function (data) {
-          if (data && data.length) return data;
-          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-        }).catch(function () {
-          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-        });
-      }
-      return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-    }
     function _load() {
       Promise.all([
-        _dbOrApi('permits', '/data/permits'),
-        _dbOrApi('employees', '/data/users')
+        API.fetchCached('permits', '/data/permits'),
+        API.fetchCached('employees', '/data/users')
       ]).then(function (res) {
         var empMap = {}; (res[1] || []).forEach(function (e) { empMap[e.id] = e.full_name || e.fio || e.name || ''; });
         var now = new Date();

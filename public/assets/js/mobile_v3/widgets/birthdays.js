@@ -5,20 +5,8 @@ window.MobileWidgets.birthdays = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'list', count: 2 }));
     _load();
-    function _fetch() {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll('employees').then(function (data) {
-          if (data && data.length) return data;
-          return _api();
-        }).catch(function () { return _api(); });
-      }
-      return _api();
-    }
-    function _api() {
-      return API.fetch('/data/users').then(function (d) { return API.extractRows(d); });
-    }
     function _load() {
-      _fetch().then(function (emps) {
+      API.fetchCached('employees', '/data/users').then(function (emps) {
         var today = new Date();
         var upcoming = (emps || []).filter(function (e) { return !!e.birth_date; }).map(function (e) {
           var bd = new Date(e.birth_date); var ty = new Date(today.getFullYear(), bd.getMonth(), bd.getDate());

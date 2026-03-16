@@ -9,22 +9,8 @@ window.MobileWidgets.notifications = {
     var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'list', count: 3 }));
     _load();
-    function _fetch() {
-      if (typeof AsgardDB !== 'undefined' && AsgardDB.byIndex) {
-        return AsgardDB.byIndex('notifications', 'user_id', user.id).then(function (data) {
-          if (data && data.length) return data;
-          return _api();
-        }).catch(function () { return _api(); });
-      }
-      return _api();
-    }
-    function _api() {
-      return API.fetch('/notifications').then(function (d) {
-        return API.extractRows(d);
-      });
-    }
     function _load() {
-      _fetch().then(function (all) {
+      API.fetchCached('notifications', '/notifications').then(function (all) {
         var items = (all || []).filter(function (x) { return !x.is_read; })
           .sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); })
           .slice(0, 5);

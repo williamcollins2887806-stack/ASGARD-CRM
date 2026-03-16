@@ -5,20 +5,8 @@ window.MobileWidgets.pre_tenders = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'card', count: 2 }));
     _load();
-    function _fetch() {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll('pre_tender_requests').then(function (data) {
-          if (data && data.length) return data;
-          return _api();
-        }).catch(function () { return _api(); });
-      }
-      return _api();
-    }
-    function _api() {
-      return API.fetch('/pre-tenders?limit=10').then(function (d) { return API.extractRows(d); });
-    }
     function _load() {
-      _fetch().then(function (all) {
+      API.fetchCached('pre_tender_requests', '/pre-tenders?limit=10').then(function (all) {
         var items = (all || []).filter(function (x) { return x.status === 'new' || x.status === 'in_review'; }).slice(0, 3);
         if (!items.length) { container.replaceChildren(M.Empty({ text: 'Нет новых заявок', icon: '📨' })); return; }
         var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } });

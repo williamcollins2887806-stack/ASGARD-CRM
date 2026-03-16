@@ -731,7 +731,23 @@ const API = (() => {
     return [];
   }
 
-  return { fetch: fetchAPI, clearCache, subscribe, getToken, extractRows, BASE };
+  function fetchCached(table, apiPath, opts) {
+    var raw = opts && opts.raw;
+    return fetchAPI(apiPath).then(function (d) {
+      var rows = raw ? d : extractRows(d);
+      if (!raw && typeof AsgardDB !== 'undefined' && AsgardDB.putAll && Array.isArray(rows) && rows.length) {
+        AsgardDB.putAll(table, rows).catch(function () {});
+      }
+      return rows;
+    }).catch(function () {
+      if (typeof AsgardDB !== 'undefined' && AsgardDB.getAll) {
+        return AsgardDB.getAll(table).then(function (d) { return d || (raw ? {} : []); }).catch(function () { return raw ? {} : []; });
+      }
+      return raw ? {} : [];
+    });
+  }
+
+  return { fetch: fetchAPI, fetchCached: fetchCached, clearCache, subscribe, getToken, extractRows, BASE };
 })();
 
 

@@ -33,16 +33,7 @@ window.MobileFunnel = (function () {
   function fmt(v) { return v ? new Date(v).toLocaleDateString('ru-RU') : ''; }
 
   async function loadTenders() {
-    try {
-      if (typeof AsgardDB !== 'undefined') {
-        return (await AsgardDB.all('tenders')) || [];
-      }
-    } catch (_) {}
-    try {
-      var data = await API.fetch('/data/tenders');
-      return API.extractRows(data);
-    } catch (_) {}
-    return [];
+    return API.fetchCached('tenders', '/data/tenders');
   }
 
   /* ── Модалка перемещения ── */
@@ -65,13 +56,7 @@ window.MobileFunnel = (function () {
           if (isActive) return;
           try {
             var newStatus = stage.statuses[0];
-            if (typeof AsgardDB !== 'undefined') {
-              var cur = await AsgardDB.get('tenders', tender.id);
-              if (cur) { cur.status = newStatus; await AsgardDB.put('tenders', cur); }
-            }
-            try {
-              await API.fetch('/data/tenders/' + tender.id, { method: 'PUT', body: { status: newStatus } });
-            } catch (_) {}
+            await API.fetch('/data/tenders/' + tender.id, { method: 'PUT', body: { status: newStatus } });
             M.Toast({ message: 'Перемещён → ' + stage.label, type: 'success' });
             document.querySelectorAll('.asgard-sheet-overlay').forEach(function (o) { o.remove(); });
             Utils.unlockScroll();

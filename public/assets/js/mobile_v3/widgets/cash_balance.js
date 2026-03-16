@@ -5,22 +5,8 @@ window.MobileWidgets.cash_balance = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'card', count: 1 }));
     _load();
-    function _fetch() {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll('cash_requests').then(function (data) {
-          if (data && data.length) return data;
-          return _apiRaw();
-        }).catch(function () { return _apiRaw(); });
-      }
-      return _apiRaw();
-    }
-    function _apiRaw() {
-      return API.fetch('/cash/balance').then(function (d) {
-        return d || {};
-      });
-    }
     function _load() {
-      _fetch().then(function (result) {
+      API.fetchCached('cash_requests', '/cash/balance', { raw: true }).then(function (result) {
         var total, activeCount;
         if (Array.isArray(result)) {
           var active = result.filter(function (x) { return x.status !== 'closed' && x.status !== 'returned'; });

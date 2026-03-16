@@ -5,21 +5,10 @@ window.MobileWidgets.approvals = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'card', count: 1 }));
     _load();
-    function _dbOrApi(table, apiPath) {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll(table).then(function (data) {
-          if (data && data.length) return data;
-          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-        }).catch(function () {
-          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-        });
-      }
-      return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-    }
     function _load() {
       Promise.all([
-        _dbOrApi('bonus_requests', '/data/bonus_requests'),
-        _dbOrApi('estimates', '/data/estimates')
+        API.fetchCached('bonus_requests', '/data/bonus_requests'),
+        API.fetchCached('estimates', '/data/estimates')
       ]).then(function (res) {
         var bonus = (res[0] || []).filter(function (x) { return x.status === 'pending'; });
         var ests = (res[1] || []).filter(function (x) { return x.status === 'sent' || x.status === 'pending'; });

@@ -31,17 +31,14 @@ window.MobileTenders = (function () {
   function money(v) { return v ? Number(v).toLocaleString('ru-RU') + ' ₽' : '—'; }
   function fmt(v) { return v ? new Date(v).toLocaleDateString('ru-RU') : '—'; }
 
+  var PAGE_LIMIT = 50;
+  var _offset = 0;
+  var _hasMore = true;
+
   async function loadItems() {
-    try {
-      if (typeof AsgardDB !== 'undefined') {
-        return (await AsgardDB.all('tenders')) || [];
-      }
-    } catch (_) {}
-    try {
-      var data = await API.fetch('/data/tenders');
-      return API.extractRows(data);
-    } catch (_) {}
-    return [];
+    _offset = 0;
+    _hasMore = true;
+    return API.fetchCached('tenders', '/data/tenders?limit=' + PAGE_LIMIT + '&offset=0');
   }
 
   /* ── Детальная модалка ── */
@@ -188,11 +185,23 @@ window.MobileTenders = (function () {
         try {
           var loaded = await loadItems();
           loaded.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
+          _offset = loaded.length;
+          _hasMore = loaded.length >= PAGE_LIMIT;
           return loaded;
         } catch (e) {
           M.Toast({ message: 'Ошибка загрузки тендеров', type: 'error' });
           return [];
         }
+      },
+      loadMore: async function () {
+        if (!_hasMore) return [];
+        try {
+          var rows = await API.fetchCached('tenders', '/data/tenders?limit=' + PAGE_LIMIT + '&offset=' + _offset);
+          _offset += rows.length;
+          if (rows.length < PAGE_LIMIT) _hasMore = false;
+          rows.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
+          return rows;
+        } catch (_) { return []; }
       },
       actions: [{
         icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',

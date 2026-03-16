@@ -5,21 +5,10 @@ window.MobileWidgets.money_summary = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'hero', count: 1 }));
     _load();
-    function _dbOrApi(table, apiPath) {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll(table).then(function (data) {
-          if (data && data.length) return data;
-          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-        }).catch(function () {
-          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-        });
-      }
-      return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-    }
     function _load() {
       Promise.all([
-        _dbOrApi('works', '/works'),
-        _dbOrApi('tenders', '/data/tenders')
+        API.fetchCached('works', '/works'),
+        API.fetchCached('tenders', '/data/tenders')
       ]).then(function (res) {
         var works = res[0] || []; var tenders = res[1] || [];
         var y = new Date().getFullYear();

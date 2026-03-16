@@ -188,7 +188,7 @@ const TestPage = {
     page.appendChild(sec('Timeline', 'Лента событий'));
     page.appendChild(M.Timeline({ items: [
       { title: 'Заявка создана', text: 'Андросов Н.А.', time: '14:32', color: 'var(--blue)' },
-      { title: 'Согласовано', text: 'Кудряшов О.С.', time: '15:10', badge: 'OK', badgeColor: 'success', color: 'var(--green)' },
+      { title: 'Согласовано', text: 'Кудряшов О.С.', time: '15:10', badge: 'Ок', badgeColor: 'success', color: 'var(--green)' },
       { title: 'В бухгалтерию', text: 'Ожидает оплаты', time: '15:15', color: 'var(--orange)' },
       { title: 'Оплачено', text: 'ПП №1247 — 85 000 ₽', time: '16:40', badge: 'Оплачено', badgeColor: 'success', color: 'var(--green)' },
     ] }));

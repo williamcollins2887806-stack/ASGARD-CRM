@@ -312,8 +312,8 @@
     diagCard.appendChild(el('div', { style: Object.assign({}, DS.font('md'), { color: 'var(--text)', marginBottom: '8px' }) }, '🔧 Диагностика'));
     var diagFields = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
     [
-      { label: 'Router', value: 'OK', color: 'success' },
-      { label: 'Components (M)', value: 'OK', color: 'success' },
+      { label: 'Router', value: 'Ок', color: 'success' },
+      { label: 'Components (M)', value: 'Ок', color: 'success' },
       { label: 'MobileWidgets', value: '27 шт.', color: 'info' },
     ].forEach(function (r) {
       var row = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' } });
@@ -1103,8 +1103,8 @@
         { icon: '📝', label: 'Формы', onClick: function () { scrollToSection(5); } },
         { icon: '📊', label: 'Виджеты', onClick: function () { scrollToSection(6); } },
         { icon: '🧭', label: 'Навигация', onClick: function () { scrollToSection(7); } },
-        { icon: '📭', label: 'Empty', onClick: function () { scrollToSection(8); } },
-        { icon: '⏳', label: 'Loading', onClick: function () { scrollToSection(9); } },
+        { icon: '📭', label: 'Пусто', onClick: function () { scrollToSection(8); } },
+        { icon: '⏳', label: 'Загрузка', onClick: function () { scrollToSection(9); } },
         { icon: '🌓', label: 'Тема', onClick: function () { scrollToSection(10); } },
       ],
     }));

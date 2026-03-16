@@ -12,29 +12,12 @@ window.MobileApprovals = (function () {
   function fmt(v) { return v ? new Date(v).toLocaleDateString('ru-RU') : '—'; }
 
   async function loadData() {
-    var estimates = [];
-    var tenders = [];
-    var users = [];
-    try {
-      if (typeof AsgardDB !== 'undefined') {
-        estimates = (await AsgardDB.all('estimates')) || [];
-        tenders = (await AsgardDB.all('tenders')) || [];
-        users = (await AsgardDB.all('users')) || [];
-      }
-    } catch (_) {}
-    if (!estimates.length) {
-      try {
-        var d = await API.fetch('/data/estimates');
-        estimates = API.extractRows(d);
-      } catch (_) {}
-    }
-    if (!tenders.length) {
-      try {
-        var d2 = await API.fetch('/data/tenders');
-        tenders = API.extractRows(d2);
-      } catch (_) {}
-    }
-    return { estimates: estimates, tenders: tenders, users: users };
+    var results = await Promise.all([
+      API.fetchCached('estimates', '/data/estimates'),
+      API.fetchCached('tenders', '/data/tenders'),
+      API.fetchCached('users', '/data/users'),
+    ]);
+    return { estimates: results[0], tenders: results[1], users: results[2] };
   }
 
   function getTender(tenders, id) {
@@ -94,21 +77,10 @@ window.MobileApprovals = (function () {
     }
     try {
       var newStatus = action;
-      if (typeof AsgardDB !== 'undefined') {
-        var cur = await AsgardDB.get('estimates', est.id);
-        if (cur) {
-          cur.approval_status = newStatus;
-          if (comment) cur.approval_comment = comment;
-          cur.decided_at = new Date().toISOString();
-          await AsgardDB.put('estimates', cur);
-        }
-      }
-      try {
-        await API.fetch('/data/estimates/' + est.id, {
-          method: 'PUT',
-          body: { approval_status: newStatus, approval_comment: comment || '' },
-        });
-      } catch (_) {}
+      await API.fetch('/data/estimates/' + est.id, {
+        method: 'PUT',
+        body: { approval_status: newStatus, approval_comment: comment || '' },
+      });
 
       var labels = { approved: 'Согласовано', rework: 'На доработку', question: 'Вопрос отправлен', rejected: 'Отклонено' };
       var types = { approved: 'success', rework: 'info', question: 'info', rejected: 'error' };

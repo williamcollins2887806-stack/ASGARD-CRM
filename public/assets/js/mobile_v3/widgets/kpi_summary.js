@@ -5,22 +5,11 @@ window.MobileWidgets.kpi_summary = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'stats', count: 1 }));
     _load();
-    function _dbOrApi(table, apiPath) {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll(table).then(function (data) {
-          if (data && data.length) return data;
-          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-        }).catch(function () {
-          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-        });
-      }
-      return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
-    }
     function _load() {
       Promise.all([
-        _dbOrApi('tenders', '/data/tenders'),
-        _dbOrApi('works', '/works'),
-        _dbOrApi('estimates', '/data/estimates')
+        API.fetchCached('tenders', '/data/tenders'),
+        API.fetchCached('works', '/works'),
+        API.fetchCached('estimates', '/data/estimates')
       ]).then(function (res) {
         var y = new Date().getFullYear();
         var tenders = (res[0] || []).filter(function (x) { return String(x.year) === String(y) || (x.period || '').indexOf(String(y)) === 0; });
