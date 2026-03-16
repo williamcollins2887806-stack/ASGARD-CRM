@@ -21,6 +21,10 @@ module.exports = async function(fastify) {
   const uploadRootDir = path.resolve(uploadDir);
   const chatUploadDir = path.resolve(uploadRootDir, 'chat');
 
+  // ── In-memory typing state (chatId → Map(userId → {name, ts})) ──
+  const _typingState = new Map();
+  const TYPING_TTL = 4000; // 4 сек
+
   function parsePositiveInt(value) {
     const rawValue = String(value || '').trim();
     if (!/^\d+$/.test(rawValue)) return null;
@@ -578,7 +582,7 @@ module.exports = async function(fastify) {
     const chatId = parseInt(request.params.id);
     if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
-    const { limit = 50, before_id, search } = request.query;
+    const { limit = 50, before_id, after_id, search } = request.query;
 
     const member = await getChatMembership(chatId, userId);
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
@@ -598,6 +602,12 @@ module.exports = async function(fastify) {
     if (before_id) {
       sql += ` AND m.id < $${idx}`;
       params.push(parseInt(before_id));
+      idx++;
+    }
+
+    if (after_id) {
+      sql += ` AND m.id > $${idx}`;
+      params.push(parseInt(after_id));
       idx++;
     }
 
@@ -812,6 +822,53 @@ module.exports = async function(fastify) {
     );
 
     return { reactions };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:chatId/typing — Сигнал "печатает"
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:chatId/typing', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const chatId = parseInt(request.params.chatId);
+    const userId = request.user.id;
+    const userName = request.user.name || '';
+
+    if (!_typingState.has(chatId)) _typingState.set(chatId, new Map());
+    _typingState.get(chatId).set(userId, { name: userName, ts: Date.now() });
+
+    // Auto-cleanup через TYPING_TTL
+    setTimeout(() => {
+      const chatMap = _typingState.get(chatId);
+      if (chatMap) {
+        const entry = chatMap.get(userId);
+        if (entry && Date.now() - entry.ts >= TYPING_TTL) chatMap.delete(userId);
+        if (chatMap.size === 0) _typingState.delete(chatId);
+      }
+    }, TYPING_TTL + 100);
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/chat-groups/:chatId/typing — Кто сейчас печатает
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/:chatId/typing', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const chatId = parseInt(request.params.chatId);
+    const userId = request.user.id;
+    const now = Date.now();
+    const chatMap = _typingState.get(chatId);
+    if (!chatMap) return { typing: [] };
+
+    const typing = [];
+    for (const [uid, entry] of chatMap) {
+      if (uid !== userId && now - entry.ts < TYPING_TTL) {
+        typing.push({ user_id: uid, name: entry.name });
+      }
+    }
+    return { typing };
   });
 
   // ───────────────────────────────────────────────────────────────

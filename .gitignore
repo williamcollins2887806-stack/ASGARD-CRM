@@ -3,3 +3,18 @@ node_modules/
 *.log
 uploads/
 backups/
+
+# Release cleanup
+test-results/
+tests/screenshots/
+tests/audit-screenshots/
+tests/reports/
+tests/report.html
+tests/report.json
+_deprecated/
+*.bak
+*.bak.*
+*.codex_backup
+*.pre_*
+public/temp_*
+public/*.tar.gz

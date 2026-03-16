@@ -1,1 +1,0 @@
-[TAILING] Tailing last 300 lines for [asgard] process (change the value with --lines option)
