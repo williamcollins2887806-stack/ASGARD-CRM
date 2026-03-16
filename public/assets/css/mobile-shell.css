@@ -232,27 +232,29 @@
   display: none;
 }
 
-/* ═══ Huginn animations (18D-2) ═══ */
+/* ═══════════════════════════════════════════════
+   Huginn & Mimir — Chat UI (18D-2 v2)
+   ═══════════════════════════════════════════════ */
 
-/* ── Message slide in ── */
+/* ── Message enter animation ── */
 .asgard-msg-enter {
-  animation: asgard-msg-slide-in 0.2s ease-out;
+  animation: asgard-msg-in 0.2s ease-out;
 }
-@keyframes asgard-msg-slide-in {
+@keyframes asgard-msg-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Reaction popup ── */
 .asgard-react-popup {
-  animation: asgard-react-pop 0.15s ease-out;
+  animation: asgard-react-pop 0.15s cubic-bezier(.34,1.56,.64,1);
 }
 @keyframes asgard-react-pop {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
-  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
 }
 
-/* ── Voice message waveform placeholder ── */
+/* ── Voice waveform placeholder ── */
 .asgard-voice-wave {
   display: flex;
   align-items: center;
@@ -265,16 +267,119 @@
   border-radius: 1px;
 }
 
-/* ── Swipe reply hint ── */
-.asgard-chat-row {
-  transition: transform 0.15s ease;
+/* ════════════════════════════════════════════
+   Huginn — Input overrides
+   Shell CSS sets min-height:48px, font-size:16px
+   with !important. We need higher specificity.
+   ════════════════════════════════════════════ */
+
+/* Composer & search inputs */
+.asgard-shell .asgard-huginn-input,
+.asgard-shell input.asgard-huginn-input,
+.asgard-shell .asgard-huginn-composer input,
+.asgard-shell .asgard-huginn-search input,
+.asgard-shell .asgard-mimir-composer input,
+.asgard-shell input.asgard-mimir-input {
+  min-height: 40px !important;
+  height: 40px !important;
+  padding: 8px 16px !important;
+  font-size: 14px !important;
+  border-radius: 20px !important;
+  background: var(--input-bg, #222228) !important;
+  border: 1px solid var(--border, rgba(255,255,255,0.06)) !important;
+  color: var(--text, #fff) !important;
+}
+.asgard-shell .asgard-huginn-search input.asgard-huginn-input {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 6px 12px 6px 34px !important;
+  border-radius: 12px !important;
+  background: var(--surface-alt, #222228) !important;
+}
+.asgard-shell .asgard-huginn-input:focus,
+.asgard-shell .asgard-mimir-input:focus {
+  border-color: var(--blue, #4A90D9) !important;
+  box-shadow: none !important;
+}
+.asgard-shell .asgard-mimir-input:focus {
+  border-color: var(--gold, #D4A843) !important;
 }
 
-/* ── Composer input override — disable shell constraints ── */
-.asgard-shell .asgard-composer input,
-.asgard-shell .asgard-messenger-page input[type="text"] {
+/* Icon buttons — smaller touch targets for chat */
+.asgard-shell .asgard-huginn-btn-icon {
   min-height: 36px !important;
-  padding: 0 12px 0 36px !important;
-  font-size: 14px !important;
-  border-radius: 12px !important;
+  min-width: 36px !important;
+  background: none !important;
+  border: none !important;
+  padding: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer;
+  color: var(--text-sec, #8E8E93);
+  flex-shrink: 0;
+}
+
+/* Send button */
+.asgard-shell .asgard-huginn-send-btn {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  border-radius: 50% !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+/* Emoji buttons in panels */
+.asgard-shell .asgard-huginn-emoji-btn {
+  min-height: 38px !important;
+  min-width: 38px !important;
+  background: none !important;
+  border: none !important;
+  font-size: 22px !important;
+  padding: 2px !important;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.1s;
+}
+.asgard-shell .asgard-huginn-emoji-btn:active {
+  background: var(--surface-alt, #222228) !important;
+}
+
+/* Emoji panel */
+.asgard-huginn-emoji-panel {
+  background: var(--surface, #1A1A1F);
+  border-top: 1px solid var(--border, rgba(255,255,255,0.06));
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Scroll-to-bottom FAB */
+.asgard-shell .asgard-huginn-scroll-fab {
+  min-height: 36px !important;
+  min-width: 36px !important;
+  transition: opacity 0.2s;
+}
+
+/* Mimir prompt pills */
+.asgard-shell .asgard-mimir-prompt {
+  min-height: 36px !important;
+  min-width: auto !important;
+}
+
+/* Chat page — no bottom padding (has own composer) */
+.asgard-huginn-chat,
+.asgard-mimir-page {
+  padding-bottom: 0 !important;
+}
+
+/* Reaction overlay */
+.asgard-react-overlay {
+  -webkit-tap-highlight-color: transparent;
 }
