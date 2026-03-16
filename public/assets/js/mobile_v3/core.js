@@ -1169,6 +1169,21 @@ const App = (() => {
 
     initialized = true;
 
+    // ── Disable desktop CSS — proper isolation, no overrides needed ──
+    // Desktop stylesheets are <link> tags loaded in index.html.
+    // On mobile they conflict with DS.js styles (z-index, fonts, layouts).
+    // Setting link.disabled = true is a standard DOM API — clean and reversible.
+    const desktopCSS = [
+      'design-tokens.css', 'components.css', 'layout.css',
+      'app.css', 'responsive.css', 'my-mail.css'
+    ];
+    document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+      const href = link.getAttribute('href') || '';
+      if (desktopCSS.some(name => href.includes(name))) {
+        link.disabled = true;
+      }
+    });
+
     // Inject design system styles
     if (typeof DS !== 'undefined' && DS.injectStyles) {
       DS.injectStyles();
