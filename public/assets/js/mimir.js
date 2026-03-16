@@ -389,9 +389,7 @@ window.AsgardMimir = (function(){
     loadConversations();
   }
 
-  window.addEventListener('hashchange', () => {
-    setTimeout(init, 100);
-  });
+  // hashchange reinit disabled — Мимир через меню
 
   function buildWidgetHTML() {
     return `
@@ -1308,12 +1306,8 @@ window.AsgardMimir = (function(){
     }, 300);
   }
 
-  // Инициализация при загрузке
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    setTimeout(init, 500);
-  }
+  // Плавающий FAB отключён — Мимир доступен через меню
+  // Для программного открытия: MimirChat.init(); MimirChat.open();
 
   return {
     init,

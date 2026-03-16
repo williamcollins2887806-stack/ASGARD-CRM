@@ -18,7 +18,7 @@ async function hashPin(pin) {
 }
 
 /* ---------- AsgardAuth fallback (if desktop auth.js not loaded) ---------- */
-async function authLoginStep1(login, password) {
+async function authLoginStep1({ login, password }) {
   if (typeof AsgardAuth !== 'undefined' && AsgardAuth.loginStep1) {
     return AsgardAuth.loginStep1({ login, password });
   }

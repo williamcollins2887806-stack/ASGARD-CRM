@@ -1,7 +1,7 @@
 /**
  * Files Routes - Upload/Download
- * SECURITY: ????????? ????????? ????? ?????? (MED-3)
- * SECURITY: ???????? auth ? download (HIGH-2)
+ * SECURITY: Валидация расширений файлов загрузки (MED-3)
+ * SECURITY: Проверка auth в download (HIGH-2)
  */
 const path = require('path');
 const fs = require('fs').promises;
@@ -12,7 +12,7 @@ async function routes(fastify, options) {
   const uploadDir = process.env.UPLOAD_DIR || './uploads';
   const uploadBaseDir = path.resolve(uploadDir);
 
-  // SECURITY: ????? ?????? ?????????? ?????? (MED-3)
+  // SECURITY: Белый список допустимых типов файлов (MED-3)
   const ALLOWED_EXTENSIONS = [
     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
     '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg',
@@ -75,7 +75,7 @@ async function routes(fastify, options) {
     let file = null;
     let tenderId = null;
     let workId = null;
-    let docType = '????????';
+    let docType = 'Документ';
 
     for await (const part of parts) {
       if (part.file) {
@@ -87,16 +87,16 @@ async function routes(fastify, options) {
       } else {
         if (part.fieldname === 'tender_id') tenderId = part.value;
         if (part.fieldname === 'work_id') workId = part.value;
-        if (part.fieldname === 'type') docType = part.value || '????????';
+        if (part.fieldname === 'type') docType = part.value || 'Документ';
       }
     }
 
-    if (!file) return reply.code(400).send({ error: '???? ?? ???????' });
+    if (!file) return reply.code(400).send({ error: 'Файл не загружен' });
 
-    // SECURITY: ???????? ?????????? ????? (MED-3)
+    // SECURITY: Проверка расширения файла (MED-3)
     const ext = path.extname(file.filename).toLowerCase() || '';
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      return reply.code(400).send({ error: '???????????? ??? ?????: ' + ext });
+      return reply.code(400).send({ error: 'Недопустимый тип файла: ' + ext });
     }
 
     const filename = `${uuidv4()}${ext}`;
@@ -113,13 +113,13 @@ async function routes(fastify, options) {
     return { success: true, file: result.rows[0], download_url: `/api/files/download/${filename}` };
   });
 
-  // SECURITY: ???????? auth ? download (HIGH-2)
+  // SECURITY: Проверка auth в download (HIGH-2)
   fastify.get('/download/:filename', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const requestedFilename = getSafeFilenameParam(request.params.filename);
     if (!requestedFilename) {
-      return reply.code(400).send({ error: '???????????? ????????????? ?????' });
+      return reply.code(400).send({ error: 'Некорректный идентификатор файла' });
     }
 
     const result = await db.query(
@@ -129,18 +129,18 @@ async function routes(fastify, options) {
     const doc = result.rows[0];
 
     if (!doc || !doc.filename) {
-      return reply.code(404).send({ error: '???? ?? ??????' });
+      return reply.code(404).send({ error: 'Файл не найден' });
     }
 
     const filePath = resolveStoredFilePath(doc.filename);
     if (!filePath) {
-      return reply.code(404).send({ error: '???? ?? ??????' });
+      return reply.code(404).send({ error: 'Файл не найден' });
     }
 
     try {
       await fs.access(filePath);
     } catch (e) {
-      return reply.code(404).send({ error: '???? ?? ??????' });
+      return reply.code(404).send({ error: 'Файл не найден' });
     }
 
     const buffer = await fs.readFile(filePath);
@@ -156,8 +156,8 @@ async function routes(fastify, options) {
     const params = [];
     let idx = 1;
 
-    // ??????: ??? ??????? ?? work_id ? ????? ??????????? ????????? ?? ???????
-    // ??? ??????? ?? tender_id ? ????? ??????????? ????????? ?? ????????? ?????
+    // Каскад: при запросе по work_id также подтягиваем документы по тендеру
+    // при запросе по tender_id также подтягиваем документы по связанным работам
     if (cascade !== 'false' && (work_id || tender_id)) {
       const conditions = [];
 
@@ -165,7 +165,7 @@ async function routes(fastify, options) {
         conditions.push(`work_id = $${idx}`);
         params.push(work_id);
         idx++;
-        // ????? tender_id ?? ?????? ? ????????? ??? ?????????
+        // Найти tender_id по работе и подтянуть его документы
         const workRes = await db.query('SELECT tender_id FROM works WHERE id = $1', [work_id]);
         if (workRes.rows.length && workRes.rows[0].tender_id) {
           conditions.push(`tender_id = $${idx}`);
@@ -176,7 +176,7 @@ async function routes(fastify, options) {
         conditions.push(`tender_id = $${idx}`);
         params.push(tender_id);
         idx++;
-        // ????????? ????????? ?? ????????? ?????
+        // Подтянуть документы по связанным работам
         const worksRes = await db.query('SELECT id FROM works WHERE tender_id = $1', [tender_id]);
         for (const w of worksRes.rows) {
           conditions.push(`work_id = $${idx}`);
@@ -193,7 +193,7 @@ async function routes(fastify, options) {
       return { files: result.rows };
     }
 
-    // ??????? ?????? ??? ???????
+    // Обычный запрос без каскада
     let sql = 'SELECT * FROM documents WHERE 1=1';
     if (tender_id) { sql += ` AND tender_id = $${idx}`; params.push(tender_id); idx++; }
     if (work_id) { sql += ` AND work_id = $${idx}`; params.push(work_id); idx++; }
@@ -207,28 +207,28 @@ async function routes(fastify, options) {
   fastify.delete('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const fileId = parseNumericId(request.params.id);
     if (fileId === null) {
-      return reply.code(400).send({ error: '???????????? ????????????? ?????' });
+      return reply.code(400).send({ error: 'Некорректный идентификатор файла' });
     }
 
     // Get file info
     const result = await db.query('SELECT * FROM documents WHERE id = $1', [fileId]);
     const fileRecord = result.rows[0];
-    if (!fileRecord) return reply.code(404).send({ error: '???? ?? ??????' });
+    if (!fileRecord) return reply.code(404).send({ error: 'Файл не найден' });
 
     // Check permissions (owner or admin)
     if (fileRecord.uploaded_by !== request.user.id && request.user.role !== 'ADMIN') {
-      return reply.code(403).send({ error: '???????????? ????' });
+      return reply.code(403).send({ error: 'Недостаточно прав' });
     }
 
     const filePath = resolveStoredFilePath(fileRecord.filename);
     if (!filePath) {
-      return reply.code(404).send({ error: '???? ?? ??????' });
+      return reply.code(404).send({ error: 'Файл не найден' });
     }
 
     try {
       await fs.access(filePath);
     } catch (e) {
-      return reply.code(404).send({ error: '???? ?? ??????' });
+      return reply.code(404).send({ error: 'Файл не найден' });
     }
 
     await fs.unlink(filePath);
@@ -236,7 +236,7 @@ async function routes(fastify, options) {
     // Delete from DB
     await db.query('DELETE FROM documents WHERE id = $1', [fileId]);
 
-    return { message: '???? ??????' };
+    return { message: 'Файл удалён' };
   });
 }
 

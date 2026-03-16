@@ -44,7 +44,7 @@
 
     await AsgardDocsPack.ensurePack({tender_id, work_id});
     const docs = await AsgardDocsPack.docsFor({tender_id, work_id});
-    const links = (docs||[]).map(d=>{ const url = buildDocumentLink(d); return url ? `${d.type||"????????"}: ${url}` : ""; }).filter(Boolean).join("\n");
+    const links = (docs||[]).map(d=>{ const url = buildDocumentLink(d); return url ? `${d.type||"Документ"}: ${url}` : ""; }).filter(Boolean).join("\n");
 
     const html = `
       <div class="help">Единый комплект документов на тендер/работу (ссылки или сгенерированные HTML). </div>
@@ -64,7 +64,7 @@
         <button class="btn" id="aCov">Добавить сопроводительное</button>
       </div>
       <div style="margin-top:12px">
-        ${docs.length ? docs.map(renderDocumentLine).join("") : `<div class="help">?????????? ???? ???.</div>`}
+        ${docs.length ? docs.map(renderDocumentLine).join("") : `<div class="help">Документов пока нет.</div>`}
       </div>`;
 
     AsgardUI.showModal("Комплект документов", html);

@@ -890,7 +890,7 @@ window.AsgardPreTendersPage = (function(){
 
   async function openDetail(id) {
     const d = await api('/' + id);
-    if (!d || !d.success || !d.item) { toast('??????', '?? ???????', 'err'); return; }
+    if (!d || !d.success || !d.item) { toast('Ошибка', 'Не найдено', 'err'); return; }
     const it = d.item;
     const c = COLOR[it.ai_color] || COLOR.gray;
     const st = STATUS[it.status] || STATUS.new;
@@ -996,7 +996,7 @@ window.AsgardPreTendersPage = (function(){
           <div style="font-size:12px;margin-bottom:8px">
             <b>От:</b> ${esc(it.email_from_name || '')} &lt;${esc(it.email_from || '')}&gt;<br>
             <b>Тема:</b> ${esc(it.email_subject || '')}<br>
-            <b>????:</b> ${it.email_date ? formatDateTime(it.email_date) : '?'}
+            <b>Дата:</b> ${it.email_date ? formatDateTime(it.email_date) : '—'}
           </div>
           <div style="font-size:12px;max-height:300px;overflow:auto;white-space:pre-wrap;border-top:1px solid var(--line);padding-top:8px">${esc(it.email_body_text || '(пусто)')}</div>
           <div style="margin-top:8px;text-align:right">
@@ -1024,7 +1024,7 @@ window.AsgardPreTendersPage = (function(){
       <!-- Решение (если есть) -->
       ${it.decision_by_name ? `
       <div style="padding:12px;background:var(--bg-elevated);border-radius:6px;margin-bottom:12px;font-size:12px">
-        <b>???????:</b> ${esc(it.decision_by_name)} ? ${it.decision_at ? formatDateTime(it.decision_at) : ''}
+        <b>Решение:</b> ${esc(it.decision_by_name)} — ${it.decision_at ? formatDateTime(it.decision_at) : ''}
         ${it.decision_comment ? '<br><b>Комментарий:</b> ' + esc(it.decision_comment) : ''}
         ${it.reject_reason ? '<br><b>Причина:</b> ' + esc(it.reject_reason) : ''}
         ${it.created_tender_id ? '<br><a href="#/tenders?open=' + it.created_tender_id + '" style="color:var(--blue)">Тендер #' + it.created_tender_id + ' →</a>' : ''}

@@ -832,6 +832,29 @@ html.asgard-mobile .auth-demo-input::placeholder {
   color: rgba(0,0,0,0.3) !important;
 }
 
+/* Login real inputs — override global app.css input{background:var(--bg2)} */
+html.asgard-mobile .auth-field input {
+  background: rgba(255,255,255,0.85) !important;
+  color: #1A1A1F !important;
+  border: 1.5px solid rgba(0,0,0,0.08) !important;
+  border-radius: 14px !important;
+  font-size: 16px !important;
+  -webkit-box-shadow: none !important;
+  box-shadow: none !important;
+  -webkit-appearance: none !important;
+}
+html.asgard-mobile .auth-field input:focus {
+  border-color: #1E5A99 !important;
+  box-shadow: 0 0 0 3px rgba(30,90,153,0.1) !important;
+}
+html.asgard-mobile .auth-field input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px rgba(255,255,255,0.9) inset !important;
+  -webkit-text-fill-color: #1A1A1F !important;
+}
+html.asgard-mobile .auth-field input::placeholder {
+  color: rgba(0,0,0,0.35) !important;
+}
+
 /* ═══════ PORTRAIT LOCK ═══════ */
 @media (orientation: landscape) and (max-height: 500px) {
   html.asgard-mobile .asgard-shell {
