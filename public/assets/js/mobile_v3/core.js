@@ -396,9 +396,16 @@ const Layout = (() => {
           messagesWrap.appendChild(M.ChatBubble({ text: text, mine: true }));
           messagesWrap.scrollTop = messagesWrap.scrollHeight;
 
-          // Show typing indicator via ChatBubble
-          const typing = M.ChatBubble({ text: 'Мимир думает\u2026', mine: false, name: 'Мимир' });
-          typing.style.opacity = '0.6';
+          // Show typing indicator — animated dots
+          const typing = Utils.el('div', { className: 'asgard-mimir-typing', style: {
+            alignSelf: 'flex-start', maxWidth: '80%', padding: '12px 18px',
+            background: 'var(--surface-alt)', borderRadius: '16px 16px 16px 4px',
+          } });
+          const dots = Utils.el('div', { className: 'asgard-typing-dots' });
+          dots.appendChild(Utils.el('span'));
+          dots.appendChild(Utils.el('span'));
+          dots.appendChild(Utils.el('span'));
+          typing.appendChild(dots);
           messagesWrap.appendChild(typing);
           messagesWrap.scrollTop = messagesWrap.scrollHeight;
 
