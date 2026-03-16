@@ -43,7 +43,7 @@ const MessengerPage = {
         renderList('');
       } catch (e) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { loadChats(); } }));
       }
     }
 
@@ -167,7 +167,7 @@ async function renderChat(chatId) {
       setTimeout(() => { messagesWrap.scrollTop = messagesWrap.scrollHeight; }, 100);
     }
   } catch (_) {
-    messagesWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
+    messagesWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate('/messenger/' + chatId, { replace: true }); } }));
   }
 
   // Composer

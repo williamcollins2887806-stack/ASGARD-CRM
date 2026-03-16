@@ -255,16 +255,7 @@ var IntegrationsPage = {
       });
       container.appendChild(listWrap);
 
-      // Add button
-      var addWrap = el('div', { style: { padding: '16px 20px', ...DS.anim(0.15) } });
-      addWrap.appendChild(M.FullWidthBtn({
-        label: '+ Добавить подключение',
-        variant: 'secondary',
-        onClick: function () {
-          M.Toast({ message: 'Настройка ERP в разработке', type: 'info' });
-        },
-      }));
-      container.appendChild(addWrap);
+      // Add button removed — ERP setup not yet implemented
     }
 
     return page;

@@ -14,7 +14,10 @@ window.MobileFunnel = (function () {
     { id: 'negotiation', label: 'Согласование', color: 'var(--orange)',   statuses: ['КП отправлено', 'ТКП отправлено', 'Согласование ТКП', 'Переговоры', 'На согласовании', 'ТКП согласовано'] },
     { id: 'prep',        label: 'Подготовка',   color: 'var(--gold)',     statuses: ['Выиграли', 'Клиент согласился', 'Контракт'] },
     { id: 'work',        label: 'Работа',       color: 'var(--green)',    statuses: ['В работе', 'Выполняется', 'Мобилизация'] },
+    { id: 'lost',        label: 'Отказ',        color: 'var(--red)',      statuses: ['Проиграли', 'Отказ', 'Клиент отказался', 'Отменён'] },
   ];
+
+  function getStatus(item) { return item.tender_status || item.status || ''; }
 
   function getStageId(status) {
     if (!status) return 'new';
@@ -56,7 +59,7 @@ window.MobileFunnel = (function () {
           if (isActive) return;
           try {
             var newStatus = stage.statuses[0];
-            await API.fetch('/data/tenders/' + tender.id, { method: 'PUT', body: { status: newStatus } });
+            await API.fetch('/data/tenders/' + tender.id, { method: 'PUT', body: { tender_status: newStatus } });
             M.Toast({ message: 'Перемещён → ' + stage.label, type: 'success' });
             document.querySelectorAll('.asgard-sheet-overlay').forEach(function (o) { o.remove(); });
             Utils.unlockScroll();
@@ -83,7 +86,7 @@ window.MobileFunnel = (function () {
     if (tender.amount || tender.price) fields.push({ label: 'Сумма', value: money(tender.amount || tender.price) });
     if (tender.manager_name || tender.rp) fields.push({ label: 'РП', value: tender.manager_name || tender.rp });
     if (tender.deadline || tender.submission_deadline) fields.push({ label: 'Дедлайн', value: fmt(tender.deadline || tender.submission_deadline) });
-    fields.push({ label: 'Статус', value: tender.status || '—', type: 'badge', badgeColor: 'info' });
+    fields.push({ label: 'Статус', value: getStatus(tender) || '—', type: 'badge', badgeColor: 'info' });
 
     var content = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
     content.appendChild(M.DetailFields({ fields: fields }));
@@ -218,7 +221,7 @@ window.MobileFunnel = (function () {
                   groups = {};
                   STAGES.forEach(function (s) { groups[s.id] = []; });
                   tenders.forEach(function (t) {
-                    var sid = getStageId(t.status);
+                    var sid = getStageId(getStatus(t));
                     if (groups[sid]) groups[sid].push(t);
                     else groups.new.push(t);
                   });
@@ -254,7 +257,7 @@ window.MobileFunnel = (function () {
       groups = {};
       STAGES.forEach(function (s) { groups[s.id] = []; });
       tenders.forEach(function (tender) {
-        var sid = getStageId(tender.status);
+        var sid = getStageId(getStatus(tender));
         if (groups[sid]) groups[sid].push(tender);
         else groups.new.push(tender);
       });

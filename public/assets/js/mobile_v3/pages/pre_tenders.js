@@ -279,10 +279,7 @@ window.MobilePreTenders = (function () {
           return [];
         }
       },
-      fab: {
-        icon: '+',
-        onClick: function () { M.Toast({ message: 'Создание заявки — в разработке', type: 'info' }); },
-      },
+      /* fab removed — pre-tender creation not yet implemented */
     });
 
     // Show skeleton while initial data loads

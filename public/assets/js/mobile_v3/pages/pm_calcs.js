@@ -178,10 +178,7 @@ window.MobilePmCalcs = (function () {
           return [];
         }
       },
-      fab: {
-        icon: '+',
-        onClick: function () { M.Toast({ message: 'Быстрый просчёт — в разработке', type: 'info' }); },
-      },
+      /* fab removed — fast calc not yet implemented */
     });
 
     // Show skeleton while initial data loads

@@ -14,17 +14,26 @@ window.MobileTenders = (function () {
     'На просчёте':       { label: 'На просчёте',       color: 'info' },
     'КП отправлено':     { label: 'КП отправлено',     color: 'warning' },
     'ТКП отправлено':    { label: 'ТКП отправлено',    color: 'warning' },
+    'Согласование ТКП':  { label: 'Согласование ТКП',  color: 'info' },
+    'ТКП согласовано':   { label: 'ТКП согласовано',   color: 'success' },
     'На согласовании':   { label: 'На согласовании',   color: 'info' },
     'Переговоры':        { label: 'Переговоры',        color: 'warning' },
     'Выиграли':          { label: 'Выиграли',          color: 'success' },
+    'Клиент согласился': { label: 'Клиент согласился', color: 'success' },
     'Контракт':          { label: 'Контракт',          color: 'success' },
     'Проиграли':         { label: 'Проиграли',         color: 'danger' },
     'Отказ':             { label: 'Отказ',             color: 'danger' },
+    'Клиент отказался':  { label: 'Клиент отказался',  color: 'danger' },
+    'Отменён':           { label: 'Отменён',           color: 'neutral' },
     'В работе':          { label: 'В работе',          color: 'info' },
+    'Выполняется':       { label: 'Выполняется',       color: 'info' },
+    'Мобилизация':       { label: 'Мобилизация',       color: 'info' },
   };
 
+  function getStatus(item) { return item.tender_status || item.status || ''; }
+
   function statusInfo(s) {
-    if (!s) return { label: 'Новый', color: 'neutral' };
+    if (!s) return { label: 'Не указан', color: 'neutral' };
     return STATUS_MAP[s] || { label: s, color: 'neutral' };
   }
 
@@ -44,7 +53,7 @@ window.MobileTenders = (function () {
   /* ── Детальная модалка ── */
   function openDetail(tender) {
     var el = Utils.el;
-    var si = statusInfo(tender.status);
+    var si = statusInfo(getStatus(tender));
     var content = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '16px' } });
 
     // Status pill
@@ -131,7 +140,7 @@ window.MobileTenders = (function () {
 
   /* ── Карточка ── */
   function renderCard(item, idx) {
-    var si = statusInfo(item.status);
+    var si = statusInfo(getStatus(item));
     var fields = [];
     if (item.amount || item.price) fields.push({ label: 'Сумма', value: money(item.amount || item.price) });
     if (item.manager_name || item.rp) fields.push({ label: 'РП', value: item.manager_name || item.rp });
@@ -172,11 +181,11 @@ window.MobileTenders = (function () {
         ],
         filterFn: function (item, val) {
           if (val === 'all') return true;
-          var s = (item.status || '').toLowerCase();
+          var s = (getStatus(item)).toLowerCase();
           if (val === 'new') return s.includes('новый') || s.includes('получен') || s.includes('черновик');
-          if (val === 'wip') return s.includes('просчёт') || s.includes('кп') || s.includes('ткп') || s.includes('переговор') || s.includes('согласован') || s.includes('в работе');
+          if (val === 'wip') return s.includes('просчёт') || s.includes('кп') || s.includes('ткп') || s.includes('переговор') || s.includes('согласован') || s.includes('в работе') || s.includes('выполняется') || s.includes('мобилизация');
           if (val === 'won') return s.includes('выиграли') || s.includes('контракт') || s.includes('клиент согласился');
-          if (val === 'lost') return s.includes('проиграли') || s.includes('отказ');
+          if (val === 'lost') return s.includes('проиграли') || s.includes('отказ') || s.includes('клиент отказался') || s.includes('отменён');
           return true;
         },
       },

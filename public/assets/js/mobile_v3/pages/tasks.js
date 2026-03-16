@@ -204,7 +204,83 @@ var TasksPage = {
 
     function openCreateForm() {
       if (activeTab === 'todo') { openCreateTodo(); }
-      else { M.Toast({ message: 'Создание задач — только с десктопа', type: 'info' }); }
+      else { openCreateTask(); }
+    }
+
+    function openCreateTask() {
+      var content = el('div');
+      var usersLoaded = false;
+      var usersList = [];
+
+      // Load users for assignee picker
+      var assigneeField = el('div', { style: { marginBottom: '12px' } });
+      assigneeField.appendChild(el('label', { style: Object.assign({}, DS.font('sm'), { color: t.textSec, display: 'block', marginBottom: '6px' }) }, 'Исполнитель *'));
+      var assigneeSelect = el('select', { style: {
+        width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid ' + t.border,
+        background: t.surface, color: t.text, fontSize: '15px', fontFamily: 'inherit',
+        appearance: 'none', WebkitAppearance: 'none',
+      } });
+      assigneeSelect.appendChild(el('option', { value: '', disabled: true, selected: true }, 'Загрузка...'));
+      assigneeField.appendChild(assigneeSelect);
+      content.appendChild(assigneeField);
+
+      API.fetch('/users').then(function (resp) {
+        var users = API.extractRows(resp);
+        usersList = users.filter(function (u) { return u.is_active !== false; });
+        usersList.sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'ru'); });
+        assigneeSelect.replaceChildren();
+        assigneeSelect.appendChild(el('option', { value: '' }, '— Выберите исполнителя —'));
+        usersList.forEach(function (u) {
+          assigneeSelect.appendChild(el('option', { value: String(u.id) }, u.name || u.login || 'ID: ' + u.id));
+        });
+        usersLoaded = true;
+      }).catch(function () {
+        assigneeSelect.replaceChildren();
+        assigneeSelect.appendChild(el('option', { value: '' }, 'Ошибка загрузки'));
+      });
+
+      content.appendChild(M.Form({
+        fields: [
+          { id: 'title', label: 'Заголовок задачи', required: true },
+          { id: 'description', label: 'Описание', type: 'textarea' },
+          { id: 'deadline', label: 'Дедлайн', type: 'date' },
+          { id: 'priority', label: 'Приоритет', type: 'select', options: [
+            { value: 'normal', label: 'Обычный' },
+            { value: 'low', label: 'Низкий' },
+            { value: 'high', label: 'Высокий' },
+            { value: 'urgent', label: 'Срочный' },
+          ] },
+        ],
+        submitLabel: 'Создать задачу',
+        onSubmit: function (data) {
+          var assigneeId = assigneeSelect.value;
+          if (!assigneeId) { M.Toast({ message: 'Выберите исполнителя', type: 'error' }); return; }
+          if (!data.title || !data.title.trim()) { M.Toast({ message: 'Укажите заголовок', type: 'error' }); return; }
+          API.fetch('/tasks', {
+            method: 'POST',
+            body: {
+              assignee_id: parseInt(assigneeId),
+              title: data.title.trim(),
+              description: data.description || null,
+              deadline: data.deadline || null,
+              priority: data.priority || 'normal',
+            },
+          }).then(function () {
+            M.Toast({ message: 'Задача создана', type: 'success' });
+            document.querySelectorAll('.asgard-sheet-overlay').forEach(function (o) { o.remove(); });
+            Utils.unlockScroll();
+            return API.fetch('/tasks/my', { noCache: true });
+          }).then(function (d) {
+            tasks = API.extractRows(d);
+            renderContent();
+          }).catch(function (e) {
+            var msg = (e.body && e.body.error) || e.message || 'Ошибка создания';
+            M.Toast({ message: msg, type: 'error' });
+          });
+        },
+      }));
+
+      M.BottomSheet({ title: 'Новая задача', content: content, fullscreen: true });
     }
 
     function openCreateTodo() {

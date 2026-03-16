@@ -352,33 +352,76 @@ const Layout = (() => {
     if (typeof M === 'undefined' || !M.BottomSheet) return;
 
     const chatContent = document.createElement('div');
-    chatContent.style.cssText = 'display:flex;flex-direction:column;gap:12px;min-height:300px;';
+    chatContent.style.cssText = 'display:flex;flex-direction:column;height:100%;';
 
     // Заголовок
     const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+    header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-shrink:0;';
     header.innerHTML = '<div style="width:36px;height:36px;border-radius:50%;background:var(--hero-grad);display:flex;align-items:center;justify-content:center;font-size:16px;">⚡</div>'
       + '<div><div style="font-size:14px;font-weight:700;color:var(--text);">Мимир</div><div style="font-size:11px;color:var(--text-sec);">AI-ассистент ASGARD</div></div>';
     chatContent.appendChild(header);
 
-    // Демо-сообщения
-    const msgs = [
-      { text: 'Привет! Я Мимир — AI-ассистент ASGARD CRM. Спроси меня о тендерах, задачах, финансах или попроси создать документ.', mine: false },
-      { text: 'Покажи тендеры за март дороже 1 млн', mine: true },
-      { text: '📊 Найдено 3 тендера:\n\n• ЯНПЗ — 4.23 млн ₽ (срок 25.03)\n• НОВАТЭК — 28 млн ₽ (подано)\n• КАО Азот — 15.5 млн ₽ (в работе)', mine: false },
-    ];
-    msgs.forEach(m => {
-      if (typeof M.ChatBubble === 'function') {
-        chatContent.appendChild(M.ChatBubble({ text: m.text, mine: m.mine, name: m.mine ? undefined : 'Мимир', time: '22:50' }));
-      }
-    });
+    // Messages area
+    const messagesWrap = document.createElement('div');
+    messagesWrap.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:8px 0;-webkit-overflow-scrolling:touch;';
+    chatContent.appendChild(messagesWrap);
+
+    let _convId = null;
+    let _sending = false;
+
+    // Приветственное сообщение
+    if (typeof M.ChatBubble === 'function') {
+      messagesWrap.appendChild(M.ChatBubble({
+        text: 'Привет! Я Мимир — AI-ассистент ASGARD CRM. Спроси меня о тендерах, задачах, сотрудниках, финансах или попроси найти информацию.',
+        mine: false, name: 'Мимир',
+      }));
+    }
 
     // Composer
     if (typeof M.MessageComposer === 'function') {
       chatContent.appendChild(M.MessageComposer({
         placeholder: 'Спросите Мимира...',
-        onSend: (text) => {
-          if (typeof M.Toast === 'function') M.Toast({ message: 'Мимир: функция в разработке', type: 'info' });
+        onSend: async (text) => {
+          if (_sending || !text.trim()) return;
+          _sending = true;
+
+          // Show user message
+          messagesWrap.appendChild(M.ChatBubble({ text: text, mine: true }));
+          messagesWrap.scrollTop = messagesWrap.scrollHeight;
+
+          // Show typing indicator
+          const typing = document.createElement('div');
+          typing.style.cssText = 'padding:12px 16px;background:var(--surface-alt);border-radius:16px;align-self:flex-start;max-width:80%;font-size:13px;color:var(--text-sec);';
+          typing.textContent = 'Мимир думает...';
+          messagesWrap.appendChild(typing);
+          messagesWrap.scrollTop = messagesWrap.scrollHeight;
+
+          try {
+            const resp = await API.fetch('/mimir/chat', {
+              method: 'POST',
+              body: { message: text, conversation_id: _convId },
+            });
+            typing.remove();
+
+            if (resp.success && resp.response) {
+              _convId = resp.conversation_id || _convId;
+              messagesWrap.appendChild(M.ChatBubble({
+                text: resp.response, mine: false, name: 'Мимир',
+              }));
+            } else {
+              messagesWrap.appendChild(M.ChatBubble({
+                text: resp.message || 'Не удалось получить ответ', mine: false, name: 'Мимир',
+              }));
+            }
+          } catch (e) {
+            typing.remove();
+            var errMsg = (e.body && e.body.message) || e.message || 'Ошибка связи';
+            messagesWrap.appendChild(M.ChatBubble({
+              text: 'Ошибка: ' + errMsg, mine: false, name: 'Мимир',
+            }));
+          }
+          messagesWrap.scrollTop = messagesWrap.scrollHeight;
+          _sending = false;
         }
       }));
     }
@@ -718,7 +761,8 @@ const API = (() => {
     if (Array.isArray(d)) return d;
     // Try common keys first
     var commonKeys = ['items', 'data', 'rows', 'notifications', 'works', 'tenders', 'users',
-      'estimates', 'permits', 'emails', 'tasks', 'sheets', 'employees', 'events'];
+      'estimates', 'permits', 'emails', 'tasks', 'sheets', 'employees', 'events', 'chats',
+      'messages', 'comments', 'files', 'documents', 'connections', 'requests'];
     for (var i = 0; i < commonKeys.length; i++) {
       if (d[commonKeys[i]] && Array.isArray(d[commonKeys[i]])) return d[commonKeys[i]];
     }
