@@ -40,48 +40,50 @@ window.AsgardMimir = (function(){
 
   const styles = `
     <style id="mimir-styles">
-      .mimir-widget { position:fixed; bottom:24px; right:24px; z-index:500; font-family:var(--font-main, -apple-system, sans-serif); }
+      .mimir-widget { position:fixed; bottom:24px; left:24px; z-index:500; font-family:var(--font-main, -apple-system, sans-serif); }
 
       .mimir-toggle {
-        width:64px; height:64px; border-radius:50%;
+        width:56px; height:56px; border-radius:50%;
         background:linear-gradient(135deg, #c0392b 0%, #2a3b66 100%);
-        border:3px solid var(--gold-l); cursor:pointer;
+        border:2px solid var(--gold-l); cursor:pointer;
         display:flex; align-items:center; justify-content:center;
-        box-shadow:0 4px 24px rgba(192,57,43,0.5), 0 0 0 0 rgba(245,215,142,0.4);
-        transition:all 0.3s ease; position:relative;
-        animation:mimirPulse 3s infinite;
+        box-shadow:0 4px 20px rgba(192,57,43,0.4), 0 0 0 0 rgba(245,215,142,0.3);
+        transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1); position:relative;
+        animation:mimirPulse 4s infinite;
       }
 
       @keyframes mimirPulse {
-        0%,100% { box-shadow:0 4px 24px rgba(192,57,43,0.5), 0 0 0 0 rgba(245,215,142,0.4); }
-        50% { box-shadow:0 4px 24px rgba(192,57,43,0.5), 0 0 0 8px rgba(245,215,142,0); }
+        0%,100% { box-shadow:0 4px 20px rgba(192,57,43,0.4), 0 0 0 0 rgba(245,215,142,0.3); }
+        50% { box-shadow:0 4px 20px rgba(192,57,43,0.4), 0 0 0 10px rgba(245,215,142,0); }
       }
 
-      .mimir-toggle:hover { transform:scale(1.1) rotate(5deg); }
-      .mimir-toggle-icon { font-size:32px; }
+      .mimir-toggle:hover { transform:scale(1.08); }
+      .mimir-toggle-icon { font-size:26px; }
 
       .mimir-toggle::before {
-        content:'ᛗ'; position:absolute; top:-6px; right:-6px;
-        width:22px; height:22px; background:var(--gold-l); border-radius:50%;
+        content:'ᛗ'; position:absolute; top:-4px; left:-4px;
+        width:20px; height:20px; background:var(--gold-l); border-radius:50%;
         display:flex; align-items:center; justify-content:center;
-        font-size:12px; color:#2a3b66; font-weight:bold; font-family:serif;
+        font-size:11px; color:#2a3b66; font-weight:bold; font-family:serif;
+        box-shadow:0 2px 6px rgba(0,0,0,0.3);
       }
 
       .mimir-panel {
-        position:absolute; bottom:80px; right:0;
-        width:520px; max-width:calc(100vw - 48px);
-        height:650px; max-height:calc(100vh - 140px);
-        background:linear-gradient(180deg, var(--bg2) 0%, #0d1428 100%);
-        border-radius:6px; border:2px solid rgba(245,215,142,0.3);
-        box-shadow:0 10px 50px rgba(0,0,0,0.6);
+        position:absolute; bottom:72px; left:0;
+        width:480px; max-width:calc(100vw - 48px);
+        height:620px; max-height:calc(100vh - 140px);
+        background:linear-gradient(180deg, var(--bg2, #151922) 0%, #0d1428 100%);
+        border-radius:16px; border:1px solid rgba(245,215,142,0.2);
+        box-shadow:0 16px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
         display:none; flex-direction:row; overflow:hidden;
+        backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
       }
 
-      .mimir-panel.open { display:flex; animation:mimirOpen 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+      .mimir-panel.open { display:flex; animation:mimirOpen 0.35s cubic-bezier(0.34,1.56,0.64,1); }
       .mimir-panel.minimized { height:64px; }
 
       @keyframes mimirOpen {
-        from { opacity:0; transform:translateY(30px) scale(0.9); }
+        from { opacity:0; transform:translateY(20px) scale(0.95); }
         to { opacity:1; transform:translateY(0) scale(1); }
       }
 
@@ -97,9 +99,9 @@ window.AsgardMimir = (function(){
         padding:12px; border-bottom:1px solid rgba(245,215,142,0.1);
       }
       .mimir-new-chat-btn {
-        width:100%; padding:10px; border-radius:6px;
+        width:100%; padding:10px; border-radius:10px;
         background:linear-gradient(135deg, #c0392b, #8e2c22);
-        border:1px solid rgba(245,215,142,0.3); color:var(--gold-l);
+        border:1px solid rgba(245,215,142,0.2); color:var(--gold-l);
         cursor:pointer; font-weight:600; font-size:13px;
         transition:all 0.2s;
       }
@@ -109,13 +111,13 @@ window.AsgardMimir = (function(){
         flex:1; overflow-y:auto; padding:8px;
       }
       .mimir-conv-item {
-        padding:10px 12px; margin-bottom:4px; border-radius:6px;
+        padding:10px 12px; margin-bottom:4px; border-radius:10px;
         background:rgba(255,255,255,0.03); cursor:pointer;
         transition:all 0.2s; font-size:13px; color:rgba(255,255,255,0.7);
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       }
-      .mimir-conv-item:hover { background:rgba(255,255,255,0.08); }
-      .mimir-conv-item.active { background:rgba(245,215,142,0.15); color:var(--gold-l); }
+      .mimir-conv-item:hover { background:rgba(255,255,255,0.06); }
+      .mimir-conv-item.active { background:rgba(245,215,142,0.12); color:var(--gold-l); }
       .mimir-conv-item.pinned::before { content:'📌 '; }
 
       /* Основная область */
@@ -129,12 +131,12 @@ window.AsgardMimir = (function(){
       }
 
       .mimir-menu-btn {
-        width:32px; height:32px; border-radius:6px;
-        background:rgba(255,255,255,0.1); border:none; color:#fff;
+        width:32px; height:32px; border-radius:8px;
+        background:rgba(255,255,255,0.08); border:none; color:#fff;
         cursor:pointer; font-size:16px; transition:all 0.2s;
         display:flex; align-items:center; justify-content:center;
       }
-      .mimir-menu-btn:hover { background:rgba(255,255,255,0.2); }
+      .mimir-menu-btn:hover { background:rgba(255,255,255,0.15); }
 
       .mimir-avatar { font-size:32px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
       .mimir-header-info { flex:1; min-width:0; }
@@ -143,11 +145,11 @@ window.AsgardMimir = (function(){
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .mimir-header-actions { display:flex; gap:6px; }
       .mimir-header-btn {
-        width:28px; height:28px; border-radius:6px;
-        background:rgba(255,255,255,0.1); border:none; color:#fff;
+        width:28px; height:28px; border-radius:8px;
+        background:rgba(255,255,255,0.08); border:none; color:#fff;
         cursor:pointer; font-size:14px; transition:all 0.2s;
       }
-      .mimir-header-btn:hover { background:rgba(255,255,255,0.2); }
+      .mimir-header-btn:hover { background:rgba(255,255,255,0.15); }
 
       .mimir-messages {
         flex:1; overflow-y:auto; padding:16px;
@@ -159,13 +161,13 @@ window.AsgardMimir = (function(){
       .mimir-messages::-webkit-scrollbar-thumb { background:rgba(245,215,142,0.3); border-radius:3px; }
 
       .mimir-message {
-        max-width:90%; padding:12px 16px;
-        border-radius:6px; font-size:14px; line-height:1.6;
+        max-width:88%; padding:12px 16px;
+        border-radius:14px; font-size:14px; line-height:1.6;
         animation:msgFade 0.3s ease; position:relative;
       }
 
       @keyframes msgFade {
-        from { opacity:0; transform:translateY(10px); }
+        from { opacity:0; transform:translateY(8px); }
         to { opacity:1; transform:translateY(0); }
       }
 
@@ -177,9 +179,9 @@ window.AsgardMimir = (function(){
 
       .mimir-message.assistant {
         align-self:flex-start;
-        background:rgba(42,59,102,0.6);
-        color:var(--text-secondary); border-bottom-left-radius:4px;
-        border:1px solid rgba(245,215,142,0.15);
+        background:rgba(42,59,102,0.5);
+        color:rgba(255,255,255,0.9); border-bottom-left-radius:4px;
+        border:1px solid rgba(245,215,142,0.1);
       }
 
       .mimir-msg-content { word-wrap:break-word; }
@@ -187,15 +189,16 @@ window.AsgardMimir = (function(){
       /* Кнопка копирования */
       .mimir-copy-btn {
         position:absolute; top:8px; right:8px;
-        width:24px; height:24px; border-radius:6px;
-        background:rgba(0,0,0,0.3); border:none; color:rgba(255,255,255,0.6);
+        width:26px; height:26px; border-radius:8px;
+        background:rgba(0,0,0,0.3); border:none; color:rgba(255,255,255,0.5);
         cursor:pointer; font-size:12px; opacity:0; transition:all 0.2s;
+        display:flex; align-items:center; justify-content:center;
       }
       .mimir-message:hover .mimir-copy-btn { opacity:1; }
       .mimir-copy-btn:hover { background:rgba(0,0,0,0.5); color:#fff; }
 
       /* Markdown стили */
-      .mimir-code { background:rgba(0,0,0,0.4); border-radius:6px; padding:12px; margin:8px 0;
+      .mimir-code { background:rgba(0,0,0,0.4); border-radius:10px; padding:12px; margin:8px 0;
         font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px; overflow-x:auto; white-space:pre; }
       .mimir-inline-code { background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:4px; font-size:13px; font-family:monospace; }
       .mimir-h2 { font-size:16px; font-weight:700; color:var(--gold-l); margin:14px 0 8px; }
@@ -234,11 +237,11 @@ window.AsgardMimir = (function(){
 
       .mimir-suggestions { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
       .mimir-suggestion {
-        padding:6px 16px; border-radius:100px;
-        background:transparent; border:1px solid rgba(255,255,255,0.15);
+        padding:8px 18px; border-radius:100px;
+        background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1);
         color:var(--gold-l); font-size:12px; cursor:pointer; transition:all 0.2s;
       }
-      .mimir-suggestion:hover { background:rgba(245,215,142,0.2); transform:translateY(-2px); }
+      .mimir-suggestion:hover { background:rgba(245,215,142,0.15); border-color:rgba(245,215,142,0.3); transform:translateY(-1px); }
 
       .mimir-input-area {
         padding:12px 16px;
@@ -252,8 +255,8 @@ window.AsgardMimir = (function(){
 
       .mimir-attachment {
         display:flex; align-items:center; gap:6px;
-        padding:6px 10px; border-radius:6px;
-        background:rgba(245,215,142,0.15); font-size:12px; color:var(--gold-l);
+        padding:6px 12px; border-radius:10px;
+        background:rgba(245,215,142,0.1); font-size:12px; color:var(--gold-l);
       }
       .mimir-attachment-size { font-size:10px; opacity:0.7; }
 
@@ -311,8 +314,8 @@ window.AsgardMimir = (function(){
       }
 
       .mimir-result-card {
-        background:rgba(0,0,0,0.2); border-radius:6px;
-        padding:10px; margin-top:8px; font-size:13px;
+        background:rgba(0,0,0,0.2); border-radius:12px;
+        padding:12px; margin-top:8px; font-size:13px;
       }
 
       .mimir-result-card table { width:100%; border-collapse:collapse; }
@@ -331,19 +334,15 @@ window.AsgardMimir = (function(){
         position:absolute; inset:0; background:rgba(26,26,46,0.95);
         display:none; align-items:center; justify-content:center;
         flex-direction:column; gap:16px; z-index:10;
-        border-radius:6px;
+        border-radius:16px; backdrop-filter:blur(10px);
       }
       .mimir-panel.drag-over .mimir-drop-overlay { display:flex; }
       .mimir-drop-icon { font-size:48px; }
       .mimir-drop-text { color:var(--gold-l); font-size:16px; font-weight:600; }
 
-      /* Mobile styles moved to responsive.css for proper fullscreen messenger */
+      /* Desktop only — полностью скрыт на мобилке */
       @media (max-width:768px) {
-        .mimir-widget { bottom:80px; right:16px; }
-        .mimir-toggle { width:48px; height:48px; }
-        .mimir-desktop-only { display:none !important; }
-        .mimir-header-actions { gap:4px; }
-        .mimir-header-btn { width:32px; height:32px; }
+        .mimir-widget { display:none !important; }
       }
 
       .mimir-back-arrow { display:none; }
@@ -357,7 +356,16 @@ window.AsgardMimir = (function(){
   // ИНИЦИАЛИЗАЦИЯ
   // ═══════════════════════════════════════════════════════════════════════════
 
+  function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+      || (window.innerWidth <= 768)
+      || (typeof window.MobileShell !== 'undefined');
+  }
+
   function init() {
+    // Desktop only — никогда не показываем на мобилке
+    if (isMobileDevice()) return;
+
     const hash = window.location.hash || '';
     if (!hash || hash === '#/' || hash === '#/welcome' || hash === '#/login') {
       const existing = document.getElementById('mimirWidget');
