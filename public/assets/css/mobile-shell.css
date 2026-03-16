@@ -136,3 +136,118 @@
   max-width: 100%;
   height: auto;
 }
+
+/* ═══════════════════════════════════════════════
+   Хугинн — overrides для чата
+   ═══════════════════════════════════════════════ */
+
+/* Чат-страница: без нижнего padding от таб-бара */
+.asgard-huginn-chat {
+  padding-bottom: 0 !important;
+}
+.asgard-huginn-chat.asgard-slide-right {
+  animation: asgard-slide-right 0.25s ease-out !important;
+}
+
+/* Composer textarea */
+.asgard-huginn-composer .asgard-huginn-textarea {
+  min-height: 20px !important;
+  max-height: 120px !important;
+  height: 40px !important;
+  padding: 10px 14px !important;
+  font-size: 15px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255,255,255,0.15) !important;
+  background: rgba(255,255,255,0.08) !important;
+  color: var(--text, #fff) !important;
+  resize: none !important;
+  overflow-y: auto !important;
+  line-height: 1.4 !important;
+  outline: none !important;
+}
+.asgard-huginn-composer .asgard-huginn-textarea:focus {
+  border-color: var(--accent, #ff4444) !important;
+  box-shadow: none !important;
+}
+
+/* Composer кнопки — сброс shell min-height */
+.asgard-huginn-btn {
+  min-height: 40px !important;
+  min-width: 40px !important;
+}
+.asgard-huginn-send-btn {
+  min-height: 40px !important;
+  min-width: 40px !important;
+}
+
+/* Мимир — кнопки prompt */
+.asgard-mimir-prompt {
+  min-height: 36px !important;
+}
+
+/* Мимир-страница без нижнего padding */
+.asgard-mimir-page {
+  padding-bottom: 0 !important;
+}
+
+/* ── Анимации ── */
+@keyframes asgard-msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes asgard-react-pop {
+  0%   { transform: scale(0) translateX(-50%); }
+  50%  { transform: scale(1.15) translateX(-50%); }
+  100% { transform: scale(1) translateX(-50%); }
+}
+@keyframes asgard-slide-right {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── ShakeX (PIN) ── */
+.asgard-shake-x {
+  animation: asgard-shake-x 0.5s ease;
+}
+@keyframes asgard-shake-x {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* ── Typing bounce dots ── */
+.asgard-typing-bounce span {
+  display: inline-block;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; opacity: 0.5;
+  animation: asgard-bounce 1.2s infinite;
+}
+.asgard-typing-bounce span:nth-child(2) { animation-delay: 0.2s; }
+.asgard-typing-bounce span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes asgard-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+  40% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ── Tab bar FAB ── */
+.asgard-tabbar__fab {
+  min-height: auto !important;
+  min-width: auto !important;
+}
+.asgard-tabbar__item--mimir {
+  color: #d4a017 !important;
+}
+
+/* ── No scrollbar helper ── */
+.asgard-no-scrollbar::-webkit-scrollbar { display: none; }
+.asgard-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Rune drift ── */
+@keyframes asgard-rune-drift {
+  0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+  10%  { opacity: 0.15; }
+  90%  { opacity: 0.15; }
+  100% { transform: translateY(-100vh) rotate(20deg); opacity: 0; }
+}
