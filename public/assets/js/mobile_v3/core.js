@@ -352,18 +352,25 @@ const Layout = (() => {
     if (typeof M === 'undefined' || !M.BottomSheet) return;
 
     const chatContent = document.createElement('div');
-    chatContent.style.cssText = 'display:flex;flex-direction:column;height:100%;';
+    Object.assign(chatContent.style, { display: 'flex', flexDirection: 'column', height: '100%' });
 
     // Заголовок
-    const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-shrink:0;';
-    header.innerHTML = '<div style="width:36px;height:36px;border-radius:50%;background:var(--hero-grad);display:flex;align-items:center;justify-content:center;font-size:16px;">⚡</div>'
-      + '<div><div style="font-size:14px;font-weight:700;color:var(--text);">Мимир</div><div style="font-size:11px;color:var(--text-sec);">AI-ассистент ASGARD</div></div>';
+    const header = Utils.el('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexShrink: 0 } });
+    header.appendChild(Utils.el('div', { style: {
+      width: '36px', height: '36px', borderRadius: '50%', background: 'var(--hero-grad)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px',
+    } }, '⚡'));
+    const headerInfo = Utils.el('div');
+    headerInfo.appendChild(Utils.el('div', { style: Object.assign({}, DS.font('md'), { color: 'var(--text)', fontWeight: 700 }) }, 'Мимир'));
+    headerInfo.appendChild(Utils.el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-sec)' }) }, 'AI-ассистент ASGARD'));
+    header.appendChild(headerInfo);
     chatContent.appendChild(header);
 
     // Messages area
-    const messagesWrap = document.createElement('div');
-    messagesWrap.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:8px 0;-webkit-overflow-scrolling:touch;';
+    const messagesWrap = Utils.el('div', { style: {
+      flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px',
+      padding: '8px 0', WebkitOverflowScrolling: 'touch',
+    } });
     chatContent.appendChild(messagesWrap);
 
     let _convId = null;
@@ -389,10 +396,10 @@ const Layout = (() => {
           messagesWrap.appendChild(M.ChatBubble({ text: text, mine: true }));
           messagesWrap.scrollTop = messagesWrap.scrollHeight;
 
-          // Show typing indicator
-          const typing = document.createElement('div');
-          typing.style.cssText = 'padding:12px 16px;background:var(--surface-alt);border-radius:16px;align-self:flex-start;max-width:80%;font-size:13px;color:var(--text-sec);';
-          typing.textContent = 'Мимир думает...';
+          // Show typing indicator via ChatBubble
+          const typing = M.ChatBubble({ text: 'Мимир думает\u2026', mine: false, name: 'Мимир' });
+          typing.classList.add('asgard-mimir-typing');
+          typing.style.opacity = '0.7';
           messagesWrap.appendChild(typing);
           messagesWrap.scrollTop = messagesWrap.scrollHeight;
 

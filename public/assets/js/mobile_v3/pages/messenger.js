@@ -43,7 +43,11 @@ const MessengerPage = {
         renderList('');
       } catch (e) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { loadChats(); } }));
+        if (e.status === 403) {
+          listWrap.appendChild(M.Empty({ text: 'Нет доступа к мессенджеру.\nОбратитесь к администратору.', icon: '🔒' }));
+        } else {
+          listWrap.appendChild(M.ErrorBanner({ onRetry: function() { loadChats(); } }));
+        }
       }
     }
 
