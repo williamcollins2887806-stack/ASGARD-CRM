@@ -384,6 +384,42 @@ module.exports = async function (fastify) {
     return { success: true, synced };
   });
 
+  // ── GET /bank/summary ─────────────────────────────────────────────────
+  // Мобильный виджет: сводка банковской интеграции
+  fastify.get('/bank/summary', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    try {
+      // Проверяем наличие данных
+      const countRes = await db.query('SELECT COUNT(*)::int AS cnt FROM bank_transactions');
+      const count = countRes.rows[0]?.cnt || 0;
+
+      if (count === 0) {
+        return { connected: false, message: 'Банковская интеграция не настроена' };
+      }
+
+      // Баланс за последние 30 дней
+      const statsRes = await db.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN direction = 'income' THEN amount ELSE 0 END), 0) AS income,
+          COALESCE(SUM(CASE WHEN direction = 'expense' THEN amount ELSE 0 END), 0) AS expense,
+          MAX(transaction_date) AS last_sync
+        FROM bank_transactions
+        WHERE transaction_date >= NOW() - INTERVAL '30 days'
+      `);
+      const stats = statsRes.rows[0] || {};
+
+      return {
+        connected: true,
+        income: parseFloat(stats.income) || 0,
+        expense: parseFloat(stats.expense) || 0,
+        balance: (parseFloat(stats.income) || 0) - (parseFloat(stats.expense) || 0),
+        last_sync: stats.last_sync || null,
+        total_transactions: count
+      };
+    } catch (e) {
+      return { connected: false, message: 'Банковская интеграция не настроена' };
+    }
+  });
+
 
   // ═══════════════════════════════════════════════════════════════════════
   //  МОДУЛЬ B: ТЕНДЕРНЫЕ ПЛОЩАДКИ

@@ -110,6 +110,18 @@
   <div id="app">
     <noscript>Для работы требуется JavaScript.</noscript>
   </div>
+
+  <!-- ═══ Определяем платформу ДО загрузки скриптов ═══ -->
+  <script>
+    window.__ASGARD_IS_MOBILE = (function() {
+      var ua = navigator.userAgent || '';
+      if (/Mobi|Android|iPhone|iPad|iPod/i.test(ua)) return true;
+      if ('ontouchstart' in window && window.innerWidth <= 768) return true;
+      return false;
+    })();
+  </script>
+
+  <!-- ═══ Общие скрипты (загружаются ВСЕГДА) ═══ -->
   <script src="assets/js/db.js?v=1.0.1"></script>
   <script src="assets/js/ui.js?v=8.9.2-phase0"></script>
   <script src="assets/js/validate.js?v=8.9.0"></script>
@@ -117,211 +129,229 @@
   <script src="assets/js/safe_mode.js?v=8.9.0"></script>
   <script src="assets/js/build_info.js?v=8.9.0"></script>
   <script src="assets/js/auth.js?v=8.9.0"></script>
-  <script src="assets/js/router.js?v=8.9.0"></script>
   <script src="assets/js/sla.js?v=8.9.2-phase0"></script>
-  <script src="assets/js/booking.js?v=8.9.0"></script>
-  <script src="assets/js/seed.js?v=8.9.0"></script>
-  <script src="assets/js/templates.js?v=8.9.0"></script>
-  <script src="assets/js/docs_pack.js?v=8.9.0"></script>
-  <script src="assets/js/backup.js?v=8.9.0"></script>
-  <script src="assets/js/alerts.js?v=8.9.0"></script>
-  <script src="assets/js/gantt.js?v=8.9.0"></script>
-  <script src="assets/js/gantt_full.js?v=8.9.0"></script>
-  <script src="assets/js/charts.js?v=8.9.0"></script>
   <script src="assets/js/calc_cities.js?v=8.9.0"></script>
-    <script src="assets/js/calc_norms.js?v=8.9.0"></script>
-    <script src="assets/js/calc_equipment.js?v=8.9.0"></script>
-    <script src="assets/js/calc_excel_export.js?v=8.9.0"></script>
-    <script src="assets/js/calculator_v2.js?v=8.9.0"></script>
-    <script src="assets/js/calculator.js?v=8.9.0"></script>
-  <script src="assets/js/tenders.js?v=8.9.0"></script>
-  <script src="assets/js/customers.js?v=8.9.0"></script>
-  <script src="assets/js/pm_calcs.js?v=8.9.0"></script>
-  <script src="assets/js/approval_modals.js?v=2.0.0"></script>
-  <script src="assets/js/approvals.js?v=8.9.0"></script>
-  <script src="assets/js/pm_works.js?v=8.9.0"></script>
-  <script src="assets/js/work_expenses.js?v=8.9.0"></script>
-  <script src="assets/js/buh_registry.js?v=8.9.0"></script>
-  <script src="assets/js/office_expenses.js?v=8.9.0"></script>
-  <script src="assets/js/correspondence.js?v=8.9.3-corrective1"></script>
-  <script src="assets/js/proxies.js?v=8.9.0"></script>
-  <script src="assets/js/user_requests.js?v=2.1.0"></script>
-  <script src="assets/js/travel.js?v=8.9.3-corrective1"></script>
-  <script src="assets/js/dashboard.js?v=8.9.0"></script>
-  <script src="assets/js/export.js?v=8.9.0"></script>
-  <script src="assets/js/all_works.js?v=8.9.0"></script>
-  <script src="assets/js/all_estimates.js?v=8.9.4-phase1fix"></script>
-  <script src="assets/js/kpi_works.js?v=8.9.0"></script>
-  <script src="assets/js/kpi_money.js?v=8.9.3-corrective1"></script>
-  <script src="assets/js/tkp_followup.js?v=8.9.0"></script>
-  <script src="assets/js/tkp-page.js?v=8.9.0"></script>
-  <script src="assets/js/pass-requests-page.js?v=8.9.0"></script>
-  <script src="assets/js/tmc-requests-page.js?v=8.9.0"></script>
-  <script src="assets/js/training-applications-page.js?v=8.9.0"></script>
-  <script src="assets/js/finances.js?v=8.9.0"></script>
-  <script src="assets/js/bank_import.js?v=8.9.0"></script>
-  <script src="assets/js/auto_reports.js?v=8.9.0"></script>
+  <script src="assets/js/calc_norms.js?v=8.9.0"></script>
+  <script src="assets/js/calc_equipment.js?v=8.9.0"></script>
+  <script src="assets/js/calc_excel_export.js?v=8.9.0"></script>
+  <script src="assets/js/calculator_v2.js?v=8.9.0"></script>
+  <script src="assets/js/calculator.js?v=8.9.0"></script>
   <script src="assets/js/notifications_helper.js?v=8.9.0"></script>
-  <script src="assets/js/geo_score.js?v=8.9.0"></script>
-  <script src="assets/js/acts.js?v=8.9.0"></script>
-  <script src="assets/js/invoices.js?v=8.9.0"></script>
-  <script src="assets/js/warehouse.js?v=8.9.0"></script>
-  <script src="assets/js/my_equipment.js?v=8.9.0"></script>
-  <script src="assets/js/equipment.js?v=8.9.0"></script>
-  <script src="assets/js/email.js?v=8.9.0"></script>
-  <script src="assets/js/reminders.js?v=8.9.0"></script>
-  <script src="assets/js/global_search.js?v=8.9.0"></script>
-  <script src="assets/js/settings.js?v=8.9.0"></script>
-  <script src="assets/js/hr_requests.js?v=8.9.0"></script>
-  <script src="assets/js/employee_collections.js?v=8.9.0"></script>
-  <script src="assets/js/proc_requests.js?v=8.9.0"></script>
-  <script src="assets/js/personnel.js?v=8.9.0"></script>
-  <script src="assets/js/hr_rating.js?v=8.9.0"></script>
-  <script src="assets/js/employee.js?v=8.9.0"></script>
-  <script src="assets/js/staff_schedule.js?v=8.9.3-corrective1"></script>
-  <script src="assets/js/office_schedule.js?v=8.9.0"></script>
-  <script src="assets/js/birthdays.js?v=8.9.0"></script>
-  <script src="assets/js/calendar.js?v=8.9.0"></script>
-  <script src="assets/js/funnel.js?v=8.9.2-phase0"></script>
-  <script src="assets/js/contracts.js?v=8.9.0"></script>
-  <script src="assets/js/seals.js?v=8.9.0"></script>
-  <script src="assets/js/permits.js?v=8.9.0"></script>
-  <script src="assets/js/permit_applications.js?v=1.0.1"></script>
-  <script src="assets/js/bonus_approval.js?v=8.9.0"></script>
-  <script src="assets/js/telegram.js?v=8.9.0"></script>
-  <script src="assets/js/sync.js?v=1.0.1"></script>
-  <script src="assets/js/chat.js?v=8.9.0"></script>
-  <script src="assets/js/tasks-page.js?v=8.9.0"></script>
-  <script src="assets/js/mimir.js?v=8.9.0"></script>
-  <script src="assets/js/receipt_scanner.js?v=8.9.0"></script>
-  <script src="assets/js/custom_dashboard.js?v=8.9.0"></script>
-  <script src="assets/js/big_screen.js?v=8.9.0"></script>
-  <script src="assets/js/qr_codes.js?v=8.9.0"></script>
-  <script src="assets/js/fx.js?v=8.9.0"></script>
-  <script src="assets/js/mango.js?v=8.9.0"></script>
-  <script src="assets/js/pm_consents.js?v=8.9.0"></script>
-  <script src="assets/js/cash.js?v=8.9.0"></script>
-  <script src="assets/js/cash_admin.js?v=8.9.0"></script>
-  <script src="assets/js/tasks.js?v=8.9.0"></script>
-  <script src="assets/js/tasks_admin.js?v=8.9.0"></script>
-  <script src="assets/js/kanban.js?v=8.9.0"></script>
-  <script src="assets/js/chat_groups.js?v=8.9.0"></script>
-  <script src="assets/js/meetings_page.js?v=8.9.0"></script>
-  <script src="assets/js/diag.js?v=8.9.2-phase0"></script>
-  <script src="assets/js/theme.js?v=8.9.0"></script>
-  <script src="assets/js/to_analytics.js?v=8.9.0"></script>
-  <script src="assets/js/pm_analytics.js?v=8.9.0"></script>
-  <script src="assets/js/engineer_dashboard.js?v=8.9.0"></script>
-  <script src="assets/js/payroll.js?v=8.9.0"></script>
-  <!-- <script src="assets/js/ai_assistant.js?v=8.9.0"></script> -->
-  <script src="assets/js/pre_tenders.js?v=8.9.0"></script>
-  <script src="assets/js/mailbox.js?v=8.9.0"></script>
-  <script src="assets/js/my_mail.js?v=2.2.0"></script>
-  <script src="assets/js/email_compose.js?v=8.9.0"></script>
-  <script src="assets/js/mail_settings.js?v=8.9.0"></script>
-  <script src="assets/js/inbox_applications.js?v=8.9.0"></script>
-  <script src="assets/js/integrations.js?v=8.9.0"></script>
-  <script src="assets/js/object_map.js?v=8.9.0"></script>
   <script src="assets/js/push-notifications.js?v=8.9.2-phase0"></script>
   <script src="assets/js/webauthn.js?v=8.9.2-phase0"></script>
-  <script src="assets/js/pagination.js?v=8.9.0"></script>
-  <script src="assets/js/employee_picker.js?v=8.9.0"></script>
-  <script src="assets/js/action_menu.js?v=8.9.0"></script>
-  <script src="assets/js/site_inspections.js?v=8.9.0"></script>
-  <script src="assets/js/telephony.js?v=1.2.0"></script>
-  <script src="assets/js/telephony_popup.js?v=2.0.2"></script>
-
-  <!-- ═══ Mobile v3: Core (порядок важен!) ═══ -->
-  <script src="assets/js/mobile_v3/ds.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/core.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/components.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/auth.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/approval.js?v=3.0.0"></script>
-
-  <!-- ═══ Mobile v3: Widgets (27 шт) ═══ -->
-  <script src="assets/js/mobile_v3/widgets/welcome.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/notifications.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/my_works.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/tenders_funnel.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/money_summary.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/equipment_value.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/birthdays.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/approvals.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/calendar.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/quick_actions.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/receipt_scanner.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/telephony.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/todo.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/kpi_summary.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/pre_tenders.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/tender_dynamics.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/cash_balance.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/my_cash_balance.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/bank_summary.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/overdue_works.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/payroll_pending.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/permits_expiry.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/equipment_alerts.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/team_workload.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/gantt_mini.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/platform_alerts.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/widgets/my_mail.js?v=3.0.0"></script>
-
-  <!-- ═══ Mobile v3: Pages (46 шт) ═══ -->
-  <script src="assets/js/mobile_v3/pages/dashboard.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/tasks.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/tasks_admin.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/alerts.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/pre_tenders.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/funnel.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/tenders.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/customers.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/pm_calcs.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/approvals.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/all_estimates.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/pm_works.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/all_works.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/gantt.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/cash.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/cash_admin.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/approval_payment.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/finances.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/payroll.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/office_expenses.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/invoices.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/acts.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/pass_requests.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/tmc_requests.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/proc_requests.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/personnel.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/permits.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/hr_requests.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/training.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/workers_schedule.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/travel.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/messenger.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/my_mail.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/correspondence.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/meetings.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/warehouse.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/my_equipment.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/contracts.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/seals.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/proxies.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/profile.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/settings.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/telegram.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/integrations.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/backup.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/pages/diag.js?v=3.0.0"></script>
-
-  <!-- ═══ Mobile v3: Router + Test (последними) ═══ -->
-  <script src="assets/js/mobile_v3/router.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/test.js?v=3.0.0"></script>
-  <script src="assets/js/mobile_v3/test2.js?v=3.0.0"></script>
-
   <script src="assets/js/session-guard.js?v=8.9.0"></script>
-  <script src="assets/js/app.js?v=8.9.4-mobile-disable-20260312"></script>
+
+  <!-- ═══ Mobile v3: Core (загружается ВСЕГДА — решает, активировать ли мобилку) ═══ -->
+  <script src="assets/js/mobile_v3/ds.js?v=3.0.1"></script>
+  <script src="assets/js/mobile_v3/core.js?v=3.0.1"></script>
+  <script src="assets/js/mobile_v3/components.js?v=3.0.1"></script>
+  <script src="assets/js/mobile_v3/auth.js?v=3.0.1"></script>
+  <script src="assets/js/mobile_v3/approval.js?v=3.0.1"></script>
+
+  <!-- ═══ Mobile v3: Widgets + Pages + Router (только мобилка) ═══ -->
+  <script>
+  if (window.__ASGARD_IS_MOBILE) {
+    [
+      'assets/js/mobile_v3/widgets/welcome.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/notifications.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/my_works.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/tenders_funnel.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/money_summary.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/equipment_value.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/birthdays.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/approvals.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/calendar.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/quick_actions.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/receipt_scanner.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/telephony.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/todo.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/kpi_summary.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/pre_tenders.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/tender_dynamics.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/cash_balance.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/my_cash_balance.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/bank_summary.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/overdue_works.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/payroll_pending.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/permits_expiry.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/equipment_alerts.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/team_workload.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/gantt_mini.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/platform_alerts.js?v=3.0.1',
+      'assets/js/mobile_v3/widgets/my_mail.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/dashboard.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/tasks.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/tasks_admin.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/alerts.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/pre_tenders.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/funnel.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/tenders.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/customers.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/pm_calcs.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/approvals.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/all_estimates.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/pm_works.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/all_works.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/gantt.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/cash.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/cash_admin.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/approval_payment.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/finances.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/payroll.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/office_expenses.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/invoices.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/acts.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/pass_requests.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/tmc_requests.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/proc_requests.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/personnel.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/permits.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/hr_requests.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/training.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/workers_schedule.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/travel.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/messenger.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/my_mail.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/correspondence.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/meetings.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/warehouse.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/my_equipment.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/contracts.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/seals.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/proxies.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/profile.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/settings.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/telegram.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/integrations.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/backup.js?v=3.0.1',
+      'assets/js/mobile_v3/pages/diag.js?v=3.0.1',
+      'assets/js/mobile_v3/router.js?v=3.0.1',
+      'assets/js/mobile_v3/test.js?v=3.0.1',
+      'assets/js/mobile_v3/test2.js?v=3.0.1'
+    ].forEach(function(src) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.async = false;
+      document.head.appendChild(s);
+    });
+  }
+  </script>
+
+  <!-- ═══ Desktop скрипты (только десктоп) ═══ -->
+  <script>
+  if (!window.__ASGARD_IS_MOBILE) {
+    [
+      'assets/js/router.js?v=8.9.0',
+      'assets/js/booking.js?v=8.9.0',
+      'assets/js/seed.js?v=8.9.0',
+      'assets/js/templates.js?v=8.9.0',
+      'assets/js/docs_pack.js?v=8.9.0',
+      'assets/js/backup.js?v=8.9.0',
+      'assets/js/alerts.js?v=8.9.0',
+      'assets/js/gantt.js?v=8.9.0',
+      'assets/js/gantt_full.js?v=8.9.0',
+      'assets/js/charts.js?v=8.9.0',
+      'assets/js/tenders.js?v=8.9.0',
+      'assets/js/customers.js?v=8.9.0',
+      'assets/js/pm_calcs.js?v=8.9.0',
+      'assets/js/approval_modals.js?v=2.0.0',
+      'assets/js/approvals.js?v=8.9.0',
+      'assets/js/pm_works.js?v=8.9.0',
+      'assets/js/work_expenses.js?v=8.9.0',
+      'assets/js/buh_registry.js?v=8.9.0',
+      'assets/js/office_expenses.js?v=8.9.0',
+      'assets/js/correspondence.js?v=8.9.3-corrective1',
+      'assets/js/proxies.js?v=8.9.0',
+      'assets/js/user_requests.js?v=2.1.0',
+      'assets/js/travel.js?v=8.9.3-corrective1',
+      'assets/js/dashboard.js?v=8.9.0',
+      'assets/js/export.js?v=8.9.0',
+      'assets/js/all_works.js?v=8.9.0',
+      'assets/js/all_estimates.js?v=8.9.4-phase1fix',
+      'assets/js/kpi_works.js?v=8.9.0',
+      'assets/js/kpi_money.js?v=8.9.3-corrective1',
+      'assets/js/tkp_followup.js?v=8.9.0',
+      'assets/js/tkp-page.js?v=8.9.0',
+      'assets/js/pass-requests-page.js?v=8.9.0',
+      'assets/js/tmc-requests-page.js?v=8.9.0',
+      'assets/js/training-applications-page.js?v=8.9.0',
+      'assets/js/finances.js?v=8.9.0',
+      'assets/js/bank_import.js?v=8.9.0',
+      'assets/js/auto_reports.js?v=8.9.0',
+      'assets/js/geo_score.js?v=8.9.0',
+      'assets/js/acts.js?v=8.9.0',
+      'assets/js/invoices.js?v=8.9.0',
+      'assets/js/warehouse.js?v=8.9.0',
+      'assets/js/my_equipment.js?v=8.9.0',
+      'assets/js/equipment.js?v=8.9.0',
+      'assets/js/email.js?v=8.9.0',
+      'assets/js/reminders.js?v=8.9.0',
+      'assets/js/global_search.js?v=8.9.0',
+      'assets/js/settings.js?v=8.9.0',
+      'assets/js/hr_requests.js?v=8.9.0',
+      'assets/js/employee_collections.js?v=8.9.0',
+      'assets/js/proc_requests.js?v=8.9.0',
+      'assets/js/personnel.js?v=8.9.0',
+      'assets/js/hr_rating.js?v=8.9.0',
+      'assets/js/employee.js?v=8.9.0',
+      'assets/js/staff_schedule.js?v=8.9.3-corrective1',
+      'assets/js/office_schedule.js?v=8.9.0',
+      'assets/js/birthdays.js?v=8.9.0',
+      'assets/js/calendar.js?v=8.9.0',
+      'assets/js/funnel.js?v=8.9.2-phase0',
+      'assets/js/contracts.js?v=8.9.0',
+      'assets/js/seals.js?v=8.9.0',
+      'assets/js/permits.js?v=8.9.0',
+      'assets/js/permit_applications.js?v=1.0.1',
+      'assets/js/bonus_approval.js?v=8.9.0',
+      'assets/js/telegram.js?v=8.9.0',
+      'assets/js/sync.js?v=1.0.1',
+      'assets/js/chat.js?v=8.9.0',
+      'assets/js/tasks-page.js?v=8.9.0',
+      'assets/js/mimir.js?v=8.9.0',
+      'assets/js/receipt_scanner.js?v=8.9.0',
+      'assets/js/custom_dashboard.js?v=8.9.0',
+      'assets/js/big_screen.js?v=8.9.0',
+      'assets/js/qr_codes.js?v=8.9.0',
+      'assets/js/fx.js?v=8.9.0',
+      'assets/js/mango.js?v=8.9.0',
+      'assets/js/pm_consents.js?v=8.9.0',
+      'assets/js/cash.js?v=8.9.0',
+      'assets/js/cash_admin.js?v=8.9.0',
+      'assets/js/tasks.js?v=8.9.0',
+      'assets/js/tasks_admin.js?v=8.9.0',
+      'assets/js/kanban.js?v=8.9.0',
+      'assets/js/chat_groups.js?v=8.9.0',
+      'assets/js/meetings_page.js?v=8.9.0',
+      'assets/js/diag.js?v=8.9.2-phase0',
+      'assets/js/theme.js?v=8.9.0',
+      'assets/js/to_analytics.js?v=8.9.0',
+      'assets/js/pm_analytics.js?v=8.9.0',
+      'assets/js/engineer_dashboard.js?v=8.9.0',
+      'assets/js/payroll.js?v=8.9.0',
+      'assets/js/pre_tenders.js?v=8.9.0',
+      'assets/js/mailbox.js?v=8.9.0',
+      'assets/js/my_mail.js?v=2.2.0',
+      'assets/js/email_compose.js?v=8.9.0',
+      'assets/js/mail_settings.js?v=8.9.0',
+      'assets/js/inbox_applications.js?v=8.9.0',
+      'assets/js/integrations.js?v=8.9.0',
+      'assets/js/object_map.js?v=8.9.0',
+      'assets/js/pagination.js?v=8.9.0',
+      'assets/js/employee_picker.js?v=8.9.0',
+      'assets/js/action_menu.js?v=8.9.0',
+      'assets/js/site_inspections.js?v=8.9.0',
+      'assets/js/telephony.js?v=1.2.0',
+      'assets/js/telephony_popup.js?v=2.0.2',
+      'assets/js/app.js?v=8.9.4-mobile-disable-20260312'
+    ].forEach(function(src) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.async = false;
+      document.head.appendChild(s);
+    });
+  }
+  </script>
   
   <!-- PWA Service Worker Registration + Update Banner -->
   <style>

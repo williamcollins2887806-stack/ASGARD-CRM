@@ -6,7 +6,7 @@ window.MobileWidgets.my_mail = {
     container.replaceChildren(M.Skeleton({ type: 'list', count: 3 }));
     _load();
     function _load() {
-      API.fetch('/my-mail/inbox?limit=5').then(function (data) {
+      API.fetch('/my-mail/emails?limit=5&folder_type=inbox').then(function (data) {
         var emails = (data && data.emails) || (data && data.items) || (Array.isArray(data) ? data : []);
         if (!emails.length) { container.replaceChildren(M.Empty({ text: 'Нет писем', icon: '📧' })); return; }
         var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '0', borderRadius: '14px', border: '1px solid ' + t.border, overflow: 'hidden', background: t.surface } });

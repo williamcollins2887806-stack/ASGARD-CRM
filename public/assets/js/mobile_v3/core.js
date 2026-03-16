@@ -112,6 +112,15 @@ const Router = (() => {
     transitioning = true;
 
     const { path, params } = parseHash(window.location.hash);
+
+    // Auth guard: незалогиненных — на /welcome
+    const publicRoutes = ['/login', '/welcome', '/register', '/test', '/test2', '/test-table'];
+    if (!Store.get('user') && !publicRoutes.includes(path)) {
+      transitioning = false;
+      navigate('/welcome', { replace: true });
+      return;
+    }
+
     const found = findRoute(path);
 
     if (!found) {
@@ -195,12 +204,42 @@ const Router = (() => {
     return TAB_ROUTES.includes(path);
   }
 
-  function init() {
+  async function init() {
     window.addEventListener('hashchange', handleRoute);
-    if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
-      window.location.hash = '#/home';
+
+    const publicRoutes = ['/login', '/welcome', '/register', '/test', '/test2', '/test-table'];
+    const { path } = parseHash(window.location.hash);
+
+    // Публичные маршруты — сразу рендерим без проверки
+    if (publicRoutes.includes(path)) {
+      handleRoute();
+      return;
     }
-    handleRoute();
+
+    // Проверяем авторизацию через API
+    try {
+      const token = localStorage.getItem('asgard_token');
+      if (!token) throw new Error('No token');
+
+      const resp = await fetch('/api/auth/me', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!resp.ok) throw new Error('Unauthorized');
+
+      const user = await resp.json();
+      Store.set('user', user);
+
+      // Если нет хеша — на главную
+      if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
+        window.location.hash = '#/home';
+      }
+      handleRoute();
+    } catch (e) {
+      // Невалидный/просроченный токен — на welcome
+      localStorage.removeItem('asgard_token');
+      window.location.hash = '#/welcome';
+      handleRoute();
+    }
   }
 
   function current() {
@@ -288,36 +327,24 @@ const Layout = (() => {
     tabBar.setAttribute('aria-label', 'Навигация');
 
     config.forEach((tab, i) => {
-      if (tab.type === 'fab') {
-        // Mimir FAB button
-        const fab = document.createElement('button');
-        fab.className = 'asgard-tabbar__fab';
-        fab.innerHTML = tab.icon;
-        fab.setAttribute('aria-label', tab.label);
-        fab.addEventListener('click', () => {
-          if (tab.onClick) tab.onClick();
-          else if (tab.href) Router.navigate(tab.href);
-        });
-        tabBar.appendChild(fab);
-      } else {
-        const btn = document.createElement('a');
-        btn.className = 'asgard-tabbar__item';
-        btn.href = '#' + tab.href;
-        btn.setAttribute('data-route', tab.href);
-        btn.setAttribute('role', 'tab');
-        btn.setAttribute('aria-selected', 'false');
-        btn.innerHTML = `
-          <span class="asgard-tabbar__icon">${tab.icon}</span>
-          <span class="asgard-tabbar__label">${tab.label}</span>
-          ${tab.badge ? `<span class="asgard-tabbar__badge">${tab.badge}</span>` : ''}
-          <span class="asgard-tabbar__indicator"></span>
-        `;
-        btn.addEventListener('click', (e) => {
-          e.preventDefault();
-          Router.navigate(tab.href);
-        });
-        tabBar.appendChild(btn);
-      }
+      const btn = document.createElement('a');
+      btn.className = 'asgard-tabbar__item';
+      btn.href = tab.href ? ('#' + tab.href) : '#';
+      if (tab.href) btn.setAttribute('data-route', tab.href);
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-selected', 'false');
+      btn.innerHTML = `
+        <span class="asgard-tabbar__icon">${tab.icon}</span>
+        <span class="asgard-tabbar__label">${tab.label}</span>
+        ${tab.badge ? `<span class="asgard-tabbar__badge">${tab.badge}</span>` : ''}
+        <span class="asgard-tabbar__indicator"></span>
+      `;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (tab.onClick) tab.onClick();
+        else if (tab.href) Router.navigate(tab.href);
+      });
+      tabBar.appendChild(btn);
     });
 
     updateActiveTab();
@@ -380,7 +407,7 @@ const Layout = (() => {
     return [
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', label: 'Главная', href: '/home' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>', label: 'Задачи', href: '/tasks' },
-      { type: 'fab', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4m-2.93-7.07l-2.83 2.83m-8.48 8.48l-2.83 2.83m0-14.14l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>', label: 'Мимир', onClick: () => openMimirChat() },
+      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4m-2.93-7.07l-2.83 2.83m-8.48 8.48l-2.83 2.83m0-14.14l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>', label: 'Мимир', onClick: () => openMimirChat() },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>', label: 'Почта', href: '/my-mail', badge: '' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>', label: 'Ещё', href: '/more' },
     ];
@@ -412,7 +439,7 @@ const Layout = (() => {
   function getOverlayZone() { return overlayZone; }
   function getTabBar() { return tabBar; }
 
-  return { create, renderTabBar, getDefaultTabs, getPMTabs, setBadge, getContentZone, getOverlayZone, getTabBar, updateActiveTab };
+  return { create, renderTabBar, getDefaultTabs, getPMTabs, setBadge, getContentZone, getOverlayZone, getTabBar, updateActiveTab, openMimirChat };
 })();
 
 
@@ -1145,7 +1172,7 @@ const App = (() => {
 
     // Auth guard
     Router.addGuard((path) => {
-      const publicRoutes = ['/login', '/register', '/welcome', '/test', '/test-table'];
+      const publicRoutes = ['/login', '/register', '/welcome', '/test', '/test2', '/test-table'];
       if (publicRoutes.includes(path)) return true;
       const user = Store.get('user');
       if (!user || !user.token) {
@@ -1222,7 +1249,8 @@ const App = (() => {
       const content = Layout.getContentZone();
       if (content) {
         content.style.paddingBottom = isAuth ? '0' : '';
-        content.style.overflow = isAuth ? 'hidden' : '';
+        content.style.overflowY = isAuth ? 'hidden' : 'auto';
+        content.style.overflowX = 'hidden';
       }
     });
 
