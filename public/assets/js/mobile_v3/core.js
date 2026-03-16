@@ -398,8 +398,7 @@ const Layout = (() => {
 
           // Show typing indicator via ChatBubble
           const typing = M.ChatBubble({ text: 'Мимир думает\u2026', mine: false, name: 'Мимир' });
-          typing.classList.add('asgard-mimir-typing');
-          typing.style.opacity = '0.7';
+          typing.style.opacity = '0.6';
           messagesWrap.appendChild(typing);
           messagesWrap.scrollTop = messagesWrap.scrollHeight;
 
