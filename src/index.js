@@ -12,6 +12,46 @@ const fastify = require('fastify')({
 });
 
 const path = require('path');
+const fs = require('fs');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Server-side UA detection: mobile/desktop get different script bundles
+// Кэшируем 2 версии index.html при старте (как Сбер/Яндекс)
+// ─────────────────────────────────────────────────────────────────────────────
+const indexHtmlPath = path.join(__dirname, '../public/index.html');
+let indexDesktop = '';
+let indexMobile = '';
+
+function buildIndexVersions() {
+  const raw = fs.readFileSync(indexHtmlPath, 'utf8');
+  // Десктопная: убираем мобильные скрипты
+  indexDesktop = raw
+    .replace(/<!-- ASGARD_MOBILE_START -->[\s\S]*?<!-- ASGARD_MOBILE_END -->/g, '<!-- mobile scripts excluded by server -->');
+  // Мобильная: убираем десктопные скрипты
+  indexMobile = raw
+    .replace(/<!-- ASGARD_DESKTOP_START -->[\s\S]*?<!-- ASGARD_DESKTOP_END -->/g, '<!-- desktop scripts excluded by server -->');
+}
+
+buildIndexVersions();
+
+// Dev mode: перезагрузка при изменении файла
+if (process.env.NODE_ENV !== 'production') {
+  fs.watchFile(indexHtmlPath, { interval: 2000 }, () => {
+    try { buildIndexVersions(); console.log('[Server] index.html reloaded'); }
+    catch (e) { console.error('[Server] Failed to reload index.html:', e.message); }
+  });
+}
+
+function isMobileUA(userAgent) {
+  if (!userAgent) return false;
+  return /Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(userAgent);
+}
+
+function sendIndexHtml(request, reply) {
+  const ua = request.headers['user-agent'] || '';
+  const html = isMobileUA(ua) ? indexMobile : indexDesktop;
+  reply.type('text/html').header('Cache-Control', 'no-cache').send(html);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -96,6 +136,16 @@ fastify.register(require('@fastify/compress'), {
   global: true,
   encodings: ['gzip', 'deflate'],
   threshold: 1024 // Only compress responses > 1KB
+});
+
+// Перехватываем / и /index.html ДО @fastify/static
+fastify.addHook('onRequest', (request, reply, done) => {
+  const url = request.url.split('?')[0];
+  if (url === '/' || url === '/index.html') {
+    sendIndexHtml(request, reply);
+    return; // Не вызываем done() — ответ уже отправлен
+  }
+  done();
 });
 
 // Static files (frontend) with cache-busting headers
@@ -405,8 +455,8 @@ fastify.setNotFoundHandler((request, reply) => {
     return;
   }
 
-  // Serve index.html for SPA routing
-  reply.sendFile('index.html');
+  // Serve index.html for SPA routing (UA-aware)
+  sendIndexHtml(request, reply);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

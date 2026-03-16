@@ -431,7 +431,7 @@
     // ── 12. BarChart (2 использования) ──
     wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'BarChart (2×)'));
     wMissing.appendChild(M.BarChart({
-      items: [
+      data: [
         { label: 'Иванов', value: 8, max: 15 },
         { label: 'Петров', value: 12, max: 15 },
         { label: 'Сидоров', value: 5, max: 15 },

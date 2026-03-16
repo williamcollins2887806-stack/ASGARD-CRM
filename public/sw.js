@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '15.5.0-mobile-v3';
+const SHELL_VERSION = '17.0.0-release';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v1';
 
@@ -10,8 +10,8 @@ const API_CACHE_NAME = 'asgard-crm-api-v1';
 // SHELL ASSETS — all files needed for offline shell
 // ═══════════════════════════════════════════════════════════════
 const SHELL_ASSETS = [
-  './',
-  './index.html',
+  // index.html НЕ кэшируем при установке — сервер отдаёт разный HTML для mobile/desktop
+  // При навигации он кэшируется автоматически через networkFirstWithOffline
   './offline.html',
   './manifest.json?v=15.0.0',
   // ── CSS ──

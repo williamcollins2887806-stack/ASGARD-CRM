@@ -114,31 +114,6 @@
   100% { background-position: 200px 0; }
 }
 
-/* ── Typing indicator (Мимир) ── */
-.asgard-mimir-typing {
-  opacity: 0.85;
-}
-.asgard-typing-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 0;
-}
-.asgard-typing-dots span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-ter);
-  animation: asgard-typing-bounce 1.4s ease-in-out infinite;
-}
-.asgard-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-.asgard-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes asgard-typing-bounce {
-  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-4px); }
-}
-
 /* ── Safe area для iPhone с notch ── */
 @supports (padding-top: env(safe-area-inset-top)) {
   .asgard-shell {
@@ -162,224 +137,117 @@
   height: auto;
 }
 
-/* ── Welcome runes drift ── */
-@keyframes asgard-rune-drift {
-  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(-30px) rotate(15deg); opacity: 0.5; }
-}
-
-/* ── Shake X (wrong PIN) ── */
-.asgard-shake-x {
-  animation: asgard-shake-x 0.45s ease !important;
-}
-@keyframes asgard-shake-x {
-  0%, 100% { transform: translateX(0); }
-  10%, 50%, 90% { transform: translateX(-6px); }
-  30%, 70% { transform: translateX(6px); }
-}
-
-/* ── Auth shake (login form) ── */
-@keyframes authShake {
-  0%, 100% { transform: translateX(0); }
-  10%, 50%, 90% { transform: translateX(-4px); }
-  30%, 70% { transform: translateX(4px); }
-}
-
-/* ── PIN dot shake ── */
-@keyframes pinShake {
-  0%, 100% { transform: translateX(0); }
-  10%, 50%, 90% { transform: translateX(-6px); }
-  30%, 70% { transform: translateX(6px); }
-}
-
-/* ── Tab bar FAB (Huginn) — raised center ── */
-.asgard-tabbar__fab {
-  width: 50px !important;
-  height: 50px !important;
-  min-width: 50px !important;
-  min-height: 50px !important;
-  border-radius: 50% !important;
-  margin-top: -14px !important;
-  background: var(--hero-grad) !important;
-  border: 2px solid rgba(255,255,255,0.15) !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  position: relative !important;
-}
-
-.asgard-tabbar__fab svg {
-  width: 22px;
-  height: 22px;
-}
-
-/* ── Mimir tab — gold active state ── */
-.asgard-tabbar__item--mimir.active .asgard-tabbar__icon,
-.asgard-tabbar__item--mimir.active .asgard-tabbar__label {
-  color: #FFD700 !important;
-}
-.asgard-tabbar__item--mimir.active .asgard-tabbar__indicator {
-  background: #FFD700 !important;
-}
-
-/* ── No scrollbar utility ── */
-.asgard-no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.asgard-no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
 /* ═══════════════════════════════════════════════
-   Huginn & Mimir — Chat UI (18D-2 v2)
+   Хугинн — overrides для чата
    ═══════════════════════════════════════════════ */
 
-/* ── Message enter animation ── */
-.asgard-msg-enter {
-  animation: asgard-msg-in 0.2s ease-out;
+/* Чат-страница: без нижнего padding от таб-бара */
+.asgard-huginn-chat {
+  padding-bottom: 0 !important;
 }
-@keyframes asgard-msg-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ── Reaction popup ── */
-.asgard-react-popup {
-  animation: asgard-react-pop 0.15s cubic-bezier(.34,1.56,.64,1);
-}
-@keyframes asgard-react-pop {
-  from { opacity: 0; transform: scale(0.7); }
-  to { opacity: 1; transform: scale(1); }
+.asgard-huginn-chat.asgard-slide-right {
+  animation: asgard-slide-right 0.25s ease-out !important;
 }
 
-/* ── Voice waveform placeholder ── */
-.asgard-voice-wave {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  height: 20px;
-}
-.asgard-voice-wave span {
-  width: 2px;
-  background: rgba(255,255,255,0.5);
-  border-radius: 1px;
-}
-
-/* ════════════════════════════════════════════
-   Huginn — Input overrides
-   Shell CSS sets min-height:48px, font-size:16px
-   with !important. We need higher specificity.
-   ════════════════════════════════════════════ */
-
-/* Composer & search inputs */
-.asgard-shell .asgard-huginn-input,
-.asgard-shell input.asgard-huginn-input,
-.asgard-shell .asgard-huginn-composer input,
-.asgard-shell .asgard-huginn-search input,
-.asgard-shell .asgard-mimir-composer input,
-.asgard-shell input.asgard-mimir-input {
-  min-height: 40px !important;
+/* Composer textarea */
+.asgard-huginn-composer .asgard-huginn-textarea {
+  min-height: 20px !important;
+  max-height: 120px !important;
   height: 40px !important;
-  padding: 8px 16px !important;
-  font-size: 14px !important;
+  padding: 10px 14px !important;
+  font-size: 15px !important;
   border-radius: 20px !important;
-  background: var(--input-bg, #222228) !important;
-  border: 1px solid var(--border, rgba(255,255,255,0.06)) !important;
+  border: 1px solid rgba(255,255,255,0.15) !important;
+  background: rgba(255,255,255,0.08) !important;
   color: var(--text, #fff) !important;
+  resize: none !important;
+  overflow-y: auto !important;
+  line-height: 1.4 !important;
+  outline: none !important;
 }
-.asgard-shell .asgard-huginn-search input.asgard-huginn-input {
-  height: 36px !important;
-  min-height: 36px !important;
-  padding: 6px 12px 6px 34px !important;
-  border-radius: 12px !important;
-  background: var(--surface-alt, #222228) !important;
-}
-.asgard-shell .asgard-huginn-input:focus,
-.asgard-shell .asgard-mimir-input:focus {
-  border-color: var(--blue, #4A90D9) !important;
+.asgard-huginn-composer .asgard-huginn-textarea:focus {
+  border-color: var(--accent, #ff4444) !important;
   box-shadow: none !important;
 }
-.asgard-shell .asgard-mimir-input:focus {
-  border-color: var(--gold, #D4A843) !important;
-}
 
-/* Icon buttons — smaller touch targets for chat */
-.asgard-shell .asgard-huginn-btn-icon {
-  min-height: 36px !important;
-  min-width: 36px !important;
-  background: none !important;
-  border: none !important;
-  padding: 6px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  cursor: pointer;
-  color: var(--text-sec, #8E8E93);
-  flex-shrink: 0;
-}
-
-/* Send button */
-.asgard-shell .asgard-huginn-send-btn {
-  width: 40px !important;
-  height: 40px !important;
-  min-width: 40px !important;
+/* Composer кнопки — сброс shell min-height */
+.asgard-huginn-btn {
   min-height: 40px !important;
-  border-radius: 50% !important;
-  border: none !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  flex-shrink: 0 !important;
-  transition: all 0.15s ease;
-  cursor: pointer;
+  min-width: 40px !important;
+}
+.asgard-huginn-send-btn {
+  min-height: 40px !important;
+  min-width: 40px !important;
 }
 
-/* Emoji buttons in panels */
-.asgard-shell .asgard-huginn-emoji-btn {
-  min-height: 38px !important;
-  min-width: 38px !important;
-  background: none !important;
-  border: none !important;
-  font-size: 22px !important;
-  padding: 2px !important;
-  cursor: pointer;
-  border-radius: 8px;
-  transition: background 0.1s;
-}
-.asgard-shell .asgard-huginn-emoji-btn:active {
-  background: var(--surface-alt, #222228) !important;
-}
-
-/* Emoji panel */
-.asgard-huginn-emoji-panel {
-  background: var(--surface, #1A1A1F);
-  border-top: 1px solid var(--border, rgba(255,255,255,0.06));
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-/* Scroll-to-bottom FAB */
-.asgard-shell .asgard-huginn-scroll-fab {
+/* Мимир — кнопки prompt */
+.asgard-mimir-prompt {
   min-height: 36px !important;
-  min-width: 36px !important;
-  transition: opacity 0.2s;
 }
 
-/* Mimir prompt pills */
-.asgard-shell .asgard-mimir-prompt {
-  min-height: 36px !important;
-  min-width: auto !important;
-}
-
-/* Chat page — no bottom padding (has own composer) */
-.asgard-huginn-chat,
+/* Мимир-страница без нижнего padding */
 .asgard-mimir-page {
   padding-bottom: 0 !important;
 }
 
-/* Reaction overlay */
-.asgard-react-overlay {
-  -webkit-tap-highlight-color: transparent;
+/* ── Анимации ── */
+@keyframes asgard-msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes asgard-react-pop {
+  0%   { transform: scale(0) translateX(-50%); }
+  50%  { transform: scale(1.15) translateX(-50%); }
+  100% { transform: scale(1) translateX(-50%); }
+}
+@keyframes asgard-slide-right {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── ShakeX (PIN) ── */
+.asgard-shake-x {
+  animation: asgard-shake-x 0.5s ease;
+}
+@keyframes asgard-shake-x {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* ── Typing bounce dots ── */
+.asgard-typing-bounce span {
+  display: inline-block;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; opacity: 0.5;
+  animation: asgard-bounce 1.2s infinite;
+}
+.asgard-typing-bounce span:nth-child(2) { animation-delay: 0.2s; }
+.asgard-typing-bounce span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes asgard-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+  40% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ── Tab bar FAB ── */
+.asgard-tabbar__fab {
+  min-height: auto !important;
+  min-width: auto !important;
+}
+.asgard-tabbar__item--mimir {
+  color: #d4a017 !important;
+}
+
+/* ── No scrollbar helper ── */
+.asgard-no-scrollbar::-webkit-scrollbar { display: none; }
+.asgard-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Rune drift ── */
+@keyframes asgard-rune-drift {
+  0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+  10%  { opacity: 0.15; }
+  90%  { opacity: 0.15; }
+  100% { transform: translateY(-100vh) rotate(20deg); opacity: 0; }
 }

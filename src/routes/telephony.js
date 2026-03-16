@@ -87,6 +87,34 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     sseBroadcast = sse.broadcast;
   } catch (e) { /* SSE not available */ }
 
+  // ── GET /status — сводка состояния телефонии для мобильного виджета ──
+  fastify.get('/status', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const configured = mango.isConfigured();
+    if (!configured) {
+      return { connected: false, status: 'not_configured' };
+    }
+
+    try {
+      const missedRes = await db.query(
+        `SELECT COUNT(*)::int AS cnt FROM calls
+         WHERE direction = 'inbound' AND status = 'missed'
+           AND acknowledged_at IS NULL AND created_at >= NOW() - INTERVAL '24 hours'`
+      );
+      const lastCallRes = await db.query(
+        `SELECT created_at FROM calls ORDER BY created_at DESC LIMIT 1`
+      );
+
+      return {
+        connected: true,
+        status: 'online',
+        last_call: lastCallRes.rows[0]?.created_at || null,
+        missed_count: missedRes.rows[0]?.cnt || 0
+      };
+    } catch (e) {
+      return { connected: true, status: 'online', last_call: null, missed_count: 0 };
+    }
+  });
+
   // ========================================
   //  WEBHOOK ENDPOINTS (публичные, без JWT)
   // ========================================
