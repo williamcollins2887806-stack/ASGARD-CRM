@@ -200,7 +200,7 @@ const Router = (() => {
     transitioning = false;
   }
 
-  const TAB_ROUTES = ['/home', '/tasks', '/my-mail', '/more', '/pm-works'];
+  const TAB_ROUTES = ['/home', '/tasks', '/messenger', '/more', '/pm-works'];
   function isTabRoute(path) {
     return TAB_ROUTES.includes(path);
   }
@@ -313,6 +313,7 @@ const Layout = (() => {
       } else {
         const btn = document.createElement('a');
         btn.className = 'asgard-tabbar__item';
+        if (tab.label === 'Мимир') btn.classList.add('asgard-tabbar__item--mimir');
         btn.href = '#' + tab.href;
         btn.setAttribute('data-route', tab.href);
         btn.setAttribute('role', 'tab');
@@ -325,6 +326,7 @@ const Layout = (() => {
         `;
         btn.addEventListener('click', (e) => {
           e.preventDefault();
+          if (tab.onClick) { tab.onClick(); return; }
           Router.navigate(tab.href);
         });
         tabBar.appendChild(btn);
@@ -447,8 +449,8 @@ const Layout = (() => {
     return [
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', label: 'Главная', href: '/home' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>', label: 'Задачи', href: '/tasks' },
-      { type: 'fab', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4m-2.93-7.07l-2.83 2.83m-8.48 8.48l-2.83 2.83m0-14.14l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>', label: 'Мимир', onClick: () => openMimirChat() },
-      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>', label: 'Почта', href: '/my-mail', badge: '' },
+      { type: 'fab', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>', label: 'Хугин', href: '/messenger' },
+      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 000 20 14.5 14.5 0 000-20"/><path d="M2 12h20"/></svg>', label: 'Мимир', href: '/mimir-page', onClick: function() { if (typeof openMimirChat === 'function') openMimirChat(); } },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>', label: 'Ещё', href: '/more' },
     ];
   }

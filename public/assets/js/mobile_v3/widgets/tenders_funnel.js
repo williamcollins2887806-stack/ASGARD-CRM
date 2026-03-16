@@ -21,12 +21,44 @@ window.MobileWidgets.tenders_funnel = {
         var wrap = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
         counts.forEach(function (s, i) {
           var pct = Math.max(Math.round((s.c / maxC) * 100), 8);
-          var row = el('div', { style: Object.assign({ display: 'flex', alignItems: 'center', gap: '10px' }, DS.anim(i * 0.05)) });
-          var bar = el('div', { style: { height: '28px', borderRadius: '8px', width: pct + '%', background: s.cl, opacity: '0.85', display: 'flex', alignItems: 'center', padding: '0 10px', minWidth: '40px', transition: 'width 0.5s ease' } });
-          bar.appendChild(el('span', { style: { fontSize: '11px', fontWeight: '700', color: '#fff' } }, '' + s.c));
-          row.appendChild(bar);
-          row.appendChild(el('span', { style: Object.assign({}, DS.font('xs'), { color: t.textSec }) }, s.l));
+          var row = el('div', { style: {
+            display: 'flex', alignItems: 'center', gap: '10px',
+            opacity: '0', transform: 'translateX(-8px)',
+            transition: 'all 0.3s ease ' + (i * 0.06) + 's',
+          } });
+
+          /* badge count */
+          var badge = el('div', { style: {
+            width: '26px', height: '26px', borderRadius: '5px',
+            background: s.cl + '22', color: s.cl,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '11px', fontWeight: '700', flexShrink: '0',
+          } });
+          badge.textContent = s.c;
+          row.appendChild(badge);
+
+          /* bar */
+          var barOuter = el('div', { style: { flex: '1', height: '24px', borderRadius: '6px', background: t.surfaceAlt, overflow: 'hidden' } });
+          var barInner = el('div', { style: {
+            height: '100%', borderRadius: '6px', width: '0%',
+            background: s.cl, opacity: '0.8',
+            transition: 'width 0.6s cubic-bezier(0.25,0.46,0.45,0.94) ' + (i * 0.08 + 0.2) + 's',
+          } });
+          barOuter.appendChild(barInner);
+          row.appendChild(barOuter);
+
+          /* label */
+          row.appendChild(el('span', { style: Object.assign({}, DS.font('xs'), { color: t.textTer, fontSize: '10px', minWidth: '48px' }) }, s.l));
           wrap.appendChild(row);
+
+          /* animate entry */
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              row.style.opacity = '1';
+              row.style.transform = 'translateX(0)';
+              barInner.style.width = pct + '%';
+            });
+          });
         });
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';

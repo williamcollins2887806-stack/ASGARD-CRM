@@ -3103,6 +3103,28 @@ const M = (() => {
     return banner;
   }
 
+  function Sparkline(opts) {
+    var data = opts.data || [];
+    var color = opts.color || 'var(--blue)';
+    var w = opts.width || 80;
+    var h = opts.height || 28;
+    if (!data.length) return document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    var max = Math.max.apply(null, data);
+    var min = Math.min.apply(null, data);
+    var range = max - min || 1;
+    var points = data.map(function (v, i) {
+      return (i / (data.length - 1)) * w + ',' + (h - ((v - min) / range) * (h - 4) - 2);
+    }).join(' ');
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+    svg.style.display = 'block';
+    svg.innerHTML = '<polyline points="' + points + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+      + '<polygon points="' + points + ' ' + w + ',' + h + ' 0,' + h + '" fill="' + color + '" fill-opacity="0.12"/>';
+    return svg;
+  }
+
   /* ══════════════════════════════════════════════
      PUBLIC API
      ══════════════════════════════════════════════ */
@@ -3148,6 +3170,7 @@ const M = (() => {
     DonutChart,
     BurgerMenu,
     ErrorBanner,
+    Sparkline,
   };
 })();
 

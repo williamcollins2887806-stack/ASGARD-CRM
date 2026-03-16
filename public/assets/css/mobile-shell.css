@@ -161,3 +161,73 @@
   max-width: 100%;
   height: auto;
 }
+
+/* ── Welcome runes drift ── */
+@keyframes asgard-rune-drift {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(-30px) rotate(15deg); opacity: 0.5; }
+}
+
+/* ── Shake X (wrong PIN) ── */
+.asgard-shake-x {
+  animation: asgard-shake-x 0.45s ease !important;
+}
+@keyframes asgard-shake-x {
+  0%, 100% { transform: translateX(0); }
+  10%, 50%, 90% { transform: translateX(-6px); }
+  30%, 70% { transform: translateX(6px); }
+}
+
+/* ── Auth shake (login form) ── */
+@keyframes authShake {
+  0%, 100% { transform: translateX(0); }
+  10%, 50%, 90% { transform: translateX(-4px); }
+  30%, 70% { transform: translateX(4px); }
+}
+
+/* ── PIN dot shake ── */
+@keyframes pinShake {
+  0%, 100% { transform: translateX(0); }
+  10%, 50%, 90% { transform: translateX(-6px); }
+  30%, 70% { transform: translateX(6px); }
+}
+
+/* ── Tab bar FAB (Huginn) — raised center ── */
+.asgard-tabbar__fab {
+  width: 50px !important;
+  height: 50px !important;
+  min-width: 50px !important;
+  min-height: 50px !important;
+  border-radius: 50% !important;
+  margin-top: -14px !important;
+  background: var(--hero-grad) !important;
+  border: 2px solid rgba(255,255,255,0.15) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+}
+
+.asgard-tabbar__fab svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* ── Mimir tab — gold active state ── */
+.asgard-tabbar__item--mimir.active .asgard-tabbar__icon,
+.asgard-tabbar__item--mimir.active .asgard-tabbar__label {
+  color: #FFD700 !important;
+}
+.asgard-tabbar__item--mimir.active .asgard-tabbar__indicator {
+  background: #FFD700 !important;
+}
+
+/* ── No scrollbar utility ── */
+.asgard-no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.asgard-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

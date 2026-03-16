@@ -68,18 +68,23 @@ const WelcomePage = {
       overflow: 'hidden',
     });
 
-    /* ---- floating runes layer ---- */
+    /* ---- floating runes background ---- */
     const runes = 'ᚨᚱᚦᚹᛏᛒᛗᚠᚢᚲᚷᛁᛃᛇᛈᛉᛊᛚᛞᛟ'.split('');
     const runesLayer = el('div', { className: 'welcome-runes' });
-    for (let i = 0; i < 20; i++) {
-      const r = el('span', { className: 'welcome-rune' });
+    Object.assign(runesLayer.style, {
+      position: 'absolute', inset: '0', opacity: '0.04', pointerEvents: 'none', overflow: 'hidden',
+    });
+    for (let i = 0; i < 24; i++) {
+      var r = el('span');
       r.textContent = runes[i % runes.length];
       Object.assign(r.style, {
+        position: 'absolute',
         left: Math.random() * 100 + '%',
-        top:  Math.random() * 100 + '%',
-        fontSize: (18 + Math.random() * 36) + 'px',
-        animationDelay:    (Math.random() * 10) + 's',
-        animationDuration: (14 + Math.random() * 10) + 's',
+        top: Math.random() * 100 + '%',
+        fontSize: (20 + Math.random() * 40) + 'px',
+        color: '#fff',
+        fontWeight: '300',
+        transform: 'rotate(' + (Math.random() * 40 - 20) + 'deg)',
       });
       runesLayer.appendChild(r);
     }
@@ -88,44 +93,45 @@ const WelcomePage = {
     /* ---- center content ---- */
     const center = el('div', { className: 'welcome-center' });
     Object.assign(center.style, {
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
-      opacity: '0', transform: 'scale(0.5)',
-      transition: 'all 0.9s cubic-bezier(0.34,1.56,0.64,1)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px',
+      zIndex: '1',
     });
 
-    /* shield logo */
-    const shield = el('div');
-    shield.innerHTML = [
-      '<svg viewBox="0 0 80 96" width="80" height="96" fill="none">',
-        '<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">',
-          '<stop offset="0%" stop-color="rgba(255,255,255,0.45)"/>',
-          '<stop offset="100%" stop-color="rgba(255,255,255,0.1)"/>',
-        '</linearGradient></defs>',
-        '<path d="M40 4L76 20V56Q76 78 40 92Q4 78 4 56V20Z" stroke="url(#sg)" stroke-width="1.5" fill="rgba(255,255,255,0.06)"/>',
-        '<text x="40" y="60" text-anchor="middle" fill="white" font-size="38" font-weight="800" ',
-          'font-family="-apple-system,system-ui,sans-serif">ᚨ</text>',
-      '</svg>',
-    ].join('');
-    center.appendChild(shield);
+    /* glass logo square */
+    const logo = el('div');
+    Object.assign(logo.style, {
+      width: '72px', height: '72px', borderRadius: '18px',
+      background: 'rgba(255,255,255,0.07)',
+      backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
+      fontSize: '36px', color: '#fff', fontWeight: '800',
+      opacity: '0', transform: 'translateY(16px)',
+      transition: 'all 0.5s cubic-bezier(0.25,0.46,0.45,0.94)',
+    });
+    logo.textContent = 'ᚨ';
+    center.appendChild(logo);
 
     /* title */
-    const title = el('h1', { className: 'welcome-title' });
-    title.textContent = 'ASGARD';
+    const title = el('h1');
+    title.textContent = 'АСГАРД';
     Object.assign(title.style, {
-      ...DS.font('hero'), color: '#fff', letterSpacing: '6px', margin: '0',
-      opacity: '0', transform: 'translateY(24px)',
-      transition: 'all 0.7s ease 0.35s',
+      ...DS.font('hero'), color: '#fff', letterSpacing: '8px', fontWeight: '800',
+      margin: '0', textAlign: 'center',
+      opacity: '0', transform: 'translateY(16px)',
+      transition: 'all 0.5s cubic-bezier(0.25,0.46,0.45,0.94) 0.1s',
     });
     center.appendChild(title);
 
     /* subtitle */
     const sub = el('p');
-    sub.textContent = 'Система управления';
+    sub.textContent = 'СИСТЕМА УПРАВЛЕНИЯ';
     Object.assign(sub.style, {
-      ...DS.font('sm'), color: 'rgba(255,255,255,0.55)', margin: '0',
-      letterSpacing: '3px', textTransform: 'uppercase',
-      opacity: '0', transform: 'translateY(24px)',
-      transition: 'all 0.7s ease 0.55s',
+      ...DS.font('xs'), color: 'rgba(255,255,255,0.45)', margin: '0',
+      letterSpacing: '4px', fontWeight: '500',
+      opacity: '0', transform: 'translateY(16px)',
+      transition: 'all 0.5s cubic-bezier(0.25,0.46,0.45,0.94) 0.2s',
     });
     center.appendChild(sub);
     page.appendChild(center);
@@ -134,48 +140,67 @@ const WelcomePage = {
     const btns = el('div', { className: 'welcome-buttons' });
     Object.assign(btns.style, {
       position: 'absolute', bottom: '0', left: '0', right: '0',
-      padding: '0 28px env(safe-area-inset-bottom, 44px)',
-      paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 44px)',
-      display: 'flex', flexDirection: 'column', gap: '12px',
-      opacity: '0', transform: 'translateY(32px)',
-      transition: 'all 0.7s ease 0.75s',
+      padding: '0 28px',
+      paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 32px)',
+      display: 'flex', flexDirection: 'column', gap: '10px',
+      opacity: '0', transform: 'translateY(16px)',
+      transition: 'all 0.5s cubic-bezier(0.25,0.46,0.45,0.94) 0.35s',
     });
 
-    const mkBtn = (label, primary, onClick) => {
-      const b = el('button', { className: 'welcome-btn' });
-      b.textContent = label;
-      Object.assign(b.style, {
-        width: '100%', padding: '17px', borderRadius: DS.radius.xl + 'px',
-        ...DS.font('md'), cursor: 'pointer',
-        transition: 'all 0.2s ease', border: 'none',
-        WebkitTapHighlightColor: 'transparent',
-        background: primary ? 'rgba(255,255,255,0.18)' : 'transparent',
-        backdropFilter: primary ? 'blur(24px)' : 'none',
-        WebkitBackdropFilter: primary ? 'blur(24px)' : 'none',
-        color: primary ? '#fff' : 'rgba(255,255,255,0.65)',
-        boxShadow: primary ? '0 2px 24px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.2)' : 'none',
-        borderWidth: '1px', borderStyle: 'solid',
-        borderColor: primary ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)',
-      });
-      b.addEventListener('click', () => { vibrate(); onClick(); });
-      b.addEventListener('touchstart', () => { b.style.transform = 'scale(0.97)'; b.style.opacity = '0.85'; }, { passive: true });
-      b.addEventListener('touchend',   () => { b.style.transform = ''; b.style.opacity = ''; }, { passive: true });
-      return b;
-    };
+    /* primary button — glass */
+    const btnLogin = el('button');
+    btnLogin.textContent = 'Войти';
+    Object.assign(btnLogin.style, {
+      width: '100%', padding: '16px', borderRadius: '14px',
+      ...DS.font('md'), fontWeight: '600', cursor: 'pointer',
+      background: 'rgba(255,255,255,0.12)',
+      backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+      border: '1px solid rgba(255,255,255,0.18)',
+      color: '#fff',
+      boxShadow: '0 4px 24px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.15)',
+      WebkitTapHighlightColor: 'transparent', transition: 'all 0.2s ease',
+    });
+    btnLogin.addEventListener('click', () => { vibrate(); Router.navigate('/login'); });
+    btnLogin.addEventListener('touchstart', () => { btnLogin.style.transform = 'scale(0.97)'; btnLogin.style.opacity = '0.85'; }, { passive: true });
+    btnLogin.addEventListener('touchend', () => { btnLogin.style.transform = ''; btnLogin.style.opacity = ''; }, { passive: true });
+    btns.appendChild(btnLogin);
 
-    btns.appendChild(mkBtn('Войти', true, () => Router.navigate('/login')));
-    btns.appendChild(mkBtn('\u041e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443', false, () => Router.navigate('/register')));
-    btns.appendChild(mkBtn('О системе', false, () =>
-      M.Toast({ message: 'ASGARD CRM — Корпоративная система управления проектами', type: 'info' })
-    ));
+    /* ghost button */
+    const btnAbout = el('button');
+    btnAbout.textContent = 'О системе';
+    Object.assign(btnAbout.style, {
+      width: '100%', padding: '16px', borderRadius: '14px',
+      ...DS.font('md'), fontWeight: '500', cursor: 'pointer',
+      background: 'transparent',
+      border: '1px solid rgba(255,255,255,0.12)',
+      color: 'rgba(255,255,255,0.55)',
+      WebkitTapHighlightColor: 'transparent', transition: 'all 0.2s ease',
+    });
+    btnAbout.addEventListener('click', () => {
+      vibrate();
+      M.Toast({ message: 'ASGARD CRM — Корпоративная система управления проектами', type: 'info' });
+    });
+    btnAbout.addEventListener('touchstart', () => { btnAbout.style.transform = 'scale(0.97)'; btnAbout.style.opacity = '0.85'; }, { passive: true });
+    btnAbout.addEventListener('touchend', () => { btnAbout.style.transform = ''; btnAbout.style.opacity = ''; }, { passive: true });
+    btns.appendChild(btnAbout);
+
+    /* version label */
+    const ver = el('div');
+    ver.textContent = 'ASGARD CRM v3.0';
+    Object.assign(ver.style, {
+      ...DS.font('xs'), color: 'rgba(255,255,255,0.15)',
+      textAlign: 'center', marginTop: '12px', letterSpacing: '1px',
+    });
+    btns.appendChild(ver);
+
     page.appendChild(btns);
 
     /* ---- trigger entrance animations ---- */
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      center.style.opacity   = '1'; center.style.transform = 'scale(1)';
-      title.style.opacity    = '1'; title.style.transform  = 'translateY(0)';
-      sub.style.opacity      = '1'; sub.style.transform    = 'translateY(0)';
-      btns.style.opacity     = '1'; btns.style.transform   = 'translateY(0)';
+      logo.style.opacity = '1'; logo.style.transform = 'translateY(0)';
+      title.style.opacity = '1'; title.style.transform = 'translateY(0)';
+      sub.style.opacity = '1'; sub.style.transform = 'translateY(0)';
+      btns.style.opacity = '1'; btns.style.transform = 'translateY(0)';
     }));
 
     return page;
@@ -562,7 +587,7 @@ const LoginPage = {
       const d = el('div', { className: 'pin-dot' });
       Object.assign(d.style, {
         width: '14px', height: '14px', borderRadius: '50%',
-        border: '2px solid ' + DS.t.textSec + '44',
+        border: '2px solid rgba(255,255,255,0.12)',
         background: 'transparent',
         transition: 'all 0.25s cubic-bezier(0.34,1.56,0.64,1)',
       });
@@ -577,16 +602,16 @@ const LoginPage = {
     const updateDots = () => {
       dots.forEach((d, i) => {
         const on = i < pin.length;
-        d.style.background   = on ? DS.t.blue  : 'transparent';
-        d.style.borderColor  = on ? DS.t.blue  : DS.t.textSec + '44';
-        d.style.transform    = on ? 'scale(1.25)' : 'scale(1)';
-        d.style.boxShadow    = on ? '0 0 8px ' + DS.t.blue + '55' : 'none';
+        d.style.background   = on ? '#fff' : 'transparent';
+        d.style.borderColor  = on ? '#fff' : 'rgba(255,255,255,0.12)';
+        d.style.transform    = on ? 'scale(1.3)' : 'scale(1)';
+        d.style.boxShadow    = on ? '0 0 12px rgba(255,255,255,0.5)' : 'none';
       });
     };
 
     const shakeDotsRow = () => {
-      dotsRow.style.animation = 'pinShake 0.45s ease';
-      setTimeout(() => dotsRow.style.animation = '', 500);
+      dotsRow.classList.add('asgard-shake-x');
+      setTimeout(() => dotsRow.classList.remove('asgard-shake-x'), 500);
     };
 
     const addDigit = d => {
@@ -619,7 +644,7 @@ const LoginPage = {
     const makeKey = (key) => {
       const btn = el('button', { type: 'button', className: 'pin-key' });
       Object.assign(btn.style, {
-        width: '72px', height: '72px', minWidth: '72px', minHeight: '72px', borderRadius: '50%',
+        width: '72px', height: '52px', minWidth: '72px', minHeight: '52px', borderRadius: '14px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: 'pointer', WebkitTapHighlightColor: 'transparent', userSelect: 'none',
         WebkitAppearance: 'none', appearance: 'none', padding: '0', margin: '0',
@@ -631,7 +656,7 @@ const LoginPage = {
       } else if (key === 'bio') {
         btn.innerHTML = ICONS.fingerprint;
         btn.style.color = 'rgba(255,255,255,0.82)';
-        Object.assign(btn.style, { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)' });
+        Object.assign(btn.style, { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' });
         btn.addEventListener('click', () => {
           vibrate(10);
           (async () => {
@@ -657,28 +682,26 @@ const LoginPage = {
       } else if (key === 'del') {
         btn.innerHTML = ICONS.backspace;
         btn.style.color = 'rgba(255,255,255,0.82)';
-        Object.assign(btn.style, { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)' });
+        Object.assign(btn.style, { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' });
         btn.addEventListener('click', delDigit);
       } else {
         Object.assign(btn.style, {
           ...DS.font('lg'),
           color: '#FFFFFF',
-          background: 'rgba(255,255,255,0.16)',
-          border: '1px solid rgba(255,255,255,0.22)',
-          boxShadow: '0 14px 34px rgba(4,10,24,0.22), inset 0 1px 0 rgba(255,255,255,0.16)',
-          backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
+          background: 'rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.1)',
         });
         btn.textContent = key;
         btn.addEventListener('click', () => addDigit(key));
         btn.addEventListener('touchstart', () => {
-          btn.style.background = 'rgba(255,255,255,0.24)';
+          btn.style.background = 'rgba(255,255,255,0.14)';
           btn.style.transform  = 'scale(0.94)';
-          btn.style.borderColor = 'rgba(255,255,255,0.34)';
+          btn.style.borderColor = 'rgba(255,255,255,0.18)';
         }, { passive: true });
         btn.addEventListener('touchend', () => {
-          btn.style.background  = 'rgba(255,255,255,0.16)';
+          btn.style.background  = 'rgba(255,255,255,0.07)';
           btn.style.transform   = '';
-          btn.style.borderColor = 'rgba(255,255,255,0.22)';
+          btn.style.borderColor = 'rgba(255,255,255,0.1)';
         }, { passive: true });
       }
       return btn;
