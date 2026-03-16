@@ -99,7 +99,7 @@ window.MobileFunnel = (function () {
   }
 
   /* ── Рендер ── */
-  async function render() {
+  function render() {
     var t = DS.t;
     var page = el('div', { style: { background: t.bg, minHeight: '100vh' } });
 
@@ -128,49 +128,15 @@ window.MobileFunnel = (function () {
     });
     page.appendChild(scroll);
 
-    // Show skeleton while loading
+    // Show skeleton immediately — data loads in background
     scroll.appendChild(M.Skeleton({ type: 'card', count: 5 }));
 
-    // Load data
     var tenders = [];
-    try {
-      tenders = await loadTenders();
-    } catch (e) {
-      M.Toast({ message: 'Ошибка загрузки тендеров', type: 'error' });
-    }
-    scroll.replaceChildren();
-
-    // Empty state when no tenders at all
-    if (!tenders.length) {
-      scroll.style.display = 'flex';
-      scroll.style.justifyContent = 'center';
-      scroll.appendChild(M.Empty({ text: 'Нет тендеров в воронке', icon: '📊' }));
-      return page;
-    }
-
-    // Group by stage
     var groups = {};
-    STAGES.forEach(function (s) { groups[s.id] = []; });
-    tenders.forEach(function (tender) {
-      var sid = getStageId(tender.status);
-      if (groups[sid]) groups[sid].push(tender);
-      else groups.new.push(tender);
-    });
-
-    // Stats
-    var totalSum = 0;
-    tenders.forEach(function (t) { totalSum += Number(t.amount || t.price || 0); });
-    statsWrap.appendChild(M.Stats({
-      items: [
-        { icon: '📋', value: tenders.length, label: 'Всего', color: t.blue },
-        { icon: '💰', value: Math.round(totalSum / 1000000) || 0, label: 'Млн ₽', color: t.green },
-        { icon: '🏆', value: (groups.prep || []).length + (groups.work || []).length, label: 'Выиграно', color: t.gold },
-        { icon: '⚡', value: (groups.new || []).length, label: 'Новых', color: t.orange },
-      ],
-    }));
 
     // Render columns
     function renderColumns() {
+      var t = DS.t; // always read fresh — survives theme changes
       scroll.replaceChildren();
       STAGES.forEach(function (stage, si) {
         var items = groups[stage.id] || [];
@@ -271,7 +237,48 @@ window.MobileFunnel = (function () {
       });
     }
 
-    renderColumns();
+    // Load data in background
+    loadTenders().then(function (loaded) {
+      var t = DS.t; // read fresh at render time
+      tenders = loaded;
+      scroll.replaceChildren();
+
+      if (!tenders.length) {
+        scroll.style.display = 'flex';
+        scroll.style.justifyContent = 'center';
+        scroll.appendChild(M.Empty({ text: 'Нет тендеров в воронке', icon: '📊' }));
+        return;
+      }
+
+      // Group by stage
+      groups = {};
+      STAGES.forEach(function (s) { groups[s.id] = []; });
+      tenders.forEach(function (tender) {
+        var sid = getStageId(tender.status);
+        if (groups[sid]) groups[sid].push(tender);
+        else groups.new.push(tender);
+      });
+
+      // Stats
+      var totalSum = 0;
+      tenders.forEach(function (item) { totalSum += Number(item.amount || item.price || 0); });
+      statsWrap.appendChild(M.Stats({
+        items: [
+          { icon: '📋', value: tenders.length, label: 'Всего', color: t.blue },
+          { icon: '💰', value: Math.round(totalSum / 1000000) || 0, label: 'Млн ₽', color: t.green },
+          { icon: '🏆', value: (groups.prep || []).length + (groups.work || []).length, label: 'Выиграно', color: t.gold },
+          { icon: '⚡', value: (groups.new || []).length, label: 'Новых', color: t.orange },
+        ],
+      }));
+
+      renderColumns();
+    }).catch(function () {
+      scroll.replaceChildren();
+      scroll.style.display = 'flex';
+      scroll.style.justifyContent = 'center';
+      scroll.appendChild(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' }));
+      M.Toast({ message: 'Ошибка загрузки тендеров', type: 'error' });
+    });
 
     return page;
   }

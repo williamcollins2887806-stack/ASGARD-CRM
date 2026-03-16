@@ -18,6 +18,6 @@ window.MobileWidgets.calendar = {
     }
     container.replaceChildren(strip);
     container.style.cursor = 'pointer';
-    container.onclick = function () { Router.navigate('/calendar'); };
+    container.onclick = function () { Router.navigate('/meetings'); };
   }
 };

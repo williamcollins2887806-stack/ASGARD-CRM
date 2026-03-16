@@ -174,7 +174,7 @@ window.MobileCustomers = (function () {
   }
 
   /* ── Рендер ── */
-  async function render() {
+  function render() {
     var items = [];
 
     var page = M.TablePage({

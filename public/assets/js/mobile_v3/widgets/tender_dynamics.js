@@ -20,7 +20,7 @@ window.MobileWidgets.tender_dynamics = {
         wrap.appendChild(labels);
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
-        container.onclick = function () { Router.navigate('/to-analytics'); };
+        container.onclick = function () { Router.navigate('/tenders'); };
       }).catch(function (e) { console.error('[tender_dynamics]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }

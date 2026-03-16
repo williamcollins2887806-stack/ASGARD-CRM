@@ -1,0 +1,138 @@
+/* ═══════════════════════════════════════════════
+   ASGARD CRM — Mobile Shell CSS
+   Системные constraints для всех мобильных компонентов.
+   Подключается ТОЛЬКО на мобилке (через серверную UA-детекцию).
+   ═══════════════════════════════════════════════ */
+
+/* ── Reset & Box Model ── */
+.asgard-shell *,
+.asgard-shell *::before,
+.asgard-shell *::after {
+  box-sizing: border-box !important;
+}
+
+.asgard-shell {
+  max-width: 100vw !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Запрет зума по двойному тапу ── */
+.asgard-shell {
+  touch-action: manipulation;
+}
+
+/* ── Карточки ── */
+.asgard-shell [style*="borderRadius"] {
+  overflow: hidden;
+  word-break: break-word;
+}
+
+/* ── Текст не вылезает за границы ── */
+.asgard-shell p,
+.asgard-shell span,
+.asgard-shell div {
+  max-width: 100%;
+}
+
+/* ── Инпуты — единый стиль ── */
+.asgard-shell input[type="text"],
+.asgard-shell input[type="email"],
+.asgard-shell input[type="password"],
+.asgard-shell input[type="number"],
+.asgard-shell input[type="tel"],
+.asgard-shell input[type="date"],
+.asgard-shell input[type="time"],
+.asgard-shell input[type="search"],
+.asgard-shell textarea,
+.asgard-shell select {
+  width: 100% !important;
+  min-height: 48px;
+  padding: 12px 16px !important;
+  font-size: 16px !important; /* предотвращает iOS zoom on focus */
+  border-radius: 12px !important;
+  border: 1px solid var(--brd, #333) !important;
+  background: var(--bg2, #1a1a1a) !important;
+  color: var(--text, #fff) !important;
+  outline: none !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.asgard-shell input:focus,
+.asgard-shell textarea:focus,
+.asgard-shell select:focus {
+  border-color: var(--accent, #ff4444) !important;
+  box-shadow: 0 0 0 3px rgba(255, 68, 68, 0.15) !important;
+}
+
+/* ── Кнопки — минимальный touch target ── */
+.asgard-shell button,
+.asgard-shell [role="button"],
+.asgard-shell [onclick] {
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Bottom Sheet / Модалки ── */
+.asgard-sheet-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 9999 !important;
+}
+
+.asgard-sheet-overlay > div:last-child {
+  max-height: 85vh !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Таб-бар не перекрывает контент ── */
+.asgard-shell > div:first-child {
+  padding-bottom: 80px; /* высота таб-бара + safe area */
+}
+
+/* ── Плавные переходы страниц ── */
+.asgard-shell .page-container {
+  animation: asgard-fade-in 0.2s ease-out;
+}
+
+@keyframes asgard-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Скелетоны — анимация ── */
+@keyframes asgard-shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+/* ── Safe area для iPhone с notch ── */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .asgard-shell {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ── Скроллбар тонкий ── */
+.asgard-shell ::-webkit-scrollbar {
+  width: 3px;
+}
+.asgard-shell ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+}
+
+/* ── Изображения не вылезают ── */
+.asgard-shell img {
+  max-width: 100%;
+  height: auto;
+}

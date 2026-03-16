@@ -1009,8 +1009,8 @@ window.AsgardPreTendersPage = (function(){
       <details style="margin-bottom:12px" ${allDocsCount > 0 || canEdit ? 'open' : ''}>
         <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:8px 0">📎 Документы (${allDocsCount})</summary>
         <div style="margin-top:4px">
-          ${attachments.map(a => renderFileEntry(a, { icon: "??", mailbox: true })).join("")}
-          ${manualDocs.map(a => renderFileEntry(a, { icon: "??", manual: true })).join("")}
+          ${attachments.map(a => renderFileEntry(a, { icon: "📧", mailbox: true })).join("")}
+          ${manualDocs.map(a => renderFileEntry(a, { icon: "📎", manual: true })).join("")}
           ${canEdit ? `
           <div id="ptUploadZone" style="margin-top:10px;padding:20px;border:2px dashed var(--line);border-radius:6px;text-align:center;cursor:pointer;transition:border-color .2s">
             <div style="font-size:24px;margin-bottom:4px">📎</div>

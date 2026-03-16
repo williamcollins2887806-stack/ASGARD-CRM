@@ -1189,7 +1189,7 @@ async function getRefs(){
         </div>
       `).join("") : `<div class="help">Пока нет документов. Добавляйте ссылки на Я.Диск/площадку.</div>`;
 
-      const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>→</b> Передано в работу: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
+      const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>🔒</b> Передано в ТО: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
       const canReassign = (isDirRole(user.role) || user.role==="ADMIN");
 
       const full = rights.full || isNew;
@@ -1577,11 +1577,11 @@ ${docsHtml}</div>
       if(bDownloadAll) bDownloadAll.addEventListener("click", async ()=>{
         const validDocs = (docs || []).filter(d => buildDocumentLink(d));
         if(validDocs.length === 0) {
-          toast("Внимание", "Нет документов для скачивания", "err");
+          toast("Документы", "Нет документов для скачивания", "err");
           return;
         }
 
-        toast("Скачивание", `Начинаю загрузку ${validDocs.length} документов...`, "ok");
+        toast("Документы", `Начинаю скачивание ${validDocs.length} документов...`, "ok");
 
         let downloadCount = 0;
         for(const d of validDocs) {
@@ -1593,7 +1593,7 @@ ${docsHtml}</div>
           }
         }
 
-        toast("Скачивание", `Скачано ${downloadCount} документов`, "ok");
+        toast("Документы", `Скачано ${downloadCount} документов`, "ok");
       });
 
       const bPackExp = document.getElementById("btnPackExport");

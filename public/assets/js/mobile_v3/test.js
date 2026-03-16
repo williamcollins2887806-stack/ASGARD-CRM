@@ -702,6 +702,14 @@ const TestPage = {
     };
     window.addEventListener('asgard:theme', themeHandler, { once: true });
 
+    // Append visual audit sections from test2 (synchronous, no hacks)
+    if (window.MobileTest2 && typeof window.MobileTest2.sections === 'function') {
+      const auditDivider = el('div', { borderTop: '3px solid var(--red)', margin: '32px 20px 8px', paddingTop: '16px' });
+      auditDivider.appendChild(el('div', { ...DS.font('xs'), color: t.red, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase' }, 'ВИЗУАЛЬНЫЙ АУДИТ — СЕССИЯ 16'));
+      page.appendChild(auditDivider);
+      window.MobileTest2.sections(page);
+    }
+
     return page;
   },
 };

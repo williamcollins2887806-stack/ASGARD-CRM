@@ -23,7 +23,7 @@ window.MobileWidgets.kpi_summary = {
           { svgIcon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', value: (res[2] || []).length, label: 'Просчётов', color: t.orange }
         ] }));
         container.style.cursor = 'pointer';
-        container.onclick = function () { Router.navigate('/analytics'); };
+        container.onclick = function () { Router.navigate('/tenders'); };
       }).catch(function (e) { console.error('[kpi_summary]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }

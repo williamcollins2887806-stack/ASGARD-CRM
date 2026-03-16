@@ -1,7 +1,7 @@
 /**
  * Files Routes - Upload/Download
- * SECURITY: Валидация расширений файлов загрузки (MED-3)
- * SECURITY: Проверка auth в download (HIGH-2)
+ * SECURITY: Добавлена валидация расширений файлов (MED-3)
+ * SECURITY: Добавлена авторизация для скачивания (HIGH-2)
  */
 const path = require('path');
 const fs = require('fs').promises;
@@ -12,7 +12,7 @@ async function routes(fastify, options) {
   const uploadDir = process.env.UPLOAD_DIR || './uploads';
   const uploadBaseDir = path.resolve(uploadDir);
 
-  // SECURITY: Белый список допустимых типов файлов (MED-3)
+  // SECURITY: Список разрешённых форматов файлов (MED-3)
   const ALLOWED_EXTENSIONS = [
     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
     '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg',
@@ -113,7 +113,7 @@ async function routes(fastify, options) {
     return { success: true, file: result.rows[0], download_url: `/api/files/download/${filename}` };
   });
 
-  // SECURITY: Проверка auth в download (HIGH-2)
+  // SECURITY: Проверка авторизации при скачивании (HIGH-2)
   fastify.get('/download/:filename', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
@@ -156,8 +156,8 @@ async function routes(fastify, options) {
     const params = [];
     let idx = 1;
 
-    // Каскад: при запросе по work_id также подтягиваем документы по тендеру
-    // при запросе по tender_id также подтягиваем документы по связанным работам
+    // Логика: при запросе по work_id — также добавляем документы по тендеру
+    // При запросе по tender_id — также добавляем документы по дочерним работам
     if (cascade !== 'false' && (work_id || tender_id)) {
       const conditions = [];
 
@@ -165,7 +165,7 @@ async function routes(fastify, options) {
         conditions.push(`work_id = $${idx}`);
         params.push(work_id);
         idx++;
-        // Найти tender_id по работе и подтянуть его документы
+        // Берём tender_id из записи и добавляем его для каскада
         const workRes = await db.query('SELECT tender_id FROM works WHERE id = $1', [work_id]);
         if (workRes.rows.length && workRes.rows[0].tender_id) {
           conditions.push(`tender_id = $${idx}`);
@@ -176,7 +176,7 @@ async function routes(fastify, options) {
         conditions.push(`tender_id = $${idx}`);
         params.push(tender_id);
         idx++;
-        // Подтянуть документы по связанным работам
+        // Добавляем документы по дочерним работам
         const worksRes = await db.query('SELECT id FROM works WHERE tender_id = $1', [tender_id]);
         for (const w of worksRes.rows) {
           conditions.push(`work_id = $${idx}`);
@@ -193,7 +193,7 @@ async function routes(fastify, options) {
       return { files: result.rows };
     }
 
-    // Обычный запрос без каскада
+    // Простой запрос без каскада
     let sql = 'SELECT * FROM documents WHERE 1=1';
     if (tender_id) { sql += ` AND tender_id = $${idx}`; params.push(tender_id); idx++; }
     if (work_id) { sql += ` AND work_id = $${idx}`; params.push(work_id); idx++; }

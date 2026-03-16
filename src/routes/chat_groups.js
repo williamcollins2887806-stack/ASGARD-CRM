@@ -948,7 +948,7 @@ module.exports = async function(fastify) {
   });
 
   // ---------------------------------------------------------------
-  // GET /api/chat-groups/:id/files/:filename — скачивание вложений файлов чата
+  // GET /api/chat-groups/:id/files/:filename — скачивание файлов из чата
   // ---------------------------------------------------------------
   fastify.get('/:id/files/:filename', {
     preHandler: [fastify.authenticate]
