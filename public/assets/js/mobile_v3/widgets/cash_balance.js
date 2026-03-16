@@ -16,8 +16,7 @@ window.MobileWidgets.cash_balance = {
     }
     function _apiRaw() {
       return API.fetch('/cash/balance').then(function (d) {
-        if (d && typeof d.total !== 'undefined') return d;
-        return { items: Array.isArray(d) ? d : (d && d.items ? d.items : []) };
+        return d || {};
       });
     }
     function _load() {
@@ -28,8 +27,8 @@ window.MobileWidgets.cash_balance = {
           total = active.reduce(function (s, x) { return s + (Number(x.amount) || 0); }, 0);
           activeCount = active.length;
         } else {
-          total = Number(result.total) || 0;
-          activeCount = (result.items || []).length || result.count || 0;
+          total = Number(result.balance) || Number(result.total) || 0;
+          activeCount = (result.operations || result.items || []).length || result.count || 0;
         }
         var wrap = el('div');
         wrap.appendChild(M.BigNumber({ value: total, suffix: ' ₽', label: 'Выдано из кассы', icon: '💵' }));

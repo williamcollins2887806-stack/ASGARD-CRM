@@ -20,7 +20,7 @@ window.MobileWidgets.notifications = {
     }
     function _api() {
       return API.fetch('/notifications').then(function (d) {
-        return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []);
+        return API.extractRows(d);
       });
     }
     function _load() {

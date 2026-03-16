@@ -10,7 +10,7 @@ window.MobileWidgets.todo = {
         var items = Array.isArray(data) ? data : (data && data.items) || [];
         items = items.slice(0, 5);
         if (!items.length) { container.replaceChildren(M.Empty({ text: 'Нет задач', icon: '✅' })); return; }
-        var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '0', borderRadius: '14px', border: '1px solid ' + t.border, overflow: 'hidden', background: t.surface } });
+        var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '0', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg3, ' + t.surfaceAlt + ')' } });
         items.forEach(function (tk, i) {
           var done = !!tk.done;
           var row = el('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', borderBottom: i < items.length - 1 ? '1px solid ' + t.border : 'none', cursor: 'pointer' } });
@@ -26,7 +26,7 @@ window.MobileWidgets.todo = {
             txt.style.textDecoration = done ? 'line-through' : 'none';
             txt.style.color = done ? t.textTer : t.text;
             try { navigator.vibrate(10); } catch (ex) { /* */ }
-            API.fetch('/tasks/todo/' + tk.id, { method: 'PATCH', body: { done: done } }).catch(function () {});
+            API.fetch('/tasks/todo/' + tk.id + '/toggle', { method: 'PUT' }).catch(function () {});
           });
           list.appendChild(row);
         });

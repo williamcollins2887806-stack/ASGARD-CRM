@@ -15,7 +15,7 @@ window.MobileWidgets.birthdays = {
       return _api();
     }
     function _api() {
-      return API.fetch('/data/users').then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+      return API.fetch('/data/users').then(function (d) { return API.extractRows(d); });
     }
     function _load() {
       _fetch().then(function (emps) {

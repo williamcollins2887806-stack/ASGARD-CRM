@@ -9,12 +9,12 @@ window.MobileWidgets.team_workload = {
       if (typeof AsgardDB !== 'undefined') {
         return AsgardDB.getAll(table).then(function (data) {
           if (data && data.length) return data;
-          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
         }).catch(function () {
-          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+          return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
         });
       }
-      return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+      return API.fetch(apiPath).then(function (d) { return API.extractRows(d); });
     }
     function _load() {
       Promise.all([

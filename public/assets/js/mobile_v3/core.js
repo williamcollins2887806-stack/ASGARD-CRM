@@ -697,7 +697,29 @@ const API = (() => {
     return () => es.close();
   }
 
-  return { fetch: fetchAPI, clearCache, subscribe, getToken, BASE };
+  /**
+   * Extract rows array from any API response.
+   * Backend uses dynamic keys: { tenders: [...] }, { works: [...] }, { notifications: [...] }, etc.
+   * This function finds the first array in the response object.
+   */
+  function extractRows(d) {
+    if (!d) return [];
+    if (Array.isArray(d)) return d;
+    // Try common keys first
+    var commonKeys = ['items', 'data', 'rows', 'notifications', 'works', 'tenders', 'users',
+      'estimates', 'permits', 'emails', 'tasks', 'sheets', 'employees', 'events'];
+    for (var i = 0; i < commonKeys.length; i++) {
+      if (d[commonKeys[i]] && Array.isArray(d[commonKeys[i]])) return d[commonKeys[i]];
+    }
+    // Fallback: find first array value in response
+    var keys = Object.keys(d);
+    for (var j = 0; j < keys.length; j++) {
+      if (Array.isArray(d[keys[j]])) return d[keys[j]];
+    }
+    return [];
+  }
+
+  return { fetch: fetchAPI, clearCache, subscribe, getToken, extractRows, BASE };
 })();
 
 

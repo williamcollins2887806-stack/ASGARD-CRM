@@ -15,7 +15,7 @@ window.MobileWidgets.overdue_works = {
       return _api();
     }
     function _api() {
-      return API.fetch('/works').then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
+      return API.fetch('/works').then(function (d) { return API.extractRows(d); });
     }
     function _load() {
       _fetch().then(function (all) {
