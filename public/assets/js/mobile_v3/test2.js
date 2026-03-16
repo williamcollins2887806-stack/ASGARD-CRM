@@ -312,8 +312,8 @@
     diagCard.appendChild(el('div', { style: Object.assign({}, DS.font('md'), { color: 'var(--text)', marginBottom: '8px' }) }, '🔧 Диагностика'));
     var diagFields = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
     [
-      { label: 'Router', value: 'OK', color: 'success' },
-      { label: 'Components (M)', value: 'OK', color: 'success' },
+      { label: 'Router', value: 'Ок', color: 'success' },
+      { label: 'Components (M)', value: 'Ок', color: 'success' },
       { label: 'MobileWidgets', value: '27 шт.', color: 'info' },
     ].forEach(function (r) {
       var row = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' } });
@@ -375,7 +375,7 @@
 
     // ── 5. SearchBar (7 использований) ──
     wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'SearchBar (7×)'));
-    wMissing.appendChild(M.SearchBar({ placeholder: 'Поиск по тендерам...', onInput: function (v) { console.log('search:', v); } }));
+    wMissing.appendChild(M.SearchBar({ placeholder: 'Поиск по тендерам...', onInput: function (v) {  } }));
 
     // ── 6. ProgressBar (7 использований) ──
     wMissing.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px', marginBottom: '4px' }) }, 'ProgressBar (7×)'));
@@ -587,7 +587,7 @@
 
     // SearchBar — 7 использований
     wrap.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: 'var(--text-ter)', fontWeight: 600, marginTop: '12px' }) }, 'SearchBar (7×)'));
-    wrap.appendChild(M.SearchBar({ placeholder: 'Поиск по клиентам...', onInput: function (v) { console.log('search:', v); } }));
+    wrap.appendChild(M.SearchBar({ placeholder: 'Поиск по клиентам...', onInput: function (v) {  } }));
 
     frag.appendChild(wrap);
     return frag;
@@ -763,20 +763,21 @@
       var box = el('div', {
         style: {
           background: 'var(--surface)', borderRadius: '16px',
-          border: '1px solid var(--border)', overflow: 'hidden',
-          boxShadow: 'var(--shadow)',
+          overflow: 'hidden',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.06)',
         },
       });
 
-      // Widget label
+      // Widget label — Russian name from widget registry
+      var widgetName = widget.name || key;
       box.appendChild(el('div', {
         style: {
           padding: '8px 14px', borderBottom: '1px solid var(--border)',
-          fontSize: '10px', fontWeight: 700, color: 'var(--text-ter)',
-          textTransform: 'uppercase', letterSpacing: '0.5px',
+          fontSize: '11px', fontWeight: 600, color: 'var(--text-sec)',
+          letterSpacing: '0.3px',
           background: 'var(--surface-alt)',
         },
-        textContent: (i + 1) + '. ' + key,
+        textContent: widgetName,
       }));
 
       var container = el('div', { style: { padding: '0' } });
@@ -1102,8 +1103,8 @@
         { icon: '📝', label: 'Формы', onClick: function () { scrollToSection(5); } },
         { icon: '📊', label: 'Виджеты', onClick: function () { scrollToSection(6); } },
         { icon: '🧭', label: 'Навигация', onClick: function () { scrollToSection(7); } },
-        { icon: '📭', label: 'Empty', onClick: function () { scrollToSection(8); } },
-        { icon: '⏳', label: 'Loading', onClick: function () { scrollToSection(9); } },
+        { icon: '📭', label: 'Пусто', onClick: function () { scrollToSection(8); } },
+        { icon: '⏳', label: 'Загрузка', onClick: function () { scrollToSection(9); } },
         { icon: '🌓', label: 'Тема', onClick: function () { scrollToSection(10); } },
       ],
     }));

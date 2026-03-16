@@ -148,7 +148,7 @@ var CashAdminPage = (function () {
           ]);
           var balanceData = results[0] || {};
           var reqData = results[1];
-          allRequests = Array.isArray(reqData) ? reqData : (reqData.requests || reqData.data || []);
+          allRequests = API.extractRows(reqData);
 
           body.replaceChildren();
 
@@ -226,7 +226,7 @@ var CashAdminPage = (function () {
 
         } catch (e) {
           body.replaceChildren();
-          body.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+          body.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
           M.Toast({ message: 'Ошибка загрузки: ' + (e.message || e), type: 'error' });
         }
       }, 0);

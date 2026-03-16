@@ -34,11 +34,11 @@ const MeetingsPage = {
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
         const resp = await API.fetch('/meetings?limit=100');
-        items = Array.isArray(resp) ? resp : (resp.data || []);
+        items = API.extractRows(resp);
         renderList();
       } catch (_) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       }
     }
 
@@ -148,10 +148,18 @@ function createMeetingSheet() {
     submitLabel: 'Создать совещание',
     onSubmit: async (data) => {
       try {
-        await API.fetch('/meetings', { method: 'POST', body: data });
+        var body = {
+          title: data.topic,
+          start_time: data.date && data.time ? data.date + 'T' + data.time : data.date,
+          location: data.location,
+          description: data.description,
+        };
+        await API.fetch('/meetings', { method: 'POST', body: body });
         M.Toast({ message: 'Совещание создано', type: 'success' });
+        document.querySelectorAll('.asgard-sheet-overlay').forEach(function (o) { o.remove(); });
+        Utils.unlockScroll();
         Router.navigate('/meetings');
-      } catch (_) { M.Toast({ message: 'Ошибка', type: 'error' }); }
+      } catch (e) { M.Toast({ message: 'Ошибка: ' + (e.message || 'сервер недоступен'), type: 'error' }); }
     },
   }));
   M.BottomSheet({ title: '📹 Новое совещание', content, fullscreen: true });

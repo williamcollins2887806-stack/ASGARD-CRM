@@ -21,27 +21,18 @@ window.MobileAllEstimates = (function () {
   function money(v) { return v ? Number(v).toLocaleString('ru-RU') + ' ₽' : '—'; }
   function fmt(v) { return v ? new Date(v).toLocaleDateString('ru-RU') : '—'; }
 
+  var PAGE_LIMIT = 50;
+  var _offset = 0;
+  var _hasMore = true;
+
   async function loadItems() {
-    try {
-      var data = await API.fetch('/estimates', { noCache: true });
-      if (Array.isArray(data)) return data;
-      if (data && data.items) return data.items;
-    } catch (_) {}
-    try {
-      if (typeof AsgardDB !== 'undefined') {
-        return (await AsgardDB.all('estimates')) || [];
-      }
-    } catch (_) {}
-    return [];
+    _offset = 0;
+    _hasMore = true;
+    return API.fetchCached('estimates', '/estimates?limit=' + PAGE_LIMIT + '&offset=0');
   }
 
   async function loadTenders() {
-    try {
-      if (typeof AsgardDB !== 'undefined') {
-        return (await AsgardDB.all('tenders')) || [];
-      }
-    } catch (_) {}
-    return [];
+    return API.fetchCached('tenders', '/data/tenders');
   }
 
   /* ── Детальная модалка ── */
@@ -150,11 +141,23 @@ window.MobileAllEstimates = (function () {
           tenders = await loadTenders();
           var loaded = await loadItems();
           loaded.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
+          _offset = loaded.length;
+          _hasMore = loaded.length >= PAGE_LIMIT;
           return loaded;
         } catch (e) {
           M.Toast({ message: 'Ошибка загрузки расчётов', type: 'error' });
           return [];
         }
+      },
+      loadMore: async function () {
+        if (!_hasMore) return [];
+        try {
+          var rows = await API.fetchCached('estimates', '/estimates?limit=' + PAGE_LIMIT + '&offset=' + _offset);
+          _offset += rows.length;
+          if (rows.length < PAGE_LIMIT) _hasMore = false;
+          rows.sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
+          return rows;
+        } catch (_) { return []; }
       },
     });
 

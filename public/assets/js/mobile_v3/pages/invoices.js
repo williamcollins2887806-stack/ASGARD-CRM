@@ -44,7 +44,7 @@ const InvoicesPage = {
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 5 }));
       try {
         const resp = await API.fetch('/invoices?limit=200');
-        items = Array.isArray(resp) ? resp : (resp.data || []);
+        items = API.extractRows(resp);
 
         // Stats
         statsWrap.replaceChildren();
@@ -63,7 +63,7 @@ const InvoicesPage = {
       } catch (_) {
         listWrap.replaceChildren();
         M.Toast({ message: 'Ошибка загрузки', type: 'error' });
-        listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       }
     }
 

@@ -7,9 +7,9 @@ window.MobileWidgets.my_cash_balance = {
     _load();
     function _load() {
       API.fetch('/cash/my-balance').then(function (data) {
-        var onHand = (data && data.on_hand) || 0;
+        var onHand = (data && (data.balance !== undefined ? data.balance : data.on_hand)) || 0;
         var spent = (data && data.spent) || 0;
-        var activeCount = (data && data.active_count) || 0;
+        var activeCount = (data && (data.active_requests !== undefined ? data.active_requests : data.active_count)) || 0;
         var grid = el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', textAlign: 'center' } });
         [{ val: Utils.formatMoney(onHand, { short: true }).replace(' ₽', ''), lbl: 'На руках', cl: t.blue },
          { val: Utils.formatMoney(spent, { short: true }).replace(' ₽', ''), lbl: 'Потрачено', cl: t.orange },

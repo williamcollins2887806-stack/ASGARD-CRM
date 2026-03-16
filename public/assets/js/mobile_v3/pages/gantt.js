@@ -23,7 +23,7 @@ var GanttPage = (function () {
         try {
           var t = DS.t;
           var data = await API.fetch('/works?limit=500');
-          var works = (Array.isArray(data) ? data : (data.works || data.data || []))
+          var works = API.extractRows(data)
             .filter(function (w) { return w.end_date || w.start_date; })
             .map(function (w) {
               return Object.assign({}, w, {
@@ -173,7 +173,7 @@ var GanttPage = (function () {
 
         } catch (e) {
           body.replaceChildren();
-          body.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+          body.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
           M.Toast({ message: 'Ошибка загрузки: ' + (e.message || e), type: 'error' });
         }
       }, 0);

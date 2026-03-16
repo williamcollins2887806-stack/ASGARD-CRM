@@ -45,7 +45,7 @@ var TmcRequestsPage = {
       fab: { icon: '+', onClick: function () { openCreateForm(); } },
       onRefresh: function () {
         return API.fetch('/tmc-requests', { noCache: true }).then(function (resp) {
-          items = resp.items || resp.data || (Array.isArray(resp) ? resp : []);
+          items = API.extractRows(resp);
           return items;
         }).catch(function (e) { M.Toast({ message: 'Ошибка загрузки', type: 'error' }); return []; });
       },

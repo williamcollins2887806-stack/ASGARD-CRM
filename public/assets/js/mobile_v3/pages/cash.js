@@ -142,7 +142,7 @@ var CashPage = (function () {
           ]);
           var balance = results[0] || {};
           var requests = results[1];
-          var reqList = Array.isArray(requests) ? requests : (requests.requests || requests.data || []);
+          var reqList = API.extractRows(requests);
 
           body.replaceChildren();
 
@@ -195,7 +195,7 @@ var CashPage = (function () {
 
         } catch (e) {
           body.replaceChildren();
-          body.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+          body.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
           M.Toast({ message: 'Ошибка загрузки: ' + (e.message || e), type: 'error' });
         }
       }, 0);

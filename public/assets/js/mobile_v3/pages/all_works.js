@@ -17,13 +17,20 @@ var AllWorksPage = (function () {
     return 'neutral';
   }
 
+  var PAGE_LIMIT = 50;
+  var _offset = 0;
+  var _hasMore = true;
+
   return {
     render: function () {
       var works = [];
 
       async function loadData() {
-        var data = await API.fetch('/works?limit=500');
-        works = Array.isArray(data) ? data : (data.works || data.data || []);
+        _offset = 0;
+        _hasMore = true;
+        works = await API.fetchCached('works', '/works?limit=' + PAGE_LIMIT + '&offset=0');
+        _offset = works.length;
+        _hasMore = works.length >= PAGE_LIMIT;
         return works;
       }
 
@@ -77,6 +84,15 @@ var AllWorksPage = (function () {
             M.Toast({ message: 'Ошибка загрузки работ', type: 'error' });
             return [];
           }
+        },
+        loadMore: async function () {
+          if (!_hasMore) return [];
+          try {
+            var rows = await API.fetchCached('works', '/works?limit=' + PAGE_LIMIT + '&offset=' + _offset);
+            _offset += rows.length;
+            if (rows.length < PAGE_LIMIT) _hasMore = false;
+            return rows;
+          } catch (_) { return []; }
         },
         empty: M.Empty({ text: 'Работ пока нет', icon: '🏗' }),
       });

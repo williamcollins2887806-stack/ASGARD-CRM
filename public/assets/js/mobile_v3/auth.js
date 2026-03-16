@@ -61,7 +61,7 @@ const WelcomePage = {
 
     const page = el('div', { className: 'auth-welcome' });
     Object.assign(page.style, {
-      position: 'fixed', inset: '0', zIndex: '2',
+      position: 'fixed', inset: '0', zIndex: '9999',
       background: 'var(--hero-grad)',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
@@ -292,9 +292,11 @@ const LoginPage = {
   _credentials() {
     const page = el('div', { className: 'auth-credentials' });
     Object.assign(page.style, {
-      minHeight: '100dvh', background: 'var(--hero-grad)',
+      position: 'fixed', inset: '0', zIndex: '9999',
+      background: 'var(--hero-grad)',
       display: 'flex', flexDirection: 'column',
       padding: DS.spacing.page + 'px', paddingTop: '60px',
+      overflow: 'auto',
     });
 
     /* back */
@@ -511,11 +513,12 @@ const LoginPage = {
   _pinScreen({ title, subtitle, avatar, onComplete, showBio, showAlt, onAlt }) {
     const page = el('div', { className: 'auth-pin-page' });
     Object.assign(page.style, {
-      minHeight: '100dvh', background: 'var(--hero-grad)',
+      position: 'fixed', inset: '0', zIndex: '9999',
+      background: 'var(--hero-grad)',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       padding: '0 24px', paddingTop: '72px',
       paddingBottom: 'max(env(safe-area-inset-bottom,0px),24px)',
-      color: '#fff'
+      color: '#fff', overflow: 'auto'
     });
 
     /* avatar */

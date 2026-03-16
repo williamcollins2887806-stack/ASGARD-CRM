@@ -40,14 +40,32 @@ const WarehousePage = {
       listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 5 }));
       try {
+        const PAGE_LIMIT = 50;
         const [eqResp, whResp, catResp] = await Promise.all([
-          API.fetch('/equipment?limit=200'),
+          API.fetch('/equipment?limit=' + PAGE_LIMIT),
           API.fetch('/equipment/warehouses').catch(() => []),
           API.fetch('/equipment/categories').catch(() => []),
         ]);
-        items = Array.isArray(eqResp) ? eqResp : (eqResp.data || eqResp.items || []);
-        warehouses = Array.isArray(whResp) ? whResp : (whResp.data || []);
-        categories = Array.isArray(catResp) ? catResp : (catResp.data || []);
+        items = API.extractRows(eqResp);
+        let eqOffset = items.length;
+        let eqHasMore = items.length >= PAGE_LIMIT;
+
+        // Infinite scroll
+        if (eqHasMore) {
+          Utils.infiniteScroll(page, async () => {
+            if (!eqHasMore) return;
+            try {
+              const moreResp = await API.fetch('/equipment?limit=' + PAGE_LIMIT + '&offset=' + eqOffset);
+              const moreRows = API.extractRows(moreResp);
+              eqOffset += moreRows.length;
+              if (moreRows.length < PAGE_LIMIT) eqHasMore = false;
+              items = items.concat(moreRows);
+              renderList('');
+            } catch (_) {}
+          });
+        }
+        warehouses = API.extractRows(whResp);
+        categories = API.extractRows(catResp);
 
         // Render warehouse filter
         pillsWrap.replaceChildren();
@@ -61,7 +79,7 @@ const WarehousePage = {
         renderList('');
       } catch (_) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       }
     }
 

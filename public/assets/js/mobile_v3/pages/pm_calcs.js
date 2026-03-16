@@ -25,27 +25,11 @@ window.MobilePmCalcs = (function () {
   function fmt(v) { return v ? new Date(v).toLocaleDateString('ru-RU') : '—'; }
 
   async function loadData() {
-    var estimates = [];
-    var tenders = [];
-    try {
-      if (typeof AsgardDB !== 'undefined') {
-        estimates = (await AsgardDB.all('estimates')) || [];
-        tenders = (await AsgardDB.all('tenders')) || [];
-      }
-    } catch (_) {}
-    if (!estimates.length) {
-      try {
-        var data = await API.fetch('/data/estimates');
-        estimates = Array.isArray(data) ? data : (data && data.items ? data.items : []);
-      } catch (_) {}
-    }
-    if (!tenders.length) {
-      try {
-        var data2 = await API.fetch('/data/tenders');
-        tenders = Array.isArray(data2) ? data2 : (data2 && data2.items ? data2.items : []);
-      } catch (_) {}
-    }
-    return { estimates: estimates, tenders: tenders };
+    var results = await Promise.all([
+      API.fetchCached('estimates', '/data/estimates'),
+      API.fetchCached('tenders', '/data/tenders'),
+    ]);
+    return { estimates: results[0], tenders: results[1] };
   }
 
   function getTender(tenders, id) {
@@ -103,20 +87,10 @@ window.MobilePmCalcs = (function () {
         label: '📤 Отправить на согласование',
         onClick: async function () {
           try {
-            if (typeof AsgardDB !== 'undefined') {
-              var cur = await AsgardDB.get('estimates', est.id);
-              if (cur) {
-                cur.approval_status = 'sent';
-                cur.sent_for_approval_at = new Date().toISOString();
-                await AsgardDB.put('estimates', cur);
-              }
-            }
-            try {
-              await API.fetch('/data/estimates/' + est.id, {
-                method: 'PUT',
-                body: { approval_status: 'sent' },
-              });
-            } catch (_) {}
+            await API.fetch('/data/estimates/' + est.id, {
+              method: 'PUT',
+              body: { approval_status: 'sent' },
+            });
             M.Toast({ message: 'Отправлено на согласование', type: 'success' });
             document.querySelectorAll('.asgard-sheet-overlay').forEach(function (o) { o.remove(); });
             Utils.unlockScroll();

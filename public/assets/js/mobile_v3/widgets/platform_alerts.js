@@ -6,13 +6,14 @@ window.MobileWidgets.platform_alerts = {
     container.replaceChildren(M.Skeleton({ type: 'card', count: 2 }));
     _load();
     function _load() {
-      API.fetch('/integrations/platforms/alerts').then(function (data) {
+      API.fetch('/integrations/platforms?limit=5').then(function (data) {
         var items = (data && data.items) || (Array.isArray(data) ? data : []);
-        if (!items.length) { container.replaceChildren(M.Empty({ text: 'Нет новых тендеров', icon: '🏗' })); return; }
+        if (!items.length) { container.replaceChildren(M.Empty({ text: 'Нет новых тендеров' })); return; }
         var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } });
         items.slice(0, 3).forEach(function (tp) {
-          var daysLeft = tp.days_left || 0;
-          list.appendChild(M.Card({ title: tp.title || tp.name || '—', subtitle: tp.platform || '', badge: daysLeft + ' дн', badgeColor: daysLeft <= 3 ? 'danger' : 'warning', fields: tp.nmck ? [{ label: 'НМЦК', value: Utils.formatMoney(tp.nmck, { short: true }) }] : [] }));
+          var deadline = tp.submission_deadline ? new Date(tp.submission_deadline) : null;
+          var daysLeft = deadline ? Math.max(0, Math.ceil((deadline - new Date()) / 86400000)) : 0;
+          list.appendChild(M.Card({ title: tp.customer_name || tp.object_description || '—', subtitle: tp.platform_code || '', badge: deadline ? daysLeft + ' дн' : '', badgeColor: daysLeft <= 3 ? 'danger' : 'warning', fields: tp.nmck ? [{ label: 'НМЦК', value: Utils.formatMoney(tp.nmck, { short: true }) }] : [] }));
         });
         container.replaceChildren(list);
         container.style.cursor = 'pointer';

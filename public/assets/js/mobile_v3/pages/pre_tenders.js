@@ -36,17 +36,7 @@ window.MobilePreTenders = (function () {
 
   /* ── Загрузка данных ── */
   async function loadItems() {
-    try {
-      const data = await API.fetch('/pre-tenders');
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.items)) return data.items;
-    } catch (_) { /* fallback to IDB */ }
-    try {
-      if (typeof AsgardDB !== 'undefined') {
-        return (await AsgardDB.all('pre_tender_requests')) || [];
-      }
-    } catch (_) {}
-    return [];
+    return API.fetchCached('pre_tender_requests', '/pre-tenders');
   }
 
   function statusInfo(item) {

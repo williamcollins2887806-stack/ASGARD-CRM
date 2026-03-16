@@ -8,19 +8,15 @@ window.MobileCustomers = (function () {
 
   var el = Utils.el;
 
+  var PAGE_LIMIT = 50;
+  var _offset = 0;
+  var _hasMore = true;
+
   async function loadItems() {
-    try {
-      if (typeof AsgardDB !== 'undefined') {
-        var list = (await AsgardDB.all('customers')) || [];
-        return list.sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
-      }
-    } catch (_) {}
-    try {
-      var data = await API.fetch('/data/customers');
-      var items = Array.isArray(data) ? data : (data && data.items ? data.items : []);
-      return items.sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
-    } catch (_) {}
-    return [];
+    _offset = 0;
+    _hasMore = true;
+    var rows = await API.fetchCached('customers', '/data/customers?limit=' + PAGE_LIMIT + '&offset=0');
+    return rows.sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
   }
 
   /* ── Детальная модалка ── */
@@ -103,27 +99,11 @@ window.MobileCustomers = (function () {
             notes: formData.notes,
           };
 
-          if (typeof AsgardDB !== 'undefined') {
-            if (isEdit) {
-              var cur = await AsgardDB.get('customers', data.inn || data.id);
-              if (cur) {
-                Object.assign(cur, obj);
-                cur.updated_at = new Date().toISOString();
-                await AsgardDB.put('customers', cur);
-              }
-            } else {
-              obj.created_at = new Date().toISOString();
-              await AsgardDB.add('customers', obj);
-            }
+          if (isEdit) {
+            await API.fetch('/data/customers/' + (data.inn || data.id), { method: 'PUT', body: obj });
+          } else {
+            await API.fetch('/data/customers', { method: 'POST', body: obj });
           }
-
-          try {
-            if (isEdit) {
-              await API.fetch('/data/customers/' + (data.inn || data.id), { method: 'PUT', body: obj });
-            } else {
-              await API.fetch('/data/customers', { method: 'POST', body: obj });
-            }
-          } catch (_) {}
 
           M.Toast({ message: isEdit ? 'Контрагент обновлён' : 'Контрагент создан', type: 'success' });
           document.querySelectorAll('.asgard-sheet-overlay').forEach(function (o) { o.remove(); });
@@ -208,11 +188,23 @@ window.MobileCustomers = (function () {
       empty: M.Empty({ text: 'Нет контрагентов', icon: '🏢' }),
       onRefresh: async function () {
         try {
-          return await loadItems();
+          var loaded = await loadItems();
+          _offset = loaded.length;
+          _hasMore = loaded.length >= PAGE_LIMIT;
+          return loaded;
         } catch (e) {
           M.Toast({ message: 'Ошибка загрузки контрагентов', type: 'error' });
           return [];
         }
+      },
+      loadMore: async function () {
+        if (!_hasMore) return [];
+        try {
+          var rows = await API.fetchCached('customers', '/data/customers?limit=' + PAGE_LIMIT + '&offset=' + _offset);
+          _offset += rows.length;
+          if (rows.length < PAGE_LIMIT) _hasMore = false;
+          return rows.sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+        } catch (_) { return []; }
       },
       fab: {
         icon: '+',

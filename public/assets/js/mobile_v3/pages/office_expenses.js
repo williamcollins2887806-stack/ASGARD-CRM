@@ -93,7 +93,7 @@ var OfficeExpensesPage = (function () {
       setTimeout(async function () {
         try {
           var data = await API.fetch('/expenses/office');
-          var expenses = Array.isArray(data) ? data : (data.data || data.expenses || []);
+          var expenses = API.extractRows(data);
 
           body.replaceChildren();
 
@@ -195,7 +195,7 @@ var OfficeExpensesPage = (function () {
 
         } catch (e) {
           body.replaceChildren();
-          body.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+          body.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
           M.Toast({ message: 'Ошибка загрузки: ' + (e.message || e), type: 'error' });
         }
       }, 0);

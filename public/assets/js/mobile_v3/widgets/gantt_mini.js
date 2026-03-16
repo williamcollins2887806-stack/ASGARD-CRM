@@ -5,20 +5,8 @@ window.MobileWidgets.gantt_mini = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'list', count: 3 }));
     _load();
-    function _fetch() {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll('works').then(function (data) {
-          if (data && data.length) return data;
-          return _api();
-        }).catch(function () { return _api(); });
-      }
-      return _api();
-    }
-    function _api() {
-      return API.fetch('/works').then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
-    }
     function _load() {
-      _fetch().then(function (all) {
+      API.fetchCached('works', '/works').then(function (all) {
         var now = new Date();
         var upcoming = (all || []).filter(function (w) {
           if (!w.end_plan) return false;
@@ -40,7 +28,7 @@ window.MobileWidgets.gantt_mini = {
         container.replaceChildren(list);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/gantt'); };
-      }).catch(function (e) { console.error('[gantt_mini]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[gantt_mini]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

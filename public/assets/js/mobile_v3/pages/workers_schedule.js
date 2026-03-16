@@ -100,11 +100,11 @@ const WorkersSchedulePage = {
           API.fetch('/staff/employees?limit=1000'),
           API.fetch('/staff/schedule?date_from=' + ymd(new Date(viewYear, viewMonth, 1)) + '&date_to=' + ymd(new Date(viewYear, viewMonth, daysInMonth(viewYear, viewMonth)))),
         ]);
-        employees = Array.isArray(empResp) ? empResp : (empResp.items || empResp.data || []);
+        employees = API.extractRows(empResp);
         // Filter to field workers only (no user_id = not office staff)
         employees = employees.filter(e => !e.user_id && e.deleted !== true && e.is_active !== false);
         employees.sort((a, b) => String(a.fio || '').localeCompare(String(b.fio || ''), 'ru'));
-        scheduleData = schedResp.schedule || schedResp.items || (Array.isArray(schedResp) ? schedResp : []);
+        scheduleData = API.extractRows(schedResp);
       } catch (e) {
         console.error('[Schedule] load error', e);
       }

@@ -417,18 +417,16 @@ const M = (() => {
     // Force grid layout with !important to prevent desktop CSS overrides
     grid.style.setProperty('display', 'grid', 'important');
     grid.style.setProperty('grid-template-columns', 'repeat(2, 1fr)', 'important');
-    grid.style.setProperty('gap', 'var(--sp-gap)', 'important');
-    grid.style.setProperty('padding', '0 var(--sp-page)');
+    grid.style.setProperty('gap', '8px', 'important');
+    grid.style.setProperty('padding', '0');
 
     items.forEach((item, i) => {
       const cell = el('div', {
         className: 'asgard-stat',
         style: {
-          background: 'var(--surface)',
-          borderRadius: 'var(--r-lg)',
+          background: 'var(--bg2, var(--surface))',
+          borderRadius: '12px',
           padding: '14px',
-          border: '1px solid var(--border)',
-          boxShadow: 'var(--shadow)',
           cursor: item.href ? 'pointer' : 'default',
           ...DS.anim(i * 0.05),
         },
@@ -438,14 +436,32 @@ const M = (() => {
         cell.addEventListener('click', () => Router.navigate(item.href));
       }
 
-      const row = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } });
+      // Icon with colored background
       if (item.icon) {
-        row.appendChild(el('span', { style: { fontSize: '20px' }, textContent: item.icon }));
+        const iconColor = item.color || 'var(--text)';
+        const iconWrap = el('div', {
+          style: {
+            width: '28px', height: '28px', borderRadius: '8px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: '8px', color: iconColor,
+            background: `color-mix(in srgb, ${iconColor} 12%, transparent)`,
+          },
+        });
+        if (item.svgIcon) {
+          iconWrap.innerHTML = item.svgIcon;
+        } else {
+          iconWrap.textContent = item.icon;
+          iconWrap.style.fontSize = '14px';
+        }
+        cell.appendChild(iconWrap);
       }
+
       const valEl = el('div', {
         style: {
           ...DS.font('xl'),
-          color: item.color || 'var(--text)',
+          color: 'var(--t1, var(--text))',
+          fontWeight: '700',
+          lineHeight: '1.1',
         },
       });
       if (typeof item.value === 'number') {
@@ -455,11 +471,10 @@ const M = (() => {
       } else {
         valEl.textContent = item.value;
       }
-      row.appendChild(valEl);
-      cell.appendChild(row);
+      cell.appendChild(valEl);
 
       cell.appendChild(el('div', {
-        style: { ...DS.font('sm'), color: 'var(--text-sec)', marginTop: '4px' },
+        style: { ...DS.font('xs'), color: 'var(--t3, var(--text-sec))', marginTop: '4px' },
         textContent: item.label,
       }));
 
@@ -598,31 +613,49 @@ const M = (() => {
      9. EMPTY STATE
      ══════════════════════════════════════════════ */
   function Empty({ text, icon, type }) {
-    const icons = { rune: 'ᚱ', sword: '⚔️', eagle: '🦅', shield: '🛡️', default: 'ᚱ' };
+    const svgIcons = {
+      default: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>',
+      search: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+      error: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
+      mail: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>',
+      bell: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+      wrench: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+      clock: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+      tasks: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>',
+      alert: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+      construction: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="8" rx="1"/><path d="M17 14v7"/><path d="M7 14v7"/><path d="M17 3v3"/><path d="M7 3v3"/><path d="M10 14 2.3 6.3"/><path d="m14 6 7.7 7.7"/></svg>',
+    };
+    // Map emoji icons to SVG keys
+    const emojiToSvg = { '⚠️': 'alert', '✅': 'default', '🔧': 'wrench', '🏗️': 'construction', '🏗': 'construction', '✉️': 'mail', '📧': 'mail', '🔔': 'bell', '⏰': 'clock', '🛡️': 'default', '🛡': 'default', 'ᚱ': 'default' };
     const texts = {
-      default: 'Здесь пока пусто, воин',
+      default: 'Нет данных',
       search: 'Ничего не найдено',
-      error: 'Произошла ошибка',
+      error: 'Ошибка загрузки',
     };
 
-    return el('div', {
+    var svgKey = emojiToSvg[icon] || type || 'default';
+    var svgHtml = svgIcons[svgKey] || svgIcons.default;
+
+    var wrapper = el('div', {
       className: 'asgard-empty',
       style: {
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        padding: '60px 20px', textAlign: 'center',
+        padding: '20px 16px', textAlign: 'center', gap: '8px',
+        maxHeight: '120px',
         ...DS.anim(0.1),
       },
-    }, [
-      el('div', {
-        style: {
-          fontSize: '72px', marginBottom: '16px',
-          color: 'var(--gold)',
-          filter: 'drop-shadow(0 4px 12px rgba(212,168,67,0.5)) sepia(1) saturate(3) brightness(0.85) hue-rotate(15deg)',
-        },
-        textContent: icon || icons[type] || icons.default,
-      }),
-      el('div', { style: { ...DS.font('md'), color: 'var(--text-sec)' }, textContent: text || texts[type] || texts.default }),
-    ]);
+    });
+    var iconDiv = el('div', {
+      style: {
+        width: '36px', height: '36px',
+        color: DS.t.textTer,
+        opacity: '0.5',
+      },
+    });
+    iconDiv.innerHTML = svgHtml;
+    wrapper.appendChild(iconDiv);
+    wrapper.appendChild(el('div', { style: { ...DS.font('sm'), color: DS.t.textTer }, textContent: text || texts[type] || texts.default }));
+    return wrapper;
   }
 
   /* ══════════════════════════════════════════════
@@ -3026,6 +3059,51 @@ const M = (() => {
   }
 
   /* ══════════════════════════════════════════════
+     ERROR BANNER — Sber-style compact retry strip
+     ══════════════════════════════════════════════ */
+  function ErrorBanner({ text, onRetry } = {}) {
+    const banner = el('div', {
+      className: 'asgard-error-banner',
+      style: {
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '12px 16px', borderRadius: '12px',
+        background: `color-mix(in srgb, ${DS.t.red} 8%, transparent)`,
+        margin: '8px 0',
+      },
+    });
+
+    // WiFi-off icon
+    const icon = el('div', {
+      style: { width: '20px', height: '20px', color: DS.t.red, flexShrink: '0', opacity: '0.7' },
+    });
+    icon.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M13.83 10.17A10 10 0 0 1 19 12.86"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+    banner.appendChild(icon);
+
+    // Text
+    banner.appendChild(el('div', {
+      style: { ...DS.font('sm'), color: DS.t.textSec, flex: '1' },
+      textContent: text || 'Не удалось загрузить',
+    }));
+
+    // Retry button
+    if (onRetry) {
+      const btn = el('button', {
+        style: {
+          ...DS.font('sm'), fontWeight: '600', color: DS.t.blue,
+          background: 'none', border: 'none', padding: '4px 8px',
+          cursor: 'pointer', flexShrink: '0', borderRadius: '8px',
+          WebkitTapHighlightColor: 'transparent',
+        },
+        textContent: 'Повторить',
+      });
+      btn.addEventListener('click', onRetry);
+      banner.appendChild(btn);
+    }
+
+    return banner;
+  }
+
+  /* ══════════════════════════════════════════════
      PUBLIC API
      ══════════════════════════════════════════════ */
   return {
@@ -3069,6 +3147,7 @@ const M = (() => {
     SwipeCard,
     DonutChart,
     BurgerMenu,
+    ErrorBanner,
   };
 })();
 

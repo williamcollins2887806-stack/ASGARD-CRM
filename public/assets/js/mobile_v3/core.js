@@ -112,15 +112,6 @@ const Router = (() => {
     transitioning = true;
 
     const { path, params } = parseHash(window.location.hash);
-
-    // Auth guard: незалогиненных — на /welcome
-    const publicRoutes = ['/login', '/welcome', '/register', '/test', '/test2', '/test-table'];
-    if (!Store.get('user') && !publicRoutes.includes(path)) {
-      transitioning = false;
-      navigate('/welcome', { replace: true });
-      return;
-    }
-
     const found = findRoute(path);
 
     if (!found) {
@@ -178,15 +169,26 @@ const Router = (() => {
         }
       } catch (e) {
         console.error('[Router] Render error:', path, e);
-        newPage.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--text-sec)">Ошибка загрузки страницы</div>`;
+        if (typeof M !== 'undefined' && M.ErrorBanner) {
+          newPage.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(path, { replace: true }); } }));
+        } else {
+          newPage.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-sec);font-size:13px">Не удалось загрузить</div>`;
+        }
       }
 
       // Transition old page out, new page in
+      // Clear ALL children — login stages may not be wrapped in .asgard-page
       const oldPage = content.querySelector('.asgard-page');
       if (oldPage) {
         oldPage.classList.add('asgard-page-exit');
         setTimeout(() => oldPage.remove(), 350);
       }
+      // Remove any non-.asgard-page children (e.g. login stages inserted by _goto)
+      Array.from(content.children).forEach(child => {
+        if (!child.classList.contains('asgard-page')) {
+          child.remove();
+        }
+      });
       content.appendChild(newPage);
 
       // Scroll to top
@@ -204,42 +206,13 @@ const Router = (() => {
     return TAB_ROUTES.includes(path);
   }
 
-  async function init() {
+  function init() {
     window.addEventListener('hashchange', handleRoute);
-
-    const publicRoutes = ['/login', '/welcome', '/register', '/test', '/test2', '/test-table'];
-    const { path } = parseHash(window.location.hash);
-
-    // Публичные маршруты — сразу рендерим без проверки
-    if (publicRoutes.includes(path)) {
-      handleRoute();
-      return;
+    if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
+      const user = Store.get('user');
+      window.location.hash = (user && user.token) ? '#/home' : '#/welcome';
     }
-
-    // Проверяем авторизацию через API
-    try {
-      const token = localStorage.getItem('asgard_token');
-      if (!token) throw new Error('No token');
-
-      const resp = await fetch('/api/auth/me', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      if (!resp.ok) throw new Error('Unauthorized');
-
-      const user = await resp.json();
-      Store.set('user', user);
-
-      // Если нет хеша — на главную
-      if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
-        window.location.hash = '#/home';
-      }
-      handleRoute();
-    } catch (e) {
-      // Невалидный/просроченный токен — на welcome
-      localStorage.removeItem('asgard_token');
-      window.location.hash = '#/welcome';
-      handleRoute();
-    }
+    handleRoute();
   }
 
   function current() {
@@ -327,24 +300,36 @@ const Layout = (() => {
     tabBar.setAttribute('aria-label', 'Навигация');
 
     config.forEach((tab, i) => {
-      const btn = document.createElement('a');
-      btn.className = 'asgard-tabbar__item';
-      btn.href = tab.href ? ('#' + tab.href) : '#';
-      if (tab.href) btn.setAttribute('data-route', tab.href);
-      btn.setAttribute('role', 'tab');
-      btn.setAttribute('aria-selected', 'false');
-      btn.innerHTML = `
-        <span class="asgard-tabbar__icon">${tab.icon}</span>
-        <span class="asgard-tabbar__label">${tab.label}</span>
-        ${tab.badge ? `<span class="asgard-tabbar__badge">${tab.badge}</span>` : ''}
-        <span class="asgard-tabbar__indicator"></span>
-      `;
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (tab.onClick) tab.onClick();
-        else if (tab.href) Router.navigate(tab.href);
-      });
-      tabBar.appendChild(btn);
+      if (tab.type === 'fab') {
+        // Mimir FAB button
+        const fab = document.createElement('button');
+        fab.className = 'asgard-tabbar__fab';
+        fab.innerHTML = tab.icon;
+        fab.setAttribute('aria-label', tab.label);
+        fab.addEventListener('click', () => {
+          if (tab.onClick) tab.onClick();
+          else if (tab.href) Router.navigate(tab.href);
+        });
+        tabBar.appendChild(fab);
+      } else {
+        const btn = document.createElement('a');
+        btn.className = 'asgard-tabbar__item';
+        btn.href = '#' + tab.href;
+        btn.setAttribute('data-route', tab.href);
+        btn.setAttribute('role', 'tab');
+        btn.setAttribute('aria-selected', 'false');
+        btn.innerHTML = `
+          <span class="asgard-tabbar__icon">${tab.icon}</span>
+          <span class="asgard-tabbar__label">${tab.label}</span>
+          ${tab.badge ? `<span class="asgard-tabbar__badge">${tab.badge}</span>` : ''}
+          <span class="asgard-tabbar__indicator"></span>
+        `;
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          Router.navigate(tab.href);
+        });
+        tabBar.appendChild(btn);
+      }
     });
 
     updateActiveTab();
@@ -407,7 +392,7 @@ const Layout = (() => {
     return [
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', label: 'Главная', href: '/home' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>', label: 'Задачи', href: '/tasks' },
-      { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4m-2.93-7.07l-2.83 2.83m-8.48 8.48l-2.83 2.83m0-14.14l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>', label: 'Мимир', onClick: () => openMimirChat() },
+      { type: 'fab', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4m-2.93-7.07l-2.83 2.83m-8.48 8.48l-2.83 2.83m0-14.14l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>', label: 'Мимир', onClick: () => openMimirChat() },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>', label: 'Почта', href: '/my-mail', badge: '' },
       { icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>', label: 'Ещё', href: '/more' },
     ];
@@ -439,7 +424,7 @@ const Layout = (() => {
   function getOverlayZone() { return overlayZone; }
   function getTabBar() { return tabBar; }
 
-  return { create, renderTabBar, getDefaultTabs, getPMTabs, setBadge, getContentZone, getOverlayZone, getTabBar, updateActiveTab, openMimirChat };
+  return { create, renderTabBar, getDefaultTabs, getPMTabs, setBadge, getContentZone, getOverlayZone, getTabBar, updateActiveTab };
 })();
 
 
@@ -724,7 +709,45 @@ const API = (() => {
     return () => es.close();
   }
 
-  return { fetch: fetchAPI, clearCache, subscribe, getToken, BASE };
+  /**
+   * Extract rows array from any API response.
+   * Backend uses dynamic keys: { tenders: [...] }, { works: [...] }, { notifications: [...] }, etc.
+   * This function finds the first array in the response object.
+   */
+  function extractRows(d) {
+    if (!d) return [];
+    if (Array.isArray(d)) return d;
+    // Try common keys first
+    var commonKeys = ['items', 'data', 'rows', 'notifications', 'works', 'tenders', 'users',
+      'estimates', 'permits', 'emails', 'tasks', 'sheets', 'employees', 'events'];
+    for (var i = 0; i < commonKeys.length; i++) {
+      if (d[commonKeys[i]] && Array.isArray(d[commonKeys[i]])) return d[commonKeys[i]];
+    }
+    // Fallback: find first array value in response
+    var keys = Object.keys(d);
+    for (var j = 0; j < keys.length; j++) {
+      if (Array.isArray(d[keys[j]])) return d[keys[j]];
+    }
+    return [];
+  }
+
+  function fetchCached(table, apiPath, opts) {
+    var raw = opts && opts.raw;
+    return fetchAPI(apiPath).then(function (d) {
+      var rows = raw ? d : extractRows(d);
+      if (!raw && typeof AsgardDB !== 'undefined' && AsgardDB.putAll && Array.isArray(rows) && rows.length) {
+        AsgardDB.putAll(table, rows).catch(function () {});
+      }
+      return rows;
+    }).catch(function () {
+      if (typeof AsgardDB !== 'undefined' && AsgardDB.getAll) {
+        return AsgardDB.getAll(table).then(function (d) { return d || (raw ? {} : []); }).catch(function () { return raw ? {} : []; });
+      }
+      return raw ? {} : [];
+    });
+  }
+
+  return { fetch: fetchAPI, fetchCached: fetchCached, clearCache, subscribe, getToken, extractRows, BASE };
 })();
 
 
@@ -1162,6 +1185,21 @@ const App = (() => {
 
     initialized = true;
 
+    // ── Disable desktop CSS — proper isolation, no overrides needed ──
+    // Desktop stylesheets are <link> tags loaded in index.html.
+    // On mobile they conflict with DS.js styles (z-index, fonts, layouts).
+    // Setting link.disabled = true is a standard DOM API — clean and reversible.
+    const desktopCSS = [
+      'design-tokens.css', 'components.css', 'layout.css',
+      'app.css', 'responsive.css', 'my-mail.css'
+    ];
+    document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+      const href = link.getAttribute('href') || '';
+      if (desktopCSS.some(name => href.includes(name))) {
+        link.disabled = true;
+      }
+    });
+
     // Inject design system styles
     if (typeof DS !== 'undefined' && DS.injectStyles) {
       DS.injectStyles();
@@ -1172,11 +1210,11 @@ const App = (() => {
 
     // Auth guard
     Router.addGuard((path) => {
-      const publicRoutes = ['/login', '/register', '/welcome', '/test', '/test2', '/test-table'];
+      const publicRoutes = ['/login', '/register', '/welcome', '/test', '/test-table', '/test2'];
       if (publicRoutes.includes(path)) return true;
       const user = Store.get('user');
       if (!user || !user.token) {
-        Router.navigate('/login', { replace: true });
+        Router.navigate('/welcome', { replace: true });
         return false;
       }
       return true;
@@ -1221,23 +1259,7 @@ const App = (() => {
       Router.register('/register', { render: () => RegisterPage.render() });
     }
 
-    // Home page placeholder (will be replaced in Session 3)
-    Router.register('/home', {
-      render: () => {
-        if (typeof HomePage !== 'undefined') return HomePage.render();
-        const placeholder = document.createElement('div');
-        placeholder.style.cssText = 'padding:60px 20px;text-align:center;';
-        placeholder.innerHTML = `
-          <div style="font-size:48px;margin-bottom:16px;">⚔️</div>
-          <div style="color:var(--text);font-size:20px;font-weight:700;margin-bottom:8px;">ASGARD CRM</div>
-          <div style="color:var(--text-sec);font-size:14px;">Главная страница — Сессия 3</div>
-          <div style="margin-top:24px;">
-            <a href="#/test" style="color:var(--blue);font-size:14px;text-decoration:none;">Открыть витрину компонентов →</a>
-          </div>
-        `;
-        return placeholder;
-      }
-    });
+    // Home page — registered by dashboard.js via Router.register('/home', DashboardPage)
 
     // Hide tab bar on auth pages, show on app pages
     window.addEventListener('asgard:route', (e) => {
@@ -1249,8 +1271,7 @@ const App = (() => {
       const content = Layout.getContentZone();
       if (content) {
         content.style.paddingBottom = isAuth ? '0' : '';
-        content.style.overflowY = isAuth ? 'hidden' : 'auto';
-        content.style.overflowX = 'hidden';
+        content.style.overflow = isAuth ? 'hidden' : '';
       }
     });
 

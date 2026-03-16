@@ -39,11 +39,11 @@ const MessengerPage = {
       listWrap.appendChild(M.Skeleton({ type: 'list', count: 6 }));
       try {
         chats = await API.fetch('/chat-groups');
-        if (!Array.isArray(chats)) chats = chats.data || [];
+        if (!Array.isArray(chats)) chats = API.extractRows(chats);
         renderList('');
       } catch (e) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.Empty({ text: 'Не удалось загрузить чаты', type: 'error' }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       }
     }
 
@@ -150,7 +150,7 @@ async function renderChat(chatId) {
   const userId = (Store.get('user') || {}).id;
   try {
     const msgs = await API.fetch('/chat-groups/' + chatId + '/messages?limit=50');
-    const list = Array.isArray(msgs) ? msgs : (msgs.data || []);
+    const list = API.extractRows(msgs);
     if (!list.length) {
       messagesWrap.appendChild(M.Empty({ text: 'Начните диалог', icon: '💬' }));
     } else {
@@ -167,7 +167,7 @@ async function renderChat(chatId) {
       setTimeout(() => { messagesWrap.scrollTop = messagesWrap.scrollHeight; }, 100);
     }
   } catch (_) {
-    messagesWrap.appendChild(M.Empty({ text: 'Ошибка загрузки сообщений', type: 'error' }));
+    messagesWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
   }
 
   // Composer
@@ -211,7 +211,7 @@ function chatActionsSheet(chatId) {
   M.ActionSheet({
     title: 'Действия',
     actions: [
-      { icon: '🔇', label: 'Выключить уведомления', onClick: () => API.fetch('/chat-groups/' + chatId + '/mute', { method: 'POST' }).then(() => M.Toast({ message: 'Уведомления выключены', type: 'info' })) },
+      { icon: '🔇', label: 'Выключить уведомления', onClick: () => API.fetch('/chat-groups/' + chatId + '/mute', { method: 'POST' }).then(() => M.Toast({ message: 'Уведомления выключены', type: 'info' })).catch(() => M.Toast({ message: 'Ошибка', type: 'error' })) },
       { icon: '👥', label: 'Участники', onClick: () => Router.navigate('/messenger/' + chatId + '?tab=members') },
       { icon: '📎', label: 'Файлы', onClick: () => Router.navigate('/messenger/' + chatId + '?tab=files') },
     ],

@@ -59,7 +59,7 @@ var IntegrationsPage = {
         renderBankTab(contentWrap, stats, batches);
       }).catch(function () {
         contentWrap.replaceChildren();
-        contentWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' }));
+        contentWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       });
     }
 
@@ -158,7 +158,7 @@ var IntegrationsPage = {
     // ═══ ТЕНДЕРНЫЕ ПЛОЩАДКИ ═══
     function loadPlatformsTab() {
       API.fetch('/integrations/platforms').catch(function () { return []; }).then(function (data) {
-        var platforms = Array.isArray(data) ? data : (data.platforms || []);
+        var platforms = API.extractRows(data);
         contentWrap.replaceChildren();
         renderPlatformsTab(contentWrap, platforms);
       });

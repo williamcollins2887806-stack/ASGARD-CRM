@@ -5,21 +5,10 @@ window.MobileWidgets.money_summary = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'hero', count: 1 }));
     _load();
-    function _dbOrApi(table, apiPath) {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll(table).then(function (data) {
-          if (data && data.length) return data;
-          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
-        }).catch(function () {
-          return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
-        });
-      }
-      return API.fetch(apiPath).then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
-    }
     function _load() {
       Promise.all([
-        _dbOrApi('works', '/works'),
-        _dbOrApi('tenders', '/data/tenders')
+        API.fetchCached('works', '/works'),
+        API.fetchCached('tenders', '/data/tenders')
       ]).then(function (res) {
         var works = res[0] || []; var tenders = res[1] || [];
         var y = new Date().getFullYear();
@@ -33,7 +22,7 @@ window.MobileWidgets.money_summary = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/finances'); };
-      }).catch(function (e) { console.error('[money_summary]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[money_summary]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

@@ -40,13 +40,13 @@ const ContractsPage = {
       listWrap.replaceChildren();
       listWrap.appendChild(M.Skeleton({ type: 'card', count: 4 }));
       try {
-        const resp = await API.fetch('/contracts?limit=100');
-        items = Array.isArray(resp) ? resp : (resp.data || []);
+        const resp = await API.fetch('/data/contracts?limit=100');
+        items = API.extractRows(resp);
         renderList('');
       } catch (_) {
         listWrap.replaceChildren();
         M.Toast({ message: 'Ошибка загрузки', type: 'error' });
-        listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       }
     }
 

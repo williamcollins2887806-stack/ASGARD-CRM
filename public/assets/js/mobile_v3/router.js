@@ -104,7 +104,7 @@
         { path: '/settings',     title: 'Настройки',    icon: '⚙️', roles: ['ADMIN'] },
         { path: '/telegram',     title: 'Telegram',     icon: '📱', roles: ['ADMIN'] },
         { path: '/integrations', title: 'Интеграции',   icon: '🔗', roles: ['ADMIN','BUH','DIRECTOR_*'] },
-        { path: '/backup',       title: 'Бэкап',        icon: '💾', roles: ['ADMIN'] },
+        // backup removed — backend route does not exist
         { path: '/diag',         title: 'Диагностика',  icon: '🔍', roles: ['ADMIN'] },
         { path: '/test',         title: 'UI Kit',        icon: '🧪', roles: ['ADMIN'] },
       ]

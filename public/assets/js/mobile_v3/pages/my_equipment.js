@@ -28,7 +28,7 @@ const MyEquipmentPage = {
       try {
         const user = Store.get('user') || {};
         const resp = await API.fetch('/equipment?responsible_id=' + (user.id || '') + '&limit=200');
-        const items = Array.isArray(resp) ? resp : (resp.data || resp.items || []);
+        const items = API.extractRows(resp);
 
         // Stats
         statsWrap.replaceChildren();
@@ -44,7 +44,7 @@ const MyEquipmentPage = {
       } catch (_) {
         listWrap.replaceChildren();
         M.Toast({ message: 'Ошибка загрузки', type: 'error' });
-        listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
       }
     }
 

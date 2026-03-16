@@ -53,8 +53,8 @@ var PermitsPage = {
           API.fetch('/permits', { noCache: true }),
           API.fetch('/staff/employees?limit=1000').catch(function () { return []; }),
         ]).then(function (results) {
-          var permits = results[0].items || results[0].data || (Array.isArray(results[0]) ? results[0] : []);
-          var employees = Array.isArray(results[1]) ? results[1] : (results[1].items || results[1].data || []);
+          var permits = API.extractRows(results[0]);
+          var employees = API.extractRows(results[1]);
           empMap = new Map(employees.map(function (e) { return [e.id, e.fio || e.name || '—']; }));
           return permits;
         }).catch(function (e) { M.Toast({ message: 'Ошибка загрузки допусков', type: 'error' }); return []; });

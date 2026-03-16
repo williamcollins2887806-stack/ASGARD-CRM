@@ -5,20 +5,8 @@ window.MobileWidgets.tenders_funnel = {
     var el = Utils.el; var t = DS.t;
     container.replaceChildren(M.Skeleton({ type: 'stats', count: 1 }));
     _load();
-    function _fetch() {
-      if (typeof AsgardDB !== 'undefined') {
-        return AsgardDB.getAll('tenders').then(function (data) {
-          if (data && data.length) return data;
-          return _api();
-        }).catch(function () { return _api(); });
-      }
-      return _api();
-    }
-    function _api() {
-      return API.fetch('/data/tenders').then(function (d) { return Array.isArray(d) ? d : (d && d.items ? d.items : d && d.data ? d.data : []); });
-    }
     function _load() {
-      _fetch().then(function (all) {
+      API.fetchCached('tenders', '/data/tenders').then(function (all) {
         var y = new Date().getFullYear();
         var tenders = (all || []).filter(function (x) { return String(x.year) === String(y) || (x.period || '').indexOf(String(y)) === 0; });
         var stages = [
@@ -34,7 +22,7 @@ window.MobileWidgets.tenders_funnel = {
         counts.forEach(function (s, i) {
           var pct = Math.max(Math.round((s.c / maxC) * 100), 8);
           var row = el('div', { style: Object.assign({ display: 'flex', alignItems: 'center', gap: '10px' }, DS.anim(i * 0.05)) });
-          var bar = el('div', { style: { height: '28px', borderRadius: '8px', width: pct + '%', background: s.cl, display: 'flex', alignItems: 'center', padding: '0 10px', minWidth: '40px', transition: 'width 0.5s ease' } });
+          var bar = el('div', { style: { height: '28px', borderRadius: '8px', width: pct + '%', background: s.cl, opacity: '0.85', display: 'flex', alignItems: 'center', padding: '0 10px', minWidth: '40px', transition: 'width 0.5s ease' } });
           bar.appendChild(el('span', { style: { fontSize: '11px', fontWeight: '700', color: '#fff' } }, '' + s.c));
           row.appendChild(bar);
           row.appendChild(el('span', { style: Object.assign({}, DS.font('xs'), { color: t.textSec }) }, s.l));
@@ -43,7 +31,7 @@ window.MobileWidgets.tenders_funnel = {
         container.replaceChildren(wrap);
         container.style.cursor = 'pointer';
         container.onclick = function () { Router.navigate('/funnel'); };
-      }).catch(function (e) { console.error('[tenders_funnel]', e); container.replaceChildren(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' })); });
+      }).catch(function (e) { console.error('[tenders_funnel]', e); container.replaceChildren(M.Empty({ text: 'Нет данных' })); });
     }
   }
 };

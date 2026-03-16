@@ -188,7 +188,7 @@ const TestPage = {
     page.appendChild(sec('Timeline', 'Лента событий'));
     page.appendChild(M.Timeline({ items: [
       { title: 'Заявка создана', text: 'Андросов Н.А.', time: '14:32', color: 'var(--blue)' },
-      { title: 'Согласовано', text: 'Кудряшов О.С.', time: '15:10', badge: 'OK', badgeColor: 'success', color: 'var(--green)' },
+      { title: 'Согласовано', text: 'Кудряшов О.С.', time: '15:10', badge: 'Ок', badgeColor: 'success', color: 'var(--green)' },
       { title: 'В бухгалтерию', text: 'Ожидает оплаты', time: '15:15', color: 'var(--orange)' },
       { title: 'Оплачено', text: 'ПП №1247 — 85 000 ₽', time: '16:40', badge: 'Оплачено', badgeColor: 'success', color: 'var(--green)' },
     ] }));
@@ -685,7 +685,7 @@ const TestPage = {
     // ═══ FOOTER ═══
     page.appendChild(gap(24));
     const ft = el('div', { textAlign: 'center', padding: '24px 20px 40px', borderTop: '1px solid ' + t.border });
-    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer }, 'ASGARD CRM • Mobile v3.0 • Session 1.2'));
+    ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer }, 'ASGARD CRM • Mobile v3.0'));
     ft.appendChild(el('div', { ...DS.font('xs'), color: t.textTer, marginTop: '4px' }, '40 компонентов • 23 блока • 27 виджетов • 4 auth-экрана • Dark/Light'));
     page.appendChild(ft);
 

@@ -123,7 +123,7 @@ var PayrollPage = (function () {
 
         try {
           var data = await API.fetch('/payroll/sheets');
-          sheets = Array.isArray(data) ? data : (data.sheets || data.data || []);
+          sheets = API.extractRows(data);
 
           body.replaceChildren();
 
@@ -194,7 +194,7 @@ var PayrollPage = (function () {
 
         } catch (e) {
           body.replaceChildren();
-          body.appendChild(M.Empty({ text: 'Ошибка загрузки', type: 'error' }));
+          body.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
           M.Toast({ message: 'Ошибка загрузки: ' + (e.message || e), type: 'error' });
         }
       }, 0);

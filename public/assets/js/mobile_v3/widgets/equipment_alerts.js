@@ -7,12 +7,14 @@ window.MobileWidgets.equipment_alerts = {
     _load();
     function _load() {
       API.fetch('/equipment/maintenance/upcoming').then(function (data) {
-        var items = (data && data.items) || (Array.isArray(data) ? data : []);
-        if (!items.length) { container.replaceChildren(M.Empty({ text: 'Нет алертов', icon: '✅' })); return; }
+        var items = API.extractRows(data);
+        if (!items.length) { container.replaceChildren(M.Empty({ text: 'Нет алертов' })); return; }
         var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
         items.slice(0, 3).forEach(function (e) {
-          var row = el('div', { style: { display: 'flex', gap: '10px', padding: '10px 14px', background: t.surface, borderRadius: '12px', border: '1px solid ' + t.border, alignItems: 'center' } });
-          row.appendChild(el('div', { style: { fontSize: '18px', flexShrink: '0' } }, '⚠️'));
+          var row = el('div', { style: { display: 'flex', gap: '10px', padding: '10px 14px', background: 'var(--bg3, ' + t.surfaceAlt + ')', borderRadius: '10px', alignItems: 'center' } });
+          var alertIcon = el('div', { style: { width: '24px', height: '24px', color: t.orange, flexShrink: '0' } });
+          alertIcon.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+          row.appendChild(alertIcon);
           var info = el('div', { style: { flex: '1' } });
           info.appendChild(el('div', { style: Object.assign({}, DS.font('sm'), { fontWeight: '600', color: t.text }) }, e.equipment_name || e.name || '—'));
           info.appendChild(el('div', { style: Object.assign({}, DS.font('xs'), { color: t.orange }) }, e.alert || e.description || 'Требуется ТО'));

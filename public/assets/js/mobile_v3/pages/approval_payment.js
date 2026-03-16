@@ -73,7 +73,7 @@ window.MobileApprovalPayment = (function () {
           if (err && err.status === 403) {
             listWrap.appendChild(M.Empty({ text: 'Доступ только для бухгалтерии', icon: '🔒' }));
           } else {
-            listWrap.appendChild(M.Empty({ text: 'Ошибка загрузки', icon: '⚠️' }));
+            listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
             M.Toast({ message: 'Ошибка загрузки платежей', type: 'error' });
           }
         });
@@ -81,7 +81,7 @@ window.MobileApprovalPayment = (function () {
 
       function renderItems(data) {
         listWrap.replaceChildren();
-        var items = (data && data.items) || [];
+        var items = API.extractRows(data);
         var cashBal = (data && data.cash_balance) || 0;
 
         // Обновить баланс

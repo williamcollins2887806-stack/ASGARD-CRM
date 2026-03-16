@@ -58,8 +58,8 @@ var TasksPage = {
         API.fetch('/tasks/my'),
         API.fetch('/tasks/todo'),
       ]).then(function (results) {
-        tasks = Array.isArray(results[0]) ? results[0] : (results[0].tasks || results[0].items || []);
-        todo = Array.isArray(results[1]) ? results[1] : (results[1].items || []);
+        tasks = API.extractRows(results[0]);
+        todo = API.extractRows(results[1]);
         renderContent();
       }).catch(function (e) {
         M.Toast({ message: 'Ошибка загрузки задач', type: 'error' });
@@ -177,7 +177,7 @@ var TasksPage = {
       rowEl.children[1].style.textDecoration = item.is_done ? 'line-through' : 'none';
       rowEl.children[1].style.color = item.is_done ? t.textTer : t.text;
       try { navigator.vibrate(10); } catch (_) {}
-      API.fetch('/tasks/todo', { method: 'PUT', body: { id: item.id, is_done: item.is_done } }).catch(function () {});
+      API.fetch('/tasks/todo/' + item.id + '/toggle', { method: 'PUT' }).catch(function () {});
     }
 
     function openTaskDetail(task) {
