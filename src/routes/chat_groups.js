@@ -14,6 +14,7 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { randomUUID } = require('crypto');
+const { sendToUser } = require('./sse');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
@@ -155,6 +156,21 @@ module.exports = async function(fastify) {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // HELPER: SSE broadcast to chat members
+  // ═══════════════════════════════════════════════════════════════
+  async function sseToMembers(chatId, senderUserId, event, data) {
+    try {
+      const { rows } = await db.query(
+        'SELECT user_id FROM chat_group_members WHERE chat_id = $1 AND user_id != $2',
+        [chatId, senderUserId]
+      );
+      for (const m of rows) sendToUser(m.user_id, event, data);
+    } catch (e) {
+      fastify.log.warn('SSE broadcast error:', e.message);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // Direct Chat — find or create 1-to-1 chat
   // ═══════════════════════════════════════════════════════════════
   fastify.post('/direct', { preHandler: [fastify.authenticate] }, async (request, reply) => {
@@ -242,7 +258,13 @@ module.exports = async function(fastify) {
           SELECT cm.user_id FROM chat_group_members cm
           WHERE cm.chat_id = c.id AND cm.user_id != $1
           LIMIT 1
-        ) ELSE NULL END as direct_user_id
+        ) ELSE NULL END as direct_user_id,
+        CASE WHEN c.is_group = false THEN (
+          SELECT u.last_login_at FROM chat_group_members cm
+          JOIN users u ON u.id = cm.user_id
+          WHERE cm.chat_id = c.id AND cm.user_id != $1
+          LIMIT 1
+        ) ELSE NULL END as direct_user_last_login
       FROM chats c
       JOIN chat_group_members m ON m.chat_id = c.id AND m.user_id = $1
       WHERE 1=1
@@ -291,7 +313,7 @@ module.exports = async function(fastify) {
 
     // Получить участников
     const { rows: members } = await db.query(`
-      SELECT m.*, u.name, u.role as user_role, u.is_active
+      SELECT m.*, u.name, u.role as user_role, u.is_active, u.last_login_at
       FROM chat_group_members m
       JOIN users u ON m.user_id = u.id
       WHERE m.chat_id = $1
@@ -665,7 +687,7 @@ module.exports = async function(fastify) {
     const chatId = parseInt(request.params.id);
     if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
-    const { text, reply_to_id } = request.body;
+    const { text, reply_to_id, message_type, file_url, file_duration } = request.body;
 
     const member = await getChatMembership(chatId, userId);
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
@@ -673,20 +695,23 @@ module.exports = async function(fastify) {
     // Получить данные чата
     const { rows: [chat] } = await db.query('SELECT name FROM chats WHERE id = $1', [chatId]);
 
-    if (!text || !text.trim()) {
+    if ((!text || !text.trim()) && !file_url) {
       return reply.code(400).send({ error: 'Текст сообщения обязателен' });
     }
 
     // Создать сообщение
     const { rows: [message] } = await db.query(`
-      INSERT INTO chat_messages (chat_id, user_id, message, is_read, reply_to, created_at)
-      VALUES ($1, $2, $3, false, $4, NOW())
+      INSERT INTO chat_messages (chat_id, user_id, message, is_read, reply_to, message_type, file_url, file_duration, created_at)
+      VALUES ($1, $2, $3, false, $4, $5, $6, $7, NOW())
       RETURNING *
     `, [
       chatId,
       userId,
-      text.trim(),
-      reply_to_id ? parseInt(reply_to_id) : null
+      (text || '').trim() || (message_type === 'voice' ? '🎤 Голосовое сообщение' : message_type === 'video' ? '🎬 Видеосообщение' : ''),
+      reply_to_id ? parseInt(reply_to_id) : null,
+      message_type || 'text',
+      file_url || null,
+      file_duration ? parseInt(file_duration) : null
     ]);
 
     // Обновить метаданные чата
@@ -711,6 +736,12 @@ module.exports = async function(fastify) {
         `#/messenger?id=${chatId}`
       );
     }
+
+    // SSE broadcast new message
+    sseToMembers(chatId, userId, 'chat:new_message', {
+      chat_id: chatId,
+      message: { ...message, user_name: senderName }
+    });
 
     return { message };
   });
@@ -738,10 +769,16 @@ module.exports = async function(fastify) {
     );
     if (!msg) return reply.code(404).send({ error: 'Сообщение не найдено' });
 
-    await db.query(`
+    const { rows: [updated] } = await db.query(`
       UPDATE chat_messages SET message = $1, edited_at = NOW()
-      WHERE id = $2
+      WHERE id = $2 RETURNING edited_at
     `, [text.trim(), messageId]);
+
+    // SSE broadcast edit
+    sseToMembers(chatId, userId, 'chat:message_edited', {
+      chat_id: chatId, message_id: messageId,
+      text: text.trim(), edited_at: updated.edited_at
+    });
 
     return { success: true };
   });
@@ -776,6 +813,11 @@ module.exports = async function(fastify) {
       'UPDATE chat_messages SET deleted_at = NOW() WHERE id = $1',
       [messageId]
     );
+
+    // SSE broadcast delete
+    sseToMembers(chatId, userId, 'chat:message_deleted', {
+      chat_id: chatId, message_id: messageId
+    });
 
     return { success: true };
   });
@@ -821,6 +863,11 @@ module.exports = async function(fastify) {
       [JSON.stringify(reactions), messageId]
     );
 
+    // SSE broadcast reaction
+    sseToMembers(chatId, userId, 'chat:reaction', {
+      chat_id: chatId, message_id: messageId, reactions: reactions
+    });
+
     return { reactions };
   });
 
@@ -836,6 +883,11 @@ module.exports = async function(fastify) {
 
     if (!_typingState.has(chatId)) _typingState.set(chatId, new Map());
     _typingState.get(chatId).set(userId, { name: userName, ts: Date.now() });
+
+    // SSE broadcast typing
+    sseToMembers(chatId, userId, 'chat:typing', {
+      chat_id: chatId, user_id: userId, user_name: userName
+    });
 
     // Auto-cleanup через TYPING_TTL
     setTimeout(() => {
@@ -921,14 +973,18 @@ module.exports = async function(fastify) {
 
     const user = await db.query('SELECT name FROM users WHERE id = $1', [request.user.id]);
 
-    return {
-      message: {
-        ...msg,
-        user_name: user.rows[0]?.name,
-        attachments: attachment ? [attachment] : []
-      },
-      attachment
+    const fullMsg = {
+      ...msg,
+      user_name: user.rows[0]?.name,
+      attachments: attachment ? [attachment] : []
     };
+
+    // SSE broadcast upload message
+    sseToMembers(chatId, request.user.id, 'chat:new_message', {
+      chat_id: chatId, message: fullMsg
+    });
+
+    return { message: fullMsg, attachment };
   });
 
   // ---------------------------------------------------------------
@@ -990,14 +1046,18 @@ module.exports = async function(fastify) {
       const user = await db.query('SELECT name FROM users WHERE id = $1', [request.user.id]);
       const attachment = serializeAttachment(attachmentResult.rows[0]);
 
-      return {
-        message: {
-          ...msg,
-          user_name: user.rows[0]?.name,
-          attachments: attachment ? [attachment] : []
-        },
-        attachment
+      const fullMsg = {
+        ...msg,
+        user_name: user.rows[0]?.name,
+        attachments: attachment ? [attachment] : []
       };
+
+      // SSE broadcast upload-file message
+      sseToMembers(chatId, request.user.id, 'chat:new_message', {
+        chat_id: chatId, message: fullMsg
+      });
+
+      return { message: fullMsg, attachment };
     } catch (e) {
       fastify.log.error('Chat file upload error:', e.message || e);
       return reply.code(500).send({ error: 'File upload failed' });

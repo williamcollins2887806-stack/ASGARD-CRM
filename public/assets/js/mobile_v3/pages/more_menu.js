@@ -24,6 +24,10 @@ var MoreMenuPage = {
       { icon: '📧', label: 'Почта', path: '/my-mail' },
       { icon: '📝', label: 'Совещания', path: '/meetings' },
       { icon: '🔧', label: 'Профиль', path: '/profile' },
+      { icon: '🌓', label: (DS.getTheme && DS.getTheme() === 'dark') ? 'Тема: Тёмная' : 'Тема: Светлая', action: function () {
+        DS.toggleTheme();
+        Router.navigate('/more', { replace: true });
+      } },
     ];
 
     var list = el('div', { style: { padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '2px' } });
@@ -53,7 +57,7 @@ var MoreMenuPage = {
       chevron.style.flexShrink = '0';
       row.appendChild(chevron);
 
-      row.addEventListener('click', function () { Router.navigate(item.path); });
+      row.addEventListener('click', function () { if (item.action) { item.action(); } else { Router.navigate(item.path); } });
       row.addEventListener('touchstart', function () { row.style.background = t.surfaceAlt; }, { passive: true });
       row.addEventListener('touchend', function () { row.style.background = 'transparent'; }, { passive: true });
       list.appendChild(row);

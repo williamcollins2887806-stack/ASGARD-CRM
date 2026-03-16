@@ -33,7 +33,50 @@ var ProfilePage = {
       },
     });
 
-    heroWrap.appendChild(M.Avatar({ name: user.name || 'Пользователь', size: 72, status: 'online' }));
+    var avatarWrap = el('div', { style: {
+      display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', cursor: 'pointer',
+    } });
+    var avatarInner = el('div', { style: { position: 'relative' } });
+    avatarInner.appendChild(M.Avatar({ name: user.name || 'Пользователь', size: 72, status: 'online', src: user.avatar_url || null }));
+    var camBadge = el('div', { style: {
+      position: 'absolute', bottom: '-2px', right: '-2px', width: '24px', height: '24px',
+      borderRadius: '50%', background: 'var(--hero-grad)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', fontSize: '12px',
+      border: '2px solid ' + t.bg, color: '#fff',
+    } }, '📷');
+    avatarInner.appendChild(camBadge);
+    avatarWrap.appendChild(avatarInner);
+    avatarWrap.appendChild(el('div', { style: { ...DS.font('xs'), color: t.textSec, textAlign: 'center', marginTop: '4px' } }, 'Сменить фото'));
+    avatarWrap.addEventListener('click', function () {
+      var inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = 'image/*';
+      inp.setAttribute('capture', 'user');
+      inp.onchange = function () {
+        if (!inp.files || !inp.files[0]) return;
+        var fd = new FormData();
+        fd.append('file', inp.files[0]);
+        M.Toast({ message: 'Загрузка фото...', type: 'info' });
+        fetch('/api/files/upload', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + API.getToken() },
+          body: fd,
+        }).then(function (r) { return r.json(); }).then(function (data) {
+          if (!data.success || !data.download_url) throw new Error('Ошибка загрузки');
+          return API.fetch('/users/' + user.id, { method: 'PUT', body: { avatar_url: data.download_url } });
+        }).then(function (resp) {
+          var u = Store.get('user') || {};
+          u.avatar_url = resp.user ? resp.user.avatar_url : (resp.avatar_url || u.avatar_url);
+          Store.set('user', u);
+          M.Toast({ message: 'Фото обновлено', type: 'success' });
+          Router.navigate('/profile', { replace: true });
+        }).catch(function (e) {
+          M.Toast({ message: 'Ошибка: ' + (e.message || 'не удалось обновить'), type: 'error' });
+        });
+      };
+      inp.click();
+    });
+    heroWrap.appendChild(avatarWrap);
 
     var nameEl = el('div', {
       style: { ...DS.font('lg'), color: t.text, textAlign: 'center' },

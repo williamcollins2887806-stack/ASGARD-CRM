@@ -244,10 +244,41 @@
 .asgard-no-scrollbar::-webkit-scrollbar { display: none; }
 .asgard-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* ── Хугинн: Deleted message ── */
+.huginn-deleted-msg {
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ── Хугинн: Inline image preview ── */
+.asgard-huginn-chat img[loading="lazy"] {
+  background: rgba(255,255,255,0.05);
+  min-height: 60px;
+}
+
+/* ── Хугинн: Pull-to-refresh indicator ── */
+.huginn-pull-indicator {
+  text-align: center;
+  transition: height 0.2s ease, padding 0.2s ease;
+}
+
 /* ── Rune drift ── */
 @keyframes asgard-rune-drift {
   0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
   10%  { opacity: 0.15; }
   90%  { opacity: 0.15; }
   100% { transform: translateY(-100vh) rotate(20deg); opacity: 0; }
+}
+
+/* ── Voice recording pulse ── */
+@keyframes asgard-pulse {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(198,40,40,0.5); }
+  50%  { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(198,40,40,0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(198,40,40,0); }
+}
+
+/* ── Message enter animation ── */
+@keyframes asgard-msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

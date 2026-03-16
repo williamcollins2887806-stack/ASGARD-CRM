@@ -409,7 +409,7 @@ async function routes(fastify, options) {
       return reply.code(403).send({ error: 'Недостаточно прав' });
     }
 
-    const { name, email, role, is_active, birth_date, employment_date, phone, telegram_chat_id, patronymic } = request.body;
+    const { name, email, role, is_active, birth_date, employment_date, phone, telegram_chat_id, patronymic, avatar_url } = request.body;
 
     // Only admin can change role and is_active
     if ((role !== undefined || is_active !== undefined) && request.user.role !== 'ADMIN') {
@@ -446,6 +446,7 @@ async function routes(fastify, options) {
     if (phone !== undefined) { updates.push("phone = $" + idx); values.push(phone || null); idx++; }
     if (telegram_chat_id !== undefined) { updates.push("telegram_chat_id = $" + idx); values.push(telegram_chat_id || null); idx++; }
 if (patronymic !== undefined) { updates.push("patronymic = $" + idx); values.push(patronymic || null); idx++; }
+    if (avatar_url !== undefined) { updates.push("avatar_url = $" + idx); values.push(avatar_url || null); idx++; }
 
     if (updates.length === 0) {
       return reply.code(400).send({ error: 'Нет данных для обновления' });
@@ -457,7 +458,7 @@ if (patronymic !== undefined) { updates.push("patronymic = $" + idx); values.pus
     const sql = `
       UPDATE users SET ${updates.join(', ')}
       WHERE id = $${idx}
-      RETURNING id, login, name, patronymic, email, role, is_active
+      RETURNING id, login, name, patronymic, email, role, is_active, avatar_url
     `;
 
     const result = await db.query(sql, values);
