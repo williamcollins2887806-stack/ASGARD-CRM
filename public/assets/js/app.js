@@ -2413,21 +2413,31 @@ var _setupPinKeypad = null;
     initGlobalSSE();
 
     if(startRouter){
-      if(!location.hash) location.hash="#/welcome";
-      /* Wave 4: hideSplashScreen on welcome page (not logged in) */
-      if (!AsgardAuth.getAuth() || !AsgardAuth.getAuth().user) {
-        setTimeout(hideSplashScreen, 500);
-      }
-      AsgardRouter.start();
-      /* Session Guard — инициализация для уже залогиненных */
-      try {
-        if (window.AsgardSessionGuard) {
-          var _a = AsgardAuth.getAuth();
-          if (_a && _a.user) AsgardSessionGuard.init();
+      // Mobile v3 — НЕ запускаем десктопный роутер на мобилке, чтобы не конфликтовал с mobile Router
+      const _mob3 = window.ASGARD_FLAGS?.MOBILE_V3_ENABLED === true;
+      const _mobDevice = window.innerWidth <= 768 ||
+        (window.innerWidth <= 1024 && window.innerHeight <= 500 &&
+         window.matchMedia('(orientation: landscape) and (hover: none)').matches);
+      if (_mob3 && _mobDevice && window.App && window.Router && window.DS) {
+        console.log('[ASGARD] Mobile v3 active — desktop router not starting');
+        setTimeout(hideSplashScreen, 300);
+      } else {
+        if(!location.hash) location.hash="#/welcome";
+        /* Wave 4: hideSplashScreen on welcome page (not logged in) */
+        if (!AsgardAuth.getAuth() || !AsgardAuth.getAuth().user) {
+          setTimeout(hideSplashScreen, 500);
         }
-      } catch(e) {}
-      /* Wave 4: hide splash after session guard init (guard overlay will show on top if locked) */
-      setTimeout(hideSplashScreen, 300);
+        AsgardRouter.start();
+        /* Session Guard — инициализация для уже залогиненных */
+        try {
+          if (window.AsgardSessionGuard) {
+            var _a = AsgardAuth.getAuth();
+            if (_a && _a.user) AsgardSessionGuard.init();
+          }
+        } catch(e) {}
+        /* Wave 4: hide splash after session guard init (guard overlay will show on top if locked) */
+        setTimeout(hideSplashScreen, 300);
+      }
     }
   }
 
