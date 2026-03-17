@@ -255,7 +255,9 @@ const LoginPage = {
           const auth = authGetAuth();
           const user = auth?.user || result?.user || ctx.user;
           if (user) {
-            Store.set('user', { ...user, token: auth?.token || result?.token || user.token });
+            const _tok = auth?.token || result?.token || user.token;
+            Store.set('user', { ...user, token: _tok });
+            if (_tok) localStorage.setItem('auth_token', _tok);
             localStorage.setItem('asgard_last_user', JSON.stringify({
               id: user.id,
               login: user.login,
@@ -418,7 +420,9 @@ const LoginPage = {
           }
 
           if (user) {
-            Store.set('user', { ...user, token: auth?.token || user.token });
+            const _tok = auth?.token || res?.token || user.token;
+            Store.set('user', { ...user, token: _tok });
+            if (_tok) localStorage.setItem('auth_token', _tok);
             localStorage.setItem('asgard_last_user', JSON.stringify({
               id: user.id,
               login: user.login,

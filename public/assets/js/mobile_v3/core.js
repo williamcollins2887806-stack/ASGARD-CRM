@@ -566,7 +566,7 @@ const API = (() => {
   const STALE_TIME = 30000; // 30s
 
   function getToken() {
-    return localStorage.getItem('auth_token') || (Store.get('user') && Store.get('user').token) || '';
+    return localStorage.getItem('auth_token') || localStorage.getItem('asgard_token') || (Store.get('user') && Store.get('user').token) || '';
   }
 
   async function fetchAPI(endpoint, opts = {}) {
