@@ -70,7 +70,7 @@ window.AsgardUI = (function(){
         <div class="mh">
           <div class="h" id="modalTitle">Окно</div>
           <div style="display:flex; gap:8px; align-items:center;">
-            <button class="btn ghost" id="modalFull" title="На весь экран">⛨</button>
+            <button class="btn ghost" id="modalFull" title="На весь экран">⛶</button>
             <button class="btn ghost" id="modalClose">Закрыть</button>
           </div>
         </div>

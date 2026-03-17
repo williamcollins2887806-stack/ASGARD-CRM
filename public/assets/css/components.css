@@ -4953,10 +4953,23 @@ textarea:focus:not(:focus-visible) {
   max-height: 85vh;
 }
 
+/* Fullscreen override for worker profile modal */
+.modal.wp-desktop-modal-size.fullscreen,
+.modal-content.wp-desktop-modal-size.fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+}
+
 .wp-desktop-root {
   overflow-y: auto;
   max-height: calc(85vh - 60px);
   transition: opacity 0.2s ease;
+}
+
+.modal.fullscreen .wp-desktop-root {
+  max-height: calc(100vh - 60px);
 }
 
 /* ── Skeleton loading ── */
