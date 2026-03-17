@@ -43,6 +43,56 @@ window.AsgardTkpPage = (function() {
   let vatPct = 22;
   let itemRows = [];
   let _docClickBound = false;
+  let _mimirStylesInjected = false;
+
+  function injectMimirTkpStyles() {
+    if (_mimirStylesInjected) return;
+    _mimirStylesInjected = true;
+    var s = document.createElement('style');
+    s.id = 'mimir-tkp-styles';
+    s.textContent =
+      '@keyframes mimirSpin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}' +
+      '.mimir-spinner{' +
+        'display:inline-block;width:14px;height:14px;' +
+        'border:2px solid rgba(212,168,67,0.3);border-top-color:#D4A843;' +
+        'border-radius:50%;animation:mimirSpin .8s linear infinite;vertical-align:middle' +
+      '}' +
+      '.mimir-tkp-btn{' +
+        'background:linear-gradient(135deg,rgba(192,57,43,0.15),rgba(42,59,102,0.15));' +
+        'border:1px solid rgba(212,168,67,0.3);' +
+        'color:#D4A843;padding:4px 14px;border-radius:8px;' +
+        'font-size:12px;font-weight:600;cursor:pointer;' +
+        'transition:all .3s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap' +
+      '}' +
+      '.mimir-tkp-btn:hover{' +
+        'background:linear-gradient(135deg,rgba(192,57,43,0.25),rgba(42,59,102,0.25));' +
+        'border-color:rgba(212,168,67,0.5);' +
+        'box-shadow:0 0 12px rgba(212,168,67,0.2);' +
+        'transform:translateY(-1px)' +
+      '}' +
+      '.mimir-tkp-btn:disabled{opacity:.7;cursor:wait;transform:none}' +
+      '@keyframes mimirRowFlash{' +
+        '0%{background:rgba(212,168,67,0.15)}' +
+        '100%{background:transparent}' +
+      '}';
+    document.head.appendChild(s);
+  }
+
+  function typewriterFill(textarea, text, callback) {
+    textarea.value = '';
+    var i = 0;
+    var step = Math.max(1, Math.floor(text.length / 40));
+    var interval = setInterval(function() {
+      i += step;
+      textarea.value = text.substring(0, Math.min(i, text.length));
+      textarea.scrollTop = textarea.scrollHeight;
+      if (i >= text.length) {
+        clearInterval(interval);
+        textarea.value = text;
+        if (callback) callback();
+      }
+    }, 50);
+  }
 
   // ═══════════════════════════════════════════
   // Утилиты
@@ -309,15 +359,17 @@ window.AsgardTkpPage = (function() {
       '<div class="formrow"><div style="grid-column:1/-1">' +
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
           '<label>Описание работ</label>' +
-          '<button class="btn ghost mini" id="btnMimirDesc" type="button" title="Мимир сгенерирует описание по названию ТКП">&#x1F9D9; Описание</button>' +
         '</div>' +
         '<textarea id="tkpDescription" rows="4">' + esc(o.desc) + '</textarea>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:6px">' +
+          '<button class="mimir-tkp-btn" id="btnMimirDesc" type="button" title="Мимир сгенерирует описание по названию ТКП">🧙 Мимир заполнит</button>' +
+        '</div>' +
       '</div></div>' +
 
       // --- Секция 3: Таблица работ ---
       '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--brd);margin:16px 0 8px;padding-bottom:6px">' +
-        '<h4 style="color:var(--blue-l);margin:0">' + esc('Работы и услуги') + '</h4>' +
-        '<button class="btn ghost mini" id="btnMimirItems" type="button" title="Мимир предложит состав работ и цены">&#x1F9D9; Предложить работы</button>' +
+        '<h4 style="color:var(--blue-l);margin:0">Работы и услуги</h4>' +
+        '<button class="mimir-tkp-btn" id="btnMimirItems" type="button" title="Мимир предложит состав работ и цены">🧙 Мимир предложит работы</button>' +
       '</div>' +
       '<table class="data-table" id="tkpItemsTable"><thead><tr>' +
         '<th style="width:30px">\u2116</th>' +
@@ -466,6 +518,7 @@ window.AsgardTkpPage = (function() {
         recalcTotals();
 
         // Мимир: генерация описания
+        injectMimirTkpStyles();
         var btnMD = $('#btnMimirDesc');
         if (btnMD) {
           btnMD.addEventListener('click', async function() {
@@ -473,7 +526,7 @@ window.AsgardTkpPage = (function() {
             var typeVal = ($('#tkpType') || {}).value;
             if (!subject) { toast('Внимание', 'Сначала заполните название ТКП', 'warn'); return; }
             btnMD.disabled = true;
-            btnMD.textContent = '\u{1F9D9} Генерирую...';
+            btnMD.innerHTML = '<span class="mimir-spinner"></span> Мимир думает\u2026';
             try {
               var token = localStorage.getItem('asgard_token');
               var resp = await fetch('/api/mimir/suggest-tkp', {
@@ -485,8 +538,11 @@ window.AsgardTkpPage = (function() {
                 var data = await resp.json();
                 if (data.description) {
                   var ta = $('#tkpDescription');
-                  if (ta) ta.value = data.description;
-                  toast('Готово', 'Описание сгенерировано');
+                  if (ta) {
+                    typewriterFill(ta, data.description, function() {
+                      toast('🧙 Мимир', 'Описание готово');
+                    });
+                  }
                 }
               } else {
                 toast('Ошибка', 'Не удалось сгенерировать', 'err');
@@ -495,7 +551,7 @@ window.AsgardTkpPage = (function() {
               toast('Ошибка', ex.message, 'err');
             } finally {
               btnMD.disabled = false;
-              btnMD.textContent = '\u{1F9D9} Описание';
+              btnMD.innerHTML = '🧙 Мимир заполнит';
             }
           });
         }
@@ -513,7 +569,7 @@ window.AsgardTkpPage = (function() {
               if (!confirm('Текущие строки будут заменены. Продолжить?')) return;
             }
             btnMI.disabled = true;
-            btnMI.textContent = '\u{1F9D9} Генерирую...';
+            btnMI.innerHTML = '<span class="mimir-spinner"></span> Мимир думает\u2026';
             try {
               var token = localStorage.getItem('asgard_token');
               var resp = await fetch('/api/mimir/suggest-tkp', {
@@ -529,15 +585,35 @@ window.AsgardTkpPage = (function() {
               if (resp.ok) {
                 var data = await resp.json();
                 if (data.items && data.items.length) {
+                  // Очистить текущие строки
                   itemRows.forEach(function(tr) { tr.remove(); });
                   itemRows = [];
-                  data.items.forEach(function(item) { addItemRow(item); });
-                  recalcTotals();
-                  toast('Готово', data.items.length + ' позиций предложено. Проверьте цены.');
+                  // Каскадное добавление строк с golden flash
+                  var totalItems = data.items.length;
+                  data.items.forEach(function(item, idx) {
+                    setTimeout(function() {
+                      addItemRow(item);
+                      var lastTr = itemRows[itemRows.length - 1];
+                      if (lastTr) {
+                        lastTr.style.animation = 'mimirRowFlash 1s ease forwards';
+                      }
+                      // Пересчёт + glow на итогах после последней строки
+                      if (idx === totalItems - 1) {
+                        recalcTotals();
+                        var totalsEl = $('#tkpTotals');
+                        if (totalsEl) {
+                          totalsEl.style.transition = 'box-shadow .5s';
+                          totalsEl.style.boxShadow = '0 0 12px rgba(212,168,67,0.3)';
+                          setTimeout(function() { totalsEl.style.boxShadow = ''; }, 2000);
+                        }
+                      }
+                    }, idx * 200);
+                  });
+                  toast('🧙 Мимир', totalItems + ' позиций предложено. Проверьте цены!');
                 }
                 if (data.description && !($('#tkpDescription') || {}).value) {
                   var ta = $('#tkpDescription');
-                  if (ta) ta.value = data.description;
+                  if (ta) typewriterFill(ta, data.description);
                 }
               } else {
                 toast('Ошибка', 'Не удалось сгенерировать', 'err');
@@ -546,7 +622,7 @@ window.AsgardTkpPage = (function() {
               toast('Ошибка', ex.message, 'err');
             } finally {
               btnMI.disabled = false;
-              btnMI.textContent = '\u{1F9D9} Предложить работы';
+              btnMI.innerHTML = '🧙 Мимир предложит работы';
             }
           });
         }
