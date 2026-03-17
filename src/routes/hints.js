@@ -17,6 +17,58 @@ function plural(n, one, few, many) {
   return n + ' ' + many;
 }
 
+// Карта доступа: страница → массив ролей (ADMIN всегда включён).
+// Страницы НЕ в этой карте доступны всем ролям.
+const _D = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+const PAGE_ROLES = {
+  'dashboard':          ['ADMIN', ..._D],
+  'my-dashboard':       ['ADMIN', 'PM', 'TO', 'HR', 'OFFICE_MANAGER', 'BUH', ..._D, 'HEAD_PM', 'HEAD_TO'],
+  'tenders':            ['ADMIN', 'TO', 'HEAD_TO', ..._D],
+  'pre-tenders':        ['ADMIN', 'TO', 'HEAD_TO', ..._D],
+  'funnel':             ['ADMIN', 'TO', 'HEAD_TO', ..._D],
+  'customers':          ['ADMIN', 'TO', 'HEAD_TO', 'PM', 'HEAD_PM', 'OFFICE_MANAGER', ..._D],
+  'pm-calcs':           ['ADMIN', 'PM', 'HEAD_PM', ..._D],
+  'calculator':         ['ADMIN', 'PM', 'TO', 'HEAD_PM', 'HEAD_TO', ..._D],
+  'approvals':          ['ADMIN', 'HEAD_PM', ..._D],
+  'bonus-approval':     ['ADMIN', 'PM', 'HEAD_PM', ..._D],
+  'pm-works':           ['ADMIN', 'PM', 'HEAD_PM', ..._D],
+  'all-works':          ['ADMIN', 'HEAD_PM', ..._D],
+  'all-estimates':      ['ADMIN', 'BUH', 'HEAD_PM', ..._D],
+  'tasks-admin':        ['ADMIN'],
+  'finances':           ['ADMIN', 'BUH', ..._D],
+  'invoices':           ['ADMIN', 'PM', 'BUH', ..._D],
+  'acts':               ['ADMIN', 'PM', 'BUH', ..._D],
+  'buh-registry':       ['ADMIN', 'BUH', ..._D],
+  'office-expenses':    ['ADMIN', 'OFFICE_MANAGER', ..._D],
+  'cash':               ['ADMIN', 'PM', ..._D],
+  'cash-admin':         ['ADMIN', 'BUH', ..._D],
+  'approval-payment':   ['ADMIN', 'BUH', ..._D],
+  'payroll':            ['ADMIN', 'PM', 'HEAD_PM', 'BUH', ..._D],
+  'payroll-sheet':      ['ADMIN', 'PM', 'HEAD_PM', 'BUH', ..._D],
+  'self-employed':      ['ADMIN', 'BUH', ..._D],
+  'one-time-pay':       ['ADMIN', 'PM', 'HEAD_PM', 'BUH', ..._D],
+  'tkp':                ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', ..._D],
+  'pass-requests':      ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'HR', 'HR_MANAGER', ..._D],
+  'tmc-requests':       ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH', ..._D],
+  'purchase-requests':  ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH', ..._D],
+  'my-equipment':       ['ADMIN', 'PM', 'HEAD_PM', 'CHIEF_ENGINEER', ..._D],
+  'correspondence':     ['ADMIN', 'OFFICE_MANAGER', ..._D],
+  'contracts':          ['ADMIN', 'OFFICE_MANAGER', 'BUH', ..._D],
+  'seals':              ['ADMIN', 'OFFICE_MANAGER', ..._D],
+  'proxies':            ['ADMIN', 'OFFICE_MANAGER', ..._D],
+  'proc-requests':      ['ADMIN', 'PROC', ..._D],
+  'personnel':          ['ADMIN', 'HR', 'HR_MANAGER', ..._D],
+  'collections':        ['ADMIN', 'HR', 'HR_MANAGER', ..._D],
+  'permits':            ['ADMIN', 'HR', 'HR_MANAGER', 'TO', 'HEAD_TO', 'PM', 'CHIEF_ENGINEER', ..._D],
+  'permit-applications':['ADMIN', 'HR', 'HR_MANAGER', 'TO', 'HEAD_TO', ..._D],
+  'workers-schedule':   ['ADMIN', 'HR', 'HR_MANAGER', ..._D],
+  'hr-rating':          ['ADMIN', 'HR', 'HR_MANAGER', ..._D],
+  'travel':             ['ADMIN', 'OFFICE_MANAGER', 'HR', 'HR_MANAGER', 'PM', ..._D],
+  'telephony':          ['ADMIN', 'TO', 'HEAD_TO', 'PM', 'HEAD_PM', ..._D],
+  'mailbox':            ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'],
+  'inbox-applications': ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'],
+};
+
 async function hintsRoutes(fastify) {
   const db = fastify.db;
 
@@ -29,13 +81,19 @@ async function hintsRoutes(fastify) {
     const role = user.role;
     const hints = [];
 
+    // Проверка доступа: если страница не доступна роли — пустой ответ
+    const allowedRoles = PAGE_ROLES[page];
+    if (allowedRoles && !allowedRoles.includes(role)) {
+      return { hints: [] };
+    }
+
     try {
 
       // ═══════════════════════════════════════════
-      // ОБЩИЕ ПОДСКАЗКИ (на ВСЕХ страницах, для ВСЕХ ролей)
+      // ОБЩИЕ ПОДСКАЗКИ (финансовые роли)
       // ═══════════════════════════════════════════
 
-      try {
+      if (['ADMIN','PM','BUH','HEAD_PM','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(role)) try {
         const overdue = await db.query(`
           SELECT COUNT(*) as cnt,
                  COALESCE(SUM(total_amount - COALESCE(paid_amount,0)), 0) as total_debt
@@ -158,6 +216,14 @@ async function hintsRoutes(fastify) {
               });
             }
           } catch (_) {}
+          // Метрика: всего ТКП
+          try {
+            const totalTkp = await db.query("SELECT COUNT(*) as cnt FROM tkp");
+            const ttCnt = parseInt(totalTkp.rows[0]?.cnt) || 0;
+            if (ttCnt > 0) {
+              hints.push({ id: 'tkp_total', type: 'metric', icon: '📋', text: 'Всего ТКП: ' + ttCnt });
+            }
+          } catch (_) {}
           break;
         }
 
@@ -192,6 +258,20 @@ async function hintsRoutes(fastify) {
               hints.push({
                 id: 'works_no_team', type: 'info', icon: '👷',
                 text: plural(noTeamCnt, 'работа', 'работы', 'работ') + ' без назначенной бригады'
+              });
+            }
+          } catch (_) {}
+          // Метрика: активные работы
+          try {
+            const activeWorks = await db.query(`
+              SELECT COUNT(*) as cnt FROM works
+              WHERE work_status IN ('В работе','На мобилизации','На демобилизации')
+            `);
+            const awCnt = parseInt(activeWorks.rows[0]?.cnt) || 0;
+            if (awCnt > 0) {
+              hints.push({
+                id: 'works_active', type: 'metric', icon: '🔧',
+                text: plural(awCnt, 'активная работа', 'активные работы', 'активных работ')
               });
             }
           } catch (_) {}
@@ -233,6 +313,17 @@ async function hintsRoutes(fastify) {
                 text: 'Просрочены допуски у ' +
                   plural(expiredCnt, 'активного сотрудника', 'активных сотрудников', 'активных сотрудников') + '!',
                 actions: ['details']
+              });
+            }
+          } catch (_) {}
+          // Метрика: всего активных сотрудников
+          try {
+            const activeEmps = await db.query("SELECT COUNT(*) as cnt FROM employees WHERE is_active = true");
+            const aeCnt = parseInt(activeEmps.rows[0]?.cnt) || 0;
+            if (aeCnt > 0) {
+              hints.push({
+                id: 'personnel_total', type: 'metric', icon: '👥',
+                text: 'Активных сотрудников: ' + aeCnt
               });
             }
           } catch (_) {}
@@ -471,6 +562,22 @@ async function hintsRoutes(fastify) {
               });
             }
           } catch (_) {}
+          // Метрика: неоплаченные счета
+          try {
+            const unpaidInv = await db.query(`
+              SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount - COALESCE(paid_amount,0)),0) as total
+              FROM invoices WHERE status NOT IN ('paid','cancelled') AND (total_amount - COALESCE(paid_amount,0)) > 0
+            `);
+            const uiCnt = parseInt(unpaidInv.rows[0]?.cnt) || 0;
+            if (uiCnt > 0) {
+              const uiTotal = parseFloat(unpaidInv.rows[0]?.total) || 0;
+              hints.push({
+                id: 'invoices_unpaid_total', type: 'metric', icon: '💰',
+                text: plural(uiCnt, 'неоплаченный счёт', 'неоплаченных счёта', 'неоплаченных счетов') +
+                  ' на ' + Math.round(uiTotal).toLocaleString('ru-RU') + ' ₽'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
@@ -487,6 +594,17 @@ async function hintsRoutes(fastify) {
                 id: 'contracts_expiring', type: 'warning', icon: '📄',
                 text: plural(cntContr, 'контракт истекает', 'контракта истекают', 'контрактов истекают') +
                   ' в ближайшие 30 дней'
+              });
+            }
+          } catch (_) {}
+          // Метрика: всего активных контрактов
+          try {
+            const totalContr = await db.query("SELECT COUNT(*) as cnt FROM contracts WHERE status = 'active'");
+            const tcCnt = parseInt(totalContr.rows[0]?.cnt) || 0;
+            if (tcCnt > 0) {
+              hints.push({
+                id: 'contracts_total', type: 'metric', icon: '📄',
+                text: 'Действующих договоров: ' + tcCnt
               });
             }
           } catch (_) {}
@@ -530,6 +648,17 @@ async function hintsRoutes(fastify) {
                 id: 'equipment_expiring', type: 'info', icon: '🔧',
                 text: plural(eqCnt, 'единица', 'единицы', 'единиц') +
                   ' оборудования списывается в ближайшие 60 дней'
+              });
+            }
+          } catch (_) {}
+          // Метрика: оборудование на балансе
+          try {
+            const onBal = await db.query("SELECT COUNT(*) as cnt FROM equipment WHERE balance_status IN ('on_balance','active')");
+            const obCnt = parseInt(onBal.rows[0]?.cnt) || 0;
+            if (obCnt > 0) {
+              hints.push({
+                id: 'equipment_total', type: 'metric', icon: '🔧',
+                text: 'Оборудование на балансе: ' + plural(obCnt, 'единица', 'единицы', 'единиц')
               });
             }
           } catch (_) {}
@@ -701,6 +830,14 @@ async function hintsRoutes(fastify) {
                 text: plural(nrCnt, 'активный сотрудник', 'активных сотрудника', 'активных сотрудников') +
                   ' без оценки'
               });
+            }
+          } catch (_) {}
+          // Метрика: средний рейтинг дружины
+          try {
+            const avgR = await db.query("SELECT AVG(rating_avg) as avg FROM employees WHERE is_active = true AND rating_avg IS NOT NULL");
+            const avg = parseFloat(avgR.rows[0]?.avg) || 0;
+            if (avg > 0) {
+              hints.push({ id: 'hr_avg_rating', type: 'metric', icon: '📊', text: 'Средний рейтинг дружины: ' + avg.toFixed(1) + ' / 10' });
             }
           } catch (_) {}
           break;
