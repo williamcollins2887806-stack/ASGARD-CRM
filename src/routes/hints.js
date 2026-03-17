@@ -6,6 +6,17 @@
  * Чистый SQL, без AI. Быстро (<50ms).
  */
 
+// Склонение: plural(5, 'счёт', 'счёта', 'счетов') → '5 счетов'
+function plural(n, one, few, many) {
+  const abs = Math.abs(n);
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod100 >= 11 && mod100 <= 19) return n + ' ' + many;
+  if (mod10 === 1) return n + ' ' + one;
+  if (mod10 >= 2 && mod10 <= 4) return n + ' ' + few;
+  return n + ' ' + many;
+}
+
 async function hintsRoutes(fastify) {
   const db = fastify.db;
 
@@ -21,10 +32,10 @@ async function hintsRoutes(fastify) {
     try {
 
       // ═══════════════════════════════════════════
-      // ОБЩИЕ ПОДСКАЗКИ (на ВСЕХ страницах)
+      // ОБЩИЕ ПОДСКАЗКИ (на ВСЕХ страницах, для ВСЕХ ролей)
       // ═══════════════════════════════════════════
 
-      if (['ADMIN','PM','HEAD_PM','BUH','DIRECTOR_GEN','DIRECTOR_COMM'].includes(role)) {
+      try {
         const overdue = await db.query(`
           SELECT COUNT(*) as cnt,
                  COALESCE(SUM(total_amount - COALESCE(paid_amount,0)), 0) as total_debt
@@ -40,12 +51,13 @@ async function hintsRoutes(fastify) {
             id: 'overdue_invoices',
             type: 'warning',
             icon: '💰',
-            text: cnt + ' просроченных счетов на ' + Math.round(debt).toLocaleString('ru-RU') + ' ₽',
+            text: plural(cnt, 'просроченный счёт', 'просроченных счёта', 'просроченных счетов') +
+              ' на ' + Math.round(debt).toLocaleString('ru-RU') + ' ₽',
             link: '#/invoices?filter=overdue',
             actions: ['details']
           });
         }
-      }
+      } catch (_) {}
 
       // ═══════════════════════════════════════════
       // ПОДСКАЗКИ ПО СТРАНИЦАМ
@@ -57,148 +69,173 @@ async function hintsRoutes(fastify) {
         case 'pre-tenders':
         case 'funnel': {
           // Тендеры без ТКП
-          const noTkp = await db.query(`
-            SELECT COUNT(*) as cnt FROM tenders
-            WHERE tender_status IN ('В просчёте','На просчёте','Просчитан')
-              AND id NOT IN (SELECT DISTINCT tender_id FROM tkp WHERE tender_id IS NOT NULL)
-          `);
-          const noTkpCnt = parseInt(noTkp.rows[0]?.cnt) || 0;
-          if (noTkpCnt > 0) {
-            hints.push({
-              id: 'tenders_no_tkp', type: 'info', icon: '📋',
-              text: noTkpCnt + ' просчитанных тендеров без ТКП. Создать КП?',
-              actions: ['create_tkp']
-            });
-          }
+          try {
+            const noTkp = await db.query(`
+              SELECT COUNT(*) as cnt FROM tenders
+              WHERE tender_status IN ('В просчёте','На просчёте','Просчитан')
+                AND id NOT IN (SELECT DISTINCT tender_id FROM tkp WHERE tender_id IS NOT NULL)
+            `);
+            const noTkpCnt = parseInt(noTkp.rows[0]?.cnt) || 0;
+            if (noTkpCnt > 0) {
+              hints.push({
+                id: 'tenders_no_tkp', type: 'info', icon: '📋',
+                text: plural(noTkpCnt, 'просчитанный тендер', 'просчитанных тендера', 'просчитанных тендеров') +
+                  ' без ТКП — создать КП?',
+                actions: ['create_tkp']
+              });
+            }
+          } catch (_) {}
 
           // Дедлайны 7 дней
-          const urgentTenders = await db.query(`
-            SELECT COUNT(*) as cnt FROM tenders
-            WHERE deadline IS NOT NULL
-              AND deadline > CURRENT_DATE
-              AND deadline <= CURRENT_DATE + INTERVAL '7 days'
-              AND tender_status NOT IN ('Выиграли','Проиграли','Отказ','Отменён')
-          `);
-          const urgCnt = parseInt(urgentTenders.rows[0]?.cnt) || 0;
-          if (urgCnt > 0) {
-            hints.push({
-              id: 'tenders_urgent', type: 'warning', icon: '⏰',
-              text: urgCnt + ' тендеров с дедлайном в ближайшие 7 дней'
-            });
-          }
+          try {
+            const urgentTenders = await db.query(`
+              SELECT COUNT(*) as cnt FROM tenders
+              WHERE deadline IS NOT NULL
+                AND deadline > CURRENT_DATE
+                AND deadline <= CURRENT_DATE + INTERVAL '7 days'
+                AND tender_status NOT IN ('Выиграли','Проиграли','Отказ','Отменён')
+            `);
+            const urgCnt = parseInt(urgentTenders.rows[0]?.cnt) || 0;
+            if (urgCnt > 0) {
+              hints.push({
+                id: 'tenders_urgent', type: 'warning', icon: '⏰',
+                text: 'Дедлайн в ближайшие 7 дней: ' +
+                  plural(urgCnt, 'тендер', 'тендера', 'тендеров')
+              });
+            }
+          } catch (_) {}
 
           // Конверсия 30 дней
-          const funnelStats = await db.query(`
-            SELECT
-              COUNT(*) FILTER (WHERE created_at > CURRENT_DATE - INTERVAL '30 days') as new_30d,
-              COUNT(*) FILTER (WHERE tender_status IN ('Выиграли','Контракт')
-                AND updated_at > CURRENT_DATE - INTERVAL '30 days') as won_30d
-            FROM tenders
-          `);
-          const newCnt = parseInt(funnelStats.rows[0]?.new_30d) || 0;
-          const wonCnt = parseInt(funnelStats.rows[0]?.won_30d) || 0;
-          if (newCnt > 0) {
-            const rate = Math.round(wonCnt / newCnt * 100);
-            hints.push({
-              id: 'funnel_conversion', type: 'metric', icon: '📊',
-              text: 'Конверсия за 30 дней: ' + rate + '% (' + wonCnt + ' из ' + newCnt + ')'
-            });
-          }
+          try {
+            const funnelStats = await db.query(`
+              SELECT
+                COUNT(*) FILTER (WHERE created_at > CURRENT_DATE - INTERVAL '30 days') as new_30d,
+                COUNT(*) FILTER (WHERE tender_status IN ('Выиграли','Контракт')
+                  AND updated_at > CURRENT_DATE - INTERVAL '30 days') as won_30d
+              FROM tenders
+            `);
+            const newCnt = parseInt(funnelStats.rows[0]?.new_30d) || 0;
+            const wonCnt = parseInt(funnelStats.rows[0]?.won_30d) || 0;
+            if (newCnt > 0) {
+              const rate = Math.round(wonCnt / newCnt * 100);
+              hints.push({
+                id: 'funnel_conversion', type: 'metric', icon: '📊',
+                text: 'Конверсия за 30 дней: ' + rate + '% (' + wonCnt + ' из ' + newCnt + ')'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
         case 'tkp': {
-          const staleKp = await db.query(`
-            SELECT COUNT(*) as cnt FROM tkp
-            WHERE status = 'sent' AND sent_at < CURRENT_TIMESTAMP - INTERVAL '7 days'
-          `);
-          const staleCnt = parseInt(staleKp.rows[0]?.cnt) || 0;
-          if (staleCnt > 0) {
-            hints.push({
-              id: 'tkp_stale', type: 'warning', icon: '📨',
-              text: staleCnt + ' ТКП отправлены более 7 дней назад без ответа. Пора звонить?',
-              actions: ['details']
-            });
-          }
+          try {
+            const staleKp = await db.query(`
+              SELECT COUNT(*) as cnt FROM tkp
+              WHERE status = 'sent' AND sent_at < CURRENT_TIMESTAMP - INTERVAL '7 days'
+            `);
+            const staleCnt = parseInt(staleKp.rows[0]?.cnt) || 0;
+            if (staleCnt > 0) {
+              hints.push({
+                id: 'tkp_stale', type: 'warning', icon: '📨',
+                text: plural(staleCnt, 'ТКП отправлено', 'ТКП отправлены', 'ТКП отправлены') +
+                  ' более 7 дней назад без ответа — пора звонить?',
+                actions: ['details']
+              });
+            }
+          } catch (_) {}
 
-          const oldDrafts = await db.query(`
-            SELECT COUNT(*) as cnt FROM tkp
-            WHERE status = 'draft' AND created_at < CURRENT_TIMESTAMP - INTERVAL '3 days'
-          `);
-          const draftCnt = parseInt(oldDrafts.rows[0]?.cnt) || 0;
-          if (draftCnt > 0) {
-            hints.push({
-              id: 'tkp_old_drafts', type: 'info', icon: '📝',
-              text: draftCnt + ' черновиков ТКП старше 3 дней. Отправить или удалить?'
-            });
-          }
+          try {
+            const oldDrafts = await db.query(`
+              SELECT COUNT(*) as cnt FROM tkp
+              WHERE status = 'draft' AND created_at < CURRENT_TIMESTAMP - INTERVAL '3 days'
+            `);
+            const draftCnt = parseInt(oldDrafts.rows[0]?.cnt) || 0;
+            if (draftCnt > 0) {
+              hints.push({
+                id: 'tkp_old_drafts', type: 'info', icon: '📝',
+                text: plural(draftCnt, 'черновик', 'черновика', 'черновиков') +
+                  ' ТКП старше 3 дней — отправить или удалить?'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
         case 'all-works':
         case 'pm-works': {
-          const deadlines = await db.query(`
-            SELECT COUNT(*) as cnt FROM works
-            WHERE work_end_plan IS NOT NULL
-              AND work_end_plan > CURRENT_DATE
-              AND work_end_plan <= CURRENT_DATE + INTERVAL '14 days'
-              AND work_status NOT IN ('Завершена','Отменена','Закрыта')
-          `);
-          const dlCnt = parseInt(deadlines.rows[0]?.cnt) || 0;
-          if (dlCnt > 0) {
-            hints.push({
-              id: 'works_deadline', type: 'warning', icon: '🔔',
-              text: dlCnt + ' работ с дедлайном в ближайшие 14 дней'
-            });
-          }
+          try {
+            const deadlines = await db.query(`
+              SELECT COUNT(*) as cnt FROM works
+              WHERE work_end_plan IS NOT NULL
+                AND work_end_plan > CURRENT_DATE
+                AND work_end_plan <= CURRENT_DATE + INTERVAL '14 days'
+                AND work_status NOT IN ('Завершена','Отменена','Закрыта')
+            `);
+            const dlCnt = parseInt(deadlines.rows[0]?.cnt) || 0;
+            if (dlCnt > 0) {
+              hints.push({
+                id: 'works_deadline', type: 'warning', icon: '🔔',
+                text: 'Дедлайн в ближайшие 14 дней: ' +
+                  plural(dlCnt, 'работа', 'работы', 'работ')
+              });
+            }
+          } catch (_) {}
 
-          const noTeam = await db.query(`
-            SELECT COUNT(*) as cnt FROM works
-            WHERE work_status IN ('Новая','Согласована','В подготовке')
-              AND id NOT IN (SELECT DISTINCT work_id FROM employee_assignments WHERE work_id IS NOT NULL)
-          `);
-          const noTeamCnt = parseInt(noTeam.rows[0]?.cnt) || 0;
-          if (noTeamCnt > 0) {
-            hints.push({
-              id: 'works_no_team', type: 'info', icon: '👷',
-              text: noTeamCnt + ' работ без назначенной бригады'
-            });
-          }
+          try {
+            const noTeam = await db.query(`
+              SELECT COUNT(*) as cnt FROM works
+              WHERE work_status IN ('Новая','Согласована','В подготовке')
+                AND id NOT IN (SELECT DISTINCT work_id FROM employee_assignments WHERE work_id IS NOT NULL)
+            `);
+            const noTeamCnt = parseInt(noTeam.rows[0]?.cnt) || 0;
+            if (noTeamCnt > 0) {
+              hints.push({
+                id: 'works_no_team', type: 'info', icon: '👷',
+                text: plural(noTeamCnt, 'работа', 'работы', 'работ') + ' без назначенной бригады'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
         case 'personnel': {
-          const expiring = await db.query(`
-            SELECT COUNT(*) as cnt FROM employees
-            WHERE is_active = true AND (
-              (naks_expiry IS NOT NULL AND naks_expiry <= CURRENT_DATE + INTERVAL '30 days' AND naks_expiry > CURRENT_DATE)
-              OR (imt_expires IS NOT NULL AND imt_expires <= CURRENT_DATE + INTERVAL '30 days' AND imt_expires > CURRENT_DATE)
-            )
-          `);
-          const expCnt = parseInt(expiring.rows[0]?.cnt) || 0;
-          if (expCnt > 0) {
-            hints.push({
-              id: 'permits_expiring', type: 'warning', icon: '🪪',
-              text: 'У ' + expCnt + ' сотрудников допуски истекают в течение 30 дней',
-              actions: ['details']
-            });
-          }
+          try {
+            const expiring = await db.query(`
+              SELECT COUNT(*) as cnt FROM employees
+              WHERE is_active = true AND (
+                (naks_expiry IS NOT NULL AND naks_expiry <= CURRENT_DATE + INTERVAL '30 days' AND naks_expiry > CURRENT_DATE)
+                OR (imt_expires IS NOT NULL AND imt_expires <= CURRENT_DATE + INTERVAL '30 days' AND imt_expires > CURRENT_DATE)
+              )
+            `);
+            const expCnt = parseInt(expiring.rows[0]?.cnt) || 0;
+            if (expCnt > 0) {
+              hints.push({
+                id: 'permits_expiring', type: 'warning', icon: '🪪',
+                text: 'Допуски истекают в течение 30 дней у ' +
+                  plural(expCnt, 'сотрудника', 'сотрудников', 'сотрудников'),
+                actions: ['details']
+              });
+            }
+          } catch (_) {}
 
-          const expired = await db.query(`
-            SELECT COUNT(*) as cnt FROM employees
-            WHERE is_active = true AND (
-              (naks_expiry IS NOT NULL AND naks_expiry < CURRENT_DATE)
-              OR (imt_expires IS NOT NULL AND imt_expires < CURRENT_DATE)
-            )
-          `);
-          const expiredCnt = parseInt(expired.rows[0]?.cnt) || 0;
-          if (expiredCnt > 0) {
-            hints.push({
-              id: 'permits_expired', type: 'error', icon: '🚫',
-              text: 'У ' + expiredCnt + ' активных сотрудников просрочены допуски!',
-              actions: ['details']
-            });
-          }
+          try {
+            const expired = await db.query(`
+              SELECT COUNT(*) as cnt FROM employees
+              WHERE is_active = true AND (
+                (naks_expiry IS NOT NULL AND naks_expiry < CURRENT_DATE)
+                OR (imt_expires IS NOT NULL AND imt_expires < CURRENT_DATE)
+              )
+            `);
+            const expiredCnt = parseInt(expired.rows[0]?.cnt) || 0;
+            if (expiredCnt > 0) {
+              hints.push({
+                id: 'permits_expired', type: 'error', icon: '🚫',
+                text: 'Просрочены допуски у ' +
+                  plural(expiredCnt, 'активного сотрудника', 'активных сотрудников', 'активных сотрудников') + '!',
+                actions: ['details']
+              });
+            }
+          } catch (_) {}
           break;
         }
 
@@ -221,13 +258,13 @@ async function hintsRoutes(fastify) {
             if (daysLeft < 0) {
               hints.push({
                 id: 'emp_naks_expired', type: 'error', icon: '🚫',
-                text: 'НАКС просрочен ' + Math.abs(daysLeft) + ' дней назад! Нельзя на сварочные работы.',
+                text: 'НАКС просрочен ' + Math.abs(daysLeft) + ' дн. назад — нельзя на сварочные работы',
                 actions: ['details']
               });
             } else if (daysLeft <= 60) {
               hints.push({
                 id: 'emp_naks_expiring', type: 'warning', icon: '🪪',
-                text: 'НАКС истекает через ' + daysLeft + ' дней (' + naksDate.toLocaleDateString('ru-RU') + '). Переаттестация?',
+                text: 'НАКС истекает через ' + daysLeft + ' дн. (' + naksDate.toLocaleDateString('ru-RU') + ') — переаттестация?',
                 actions: ['details']
               });
             }
@@ -241,12 +278,12 @@ async function hintsRoutes(fastify) {
             if (daysLeft < 0) {
               hints.push({
                 id: 'emp_imt_expired', type: 'error', icon: '⚠️',
-                text: 'ИМТ просрочен! Допуск к работе ограничен.'
+                text: 'ИМТ просрочен — допуск к работе ограничен'
               });
             } else if (daysLeft <= 30) {
               hints.push({
                 id: 'emp_imt_expiring', type: 'warning', icon: '📋',
-                text: 'ИМТ истекает через ' + daysLeft + ' дней (' + imtDate.toLocaleDateString('ru-RU') + ')'
+                text: 'ИМТ истекает через ' + daysLeft + ' дн. (' + imtDate.toLocaleDateString('ru-RU') + ')'
               });
             }
           }
@@ -255,50 +292,54 @@ async function hintsRoutes(fastify) {
           const missing = [];
           if (!emp.inn) missing.push('ИНН');
           if (!emp.snils) missing.push('СНИЛС');
-          if (!emp.passport_series || !emp.passport_number) missing.push('Паспорт');
-          if (!emp.birth_date) missing.push('Дата рождения');
-          if (!emp.address && !emp.registration_address) missing.push('Адрес');
-          if (!emp.phone) missing.push('Телефон');
-          if (!emp.account_number && !emp.card_number) missing.push('Банк. реквизиты');
+          if (!emp.passport_series || !emp.passport_number) missing.push('паспорт');
+          if (!emp.birth_date) missing.push('дата рождения');
+          if (!emp.address && !emp.registration_address) missing.push('адрес');
+          if (!emp.phone) missing.push('телефон');
+          if (!emp.account_number && !emp.card_number) missing.push('банк. реквизиты');
           if (missing.length > 0) {
             hints.push({
               id: 'emp_missing_docs', type: missing.length >= 3 ? 'warning' : 'info', icon: '📄',
-              text: 'Не заполнено: ' + missing.join(', ') + '. Карточка неполная.'
+              text: 'Не заполнено: ' + missing.join(', ') + ' — карточка неполная'
             });
           }
 
           // Не на работах >90 дней
-          const recentAssign = await db.query(`
-            SELECT COUNT(*) as cnt FROM employee_assignments
-            WHERE employee_id = $1
-              AND (date_to IS NULL OR date_to > CURRENT_DATE - INTERVAL '90 days')
-          `, [empId]);
-          if ((parseInt(recentAssign.rows[0]?.cnt) || 0) === 0 && emp.is_active) {
-            hints.push({
-              id: 'emp_no_work', type: 'info', icon: '💤',
-              text: 'Сотрудник не назначен на работы более 90 дней'
-            });
-          }
+          try {
+            const recentAssign = await db.query(`
+              SELECT COUNT(*) as cnt FROM employee_assignments
+              WHERE employee_id = $1
+                AND (date_to IS NULL OR date_to > CURRENT_DATE - INTERVAL '90 days')
+            `, [empId]);
+            if ((parseInt(recentAssign.rows[0]?.cnt) || 0) === 0 && emp.is_active) {
+              hints.push({
+                id: 'emp_no_work', type: 'info', icon: '💤',
+                text: 'Сотрудник не назначен на работы более 90 дней'
+              });
+            }
+          } catch (_) {}
 
           // Текущая работа
-          const currentAssign = await db.query(`
-            SELECT ea.*, w.work_title, w.work_number, w.work_status
-            FROM employee_assignments ea
-            JOIN works w ON w.id = ea.work_id
-            WHERE ea.employee_id = $1
-              AND (ea.date_to IS NULL OR ea.date_to >= CURRENT_DATE)
-              AND ea.date_from <= CURRENT_DATE
-              AND w.work_status NOT IN ('Завершена','Отменена','Закрыта')
-            ORDER BY ea.date_from DESC LIMIT 1
-          `, [empId]);
-          if (currentAssign.rows[0]) {
-            const w = currentAssign.rows[0];
-            hints.push({
-              id: 'emp_current_work', type: 'metric', icon: '🔧',
-              text: 'Сейчас на работе: ' + (w.work_number || '№' + w.work_id) + ' "' + (w.work_title || '') + '"',
-              link: '#/all-works?id=' + w.work_id
-            });
-          }
+          try {
+            const currentAssign = await db.query(`
+              SELECT ea.*, w.work_title, w.work_number, w.work_status
+              FROM employee_assignments ea
+              JOIN works w ON w.id = ea.work_id
+              WHERE ea.employee_id = $1
+                AND (ea.date_to IS NULL OR ea.date_to >= CURRENT_DATE)
+                AND ea.date_from <= CURRENT_DATE
+                AND w.work_status NOT IN ('Завершена','Отменена','Закрыта')
+              ORDER BY ea.date_from DESC LIMIT 1
+            `, [empId]);
+            if (currentAssign.rows[0]) {
+              const w = currentAssign.rows[0];
+              hints.push({
+                id: 'emp_current_work', type: 'metric', icon: '🔧',
+                text: 'Сейчас на работе: ' + (w.work_number || '№' + w.work_id) + ' «' + (w.work_title || '') + '»',
+                link: '#/all-works?id=' + w.work_id
+              });
+            }
+          } catch (_) {}
 
           // Рейтинг
           if (emp.rating_avg && parseFloat(emp.rating_avg) > 0) {
@@ -307,20 +348,23 @@ async function hintsRoutes(fastify) {
             if (rating < 5) {
               hints.push({
                 id: 'emp_low_rating', type: 'warning', icon: '⭐',
-                text: 'Средний рейтинг: ' + rating.toFixed(1) + '/10 (' + count + ' отзывов). Обратить внимание?',
+                text: 'Средний рейтинг: ' + rating.toFixed(1) + '/10 (' +
+                  plural(count, 'отзыв', 'отзыва', 'отзывов') + ') — обратить внимание?',
                 actions: ['details']
               });
             }
           } else {
-            const reviewCount = await db.query(
-              'SELECT COUNT(*) as cnt FROM employee_reviews WHERE employee_id = $1', [empId]
-            );
-            if (parseInt(reviewCount.rows[0]?.cnt) === 0 && emp.is_active) {
-              hints.push({
-                id: 'emp_no_reviews', type: 'info', icon: '📝',
-                text: 'Ни одного отзыва от РП. Попросите руководителя оценить после первой работы.'
-              });
-            }
+            try {
+              const reviewCount = await db.query(
+                'SELECT COUNT(*) as cnt FROM employee_reviews WHERE employee_id = $1', [empId]
+              );
+              if (parseInt(reviewCount.rows[0]?.cnt) === 0 && emp.is_active) {
+                hints.push({
+                  id: 'emp_no_reviews', type: 'info', icon: '📝',
+                  text: 'Нет отзывов от РП — попросите оценить после первой работы'
+                });
+              }
+            } catch (_) {}
           }
 
           // День рождения (14 дней)
@@ -335,8 +379,8 @@ async function hintsRoutes(fastify) {
               hints.push({
                 id: 'emp_birthday', type: 'metric', icon: '🎂',
                 text: daysUntil === 0
-                  ? 'Сегодня день рождения! ' + age + ' лет. Поздравить!'
-                  : 'День рождения через ' + daysUntil + ' дней (' + thisYearBD.toLocaleDateString('ru-RU') + ', ' + age + ' лет)'
+                  ? 'Сегодня день рождения! ' + age + ' лет — поздравить!'
+                  : 'День рождения через ' + daysUntil + ' дн. (' + thisYearBD.toLocaleDateString('ru-RU') + ', ' + age + ' лет)'
               });
             }
           }
@@ -352,7 +396,9 @@ async function hintsRoutes(fastify) {
             if (daysUntil <= 14 && daysUntil >= 0 && years > 0) {
               hints.push({
                 id: 'emp_anniversary', type: 'metric', icon: '🏆',
-                text: daysUntil === 0 ? 'Сегодня ' + years + ' лет в компании!' : years + ' лет в компании через ' + daysUntil + ' дней'
+                text: daysUntil === 0
+                  ? 'Сегодня ' + years + ' лет в компании!'
+                  : years + ' лет в компании через ' + daysUntil + ' дн.'
               });
             }
           }
@@ -361,25 +407,27 @@ async function hintsRoutes(fastify) {
           if (emp.is_self_employed && emp.contract_type === 'self_employed') {
             hints.push({
               id: 'emp_self_employed', type: 'info', icon: '📱',
-              text: 'Самозанятый — не забудьте запросить чек после каждой оплаты'
+              text: 'Самозанятый — не забудьте запросить чек после оплаты'
             });
           }
 
           // ФСБ-допуск
           if (!emp.fsb_pass && emp.is_active) {
-            const fsbWorks = await db.query(`
-              SELECT COUNT(*) as cnt FROM employee_assignments ea
-              JOIN works w ON w.id = ea.work_id
-              WHERE ea.employee_id = $1
-                AND (w.work_title ILIKE '%приразломная%' OR w.work_title ILIKE '%нпз%'
-                  OR w.work_title ILIKE '%аэс%' OR w.work_title ILIKE '%атом%')
-            `, [empId]);
-            if (parseInt(fsbWorks.rows[0]?.cnt) > 0) {
-              hints.push({
-                id: 'emp_no_fsb', type: 'warning', icon: '🔒',
-                text: 'Работал на режимных объектах, но ФСБ-допуск не указан'
-              });
-            }
+            try {
+              const fsbWorks = await db.query(`
+                SELECT COUNT(*) as cnt FROM employee_assignments ea
+                JOIN works w ON w.id = ea.work_id
+                WHERE ea.employee_id = $1
+                  AND (w.work_title ILIKE '%приразломная%' OR w.work_title ILIKE '%нпз%'
+                    OR w.work_title ILIKE '%аэс%' OR w.work_title ILIKE '%атом%')
+              `, [empId]);
+              if (parseInt(fsbWorks.rows[0]?.cnt) > 0) {
+                hints.push({
+                  id: 'emp_no_fsb', type: 'warning', icon: '🔒',
+                  text: 'Работал на режимных объектах, но ФСБ-допуск не указан'
+                });
+              }
+            } catch (_) {}
           }
 
           // Задолженность по зарплате
@@ -396,7 +444,7 @@ async function hintsRoutes(fastify) {
             if (debt > 1000) {
               hints.push({
                 id: 'emp_unpaid', type: 'warning', icon: '💸',
-                text: 'Невыплачено за 3 месяца: ' + Math.round(debt).toLocaleString('ru-RU') + ' ₽'
+                text: 'Невыплачено за 3 мес.: ' + Math.round(debt).toLocaleString('ru-RU') + ' ₽'
               });
             }
           } catch (_) {}
@@ -408,116 +456,135 @@ async function hintsRoutes(fastify) {
         case 'invoices':
         case 'acts':
         case 'buh-registry': {
-          const unpaidActs = await db.query(`
-            SELECT COUNT(*) as cnt, COALESCE(SUM(amount),0) as total FROM acts
-            WHERE status NOT IN ('paid','cancelled') AND amount > 0
-          `);
-          const actsCnt = parseInt(unpaidActs.rows[0]?.cnt) || 0;
-          if (actsCnt > 0) {
-            const actsTotal = parseFloat(unpaidActs.rows[0]?.total) || 0;
-            hints.push({
-              id: 'unpaid_acts', type: 'info', icon: '📑',
-              text: actsCnt + ' неоплаченных актов на ' + Math.round(actsTotal).toLocaleString('ru-RU') + ' ₽'
-            });
-          }
+          try {
+            const unpaidActs = await db.query(`
+              SELECT COUNT(*) as cnt, COALESCE(SUM(amount),0) as total FROM acts
+              WHERE status NOT IN ('paid','cancelled') AND amount > 0
+            `);
+            const actsCnt = parseInt(unpaidActs.rows[0]?.cnt) || 0;
+            if (actsCnt > 0) {
+              const actsTotal = parseFloat(unpaidActs.rows[0]?.total) || 0;
+              hints.push({
+                id: 'unpaid_acts', type: 'info', icon: '📑',
+                text: plural(actsCnt, 'неоплаченный акт', 'неоплаченных акта', 'неоплаченных актов') +
+                  ' на ' + Math.round(actsTotal).toLocaleString('ru-RU') + ' ₽'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
         case 'contracts': {
-          const expiringContracts = await db.query(`
-            SELECT COUNT(*) as cnt FROM contracts
-            WHERE status = 'active' AND end_date IS NOT NULL
-              AND end_date <= CURRENT_DATE + INTERVAL '30 days' AND end_date > CURRENT_DATE
-          `);
-          const cntContr = parseInt(expiringContracts.rows[0]?.cnt) || 0;
-          if (cntContr > 0) {
-            hints.push({
-              id: 'contracts_expiring', type: 'warning', icon: '📄',
-              text: cntContr + ' контрактов истекают в ближайшие 30 дней'
-            });
-          }
+          try {
+            const expiringContracts = await db.query(`
+              SELECT COUNT(*) as cnt FROM contracts
+              WHERE status = 'active' AND end_date IS NOT NULL
+                AND end_date <= CURRENT_DATE + INTERVAL '30 days' AND end_date > CURRENT_DATE
+            `);
+            const cntContr = parseInt(expiringContracts.rows[0]?.cnt) || 0;
+            if (cntContr > 0) {
+              hints.push({
+                id: 'contracts_expiring', type: 'warning', icon: '📄',
+                text: plural(cntContr, 'контракт истекает', 'контракта истекают', 'контрактов истекают') +
+                  ' в ближайшие 30 дней'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
         case 'customers': {
-          const dormant = await db.query(`
-            SELECT COUNT(*) as cnt FROM customers c
-            WHERE c.inn IS NOT NULL AND c.inn != ''
-              AND NOT EXISTS (
-                SELECT 1 FROM tenders t WHERE t.customer_inn = c.inn AND t.created_at > CURRENT_DATE - INTERVAL '90 days'
-              )
-          `);
-          const dormCnt = parseInt(dormant.rows[0]?.cnt) || 0;
-          if (dormCnt > 0) {
-            hints.push({
-              id: 'dormant_customers', type: 'info', icon: '💤',
-              text: dormCnt + ' клиентов без новых тендеров более 90 дней'
-            });
-          }
+          try {
+            const dormant = await db.query(`
+              SELECT COUNT(*) as cnt FROM customers c
+              WHERE c.inn IS NOT NULL AND c.inn != ''
+                AND NOT EXISTS (
+                  SELECT 1 FROM tenders t WHERE t.customer_inn = c.inn AND t.created_at > CURRENT_DATE - INTERVAL '90 days'
+                )
+            `);
+            const dormCnt = parseInt(dormant.rows[0]?.cnt) || 0;
+            if (dormCnt > 0) {
+              hints.push({
+                id: 'dormant_customers', type: 'info', icon: '💤',
+                text: plural(dormCnt, 'клиент', 'клиента', 'клиентов') +
+                  ' без новых тендеров более 90 дней'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
         case 'warehouse':
         case 'my-equipment': {
-          const equipExpiry = await db.query(`
-            SELECT COUNT(*) as cnt FROM equipment
-            WHERE auto_write_off = true AND balance_date IS NOT NULL AND useful_life_months IS NOT NULL
-              AND balance_date + (useful_life_months || ' months')::INTERVAL <= CURRENT_DATE + INTERVAL '60 days'
-              AND balance_date + (useful_life_months || ' months')::INTERVAL > CURRENT_DATE
-              AND balance_status = 'active'
-          `);
-          const eqCnt = parseInt(equipExpiry.rows[0]?.cnt) || 0;
-          if (eqCnt > 0) {
-            hints.push({
-              id: 'equipment_expiring', type: 'info', icon: '🔧',
-              text: eqCnt + ' единиц оборудования списываются в ближайшие 60 дней'
-            });
-          }
+          try {
+            const equipExpiry = await db.query(`
+              SELECT COUNT(*) as cnt FROM equipment
+              WHERE auto_write_off = true AND balance_date IS NOT NULL AND useful_life_months IS NOT NULL
+                AND balance_date + (useful_life_months || ' months')::INTERVAL <= CURRENT_DATE + INTERVAL '60 days'
+                AND balance_date + (useful_life_months || ' months')::INTERVAL > CURRENT_DATE
+                AND balance_status = 'active'
+            `);
+            const eqCnt = parseInt(equipExpiry.rows[0]?.cnt) || 0;
+            if (eqCnt > 0) {
+              hints.push({
+                id: 'equipment_expiring', type: 'info', icon: '🔧',
+                text: plural(eqCnt, 'единица', 'единицы', 'единиц') +
+                  ' оборудования списывается в ближайшие 60 дней'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
         case 'dashboard':
         case 'my-dashboard': {
-          const myTasks = await db.query(`
-            SELECT COUNT(*) as cnt FROM tasks
-            WHERE status NOT IN ('done','cancelled') AND assignee_id = $1
-          `, [userId]);
-          const taskCnt = parseInt(myTasks.rows[0]?.cnt) || 0;
-          if (taskCnt > 0) {
-            hints.push({
-              id: 'my_tasks', type: 'info', icon: '✅',
-              text: 'У вас ' + taskCnt + ' активных задач', link: '#/tasks'
-            });
-          }
+          try {
+            const myTasks = await db.query(`
+              SELECT COUNT(*) as cnt FROM tasks
+              WHERE status NOT IN ('done','cancelled') AND assignee_id = $1
+            `, [userId]);
+            const taskCnt = parseInt(myTasks.rows[0]?.cnt) || 0;
+            if (taskCnt > 0) {
+              hints.push({
+                id: 'my_tasks', type: 'info', icon: '✅',
+                text: 'У вас ' + plural(taskCnt, 'активная задача', 'активные задачи', 'активных задач'),
+                link: '#/tasks'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
         case 'pass-requests': {
-          const pending = await db.query(`
-            SELECT COUNT(*) as cnt FROM pass_requests WHERE status IN ('new','pending','in_progress')
-          `);
-          const pendCnt = parseInt(pending.rows[0]?.cnt) || 0;
-          if (pendCnt > 0) {
-            hints.push({
-              id: 'pass_pending', type: 'info', icon: '🎫',
-              text: pendCnt + ' заявок на пропуска в обработке'
-            });
-          }
+          try {
+            const pending = await db.query(`
+              SELECT COUNT(*) as cnt FROM pass_requests WHERE status IN ('new','pending','in_progress')
+            `);
+            const pendCnt = parseInt(pending.rows[0]?.cnt) || 0;
+            if (pendCnt > 0) {
+              hints.push({
+                id: 'pass_pending', type: 'info', icon: '🎫',
+                text: plural(pendCnt, 'заявка', 'заявки', 'заявок') + ' на пропуск в обработке'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
         case 'calendar': {
-          const today = await db.query(`
-            SELECT COUNT(*) as cnt FROM calendar_events
-            WHERE date = CURRENT_DATE OR (date <= CURRENT_DATE AND end_date >= CURRENT_DATE)
-          `);
-          const todayCnt = parseInt(today.rows[0]?.cnt) || 0;
-          if (todayCnt > 0) {
-            hints.push({
-              id: 'today_events', type: 'info', icon: '📅',
-              text: todayCnt + ' событий на сегодня'
-            });
-          }
+          try {
+            const today = await db.query(`
+              SELECT COUNT(*) as cnt FROM calendar_events
+              WHERE date = CURRENT_DATE OR (date <= CURRENT_DATE AND end_date >= CURRENT_DATE)
+            `);
+            const todayCnt = parseInt(today.rows[0]?.cnt) || 0;
+            if (todayCnt > 0) {
+              hints.push({
+                id: 'today_events', type: 'info', icon: '📅',
+                text: plural(todayCnt, 'событие', 'события', 'событий') + ' на сегодня'
+              });
+            }
+          } catch (_) {}
           break;
         }
 
@@ -537,7 +604,8 @@ async function hintsRoutes(fastify) {
             if (draftCnt > 0) {
               hints.push({
                 id: 'payroll_drafts', type: 'info', icon: '📋',
-                text: draftCnt + ' ведомостей в статусе черновик/на согласовании'
+                text: plural(draftCnt, 'ведомость', 'ведомости', 'ведомостей') +
+                  ' в черновике или на согласовании'
               });
             }
           } catch (_) {}
@@ -574,7 +642,7 @@ async function hintsRoutes(fastify) {
             if (overdueCnt > 0) {
               hints.push({
                 id: 'tasks_overdue', type: 'warning', icon: '⏰',
-                text: overdueCnt + ' просроченных задач'
+                text: plural(overdueCnt, 'просроченная задача', 'просроченные задачи', 'просроченных задач')
               });
             }
           } catch (_) {}
@@ -587,7 +655,7 @@ async function hintsRoutes(fastify) {
             if (unaCnt > 0) {
               hints.push({
                 id: 'tasks_unassigned', type: 'info', icon: '👤',
-                text: unaCnt + ' задач без исполнителя'
+                text: plural(unaCnt, 'задача', 'задачи', 'задач') + ' без исполнителя'
               });
             }
           } catch (_) {}
@@ -601,7 +669,7 @@ async function hintsRoutes(fastify) {
           try {
             const todayReminders = await db.query(`
               SELECT COUNT(*) as cnt FROM reminders
-              WHERE (due_date <= CURRENT_DATE OR (due_date = CURRENT_DATE AND due_time IS NOT NULL))
+              WHERE due_date <= CURRENT_DATE
                 AND status NOT IN ('done','cancelled')
                 AND dismissed IS NOT TRUE
             `);
@@ -609,7 +677,8 @@ async function hintsRoutes(fastify) {
             if (remCnt > 0) {
               hints.push({
                 id: 'reminders_today', type: 'warning', icon: '🔔',
-                text: remCnt + ' напоминаний на сегодня/просрочено'
+                text: plural(remCnt, 'активное напоминание', 'активных напоминания', 'активных напоминаний') +
+                  ' на сегодня или просрочено'
               });
             }
           } catch (_) {}
@@ -629,7 +698,8 @@ async function hintsRoutes(fastify) {
             if (nrCnt > 0) {
               hints.push({
                 id: 'hr_no_rating', type: 'info', icon: '⭐',
-                text: nrCnt + ' активных сотрудников без оценки'
+                text: plural(nrCnt, 'активный сотрудник', 'активных сотрудника', 'активных сотрудников') +
+                  ' без оценки'
               });
             }
           } catch (_) {}
@@ -666,7 +736,7 @@ async function hintsRoutes(fastify) {
             if (trCnt > 0) {
               hints.push({
                 id: 'training_pending', type: 'info', icon: '🎓',
-                text: trCnt + ' заявок на обучение ожидают рассмотрения'
+                text: plural(trCnt, 'заявка', 'заявки', 'заявок') + ' на обучение ожидает рассмотрения'
               });
             }
           } catch (_) {}
@@ -686,7 +756,7 @@ async function hintsRoutes(fastify) {
             if (tvCnt > 0) {
               hints.push({
                 id: 'travel_open', type: 'info', icon: '✈️',
-                text: tvCnt + ' незакрытых командировок'
+                text: plural(tvCnt, 'незакрытая командировка', 'незакрытые командировки', 'незакрытых командировок')
               });
             }
           } catch (_) {}
@@ -706,7 +776,7 @@ async function hintsRoutes(fastify) {
             if (nrCnt > 0) {
               hints.push({
                 id: 'correspondence_no_reply', type: 'warning', icon: '📨',
-                text: nrCnt + ' входящих писем без ответа'
+                text: plural(nrCnt, 'входящее письмо', 'входящих письма', 'входящих писем') + ' без ответа'
               });
             }
           } catch (_) {}
@@ -720,7 +790,7 @@ async function hintsRoutes(fastify) {
           try {
             const overdueSeals = await db.query(`
               SELECT COUNT(*) as cnt FROM seals
-              WHERE status = 'issued'
+              WHERE status NOT IN ('office','destroyed','lost')
                 AND issue_date IS NOT NULL
                 AND issue_date < CURRENT_DATE - INTERVAL '30 days'
             `);
@@ -728,7 +798,19 @@ async function hintsRoutes(fastify) {
             if (sCnt > 0) {
               hints.push({
                 id: 'seals_overdue', type: 'warning', icon: '🔏',
-                text: sCnt + ' печатей выданы более 30 дней назад и не возвращены'
+                text: plural(sCnt, 'печать выдана', 'печати выданы', 'печатей выдано') +
+                  ' более 30 дней назад и не возвращена'
+              });
+            }
+          } catch (_) {}
+          // Общая метрика
+          try {
+            const totalSeals = await db.query('SELECT COUNT(*) as cnt FROM seals');
+            const tsCnt = parseInt(totalSeals.rows[0]?.cnt) || 0;
+            if (tsCnt > 0) {
+              hints.push({
+                id: 'seals_total', type: 'metric', icon: '🔏',
+                text: 'Всего печатей на учёте: ' + tsCnt
               });
             }
           } catch (_) {}
@@ -743,16 +825,44 @@ async function hintsRoutes(fastify) {
             const expiringProxies = await db.query(`
               SELECT COUNT(*) as cnt FROM proxies
               WHERE status = 'active' AND valid_until IS NOT NULL
-                AND valid_until <= CURRENT_DATE + INTERVAL '30 days'
+                AND valid_until <= CURRENT_DATE + INTERVAL '60 days'
                 AND valid_until > CURRENT_DATE
             `);
             const pCnt = parseInt(expiringProxies.rows[0]?.cnt) || 0;
             if (pCnt > 0) {
               hints.push({
                 id: 'proxies_expiring', type: 'warning', icon: '📜',
-                text: pCnt + ' доверенностей истекают в ближайшие 30 дней'
+                text: plural(pCnt, 'доверенность истекает', 'доверенности истекают', 'доверенностей истекают') +
+                  ' в ближайшие 60 дней'
               });
             }
+          } catch (_) {}
+          // Просроченные
+          try {
+            const expiredProxies = await db.query(`
+              SELECT COUNT(*) as cnt FROM proxies
+              WHERE status = 'active' AND valid_until IS NOT NULL
+                AND valid_until < CURRENT_DATE
+            `);
+            const epCnt = parseInt(expiredProxies.rows[0]?.cnt) || 0;
+            if (epCnt > 0) {
+              hints.push({
+                id: 'proxies_expired', type: 'error', icon: '📜',
+                text: plural(epCnt, 'доверенность просрочена', 'доверенности просрочены', 'доверенностей просрочено') +
+                  ', но всё ещё в статусе «активна»'
+              });
+            }
+          } catch (_) {}
+          // Метрика
+          try {
+            const activeProxies = await db.query(
+              "SELECT COUNT(*) as cnt FROM proxies WHERE status = 'active'"
+            );
+            const apCnt = parseInt(activeProxies.rows[0]?.cnt) || 0;
+            hints.push({
+              id: 'proxies_total', type: 'metric', icon: '📜',
+              text: 'Действующих доверенностей: ' + apCnt
+            });
           } catch (_) {}
           break;
         }
@@ -764,13 +874,13 @@ async function hintsRoutes(fastify) {
           try {
             const pendingExp = await db.query(`
               SELECT COUNT(*) as cnt FROM office_expenses
-              WHERE status IN ('pending','new','on_approval')
+              WHERE status IN ('pending','new','on_approval','draft')
             `);
             const oeCnt = parseInt(pendingExp.rows[0]?.cnt) || 0;
             if (oeCnt > 0) {
               hints.push({
                 id: 'office_expenses_pending', type: 'info', icon: '🧾',
-                text: oeCnt + ' расходов ожидают согласования'
+                text: plural(oeCnt, 'расход ожидает', 'расхода ожидают', 'расходов ожидают') + ' согласования'
               });
             }
           } catch (_) {}
@@ -792,7 +902,7 @@ async function hintsRoutes(fastify) {
             if (prCnt > 0) {
               hints.push({
                 id: 'purchase_pending', type: 'info', icon: '🛒',
-                text: prCnt + ' заявок на закупку ожидают обработки'
+                text: plural(prCnt, 'заявка', 'заявки', 'заявок') + ' на закупку ожидает обработки'
               });
             }
           } catch (_) {}
@@ -817,7 +927,8 @@ async function hintsRoutes(fastify) {
             if (nsCnt > 0) {
               hints.push({
                 id: 'schedule_missing', type: 'info', icon: '📆',
-                text: nsCnt + ' сотрудников без расписания на текущий период'
+                text: plural(nsCnt, 'сотрудник', 'сотрудника', 'сотрудников') +
+                  ' без назначений на текущий период'
               });
             }
           } catch (_) {}
@@ -839,7 +950,7 @@ async function hintsRoutes(fastify) {
             if (pcCnt > 0) {
               hints.push({
                 id: 'estimates_pending', type: 'info', icon: '🧮',
-                text: pcCnt + ' расчётов ожидают согласования'
+                text: plural(pcCnt, 'расчёт ожидает', 'расчёта ожидают', 'расчётов ожидают') + ' согласования'
               });
             }
           } catch (_) {}
@@ -853,14 +964,29 @@ async function hintsRoutes(fastify) {
           try {
             const missedCalls = await db.query(`
               SELECT COUNT(*) as cnt FROM call_history
-              WHERE direction = 'incoming' AND status = 'missed'
+              WHERE direction = 'inbound' AND status = 'missed'
                 AND created_at::date = CURRENT_DATE
             `);
             const mcCnt = parseInt(missedCalls.rows[0]?.cnt) || 0;
             if (mcCnt > 0) {
               hints.push({
                 id: 'telephony_missed', type: 'warning', icon: '📞',
-                text: mcCnt + ' пропущенных звонков сегодня'
+                text: plural(mcCnt, 'пропущенный звонок', 'пропущенных звонка', 'пропущенных звонков') +
+                  ' сегодня'
+              });
+            }
+          } catch (_) {}
+          // Общая статистика за сегодня
+          try {
+            const todayCalls = await db.query(`
+              SELECT COUNT(*) as cnt FROM call_history
+              WHERE created_at::date = CURRENT_DATE
+            `);
+            const tcCnt = parseInt(todayCalls.rows[0]?.cnt) || 0;
+            if (tcCnt > 0) {
+              hints.push({
+                id: 'telephony_today', type: 'metric', icon: '📞',
+                text: plural(tcCnt, 'звонок', 'звонка', 'звонков') + ' за сегодня'
               });
             }
           } catch (_) {}
@@ -875,13 +1001,13 @@ async function hintsRoutes(fastify) {
           try {
             const unread = await db.query(`
               SELECT COUNT(*) as cnt FROM chat_messages
-              WHERE to_user_id = $1 AND read_at IS NULL
+              WHERE read_at IS NULL AND sender_id != $1
             `, [userId]);
             const urCnt = parseInt(unread.rows[0]?.cnt) || 0;
             if (urCnt > 0) {
               hints.push({
                 id: 'chat_unread', type: 'info', icon: '💬',
-                text: urCnt + ' непрочитанных сообщений'
+                text: plural(urCnt, 'непрочитанное сообщение', 'непрочитанных сообщения', 'непрочитанных сообщений')
               });
             }
           } catch (_) {}
@@ -904,7 +1030,21 @@ async function hintsRoutes(fastify) {
             if (upCnt > 0) {
               hints.push({
                 id: 'mailbox_unprocessed', type: 'info', icon: '📬',
-                text: upCnt + ' необработанных входящих'
+                text: plural(upCnt, 'непрочитанное входящее', 'непрочитанных входящих', 'непрочитанных входящих')
+              });
+            }
+          } catch (_) {}
+          // Заявки из входящих
+          try {
+            const apps = await db.query(`
+              SELECT COUNT(*) as cnt FROM inbox_applications
+              WHERE status IN ('new','pending')
+            `);
+            const appCnt = parseInt(apps.rows[0]?.cnt) || 0;
+            if (appCnt > 0) {
+              hints.push({
+                id: 'inbox_apps_pending', type: 'info', icon: '📥',
+                text: plural(appCnt, 'новая заявка', 'новые заявки', 'новых заявок') + ' из входящих'
               });
             }
           } catch (_) {}
@@ -927,8 +1067,23 @@ async function hintsRoutes(fastify) {
             if (apCnt > 0) {
               hints.push({
                 id: 'approvals_pending', type: 'warning', icon: '✍️',
-                text: apCnt + ' документов ожидают вашего согласования',
+                text: plural(apCnt, 'документ ожидает', 'документа ожидают', 'документов ожидают') +
+                  ' согласования',
                 link: '#/approvals?filter=pending'
+              });
+            }
+          } catch (_) {}
+          // Бонусы
+          try {
+            const bonuses = await db.query(`
+              SELECT COUNT(*) as cnt FROM bonus_requests
+              WHERE status IN ('pending','new')
+            `);
+            const bCnt = parseInt(bonuses.rows[0]?.cnt) || 0;
+            if (bCnt > 0) {
+              hints.push({
+                id: 'bonus_pending', type: 'info', icon: '🎁',
+                text: plural(bCnt, 'заявка', 'заявки', 'заявок') + ' на премию ожидает решения'
               });
             }
           } catch (_) {}
@@ -951,7 +1106,8 @@ async function hintsRoutes(fastify) {
               const crTotal = parseFloat(pendingCash.rows[0]?.total) || 0;
               hints.push({
                 id: 'cash_pending', type: 'info', icon: '💵',
-                text: crCnt + ' заявок на выдачу денег на ' + Math.round(crTotal).toLocaleString('ru-RU') + ' ₽'
+                text: plural(crCnt, 'заявка', 'заявки', 'заявок') +
+                  ' на выдачу на ' + Math.round(crTotal).toLocaleString('ru-RU') + ' ₽'
               });
             }
           } catch (_) {}
@@ -972,7 +1128,7 @@ async function hintsRoutes(fastify) {
             if (ppCnt > 0) {
               hints.push({
                 id: 'permits_pending', type: 'info', icon: '🪪',
-                text: ppCnt + ' заявок на допуски в обработке'
+                text: plural(ppCnt, 'заявка', 'заявки', 'заявок') + ' на допуск в обработке'
               });
             }
           } catch (_) {}
