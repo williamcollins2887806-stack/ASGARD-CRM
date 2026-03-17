@@ -91,28 +91,37 @@ async function routes(fastify, options) {
   fastify.post('/', {
     preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
-    const { title, tender_id, work_id, customer_name, customer_email,
-            content_json, services, total_sum, deadline, validity_days,
+    const { subject, title, tender_id, work_id, customer_name, customer_inn,
+            contact_person, contact_phone, contact_email, customer_email,
+            items, content_json, services, total_sum, deadline, validity_days,
             source, customer_address, work_description, estimate_id } = request.body;
 
-    if (!title || !String(title).trim()) {
-      return reply.code(400).send({ error: 'Required field: title' });
+    const subj = subject || title;
+    if (!subj || !String(subj).trim()) {
+      return reply.code(400).send({ error: 'Required field: subject' });
     }
 
+    const itemsVal = items
+      ? (typeof items === 'string' ? items : JSON.stringify(items))
+      : (content_json ? JSON.stringify(content_json) : '{}');
+
     const { rows } = await db.query(`
-      INSERT INTO tkp (subject, tender_id, work_id, customer_name, contact_email,
-                        items, services, total_sum, deadline, validity_days, author_id,
-                        source, customer_address, work_description, estimate_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      INSERT INTO tkp (subject, tender_id, work_id, customer_name, customer_inn,
+                        contact_person, contact_phone, contact_email,
+                        customer_address, work_description,
+                        items, services, total_sum, deadline, validity_days,
+                        author_id, source, estimate_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       RETURNING *
     `, [
-      title.trim(), tender_id || null, work_id || null,
-      customer_name || null, customer_email || null,
-      content_json ? JSON.stringify(content_json) : '{}',
-      services || null, total_sum || 0, deadline || null,
-      validity_days || 30, request.user.id,
-      source || null, customer_address || null,
-      work_description || null, estimate_id || null
+      subj.trim(), tender_id || null, work_id || null,
+      customer_name || null, customer_inn || null,
+      contact_person || null, contact_phone || null,
+      contact_email || customer_email || null,
+      customer_address || null, work_description || null,
+      itemsVal, services || null, total_sum || 0,
+      deadline || null, validity_days || 30, request.user.id,
+      source || null, estimate_id || null
     ]);
 
     return { item: rows[0] };
@@ -123,7 +132,8 @@ async function routes(fastify, options) {
     preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
-    const allowed = ['subject', 'tender_id', 'work_id', 'customer_name', 'contact_email',
+    const allowed = ['subject', 'tender_id', 'work_id', 'customer_name', 'customer_inn',
+                     'contact_person', 'contact_phone', 'contact_email',
                      'items', 'services', 'total_sum', 'deadline', 'validity_days', 'tkp_type',
                      'source', 'customer_address', 'work_description', 'estimate_id'];
     const updates = [];
@@ -323,111 +333,253 @@ async function routes(fastify, options) {
 }
 
 /**
- * PDFKit fallback for TKP PDF generation
+ * PDFKit — красивый PDF генератор ТКП
+ * Лого, кириллица (DejaVuSans), таблица работ, НДС, подпись, нумерация страниц
  */
 async function generateTkpPdfKit(tkp) {
   const fontPath = path.join(__dirname, '..', '..', 'public', 'assets', 'fonts');
-  const regularFont = fs.existsSync(path.join(fontPath, 'DejaVuSans.ttf'))
-    ? path.join(fontPath, 'DejaVuSans.ttf') : undefined;
-  const boldFont = fs.existsSync(path.join(fontPath, 'DejaVuSans-Bold.ttf'))
-    ? path.join(fontPath, 'DejaVuSans-Bold.ttf') : undefined;
+  let regularFont, boldFont;
 
-  const doc = new PDFDocument({ size: 'A4', margin: 50, info: { Title: tkp.subject || 'TKP', Author: 'ASGARD SERVICE' } });
+  if (fs.existsSync(path.join(fontPath, 'DejaVuSans.ttf'))) {
+    regularFont = path.join(fontPath, 'DejaVuSans.ttf');
+    boldFont = fs.existsSync(path.join(fontPath, 'DejaVuSans-Bold.ttf'))
+      ? path.join(fontPath, 'DejaVuSans-Bold.ttf') : regularFont;
+  } else if (fs.existsSync('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')) {
+    regularFont = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+    boldFont = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+  }
 
-  if (regularFont) doc.registerFont('Regular', regularFont);
-  if (boldFont) doc.registerFont('Bold', boldFont);
-  const mainFont = regularFont ? 'Regular' : 'Helvetica';
-  const bFont = boldFont ? 'Bold' : 'Helvetica-Bold';
+  const doc = new PDFDocument({
+    size: 'A4', margin: 50,
+    info: { Title: tkp.subject || 'ТКП', Author: 'ООО АСГАРД СЕРВИС' },
+    bufferPages: true
+  });
+
+  if (regularFont) doc.registerFont('F', regularFont);
+  if (boldFont) doc.registerFont('FB', boldFont);
+  const F = regularFont ? 'F' : 'Helvetica';
+  const FB = boldFont ? 'FB' : 'Helvetica-Bold';
 
   const chunks = [];
   doc.on('data', c => chunks.push(c));
 
-  doc.font(bFont).fontSize(16).text('OOO "ASGARD SERVICE"', { align: 'center' });
-  doc.font(mainFont).fontSize(9).text('INN 8911030530 | OGRN 1178901002530', { align: 'center' });
-  doc.moveDown(0.5);
-  doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#3b82f6');
+  const fmtNum = (n) => n ? Number(n).toLocaleString('ru-RU') : '—';
+
+  // ─── ЛОГО ───
+  const logoPath = path.join(__dirname, '..', '..', 'public', 'assets', 'img', 'asgard_emblem.png');
+  if (fs.existsSync(logoPath)) {
+    doc.image(logoPath, 50, 30, { width: 80, height: 46 });
+  }
+
+  // ─── Реквизиты справа от лого ───
+  doc.font(FB).fontSize(12).fillColor('#1E4D8C')
+     .text('ООО «АСГАРД СЕРВИС»', 140, 32);
+  doc.font(F).fontSize(7.5).fillColor('#6B7280');
+  doc.text('ИНН 8911030530 | ОГРН 1178901002530 | КПП 891101001', 140, 47);
+  doc.text('629830, ЯНАО, г. Губкинский, мкр. 12, д. 58, кв. 35', 140, 57);
+  doc.text('Тел: +7 (922) 459-38-98 | info@asgard-service.ru', 140, 67);
+
+  // ─── Акцентная линия (синяя + красная) ───
+  const lineY = 82;
+  doc.rect(50, lineY, 247, 2).fill('#1E4D8C');
+  doc.rect(297, lineY, 248, 2).fill('#C8293B');
+  doc.y = 95;
+
+  // ─── ЗАГОЛОВОК ───
+  doc.font(FB).fontSize(16).fillColor('#1E4D8C')
+     .text('КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ', 50, doc.y, { align: 'center' });
+  doc.moveDown(0.3);
+
+  const tkpLabel = tkp.tkp_number || `№ ${tkp.id}`;
+  const tkpDate = tkp.created_at ? new Date(tkp.created_at).toLocaleDateString('ru-RU') : '';
+  doc.font(F).fontSize(11).fillColor('#6B7280')
+     .text(`${tkpLabel} от ${tkpDate}`, { align: 'center' });
   doc.moveDown(1);
 
-  doc.font(bFont).fontSize(14).text('COMMERCIAL PROPOSAL', { align: 'center' });
-  doc.moveDown(0.5);
-  const tkpLabel = tkp.tkp_number ? tkp.tkp_number : `No ${tkp.id}`;
-  doc.font(mainFont).fontSize(11).text(`${tkpLabel} from ${new Date(tkp.created_at).toLocaleDateString('ru-RU')}`, { align: 'center' });
-  doc.moveDown(1);
+  // ─── КАРТОЧКА ЗАКАЗЧИКА (серый фон) ───
+  const cardY = doc.y;
+  const cardLines = [];
+  if (tkp.customer_name) cardLines.push({ label: 'Заказчик:', value: tkp.customer_name });
+  if (tkp.customer_inn) cardLines.push({ label: 'ИНН:', value: tkp.customer_inn });
+  if (tkp.customer_address) cardLines.push({ label: 'Адрес:', value: tkp.customer_address });
+  if (tkp.contact_person) cardLines.push({ label: 'Контактное лицо:', value: tkp.contact_person });
+  const contacts = [tkp.contact_phone, tkp.contact_email].filter(Boolean).join(' | ');
+  if (contacts) cardLines.push({ label: 'Контакты:', value: contacts });
 
-  if (tkp.customer_name) {
-    doc.font(bFont).fontSize(11).text('Customer: ', { continued: true });
-    doc.font(mainFont).text(tkp.customer_name);
-  }
-  if (tkp.customer_address) {
-    doc.font(bFont).text('Address: ', { continued: true });
-    doc.font(mainFont).text(tkp.customer_address);
-  }
-  if (tkp.tender_number) {
-    doc.font(bFont).text('Tender: ', { continued: true });
-    doc.font(mainFont).text(tkp.tender_number);
-  }
-  if (tkp.source) {
-    doc.font(bFont).text('Source: ', { continued: true });
-    doc.font(mainFont).text(tkp.source);
-  }
-  doc.moveDown(0.5);
+  if (cardLines.length > 0) {
+    const cardH = cardLines.length * 16 + 16;
+    doc.rect(50, cardY, 495, cardH).fill('#F3F4F6');
+    doc.rect(50, cardY, 495, cardH).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
 
+    let cy = cardY + 8;
+    cardLines.forEach(line => {
+      doc.font(FB).fontSize(9).fillColor('#6B7280').text(line.label, 58, cy, { continued: true, width: 100 });
+      doc.font(F).fontSize(10).fillColor('#374151').text(' ' + line.value);
+      cy += 16;
+    });
+    doc.y = cardY + cardH + 10;
+  }
+
+  // ─── ПРЕДМЕТ ───
   if (tkp.subject) {
-    doc.font(bFont).fontSize(12).text(tkp.subject);
+    doc.font(FB).fontSize(12).fillColor('#1E4D8C').text('Предмет предложения');
+    doc.moveDown(0.3);
+    doc.font(FB).fontSize(11).fillColor('#374151').text(tkp.subject);
     doc.moveDown(0.5);
   }
 
   if (tkp.work_description) {
-    doc.font(bFont).fontSize(11).text('Work description:');
-    doc.font(mainFont).fontSize(10).text(tkp.work_description);
+    doc.font(F).fontSize(10).fillColor('#374151').text(tkp.work_description);
     doc.moveDown(0.5);
   }
 
-  if (tkp.services) {
-    doc.font(bFont).fontSize(11).text('Services:');
-    doc.font(mainFont).fontSize(10).text(tkp.services);
-    doc.moveDown(0.5);
+  // ─── ТАБЛИЦА РАБОТ ───
+  let cj;
+  try {
+    cj = typeof tkp.items === 'string' ? JSON.parse(tkp.items || '{}') : (tkp.items || {});
+  } catch (_) {
+    cj = {};
   }
+  const rows = Array.isArray(cj.items) ? cj.items : [];
+  const vatPct = cj.vat_pct || 22;
 
-  if (tkp.items && typeof tkp.items === 'object') {
-    const cj = tkp.items;
-    if (cj.description) {
-      doc.font(bFont).fontSize(11).text('Description:');
-      doc.font(mainFont).fontSize(10).text(cj.description);
-      doc.moveDown(0.5);
-    }
-    if (Array.isArray(cj.items) && cj.items.length) {
-      doc.font(bFont).fontSize(11).text('Items:');
-      doc.moveDown(0.3);
-      let num = 1;
-      for (const item of cj.items) {
-        const line = `${num}. ${item.name || 'Item'} — ${item.quantity || ''} ${item.unit || ''} x ${item.price || ''} = ${item.total || ''} rub.`;
-        doc.font(mainFont).fontSize(10).text(line);
-        num++;
+  if (rows.length > 0) {
+    doc.font(FB).fontSize(12).fillColor('#1E4D8C').text('Состав работ и стоимость');
+    doc.moveDown(0.5);
+
+    const colW = [25, 250, 40, 35, 70, 75];
+    const totalW = colW.reduce((a, b) => a + b, 0);
+    const tableX = 50;
+    const rowH = 22;
+    const headerH = 26;
+    let ty = doc.y;
+
+    // ── Шапка таблицы (синий фон) ──
+    doc.rect(tableX, ty, totalW, headerH).fill('#1E4D8C');
+    const headers = ['№', 'Наименование работ / услуг', 'Ед.', 'Кол', 'Цена, ₽', 'Сумма, ₽'];
+    let hx = tableX;
+    doc.font(FB).fontSize(8).fillColor('#FFFFFF');
+    headers.forEach((h, i) => {
+      doc.text(h, hx + 3, ty + 8, { width: colW[i] - 6, align: i >= 4 ? 'right' : (i === 0 || i >= 2 ? 'center' : 'left') });
+      hx += colW[i];
+    });
+    ty += headerH;
+
+    // ── Строки ──
+    rows.forEach((row, ri) => {
+      if (ty + rowH > 780) {
+        doc.addPage();
+        ty = 50;
       }
-      doc.moveDown(0.5);
-    }
+
+      if (ri % 2 === 1) {
+        doc.rect(tableX, ty, totalW, rowH).fill('#F3F4F6');
+      }
+
+      const qty = row.qty || row.quantity || 1;
+      const price = row.price || 0;
+      const total = row.total || qty * price;
+      const cells = [
+        String(ri + 1),
+        row.name || 'Услуга',
+        row.unit || 'усл.',
+        String(qty),
+        fmtNum(price),
+        fmtNum(total)
+      ];
+
+      let rx = tableX;
+      doc.font(F).fontSize(8.5).fillColor('#374151');
+      cells.forEach((cell, ci) => {
+        doc.text(cell, rx + 3, ty + 6, { width: colW[ci] - 6, align: ci >= 4 ? 'right' : (ci === 0 || ci >= 2 ? 'center' : 'left') });
+        rx += colW[ci];
+      });
+
+      doc.strokeColor('#E5E7EB').lineWidth(0.3)
+         .moveTo(tableX, ty + rowH).lineTo(tableX + totalW, ty + rowH).stroke();
+      ty += rowH;
+    });
+
+    doc.y = ty + 5;
   }
 
-  if (tkp.total_sum) {
+  // ─── ИТОГО ───
+  if (rows.length > 0) {
+    const subtotal = cj.subtotal || rows.reduce((s, r) => s + (r.total || (r.qty || 1) * (r.price || 0)), 0);
+    const vatSum = cj.vat_sum || Math.round(subtotal * vatPct / 100);
+    const totalWithVat = cj.total_with_vat || (subtotal + vatSum);
+
+    doc.font(F).fontSize(10).fillColor('#6B7280')
+       .text(`Итого без НДС: ${fmtNum(subtotal)} ₽`, { align: 'right' });
+    doc.text(`НДС ${vatPct}%: ${fmtNum(vatSum)} ₽`, { align: 'right' });
+    doc.moveDown(0.2);
+    doc.moveTo(350, doc.y).lineTo(545, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
     doc.moveDown(0.3);
-    doc.font(bFont).fontSize(12).text(`Total: ${Number(tkp.total_sum).toLocaleString('ru-RU')} rub.`, { align: 'right' });
-    doc.moveDown(0.5);
+    doc.font(FB).fontSize(13).fillColor('#0D1117')
+       .text(`ИТОГО: ${fmtNum(totalWithVat)} ₽`, { align: 'right' });
+    doc.moveDown(0.8);
+  } else if (tkp.total_sum) {
+    doc.font(FB).fontSize(13).fillColor('#0D1117')
+       .text(`Итого: ${fmtNum(tkp.total_sum)} ₽`, { align: 'right' });
+    doc.moveDown(0.8);
   }
 
-  doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#e5e7eb');
+  // ─── УСЛОВИЯ ───
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
   doc.moveDown(0.5);
-  if (tkp.deadline) {
-    doc.font(mainFont).fontSize(10).text(`Deadline: ${tkp.deadline}`);
+  doc.font(FB).fontSize(12).fillColor('#1E4D8C').text('Условия');
+  doc.moveDown(0.3);
+
+  const paymentTerms = cj.payment_terms || '';
+  const terms = [];
+  if (tkp.deadline) terms.push(`Сроки выполнения: ${tkp.deadline}`);
+  terms.push(`Срок действия предложения: ${tkp.validity_days || 30} дней`);
+  if (paymentTerms) terms.push(`Условия оплаты: ${paymentTerms}`);
+
+  terms.forEach(t => {
+    doc.font(F).fontSize(10).fillColor('#374151').text(`•  ${t}`, { indent: 10 });
+    doc.moveDown(0.2);
+  });
+
+  if (tkp.notes) {
+    doc.moveDown(0.3);
+    doc.font(F).fontSize(10).fillColor('#374151').text(tkp.notes);
   }
-  doc.font(mainFont).fontSize(10).text(`Proposal validity: ${tkp.validity_days || 30} days`);
+
+  // ─── ПОДПИСЬ ───
+  doc.moveDown(1.5);
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
+  doc.moveDown(0.8);
+
+  const authorName = cj.author_name || 'Кудряшов О.С.';
+  const authorPos = cj.author_position || 'Генеральный директор';
+
+  doc.font(FB).fontSize(10).fillColor('#374151')
+     .text(authorPos, 50, doc.y, { width: 160, continued: false });
+
+  doc.font(F).fontSize(10).fillColor('#9CA3AF')
+     .text('_________________', 230, doc.y - 14, { width: 100, align: 'center' });
+
+  doc.font(FB).fontSize(10).fillColor('#374151')
+     .text(authorName, 370, doc.y - 14, { width: 175, align: 'right' });
+
   doc.moveDown(1);
+  doc.font(F).fontSize(8).fillColor('#9CA3AF')
+     .text('М.П.', { align: 'center' });
 
-  doc.font(mainFont).fontSize(9).fillColor('#6b7280')
-    .text('OOO "ASGARD SERVICE" — oil & gas service, Arctic', 50, doc.page.height - 60, { align: 'center' });
+  // ─── ФУТЕР (на всех страницах) ───
+  const pages = doc.bufferedPageRange();
+  for (let i = pages.start; i < pages.start + pages.count; i++) {
+    doc.switchToPage(i);
+    doc.font(F).fontSize(7).fillColor('#9CA3AF');
+    doc.moveTo(50, 810).lineTo(545, 810).strokeColor('#E5E7EB').lineWidth(0.3).stroke();
+    doc.text('ООО «АСГАРД СЕРВИС» — промышленный сервис, химическая и гидродинамическая очистка, HVAC',
+             50, 815, { width: 400 });
+    doc.text(`Стр. ${i + 1}`, 450, 815, { width: 95, align: 'right' });
+  }
 
+  // ─── ЗАКРЫТИЕ ───
   doc.end();
-
   await new Promise(resolve => doc.on('end', resolve));
   return Buffer.concat(chunks);
 }
