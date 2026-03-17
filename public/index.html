@@ -395,7 +395,10 @@
         navigator.serviceWorker.addEventListener('controllerchange', function() {
           if (_reloading) return;
           _reloading = true;
-          window.location.reload();
+          // Hard reload — bypass browser HTTP cache
+          var base = window.location.href.split('?')[0].split('#')[0];
+          var hash = window.location.hash || '';
+          window.location.href = base + '?_sw=' + Date.now() + hash;
         });
       });
 
@@ -403,7 +406,20 @@
         var waitingWorker = (_registration && _registration.waiting) || _newWorker;
         if (waitingWorker) {
           setBannerVisible(false);
-          waitingWorker.postMessage('skipWaiting');
+          // Clear ALL caches first so reload fetches fresh from network
+          var clearAndActivate = function() {
+            if ('caches' in window) {
+              caches.keys().then(function(names) {
+                return Promise.all(names.map(function(n) { return caches.delete(n); }));
+              }).then(function() {
+                console.log('[PWA] All caches cleared, activating new SW');
+                waitingWorker.postMessage('skipWaiting');
+              });
+            } else {
+              waitingWorker.postMessage('skipWaiting');
+            }
+          };
+          clearAndActivate();
           return;
         }
         if (_registration) {

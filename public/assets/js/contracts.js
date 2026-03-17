@@ -241,131 +241,216 @@ window.AsgardContractsPage = (function(){
     });
   }
 
+  // ═══════ Premium modal styles (injected once) ═══════
+  const CM_STYLE_ID = 'cm-premium-styles';
+  function ensureModalStyles() {
+    if (document.getElementById(CM_STYLE_ID)) return;
+    const s = document.createElement('style');
+    s.id = CM_STYLE_ID;
+    s.textContent = `
+      #contractModal .cm-overlay,
+      #contractSelectorModal .cm-overlay { position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;z-index:1100;animation:cmFadeIn .2s ease }
+      @keyframes cmFadeIn { from{opacity:0} to{opacity:1} }
+      @keyframes cmSlideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+      #contractModal .cm-card,
+      #contractSelectorModal .cm-card { width:100%;background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.04) inset;animation:cmSlideUp .25s ease;color:#e5e7eb }
+
+      /* ── Premium inputs ── */
+      #contractModal .cm-inp,
+      #contractSelectorModal .cm-inp {
+        width:100%;height:42px;padding:0 14px;font-size:14px;font-family:inherit;color:#f3f4f6;
+        background:#0d1117;border:1px solid rgba(255,255,255,.1);border-radius:8px;
+        outline:none;transition:border .15s,box-shadow .15s;
+        -webkit-appearance:none;appearance:none;
+      }
+      #contractModal .cm-inp:hover { border-color:rgba(255,255,255,.2) }
+      #contractModal .cm-inp:focus { border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.2) }
+      #contractModal .cm-inp::placeholder { color:rgba(255,255,255,.25) }
+      #contractModal .cm-inp:disabled { opacity:.35;cursor:not-allowed }
+      #contractModal .cm-inp.cm-err { border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.15) }
+
+      /* Textarea */
+      #contractModal textarea.cm-inp { height:auto;padding:10px 14px;resize:vertical;min-height:64px;line-height:1.5 }
+
+      /* Select — custom arrow */
+      #contractModal select.cm-inp {
+        padding-right:36px;cursor:pointer;
+        background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+        background-repeat:no-repeat;background-position:right 12px center;background-size:12px;
+      }
+      #contractModal select.cm-inp option { background:#1f2937;color:#e5e7eb }
+
+      /* Date inputs */
+      #contractModal input[type=date].cm-inp { color-scheme:dark }
+      #contractModal input[type=number].cm-inp::-webkit-inner-spin-button { opacity:.5 }
+
+      /* Section */
+      .cm-section { padding:18px;border-radius:10px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);margin-bottom:14px }
+      .cm-section-title { display:flex;align-items:center;gap:8px;margin-bottom:14px;font-weight:600;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px }
+      .cm-label { display:block;font-size:12px;font-weight:500;color:#9ca3af;margin-bottom:5px }
+      .cm-label .req { color:#ef4444;margin-left:2px }
+      .cm-grid2 { display:grid;grid-template-columns:1fr 1fr;gap:12px }
+      .cm-mt { margin-top:14px }
+
+      /* Toggle switch */
+      .cm-toggle { display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:9px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.1);transition:all .15s;white-space:nowrap }
+      .cm-toggle:hover { border-color:rgba(255,255,255,.2) }
+      .cm-toggle.active { border-color:#3b82f6;background:rgba(59,130,246,.08) }
+      .cm-toggle-track { width:36px;height:20px;border-radius:10px;background:rgba(255,255,255,.12);position:relative;transition:background .2s;flex-shrink:0 }
+      .cm-toggle.active .cm-toggle-track { background:#3b82f6 }
+      .cm-toggle-thumb { position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3) }
+      .cm-toggle.active .cm-toggle-thumb { transform:translateX(16px) }
+      .cm-toggle-text { font-size:13px;color:#9ca3af }
+
+      /* Hint */
+      .cm-hint { margin-top:8px;font-size:12px;padding:6px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:6px }
+      .cm-hint-green { background:rgba(34,197,94,.08);color:#22c55e }
+      .cm-hint-amber { background:rgba(245,158,11,.08);color:#f59e0b }
+      .cm-hint-red { background:rgba(239,68,68,.08);color:#ef4444 }
+
+      /* Footer */
+      .cm-footer { display:flex;gap:10px;justify-content:flex-end;padding:16px 24px;border-top:1px solid rgba(255,255,255,.05) }
+      .cm-btn { padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:all .15s;font-family:inherit }
+      .cm-btn-ghost { background:transparent;color:#9ca3af;border:1px solid rgba(255,255,255,.1) }
+      .cm-btn-ghost:hover { background:rgba(255,255,255,.04);color:#e5e7eb }
+      .cm-btn-primary { background:#3b82f6;color:#fff }
+      .cm-btn-primary:hover { background:#2563eb;box-shadow:0 4px 12px rgba(59,130,246,.3) }
+
+      /* Amount suffix */
+      .cm-amount-wrap { position:relative }
+      .cm-amount-wrap .cm-suffix { position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#6b7280;font-size:14px;pointer-events:none;font-weight:500 }
+      .cm-amount-wrap .cm-inp { padding-right:36px }
+    `;
+    document.head.appendChild(s);
+  }
+
   // Модальное окно создания/редактирования
   async function openContractModal(contract, customers) {
+    ensureModalStyles();
     const isEdit = !!contract;
     const esc = AsgardUI.esc;
+    const isPerpetual = !!contract?.is_perpetual;
 
-    // Стиль секции
-    const sectionStyle = 'padding:16px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);margin-bottom:16px';
-    const sectionTitle = (icon, text) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-weight:600;font-size:13px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px"><span style="font-size:15px">${icon}</span>${text}</div>`;
-    const fieldLabel = (text, req) => `<label style="display:block;font-size:12px;font-weight:500;color:var(--t2);margin-bottom:4px">${text}${req ? ' <span style="color:var(--red)">*</span>' : ''}</label>`;
-
-    // Статус-бейдж для шапки
     const statusBadge = isEdit ? (() => {
       const cs = computeStatus(contract);
       const st = CONTRACT_STATUSES.find(s => s.id === cs) || CONTRACT_STATUSES[0];
-      return `<span style="font-size:12px;padding:4px 10px;border-radius:20px;background:${st.color}18;color:${st.color};font-weight:600">${st.name}</span>`;
+      return `<span style="font-size:11px;padding:4px 10px;border-radius:20px;background:${st.color}15;color:${st.color};font-weight:600;letter-spacing:.3px">${st.name}</span>`;
     })() : '';
 
     const html = `
-      <div class="modal-overlay show" id="contractModal" style="z-index:var(--z-modal)">
-        <div class="modal-content" style="max-width:640px;background:var(--bg2);border:1px solid rgba(255,255,255,.1);color:var(--t1);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5)">
-          <div class="modal-header" style="padding:20px 24px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06)">
-            <div style="display:flex;align-items:center;gap:12px">
-              <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--blue));display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">&#128196;</div>
-              <div>
-                <h3 style="margin:0;font-size:17px;font-weight:700">${isEdit ? 'Редактирование договора' : 'Новый договор'}</h3>
-                ${isEdit ? `<div style="font-size:12px;color:var(--t3);margin-top:2px">${esc(contract.number || '')}</div>` : ''}
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              ${statusBadge}
-              <button class="btn ghost btnClose" style="width:32px;height:32px;padding:0;border-radius:8px;font-size:16px;display:flex;align-items:center;justify-content:center">&#10005;</button>
-            </div>
-          </div>
-          <div class="modal-body" style="max-height:65vh;overflow-y:auto;padding:20px 24px">
-            <form id="contractForm">
+      <div id="contractModal">
+        <div class="cm-overlay">
+          <div class="cm-card" style="max-width:660px">
 
-              <div style="${sectionStyle}">
-                ${sectionTitle('&#128203;', 'Основная информация')}
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                  <div>
-                    ${fieldLabel('Номер договора', true)}
-                    <input type="text" name="number" class="inp" value="${esc(contract?.number || '')}" placeholder="Д-2026/001" required/>
-                  </div>
-                  <div>
-                    ${fieldLabel('Тип договора', true)}
-                    <select name="type" class="inp" required>
-                      ${CONTRACT_TYPES.map(t => `<option value="${t.id}" ${contract?.type === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-                    </select>
-                  </div>
+            <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05)">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  <svg width="20" height="20" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2z"/><path d="M8 6h4M8 10h4M8 14h2"/></svg>
                 </div>
-                <div style="margin-top:12px">
-                  ${fieldLabel('Контрагент', true)}
-                  <select name="counterparty_id" class="inp" required>
-                    <option value="">-- Выберите контрагента --</option>
-                    ${customers.map(c => `<option value="${c.id}" ${contract?.counterparty_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
-                  </select>
-                </div>
-                <div style="margin-top:12px">
-                  ${fieldLabel('Предмет договора')}
-                  <textarea name="subject" class="inp" rows="2" placeholder="Краткое описание предмета договора...">${esc(contract?.subject || '')}</textarea>
+                <div>
+                  <div style="font-size:17px;font-weight:700;color:#f9fafb">${isEdit ? 'Редактирование договора' : 'Новый договор'}</div>
+                  ${isEdit ? `<div style="font-size:12px;color:#6b7280;margin-top:2px">${esc(contract.number || '')}</div>` : '<div style="font-size:12px;color:#6b7280;margin-top:2px">Заполните данные договора</div>'}
                 </div>
               </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                ${statusBadge}
+                <button class="btnClose" style="width:34px;height:34px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:transparent;color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px" onmouseover="this.style.background='rgba(255,255,255,.05)';this.style.color='#e5e7eb'" onmouseout="this.style.background='transparent';this.style.color='#6b7280'">&#10005;</button>
+              </div>
+            </div>
 
-              <div style="${sectionStyle}">
-                ${sectionTitle('&#128197;', 'Сроки и финансы')}
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                  <div>
-                    ${fieldLabel('Дата заключения')}
-                    <input type="date" name="start_date" class="inp" value="${contract?.start_date || ''}"/>
-                  </div>
-                  <div>
-                    ${fieldLabel('Сумма')}
-                    <div style="position:relative">
-                      <input type="number" name="amount" class="inp" step="0.01" value="${contract?.amount || ''}" placeholder="0.00" style="padding-right:32px"/>
-                      <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:14px;pointer-events:none">&#8381;</span>
+            <div style="max-height:64vh;overflow-y:auto;padding:22px 24px">
+              <form id="contractForm" autocomplete="off">
+
+                <div class="cm-section">
+                  <div class="cm-section-title"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="10" height="10" rx="1.5"/><path d="M6 6h4M6 8h3"/></svg>Основная информация</div>
+                  <div class="cm-grid2">
+                    <div>
+                      <div class="cm-label">Номер договора <span class="req">*</span></div>
+                      <input type="text" name="number" class="cm-inp" value="${esc(contract?.number || '')}" placeholder="Д-2026/001" required/>
+                    </div>
+                    <div>
+                      <div class="cm-label">Тип договора <span class="req">*</span></div>
+                      <select name="type" class="cm-inp" required>
+                        ${CONTRACT_TYPES.map(t => `<option value="${t.id}" ${contract?.type === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                      </select>
                     </div>
                   </div>
-                </div>
-                <div style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
-                  <div>
-                    ${fieldLabel('Срок действия до')}
-                    <input type="date" name="end_date" class="inp" id="cmEndDate" value="${contract?.end_date || ''}" ${contract?.is_perpetual ? 'disabled style="opacity:.4"' : ''}/>
-                  </div>
-                  <label id="cmPerpetualToggle" style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;cursor:pointer;user-select:none;border:1px solid ${contract?.is_perpetual ? 'var(--primary)' : 'rgba(255,255,255,.1)'};background:${contract?.is_perpetual ? 'rgba(var(--primary-rgb,.08))' : 'transparent'};transition:all .15s;margin-bottom:1px;white-space:nowrap">
-                    <input type="checkbox" name="is_perpetual" id="isPerpetual" ${contract?.is_perpetual ? 'checked' : ''} style="display:none"/>
-                    <span style="width:18px;height:18px;border-radius:4px;border:2px solid ${contract?.is_perpetual ? 'var(--primary)' : 'rgba(255,255,255,.25)'};display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;background:${contract?.is_perpetual ? 'var(--primary)' : 'transparent'}"><span style="color:#fff;font-size:12px;line-height:1">${contract?.is_perpetual ? '&#10003;' : ''}</span></span>
-                    <span style="font-size:13px;color:var(--t2)">Бессрочный</span>
-                  </label>
-                </div>
-                <div id="cmDateHint" style="margin-top:8px;font-size:12px;color:var(--t3);display:${(contract?.end_date && !contract?.is_perpetual) ? 'block' : 'none'}"></div>
-              </div>
-
-              <div style="${sectionStyle}">
-                ${sectionTitle('&#9881;', 'Дополнительно')}
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                  <div>
-                    ${fieldLabel('Ответственный')}
-                    <input type="text" name="responsible" class="inp" value="${esc(contract?.responsible || '')}" placeholder="ФИО сотрудника"/>
-                  </div>
-                  <div>
-                    ${fieldLabel('Статус')}
-                    <select name="status" class="inp">
-                      <option value="draft" ${contract?.status === 'draft' ? 'selected' : ''}>&#9898; Черновик</option>
-                      <option value="active" ${(!contract?.status || contract?.status === 'active') ? 'selected' : ''}>&#128994; Действует</option>
-                      <option value="terminated" ${contract?.status === 'terminated' ? 'selected' : ''}>&#128308; Расторгнут</option>
+                  <div class="cm-mt">
+                    <div class="cm-label">Контрагент <span class="req">*</span></div>
+                    <select name="counterparty_id" class="cm-inp" required>
+                      <option value="">-- Выберите контрагента --</option>
+                      ${customers.map(c => `<option value="${c.id}" ${contract?.counterparty_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
                     </select>
                   </div>
+                  <div class="cm-mt">
+                    <div class="cm-label">Предмет договора</div>
+                    <textarea name="subject" class="cm-inp" rows="2" placeholder="Краткое описание предмета договора...">${esc(contract?.subject || '')}</textarea>
+                  </div>
                 </div>
-                <div style="margin-top:12px">
-                  ${fieldLabel('Файл договора (ссылка)')}
-                  <input type="url" name="file_url" class="inp" placeholder="https://drive.google.com/..." value="${esc(contract?.file_url || '')}"/>
-                </div>
-                <div style="margin-top:12px">
-                  ${fieldLabel('Комментарий')}
-                  <textarea name="comment" class="inp" rows="2" placeholder="Заметки по договору...">${esc(contract?.comment || '')}</textarea>
-                </div>
-              </div>
 
-            </form>
-          </div>
-          <div class="modal-footer" style="display:flex;gap:10px;justify-content:flex-end;padding:16px 24px;border-top:1px solid rgba(255,255,255,.06)">
-            <button class="btn ghost btnClose" style="padding:10px 20px;border-radius:8px">Отмена</button>
-            <button class="btn primary" id="btnSaveContract" style="padding:10px 24px;border-radius:8px;font-weight:600">
-              ${isEdit ? '&#10003; Сохранить' : '&#43; Создать договор'}
-            </button>
+                <div class="cm-section">
+                  <div class="cm-section-title"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="10" height="10" rx="1.5"/><path d="M3 7h10M7 3v10"/></svg>Сроки и финансы</div>
+                  <div class="cm-grid2">
+                    <div>
+                      <div class="cm-label">Дата заключения</div>
+                      <input type="date" name="start_date" class="cm-inp" value="${contract?.start_date || ''}"/>
+                    </div>
+                    <div>
+                      <div class="cm-label">Сумма</div>
+                      <div class="cm-amount-wrap">
+                        <input type="number" name="amount" class="cm-inp" step="0.01" value="${contract?.amount || ''}" placeholder="0.00"/>
+                        <span class="cm-suffix">&#8381;</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="cm-mt" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
+                    <div>
+                      <div class="cm-label">Срок действия до</div>
+                      <input type="date" name="end_date" class="cm-inp" id="cmEndDate" value="${contract?.end_date || ''}" ${isPerpetual ? 'disabled' : ''}/>
+                    </div>
+                    <div id="cmPerpetualToggle" class="cm-toggle${isPerpetual ? ' active' : ''}">
+                      <div class="cm-toggle-track"><div class="cm-toggle-thumb"></div></div>
+                      <span class="cm-toggle-text">Бессрочный</span>
+                    </div>
+                  </div>
+                  <div id="cmDateHint"></div>
+                </div>
+
+                <div class="cm-section">
+                  <div class="cm-section-title"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="5.5"/><path d="M8 5.5v3l2 1.5"/></svg>Дополнительно</div>
+                  <div class="cm-grid2">
+                    <div>
+                      <div class="cm-label">Ответственный</div>
+                      <input type="text" name="responsible" class="cm-inp" value="${esc(contract?.responsible || '')}" placeholder="ФИО сотрудника"/>
+                    </div>
+                    <div>
+                      <div class="cm-label">Статус</div>
+                      <select name="status" class="cm-inp">
+                        <option value="draft" ${contract?.status === 'draft' ? 'selected' : ''}>Черновик</option>
+                        <option value="active" ${(!contract?.status || contract?.status === 'active') ? 'selected' : ''}>Действует</option>
+                        <option value="terminated" ${contract?.status === 'terminated' ? 'selected' : ''}>Расторгнут</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="cm-mt">
+                    <div class="cm-label">Файл договора (ссылка)</div>
+                    <input type="url" name="file_url" class="cm-inp" placeholder="https://drive.google.com/..." value="${esc(contract?.file_url || '')}"/>
+                  </div>
+                  <div class="cm-mt">
+                    <div class="cm-label">Комментарий</div>
+                    <textarea name="comment" class="cm-inp" rows="2" placeholder="Заметки по договору...">${esc(contract?.comment || '')}</textarea>
+                  </div>
+                </div>
+
+              </form>
+            </div>
+
+            <div class="cm-footer">
+              <button class="cm-btn cm-btn-ghost btnClose">Отмена</button>
+              <button class="cm-btn cm-btn-primary" id="btnSaveContract">${isEdit ? 'Сохранить' : 'Создать договор'}</button>
+            </div>
+
           </div>
         </div>
       </div>
@@ -374,255 +459,183 @@ window.AsgardContractsPage = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
 
     const modal = document.getElementById('contractModal');
+    const overlay = modal.querySelector('.cm-overlay');
     const form = document.getElementById('contractForm');
     const endDateInput = document.getElementById('cmEndDate');
     const perpetualToggle = document.getElementById('cmPerpetualToggle');
-    const dateHint = document.getElementById('cmDateHint');
+    const dateHintEl = document.getElementById('cmDateHint');
+    let _isPerpetual = isPerpetual;
 
-    // Подсказка по дням до окончания
+    // ── Date hint ──
     function updateDateHint() {
-      if (!endDateInput.value || document.getElementById('isPerpetual').checked) {
-        dateHint.style.display = 'none';
-        return;
-      }
+      if (!endDateInput.value || _isPerpetual) { dateHintEl.innerHTML = ''; return; }
       const days = Math.ceil((new Date(endDateInput.value) - new Date()) / 86400000);
-      if (days < 0) {
-        dateHint.textContent = 'Договор истёк ' + Math.abs(days) + ' дн. назад';
-        dateHint.style.color = 'var(--red)';
-      } else if (days <= 30) {
-        dateHint.textContent = 'Истекает через ' + days + ' дн.';
-        dateHint.style.color = 'var(--amber)';
-      } else {
-        dateHint.textContent = 'Осталось ' + days + ' дн.';
-        dateHint.style.color = 'var(--green)';
-      }
-      dateHint.style.display = 'block';
+      let cls, text;
+      if (days < 0) { cls = 'cm-hint-red'; text = 'Истёк ' + Math.abs(days) + ' дн. назад'; }
+      else if (days <= 30) { cls = 'cm-hint-amber'; text = 'Истекает через ' + days + ' дн.'; }
+      else { cls = 'cm-hint-green'; text = 'Осталось ' + days + ' дн.'; }
+      dateHintEl.innerHTML = '<div class="cm-hint ' + cls + '">' + text + '</div>';
     }
     updateDateHint();
     endDateInput.addEventListener('change', updateDateHint);
 
-    // Бессрочный toggle — кастомный чекбокс
-    perpetualToggle.addEventListener('click', (e) => {
-      if (e.target.tagName === 'INPUT') return;
-      const cb = document.getElementById('isPerpetual');
-      cb.checked = !cb.checked;
-      const on = cb.checked;
-      endDateInput.disabled = on;
-      endDateInput.style.opacity = on ? '.4' : '1';
-      if (on) endDateInput.value = '';
-      perpetualToggle.style.borderColor = on ? 'var(--primary)' : 'rgba(255,255,255,.1)';
-      perpetualToggle.style.background = on ? 'rgba(var(--primary-rgb),.08)' : 'transparent';
-      const box = perpetualToggle.querySelector('span > span');
-      const outer = perpetualToggle.querySelector('span:first-child');
-      if (on) {
-        outer.style.borderColor = 'var(--primary)';
-        outer.style.background = 'var(--primary)';
-        box.innerHTML = '&#10003;';
-      } else {
-        outer.style.borderColor = 'rgba(255,255,255,.25)';
-        outer.style.background = 'transparent';
-        box.innerHTML = '';
-      }
+    // ── Perpetual toggle (DIV, not label — no auto-toggle bug) ──
+    perpetualToggle.addEventListener('click', () => {
+      _isPerpetual = !_isPerpetual;
+      perpetualToggle.classList.toggle('active', _isPerpetual);
+      endDateInput.disabled = _isPerpetual;
+      if (_isPerpetual) endDateInput.value = '';
       updateDateHint();
     });
 
-    // Закрытие по Escape
-    const onKey = (e) => { if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', onKey); }};
+    // ── Close ──
+    function closeModal() { modal.remove(); document.removeEventListener('keydown', onKey); }
+    const onKey = (e) => { if (e.key === 'Escape') closeModal(); };
     document.addEventListener('keydown', onKey);
+    modal.querySelectorAll('.btnClose').forEach(b => b.addEventListener('click', closeModal));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
 
-    // Закрытие
-    modal.querySelectorAll('.btnClose').forEach(btn => {
-      btn.addEventListener('click', () => { modal.remove(); document.removeEventListener('keydown', onKey); });
-    });
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) { modal.remove(); document.removeEventListener('keydown', onKey); }
-    });
-
-    // Валидация полей в реальном времени
-    const requiredFields = form.querySelectorAll('[required]');
-    requiredFields.forEach(f => {
-      f.addEventListener('blur', () => {
-        if (!f.value.trim()) {
-          f.style.borderColor = 'var(--red)';
-          f.style.boxShadow = '0 0 0 2px rgba(255,59,48,.15)';
-        } else {
-          f.style.borderColor = '';
-          f.style.boxShadow = '';
-        }
-      });
-      f.addEventListener('input', () => {
-        if (f.value.trim()) { f.style.borderColor = ''; f.style.boxShadow = ''; }
-      });
+    // ── Validation ──
+    form.querySelectorAll('.cm-inp[required]').forEach(f => {
+      f.addEventListener('blur', () => { f.classList.toggle('cm-err', !f.value.trim()); });
+      f.addEventListener('input', () => { if (f.value.trim()) f.classList.remove('cm-err'); });
     });
 
-    // Сохранение
-    document.getElementById('btnSaveContract')?.addEventListener('click', async () => {
-      const formData = new FormData(form);
-
-      const number = formData.get('number')?.trim();
-      const counterparty_id = formData.get('counterparty_id');
-
-      // Визуальная валидация
+    // ── Save ──
+    document.getElementById('btnSaveContract').addEventListener('click', async () => {
+      const fd = new FormData(form);
+      const number = fd.get('number')?.trim();
+      const counterparty_id = fd.get('counterparty_id');
       let hasErr = false;
+
       if (!number) {
-        const inp = form.querySelector('[name="number"]');
-        inp.style.borderColor = 'var(--red)'; inp.style.boxShadow = '0 0 0 2px rgba(255,59,48,.15)'; inp.focus();
-        AsgardUI.toast('Ошибка', 'Укажите номер договора', 'err');
-        hasErr = true;
+        const el = form.querySelector('[name="number"]'); el.classList.add('cm-err'); el.focus();
+        AsgardUI.toast('Ошибка', 'Укажите номер договора', 'err'); hasErr = true;
       }
       if (!counterparty_id) {
-        const inp = form.querySelector('[name="counterparty_id"]');
-        inp.style.borderColor = 'var(--red)'; inp.style.boxShadow = '0 0 0 2px rgba(255,59,48,.15)';
-        if (!hasErr) inp.focus();
-        AsgardUI.toast('Ошибка', 'Выберите контрагента', 'err');
-        hasErr = true;
+        const el = form.querySelector('[name="counterparty_id"]'); el.classList.add('cm-err');
+        if (!hasErr) el.focus();
+        AsgardUI.toast('Ошибка', 'Выберите контрагента', 'err'); hasErr = true;
       }
       if (hasErr) return;
 
-      // Валидация дат
-      const startDate = formData.get('start_date');
-      const endDate = formData.get('end_date');
+      const startDate = fd.get('start_date'), endDate = fd.get('end_date');
       if (startDate && endDate && endDate < startDate) {
-        AsgardUI.toast('Ошибка', 'Дата окончания не может быть раньше даты заключения', 'err');
-        return;
+        AsgardUI.toast('Ошибка', 'Дата окончания раньше даты заключения', 'err'); return;
       }
 
       const customer = customers.find(c => c.id === counterparty_id);
-
       const data = {
         id: contract?.id || undefined,
-        number: number,
-        type: formData.get('type'),
-        counterparty_id: counterparty_id,
+        number, type: fd.get('type'), counterparty_id,
         counterparty_name: customer?.name || '',
-        subject: formData.get('subject')?.trim() || '',
-        start_date: startDate || null,
-        end_date: endDate || null,
-        is_perpetual: document.getElementById('isPerpetual').checked,
-        amount: formData.get('amount') ? parseFloat(formData.get('amount')) : null,
-        responsible: formData.get('responsible')?.trim() || '',
-        status: formData.get('status'),
-        file_url: formData.get('file_url')?.trim() || '',
-        comment: formData.get('comment')?.trim() || '',
+        subject: fd.get('subject')?.trim() || '',
+        start_date: startDate || null, end_date: endDate || null,
+        is_perpetual: _isPerpetual,
+        amount: fd.get('amount') ? parseFloat(fd.get('amount')) : null,
+        responsible: fd.get('responsible')?.trim() || '',
+        status: fd.get('status'),
+        file_url: fd.get('file_url')?.trim() || '',
+        comment: fd.get('comment')?.trim() || '',
         created_at: contract?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
       await save(data);
-      modal.remove();
-      document.removeEventListener('keydown', onKey);
+      closeModal();
       AsgardUI.toast('Сохранено', isEdit ? 'Договор обновлён' : 'Договор добавлен', 'ok');
       render({ layout: window.layout, title: 'Реестр договоров' });
     });
-
-    // Анимация появления
-    requestAnimationFrame(() => {
-      const content = modal.querySelector('.modal-content');
-      if (content) { content.style.animation = 'modal-slide-up .25s ease forwards'; }
-    });
   }
 
-  // Модальное окно выбора/создания договора (для интеграции с расходами/доходами)
+  // Модальное окно выбора/создания договора
   async function openContractSelector(counterpartyId, type, onSelect) {
+    ensureModalStyles();
     const contracts = await findByCounterparty(counterpartyId, type);
     const customers = await AsgardDB.getAll('customers') || [];
     const esc = AsgardUI.esc;
 
     const html = `
-      <div class="modal-overlay show" id="contractSelectorModal" style="z-index:var(--z-modal)">
-        <div class="modal-content" style="max-width:500px;background:var(--bg2);border:1px solid rgba(255,255,255,.1);color:var(--t1);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5)">
-          <div class="modal-header" style="padding:20px 24px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06)">
-            <div style="display:flex;align-items:center;gap:12px">
-              <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--blue));display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">&#128196;</div>
-              <h3 style="margin:0;font-size:16px;font-weight:700">Выберите договор</h3>
-            </div>
-            <button class="btn ghost btnClose" style="width:32px;height:32px;padding:0;border-radius:8px;font-size:16px;display:flex;align-items:center;justify-content:center">&#10005;</button>
-          </div>
-          <div class="modal-body" style="padding:20px 24px;max-height:60vh;overflow-y:auto">
-            ${contracts.length > 0 ? `
-              <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-                ${contracts.map((c, i) => {
-                  const st = CONTRACT_STATUSES.find(s => s.id === computeStatus(c)) || CONTRACT_STATUSES[1];
-                  return `
-                  <label data-cid="${c.id}" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:10px;border:2px solid rgba(255,255,255,.06);cursor:pointer;transition:all .15s;background:transparent" class="csel-item">
-                    <input type="radio" name="selectedContract" value="${c.id}" style="display:none" ${i === 0 ? 'checked' : ''}/>
-                    <span class="csel-radio" style="width:20px;height:20px;border-radius:50%;border:2px solid ${i === 0 ? 'var(--primary)' : 'rgba(255,255,255,.2)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;background:${i === 0 ? 'var(--primary)' : 'transparent'}"><span style="width:8px;height:8px;border-radius:50%;background:#fff;display:${i === 0 ? 'block' : 'none'}"></span></span>
-                    <div style="flex:1;min-width:0">
-                      <div style="font-weight:600;font-size:14px">${esc(c.number)}</div>
-                      <div style="font-size:12px;color:var(--t3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.subject || 'Без предмета')}${c.amount ? ' &middot; ' + formatMoney(c.amount) : ''}</div>
-                    </div>
-                    <span style="font-size:11px;padding:3px 8px;border-radius:20px;background:${st.color}18;color:${st.color};font-weight:600;flex-shrink:0">${st.name}</span>
-                  </label>`;
-                }).join('')}
+      <div id="contractSelectorModal">
+        <div class="cm-overlay">
+          <div class="cm-card" style="max-width:500px">
+            <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05)">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div style="width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  <svg width="18" height="18" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2z"/><path d="M8 6h4M8 10h4M8 14h2"/></svg>
+                </div>
+                <div style="font-size:16px;font-weight:700;color:#f9fafb">Выберите договор</div>
               </div>
-              <div style="text-align:center;margin:12px 0;font-size:12px;color:var(--t3);display:flex;align-items:center;gap:12px"><span style="flex:1;height:1px;background:rgba(255,255,255,.08)"></span>или<span style="flex:1;height:1px;background:rgba(255,255,255,.08)"></span></div>
-            ` : '<div style="text-align:center;padding:20px;color:var(--t3);font-size:14px">Договоров с этим контрагентом не найдено</div>'}
-            <button class="btn ghost" id="btnCreateNewContract" style="width:100%;padding:12px;border-radius:10px;border:1px dashed rgba(255,255,255,.15);font-size:14px">+ Создать новый договор</button>
-          </div>
-          <div class="modal-footer" style="display:flex;gap:10px;justify-content:flex-end;padding:16px 24px;border-top:1px solid rgba(255,255,255,.06)">
-            <button class="btn ghost btnClose" style="padding:10px 20px;border-radius:8px">Отмена</button>
-            <button class="btn primary" id="btnSelectContract" style="padding:10px 24px;border-radius:8px;font-weight:600" ${contracts.length === 0 ? 'disabled' : ''}>Выбрать</button>
+              <button class="btnClose" style="width:34px;height:34px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:transparent;color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px">&#10005;</button>
+            </div>
+            <div style="padding:20px 24px;max-height:60vh;overflow-y:auto">
+              ${contracts.length > 0 ? `
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+                  ${contracts.map((c, i) => {
+                    const st = CONTRACT_STATUSES.find(s => s.id === computeStatus(c)) || CONTRACT_STATUSES[1];
+                    return `
+                    <div data-cid="${c.id}" class="csel-item" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:10px;border:2px solid ${i === 0 ? '#3b82f6' : 'rgba(255,255,255,.06)'};cursor:pointer;transition:all .15s;background:${i === 0 ? 'rgba(59,130,246,.05)' : 'transparent'}">
+                      <span class="csel-radio" style="width:20px;height:20px;border-radius:50%;border:2px solid ${i === 0 ? '#3b82f6' : 'rgba(255,255,255,.15)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;background:${i === 0 ? '#3b82f6' : 'transparent'}"><span style="width:8px;height:8px;border-radius:50%;background:#fff;display:${i === 0 ? 'block' : 'none'}"></span></span>
+                      <div style="flex:1;min-width:0">
+                        <div style="font-weight:600;font-size:14px;color:#f3f4f6">${esc(c.number)}</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.subject || 'Без предмета')}${c.amount ? ' &middot; ' + formatMoney(c.amount) : ''}</div>
+                      </div>
+                      <span style="font-size:11px;padding:3px 8px;border-radius:20px;background:${st.color}15;color:${st.color};font-weight:600;flex-shrink:0">${st.name}</span>
+                    </div>`;
+                  }).join('')}
+                </div>
+                <div style="text-align:center;margin:12px 0;font-size:12px;color:#4b5563;display:flex;align-items:center;gap:12px"><span style="flex:1;height:1px;background:rgba(255,255,255,.06)"></span>или<span style="flex:1;height:1px;background:rgba(255,255,255,.06)"></span></div>
+              ` : '<div style="text-align:center;padding:24px;color:#6b7280;font-size:14px">Договоров с этим контрагентом не найдено</div>'}
+              <button id="btnCreateNewContract" style="width:100%;padding:12px;border-radius:10px;border:1px dashed rgba(255,255,255,.12);background:transparent;color:#9ca3af;font-size:14px;cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor='#3b82f6';this.style.color='#3b82f6'" onmouseout="this.style.borderColor='rgba(255,255,255,.12)';this.style.color='#9ca3af'">+ Создать новый договор</button>
+            </div>
+            <div class="cm-footer">
+              <button class="cm-btn cm-btn-ghost btnClose">Отмена</button>
+              <button class="cm-btn cm-btn-primary" id="btnSelectContract" ${contracts.length === 0 ? 'disabled style="opacity:.4;pointer-events:none"' : ''}>Выбрать</button>
+            </div>
           </div>
         </div>
       </div>
     `;
 
     document.body.insertAdjacentHTML('beforeend', html);
-
     const modal = document.getElementById('contractSelectorModal');
+    const overlay = modal.querySelector('.cm-overlay');
+    let selectedId = contracts.length > 0 ? String(contracts[0].id) : null;
 
-    // Интерактивный выбор — подсветка радио-карточек
+    // Radio card selection
     modal.querySelectorAll('.csel-item').forEach(item => {
       item.addEventListener('click', () => {
         modal.querySelectorAll('.csel-item').forEach(el => {
-          const r = el.querySelector('.csel-radio');
-          const dot = r.querySelector('span');
           el.style.borderColor = 'rgba(255,255,255,.06)';
           el.style.background = 'transparent';
-          r.style.borderColor = 'rgba(255,255,255,.2)';
-          r.style.background = 'transparent';
-          dot.style.display = 'none';
+          const r = el.querySelector('.csel-radio'), d = r.querySelector('span');
+          r.style.borderColor = 'rgba(255,255,255,.15)'; r.style.background = 'transparent'; d.style.display = 'none';
         });
-        item.style.borderColor = 'var(--primary)';
-        item.style.background = 'rgba(var(--primary-rgb),.05)';
-        const r = item.querySelector('.csel-radio');
-        const dot = r.querySelector('span');
-        r.style.borderColor = 'var(--primary)';
-        r.style.background = 'var(--primary)';
-        dot.style.display = 'block';
-        item.querySelector('input').checked = true;
-        document.getElementById('btnSelectContract').disabled = false;
+        item.style.borderColor = '#3b82f6'; item.style.background = 'rgba(59,130,246,.05)';
+        const r = item.querySelector('.csel-radio'), d = r.querySelector('span');
+        r.style.borderColor = '#3b82f6'; r.style.background = '#3b82f6'; d.style.display = 'block';
+        selectedId = item.dataset.cid;
+        const btn = document.getElementById('btnSelectContract');
+        btn.disabled = false; btn.style.opacity = '1'; btn.style.pointerEvents = 'auto';
       });
     });
 
-    // Escape
-    const onKey = (e) => { if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', onKey); }};
+    function closeModal() { modal.remove(); document.removeEventListener('keydown', onKey); }
+    const onKey = (e) => { if (e.key === 'Escape') closeModal(); };
     document.addEventListener('keydown', onKey);
-
-    modal.querySelectorAll('.btnClose').forEach(btn => {
-      btn.addEventListener('click', () => { modal.remove(); document.removeEventListener('keydown', onKey); });
-    });
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) { modal.remove(); document.removeEventListener('keydown', onKey); }
-    });
+    modal.querySelectorAll('.btnClose').forEach(b => b.addEventListener('click', closeModal));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
 
     document.getElementById('btnCreateNewContract')?.addEventListener('click', () => {
-      modal.remove();
-      document.removeEventListener('keydown', onKey);
+      closeModal();
       const customer = customers.find(c => c.id === counterpartyId);
-      openContractModal({
-        counterparty_id: counterpartyId,
-        counterparty_name: customer?.name,
-        type: type
-      }, customers);
+      openContractModal({ counterparty_id: counterpartyId, counterparty_name: customer?.name, type }, customers);
     });
 
     document.getElementById('btnSelectContract')?.addEventListener('click', () => {
-      const selected = modal.querySelector('input[name="selectedContract"]:checked');
-      if (selected) {
-        const contract = contracts.find(c => String(c.id) === selected.value);
-        modal.remove();
-        document.removeEventListener('keydown', onKey);
+      if (selectedId) {
+        const contract = contracts.find(c => String(c.id) === selectedId);
+        closeModal();
         if (onSelect) onSelect(contract);
       }
     });

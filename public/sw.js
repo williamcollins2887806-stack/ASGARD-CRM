@@ -123,8 +123,18 @@ self.addEventListener('install', (event) => {
   console.log('[SW] Installing', CACHE_NAME);
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(SHELL_ASSETS))
-      .then(() => console.log('[SW] Shell cached'))
+      .then((cache) => {
+        // Fetch with cache:'reload' to bypass browser HTTP cache
+        var requests = SHELL_ASSETS.map(function(url) {
+          return fetch(new Request(url, { cache: 'reload' }))
+            .then(function(resp) {
+              if (resp && resp.ok) return cache.put(url, resp);
+            })
+            .catch(function(err) { console.warn('[SW] Failed to cache:', url, err); });
+        });
+        return Promise.all(requests);
+      })
+      .then(() => console.log('[SW] Shell cached (bypass HTTP cache)'))
       .catch((err) => console.error('[SW] Install failed:', err))
   );
 });
