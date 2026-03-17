@@ -301,14 +301,19 @@ async function dataRoutes(fastify, options) {
 
   // Кэш колонок таблиц — защита от INSERT в несуществующие колонки
   const _columnCache = {};
+  const _columnTypeCache = {};
+
   async function getTableColumns(table) {
     if (_columnCache[table]) return _columnCache[table];
     const result = await db.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = $1`,
+      `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1`,
       [table]
     );
     const cols = new Set(result.rows.map(r => r.column_name));
+    const types = {};
+    result.rows.forEach(r => { types[r.column_name] = r.data_type; });
     _columnCache[table] = cols;
+    _columnTypeCache[table] = types;
     return cols;
   }
 
@@ -514,6 +519,19 @@ async function dataRoutes(fastify, options) {
         delete data.id;
       }
 
+      // Санитизация: пустые строки → null для date/numeric/integer/boolean полей
+      const colTypesPost = _columnTypeCache[dbTable] || {};
+      for (const key of Object.keys(data)) {
+        if (data[key] === '' && colTypesPost[key]) {
+          const dt = colTypesPost[key];
+          if (dt === 'date' || dt.startsWith('timestamp') || dt === 'integer' || dt === 'bigint'
+            || dt === 'smallint' || dt === 'numeric' || dt === 'real' || dt === 'double precision'
+            || dt === 'boolean') {
+            data[key] = null;
+          }
+        }
+      }
+
       const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k) && tableCols.has(k));
       const values = keys.map(k => data[k]);
       const placeholders = keys.map((_, i) => `$${i + 1}`);
@@ -618,6 +636,19 @@ async function dataRoutes(fastify, options) {
       if (table === 'estimates') {
         for (const field of APPROVAL_FIELDS) {
           delete data[field];
+        }
+      }
+
+      // Санитизация: пустые строки → null для date/numeric/integer/boolean полей
+      const colTypes = _columnTypeCache[dbTable] || {};
+      for (const key of Object.keys(data)) {
+        if (data[key] === '' && colTypes[key]) {
+          const dt = colTypes[key];
+          if (dt === 'date' || dt.startsWith('timestamp') || dt === 'integer' || dt === 'bigint'
+            || dt === 'smallint' || dt === 'numeric' || dt === 'real' || dt === 'double precision'
+            || dt === 'boolean') {
+            data[key] = null;
+          }
         }
       }
 
