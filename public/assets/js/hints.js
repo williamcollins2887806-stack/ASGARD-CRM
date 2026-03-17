@@ -185,10 +185,23 @@ window.AsgardHints = (function() {
 
     var headerLeft = document.createElement('div');
     headerLeft.style.cssText = 'display:flex;align-items:center;gap:8px';
-    headerLeft.innerHTML =
-      '<span style="font-size:18px;filter:drop-shadow(0 2px 4px rgba(212,168,67,0.4))">🧙</span>' +
-      '<span style="font-weight:700;font-size:13px;color:#D4A843">Мимир советует</span>' +
-      '<span style="font-size:11px;color:var(--t3);margin-left:4px">(' + hints.length + ')</span>';
+
+    var wizardIcon = document.createElement('span');
+    wizardIcon.style.cssText = 'font-size:18px;filter:drop-shadow(0 2px 4px rgba(212,168,67,0.4))';
+    wizardIcon.textContent = '🧙';
+
+    var titleSpan = document.createElement('span');
+    titleSpan.style.cssText = 'font-weight:700;font-size:13px;color:#D4A843';
+    titleSpan.textContent = 'Мимир советует';
+
+    var countSpan = document.createElement('span');
+    countSpan.className = 'mimir-hints-count';
+    countSpan.style.cssText = 'font-size:11px;color:var(--t3);margin-left:4px';
+    countSpan.textContent = '(' + hints.length + ')';
+
+    headerLeft.appendChild(wizardIcon);
+    headerLeft.appendChild(titleSpan);
+    headerLeft.appendChild(countSpan);
 
     var dismissAllBtn = document.createElement('button');
     dismissAllBtn.className = 'mimir-dismiss-all';
@@ -210,13 +223,20 @@ window.AsgardHints = (function() {
       var card = document.createElement('div');
       card.className = 'mimir-hint-card' + (isExpanded ? ' mimir-hint-expanded' : '');
       card.dataset.hintId = h.id;
+
+      // Раздельные animation-delay для slide и glow
+      var slideDelay = idx * 100;
+      var animName = 'hintSlideIn';
+      var animValue = 'hintSlideIn .4s ease ' + slideDelay + 'ms forwards';
+      if (cfg.glow) {
+        animValue += ',hintGlow 2s ease ' + (slideDelay + 500) + 'ms infinite';
+      }
+
       card.style.cssText =
         'display:flex;align-items:flex-start;gap:12px;' +
         'padding:12px 16px;' +
         'border-bottom:1px solid rgba(255,255,255,0.04);' +
-        'animation:hintSlideIn .4s ease forwards' +
-        (cfg.glow ? ',hintGlow 2s ease infinite .5s' : '') + ';' +
-        'animation-delay:' + (idx * 100) + 'ms;' +
+        'animation:' + animValue + ';' +
         'opacity:0';
 
       // Круглая иконка
@@ -226,7 +246,7 @@ window.AsgardHints = (function() {
         'display:flex;align-items:center;justify-content:center;' +
         'font-size:16px;flex-shrink:0;' +
         'background:' + cfg.bg;
-      iconWrap.textContent = h.icon || '\uD83D\uDCA1';
+      iconWrap.textContent = h.icon || '💡';
 
       // Контент: текст + кнопки
       var content = document.createElement('div');
@@ -267,26 +287,19 @@ window.AsgardHints = (function() {
         actionsWrap.style.cssText = 'margin-top:6px;display:flex;gap:8px;flex-wrap:wrap';
 
         actionsData.forEach(function(act) {
+          var el;
           if (act.type === 'link') {
-            var a = document.createElement('a');
-            a.className = 'mimir-hint-link';
-            a.href = act.href;
-            a.textContent = act.label;
-            actionsWrap.appendChild(a);
-          } else if (act.type === 'details') {
-            var btn = document.createElement('button');
-            btn.className = 'mimir-hint-action';
-            btn.dataset.hintText = h.text;
-            btn.dataset.actionType = 'details';
-            btn.textContent = act.label;
-            actionsWrap.appendChild(btn);
-          } else if (act.type === 'create_tkp') {
-            var btn2 = document.createElement('button');
-            btn2.className = 'mimir-hint-action';
-            btn2.dataset.actionType = 'create_tkp';
-            btn2.textContent = act.label;
-            actionsWrap.appendChild(btn2);
+            el = document.createElement('a');
+            el.className = 'mimir-hint-link';
+            el.href = act.href;
+          } else {
+            el = document.createElement('button');
+            el.className = 'mimir-hint-action';
+            el.dataset.actionType = act.type;
+            if (act.type === 'details') el.dataset.hintText = h.text;
           }
+          el.textContent = act.label;
+          actionsWrap.appendChild(el);
         });
 
         content.appendChild(actionsWrap);
@@ -310,12 +323,12 @@ window.AsgardHints = (function() {
     // ── Вставка в DOM ──
     var target = document.querySelector('[id$="-page"]') ||
                  document.querySelector('#app-content') ||
-                 document.querySelector('.page-content') ||
-                 document.querySelector('.panel');
+                 document.querySelector('.page-content');
     if (target) {
-      var h2 = target.querySelector('h2, h3, [style*="justify-content:space-between"]');
-      if (h2 && h2.nextSibling) {
-        h2.parentNode.insertBefore(bar, h2.nextSibling);
+      // Вставляем после первого заголовка (h2/h3) или в начало
+      var heading = target.querySelector('h2, h3');
+      if (heading && heading.parentNode === target) {
+        target.insertBefore(bar, heading.nextSibling);
       } else {
         target.prepend(bar);
       }
@@ -323,10 +336,9 @@ window.AsgardHints = (function() {
     currentBar = bar;
 
     // ═══════════════════════════════════════════
-    // Обработчики
+    // Обработчики (делегирование на контейнер)
     // ═══════════════════════════════════════════
 
-    // Скрыть все
     dismissAllBtn.addEventListener('click', function() {
       allDismissed = true;
       bar.style.transition = 'opacity .3s,transform .3s';
@@ -335,68 +347,60 @@ window.AsgardHints = (function() {
       setTimeout(function() { bar.remove(); currentBar = null; }, 300);
     });
 
-    // Скрыть одну подсказку
-    bar.querySelectorAll('.mimir-hint-x').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var hintId = btn.dataset.hintId;
-        dismissed.add(hintId);
-        var card = btn.closest('.mimir-hint-card');
-        if (card) {
-          card.style.transition = 'opacity .25s,transform .25s';
-          card.style.opacity = '0';
-          card.style.transform = 'translateX(-20px)';
-          setTimeout(function() {
-            card.remove();
-            // Обновить счётчик
-            var remaining = bar.querySelectorAll('.mimir-hint-card');
-            if (!remaining.length) {
-              bar.style.transition = 'opacity .3s';
-              bar.style.opacity = '0';
-              setTimeout(function() { bar.remove(); currentBar = null; }, 300);
-            } else {
-              var countEl = bar.querySelector('span[style*="margin-left:4px"]');
-              if (countEl) countEl.textContent = '(' + remaining.length + ')';
-            }
-          }, 250);
-        }
-      });
-    });
+    // Единый обработчик на весь блок карточек
+    cardsWrap.addEventListener('click', function(e) {
+      var target = e.target;
 
-    // Кнопка "Подробнее" → открыть Мимир
-    bar.querySelectorAll('[data-action-type="details"]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        if (window.AsgardMimir && AsgardMimir.open) {
-          AsgardMimir.open();
-          setTimeout(function() {
-            var input = document.querySelector('#mimirInput, .mimir-input');
-            if (input) {
-              input.value = 'Расскажи подробнее: ' + (btn.dataset.hintText || '');
-              input.dispatchEvent(new Event('input'));
-              var sendBtn = document.querySelector('.mimir-send-btn, #mimirSend');
-              if (sendBtn) sendBtn.click();
-            }
-          }, 500);
-        }
-      });
-    });
+      // × закрыть подсказку
+      if (target.closest('.mimir-hint-x')) {
+        var xBtn = target.closest('.mimir-hint-x');
+        dismissed.add(xBtn.dataset.hintId);
+        var card = xBtn.closest('.mimir-hint-card');
+        if (!card) return;
+        card.style.transition = 'opacity .25s,transform .25s';
+        card.style.opacity = '0';
+        card.style.transform = 'translateX(-20px)';
+        setTimeout(function() {
+          card.remove();
+          var remaining = bar.querySelectorAll('.mimir-hint-card');
+          if (!remaining.length) {
+            bar.style.transition = 'opacity .3s';
+            bar.style.opacity = '0';
+            setTimeout(function() { bar.remove(); currentBar = null; }, 300);
+          } else {
+            var cEl = bar.querySelector('.mimir-hints-count');
+            if (cEl) cEl.textContent = '(' + remaining.length + ')';
+          }
+        }, 250);
+        return;
+      }
 
-    // Кнопка "Создать ТКП" → открыть Мимир
-    bar.querySelectorAll('[data-action-type="create_tkp"]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        if (window.AsgardMimir && AsgardMimir.open) {
-          AsgardMimir.open();
-          setTimeout(function() {
-            var input = document.querySelector('#mimirInput, .mimir-input');
-            if (input) {
-              input.value = 'Создай ТКП по ближайшему просчитанному тендеру';
-              input.dispatchEvent(new Event('input'));
-              var sendBtn = document.querySelector('.mimir-send-btn, #mimirSend');
-              if (sendBtn) sendBtn.click();
-            }
-          }, 500);
-        }
-      });
+      // Кнопки действий
+      var actionBtn = target.closest('[data-action-type]');
+      if (!actionBtn) return;
+
+      var actionType = actionBtn.dataset.actionType;
+
+      if (actionType === 'details') {
+        openMimirWith('Расскажи подробнее: ' + (actionBtn.dataset.hintText || ''));
+      } else if (actionType === 'create_tkp') {
+        openMimirWith('Создай ТКП по ближайшему просчитанному тендеру');
+      }
     });
+  }
+
+  // Открыть Мимир с вопросом
+  function openMimirWith(question) {
+    if (!window.AsgardMimir || !AsgardMimir.open) return;
+    AsgardMimir.open();
+    setTimeout(function() {
+      var input = document.querySelector('#mimirInput, .mimir-input');
+      if (!input) return;
+      input.value = question;
+      input.dispatchEvent(new Event('input'));
+      var sendBtn = document.querySelector('.mimir-send-btn, #mimirSend');
+      if (sendBtn) sendBtn.click();
+    }, 500);
   }
 
   // ═══════════════════════════════════════════
