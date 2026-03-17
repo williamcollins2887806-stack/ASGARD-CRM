@@ -378,10 +378,13 @@ window.AsgardContractsPage = (function(){
                   </div>
                   <div class="cm-mt">
                     <div class="cm-label">Контрагент <span class="req">*</span></div>
-                    <select name="counterparty_id" class="cm-inp" required>
-                      <option value="">-- Выберите контрагента --</option>
-                      ${customers.map(c => `<option value="${c.id}" ${contract?.counterparty_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
-                    </select>
+                    <div style="display:flex;gap:8px;align-items:center">
+                      <select name="counterparty_id" class="cm-inp" required style="flex:1">
+                        <option value="">-- Выберите контрагента --</option>
+                        ${customers.map(c => `<option value="${c.id || c.inn}" ${contract?.counterparty_id === (c.id || c.inn) ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+                      </select>
+                      <button type="button" id="btnAddCustomerInline" title="Создать нового контрагента" style="width:42px;height:42px;flex-shrink:0;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#3b82f6;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='rgba(59,130,246,.1)';this.style.borderColor='#3b82f6'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(255,255,255,.1)'">+</button>
+                    </div>
                   </div>
                   <div class="cm-mt">
                     <div class="cm-label">Предмет договора</div>
@@ -495,6 +498,20 @@ window.AsgardContractsPage = (function(){
     modal.querySelectorAll('.btnClose').forEach(b => b.addEventListener('click', closeModal));
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
 
+    // ── Кнопка «+ Новый контрагент» ──
+    document.getElementById('btnAddCustomerInline')?.addEventListener('click', () => {
+      openNewCustomerModal(function(newCustomer) {
+        const sel = form.querySelector('[name="counterparty_id"]');
+        const opt = document.createElement('option');
+        opt.value = newCustomer.inn || newCustomer.id;
+        opt.textContent = newCustomer.name;
+        opt.selected = true;
+        sel.appendChild(opt);
+        sel.classList.remove('cm-err');
+        customers.push(newCustomer);
+      });
+    });
+
     // ── Validation ──
     form.querySelectorAll('.cm-inp[required]').forEach(f => {
       f.addEventListener('blur', () => { f.classList.toggle('cm-err', !f.value.trim()); });
@@ -524,7 +541,7 @@ window.AsgardContractsPage = (function(){
         AsgardUI.toast('Ошибка', 'Дата окончания раньше даты заключения', 'err'); return;
       }
 
-      const customer = customers.find(c => c.id === counterparty_id);
+      const customer = customers.find(c => (c.id || c.inn) === counterparty_id);
       const data = {
         id: contract?.id || undefined,
         number, type: fd.get('type'), counterparty_id,
@@ -650,6 +667,204 @@ window.AsgardContractsPage = (function(){
 
   function formatMoney(amount) {
     return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(amount);
+  }
+
+  // ═══════ Модалка создания нового контрагента (inline из договора) ═══════
+  function openNewCustomerModal(onCreated) {
+    ensureModalStyles();
+    var esc = AsgardUI.esc;
+
+    var html = '<div id="newCustomerModal">' +
+      '<div class="cm-overlay">' +
+      '<div class="cm-card" style="max-width:540px">' +
+
+      '<div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05)">' +
+        '<div style="display:flex;align-items:center;gap:14px">' +
+          '<div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;flex-shrink:0">' +
+            '<svg width="20" height="20" fill="none" stroke="#fff" stroke-width="1.8"><path d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="10" cy="7" r="4"/><line x1="18" y1="8" x2="18" y2="14"/><line x1="15" y1="11" x2="21" y2="11"/></svg>' +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:17px;font-weight:700;color:#f9fafb">Новый контрагент</div>' +
+            '<div style="font-size:12px;color:#6b7280;margin-top:2px">Введите ИНН для автозаполнения</div>' +
+          '</div>' +
+        '</div>' +
+        '<button class="ncm-close" style="width:34px;height:34px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:transparent;color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px">&#10005;</button>' +
+      '</div>' +
+
+      '<div style="padding:22px 24px;max-height:64vh;overflow-y:auto">' +
+        '<form id="newCustomerForm" autocomplete="off">' +
+          '<div class="cm-section">' +
+            '<div class="cm-grid2">' +
+              '<div>' +
+                '<div class="cm-label">ИНН <span class="req">*</span></div>' +
+                '<div style="display:flex;gap:8px"><input type="text" name="inn" class="cm-inp" placeholder="10 или 12 цифр" required maxlength="12" style="flex:1"/>' +
+                '<button type="button" id="ncmLookup" style="padding:0 14px;border-radius:8px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.08);color:#3b82f6;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s">Найти</button></div>' +
+              '</div>' +
+              '<div>' +
+                '<div class="cm-label">КПП</div>' +
+                '<input type="text" name="kpp" class="cm-inp" placeholder="КПП" maxlength="9"/>' +
+              '</div>' +
+            '</div>' +
+            '<div class="cm-mt">' +
+              '<div class="cm-label">Наименование <span class="req">*</span></div>' +
+              '<input type="text" name="name" class="cm-inp" placeholder="ООО «Компания»" required/>' +
+            '</div>' +
+            '<div class="cm-mt">' +
+              '<div class="cm-label">Полное наименование</div>' +
+              '<input type="text" name="full_name" class="cm-inp" placeholder="Полное юридическое наименование"/>' +
+            '</div>' +
+            '<div class="cm-mt">' +
+              '<div class="cm-label">Адрес</div>' +
+              '<input type="text" name="address" class="cm-inp" placeholder="Юридический адрес"/>' +
+            '</div>' +
+          '</div>' +
+          '<div class="cm-section">' +
+            '<div class="cm-section-title"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07"/><path d="M3.59 4.06A2 2 0 015 3h3a2 2 0 012 1.72"/></svg>Контакты</div>' +
+            '<div class="cm-grid2">' +
+              '<div>' +
+                '<div class="cm-label">Контактное лицо</div>' +
+                '<input type="text" name="contact_person" class="cm-inp" placeholder="ФИО"/>' +
+              '</div>' +
+              '<div>' +
+                '<div class="cm-label">Телефон</div>' +
+                '<input type="text" name="phone" class="cm-inp" placeholder="+7 (___) ___-__-__"/>' +
+              '</div>' +
+            '</div>' +
+            '<div class="cm-mt">' +
+              '<div class="cm-label">Email</div>' +
+              '<input type="email" name="email" class="cm-inp" placeholder="info@company.ru"/>' +
+            '</div>' +
+          '</div>' +
+          '<div id="ncmStatus" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;margin-top:8px"></div>' +
+        '</form>' +
+      '</div>' +
+
+      '<div class="cm-footer">' +
+        '<button class="cm-btn cm-btn-ghost ncm-close">Отмена</button>' +
+        '<button class="cm-btn cm-btn-primary" id="ncmSave">Создать контрагента</button>' +
+      '</div>' +
+
+      '</div></div></div>';
+
+    document.body.insertAdjacentHTML('beforeend', html);
+
+    var ncModal = document.getElementById('newCustomerModal');
+    var ncOverlay = ncModal.querySelector('.cm-overlay');
+    var ncForm = document.getElementById('newCustomerForm');
+    var ncStatus = document.getElementById('ncmStatus');
+
+    function closeNcm() { ncModal.remove(); document.removeEventListener('keydown', ncKey); }
+    var ncKey = function(e) { if (e.key === 'Escape') closeNcm(); };
+    document.addEventListener('keydown', ncKey);
+    ncModal.querySelectorAll('.ncm-close').forEach(function(b) { b.addEventListener('click', closeNcm); });
+    ncOverlay.addEventListener('click', function(e) { if (e.target === ncOverlay) closeNcm(); });
+
+    function showStatus(msg, type) {
+      ncStatus.style.display = 'block';
+      ncStatus.style.background = type === 'ok' ? 'rgba(16,185,129,.1)' : type === 'err' ? 'rgba(239,68,68,.1)' : 'rgba(59,130,246,.1)';
+      ncStatus.style.color = type === 'ok' ? '#10b981' : type === 'err' ? '#ef4444' : '#3b82f6';
+      ncStatus.textContent = msg;
+    }
+
+    // DaData lookup по ИНН
+    document.getElementById('ncmLookup').addEventListener('click', async function() {
+      var innVal = ncForm.querySelector('[name="inn"]').value.replace(/\D/g, '');
+      if (innVal.length !== 10 && innVal.length !== 12) {
+        showStatus('ИНН должен содержать 10 или 12 цифр', 'err');
+        return;
+      }
+      showStatus('Поиск по ИНН...', 'info');
+      try {
+        var token = localStorage.getItem('asgard_token');
+        var resp = await fetch('/api/customers/lookup/' + innVal, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        var data = await resp.json();
+        if (data.found && data.suggestion) {
+          var s = data.suggestion;
+          if (s.name) ncForm.querySelector('[name="name"]').value = s.name;
+          if (s.full_name) ncForm.querySelector('[name="full_name"]').value = s.full_name;
+          if (s.kpp) ncForm.querySelector('[name="kpp"]').value = s.kpp;
+          if (s.address) ncForm.querySelector('[name="address"]').value = s.address;
+          showStatus('Данные загружены из ЕГРЮЛ', 'ok');
+        } else {
+          showStatus(data.message || 'Организация не найдена', 'err');
+        }
+      } catch (err) {
+        showStatus('Ошибка запроса: ' + err.message, 'err');
+      }
+    });
+
+    // Enter в ИНН → lookup
+    ncForm.querySelector('[name="inn"]').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('ncmLookup').click(); }
+    });
+
+    // Сохранение
+    document.getElementById('ncmSave').addEventListener('click', async function() {
+      var inn = ncForm.querySelector('[name="inn"]').value.replace(/\D/g, '');
+      var name = ncForm.querySelector('[name="name"]').value.trim();
+
+      if (!inn || (inn.length !== 10 && inn.length !== 12)) {
+        showStatus('Укажите корректный ИНН (10 или 12 цифр)', 'err');
+        ncForm.querySelector('[name="inn"]').classList.add('cm-err');
+        ncForm.querySelector('[name="inn"]').focus();
+        return;
+      }
+      if (!name) {
+        showStatus('Укажите наименование', 'err');
+        ncForm.querySelector('[name="name"]').classList.add('cm-err');
+        ncForm.querySelector('[name="name"]').focus();
+        return;
+      }
+
+      var body = {
+        inn: inn,
+        name: name,
+        full_name: ncForm.querySelector('[name="full_name"]').value.trim() || '',
+        kpp: ncForm.querySelector('[name="kpp"]').value.trim() || '',
+        address: ncForm.querySelector('[name="address"]').value.trim() || '',
+        contact_person: ncForm.querySelector('[name="contact_person"]').value.trim() || '',
+        phone: ncForm.querySelector('[name="phone"]').value.trim() || '',
+        email: ncForm.querySelector('[name="email"]').value.trim() || ''
+      };
+
+      var saveBtn = document.getElementById('ncmSave');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Сохранение...';
+
+      try {
+        var token = localStorage.getItem('asgard_token');
+        var resp = await fetch('/api/customers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify(body)
+        });
+        var result = await resp.json();
+
+        if (!resp.ok) {
+          showStatus(result.error || 'Ошибка сохранения', 'err');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Создать контрагента';
+          return;
+        }
+
+        var created = result.customer;
+        // Сохраняем в IndexedDB для локального кэша
+        try { await AsgardDB.put('customers', created); } catch(e) { /* игнор */ }
+
+        AsgardUI.toast('Контрагент', created.name + ' создан', 'ok');
+        closeNcm();
+        if (onCreated) onCreated(created);
+      } catch (err) {
+        showStatus('Ошибка сети: ' + err.message, 'err');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Создать контрагента';
+      }
+    });
+
+    // Фокус на ИНН
+    setTimeout(function() { ncForm.querySelector('[name="inn"]').focus(); }, 100);
   }
 
   // Проверка истекающих договоров для уведомлений
