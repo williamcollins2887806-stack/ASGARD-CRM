@@ -381,19 +381,19 @@ async function generateTkpPdfKit(tkp) {
 
   // ─── Акцентная линия (синяя + красная) ───
   const lineY = 82;
-  doc.rect(50, lineY, 247, 2).fill('#1E4D8C');
-  doc.rect(297, lineY, 248, 2).fill('#C8293B');
-  doc.y = 95;
+  doc.rect(50, lineY, 247, 3).fill('#1E4D8C');
+  doc.rect(297, lineY, 248, 3).fill('#C8293B');
+  doc.x = 50; doc.y = 96;
 
   // ─── ЗАГОЛОВОК ───
   doc.font(FB).fontSize(16).fillColor('#1E4D8C')
-     .text('КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ', 50, doc.y, { align: 'center' });
+     .text('КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ', 50, doc.y, { width: 495, align: 'center' });
   doc.moveDown(0.3);
 
   const tkpLabel = tkp.tkp_number || `№ ${tkp.id}`;
   const tkpDate = tkp.created_at ? new Date(tkp.created_at).toLocaleDateString('ru-RU') : '';
   doc.font(F).fontSize(11).fillColor('#6B7280')
-     .text(`${tkpLabel} от ${tkpDate}`, { align: 'center' });
+     .text(`${tkpLabel} от ${tkpDate}`, 50, doc.y, { width: 495, align: 'center' });
   doc.moveDown(1);
 
   // ─── КАРТОЧКА ЗАКАЗЧИКА (серый фон) ───
@@ -417,19 +417,24 @@ async function generateTkpPdfKit(tkp) {
       doc.font(F).fontSize(10).fillColor('#374151').text(' ' + line.value);
       cy += 16;
     });
+    doc.x = 50;
     doc.y = cardY + cardH + 10;
   }
 
   // ─── ПРЕДМЕТ ───
+  doc.x = 50;
   if (tkp.subject) {
-    doc.font(FB).fontSize(12).fillColor('#1E4D8C').text('Предмет предложения');
+    doc.font(FB).fontSize(12).fillColor('#1E4D8C')
+       .text('Предмет предложения', 50, doc.y, { width: 495 });
     doc.moveDown(0.3);
-    doc.font(FB).fontSize(11).fillColor('#374151').text(tkp.subject);
+    doc.font(FB).fontSize(11).fillColor('#374151')
+       .text(tkp.subject, 50, doc.y, { width: 495 });
     doc.moveDown(0.5);
   }
 
   if (tkp.work_description) {
-    doc.font(F).fontSize(10).fillColor('#374151').text(tkp.work_description);
+    doc.font(F).fontSize(10).fillColor('#374151')
+       .text(tkp.work_description, 50, doc.y, { width: 495 });
     doc.moveDown(0.5);
   }
 
@@ -444,7 +449,9 @@ async function generateTkpPdfKit(tkp) {
   const vatPct = cj.vat_pct || 22;
 
   if (rows.length > 0) {
-    doc.font(FB).fontSize(12).fillColor('#1E4D8C').text('Состав работ и стоимость');
+    doc.x = 50;
+    doc.font(FB).fontSize(12).fillColor('#1E4D8C')
+       .text('Состав работ и стоимость', 50, doc.y, { width: 495 });
     doc.moveDown(0.5);
 
     const colW = [25, 250, 40, 35, 70, 75];
@@ -500,7 +507,9 @@ async function generateTkpPdfKit(tkp) {
       ty += rowH;
     });
 
-    doc.y = ty + 5;
+    // ── Сброс курсора после таблицы ──
+    doc.x = 50;
+    doc.y = ty + 10;
   }
 
   // ─── ИТОГО ───
@@ -510,24 +519,27 @@ async function generateTkpPdfKit(tkp) {
     const totalWithVat = cj.total_with_vat || (subtotal + vatSum);
 
     doc.font(F).fontSize(10).fillColor('#6B7280')
-       .text(`Итого без НДС: ${fmtNum(subtotal)} ₽`, { align: 'right' });
-    doc.text(`НДС ${vatPct}%: ${fmtNum(vatSum)} ₽`, { align: 'right' });
+       .text(`Итого без НДС: ${fmtNum(subtotal)} ₽`, 50, doc.y, { width: 495, align: 'right' });
+    doc.font(F).fontSize(10).fillColor('#6B7280')
+       .text(`НДС ${vatPct}%: ${fmtNum(vatSum)} ₽`, 50, doc.y, { width: 495, align: 'right' });
     doc.moveDown(0.2);
     doc.moveTo(350, doc.y).lineTo(545, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
     doc.moveDown(0.3);
     doc.font(FB).fontSize(13).fillColor('#0D1117')
-       .text(`ИТОГО: ${fmtNum(totalWithVat)} ₽`, { align: 'right' });
+       .text(`ИТОГО: ${fmtNum(totalWithVat)} ₽`, 50, doc.y, { width: 495, align: 'right' });
     doc.moveDown(0.8);
   } else if (tkp.total_sum) {
     doc.font(FB).fontSize(13).fillColor('#0D1117')
-       .text(`Итого: ${fmtNum(tkp.total_sum)} ₽`, { align: 'right' });
+       .text(`Итого: ${fmtNum(tkp.total_sum)} ₽`, 50, doc.y, { width: 495, align: 'right' });
     doc.moveDown(0.8);
   }
 
   // ─── УСЛОВИЯ ───
+  doc.x = 50;
   doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
   doc.moveDown(0.5);
-  doc.font(FB).fontSize(12).fillColor('#1E4D8C').text('Условия');
+  doc.font(FB).fontSize(12).fillColor('#1E4D8C')
+     .text('Условия', 50, doc.y, { width: 495 });
   doc.moveDown(0.3);
 
   const paymentTerms = cj.payment_terms || '';
@@ -537,16 +549,19 @@ async function generateTkpPdfKit(tkp) {
   if (paymentTerms) terms.push(`Условия оплаты: ${paymentTerms}`);
 
   terms.forEach(t => {
-    doc.font(F).fontSize(10).fillColor('#374151').text(`•  ${t}`, { indent: 10 });
+    doc.font(F).fontSize(10).fillColor('#374151')
+       .text(`•  ${t}`, 60, doc.y, { width: 485 });
     doc.moveDown(0.2);
   });
 
   if (tkp.notes) {
     doc.moveDown(0.3);
-    doc.font(F).fontSize(10).fillColor('#374151').text(tkp.notes);
+    doc.font(F).fontSize(10).fillColor('#374151')
+       .text(tkp.notes, 50, doc.y, { width: 495 });
   }
 
   // ─── ПОДПИСЬ ───
+  doc.x = 50;
   doc.moveDown(1.5);
   doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
   doc.moveDown(0.8);
@@ -554,28 +569,29 @@ async function generateTkpPdfKit(tkp) {
   const authorName = cj.author_name || 'Кудряшов О.С.';
   const authorPos = cj.author_position || 'Генеральный директор';
 
+  const signY = doc.y;
   doc.font(FB).fontSize(10).fillColor('#374151')
-     .text(authorPos, 50, doc.y, { width: 160, continued: false });
-
+     .text(authorPos, 50, signY, { width: 170 });
   doc.font(F).fontSize(10).fillColor('#9CA3AF')
-     .text('_________________', 230, doc.y - 14, { width: 100, align: 'center' });
-
+     .text('_________________', 230, signY, { width: 100, align: 'center' });
   doc.font(FB).fontSize(10).fillColor('#374151')
-     .text(authorName, 370, doc.y - 14, { width: 175, align: 'right' });
+     .text(authorName, 370, signY, { width: 175, align: 'right' });
 
-  doc.moveDown(1);
+  doc.x = 50;
+  doc.y = signY + 20;
   doc.font(F).fontSize(8).fillColor('#9CA3AF')
-     .text('М.П.', { align: 'center' });
+     .text('М.П.', 50, doc.y, { width: 495, align: 'center' });
 
   // ─── ФУТЕР (на всех страницах) ───
   const pages = doc.bufferedPageRange();
   for (let i = pages.start; i < pages.start + pages.count; i++) {
     doc.switchToPage(i);
-    doc.font(F).fontSize(7).fillColor('#9CA3AF');
     doc.moveTo(50, 810).lineTo(545, 810).strokeColor('#E5E7EB').lineWidth(0.3).stroke();
-    doc.text('ООО «АСГАРД СЕРВИС» — промышленный сервис, химическая и гидродинамическая очистка, HVAC',
+    doc.font(F).fontSize(7).fillColor('#9CA3AF')
+       .text('ООО «АСГАРД СЕРВИС» — промышленный сервис, химическая и гидродинамическая очистка, HVAC',
              50, 815, { width: 400 });
-    doc.text(`Стр. ${i + 1}`, 450, 815, { width: 95, align: 'right' });
+    doc.font(F).fontSize(7).fillColor('#9CA3AF')
+       .text(`Стр. ${i + 1}`, 450, 815, { width: 95, align: 'right' });
   }
 
   // ─── ЗАКРЫТИЕ ───
