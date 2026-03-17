@@ -312,8 +312,21 @@ window.WorkerProfileDesktop = (function () {
   /* ══════════════════════════════════════════════════════════
      OPEN — главная функция
      ══════════════════════════════════════════════════════════ */
-  async function open(userId) {
-    if (!userId) { toast('Ошибка', 'Нет userId', 'err'); return; }
+  async function open(params) {
+    // Поддержка: open(123) или open({ user_id, employee_id, fio })
+    if (typeof params === 'number' || typeof params === 'string') {
+      params = { user_id: Number(params) || null };
+    }
+    if (!params || (!params.user_id && !params.employee_id)) {
+      toast('Ошибка', 'Нет данных для открытия анкеты', 'err'); return;
+    }
+
+    var userId = params.user_id || null;
+    var employeeId = params.employee_id || null;
+    var fio = params.fio || null;
+    // Определяем ключ и query-параметр для API
+    var apiId = userId || employeeId;
+    var apiSuffix = userId ? '' : '?by=employee';
 
     let profile = null;
     let userData = null;
@@ -337,9 +350,11 @@ window.WorkerProfileDesktop = (function () {
 
     async function loadData() {
       try {
-        const resp = await apiFetch('/worker-profiles/' + userId);
+        const resp = await apiFetch('/worker-profiles/' + apiId + apiSuffix);
         profile = resp.profile;
+        if (resp.employee_id) employeeId = resp.employee_id;
         userData = resp.user || (profile ? { id: profile.user_id, name: profile.user_name, avatar_url: profile.user_avatar, role: profile.user_role } : null);
+        if (!userData && fio) userData = { id: null, name: fio };
         photoUrl = profile ? profile.photo_url : null;
 
         /* Try to get current project from employee assignments (2s timeout) */
@@ -347,7 +362,7 @@ window.WorkerProfileDesktop = (function () {
           if (window.AsgardDB) {
             const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000));
             const lookup = (async () => {
-              const assigns = await AsgardDB.byIndex('employee_assignments', 'employee_id', userId);
+              const assigns = await AsgardDB.byIndex('employee_assignments', 'employee_id', employeeId || userId);
               if (assigns && assigns.length) {
                 const today = new Date().toISOString().slice(0, 10);
                 const current = assigns.find(a => !a.date_to || a.date_to.slice(0, 10) >= today);
@@ -835,7 +850,7 @@ window.WorkerProfileDesktop = (function () {
           photo_url: newPhotoUrl
         };
 
-        const resp = await apiPut('/worker-profiles/' + userId, body);
+        const resp = await apiPut('/worker-profiles/' + apiId + apiSuffix, body);
         profile = resp.profile;
         photoUrl = newPhotoUrl;
         /* Cleanup blob */

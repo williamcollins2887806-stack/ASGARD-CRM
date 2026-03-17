@@ -1110,7 +1110,7 @@ async function mimirRoutes(fastify, options) {
 
       // 3. Отзывы РП
       const reviews = await db.query(`
-        SELECT COALESCE(r.score_1_10, r.rating) as rating, r.comment, r.created_at,
+        SELECT r.rating, r.comment, r.created_at,
                w.work_title, u.name as reviewer_name
         FROM employee_reviews r
         LEFT JOIN works w ON w.id = r.work_id
@@ -1259,7 +1259,7 @@ async function mimirRoutes(fastify, options) {
       };
 
     } catch (error) {
-      fastify.log.error('Employee summary error:', error.message);
+      fastify.log.error({ err: error }, 'Employee summary error');
       return reply.code(500).send({ success: false, message: 'Ошибка генерации: ' + error.message });
     }
   });

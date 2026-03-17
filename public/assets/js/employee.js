@@ -588,9 +588,7 @@ window.AsgardEmployeePage=(function(){
     if(btnProfile){
       btnProfile.onclick=()=>{
         if(!window.WorkerProfileDesktop){ toast("Ошибка","Модуль анкет не загружен","err"); return; }
-        const uid = emp.user_id;
-        if(!uid){ toast("Анкета","У сотрудника нет учётной записи (user_id)","err"); return; }
-        WorkerProfileDesktop.open(uid);
+        WorkerProfileDesktop.open({ user_id: emp.user_id, employee_id: id, fio: emp.fio });
       };
     }
 
