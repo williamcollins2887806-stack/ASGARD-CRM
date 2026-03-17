@@ -36,15 +36,17 @@ var PMWorksPage = (function () {
       var user = Store.get('user') || {};
       var works = [];
 
+      var isAdmin = user.role === 'ADMIN' || user.role === 'DIRECTOR_GEN' || user.role === 'HEAD_PM';
+
       async function loadData() {
         var data = await API.fetch('/works');
         var list = API.extractRows(data);
-        works = list.filter(function (w) { return String(w.pm_id) === String(user.id) || String(w.pm_id) === String(user.user_id); });
+        works = isAdmin ? list : list.filter(function (w) { return String(w.pm_id) === String(user.id) || String(w.pm_id) === String(user.user_id); });
         return works;
       }
 
       var page = M.TablePage({
-        title: 'Мои работы',
+        title: isAdmin ? 'Все работы' : 'Мои работы',
         subtitle: 'РАБОТЫ',
         back: false,
         search: true,
