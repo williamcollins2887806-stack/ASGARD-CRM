@@ -292,12 +292,14 @@ window.WorkerProfileDesktop = (function () {
     </div>`;
   }
 
-  /* fade transition helper */
-  function fadeTransition(root, renderFn) {
+  /* fade transition helper — preserves scroll position */
+  function fadeTransition(root, renderFn, preserveScroll) {
+    const scrollTop = preserveScroll ? root.scrollTop : 0;
     root.style.transition = 'opacity 0.2s ease';
     root.style.opacity = '0';
     setTimeout(() => {
       renderFn();
+      if (preserveScroll) root.scrollTop = scrollTop;
       root.style.opacity = '1';
     }, 200);
   }
@@ -320,6 +322,7 @@ window.WorkerProfileDesktop = (function () {
     let originalJson = '{}';
     let photoUrl = null;
     let photoFile = null;
+    let photoBlobUrl = null; /* track for revokeObjectURL */
     let currentProject = '';
 
     /* Show modal with skeleton immediately */
@@ -339,21 +342,26 @@ window.WorkerProfileDesktop = (function () {
         userData = resp.user || (profile ? { id: profile.user_id, name: profile.user_name, avatar_url: profile.user_avatar, role: profile.user_role } : null);
         photoUrl = profile ? profile.photo_url : null;
 
-        /* Try to get current project from employee assignments */
+        /* Try to get current project from employee assignments (2s timeout) */
         try {
           if (window.AsgardDB) {
-            const assigns = await AsgardDB.byIndex('employee_assignments', 'employee_id', userId);
-            if (assigns && assigns.length) {
-              const today = new Date().toISOString().slice(0, 10);
-              const current = assigns.find(a => !a.date_to || a.date_to.slice(0, 10) >= today);
-              if (current && current.work_id) {
-                const work = await AsgardDB.get('works', current.work_id);
-                if (work) {
-                  const tender = work.tender_id ? await AsgardDB.get('tenders', work.tender_id) : null;
-                  currentProject = work.customer_name || (tender && tender.customer_name) || '';
+            const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000));
+            const lookup = (async () => {
+              const assigns = await AsgardDB.byIndex('employee_assignments', 'employee_id', userId);
+              if (assigns && assigns.length) {
+                const today = new Date().toISOString().slice(0, 10);
+                const current = assigns.find(a => !a.date_to || a.date_to.slice(0, 10) >= today);
+                if (current && current.work_id) {
+                  const work = await AsgardDB.get('works', current.work_id);
+                  if (work) {
+                    const tender = work.tender_id ? await AsgardDB.get('tenders', work.tender_id) : null;
+                    return work.customer_name || (tender && tender.customer_name) || '';
+                  }
                 }
               }
-            }
+              return '';
+            })();
+            currentProject = await Promise.race([lookup, timeout.catch(() => '')]);
           }
         } catch (_) { /* non-critical */ }
 
@@ -568,6 +576,7 @@ window.WorkerProfileDesktop = (function () {
       /* Footer */
       html += `<div class="wp-desktop-footer">
         <button class="btn" id="wpSaveBtn">\u2713 Сохранить</button>
+        <button class="btn ghost" id="wpPrintBtnEdit" title="Печать">\uD83D\uDDA8\uFE0F</button>
         <button class="btn ghost" id="wpCancelBtn">Отмена</button>
       </div>`;
 
@@ -760,7 +769,10 @@ window.WorkerProfileDesktop = (function () {
           const file = photoInput.files[0];
           if (!file) return;
           photoFile = file;
+          /* Revoke previous blob to prevent memory leak */
+          if (photoBlobUrl) { try { URL.revokeObjectURL(photoBlobUrl); } catch (_) {} }
           const url = URL.createObjectURL(file);
+          photoBlobUrl = url;
           const img = document.getElementById('wpAvatarImg');
           if (img) {
             img.style.backgroundImage = 'url(' + url + ')';
@@ -774,12 +786,19 @@ window.WorkerProfileDesktop = (function () {
       const saveBtn = document.getElementById('wpSaveBtn');
       if (saveBtn) saveBtn.onclick = () => saveProfile();
 
-      /* Cancel with dirty check */
+      /* Print in edit mode */
+      const printBtnEdit = document.getElementById('wpPrintBtnEdit');
+      if (printBtnEdit) printBtnEdit.onclick = () => printProfile();
+
+      /* Cancel with dirty check + blob cleanup */
       const cancelBtn = document.getElementById('wpCancelBtn');
       if (cancelBtn) cancelBtn.onclick = () => {
         if (isDirty(editData, originalJson) || photoFile) {
           if (!confirm('Есть несохранённые изменения. Отменить редактирование?')) return;
         }
+        /* Cleanup blob if photo was changed but not saved */
+        if (photoBlobUrl) { try { URL.revokeObjectURL(photoBlobUrl); } catch (_) {} photoBlobUrl = null; }
+        photoFile = null;
         const root = document.getElementById('wpDesktopRoot');
         if (root) fadeTransition(root, () => renderView());
       };
@@ -819,6 +838,8 @@ window.WorkerProfileDesktop = (function () {
         const resp = await apiPut('/worker-profiles/' + userId, body);
         profile = resp.profile;
         photoUrl = newPhotoUrl;
+        /* Cleanup blob */
+        if (photoBlobUrl) { try { URL.revokeObjectURL(photoBlobUrl); } catch (_) {} photoBlobUrl = null; }
         toast('Сохранено', 'Анкета обновлена');
         const root = document.getElementById('wpDesktopRoot');
         if (root) fadeTransition(root, () => renderView());

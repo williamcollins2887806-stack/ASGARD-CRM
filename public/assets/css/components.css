@@ -5282,6 +5282,7 @@ textarea:focus:not(:focus-visible) {
 .wp-desktop-textarea,
 .wp-desktop-input {
   width: 100%;
+  box-sizing: border-box;
   margin-top: 4px;
   padding: 8px 12px;
   border-radius: 8px;
@@ -5313,6 +5314,7 @@ textarea:focus:not(:focus-visible) {
 
 .wp-desktop-comment-input {
   width: 100%;
+  box-sizing: border-box;
   padding: 5px 10px;
   border-radius: 6px;
   border: 1px solid rgba(255,255,255,0.08);
