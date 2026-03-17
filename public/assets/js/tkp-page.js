@@ -186,6 +186,12 @@ window.AsgardTkpPage = (function() {
     await loadVat();
     await layout('<div id="tkp-page"><div class="loading">Загрузка...</div></div>', { title: title });
     await loadList();
+    // Авто-открытие по ссылке из Мимира: #/tkp?edit=15
+    var hash = location.hash || '';
+    var editMatch = hash.match(/[?&]edit=(\d+)/);
+    if (editMatch) {
+      setTimeout(function() { openForm(editMatch[1]); }, 500);
+    }
   }
 
   async function loadList() {
@@ -301,12 +307,18 @@ window.AsgardTkpPage = (function() {
         '<div><label>Тип</label><select id="tkpType">' + typeOptions + '</select></div>' +
       '</div>' +
       '<div class="formrow"><div style="grid-column:1/-1">' +
-        '<label>Описание работ</label>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+          '<label>Описание работ</label>' +
+          '<button class="btn ghost mini" id="btnMimirDesc" type="button" title="Мимир сгенерирует описание по названию ТКП">&#x1F9D9; Описание</button>' +
+        '</div>' +
         '<textarea id="tkpDescription" rows="4">' + esc(o.desc) + '</textarea>' +
       '</div></div>' +
 
       // --- Секция 3: Таблица работ ---
-      sectionHdr('Работы и услуги') +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+        sectionHdr('Работы и услуги') +
+        '<button class="btn ghost mini" id="btnMimirItems" type="button" title="Мимир предложит состав работ и цены" style="margin-top:16px">&#x1F9D9; Предложить работы</button>' +
+      '</div>' +
       '<table class="data-table" id="tkpItemsTable"><thead><tr>' +
         '<th style="width:30px">\u2116</th>' +
         '<th>Наименование работ / услуг</th>' +
@@ -452,6 +464,89 @@ window.AsgardTkpPage = (function() {
           addItemRow();
         }
         recalcTotals();
+
+        // Мимир: генерация описания
+        var btnMD = $('#btnMimirDesc');
+        if (btnMD) {
+          btnMD.addEventListener('click', async function() {
+            var subject = ($('#tkpSubject') || {}).value;
+            var typeVal = ($('#tkpType') || {}).value;
+            if (!subject) { toast('Внимание', 'Сначала заполните название ТКП', 'warn'); return; }
+            btnMD.disabled = true;
+            btnMD.textContent = '\u{1F9D9} Генерирую...';
+            try {
+              var token = localStorage.getItem('asgard_token');
+              var resp = await fetch('/api/mimir/suggest-tkp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify({ description: subject + ' (тип: ' + typeVal + ')', mode: 'description' })
+              });
+              if (resp.ok) {
+                var data = await resp.json();
+                if (data.description) {
+                  var ta = $('#tkpDescription');
+                  if (ta) ta.value = data.description;
+                  toast('Готово', 'Описание сгенерировано');
+                }
+              } else {
+                toast('Ошибка', 'Не удалось сгенерировать', 'err');
+              }
+            } catch (ex) {
+              toast('Ошибка', ex.message, 'err');
+            } finally {
+              btnMD.disabled = false;
+              btnMD.textContent = '\u{1F9D9} Описание';
+            }
+          });
+        }
+
+        // Мимир: генерация строк работ
+        var btnMI = $('#btnMimirItems');
+        if (btnMI) {
+          btnMI.addEventListener('click', async function() {
+            var subject = ($('#tkpSubject') || {}).value;
+            var desc = ($('#tkpDescription') || {}).value;
+            var customerName = ($('#tkpCustomerSearch') || {}).value;
+            var tId = parseInt(($('#tkpTenderId') || {}).value) || null;
+            if (!subject && !desc) { toast('Внимание', 'Заполните название или описание работ', 'warn'); return; }
+            btnMI.disabled = true;
+            btnMI.textContent = '\u{1F9D9} Генерирую...';
+            try {
+              var token = localStorage.getItem('asgard_token');
+              var resp = await fetch('/api/mimir/suggest-tkp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify({
+                  tender_id: tId,
+                  customer_name: customerName,
+                  description: (subject || '') + '\n' + (desc || ''),
+                  mode: 'items'
+                })
+              });
+              if (resp.ok) {
+                var data = await resp.json();
+                if (data.items && data.items.length) {
+                  itemRows.forEach(function(tr) { tr.remove(); });
+                  itemRows = [];
+                  data.items.forEach(function(item) { addItemRow(item); });
+                  recalcTotals();
+                  toast('Готово', data.items.length + ' позиций предложено. Проверьте цены.');
+                }
+                if (data.description && !($('#tkpDescription') || {}).value) {
+                  var ta = $('#tkpDescription');
+                  if (ta) ta.value = data.description;
+                }
+              } else {
+                toast('Ошибка', 'Не удалось сгенерировать', 'err');
+              }
+            } catch (ex) {
+              toast('Ошибка', ex.message, 'err');
+            } finally {
+              btnMI.disabled = false;
+              btnMI.textContent = '\u{1F9D9} Предложить работы';
+            }
+          });
+        }
 
         // + Добавить строку
         const btnAdd = $('#btnAddItem');

@@ -312,6 +312,7 @@ async function processQuery(db, message, user) {
   const lowerMsg = (message || '').toLowerCase();
   let additionalData = '';
   let results = null;
+  let action = null;
 
   // Поиск тендеров
   if (lowerMsg.match(/найди|поиск|покажи.*тендер/i)) {
@@ -393,20 +394,35 @@ async function processQuery(db, message, user) {
     }
   }
 
-  // ТКП / коммерческое предложение
-  if (lowerMsg.match(/ткп|коммерческ|предложени/i)) {
-    additionalData = `\n[Запрос на ТКП]
-Шаблон ТКП:
-1. Заголовок: "Коммерческое предложение на [услуги]"
-2. Описание работ
-3. Сроки выполнения
-4. Стоимость (с НДС и без)
-5. Условия оплаты
-6. Срок действия предложения
-7. Контакты`;
+  // ТКП / коммерческое предложение — определяем intent
+  if (lowerMsg.match(/создай.*ткп|сделай.*ткп|генерируй.*ткп|ткп.*по.*тендер|ткп.*по.*работ|создай.*коммерческ|сделай.*предложени/i)) {
+    let tenderId = null;
+    let workId = null;
+    const tenderMatch = message.match(/тендер[уе]?\s+(?:№\s*)?(\d+)/i) || message.match(/тендер[уе]?\s+(.{3,50})/i);
+    const workMatch = message.match(/работ[еау]?\s+(?:№\s*)?(\d+)/i);
+
+    if (tenderMatch) {
+      const q = tenderMatch[1].trim();
+      if (/^\d+$/.test(q)) {
+        tenderId = parseInt(q);
+      } else {
+        const found = await searchTenders(db, q, user);
+        if (found.length > 0) tenderId = found[0].id;
+      }
+    }
+    if (workMatch && /^\d+$/.test(workMatch[1])) {
+      workId = parseInt(workMatch[1]);
+    }
+
+    action = { type: 'CREATE_TKP', tender_id: tenderId, work_id: workId };
+    additionalData = '\nПользователь просит создать ТКП. Ответь кратко что создаёшь черновик и попроси подождать.';
+  }
+  // Просто вопросы про ТКП
+  else if (lowerMsg.match(/ткп|коммерческ|предложени/i)) {
+    additionalData = '\n[Пользователь спрашивает про ТКП. Расскажи что умеешь создавать ТКП по тендерам и работам. Пример: "Создай ТКП по тендеру ЯНПЗ"]';
   }
 
-  return { additionalData, results };
+  return { additionalData, results, action };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -224,7 +224,7 @@ async function mimirRoutes(fastify, options) {
       const historyMessages = history.rows.reverse();
 
       // Обработка запроса — поиск данных
-      const { additionalData, results } = await mimirData.processQuery(db, message, user);
+      const { additionalData, results, action } = await mimirData.processQuery(db, message, user);
 
       let userMessage = message;
       if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
@@ -287,6 +287,7 @@ async function mimirRoutes(fastify, options) {
         success: true,
         response: aiResponse,
         results: results,
+        action: action || null,
         conversation_id: convId,
         userRole: user?.role,
         tokens: aiResult.usage
@@ -365,10 +366,13 @@ async function mimirRoutes(fastify, options) {
       const historyMessages = history.rows.reverse();
 
       // Обработка запроса
-      const { additionalData, results } = await mimirData.processQuery(db, message, user);
+      const { additionalData, results, action: streamAction } = await mimirData.processQuery(db, message, user);
 
       if (results) {
         sendEvent({ type: 'results', data: results });
+      }
+      if (streamAction) {
+        sendEvent({ type: 'action', data: streamAction });
       }
 
       let userMessage = message;
@@ -878,6 +882,201 @@ async function mimirRoutes(fastify, options) {
     } catch (error) {
       fastify.log.error('TKP generation error:', error.message);
       return reply.code(500).send({ success: false, message: 'Ошибка генерации ТКП' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // БЛОК 4.5: ГЕНЕРАЦИЯ И СОЗДАНИЕ ТКП ЧЕРЕЗ МИМИР
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  fastify.post('/suggest-tkp', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { tender_id, work_id, customer_name, description, mode } = request.body;
+    const user = request.user;
+
+    try {
+      // 1. Собрать контекст из БД
+      let context = '';
+      let customerData = {};
+      let tenderData = {};
+
+      if (tender_id) {
+        const t = await db.query(`
+          SELECT t.*, c.address, c.phone, c.email, c.contact_person, c.kpp
+          FROM tenders t
+          LEFT JOIN customers c ON c.inn = t.customer_inn
+          WHERE t.id = $1
+        `, [tender_id]);
+        if (t.rows[0]) {
+          tenderData = t.rows[0];
+          context += 'Тендер: ' + tenderData.tender_title + '\n';
+          context += 'Заказчик: ' + tenderData.customer_name + ' (ИНН: ' + tenderData.customer_inn + ')\n';
+          if (tenderData.tender_description) context += 'Описание: ' + tenderData.tender_description + '\n';
+          if (tenderData.tender_sum) context += 'Бюджет: ' + tenderData.tender_sum + ' руб.\n';
+          customerData = {
+            name: tenderData.customer_name,
+            inn: tenderData.customer_inn,
+            address: tenderData.address || '',
+            phone: tenderData.phone || '',
+            email: tenderData.email || '',
+            contact_person: tenderData.contact_person || '',
+            kpp: tenderData.kpp || ''
+          };
+        }
+      }
+
+      if (work_id) {
+        const w = await db.query('SELECT * FROM works WHERE id = $1', [work_id]);
+        if (w.rows[0]) {
+          const work = w.rows[0];
+          context += 'Работа: ' + work.work_title + ' (' + work.work_number + ')\n';
+          context += 'Заказчик: ' + work.customer_name + '\n';
+          if (work.work_description) context += 'Описание: ' + work.work_description + '\n';
+          if (!customerData.name) {
+            customerData.name = work.customer_name;
+            customerData.inn = work.customer_inn || '';
+          }
+        }
+      }
+
+      if (customer_name && !customerData.name) {
+        customerData.name = customer_name;
+        const c = await db.query(
+          'SELECT * FROM customers WHERE LOWER(name) LIKE $1 LIMIT 1',
+          ['%' + customer_name.toLowerCase() + '%']
+        );
+        if (c.rows[0]) {
+          customerData = {
+            name: c.rows[0].name,
+            inn: c.rows[0].inn || '',
+            address: c.rows[0].address || c.rows[0].legal_address || '',
+            phone: c.rows[0].phone || '',
+            email: c.rows[0].email || '',
+            contact_person: c.rows[0].contact_person || '',
+            kpp: c.rows[0].kpp || ''
+          };
+        }
+      }
+
+      if (description) context += 'Дополнительно: ' + description + '\n';
+
+      // 2. Загрузить настройки НДС
+      const settingsRow = await db.query("SELECT value_json FROM settings WHERE key = 'app'");
+      const vatPct = settingsRow.rows[0]
+        ? (JSON.parse(settingsRow.rows[0].value_json || '{}').vat_pct || 22)
+        : 22;
+
+      // 3. Сгенерировать через AI
+      const prompt = 'На основе данных создай структурированное коммерческое предложение (ТКП).\n\n' +
+        'ДАННЫЕ:\n' + (context || 'Описание: ' + (description || 'Сервисные работы')) + '\n\n' +
+        'ПРАВИЛА:\n' +
+        '- Компания: ООО «Асгард Сервис» — промышленный сервис (химическая очистка, гидродинамическая очистка, HVAC)\n' +
+        '- НДС: ' + vatPct + '%\n' +
+        '- Разбей работы на 3-8 логичных позиций (не меньше 3)\n' +
+        '- Цены должны быть реалистичными для промышленного сервиса (от 50 000 до 2 000 000 руб. за позицию)\n' +
+        '- Единицы: усл., компл., шт., м², п.м., т., час, смена\n' +
+        '- Сроки: обычно 5-15 рабочих дней\n' +
+        '- Условия оплаты: обычно "Аванс 50% по договору, остаток 50% по акту выполненных работ"\n\n' +
+        'ОТВЕТ СТРОГО В JSON (без markdown, без ```, только чистый JSON):\n' +
+        '{\n' +
+        '  "subject": "Название ТКП",\n' +
+        '  "work_description": "Подробное описание работ (2-3 предложения)",\n' +
+        '  "items": [\n' +
+        '    {"name": "Название работы", "unit": "усл.", "qty": 1, "price": 280000, "total": 280000}\n' +
+        '  ],\n' +
+        '  "deadline": "10 рабочих дней с момента допуска на объект",\n' +
+        '  "payment_terms": "Аванс 50% по договору, остаток 50% по акту выполненных работ",\n' +
+        '  "notes": "Дополнительные условия (1-2 предложения)"\n' +
+        '}';
+
+      const aiResult = await aiProvider.complete({
+        system: 'Ты — менеджер по продажам ООО «Асгард Сервис». Генерируешь коммерческие предложения. Отвечай ТОЛЬКО валидным JSON без обёрток.',
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 2000,
+        temperature: 0.5
+      });
+
+      // 4. Парсинг ответа (агрессивный)
+      let tkpData;
+      try {
+        let text = (aiResult.text || '').trim();
+        text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+          text = text.substring(firstBrace, lastBrace + 1);
+        }
+        tkpData = JSON.parse(text);
+      } catch (e) {
+        return reply.code(500).send({ success: false, message: 'AI вернул невалидный JSON' });
+      }
+
+      // mode='items' — вернуть только строки работ
+      if (mode === 'items') {
+        return { success: true, items: tkpData.items || [], description: tkpData.work_description || '' };
+      }
+      if (mode === 'description') {
+        return { success: true, description: tkpData.work_description || '' };
+      }
+
+      // 5. Создать черновик ТКП в БД
+      const items = tkpData.items || [];
+      let subtotal = 0;
+      items.forEach(function(i) { subtotal += (i.total || i.qty * i.price || 0); });
+      const vatSum = Math.round(subtotal * vatPct / 100);
+      const totalWithVat = subtotal + vatSum;
+
+      const itemsJson = JSON.stringify({
+        vat_pct: vatPct,
+        items: items,
+        subtotal: subtotal,
+        vat_sum: vatSum,
+        total_with_vat: totalWithVat,
+        payment_terms: tkpData.payment_terms || '',
+        author_name: 'Кудряшов О.С.',
+        author_position: 'Генеральный директор',
+        notes: tkpData.notes || ''
+      });
+
+      const result = await db.query(`
+        INSERT INTO tkp (subject, tender_id, work_id, customer_name, customer_inn,
+                          contact_person, contact_phone, contact_email,
+                          customer_address, work_description,
+                          items, total_sum, deadline, validity_days,
+                          author_id, source)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'mimir')
+        RETURNING *
+      `, [
+        tkpData.subject || 'ТКП',
+        tender_id || null, work_id || null,
+        customerData.name || null, customerData.inn || null,
+        customerData.contact_person || null, customerData.phone || null,
+        customerData.email || null, customerData.address || null,
+        tkpData.work_description || null,
+        itemsJson, totalWithVat,
+        tkpData.deadline || null, 30,
+        user.id
+      ]);
+
+      const tkp = result.rows[0];
+
+      await logUsage(db, user.id, null, aiResult);
+
+      return {
+        success: true,
+        tkp_id: tkp.id,
+        tkp_number: tkp.tkp_number,
+        subject: tkp.subject,
+        total_sum: totalWithVat,
+        customer_name: customerData.name,
+        items_count: items.length,
+        message: 'Создано ' + tkp.tkp_number + ': "' + tkp.subject + '". ' + items.length + ' позиций, итого ' + totalWithVat.toLocaleString('ru-RU') + ' \u20BD (с НДС ' + vatPct + '%)'
+      };
+
+    } catch (error) {
+      fastify.log.error('Mimir suggest-tkp error:', error.message);
+      return reply.code(500).send({ success: false, message: 'Ошибка генерации ТКП: ' + error.message });
     }
   });
 

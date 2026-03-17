@@ -840,6 +840,14 @@ window.AsgardMimir = (function(){
     html = html.replace(/^### (.+)$/gm, '<div class="mimir-h3">$1</div>');
     html = html.replace(/^## (.+)$/gm, '<div class="mimir-h2">$1</div>');
 
+    // Ссылки [text](url)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, text, url) {
+      if (url.startsWith('#/')) {
+        return '<a href="' + url + '" style="color:var(--gold);text-decoration:underline;cursor:pointer" onclick="window.location.hash=\'' + url.replace('#', '') + '\';return false;">' + text + '</a>';
+      }
+      return '<a href="' + url + '" target="_blank" style="color:var(--gold);text-decoration:underline">' + text + '</a>';
+    });
+
     // Жирный и курсив
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
@@ -881,6 +889,53 @@ window.AsgardMimir = (function(){
     html = html.replace(/\n/g, '<br>');
 
     return '<p>' + html + '</p>';
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // СОЗДАНИЕ ТКП ЧЕРЕЗ ЧАТ
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async function handleCreateTkpAction(action, userMessage) {
+    try {
+      var auth = AsgardAuth?.getAuth?.();
+      var token = auth?.token;
+      var resp = await fetch('/api/mimir/suggest-tkp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({
+          tender_id: action.tender_id || null,
+          work_id: action.work_id || null,
+          description: userMessage,
+          mode: 'full'
+        })
+      });
+
+      var lastMsg = messages[messages.length - 1];
+      if (resp.ok) {
+        var result = await resp.json();
+        if (result.success && lastMsg) {
+          lastMsg.content = (lastMsg.content || '') +
+            '\n\n' + String.fromCodePoint(0x2705) + ' **' + result.tkp_number + '** создано!\n' +
+            String.fromCodePoint(0x1F4CB) + ' "' + result.subject + '"\n' +
+            String.fromCodePoint(0x1F4B0) + ' ' + Number(result.total_sum).toLocaleString('ru-RU') + ' ' + String.fromCodePoint(0x20BD) + ' (' + result.items_count + ' позиций)\n\n' +
+            '[' + String.fromCodePoint(0x1F517) + ' Открыть для редактирования ' + String.fromCodePoint(0x2192) + '](#/tkp?edit=' + result.tkp_id + ')';
+        } else if (lastMsg) {
+          lastMsg.content = (lastMsg.content || '') + '\n\n' + String.fromCodePoint(0x274C) + ' Не удалось создать ТКП: ' + (result.message || 'Ошибка');
+        }
+      } else {
+        var errData = await resp.json().catch(function() { return {}; });
+        if (lastMsg) {
+          lastMsg.content = (lastMsg.content || '') + '\n\n' + String.fromCodePoint(0x274C) + ' Не удалось создать ТКП: ' + (errData.message || 'HTTP ' + resp.status);
+        }
+      }
+      renderMessages();
+    } catch (e) {
+      var lastMsg2 = messages[messages.length - 1];
+      if (lastMsg2) {
+        lastMsg2.content = (lastMsg2.content || '') + '\n\n' + String.fromCodePoint(0x274C) + ' Ошибка создания ТКП: ' + e.message;
+      }
+      renderMessages();
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -935,6 +990,11 @@ window.AsgardMimir = (function(){
           content: response.text || response,
           results: response.results
         });
+        // Обработка действия CREATE_TKP
+        if (response.action && response.action.type === 'CREATE_TKP') {
+          renderMessages();
+          await handleCreateTkpAction(response.action, text);
+        }
       }
     } catch (err) {
       console.error('Mimir error:', err);
@@ -1027,6 +1087,8 @@ window.AsgardMimir = (function(){
             currentConversationId = event.conversation_id;
           } else if (event.type === 'results') {
             messages[messages.length - 1].results = event.data;
+          } else if (event.type === 'action') {
+            messages[messages.length - 1]._action = event.data;
           } else if (event.type === 'done') {
             messages[messages.length - 1].isStreaming = false;
           } else if (event.type === 'error') {
@@ -1038,6 +1100,13 @@ window.AsgardMimir = (function(){
     }
 
     messages[messages.length - 1].isStreaming = false;
+
+    // Обработка действия CREATE_TKP (стриминг)
+    var streamAction = messages[messages.length - 1]._action;
+    if (streamAction && streamAction.type === 'CREATE_TKP') {
+      renderMessages();
+      await handleCreateTkpAction(streamAction, text);
+    }
 
     // Если стриминг не вернул текст — пробуем обычный запрос
     if (!fullText && messages.length > 0) {
@@ -1098,7 +1167,8 @@ window.AsgardMimir = (function(){
 
     return {
       text: data.response || 'Руны молчат...',
-      results: data.results
+      results: data.results,
+      action: data.action || null
     };
   }
 
