@@ -3,8 +3,158 @@
 /**
  * ASGARD CRM — Smart Hints API
  * Контекстные подсказки для каждой страницы.
- * Чистый SQL, без AI. Быстро (<50ms).
+ * Level 4: SQL-подсказки + AI-анализ Мимира с кешем на 24ч.
  */
+
+const crypto = require('crypto');
+const aiProvider = require('../services/ai-provider');
+
+// ═══════════════════════════════════════════
+// AI-анализ: кеш, circuit breaker, генерация
+// ═══════════════════════════════════════════
+
+const _generatingKeys = new Set();   // ключи в процессе генерации
+let _circuitErrors = 0;              // счётчик последовательных ошибок AI
+let _circuitOpenUntil = 0;           // timestamp до которого circuit открыт
+
+const CIRCUIT_THRESHOLD = 3;
+const CIRCUIT_PAUSE_MS = 5 * 60 * 1000; // 5 мин
+
+const TEASERS = [
+  'Наведите — расскажу подробнее',
+  'У меня есть мысли по этому поводу…',
+  'Хотите узнать немного больше?',
+  'Мимир видит кое-что интересное…',
+  'Есть пара наблюдений для вас',
+];
+
+function randomTeaser() {
+  return TEASERS[Math.floor(Math.random() * TEASERS.length)];
+}
+
+function buildCacheKey(user, page, params) {
+  const role = user.role;
+  // Для персональных страниц (employee) — индивидуальный ключ
+  const personalPages = ['employee', 'my-dashboard'];
+  if (personalPages.includes(page)) {
+    const suffix = params && params.employee_id ? '_' + params.employee_id : '';
+    return role + '_' + user.id + ':' + page + suffix;
+  }
+  return role + ':' + page;
+}
+
+function computeHintsHash(hints) {
+  const payload = hints.map(h => h.id + ':' + h.text).join('|');
+  return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 16);
+}
+
+const ANALYSIS_SYSTEM = `Ты — Мимир, AI-аналитик CRM «АСГАРД». Дай краткий анализ на 2-5 предложений.
+Выдели главное, сопоставь метрики, начни с опасных сигналов, дай рекомендацию.
+НЕ перечисляй данные — интерпретируй. Обращайся на «вы». Без маркдауна.`;
+
+async function generateAnalysis(db, cacheKey, role, page, userId, hints, hintsHash) {
+  if (_generatingKeys.has(cacheKey)) return;
+  if (Date.now() < _circuitOpenUntil) return;
+
+  _generatingKeys.add(cacheKey);
+
+  try {
+    // Формируем user-промпт из подсказок
+    const lines = hints.map((h, i) =>
+      (i + 1) + '. [' + h.type + '] ' + (h.icon || '') + ' ' + h.text
+    ).join('\n');
+
+    const userPrompt = 'Метрики страницы «' + page + '» (' + role + '):\n' + lines;
+
+    const result = await aiProvider.complete({
+      system: ANALYSIS_SYSTEM,
+      messages: [{ role: 'user', content: userPrompt }],
+      maxTokens: 300,
+      temperature: 0.3
+    });
+
+    const text = (result.text || '').trim();
+    if (!text) return;
+
+    // Сохраняем в кеш (upsert)
+    await db.query(`
+      INSERT INTO mimir_hint_analysis_cache
+        (cache_key, role, page, user_id, hints_hash, analysis_text,
+         hints_snapshot, tokens_input, tokens_output, model_used, duration_ms,
+         generated_at, expires_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW() + INTERVAL '24 hours')
+      ON CONFLICT (cache_key) DO UPDATE SET
+        hints_hash = EXCLUDED.hints_hash,
+        analysis_text = EXCLUDED.analysis_text,
+        hints_snapshot = EXCLUDED.hints_snapshot,
+        tokens_input = EXCLUDED.tokens_input,
+        tokens_output = EXCLUDED.tokens_output,
+        model_used = EXCLUDED.model_used,
+        duration_ms = EXCLUDED.duration_ms,
+        generated_at = NOW(),
+        expires_at = NOW() + INTERVAL '24 hours'
+    `, [
+      cacheKey, role, page, userId || null, hintsHash, text,
+      JSON.stringify(hints),
+      result.usage?.inputTokens || 0,
+      result.usage?.outputTokens || 0,
+      result.model || 'unknown',
+      result.durationMs || 0
+    ]);
+
+    _circuitErrors = 0;
+  } catch (err) {
+    console.error('[Hints AI]', err.message);
+    _circuitErrors++;
+    if (_circuitErrors >= CIRCUIT_THRESHOLD) {
+      _circuitOpenUntil = Date.now() + CIRCUIT_PAUSE_MS;
+      console.warn('[Hints AI] Circuit breaker OPEN for 5 min after', _circuitErrors, 'errors');
+    }
+  } finally {
+    _generatingKeys.delete(cacheKey);
+  }
+}
+
+async function getAnalysis(db, cacheKey, hintsHash) {
+  try {
+    const { rows } = await db.query(`
+      SELECT analysis_text, generated_at
+      FROM mimir_hint_analysis_cache
+      WHERE cache_key = $1 AND expires_at > NOW()
+      LIMIT 1
+    `, [cacheKey]);
+
+    if (!rows.length) return null;
+
+    // Если хеш совпал — кеш валиден
+    const row = rows[0];
+    return { text: row.analysis_text, generated_at: row.generated_at };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function getAnalysisWithHash(db, cacheKey, hintsHash) {
+  try {
+    const { rows } = await db.query(`
+      SELECT analysis_text, hints_hash, generated_at
+      FROM mimir_hint_analysis_cache
+      WHERE cache_key = $1 AND expires_at > NOW()
+      LIMIT 1
+    `, [cacheKey]);
+
+    if (!rows.length) return { status: 'none' };
+
+    const row = rows[0];
+    if (row.hints_hash === hintsHash) {
+      return { status: 'ready', text: row.analysis_text, generated_at: row.generated_at };
+    }
+    // Хеш изменился — данные устарели
+    return { status: 'stale' };
+  } catch (_) {
+    return { status: 'none' };
+  }
+}
 
 // Склонение: plural(5, 'счёт', 'счёта', 'счетов') → '5 счетов'
 function plural(n, one, few, many) {
@@ -1278,7 +1428,63 @@ async function hintsRoutes(fastify) {
       fastify.log.warn('Hints error page=' + page + ':', e.message);
     }
 
-    return { hints };
+    // ═══════════════════════════════════════════
+    // AI-анализ Мимира (Level 4)
+    // ═══════════════════════════════════════════
+    let analysis = null;
+
+    if (hints.length > 0) {
+      try {
+        const params = { employee_id: request.query.employee_id };
+        const cacheKey = buildCacheKey(user, page, params);
+        const hintsHash = computeHintsHash(hints);
+        const cached = await getAnalysisWithHash(db, cacheKey, hintsHash);
+
+        if (cached.status === 'ready') {
+          analysis = { text: cached.text, status: 'ready', teaser: randomTeaser(), generated_at: cached.generated_at };
+        } else {
+          // Запуск AI-генерации async (fire-and-forget)
+          generateAnalysis(db, cacheKey, role, page, userId, hints, hintsHash);
+          analysis = {
+            text: null,
+            status: _generatingKeys.has(cacheKey) ? 'generating' : 'pending',
+            teaser: randomTeaser(),
+            generated_at: null
+          };
+        }
+      } catch (_) {
+        // AI-анализ не должен ломать основные подсказки
+      }
+    }
+
+    return { hints, analysis };
+  });
+
+  // ═══════════════════════════════════════════
+  // GET /hints/analysis — поллинг статуса AI-анализа
+  // ═══════════════════════════════════════════
+  fastify.get('/hints/analysis', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const page = request.query.page || '';
+    const user = request.user;
+    const params = { employee_id: request.query.employee_id };
+    const cacheKey = buildCacheKey(user, page, params);
+
+    const cached = await getAnalysis(db, cacheKey, null);
+
+    if (cached) {
+      return {
+        analysis: { text: cached.text, status: 'ready', generated_at: cached.generated_at }
+      };
+    }
+
+    return {
+      analysis: {
+        text: null,
+        status: _generatingKeys.has(cacheKey) ? 'generating' : 'pending'
+      }
+    };
   });
 }
 

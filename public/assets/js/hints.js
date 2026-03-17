@@ -1,6 +1,6 @@
 // ASGARD CRM — Умные подсказки Мимира (AsgardHints)
-// Визуальные контекстные подсказки в стиле Мимира
-// Только десктоп. AI не используется (только SQL).
+// Визуальные контекстные подсказки + AI-анализ (Level 4)
+// Только десктоп.
 window.AsgardHints = (function() {
   'use strict';
   var ui = AsgardUI;
@@ -26,6 +26,11 @@ window.AsgardHints = (function() {
   var dismissed = new Set();
   var allDismissed = false;
   var _stylesInjected = false;
+  var _currentPage = '';
+  var _currentParams = null;
+  var _pollTimer = null;
+  var _pollCount = 0;
+  var _analysisDismissed = false;
 
   // ═══════════════════════════════════════════
   // Инъекция CSS-стилей (один раз)
@@ -43,6 +48,18 @@ window.AsgardHints = (function() {
       '@keyframes hintGlow{' +
         '0%,100%{box-shadow:0 0 0 0 rgba(245,215,142,0)}' +
         '50%{box-shadow:0 0 0 4px rgba(245,215,142,0.12)}' +
+      '}' +
+      '@keyframes analysisReveal{' +
+        'from{opacity:0;max-height:0;padding-top:0;padding-bottom:0}' +
+        'to{opacity:1;max-height:200px;padding-top:12px;padding-bottom:12px}' +
+      '}' +
+      '@keyframes skeletonPulse{' +
+        '0%{background-position:200% 0}' +
+        '100%{background-position:-200% 0}' +
+      '}' +
+      '@keyframes teaserGlow{' +
+        '0%,100%{text-shadow:0 0 0 rgba(212,168,67,0)}' +
+        '50%{text-shadow:0 0 8px rgba(212,168,67,0.3)}' +
       '}' +
       '.mimir-hint-card{position:relative;transition:background .2s}' +
       '.mimir-hint-card:hover{background:rgba(255,255,255,0.03)}' +
@@ -93,6 +110,56 @@ window.AsgardHints = (function() {
       '.mimir-hint-expanded{padding:16px 20px !important}' +
       '.mimir-hint-expanded .mimir-hint-subtitle{' +
         'font-size:12px;color:var(--t3);margin-top:4px;line-height:1.4' +
+      '}' +
+      // AI Analysis styles
+      '.mimir-analysis-teaser{' +
+        'display:flex;align-items:center;gap:10px;' +
+        'padding:10px 16px;cursor:pointer;' +
+        'border-bottom:1px solid rgba(245,215,142,0.08);' +
+        'transition:background .2s' +
+      '}' +
+      '.mimir-analysis-teaser:hover{background:rgba(212,168,67,0.06)}' +
+      '.mimir-analysis-teaser .mimir-a-icon{' +
+        'font-size:20px;flex-shrink:0;' +
+        'filter:drop-shadow(0 0 6px rgba(212,168,67,0.5));' +
+        'animation:teaserGlow 2.5s ease infinite' +
+      '}' +
+      '.mimir-analysis-teaser .mimir-a-text{' +
+        'flex:1;font-size:12px;font-style:italic;' +
+        'color:#D4A843;opacity:0.85' +
+      '}' +
+      '.mimir-analysis-teaser .mimir-a-chevron{' +
+        'font-size:11px;color:var(--t3);transition:transform .3s' +
+      '}' +
+      '.mimir-analysis-expanded{' +
+        'padding:12px 16px;overflow:hidden;' +
+        'background:linear-gradient(135deg,rgba(212,168,67,0.05) 0%,rgba(42,59,102,0.08) 100%);' +
+        'border-bottom:1px solid rgba(245,215,142,0.1);' +
+        'animation:analysisReveal .4s ease forwards' +
+      '}' +
+      '.mimir-analysis-expanded .mimir-a-header{' +
+        'display:flex;align-items:center;gap:8px;margin-bottom:8px' +
+      '}' +
+      '.mimir-analysis-expanded .mimir-a-label{' +
+        'font-size:10px;font-weight:700;text-transform:uppercase;' +
+        'letter-spacing:1px;color:#D4A843;opacity:0.7' +
+      '}' +
+      '.mimir-analysis-expanded .mimir-a-close{' +
+        'margin-left:auto;background:none;border:none;' +
+        'color:var(--t3);cursor:pointer;font-size:13px;padding:2px 6px;' +
+        'border-radius:4px;transition:color .2s' +
+      '}' +
+      '.mimir-analysis-expanded .mimir-a-close:hover{color:var(--t1)}' +
+      '.mimir-analysis-expanded .mimir-a-body{' +
+        'font-size:13px;line-height:1.6;color:var(--t1)' +
+      '}' +
+      // Skeleton
+      '.mimir-skeleton-wrap{padding:12px 16px;border-bottom:1px solid rgba(245,215,142,0.08)}' +
+      '.mimir-skeleton-line{' +
+        'height:12px;border-radius:6px;margin-bottom:8px;' +
+        'background:linear-gradient(90deg,rgba(212,168,67,0.08) 25%,rgba(212,168,67,0.18) 50%,rgba(212,168,67,0.08) 75%);' +
+        'background-size:200% 100%;' +
+        'animation:skeletonPulse 1.8s ease infinite' +
       '}';
     document.head.appendChild(style);
   }
@@ -109,6 +176,10 @@ window.AsgardHints = (function() {
       params.employee_id = params.id;
     }
 
+    _currentPage = page;
+    _currentParams = params;
+    _analysisDismissed = false;
+    stopPolling();
     remove();
 
     try {
@@ -126,7 +197,8 @@ window.AsgardHints = (function() {
       var hints = (data.hints || []).filter(function(h) { return !dismissed.has(h.id); });
       if (!hints.length) return;
 
-      render(hints, page);
+      var analysis = data.analysis || null;
+      render(hints, page, analysis);
     } catch (e) {
       // Подсказки не должны ломать страницу
     }
@@ -158,9 +230,159 @@ window.AsgardHints = (function() {
   };
 
   // ═══════════════════════════════════════════
+  // Поллинг AI-анализа
+  // ═══════════════════════════════════════════
+  function stopPolling() {
+    if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
+    _pollCount = 0;
+  }
+
+  function pollForAnalysis() {
+    if (_pollCount >= 10) { hideSkeleton(); return; }
+    _pollCount++;
+
+    var token = localStorage.getItem('asgard_token');
+    if (!token) return;
+
+    var url = '/api/hints/analysis?page=' + encodeURIComponent(_currentPage);
+    if (_currentParams && _currentParams.employee_id) {
+      url += '&employee_id=' + encodeURIComponent(_currentParams.employee_id);
+    }
+
+    fetch(url, { headers: { Authorization: 'Bearer ' + token } })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data || !data.analysis) return;
+        if (data.analysis.status === 'ready' && data.analysis.text) {
+          showAnalysisText(data.analysis.text);
+          return;
+        }
+        // Ещё генерируется — повтор через 3с
+        _pollTimer = setTimeout(pollForAnalysis, 3000);
+      })
+      .catch(function() {
+        _pollTimer = setTimeout(pollForAnalysis, 3000);
+      });
+  }
+
+  function hideSkeleton() {
+    var skeleton = document.getElementById('mimir-analysis-skeleton');
+    if (skeleton) skeleton.remove();
+    // Показать тизер как fallback
+    var teaser = document.getElementById('mimir-analysis-teaser');
+    if (teaser) teaser.style.display = 'none';
+  }
+
+  function showAnalysisText(text) {
+    stopPolling();
+    // Убрать skeleton
+    var skeleton = document.getElementById('mimir-analysis-skeleton');
+    if (skeleton) skeleton.remove();
+
+    // Убрать тизер
+    var teaser = document.getElementById('mimir-analysis-teaser');
+    if (teaser) teaser.remove();
+
+    // Вставить раскрытый блок
+    var bar = document.getElementById('asgard-hints-bar');
+    if (!bar || _analysisDismissed) return;
+
+    var header = bar.querySelector('.mimir-analysis-expanded');
+    if (header) return; // уже показан
+
+    var wrap = buildExpandedBlock(text);
+    var cardsWrap = bar.querySelector('div[style*="padding:4px"]');
+    if (cardsWrap) {
+      bar.insertBefore(wrap, cardsWrap);
+    } else {
+      bar.appendChild(wrap);
+    }
+  }
+
+  function buildExpandedBlock(text) {
+    var wrap = document.createElement('div');
+    wrap.className = 'mimir-analysis-expanded';
+
+    var headerRow = document.createElement('div');
+    headerRow.className = 'mimir-a-header';
+
+    var icon = document.createElement('span');
+    icon.style.cssText = 'font-size:16px;filter:drop-shadow(0 0 4px rgba(212,168,67,0.5))';
+    icon.textContent = '🧙';
+
+    var label = document.createElement('span');
+    label.className = 'mimir-a-label';
+    label.textContent = 'Мимир анализирует';
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'mimir-a-close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.title = 'Скрыть анализ';
+    closeBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      _analysisDismissed = true;
+      wrap.style.transition = 'opacity .3s,max-height .3s';
+      wrap.style.opacity = '0';
+      wrap.style.maxHeight = '0';
+      setTimeout(function() { wrap.remove(); }, 300);
+    });
+
+    headerRow.appendChild(icon);
+    headerRow.appendChild(label);
+    headerRow.appendChild(closeBtn);
+
+    var body = document.createElement('div');
+    body.className = 'mimir-a-body';
+    body.textContent = text;
+
+    wrap.appendChild(headerRow);
+    wrap.appendChild(body);
+    return wrap;
+  }
+
+  function buildSkeleton() {
+    var wrap = document.createElement('div');
+    wrap.className = 'mimir-skeleton-wrap';
+    wrap.id = 'mimir-analysis-skeleton';
+
+    var widths = ['85%', '70%', '55%'];
+    for (var i = 0; i < widths.length; i++) {
+      var line = document.createElement('div');
+      line.className = 'mimir-skeleton-line';
+      line.style.width = widths[i];
+      if (i === widths.length - 1) line.style.marginBottom = '0';
+      wrap.appendChild(line);
+    }
+    return wrap;
+  }
+
+  function buildTeaser(teaserText) {
+    var teaser = document.createElement('div');
+    teaser.className = 'mimir-analysis-teaser';
+    teaser.id = 'mimir-analysis-teaser';
+
+    var icon = document.createElement('span');
+    icon.className = 'mimir-a-icon';
+    icon.textContent = '🧙';
+
+    var text = document.createElement('span');
+    text.className = 'mimir-a-text';
+    text.textContent = teaserText || 'Не хотите узнать немного больше?';
+
+    var chevron = document.createElement('span');
+    chevron.className = 'mimir-a-chevron';
+    chevron.textContent = '\u25BE';
+
+    teaser.appendChild(icon);
+    teaser.appendChild(text);
+    teaser.appendChild(chevron);
+    return teaser;
+  }
+
+  // ═══════════════════════════════════════════
   // Рендер подсказок
   // ═══════════════════════════════════════════
-  function render(hints, page) {
+  function render(hints, page, analysis) {
     injectStyles();
 
     var isTkp = (page === 'tkp');
@@ -211,6 +433,34 @@ window.AsgardHints = (function() {
     header.appendChild(dismissAllBtn);
     bar.appendChild(header);
 
+    // ── AI-анализ (между шапкой и карточками) ──
+    if (analysis && !_analysisDismissed) {
+      if (analysis.status === 'ready' && analysis.text) {
+        // Анализ готов — сразу раскрытый блок
+        bar.appendChild(buildExpandedBlock(analysis.text));
+      } else if (analysis.status === 'generating') {
+        // AI думает — skeleton + поллинг
+        bar.appendChild(buildSkeleton());
+        _pollTimer = setTimeout(pollForAnalysis, 3000);
+      } else {
+        // pending — тизер, при клике запустит поллинг
+        var teaser = buildTeaser(analysis.teaser);
+        bar.appendChild(teaser);
+
+        var hoverTimer = null;
+        teaser.addEventListener('mouseenter', function() {
+          hoverTimer = setTimeout(function() { revealFromTeaser(bar); }, 600);
+        });
+        teaser.addEventListener('mouseleave', function() {
+          if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+        });
+        teaser.addEventListener('click', function() {
+          if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+          revealFromTeaser(bar);
+        });
+      }
+    }
+
     // ── Карточки ──
     var cardsWrap = document.createElement('div');
     cardsWrap.style.cssText = 'padding:4px 0';
@@ -226,7 +476,6 @@ window.AsgardHints = (function() {
 
       // Раздельные animation-delay для slide и glow
       var slideDelay = idx * 100;
-      var animName = 'hintSlideIn';
       var animValue = 'hintSlideIn .4s ease ' + slideDelay + 'ms forwards';
       if (cfg.glow) {
         animValue += ',hintGlow 2s ease ' + (slideDelay + 500) + 'ms infinite';
@@ -334,6 +583,7 @@ window.AsgardHints = (function() {
 
     dismissAllBtn.addEventListener('click', function() {
       allDismissed = true;
+      stopPolling();
       bar.style.transition = 'opacity .3s,transform .3s';
       bar.style.opacity = '0';
       bar.style.transform = 'translateY(-10px)';
@@ -357,6 +607,7 @@ window.AsgardHints = (function() {
           card.remove();
           var remaining = bar.querySelectorAll('.mimir-hint-card');
           if (!remaining.length) {
+            stopPolling();
             bar.style.transition = 'opacity .3s';
             bar.style.opacity = '0';
             setTimeout(function() { bar.remove(); currentBar = null; }, 300);
@@ -382,6 +633,25 @@ window.AsgardHints = (function() {
     });
   }
 
+  // Раскрыть анализ из тизера (hover 600ms или click)
+  function revealFromTeaser(bar) {
+    var teaser = document.getElementById('mimir-analysis-teaser');
+    if (!teaser) return;
+
+    // Заменить тизер на skeleton
+    teaser.remove();
+    var skeleton = buildSkeleton();
+    var cardsWrap = bar.querySelector('div[style*="padding:4px"]');
+    if (cardsWrap) {
+      bar.insertBefore(skeleton, cardsWrap);
+    } else {
+      bar.appendChild(skeleton);
+    }
+
+    // Запустить поллинг
+    _pollTimer = setTimeout(pollForAnalysis, 500);
+  }
+
   // Открыть Мимир с вопросом
   function openMimirWith(question) {
     if (!window.AsgardMimir || !AsgardMimir.open) return;
@@ -400,6 +670,7 @@ window.AsgardHints = (function() {
   // Удаление подсказок
   // ═══════════════════════════════════════════
   function remove() {
+    stopPolling();
     if (currentBar) { currentBar.remove(); currentBar = null; }
     var old = document.getElementById('asgard-hints-bar');
     if (old) old.remove();
