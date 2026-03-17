@@ -17,6 +17,7 @@ const Router = (() => {
   let historyIndex = -1;
   let currentRoute = null;
   let transitioning = false;
+  let _historyNav = false;
   var _pageCleanups = [];
 
   /** Зарегистрировать cleanup-функцию текущей страницы (вызывается при навигации) */
@@ -112,6 +113,7 @@ const Router = (() => {
 
   function back() {
     if (historyIndex > 0) {
+      _historyNav = true;
       historyIndex--;
       const prev = history[historyIndex];
       navigate(prev.path, { replace: true, direction: 'back', query: prev.params });
@@ -122,6 +124,7 @@ const Router = (() => {
 
   function forward() {
     if (historyIndex < history.length - 1) {
+      _historyNav = true;
       historyIndex++;
       const next = history[historyIndex];
       navigate(next.path, { replace: true, direction: 'forward', query: next.params });
@@ -150,12 +153,16 @@ const Router = (() => {
     const prevIndex = historyIndex;
     const prevPath = currentRoute;
 
-    // Update history
-    if (historyIndex < history.length - 1) {
-      history.splice(historyIndex + 1);
+    // Update history (skip when navigating via back()/forward())
+    if (_historyNav) {
+      _historyNav = false;
+    } else {
+      if (historyIndex < history.length - 1) {
+        history.splice(historyIndex + 1);
+      }
+      history.push({ path, params: allParams });
+      historyIndex = history.length - 1;
     }
-    history.push({ path, params: allParams });
-    historyIndex = history.length - 1;
 
     // Load module lazily
     if (!found.route.module && typeof found.route.loader === 'function') {
@@ -732,7 +739,8 @@ const API = (() => {
         AsgardDB.putAll(table, rows).catch(function () {});
       }
       return rows;
-    }).catch(function () {
+    }).catch(function (e) {
+      console.error('[fetchCached] ' + table + ' failed:', e && e.message || e);
       if (typeof AsgardDB !== 'undefined' && AsgardDB.getAll) {
         return AsgardDB.getAll(table).then(function (d) { return d || (raw ? {} : []); }).catch(function () { return raw ? {} : []; });
       }

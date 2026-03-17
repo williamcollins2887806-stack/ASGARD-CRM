@@ -202,6 +202,7 @@ var WorkerProfilePage = {
       page.replaceChildren();
       renderView();
     }).catch(function (err) {
+      console.error('[WorkerProfile] Load failed for userId=' + userId + ':', err && err.message || err);
       page.replaceChildren();
       page.appendChild(M.Header({ title: 'Анкета', back: true }));
       page.appendChild(M.Empty({ text: 'Ошибка загрузки', icon: '❌' }));

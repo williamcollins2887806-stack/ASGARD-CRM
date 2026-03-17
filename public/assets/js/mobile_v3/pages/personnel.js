@@ -52,7 +52,7 @@ var PersonnelPage = {
           rolePills.length = 1; // keep "Все"
           roleSet.forEach(function (r) { rolePills.push({ label: ROLE_MAP[r] || r, value: r }); });
           return employees;
-        }).catch(function (e) { M.Toast({ message: 'Ошибка загрузки дружины', type: 'error' }); return []; });
+        }).catch(function (e) { console.error('[Personnel] Load failed:', e); M.Toast({ message: 'Ошибка загрузки дружины', type: 'error' }); return []; });
       },
     });
     var listEl = page.querySelector('.asgard-table-page__list');

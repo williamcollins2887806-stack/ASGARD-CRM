@@ -39,7 +39,7 @@ var PMWorksPage = (function () {
       async function loadData() {
         var data = await API.fetch('/works');
         var list = API.extractRows(data);
-        works = list.filter(function (w) { return w.pm_id === user.id || w.pm_id === user.user_id; });
+        works = list.filter(function (w) { return String(w.pm_id) === String(user.id) || String(w.pm_id) === String(user.user_id); });
         return works;
       }
 

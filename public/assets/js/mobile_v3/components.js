@@ -831,7 +831,7 @@ const M = (() => {
 
     // Content
     const body = el('div', {
-      style: { flex: 1, overflowY: 'auto', padding: '16px 20px', WebkitOverflowScrolling: 'touch' },
+      style: { flex: 1, overflowY: 'auto', padding: '16px 20px', WebkitOverflowScrolling: 'touch', overflowX: 'hidden', boxSizing: 'border-box' },
     });
     if (content instanceof HTMLElement) body.appendChild(content);
     else if (typeof content === 'string') body.innerHTML = content;

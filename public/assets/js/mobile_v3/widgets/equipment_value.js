@@ -8,7 +8,7 @@ window.MobileWidgets.equipment_value = {
     function _load() {
       API.fetch('/equipment/balance-value').then(function (data) {
         var wrap = el('div');
-        wrap.appendChild(M.BigNumber({ value: (data && data.total_book_value) || 0, suffix: ' ₽', label: 'ТМЦ на балансе компании', icon: '📦' }));
+        wrap.appendChild(M.BigNumber({ value: Number((data && data.total_book_value) || 0), suffix: ' ₽', label: 'ТМЦ на балансе компании', icon: '📦' }));
         if (data && data.total_items) {
           var row = el('div', { style: { display: 'flex', gap: '10px', marginTop: '10px' } });
           row.appendChild(M.Badge({ text: data.total_items + ' ед.', color: 'info' }));

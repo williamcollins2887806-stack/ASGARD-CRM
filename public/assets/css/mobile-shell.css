@@ -96,6 +96,21 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.asgard-sheet input,
+.asgard-sheet textarea,
+.asgard-sheet select {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  word-break: break-word;
+}
+.asgard-sheet div,
+.asgard-sheet p,
+.asgard-sheet span {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 /* ── Таб-бар не перекрывает контент ── */
 .asgard-shell > div:first-child {
   padding-bottom: 80px; /* высота таб-бара + safe area */

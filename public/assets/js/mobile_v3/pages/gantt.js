@@ -341,7 +341,12 @@ var GanttPage = (function () {
       }
 
       updateView();
-      var cleanupOrientation = onOrientationChange(updateView);
+      var _ganttTimer;
+      function debouncedUpdateView() {
+        clearTimeout(_ganttTimer);
+        _ganttTimer = setTimeout(updateView, 200);
+      }
+      var cleanupOrientation = onOrientationChange(debouncedUpdateView);
 
       // Lifecycle cleanup
       if (typeof Router !== 'undefined' && Router.onLeave) {

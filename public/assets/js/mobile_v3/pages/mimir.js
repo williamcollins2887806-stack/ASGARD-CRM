@@ -7,7 +7,7 @@ var MimirPage = {
   render: function() {
     var el = Utils.el;
     var t = DS.t;
-    var page = el('div', { className: 'asgard-mimir-page', style: { display: 'flex', flexDirection: 'column', height: 'calc(var(--vh, 1vh) * 100)', background: t.bg } });
+    var page = el('div', { className: 'asgard-mimir-page', style: { display: 'flex', flexDirection: 'column', height: '100%', background: t.bg } });
     var _convId = null;
     var _sending = false;
     var _started = false; // true после первого сообщения пользователя
@@ -133,6 +133,26 @@ var MimirPage = {
       msgArea.scrollTop = msgArea.scrollHeight;
     }
 
+    /* ─── Простой markdown → HTML ─── */
+    function renderMarkdown(text) {
+      if (!text) return '';
+      var s = text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/^### (.+)$/gm, '<div style="font-weight:700;font-size:15px;margin:8px 0 4px">$1</div>')
+        .replace(/^## (.+)$/gm, '<div style="font-weight:700;font-size:16px;margin:10px 0 4px">$1</div>')
+        .replace(/^# (.+)$/gm, '<div style="font-weight:700;font-size:17px;margin:12px 0 4px">$1</div>')
+        .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+        .replace(/\*(.+?)\*/g, '<i>$1</i>')
+        .replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;font-size:13px">$1</code>')
+        .replace(/^[-*] (.+)$/gm, '<div style="padding-left:12px">• $1</div>')
+        .replace(/^\d+\. (.+)$/gm, function(m, p1, offset, str) {
+          var num = m.match(/^(\d+)/)[1];
+          return '<div style="padding-left:12px">' + num + '. ' + p1 + '</div>';
+        })
+        .replace(/\n/g, '<br>');
+      return s;
+    }
+
     /* ─── Добавление сообщения Мимира ─── */
     function addMimirMsg(text) {
       if (!_started) { msgArea.replaceChildren(); _started = true; }
@@ -158,7 +178,8 @@ var MimirPage = {
       });
       bubble.appendChild(el('div', { style: { fontSize: '10px', color: t.gold, fontWeight: 600, marginBottom: '3px' }, textContent: '\u041C\u0438\u043C\u0438\u0440' }));
 
-      var textEl = el('div', { style: { fontSize: '14px', color: t.text, lineHeight: '1.45', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }, textContent: text });
+      var textEl = el('div', { style: { fontSize: '14px', color: t.text, lineHeight: '1.45', wordBreak: 'break-word' } });
+      textEl.innerHTML = renderMarkdown(text);
       bubble.appendChild(textEl);
 
       // Кнопка копирования
