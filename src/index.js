@@ -317,6 +317,7 @@ fastify.register(require('./routes/files'), { prefix: '/api/files' });
 fastify.register(require('./routes/settings'), { prefix: '/api/settings' });
 fastify.register(require('./routes/reports'), { prefix: '/api/reports' });
 fastify.register(require('./routes/mimir'), { prefix: '/api/mimir' });
+fastify.register(require('./routes/hints'), { prefix: '/api' });
 fastify.register(require('./routes/geo'), { prefix: '/api/geo' });
 fastify.register(require('./routes/email'), { prefix: '/api/email' });
 fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
