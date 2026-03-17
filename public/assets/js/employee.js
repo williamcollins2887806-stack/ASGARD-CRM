@@ -141,11 +141,24 @@ window.AsgardEmployeePage=(function(){
             <div class="help">Роль: <b>${esc(emp.role_tag||"—")}</b> · Разряд: <b>${esc(emp.grade||"—")}</b> · Рейтинг: <b>${emp.rating_avg!=null?esc(Number(emp.rating_avg).toFixed(1)):"—"}</b></div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
+            <button class="btn ghost" id="btnAiSummary" title="Мимир сгенерирует краткую характеристику">\uD83E\uDDD9 Характеристика</button>
             <button class="btn ghost" id="btnSchedule">График</button>
             <button class="btn ghost" id="btnProfile">\uD83D\uDCCB Анкета</button>
             ${canEdit ? `<button class="btn" id="btnSave">Сохранить</button>` : ``}
             ${(user.role==="PM" || user.role==="ADMIN" || isDirRole(user.role)) ? `<button class="btn red" id="btnReview">Оценить</button>` : ``}
           </div>
+        </div>
+
+        <div id="aiSummaryBlock" style="display:none;margin:12px 0;padding:16px;background:rgba(59,130,246,0.06);border-left:3px solid var(--blue-l);border-radius:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-weight:700;color:var(--blue-l);font-size:13px">\uD83E\uDDD9 Характеристика от Мимира</span>
+            <div style="display:flex;gap:6px">
+              <button id="btnRefreshSummary" class="btn ghost mini" title="Обновить">\uD83D\uDD04</button>
+              <button id="btnCloseSummary" class="btn ghost mini" title="Скрыть">\u00D7</button>
+            </div>
+          </div>
+          <div id="aiSummaryText" style="font-size:13px;line-height:1.6;color:var(--t1)"></div>
+          <div id="aiSummaryMeta" style="margin-top:8px;font-size:11px;color:var(--t3)"></div>
         </div>
 
         <!-- Основная информация -->
@@ -694,6 +707,61 @@ window.AsgardEmployeePage=(function(){
         };
       };
     }
+
+    // 🧙 AI-характеристика
+    async function loadAiSummary() {
+      const block = document.getElementById('aiSummaryBlock');
+      const textEl = document.getElementById('aiSummaryText');
+      const metaEl = document.getElementById('aiSummaryMeta');
+      if (!block || !textEl) return;
+
+      block.style.display = 'block';
+      textEl.innerHTML = '<span style="color:var(--t3)">\u23F3 Мимир анализирует данные...</span>';
+      metaEl.textContent = '';
+
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/mimir/employee-summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ employee_id: id })
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          textEl.innerHTML = '<span style="color:var(--err-t)">Ошибка: ' + esc(err.message || 'HTTP ' + resp.status) + '</span>';
+          return;
+        }
+
+        const data = await resp.json();
+        if (data.success && data.summary) {
+          textEl.textContent = data.summary;
+          const sources = data.data_sources || {};
+          const parts = [];
+          if (sources.has_profile) parts.push('анкета');
+          if (sources.reviews_count > 0) parts.push(sources.reviews_count + ' отзывов');
+          if (sources.assignments_count > 0) parts.push(sources.assignments_count + ' назначений');
+          if (sources.has_payroll) parts.push('зарплата');
+          metaEl.textContent = 'Источники: ' + (parts.length ? parts.join(', ') : 'основные данные');
+        } else {
+          textEl.innerHTML = '<span style="color:var(--err-t)">' + esc(data.message || 'Не удалось') + '</span>';
+        }
+      } catch (e) {
+        textEl.innerHTML = '<span style="color:var(--err-t)">Ошибка: ' + esc(e.message) + '</span>';
+      }
+    }
+
+    const btnAiSummary = document.getElementById('btnAiSummary');
+    if (btnAiSummary) btnAiSummary.addEventListener('click', loadAiSummary);
+
+    const btnRefreshSummary = document.getElementById('btnRefreshSummary');
+    if (btnRefreshSummary) btnRefreshSummary.addEventListener('click', loadAiSummary);
+
+    const btnCloseSummary = document.getElementById('btnCloseSummary');
+    if (btnCloseSummary) btnCloseSummary.addEventListener('click', () => {
+      const block = document.getElementById('aiSummaryBlock');
+      if (block) block.style.display = 'none';
+    });
   }
 
   return {render};

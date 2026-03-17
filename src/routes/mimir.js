@@ -1081,6 +1081,190 @@ async function mimirRoutes(fastify, options) {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // AI-ХАРАКТЕРИСТИКА СОТРУДНИКА
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  fastify.post('/employee-summary', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { employee_id } = request.body;
+    if (!employee_id) return reply.code(400).send({ success: false, message: 'employee_id обязателен' });
+
+    try {
+      // 1. Основные данные сотрудника
+      const empResult = await db.query('SELECT * FROM employees WHERE id = $1', [employee_id]);
+      const emp = empResult.rows[0];
+      if (!emp) return reply.code(404).send({ success: false, message: 'Сотрудник не найден' });
+
+      // 2. Анкета-характеристика (worker_profiles)
+      let profile = null;
+      try {
+        const profResult = await db.query(
+          'SELECT * FROM worker_profiles WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1',
+          [emp.user_id || employee_id]
+        );
+        profile = profResult.rows[0] || null;
+      } catch (_) {
+        // Таблица может не существовать — не критично
+      }
+
+      // 3. Отзывы РП
+      const reviews = await db.query(`
+        SELECT COALESCE(r.score_1_10, r.rating) as rating, r.comment, r.created_at,
+               w.work_title, u.name as reviewer_name
+        FROM employee_reviews r
+        LEFT JOIN works w ON w.id = r.work_id
+        LEFT JOIN users u ON u.id = r.pm_id
+        WHERE r.employee_id = $1
+        ORDER BY r.created_at DESC LIMIT 10
+      `, [employee_id]);
+
+      // 4. История работ (назначения)
+      const assigns = await db.query(`
+        SELECT ea.date_from, ea.date_to, ea.role,
+               w.work_title, w.work_number, w.customer_name, w.work_status, w.city
+        FROM employee_assignments ea
+        JOIN works w ON w.id = ea.work_id
+        WHERE ea.employee_id = $1
+        ORDER BY ea.date_from DESC LIMIT 15
+      `, [employee_id]);
+
+      // 5. Допуски и квалификация
+      const permits = Array.isArray(emp.permits) ? emp.permits : [];
+
+      // 6. Зарплатные данные (средний доход)
+      let avgPay = null;
+      try {
+        const payResult = await db.query(`
+          SELECT AVG(pi.base_amount + COALESCE(pi.bonus,0)) as avg_total,
+                 SUM(pi.days_worked) as total_days
+          FROM payroll_items pi
+          WHERE pi.employee_id = $1
+            AND pi.base_amount > 0
+        `, [employee_id]);
+        if (payResult.rows[0]?.avg_total) {
+          avgPay = {
+            avg_total: Math.round(parseFloat(payResult.rows[0].avg_total)),
+            total_days: parseInt(payResult.rows[0].total_days) || 0
+          };
+        }
+      } catch (_) {}
+
+      // ─── Собрать контекст для AI ───
+      let context = 'ДАННЫЕ О СОТРУДНИКЕ:\n';
+      context += 'ФИО: ' + (emp.fio || emp.full_name || '—') + '\n';
+      context += 'Должность: ' + (emp.position || emp.role_tag || '—') + '\n';
+      context += 'Разряд: ' + (emp.grade || '—') + '\n';
+      context += 'Бригада: ' + (emp.brigade || '—') + '\n';
+      context += 'Квалификация: ' + (emp.qualification_name || '—') + ' ' + (emp.qualification_grade || '') + '\n';
+      context += 'Город: ' + (emp.city || '—') + '\n';
+      context += 'В компании с: ' + (emp.hire_date || emp.employment_date || '—') + '\n';
+      context += 'Активен: ' + (emp.is_active ? 'Да' : 'Уволен') + '\n';
+      context += 'Контракт: ' + (emp.contract_type || 'labor') + '\n';
+      context += 'Дневная ставка: ' + (emp.day_rate || '—') + ' ₽\n';
+      context += 'Рейтинг: ' + (emp.rating_avg || '—') + '/10 (' + (emp.rating_count || 0) + ' отзывов)\n';
+
+      // Допуски
+      context += '\nДОПУСКИ:\n';
+      if (emp.naks) context += 'НАКС: ' + emp.naks + ' (удостоверение ' + (emp.naks_number || '—') + ', до ' + (emp.naks_expiry || '—') + ')\n';
+      if (emp.imt_number) context += 'ИМТ: ' + emp.imt_number + ' (до ' + (emp.imt_expires || '—') + ')\n';
+      if (emp.fsb_pass) context += 'ФСБ-допуск: ' + emp.fsb_pass + '\n';
+      if (permits.length > 0) context += 'Допуски: ' + permits.join(', ') + '\n';
+      if (emp.skills && emp.skills.length) context += 'Навыки: ' + emp.skills.join(', ') + '\n';
+
+      // Анкета-характеристика
+      if (profile && profile.data) {
+        context += '\nАНКЕТА-ХАРАКТЕРИСТИКА (от РП):\n';
+        try {
+          const pData = typeof profile.data === 'string' ? JSON.parse(profile.data) : profile.data;
+          for (const [key, val] of Object.entries(pData)) {
+            if (val && typeof val === 'object' && val.value) {
+              context += key + ': ' + val.value;
+              if (val.comment) context += ' (комментарий: ' + val.comment + ')';
+              context += '\n';
+            } else if (val && typeof val !== 'object') {
+              context += key + ': ' + val + '\n';
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Отзывы
+      if (reviews.rows.length > 0) {
+        context += '\nОТЗЫВЫ РП (' + reviews.rows.length + ' шт.):\n';
+        reviews.rows.forEach((r, i) => {
+          const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : '';
+          context += (i + 1) + '. Оценка ' + r.rating + '/10';
+          if (r.work_title) context += ' (работа: ' + r.work_title + ')';
+          if (r.reviewer_name) context += ' от ' + r.reviewer_name;
+          if (date) context += ' [' + date + ']';
+          if (r.comment) context += ': ' + r.comment;
+          context += '\n';
+        });
+      }
+
+      // История работ
+      if (assigns.rows.length > 0) {
+        context += '\nИСТОРИЯ РАБОТ (' + assigns.rows.length + ' назначений):\n';
+        assigns.rows.forEach(a => {
+          const from = a.date_from ? new Date(a.date_from).toLocaleDateString('ru-RU') : '?';
+          const to = a.date_to ? new Date(a.date_to).toLocaleDateString('ru-RU') : 'по н.в.';
+          context += '• ' + from + '–' + to + ': ' + (a.work_title || '—') + ' (' + (a.customer_name || '—') + ', ' + (a.city || '—') + ') роль: ' + (a.role || '—') + '\n';
+        });
+      }
+
+      // Зарплата
+      if (avgPay) {
+        context += '\nЗАРПЛАТА:\n';
+        context += 'Средний доход: ~' + avgPay.avg_total.toLocaleString('ru-RU') + ' ₽/месяц\n';
+        context += 'Всего отработано: ' + avgPay.total_days + ' дней\n';
+      }
+
+      // ─── Генерация через AI ───
+      const aiResult = await aiProvider.complete({
+        system: `Ты — HR-аналитик ООО «Асгард Сервис» (промышленный сервис: химическая очистка, гидрочистка, HVAC на НПЗ и нефтегазовых объектах).
+
+Составь КРАТКУЮ (5-8 предложений) деловую характеристику сотрудника.
+
+Структура:
+1. Кто: ФИО, должность, стаж в компании (1 предложение)
+2. Опыт: на каких объектах/заказчиках работал, основные роли (1-2 предложения)
+3. Качества: на основе анкеты и отзывов РП — сильные стороны и зоны роста (2-3 предложения)
+4. Рекомендация: на какие задачи/проекты рекомендуется (1 предложение)
+
+Правила:
+- Пиши по-деловому, без воды, конкретно
+- Если данных мало — пиши что есть, не додумывай
+- Если рейтинг низкий или есть проблемы — упомяни корректно
+- Используй факты из данных, не общие фразы
+- НЕ используй маркдаун, только текст`,
+        messages: [{ role: 'user', content: context }],
+        maxTokens: 800,
+        temperature: 0.4
+      });
+
+      const summary = (aiResult.text || '').trim();
+
+      return {
+        success: true,
+        employee_id: employee_id,
+        fio: emp.fio || emp.full_name,
+        summary: summary,
+        data_sources: {
+          has_profile: !!profile,
+          reviews_count: reviews.rows.length,
+          assignments_count: assigns.rows.length,
+          has_payroll: !!avgPay
+        }
+      };
+
+    } catch (error) {
+      fastify.log.error('Employee summary error:', error.message);
+      return reply.code(500).send({ success: false, message: 'Ошибка генерации: ' + error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // БЛОК 5: АДМИН-ПАНЕЛЬ AI
   // ═══════════════════════════════════════════════════════════════════════════
 
