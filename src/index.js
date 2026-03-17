@@ -349,6 +349,7 @@ fastify.register(require("./routes/site_inspections"), { prefix: "/api/site-insp
 fastify.register(require("./routes/telephony"), { prefix: "/api/telephony" });
 fastify.register(require("./routes/approval"), { prefix: "/api/approval" });
 fastify.register(require('./routes/stories'), { prefix: '/api/stories' });
+fastify.register(require('./routes/worker_profiles'), { prefix: '/api/worker-profiles' });
 
 // ── Telephony Job Queue & Escalation ──
 try {

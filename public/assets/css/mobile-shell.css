@@ -287,3 +287,114 @@
   50%  { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(198,40,40,0); }
   100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(198,40,40,0); }
 }
+
+/* ═══════════════════════════════════════════════
+   Worker Profile — Анкета-характеристика
+   ═══════════════════════════════════════════════ */
+
+/* Hero */
+.asgard-wp-hero {
+  position: relative;
+  overflow: hidden;
+}
+.asgard-wp-hero::after {
+  content: 'ᚨ';
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  font-size: 72px;
+  opacity: 0.05;
+  color: #fff;
+  font-family: serif;
+  pointer-events: none;
+}
+
+/* Pills */
+.asgard-wp-pill {
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.asgard-wp-pill:active {
+  transform: scale(0.95) !important;
+}
+.asgard-wp-pill.selected { border-color: transparent; }
+.asgard-wp-pill.selected.c-danger  { background: #ff4444; color: #fff; }
+.asgard-wp-pill.selected.c-warning { background: #ff8c00; color: #fff; }
+.asgard-wp-pill.selected.c-neutral { background: #888;    color: #fff; }
+.asgard-wp-pill.selected.c-success { background: #51cf66; color: #fff; }
+.asgard-wp-pill.selected.c-gold    { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #000; }
+
+/* Score circles */
+.asgard-wp-score {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.asgard-wp-score.selected {
+  transform: scale(1.15);
+}
+
+/* Accordion sections */
+.asgard-wp-section-body {
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+/* Chevron */
+.asgard-wp-chevron {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+/* Important marker */
+.asgard-wp-important {
+  position: relative;
+}
+.asgard-wp-important::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #ff4444;
+  border-radius: 2px;
+}
+
+/* Progress bar */
+.asgard-wp-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.15);
+  overflow: hidden;
+}
+.asgard-wp-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #51cf66;
+  transition: width 0.5s ease;
+}
+
+/* Comment expandable */
+.asgard-wp-comment {
+  transition: height 0.2s ease;
+}
+
+/* List card */
+.asgard-wp-list-card {
+  transition: background 0.15s ease;
+}
+.asgard-wp-list-card:active {
+  background: var(--bg2, rgba(255,255,255,0.05)) !important;
+}
+
+/* Score ring animation */
+@keyframes asgard-wp-ring {
+  from { stroke-dashoffset: var(--wp-ring-full); }
+  to   { stroke-dashoffset: var(--wp-ring-target); }
+}
+
+/* FadeUp for empty state */
+@keyframes asgard-wp-fadeup {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

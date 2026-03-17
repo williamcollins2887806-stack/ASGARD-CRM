@@ -81,11 +81,12 @@ var PersonnelPage = {
       header.appendChild(hInfo);
       content.appendChild(header);
       content.appendChild(M.DetailFields({ fields: fields }));
+      var btns = el('div', { style: { display: 'flex', gap: '8px', marginTop: '16px' } });
       if (emp.phone) {
-        var btns = el('div', { style: { display: 'flex', gap: '8px', marginTop: '16px' } });
         btns.appendChild(M.FullWidthBtn({ label: '📞 Позвонить', variant: 'secondary', onClick: function () { window.location.href = 'tel:' + emp.phone; } }));
-        content.appendChild(btns);
       }
+      btns.appendChild(M.FullWidthBtn({ label: '📋 Анкета', variant: 'secondary', onClick: function () { Router.navigate('/worker-profile/' + emp.id); } }));
+      content.appendChild(btns);
       M.BottomSheet({ title: emp.fio || 'Сотрудник', content: content, fullscreen: true });
     }
     return page;

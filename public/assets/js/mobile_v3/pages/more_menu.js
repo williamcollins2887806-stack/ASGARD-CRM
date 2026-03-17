@@ -17,6 +17,7 @@ var MoreMenuPage = {
       { icon: '🏗', label: 'Работы', path: '/all-works' },
       { icon: '📦', label: 'Склад', path: '/warehouse' },
       { icon: '👔', label: 'Сотрудники', path: '/personnel' },
+      { icon: '📋', label: 'Анкеты рабочих', path: '/worker-profiles' },
       { icon: '💰', label: 'Заявки на аванс', path: '/cash' },
       { icon: '📄', label: 'Документы', path: '/contracts' },
       { icon: '🔔', label: 'Уведомления', path: '/alerts' },
