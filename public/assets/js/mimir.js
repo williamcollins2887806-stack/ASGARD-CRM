@@ -40,7 +40,7 @@ window.AsgardMimir = (function(){
 
   const styles = `
     <style id="mimir-styles">
-      .mimir-widget { position:fixed; bottom:24px; left:24px; z-index:500; font-family:var(--font-main, -apple-system, sans-serif); }
+      .mimir-widget { position:fixed; bottom:24px; right:24px; z-index:500; font-family:var(--font-main, -apple-system, sans-serif); }
 
       .mimir-toggle {
         width:56px; height:56px; border-radius:50%;
@@ -69,7 +69,7 @@ window.AsgardMimir = (function(){
       }
 
       .mimir-panel {
-        position:absolute; bottom:72px; left:0;
+        position:absolute; bottom:72px; right:0;
         width:480px; max-width:calc(100vw - 48px);
         height:620px; max-height:calc(100vh - 140px);
         background:linear-gradient(180deg, var(--bg2, #151922) 0%, #0d1428 100%);
