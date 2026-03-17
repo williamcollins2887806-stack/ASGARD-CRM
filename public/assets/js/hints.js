@@ -172,7 +172,7 @@ window.AsgardHints = (function() {
       'border:1px solid rgba(192,57,43,0.2);' +
       'border-radius:12px;' +
       'overflow:hidden;' +
-      'margin-bottom:16px;' +
+      'margin:16px 32px 0;' +
       'box-shadow:0 4px 20px rgba(0,0,0,0.3),0 0 0 1px rgba(245,215,142,0.05)';
 
     // ── Шапка ──
@@ -320,18 +320,11 @@ window.AsgardHints = (function() {
 
     bar.appendChild(cardsWrap);
 
-    // ── Вставка в DOM ──
-    var target = document.querySelector('[id$="-page"]') ||
-                 document.querySelector('#app-content') ||
-                 document.querySelector('.page-content');
-    if (target) {
-      // Вставляем после первого заголовка (h2/h3) или в начало
-      var heading = target.querySelector('h2, h3');
-      if (heading && heading.parentNode === target) {
-        target.insertBefore(bar, heading.nextSibling);
-      } else {
-        target.prepend(bar);
-      }
+    // ── Вставка в DOM: между topbar и #layout (вне контента страницы) ──
+    var main = document.querySelector('main.main');
+    var layoutDiv = document.getElementById('layout');
+    if (main && layoutDiv) {
+      main.insertBefore(bar, layoutDiv);
     }
     currentBar = bar;
 

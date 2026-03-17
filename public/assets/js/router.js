@@ -70,22 +70,20 @@ window.AsgardRouter=(function(){
   function start(){
     window.addEventListener("hashchange", render);
 
-    // Подсказки Мимира после навигации
-    window.addEventListener("hashchange", function() {
-      setTimeout(function() {
-        if (!window.AsgardHints) return;
-        var hash = (location.hash || '').replace('#/', '');
-        var parts = hash.split('?');
-        var page = parts[0] || 'dashboard';
-        var params = {};
-        if (parts[1]) {
-          parts[1].split('&').forEach(function(kv) {
-            var s = kv.split('=');
-            if (s[0] && s[1]) params[s[0]] = decodeURIComponent(s[1]);
-          });
-        }
-        AsgardHints.load(page, params);
-      }, 400);
+    // Подсказки Мимира — загружаем когда layout готов (событие из app.js layout())
+    window.addEventListener("asgard:layout-ready", function() {
+      if (!window.AsgardHints) return;
+      var hash = (location.hash || '').replace('#/', '');
+      var parts = hash.split('?');
+      var page = parts[0] || 'dashboard';
+      var params = {};
+      if (parts[1]) {
+        parts[1].split('&').forEach(function(kv) {
+          var s = kv.split('=');
+          if (s[0] && s[1]) params[s[0]] = decodeURIComponent(s[1]);
+        });
+      }
+      AsgardHints.load(page, params);
     });
 
     render();

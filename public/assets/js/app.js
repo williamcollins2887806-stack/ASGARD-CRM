@@ -1028,6 +1028,9 @@ try{
     if(window.AsgardAssistant && auth){
       AsgardAssistant.init();
     }
+
+    // Сигнал для подсказок Мимира: лейаут готов
+    window.dispatchEvent(new CustomEvent('asgard:layout-ready'));
   }
 
   async function pageWelcome(){
