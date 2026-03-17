@@ -52,17 +52,21 @@ async function routes(fastify, options) {
     const userId = parseInt(request.params.userId, 10);
     if (!userId) return reply.code(400).send({ error: 'Неверный userId' });
 
-    const { data, filled_count, total_count, overall_score, photo_url } = request.body || {};
+    const { data, filled_count, total_count, overall_score } = request.body || {};
+    const photo_url = request.body && request.body.hasOwnProperty('photo_url') ? request.body.photo_url : undefined;
+
+    // Если photo_url передан явно (даже null) — перезаписываем; если не передан — оставляем старое
+    const hasPhoto = request.body && request.body.hasOwnProperty('photo_url');
 
     const { rows } = await db.query(`
       INSERT INTO worker_profiles (user_id, data, filled_count, total_count, overall_score, photo_url, created_by, updated_by)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
       ON CONFLICT (user_id) DO UPDATE SET
-        data = COALESCE($2, worker_profiles.data),
-        filled_count = COALESCE($3, worker_profiles.filled_count),
-        total_count = COALESCE($4, worker_profiles.total_count),
-        overall_score = COALESCE($5, worker_profiles.overall_score),
-        photo_url = COALESCE($6, worker_profiles.photo_url),
+        data = $2,
+        filled_count = $3,
+        total_count = $4,
+        overall_score = $5,
+        photo_url = ${hasPhoto ? '$6' : 'worker_profiles.photo_url'},
         updated_by = $7,
         updated_at = NOW()
       RETURNING *

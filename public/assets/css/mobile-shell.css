@@ -297,17 +297,6 @@
   position: relative;
   overflow: hidden;
 }
-.asgard-wp-hero::after {
-  content: 'ᚨ';
-  position: absolute;
-  right: 16px;
-  top: 16px;
-  font-size: 72px;
-  opacity: 0.05;
-  color: #fff;
-  font-family: serif;
-  pointer-events: none;
-}
 
 /* Pills */
 .asgard-wp-pill {

@@ -190,8 +190,10 @@ var WorkerProfilePage = {
     var editMode = false;
     var editData = {};
     var originalJson = '';
+    var originalPhotoUrl = null;
     var photoUrl = null;
     var photoFile = null; // pending upload
+    var blobUrls = []; // track for revokeObjectURL
 
     API.fetch('/worker-profiles/' + userId).then(function (resp) {
       profile = resp.profile;
@@ -218,6 +220,19 @@ var WorkerProfilePage = {
       hdr.appendChild(backBtn);
       if (rightEl) hdr.appendChild(rightEl);
       return hdr;
+    }
+
+    /* ── fade transition ── */
+    function fadeTransition(renderFn) {
+      page.style.transition = 'opacity 0.2s ease';
+      page.style.opacity = '0';
+      setTimeout(function () {
+        /* cleanup blob URLs */
+        blobUrls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} });
+        blobUrls = [];
+        renderFn();
+        page.style.opacity = '1';
+      }, 200);
     }
 
     /* ── VIEW MODE ── */
@@ -290,15 +305,16 @@ var WorkerProfilePage = {
       var row1 = el('div', { style: { display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px', position: 'relative', zIndex: '1' } });
       var avatarUrl = photoUrl || (profile && profile.photo_url) || (userData && userData.avatar_url);
       var avatarName = userData ? userData.name : '';
+      var heroAvaSize = avatarUrl ? 80 : 56;
       if (avatarUrl) {
         var ava = el('div', { style: {
-          width: '56px', height: '56px', borderRadius: '50%', flexShrink: '0',
+          width: heroAvaSize + 'px', height: heroAvaSize + 'px', borderRadius: '50%', flexShrink: '0',
           backgroundImage: 'url(' + avatarUrl + ')', backgroundSize: 'cover', backgroundPosition: 'center',
           border: '2px solid rgba(255,255,255,0.3)'
         } });
         row1.appendChild(ava);
       } else {
-        row1.appendChild(M.Avatar({ name: avatarName || '?', size: 56 }));
+        row1.appendChild(M.Avatar({ name: avatarName || '?', size: heroAvaSize }));
       }
       var nameBlock = el('div', { style: { flex: '1' } });
       nameBlock.appendChild(el('div', { style: Object.assign({}, DS.font('lg'), { color: '#fff', fontWeight: '800' }) }, avatarName || 'Сотрудник'));
@@ -470,13 +486,15 @@ var WorkerProfilePage = {
       wrapper.appendChild(header);
       wrapper.appendChild(body);
 
-      /* toggle */
+      /* toggle + touch feedback */
       var isOpen = !!openByDefault;
       header.addEventListener('click', function () {
         isOpen = !isOpen;
         chevron.style.transform = isOpen ? 'rotate(90deg)' : 'rotate(0deg)';
         body.style.maxHeight = isOpen ? '2000px' : '0px';
       });
+      header.addEventListener('touchstart', function () { header.style.background = t.surfaceAlt; }, { passive: true });
+      header.addEventListener('touchend', function () { header.style.background = 'transparent'; }, { passive: true });
 
       return wrapper;
     }
@@ -546,7 +564,15 @@ var WorkerProfilePage = {
       } else if (field.type === 'score') {
         var val = data[field.id];
         if (val > 0) {
-          /* shown in hero */
+          var scoreOpt = field.options ? field.options.find(function (o) { return o.value === val; }) : null;
+          var sc = scoreOpt ? (WP_COLORS[scoreOpt.color] || WP_COLORS.neutral) : WP_COLORS.neutral;
+          var scoreLine = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } });
+          scoreLine.appendChild(el('span', { style: Object.assign({}, DS.font('sm'), { color: t.text }) }, field.label));
+          scoreLine.appendChild(el('span', { style: {
+            padding: '3px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: '700',
+            background: sc.bg, color: sc.text || t.textSec
+          } }, val + '/5 — ' + (SCORE_LABELS[val] || '')));
+          row.appendChild(scoreLine);
         } else {
           row.appendChild(el('div', { style: Object.assign({}, DS.font('sm'), { color: t.textTer, fontStyle: 'italic' }) }, 'Оценка не выставлена'));
         }
@@ -582,7 +608,8 @@ var WorkerProfilePage = {
       photoUrl = profile ? profile.photo_url : null;
       photoFile = null;
       originalJson = JSON.stringify(editData);
-      renderEdit();
+      originalPhotoUrl = photoUrl;
+      fadeTransition(renderEdit);
     }
 
     function renderEdit() {
@@ -610,7 +637,7 @@ var WorkerProfilePage = {
         padding: '12px 16px', paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
         background: t.bg, borderTop: '1px solid ' + t.border, zIndex: '50'
       } });
-      var saveBtn = el('div', { id: 'wp-save-btn', style: {
+      var saveBtn = el('div', { style: {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         height: '52px', borderRadius: '14px', cursor: 'pointer',
         background: 'var(--hero-grad, linear-gradient(135deg, #1e3a5f, #0d1428))',
@@ -632,7 +659,7 @@ var WorkerProfilePage = {
       var wrap = el('div', { style: { display: 'flex', justifyContent: 'center', padding: '16px 0 8px', position: 'relative' } });
       var container = el('div', { style: { position: 'relative', width: '100px', height: '100px' } });
 
-      var currentUrl = photoFile ? URL.createObjectURL(photoFile) : photoUrl;
+      var currentUrl = photoFile ? (function () { var u = URL.createObjectURL(photoFile); blobUrls.push(u); return u; })() : photoUrl;
       var avaEl;
       if (currentUrl) {
         avaEl = el('div', { style: {
@@ -664,8 +691,9 @@ var WorkerProfilePage = {
       fileInput.addEventListener('change', function () {
         if (fileInput.files && fileInput.files[0]) {
           photoFile = fileInput.files[0];
-          /* preview */
+          /* preview — revoke old blob if any */
           var previewUrl = URL.createObjectURL(photoFile);
+          blobUrls.push(previewUrl);
           avaEl.style.backgroundImage = 'url(' + previewUrl + ')';
           avaEl.style.backgroundSize = 'cover';
           avaEl.style.backgroundPosition = 'center';
@@ -786,27 +814,29 @@ var WorkerProfilePage = {
       }
     }
 
-    /* ── COMMENT INPUT ── */
+    /* ── COMMENT INPUT (textarea, expandable) ── */
     function renderCommentInput(field) {
-      var wrap = el('div', { style: { marginTop: '6px' } });
+      var wrap = el('div', { className: 'asgard-wp-comment', style: { marginTop: '6px' } });
       var val = editData[field.id + '_comment'] || '';
-      var input = el('input', { type: 'text', placeholder: '💬 Комментарий...', value: val, style: {
-        height: '32px', padding: '4px 12px', fontSize: '13px',
+      var ta = el('textarea', { placeholder: '💬 Комментарий...', rows: '1', style: {
+        height: '32px', padding: '6px 12px', fontSize: '13px',
         border: '1px solid ' + t.border, borderRadius: '10px',
         background: t.surfaceAlt, color: t.text, width: '100%', outline: 'none',
-        transition: 'height 0.2s ease', minHeight: '32px'
+        transition: 'height 0.2s ease', resize: 'none', overflow: 'hidden',
+        lineHeight: '20px', boxSizing: 'border-box'
       } });
-      input.addEventListener('focus', function () {
-        /* expand to textarea-like */
-        input.style.height = '52px';
+      ta.value = val;
+      ta.addEventListener('focus', function () {
+        ta.style.height = '52px';
+        ta.rows = 2;
       });
-      input.addEventListener('blur', function () {
-        if (!input.value) input.style.height = '32px';
+      ta.addEventListener('blur', function () {
+        if (!ta.value) { ta.style.height = '32px'; ta.rows = 1; }
       });
-      input.addEventListener('input', function () {
-        editData[field.id + '_comment'] = input.value;
+      ta.addEventListener('input', function () {
+        editData[field.id + '_comment'] = ta.value;
       });
-      wrap.appendChild(input);
+      wrap.appendChild(ta);
       return wrap;
     }
 
@@ -953,7 +983,7 @@ var WorkerProfilePage = {
           body: fd
         }).then(function (r) { return r.json(); }).then(function (res) {
           if (res.download_url) photoUrl = res.download_url;
-        }).catch(function () { /* ignore photo upload failure */ });
+        }).catch(function () { M.Toast({ message: '⚠️ Фото не загрузилось', type: 'warning' }); });
       } else {
         photoPromise = Promise.resolve();
       }
@@ -974,7 +1004,7 @@ var WorkerProfilePage = {
         editMode = false;
         photoFile = null;
         M.Toast({ message: '✅ Анкета сохранена', type: 'success' });
-        renderView();
+        fadeTransition(renderView);
       }).catch(function (err) {
         M.Toast({ message: 'Ошибка сохранения', type: 'error' });
       });
@@ -983,13 +1013,14 @@ var WorkerProfilePage = {
     /* ── CANCEL ── */
     function cancelEdit() {
       var currentJson = JSON.stringify(editData);
-      if (currentJson !== originalJson) {
+      var isDirty = currentJson !== originalJson || photoFile !== null;
+      if (isDirty) {
         M.Confirm({ title: 'Отменить?', message: 'Несохранённые изменения будут потеряны', okText: 'Да', cancelText: 'Нет', danger: true }).then(function (ok) {
-          if (ok) { editMode = false; renderView(); }
+          if (ok) { editMode = false; fadeTransition(renderView); }
         });
       } else {
         editMode = false;
-        renderView();
+        fadeTransition(renderView);
       }
     }
 
@@ -1098,7 +1129,7 @@ var WorkerProfilesPage = {
           display: 'flex', alignItems: 'center', gap: '12px',
           padding: '12px 14px', background: t.surface, borderRadius: '14px',
           border: '1px solid ' + t.border, cursor: 'pointer',
-          animation: 'asgard-fade-in 0.3s ease ' + (idx * 0.04) + 's both'
+          animation: 'asgard-fade-in 0.3s ease ' + (Math.min(idx * 0.04, 0.6)) + 's both'
         } });
 
         /* Avatar 44px */
