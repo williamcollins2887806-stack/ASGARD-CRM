@@ -1,7 +1,7 @@
 'use strict';
 
 const DEFAULT_START_NUMBER = 1;
-const OUTGOING_PREFIX = 'АС-ИСХ';
+const OUTGOING_PREFIX = '';
 const OUTGOING_START_SETTING_KEY = 'correspondence_outgoing_start_number';
 
 function createHttpError(statusCode, message) {
@@ -20,7 +20,8 @@ function normalizeDateParts(input) {
     if (match) {
       return {
         date: `${match[1]}-${match[2]}-${match[3]}`,
-        period: `${match[1]}-${match[2]}`
+        period: match[1],
+        month: match[2]
       };
     }
   }
@@ -28,7 +29,8 @@ function normalizeDateParts(input) {
   if (input instanceof Date && !Number.isNaN(input.getTime())) {
     return {
       date: `${input.getFullYear()}-${pad(input.getMonth() + 1)}-${pad(input.getDate())}`,
-      period: `${input.getFullYear()}-${pad(input.getMonth() + 1)}`
+      period: String(input.getFullYear()),
+      month: pad(input.getMonth() + 1)
     };
   }
 
@@ -87,8 +89,8 @@ async function getConfiguredStartNumber(client) {
   return parseStartNumber(result.rows[0]?.value_json);
 }
 
-function formatOutgoingNumber(periodKey, sequenceNumber) {
-  return `${OUTGOING_PREFIX}-${periodKey}-${Number(sequenceNumber)}`;
+function formatOutgoingNumber(periodKey, month, sequenceNumber) {
+  return `${periodKey}-${month}-${Number(sequenceNumber)}`;
 }
 
 async function ensureCounterRow(client, periodKey, startNumber) {
@@ -114,7 +116,7 @@ async function getNextOutgoingNumberPreview(queryable, options = {}) {
   const nextNumber = Math.max(lastNumber + 1, startNumber);
 
   return {
-    number: formatOutgoingNumber(normalizedDate.period, nextNumber),
+    number: formatOutgoingNumber(normalizedDate.period, normalizedDate.month, nextNumber),
     period: normalizedDate.period,
     sequence: nextNumber,
     start_number: startNumber,
@@ -147,7 +149,7 @@ async function allocateOutgoingNumber(client, options = {}) {
   );
 
   return {
-    number: formatOutgoingNumber(normalizedDate.period, nextNumber),
+    number: formatOutgoingNumber(normalizedDate.period, normalizedDate.month, nextNumber),
     period: normalizedDate.period,
     sequence: nextNumber,
     start_number: startNumber,

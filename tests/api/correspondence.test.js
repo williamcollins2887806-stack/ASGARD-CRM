@@ -47,7 +47,7 @@ module.exports = {
       }
     },
     {
-      name: 'CORR-4: Send email → correspondence.number has АС-ИСХ format',
+      name: 'CORR-4: Send email → correspondence.number has YYYY-MM-N format',
       run: async () => {
         if (!smtpConfigured) skip('SMTP not configured');
         const resp = await api('POST', '/api/mailbox/send', {

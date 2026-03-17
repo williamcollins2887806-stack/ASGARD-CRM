@@ -37,7 +37,7 @@ module.exports = {
       }
     },
     {
-      name: 'SMTP-2: Outgoing number format АС-ИСХ-YYYY-NNNNNN',
+      name: 'SMTP-2: Outgoing number format YYYY-MM-N',
       run: async () => {
         if (!smtpConfigured) skip('SMTP not configured');
         const resp = await api('GET', '/api/mailbox/next-outgoing-number', { role: 'ADMIN' });

@@ -183,7 +183,7 @@ window.AsgardSettingsPage = (function(){
 
           <div class="card">
             <h3>📬 Корреспонденция</h3>
-            <div class="help">Настройки автонумерации исходящих документов. Формат: АС-ИСХ-ГГГГ-NNNNNN</div>
+            <div class="help">Настройки автонумерации исходящих документов. Формат: ГГГГ-ММ-№</div>
             <div class="formrow" style="grid-template-columns:repeat(2,1fr)">
               <div>
                 <label for="corr_start_num">Стартовый номер (для нового года)</label>
@@ -193,7 +193,7 @@ window.AsgardSettingsPage = (function(){
               <div>
                 <label>Пример следующего номера</label>
                 <div style="padding:10px;background:rgba(212,175,55,.15);border-radius:6px;font-family:monospace;color:var(--gold);font-weight:600">
-                  АС-ИСХ-${new Date().getFullYear()}-${String(app.correspondence_start_number ?? 1).padStart(6,'0')}
+                  ${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${app.correspondence_start_number ?? 1}
                 </div>
               </div>
             </div>
