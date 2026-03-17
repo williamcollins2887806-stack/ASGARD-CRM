@@ -142,6 +142,7 @@ window.AsgardEmployeePage=(function(){
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
             <button class="btn ghost" id="btnSchedule">График</button>
+            <button class="btn ghost" id="btnProfile">\uD83D\uDCCB Анкета</button>
             ${canEdit ? `<button class="btn" id="btnSave">Сохранить</button>` : ``}
             ${(user.role==="PM" || user.role==="ADMIN" || isDirRole(user.role)) ? `<button class="btn red" id="btnReview">Оценить</button>` : ``}
           </div>
@@ -569,6 +570,11 @@ window.AsgardEmployeePage=(function(){
     }
 
     $("#btnSchedule").onclick=()=>{ location.hash=`#/workers-schedule?emp=${id}`; };
+
+    const btnProfile = document.getElementById("btnProfile");
+    if(btnProfile){
+      btnProfile.onclick=()=>{ if(window.WorkerProfileDesktop) WorkerProfileDesktop.open(id); else toast("Ошибка","Модуль анкет не загружен","err"); };
+    }
 
     // Добавление комментария
     const btnAddComment = document.getElementById("btnAddComment");
