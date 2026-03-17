@@ -1323,11 +1323,5 @@ if (typeof window !== 'undefined') {
   window.App = App;
 }
 
-// Auto-initialization on DOM ready
-if (typeof document !== 'undefined') {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => App.init());
-  } else {
-    App.init();
-  }
-}
+// Auto-initialization: всегда ждём DOMContentLoaded — defer-скрипты выполняются до него
+document.addEventListener('DOMContentLoaded', () => App.init());
