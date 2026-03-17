@@ -7,7 +7,7 @@ var MimirPage = {
   render: function() {
     var el = Utils.el;
     var t = DS.t;
-    var page = el('div', { className: 'asgard-mimir-page', style: { display: 'flex', flexDirection: 'column', height: '100vh', background: t.bg } });
+    var page = el('div', { className: 'asgard-mimir-page', style: { display: 'flex', flexDirection: 'column', height: 'calc(var(--vh, 1vh) * 100)', background: t.bg } });
     var _convId = null;
     var _sending = false;
     var _started = false; // true после первого сообщения пользователя

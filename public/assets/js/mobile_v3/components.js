@@ -861,6 +861,11 @@ const M = (() => {
     document.body.appendChild(overlay);
     document.body.appendChild(sheet);
 
+    // Lifecycle: зарегистрировать в стеке открытых модалок
+    if (typeof _asgardOpenModals !== 'undefined') {
+      _asgardOpenModals.push(overlay, sheet);
+    }
+
     function close() {
       sheet.style.transition = 'transform 0.3s ease';
       sheet.style.transform = 'translateY(100%)';
@@ -870,6 +875,10 @@ const M = (() => {
         overlay.remove();
         sheet.remove();
         Utils.unlockScroll();
+        // Lifecycle: убрать из стека
+        if (typeof _asgardOpenModals !== 'undefined') {
+          _asgardOpenModals = _asgardOpenModals.filter(function(el) { return el !== overlay && el !== sheet; });
+        }
         if (onClose) onClose();
       }, 300);
     }
@@ -1427,6 +1436,9 @@ const M = (() => {
       style: { padding: '0 var(--sp-page)', maxWidth: '100%', overflow: 'hidden' },
       onSubmit: (e) => {
         e.preventDefault();
+        // Двойной тап защита
+        var submitBtn = form.querySelector('[type="submit"], button:last-of-type');
+        if (submitBtn && submitBtn._busy) return;
         const data = {};
         let valid = true;
         fields.forEach(f => {
@@ -1439,7 +1451,20 @@ const M = (() => {
           }
           data[f.id] = val;
         });
-        if (valid && onSubmit) onSubmit(data);
+        if (valid && onSubmit) {
+          if (submitBtn) {
+            submitBtn._busy = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.style.pointerEvents = 'none';
+          }
+          Promise.resolve(onSubmit(data)).finally(function() {
+            if (submitBtn) {
+              submitBtn._busy = false;
+              submitBtn.style.opacity = '1';
+              submitBtn.style.pointerEvents = 'auto';
+            }
+          });
+        }
       },
     });
 

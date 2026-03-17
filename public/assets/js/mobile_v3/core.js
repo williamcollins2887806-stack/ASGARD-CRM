@@ -4,6 +4,9 @@
  * Router, Layout, State, API, Gestures, Utils
  */
 
+/* ── Lifecycle: стек открытых модалок (shared с components.js BottomSheet) ── */
+var _asgardOpenModals = [];
+
 /* ============================================================
    1. ROUTER — Hash-based SPA навигация
    ============================================================ */
@@ -14,6 +17,24 @@ const Router = (() => {
   let historyIndex = -1;
   let currentRoute = null;
   let transitioning = false;
+  var _pageCleanups = [];
+
+  /** Зарегистрировать cleanup-функцию текущей страницы (вызывается при навигации) */
+  function onLeave(fn) {
+    if (typeof fn === 'function') _pageCleanups.push(fn);
+  }
+
+  /** Выполнить все cleanup при смене страницы */
+  function _runCleanups() {
+    _pageCleanups.forEach(function(fn) { try { fn(); } catch(e) {} });
+    _pageCleanups = [];
+    // Закрыть все открытые модалки
+    _asgardOpenModals.forEach(function(el) { try { el.remove(); } catch(e) {} });
+    _asgardOpenModals = [];
+    if (typeof Utils !== 'undefined' && typeof Utils.unlockScroll === 'function') Utils.unlockScroll();
+    // Закрыть клавиатуру
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  }
 
   function register(path, loader) {
     // loader can be: a function (lazy import), or an object with render()
@@ -110,6 +131,9 @@ const Router = (() => {
   async function handleRoute() {
     if (transitioning) return;
     transitioning = true;
+
+    // Lifecycle: cleanup предыдущей страницы
+    _runCleanups();
 
     const { path, params } = parseHash(window.location.hash);
     const found = findRoute(path);
@@ -222,7 +246,7 @@ const Router = (() => {
     return !!findRoute(path);
   }
 
-  return { register, addGuard, navigate, back, forward, init, current, parseHash, has };
+  return { register, addGuard, navigate, back, forward, init, current, parseHash, has, onLeave };
 })();
 
 
@@ -1172,6 +1196,26 @@ const App = (() => {
     // Inject design system styles
     if (typeof DS !== 'undefined' && DS.injectStyles) {
       DS.injectStyles();
+    }
+
+    // Safari 100vh fix: --vh CSS custom property
+    function _setVH() {
+      document.documentElement.style.setProperty('--vh', window.innerHeight * 0.01 + 'px');
+    }
+    _setVH();
+    window.addEventListener('resize', _setVH);
+
+    // Подхватить системную тему при загрузке (если пользователь не выбрал вручную)
+    if (typeof DS !== 'undefined' && DS.setTheme) {
+      if (!localStorage.getItem('asgard_theme')) {
+        var _prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        DS.setTheme(_prefersDark ? 'dark' : 'light');
+      }
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+        if (!localStorage.getItem('asgard_theme')) {
+          DS.setTheme(e.matches ? 'dark' : 'light');
+        }
+      });
     }
 
     // Create layout (replaces body contents — desktop app.js won't run after this)

@@ -22,6 +22,7 @@ var MoreMenuPage = {
       { icon: '🔔', label: 'Уведомления', path: '/alerts' },
       { icon: '📊', label: 'Расчёты', path: '/all-estimates' },
       { icon: '📧', label: 'Почта', path: '/my-mail' },
+      { icon: '📊', label: 'Диаграмма Ганта', path: '/gantt' },
       { icon: '📝', label: 'Совещания', path: '/meetings' },
       { icon: '🔧', label: 'Профиль', path: '/profile' },
       { icon: '🌓', label: (DS.getTheme && DS.getTheme() === 'dark') ? 'Тема: Тёмная' : 'Тема: Светлая', action: function () {

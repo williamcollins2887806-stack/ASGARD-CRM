@@ -46,8 +46,10 @@ const MeetingsPage = {
       listWrap.replaceChildren();
       const now = Date.now();
       const filtered = items.filter(m => {
-        if (filter === 'upcoming') return new Date(m.date || m.start_date) > now;
-        if (filter === 'past') return new Date(m.date || m.start_date) <= now;
+        var d = m.date || m.start_date;
+        if (!d) return filter === 'all';
+        if (filter === 'upcoming') return new Date(d) > now;
+        if (filter === 'past') return new Date(d) <= now;
         return true;
       });
 
@@ -58,13 +60,13 @@ const MeetingsPage = {
 
       const wrap = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 var(--sp-page)' } });
       filtered.forEach((meet, i) => {
-        const isPast = new Date(meet.date || meet.start_date) <= now;
+        const isPast = (meet.date || meet.start_date) ? new Date(meet.date || meet.start_date) <= now : false;
         wrap.appendChild(M.Card({
           title: meet.topic || meet.title || 'Совещание',
           subtitle: meet.organizer_name || '',
           badge: isPast ? 'Завершено' : 'Предстоит',
           badgeColor: isPast ? 'neutral' : 'info',
-          time: meet.date ? Utils.formatDate(meet.date) : '',
+          time: (meet.date || meet.start_date) ? Utils.formatDate(meet.date || meet.start_date) : '—',
           fields: [
             ...(meet.participants_count ? [{ label: 'Участники', value: String(meet.participants_count) }] : []),
             ...(meet.location ? [{ label: 'Место', value: meet.location }] : []),

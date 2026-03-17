@@ -291,7 +291,7 @@ const MessengerPage = {
 
     function viewStory(userData, startIdx) {
       var overlay = el('div', { style: {
-        position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+        position: 'fixed', top: 0, left: 0, width: '100vw', height: 'calc(var(--vh, 1vh) * 100)',
         background: '#000', zIndex: 1000, display: 'flex', flexDirection: 'column',
       } });
       var idx = startIdx || 0;
@@ -488,7 +488,7 @@ async function renderChat(chatId) {
   var userId = (Store.get('user') || {}).id;
   var page = el('div', {
     className: 'asgard-huginn-chat asgard-slide-right',
-    style: { display: 'flex', flexDirection: 'column', height: '100vh', background: t.bg, position: 'relative' },
+    style: { display: 'flex', flexDirection: 'column', height: 'calc(var(--vh, 1vh) * 100)', background: t.bg, position: 'relative' },
   });
 
   // State
@@ -767,7 +767,7 @@ async function renderChat(chatId) {
 
   function showRecordingOverlay(type, stream) {
     _recOverlay = el('div', { style: {
-      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: 'calc(var(--vh, 1vh) * 100)',
       background: 'rgba(0,0,0,0.85)', zIndex: 1000,
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px',
     } });
@@ -1456,18 +1456,16 @@ async function renderChat(chatId) {
 
   // Fallback poll every 15 sec (only when SSE disconnected)
   var _pollFallback = setInterval(function() {
-    if (!page.isConnected) { clearInterval(_pollFallback); if (_es) _es.close(); return; }
     if (!_sseConnected) pollNewMessages();
   }, 15000);
 
-  // Cleanup on leave
-  var _checkLeave = setInterval(function() {
-    if (!page.isConnected) {
-      clearInterval(_checkLeave);
+  // Lifecycle: cleanup через Router.onLeave (вместо setInterval polling)
+  if (typeof Router !== 'undefined' && Router.onLeave) {
+    Router.onLeave(function() {
       clearInterval(_pollFallback);
       if (_es) { _es.close(); _es = null; }
-    }
-  }, 2000);
+    });
+  }
 
   return page;
 }
