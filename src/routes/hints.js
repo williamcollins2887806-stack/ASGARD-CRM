@@ -74,9 +74,9 @@ async function hintsRoutes(fastify) {
           // Дедлайны 7 дней
           const urgentTenders = await db.query(`
             SELECT COUNT(*) as cnt FROM tenders
-            WHERE tender_date IS NOT NULL
-              AND tender_date > CURRENT_DATE
-              AND tender_date <= CURRENT_DATE + INTERVAL '7 days'
+            WHERE deadline IS NOT NULL
+              AND deadline > CURRENT_DATE
+              AND deadline <= CURRENT_DATE + INTERVAL '7 days'
               AND tender_status NOT IN ('Выиграли','Проиграли','Отказ','Отменён')
           `);
           const urgCnt = parseInt(urgentTenders.rows[0]?.cnt) || 0;
