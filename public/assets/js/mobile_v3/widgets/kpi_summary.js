@@ -13,7 +13,12 @@ window.MobileWidgets.kpi_summary = {
       ]).then(function (res) {
         var y = new Date().getFullYear();
         var allTenders = res[0] || [];
-        var tenders = allTenders.filter(function (x) { return String(x.year) === String(y) || (x.period || '').indexOf(String(y)) === 0; });
+        var tenders = allTenders.filter(function (x) {
+          if (x.year) return String(x.year) === String(y);
+          if (x.period) return (x.period || '').indexOf(String(y)) === 0;
+          var d = x.created_at ? new Date(x.created_at) : null;
+          return d ? d.getFullYear() === y : true;
+        });
         var allWorks = res[1] || [];
         var works = allWorks.filter(function (w) { return ['Завершена','Работы сдали','Закрыт'].indexOf(w.work_status) === -1; });
         var allEstimates = res[2] || [];

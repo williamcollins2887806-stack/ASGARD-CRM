@@ -12,7 +12,12 @@ window.MobileWidgets.money_summary = {
       ]).then(function (res) {
         var works = res[0] || []; var tenders = res[1] || [];
         var y = new Date().getFullYear();
-        var tIds = {}; tenders.filter(function (x) { return String(x.year) === String(y) || (x.period || '').indexOf(String(y)) === 0; }).forEach(function (x) { tIds[x.id] = true; });
+        var tIds = {}; tenders.filter(function (x) {
+          if (x.year) return String(x.year) === String(y);
+          if (x.period) return (x.period || '').indexOf(String(y)) === 0;
+          var d = x.created_at ? new Date(x.created_at) : null;
+          return d ? d.getFullYear() === y : true;
+        }).forEach(function (x) { tIds[x.id] = true; });
         var yWorks = works.filter(function (x) { var d = x.start_fact || x.start_plan || x.created_at; if (d && new Date(d).getFullYear() === y) return true; if (x.tender_id && tIds[x.tender_id]) return true; return false; });
         var revenue = yWorks.reduce(function (s, x) { return s + (Number(x.contract_sum) || Number(x.contract_value) || 0); }, 0);
         var expenses = yWorks.reduce(function (s, x) { return s + (Number(x.total_cost) || Number(x.expenses) || 0); }, 0);

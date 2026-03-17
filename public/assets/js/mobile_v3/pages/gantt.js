@@ -12,6 +12,7 @@ var GanttPage = (function () {
   var STATUS_COLORS = {
     'Работы сдали': 'var(--green)',
     'Закрыто': 'var(--green)',
+    'Закрыт': 'var(--green)',
     'Завершена': 'var(--green)',
     'В работе': 'var(--blue)',
     'Работы начались': 'var(--blue)',
@@ -222,7 +223,7 @@ var GanttPage = (function () {
 
     // Рисуем строки
     works.forEach(function (w, i) {
-      var isDone = ['Работы сдали', 'Закрыто', 'Завершена'].indexOf(w.work_status) !== -1;
+      var isDone = ['Работы сдали', 'Закрыто', 'Закрыт', 'Завершена'].indexOf(w.work_status) !== -1;
       var isOverdue = w._end && w._end < now && !isDone;
       var name = (w.work_title || w.customer_name || 'Работа #' + w.id);
       if (name.length > 22) name = name.substring(0, 20) + '…';

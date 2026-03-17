@@ -18,16 +18,21 @@ var PMWorksPage = (function () {
     return 'info';
   }
 
+  var DONE_STATUSES = ['Работы сдали', 'Завершена', 'Закрыт', 'Закрыто', 'Отменено'];
+
   function getStats(works) {
     var active = works.filter(function (w) {
-      return ['Работы сдали', 'Закрыто', 'Отменено'].indexOf(w.work_status) === -1;
+      return DONE_STATUSES.indexOf(w.work_status) === -1;
+    });
+    var done = works.filter(function (w) {
+      return DONE_STATUSES.indexOf(w.work_status) !== -1;
     });
     var totalBudget = works.reduce(function (s, w) { return s + (parseFloat(w.contract_amount || w.budget || 0)); }, 0);
     return [
       { icon: '🔧', label: 'Всего работ', value: works.length },
       { icon: '⚡', label: 'Активных', value: active.length, color: 'var(--blue)' },
       { icon: '💰', label: 'Бюджет', value: Utils.formatMoney(totalBudget) },
-      { icon: '✅', label: 'Завершено', value: works.filter(function (w) { return w.work_status === 'Работы сдали'; }).length, color: 'var(--green)' },
+      { icon: '✅', label: 'Завершено', value: done.length, color: 'var(--green)' },
     ];
   }
 

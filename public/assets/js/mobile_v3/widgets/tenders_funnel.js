@@ -8,13 +8,19 @@ window.MobileWidgets.tenders_funnel = {
     function _load() {
       API.fetchCached('tenders', '/data/tenders').then(function (all) {
         var y = new Date().getFullYear();
-        var tenders = (all || []).filter(function (x) { return String(x.year) === String(y) || (x.period || '').indexOf(String(y)) === 0; });
+        var tenders = (all || []).filter(function (x) {
+          if (x.year) return String(x.year) === String(y);
+          if (x.period) return (x.period || '').indexOf(String(y)) === 0;
+          var d = x.created_at ? new Date(x.created_at) : null;
+          return d ? d.getFullYear() === y : true;
+        });
         var stages = [
-          { l: 'Новый', keys: ['Новый'], cl: t.blue },
-          { l: 'Просчёт', keys: ['Просчёт','Согласование ТКП'], cl: t.gold },
-          { l: 'Подано', keys: ['ТКП согласовано','Подано','Ожидание'], cl: t.orange },
+          { l: 'Новый', keys: ['Новый','Черновик','Получен'], cl: t.blue },
+          { l: 'Просчёт', keys: ['В просчёте','На просчёте','КП отправлено','Согласование ТКП'], cl: t.gold },
+          { l: 'Подано', keys: ['ТКП согласовано','ТКП отправлено','Переговоры','На согласовании'], cl: t.orange },
+          { l: 'В работе', keys: ['В работе','Выполняется','Мобилизация'], cl: '#4dabf7' },
           { l: 'Выиграно', keys: ['Выиграли','Клиент согласился','Контракт'], cl: t.green },
-          { l: 'Отказ', keys: ['Проиграли','Клиент отказался','Отклонено'], cl: t.red }
+          { l: 'Отказ', keys: ['Отказ','Проиграли','Клиент отказался','Отменён','Отклонено'], cl: t.red }
         ];
         var counts = stages.map(function (s) { var c = tenders.filter(function (x) { return s.keys.indexOf(x.tender_status) !== -1; }).length; return { l: s.l, c: c, cl: s.cl }; });
         var maxC = Math.max.apply(null, counts.map(function (s) { return s.c; }).concat([1]));
