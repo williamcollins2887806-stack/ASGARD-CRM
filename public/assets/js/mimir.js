@@ -1314,8 +1314,9 @@ window.AsgardMimir = (function(){
     }, 300);
   }
 
-  // Плавающий FAB отключён — Мимир доступен через меню
-  // Для программного открытия: MimirChat.init(); MimirChat.open();
+  // Auto-init: показываем FAB на десктопе после авторизации
+  document.addEventListener('DOMContentLoaded', function() { init(); });
+  window.addEventListener('hashchange', function() { init(); });
 
   return {
     init,
