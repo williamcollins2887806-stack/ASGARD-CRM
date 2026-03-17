@@ -315,9 +315,9 @@ window.AsgardTkpPage = (function() {
       '</div></div>' +
 
       // --- Секция 3: Таблица работ ---
-      '<div style="display:flex;justify-content:space-between;align-items:center">' +
-        sectionHdr('Работы и услуги') +
-        '<button class="btn ghost mini" id="btnMimirItems" type="button" title="Мимир предложит состав работ и цены" style="margin-top:16px">&#x1F9D9; Предложить работы</button>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--brd);margin:16px 0 8px;padding-bottom:6px">' +
+        '<h4 style="color:var(--blue-l);margin:0">' + esc('Работы и услуги') + '</h4>' +
+        '<button class="btn ghost mini" id="btnMimirItems" type="button" title="Мимир предложит состав работ и цены">&#x1F9D9; Предложить работы</button>' +
       '</div>' +
       '<table class="data-table" id="tkpItemsTable"><thead><tr>' +
         '<th style="width:30px">\u2116</th>' +
@@ -509,6 +509,9 @@ window.AsgardTkpPage = (function() {
             var customerName = ($('#tkpCustomerSearch') || {}).value;
             var tId = parseInt(($('#tkpTenderId') || {}).value) || null;
             if (!subject && !desc) { toast('Внимание', 'Заполните название или описание работ', 'warn'); return; }
+            if (itemRows.length > 0 && itemRows.some(function(tr) { var n = tr.querySelector('.iname'); return n && n.value.trim(); })) {
+              if (!confirm('Текущие строки будут заменены. Продолжить?')) return;
+            }
             btnMI.disabled = true;
             btnMI.textContent = '\u{1F9D9} Генерирую...';
             try {

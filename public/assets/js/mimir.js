@@ -843,7 +843,7 @@ window.AsgardMimir = (function(){
     // Ссылки [text](url)
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, text, url) {
       if (url.startsWith('#/')) {
-        return '<a href="' + url + '" style="color:var(--gold);text-decoration:underline;cursor:pointer" onclick="window.location.hash=\'' + url.replace('#', '') + '\';return false;">' + text + '</a>';
+        return '<a href="' + url + '" style="color:var(--gold);text-decoration:underline;cursor:pointer" onclick="if(window.AsgardMimir)window.AsgardMimir.close();window.location.hash=\'' + url.replace('#', '') + '\';return false;">' + text + '</a>';
       }
       return '<a href="' + url + '" target="_blank" style="color:var(--gold);text-decoration:underline">' + text + '</a>';
     });
@@ -896,6 +896,14 @@ window.AsgardMimir = (function(){
   // ═══════════════════════════════════════════════════════════════════════════
 
   async function handleCreateTkpAction(action, userMessage) {
+    var lastMsg = messages[messages.length - 1];
+    if (!lastMsg) return;
+
+    // Показать индикатор генерации
+    var savedContent = lastMsg.content || '';
+    lastMsg.content = savedContent + '\n\n\u23F3 *Генерирую черновик ТКП...*';
+    renderMessages();
+
     try {
       var auth = AsgardAuth?.getAuth?.();
       var token = auth?.token;
@@ -910,32 +918,25 @@ window.AsgardMimir = (function(){
         })
       });
 
-      var lastMsg = messages[messages.length - 1];
       if (resp.ok) {
         var result = await resp.json();
-        if (result.success && lastMsg) {
-          lastMsg.content = (lastMsg.content || '') +
-            '\n\n' + String.fromCodePoint(0x2705) + ' **' + result.tkp_number + '** создано!\n' +
-            String.fromCodePoint(0x1F4CB) + ' "' + result.subject + '"\n' +
-            String.fromCodePoint(0x1F4B0) + ' ' + Number(result.total_sum).toLocaleString('ru-RU') + ' ' + String.fromCodePoint(0x20BD) + ' (' + result.items_count + ' позиций)\n\n' +
-            '[' + String.fromCodePoint(0x1F517) + ' Открыть для редактирования ' + String.fromCodePoint(0x2192) + '](#/tkp?edit=' + result.tkp_id + ')';
-        } else if (lastMsg) {
-          lastMsg.content = (lastMsg.content || '') + '\n\n' + String.fromCodePoint(0x274C) + ' Не удалось создать ТКП: ' + (result.message || 'Ошибка');
+        if (result.success) {
+          lastMsg.content = savedContent +
+            '\n\n\u2705 **' + result.tkp_number + '** создано!\n' +
+            '\uD83D\uDCCB "' + result.subject + '"\n' +
+            '\uD83D\uDCB0 ' + Number(result.total_sum).toLocaleString('ru-RU') + ' \u20BD (' + result.items_count + ' позиций)\n\n' +
+            '[\uD83D\uDD17 Открыть для редактирования \u2192](#/tkp?edit=' + result.tkp_id + ')';
+        } else {
+          lastMsg.content = savedContent + '\n\n\u274C Не удалось создать ТКП: ' + (result.message || 'Ошибка');
         }
       } else {
         var errData = await resp.json().catch(function() { return {}; });
-        if (lastMsg) {
-          lastMsg.content = (lastMsg.content || '') + '\n\n' + String.fromCodePoint(0x274C) + ' Не удалось создать ТКП: ' + (errData.message || 'HTTP ' + resp.status);
-        }
+        lastMsg.content = savedContent + '\n\n\u274C Не удалось создать ТКП: ' + (errData.message || 'HTTP ' + resp.status);
       }
-      renderMessages();
     } catch (e) {
-      var lastMsg2 = messages[messages.length - 1];
-      if (lastMsg2) {
-        lastMsg2.content = (lastMsg2.content || '') + '\n\n' + String.fromCodePoint(0x274C) + ' Ошибка создания ТКП: ' + e.message;
-      }
-      renderMessages();
+      lastMsg.content = savedContent + '\n\n\u274C Ошибка создания ТКП: ' + e.message;
     }
+    renderMessages();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
