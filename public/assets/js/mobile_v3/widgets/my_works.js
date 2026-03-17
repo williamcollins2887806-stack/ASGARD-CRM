@@ -8,7 +8,7 @@ window.MobileWidgets.my_works = {
     function _load() {
       API.fetchCached('works', '/works').then(function (all) {
         var works = (all || []).filter(function (w) {
-          return w.pm_id === user.id && ['Завершена','Работы сдали','Закрыт'].indexOf(w.work_status) === -1;
+          return String(w.pm_id) == String(user.id) && ['Завершена','Работы сдали','Закрыт'].indexOf(w.work_status) === -1;
         }).slice(0, 5);
         if (!works.length) { container.replaceChildren(M.Empty({ text: 'Нет активных работ', icon: '🔧' })); return; }
         var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } });

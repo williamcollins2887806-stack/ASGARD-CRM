@@ -220,6 +220,7 @@ const MessengerPage = {
     page.appendChild(storiesWrap);
 
     function loadStories() {
+      storiesWrap.replaceChildren();
       var currentUser = Store.get('user') || {};
       // "Вы" — первый элемент
       var myStory = el('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer', flexShrink: 0, scrollSnapAlign: 'start' } });
@@ -241,6 +242,7 @@ const MessengerPage = {
           byUser[s.user_id].items.push(s);
         });
         Object.keys(byUser).forEach(function(uid) {
+          if (String(uid) === String(currentUser.id)) return; // skip current user — already shown as "Вы"
           var u = byUser[uid];
           var storyEl = el('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer', flexShrink: 0, scrollSnapAlign: 'start' } });
           var avaOuter = el('div', { style: { padding: '2px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffd60a, #c62828)' } });
@@ -1332,9 +1334,10 @@ async function renderChat(chatId) {
       rerenderMessages();
       setTimeout(function() { messagesWrap.scrollTop = messagesWrap.scrollHeight; }, 50);
     }
-  } catch (_) {
+  } catch (loadErr) {
+    console.error('[Huginn] messages load error:', loadErr);
     messagesWrap.replaceChildren();
-    messagesWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate('/messenger/' + chatId, { replace: true }); } }));
+    messagesWrap.appendChild(M.ErrorBanner({ text: 'Не удалось загрузить сообщения', onRetry: function() { Router.navigate('/messenger/' + chatId, { replace: true }); } }));
   }
 
   // ── Load older messages ──

@@ -224,7 +224,7 @@ const Router = (() => {
     transitioning = false;
   }
 
-  const TAB_ROUTES = ['/home', '/tasks', '/messenger', '/more', '/pm-works'];
+  const TAB_ROUTES = ['/home', '/tasks', '/messenger', '/more', '/mimir', '/pm-works'];
   function isTabRoute(path) {
     return TAB_ROUTES.includes(path);
   }
@@ -995,8 +995,8 @@ const Utils = (() => {
     const prefix = sign && num > 0 ? '+' : '';
 
     if (short) {
-      if (Math.abs(num) >= 1e9) return prefix + (num / 1e9).toFixed(1) + ' млрд ' + currency;
-      if (Math.abs(num) >= 1e6) return prefix + (num / 1e6).toFixed(1) + ' млн ' + currency;
+      if (Math.abs(num) >= 1e9) return prefix + (num / 1e9).toFixed(1).replace(/\.0$/, '') + ' млрд ' + currency;
+      if (Math.abs(num) >= 1e6) return prefix + (num / 1e6).toFixed(1).replace(/\.0$/, '') + ' млн ' + currency;
       if (Math.abs(num) >= 1e3) return prefix + (num / 1e3).toFixed(0) + ' тыс ' + currency;
       return prefix + num.toFixed(0) + ' ' + currency;
     }

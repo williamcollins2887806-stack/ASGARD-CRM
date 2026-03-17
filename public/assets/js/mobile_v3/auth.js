@@ -57,7 +57,7 @@ const ICONS = {
 const WelcomePage = {
   async render() {
     /* redirect if authenticated */
-    if (Store.get('user')) { Router.navigate('/home', { replace: true }); return el('div'); }
+    if (Store.get('user') && Store.get('user').token) { Router.navigate('/home', { replace: true }); return el('div'); }
 
     const page = el('div', { className: 'auth-welcome' });
     Object.assign(page.style, {
@@ -214,7 +214,7 @@ const WelcomePage = {
  * ================================================================ */
 const LoginPage = {
   async render() {
-    if (Store.get('user')) { Router.navigate('/home', { replace: true }); return el('div'); }
+    if (Store.get('user') && Store.get('user').token) { Router.navigate('/home', { replace: true }); return el('div'); }
 
     const lastUser = JSON.parse(localStorage.getItem('asgard_last_user') || 'null');
     const pinKey   = lastUser ? 'asgard_pin_' + lastUser.id : null;
@@ -750,7 +750,7 @@ const LoginPage = {
  * ================================================================ */
 const RegisterPage = {
   async render() {
-    if (Store.get('user')) { Router.navigate('/home', { replace: true }); return el('div'); }
+    if (Store.get('user') && Store.get('user').token) { Router.navigate('/home', { replace: true }); return el('div'); }
 
     const page = el('div', { className: 'auth-register-page' });
     Object.assign(page.style, {

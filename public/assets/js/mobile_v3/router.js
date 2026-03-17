@@ -126,7 +126,7 @@
   // ── Страница «Ещё» (бургер-меню) ─────────────────────────────
   var MorePage = {
     render: function () {
-      var t = DS.tokens();
+      var t = (typeof DS !== 'undefined' && DS.t) ? DS.t : {};
       var user = Store.get('user') || {};
       var role = user.role || '';
 
@@ -289,7 +289,11 @@
   }
 
   // ── Регистрация /more ─────────────────────────────────────────
-  Router.register('/more', MorePage);
+  // more_menu.js уже регистрирует MoreMenuPage на /more.
+  // Регистрируем только если маршрут ещё не занят.
+  if (typeof Router !== 'undefined' && !Router.has('/more')) {
+    Router.register('/more', MorePage);
+  }
 
   // ── Экспорт для внешнего использования ────────────────────────
   window.MobileMenuSections = MENU_SECTIONS;
