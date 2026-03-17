@@ -601,8 +601,9 @@ async function hintsRoutes(fastify) {
           try {
             const todayReminders = await db.query(`
               SELECT COUNT(*) as cnt FROM reminders
-              WHERE (remind_at <= CURRENT_TIMESTAMP OR remind_at::date = CURRENT_DATE)
-                AND status NOT IN ('done','dismissed')
+              WHERE (due_date <= CURRENT_DATE OR (due_date = CURRENT_DATE AND due_time IS NOT NULL))
+                AND status NOT IN ('done','cancelled')
+                AND dismissed IS NOT TRUE
             `);
             const remCnt = parseInt(todayReminders.rows[0]?.cnt) || 0;
             if (remCnt > 0) {
@@ -641,7 +642,7 @@ async function hintsRoutes(fastify) {
         case 'collections': {
           try {
             const colCount = await db.query(`
-              SELECT COUNT(*) as cnt FROM collections
+              SELECT COUNT(*) as cnt FROM employee_collections
             `);
             const cCnt = parseInt(colCount.rows[0]?.cnt) || 0;
             hints.push({
@@ -658,7 +659,7 @@ async function hintsRoutes(fastify) {
         case 'training': {
           try {
             const pendingTraining = await db.query(`
-              SELECT COUNT(*) as cnt FROM training_requests
+              SELECT COUNT(*) as cnt FROM training_applications
               WHERE status IN ('pending','new')
             `);
             const trCnt = parseInt(pendingTraining.rows[0]?.cnt) || 0;
@@ -678,7 +679,7 @@ async function hintsRoutes(fastify) {
         case 'travel': {
           try {
             const openTravel = await db.query(`
-              SELECT COUNT(*) as cnt FROM travel_requests
+              SELECT COUNT(*) as cnt FROM business_trips
               WHERE status NOT IN ('closed','cancelled','completed')
             `);
             const tvCnt = parseInt(openTravel.rows[0]?.cnt) || 0;
@@ -699,7 +700,7 @@ async function hintsRoutes(fastify) {
           try {
             const noReply = await db.query(`
               SELECT COUNT(*) as cnt FROM correspondence
-              WHERE direction = 'incoming' AND reply_date IS NULL AND status != 'cancelled'
+              WHERE direction = 'incoming' AND status NOT IN ('answered','cancelled','closed')
             `);
             const nrCnt = parseInt(noReply.rows[0]?.cnt) || 0;
             if (nrCnt > 0) {
@@ -720,7 +721,8 @@ async function hintsRoutes(fastify) {
             const overdueSeals = await db.query(`
               SELECT COUNT(*) as cnt FROM seals
               WHERE status = 'issued'
-                AND issued_at < CURRENT_TIMESTAMP - INTERVAL '30 days'
+                AND issue_date IS NOT NULL
+                AND issue_date < CURRENT_DATE - INTERVAL '30 days'
             `);
             const sCnt = parseInt(overdueSeals.rows[0]?.cnt) || 0;
             if (sCnt > 0) {
@@ -807,8 +809,8 @@ async function hintsRoutes(fastify) {
               SELECT COUNT(*) as cnt FROM employees
               WHERE is_active = true
                 AND id NOT IN (
-                  SELECT DISTINCT employee_id FROM schedules
-                  WHERE period_start <= CURRENT_DATE AND period_end >= CURRENT_DATE
+                  SELECT DISTINCT employee_id FROM employee_assignments
+                  WHERE date_from <= CURRENT_DATE AND (date_to IS NULL OR date_to >= CURRENT_DATE)
                 )
             `);
             const nsCnt = parseInt(noSchedule.rows[0]?.cnt) || 0;
@@ -850,7 +852,7 @@ async function hintsRoutes(fastify) {
         case 'telephony': {
           try {
             const missedCalls = await db.query(`
-              SELECT COUNT(*) as cnt FROM call_records
+              SELECT COUNT(*) as cnt FROM call_history
               WHERE direction = 'incoming' AND status = 'missed'
                 AND created_at::date = CURRENT_DATE
             `);
@@ -873,7 +875,7 @@ async function hintsRoutes(fastify) {
           try {
             const unread = await db.query(`
               SELECT COUNT(*) as cnt FROM chat_messages
-              WHERE recipient_id = $1 AND read_at IS NULL
+              WHERE to_user_id = $1 AND read_at IS NULL
             `, [userId]);
             const urCnt = parseInt(unread.rows[0]?.cnt) || 0;
             if (urCnt > 0) {
@@ -894,8 +896,9 @@ async function hintsRoutes(fastify) {
         case 'inbox-applications': {
           try {
             const unprocessed = await db.query(`
-              SELECT COUNT(*) as cnt FROM mailbox
-              WHERE status IN ('new','unread') AND (assignee_id IS NULL OR assignee_id = $1)
+              SELECT COUNT(*) as cnt FROM emails
+              WHERE is_read = false AND direction = 'incoming'
+                AND (owner_user_id IS NULL OR owner_user_id = $1)
             `, [userId]);
             const upCnt = parseInt(unprocessed.rows[0]?.cnt) || 0;
             if (upCnt > 0) {
@@ -916,10 +919,10 @@ async function hintsRoutes(fastify) {
         case 'approval-payment': {
           try {
             const pendingApprovals = await db.query(`
-              SELECT COUNT(*) as cnt FROM approvals
-              WHERE status IN ('pending','new')
-                AND (approver_id = $1 OR approver_id IS NULL)
-            `, [userId]);
+              SELECT COUNT(*) as cnt FROM estimate_approval_requests
+              WHERE current_stage NOT IN ('approved','rejected','cancelled')
+                AND finalized_at IS NULL
+            `);
             const apCnt = parseInt(pendingApprovals.rows[0]?.cnt) || 0;
             if (apCnt > 0) {
               hints.push({
