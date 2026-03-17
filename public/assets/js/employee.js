@@ -586,7 +586,12 @@ window.AsgardEmployeePage=(function(){
 
     const btnProfile = document.getElementById("btnProfile");
     if(btnProfile){
-      btnProfile.onclick=()=>{ if(window.WorkerProfileDesktop) WorkerProfileDesktop.open(id); else toast("Ошибка","Модуль анкет не загружен","err"); };
+      btnProfile.onclick=()=>{
+        if(!window.WorkerProfileDesktop){ toast("Ошибка","Модуль анкет не загружен","err"); return; }
+        const uid = emp.user_id;
+        if(!uid){ toast("Анкета","У сотрудника нет учётной записи (user_id)","err"); return; }
+        WorkerProfileDesktop.open(uid);
+      };
     }
 
     // Добавление комментария
