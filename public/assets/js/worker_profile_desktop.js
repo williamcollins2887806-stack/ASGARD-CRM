@@ -1,6 +1,7 @@
 /**
  * ASGARD CRM — Desktop Worker Profile (Анкета-характеристика)
  * Модалка 720px, 2 колонки, view/edit/print
+ * v2 — точечный DOM update, fade transitions, dirty flag, skeleton
  */
 window.WorkerProfileDesktop = (function () {
   'use strict';
@@ -148,7 +149,7 @@ window.WorkerProfileDesktop = (function () {
     gold:    { bg: 'rgba(255,215,0,0.15)',   text: '#ffd700' }
   };
 
-  const SCORE_LABELS = { 1: 'Не брать \uD83D\uDEAB', 2: 'Слабый \uD83D\uDE10', 3: 'Норм \uD83D\uDC4D', 4: 'Хороший \uD83D\uDCAA', 5: 'Лучший \uD83C\uDFC6' };
+  const SCORE_LABELS_TEXT = { 1: 'Не брать', 2: 'Слабый', 3: 'Норм', 4: 'Хороший', 5: 'Лучший' };
   const ROLE_LABELS = { operator: '\u2699\uFE0F Оператор', observer: '\uD83D\uDC41\uFE0F Наблюдающий', hvd: '\uD83D\uDCA7 НВД', helper: '\uD83D\uDD27 Подсобный', foreman: '\uD83D\uDC77 Мастер' };
 
   /* ── helpers ── */
@@ -204,26 +205,107 @@ window.WorkerProfileDesktop = (function () {
     return `<span class="wp-desktop-badge" style="background:${c.bg};color:${textCol}">${esc(label)}</span>`;
   }
 
-  function ringGaugeSvg(score, size, strokeW) {
+  /* SVG ring gauge — proper createElementNS */
+  function createRingGauge(score, size, strokeW) {
+    const ns = 'http://www.w3.org/2000/svg';
     const r = (size - strokeW) / 2;
     const circ = 2 * Math.PI * r;
     const fill = score > 0 ? score / 5 : 0;
     const offset = circ * (1 - fill);
     const col = getScoreColor(score);
-    const lbl = SCORE_LABELS[score] || '—';
-    return `<svg width="${size}" height="${size}" style="filter:${score > 0 ? 'drop-shadow(0 0 6px ' + col + ')' : 'none'}">
-      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="${strokeW}"/>
-      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${col}" stroke-width="${strokeW}"
-        stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${offset}"
-        transform="rotate(-90 ${size/2} ${size/2})" style="transition:stroke-dashoffset 0.6s ease"/>
-      <text x="${size/2}" y="${size/2 - 4}" text-anchor="middle" fill="${col}" font-size="18" font-weight="800">${score || '—'}</text>
-      <text x="${size/2}" y="${size/2 + 12}" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="9">${esc(lbl.replace(/\s*[\uD83D\uDEAB\uD83D\uDE10\uD83D\uDC4D\uD83D\uDCAA\uD83C\uDFC6].*/,''))}</text>
+    const lbl = SCORE_LABELS_TEXT[score] || '\u2014';
+
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
+    if (score > 0) svg.style.filter = 'drop-shadow(0 0 6px ' + col + ')';
+
+    const bgCirc = document.createElementNS(ns, 'circle');
+    bgCirc.setAttribute('cx', size / 2);
+    bgCirc.setAttribute('cy', size / 2);
+    bgCirc.setAttribute('r', r);
+    bgCirc.setAttribute('fill', 'none');
+    bgCirc.setAttribute('stroke', 'rgba(255,255,255,0.1)');
+    bgCirc.setAttribute('stroke-width', strokeW);
+    svg.appendChild(bgCirc);
+
+    const fgCirc = document.createElementNS(ns, 'circle');
+    fgCirc.setAttribute('cx', size / 2);
+    fgCirc.setAttribute('cy', size / 2);
+    fgCirc.setAttribute('r', r);
+    fgCirc.setAttribute('fill', 'none');
+    fgCirc.setAttribute('stroke', col);
+    fgCirc.setAttribute('stroke-width', strokeW);
+    fgCirc.setAttribute('stroke-linecap', 'round');
+    fgCirc.setAttribute('stroke-dasharray', circ);
+    fgCirc.setAttribute('stroke-dashoffset', offset);
+    fgCirc.setAttribute('transform', 'rotate(-90 ' + size / 2 + ' ' + size / 2 + ')');
+    fgCirc.style.transition = 'stroke-dashoffset 0.6s ease';
+    svg.appendChild(fgCirc);
+
+    const txt1 = document.createElementNS(ns, 'text');
+    txt1.setAttribute('x', size / 2);
+    txt1.setAttribute('y', size / 2 - 4);
+    txt1.setAttribute('text-anchor', 'middle');
+    txt1.setAttribute('fill', col);
+    txt1.setAttribute('font-size', '18');
+    txt1.setAttribute('font-weight', '800');
+    txt1.textContent = score || '\u2014';
+    svg.appendChild(txt1);
+
+    const txt2 = document.createElementNS(ns, 'text');
+    txt2.setAttribute('x', size / 2);
+    txt2.setAttribute('y', size / 2 + 12);
+    txt2.setAttribute('text-anchor', 'middle');
+    txt2.setAttribute('fill', 'rgba(255,255,255,0.6)');
+    txt2.setAttribute('font-size', '9');
+    txt2.textContent = lbl;
+    svg.appendChild(txt2);
+
+    return svg;
+  }
+
+  /* Rune SVG instead of unicode */
+  function runeSvg() {
+    return `<svg class="wp-desktop-hero-rune" width="72" height="90" viewBox="0 0 72 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M36 5L36 85M36 5L56 30M36 5L16 30M36 45L56 30M36 45L16 30" stroke="rgba(255,255,255,0.06)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>`;
   }
 
-  /* ── Section layout: work+housing → left, character+summary → right ── */
+  /* Section layout: work+housing → left, character+summary → right */
   const LEFT_SECTIONS = ['work', 'housing'];
   const RIGHT_SECTIONS = ['character', 'summary'];
+
+  /* Skeleton HTML */
+  function skeletonHtml() {
+    let rows = '';
+    for (let i = 0; i < 8; i++) {
+      const w = 40 + Math.random() * 40;
+      rows += `<div class="wp-desktop-skel-row"><div class="wp-desktop-skel-label"></div><div class="wp-desktop-skel-value" style="width:${w}%"></div></div>`;
+    }
+    return `<div class="wp-desktop-skeleton">
+      <div class="wp-desktop-skel-hero"></div>
+      <div class="wp-desktop-grid" style="padding:24px">
+        <div class="wp-desktop-col">${rows}</div>
+        <div class="wp-desktop-col">${rows}</div>
+      </div>
+    </div>`;
+  }
+
+  /* fade transition helper */
+  function fadeTransition(root, renderFn) {
+    root.style.transition = 'opacity 0.2s ease';
+    root.style.opacity = '0';
+    setTimeout(() => {
+      renderFn();
+      root.style.opacity = '1';
+    }, 200);
+  }
+
+  /* Check if editData differs from original */
+  function isDirty(editData, originalJson) {
+    return JSON.stringify(editData) !== originalJson;
+  }
 
   /* ══════════════════════════════════════════════════════════
      OPEN — главная функция
@@ -235,28 +317,53 @@ window.WorkerProfileDesktop = (function () {
     let userData = null;
     let editMode = false;
     let editData = {};
+    let originalJson = '{}';
     let photoUrl = null;
     let photoFile = null;
+    let currentProject = '';
 
-    try {
-      const resp = await apiFetch('/worker-profiles/' + userId);
-      profile = resp.profile;
-      userData = resp.user || (profile ? { id: profile.user_id, name: profile.user_name, avatar_url: profile.user_avatar, role: profile.user_role } : null);
-      photoUrl = profile ? profile.photo_url : null;
-    } catch (e) {
-      toast('Ошибка', 'Не удалось загрузить анкету: ' + e.message, 'err');
-      return;
-    }
-
+    /* Show modal with skeleton immediately */
     showModal({
       title: 'Анкета-характеристика',
-      html: '<div id="wpDesktopRoot" class="wp-desktop-root"><div class="wp-desktop-loading">Загрузка...</div></div>',
+      html: '<div id="wpDesktopRoot" class="wp-desktop-root">' + skeletonHtml() + '</div>',
       onMount: function (ctx) {
-        /* set custom width via class */
         ctx.modal.classList.add('wp-desktop-modal-size');
-        renderView();
+        loadData();
       }
     });
+
+    async function loadData() {
+      try {
+        const resp = await apiFetch('/worker-profiles/' + userId);
+        profile = resp.profile;
+        userData = resp.user || (profile ? { id: profile.user_id, name: profile.user_name, avatar_url: profile.user_avatar, role: profile.user_role } : null);
+        photoUrl = profile ? profile.photo_url : null;
+
+        /* Try to get current project from employee assignments */
+        try {
+          if (window.AsgardDB) {
+            const assigns = await AsgardDB.byIndex('employee_assignments', 'employee_id', userId);
+            if (assigns && assigns.length) {
+              const today = new Date().toISOString().slice(0, 10);
+              const current = assigns.find(a => !a.date_to || a.date_to.slice(0, 10) >= today);
+              if (current && current.work_id) {
+                const work = await AsgardDB.get('works', current.work_id);
+                if (work) {
+                  const tender = work.tender_id ? await AsgardDB.get('tenders', work.tender_id) : null;
+                  currentProject = work.customer_name || (tender && tender.customer_name) || '';
+                }
+              }
+            }
+          }
+        } catch (_) { /* non-critical */ }
+
+        const root = document.getElementById('wpDesktopRoot');
+        if (root) fadeTransition(root, () => renderView());
+      } catch (e) {
+        toast('Ошибка', 'Не удалось загрузить анкету: ' + e.message, 'err');
+        hideModal();
+      }
+    }
 
     /* ── VIEW ── */
     function renderView() {
@@ -285,7 +392,7 @@ window.WorkerProfileDesktop = (function () {
 
       /* HERO */
       html += `<div class="wp-desktop-hero">
-        <div class="wp-desktop-hero-rune">\u16A8</div>
+        ${runeSvg()}
         <div class="wp-desktop-hero-actions">
           <button class="wp-desktop-icon-btn" id="wpEditBtn" title="Редактировать">\u270F\uFE0F</button>
           <button class="wp-desktop-icon-btn" id="wpPrintBtn" title="Печать">\uD83D\uDDA8\uFE0F</button>
@@ -298,8 +405,7 @@ window.WorkerProfileDesktop = (function () {
             <div class="wp-desktop-hero-name">${esc(name)}</div>
             <div class="wp-desktop-hero-role">${esc(role)}${roles.length ? ' &middot; ' + roles.map(r => esc(ROLE_LABELS[r] || r)).join(', ') : ''}</div>
           </div>
-          <div class="wp-desktop-hero-gauge">
-            ${ringGaugeSvg(score, 72, 5)}
+          <div class="wp-desktop-hero-gauge" id="wpGaugeWrap">
             <div class="wp-desktop-hero-progress">
               <span>Заполнено ${filled}/${total}</span>
               <div class="wp-desktop-progress-bar"><div class="wp-desktop-progress-fill" style="width:${pct}%"></div></div>
@@ -307,7 +413,7 @@ window.WorkerProfileDesktop = (function () {
           </div>
         </div>
         <div class="wp-desktop-hero-meta">
-          ${updatedAt ? esc(updatedAt) : ''}${author ? ' &middot; Автор: ' + esc(author) : ''}
+          ${currentProject ? esc(currentProject) + ' &middot; ' : ''}${updatedAt ? esc(updatedAt) : ''}${author ? ' &middot; ' + esc(author) : ''}
         </div>
       </div>`;
 
@@ -330,6 +436,11 @@ window.WorkerProfileDesktop = (function () {
       </div>`;
 
       root.innerHTML = html;
+
+      /* Insert SVG ring gauge via DOM (not innerHTML) */
+      const gaugeWrap = document.getElementById('wpGaugeWrap');
+      if (gaugeWrap) gaugeWrap.prepend(createRingGauge(score, 72, 5));
+
       bindViewEvents();
     }
 
@@ -399,8 +510,8 @@ window.WorkerProfileDesktop = (function () {
       const e2 = document.getElementById('wpEditBtn2');
       const p1 = document.getElementById('wpPrintBtn');
       const p2 = document.getElementById('wpPrintBtn2');
-      if (e1) e1.onclick = () => startEdit();
-      if (e2) e2.onclick = () => startEdit();
+      if (e1) e1.onclick = () => { const root = document.getElementById('wpDesktopRoot'); if (root) fadeTransition(root, () => { startEdit(); }); };
+      if (e2) e2.onclick = () => { const root = document.getElementById('wpDesktopRoot'); if (root) fadeTransition(root, () => { startEdit(); }); };
       if (p1) p1.onclick = () => printProfile();
       if (p2) p2.onclick = () => printProfile();
     }
@@ -410,6 +521,7 @@ window.WorkerProfileDesktop = (function () {
       editMode = true;
       const data = profile ? (typeof profile.data === 'string' ? JSON.parse(profile.data) : profile.data) || {} : {};
       editData = JSON.parse(JSON.stringify(data));
+      originalJson = JSON.stringify(editData);
       photoFile = null;
       renderEdit();
     }
@@ -424,8 +536,8 @@ window.WorkerProfileDesktop = (function () {
       let html = '';
 
       /* HERO (edit) */
-      html += `<div class="wp-desktop-hero">
-        <div class="wp-desktop-hero-rune">\u16A8</div>
+      html += `<div class="wp-desktop-hero wp-desktop-hero-edit">
+        ${runeSvg()}
         <div class="wp-desktop-hero-row">
           <div class="wp-desktop-avatar-wrap" id="wpAvatarWrap" title="Сменить фото" style="cursor:pointer">
             ${avatarUrl
@@ -482,8 +594,9 @@ window.WorkerProfileDesktop = (function () {
             const sel = val === opt.value;
             const c = WP_COLORS[opt.color] || WP_COLORS.neutral;
             const textCol = c.text || 'var(--t2)';
-            h += `<button class="wp-desktop-pill${sel ? ' selected' : ''}" data-field="${esc(f.id)}" data-value="${esc(opt.value)}"
-              style="${sel ? 'background:' + c.bg + ';color:' + textCol + ';box-shadow:0 0 8px ' + (c.text || 'rgba(128,128,128,0.3)') : ''}">${esc(opt.label)}</button>`;
+            const selStyle = sel ? 'background:' + c.bg + ';color:' + textCol + ';box-shadow:0 0 8px ' + (c.text || 'rgba(128,128,128,0.3)') : '';
+            h += `<button class="wp-desktop-pill${sel ? ' selected' : ''}" data-field="${esc(f.id)}" data-value="${esc(opt.value)}" data-color-bg="${c.bg}" data-color-text="${textCol}" data-color-glow="${c.text || 'rgba(128,128,128,0.3)'}"
+              style="${selStyle}">${esc(opt.label)}</button>`;
           });
           h += '</div>';
         } else if (f.type === 'score') {
@@ -492,17 +605,18 @@ window.WorkerProfileDesktop = (function () {
             const sel = val === opt.value;
             const c = WP_COLORS[opt.color] || WP_COLORS.neutral;
             const textCol = c.text || 'var(--t2)';
-            h += `<button class="wp-desktop-score-circle${sel ? ' selected' : ''}" data-field="${esc(f.id)}" data-value="${opt.value}"
-              style="${sel ? 'background:' + c.bg + ';color:' + textCol + ';box-shadow:0 0 12px ' + (c.text || 'rgba(128,128,128,0.3)') : ''}"
-              title="${esc(opt.label)}">${opt.emoji || opt.value}</button>`;
+            const selStyle = sel ? 'background:' + c.bg + ';color:' + textCol + ';box-shadow:0 0 12px ' + (c.text || 'rgba(128,128,128,0.3)') : '';
+            h += `<button class="wp-desktop-score-circle${sel ? ' selected' : ''}" data-field="${esc(f.id)}" data-value="${opt.value}" data-color-bg="${c.bg}" data-color-text="${textCol}" data-color-glow="${c.text || 'rgba(128,128,128,0.3)'}"
+              style="${selStyle}" title="${esc(opt.label)}">${opt.emoji || opt.value}</button>`;
           });
           h += '</div>';
         } else if (f.type === 'multi') {
           h += '<div class="wp-desktop-pills wp-desktop-pills-multi">';
           (f.options || []).forEach(opt => {
             const sel = Array.isArray(val) && val.includes(opt.value);
+            const selStyle = sel ? 'background:rgba(81,207,102,0.15);color:#51cf66;box-shadow:0 0 8px rgba(81,207,102,0.3)' : '';
             h += `<button class="wp-desktop-pill${sel ? ' selected' : ''}" data-field="${esc(f.id)}" data-value="${esc(opt.value)}" data-multi="1"
-              style="${sel ? 'background:rgba(81,207,102,0.15);color:#51cf66;box-shadow:0 0 8px rgba(81,207,102,0.3)' : ''}">${esc(opt.label)}</button>`;
+              style="${selStyle}">${esc(opt.label)}</button>`;
           });
           h += '</div>';
         } else if (f.type === 'textarea') {
@@ -511,10 +625,11 @@ window.WorkerProfileDesktop = (function () {
           h += `<input class="wp-desktop-input" data-field="${esc(f.id)}" value="${esc(val || '')}" placeholder="..."/>`;
         }
 
-        /* Comment (appears on hover) */
+        /* Comment — always visible if has value, otherwise shown on hover/focus */
         if (f.hasComment) {
-          h += `<div class="wp-desktop-comment-edit">
-            <input class="wp-desktop-comment-input" data-comment="${esc(f.id)}" value="${esc(comment)}" placeholder="Комментарий..."/>
+          const hasVal = !!comment;
+          h += `<div class="wp-desktop-comment-edit${hasVal ? ' wp-desktop-comment-visible' : ''}">
+            <input class="wp-desktop-comment-input" data-comment="${esc(f.id)}" value="${esc(comment)}" placeholder="\uD83D\uDCAC Комментарий..."/>
           </div>`;
         }
 
@@ -529,54 +644,118 @@ window.WorkerProfileDesktop = (function () {
       const root = document.getElementById('wpDesktopRoot');
       if (!root) return;
 
-      /* Pills click */
-      root.querySelectorAll('.wp-desktop-pill:not([data-multi])').forEach(btn => {
-        btn.onclick = () => {
-          const fid = btn.dataset.field;
-          const val = btn.dataset.value;
-          editData[fid] = editData[fid] === val ? undefined : val;
-          renderEdit();
-        };
-      });
+      /* ── Pills: точечное обновление DOM ── */
+      root.addEventListener('click', (e) => {
+        /* Radio pill */
+        const pill = e.target.closest('.wp-desktop-pill:not([data-multi])');
+        if (pill) {
+          const fid = pill.dataset.field;
+          const val = pill.dataset.value;
+          const isDeselect = editData[fid] === val;
+          editData[fid] = isDeselect ? undefined : val;
 
-      /* Multi pills */
-      root.querySelectorAll('.wp-desktop-pill[data-multi]').forEach(btn => {
-        btn.onclick = () => {
-          const fid = btn.dataset.field;
-          const val = btn.dataset.value;
+          /* Update all pills in this group */
+          const group = pill.closest('.wp-desktop-pills');
+          if (group) {
+            group.querySelectorAll('.wp-desktop-pill').forEach(p => {
+              const isSel = editData[fid] === p.dataset.value;
+              p.classList.toggle('selected', isSel);
+              if (isSel) {
+                p.style.background = p.dataset.colorBg;
+                p.style.color = p.dataset.colorText;
+                p.style.boxShadow = '0 0 8px ' + p.dataset.colorGlow;
+              } else {
+                p.style.background = '';
+                p.style.color = '';
+                p.style.boxShadow = '';
+              }
+            });
+          }
+          return;
+        }
+
+        /* Multi pill */
+        const mpill = e.target.closest('.wp-desktop-pill[data-multi]');
+        if (mpill) {
+          const fid = mpill.dataset.field;
+          const val = mpill.dataset.value;
           if (!Array.isArray(editData[fid])) editData[fid] = [];
           const idx = editData[fid].indexOf(val);
           if (idx >= 0) editData[fid].splice(idx, 1);
           else editData[fid].push(val);
-          renderEdit();
-        };
+          const isSel = editData[fid].includes(val);
+          mpill.classList.toggle('selected', isSel);
+          if (isSel) {
+            mpill.style.background = 'rgba(81,207,102,0.15)';
+            mpill.style.color = '#51cf66';
+            mpill.style.boxShadow = '0 0 8px rgba(81,207,102,0.3)';
+          } else {
+            mpill.style.background = '';
+            mpill.style.color = '';
+            mpill.style.boxShadow = '';
+          }
+          return;
+        }
+
+        /* Score circle */
+        const sc = e.target.closest('.wp-desktop-score-circle');
+        if (sc) {
+          const fid = sc.dataset.field;
+          const val = parseInt(sc.dataset.value, 10);
+          const isDeselect = editData[fid] === val;
+          editData[fid] = isDeselect ? undefined : val;
+
+          const group = sc.closest('.wp-desktop-scores');
+          if (group) {
+            group.querySelectorAll('.wp-desktop-score-circle').forEach(s => {
+              const isSel = editData[fid] === parseInt(s.dataset.value, 10);
+              s.classList.toggle('selected', isSel);
+              if (isSel) {
+                s.style.background = s.dataset.colorBg;
+                s.style.color = s.dataset.colorText;
+                s.style.boxShadow = '0 0 12px ' + s.dataset.colorGlow;
+              } else {
+                s.style.background = '';
+                s.style.color = '';
+                s.style.boxShadow = '';
+              }
+            });
+          }
+          return;
+        }
       });
 
-      /* Score circles */
-      root.querySelectorAll('.wp-desktop-score-circle').forEach(btn => {
-        btn.onclick = () => {
-          const fid = btn.dataset.field;
-          const val = parseInt(btn.dataset.value, 10);
-          editData[fid] = editData[fid] === val ? undefined : val;
-          renderEdit();
-        };
-      });
-
-      /* Textarea / text */
+      /* Textarea / text — oninput stores value, no re-render */
       root.querySelectorAll('.wp-desktop-textarea, .wp-desktop-input').forEach(el => {
-        el.oninput = () => { editData[el.dataset.field] = el.value; };
+        el.addEventListener('input', () => { editData[el.dataset.field] = el.value; });
       });
 
-      /* Comment inputs */
+      /* Comment inputs — oninput, toggle visibility class */
       root.querySelectorAll('.wp-desktop-comment-input').forEach(el => {
-        el.oninput = () => { editData[el.dataset.comment + '_comment'] = el.value; };
+        el.addEventListener('input', () => {
+          editData[el.dataset.comment + '_comment'] = el.value;
+          const wrap = el.closest('.wp-desktop-comment-edit');
+          if (wrap) wrap.classList.toggle('wp-desktop-comment-visible', !!el.value);
+        });
+        /* Keep comment visible while focused */
+        el.addEventListener('focus', () => {
+          const wrap = el.closest('.wp-desktop-comment-edit');
+          if (wrap) wrap.classList.add('wp-desktop-comment-focused');
+        });
+        el.addEventListener('blur', () => {
+          const wrap = el.closest('.wp-desktop-comment-edit');
+          if (wrap) {
+            wrap.classList.remove('wp-desktop-comment-focused');
+            /* If empty after blur and parent not hovered, will hide via CSS */
+          }
+        });
       });
 
       /* Photo */
       const avatarWrap = document.getElementById('wpAvatarWrap');
       const photoInput = document.getElementById('wpPhotoInput');
       if (avatarWrap && photoInput) {
-        avatarWrap.onclick = () => photoInput.click();
+        avatarWrap.onclick = (e) => { e.stopPropagation(); photoInput.click(); };
         photoInput.onchange = () => {
           const file = photoInput.files[0];
           if (!file) return;
@@ -595,9 +774,15 @@ window.WorkerProfileDesktop = (function () {
       const saveBtn = document.getElementById('wpSaveBtn');
       if (saveBtn) saveBtn.onclick = () => saveProfile();
 
-      /* Cancel */
+      /* Cancel with dirty check */
       const cancelBtn = document.getElementById('wpCancelBtn');
-      if (cancelBtn) cancelBtn.onclick = () => renderView();
+      if (cancelBtn) cancelBtn.onclick = () => {
+        if (isDirty(editData, originalJson) || photoFile) {
+          if (!confirm('Есть несохранённые изменения. Отменить редактирование?')) return;
+        }
+        const root = document.getElementById('wpDesktopRoot');
+        if (root) fadeTransition(root, () => renderView());
+      };
     }
 
     /* ── SAVE ── */
@@ -635,7 +820,8 @@ window.WorkerProfileDesktop = (function () {
         profile = resp.profile;
         photoUrl = newPhotoUrl;
         toast('Сохранено', 'Анкета обновлена');
-        renderView();
+        const root = document.getElementById('wpDesktopRoot');
+        if (root) fadeTransition(root, () => renderView());
       } catch (e) {
         toast('Ошибка', 'Не удалось сохранить: ' + e.message, 'err');
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '\u2713 Сохранить'; }
@@ -646,9 +832,9 @@ window.WorkerProfileDesktop = (function () {
     function printProfile() {
       const root = document.getElementById('wpDesktopRoot');
       if (!root) return;
-      root.classList.add('wp-desktop-printing');
+      document.body.classList.add('wp-desktop-print-active');
       window.print();
-      setTimeout(() => root.classList.remove('wp-desktop-printing'), 500);
+      setTimeout(() => document.body.classList.remove('wp-desktop-print-active'), 500);
     }
   }
 

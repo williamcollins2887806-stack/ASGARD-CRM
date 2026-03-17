@@ -4943,23 +4943,48 @@ textarea:focus:not(:focus-visible) {
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    WORKER PROFILE DESKTOP — Анкета-характеристика (десктоп-модалка)
+   v2 — skeleton, fade transitions, improved comment UX
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-/* Modal width override */
-.wp-desktop-modal-size {
-  width: min(720px, 95vw) !important;
-  max-height: 85vh !important;
+/* Modal width override (specificity > .modal) */
+.modal.wp-desktop-modal-size,
+.modal-content.wp-desktop-modal-size {
+  width: min(720px, 95vw);
+  max-height: 85vh;
 }
 
 .wp-desktop-root {
   overflow-y: auto;
   max-height: calc(85vh - 60px);
+  transition: opacity 0.2s ease;
 }
 
-.wp-desktop-loading {
-  padding: 48px;
-  text-align: center;
-  color: var(--t3);
+/* ── Skeleton loading ── */
+.wp-desktop-skeleton { animation: wp-skel-pulse 1.5s ease-in-out infinite; }
+.wp-desktop-skel-hero {
+  height: 140px;
+  background: linear-gradient(135deg, rgba(30,58,95,0.4), rgba(13,20,40,0.4));
+  border-radius: 12px 12px 0 0;
+}
+.wp-desktop-skel-row {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.wp-desktop-skel-label {
+  width: 35%;
+  height: 10px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+.wp-desktop-skel-value {
+  height: 22px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+}
+@keyframes wp-skel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* ── Hero ── */
@@ -4971,14 +4996,10 @@ textarea:focus:not(:focus-visible) {
   overflow: hidden;
 }
 
-.wp-desktop-hero-rune {
+.wp-desktop-hero svg.wp-desktop-hero-rune {
   position: absolute;
   right: 20px;
-  top: 16px;
-  font-size: 72px;
-  opacity: 0.05;
-  color: #fff;
-  font-family: serif;
+  top: 12px;
   pointer-events: none;
 }
 
@@ -5278,13 +5299,15 @@ textarea:focus:not(:focus-visible) {
   outline: none;
 }
 
-/* ── Edit: comment on hover ── */
+/* ── Edit: comment — visible on hover, when focused, or when has value ── */
 .wp-desktop-comment-edit {
   display: none;
   margin-top: 6px;
 }
 .wp-desktop-field-editable:hover .wp-desktop-comment-edit,
-.wp-desktop-comment-edit:focus-within {
+.wp-desktop-comment-edit:focus-within,
+.wp-desktop-comment-edit.wp-desktop-comment-visible,
+.wp-desktop-comment-edit.wp-desktop-comment-focused {
   display: block;
 }
 
@@ -5322,26 +5345,29 @@ textarea:focus:not(:focus-visible) {
 /* ════════════════════════════════════════════════════════════
    PRINT STYLES — Worker Profile Desktop
    ════════════════════════════════════════════════════════════ */
+/* Scoped to body.wp-desktop-print-active so other prints aren't affected */
 @media print {
-  /* Hide everything except the profile */
-  body > *:not(.modalback),
-  .modalback > *:not(.modal),
-  .mh, .sidebar, .nav, .topbar,
-  .wp-desktop-icon-btn,
-  .wp-desktop-footer,
-  .wp-desktop-hero-actions,
-  #modalTitle {
+  body.wp-desktop-print-active > *:not(.modalback),
+  body.wp-desktop-print-active .modalback > *:not(.modal),
+  body.wp-desktop-print-active .mh,
+  body.wp-desktop-print-active .sidebar,
+  body.wp-desktop-print-active .nav,
+  body.wp-desktop-print-active .topbar,
+  body.wp-desktop-print-active .wp-desktop-icon-btn,
+  body.wp-desktop-print-active .wp-desktop-footer,
+  body.wp-desktop-print-active .wp-desktop-hero-actions,
+  body.wp-desktop-print-active #modalTitle {
     display: none !important;
   }
 
-  .modalback {
+  body.wp-desktop-print-active .modalback {
     display: block !important;
     position: static !important;
     background: none !important;
   }
 
-  .modal,
-  .modal-content {
+  body.wp-desktop-print-active .modal,
+  body.wp-desktop-print-active .modal-content {
     position: static !important;
     width: 100% !important;
     max-height: none !important;
@@ -5354,49 +5380,50 @@ textarea:focus:not(:focus-visible) {
     overflow: visible !important;
   }
 
-  .wp-desktop-root {
+  body.wp-desktop-print-active .wp-desktop-root {
     max-height: none !important;
     overflow: visible !important;
+    font-size: 11pt !important;
   }
 
   /* Hero: B&W */
-  .wp-desktop-hero {
+  body.wp-desktop-print-active .wp-desktop-hero {
     background: #f5f5f5 !important;
     color: #000 !important;
     border-radius: 0 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .wp-desktop-hero-name,
-  .wp-desktop-hero-role,
-  .wp-desktop-hero-meta,
-  .wp-desktop-hero-progress {
+  body.wp-desktop-print-active .wp-desktop-hero-name,
+  body.wp-desktop-print-active .wp-desktop-hero-role,
+  body.wp-desktop-print-active .wp-desktop-hero-meta,
+  body.wp-desktop-print-active .wp-desktop-hero-progress {
     color: #333 !important;
   }
-  .wp-desktop-hero-rune { display: none !important; }
+  body.wp-desktop-print-active .wp-desktop-hero-rune { display: none !important; }
 
   /* Grid: 1 column for A4 */
-  .wp-desktop-grid {
+  body.wp-desktop-print-active .wp-desktop-grid {
     grid-template-columns: 1fr !important;
     gap: 12px !important;
     padding: 12px 0 !important;
   }
 
   /* Section: avoid page break inside */
-  .wp-desktop-section {
+  body.wp-desktop-print-active .wp-desktop-section {
     page-break-inside: avoid;
     break-inside: avoid;
   }
 
-  .wp-desktop-section-title {
+  body.wp-desktop-print-active .wp-desktop-section-title {
     color: #000 !important;
     border-bottom-color: #ccc !important;
   }
 
-  .wp-desktop-field-label { color: #555 !important; }
+  body.wp-desktop-print-active .wp-desktop-field-label { color: #555 !important; }
 
   /* Badges as bordered text */
-  .wp-desktop-badge {
+  body.wp-desktop-print-active .wp-desktop-badge {
     background: transparent !important;
     border: 1px solid #999 !important;
     color: #000 !important;
@@ -5404,23 +5431,20 @@ textarea:focus:not(:focus-visible) {
     print-color-adjust: exact;
   }
 
-  .wp-desktop-text-block {
+  body.wp-desktop-print-active .wp-desktop-text-block {
     background: #f9f9f9 !important;
     color: #000 !important;
     border: 1px solid #ddd !important;
   }
 
-  .wp-desktop-field-row {
+  body.wp-desktop-print-active .wp-desktop-field-row {
     border-bottom-color: #eee !important;
   }
-  .wp-desktop-important {
+  body.wp-desktop-print-active .wp-desktop-important {
     border-left-color: #cc0000 !important;
   }
 
-  .wp-desktop-comment { color: #666 !important; }
+  body.wp-desktop-print-active .wp-desktop-comment { color: #666 !important; }
 
-  /* Font size for A4 */
-  .wp-desktop-root { font-size: 11pt !important; }
-
-  .wp-desktop-avatar { width: 60px !important; height: 60px !important; }
+  body.wp-desktop-print-active .wp-desktop-avatar { width: 60px !important; height: 60px !important; }
 }
