@@ -521,6 +521,461 @@ async function hintsRoutes(fastify) {
           break;
         }
 
+        // ═══════════════════════════════════════════
+        // ЗАРПЛАТА И ВЕДОМОСТИ
+        // ═══════════════════════════════════════════
+        case 'payroll':
+        case 'payroll-sheet':
+        case 'self-employed':
+        case 'one-time-pay': {
+          try {
+            const draftSheets = await db.query(`
+              SELECT COUNT(*) as cnt FROM payroll_sheets
+              WHERE status NOT IN ('paid','cancelled','approved')
+            `);
+            const draftCnt = parseInt(draftSheets.rows[0]?.cnt) || 0;
+            if (draftCnt > 0) {
+              hints.push({
+                id: 'payroll_drafts', type: 'info', icon: '📋',
+                text: draftCnt + ' ведомостей в статусе черновик/на согласовании'
+              });
+            }
+          } catch (_) {}
+          try {
+            const unpaidSheets = await db.query(`
+              SELECT COALESCE(SUM(total_payout),0) as total FROM payroll_sheets
+              WHERE status = 'approved' AND payment_status != 'paid'
+            `);
+            const unpaidTotal = parseFloat(unpaidSheets.rows[0]?.total) || 0;
+            if (unpaidTotal > 0) {
+              hints.push({
+                id: 'payroll_unpaid', type: 'warning', icon: '💸',
+                text: 'Невыплаченные ведомости на ' + Math.round(unpaidTotal).toLocaleString('ru-RU') + ' ₽',
+                link: '#/payroll?filter=approved'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ЗАДАЧИ И КАНБАН
+        // ═══════════════════════════════════════════
+        case 'tasks':
+        case 'tasks-admin':
+        case 'kanban': {
+          try {
+            const overdueTasks = await db.query(`
+              SELECT COUNT(*) as cnt FROM tasks
+              WHERE status NOT IN ('done','cancelled')
+                AND deadline IS NOT NULL AND deadline < CURRENT_DATE
+            `);
+            const overdueCnt = parseInt(overdueTasks.rows[0]?.cnt) || 0;
+            if (overdueCnt > 0) {
+              hints.push({
+                id: 'tasks_overdue', type: 'warning', icon: '⏰',
+                text: overdueCnt + ' просроченных задач'
+              });
+            }
+          } catch (_) {}
+          try {
+            const unassigned = await db.query(`
+              SELECT COUNT(*) as cnt FROM tasks
+              WHERE assignee_id IS NULL AND status NOT IN ('done','cancelled')
+            `);
+            const unaCnt = parseInt(unassigned.rows[0]?.cnt) || 0;
+            if (unaCnt > 0) {
+              hints.push({
+                id: 'tasks_unassigned', type: 'info', icon: '👤',
+                text: unaCnt + ' задач без исполнителя'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // НАПОМИНАНИЯ
+        // ═══════════════════════════════════════════
+        case 'reminders': {
+          try {
+            const todayReminders = await db.query(`
+              SELECT COUNT(*) as cnt FROM reminders
+              WHERE (remind_at <= CURRENT_TIMESTAMP OR remind_at::date = CURRENT_DATE)
+                AND status NOT IN ('done','dismissed')
+            `);
+            const remCnt = parseInt(todayReminders.rows[0]?.cnt) || 0;
+            if (remCnt > 0) {
+              hints.push({
+                id: 'reminders_today', type: 'warning', icon: '🔔',
+                text: remCnt + ' напоминаний на сегодня/просрочено'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // HR-РЕЙТИНГ
+        // ═══════════════════════════════════════════
+        case 'hr-rating': {
+          try {
+            const noRating = await db.query(`
+              SELECT COUNT(*) as cnt FROM employees
+              WHERE is_active = true AND rating_avg IS NULL
+            `);
+            const nrCnt = parseInt(noRating.rows[0]?.cnt) || 0;
+            if (nrCnt > 0) {
+              hints.push({
+                id: 'hr_no_rating', type: 'info', icon: '⭐',
+                text: nrCnt + ' активных сотрудников без оценки'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ПОДБОРКИ
+        // ═══════════════════════════════════════════
+        case 'collections': {
+          try {
+            const colCount = await db.query(`
+              SELECT COUNT(*) as cnt FROM collections
+            `);
+            const cCnt = parseInt(colCount.rows[0]?.cnt) || 0;
+            hints.push({
+              id: 'collections_total', type: 'metric', icon: '📚',
+              text: 'Всего подборок: ' + cCnt
+            });
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ОБУЧЕНИЕ
+        // ═══════════════════════════════════════════
+        case 'training': {
+          try {
+            const pendingTraining = await db.query(`
+              SELECT COUNT(*) as cnt FROM training_requests
+              WHERE status IN ('pending','new')
+            `);
+            const trCnt = parseInt(pendingTraining.rows[0]?.cnt) || 0;
+            if (trCnt > 0) {
+              hints.push({
+                id: 'training_pending', type: 'info', icon: '🎓',
+                text: trCnt + ' заявок на обучение ожидают рассмотрения'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // КОМАНДИРОВКИ
+        // ═══════════════════════════════════════════
+        case 'travel': {
+          try {
+            const openTravel = await db.query(`
+              SELECT COUNT(*) as cnt FROM travel_requests
+              WHERE status NOT IN ('closed','cancelled','completed')
+            `);
+            const tvCnt = parseInt(openTravel.rows[0]?.cnt) || 0;
+            if (tvCnt > 0) {
+              hints.push({
+                id: 'travel_open', type: 'info', icon: '✈️',
+                text: tvCnt + ' незакрытых командировок'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // КОРРЕСПОНДЕНЦИЯ
+        // ═══════════════════════════════════════════
+        case 'correspondence': {
+          try {
+            const noReply = await db.query(`
+              SELECT COUNT(*) as cnt FROM correspondence
+              WHERE direction = 'incoming' AND reply_date IS NULL AND status != 'cancelled'
+            `);
+            const nrCnt = parseInt(noReply.rows[0]?.cnt) || 0;
+            if (nrCnt > 0) {
+              hints.push({
+                id: 'correspondence_no_reply', type: 'warning', icon: '📨',
+                text: nrCnt + ' входящих писем без ответа'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ПЕЧАТИ
+        // ═══════════════════════════════════════════
+        case 'seals': {
+          try {
+            const overdueSeals = await db.query(`
+              SELECT COUNT(*) as cnt FROM seals
+              WHERE status = 'issued'
+                AND issued_at < CURRENT_TIMESTAMP - INTERVAL '30 days'
+            `);
+            const sCnt = parseInt(overdueSeals.rows[0]?.cnt) || 0;
+            if (sCnt > 0) {
+              hints.push({
+                id: 'seals_overdue', type: 'warning', icon: '🔏',
+                text: sCnt + ' печатей выданы более 30 дней назад и не возвращены'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ДОВЕРЕННОСТИ
+        // ═══════════════════════════════════════════
+        case 'proxies': {
+          try {
+            const expiringProxies = await db.query(`
+              SELECT COUNT(*) as cnt FROM proxies
+              WHERE status = 'active' AND valid_until IS NOT NULL
+                AND valid_until <= CURRENT_DATE + INTERVAL '30 days'
+                AND valid_until > CURRENT_DATE
+            `);
+            const pCnt = parseInt(expiringProxies.rows[0]?.cnt) || 0;
+            if (pCnt > 0) {
+              hints.push({
+                id: 'proxies_expiring', type: 'warning', icon: '📜',
+                text: pCnt + ' доверенностей истекают в ближайшие 30 дней'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ОФИСНЫЕ РАСХОДЫ
+        // ═══════════════════════════════════════════
+        case 'office-expenses': {
+          try {
+            const pendingExp = await db.query(`
+              SELECT COUNT(*) as cnt FROM office_expenses
+              WHERE status IN ('pending','new','on_approval')
+            `);
+            const oeCnt = parseInt(pendingExp.rows[0]?.cnt) || 0;
+            if (oeCnt > 0) {
+              hints.push({
+                id: 'office_expenses_pending', type: 'info', icon: '🧾',
+                text: oeCnt + ' расходов ожидают согласования'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ЗАЯВКИ НА ЗАКУПКУ / ТМЦ
+        // ═══════════════════════════════════════════
+        case 'purchase-requests':
+        case 'tmc-requests':
+        case 'proc-requests': {
+          try {
+            const pendingReq = await db.query(`
+              SELECT COUNT(*) as cnt FROM purchase_requests
+              WHERE status IN ('pending','new')
+            `);
+            const prCnt = parseInt(pendingReq.rows[0]?.cnt) || 0;
+            if (prCnt > 0) {
+              hints.push({
+                id: 'purchase_pending', type: 'info', icon: '🛒',
+                text: prCnt + ' заявок на закупку ожидают обработки'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ГРАФИКИ РАБОТЫ
+        // ═══════════════════════════════════════════
+        case 'workers-schedule':
+        case 'office-schedule': {
+          try {
+            const noSchedule = await db.query(`
+              SELECT COUNT(*) as cnt FROM employees
+              WHERE is_active = true
+                AND id NOT IN (
+                  SELECT DISTINCT employee_id FROM schedules
+                  WHERE period_start <= CURRENT_DATE AND period_end >= CURRENT_DATE
+                )
+            `);
+            const nsCnt = parseInt(noSchedule.rows[0]?.cnt) || 0;
+            if (nsCnt > 0) {
+              hints.push({
+                id: 'schedule_missing', type: 'info', icon: '📆',
+                text: nsCnt + ' сотрудников без расписания на текущий период'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // РАСЧЁТЫ / КАЛЬКУЛЯТОР
+        // ═══════════════════════════════════════════
+        case 'pm-calcs':
+        case 'all-estimates':
+        case 'calculator': {
+          try {
+            const pendingCalcs = await db.query(`
+              SELECT COUNT(*) as cnt FROM estimates
+              WHERE status IN ('pending','on_approval','draft')
+            `);
+            const pcCnt = parseInt(pendingCalcs.rows[0]?.cnt) || 0;
+            if (pcCnt > 0) {
+              hints.push({
+                id: 'estimates_pending', type: 'info', icon: '🧮',
+                text: pcCnt + ' расчётов ожидают согласования'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ТЕЛЕФОНИЯ
+        // ═══════════════════════════════════════════
+        case 'telephony': {
+          try {
+            const missedCalls = await db.query(`
+              SELECT COUNT(*) as cnt FROM call_records
+              WHERE direction = 'incoming' AND status = 'missed'
+                AND created_at::date = CURRENT_DATE
+            `);
+            const mcCnt = parseInt(missedCalls.rows[0]?.cnt) || 0;
+            if (mcCnt > 0) {
+              hints.push({
+                id: 'telephony_missed', type: 'warning', icon: '📞',
+                text: mcCnt + ' пропущенных звонков сегодня'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // МЕССЕНДЖЕР / ЧАТ
+        // ═══════════════════════════════════════════
+        case 'messenger':
+        case 'chat-groups': {
+          try {
+            const unread = await db.query(`
+              SELECT COUNT(*) as cnt FROM chat_messages
+              WHERE recipient_id = $1 AND read_at IS NULL
+            `, [userId]);
+            const urCnt = parseInt(unread.rows[0]?.cnt) || 0;
+            if (urCnt > 0) {
+              hints.push({
+                id: 'chat_unread', type: 'info', icon: '💬',
+                text: urCnt + ' непрочитанных сообщений'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ПОЧТА / ВХОДЯЩИЕ
+        // ═══════════════════════════════════════════
+        case 'mailbox':
+        case 'my-mail':
+        case 'inbox-applications': {
+          try {
+            const unprocessed = await db.query(`
+              SELECT COUNT(*) as cnt FROM mailbox
+              WHERE status IN ('new','unread') AND (assignee_id IS NULL OR assignee_id = $1)
+            `, [userId]);
+            const upCnt = parseInt(unprocessed.rows[0]?.cnt) || 0;
+            if (upCnt > 0) {
+              hints.push({
+                id: 'mailbox_unprocessed', type: 'info', icon: '📬',
+                text: upCnt + ' необработанных входящих'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // СОГЛАСОВАНИЯ
+        // ═══════════════════════════════════════════
+        case 'approvals':
+        case 'bonus-approval':
+        case 'approval-payment': {
+          try {
+            const pendingApprovals = await db.query(`
+              SELECT COUNT(*) as cnt FROM approvals
+              WHERE status IN ('pending','new')
+                AND (approver_id = $1 OR approver_id IS NULL)
+            `, [userId]);
+            const apCnt = parseInt(pendingApprovals.rows[0]?.cnt) || 0;
+            if (apCnt > 0) {
+              hints.push({
+                id: 'approvals_pending', type: 'warning', icon: '✍️',
+                text: apCnt + ' документов ожидают вашего согласования',
+                link: '#/approvals?filter=pending'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // КАССА
+        // ═══════════════════════════════════════════
+        case 'cash':
+        case 'cash-admin': {
+          try {
+            const pendingCash = await db.query(`
+              SELECT COUNT(*) as cnt, COALESCE(SUM(amount),0) as total
+              FROM cash_requests
+              WHERE status IN ('pending','new','on_approval')
+            `);
+            const crCnt = parseInt(pendingCash.rows[0]?.cnt) || 0;
+            if (crCnt > 0) {
+              const crTotal = parseFloat(pendingCash.rows[0]?.total) || 0;
+              hints.push({
+                id: 'cash_pending', type: 'info', icon: '💵',
+                text: crCnt + ' заявок на выдачу денег на ' + Math.round(crTotal).toLocaleString('ru-RU') + ' ₽'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
+        // ═══════════════════════════════════════════
+        // ДОПУСКИ / ЗАЯВКИ НА ДОПУСКИ
+        // ═══════════════════════════════════════════
+        case 'permits':
+        case 'permit-applications': {
+          try {
+            const pendingPermits = await db.query(`
+              SELECT COUNT(*) as cnt FROM permit_applications
+              WHERE status IN ('pending','new','in_progress')
+            `);
+            const ppCnt = parseInt(pendingPermits.rows[0]?.cnt) || 0;
+            if (ppCnt > 0) {
+              hints.push({
+                id: 'permits_pending', type: 'info', icon: '🪪',
+                text: ppCnt + ' заявок на допуски в обработке'
+              });
+            }
+          } catch (_) {}
+          break;
+        }
+
       } // end switch
 
     } catch (e) {
