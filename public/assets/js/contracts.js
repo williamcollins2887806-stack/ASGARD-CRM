@@ -548,9 +548,12 @@ window.AsgardContractsPage = (function(){
 
     // ── Close ──
     function closeModal() {
-      // Закрыть модалку контрагента если открыта
+      // Закрыть модалку контрагента если открыта (с очисткой listeners)
       const ncm = document.getElementById('newCustomerModal');
-      if (ncm) ncm.remove();
+      if (ncm) {
+        if (ncm._cleanup) ncm._cleanup();
+        else ncm.remove();
+      }
       modal.remove();
       document.removeEventListener('keydown', onKey);
     }
@@ -752,20 +755,6 @@ window.AsgardContractsPage = (function(){
     return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(amount);
   }
 
-  // ═══════ Inline speech bubble helper ═══════
-  function _mimirBubble(anchorEl, text, isError) {
-    if (window.MimirForms) MimirForms.ensureStyles();
-    const old = anchorEl.parentElement?.querySelector('.mimir-bubble');
-    if (old) old.remove();
-    const b = document.createElement('div');
-    b.className = 'mimir-bubble ' + (isError ? 'mimir-bubble--err' : 'mimir-bubble--warn');
-    b.innerHTML = '🧙 ' + text;
-    b.style.cursor = 'pointer';
-    b.addEventListener('click', () => b.remove());
-    anchorEl.parentElement.appendChild(b);
-    setTimeout(() => { if (b.parentElement) b.remove(); }, 6000);
-  }
-
   // ═══════ WOW Модалка создания нового контрагента (inline из договора) ═══════
   function openNewCustomerModal(onCreated) {
     // Не открывать дубль — если уже открыта, закрыть старую
@@ -921,6 +910,8 @@ window.AsgardContractsPage = (function(){
     const closeNcm = () => { ncModal.remove(); document.removeEventListener('keydown', ncKey); };
     const ncKey = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); closeNcm(); } };
     document.addEventListener('keydown', ncKey);
+    // Store cleanup fn on DOM element so parent modal can clean up if it closes first
+    ncModal._cleanup = closeNcm;
     ncModal.querySelectorAll('.ncm-close').forEach(b => b.addEventListener('click', closeNcm));
     ncOverlay.addEventListener('click', (e) => { if (e.target === ncOverlay) closeNcm(); });
 
@@ -1145,7 +1136,7 @@ window.AsgardContractsPage = (function(){
     mimirBtn.addEventListener('click', async () => {
       const context = smartSearch.value.trim() || nameInput.value.trim() || innInput.value.trim();
       if (!context) {
-        _mimirBubble(mimirBtn, 'Воин, введи название или ИНН контрагента — и я найду всё сам.');
+        MimirForms.showBubble(mimirBtn, 'Воин, введи название или ИНН контрагента — и я найду всё сам.');
         return;
       }
 
@@ -1194,7 +1185,7 @@ window.AsgardContractsPage = (function(){
             if (inn.length === 10 || inn.length === 12) {
               await doLookup();
             } else {
-              _mimirBubble(mimirBtn, 'Воин, не нашёл! Попробуй ввести точный ИНН (10 или 12 цифр) — и я найду контрагента в ЕГРЮЛ.');
+              MimirForms.showBubble(mimirBtn, 'Воин, не нашёл! Попробуй ввести точный ИНН (10 или 12 цифр) — и я найду контрагента в ЕГРЮЛ.');
             }
           }
         } else {
@@ -1207,7 +1198,7 @@ window.AsgardContractsPage = (function(){
         }
       } catch (err) {
         emptyFields.forEach(f => f.classList.remove('mimir-field-skeleton'));
-        _mimirBubble(mimirBtn, (err.message || 'Ошибка') + ' Попробуй ввести ИНН или название и нажми снова.', true);
+        MimirForms.showBubble(mimirBtn, (err.message || 'Ошибка') + ' Попробуй ввести ИНН или название и нажми снова.', true);
       } finally {
         mimirBtn.disabled = false;
         mimirBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир заполнит';

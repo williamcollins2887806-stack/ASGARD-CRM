@@ -161,7 +161,7 @@ window.MimirForms = (function() {
 
     const bubble = document.createElement('div');
     bubble.className = 'mimir-bubble ' + (isError ? 'mimir-bubble--err' : 'mimir-bubble--warn');
-    bubble.innerHTML = (isError ? '🧙 ' : '🧙 ') + text;
+    bubble.innerHTML = '🧙 ' + text;
     anchorEl.parentElement.appendChild(bubble);
 
     // Auto-dismiss after 6s
@@ -361,6 +361,7 @@ window.MimirForms = (function() {
     cascadeFill,
     typewriterFill,
     createButton,
-    ensureStyles
+    ensureStyles,
+    showBubble
   };
 })();

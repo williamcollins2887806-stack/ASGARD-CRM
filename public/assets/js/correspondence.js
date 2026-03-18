@@ -492,19 +492,6 @@ window.AsgardCorrespondencePage = (function(){
       });
     }
 
-    function _corrMimirBubble(anchorEl, text, isError) {
-      if (window.MimirForms) MimirForms.ensureStyles();
-      const old = anchorEl.parentElement?.querySelector('.mimir-bubble');
-      if (old) old.remove();
-      const b = document.createElement('div');
-      b.className = 'mimir-bubble ' + (isError ? 'mimir-bubble--err' : 'mimir-bubble--warn');
-      b.innerHTML = '🧙 ' + text;
-      b.style.cursor = 'pointer';
-      b.addEventListener('click', () => b.remove());
-      anchorEl.parentElement.appendChild(b);
-      setTimeout(() => { if (b.parentElement) b.remove(); }, 6000);
-    }
-
     async function openAddModal(direction){
       const isOutgoing = direction === 'outgoing';
       const dir = DIRECTIONS[direction];
@@ -623,11 +610,11 @@ window.AsgardCorrespondencePage = (function(){
                   });
                   toast('Мимир', 'Заполнил ' + (filled || Object.keys(data.fields).length) + ' полей', 'ok');
                 } else {
-                  _corrMimirBubble(btn, 'Воин, мало информации! Заполни хотя бы тему или контрагента — и я помогу дальше.');
+                  MimirForms.showBubble(btn, 'Воин, мало информации! Заполни хотя бы тему или контрагента — и я помогу дальше.');
                 }
               }
             } catch(e) {
-              _corrMimirBubble(btn, (e.message || 'Ошибка') + ' Попробуй заполнить пару полей и нажми снова.', true);
+              MimirForms.showBubble(btn, (e.message || 'Ошибка') + ' Попробуй заполнить пару полей и нажми снова.', true);
             }
             finally {
               btn.disabled = false;
