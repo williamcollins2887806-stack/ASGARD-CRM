@@ -76,6 +76,57 @@ function _huginnSameDay(d1, d2) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+// S12: Link preview cache + fetcher
+var _linkPreviewCache = {};
+function _fetchLinkPreview(url, shimmerEl, bubble) {
+  if (_linkPreviewCache[url]) {
+    _renderLinkPreview(_linkPreviewCache[url], shimmerEl, bubble, url);
+    return;
+  }
+  API.fetch('/chat-groups/link-preview?url=' + encodeURIComponent(url))
+    .then(function(data) {
+      _linkPreviewCache[url] = data;
+      _renderLinkPreview(data, shimmerEl, bubble, url);
+    })
+    .catch(function() { if (shimmerEl.parentNode) shimmerEl.remove(); });
+}
+function _renderLinkPreview(data, shimmerEl, bubble, url) {
+  if (!data || !data.title || !shimmerEl.parentNode) { if (shimmerEl.parentNode) shimmerEl.remove(); return; }
+  var card = document.createElement('a');
+  card.className = 'huginn-link-preview';
+  card.href = url;
+  card.target = '_blank';
+  card.rel = 'noopener';
+  card.addEventListener('click', function(e) { e.stopPropagation(); });
+  if (data.image) {
+    var img = document.createElement('img');
+    img.className = 'huginn-link-preview__img';
+    img.src = data.image;
+    img.onerror = function() { img.remove(); };
+    card.appendChild(img);
+  }
+  var body = document.createElement('div');
+  body.className = 'huginn-link-preview__body';
+  if (data.domain) {
+    var dom = document.createElement('div');
+    dom.className = 'huginn-link-preview__domain';
+    dom.textContent = data.domain;
+    body.appendChild(dom);
+  }
+  var title = document.createElement('div');
+  title.className = 'huginn-link-preview__title';
+  title.textContent = data.title;
+  body.appendChild(title);
+  if (data.description) {
+    var desc = document.createElement('div');
+    desc.className = 'huginn-link-preview__desc';
+    desc.textContent = data.description;
+    body.appendChild(desc);
+  }
+  card.appendChild(body);
+  shimmerEl.parentNode.replaceChild(card, shimmerEl);
+}
+
 function _huginnIsGrouped(prev, curr) {
   if (!prev || !curr) return false;
   if (prev.user_id !== curr.user_id) return false;
@@ -1394,7 +1445,7 @@ async function renderChat(chatId) {
         if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
         messages.push(msg);
         if (msg.id > lastMsgId) lastMsgId = msg.id;
-        rerenderMessages();
+        smartAppendMessage(msg);
         messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
       }
     }).catch(function() { M.Toast({ message: 'Ошибка отправки', type: 'error' }); });
@@ -1476,7 +1527,7 @@ async function renderChat(chatId) {
     };
     if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
     messages.push(tempMsg);
-    rerenderMessages();
+    smartAppendMessage(tempMsg);
     messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
 
     // Show typing indicator in header
@@ -1508,9 +1559,9 @@ async function renderChat(chatId) {
         mimMsg.is_mimir_bot = true;
         messages.push(mimMsg);
         if (mimMsg.id > lastMsgId) lastMsgId = mimMsg.id;
+        smartAppendMessage(mimMsg);
       }
 
-      rerenderMessages();
       messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
     } catch (e) {
       // Mark user message as failed
@@ -1521,12 +1572,13 @@ async function renderChat(chatId) {
       }
       // Add error message from Mimir
       var errText = (e.body && e.body.error) || e.message || '\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0432\u044F\u0437\u0438';
-      messages.push({
+      var errMsg = {
         id: 'err_' + Date.now(), user_id: 0, user_name: '\u041C\u0438\u043C\u0438\u0440',
         message: '\u26A0\uFE0F ' + errText, message_type: 'text', is_mimir_bot: true,
         created_at: new Date().toISOString(),
-      });
-      rerenderMessages();
+      };
+      messages.push(errMsg);
+      smartAppendMessage(errMsg);
       messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
     }
 
@@ -1578,7 +1630,7 @@ async function renderChat(chatId) {
     if (savedReply) { tempMsg.reply_to = savedReply.id; tempMsg.reply_text = savedReply.message; tempMsg.reply_user_name = savedReply.user_name; }
     if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
     messages.push(tempMsg);
-    rerenderMessages();
+    smartAppendMessage(tempMsg);
     messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
 
     try {
@@ -1755,6 +1807,15 @@ async function renderChat(chatId) {
       var textSpan = el('span', { className: 'huginn-msg-text' });
       textSpan.appendChild(_huginnParseText(msg.message));
       bubble.appendChild(textSpan);
+
+      // S12: Link preview (Open Graph)
+      var urlMatch = msg.message.match(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/i);
+      if (urlMatch) {
+        var linkUrl = urlMatch[0];
+        var previewEl = el('div', { className: 'huginn-link-preview--shimmer' });
+        bubble.appendChild(previewEl);
+        _fetchLinkPreview(linkUrl, previewEl, bubble);
+      }
     }
 
     if (msg.attachments && msg.attachments.length) {
@@ -1898,6 +1959,32 @@ async function renderChat(chatId) {
     }, { passive: true });
     wrap.addEventListener('touchend', function() { clearTimeout(_lpTimer); }, { passive: true });
 
+    // S12: Double-tap → ❤️ reaction (iMessage style)
+    var _lastTapTime = 0;
+    bubble.addEventListener('touchend', function(e) {
+      if (_lpCancelled) return;
+      var now = Date.now();
+      if (now - _lastTapTime < 300) {
+        e.preventDefault();
+        toggleReaction(msg.id, '\u2764\uFE0F');
+        if (navigator.vibrate) navigator.vibrate(3);
+        // Heart animation from tap point
+        var touch = e.changedTouches && e.changedTouches[0];
+        if (touch) {
+          var heart = document.createElement('div');
+          heart.className = 'huginn-heart-anim';
+          heart.textContent = '\u2764\uFE0F';
+          heart.style.left = touch.clientX + 'px';
+          heart.style.top = touch.clientY + 'px';
+          document.body.appendChild(heart);
+          setTimeout(function() { heart.remove(); }, 650);
+        }
+        _lastTapTime = 0;
+      } else {
+        _lastTapTime = now;
+      }
+    }, { passive: false });
+
     return wrap;
   }
 
@@ -1971,15 +2058,91 @@ async function renderChat(chatId) {
     document.body.appendChild(overlay);
   }
 
+  // S12: Fullscreen Image Viewer with pinch-to-zoom
   function showImagePreview(url, title) {
-    var content = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', maxHeight: '80vh' } });
-    var img = el('img', {
-      style: { maxWidth: '100%', maxHeight: '70vh', borderRadius: '8px', objectFit: 'contain' },
-    });
+    var overlay = el('div', { className: 'huginn-viewer' });
+    var img = el('img', { className: 'huginn-viewer__img' });
     img.src = url + '?token=' + API.getToken();
     img.alt = title || '';
-    content.appendChild(img);
-    M.BottomSheet({ title: title || 'Изображение', content: content });
+
+    // Controls bar
+    var controls = el('div', { className: 'huginn-viewer__controls' });
+    var closeBtn = el('button', { className: 'huginn-viewer__close', innerHTML: '&#10005;' });
+    var titleEl = el('span', { className: 'huginn-viewer__title', textContent: title || '' });
+    var dlBtn = el('button', { className: 'huginn-viewer__download', innerHTML: '&#11015;' });
+    controls.appendChild(closeBtn);
+    controls.appendChild(titleEl);
+    controls.appendChild(dlBtn);
+
+    overlay.appendChild(controls);
+    overlay.appendChild(img);
+
+    // State
+    var scale = 1, posX = 0, posY = 0;
+    var startDist = 0, startScale = 1;
+    var panStart = null, lastPos = { x: 0, y: 0 };
+
+    function updateTransform() {
+      img.style.transform = 'translate(' + posX + 'px,' + posY + 'px) scale(' + scale + ')';
+    }
+
+    // Pinch-to-zoom
+    overlay.addEventListener('touchstart', function(e) {
+      if (e.touches.length === 2) {
+        startDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        startScale = scale;
+      } else if (e.touches.length === 1 && scale > 1) {
+        panStart = { x: e.touches[0].clientX - posX, y: e.touches[0].clientY - posY };
+      }
+    }, { passive: true });
+
+    overlay.addEventListener('touchmove', function(e) {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        var dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        scale = Math.max(0.5, Math.min(5, startScale * (dist / startDist)));
+        updateTransform();
+      } else if (e.touches.length === 1 && panStart && scale > 1) {
+        posX = e.touches[0].clientX - panStart.x;
+        posY = e.touches[0].clientY - panStart.y;
+        updateTransform();
+      } else if (e.touches.length === 1 && scale <= 1) {
+        // Swipe down to close
+        var dy = e.touches[0].clientY - (lastPos.y || e.touches[0].clientY);
+        if (dy > 80) closeViewer();
+      }
+      if (e.touches.length === 1) lastPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }, { passive: false });
+
+    overlay.addEventListener('touchend', function(e) {
+      if (e.touches.length === 0) {
+        if (scale < 1) { scale = 1; posX = 0; posY = 0; updateTransform(); }
+        panStart = null;
+      }
+    }, { passive: true });
+
+    function closeViewer() {
+      overlay.classList.add('huginn-viewer--closing');
+      setTimeout(function() { overlay.remove(); }, 220);
+    }
+
+    closeBtn.addEventListener('click', closeViewer);
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeViewer();
+    });
+    dlBtn.addEventListener('click', function() {
+      fetch(url + '?token=' + API.getToken())
+        .then(function(r) { return r.blob(); })
+        .then(function(blob) {
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = title || 'image';
+          a.click();
+          URL.revokeObjectURL(a.href);
+        });
+    });
+
+    document.body.appendChild(overlay);
   }
 
   function showVideoPreview(url, title) {
@@ -2047,6 +2210,106 @@ async function renderChat(chatId) {
       appendMessage(msg, prev, next);
     });
   }
+
+  // S12: Smart append — add new message without re-rendering entire DOM
+  function smartAppendMessage(msg) {
+    var len = messages.length;
+    var prev = len > 1 ? messages[len - 2] : null;
+    // Update grouping of previous bubble (was single/last, may now be first/mid)
+    if (prev) {
+      var prevPrev = len > 2 ? messages[len - 3] : null;
+      var prevWrap = messagesWrap.querySelector('[data-msg-id="' + prev.id + '"]');
+      if (prevWrap) {
+        var newPos = _huginnGroupPos(prevPrev, prev, msg);
+        var prevBubble = prevWrap.querySelector('.huginn-bubble');
+        if (prevBubble) {
+          // Update radius classes
+          prevBubble.classList.remove('huginn-bubble--single', 'huginn-bubble--first', 'huginn-bubble--mid', 'huginn-bubble--last');
+          prevBubble.classList.add('huginn-bubble--' + newPos);
+          // Remove tail if no longer single/last
+          if (newPos !== 'single' && newPos !== 'last') {
+            var tail = prevWrap.querySelector('.huginn-tail');
+            if (tail) tail.remove();
+          }
+          // Update avatar visibility
+          var avatarCol = prevWrap.querySelector('.huginn-avatar-col');
+          if (avatarCol) {
+            var showAva = (newPos === 'single' || newPos === 'last');
+            avatarCol.style.visibility = showAva ? 'visible' : 'hidden';
+          }
+        }
+        // Update spacing
+        var grouped = (newPos === 'mid' || newPos === 'last');
+        prevWrap.classList.toggle('huginn-msg-wrap--grouped', grouped);
+        prevWrap.classList.toggle('huginn-msg-wrap--spaced', !grouped);
+      }
+    }
+    // Append new message
+    appendMessage(msg, prev, null);
+  }
+
+  // S12: DOM recycling — remove off-screen elements when DOM gets large
+  var _DOM_RECYCLE_THRESHOLD = 150;
+  function recycleDom() {
+    var wraps = messagesWrap.querySelectorAll('.huginn-msg-wrap');
+    if (wraps.length <= _DOM_RECYCLE_THRESHOLD) return;
+    var scrollTop = messagesWrap.scrollTop;
+    var viewH = messagesWrap.clientHeight;
+    var topCutoff = scrollTop - viewH * 3;
+    var botCutoff = scrollTop + viewH * 4;
+    var removed = 0;
+    for (var i = 0; i < wraps.length; i++) {
+      var w = wraps[i];
+      var top = w.offsetTop;
+      if (top < topCutoff || top > botCutoff) {
+        var h = w.offsetHeight;
+        var spacer = document.createElement('div');
+        spacer.className = 'huginn-spacer';
+        spacer.style.height = h + 'px';
+        spacer.dataset.msgId = w.dataset.msgId;
+        spacer.dataset.recycled = '1';
+        w.parentNode.replaceChild(spacer, w);
+        removed++;
+      }
+    }
+  }
+
+  // Restore recycled spacers when they come into view
+  function restoreRecycled() {
+    var spacers = messagesWrap.querySelectorAll('.huginn-spacer[data-recycled]');
+    if (!spacers.length) return;
+    var scrollTop = messagesWrap.scrollTop;
+    var viewH = messagesWrap.clientHeight;
+    var topEdge = scrollTop - viewH * 2;
+    var botEdge = scrollTop + viewH * 3;
+    for (var i = 0; i < spacers.length; i++) {
+      var s = spacers[i];
+      var top = s.offsetTop;
+      if (top >= topEdge && top <= botEdge) {
+        var msgId = s.dataset.msgId;
+        var msgIdx = messages.findIndex(function(m) { return String(m.id) === msgId; });
+        if (msgIdx >= 0) {
+          var msg = messages[msgIdx];
+          var prev = msgIdx > 0 ? messages[msgIdx - 1] : null;
+          var next = msgIdx < messages.length - 1 ? messages[msgIdx + 1] : null;
+          var bubble = createBubble(msg, prev, next);
+          s.parentNode.replaceChild(bubble, s);
+        }
+      }
+    }
+  }
+
+  // Throttled scroll handler for recycling
+  var _recycleRaf = null;
+  messagesWrap.addEventListener('scroll', function() {
+    if (_recycleRaf) return;
+    _recycleRaf = requestAnimationFrame(function() {
+      _recycleRaf = null;
+      var wraps = messagesWrap.querySelectorAll('.huginn-msg-wrap');
+      if (wraps.length > _DOM_RECYCLE_THRESHOLD) recycleDom();
+      restoreRecycled();
+    });
+  }, { passive: true });
 
   function renderReactionsInto(bubble, msgId, reactions) {
     if (!reactions || !Object.keys(reactions).length) return;
@@ -2184,7 +2447,7 @@ async function renderChat(chatId) {
     var wasAtBottom = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight < 100;
     messages.push(msg);
     if (msg.id > lastMsgId) lastMsgId = msg.id;
-    rerenderMessages();
+    smartAppendMessage(msg);
     if (wasAtBottom) { messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' }); markRead(); }
     else if (msg.user_id !== userId) { _unreadBelow++; updateFabBadge(); }
     if (msg.user_id !== userId) _huginnPlayNotifSound();

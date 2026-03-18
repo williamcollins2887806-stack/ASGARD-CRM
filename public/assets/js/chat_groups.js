@@ -822,6 +822,10 @@ window.AsgardChatGroups = (function(){
 
     // Setup right-click context menu on messages
     _setupContextMenu(chatId);
+    // S12: Double-click → ❤️ reaction
+    _setupDoubleTap(chatId);
+    // S12: Load link previews
+    _loadLinkPreviews();
 
     // Focus input
     const input = $('#chat-message-input');
@@ -875,6 +879,10 @@ window.AsgardChatGroups = (function(){
     textContainer.appendChild(parseMarkdown(messageText));
     const textHtml = messageText ? `<div class="chat-message-text">${textContainer.innerHTML}</div>` : '';
 
+    // S12: Link preview placeholder
+    const urlMatch = messageText.match(/https?:\/\/[^\s<>"{}|\\^`\[\]]+/i);
+    const linkPreviewHtml = urlMatch ? `<div class="huginn-link-preview--shimmer" data-preview-url="${esc(urlMatch[0])}"></div>` : '';
+
     const readHtml = isOwn ? '<span class="chat-msg-read">&#10003;&#10003;</span>' : '';
 
     return `
@@ -884,6 +892,7 @@ window.AsgardChatGroups = (function(){
           ${!isOwn ? `<div class="chat-message-sender" ${isMimirBot ? 'style="color:var(--gold,#D4A843)"' : `style="color:${avatarColor}"`}>${isMimirBot ? 'Мимир' : esc(msg.user_name)}</div>` : ''}
           ${replyHtml}
           ${textHtml}
+          ${linkPreviewHtml}
           ${attsHtml}
           <div class="chat-message-footer">
             <span class="chat-message-time">${time}${msg.edited_at ? ' (ред.)' : ''}</span>
@@ -1184,6 +1193,39 @@ window.AsgardChatGroups = (function(){
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // S12: Link Previews (Open Graph)
+  // ═══════════════════════════════════════════════════════════════
+  const _lpCache = {};
+  function _loadLinkPreviews() {
+    document.querySelectorAll('.huginn-link-preview--shimmer[data-preview-url]').forEach(el => {
+      const url = el.dataset.previewUrl;
+      if (!url) return;
+      if (_lpCache[url]) { _renderDesktopPreview(el, _lpCache[url], url); return; }
+      fetch('/api/chat-groups/link-preview?url=' + encodeURIComponent(url), {
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }
+      })
+        .then(r => r.json())
+        .then(data => { _lpCache[url] = data; _renderDesktopPreview(el, data, url); })
+        .catch(() => el.remove());
+    });
+  }
+  function _renderDesktopPreview(shimmer, data, url) {
+    if (!data || !data.title) { shimmer.remove(); return; }
+    const card = document.createElement('a');
+    card.className = 'huginn-link-preview';
+    card.href = url; card.target = '_blank'; card.rel = 'noopener';
+    let html = '';
+    if (data.image) html += `<img class="huginn-link-preview__img" src="${esc(data.image)}" onerror="this.remove()">`;
+    html += `<div class="huginn-link-preview__body">`;
+    if (data.domain) html += `<div class="huginn-link-preview__domain">${esc(data.domain)}</div>`;
+    html += `<div class="huginn-link-preview__title">${esc(data.title)}</div>`;
+    if (data.description) html += `<div class="huginn-link-preview__desc">${esc(data.description)}</div>`;
+    html += `</div>`;
+    card.innerHTML = html;
+    shimmer.parentNode.replaceChild(card, shimmer);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // Right-click context menu
   // ═══════════════════════════════════════════════════════════════
 
@@ -1236,6 +1278,27 @@ window.AsgardChatGroups = (function(){
       });
 
       setTimeout(() => document.addEventListener('click', _removeContextMenu, { once: true }), 50);
+    });
+  }
+
+  // S12: Double-click → ❤️ reaction (desktop)
+  function _setupDoubleTap(chatId) {
+    const container = $('#chat-messages-container');
+    if (!container) return;
+    container.addEventListener('dblclick', (e) => {
+      const msgEl = e.target.closest('.chat-message');
+      if (!msgEl) return;
+      const msgId = msgEl.dataset.msgId;
+      if (!msgId) return;
+      react(chatId, parseInt(msgId), '❤️');
+      // Heart animation
+      const heart = document.createElement('div');
+      heart.className = 'huginn-heart-anim';
+      heart.textContent = '❤️';
+      heart.style.left = e.clientX + 'px';
+      heart.style.top = e.clientY + 'px';
+      document.body.appendChild(heart);
+      setTimeout(() => heart.remove(), 650);
     });
   }
 

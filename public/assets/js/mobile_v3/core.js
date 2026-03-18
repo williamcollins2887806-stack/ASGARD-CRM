@@ -1226,10 +1226,15 @@ const Utils = (() => {
         }
       }
 
+      // S12: Smooth keyboard transition for composer + messages
+      var composer = document.querySelector('.huginn-composer');
+      var msgArea = document.querySelector('.asgard-mimir-messages, .huginn-messages');
+      if (composer) composer.classList.add('huginn-composer--kb-transition');
+      if (msgArea) msgArea.classList.add('huginn-messages--kb-transition');
+
       // Scroll chat messages to bottom when keyboard opens
       if (keyboardOpen) {
         setTimeout(function() {
-          var msgArea = document.querySelector('.asgard-mimir-messages, .huginn-messages');
           if (msgArea) msgArea.scrollTop = msgArea.scrollHeight;
         }, 300);
       }

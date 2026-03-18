@@ -1695,4 +1695,70 @@ module.exports = async function(fastify) {
     reply.raw.write(`data: ${JSON.stringify({ type: 'done', mimir_message: mimirMsg })}\n\n`);
     reply.raw.end();
   });
+
+  // ═══ S12: Link Preview (Open Graph) ═══
+  const _linkPreviewCache = new Map();
+  const LINK_CACHE_TTL = 3600000; // 1 hour
+
+  fastify.get('/link-preview', { preValidation: [fastify.authenticate] }, async (request, reply) => {
+    const { url } = request.query;
+    if (!url) return reply.code(400).send({ error: 'url required' });
+
+    // Validate URL
+    let parsed;
+    try { parsed = new URL(url); } catch (_) { return reply.code(400).send({ error: 'invalid url' }); }
+    if (!['http:', 'https:'].includes(parsed.protocol)) return reply.code(400).send({ error: 'invalid protocol' });
+
+    // Check cache
+    const cached = _linkPreviewCache.get(url);
+    if (cached && Date.now() - cached.ts < LINK_CACHE_TTL) {
+      return reply.send(cached.data);
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const resp = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'AsgardBot/1.0 (Link Preview)' },
+        redirect: 'follow',
+      });
+      clearTimeout(timeout);
+
+      if (!resp.ok) return reply.send({ title: parsed.hostname, domain: parsed.hostname });
+
+      const contentType = resp.headers.get('content-type') || '';
+      if (!contentType.includes('text/html')) {
+        return reply.send({ title: parsed.hostname, domain: parsed.hostname });
+      }
+
+      const html = await resp.text();
+      const ogTitle = (html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
+                       html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i) || [])[1];
+      const ogDesc = (html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) ||
+                      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i) || [])[1];
+      const ogImage = (html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+                       html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) || [])[1];
+      const htmlTitle = (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1];
+
+      const data = {
+        title: ogTitle || htmlTitle || parsed.hostname,
+        description: ogDesc || '',
+        image: ogImage || '',
+        domain: parsed.hostname,
+      };
+
+      _linkPreviewCache.set(url, { data, ts: Date.now() });
+      // Cleanup old entries
+      if (_linkPreviewCache.size > 500) {
+        const oldest = [..._linkPreviewCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 100);
+        oldest.forEach(([k]) => _linkPreviewCache.delete(k));
+      }
+
+      return reply.send(data);
+    } catch (e) {
+      return reply.send({ title: parsed.hostname, domain: parsed.hostname });
+    }
+  });
 };

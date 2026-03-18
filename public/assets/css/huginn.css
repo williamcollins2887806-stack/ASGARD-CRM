@@ -1880,14 +1880,14 @@
    50. PAGE TRANSITIONS
    ═══════════════════════════════════════ */
 @keyframes huginn-page-in {
-  from { transform: translateX(100%); opacity: 0.5; }
+  from { transform: translateX(100%); opacity: 0.8; }
   to { transform: translateX(0); opacity: 1; }
 }
 @keyframes huginn-page-out {
   from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(100%); opacity: 0.5; }
+  to { transform: translateX(100%); opacity: 0.8; }
 }
-.huginn-chat-page { animation: huginn-page-in .25s ease forwards; }
+.huginn-chat-page { animation: huginn-page-in .28s cubic-bezier(0.2, 0.9, 0.3, 1) forwards; }
 
 /* ═══════════════════════════════════════
    51. SWIPE ACTIONS (CHAT LIST)
@@ -2326,6 +2326,8 @@
 /* --- Chat main relative for drop overlay --- */
 .chat-main { position: relative; }
 
+/* --- Message appear animation --- */
+
 /* --- Light theme desktop additions --- */
 @media (prefers-color-scheme: light) {
   .hg-code-block { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.08); color: #333; }
@@ -2334,4 +2336,218 @@
   .hg-ctx-menu { background: #fff; border-color: rgba(0,0,0,0.1); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
   .hg-ctx-item:hover { background: rgba(0,0,0,0.04); }
   .hg-search-bar { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.06); }
+}
+
+/* ═══════════════════════════════════════
+   55. PERFORMANCE — CSS CONTAIN + WILL-CHANGE (S12)
+   ═══════════════════════════════════════ */
+.huginn-bubble { contain: content; }
+.huginn-msg-wrap { contain: layout style; }
+.huginn-messages { contain: strict; will-change: scroll-position; }
+.huginn-composer { will-change: transform; }
+
+/* ═══════════════════════════════════════
+   56. IMAGE VIEWER — FULLSCREEN + PINCH-ZOOM (S12)
+   ═══════════════════════════════════════ */
+.huginn-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: rgba(0,0,0,0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  animation: huginn-viewer-in 250ms ease forwards;
+}
+.huginn-viewer--closing {
+  animation: huginn-viewer-out 200ms ease forwards;
+}
+@keyframes huginn-viewer-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes huginn-viewer-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.huginn-viewer__img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: transform 200ms ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.huginn-viewer__controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  padding-top: max(16px, env(safe-area-inset-top, 16px));
+  background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+  z-index: 2;
+}
+.huginn-viewer__close,
+.huginn-viewer__download {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: background 150ms;
+}
+.huginn-viewer__close:active,
+.huginn-viewer__download:active {
+  background: rgba(255,255,255,0.3);
+}
+.huginn-viewer__title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+  text-align: center;
+}
+.huginn-viewer__counter {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255,255,255,0.6);
+  font-size: 13px;
+  z-index: 2;
+}
+
+/* ═══════════════════════════════════════
+   57. LINK PREVIEWS — OPEN GRAPH (S12)
+   ═══════════════════════════════════════ */
+.huginn-link-preview {
+  display: block;
+  margin-top: 6px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--hg-sep);
+  background: rgba(255,255,255,0.05);
+  cursor: pointer;
+  transition: background 150ms;
+  text-decoration: none;
+  color: inherit;
+}
+.huginn-link-preview:active {
+  background: rgba(255,255,255,0.1);
+}
+.huginn-link-preview__img {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  display: block;
+}
+.huginn-link-preview__body {
+  padding: 8px 10px;
+}
+.huginn-link-preview__domain {
+  font-size: 11px;
+  color: var(--hg-hint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 2px;
+}
+.huginn-link-preview__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--hg-text);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.huginn-link-preview__desc {
+  font-size: 12px;
+  color: var(--hg-hint);
+  line-height: 1.3;
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.huginn-link-preview--shimmer {
+  height: 80px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+  background-size: 200% 100%;
+  animation: huginn-shimmer 1.5s infinite;
+  border-radius: 12px;
+  margin-top: 6px;
+}
+
+/* Light theme link preview */
+[data-theme="light"] .huginn-link-preview,
+.huginn-light .huginn-link-preview {
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.08);
+}
+[data-theme="light"] .huginn-link-preview:active,
+.huginn-light .huginn-link-preview:active {
+  background: rgba(0,0,0,0.06);
+}
+
+/* ═══════════════════════════════════════
+   58. DOUBLE-TAP HEART ANIMATION (S12)
+   ═══════════════════════════════════════ */
+@keyframes huginn-heart-pop {
+  0% { transform: translate(-50%,-50%) scale(0); opacity: 1; }
+  50% { transform: translate(-50%,-50%) scale(1.3); opacity: 1; }
+  100% { transform: translate(-50%,-50%) scale(1); opacity: 0; }
+}
+.huginn-heart-anim {
+  position: fixed;
+  font-size: 48px;
+  pointer-events: none;
+  z-index: 100001;
+  animation: huginn-heart-pop 600ms ease forwards;
+}
+
+/* ═══════════════════════════════════════
+   59. VIRTUAL SCROLL SPACERS (S12)
+   ═══════════════════════════════════════ */
+.huginn-spacer {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+/* Page exit animation class */
+.huginn-page-exit {
+  animation: huginn-page-out .2s ease forwards;
+  pointer-events: none;
+}
+.huginn-page-enter {
+  animation: huginn-page-in .28s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+/* ═══════════════════════════════════════
+   60. SMOOTH KEYBOARD (S12)
+   ═══════════════════════════════════════ */
+.huginn-composer--kb-transition {
+  transition: transform 250ms ease-out;
+}
+.huginn-messages--kb-transition {
+  transition: padding-bottom 250ms ease-out;
 }
