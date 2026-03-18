@@ -5,6 +5,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── 1. CSS Custom Properties (Dark = default) ── */
+:root,
 .huginn-root,
 .huginn-chat-page,
 .huginn-list-page {
@@ -135,7 +136,7 @@
 .huginn-chat-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   position: relative;
   font-family: var(--hg-font);
@@ -167,6 +168,7 @@
 /* ── 5. Messages Container ── */
 .huginn-messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -2343,7 +2345,7 @@
    ═══════════════════════════════════════ */
 .huginn-bubble { contain: content; }
 .huginn-msg-wrap { contain: layout style; }
-.huginn-messages { contain: strict; will-change: scroll-position; }
+.huginn-messages { contain: layout style; will-change: scroll-position; }
 .huginn-composer { will-change: transform; }
 
 /* ═══════════════════════════════════════

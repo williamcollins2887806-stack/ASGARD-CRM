@@ -43,6 +43,9 @@
 /* Страницы-чаты сами управляют скроллом */
 .asgard-page.asgard-page--chat {
   overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
 }
 
 /* Таб-бар всегда внизу, не сжимается */
