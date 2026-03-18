@@ -492,6 +492,19 @@ window.AsgardCorrespondencePage = (function(){
       });
     }
 
+    function _corrMimirBubble(anchorEl, text, isError) {
+      if (window.MimirForms) MimirForms.ensureStyles();
+      const old = anchorEl.parentElement?.querySelector('.mimir-bubble');
+      if (old) old.remove();
+      const b = document.createElement('div');
+      b.className = 'mimir-bubble ' + (isError ? 'mimir-bubble--err' : 'mimir-bubble--warn');
+      b.innerHTML = '🧙 ' + text;
+      b.style.cursor = 'pointer';
+      b.addEventListener('click', () => b.remove());
+      anchorEl.parentElement.appendChild(b);
+      setTimeout(() => { if (b.parentElement) b.remove(); }, 6000);
+    }
+
     async function openAddModal(direction){
       const isOutgoing = direction === 'outgoing';
       const dir = DIRECTIONS[direction];
@@ -610,40 +623,11 @@ window.AsgardCorrespondencePage = (function(){
                   });
                   toast('Мимир', 'Заполнил ' + (filled || Object.keys(data.fields).length) + ' полей', 'ok');
                 } else {
-                  // Мало данных — открыть Мимир FAB
-                  if (window.AsgardMimir) {
-                    AsgardMimir.open();
-                    setTimeout(() => {
-                      const msgs = document.getElementById('mimirMessages');
-                      if (msgs) {
-                        const tip = document.createElement('div');
-                        tip.style.cssText = 'padding:12px 16px;background:linear-gradient(135deg,rgba(212,168,67,.1),rgba(59,130,246,.05));border:1px solid rgba(212,168,67,.2);border-radius:12px;margin:8px 0;font-size:13px;color:#e5e7eb;line-height:1.5';
-                        tip.innerHTML = '🧙 <b style="color:#D4A843">Воин, мало информации!</b><br>Заполни хотя бы тему или контрагента — и я смогу помочь дальше.';
-                        msgs.appendChild(tip);
-                        msgs.scrollTop = msgs.scrollHeight;
-                      }
-                    }, 200);
-                  } else {
-                    toast('Мимир', 'Заполни хотя бы тему или контрагента', 'warn');
-                  }
+                  _corrMimirBubble(btn, 'Воин, мало информации! Заполни хотя бы тему или контрагента — и я помогу дальше.');
                 }
               }
             } catch(e) {
-              if (window.AsgardMimir) {
-                AsgardMimir.open();
-                setTimeout(() => {
-                  const msgs = document.getElementById('mimirMessages');
-                  if (msgs) {
-                    const tip = document.createElement('div');
-                    tip.style.cssText = 'padding:12px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;margin:8px 0;font-size:13px;color:#e5e7eb;line-height:1.5';
-                    tip.innerHTML = '🧙 <b style="color:#ef4444">Не получилось</b><br>' + (e.message || 'Ошибка') + '<br><span style="color:#9ca3af;font-size:12px">Попробуй заполнить пару полей вручную и нажми снова.</span>';
-                    msgs.appendChild(tip);
-                    msgs.scrollTop = msgs.scrollHeight;
-                  }
-                }, 200);
-              } else {
-                toast('Мимир', e.message || 'Ошибка', 'err');
-              }
+              _corrMimirBubble(btn, (e.message || 'Ошибка') + ' Попробуй заполнить пару полей и нажми снова.', true);
             }
             finally {
               btn.disabled = false;

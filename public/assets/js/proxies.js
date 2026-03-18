@@ -487,6 +487,19 @@ window.AsgardProxiesPage = (function(){
     showModal(tpl.icon + ' ' + tpl.label, h, {width:640});
 
     setTimeout(function(){
+      function _prxBubble(anchorEl, text, isError) {
+        if (window.MimirForms) MimirForms.ensureStyles();
+        var old = anchorEl.parentElement && anchorEl.parentElement.querySelector('.mimir-bubble');
+        if (old) old.remove();
+        var b = document.createElement('div');
+        b.className = 'mimir-bubble ' + (isError ? 'mimir-bubble--err' : 'mimir-bubble--warn');
+        b.innerHTML = '🧙 ' + text;
+        b.style.cursor = 'pointer';
+        b.addEventListener('click', function() { b.remove(); });
+        anchorEl.parentElement.appendChild(b);
+        setTimeout(function() { if (b.parentElement) b.remove(); }, 6000);
+      }
+
       // ── WOW: Мимир автозаполнение для доверенностей ──
       // Доверенности используют id="prx-f-{field}", маппинг через tpl.fields
       if (window.MimirForms) {
@@ -546,14 +559,14 @@ window.AsgardProxiesPage = (function(){
                 });
                 toast('Мимир', 'Заполнил ' + (filled || Object.keys(data.fields).length) + ' полей', 'ok');
               } else {
-                toast('Мимир', 'Недостаточно контекста', 'warn');
+                _prxBubble(btn, 'Воин, мало информации! Заполни хотя бы пару полей — и я помогу дальше.');
               }
             }).catch(function(e) {
               tpl.fields.forEach(function(fld) {
                 var el = document.getElementById('prx-f-' + fld);
                 if (el) el.classList.remove('mimir-field-skeleton');
               });
-              toast('Мимир', e.message || 'Ошибка', 'err');
+              _prxBubble(btn, (e.message || 'Ошибка') + ' Попробуй заполнить пару полей и нажми снова.', true);
             }).finally(function() {
               btn.disabled = false;
               btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир';

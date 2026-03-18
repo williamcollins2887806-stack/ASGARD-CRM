@@ -118,8 +118,58 @@ window.MimirForms = (function() {
         animation:mimirFieldSlideIn .4s ease;
         margin-top:8px;
       }
+
+      /* ═══ Speech bubble (thought cloud) ═══ */
+      @keyframes mimirBubbleIn {
+        0%{opacity:0;transform:translateY(8px) scale(.92)}
+        100%{opacity:1;transform:translateY(0) scale(1)}
+      }
+      .mimir-bubble {
+        position:relative;
+        margin-top:10px;
+        padding:10px 14px;
+        border-radius:12px;
+        font-size:12px;line-height:1.5;
+        color:#e5e7eb;
+        animation:mimirBubbleIn .3s ease;
+        max-width:320px;
+      }
+      .mimir-bubble--warn {
+        background:linear-gradient(135deg,rgba(212,168,67,.12),rgba(59,130,246,.06));
+        border:1px solid rgba(212,168,67,.25);
+      }
+      .mimir-bubble--err {
+        background:rgba(239,68,68,.08);
+        border:1px solid rgba(239,68,68,.2);
+      }
+      .mimir-bubble::before {
+        content:'';position:absolute;top:-6px;left:18px;
+        width:12px;height:12px;
+        background:inherit;border:inherit;
+        border-right:none;border-bottom:none;
+        transform:rotate(45deg);
+      }
     `;
     document.head.appendChild(s);
+  }
+
+  // ═══════ Speech bubble next to button ═══════
+  function showBubble(anchorEl, text, isError) {
+    // Remove any existing bubble
+    const old = anchorEl.parentElement?.querySelector('.mimir-bubble');
+    if (old) old.remove();
+
+    const bubble = document.createElement('div');
+    bubble.className = 'mimir-bubble ' + (isError ? 'mimir-bubble--err' : 'mimir-bubble--warn');
+    bubble.innerHTML = (isError ? '🧙 ' : '🧙 ') + text;
+    anchorEl.parentElement.appendChild(bubble);
+
+    // Auto-dismiss after 6s
+    setTimeout(() => { if (bubble.parentElement) bubble.remove(); }, 6000);
+
+    // Dismiss on click
+    bubble.style.cursor = 'pointer';
+    bubble.addEventListener('click', () => bubble.remove());
   }
 
   // ═══════ Typewriter effect for text inputs/textareas ═══════
@@ -285,41 +335,11 @@ window.MimirForms = (function() {
 
           if (window.AsgardUI) AsgardUI.toast('Мимир', `Заполнил ${count} полей`, 'ok');
         } else {
-          // Мало данных — открыть Мимир FAB с подсказкой
-          if (window.AsgardMimir) {
-            AsgardMimir.open();
-            setTimeout(() => {
-              const msgs = document.getElementById('mimirMessages');
-              if (msgs) {
-                const tip = document.createElement('div');
-                tip.style.cssText = 'padding:12px 16px;background:linear-gradient(135deg,rgba(212,168,67,.1),rgba(59,130,246,.05));border:1px solid rgba(212,168,67,.2);border-radius:12px;margin:8px 0;font-size:13px;color:#e5e7eb;line-height:1.5';
-                tip.innerHTML = '🧙 <b style="color:#D4A843">Воин, мало информации!</b><br>Заполни хотя бы пару полей — название, номер или контрагента — и я смогу помочь дальше.';
-                msgs.appendChild(tip);
-                msgs.scrollTop = msgs.scrollHeight;
-              }
-            }, 200);
-          } else {
-            if (window.AsgardUI) AsgardUI.toast('Мимир', 'Заполни хотя бы пару полей — и я помогу дальше', 'warn');
-          }
+          showBubble(btn, 'Воин, мало информации! Заполни хотя бы пару полей — и я помогу дальше.');
         }
       } catch (err) {
         emptyFields.forEach(f => f.classList.remove('mimir-field-skeleton'));
-        // Ошибка AI — открыть Мимир FAB с объяснением
-        if (window.AsgardMimir) {
-          AsgardMimir.open();
-          setTimeout(() => {
-            const msgs = document.getElementById('mimirMessages');
-            if (msgs) {
-              const tip = document.createElement('div');
-              tip.style.cssText = 'padding:12px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;margin:8px 0;font-size:13px;color:#e5e7eb;line-height:1.5';
-              tip.innerHTML = '🧙 <b style="color:#ef4444">Не получилось</b><br>' + (err.message || 'Ошибка') + '<br><span style="color:#9ca3af;font-size:12px">Попробуй заполнить пару полей вручную и нажми кнопку снова.</span>';
-              msgs.appendChild(tip);
-              msgs.scrollTop = msgs.scrollHeight;
-            }
-          }, 200);
-        } else {
-          if (window.AsgardUI) AsgardUI.toast('Мимир', err.message || 'Ошибка', 'err');
-        }
+        showBubble(btn, (err.message || 'Ошибка') + ' Попробуй заполнить пару полей и нажми снова.', true);
       } finally {
         btn.disabled = false;
         btn.innerHTML = `
