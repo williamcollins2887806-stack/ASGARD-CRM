@@ -163,74 +163,140 @@ function _huginnInitiateCall(targetUserId, targetUserName) {
   }).catch(function() { M.Toast({ message: 'Ошибка загрузки контакта', type: 'error' }); });
 }
 
-/* ── Voice/Video player helpers ── */
-function _huginnVoicePlayer(fileUrl, duration) {
+/* ── Voice Player (real waveform + speed 1×/1.5×/2×) ── */
+function _huginnVoicePlayer(fileUrl, duration, waveform) {
   var el = Utils.el;
-  var t = DS.t;
-  var wrap = el('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', minWidth: '180px', padding: '4px 0' } });
+  var wrap = el('div', { className: 'huginn-voice' });
   var playing = false;
   var audio = new Audio(fileUrl + (fileUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + API.getToken());
+  var speeds = [1, 1.5, 2];
+  var speedIdx = 0;
   var playBtn = el('div', {
-    style: {
-      width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.15)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
-    },
-    textContent: '\u25B6',
+    className: 'huginn-voice__play', textContent: '\u25B6',
     onClick: function() {
       if (playing) { audio.pause(); playBtn.textContent = '\u25B6'; }
       else { audio.play(); playBtn.textContent = '\u23F8'; }
       playing = !playing;
     },
   });
-  audio.addEventListener('ended', function() { playing = false; playBtn.textContent = '\u25B6'; progressFill.style.width = '0%'; });
   wrap.appendChild(playBtn);
-  var waveWrap = el('div', { style: { flex: 1, display: 'flex', alignItems: 'center', gap: '1px', height: '28px' } });
-  for (var i = 0; i < 24; i++) {
-    var h = 6 + Math.floor(Math.random() * 18);
-    waveWrap.appendChild(el('div', { style: { width: '3px', height: h + 'px', borderRadius: '2px', background: 'rgba(255,255,255,0.35)', transition: 'height 0.2s' } }));
+  var waveWrap = el('div', { className: 'huginn-voice__wave' });
+  var barCount = 32;
+  var amps = [];
+  if (waveform && Array.isArray(waveform) && waveform.length) {
+    for (var i = 0; i < barCount; i++) {
+      var si = Math.floor(i / barCount * waveform.length);
+      amps.push(Math.max(3, Math.min(17, Math.round(waveform[si] / 255 * 17))));
+    }
+  } else {
+    var seed = (duration || 10) * 7;
+    for (var i = 0; i < barCount; i++) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      amps.push(3 + Math.floor(seed % 15));
+    }
+  }
+  var bars = [];
+  for (var i = 0; i < barCount; i++) {
+    var bar = el('div', { className: 'huginn-voice__bar' });
+    bar.style.height = amps[i] + 'px';
+    waveWrap.appendChild(bar);
+    bars.push(bar);
   }
   wrap.appendChild(waveWrap);
-  var durText = duration ? Math.floor(duration / 60) + ':' + String(duration % 60).padStart(2, '0') : '';
-  wrap.appendChild(el('div', { style: { fontSize: '11px', color: 'rgba(255,255,255,0.6)', flexShrink: 0 }, textContent: durText }));
-  var progressFill = el('div');
+  var infoCol = el('div', { className: 'huginn-voice__info' });
+  var durText = duration ? Math.floor(duration / 60) + ':' + String(duration % 60).padStart(2, '0') : '0:00';
+  var durEl = el('div', { className: 'huginn-voice__dur', textContent: durText });
+  infoCol.appendChild(durEl);
+  var speedBtn = el('div', {
+    className: 'huginn-voice__speed', textContent: '1\u00D7',
+    onClick: function(e) {
+      e.stopPropagation();
+      speedIdx = (speedIdx + 1) % speeds.length;
+      audio.playbackRate = speeds[speedIdx];
+      speedBtn.textContent = speeds[speedIdx] + '\u00D7';
+    },
+  });
+  infoCol.appendChild(speedBtn);
+  wrap.appendChild(infoCol);
+  audio.addEventListener('ended', function() {
+    playing = false; playBtn.textContent = '\u25B6';
+    bars.forEach(function(b) { b.classList.remove('huginn-voice__bar--active'); });
+    durEl.textContent = durText;
+  });
   audio.addEventListener('timeupdate', function() {
     if (audio.duration) {
-      var pct = (audio.currentTime / audio.duration) * 100;
-      var bars = waveWrap.children;
-      var active = Math.floor(pct / 100 * bars.length);
-      for (var j = 0; j < bars.length; j++) {
-        bars[j].style.background = j < active ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.35)';
-      }
+      var pct = audio.currentTime / audio.duration;
+      var active = Math.floor(pct * bars.length);
+      bars.forEach(function(b, j) { b.classList.toggle('huginn-voice__bar--active', j < active); });
+      var rem = Math.ceil(audio.duration - audio.currentTime);
+      durEl.textContent = Math.floor(rem / 60) + ':' + String(rem % 60).padStart(2, '0');
     }
   });
   return wrap;
 }
 
+/* ── Video Circle (min(200px,55vw), poster frame) ── */
 function _huginnVideoCircle(fileUrl, duration) {
   var el = Utils.el;
-  var t = DS.t;
-  var wrap = el('div', { style: { position: 'relative', width: '180px', height: '180px', borderRadius: '50%', overflow: 'hidden', cursor: 'pointer', border: '2px solid var(--hero-grad, #c62828)', flexShrink: 0 } });
+  var wrap = el('div', { className: 'huginn-vidcircle' });
   var video = document.createElement('video');
-  video.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;';
   video.playsInline = true;
   video.preload = 'metadata';
   video.src = fileUrl + (fileUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + API.getToken();
   wrap.appendChild(video);
-  var overlay = el('div', { style: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '50%' } });
+  video.addEventListener('loadeddata', function() {
+    try {
+      var c = document.createElement('canvas');
+      c.width = video.videoWidth || 200; c.height = video.videoHeight || 200;
+      c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+      video.poster = c.toDataURL('image/jpeg', 0.7);
+    } catch (e) {}
+  });
+  var overlay = el('div', { className: 'huginn-vidcircle__overlay' });
   overlay.innerHTML = '<svg width="36" height="36" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
   wrap.appendChild(overlay);
   if (duration) {
-    var badge = el('div', { style: { position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', borderRadius: '10px', padding: '2px 6px', fontSize: '11px', color: '#fff' }, textContent: Math.floor(duration / 60) + ':' + String(duration % 60).padStart(2, '0') });
-    wrap.appendChild(badge);
+    wrap.appendChild(el('div', { className: 'huginn-vidcircle__dur', textContent: Math.floor(duration / 60) + ':' + String(duration % 60).padStart(2, '0') }));
   }
   var playing = false;
   wrap.addEventListener('click', function() {
-    if (playing) { video.pause(); overlay.style.display = 'flex'; }
-    else { video.play(); overlay.style.display = 'none'; }
+    if (playing) { video.pause(); overlay.style.opacity = '1'; }
+    else { video.play(); overlay.style.opacity = '0'; }
     playing = !playing;
   });
-  video.addEventListener('ended', function() { playing = false; overlay.style.display = 'flex'; });
+  video.addEventListener('ended', function() { playing = false; overlay.style.opacity = '1'; });
   return wrap;
+}
+
+/* ── File type icon helper ── */
+function _huginnFileIcon(fname) {
+  var ext = (fname || '').split('.').pop().toLowerCase();
+  if (ext === 'pdf') return { cls: 'huginn-file-icon--pdf', icon: '\uD83D\uDCC4' };
+  if (['doc','docx','rtf','odt','txt'].indexOf(ext) >= 0) return { cls: 'huginn-file-icon--doc', icon: '\uD83D\uDCC3' };
+  if (['xls','xlsx','csv','ods'].indexOf(ext) >= 0) return { cls: 'huginn-file-icon--xls', icon: '\uD83D\uDCCA' };
+  return { cls: 'huginn-file-icon--other', icon: '\uD83D\uDCCE' };
+}
+
+/* ── File size formatter ── */
+function _huginnFileSize(bytes) {
+  if (!bytes || bytes < 1) return '';
+  if (bytes < 1024) return bytes + ' Б';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' КБ';
+  return (bytes / 1048576).toFixed(1) + ' МБ';
+}
+
+/* ── Authenticated file download ── */
+function _huginnDownloadFile(url, filename) {
+  fetch(url, { headers: { 'Authorization': 'Bearer ' + API.getToken() } })
+    .then(function(r) { return r.blob(); })
+    .then(function(blob) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename || 'file';
+      a.click();
+      setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
+    })
+    .catch(function() { M.Toast({ message: 'Ошибка скачивания', type: 'error' }); });
 }
 
 /* ═══════════════════════════════════════════
@@ -678,7 +744,7 @@ async function renderChat(chatId) {
     onClick: function() { sendMessage(); },
   });
 
-  // Mic button (voice recording)
+  // ── Recording state ──
   var micBtn = null;
   var videoRecBtn = null;
   var _recorder = null;
@@ -686,13 +752,48 @@ async function renderChat(chatId) {
   var _recStream = null;
   var _recStartTime = 0;
   var _recTimerInterval = null;
-  var _recOverlay = null;
+  var _recType = null;
+  var _recLocked = false;
+  var _recTouchX = 0;
+  var _recTouchY = 0;
+  var _recAnalyser = null;
+  var _recAudioCtx = null;
+  var _recWaveform = [];
+  var _recWaveInterval = null;
+
+  // Recording bar (inline in composer, hidden by default)
+  var recBar = el('div', { className: 'huginn-rec-bar' });
+  var recDot = el('div', { className: 'huginn-rec-dot' });
+  var recTimer = el('div', { className: 'huginn-rec-timer', textContent: '0:00' });
+  var recWave = el('div', { className: 'huginn-rec-wave' });
+  var recWaveBars = [];
+  for (var _rb = 0; _rb < 24; _rb++) {
+    var _bar = el('div', { className: 'huginn-rec-wave-bar' });
+    _bar.style.height = '4px';
+    recWave.appendChild(_bar);
+    recWaveBars.push(_bar);
+  }
+  var recHint = el('div', { className: 'huginn-rec-hint', textContent: '\u2190 Сдвиньте для отмены' });
+  var recStop = el('div', { className: 'huginn-rec-stop' });
+  recStop.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+  recStop.style.display = 'none';
+  recStop.addEventListener('click', function() { _endRec(false); });
+  var recPreview = el('div', { className: 'huginn-rec-preview' });
+  recPreview.style.display = 'none';
+  recBar.appendChild(recDot);
+  recBar.appendChild(recTimer);
+  recBar.appendChild(recWave);
+  recBar.appendChild(recPreview);
+  recBar.appendChild(recHint);
+  recBar.appendChild(recStop);
+
+  // Composer elements to hide during recording
+  var _composerEls = [];
 
   if (_huginnHasMedia) {
     micBtn = el('div', {
       className: 'huginn-btn',
       innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v1a7 7 0 01-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
-      onClick: function() { startVoiceRecording(); },
     });
   }
 
@@ -700,11 +801,10 @@ async function renderChat(chatId) {
     videoRecBtn = el('div', {
       className: 'huginn-btn',
       innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
-      onClick: function() { startVideoRecording(); },
     });
   }
 
-  // Composer right: mic ↔ send morph (crossfade 150ms via CSS)
+  // Composer right: mic ↔ send morph
   var composerRight = null;
   if (micBtn) {
     composerRight = el('div', { className: 'huginn-composer-right' });
@@ -727,107 +827,206 @@ async function renderChat(chatId) {
   if (videoRecBtn) composerWrap.appendChild(videoRecBtn);
   if (composerRight) composerWrap.appendChild(composerRight);
   else composerWrap.appendChild(sendBtn);
+  composerWrap.appendChild(recBar);
   updateComposerButtons();
 
-  function startVoiceRecording() {
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+  // Press-and-hold recording handlers
+  function _beginRec(type) {
+    if (_recType) return;
+    _recType = type;
+    _recLocked = false;
+    _recWaveform = [];
+    if (navigator.vibrate) navigator.vibrate(10);
+    var constraints = type === 'video'
+      ? { video: { facingMode: 'user', width: 480, height: 480 }, audio: true }
+      : { audio: true };
+    navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
       _recStream = stream;
       _recChunks = [];
-      var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+      var mimeType;
+      if (type === 'video') {
+        mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
+      } else {
+        mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+      }
       _recorder = new MediaRecorder(stream, { mimeType: mimeType });
       _recorder.ondataavailable = function(e) { if (e.data.size > 0) _recChunks.push(e.data); };
-      _recorder.onstop = function() { finishVoiceRecording(); };
+      _recorder.onstop = function() { _finishRec(); };
       _recorder.start();
       _recStartTime = Date.now();
-      showRecordingOverlay('voice');
-    }).catch(function() { M.Toast({ message: 'Нет доступа к микрофону', type: 'error' }); });
+      // AnalyserNode for real waveform (voice only)
+      if (type === 'voice') {
+        try {
+          _recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          var src = _recAudioCtx.createMediaStreamSource(stream);
+          _recAnalyser = _recAudioCtx.createAnalyser();
+          _recAnalyser.fftSize = 256;
+          src.connect(_recAnalyser);
+          var freqData = new Uint8Array(_recAnalyser.frequencyBinCount);
+          _recWaveInterval = setInterval(function() {
+            _recAnalyser.getByteFrequencyData(freqData);
+            var sum = 0;
+            for (var i = 0; i < freqData.length; i++) sum += freqData[i];
+            var amp = Math.round(sum / freqData.length);
+            _recWaveform.push(amp);
+            // Animate recording wave bars
+            var idx = _recWaveform.length % recWaveBars.length;
+            recWaveBars[idx].style.height = Math.max(3, Math.min(17, Math.round(amp / 255 * 17))) + 'px';
+          }, 100);
+        } catch (e) {}
+      }
+      // Video preview in rec bar
+      if (type === 'video') {
+        recPreview.style.display = '';
+        recPreview.innerHTML = '';
+        var prev = document.createElement('video');
+        prev.srcObject = stream;
+        prev.muted = true;
+        prev.playsInline = true;
+        prev.autoplay = true;
+        recPreview.appendChild(prev);
+        recWave.style.display = 'none';
+      } else {
+        recPreview.style.display = 'none';
+        recWave.style.display = '';
+      }
+      // Show rec bar, hide composer elements
+      _composerEls = Array.from(composerWrap.children).filter(function(c) { return c !== recBar; });
+      _composerEls.forEach(function(c) { c.style.display = 'none'; });
+      recBar.classList.add('huginn-rec-bar--active');
+      recHint.style.display = '';
+      recStop.style.display = 'none';
+      // Timer
+      _recTimerInterval = setInterval(function() {
+        var sec = Math.floor((Date.now() - _recStartTime) / 1000);
+        recTimer.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+        if (sec >= 60 && type === 'video') _endRec(false);
+        if (sec >= 300) _endRec(false);
+      }, 500);
+    }).catch(function() {
+      _recType = null;
+      M.Toast({ message: type === 'video' ? 'Нет доступа к камере' : 'Нет доступа к микрофону', type: 'error' });
+    });
   }
 
-  function startVideoRecording() {
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 480, height: 480 }, audio: true }).then(function(stream) {
-      _recStream = stream;
-      _recChunks = [];
-      var mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
-      _recorder = new MediaRecorder(stream, { mimeType: mimeType });
-      _recorder.ondataavailable = function(e) { if (e.data.size > 0) _recChunks.push(e.data); };
-      _recorder.onstop = function() { finishVideoRecording(); };
-      _recorder.start();
-      _recStartTime = Date.now();
-      showRecordingOverlay('video', stream);
-    }).catch(function() { M.Toast({ message: 'Нет доступа к камере', type: 'error' }); });
-  }
-
-  function showRecordingOverlay(type, stream) {
-    _recOverlay = el('div', { style: {
-      position: 'fixed', top: 0, left: 0, width: '100vw', height: 'calc(var(--vh, 1vh) * 100)',
-      background: 'rgba(0,0,0,0.85)', zIndex: 1000,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px',
-    } });
-    if (type === 'video' && stream) {
-      var preview = document.createElement('video');
-      preview.srcObject = stream;
-      preview.muted = true;
-      preview.playsInline = true;
-      preview.autoplay = true;
-      preview.style.cssText = 'width:200px;height:200px;object-fit:cover;border-radius:50%;border:3px solid #c62828;';
-      _recOverlay.appendChild(preview);
-    } else {
-      var micIcon = el('div', { className: 'huginn-recording__icon', style: { width: '80px', height: '80px', borderRadius: '50%', background: 'var(--hg-destructive, #ec3942)', display: 'flex', alignItems: 'center', justifyContent: 'center' }, textContent: '🎤' });
-      _recOverlay.appendChild(micIcon);
+  function _endRec(cancelled) {
+    if (!_recType) return;
+    clearInterval(_recTimerInterval);
+    clearInterval(_recWaveInterval);
+    if (cancelled) {
+      if (_recorder && _recorder.state !== 'inactive') { _recorder.ondataavailable = null; _recorder.onstop = null; _recorder.stop(); }
+      _cleanupRec();
+      return;
     }
-    var timerEl = el('div', { style: { color: '#fff', fontSize: '24px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }, textContent: '0:00' });
-    _recOverlay.appendChild(timerEl);
-    _recTimerInterval = setInterval(function() {
-      var sec = Math.floor((Date.now() - _recStartTime) / 1000);
-      timerEl.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
-      if (sec >= 60 && type === 'video') stopRecording();
-      if (sec >= 300) stopRecording();
-    }, 500);
-    var stopBtn = el('div', { style: {
-      width: '64px', height: '64px', borderRadius: '50%', background: '#c62828',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-      border: '4px solid rgba(255,255,255,0.3)',
-    } });
-    stopBtn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
-    stopBtn.addEventListener('click', function() { stopRecording(); });
-    _recOverlay.appendChild(stopBtn);
-    var cancelBtn = el('div', { style: { color: 'rgba(255,255,255,0.6)', fontSize: '14px', cursor: 'pointer', marginTop: '8px' }, textContent: 'Отмена' });
-    cancelBtn.addEventListener('click', function() { cancelRecording(); });
-    _recOverlay.appendChild(cancelBtn);
-    document.body.appendChild(_recOverlay);
-  }
-
-  function stopRecording() {
     if (_recorder && _recorder.state !== 'inactive') _recorder.stop();
-    clearInterval(_recTimerInterval);
   }
 
-  function cancelRecording() {
-    if (_recorder && _recorder.state !== 'inactive') { _recorder.ondataavailable = null; _recorder.onstop = null; _recorder.stop(); }
-    clearInterval(_recTimerInterval);
-    if (_recStream) { _recStream.getTracks().forEach(function(tr) { tr.stop(); }); _recStream = null; }
-    if (_recOverlay) { _recOverlay.remove(); _recOverlay = null; }
-  }
-
-  function finishVoiceRecording() {
-    if (_recOverlay) { _recOverlay.remove(); _recOverlay = null; }
-    if (_recStream) { _recStream.getTracks().forEach(function(tr) { tr.stop(); }); _recStream = null; }
+  function _finishRec() {
+    var type = _recType;
+    var waveform = _recWaveform.slice();
+    _cleanupRec();
     if (!_recChunks.length) return;
-    var blob = new Blob(_recChunks, { type: 'audio/webm' });
+    var blob = new Blob(_recChunks, { type: type === 'video' ? 'video/webm' : 'audio/webm' });
     var duration = Math.round((Date.now() - _recStartTime) / 1000);
-    uploadAndSendMedia(blob, 'voice', duration, 'voice.webm');
+    uploadAndSendMedia(blob, type, duration, type === 'video' ? 'video.webm' : 'voice.webm', waveform);
   }
 
-  function finishVideoRecording() {
-    if (_recOverlay) { _recOverlay.remove(); _recOverlay = null; }
+  function _cleanupRec() {
+    _recType = null;
+    _recLocked = false;
     if (_recStream) { _recStream.getTracks().forEach(function(tr) { tr.stop(); }); _recStream = null; }
-    if (!_recChunks.length) return;
-    var blob = new Blob(_recChunks, { type: 'video/webm' });
-    var duration = Math.round((Date.now() - _recStartTime) / 1000);
-    uploadAndSendMedia(blob, 'video', duration, 'video.webm');
+    if (_recAudioCtx) { try { _recAudioCtx.close(); } catch(e) {} _recAudioCtx = null; }
+    _recAnalyser = null;
+    recBar.classList.remove('huginn-rec-bar--active');
+    recPreview.style.display = 'none';
+    recPreview.innerHTML = '';
+    recWave.style.display = '';
+    recWaveBars.forEach(function(b) { b.style.height = '4px'; });
+    // Restore composer elements
+    _composerEls.forEach(function(c) { c.style.display = ''; });
+    updateComposerButtons();
   }
 
-  function uploadAndSendMedia(blob, type, duration, filename) {
+  // Touch handlers for mic button
+  if (micBtn) {
+    var _micHoldTimer = null;
+    micBtn.addEventListener('touchstart', function(e) {
+      _recTouchX = e.touches[0].clientX;
+      _recTouchY = e.touches[0].clientY;
+      _micHoldTimer = setTimeout(function() { _micHoldTimer = null; }, 300);
+      _beginRec('voice');
+    }, { passive: true });
+    micBtn.addEventListener('touchmove', function(e) {
+      if (!_recType) return;
+      var dx = e.touches[0].clientX - _recTouchX;
+      var dy = e.touches[0].clientY - _recTouchY;
+      if (dx < -80) {
+        recHint.textContent = 'Отмена...';
+        recHint.classList.add('huginn-rec-cancel');
+      } else if (dy < -60 && !_recLocked) {
+        _recLocked = true;
+        recHint.style.display = 'none';
+        recStop.style.display = '';
+        if (navigator.vibrate) navigator.vibrate([5, 5]);
+      } else {
+        recHint.textContent = '\u2190 Сдвиньте для отмены';
+        recHint.classList.remove('huginn-rec-cancel');
+      }
+    }, { passive: true });
+    micBtn.addEventListener('touchend', function(e) {
+      if (!_recType) return;
+      if (_recLocked) return; // locked mode — wait for stop button
+      var dx = (e.changedTouches[0] || {}).clientX - _recTouchX;
+      _endRec(dx < -80);
+    }, { passive: true });
+    // Desktop fallback: click to toggle locked recording
+    micBtn.addEventListener('click', function() {
+      if (_recType) { _endRec(false); return; }
+      _beginRec('voice');
+      _recLocked = true;
+      setTimeout(function() { if (_recType) { recHint.style.display = 'none'; recStop.style.display = ''; } }, 500);
+    });
+  }
+
+  // Touch handlers for video button
+  if (videoRecBtn) {
+    videoRecBtn.addEventListener('touchstart', function(e) {
+      _recTouchX = e.touches[0].clientX;
+      _recTouchY = e.touches[0].clientY;
+      _beginRec('video');
+    }, { passive: true });
+    videoRecBtn.addEventListener('touchmove', function(e) {
+      if (!_recType) return;
+      var dx = e.touches[0].clientX - _recTouchX;
+      var dy = e.touches[0].clientY - _recTouchY;
+      if (dx < -80) {
+        recHint.textContent = 'Отмена...';
+        recHint.classList.add('huginn-rec-cancel');
+      } else if (dy < -60 && !_recLocked) {
+        _recLocked = true;
+        recHint.style.display = 'none';
+        recStop.style.display = '';
+        if (navigator.vibrate) navigator.vibrate([5, 5]);
+      } else {
+        recHint.textContent = '\u2190 Сдвиньте для отмены';
+        recHint.classList.remove('huginn-rec-cancel');
+      }
+    }, { passive: true });
+    videoRecBtn.addEventListener('touchend', function(e) {
+      if (!_recType) return;
+      if (_recLocked) return;
+      var dx = (e.changedTouches[0] || {}).clientX - _recTouchX;
+      _endRec(dx < -80);
+    }, { passive: true });
+    videoRecBtn.addEventListener('click', function() {
+      if (_recType) { _endRec(false); return; }
+      _beginRec('video');
+      _recLocked = true;
+      setTimeout(function() { if (_recType) { recHint.style.display = 'none'; recStop.style.display = ''; } }, 500);
+    });
+  }
+
+  function uploadAndSendMedia(blob, type, duration, filename, waveform) {
     M.Toast({ message: type === 'voice' ? 'Отправка голосового...' : 'Отправка видео...', type: 'info' });
     var fd = new FormData();
     fd.append('file', blob, filename);
@@ -838,10 +1037,9 @@ async function renderChat(chatId) {
     }).then(function(r) { return r.json(); }).then(function(data) {
       if (!data.success && !data.download_url) throw new Error('Ошибка загрузки');
       var fileUrl = data.download_url || data.file_url || data.url;
-      return API.fetch('/chat-groups/' + chatId + '/messages', {
-        method: 'POST',
-        body: { text: type === 'voice' ? '🎤 Голосовое сообщение' : '🎬 Видеосообщение', message_type: type, file_url: fileUrl, file_duration: duration },
-      });
+      var body = { text: type === 'voice' ? '\uD83C\uDFA4 Голосовое сообщение' : '\uD83C\uDFA5 Видеосообщение', message_type: type, file_url: fileUrl, file_duration: duration };
+      if (waveform && waveform.length) body.waveform = waveform;
+      return API.fetch('/chat-groups/' + chatId + '/messages', { method: 'POST', body: body });
     }).then(function(resp) {
       var msg = resp.message || resp;
       if (msg && msg.id) {
@@ -986,19 +1184,42 @@ async function renderChat(chatId) {
 
   function attachFile() {
     var input = el('input', { type: 'file', accept: '*/*' });
-    input.onchange = async function() {
+    input.onchange = function() {
       if (!input.files[0]) return;
+      var file = input.files[0];
+      if (file.size > 50 * 1024 * 1024) { M.Toast({ message: 'Макс. 50 МБ', type: 'error' }); return; }
       var fd = new FormData();
-      fd.append('file', input.files[0]);
-      try {
-        var resp = await fetch('/api/chat-groups/' + chatId + '/upload-file', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + API.getToken() },
-          body: fd,
-        });
-        if (resp.ok) { M.Toast({ message: 'Файл отправлен', type: 'success' }); if (!_sseConnected) pollNewMessages(); }
-        else M.Toast({ message: 'Ошибка загрузки', type: 'error' });
-      } catch (_) { M.Toast({ message: 'Ошибка загрузки', type: 'error' }); }
+      fd.append('file', file);
+
+      // Upload progress bar
+      var progressWrap = el('div', { className: 'huginn-upload-progress' });
+      var barOuter = el('div', { className: 'huginn-upload-bar' });
+      var barFill = el('div', { className: 'huginn-upload-bar__fill' });
+      barOuter.appendChild(barFill);
+      progressWrap.appendChild(el('span', { textContent: file.name }));
+      progressWrap.appendChild(barOuter);
+      var cancelBtn = el('div', { className: 'huginn-upload-cancel', textContent: '✕' });
+      progressWrap.appendChild(cancelBtn);
+      var composerEl = document.querySelector('.huginn-composer');
+      if (composerEl) composerEl.parentNode.insertBefore(progressWrap, composerEl);
+
+      var xhr = new XMLHttpRequest();
+      var cancelled = false;
+      cancelBtn.addEventListener('click', function() { cancelled = true; xhr.abort(); progressWrap.remove(); });
+      xhr.upload.addEventListener('progress', function(e) {
+        if (e.lengthComputable) barFill.style.width = Math.round(e.loaded / e.total * 100) + '%';
+      });
+      xhr.addEventListener('load', function() {
+        progressWrap.remove();
+        if (xhr.status >= 200 && xhr.status < 300) {
+          M.Toast({ message: 'Файл отправлен', type: 'success' });
+          if (!_sseConnected) pollNewMessages();
+        } else { M.Toast({ message: 'Ошибка загрузки', type: 'error' }); }
+      });
+      xhr.addEventListener('error', function() { if (!cancelled) { progressWrap.remove(); M.Toast({ message: 'Ошибка загрузки', type: 'error' }); } });
+      xhr.open('POST', '/api/chat-groups/' + chatId + '/upload-file');
+      xhr.setRequestHeader('Authorization', 'Bearer ' + API.getToken());
+      xhr.send(fd);
     };
     input.click();
   }
@@ -1075,7 +1296,7 @@ async function renderChat(chatId) {
     }
 
     if (msg.message_type === 'voice' && msg.file_url) {
-      bubble.appendChild(_huginnVoicePlayer(msg.file_url, msg.file_duration));
+      bubble.appendChild(_huginnVoicePlayer(msg.file_url, msg.file_duration, msg.waveform));
     } else if (isMedia) {
       bubble.appendChild(_huginnVideoCircle(msg.file_url, msg.file_duration));
     } else if (msg.message) {
@@ -1091,33 +1312,57 @@ async function renderChat(chatId) {
         var fileUrl = '/api/chat-groups/' + chatId + '/files/' + encodeURIComponent(fname);
 
         if (mime.indexOf('image/') === 0) {
-          var imgWrap = el('div', {
-            className: 'huginn-img-wrap',
-            onClick: function() { showImagePreview(fileUrl, att.file_name); },
-          });
+          var imgMsg = el('div', { className: 'huginn-img-msg huginn-img-msg--loading' });
+          // blur placeholder
+          if (att.thumb_blur) {
+            var blurEl = el('img', { className: 'huginn-img-msg__blur' });
+            blurEl.src = att.thumb_blur;
+            imgMsg.appendChild(blurEl);
+          }
           var img = el('img');
-          img.loading = 'lazy';
-          img.src = fileUrl + '?token=' + API.getToken();
           img.alt = att.file_name || 'Изображение';
-          img.onerror = function() { imgWrap.style.display = 'none'; };
-          imgWrap.appendChild(img);
-          bubble.appendChild(imgWrap);
+          img.dataset.src = fileUrl + '?token=' + API.getToken();
+          img.onload = function() { imgMsg.classList.remove('huginn-img-msg--loading'); };
+          img.onerror = function() { imgMsg.style.display = 'none'; };
+          imgMsg.appendChild(img);
+          // timestamp overlay inside image
+          var imgTime = el('span', { className: 'huginn-img-msg__time', textContent: _huginnTime(msg.created_at) });
+          if (mine) {
+            var ck = el('span', { className: 'huginn-check huginn-check--' + (msg.is_read ? 'read' : 'sent') });
+            ck.innerHTML = msg.is_read
+              ? '<svg width="16" height="10" viewBox="0 0 16 10" fill="none"><path d="M1 5l3 3 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5l3 3 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+              : '<svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M1 5l3 3 7-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            imgTime.appendChild(ck);
+          }
+          imgMsg.appendChild(imgTime);
+          imgMsg.addEventListener('click', function() { showImagePreview(fileUrl, att.file_name); });
+          // IntersectionObserver lazy load
+          if (window.IntersectionObserver) {
+            var obs = new IntersectionObserver(function(entries, observer) {
+              if (entries[0].isIntersecting) {
+                img.src = img.dataset.src;
+                observer.disconnect();
+              }
+            }, { rootMargin: '200px' });
+            obs.observe(imgMsg);
+          } else {
+            img.src = img.dataset.src;
+          }
+          bubble.appendChild(imgMsg);
         } else if (mime.indexOf('video/') === 0) {
-          var vidWrap = el('div', {
-            className: 'huginn-vid-wrap',
-            onClick: function() { showVideoPreview(fileUrl, att.file_name); },
-          });
-          vidWrap.innerHTML = '<svg width="48" height="48" viewBox="0 0 24 24" fill="rgba(255,255,255,0.8)"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-          bubble.appendChild(vidWrap);
-          bubble.appendChild(el('div', { className: 'huginn-vid-name', textContent: att.file_name || 'Видео' }));
+          bubble.appendChild(_huginnVideoCircle(fileUrl + '?token=' + API.getToken(), att.duration));
         } else {
-          var attEl = el('div', {
-            className: 'huginn-file-att',
-            onClick: function() { window.open(fileUrl); },
-          });
-          attEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
-          attEl.appendChild(el('span', { className: 'huginn-file-att__name', textContent: att.file_name || 'Файл' }));
-          bubble.appendChild(attEl);
+          var fi = _huginnFileIcon(fname);
+          var fileMsg = el('div', { className: 'huginn-file-msg' });
+          var iconEl = el('div', { className: 'huginn-file-icon ' + fi.cls, textContent: fi.icon });
+          fileMsg.appendChild(iconEl);
+          var infoWrap = el('div', { style: 'flex:1;min-width:0' });
+          infoWrap.appendChild(el('div', { className: 'huginn-file-name', textContent: att.file_name || fname }));
+          var sizeText = att.file_size ? _huginnFileSize(att.file_size) : '';
+          if (sizeText) infoWrap.appendChild(el('div', { className: 'huginn-file-size', textContent: sizeText }));
+          fileMsg.appendChild(infoWrap);
+          fileMsg.addEventListener('click', function() { _huginnDownloadFile(fileUrl, att.file_name || fname); });
+          bubble.appendChild(fileMsg);
         }
       });
     }

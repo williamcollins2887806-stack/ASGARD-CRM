@@ -1042,6 +1042,9 @@ module.exports = async function(fastify) {
         chunks.push(chunk);
       }
       const buffer = Buffer.concat(chunks);
+      if (buffer.length > 50 * 1024 * 1024) {
+        return reply.code(413).send({ error: 'Файл слишком большой (макс. 50 МБ)' });
+      }
       await fs.writeFile(filePath, buffer);
 
       const msgResult = await db.query(`
