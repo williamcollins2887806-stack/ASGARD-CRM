@@ -1520,6 +1520,7 @@ async function renderChat(chatId) {
 
     textarea.value = '';
     autoResize();
+    textarea.blur();
     updateComposerButtons();
 
     // Optimistic: add user message
@@ -1604,6 +1605,7 @@ async function renderChat(chatId) {
       var editId = editingMsg.id;
       textarea.value = '';
       autoResize();
+      textarea.blur();
       cancelEdit();
       replyBar.classList.remove('huginn-reply-bar--visible');
       try {
@@ -1620,6 +1622,7 @@ async function renderChat(chatId) {
 
     textarea.value = '';
     autoResize();
+    textarea.blur(); // скрыть клавиатуру после отправки (Telegram-стиль)
     setReply(null);
     if (emojiOpen) toggleEmoji();
     updateComposerButtons();
