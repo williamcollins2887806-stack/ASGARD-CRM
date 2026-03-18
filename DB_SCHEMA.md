@@ -432,6 +432,7 @@
 - last_message_at timestamp without time zone
 - message_count integer DEFAULT 0
 - avatar_path text
+- is_mimir boolean DEFAULT false
 
 ## contracts
 - id integer NOT NULL DEFAULT nextval('contracts_id_seq'::regclass)

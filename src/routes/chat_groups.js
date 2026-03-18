@@ -15,6 +15,8 @@ const path = require('path');
 const fs = require('fs').promises;
 const { randomUUID } = require('crypto');
 const { sendToUser } = require('./sse');
+const aiProvider = require('../services/ai-provider');
+const mimirData = require('../services/mimir-data');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
@@ -307,6 +309,9 @@ module.exports = async function(fastify) {
     } else {
       sql += ` AND c.archived_at IS NULL`;
     }
+
+    // Мимир-чаты показываются отдельно (специальная строка)
+    sql += ` AND COALESCE(c.is_mimir, false) = false`;
 
     if (search) {
       sql += ` AND c.name ILIKE $${idx}`;
@@ -1365,6 +1370,12 @@ module.exports = async function(fastify) {
       return reply.code(403).send({ error: 'Только владелец может удалить чат' });
     }
 
+    // Мимир-чаты нельзя удалять
+    const { rows: [chatInfo] } = await db.query('SELECT is_mimir FROM chats WHERE id = $1', [chatId]);
+    if (chatInfo && chatInfo.is_mimir) {
+      return reply.code(403).send({ error: 'Чат с Мимиром нельзя удалить' });
+    }
+
     // Удалить все связанные данные
     await db.query('DELETE FROM chat_attachments WHERE message_id IN (SELECT id FROM chat_messages WHERE chat_id = $1)', [chatId]);
     await db.query('DELETE FROM chat_messages WHERE chat_id = $1', [chatId]);
@@ -1372,5 +1383,316 @@ module.exports = async function(fastify) {
     await db.query('DELETE FROM chats WHERE id = $1', [chatId]);
 
     return { success: true };
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // МИМИР AI-БОТ В ХУГИННЕ (С9)
+  // ═══════════════════════════════════════════════════════════════
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/chat-groups/mimir — Получить или создать Мимир-чат
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/mimir', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    // Найти существующий Мимир-чат пользователя
+    const { rows: [existing] } = await db.query(`
+      SELECT c.id, c.name FROM chats c
+      JOIN chat_group_members m ON m.chat_id = c.id
+      WHERE c.is_mimir = true AND m.user_id = $1
+      LIMIT 1
+    `, [userId]);
+
+    if (existing) {
+      return { chat_id: existing.id };
+    }
+
+    // Создать Мимир-чат
+    const { rows: [newChat] } = await db.query(`
+      INSERT INTO chats (name, type, is_group, is_mimir, created_at, updated_at, last_message_at)
+      VALUES ('Мимир', 'mimir', false, true, NOW(), NOW(), NOW())
+      RETURNING id
+    `);
+
+    await db.query(`
+      INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+      VALUES ($1, $2, 'owner', NOW())
+    `, [newChat.id, userId]);
+
+    // Добавить приветственное сообщение от Мимира
+    await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, is_system, created_at)
+      VALUES ($1, 0, $2, 'text', true, NOW())
+    `, [newChat.id, '⚡ Привет! Я **Мимир** — AI-помощник ASGARD CRM.\n\nСпрашивай о тендерах, проектах, задачах, финансах и сотрудниках. Я знаю всё о вашей CRM.\n\nНабери `/help` чтобы увидеть быстрые команды.']);
+
+    return { chat_id: newChat.id };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/mimir — Отправить сообщение Мимиру
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/mimir', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+    const user = request.user;
+    const { message } = request.body;
+
+    if (!message || !message.trim()) {
+      return reply.code(400).send({ error: 'Пустое сообщение' });
+    }
+
+    // Проверить что это Мимир-чат и пользователь имеет доступ
+    const { rows: [chat] } = await db.query('SELECT id, is_mimir FROM chats WHERE id = $1', [chatId]);
+    if (!chat || !chat.is_mimir) {
+      return reply.code(400).send({ error: 'Это не Мимир-чат' });
+    }
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const text = message.trim();
+    const senderName = user.name || user.login;
+    const startTime = Date.now();
+
+    // 1. Сохранить сообщение пользователя в chat_messages
+    const { rows: [userMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, created_at)
+      VALUES ($1, $2, $3, 'text', NOW())
+      RETURNING *
+    `, [chatId, userId, text]);
+
+    // SSE: пользовательское сообщение (для синхронизации между вкладками)
+    sseToMembers(chatId, 0, 'chat:new_message', {
+      chat_id: chatId,
+      message: { ...userMsg, user_name: senderName }
+    });
+
+    // 2. Собрать контекст (последние 20 сообщений)
+    const { rows: history } = await db.query(`
+      SELECT user_id, message, created_at FROM chat_messages
+      WHERE chat_id = $1 AND deleted_at IS NULL
+      ORDER BY created_at DESC LIMIT 20
+    `, [chatId]);
+
+    const aiMessages = history.reverse().map(m => ({
+      role: m.user_id === 0 ? 'assistant' : 'user',
+      content: m.message
+    }));
+
+    // 3. Построить system prompt через mimir-data
+    let systemPrompt;
+    try {
+      systemPrompt = await mimirData.buildSystemPrompt(db, user);
+    } catch (e) {
+      systemPrompt = `Ты — Мимир, AI-помощник ASGARD CRM. Помогаешь с проектами, тендерами, CRM. Отвечай развёрнуто, используй markdown.\nПользователь: ${senderName} (${user.role})`;
+    }
+
+    // Дополнить системный промпт для Хугинна
+    systemPrompt += '\n\nТы отвечаешь в мессенджере Хугинн. Будь более разговорным и дружелюбным чем в FAB-режиме. Используй markdown: **bold**, _italic_, `code`, ```блоки кода```, списки (-), заголовки (##). Отвечай подробно и развёрнуто.';
+
+    // 4. Обработка быстрых команд
+    let processedMessage = text;
+    const cmdMatch = text.match(/^\/(help|tasks|tender|project|who)\s*(.*)?$/i);
+    if (cmdMatch) {
+      const cmd = cmdMatch[1].toLowerCase();
+      const arg = (cmdMatch[2] || '').trim();
+      switch (cmd) {
+        case 'help':
+          processedMessage = 'Покажи список доступных команд: /help, /tasks, /tender [номер], /project [название], /who [имя]. Объясни каждую кратко.';
+          break;
+        case 'tasks':
+          processedMessage = 'Покажи мои текущие задачи: активные, просроченные, ближайшие дедлайны.';
+          break;
+        case 'tender':
+          processedMessage = arg ? `Найди информацию о тендере ${arg}: статус, заказчик, сумма, сроки.` : 'Покажи активные тендеры: статус, суммы, дедлайны.';
+          break;
+        case 'project':
+          processedMessage = arg ? `Найди информацию о проекте "${arg}": статус, бюджет, участники.` : 'Покажи активные проекты: статус, прогресс, бюджет.';
+          break;
+        case 'who':
+          processedMessage = arg ? `Найди сотрудника "${arg}": должность, контакты, текущие задачи.` : 'Покажи список сотрудников с должностями.';
+          break;
+      }
+    }
+
+    // Заменить последнее сообщение в aiMessages обработанной версией
+    if (aiMessages.length > 0) {
+      aiMessages[aiMessages.length - 1].content = processedMessage;
+    }
+
+    // 5. SSE typing indicator для клиента
+    sendToUser(userId, 'chat:typing', {
+      chat_id: chatId,
+      user_id: 0,
+      user_name: 'Мимир'
+    });
+
+    // 6. Вызвать AI
+    let aiResponse;
+    try {
+      const aiResult = await aiProvider.complete({
+        system: systemPrompt,
+        messages: aiMessages,
+        maxTokens: 4096,
+        temperature: 0.6
+      });
+      aiResponse = aiResult.content || aiResult.text || 'Не удалось получить ответ';
+    } catch (aiErr) {
+      fastify.log.error(aiErr, 'Mimir AI error in Huginn');
+      aiResponse = '⚠️ Один из воронов заблудился... Попробуйте ещё раз через минуту.';
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    // 7. Сохранить ответ Мимира в chat_messages (user_id = 0 для бота)
+    const { rows: [mimirMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, created_at)
+      VALUES ($1, 0, $2, 'text', NOW())
+      RETURNING *
+    `, [chatId, aiResponse]);
+
+    // 8. Обновить метаданные чата
+    await db.query(`
+      UPDATE chats SET message_count = COALESCE(message_count, 0) + 2, last_message_at = NOW(), updated_at = NOW()
+      WHERE id = $1
+    `, [chatId]);
+
+    // 9. SSE: ответ Мимира
+    sendToUser(userId, 'chat:new_message', {
+      chat_id: chatId,
+      message: { ...mimirMsg, user_name: 'Мимир', is_mimir_bot: true }
+    });
+
+    return {
+      success: true,
+      user_message: userMsg,
+      mimir_message: mimirMsg,
+      duration_ms: durationMs
+    };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/mimir-stream — Стриминг ответа Мимира
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/mimir-stream', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+    const user = request.user;
+    const { message } = request.body;
+
+    if (!message || !message.trim()) {
+      return reply.code(400).send({ error: 'Пустое сообщение' });
+    }
+
+    const { rows: [chat] } = await db.query('SELECT id, is_mimir FROM chats WHERE id = $1', [chatId]);
+    if (!chat || !chat.is_mimir) return reply.code(400).send({ error: 'Это не Мимир-чат' });
+
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const text = message.trim();
+    const senderName = user.name || user.login;
+
+    // Сохранить сообщение пользователя
+    const { rows: [userMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, created_at)
+      VALUES ($1, $2, $3, 'text', NOW())
+      RETURNING *
+    `, [chatId, userId, text]);
+
+    // Контекст
+    const { rows: history } = await db.query(`
+      SELECT user_id, message, created_at FROM chat_messages
+      WHERE chat_id = $1 AND deleted_at IS NULL
+      ORDER BY created_at DESC LIMIT 20
+    `, [chatId]);
+
+    const aiMessages = history.reverse().map(m => ({
+      role: m.user_id === 0 ? 'assistant' : 'user',
+      content: m.message
+    }));
+
+    let systemPrompt;
+    try {
+      systemPrompt = await mimirData.buildSystemPrompt(db, user);
+    } catch (e) {
+      systemPrompt = `Ты — Мимир, AI-помощник ASGARD CRM.\nПользователь: ${senderName} (${user.role})`;
+    }
+    systemPrompt += '\n\nТы отвечаешь в мессенджере Хугинн. Будь разговорным и дружелюбным. Используй markdown.';
+
+    // Обработка быстрых команд
+    const cmdMatch = text.match(/^\/(help|tasks|tender|project|who)\s*(.*)?$/i);
+    if (cmdMatch) {
+      const cmd = cmdMatch[1].toLowerCase();
+      const arg = (cmdMatch[2] || '').trim();
+      const cmdMap = {
+        help: 'Покажи список доступных команд: /help, /tasks, /tender [номер], /project [название], /who [имя]. Объясни каждую кратко.',
+        tasks: 'Покажи мои текущие задачи: активные, просроченные, ближайшие дедлайны.',
+        tender: arg ? `Найди информацию о тендере ${arg}` : 'Покажи активные тендеры.',
+        project: arg ? `Найди информацию о проекте "${arg}"` : 'Покажи активные проекты.',
+        who: arg ? `Найди сотрудника "${arg}"` : 'Покажи список сотрудников.',
+      };
+      if (aiMessages.length > 0) aiMessages[aiMessages.length - 1].content = cmdMap[cmd];
+    }
+
+    // SSE streaming
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+
+    reply.raw.write(`data: ${JSON.stringify({ type: 'start', user_message: userMsg })}\n\n`);
+
+    let fullResponse = '';
+    try {
+      const streamResponse = await aiProvider.stream({
+        system: systemPrompt,
+        messages: aiMessages,
+        maxTokens: 4096,
+        temperature: 0.6
+      });
+
+      for await (const chunk of streamResponse) {
+        const text = chunk.content || chunk.text || chunk.delta?.text || '';
+        if (text) {
+          fullResponse += text;
+          reply.raw.write(`data: ${JSON.stringify({ type: 'text', text })}\n\n`);
+        }
+      }
+    } catch (streamErr) {
+      fastify.log.error(streamErr, 'Mimir stream error');
+      fullResponse = '⚠️ Один из воронов заблудился...';
+      reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: fullResponse })}\n\n`);
+    }
+
+    // Сохранить ответ Мимира
+    const { rows: [mimirMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, created_at)
+      VALUES ($1, 0, $2, 'text', NOW())
+      RETURNING *
+    `, [chatId, fullResponse]);
+
+    await db.query(`
+      UPDATE chats SET message_count = COALESCE(message_count, 0) + 2, last_message_at = NOW(), updated_at = NOW()
+      WHERE id = $1
+    `, [chatId]);
+
+    // SSE notify для других вкладок
+    sendToUser(userId, 'chat:new_message', {
+      chat_id: chatId,
+      message: { ...mimirMsg, user_name: 'Мимир', is_mimir_bot: true }
+    });
+
+    reply.raw.write(`data: ${JSON.stringify({ type: 'done', mimir_message: mimirMsg })}\n\n`);
+    reply.raw.end();
   });
 };

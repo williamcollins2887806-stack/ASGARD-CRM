@@ -1948,3 +1948,129 @@
   inset: 0 !important;
   z-index: 99 !important;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   §53  МИМИР AI-БОТ (С9)
+   ══════════════════════════════════════════════════════════════ */
+
+/* Code blocks */
+.huginn-code-block {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  overflow-x: auto;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e0e0e0;
+}
+.huginn-code-block code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+.huginn-code-inline {
+  background: rgba(255,255,255,0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+}
+
+/* Markdown headers */
+.huginn-md-h1 {
+  font-weight: 700;
+  font-size: 17px;
+  margin: 10px 0 4px;
+  color: var(--hg-text, #fff);
+}
+.huginn-md-h2 {
+  font-weight: 700;
+  font-size: 15.5px;
+  margin: 8px 0 3px;
+  color: var(--hg-text, #fff);
+}
+.huginn-md-h3 {
+  font-weight: 600;
+  font-size: 14.5px;
+  margin: 6px 0 2px;
+  color: var(--hg-text, #fff);
+}
+
+/* Markdown list items */
+.huginn-md-li {
+  padding-left: 8px;
+  line-height: 1.5;
+  margin: 1px 0;
+}
+
+/* Mimir message wrap */
+.huginn-msg-wrap--mimir .huginn-bubble--in {
+  background: rgba(212,168,67,0.06);
+  border: 1px solid rgba(212,168,67,0.15);
+}
+
+/* Mimir preview in chat list */
+.huginn-mimir-preview {
+  color: var(--hg-gold, #D4A843) !important;
+  font-style: italic;
+}
+
+/* Quick commands popup */
+.huginn-mimir-cmd-popup {
+  position: relative;
+  background: var(--hg-surface, #1e2430);
+  border-top: 1px solid rgba(212,168,67,0.15);
+  border-radius: 12px 12px 0 0;
+  padding: 8px 0;
+  z-index: 5;
+}
+.huginn-mimir-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.huginn-mimir-cmd-row:active {
+  background: rgba(212,168,67,0.08);
+}
+.huginn-mimir-cmd-icon {
+  font-size: 18px;
+  width: 28px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.huginn-mimir-cmd-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--hg-gold, #D4A843);
+  min-width: 70px;
+}
+.huginn-mimir-cmd-desc {
+  font-size: 13px;
+  color: var(--hg-hint, #8b95a5);
+}
+
+/* Light theme adjustments */
+.huginn-root.light .huginn-code-block {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.1);
+  color: #333;
+}
+.huginn-root.light .huginn-code-inline {
+  background: rgba(0,0,0,0.06);
+}
+.huginn-root.light .huginn-msg-wrap--mimir .huginn-bubble--in {
+  background: rgba(212,168,67,0.05);
+  border-color: rgba(212,168,67,0.2);
+}
+.huginn-root.light .huginn-mimir-cmd-popup {
+  background: #f5f5f5;
+  border-color: rgba(212,168,67,0.2);
+}

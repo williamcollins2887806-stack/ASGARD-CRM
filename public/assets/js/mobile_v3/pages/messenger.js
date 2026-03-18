@@ -94,37 +94,108 @@ function _huginnGroupPos(prev, curr, next) {
 
 function _huginnParseText(text) {
   var frag = document.createDocumentFragment();
-  // Split by markdown patterns and URLs
+
+  // Pre-process: extract fenced code blocks first (```...```)
+  var parts = text.split(/(```[\s\S]*?```)/g);
+  for (var pi = 0; pi < parts.length; pi++) {
+    var part = parts[pi];
+    if (part.indexOf('```') === 0 && part.lastIndexOf('```') > 2) {
+      // Fenced code block
+      var codeContent = part.slice(3, part.length - 3);
+      // Remove optional language identifier on first line
+      var nlIdx = codeContent.indexOf('\n');
+      if (nlIdx >= 0 && nlIdx < 20 && /^[a-zA-Z]*$/.test(codeContent.slice(0, nlIdx).trim())) {
+        codeContent = codeContent.slice(nlIdx + 1);
+      }
+      var pre = document.createElement('pre');
+      pre.className = 'huginn-code-block';
+      var codeEl = document.createElement('code');
+      codeEl.textContent = codeContent;
+      pre.appendChild(codeEl);
+      frag.appendChild(pre);
+    } else {
+      // Process line-by-line for headers and lists, then inline markdown
+      _huginnParseBlock(part, frag);
+    }
+  }
+  return frag;
+}
+
+function _huginnParseBlock(text, frag) {
+  var lines = text.split('\n');
+  for (var li = 0; li < lines.length; li++) {
+    var line = lines[li];
+    // Headers: ### ## #
+    var hMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (hMatch) {
+      var level = hMatch[1].length;
+      var h = document.createElement(level === 1 ? 'div' : 'div');
+      h.className = 'huginn-md-h' + level;
+      h.appendChild(_huginnParseInline(hMatch[2]));
+      frag.appendChild(h);
+      continue;
+    }
+    // Unordered list: - item or * item
+    var ulMatch = line.match(/^[\s]*[-*]\s+(.+)$/);
+    if (ulMatch) {
+      var li2 = document.createElement('div');
+      li2.className = 'huginn-md-li';
+      li2.appendChild(document.createTextNode('\u2022 '));
+      li2.appendChild(_huginnParseInline(ulMatch[1]));
+      frag.appendChild(li2);
+      continue;
+    }
+    // Ordered list: 1. item
+    var olMatch = line.match(/^[\s]*(\d+)\.\s+(.+)$/);
+    if (olMatch) {
+      var oli = document.createElement('div');
+      oli.className = 'huginn-md-li';
+      oli.appendChild(document.createTextNode(olMatch[1] + '. '));
+      oli.appendChild(_huginnParseInline(olMatch[2]));
+      frag.appendChild(oli);
+      continue;
+    }
+    // Regular line — inline markdown
+    if (line.trim()) {
+      frag.appendChild(_huginnParseInline(line));
+    }
+    if (li < lines.length - 1) frag.appendChild(document.createElement('br'));
+  }
+}
+
+function _huginnParseInline(text) {
+  var frag = document.createDocumentFragment();
   var re = /(https?:\/\/[^\s<>"']+)|(\*\*(.+?)\*\*)|(__(.+?)__)|(_(.+?)_)|(~~(.+?)~~)|(`(.+?)`)/g;
   var last = 0;
   var match;
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) frag.appendChild(document.createTextNode(text.slice(last, match.index)));
-    if (match[1]) { // URL
+    if (match[1]) {
       var a = document.createElement('a');
       a.href = match[1];
       a.target = '_blank';
       a.rel = 'noopener';
       a.textContent = match[1];
       frag.appendChild(a);
-    } else if (match[2]) { // **bold**
+    } else if (match[2]) {
       var b = document.createElement('strong');
       b.textContent = match[3];
       frag.appendChild(b);
-    } else if (match[4]) { // __bold__
+    } else if (match[4]) {
       var b2 = document.createElement('strong');
       b2.textContent = match[5];
       frag.appendChild(b2);
-    } else if (match[6]) { // _italic_
+    } else if (match[6]) {
       var em = document.createElement('em');
       em.textContent = match[7];
       frag.appendChild(em);
-    } else if (match[8]) { // ~~strike~~
+    } else if (match[8]) {
       var del = document.createElement('del');
       del.textContent = match[9];
       frag.appendChild(del);
-    } else if (match[10]) { // `code`
+    } else if (match[10]) {
       var code = document.createElement('code');
+      code.className = 'huginn-code-inline';
       code.textContent = match[11];
       frag.appendChild(code);
     }
@@ -440,7 +511,14 @@ const MessengerPage = {
       if (!q) {
         var mimirRow = el('div', {
           className: 'huginn-chat-row',
-          onClick: function() { Router.navigate('/mimir'); },
+          onClick: function() {
+            API.fetch('/chat-groups/mimir').then(function(r) {
+              if (r && r.chat_id) {
+                window._huginnMimirChatId = r.chat_id;
+                Router.navigate('/messenger/' + r.chat_id);
+              }
+            }).catch(function() { M.Toast({ message: '\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u041C\u0438\u043C\u0438\u0440\u0430', type: 'error' }); });
+          },
         });
         var mimirAva = el('div', {
           style: {
@@ -452,8 +530,8 @@ const MessengerPage = {
         });
         mimirRow.appendChild(mimirAva);
         var mimirInfo = el('div', { className: 'huginn-chat-row__info' });
-        mimirInfo.appendChild(el('div', { className: 'huginn-chat-row__name', textContent: '\u041C\u0438\u043C\u0438\u0440' }));
-        mimirInfo.appendChild(el('div', { className: 'huginn-chat-row__preview', textContent: 'AI-\u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A ASGARD' }));
+        mimirInfo.appendChild(el('div', { className: 'huginn-chat-row__name', textContent: '\u041C\u0438\u043C\u0438\u0440 \u00B7 AI-\u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A' }));
+        mimirInfo.appendChild(el('div', { className: 'huginn-chat-row__preview huginn-mimir-preview', textContent: '\u0421\u043F\u0440\u043E\u0441\u0438 \u043E \u0442\u0435\u043D\u0434\u0435\u0440\u0430\u0445, \u0437\u0430\u0434\u0430\u0447\u0430\u0445, \u0444\u0438\u043D\u0430\u043D\u0441\u0430\u0445...' }));
         mimirRow.appendChild(mimirInfo);
         list.appendChild(mimirRow);
       }
@@ -600,9 +678,12 @@ async function renderChat(chatId) {
     chatMembers = resp.members || [];
   } catch (_) {}
 
+  // Mimir AI bot detection
+  var isMimirChat = !!(chatInfo.is_mimir || window._huginnMimirChatId === chatId);
+
   // Online status for direct chat
   var directMember = null;
-  if (!chatInfo.is_group && chatMembers.length) {
+  if (!chatInfo.is_group && chatMembers.length && !isMimirChat) {
     directMember = chatMembers.find(function(m) { return m.user_id !== userId; });
   }
 
@@ -626,30 +707,51 @@ async function renderChat(chatId) {
   headerEl.appendChild(headerBack);
 
   var headerAvatarWrap = el('div', { className: 'huginn-header-avatar-wrap' });
-  headerAvatarWrap.appendChild(M.Avatar({ name: chatInfo.name || '?', size: 40 }));
+  if (isMimirChat) {
+    var mimirAvaH = el('div', {
+      className: 'huginn-mimir-avatar',
+      style: {
+        width: '40px', height: '40px', borderRadius: '50%',
+        background: 'linear-gradient(135deg, var(--hg-accent, #6ab2f2), var(--hg-destructive, #ec3942))',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '18px', flexShrink: 0,
+        boxShadow: '0 2px 8px rgba(198,40,40,0.25)',
+      },
+      textContent: '\u26A1',
+    });
+    headerAvatarWrap.appendChild(mimirAvaH);
+  } else {
+    headerAvatarWrap.appendChild(M.Avatar({ name: chatInfo.name || '?', size: 40 }));
+  }
   var onlineDot = el('div', { className: 'huginn-online-dot huginn-header-online-dot' });
   onlineDot.style.display = 'none';
   headerAvatarWrap.appendChild(onlineDot);
   headerEl.appendChild(headerAvatarWrap);
 
   var headerInfo = el('div', { className: 'huginn-header-info' });
-  var headerTitle = el('div', { className: 'huginn-header-title', textContent: chatInfo.name || 'Чат' });
+  var headerTitle = el('div', { className: 'huginn-header-title', textContent: isMimirChat ? '\u041C\u0438\u043C\u0438\u0440' : (chatInfo.name || '\u0427\u0430\u0442') });
   var headerSub = el('div', { className: 'huginn-header-subtitle' });
+  if (isMimirChat) {
+    headerSub.textContent = 'AI-\u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A ASGARD';
+    headerSub.style.color = 'var(--hg-gold, #D4A843)';
+  }
   headerInfo.appendChild(headerTitle);
   headerInfo.appendChild(headerSub);
   headerEl.appendChild(headerInfo);
 
   var headerActions = el('div', { className: 'huginn-header-actions' });
-  headerActions.appendChild(el('div', {
-    className: 'huginn-header-action',
-    innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
-    onClick: function() { toggleSearchBar(); },
-  }));
-  headerActions.appendChild(el('div', {
-    className: 'huginn-header-action',
-    innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
-    onClick: function() { chatActionsSheet(chatId); },
-  }));
+  if (!isMimirChat) {
+    headerActions.appendChild(el('div', {
+      className: 'huginn-header-action',
+      innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+      onClick: function() { toggleSearchBar(); },
+    }));
+    headerActions.appendChild(el('div', {
+      className: 'huginn-header-action',
+      innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
+      onClick: function() { chatActionsSheet(chatId); },
+    }));
+  }
   headerEl.appendChild(headerActions);
   page.appendChild(headerEl);
 
@@ -796,8 +898,11 @@ async function renderChat(chatId) {
         headerSub.textContent = _huginnOnlineLabel(directMember.last_login_at);
         onlineDot.style.display = 'none';
       }
+    } else if (isMimirChat) {
+      headerSub.textContent = 'AI-\u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A ASGARD';
+      headerSub.style.color = 'var(--hg-gold, #D4A843)';
     } else if (mc > 0) {
-      headerSub.textContent = mc + Utils.plural(mc, ' участник', ' участника', ' участников');
+      headerSub.textContent = mc + Utils.plural(mc, ' \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A', ' \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430', ' \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432');
     }
   }
 
@@ -907,15 +1012,45 @@ async function renderChat(chatId) {
   // Composer: 📎 | textarea | 😊 | [🎬] | mic↔send morph
   var composerWrap = el('div', { className: 'huginn-composer' });
 
-  composerWrap.appendChild(el('div', {
-    className: 'huginn-btn',
-    innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>',
-    onClick: function() { attachFile(); },
-  }));
+  // Quick commands popup for Mimir
+  var _mimirCmdPopup = null;
+  if (isMimirChat) {
+    _mimirCmdPopup = el('div', { className: 'huginn-mimir-cmd-popup' });
+    _mimirCmdPopup.style.display = 'none';
+    var _mimirCmds = [
+      { cmd: '/help', desc: '\u0421\u043F\u0438\u0441\u043E\u043A \u043A\u043E\u043C\u0430\u043D\u0434', icon: '\u2753' },
+      { cmd: '/tasks', desc: '\u041C\u043E\u0438 \u0437\u0430\u0434\u0430\u0447\u0438', icon: '\u2705' },
+      { cmd: '/tender', desc: '\u041F\u043E\u0438\u0441\u043A \u0442\u0435\u043D\u0434\u0435\u0440\u0430', icon: '\uD83D\uDCC4' },
+      { cmd: '/project', desc: '\u041F\u043E\u0438\u0441\u043A \u043F\u0440\u043E\u0435\u043A\u0442\u0430', icon: '\uD83D\uDCC1' },
+      { cmd: '/who', desc: '\u041F\u043E\u0438\u0441\u043A \u0441\u043E\u0442\u0440\u0443\u0434\u043D\u0438\u043A\u0430', icon: '\uD83D\uDC64' },
+    ];
+    _mimirCmds.forEach(function(c) {
+      var row = el('div', { className: 'huginn-mimir-cmd-row' });
+      row.appendChild(el('span', { className: 'huginn-mimir-cmd-icon', textContent: c.icon }));
+      row.appendChild(el('span', { className: 'huginn-mimir-cmd-name', textContent: c.cmd }));
+      row.appendChild(el('span', { className: 'huginn-mimir-cmd-desc', textContent: c.desc }));
+      row.addEventListener('click', function() {
+        textarea.value = c.cmd + ' ';
+        textarea.focus();
+        _mimirCmdPopup.style.display = 'none';
+        autoResize();
+        updateComposerButtons();
+      });
+      _mimirCmdPopup.appendChild(row);
+    });
+  }
+
+  if (!isMimirChat) {
+    composerWrap.appendChild(el('div', {
+      className: 'huginn-btn',
+      innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>',
+      onClick: function() { attachFile(); },
+    }));
+  }
 
   var textarea = el('textarea', {
     className: 'huginn-textarea',
-    placeholder: 'Сообщение...',
+    placeholder: isMimirChat ? '\u0421\u043F\u0440\u043E\u0441\u0438\u0442\u0435 \u041C\u0438\u043C\u0438\u0440\u0430... \u0438\u043B\u0438 /' : '\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435...',
     rows: 1,
   });
 
@@ -988,14 +1123,14 @@ async function renderChat(chatId) {
   // Composer elements to hide during recording
   var _composerEls = [];
 
-  if (_huginnHasMedia) {
+  if (_huginnHasMedia && !isMimirChat) {
     micBtn = el('div', {
       className: 'huginn-btn',
       innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v1a7 7 0 01-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
     });
   }
 
-  if (_huginnHasVideo) {
+  if (_huginnHasVideo && !isMimirChat) {
     videoRecBtn = el('div', {
       className: 'huginn-btn',
       innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
@@ -1020,7 +1155,20 @@ async function renderChat(chatId) {
     if (videoRecBtn) videoRecBtn.style.display = hasText ? 'none' : 'flex';
   }
 
-  textarea.addEventListener('input', function() { autoResize(); sendTypingSignal(); updateComposerButtons(); });
+  textarea.addEventListener('input', function() {
+    autoResize();
+    if (!isMimirChat) sendTypingSignal();
+    updateComposerButtons();
+    // Quick commands popup for Mimir
+    if (isMimirChat && _mimirCmdPopup) {
+      var val = textarea.value;
+      if (val === '/' || (val.length <= 8 && val.charAt(0) === '/')) {
+        _mimirCmdPopup.style.display = '';
+      } else {
+        _mimirCmdPopup.style.display = 'none';
+      }
+    }
+  });
 
   if (videoRecBtn) composerWrap.appendChild(videoRecBtn);
   if (composerRight) composerWrap.appendChild(composerRight);
@@ -1253,7 +1401,8 @@ async function renderChat(chatId) {
   }
 
   page.appendChild(replyBar);
-  page.appendChild(emojiPanel);
+  if (!isMimirChat) page.appendChild(emojiPanel);
+  if (isMimirChat && _mimirCmdPopup) page.appendChild(_mimirCmdPopup);
   page.appendChild(composerWrap);
 
   // ── Functions ──
@@ -1303,7 +1452,93 @@ async function renderChat(chatId) {
     API.fetch('/chat-groups/' + chatId + '/typing', { method: 'POST' }).catch(function(){});
   }
 
+  // ── Mimir AI send handler ──
+  var _mimirSending = false;
+  async function _sendMimirMessage() {
+    var text = textarea.value.trim();
+    if (!text || _mimirSending) return;
+    _mimirSending = true;
+    if (navigator.vibrate) navigator.vibrate(10);
+    _huginnPlaySendSound();
+
+    // Hide quick commands popup
+    if (_mimirCmdPopup) _mimirCmdPopup.style.display = 'none';
+
+    textarea.value = '';
+    autoResize();
+    updateComposerButtons();
+
+    // Optimistic: add user message
+    var tempId = 'tmp_' + Date.now();
+    var tempMsg = {
+      id: tempId, user_id: userId, user_name: (Store.get('user') || {}).name || '',
+      message: text, message_type: 'text', created_at: new Date().toISOString(), _pending: true,
+    };
+    if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
+    messages.push(tempMsg);
+    rerenderMessages();
+    messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
+
+    // Show typing indicator in header
+    _typingUser = '\u041C\u0438\u043C\u0438\u0440';
+    updateHeaderSubtitle();
+
+    try {
+      var resp = await API.fetch('/chat-groups/' + chatId + '/mimir', {
+        method: 'POST',
+        body: { message: text },
+      });
+
+      // Update user message with real ID
+      if (resp.user_message && resp.user_message.id) {
+        var uidx = messages.findIndex(function(m) { return m.id === tempId; });
+        if (uidx >= 0) {
+          resp.user_message.user_name = tempMsg.user_name;
+          resp.user_message.user_id = userId;
+          messages[uidx] = resp.user_message;
+          if (resp.user_message.id > lastMsgId) lastMsgId = resp.user_message.id;
+        }
+      }
+
+      // Add Mimir response
+      if (resp.mimir_message) {
+        var mimMsg = resp.mimir_message;
+        mimMsg.user_id = 0;
+        mimMsg.user_name = '\u041C\u0438\u043C\u0438\u0440';
+        mimMsg.is_mimir_bot = true;
+        messages.push(mimMsg);
+        if (mimMsg.id > lastMsgId) lastMsgId = mimMsg.id;
+      }
+
+      rerenderMessages();
+      messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
+    } catch (e) {
+      // Mark user message as failed
+      var failWrap = messagesWrap.querySelector('[data-msg-id="' + tempId + '"]');
+      if (failWrap) {
+        failWrap.classList.remove('huginn-msg-wrap--pending');
+        failWrap.classList.add('huginn-msg-wrap--failed');
+      }
+      // Add error message from Mimir
+      var errText = (e.body && e.body.error) || e.message || '\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0432\u044F\u0437\u0438';
+      messages.push({
+        id: 'err_' + Date.now(), user_id: 0, user_name: '\u041C\u0438\u043C\u0438\u0440',
+        message: '\u26A0\uFE0F ' + errText, message_type: 'text', is_mimir_bot: true,
+        created_at: new Date().toISOString(),
+      });
+      rerenderMessages();
+      messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
+    }
+
+    _typingUser = null;
+    updateHeaderSubtitle();
+    _mimirSending = false;
+  }
+
   async function sendMessage() {
+    // Route to Mimir handler if Mimir chat
+    if (isMimirChat) return _sendMimirMessage();
+
     var text = textarea.value.trim();
     if (!text) return;
     if (navigator.vibrate) navigator.vibrate(10);
@@ -1438,26 +1673,43 @@ async function renderChat(chatId) {
   // ── Message rendering ──
   function createBubble(msg, prev, next) {
     var mine = msg.user_id === userId;
+    var isMimirBot = isMimirChat && (msg.user_id === 0 || msg.is_mimir_bot || msg.is_system);
+    if (isMimirBot) mine = false;
     var isDeleted = !!msg.deleted_at;
     var isGroup = chatInfo && chatInfo.is_group;
     var pos = _huginnGroupPos(prev, msg, next);
     var grouped = (pos === 'mid' || pos === 'last');
-    var showAvatar = !mine && isGroup && (pos === 'single' || pos === 'last');
-    var showName = !mine && isGroup && (pos === 'single' || pos === 'first');
+    var showAvatar = !mine && (isGroup || isMimirBot) && (pos === 'single' || pos === 'last');
+    var showName = !mine && (isGroup || isMimirBot) && (pos === 'single' || pos === 'first');
     var showTail = (pos === 'single' || pos === 'last');
     var isMedia = (msg.message_type === 'video' && msg.file_url);
 
     var wrapCls = 'huginn-msg-wrap';
     if (mine) wrapCls += ' huginn-msg-wrap--mine';
+    if (isMimirBot) wrapCls += ' huginn-msg-wrap--mimir';
     if (msg._pending) wrapCls += ' huginn-msg-wrap--pending';
     wrapCls += grouped ? ' huginn-msg-wrap--grouped' : ' huginn-msg-wrap--spaced';
     var wrap = el('div', { className: wrapCls });
     wrap.dataset.msgId = msg.id;
 
-    if (!mine && isGroup) {
+    if (!mine && (isGroup || isMimirBot)) {
       if (showAvatar) {
         var avatarCol = el('div', { className: 'huginn-avatar-col' });
-        avatarCol.appendChild(M.Avatar({ name: msg.user_name || '?', size: 34 }));
+        if (isMimirBot) {
+          var botAva = el('div', {
+            className: 'huginn-mimir-avatar-small',
+            style: {
+              width: '34px', height: '34px', borderRadius: '50%',
+              background: 'linear-gradient(135deg, var(--hg-accent, #6ab2f2), var(--hg-destructive, #ec3942))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '14px', flexShrink: 0,
+            },
+            textContent: '\u26A1',
+          });
+          avatarCol.appendChild(botAva);
+        } else {
+          avatarCol.appendChild(M.Avatar({ name: msg.user_name || '?', size: 34 }));
+        }
         wrap.appendChild(avatarCol);
       } else {
         wrap.appendChild(el('div', { className: 'huginn-avatar-spacer' }));
@@ -1482,8 +1734,9 @@ async function renderChat(chatId) {
 
     if (showName) {
       var peerIdx = (msg.user_id || 0) % 8;
-      var nameEl = el('div', { className: 'huginn-sender-name', textContent: msg.user_name || '' });
-      nameEl.style.color = 'var(--hg-peer-' + peerIdx + ')';
+      var senderLabel = isMimirBot ? '\u041C\u0438\u043C\u0438\u0440' : (msg.user_name || '');
+      var nameEl = el('div', { className: 'huginn-sender-name', textContent: senderLabel });
+      nameEl.style.color = isMimirBot ? 'var(--hg-gold, #D4A843)' : 'var(--hg-peer-' + peerIdx + ')';
       bubble.appendChild(nameEl);
     }
 
@@ -1588,9 +1841,10 @@ async function renderChat(chatId) {
 
     wrap.appendChild(bubble);
 
-    // Swipe-to-reply (full: arrow, resistance, spring-back, deltaY guard)
+    // Swipe-to-reply (full: arrow, resistance, spring-back, deltaY guard) — disabled for Mimir chat
     var _swStartX = 0, _swStartY = 0, _swDX = 0, _swLocked = false, _swTriggered = false;
     var swipeArrow = el('div', { className: 'huginn-swipe-arrow', innerHTML: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="14 15 9 20 4 15"/><path d="M20 4h-7a4 4 0 00-4 4v12"/></svg>' });
+    if (isMimirChat) swipeArrow.style.display = 'none';
     wrap.style.position = 'relative';
     wrap.appendChild(swipeArrow);
 
@@ -1660,32 +1914,38 @@ async function renderChat(chatId) {
       menu.appendChild(el('div', { className: 'huginn-ctx-sep' }));
     }
 
-    var items = [
-      { icon: '↩️', label: 'Ответить', action: function() { setReply({ id: msg.id, message: msg.message, user_name: msg.user_name }); } },
-      { icon: '😀', label: 'Реакция', action: function() { showReactionPopup(msg, document.querySelector('[data-msg-id="' + msg.id + '"]')); } },
-    ];
-    if (msg.message) {
-      items.push({ icon: '📋', label: 'Копировать', action: function() { _huginnCopyText(msg.message); M.Toast({ message: 'Скопировано', type: 'info' }); } });
-    }
-    // Pin (available to all)
-    var isPinned = _pinnedIds && _pinnedIds.indexOf(msg.id) >= 0;
-    items.push({
-      icon: '📌', label: isPinned ? 'Открепить' : 'Закрепить',
-      action: function() {
-        var method = isPinned ? 'DELETE' : 'POST';
-        API.fetch('/chat-groups/' + chatId + '/pin/' + msg.id, { method: method }).then(function() {
-          M.Toast({ message: isPinned ? 'Откреплено' : 'Закреплено', type: 'info' });
-          loadPinnedMessages();
-        }).catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
+    var items = [];
+    // Mimir chat: only copy allowed
+    if (isMimirChat) {
+      if (msg.message) {
+        items.push({ icon: '\uD83D\uDCCB', label: '\u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C', action: function() { _huginnCopyText(msg.message); M.Toast({ message: '\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E', type: 'info' }); } });
       }
-    });
-    if (mine) {
-      items.push({ sep: true });
-      items.push({ icon: '✏️', label: 'Редактировать', action: function() { startEdit(msg); } });
-      items.push({ icon: '🗑️', label: 'Удалить', danger: true, action: function() { deleteMessage(msg); } });
-    } else if (isAdmin) {
-      items.push({ sep: true });
-      items.push({ icon: '🗑️', label: 'Удалить', danger: true, action: function() { deleteMessage(msg); } });
+    } else {
+      items.push({ icon: '\u21A9\uFE0F', label: '\u041E\u0442\u0432\u0435\u0442\u0438\u0442\u044C', action: function() { setReply({ id: msg.id, message: msg.message, user_name: msg.user_name }); } });
+      items.push({ icon: '\uD83D\uDE00', label: '\u0420\u0435\u0430\u043A\u0446\u0438\u044F', action: function() { showReactionPopup(msg, document.querySelector('[data-msg-id="' + msg.id + '"]')); } });
+      if (msg.message) {
+        items.push({ icon: '\uD83D\uDCCB', label: '\u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C', action: function() { _huginnCopyText(msg.message); M.Toast({ message: '\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E', type: 'info' }); } });
+      }
+      // Pin (available to all)
+      var isPinned = _pinnedIds && _pinnedIds.indexOf(msg.id) >= 0;
+      items.push({
+        icon: '\uD83D\uDCCC', label: isPinned ? '\u041E\u0442\u043A\u0440\u0435\u043F\u0438\u0442\u044C' : '\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C',
+        action: function() {
+          var method = isPinned ? 'DELETE' : 'POST';
+          API.fetch('/chat-groups/' + chatId + '/pin/' + msg.id, { method: method }).then(function() {
+            M.Toast({ message: isPinned ? '\u041E\u0442\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043E' : '\u0417\u0430\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043E', type: 'info' });
+            loadPinnedMessages();
+          }).catch(function() { M.Toast({ message: '\u041E\u0448\u0438\u0431\u043A\u0430', type: 'error' }); });
+        }
+      });
+      if (mine) {
+        items.push({ sep: true });
+        items.push({ icon: '\u270F\uFE0F', label: '\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C', action: function() { startEdit(msg); } });
+        items.push({ icon: '\uD83D\uDDD1\uFE0F', label: '\u0423\u0434\u0430\u043B\u0438\u0442\u044C', danger: true, action: function() { deleteMessage(msg); } });
+      } else if (isAdmin) {
+        items.push({ sep: true });
+        items.push({ icon: '\uD83D\uDDD1\uFE0F', label: '\u0423\u0434\u0430\u043B\u0438\u0442\u044C', danger: true, action: function() { deleteMessage(msg); } });
+      }
     }
 
     items.forEach(function(it) {
