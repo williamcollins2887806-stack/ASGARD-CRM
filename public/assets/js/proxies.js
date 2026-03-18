@@ -477,15 +477,92 @@ window.AsgardProxiesPage = (function(){
       h += '</div>';
     });
 
-    h += '<div class="prx-form-actions">';
-    h += '<button class="prx-btn prx-btn-sec" id="prx-f-preview">👁 Предпросмотр</button>';
-    h += '<button class="prx-btn prx-btn-prim" id="prx-f-save">💾 Сохранить</button>';
-    h += '<button class="prx-btn prx-btn-prim" id="prx-f-download">📄 Скачать .doc</button>';
+    h += '<div class="prx-form-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+    h += '<span id="prxMimirSlot"></span>';
+    h += '<button class="prx-btn prx-btn-sec" id="prx-f-preview">Предпросмотр</button>';
+    h += '<button class="prx-btn prx-btn-prim" id="prx-f-save">Сохранить</button>';
+    h += '<button class="prx-btn prx-btn-prim" id="prx-f-download">Скачать .doc</button>';
     h += '</div></div>';
 
     showModal(tpl.icon + ' ' + tpl.label, h, {width:640});
 
     setTimeout(function(){
+      // ── WOW: Мимир автозаполнение для доверенностей ──
+      // Доверенности используют id="prx-f-{field}", маппинг через tpl.fields
+      if (window.MimirForms) {
+        MimirForms.ensureStyles();
+        var mimirSlot = document.getElementById('prxMimirSlot');
+        if (mimirSlot) {
+          var btn = MimirForms.createButton('Мимир');
+          btn.classList.add('pulsing');
+          mimirSlot.appendChild(btn);
+          btn.addEventListener('click', function() {
+            btn.disabled = true;
+            btn.classList.remove('pulsing');
+            btn.innerHTML = '<span class="mimir-form-spinner"></span> Мимир думает\u2026';
+
+            // Skeleton на пустых полях
+            tpl.fields.forEach(function(fld) {
+              var el = document.getElementById('prx-f-' + fld);
+              if (el && !el.value) el.classList.add('mimir-field-skeleton');
+            });
+
+            var token = localStorage.getItem('asgard_token');
+            fetch('/api/mimir/suggest-form', {
+              method: 'POST',
+              headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
+              body: JSON.stringify({
+                form_type: 'proxy',
+                context: {
+                  proxy_type: tpl.label,
+                  existing_fields: collectFormData(tpl)
+                }
+              })
+            }).then(function(r) { return r.json(); })
+            .then(function(data) {
+              // Убираем skeleton
+              tpl.fields.forEach(function(fld) {
+                var el = document.getElementById('prx-f-' + fld);
+                if (el) el.classList.remove('mimir-field-skeleton');
+              });
+
+              if (data.fields) {
+                var filled = 0;
+                tpl.fields.forEach(function(fld, i) {
+                  var el = document.getElementById('prx-f-' + fld);
+                  var val = data.fields[fld];
+                  if (!el || !val || el.value) return;
+                  // Cascade с задержкой
+                  setTimeout(function() {
+                    if (el.tagName === 'TEXTAREA') {
+                      MimirForms.typewriterFill(el, val);
+                    } else {
+                      el.value = val;
+                    }
+                    el.classList.add('mimir-field-filled');
+                    setTimeout(function() { el.classList.remove('mimir-field-filled'); }, 1200);
+                    filled++;
+                  }, i * 130);
+                });
+                toast('Мимир', 'Заполнил ' + (filled || Object.keys(data.fields).length) + ' полей', 'ok');
+              } else {
+                toast('Мимир', 'Недостаточно контекста', 'warn');
+              }
+            }).catch(function(e) {
+              tpl.fields.forEach(function(fld) {
+                var el = document.getElementById('prx-f-' + fld);
+                if (el) el.classList.remove('mimir-field-skeleton');
+              });
+              toast('Мимир', e.message || 'Ошибка', 'err');
+            }).finally(function() {
+              btn.disabled = false;
+              btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир';
+              btn.classList.add('pulsing');
+            });
+          });
+        }
+      }
+
       var previewBtn = document.getElementById('prx-f-preview');
       var saveBtn = document.getElementById('prx-f-save');
       var dlBtn = document.getElementById('prx-f-download');

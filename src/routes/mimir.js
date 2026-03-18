@@ -1481,6 +1481,147 @@ async function mimirRoutes(fastify, options) {
       // Ignore logging errors
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // УНИВЕРСАЛЬНОЕ АВТОЗАПОЛНЕНИЕ ФОРМ — POST /mimir/suggest-form
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  fastify.post('/suggest-form', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { form_type, context = {} } = request.body || {};
+    if (!form_type) return reply.code(400).send({ error: 'form_type обязателен' });
+
+    try {
+      let systemPrompt = '';
+      let userPrompt = '';
+      let dbContext = '';
+
+      // ── Контекст из БД по типу формы ──
+      switch (form_type) {
+
+        case 'contract': {
+          // Договор: подтянуть данные контрагента и тендера
+          const { counterparty_id, tender_id, existing_fields = {} } = context;
+          if (counterparty_id) {
+            const c = await db.query('SELECT * FROM customers WHERE inn = $1', [counterparty_id]);
+            if (c.rows[0]) dbContext += 'Контрагент: ' + JSON.stringify(c.rows[0]) + '\n';
+          }
+          if (tender_id) {
+            const t = await db.query('SELECT tender_title, tender_description, tender_sum, customer_name, deadline FROM tenders WHERE id = $1', [tender_id]);
+            if (t.rows[0]) dbContext += 'Тендер: ' + JSON.stringify(t.rows[0]) + '\n';
+          }
+          systemPrompt = 'Ты AI-ассистент CRM-системы АСГАРД. Помоги заполнить форму договора. Верни JSON с полями: number, subject, start_date (YYYY-MM-DD), end_date, amount, responsible, comment. Только те поля, которые можешь уверенно заполнить на основе контекста. Не выдумывай данные.';
+          userPrompt = 'Контекст:\n' + dbContext + '\nУже заполнено: ' + JSON.stringify(existing_fields) + '\nЗаполни оставшиеся поля формы договора.';
+          break;
+        }
+
+        case 'customer': {
+          // Контрагент: поиск по ИНН/названию — возвращаем только безопасные поля
+          const SAFE_CUSTOMER_FIELDS = ['inn', 'kpp', 'name', 'full_name', 'address', 'contact_person', 'phone', 'email'];
+          const pickSafe = (row) => {
+            const safe = {};
+            SAFE_CUSTOMER_FIELDS.forEach(k => { if (row[k]) safe[k] = row[k]; });
+            return safe;
+          };
+          const { inn, name, search_query, existing_fields = {} } = context;
+          if (inn) {
+            const c = await db.query('SELECT inn, kpp, name, full_name, address, contact_person, phone, email FROM customers WHERE inn = $1', [inn]);
+            if (c.rows[0]) {
+              return reply.send({ fields: pickSafe(c.rows[0]), source: 'database' });
+            }
+          }
+          if (name || search_query) {
+            const q = name || search_query;
+            const c = await db.query('SELECT inn, kpp, name, full_name, address, contact_person, phone, email FROM customers WHERE LOWER(name) LIKE $1 LIMIT 3', ['%' + q.toLowerCase() + '%']);
+            if (c.rows[0]) {
+              return reply.send({ fields: pickSafe(c.rows[0]), source: 'database' });
+            }
+          }
+          systemPrompt = 'Ты AI-ассистент. Помоги заполнить форму контрагента. Верни JSON с полями: name, full_name, inn, kpp, address, contact_person, phone, email. Только те что можешь уверенно определить.';
+          userPrompt = 'Запрос: ' + (search_query || name || inn || '') + '\nУже заполнено: ' + JSON.stringify(existing_fields);
+          break;
+        }
+
+        case 'correspondence': {
+          // Корреспонденция — поля согласованы с фронтендом (subject, note, counterparty)
+          const { direction, existing_fields = {} } = context;
+          systemPrompt = 'Ты AI-ассистент CRM АСГАРД. Помоги заполнить форму корреспонденции (' + (direction === 'outgoing' ? 'исходящий' : 'входящий') + ' документ). Верни JSON с полями: subject (тема документа), note (примечание/содержание), counterparty (организация-отправитель/получатель), contact_person (контактное лицо). Основывайся на контексте. Только те поля что можешь уверенно заполнить.';
+          userPrompt = 'Направление: ' + (direction || 'unknown') + '\nУже заполнено: ' + JSON.stringify(existing_fields) + '\nПредложи значения для оставшихся полей.';
+          break;
+        }
+
+        case 'proxy': {
+          // Доверенность
+          const { employee_id, existing_fields = {} } = context;
+          if (employee_id) {
+            const e = await db.query('SELECT name, position, department FROM employees WHERE id = $1', [employee_id]);
+            if (e.rows[0]) dbContext += 'Сотрудник: ' + JSON.stringify(e.rows[0]) + '\n';
+          }
+          systemPrompt = 'Ты AI-ассистент CRM АСГАРД. Помоги заполнить форму доверенности. Верни JSON с полями которые можешь уверенно заполнить: subject, valid_from (YYYY-MM-DD), valid_to, powers_text.';
+          userPrompt = dbContext + '\nУже заполнено: ' + JSON.stringify(existing_fields);
+          break;
+        }
+
+        case 'pass_request': {
+          // Заявка на пропуск
+          const { employee_id, work_id, existing_fields = {} } = context;
+          if (employee_id) {
+            const e = await db.query('SELECT name, position, phone FROM employees WHERE id = $1', [employee_id]);
+            if (e.rows[0]) dbContext += 'Сотрудник: ' + JSON.stringify(e.rows[0]) + '\n';
+          }
+          if (work_id) {
+            const w = await db.query('SELECT work_title, customer_name, city, address FROM works WHERE id = $1', [work_id]);
+            if (w.rows[0]) dbContext += 'Работа: ' + JSON.stringify(w.rows[0]) + '\n';
+          }
+          systemPrompt = 'Ты AI-ассистент CRM АСГАРД. Помоги заполнить заявку на пропуск. Верни JSON с полями: object_name, object_address, date_from (YYYY-MM-DD), date_to, purpose.';
+          userPrompt = dbContext + '\nУже заполнено: ' + JSON.stringify(existing_fields);
+          break;
+        }
+
+        default:
+          return reply.code(400).send({ error: 'Неизвестный form_type: ' + form_type });
+      }
+
+      // Если нет промпта — нечего делать
+      if (!systemPrompt) {
+        return reply.send({ fields: {}, message: 'Недостаточно контекста' });
+      }
+
+      // ── Вызов AI ──
+      const aiResult = await aiProvider.chat({
+        systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        maxTokens: 1000,
+        temperature: 0.3
+      });
+
+      // Парсим JSON из ответа
+      let fields = {};
+      try {
+        const text = aiResult.text || aiResult.content || '';
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          fields = JSON.parse(jsonMatch[0]);
+        }
+      } catch (_) {
+        // Не удалось распарсить — вернём пустое
+      }
+
+      // Фильтруем пустые значения
+      Object.keys(fields).forEach(k => {
+        if (fields[k] === null || fields[k] === undefined || fields[k] === '') {
+          delete fields[k];
+        }
+      });
+
+      return reply.send({ fields, source: 'ai' });
+
+    } catch (error) {
+      fastify.log.error('Mimir suggest-form error:', error.message);
+      return reply.code(500).send({ error: 'Ошибка AI: ' + error.message });
+    }
+  });
 }
 
 module.exports = mimirRoutes;

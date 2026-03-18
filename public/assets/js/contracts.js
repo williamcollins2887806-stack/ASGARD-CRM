@@ -326,9 +326,9 @@ window.AsgardContractsPage = (function(){
       .cm-btn-add-customer { width:42px;height:42px;flex-shrink:0;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#3b82f6;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s }
       .cm-btn-add-customer:hover { background:rgba(59,130,246,.1);border-color:#3b82f6 }
 
-      /* Модалка нового контрагента — поверх модалки договора */
+      /* ═══ WOW Модалка контрагента — z-index:1200 поверх модалки договора (1100) ═══ */
       #newCustomerModal .cm-overlay { z-index:1200 }
-      #newCustomerModal .cm-inp { width:100%;height:42px;padding:0 14px;font-size:14px;font-family:inherit;color:#f3f4f6;background:#0d1117;border:1px solid rgba(255,255,255,.1);border-radius:8px;outline:none;transition:border .15s,box-shadow .15s;-webkit-appearance:none;appearance:none }
+      #newCustomerModal .cm-inp { width:100%;height:42px;padding:0 14px;font-size:14px;font-family:inherit;color:#f3f4f6;background:#0d1117;border:1px solid rgba(255,255,255,.1);border-radius:8px;outline:none;transition:border .15s,box-shadow .15s,background .3s;-webkit-appearance:none;appearance:none }
       #newCustomerModal .cm-inp:hover { border-color:rgba(255,255,255,.2) }
       #newCustomerModal .cm-inp:focus { border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.2) }
       #newCustomerModal .cm-inp::placeholder { color:rgba(255,255,255,.25) }
@@ -338,6 +338,37 @@ window.AsgardContractsPage = (function(){
       /* Спиннер для кнопки */
       @keyframes ncmSpin { to { transform:rotate(360deg) } }
       .ncm-spinner { display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:ncmSpin .6s linear infinite;vertical-align:middle;margin-right:6px }
+
+      /* ═══ WOW: DaData Suggest Dropdown ═══ */
+      .ncm-suggest-dropdown { position:absolute;z-index:1250;background:#111827;border:1px solid rgba(212,168,67,.3);border-radius:10px;max-height:240px;overflow-y:auto;display:none;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 1px rgba(212,168,67,.1) inset;backdrop-filter:blur(8px) }
+      .ncm-suggest-item { padding:12px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);transition:all .15s }
+      .ncm-suggest-item:last-child { border-bottom:none }
+      .ncm-suggest-item:hover { background:rgba(212,168,67,.08) }
+      .ncm-suggest-item .ncm-s-name { font-weight:600;font-size:14px;color:#f3f4f6 }
+      .ncm-suggest-item .ncm-s-meta { color:#6b7280;font-size:11px;margin-top:2px }
+
+      /* ═══ WOW: Cascade fill animations ═══ */
+      @keyframes ncmFieldFill { from{opacity:.3;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+      @keyframes ncmGoldenFlash { 0%{box-shadow:0 0 0 0 rgba(212,168,67,.4)} 50%{box-shadow:0 0 12px 3px rgba(212,168,67,.3)} 100%{box-shadow:none} }
+      @keyframes ncmShimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+      .ncm-field-filled { animation:ncmFieldFill .3s ease,ncmGoldenFlash .8s ease .2s }
+      .ncm-shimmer-bar { height:3px;border-radius:2px;background:linear-gradient(90deg,transparent,rgba(212,168,67,.6),transparent);background-size:200% 100%;animation:ncmShimmer 1.5s ease;margin:8px 0 }
+
+      /* ═══ WOW: Mimir button in customer modal ═══ */
+      .ncm-mimir-btn { display:flex;align-items:center;gap:8px;padding:10px 18px;border:none;border-radius:10px;background:linear-gradient(135deg,#C0392B,#D4A843);color:#fff;font-weight:700;font-size:13px;cursor:pointer;transition:all .2s;font-family:inherit;box-shadow:0 2px 12px rgba(192,57,43,.3) }
+      .ncm-mimir-btn:hover { transform:translateY(-1px);box-shadow:0 4px 20px rgba(192,57,43,.4) }
+      .ncm-mimir-btn:disabled { opacity:.7;cursor:wait;transform:none }
+      @keyframes ncmMimirPulse { 0%,100%{box-shadow:0 2px 12px rgba(192,57,43,.3)} 50%{box-shadow:0 2px 20px rgba(212,168,67,.5)} }
+      .ncm-mimir-btn.pulsing { animation:ncmMimirPulse 2s ease infinite }
+
+      /* ═══ WOW: ЕГРЮЛ badge ═══ */
+      .ncm-egrjul-badge { display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;animation:ncmFieldFill .4s ease }
+      .ncm-egrjul-badge.ok { background:rgba(16,185,129,.1);color:#10b981;border:1px solid rgba(16,185,129,.2) }
+      .ncm-egrjul-badge.warn { background:rgba(245,158,11,.1);color:#f59e0b;border:1px solid rgba(245,158,11,.2) }
+
+      /* ═══ WOW: Skeleton loading in fields ═══ */
+      @keyframes ncmSkeleton { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+      .ncm-skeleton-inp { background:linear-gradient(90deg,#0d1117 25%,rgba(212,168,67,.08) 50%,#0d1117 75%) !important;background-size:200% 100% !important;animation:ncmSkeleton 1.5s ease infinite !important;color:transparent !important;pointer-events:none !important }
     `;
     document.head.appendChild(s);
   }
@@ -468,9 +499,12 @@ window.AsgardContractsPage = (function(){
               </form>
             </div>
 
-            <div class="cm-footer">
-              <button class="cm-btn cm-btn-ghost btnClose">Отмена</button>
-              <button class="cm-btn cm-btn-primary" id="btnSaveContract">${isEdit ? 'Сохранить' : 'Создать договор'}</button>
+            <div class="cm-footer" style="justify-content:space-between">
+              <div id="cmMimirSlot"></div>
+              <div style="display:flex;gap:10px">
+                <button class="cm-btn cm-btn-ghost btnClose">Отмена</button>
+                <button class="cm-btn cm-btn-primary" id="btnSaveContract">${isEdit ? 'Сохранить' : 'Создать договор'}</button>
+              </div>
             </div>
 
           </div>
@@ -543,6 +577,21 @@ window.AsgardContractsPage = (function(){
       f.addEventListener('blur', () => { f.classList.toggle('cm-err', !f.value.trim()); });
       f.addEventListener('input', () => { if (f.value.trim()) f.classList.remove('cm-err'); });
     });
+
+    // ── WOW: Mimir auto-fill для формы договора ──
+    if (window.MimirForms) {
+      const mimirSlot = document.getElementById('cmMimirSlot');
+      if (mimirSlot) {
+        MimirForms.inject(form, 'contract', () => ({
+          counterparty_id: form.querySelector('[name="counterparty_id"]')?.value || '',
+          tender_id: null
+        }), {
+          target: mimirSlot,
+          position: 'after',
+          buttonText: 'Мимир заполнит'
+        });
+      }
+    }
 
     // ── Save ──
     document.getElementById('btnSaveContract').addEventListener('click', async () => {
@@ -695,7 +744,7 @@ window.AsgardContractsPage = (function(){
     return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(amount);
   }
 
-  // ═══════ Модалка создания нового контрагента (inline из договора) ═══════
+  // ═══════ WOW Модалка создания нового контрагента (inline из договора) ═══════
   function openNewCustomerModal(onCreated) {
     ensureModalStyles();
     const esc = AsgardUI.esc;
@@ -715,16 +764,16 @@ window.AsgardContractsPage = (function(){
     const html = `
       <div id="newCustomerModal">
         <div class="cm-overlay">
-          <div class="cm-card" style="max-width:540px">
+          <div class="cm-card" style="max-width:580px">
 
             <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05)">
               <div style="display:flex;align-items:center;gap:14px">
-                <div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                  <svg width="20" height="20" fill="none" stroke="#fff" stroke-width="1.8"><path d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="10" cy="7" r="4"/><line x1="18" y1="8" x2="18" y2="14"/><line x1="15" y1="11" x2="21" y2="11"/></svg>
+                <div style="width:46px;height:46px;border-radius:13px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 16px rgba(16,185,129,.3)">
+                  <svg width="22" height="22" fill="none" stroke="#fff" stroke-width="1.8"><path d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="10" cy="7" r="4"/><line x1="18" y1="8" x2="18" y2="14"/><line x1="15" y1="11" x2="21" y2="11"/></svg>
                 </div>
                 <div>
-                  <div style="font-size:17px;font-weight:700;color:#f9fafb">Новый контрагент</div>
-                  <div style="font-size:12px;color:#6b7280;margin-top:2px">Введите ИНН для автозаполнения из ЕГРЮЛ</div>
+                  <div style="font-size:18px;font-weight:700;color:#f9fafb">Новый контрагент</div>
+                  <div style="font-size:12px;color:#6b7280;margin-top:2px">Начните вводить название или ИНН</div>
                 </div>
               </div>
               <button class="ncm-close" style="width:34px;height:34px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:transparent;color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px" onmouseover="this.style.background='rgba(255,255,255,.05)';this.style.color='#e5e7eb'" onmouseout="this.style.background='transparent';this.style.color='#6b7280'">&#10005;</button>
@@ -733,17 +782,34 @@ window.AsgardContractsPage = (function(){
             <div style="max-height:64vh;overflow-y:auto;padding:22px 24px">
               <form id="newCustomerForm" autocomplete="off">
 
-                <div class="cm-section">
+                <!-- ═══ WOW: Smart Search Bar ═══ -->
+                <div style="margin-bottom:16px;padding:16px;border-radius:12px;background:linear-gradient(135deg,rgba(212,168,67,.06),rgba(59,130,246,.04));border:1px solid rgba(212,168,67,.15)">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                    <span style="font-size:16px">🔍</span>
+                    <span style="font-size:13px;font-weight:600;color:#D4A843">Умный поиск</span>
+                    <span style="font-size:11px;color:#6b7280">— введите название или ИНН, мы найдём всё сами</span>
+                  </div>
+                  <div style="position:relative" id="ncmSearchWrap">
+                    <input type="text" id="ncmSmartSearch" class="cm-inp" placeholder="ООО «Газпром» или 7736050003..." style="height:48px;font-size:15px;padding-right:90px;border-color:rgba(212,168,67,.2)"/>
+                    <button type="button" id="ncmLookup" style="position:absolute;right:4px;top:4px;height:40px;padding:0 16px;border-radius:7px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px">
+                      <svg width="14" height="14" fill="none" stroke="#fff" stroke-width="2"><circle cx="6" cy="6" r="5"/><line x1="10" y1="10" x2="13" y2="13"/></svg>
+                      Найти
+                    </button>
+                    <div id="ncmSuggestDropdown" class="ncm-suggest-dropdown"></div>
+                  </div>
+                </div>
+
+                <!-- ═══ ЕГРЮЛ Badge ═══ -->
+                <div id="ncmEgrjulBadge" style="display:none;margin-bottom:14px"></div>
+
+                <div class="cm-section" id="ncmSectionReq">
                   <div class="cm-section-title">
                     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="10" height="10" rx="1.5"/><path d="M6 6h4M6 8h3"/></svg>Реквизиты
                   </div>
                   <div class="cm-grid2">
                     <div>
                       <div class="cm-label">ИНН <span class="req">*</span></div>
-                      <div style="display:flex;gap:8px">
-                        <input type="text" name="inn" class="cm-inp" placeholder="10 или 12 цифр" required maxlength="12" inputmode="numeric" style="flex:1"/>
-                        <button type="button" id="ncmLookup" style="padding:0 14px;border-radius:8px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.08);color:#3b82f6;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s;min-width:72px;display:flex;align-items:center;justify-content:center;gap:4px">Найти</button>
-                      </div>
+                      <input type="text" name="inn" class="cm-inp" placeholder="10 или 12 цифр" required maxlength="12" inputmode="numeric"/>
                     </div>
                     <div>
                       <div class="cm-label">КПП</div>
@@ -764,7 +830,7 @@ window.AsgardContractsPage = (function(){
                   </div>
                 </div>
 
-                <div class="cm-section">
+                <div class="cm-section" id="ncmSectionContacts">
                   <div class="cm-section-title">
                     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"/><path d="M7 7h2"/></svg>Контакты
                   </div>
@@ -784,13 +850,19 @@ window.AsgardContractsPage = (function(){
                   </div>
                 </div>
 
-                <div id="ncmStatus" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;margin-top:4px;display:flex;align-items:center;gap:8px"></div>
+                <div id="ncmStatus" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;align-items:center;gap:8px"></div>
               </form>
             </div>
 
-            <div class="cm-footer">
-              <button class="cm-btn cm-btn-ghost ncm-close">Отмена</button>
-              <button class="cm-btn cm-btn-primary" id="ncmSave">Создать контрагента</button>
+            <div class="cm-footer" style="justify-content:space-between">
+              <button type="button" class="ncm-mimir-btn pulsing" id="ncmMimirBtn" title="Мимир заполнит форму по контексту">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg>
+                Мимир заполнит
+              </button>
+              <div style="display:flex;gap:10px">
+                <button class="cm-btn cm-btn-ghost ncm-close">Отмена</button>
+                <button class="cm-btn cm-btn-primary" id="ncmSave">Создать контрагента</button>
+              </div>
             </div>
 
           </div>
@@ -804,12 +876,21 @@ window.AsgardContractsPage = (function(){
     const ncOverlay = ncModal.querySelector('.cm-overlay');
     const ncForm = document.getElementById('newCustomerForm');
     const ncStatus = document.getElementById('ncmStatus');
+    const smartSearch = document.getElementById('ncmSmartSearch');
     const innInput = ncForm.querySelector('[name="inn"]');
     const kppInput = ncForm.querySelector('[name="kpp"]');
+    const nameInput = ncForm.querySelector('[name="name"]');
+    const fullNameInput = ncForm.querySelector('[name="full_name"]');
+    const addressInput = ncForm.querySelector('[name="address"]');
     const phoneInput = ncForm.querySelector('[name="phone"]');
     const emailInput = ncForm.querySelector('[name="email"]');
+    const contactInput = ncForm.querySelector('[name="contact_person"]');
     const lookupBtn = document.getElementById('ncmLookup');
     const saveBtn = document.getElementById('ncmSave');
+    const suggestDropdown = document.getElementById('ncmSuggestDropdown');
+    const egrjulBadge = document.getElementById('ncmEgrjulBadge');
+    const mimirBtn = document.getElementById('ncmMimirBtn');
+    let searchTimer = null;
 
     // ── Закрытие ──
     const closeNcm = () => { ncModal.remove(); document.removeEventListener('keydown', ncKey); };
@@ -829,11 +910,106 @@ window.AsgardContractsPage = (function(){
     };
     const hideStatus = () => { ncStatus.style.display = 'none'; };
 
+    // ═══ WOW: Cascade fill — делегируем в MimirForms (единая реализация) ═══
+    const cascadeFill = (fieldsMap) => {
+      if (window.MimirForms) {
+        return MimirForms.cascadeFill(ncForm, fieldsMap);
+      }
+      // Fallback если MimirForms ещё не загружен
+      Object.entries(fieldsMap).forEach(([k, v]) => {
+        if (!v) return;
+        const inp = ncForm.querySelector(`[name="${k}"]`);
+        if (inp && !inp.value) inp.value = v;
+      });
+      return Object.keys(fieldsMap).length;
+    };
+
+    // ═══ WOW: Smart Search — DaData autocomplete по названию ═══
+    smartSearch.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      const q = smartSearch.value.trim();
+      // Если похоже на ИНН (только цифры) — не делаем suggest
+      if (!q || q.length < 3 || /^\d+$/.test(q)) {
+        suggestDropdown.style.display = 'none';
+        return;
+      }
+      searchTimer = setTimeout(async () => {
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const r = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q) + '&type=party', {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          const data = await r.json();
+          if (!data.suggestions?.length) { suggestDropdown.style.display = 'none'; return; }
+          suggestDropdown.innerHTML = data.suggestions.map((s, i) =>
+            `<div class="ncm-suggest-item" data-idx="${i}">
+              <div class="ncm-s-name">${esc(s.name || '')}</div>
+              <div class="ncm-s-meta">ИНН ${esc(s.inn || '')}${s.address ? ' \u2022 ' + esc(s.address.slice(0, 60)) : ''}</div>
+            </div>`
+          ).join('');
+          suggestDropdown.style.display = 'block';
+          suggestDropdown.querySelectorAll('.ncm-suggest-item').forEach(el => {
+            el.addEventListener('click', () => {
+              const idx = parseInt(el.dataset.idx);
+              const s = data.suggestions[idx];
+              suggestDropdown.style.display = 'none';
+              smartSearch.value = s.name || '';
+              // Cascade заполнение
+              cascadeFill({
+                inn: s.inn,
+                kpp: s.kpp,
+                name: s.name,
+                full_name: s.full_name,
+                address: s.address
+              });
+              // ЕГРЮЛ badge
+              egrjulBadge.innerHTML = '<div class="ncm-egrjul-badge ok"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 7 7 11 13 3"/></svg>Данные из ЕГРЮЛ</div>';
+              egrjulBadge.style.display = 'block';
+            });
+          });
+        } catch (_) { suggestDropdown.style.display = 'none'; }
+      }, 300);
+    });
+
+    // Скрыть dropdown при клике вне
+    ncModal.addEventListener('click', (e) => {
+      if (!smartSearch.contains(e.target) && !suggestDropdown.contains(e.target)) {
+        suggestDropdown.style.display = 'none';
+      }
+    });
+
+    // ── Smart Search: если ввели цифры (ИНН) — подставить в поле ИНН ──
+    smartSearch.addEventListener('blur', () => {
+      const v = smartSearch.value.trim();
+      if (/^\d{10,12}$/.test(v) && !innInput.value) {
+        innInput.value = v;
+      }
+    });
+
+    // Кнопка "Найти" — lookup по ИНН
+    lookupBtn.addEventListener('click', () => {
+      const v = smartSearch.value.trim();
+      if (/^\d+$/.test(v)) {
+        innInput.value = v.replace(/\D/g, '').slice(0, 12);
+        doLookup();
+      } else if (innInput.value.replace(/\D/g, '').length >= 10) {
+        doLookup();
+      } else {
+        // Попробовать поиск по названию — trigger suggest
+        smartSearch.dispatchEvent(new Event('input'));
+      }
+    });
+
     // ── Маска ИНН: только цифры ──
     innInput.addEventListener('input', () => {
       innInput.value = innInput.value.replace(/\D/g, '').slice(0, 12);
       innInput.classList.remove('cm-err');
       hideStatus();
+      // Авто-lookup при 10 или 12 цифрах
+      const v = innInput.value;
+      if (v.length === 10 || v.length === 12) {
+        doLookup();
+      }
     });
 
     // ── Маска КПП: только цифры ──
@@ -869,9 +1045,9 @@ window.AsgardContractsPage = (function(){
     emailInput.addEventListener('input', () => emailInput.classList.remove('cm-err'));
 
     // ── Убираем ошибку при вводе в required полях ──
-    ncForm.querySelector('[name="name"]').addEventListener('input', function() { this.classList.remove('cm-err'); hideStatus(); });
+    nameInput.addEventListener('input', function() { this.classList.remove('cm-err'); hideStatus(); });
 
-    // ── DaData lookup по ИНН ──
+    // ═══ WOW: DaData lookup по ИНН с cascade-анимацией ═══
     const doLookup = async () => {
       const innVal = innInput.value.replace(/\D/g, '');
       if (innVal.length !== 10 && innVal.length !== 12) {
@@ -881,9 +1057,11 @@ window.AsgardContractsPage = (function(){
         return;
       }
 
-      // Спиннер на кнопке
+      // Спиннер на кнопке + skeleton в полях
       lookupBtn.disabled = true;
-      lookupBtn.innerHTML = '<span class="ncm-spinner"></span>Поиск';
+      lookupBtn.innerHTML = '<span class="ncm-spinner"></span>';
+      const skeletonFields = [nameInput, fullNameInput, kppInput, addressInput];
+      skeletonFields.forEach(f => { if (!f.value) f.classList.add('ncm-skeleton-inp'); });
 
       try {
         const token = localStorage.getItem('asgard_token');
@@ -892,31 +1070,127 @@ window.AsgardContractsPage = (function(){
         });
         const data = await resp.json();
 
+        skeletonFields.forEach(f => f.classList.remove('ncm-skeleton-inp'));
+
         if (data.found && data.suggestion) {
           const s = data.suggestion;
-          if (s.name) ncForm.querySelector('[name="name"]').value = s.name;
-          if (s.full_name) ncForm.querySelector('[name="full_name"]').value = s.full_name;
-          if (s.kpp) kppInput.value = s.kpp;
-          if (s.address) ncForm.querySelector('[name="address"]').value = s.address;
-          showStatus('Данные загружены из ЕГРЮЛ', 'ok');
+          // WOW cascade fill
+          const fields = {};
+          if (s.name && !nameInput.value) fields.name = s.name;
+          if (s.full_name && !fullNameInput.value) fields.full_name = s.full_name;
+          if (s.kpp && !kppInput.value) fields.kpp = s.kpp;
+          if (s.address && !addressInput.value) fields.address = s.address;
+          cascadeFill(fields);
+
+          // ЕГРЮЛ badge
+          egrjulBadge.innerHTML = '<div class="ncm-egrjul-badge ok"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 7 7 11 13 3"/></svg>Данные загружены из ЕГРЮЛ</div>';
+          egrjulBadge.style.display = 'block';
+
+          // Обновить smart search
+          if (s.name && !smartSearch.value) smartSearch.value = s.name;
         } else {
-          showStatus(data.message || 'Организация не найдена в ЕГРЮЛ', 'err');
+          egrjulBadge.innerHTML = '<div class="ncm-egrjul-badge warn"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="7" r="6"/><line x1="7" y1="4" x2="7" y2="8"/><circle cx="7" cy="10" r=".5" fill="currentColor"/></svg>' + esc(data.message || 'Не найдено в ЕГРЮЛ') + '</div>';
+          egrjulBadge.style.display = 'block';
         }
       } catch (err) {
+        skeletonFields.forEach(f => f.classList.remove('ncm-skeleton-inp'));
         showStatus('Ошибка запроса: ' + err.message, 'err');
       } finally {
         lookupBtn.disabled = false;
-        lookupBtn.innerHTML = 'Найти';
+        lookupBtn.innerHTML = '<svg width="14" height="14" fill="none" stroke="#fff" stroke-width="2"><circle cx="6" cy="6" r="5"/><line x1="10" y1="10" x2="13" y2="13"/></svg> Найти';
       }
     };
 
-    lookupBtn.addEventListener('click', doLookup);
     innInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doLookup(); } });
+    smartSearch.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = smartSearch.value.trim();
+        if (/^\d{10,12}$/.test(v)) {
+          innInput.value = v;
+          doLookup();
+        }
+      }
+    });
+
+    // ═══ WOW: Мимир-кнопка — единый запрос через suggest-form (без двойного lookup) ═══
+    mimirBtn.addEventListener('click', async () => {
+      const context = smartSearch.value.trim() || nameInput.value.trim() || innInput.value.trim();
+      if (!context) {
+        AsgardUI.toast('Мимир', 'Сначала введите название или ИНН контрагента', 'warn');
+        return;
+      }
+
+      mimirBtn.disabled = true;
+      mimirBtn.classList.remove('pulsing');
+      mimirBtn.innerHTML = '<span class="ncm-spinner"></span> Мимир думает\u2026';
+
+      // Skeleton на пустых полях
+      const emptyFields = ncForm.querySelectorAll('.cm-inp');
+      emptyFields.forEach(f => { if (!f.value && window.MimirForms) f.classList.add('mimir-field-skeleton'); });
+
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const inn = innInput.value.replace(/\D/g, '');
+
+        // Один запрос: suggest-form сам проверит ИНН в БД или вызовет AI
+        const resp = await fetch('/api/mimir/suggest-form', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            form_type: 'customer',
+            context: {
+              search_query: context,
+              inn: inn || undefined,
+              name: nameInput.value.trim() || undefined
+            }
+          })
+        });
+
+        emptyFields.forEach(f => f.classList.remove('mimir-field-skeleton'));
+
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.fields && Object.keys(data.fields).length > 0) {
+            const filled = cascadeFill(data.fields);
+            const source = data.source === 'database' ? 'из реестра' : 'через AI';
+            AsgardUI.toast('Мимир', `Заполнил ${filled} полей (${source})`, 'ok');
+
+            // ЕГРЮЛ badge если из БД
+            if (data.source === 'database') {
+              egrjulBadge.innerHTML = '<div class="ncm-egrjul-badge ok"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 7 7 11 13 3"/></svg>Найден в реестре контрагентов</div>';
+              egrjulBadge.style.display = 'block';
+            }
+          } else {
+            // Если suggest-form не нашёл — пробуем ЕГРЮЛ lookup
+            if (inn.length === 10 || inn.length === 12) {
+              await doLookup();
+            } else {
+              AsgardUI.toast('Мимир', 'Недостаточно данных. Попробуйте ввести ИНН.', 'warn');
+            }
+          }
+        } else {
+          // Fallback на ЕГРЮЛ
+          if (inn.length === 10 || inn.length === 12) {
+            await doLookup();
+          } else {
+            AsgardUI.toast('Мимир', 'Ошибка сервера', 'err');
+          }
+        }
+      } catch (err) {
+        emptyFields.forEach(f => f.classList.remove('mimir-field-skeleton'));
+        AsgardUI.toast('Мимир', 'Не удалось заполнить: ' + err.message, 'err');
+      } finally {
+        mimirBtn.disabled = false;
+        mimirBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир заполнит';
+        mimirBtn.classList.add('pulsing');
+      }
+    });
 
     // ── Сохранение ──
     saveBtn.addEventListener('click', async () => {
       const inn = innInput.value.replace(/\D/g, '');
-      const name = ncForm.querySelector('[name="name"]').value.trim();
+      const name = nameInput.value.trim();
       const email = emailInput.value.trim();
 
       // Валидация ИНН
@@ -929,8 +1203,8 @@ window.AsgardContractsPage = (function(){
       // Валидация наименования
       if (!name) {
         showStatus('Укажите наименование организации', 'err');
-        ncForm.querySelector('[name="name"]').classList.add('cm-err');
-        ncForm.querySelector('[name="name"]').focus();
+        nameInput.classList.add('cm-err');
+        nameInput.focus();
         return;
       }
       // Валидация email (если заполнен)
@@ -944,10 +1218,10 @@ window.AsgardContractsPage = (function(){
       const body = {
         inn,
         name,
-        full_name: ncForm.querySelector('[name="full_name"]').value.trim(),
+        full_name: fullNameInput.value.trim(),
         kpp: kppInput.value.trim(),
-        address: ncForm.querySelector('[name="address"]').value.trim(),
-        contact_person: ncForm.querySelector('[name="contact_person"]').value.trim(),
+        address: addressInput.value.trim(),
+        contact_person: contactInput.value.trim(),
         phone: phoneInput.value.trim(),
         email
       };
@@ -976,9 +1250,17 @@ window.AsgardContractsPage = (function(){
         // Сохраняем в IndexedDB для локального кэша
         try { await AsgardDB.put('customers', created); } catch (_) { /* fallback не критичен */ }
 
-        AsgardUI.toast('Контрагент', `${created.name} добавлен в реестр`, 'ok');
-        closeNcm();
-        if (onCreated) onCreated(created);
+        // ═══ WOW: Success animation ═══
+        const card = ncModal.querySelector('.cm-card');
+        card.style.transition = 'all .3s ease';
+        card.style.borderColor = 'rgba(16,185,129,.4)';
+        card.style.boxShadow = '0 0 40px rgba(16,185,129,.2)';
+
+        AsgardUI.toast('Контрагент', `${esc(created.name)} добавлен в реестр`, 'ok');
+        setTimeout(() => {
+          closeNcm();
+          if (onCreated) onCreated(created);
+        }, 400);
       } catch (err) {
         showStatus('Ошибка сети: ' + err.message, 'err');
         saveBtn.disabled = false;
@@ -986,8 +1268,8 @@ window.AsgardContractsPage = (function(){
       }
     });
 
-    // ── Автофокус на ИНН ──
-    setTimeout(() => innInput.focus(), 100);
+    // ── Автофокус на Smart Search ──
+    setTimeout(() => smartSearch.focus(), 100);
   }
 
   // Проверка истекающих договоров для уведомлений

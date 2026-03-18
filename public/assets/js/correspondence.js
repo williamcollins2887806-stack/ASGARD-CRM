@@ -529,12 +529,99 @@ window.AsgardCorrespondencePage = (function(){
           <label style="font-size:13px;font-weight:600">📎 Вложение (скан, PDF, файл)</label>
           <input type="file" id="corr_file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.zip,.rar" style="margin-top:6px"/>
         </div>
-        <div style="display:flex; gap:10px">
+        <div style="display:flex; gap:10px; align-items:center">
+          <div id="corrMimirSlot"></div>
           <button class="btn" id="btnSaveCorr">Сохранить</button>
         </div>
       `;
 
       showModal(`Новый документ`, html);
+
+      // ── WOW: Мимир автозаполнение для корреспонденции ──
+      // Форма корреспонденции использует id-селекторы (не name), поэтому маппинг вручную
+      if (window.MimirForms) {
+        const mimirSlot = document.getElementById('corrMimirSlot');
+        if (mimirSlot) {
+          MimirForms.ensureStyles();
+          const btn = MimirForms.createButton('Мимир');
+          btn.classList.add('pulsing');
+          mimirSlot.appendChild(btn);
+
+          // Маппинг: бэкенд field name → DOM id
+          const FIELD_MAP = {
+            subject: 'corr_subject',
+            note: 'corr_note',
+            counterparty: 'corr_counterparty',
+            contact_person: 'corr_contact'
+          };
+
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.classList.remove('pulsing');
+            btn.innerHTML = '<span class="mimir-form-spinner"></span> Мимир думает\u2026';
+
+            // Skeleton на пустых полях
+            Object.values(FIELD_MAP).forEach(id => {
+              const el = $('#' + id);
+              if (el && !el.value) el.classList.add('mimir-field-skeleton');
+            });
+
+            try {
+              const token = localStorage.getItem('asgard_token');
+              const existing = {};
+              Object.entries(FIELD_MAP).forEach(([k, id]) => {
+                const el = $('#' + id);
+                if (el && el.value) existing[k] = el.value;
+              });
+
+              const resp = await fetch('/api/mimir/suggest-form', {
+                method: 'POST',
+                headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
+                body: JSON.stringify({
+                  form_type: 'correspondence',
+                  context: { direction, existing_fields: existing }
+                })
+              });
+
+              // Убираем skeleton
+              Object.values(FIELD_MAP).forEach(id => {
+                const el = $('#' + id);
+                if (el) el.classList.remove('mimir-field-skeleton');
+              });
+
+              if (resp.ok) {
+                const data = await resp.json();
+                let filled = 0;
+                if (data.fields) {
+                  Object.entries(FIELD_MAP).forEach(([fieldName, domId], i) => {
+                    const el = $('#' + domId);
+                    const val = data.fields[fieldName];
+                    if (!el || !val || el.value) return;
+                    setTimeout(() => {
+                      if (el.tagName === 'TEXTAREA' || String(val).length > 30) {
+                        MimirForms.typewriterFill(el, val);
+                      } else {
+                        el.value = val;
+                      }
+                      el.classList.add('mimir-field-filled');
+                      setTimeout(() => el.classList.remove('mimir-field-filled'), 1200);
+                      filled++;
+                    }, i * 150);
+                  });
+                  toast('Мимир', 'Заполнил ' + (filled || Object.keys(data.fields).length) + ' полей', 'ok');
+                } else {
+                  toast('Мимир', 'Недостаточно контекста', 'warn');
+                }
+              }
+            } catch(e) { toast('Мимир', e.message || 'Ошибка', 'err'); }
+            finally {
+              btn.disabled = false;
+              btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир';
+              btn.classList.add('pulsing');
+            }
+          });
+        }
+      }
 
       const numberInput = $('#corr_number');
       const dateInput = $('#corr_date');
