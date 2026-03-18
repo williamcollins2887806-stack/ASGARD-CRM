@@ -24,12 +24,30 @@ function _huginnPlayNotifSound() {
     gain.connect(ctx.destination);
     osc.type = 'sine';
     osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.linearRampToValueAtTime(1100, ctx.currentTime + 0.15);
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(1100, ctx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.3);
-  } catch (e) { /* ignore audio errors */ }
+  } catch (e) {}
+}
+
+function _huginnPlaySendSound() {
+  try {
+    if (!_huginnAudioCtx) _huginnAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var ctx = _huginnAudioCtx;
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.15);
+  } catch (e) {}
 }
 
 /* ── Helpers ── */
@@ -491,6 +509,53 @@ const MessengerPage = {
           }));
         }
         row.appendChild(rightCol);
+
+        // Swipe actions on chat row
+        (function(chatRow, chatItem) {
+          var _rsX = 0, _rsDX = 0, _rsLocked = false;
+          chatRow.addEventListener('touchstart', function(e) { _rsX = e.touches[0].clientX; _rsDX = 0; _rsLocked = false; }, { passive: true });
+          chatRow.addEventListener('touchmove', function(e) {
+            var dx = e.touches[0].clientX - _rsX;
+            var dy = e.touches[0].clientY - (e.touches[0]._startY || e.touches[0].clientY);
+            if (!_rsLocked && Math.abs(dx) > 15) _rsLocked = true;
+            if (!_rsLocked) return;
+            _rsDX = dx;
+            var clamped = Math.max(-140, Math.min(140, dx));
+            chatRow.style.transform = 'translateX(' + clamped + 'px)';
+            chatRow.style.transition = 'none';
+          }, { passive: true });
+          chatRow.addEventListener('touchend', function() {
+            if (_rsDX < -70) {
+              // Swipe left → show read + delete
+              chatRow.style.transform = 'translateX(-140px)';
+              chatRow.style.transition = 'transform .2s ease';
+              if (!chatRow.querySelector('.huginn-swipe-actions--left')) {
+                var actions = el('div', { className: 'huginn-swipe-actions huginn-swipe-actions--left' });
+                var readBtn = el('div', { className: 'huginn-swipe-action huginn-swipe-action--read', innerHTML: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12l5 5L20 3"/></svg><span>Прочитано</span>' });
+                readBtn.addEventListener('click', function(ev) {
+                  ev.stopPropagation();
+                  API.fetch('/chat-groups/' + chatItem.id + '/read', { method: 'POST', body: { last_message_id: 999999999 } }).catch(function(){});
+                  chatRow.style.transform = ''; actions.remove();
+                });
+                var delBtn = el('div', { className: 'huginn-swipe-action huginn-swipe-action--delete', innerHTML: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg><span>Удалить</span>' });
+                delBtn.addEventListener('click', function(ev) {
+                  ev.stopPropagation();
+                  M.Toast({ message: 'Удаление чата пока недоступно', type: 'info' });
+                  chatRow.style.transform = ''; actions.remove();
+                });
+                actions.appendChild(readBtn);
+                actions.appendChild(delBtn);
+                chatRow.parentNode.insertBefore(actions, chatRow.nextSibling);
+              }
+            } else {
+              chatRow.style.transition = 'transform .25s cubic-bezier(0.34,1.56,0.64,1)';
+              chatRow.style.transform = '';
+              var existing = chatRow.parentNode.querySelector('.huginn-swipe-actions');
+              if (existing) existing.remove();
+            }
+          }, { passive: true });
+        })(row, chat);
+
         list.appendChild(row);
       });
       listWrap.appendChild(list);
@@ -1242,6 +1307,7 @@ async function renderChat(chatId) {
     var text = textarea.value.trim();
     if (!text) return;
     if (navigator.vibrate) navigator.vibrate(10);
+    _huginnPlaySendSound();
 
     // Edit mode
     if (editingMsg) {
@@ -1522,16 +1588,44 @@ async function renderChat(chatId) {
 
     wrap.appendChild(bubble);
 
-    // Swipe-to-reply
-    var touchStartX = 0, touchDeltaX = 0;
-    wrap.addEventListener('touchstart', function(e) { touchStartX = e.touches[0].clientX; touchDeltaX = 0; }, { passive: true });
+    // Swipe-to-reply (full: arrow, resistance, spring-back, deltaY guard)
+    var _swStartX = 0, _swStartY = 0, _swDX = 0, _swLocked = false, _swTriggered = false;
+    var swipeArrow = el('div', { className: 'huginn-swipe-arrow', innerHTML: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="14 15 9 20 4 15"/><path d="M20 4h-7a4 4 0 00-4 4v12"/></svg>' });
+    wrap.style.position = 'relative';
+    wrap.appendChild(swipeArrow);
+
+    wrap.addEventListener('touchstart', function(e) {
+      _swStartX = e.touches[0].clientX; _swStartY = e.touches[0].clientY;
+      _swDX = 0; _swLocked = false; _swTriggered = false;
+    }, { passive: true });
     wrap.addEventListener('touchmove', function(e) {
-      touchDeltaX = e.touches[0].clientX - touchStartX;
-      if (touchDeltaX > 0 && touchDeltaX < 80) { wrap.style.transform = 'translateX(' + touchDeltaX + 'px)'; wrap.style.transition = 'none'; }
+      var dx = e.touches[0].clientX - _swStartX;
+      var dy = e.touches[0].clientY - _swStartY;
+      // Lock direction: if vertical dominates, abort swipe
+      if (!_swLocked && Math.abs(dy) > Math.abs(dx) * 1.5) { _swDX = 0; return; }
+      if (dx > 5) _swLocked = true;
+      if (!_swLocked) return;
+      _swDX = dx;
+      // Resistance 0.6:1
+      var visual = Math.min(dx * 0.6, 80);
+      wrap.style.transform = 'translateX(' + visual + 'px)';
+      wrap.style.transition = 'none';
+      // Arrow appears at 30px, full at 40px
+      if (visual > 30) { swipeArrow.classList.add('huginn-swipe-arrow--active'); }
+      else { swipeArrow.classList.remove('huginn-swipe-arrow--active'); }
+      // Haptic at threshold
+      if (visual >= 40 && !_swTriggered) { _swTriggered = true; if (navigator.vibrate) navigator.vibrate([5, 5]); }
     }, { passive: true });
     wrap.addEventListener('touchend', function() {
-      wrap.style.transition = 'transform 0.2s ease'; wrap.style.transform = '';
-      if (touchDeltaX > 50) { if (navigator.vibrate) navigator.vibrate(5); setReply({ id: msg.id, message: msg.message, user_name: msg.user_name }); }
+      // Spring-back
+      wrap.style.transition = 'transform .3s cubic-bezier(0.34,1.56,0.64,1)';
+      wrap.style.transform = '';
+      swipeArrow.classList.remove('huginn-swipe-arrow--active');
+      if (_swDX * 0.6 >= 40) {
+        setReply({ id: msg.id, message: msg.message, user_name: msg.user_name });
+        // Focus textarea
+        if (textarea) setTimeout(function() { textarea.focus(); }, 100);
+      }
     }, { passive: true });
 
     // Long press 250ms → Context menu with blur
@@ -1647,30 +1741,21 @@ async function renderChat(chatId) {
     if (existingOv) existingOv.remove();
 
     var rect = targetEl ? targetEl.getBoundingClientRect() : { top: 200 };
-    var popup = el('div', {
-      className: 'huginn-reaction-popup',
-      style: {
-        position: 'fixed', top: Math.max(8, rect.top - 50) + 'px',
-        left: '50%', transform: 'translateX(-50%)',
-        background: t.surface || '#222', borderRadius: '24px',
-        padding: '6px 8px', display: 'flex', gap: '4px',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.4)', zIndex: 100,
-        animation: 'huginn-react-pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-      },
-    });
+    var popupTop = Math.max(8, Math.min(rect.top - 50, window.innerHeight - 60));
+    var popup = el('div', { className: 'huginn-reaction-popup' });
+    popup.style.top = popupTop + 'px';
 
-    var overlay = el('div', {
-      className: 'huginn-reaction-overlay',
-      style: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 },
-      onClick: function() { popup.remove(); overlay.remove(); },
-    });
+    var overlay = el('div', { className: 'huginn-reaction-overlay' });
+    overlay.addEventListener('click', function() { popup.remove(); overlay.remove(); });
 
     QUICK_REACTIONS.forEach(function(em) {
-      popup.appendChild(el('div', {
-        style: { fontSize: '24px', padding: '4px 6px', cursor: 'pointer', borderRadius: '8px' },
-        textContent: em,
-        onClick: function() { toggleReaction(msg.id, em); popup.remove(); overlay.remove(); },
-      }));
+      var btn = el('div', { textContent: em });
+      btn.addEventListener('click', function() {
+        if (navigator.vibrate) navigator.vibrate(3);
+        toggleReaction(msg.id, em);
+        popup.remove(); overlay.remove();
+      });
+      popup.appendChild(btn);
     });
 
     document.body.appendChild(overlay);
@@ -1727,11 +1812,10 @@ async function renderChat(chatId) {
     var wrap = messagesWrap.querySelector('[data-msg-id="' + msgId + '"]');
     if (!wrap) return;
     if (updates.deleted_at) {
-      wrap.style.overflow = 'hidden';
       wrap.style.maxHeight = wrap.offsetHeight + 'px';
-      wrap.style.transition = 'max-height 300ms ease, opacity 300ms ease';
-      requestAnimationFrame(function() { wrap.style.maxHeight = '0'; wrap.style.opacity = '0'; });
-      setTimeout(function() { wrap.remove(); }, 320);
+      void wrap.offsetWidth; // force reflow
+      wrap.classList.add('huginn-msg-wrap--collapsing');
+      setTimeout(function() { wrap.remove(); }, 280);
       return;
     }
     if (updates.message !== undefined) {

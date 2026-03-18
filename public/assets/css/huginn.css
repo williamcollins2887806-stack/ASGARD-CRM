@@ -1815,3 +1815,136 @@
   cursor: pointer;
   border: none;
 }
+
+/* ═══════════════════════════════════════
+   48. SWIPE-TO-REPLY ARROW
+   ═══════════════════════════════════════ */
+.huginn-swipe-arrow {
+  position: absolute;
+  left: -32px; top: 50%;
+  transform: translateY(-50%) scale(0.5);
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--hg-accent);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity .15s, transform .15s;
+  pointer-events: none;
+}
+.huginn-swipe-arrow svg { width: 14px; height: 14px; color: #fff; }
+.huginn-swipe-arrow--active { opacity: 1; transform: translateY(-50%) scale(1); }
+
+/* ═══════════════════════════════════════
+   49. INTERACTIVE TRANSITIONS
+   ═══════════════════════════════════════ */
+.huginn-bubble { transition: transform .15s ease; }
+.huginn-bubble:active { transform: scale(0.97); }
+.huginn-header-action { transition: background .15s, transform .15s; border-radius: 50%; }
+.huginn-header-action:active { background: rgba(255,255,255,0.08); transform: scale(0.88); }
+.huginn-composer-btn { transition: transform .15s; }
+.huginn-composer-btn:active { transform: scale(0.85); }
+.huginn-chat-row { transition: transform .2s ease; position: relative; overflow: hidden; }
+
+/* Check mark transition */
+.huginn-check { transition: color .3s ease; }
+.huginn-check--read { color: var(--hg-accent); }
+.huginn-check--sent { color: var(--hg-hint); }
+
+/* Reply bar slide-up */
+.huginn-reply-bar {
+  transition: transform .2s cubic-bezier(0.4, 0, 0.2, 1), opacity .2s;
+}
+
+/* Reaction popup pop-in */
+@keyframes huginn-react-pop {
+  0% { transform: translateX(-50%) scale(0.6); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+.huginn-reaction-popup {
+  animation: huginn-react-pop .25s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+
+/* Delete collapse */
+.huginn-msg-wrap--collapsing {
+  overflow: hidden;
+  transition: max-height .25s ease, opacity .25s ease, padding .25s ease, margin .25s ease;
+  max-height: 0 !important;
+  opacity: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* ═══════════════════════════════════════
+   50. PAGE TRANSITIONS
+   ═══════════════════════════════════════ */
+@keyframes huginn-page-in {
+  from { transform: translateX(100%); opacity: 0.5; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes huginn-page-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0.5; }
+}
+.huginn-chat-page { animation: huginn-page-in .25s ease forwards; }
+
+/* ═══════════════════════════════════════
+   51. SWIPE ACTIONS (CHAT LIST)
+   ═══════════════════════════════════════ */
+.huginn-swipe-actions {
+  position: absolute;
+  top: 0; bottom: 0;
+  display: flex;
+  align-items: stretch;
+}
+.huginn-swipe-actions--left { right: 0; }
+.huginn-swipe-actions--right { left: 0; }
+.huginn-swipe-action {
+  width: 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #fff;
+  font-weight: 500;
+}
+.huginn-swipe-action--read { background: #3478f6; }
+.huginn-swipe-action--delete { background: #ff453a; }
+.huginn-swipe-action--pin { background: #636366; }
+.huginn-swipe-action--archive { background: #30d158; }
+.huginn-swipe-action svg { width: 22px; height: 22px; }
+
+/* ═══════════════════════════════════════
+   52. REACTION POPUP FIXED
+   ═══════════════════════════════════════ */
+.huginn-reaction-popup {
+  position: fixed !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  background: var(--hg-bg) !important;
+  border-radius: 24px !important;
+  padding: 6px 8px !important;
+  display: flex !important;
+  gap: 4px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4) !important;
+  z-index: 100 !important;
+}
+.huginn-reaction-popup > div {
+  font-size: 24px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: transform .15s, background .15s;
+}
+.huginn-reaction-popup > div:active {
+  transform: scale(1.3);
+  background: rgba(255,255,255,0.08);
+}
+.huginn-reaction-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99 !important;
+}
