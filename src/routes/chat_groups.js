@@ -246,7 +246,22 @@ module.exports = async function(fastify) {
         m.last_read_at,
         (SELECT COUNT(*) FROM chat_group_members WHERE chat_id = c.id) as member_count,
         (SELECT COUNT(*) FROM chat_messages
-         WHERE chat_id = c.id AND created_at > COALESCE(m.last_read_at, '1970-01-01')) as unread_count,
+         WHERE chat_id = c.id AND created_at > COALESCE(m.last_read_at, '1970-01-01')
+         AND deleted_at IS NULL) as unread_count,
+        -- Last message preview
+        (SELECT lm.message FROM chat_messages lm
+         WHERE lm.chat_id = c.id AND lm.deleted_at IS NULL
+         ORDER BY lm.created_at DESC LIMIT 1) as last_message_text,
+        (SELECT u2.name FROM chat_messages lm2
+         JOIN users u2 ON u2.id = lm2.user_id
+         WHERE lm2.chat_id = c.id AND lm2.deleted_at IS NULL
+         ORDER BY lm2.created_at DESC LIMIT 1) as last_message_sender,
+        (SELECT lm3.message_type FROM chat_messages lm3
+         WHERE lm3.chat_id = c.id AND lm3.deleted_at IS NULL
+         ORDER BY lm3.created_at DESC LIMIT 1) as last_message_type,
+        (SELECT lm4.user_id FROM chat_messages lm4
+         WHERE lm4.chat_id = c.id AND lm4.deleted_at IS NULL
+         ORDER BY lm4.created_at DESC LIMIT 1) as last_message_user_id,
         -- For direct chats, get the OTHER user's name
         CASE WHEN c.is_group = false THEN (
           SELECT u.name FROM chat_group_members cm

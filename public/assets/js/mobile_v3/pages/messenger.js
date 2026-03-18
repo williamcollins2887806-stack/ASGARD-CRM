@@ -196,10 +196,16 @@ const MessengerPage = {
       title: 'Хугинн',
       subtitle: 'МЕССЕНДЖЕР',
       back: false,
-      actions: [{
-        icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
-        onClick: () => createChatSheet(),
-      }],
+      actions: [
+        {
+          icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+          onClick: () => composeDirectChat(),
+        },
+        {
+          icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
+          onClick: () => createGroupSheet(),
+        },
+      ],
     }));
 
     page.appendChild(M.SearchBar({
@@ -257,6 +263,24 @@ const MessengerPage = {
       }
     }
 
+    var _currentUserId = (Store.get('user') || {}).id;
+
+    function _chatPreview(chat) {
+      var mt = chat.last_message_type || 'text';
+      var txt = chat.last_message_text || '';
+      if (mt === 'voice') return '\uD83C\uDFA4 Голосовое';
+      if (mt === 'video') return '\uD83C\uDFA5 Видеосообщение';
+      if (txt.length > 60) txt = txt.substring(0, 60) + '…';
+      if (!txt) return '';
+      // In groups, prefix with sender first name
+      if (chat.is_group && chat.last_message_sender) {
+        var first = chat.last_message_sender.split(' ')[0];
+        if (chat.last_message_user_id === _currentUserId) first = 'Вы';
+        return first + ': ' + txt;
+      }
+      return txt;
+    }
+
     function renderList(query) {
       listWrap.replaceChildren();
       var q = (query || '').toLowerCase();
@@ -265,70 +289,81 @@ const MessengerPage = {
         return !q || name.includes(q);
       });
 
+      if (!filtered.length && !q) {
+        listWrap.appendChild(M.Empty({ text: 'Нет чатов', icon: '\uD83D\uDCAC' }));
+        return;
+      }
       if (!filtered.length) {
-        listWrap.appendChild(M.Empty({ text: q ? 'Ничего не найдено' : 'Нет чатов' }));
+        listWrap.appendChild(M.Empty({ text: 'Ничего не найдено' }));
         return;
       }
 
       var list = el('div', { style: { display: 'flex', flexDirection: 'column' } });
-      filtered.forEach(function(chat, i) {
+
+      // Mimir bot — always first (if no search query)
+      if (!q) {
+        var mimirRow = el('div', {
+          className: 'huginn-chat-row',
+          onClick: function() { Router.navigate('/mimir'); },
+        });
+        var mimirAva = el('div', {
+          style: {
+            width: '54px', height: '54px', borderRadius: '50%', flexShrink: 0,
+            background: 'linear-gradient(135deg, var(--hg-accent, #6ab2f2), var(--hg-destructive, #ec3942))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px',
+          },
+          textContent: '\u26A1',
+        });
+        mimirRow.appendChild(mimirAva);
+        var mimirInfo = el('div', { className: 'huginn-chat-row__info' });
+        mimirInfo.appendChild(el('div', { className: 'huginn-chat-row__name', textContent: '\u041C\u0438\u043C\u0438\u0440' }));
+        mimirInfo.appendChild(el('div', { className: 'huginn-chat-row__preview', textContent: 'AI-\u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A ASGARD' }));
+        mimirRow.appendChild(mimirInfo);
+        list.appendChild(mimirRow);
+      }
+
+      filtered.forEach(function(chat) {
         var unread = chat.unread_count || 0;
+        var isMuted = chat.muted_until && new Date(chat.muted_until) > new Date();
         var name = chat.is_group === false ? (chat.direct_user_name || chat.name || 'Чат') : (chat.name || 'Чат');
 
-        // Online status for direct chats
         var isOnline = false;
         if (chat.is_group === false && chat.direct_user_last_login) {
           isOnline = (Date.now() - new Date(chat.direct_user_last_login).getTime()) < 300000;
         }
 
         var row = el('div', {
-          style: {
-            display: 'flex', gap: '12px', alignItems: 'center',
-            padding: '12px var(--sp-page,16px)', cursor: 'pointer',
-            transition: 'background 0.15s ease',
-            ...DS.anim(i * 0.02),
-          },
+          className: 'huginn-chat-row',
           onClick: function() { Router.navigate('/messenger/' + chat.id); },
         });
-        row.addEventListener('touchstart', function() { row.style.background = t.surfaceAlt || 'rgba(255,255,255,0.05)'; }, { passive: true });
-        row.addEventListener('touchend', function() { row.style.background = ''; }, { passive: true });
 
-        var avatarOpts = { name: name, size: 52 };
+        var avatarOpts = { name: name, size: 54 };
         if (isOnline) avatarOpts.status = 'online';
         row.appendChild(M.Avatar(avatarOpts));
 
-        var info = el('div', { style: { flex: 1, minWidth: 0 } });
+        var info = el('div', { className: 'huginn-chat-row__info' });
+        info.appendChild(el('div', { className: 'huginn-chat-row__name', textContent: name }));
 
-        var topRow = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' } });
-        topRow.appendChild(el('div', {
-          style: { ...DS.font('md'), color: t.text, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-          textContent: name,
-        }));
+        var preview = _chatPreview(chat);
+        info.appendChild(el('div', { className: 'huginn-chat-row__preview', textContent: preview || (chat.is_group ? (chat.member_count || 0) + Utils.plural(chat.member_count || 0, ' участник', ' участника', ' участников') : '') }));
+        row.appendChild(info);
+
+        var rightCol = el('div', { className: 'huginn-chat-row__right' });
         var timeText = chat.last_message_at ? Utils.relativeTime(chat.last_message_at) : '';
-        topRow.appendChild(el('span', {
-          style: { ...DS.font('xs'), color: unread > 0 ? (t.accent || '#ff4444') : (t.textTer || '#666'), flexShrink: 0, marginLeft: '8px' },
-          textContent: timeText,
-        }));
-        info.appendChild(topRow);
+        rightCol.appendChild(el('span', { className: 'huginn-chat-row__time', textContent: timeText }));
 
-        var bottomRow = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } });
-        var preview = chat.is_group ? (chat.member_count || 0) + ' участн.' : '';
-        bottomRow.appendChild(el('div', {
-          style: { ...DS.font('sm'), color: t.textSec || '#999', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 },
-          textContent: preview,
-        }));
         if (unread > 0) {
-          bottomRow.appendChild(el('span', {
-            style: {
-              minWidth: '22px', height: '22px', borderRadius: '11px',
-              background: t.accent || '#ff4444', color: '#fff', fontSize: '11px', fontWeight: 700,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', flexShrink: 0, marginLeft: '8px',
-            },
+          rightCol.appendChild(el('span', {
+            className: 'huginn-unread-badge' + (isMuted ? ' huginn-unread-badge--muted' : ''),
             textContent: unread > 99 ? '99+' : String(unread),
           }));
+        } else if (isMuted) {
+          rightCol.appendChild(el('span', {
+            style: { fontSize: '14px', opacity: 0.5 },
+            textContent: '\uD83D\uDD07',
+          }));
         }
-        info.appendChild(bottomRow);
-        row.appendChild(info);
+        row.appendChild(rightCol);
         list.appendChild(row);
       });
       listWrap.appendChild(list);
@@ -1305,34 +1340,225 @@ async function renderChat(chatId) {
    ACTION SHEETS
    ═══════════════════════════════════════════ */
 function chatActionsSheet(chatId) {
+  // Check current mute status
+  API.fetch('/chat-groups/' + chatId).then(function(resp) {
+    var chat = resp.chat || resp || {};
+    var members = resp.members || [];
+    var me = members.find(function(m) { return m.user_id === (Store.get('user') || {}).id; });
+    var isMuted = me && me.muted_until && new Date(me.muted_until) > new Date();
+
+    M.ActionSheet({
+      title: 'Действия',
+      actions: [
+        isMuted
+          ? { icon: '\uD83D\uDD14', label: 'Включить уведомления', onClick: function() {
+              API.fetch('/chat-groups/' + chatId + '/mute', { method: 'PUT', body: { until: null } })
+                .then(function() { M.Toast({ message: 'Уведомления включены', type: 'success' }); })
+                .catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
+            }}
+          : { icon: '\uD83D\uDD07', label: 'Выключить уведомления', onClick: function() { muteOptionsSheet(chatId); } },
+        { icon: '\uD83D\uDC65', label: 'Участники', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=members'); } },
+        { icon: '\uD83D\uDCCE', label: 'Файлы', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=files'); } },
+      ],
+    });
+  }).catch(function() {
+    M.ActionSheet({
+      title: 'Действия',
+      actions: [
+        { icon: '\uD83D\uDD07', label: 'Выключить уведомления', onClick: function() { muteOptionsSheet(chatId); } },
+        { icon: '\uD83D\uDC65', label: 'Участники', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=members'); } },
+        { icon: '\uD83D\uDCCE', label: 'Файлы', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=files'); } },
+      ],
+    });
+  });
+}
+
+function muteOptionsSheet(chatId) {
   M.ActionSheet({
-    title: 'Действия',
+    title: 'Выключить уведомления',
     actions: [
-      { icon: '🔇', label: 'Выключить уведомления', onClick: function() { API.fetch('/chat-groups/' + chatId + '/mute', { method: 'PUT', body: { until: new Date(Date.now() + 365*86400000).toISOString() } }).then(function() { M.Toast({ message: 'Уведомления выключены', type: 'info' }); }).catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); }); } },
-      { icon: '👥', label: 'Участники', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=members'); } },
-      { icon: '📎', label: 'Файлы', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=files'); } },
+      { icon: '\u23F1', label: 'На 1 час', onClick: function() { muteChatFor(chatId, 3600000); } },
+      { icon: '\u23F0', label: 'На 8 часов', onClick: function() { muteChatFor(chatId, 28800000); } },
+      { icon: '\uD83D\uDD07', label: 'Навсегда', onClick: function() { muteChatFor(chatId, 365 * 86400000); } },
     ],
   });
 }
 
-function createChatSheet() {
-  var content = Utils.el('div');
+function muteChatFor(chatId, ms) {
+  API.fetch('/chat-groups/' + chatId + '/mute', {
+    method: 'PUT',
+    body: { until: new Date(Date.now() + ms).toISOString() },
+  }).then(function() {
+    M.Toast({ message: 'Уведомления выключены', type: 'info' });
+  }).catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
+}
+
+/* ── Compose Direct Chat (user search → create direct) ── */
+function composeDirectChat() {
+  var el = Utils.el;
+  var content = el('div');
+  var searchInput = el('input', {
+    style: { width: '100%', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--hg-sep, rgba(255,255,255,0.06))', background: 'var(--hg-input-field, rgba(35,46,60,0.5))', color: 'var(--hg-text, #f5f5f5)', fontSize: '15px', outline: 'none', boxSizing: 'border-box', marginBottom: '12px' },
+    placeholder: 'Поиск по имени...',
+  });
+  content.appendChild(searchInput);
+  var results = el('div', { style: { maxHeight: '300px', overflowY: 'auto' } });
+  content.appendChild(results);
+
+  var _searchTimer = null;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(_searchTimer);
+    var q = searchInput.value.trim();
+    if (q.length < 2) { results.replaceChildren(); return; }
+    _searchTimer = setTimeout(function() {
+      API.fetch('/users?search=' + encodeURIComponent(q) + '&is_active=true&limit=20').then(function(resp) {
+        var users = resp.users || [];
+        results.replaceChildren();
+        var myId = (Store.get('user') || {}).id;
+        users.forEach(function(u) {
+          if (u.id === myId) return;
+          var row = el('div', {
+            className: 'huginn-chat-row',
+            onClick: function() {
+              API.fetch('/chat-groups/direct', { method: 'POST', body: { user_id: u.id } }).then(function(resp) {
+                var chatId = (resp.chat || resp).id;
+                Router.navigate('/messenger/' + chatId);
+              }).catch(function() { M.Toast({ message: 'Ошибка создания чата', type: 'error' }); });
+            },
+          });
+          row.appendChild(M.Avatar({ name: u.name || u.login, size: 40 }));
+          var info = el('div', { className: 'huginn-chat-row__info' });
+          info.appendChild(el('div', { className: 'huginn-chat-row__name', textContent: u.name || u.login }));
+          info.appendChild(el('div', { className: 'huginn-chat-row__preview', textContent: u.role || '' }));
+          row.appendChild(info);
+          results.appendChild(row);
+        });
+        if (!users.length || (users.length === 1 && users[0].id === myId)) {
+          results.appendChild(el('div', { style: { padding: '16px', textAlign: 'center', color: 'var(--hg-hint)', fontSize: '14px' }, textContent: 'Никого не найдено' }));
+        }
+      }).catch(function() {});
+    }, 300);
+  });
+
+  M.BottomSheet({ title: 'Новый личный чат', content: content });
+  setTimeout(function() { searchInput.focus(); }, 300);
+}
+
+/* ── Create Group Chat (2-step: name → select members) ── */
+function createGroupSheet() {
+  var el = Utils.el;
+  var content = el('div');
+  var selectedMembers = [];
+
+  // Step 1: Name
   content.appendChild(M.Form({
     fields: [
-      { id: 'name', label: 'Название чата', type: 'text', required: true },
+      { id: 'name', label: 'Название группы', type: 'text', required: true, placeholder: 'Рабочий чат...' },
     ],
-    submitLabel: 'Создать',
-    onSubmit: async function(data) {
-      try {
-        await API.fetch('/chat-groups', { method: 'POST', body: { name: data.name, type: 'group' } });
-        M.Toast({ message: 'Чат создан', type: 'success' });
-        Router.navigate('/messenger');
-      } catch (_) {
-        M.Toast({ message: 'Ошибка создания', type: 'error' });
-      }
+    submitLabel: 'Далее →',
+    onSubmit: function(data) {
+      if (!data.name || !data.name.trim()) return;
+      showMemberSelection(data.name.trim());
     },
   }));
-  M.BottomSheet({ title: 'Новый чат', content: content });
+  M.BottomSheet({ title: 'Новая группа', content: content });
+
+  function showMemberSelection(groupName) {
+    var content2 = el('div');
+    var searchInput = el('input', {
+      style: { width: '100%', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--hg-sep, rgba(255,255,255,0.06))', background: 'var(--hg-input-field, rgba(35,46,60,0.5))', color: 'var(--hg-text, #f5f5f5)', fontSize: '15px', outline: 'none', boxSizing: 'border-box', marginBottom: '8px' },
+      placeholder: 'Поиск участников...',
+    });
+    content2.appendChild(searchInput);
+
+    var selectedChips = el('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', minHeight: '0' } });
+    content2.appendChild(selectedChips);
+
+    var results = el('div', { style: { maxHeight: '250px', overflowY: 'auto' } });
+    content2.appendChild(results);
+
+    var createBtn = el('button', {
+      style: { width: '100%', padding: '12px', borderRadius: '12px', background: 'var(--hg-accent, #6ab2f2)', color: '#fff', fontSize: '15px', fontWeight: 600, border: 'none', cursor: 'pointer', marginTop: '12px' },
+      textContent: 'Создать группу',
+      onClick: function() {
+        if (!selectedMembers.length) { M.Toast({ message: 'Добавьте участников', type: 'warning' }); return; }
+        API.fetch('/chat-groups', {
+          method: 'POST',
+          body: { name: groupName, type: 'group', members: selectedMembers.map(function(u) { return u.id; }) },
+        }).then(function(resp) {
+          var chatId = (resp.chat || resp).id;
+          M.Toast({ message: 'Группа создана', type: 'success' });
+          Router.navigate('/messenger/' + (chatId || ''));
+        }).catch(function() { M.Toast({ message: 'Ошибка создания', type: 'error' }); });
+      },
+    });
+    content2.appendChild(createBtn);
+
+    function updateChips() {
+      selectedChips.replaceChildren();
+      selectedMembers.forEach(function(u) {
+        var chip = el('div', {
+          style: { display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '16px', background: 'var(--hg-react-bg, rgba(59,130,246,0.12))', fontSize: '13px', color: 'var(--hg-text)' },
+        });
+        chip.appendChild(el('span', { textContent: (u.name || u.login).split(' ')[0] }));
+        chip.appendChild(el('span', {
+          style: { cursor: 'pointer', marginLeft: '2px', opacity: 0.6 },
+          textContent: '\u2715',
+          onClick: function() { selectedMembers = selectedMembers.filter(function(m) { return m.id !== u.id; }); updateChips(); renderUserList(''); },
+        }));
+        selectedChips.appendChild(chip);
+      });
+    }
+
+    function renderUserList(q) {
+      if (!q || q.length < 2) {
+        results.replaceChildren();
+        results.appendChild(el('div', { style: { padding: '16px', textAlign: 'center', color: 'var(--hg-hint)', fontSize: '13px' }, textContent: 'Введите имя для поиска' }));
+        return;
+      }
+      API.fetch('/users?search=' + encodeURIComponent(q) + '&is_active=true&limit=30').then(function(resp) {
+        var users = resp.users || [];
+        results.replaceChildren();
+        var myId = (Store.get('user') || {}).id;
+        users.forEach(function(u) {
+          if (u.id === myId) return;
+          var isSelected = selectedMembers.some(function(m) { return m.id === u.id; });
+          var row = el('div', {
+            className: 'huginn-chat-row',
+            style: { opacity: isSelected ? 0.5 : 1 },
+            onClick: function() {
+              if (isSelected) {
+                selectedMembers = selectedMembers.filter(function(m) { return m.id !== u.id; });
+              } else {
+                selectedMembers.push(u);
+              }
+              updateChips();
+              renderUserList(searchInput.value.trim());
+            },
+          });
+          row.appendChild(M.Avatar({ name: u.name || u.login, size: 36 }));
+          var info = el('div', { className: 'huginn-chat-row__info' });
+          info.appendChild(el('div', { className: 'huginn-chat-row__name', style: { fontSize: '14px' }, textContent: u.name || u.login }));
+          info.appendChild(el('div', { className: 'huginn-chat-row__preview', textContent: u.role || '' }));
+          row.appendChild(info);
+          if (isSelected) {
+            row.appendChild(el('span', { style: { color: 'var(--hg-accent)', fontSize: '18px' }, textContent: '\u2713' }));
+          }
+          results.appendChild(row);
+        });
+      }).catch(function() {});
+    }
+
+    var _sTimer = null;
+    searchInput.addEventListener('input', function() {
+      clearTimeout(_sTimer);
+      _sTimer = setTimeout(function() { renderUserList(searchInput.value.trim()); }, 300);
+    });
+
+    renderUserList('');
+    M.BottomSheet({ title: 'Участники: ' + groupName, content: content2 });
+    setTimeout(function() { searchInput.focus(); }, 300);
+  }
 }
 
 /* ═══════════════════════════════════════════
