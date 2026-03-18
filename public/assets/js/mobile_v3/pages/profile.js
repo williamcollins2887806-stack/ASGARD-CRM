@@ -9,6 +9,30 @@ var ProfilePage = {
     var el = Utils.el;
     var user = Store.get('user') || {};
 
+    // Если нет данных пользователя — попробовать подгрузить
+    if (!user.id && typeof API !== 'undefined') {
+      var loadingPage = el('div', { style: { background: t.bg, padding: '40px 20px', textAlign: 'center' } });
+      loadingPage.appendChild(M.Skeleton({ type: 'card', count: 3 }));
+      API.fetch('/users/me').then(function (resp) {
+        var u = resp.user || resp || {};
+        if (u.id) {
+          Store.set('user', u);
+          Router.navigate('/profile', { replace: true });
+        }
+      }).catch(function () {
+        loadingPage.replaceChildren(
+          M.Empty({ text: 'Не удалось загрузить профиль', icon: '👤' })
+        );
+        var retryBtn = el('button', {
+          style: { marginTop: '16px', padding: '10px 24px', borderRadius: '12px', background: t.red, color: '#fff', border: 'none', fontSize: '14px', fontWeight: '600' },
+          textContent: 'Повторить',
+          onClick: function () { Router.navigate('/profile', { replace: true }); },
+        });
+        loadingPage.appendChild(retryBtn);
+      });
+      return loadingPage;
+    }
+
     var page = el('div', { style: { background: t.bg, paddingBottom: '100px' } });
 
     // ── Header ──
@@ -309,10 +333,6 @@ var ProfilePage = {
       toggleValue: DS.getTheme() === 'dark',
       onToggle: function (on) {
         DS.setTheme(on ? 'dark' : 'light');
-        // Re-render to update colors
-        setTimeout(function () {
-          Router.navigate('/profile', { replace: true });
-        }, 300);
       },
     });
     addCard([
@@ -473,14 +493,6 @@ var ProfilePage = {
         body: { [key]: value },
       }).catch(function () {});
     }
-
-    // ── Theme change re-render ──
-    var themeHandler = function () {
-      setTimeout(function () {
-        Router.navigate('/profile', { replace: true });
-      }, 100);
-    };
-    window.addEventListener('asgard:theme', themeHandler, { once: true });
 
     return page;
   },

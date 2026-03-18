@@ -194,7 +194,7 @@ var DashboardPage = {
       // Widget content zone
       var content = el('div', {
         className: 'asgard-widget-body',
-        style: { padding: isHero ? '0' : '12px 16px 16px', minHeight: isHero ? '0' : '60px' }
+        style: { padding: isHero ? '0' : '12px 16px 16px', minHeight: isHero ? '0' : '60px', overflow: 'visible' }
       });
       content.appendChild(M.Skeleton({ type: 'card', count: 1 }));
       card.appendChild(content);
@@ -305,19 +305,28 @@ var DashboardPage = {
     }, { passive: true });
 
     /* ─── Swipe to remove ─── */
-    var swStartX = 0, swCard = null, swActive = false;
+    var swStartX = 0, swStartY = 0, swCard = null, swActive = false, swLocked = false;
 
     grid.addEventListener('touchstart', function (e) {
       var card = e.target.closest('[data-wid]');
       if (!card) return;
       swStartX = e.touches[0].clientX;
+      swStartY = e.touches[0].clientY;
       swCard = card;
       swActive = false;
+      swLocked = false;
     }, { passive: true });
 
     grid.addEventListener('touchmove', function (e) {
       if (!swCard) return;
+      if (swLocked) return;
       var dx = e.touches[0].clientX - swStartX;
+      var dy = Math.abs(e.touches[0].clientY - swStartY);
+      // Вертикальный скролл — не свайп удаления
+      if (dy > Math.abs(dx) && !swActive) { swLocked = true; return; }
+      // Горизонтальный скролл внутри виджета (charts, pills) — не свайп удаления
+      var scrollEl = e.target.closest('[style*="overflow"]') || e.target.closest('.asgard-filter-pills');
+      if (scrollEl && scrollEl !== swCard && !swActive) { swLocked = true; return; }
       if (dx < -20) {
         swActive = true;
         swCard.style.transform = 'translateX(' + Math.max(dx, -100) + 'px)';

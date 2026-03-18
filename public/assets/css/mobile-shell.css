@@ -196,11 +196,53 @@
 .asgard-huginn-send-btn {
   min-height: 40px !important;
   min-width: 40px !important;
+  flex-shrink: 0 !important;
+  margin-left: auto !important;
+}
+
+/* ── CHAT COMPOSER — fixed bottom, full width input ── */
+.asgard-huginn-composer,
+.asgard-mimir-composer {
+  display: flex !important;
+  align-items: flex-end !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+}
+.asgard-huginn-composer .asgard-huginn-textarea,
+.asgard-huginn-composer .asgard-huginn-input,
+.asgard-mimir-composer .asgard-huginn-input,
+.asgard-mimir-composer .asgard-mimir-input {
+  flex: 1 !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Клавиатура открыта — скрыть таб-бар */
+.keyboard-open .asgard-tabbar {
+  display: none !important;
 }
 
 /* Мимир — кнопки prompt */
 .asgard-mimir-prompt {
   min-height: 36px !important;
+}
+
+/* Мимир input — стили аналогичные huginn textarea */
+.asgard-mimir-composer .asgard-mimir-input {
+  min-height: 20px !important;
+  height: 40px !important;
+  padding: 10px 14px !important;
+  font-size: 15px !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255,255,255,0.15) !important;
+  background: rgba(255,255,255,0.08) !important;
+  color: var(--text, #fff) !important;
+  outline: none !important;
+  line-height: 1.4 !important;
+}
+.asgard-mimir-composer .asgard-mimir-input:focus {
+  border-color: var(--accent, #ff4444) !important;
 }
 
 /* Мимир-страница без нижнего padding */
@@ -411,11 +453,21 @@
   overflow-x: auto !important;
   -webkit-overflow-scrolling: touch !important;
   scrollbar-width: none !important;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+  box-sizing: border-box !important;
+  touch-action: pan-x !important;
 }
 .asgard-filter-pills::-webkit-scrollbar { display: none !important; }
 .asgard-filter-pills > * {
   flex-shrink: 0 !important;
   white-space: nowrap !important;
+}
+/* pseudo-element for right padding in scroll */
+.asgard-filter-pills::after {
+  content: '' !important;
+  min-width: 16px !important;
+  flex-shrink: 0 !important;
 }
 
 /* ── PIN PAD ── */

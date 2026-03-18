@@ -848,7 +848,7 @@ const Gestures = (() => {
 
     container.addEventListener('touchstart', (e) => {
       const x = e.touches[0].clientX;
-      if (x < 25) { // Edge swipe zone
+      if (x < 35) { // Edge swipe zone
         startX = x;
         startY = e.touches[0].clientY;
         swiping = true;
@@ -875,9 +875,9 @@ const Gestures = (() => {
       const page = container.querySelector('.asgard-page');
       if (page) {
         const transform = page.style.transform;
-        const match = transform.match(/translateX\((\d+)/);
+        const match = transform.match(/translateX\((\d+(?:\.\d+)?)px\)/);
         const dx = match ? parseInt(match[1]) : 0;
-        if (dx > 100) {
+        if (dx > 70) {
           page.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
           page.style.transform = 'translateX(100%)';
           page.style.opacity = '0';
@@ -1099,12 +1099,25 @@ const Utils = (() => {
     return () => container.removeEventListener('scroll', handler);
   }
 
-  // Keyboard-aware scroll
+  // Keyboard-aware scroll + hide tab bar
   function keyboardAwareScroll() {
     if (!window.visualViewport) return;
 
     window.visualViewport.addEventListener('resize', () => {
       const focused = document.activeElement;
+      const keyboardOpen = window.innerHeight - window.visualViewport.height > 150;
+      document.body.classList.toggle('keyboard-open', keyboardOpen);
+
+      // Move chat composer above keyboard
+      const composer = document.querySelector('.asgard-huginn-composer, .asgard-mimir-composer');
+      if (composer && composer.closest('.asgard-huginn-chat, .asgard-mimir-page')) {
+        if (keyboardOpen) {
+          composer.style.paddingBottom = 'calc(' + (window.innerHeight - window.visualViewport.height) + 'px + env(safe-area-inset-bottom, 0px))';
+        } else {
+          composer.style.paddingBottom = '';
+        }
+      }
+
       if (focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT')) {
         setTimeout(() => {
           focused.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1283,6 +1296,14 @@ const App = (() => {
 
     // Keyboard-aware
     Utils.keyboardAwareScroll();
+
+    // Re-render current page on theme change
+    window.addEventListener('asgard:theme', () => {
+      var currentPath = Store.get('activeRoute') || '/home';
+      setTimeout(() => {
+        Router.navigate(currentPath, { replace: true });
+      }, 50);
+    });
 
     // SSE notifications
     if (user && user.token) {

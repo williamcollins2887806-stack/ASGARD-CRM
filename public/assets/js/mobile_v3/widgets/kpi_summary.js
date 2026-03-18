@@ -57,7 +57,7 @@ window.MobileWidgets.kpi_summary = {
         var scroll = el('div', { className: 'asgard-no-scrollbar', style: {
           display: 'flex', gap: '8px', overflowX: 'auto',
           scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch',
-          padding: '0 2px',
+          padding: '0 2px', touchAction: 'pan-x',
         } });
 
         items.forEach(function (item) {
