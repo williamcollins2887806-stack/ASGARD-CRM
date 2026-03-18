@@ -57,7 +57,15 @@ var PermitsPage = {
           var employees = API.extractRows(results[1]);
           empMap = new Map(employees.map(function (e) { return [e.id, e.fio || e.name || '—']; }));
           return permits;
-        }).catch(function (e) { M.Toast({ message: 'Ошибка загрузки допусков', type: 'error' }); return []; });
+        }).catch(function (e) {
+          if (e && e.status === 403) {
+            var listEl2 = page.querySelector('.asgard-table-page__list');
+            if (listEl2) { listEl2.replaceChildren(); listEl2.appendChild(M.AccessDenied()); }
+          } else {
+            M.Toast({ message: 'Ошибка загрузки допусков', type: 'error' });
+          }
+          return [];
+        });
       },
     });
     var listEl = page.querySelector('.asgard-table-page__list');

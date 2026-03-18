@@ -36,9 +36,13 @@ const ProxiesPage = {
         const resp = await API.fetch('/data/proxies?limit=100');
         items = API.extractRows(resp);
         renderList();
-      } catch (_) {
+      } catch (e) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
+        if (e && e.status === 403) {
+          listWrap.appendChild(M.AccessDenied());
+        } else {
+          listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
+        }
       }
     }
 

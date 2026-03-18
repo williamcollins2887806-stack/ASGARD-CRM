@@ -43,10 +43,14 @@ const ContractsPage = {
         const resp = await API.fetch('/data/contracts?limit=100');
         items = API.extractRows(resp);
         renderList('');
-      } catch (_) {
+      } catch (e) {
         listWrap.replaceChildren();
-        M.Toast({ message: 'Ошибка загрузки', type: 'error' });
-        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
+        if (e && e.status === 403) {
+          listWrap.appendChild(M.AccessDenied());
+        } else {
+          M.Toast({ message: 'Ошибка загрузки', type: 'error' });
+          listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
+        }
       }
     }
 

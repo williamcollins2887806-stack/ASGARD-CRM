@@ -43,7 +43,7 @@ var ProcRequestsPage = {
         });
       },
       empty: M.Empty({ text: 'Нет заявок на закупку', icon: '🛒' }),
-      fab: { icon: '+', onClick: function () { M.Toast({ message: 'Создание закупок — с десктопа', type: 'info' }); } },
+      fab: { icon: '+', onClick: function () { openCreateProcRequest(); } },
       onRefresh: function () {
         return Promise.all([
           API.fetch('/data/proc_requests', { noCache: true }),
@@ -54,7 +54,15 @@ var ProcRequestsPage = {
           users = Array.isArray(results[1]) ? results[1] : (results[1].users || []);
           userMap = new Map(users.map(function (u) { return [u.id, u.name || u.fio || '—']; }));
           return items;
-        }).catch(function (e) { M.Toast({ message: 'Ошибка загрузки', type: 'error' }); return []; });
+        }).catch(function (e) {
+          if (e && e.status === 403) {
+            var listEl2 = page.querySelector('.asgard-table-page__list');
+            if (listEl2) { listEl2.replaceChildren(); listEl2.appendChild(M.AccessDenied()); }
+          } else {
+            M.Toast({ message: 'Ошибка загрузки', type: 'error' });
+          }
+          return [];
+        });
       },
     });
     var listEl = page.querySelector('.asgard-table-page__list');
@@ -84,6 +92,32 @@ var ProcRequestsPage = {
         });
       }
       M.BottomSheet({ title: 'Закупка #' + item.id, content: content, fullscreen: true });
+    }
+    function openCreateProcRequest() {
+      var content = el('div');
+      content.appendChild(M.Form({
+        fields: [
+          { id: 'work_title', label: 'Работа / объект', type: 'text', required: true, placeholder: 'Название работы' },
+          { id: 'items_text', label: 'Состав заявки', type: 'textarea', required: true, placeholder: 'Перечислите позиции...' },
+          { id: 'total_sum', label: 'Сумма, \u20BD', type: 'number', placeholder: '0' },
+          { id: 'comment', label: 'Комментарий', type: 'textarea' },
+        ],
+        submitLabel: '\u2713 Отправить заявку',
+        onSubmit: function (data) {
+          var body = { work_title: data.work_title, comment: data.comment };
+          if (data.total_sum) body.total_sum = parseFloat(data.total_sum);
+          if (data.items_text) {
+            body.items_json = JSON.stringify(data.items_text.split('\n').filter(function (l) { return l.trim(); }).map(function (l) { return { name: l.trim() }; }));
+          }
+          return API.fetch('/data/proc_requests', { method: 'POST', body: body }).then(function () {
+            M.Toast({ message: 'Заявка создана', type: 'success' });
+            Router.navigate('/proc-requests', { replace: true });
+          }).catch(function (e) {
+            M.Toast({ message: 'Ошибка: ' + (e.message || 'Сеть'), type: 'error' });
+          });
+        },
+      }));
+      M.BottomSheet({ title: 'Новая заявка на закупку', content: content, fullscreen: true });
     }
     return page;
   },

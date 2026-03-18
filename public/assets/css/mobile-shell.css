@@ -402,3 +402,127 @@
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ═══ ASGARD DS — Layout Rules (CSS Audit 18.03.2026) ═══ */
+
+/* ── FILTER PILLS — overflow fix ── */
+.asgard-filter-pills {
+  max-width: 100vw !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: none !important;
+}
+.asgard-filter-pills::-webkit-scrollbar { display: none !important; }
+.asgard-filter-pills > * {
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* ── PIN PAD ── */
+.pin-numpad {
+  max-width: 280px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+.pin-row {
+  justify-content: center !important;
+}
+.pin-key {
+  border-radius: 50% !important;
+}
+
+/* ── BOTTOM SHEET BODY ── */
+.asgard-sheet-body {
+  padding: 16px 20px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  box-sizing: border-box !important;
+}
+
+/* ── FORM FIELDS in sheets ── */
+.asgard-sheet .asgard-form-field {
+  margin-bottom: 12px;
+}
+
+/* ── BUTTON ROW ── */
+.asgard-btn-row {
+  display: flex !important;
+  justify-content: center !important;
+  gap: 10px !important;
+}
+.asgard-btn-row > * {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── TAB BAR ── */
+.asgard-tabbar {
+  display: flex !important;
+  justify-content: space-around !important;
+  align-items: center !important;
+}
+.asgard-tabbar > * {
+  flex: 1 !important;
+  text-align: center !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+/* ── CARDS ── */
+.asgard-card {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+}
+
+/* ── STAT GRID (2x2) ── */
+.asgard-stat-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 10px !important;
+}
+.asgard-stat-grid > * {
+  padding: 12px !important;
+  border-radius: 12px !important;
+  text-align: center !important;
+}
+
+/* ── LIST ITEMS ── */
+.asgard-list-item {
+  padding: 12px 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+/* ── PAGE HEADER ── */
+.asgard-page-header {
+  display: flex !important;
+  align-items: center !important;
+  padding: 8px 12px !important;
+  gap: 10px !important;
+}
+
+/* ── PREVENT TEXT OVERFLOW ── */
+.asgard-sheet *,
+.asgard-card *,
+.asgard-list-item * {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* ── GLOBAL OVERFLOW GUARD ── */
+#app, .mobile-shell, .asgard-shell {
+  max-width: 100vw !important;
+  overflow-x: hidden !important;
+}
+
+/* ── TABLE PAGE ── */
+.asgard-table-page {
+  max-width: 100vw !important;
+  overflow-x: hidden !important;
+}

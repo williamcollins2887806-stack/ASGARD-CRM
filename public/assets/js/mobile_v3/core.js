@@ -608,6 +608,10 @@ const API = (() => {
           Router.navigate('/welcome', { replace: true });
           throw err;
         }
+        if (err.status === 403) {
+          // Access denied — don't retry
+          throw err;
+        }
         if (attempt === retries) throw err;
         // Exponential backoff
         await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 500));

@@ -43,7 +43,15 @@ var PassRequestsPage = {
         return API.fetch('/pass-requests', { noCache: true }).then(function (resp) {
           items = API.extractRows(resp);
           return items;
-        }).catch(function (e) { M.Toast({ message: 'Ошибка загрузки', type: 'error' }); return []; });
+        }).catch(function (e) {
+          if (e && e.status === 403) {
+            var listEl2 = page.querySelector('.asgard-table-page__list');
+            if (listEl2) { listEl2.replaceChildren(); listEl2.appendChild(M.AccessDenied()); }
+          } else {
+            M.Toast({ message: 'Ошибка загрузки', type: 'error' });
+          }
+          return [];
+        });
       },
     });
     var listEl = page.querySelector('.asgard-table-page__list');

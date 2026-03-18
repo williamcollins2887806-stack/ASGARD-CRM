@@ -226,8 +226,12 @@ var CashAdminPage = (function () {
 
         } catch (e) {
           body.replaceChildren();
-          body.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
-          M.Toast({ message: 'Ошибка загрузки: ' + (e.message || e), type: 'error' });
+          if (e && e.status === 403) {
+            body.appendChild(M.AccessDenied());
+          } else {
+            body.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
+            M.Toast({ message: 'Ошибка загрузки: ' + (e.message || e), type: 'error' });
+          }
         }
       }, 0);
 

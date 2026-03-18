@@ -77,9 +77,13 @@ const WarehousePage = {
         }));
 
         renderList('');
-      } catch (_) {
+      } catch (e) {
         listWrap.replaceChildren();
-        listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
+        if (e && e.status === 403) {
+          listWrap.appendChild(M.AccessDenied());
+        } else {
+          listWrap.appendChild(M.ErrorBanner({ onRetry: function() { Router.navigate(location.hash.slice(1) || '/home', { replace: true }); } }));
+        }
       }
     }
 

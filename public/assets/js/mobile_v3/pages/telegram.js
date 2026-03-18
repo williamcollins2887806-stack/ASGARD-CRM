@@ -29,7 +29,15 @@ var TelegramPage = {
 
     // ── Load telegram settings ──
     setTimeout(function () {
-      API.fetch('/settings/telegram').catch(function () { return {}; }).then(function (tgSettings) {
+      API.fetch('/settings/telegram').catch(function (e) {
+        if (e && e.status === 403) {
+          contentWrap.replaceChildren();
+          contentWrap.appendChild(M.AccessDenied());
+          return null;
+        }
+        return {};
+      }).then(function (tgSettings) {
+        if (tgSettings === null) return;
         var cfg = {};
         if (tgSettings && tgSettings.value_json) {
           try { cfg = JSON.parse(tgSettings.value_json); } catch (_) {}

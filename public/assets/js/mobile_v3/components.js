@@ -831,6 +831,7 @@ const M = (() => {
 
     // Content
     const body = el('div', {
+      className: 'asgard-sheet-body',
       style: { flex: 1, overflowY: 'auto', padding: '16px 20px', WebkitOverflowScrolling: 'touch', overflowX: 'hidden', boxSizing: 'border-box' },
     });
     if (content instanceof HTMLElement) body.appendChild(content);
@@ -3128,6 +3129,33 @@ const M = (() => {
     return banner;
   }
 
+  function AccessDenied({ text } = {}) {
+    var wrap = el('div', {
+      className: 'asgard-access-denied',
+      style: {
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        padding: '40px 20px', textAlign: 'center', gap: '12px',
+      },
+    });
+    var icon = el('div', { style: { fontSize: '40px', opacity: '0.5' } });
+    icon.textContent = '\uD83D\uDEE1\uFE0F';
+    wrap.appendChild(icon);
+    wrap.appendChild(el('div', { style: Object.assign({}, DS.font('md'), { color: DS.t.text }), textContent: 'Доступ запрещён' }));
+    wrap.appendChild(el('div', { style: Object.assign({}, DS.font('sm'), { color: DS.t.textSec }), textContent: text || 'У вашей роли нет доступа к этому разделу' }));
+    var btn = el('button', {
+      style: {
+        marginTop: '12px', padding: '10px 24px', borderRadius: '10px',
+        background: 'var(--surface-alt)', border: '1px solid var(--border)',
+        color: 'var(--text)', cursor: 'pointer', fontFamily: 'inherit',
+        fontSize: '14px', fontWeight: '600',
+      },
+      textContent: '\u2190 Назад',
+    });
+    btn.addEventListener('click', function () { Router.navigate('/home'); });
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
   function Sparkline(opts) {
     var data = opts.data || [];
     var color = opts.color || 'var(--blue)';
@@ -3195,6 +3223,7 @@ const M = (() => {
     DonutChart,
     BurgerMenu,
     ErrorBanner,
+    AccessDenied,
     Sparkline,
   };
 })();

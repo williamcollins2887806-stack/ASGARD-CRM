@@ -1,0 +1,239 @@
+{
+  "total": 21,
+  "byType": {
+    "OVERFLOW": 12,
+    "TEXT_OVERFLOW": 9
+  },
+  "byRoute": {
+    "/tasks-admin": 2,
+    "/tenders": 2,
+    "/all-estimates": 3,
+    "/pm-calcs": 3,
+    "/cash": 1,
+    "/acts": 2,
+    "/mimir": 4,
+    "/training": 3,
+    "/travel": 1
+  },
+  "issues": [
+    {
+      "type": "OVERFLOW",
+      "route": "/tasks-admin",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Просрочено",
+      "rect": {
+        "x": 338,
+        "w": 107,
+        "right": 445
+      },
+      "screenW": 390
+    },
+    {
+      "type": "TEXT_OVERFLOW",
+      "route": "/tasks-admin",
+      "text": "Все\nНовые\nВ работе\nВыполнено\nПросрочено",
+      "scrollW": 485,
+      "clientW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/tenders",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Проиграно",
+      "rect": {
+        "x": 328,
+        "w": 98,
+        "right": 426
+      },
+      "screenW": 390
+    },
+    {
+      "type": "TEXT_OVERFLOW",
+      "route": "/tenders",
+      "text": "Все\nНовые\nВ работе\nВыиграно\nПроиграно",
+      "scrollW": 466,
+      "clientW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/all-estimates",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Доработка",
+      "rect": {
+        "x": 361,
+        "w": 96,
+        "right": 457
+      },
+      "screenW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/all-estimates",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Отклонено",
+      "rect": {
+        "x": 465,
+        "w": 98,
+        "right": 563
+      },
+      "screenW": 390
+    },
+    {
+      "type": "TEXT_OVERFLOW",
+      "route": "/all-estimates",
+      "text": "Все\nЧерновик\nНа согл.\nСогласовано\nДорабо",
+      "scrollW": 603,
+      "clientW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/pm-calcs",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Согласовано",
+      "rect": {
+        "x": 308,
+        "w": 108,
+        "right": 415
+      },
+      "screenW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/pm-calcs",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Доработка",
+      "rect": {
+        "x": 423,
+        "w": 96,
+        "right": 520
+      },
+      "screenW": 390
+    },
+    {
+      "type": "TEXT_OVERFLOW",
+      "route": "/pm-calcs",
+      "text": "Все\nЧерновики\nНа согласовании\nСогласован",
+      "scrollW": 560,
+      "clientW": 390
+    },
+    {
+      "type": "TEXT_OVERFLOW",
+      "route": "/cash",
+      "text": "Все\nНа согласовании\nОдобрено\nЗакрыто",
+      "scrollW": 423,
+      "clientW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/acts",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Оплачен",
+      "rect": {
+        "x": 389,
+        "w": 84,
+        "right": 473
+      },
+      "screenW": 390
+    },
+    {
+      "type": "TEXT_OVERFLOW",
+      "route": "/acts",
+      "text": "Все\nЧерновик\nНа подписании\nПодписан\nОпла",
+      "scrollW": 513,
+      "clientW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/mimir",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Работа (контракт)",
+      "rect": {
+        "x": 378,
+        "w": 138,
+        "right": 516
+      },
+      "screenW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/mimir",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Заметка",
+      "rect": {
+        "x": 524,
+        "w": 80,
+        "right": 604
+      },
+      "screenW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/mimir",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Бронь",
+      "rect": {
+        "x": 612,
+        "w": 68,
+        "right": 680
+      },
+      "screenW": 390
+    },
+    {
+      "type": "TEXT_OVERFLOW",
+      "route": "/mimir",
+      "text": "Все\nСвободен\nОфис\nКомандировка\nРабота (к",
+      "scrollW": 700,
+      "clientW": 350
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/training",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Оплачено",
+      "rect": {
+        "x": 317,
+        "w": 91,
+        "right": 408
+      },
+      "screenW": 390
+    },
+    {
+      "type": "OVERFLOW",
+      "route": "/training",
+      "tag": "BUTTON",
+      "className": "asgard-pill",
+      "text": "Отклонено",
+      "rect": {
+        "x": 416,
+        "w": 98,
+        "right": 514
+      },
+      "screenW": 390
+    },
+    {
+      "type": "TEXT_OVERFLOW",
+      "route": "/training",
+      "text": "Все\nНа согласовании\nСогласовано\nОплачено",
+      "scrollW": 554,
+      "clientW": 390
+    },
+    {
+      "type": "TEXT_OVERFLOW",
+      "route": "/travel",
+      "text": "Все\nТекущие\nПредстоящие\nЗавершённые",
+      "scrollW": 427,
+      "clientW": 390
+    }
+  ]
+}
