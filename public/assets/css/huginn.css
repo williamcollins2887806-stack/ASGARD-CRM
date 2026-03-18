@@ -256,63 +256,63 @@
 .huginn-msg-wrap {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  animation: huginn-msg-in 0.2s ease-out;
+  animation: huginn-msg-in 180ms ease-out;
 }
 .huginn-msg-wrap--mine {
   flex-direction: row-reverse;
+  animation-name: huginn-send-fly;
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 .huginn-msg-wrap--grouped {
-  margin-top: 1px;
+  margin-top: 2px;
 }
 .huginn-msg-wrap--spaced {
   margin-top: 8px;
 }
 
 .huginn-bubble {
-  max-width: 75%;
-  padding: 8px 12px;
+  max-width: 80%;
+  width: fit-content;
   position: relative;
   word-break: break-word;
   box-shadow: var(--hg-bub-shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 /* Incoming */
 .huginn-bubble--in {
   background: var(--hg-in-bub);
   color: var(--hg-in-text);
+  padding: 6px 9px 7px 11px;
 }
 /* Outgoing */
 .huginn-bubble--out {
   background: var(--hg-out-bub);
   color: var(--hg-out-text);
+  padding: 6px 11px 7px 9px;
 }
 
-/* Border radius for bubble positions */
-.huginn-bubble--in.huginn-bubble--single {
-  border-radius: var(--hg-radius-bub) var(--hg-radius-bub) var(--hg-radius-bub) 4px;
-}
-.huginn-bubble--in.huginn-bubble--first {
-  border-radius: var(--hg-radius-bub) var(--hg-radius-bub) var(--hg-radius-bub) 4px;
-}
-.huginn-bubble--in.huginn-bubble--mid {
-  border-radius: 4px var(--hg-radius-bub) var(--hg-radius-bub) 4px;
-}
-.huginn-bubble--in.huginn-bubble--last {
-  border-radius: 4px var(--hg-radius-bub) var(--hg-radius-bub) var(--hg-radius-bub);
-}
+/* Border radius — Incoming: TL/TR/BR/BL */
+.huginn-bubble--in.huginn-bubble--single { border-radius: 18px; }
+.huginn-bubble--in.huginn-bubble--first  { border-radius: 18px 18px 18px 5px; }
+.huginn-bubble--in.huginn-bubble--mid    { border-radius: 5px 18px 18px 5px; }
+.huginn-bubble--in.huginn-bubble--last   { border-radius: 5px 18px 18px 18px; }
 
-.huginn-bubble--out.huginn-bubble--single {
-  border-radius: var(--hg-radius-bub) var(--hg-radius-bub) 4px var(--hg-radius-bub);
-}
-.huginn-bubble--out.huginn-bubble--first {
-  border-radius: var(--hg-radius-bub) var(--hg-radius-bub) 4px var(--hg-radius-bub);
-}
-.huginn-bubble--out.huginn-bubble--mid {
-  border-radius: var(--hg-radius-bub) 4px 4px var(--hg-radius-bub);
-}
-.huginn-bubble--out.huginn-bubble--last {
-  border-radius: var(--hg-radius-bub) 4px var(--hg-radius-bub) var(--hg-radius-bub);
+/* Border radius — Outgoing: TL/TR/BR/BL */
+.huginn-bubble--out.huginn-bubble--single { border-radius: 18px; }
+.huginn-bubble--out.huginn-bubble--first  { border-radius: 18px 18px 5px 18px; }
+.huginn-bubble--out.huginn-bubble--mid    { border-radius: 18px 5px 5px 18px; }
+.huginn-bubble--out.huginn-bubble--last   { border-radius: 18px 5px 18px 18px; }
+
+/* Media bubble (video circle) */
+.huginn-bubble--media {
+  padding: 4px;
+  background: transparent !important;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* Deleted bubble */
@@ -320,6 +320,8 @@
   background: transparent;
   border: 1px dashed var(--hg-sep);
   box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .huginn-deleted-msg {
   font-size: 13px;
@@ -328,7 +330,7 @@
   opacity: 0.6;
 }
 
-/* Sender name in group chats */
+/* Sender name in group chats (peer color via inline style) */
 .huginn-sender-name {
   font-size: 12px;
   font-weight: 600;
@@ -341,46 +343,63 @@
   line-height: 1.4;
 }
 
-/* Avatar spacer (for grouped messages) */
+/* Avatar column (always 42px for incoming group messages) */
+.huginn-avatar-col {
+  width: 42px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
 .huginn-avatar-spacer {
-  width: 28px;
+  width: 42px;
   flex-shrink: 0;
 }
 
-/* ── 8. SVG Bubble Tails ── */
+/* ── 8. SVG Bubble Tails (clip-path) ── */
 .huginn-tail {
   position: absolute;
   bottom: 0;
-  width: 12px;
-  height: 20px;
+  width: 16px;
+  height: 10px;
   pointer-events: none;
 }
 .huginn-tail--in {
   left: -8px;
-  color: var(--hg-in-bub);
+  background: var(--hg-in-bub);
+  clip-path: url(#huginn-tail-in);
 }
 .huginn-tail--out {
   right: -8px;
-  color: var(--hg-out-bub);
-  transform: scaleX(-1);
+  background: var(--hg-out-bub);
+  clip-path: url(#huginn-tail-out);
 }
 
-/* ── 9. Meta (time + checkmarks) ── */
-.huginn-meta {
+/* ── 9. Inline Time (absolute + spacer) ── */
+.huginn-time-spacer {
+  display: inline-block;
+  width: 52px;
+  height: 1px;
+  vertical-align: baseline;
+  pointer-events: none;
+  user-select: none;
+}
+.huginn-bubble--out .huginn-time-spacer {
+  width: 68px;
+}
+.huginn-meta-float {
+  position: absolute;
+  bottom: 5px;
+  right: 8px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 2px;
+  gap: 3px;
+  pointer-events: none;
 }
-.huginn-meta--mine {
-  justify-content: flex-end;
-}
-.huginn-meta--other {
-  justify-content: flex-start;
-}
-
 .huginn-time {
-  font-size: 10px;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
 }
 .huginn-time--in { color: var(--hg-in-time); }
 .huginn-time--out { color: var(--hg-out-time); }
@@ -509,19 +528,22 @@
   transform: scale(0.92);
 }
 
-/* ── 14. Date Pills ── */
+/* ── 14. Date Pills (frosted glass + sticky) ── */
 .huginn-date-pill {
   align-self: center;
   padding: 4px 12px;
   border-radius: 16px;
   background: var(--hg-service-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   color: var(--hg-service-text);
   font-size: 12px;
   font-weight: 500;
-  margin: 8px 0;
+  margin: 10px 0;
   text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 /* ── 15. Reaction Pills ── */

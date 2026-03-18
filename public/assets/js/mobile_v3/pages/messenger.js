@@ -61,7 +61,17 @@ function _huginnSameDay(d1, d2) {
 function _huginnIsGrouped(prev, curr) {
   if (!prev || !curr) return false;
   if (prev.user_id !== curr.user_id) return false;
+  if (!_huginnSameDay(prev.created_at, curr.created_at)) return false;
   return Math.abs(new Date(curr.created_at) - new Date(prev.created_at)) < 120000;
+}
+
+function _huginnGroupPos(prev, curr, next) {
+  var gPrev = _huginnIsGrouped(prev, curr);
+  var gNext = _huginnIsGrouped(curr, next);
+  if (gPrev && gNext) return 'mid';
+  if (gPrev && !gNext) return 'last';
+  if (!gPrev && gNext) return 'first';
+  return 'single';
 }
 
 function _huginnOnlineLabel(lastLogin) {
@@ -448,6 +458,15 @@ async function renderChat(chatId) {
   var messagesWrap = el('div', { className: 'huginn-messages' });
   page.appendChild(messagesWrap);
 
+  // SVG defs for bubble tail clip-paths
+  if (!document.getElementById('huginn-tail-defs')) {
+    var _svgDefs = document.createElement('div');
+    _svgDefs.id = 'huginn-tail-defs';
+    _svgDefs.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+    _svgDefs.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0"><defs><clipPath id="huginn-tail-in"><path d="M10,0 A10,10 0,0,1 0,10 L16,10 L16,0 Z"/></clipPath><clipPath id="huginn-tail-out"><path d="M6,0 A10,10 0,0,0 16,10 L0,10 L0,0 Z"/></clipPath></defs></svg>';
+    document.body.appendChild(_svgDefs);
+  }
+
   // Scroll-to-bottom FAB
   var scrollFab = el('div', {
     className: 'huginn-scroll-fab',
@@ -707,7 +726,7 @@ async function renderChat(chatId) {
         if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
         messages.push(msg);
         if (msg.id > lastMsgId) lastMsgId = msg.id;
-        appendMessage(msg, messages.length > 1 ? messages[messages.length - 2] : null);
+        rerenderMessages();
         messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
       }
     }).catch(function() { M.Toast({ message: 'Ошибка отправки', type: 'error' }); });
@@ -807,7 +826,7 @@ async function renderChat(chatId) {
         if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
         messages.push(msg);
         if (msg.id > lastMsgId) lastMsgId = msg.id;
-        appendMessage(msg, messages.length > 1 ? messages[messages.length - 2] : null);
+        rerenderMessages();
         messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
       }
     } catch (_) {
@@ -847,84 +866,71 @@ async function renderChat(chatId) {
   }
 
   // ── Message rendering ──
-  function createBubble(msg, prev) {
+  function createBubble(msg, prev, next) {
     var mine = msg.user_id === userId;
-    var grouped = _huginnIsGrouped(prev, msg);
     var isDeleted = !!msg.deleted_at;
+    var isGroup = chatInfo && chatInfo.is_group;
+    var pos = _huginnGroupPos(prev, msg, next);
+    var grouped = (pos === 'mid' || pos === 'last');
+    var showAvatar = !mine && isGroup && (pos === 'single' || pos === 'last');
+    var showName = !mine && isGroup && (pos === 'single' || pos === 'first');
+    var showTail = (pos === 'single' || pos === 'last');
+    var isMedia = (msg.message_type === 'video' && msg.file_url);
 
-    var wrap = el('div', {
-      style: {
-        display: 'flex', flexDirection: mine ? 'row-reverse' : 'row',
-        alignItems: 'flex-end', gap: '8px',
-        marginTop: grouped ? '1px' : '8px',
-        animation: 'huginn-msg-in 0.2s ease-out',
-      },
-    });
+    var wrapCls = 'huginn-msg-wrap';
+    if (mine) wrapCls += ' huginn-msg-wrap--mine';
+    wrapCls += grouped ? ' huginn-msg-wrap--grouped' : ' huginn-msg-wrap--spaced';
+    var wrap = el('div', { className: wrapCls });
     wrap.dataset.msgId = msg.id;
 
-    if (!mine && !grouped) {
-      wrap.appendChild(M.Avatar({ name: msg.user_name || '?', size: 28 }));
-    } else if (!mine && grouped) {
-      wrap.appendChild(el('div', { style: { width: '28px', flexShrink: 0 } }));
+    if (!mine && isGroup) {
+      if (showAvatar) {
+        var avatarCol = el('div', { className: 'huginn-avatar-col' });
+        avatarCol.appendChild(M.Avatar({ name: msg.user_name || '?', size: 34 }));
+        wrap.appendChild(avatarCol);
+      } else {
+        wrap.appendChild(el('div', { className: 'huginn-avatar-spacer' }));
+      }
     }
 
-    var bubble = el('div', {
-      style: {
-        maxWidth: '75%', padding: '8px 12px',
-        background: isDeleted ? 'transparent' : (mine ? (t.accent || '#ff4444') : (t.surface || '#1e1e1e')),
-        borderRadius: mine
-          ? (grouped ? '18px 4px 18px 18px' : '18px 18px 4px 18px')
-          : (grouped ? '4px 18px 18px 18px' : '18px 18px 18px 4px'),
-        position: 'relative', wordBreak: 'break-word',
-        border: isDeleted ? '1px dashed ' + (t.border || '#333') : 'none',
-      },
-    });
+    var bubDir = mine ? 'out' : 'in';
+    var bubCls = 'huginn-bubble huginn-bubble--' + bubDir + ' huginn-bubble--' + pos;
+    if (isDeleted) bubCls += ' huginn-bubble--deleted';
+    if (isMedia) bubCls += ' huginn-bubble--media';
+    var bubble = el('div', { className: bubCls });
 
-    // Deleted message
     if (isDeleted) {
-      bubble.appendChild(el('div', {
-        className: 'huginn-deleted-msg',
-        style: { ...DS.font('sm'), color: t.textTer || '#666', fontStyle: 'italic', opacity: 0.6 },
-        textContent: 'Сообщение удалено',
-      }));
+      bubble.appendChild(el('div', { className: 'huginn-deleted-msg', textContent: 'Сообщение удалено' }));
       wrap.appendChild(bubble);
       return wrap;
     }
 
-    if (!mine && !grouped && chatInfo.is_group) {
-      bubble.appendChild(el('div', {
-        style: { ...DS.font('xs'), color: t.accent || '#ff4444', fontWeight: 600, marginBottom: '2px' },
-        textContent: msg.user_name || '',
-      }));
+    if (showTail) {
+      bubble.appendChild(el('div', { className: 'huginn-tail huginn-tail--' + bubDir }));
+    }
+
+    if (showName) {
+      var peerIdx = (msg.user_id || 0) % 8;
+      var nameEl = el('div', { className: 'huginn-sender-name', textContent: msg.user_name || '' });
+      nameEl.style.color = 'var(--hg-peer-' + peerIdx + ')';
+      bubble.appendChild(nameEl);
     }
 
     if (msg.reply_to && msg.reply_text) {
-      var rp = el('div', { style: { borderLeft: '2px solid ' + (mine ? 'rgba(255,255,255,0.5)' : (t.accent || '#ff4444')), paddingLeft: '8px', marginBottom: '4px', opacity: 0.8 } });
-      rp.appendChild(el('div', { style: { ...DS.font('xs'), fontWeight: 600, color: mine ? 'rgba(255,255,255,0.9)' : (t.accent || '#ff4444') }, textContent: msg.reply_user_name || '' }));
-      rp.appendChild(el('div', { style: { ...DS.font('xs'), color: mine ? 'rgba(255,255,255,0.7)' : (t.textSec || '#999'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }, textContent: msg.reply_text }));
+      var rp = el('div', { className: 'huginn-bubble-reply' });
+      rp.appendChild(el('div', { className: 'huginn-bubble-reply__name', textContent: msg.reply_user_name || '' }));
+      rp.appendChild(el('div', { className: 'huginn-bubble-reply__text', textContent: msg.reply_text }));
       bubble.appendChild(rp);
     }
 
-    // Voice message
     if (msg.message_type === 'voice' && msg.file_url) {
       bubble.appendChild(_huginnVoicePlayer(msg.file_url, msg.file_duration));
-    }
-    // Video circle
-    else if (msg.message_type === 'video' && msg.file_url) {
-      bubble.style.padding = '4px';
-      bubble.style.background = 'transparent';
-      bubble.style.border = 'none';
+    } else if (isMedia) {
       bubble.appendChild(_huginnVideoCircle(msg.file_url, msg.file_duration));
-    }
-    // Regular text
-    else if (msg.message) {
-      bubble.appendChild(el('div', {
-        style: { ...DS.font('sm'), color: mine ? '#fff' : (t.text || '#fff'), lineHeight: '1.4' },
-        textContent: msg.message,
-      }));
+    } else if (msg.message) {
+      bubble.appendChild(el('span', { className: 'huginn-msg-text', textContent: msg.message }));
     }
 
-    // Attachments with inline image/video preview
     if (msg.attachments && msg.attachments.length) {
       msg.attachments.forEach(function(att) {
         var fname = (att.file_path || att.file_name || '').split('/').pop();
@@ -932,14 +938,11 @@ async function renderChat(chatId) {
         var fileUrl = '/api/chat-groups/' + chatId + '/files/' + encodeURIComponent(fname);
 
         if (mime.indexOf('image/') === 0) {
-          // Inline image preview
           var imgWrap = el('div', {
-            style: { marginTop: '6px', cursor: 'pointer', borderRadius: '12px', overflow: 'hidden', maxWidth: '240px', maxHeight: '300px', background: 'rgba(0,0,0,0.1)' },
+            className: 'huginn-img-wrap',
             onClick: function() { showImagePreview(fileUrl, att.file_name); },
           });
-          var img = el('img', {
-            style: { width: '100%', height: 'auto', display: 'block', borderRadius: '12px', maxHeight: '300px', objectFit: 'cover' },
-          });
+          var img = el('img');
           img.loading = 'lazy';
           img.src = fileUrl + '?token=' + API.getToken();
           img.alt = att.file_name || 'Изображение';
@@ -947,67 +950,54 @@ async function renderChat(chatId) {
           imgWrap.appendChild(img);
           bubble.appendChild(imgWrap);
         } else if (mime.indexOf('video/') === 0) {
-          // Video placeholder
           var vidWrap = el('div', {
-            style: {
-              marginTop: '6px', cursor: 'pointer', borderRadius: '12px', overflow: 'hidden',
-              maxWidth: '240px', height: '140px', background: 'rgba(0,0,0,0.3)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            },
+            className: 'huginn-vid-wrap',
             onClick: function() { showVideoPreview(fileUrl, att.file_name); },
           });
           vidWrap.innerHTML = '<svg width="48" height="48" viewBox="0 0 24 24" fill="rgba(255,255,255,0.8)"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
           bubble.appendChild(vidWrap);
-          bubble.appendChild(el('div', {
-            style: { ...DS.font('xs'), color: mine ? 'rgba(255,255,255,0.7)' : (t.textSec || '#999'), marginTop: '2px' },
-            textContent: att.file_name || 'Видео',
-          }));
+          bubble.appendChild(el('div', { className: 'huginn-vid-name', textContent: att.file_name || 'Видео' }));
         } else {
-          // Default download link
           var attEl = el('div', {
-            style: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', cursor: 'pointer', opacity: 0.85 },
+            className: 'huginn-file-att',
             onClick: function() { window.open(fileUrl); },
           });
           attEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
-          attEl.appendChild(el('span', { style: { ...DS.font('xs'), textDecoration: 'underline' }, textContent: att.file_name || 'Файл' }));
+          attEl.appendChild(el('span', { className: 'huginn-file-att__name', textContent: att.file_name || 'Файл' }));
           bubble.appendChild(attEl);
         }
       });
     }
 
-    var meta = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: mine ? 'flex-end' : 'flex-start', gap: '4px', marginTop: '2px' } });
-    meta.appendChild(el('span', {
-      style: { ...DS.font('xs'), fontSize: '10px', color: mine ? 'rgba(255,255,255,0.6)' : (t.textTer || '#666') },
-      textContent: _huginnTime(msg.created_at) + (msg.edited_at ? ' (ред.)' : ''),
-    }));
-    if (mine) {
-      var checkColor = msg.is_read ? '#4fc3f7' : 'rgba(255,255,255,0.5)';
-      var checkSvg = msg.is_read
-        ? '<svg width="16" height="10" viewBox="0 0 16 10" fill="none"><path d="M1 5l3 3 5-7" stroke="' + checkColor + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5l3 3 5-7" stroke="' + checkColor + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-        : '<svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M1 5l3 3 7-7" stroke="' + checkColor + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      var checkEl = el('span');
-      checkEl.innerHTML = checkSvg;
-      meta.appendChild(checkEl);
+    if (!isMedia) {
+      bubble.appendChild(el('span', { className: 'huginn-time-spacer' }));
     }
-    bubble.appendChild(meta);
+
+    var metaEl = el('div', { className: 'huginn-meta-float' });
+    var timeText = _huginnTime(msg.created_at) + (msg.edited_at ? ' ред.' : '');
+    metaEl.appendChild(el('span', { className: 'huginn-time huginn-time--' + bubDir, textContent: timeText }));
+    if (mine) {
+      var checkEl = el('span', { className: 'huginn-check huginn-check--' + (msg.is_read ? 'read' : 'sent') });
+      checkEl.innerHTML = msg.is_read
+        ? '<svg width="16" height="10" viewBox="0 0 16 10" fill="none"><path d="M1 5l3 3 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5l3 3 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        : '<svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M1 5l3 3 7-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      metaEl.appendChild(checkEl);
+    }
+    bubble.appendChild(metaEl);
 
     if (msg.reactions && Object.keys(msg.reactions).length) {
-      var reactRow = el('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' } });
+      var reactRow = el('div', { className: 'huginn-reactions-row' });
       for (var emoji in msg.reactions) {
         var users = msg.reactions[emoji];
         var isMine = Array.isArray(users) && users.includes(userId);
         (function(em, us, im) {
+          var pillCls = 'huginn-reaction-pill' + (im ? ' huginn-reaction-pill--mine' : '');
           var rb = el('div', {
-            style: {
-              display: 'flex', alignItems: 'center', gap: '3px',
-              padding: '2px 6px', borderRadius: '10px', cursor: 'pointer',
-              background: im ? 'rgba(255,68,68,0.2)' : 'rgba(255,255,255,0.08)',
-              border: im ? '1px solid rgba(255,68,68,0.4)' : '1px solid transparent', fontSize: '14px',
-            },
+            className: pillCls,
             onClick: function(e) { e.stopPropagation(); toggleReaction(msg.id, em); },
           });
           rb.appendChild(el('span', { textContent: em }));
-          if (us.length > 1) rb.appendChild(el('span', { style: { fontSize: '11px', color: t.textSec || '#999' }, textContent: String(us.length) }));
+          if (us.length > 1) rb.appendChild(el('span', { className: 'huginn-reaction-pill__count', textContent: String(us.length) }));
           reactRow.appendChild(rb);
         })(emoji, users, isMine);
       }
@@ -1114,7 +1104,7 @@ async function renderChat(chatId) {
         background: t.surface || '#222', borderRadius: '24px',
         padding: '6px 8px', display: 'flex', gap: '4px',
         boxShadow: '0 4px 20px rgba(0,0,0,0.4)', zIndex: 100,
-        animation: 'asgard-react-pop 0.2s ease-out',
+        animation: 'huginn-react-pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
       },
     });
 
@@ -1145,22 +1135,21 @@ async function renderChat(chatId) {
   }
 
   function appendDateSeparator(dateStr) {
-    var sep = el('div', { style: { textAlign: 'center', padding: '12px 0 8px', ...DS.font('xs'), color: t.textTer || '#666' } });
-    sep.appendChild(el('span', {
-      style: { background: t.surface || '#1a1a1a', padding: '4px 12px', borderRadius: '10px' },
-      textContent: _huginnDateLabel(dateStr),
-    }));
-    messagesWrap.appendChild(sep);
+    messagesWrap.appendChild(el('div', { className: 'huginn-date-pill', textContent: _huginnDateLabel(dateStr) }));
   }
 
-  function appendMessage(msg, prev) {
+  function appendMessage(msg, prev, next) {
     if (!prev || !_huginnSameDay(prev.created_at, msg.created_at)) appendDateSeparator(msg.created_at);
-    messagesWrap.appendChild(createBubble(msg, prev));
+    messagesWrap.appendChild(createBubble(msg, prev, next));
   }
 
   function rerenderMessages() {
     messagesWrap.replaceChildren();
-    messages.forEach(function(msg, i) { appendMessage(msg, i > 0 ? messages[i - 1] : null); });
+    messages.forEach(function(msg, i) {
+      var prev = i > 0 ? messages[i - 1] : null;
+      var next = i < messages.length - 1 ? messages[i + 1] : null;
+      appendMessage(msg, prev, next);
+    });
   }
 
   // ── Load initial messages ──
@@ -1228,7 +1217,7 @@ async function renderChat(chatId) {
           var wasAtBottom = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight < 100;
           messages.push(msg);
           if (msg.id > lastMsgId) lastMsgId = msg.id;
-          appendMessage(msg, messages.length > 1 ? messages[messages.length - 2] : null);
+          rerenderMessages();
           if (wasAtBottom) messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
           // Sound notification for messages from others ONLY
           if (msg.user_id !== userId) _huginnPlayNotifSound();
@@ -1307,8 +1296,8 @@ async function renderChat(chatId) {
         newMsgs.forEach(function(msg) {
           if (messages.find(function(m) { return m.id === msg.id; })) return;
           messages.push(msg);
-          appendMessage(msg, messages.length > 1 ? messages[messages.length - 2] : null);
         });
+        rerenderMessages();
         lastMsgId = Math.max(lastMsgId, Math.max.apply(null, newMsgs.map(function(m) { return m.id; })));
         if (wasAtBottom) messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
       }
