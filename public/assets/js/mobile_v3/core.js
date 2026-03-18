@@ -476,13 +476,13 @@ const Layout = (() => {
   var _tabBarHidden = false;
   function hideTabBar() {
     _tabBarHidden = true;
-    if (tabBar) tabBar.style.display = 'none';
+    if (tabBar) tabBar.classList.add('asgard-tabbar--hidden');
     var content = getContentZone();
     if (content) content.style.paddingBottom = '0';
   }
   function showTabBar() {
     _tabBarHidden = false;
-    if (tabBar) tabBar.style.display = '';
+    if (tabBar) tabBar.classList.remove('asgard-tabbar--hidden');
     var content = getContentZone();
     if (content) content.style.paddingBottom = '';
   }

@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '17.9.0';
+const SHELL_VERSION = '17.10.0';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v1';
 
@@ -20,8 +20,8 @@ const SHELL_ASSETS = [
   './assets/css/layout.css?v=17.0.1',
   './assets/css/app.css?v=17.0.1',
   './assets/css/responsive.css?v=17.0.1',
-  './assets/css/mobile-shell.css?v=17.8.0',
-  './assets/css/huginn.css?v=17.9.0',
+  './assets/css/mobile-shell.css?v=17.10.0',
+  './assets/css/huginn.css?v=17.10.0',
   // ── Core JS ──
   './assets/js/ui.js?v=17.0.1',
   './assets/js/sla.js?v=17.0.1',
@@ -37,7 +37,7 @@ const SHELL_ASSETS = [
   './assets/js/mobile_v3/approval.js?v=17.0.1',
   './assets/js/mobile_v3/auth.js?v=17.0.1',
   './assets/js/mobile_v3/components.js?v=17.0.1',
-  './assets/js/mobile_v3/core.js?v=17.0.1',
+  './assets/js/mobile_v3/core.js?v=17.10.0',
   './assets/js/mobile_v3/ds.js?v=17.0.1',
   './assets/js/mobile_v3/test.js?v=17.0.1',
   './assets/js/mobile_v3/router.js?v=17.0.1',
@@ -79,8 +79,8 @@ const SHELL_ASSETS = [
   './assets/js/mobile_v3/pages/proxies.js?v=17.0.1',
   './assets/js/mobile_v3/pages/seals.js?v=17.0.1',
   './assets/js/mobile_v3/pages/settings.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/tasks.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/tasks_admin.js?v=17.0.1',
+  './assets/js/mobile_v3/pages/tasks.js?v=17.10.0',
+  './assets/js/mobile_v3/pages/tasks_admin.js?v=17.10.0',
   './assets/js/mobile_v3/pages/telegram.js?v=17.0.1',
   './assets/js/mobile_v3/pages/tenders.js?v=17.0.1',
   './assets/js/mobile_v3/pages/tmc_requests.js?v=17.0.1',

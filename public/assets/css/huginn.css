@@ -428,7 +428,7 @@
   align-items: flex-end;
   gap: 8px;
   padding: 8px var(--hg-sp-page);
-  padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  padding-bottom: 8px; /* shell already handles safe-area-inset-bottom */
   background: var(--hg-input-bar-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);

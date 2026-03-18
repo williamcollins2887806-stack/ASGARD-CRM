@@ -150,7 +150,7 @@ var TasksPage = {
 
     // ── Actions ──
     function completeTask(id) {
-      API.fetch('/tasks/' + id + '/complete', { method: 'POST' }).then(function () {
+      API.fetch('/tasks/' + id + '/complete', { method: 'PUT' }).then(function () {
         M.Toast({ message: 'Задача выполнена', type: 'success' });
         return API.fetch('/tasks/my', { noCache: true });
       }).then(function (d) {
@@ -160,7 +160,7 @@ var TasksPage = {
     }
 
     function acceptTask(id) {
-      API.fetch('/tasks/' + id + '/accept', { method: 'POST' }).then(function () {
+      API.fetch('/tasks/' + id + '/accept', { method: 'PUT' }).then(function () {
         M.Toast({ message: 'Задача принята', type: 'success' });
         return API.fetch('/tasks/my', { noCache: true });
       }).then(function (d) {
