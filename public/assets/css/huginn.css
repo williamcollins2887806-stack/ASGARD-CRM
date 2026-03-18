@@ -192,8 +192,22 @@
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--hg-sep);
   z-index: 10;
-  min-height: 44px;
+  min-height: 56px;
   flex-shrink: 0;
+}
+
+.huginn-header-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.huginn-header-online-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--hg-header-bg);
 }
 
 .huginn-header-back {
@@ -217,7 +231,7 @@
   overflow: hidden;
 }
 .huginn-header-title {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--hg-text);
   white-space: nowrap;
@@ -513,7 +527,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 10;
+  z-index: 3;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   transition: opacity 0.2s ease, transform 0.2s ease;
   animation: huginn-fab-in 0.2s ease-out;
@@ -1126,3 +1140,87 @@
 .huginn-hidden { display: none !important; }
 .huginn-no-scrollbar::-webkit-scrollbar { display: none; }
 .huginn-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── 31. S4: Composer Morph (mic ↔ send) ── */
+.huginn-composer-right {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+.huginn-composer-right > .huginn-btn,
+.huginn-composer-right > .huginn-send-btn {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.huginn-composer-right--has-text > .huginn-btn { opacity: 0; transform: scale(0.7); pointer-events: none; }
+.huginn-composer-right--has-text > .huginn-send-btn { opacity: 1; transform: scale(1); }
+.huginn-composer-right:not(.huginn-composer-right--has-text) > .huginn-btn { opacity: 1; transform: scale(1); }
+.huginn-composer-right:not(.huginn-composer-right--has-text) > .huginn-send-btn { opacity: 0; transform: scale(0.7); pointer-events: none; }
+
+/* ── 32. S4: Scroll FAB Badge ── */
+.huginn-scroll-fab-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--hg-accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  animation: huginn-badge-in 0.3s ease-out;
+}
+.huginn-scroll-fab-badge--visible {
+  display: flex;
+}
+
+/* ── 33. S4: Markdown in Messages ── */
+.huginn-msg-text a {
+  color: var(--hg-link);
+  text-decoration: underline;
+}
+.huginn-msg-text a:active { opacity: 0.7; }
+.huginn-msg-text code {
+  font-family: var(--hg-font-mono);
+  background: rgba(0,0,0,0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+.huginn-bubble--out .huginn-msg-text code {
+  background: rgba(0,0,0,0.2);
+}
+.huginn-msg-text strong { font-weight: 700; }
+.huginn-msg-text em { font-style: italic; }
+.huginn-msg-text del { text-decoration: line-through; opacity: 0.7; }
+
+/* ── 34. S4: Optimistic Send ── */
+.huginn-msg-wrap--pending .huginn-meta-float { opacity: 0.5; }
+.huginn-msg-wrap--failed { opacity: 0.5; }
+.huginn-retry-btn {
+  font-size: 11px;
+  color: var(--hg-destructive);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(236,57,66,0.1);
+  margin-top: 2px;
+  display: inline-block;
+}
+
+/* ── 35. S4: FAB hide animation ── */
+.huginn-scroll-fab--hiding {
+  animation: huginn-fab-out 150ms ease forwards;
+}
+@keyframes huginn-fab-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0); }
+}

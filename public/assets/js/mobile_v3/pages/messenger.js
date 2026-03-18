@@ -74,6 +74,48 @@ function _huginnGroupPos(prev, curr, next) {
   return 'single';
 }
 
+function _huginnParseText(text) {
+  var frag = document.createDocumentFragment();
+  // Split by markdown patterns and URLs
+  var re = /(https?:\/\/[^\s<>"']+)|(\*\*(.+?)\*\*)|(__(.+?)__)|(_(.+?)_)|(~~(.+?)~~)|(`(.+?)`)/g;
+  var last = 0;
+  var match;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) frag.appendChild(document.createTextNode(text.slice(last, match.index)));
+    if (match[1]) { // URL
+      var a = document.createElement('a');
+      a.href = match[1];
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = match[1];
+      frag.appendChild(a);
+    } else if (match[2]) { // **bold**
+      var b = document.createElement('strong');
+      b.textContent = match[3];
+      frag.appendChild(b);
+    } else if (match[4]) { // __bold__
+      var b2 = document.createElement('strong');
+      b2.textContent = match[5];
+      frag.appendChild(b2);
+    } else if (match[6]) { // _italic_
+      var em = document.createElement('em');
+      em.textContent = match[7];
+      frag.appendChild(em);
+    } else if (match[8]) { // ~~strike~~
+      var del = document.createElement('del');
+      del.textContent = match[9];
+      frag.appendChild(del);
+    } else if (match[10]) { // `code`
+      var code = document.createElement('code');
+      code.textContent = match[11];
+      frag.appendChild(code);
+    }
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+  return frag;
+}
+
 function _huginnOnlineLabel(lastLogin) {
   if (!lastLogin) return '';
   var diff = Date.now() - new Date(lastLogin).getTime();
@@ -426,33 +468,81 @@ async function renderChat(chatId) {
   }
 
   var mc = chatMembers.length;
-  var headerSubtitle = '';
-  if (directMember) {
-    headerSubtitle = _huginnOnlineLabel(directMember.last_login_at) || '';
-  } else if (mc > 0) {
-    headerSubtitle = mc + Utils.plural(mc, ' участник', ' участника', ' участников');
+  var _typingUser = null;
+  var _typingTimer = null;
+
+  // ── Custom Huginn Header (56px, frosted glass, avatar+online dot) ──
+  var headerEl = el('div', { className: 'huginn-header' });
+
+  var headerBack = el('div', {
+    className: 'huginn-header-back',
+    innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>',
+    onClick: function() { Router.navigate('/messenger'); },
+  });
+  headerEl.appendChild(headerBack);
+
+  var headerAvatarWrap = el('div', { className: 'huginn-header-avatar-wrap' });
+  headerAvatarWrap.appendChild(M.Avatar({ name: chatInfo.name || '?', size: 40 }));
+  var onlineDot = el('div', { className: 'huginn-online-dot huginn-header-online-dot' });
+  onlineDot.style.display = 'none';
+  headerAvatarWrap.appendChild(onlineDot);
+  headerEl.appendChild(headerAvatarWrap);
+
+  var headerInfo = el('div', { className: 'huginn-header-info' });
+  var headerTitle = el('div', { className: 'huginn-header-title', textContent: chatInfo.name || 'Чат' });
+  var headerSub = el('div', { className: 'huginn-header-subtitle' });
+  headerInfo.appendChild(headerTitle);
+  headerInfo.appendChild(headerSub);
+  headerEl.appendChild(headerInfo);
+
+  var headerActions = el('div', { className: 'huginn-header-actions' });
+  headerActions.appendChild(el('div', {
+    className: 'huginn-header-action',
+    innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+    onClick: function() { /* search — С6 */ },
+  }));
+  headerActions.appendChild(el('div', {
+    className: 'huginn-header-action',
+    innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
+    onClick: function() { chatActionsSheet(chatId); },
+  }));
+  headerEl.appendChild(headerActions);
+  page.appendChild(headerEl);
+
+  function updateHeaderSubtitle() {
+    headerSub.innerHTML = '';
+    headerSub.style.color = '';
+    if (_typingUser) {
+      headerSub.style.color = 'var(--hg-accent)';
+      headerSub.appendChild(document.createTextNode(_typingUser + ' печатает'));
+      var dots = el('span', { className: 'huginn-typing-dots' });
+      dots.appendChild(el('span'));
+      dots.appendChild(el('span'));
+      dots.appendChild(el('span'));
+      headerSub.appendChild(dots);
+      return;
+    }
+    if (directMember) {
+      var isOnline = directMember.online;
+      if (isOnline) {
+        headerSub.textContent = 'онлайн';
+        headerSub.style.color = 'var(--hg-online)';
+        onlineDot.style.display = '';
+      } else {
+        headerSub.textContent = _huginnOnlineLabel(directMember.last_login_at);
+        onlineDot.style.display = 'none';
+      }
+    } else if (mc > 0) {
+      headerSub.textContent = mc + Utils.plural(mc, ' участник', ' участника', ' участников');
+    }
   }
 
-  page.appendChild(M.Header({
-    title: chatInfo.name || 'Чат',
-    subtitle: headerSubtitle,
-    back: true,
-    backHref: '/messenger',
-    actions: [
-      directMember ? {
-        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>',
-        onClick: function() { _huginnInitiateCall(directMember.user_id, directMember.user_name || chatInfo.name); },
-      } : null,
-      {
-        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
-        onClick: function() { chatActionsSheet(chatId); },
-      }
-    ].filter(Boolean),
-  }));
-
-  // Typing indicator bar
-  var typingBar = el('div', { className: 'huginn-typing' });
-  page.appendChild(typingBar);
+  // Check if direct member is online (within 2 min of last_login_at)
+  if (directMember) {
+    var lastAt = directMember.last_login_at ? new Date(directMember.last_login_at).getTime() : 0;
+    directMember.online = (Date.now() - lastAt) < 120000;
+  }
+  updateHeaderSubtitle();
 
   // Messages area
   var messagesWrap = el('div', { className: 'huginn-messages' });
@@ -467,17 +557,40 @@ async function renderChat(chatId) {
     document.body.appendChild(_svgDefs);
   }
 
-  // Scroll-to-bottom FAB
+  // Scroll-to-bottom FAB with badge
+  var _unreadBelow = 0;
   var scrollFab = el('div', {
     className: 'huginn-scroll-fab',
     innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>',
-    onClick: function() { messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' }); },
+    onClick: function() {
+      messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
+      _unreadBelow = 0;
+      updateFabBadge();
+    },
   });
+  var scrollFabBadge = el('div', { className: 'huginn-scroll-fab-badge' });
+  scrollFab.appendChild(scrollFabBadge);
   page.appendChild(scrollFab);
+
+  function updateFabBadge() {
+    if (_unreadBelow > 0) {
+      scrollFabBadge.textContent = '+' + _unreadBelow;
+      scrollFabBadge.classList.add('huginn-scroll-fab-badge--visible');
+    } else {
+      scrollFabBadge.classList.remove('huginn-scroll-fab-badge--visible');
+    }
+  }
 
   messagesWrap.addEventListener('scroll', function() {
     var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
-    scrollFab.classList.toggle('huginn-scroll-fab--visible', gap > 150);
+    var shouldShow = gap > messagesWrap.clientHeight;
+    if (shouldShow && !scrollFab.classList.contains('huginn-scroll-fab--visible')) {
+      scrollFab.classList.remove('huginn-scroll-fab--hiding');
+      scrollFab.classList.add('huginn-scroll-fab--visible');
+    } else if (!shouldShow && scrollFab.classList.contains('huginn-scroll-fab--visible')) {
+      scrollFab.classList.add('huginn-scroll-fab--hiding');
+      setTimeout(function() { scrollFab.classList.remove('huginn-scroll-fab--visible', 'huginn-scroll-fab--hiding'); _unreadBelow = 0; updateFabBadge(); }, 150);
+    }
     if (messagesWrap.scrollTop < 60 && hasOlder && !loadingOlder) loadOlderMessages();
   }, { passive: true });
 
@@ -527,15 +640,14 @@ async function renderChat(chatId) {
   emojiPanel.appendChild(emojiTabs);
   emojiPanel.appendChild(emojiGrid);
 
-  // Composer
+  // Composer: 📎 | textarea | 😊 | [🎬] | mic↔send morph
   var composerWrap = el('div', { className: 'huginn-composer' });
 
-  var emojiBtn = el('div', {
+  composerWrap.appendChild(el('div', {
     className: 'huginn-btn',
-    innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>',
-    onClick: function() { toggleEmoji(); },
-  });
-  composerWrap.appendChild(emojiBtn);
+    innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>',
+    onClick: function() { attachFile(); },
+  }));
 
   var textarea = el('textarea', {
     className: 'huginn-textarea',
@@ -553,11 +665,12 @@ async function renderChat(chatId) {
   });
   composerWrap.appendChild(textarea);
 
-  composerWrap.appendChild(el('div', {
+  var emojiBtn = el('div', {
     className: 'huginn-btn',
-    innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>',
-    onClick: function() { attachFile(); },
-  }));
+    innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>',
+    onClick: function() { toggleEmoji(); },
+  });
+  composerWrap.appendChild(emojiBtn);
 
   var sendBtn = el('div', {
     className: 'huginn-send-btn',
@@ -591,18 +704,29 @@ async function renderChat(chatId) {
     });
   }
 
+  // Composer right: mic ↔ send morph (crossfade 150ms via CSS)
+  var composerRight = null;
+  if (micBtn) {
+    composerRight = el('div', { className: 'huginn-composer-right' });
+    composerRight.appendChild(micBtn);
+    composerRight.appendChild(sendBtn);
+  }
+
   function updateComposerButtons() {
     var hasText = textarea.value.trim().length > 0;
-    sendBtn.style.display = hasText ? 'flex' : 'none';
-    if (micBtn) micBtn.style.display = hasText ? 'none' : 'flex';
+    if (composerRight) {
+      composerRight.classList.toggle('huginn-composer-right--has-text', hasText);
+    } else {
+      sendBtn.style.display = hasText ? 'flex' : 'none';
+    }
     if (videoRecBtn) videoRecBtn.style.display = hasText ? 'none' : 'flex';
   }
 
   textarea.addEventListener('input', function() { autoResize(); sendTypingSignal(); updateComposerButtons(); });
 
-  if (micBtn) composerWrap.appendChild(micBtn);
   if (videoRecBtn) composerWrap.appendChild(videoRecBtn);
-  composerWrap.appendChild(sendBtn);
+  if (composerRight) composerWrap.appendChild(composerRight);
+  else composerWrap.appendChild(sendBtn);
   updateComposerButtons();
 
   function startVoiceRecording() {
@@ -798,7 +922,7 @@ async function renderChat(chatId) {
       try {
         await API.fetch('/chat-groups/' + chatId + '/messages/' + editId, { method: 'PUT', body: { text: text } });
         var found = messages.find(function(m) { return m.id === editId; });
-        if (found) { found.message = text; found.edited_at = new Date().toISOString(); rerenderMessages(); }
+        if (found) { found.message = text; found.edited_at = new Date().toISOString(); patchMessage(found.id, { message: text, edited_at: found.edited_at, created_at: found.created_at }); }
       } catch (_) { M.Toast({ message: 'Ошибка редактирования', type: 'error' }); }
       return;
     }
@@ -811,26 +935,52 @@ async function renderChat(chatId) {
     autoResize();
     setReply(null);
     if (emojiOpen) toggleEmoji();
+    updateComposerButtons();
+
+    // Optimistic send: instant DOM with pending state ⏳ → ✓ or ❌
+    var tempId = 'tmp_' + Date.now();
+    var tempMsg = {
+      id: tempId, user_id: userId, user_name: (Store.get('user') || {}).name || '',
+      message: text, message_type: 'text', created_at: new Date().toISOString(), _pending: true,
+    };
+    if (savedReply) { tempMsg.reply_to = savedReply.id; tempMsg.reply_text = savedReply.message; tempMsg.reply_user_name = savedReply.user_name; }
+    if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
+    messages.push(tempMsg);
+    rerenderMessages();
+    messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
 
     try {
       var resp = await API.fetch('/chat-groups/' + chatId + '/messages', { method: 'POST', body: body });
       var msg = resp.message || resp;
       if (msg && msg.id) {
-        msg.user_name = msg.user_name || (Store.get('user') || {}).name || '';
-        msg.user_id = msg.user_id || userId;
-        if (savedReply) {
-          msg.reply_to = savedReply.id;
-          msg.reply_text = savedReply.message;
-          msg.reply_user_name = savedReply.user_name;
+        var idx = messages.findIndex(function(m) { return m.id === tempId; });
+        if (idx >= 0) {
+          msg.user_name = msg.user_name || tempMsg.user_name;
+          msg.user_id = msg.user_id || userId;
+          if (savedReply) { msg.reply_to = savedReply.id; msg.reply_text = savedReply.message; msg.reply_user_name = savedReply.user_name; }
+          messages[idx] = msg;
+          if (msg.id > lastMsgId) lastMsgId = msg.id;
+          var wrapEl = messagesWrap.querySelector('[data-msg-id="' + tempId + '"]');
+          if (wrapEl) { wrapEl.dataset.msgId = String(msg.id); wrapEl.classList.remove('huginn-msg-wrap--pending'); }
         }
-        if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
-        messages.push(msg);
-        if (msg.id > lastMsgId) lastMsgId = msg.id;
-        rerenderMessages();
-        messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
       }
     } catch (_) {
-      M.Toast({ message: 'Ошибка отправки', type: 'error' });
+      var failWrap = messagesWrap.querySelector('[data-msg-id="' + tempId + '"]');
+      if (failWrap) {
+        failWrap.classList.remove('huginn-msg-wrap--pending');
+        failWrap.classList.add('huginn-msg-wrap--failed');
+        var retryBtn = el('div', { className: 'huginn-retry-btn', textContent: 'Повторить \u21BB' });
+        retryBtn.addEventListener('click', function() {
+          var fi = messages.findIndex(function(m) { return m.id === tempId; });
+          if (fi >= 0) messages.splice(fi, 1);
+          failWrap.remove();
+          textarea.value = text;
+          autoResize();
+          updateComposerButtons();
+          sendMessage();
+        });
+        failWrap.appendChild(retryBtn);
+      }
     }
   }
 
@@ -861,7 +1011,7 @@ async function renderChat(chatId) {
     try {
       await API.fetch('/chat-groups/' + chatId + '/messages/' + msg.id, { method: 'DELETE' });
       var found = messages.find(function(m) { return m.id === msg.id; });
-      if (found) { found.deleted_at = new Date().toISOString(); rerenderMessages(); }
+      if (found) { found.deleted_at = new Date().toISOString(); patchMessage(found.id, { deleted_at: found.deleted_at }); }
     } catch (_) { M.Toast({ message: 'Ошибка удаления', type: 'error' }); }
   }
 
@@ -879,6 +1029,7 @@ async function renderChat(chatId) {
 
     var wrapCls = 'huginn-msg-wrap';
     if (mine) wrapCls += ' huginn-msg-wrap--mine';
+    if (msg._pending) wrapCls += ' huginn-msg-wrap--pending';
     wrapCls += grouped ? ' huginn-msg-wrap--grouped' : ' huginn-msg-wrap--spaced';
     var wrap = el('div', { className: wrapCls });
     wrap.dataset.msgId = msg.id;
@@ -928,7 +1079,9 @@ async function renderChat(chatId) {
     } else if (isMedia) {
       bubble.appendChild(_huginnVideoCircle(msg.file_url, msg.file_duration));
     } else if (msg.message) {
-      bubble.appendChild(el('span', { className: 'huginn-msg-text', textContent: msg.message }));
+      var textSpan = el('span', { className: 'huginn-msg-text' });
+      textSpan.appendChild(_huginnParseText(msg.message));
+      bubble.appendChild(textSpan);
     }
 
     if (msg.attachments && msg.attachments.length) {
@@ -986,22 +1139,7 @@ async function renderChat(chatId) {
     bubble.appendChild(metaEl);
 
     if (msg.reactions && Object.keys(msg.reactions).length) {
-      var reactRow = el('div', { className: 'huginn-reactions-row' });
-      for (var emoji in msg.reactions) {
-        var users = msg.reactions[emoji];
-        var isMine = Array.isArray(users) && users.includes(userId);
-        (function(em, us, im) {
-          var pillCls = 'huginn-reaction-pill' + (im ? ' huginn-reaction-pill--mine' : '');
-          var rb = el('div', {
-            className: pillCls,
-            onClick: function(e) { e.stopPropagation(); toggleReaction(msg.id, em); },
-          });
-          rb.appendChild(el('span', { textContent: em }));
-          if (us.length > 1) rb.appendChild(el('span', { className: 'huginn-reaction-pill__count', textContent: String(us.length) }));
-          reactRow.appendChild(rb);
-        })(emoji, users, isMine);
-      }
-      bubble.appendChild(reactRow);
+      renderReactionsInto(bubble, msg.id, msg.reactions);
     }
 
     wrap.appendChild(bubble);
@@ -1038,6 +1176,12 @@ async function renderChat(chatId) {
       onClick: function() { setReply({ id: msg.id, message: msg.message, user_name: msg.user_name }); }
     });
 
+    // Reaction available for ALL messages (own + others)
+    actions.push({
+      icon: '😀', label: 'Реакция',
+      onClick: function() { showReactionPopup(msg, document.querySelector('[data-msg-id="' + msg.id + '"]')); }
+    });
+
     if (mine) {
       actions.push({
         icon: '✏️', label: 'Редактировать',
@@ -1046,12 +1190,6 @@ async function renderChat(chatId) {
       actions.push({
         icon: '🗑️', label: 'Удалить',
         onClick: function() { deleteMessage(msg); }
-      });
-    } else {
-      // Show reaction picker for others' messages
-      actions.push({
-        icon: '😀', label: 'Реакция',
-        onClick: function() { showReactionPopup(msg, document.querySelector('[data-msg-id="' + msg.id + '"]')); }
       });
     }
 
@@ -1130,7 +1268,7 @@ async function renderChat(chatId) {
     try {
       var resp = await API.fetch('/chat-groups/' + chatId + '/messages/' + msgId + '/reaction', { method: 'POST', body: { emoji: emoji } });
       var msg = messages.find(function(m) { return m.id === msgId; });
-      if (msg && resp.reactions) { msg.reactions = resp.reactions; rerenderMessages(); }
+      if (msg && resp.reactions) { msg.reactions = resp.reactions; patchMessage(msgId, { reactions: resp.reactions }); }
     } catch (_) {}
   }
 
@@ -1150,6 +1288,54 @@ async function renderChat(chatId) {
       var next = i < messages.length - 1 ? messages[i + 1] : null;
       appendMessage(msg, prev, next);
     });
+  }
+
+  function renderReactionsInto(bubble, msgId, reactions) {
+    if (!reactions || !Object.keys(reactions).length) return;
+    var reactRow = el('div', { className: 'huginn-reactions-row' });
+    for (var emoji in reactions) {
+      var users = reactions[emoji];
+      var isMine = Array.isArray(users) && users.includes(userId);
+      (function(em, us, im) {
+        var pillCls = 'huginn-reaction-pill' + (im ? ' huginn-reaction-pill--mine' : '');
+        var rb = el('div', {
+          className: pillCls,
+          onClick: function(e) { e.stopPropagation(); toggleReaction(msgId, em); },
+        });
+        rb.appendChild(el('span', { textContent: em }));
+        if (us.length > 1) rb.appendChild(el('span', { className: 'huginn-reaction-pill__count', textContent: String(us.length) }));
+        reactRow.appendChild(rb);
+      })(emoji, users, isMine);
+    }
+    bubble.appendChild(reactRow);
+  }
+
+  function patchMessage(msgId, updates) {
+    var wrap = messagesWrap.querySelector('[data-msg-id="' + msgId + '"]');
+    if (!wrap) return;
+    if (updates.deleted_at) {
+      wrap.style.overflow = 'hidden';
+      wrap.style.maxHeight = wrap.offsetHeight + 'px';
+      wrap.style.transition = 'max-height 300ms ease, opacity 300ms ease';
+      requestAnimationFrame(function() { wrap.style.maxHeight = '0'; wrap.style.opacity = '0'; });
+      setTimeout(function() { wrap.remove(); }, 320);
+      return;
+    }
+    if (updates.message !== undefined) {
+      var textEl = wrap.querySelector('.huginn-msg-text');
+      if (textEl) { textEl.textContent = ''; textEl.appendChild(_huginnParseText(updates.message)); }
+      if (updates.edited_at) {
+        var timeEl = wrap.querySelector('.huginn-time');
+        if (timeEl) timeEl.textContent = _huginnTime(updates.created_at || updates.edited_at) + ' ред.';
+      }
+    }
+    if (updates.reactions !== undefined) {
+      var bubble = wrap.querySelector('.huginn-bubble');
+      if (!bubble) return;
+      var existingRow = bubble.querySelector('.huginn-reactions-row');
+      if (existingRow) existingRow.remove();
+      renderReactionsInto(bubble, msgId, updates.reactions);
+    }
   }
 
   // ── Load initial messages ──
@@ -1213,13 +1399,22 @@ async function renderChat(chatId) {
           var msg = data.message;
           if (!msg || !msg.id) return;
           if (messages.find(function(m) { return m.id === msg.id; })) return;
+          // Deduplicate with optimistic pending messages
+          var pendingIdx = (msg.user_id === userId) ? messages.findIndex(function(m) { return m._pending && m.message === msg.message; }) : -1;
+          if (pendingIdx >= 0) {
+            messages[pendingIdx] = msg;
+            if (msg.id > lastMsgId) lastMsgId = msg.id;
+            var pw = messagesWrap.querySelector('.huginn-msg-wrap--pending');
+            if (pw) { pw.dataset.msgId = String(msg.id); pw.classList.remove('huginn-msg-wrap--pending'); }
+            return;
+          }
           if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
           var wasAtBottom = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight < 100;
           messages.push(msg);
           if (msg.id > lastMsgId) lastMsgId = msg.id;
           rerenderMessages();
           if (wasAtBottom) messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
-          // Sound notification for messages from others ONLY
+          else if (msg.user_id !== userId) { _unreadBelow++; updateFabBadge(); }
           if (msg.user_id !== userId) _huginnPlayNotifSound();
         } catch (err) {}
       });
@@ -1229,13 +1424,24 @@ async function renderChat(chatId) {
           var data = JSON.parse(e.data);
           if (String(data.chat_id) !== String(chatId)) return;
           if (data.user_id === userId) return;
-          var name = data.user_name || 'Кто-то';
-          typingBar.textContent = name + ' печатает...';
-          typingBar.classList.add('huginn-typing--visible');
-          clearTimeout(typingBar._hideTimer);
-          typingBar._hideTimer = setTimeout(function() {
-            typingBar.classList.remove('huginn-typing--visible');
-          }, 4000);
+          _typingUser = data.user_name || 'Кто-то';
+          updateHeaderSubtitle();
+          clearTimeout(_typingTimer);
+          _typingTimer = setTimeout(function() {
+            _typingUser = null;
+            updateHeaderSubtitle();
+          }, 5000);
+        } catch (err) {}
+      });
+
+      _es.addEventListener('presence', function(e) {
+        try {
+          var data = JSON.parse(e.data);
+          if (directMember && data.user_id === directMember.user_id) {
+            directMember.online = data.online;
+            if (data.last_seen) directMember.last_login_at = data.last_seen;
+            updateHeaderSubtitle();
+          }
         } catch (err) {}
       });
 
@@ -1244,7 +1450,7 @@ async function renderChat(chatId) {
           var data = JSON.parse(e.data);
           if (String(data.chat_id) !== String(chatId)) return;
           var found = messages.find(function(m) { return m.id === data.message_id; });
-          if (found) { found.message = data.text; found.edited_at = data.edited_at; rerenderMessages(); }
+          if (found) { found.message = data.text; found.edited_at = data.edited_at; patchMessage(found.id, { message: data.text, edited_at: data.edited_at, created_at: found.created_at }); }
         } catch (err) {}
       });
 
@@ -1253,7 +1459,7 @@ async function renderChat(chatId) {
           var data = JSON.parse(e.data);
           if (String(data.chat_id) !== String(chatId)) return;
           var found = messages.find(function(m) { return m.id === data.message_id; });
-          if (found) { found.deleted_at = new Date().toISOString(); rerenderMessages(); }
+          if (found) { found.deleted_at = new Date().toISOString(); patchMessage(found.id, { deleted_at: found.deleted_at }); }
         } catch (err) {}
       });
 
@@ -1262,7 +1468,7 @@ async function renderChat(chatId) {
           var data = JSON.parse(e.data);
           if (String(data.chat_id) !== String(chatId)) return;
           var found = messages.find(function(m) { return m.id === data.message_id; });
-          if (found) { found.reactions = data.reactions; rerenderMessages(); }
+          if (found) { found.reactions = data.reactions; patchMessage(found.id, { reactions: data.reactions }); }
         } catch (err) {}
       });
 
