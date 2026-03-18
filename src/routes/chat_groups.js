@@ -1321,41 +1321,6 @@ module.exports = async function(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────
-  // PUT /api/chat-groups/:id — Обновить настройки группы
-  // ───────────────────────────────────────────────────────────────
-  fastify.put('/:id', {
-    preHandler: [fastify.authenticate]
-  }, async (request, reply) => {
-    const chatId = parseInt(request.params.id);
-    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID' });
-
-    const member = await getChatMembership(chatId, request.user.id);
-    if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
-      return reply.code(403).send({ error: 'Нет прав' });
-    }
-
-    const { name, description } = request.body || {};
-    const updates = [];
-    const params = [];
-    let idx = 1;
-
-    if (name !== undefined) {
-      updates.push(`name = $${idx++}`);
-      params.push(String(name).trim().substring(0, 100));
-    }
-    if (description !== undefined) {
-      updates.push(`description = $${idx++}`);
-      params.push(description ? String(description).trim().substring(0, 500) : null);
-    }
-    if (!updates.length) return reply.code(400).send({ error: 'Нечего обновлять' });
-
-    params.push(chatId);
-    await db.query(`UPDATE chats SET ${updates.join(', ')} WHERE id = $${idx}`, params);
-
-    return { success: true };
-  });
-
-  // ───────────────────────────────────────────────────────────────
   // DELETE /api/chat-groups/:id — Удалить чат (только owner)
   // ───────────────────────────────────────────────────────────────
   fastify.delete('/:id', {
