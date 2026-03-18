@@ -476,13 +476,19 @@ const Layout = (() => {
   var _tabBarHidden = false;
   function hideTabBar() {
     _tabBarHidden = true;
-    if (tabBar) tabBar.classList.add('asgard-tabbar--hidden');
+    if (tabBar) {
+      tabBar.classList.add('asgard-tabbar--hidden');
+      tabBar.style.setProperty('display', 'none', 'important');
+    }
     var content = getContentZone();
     if (content) content.style.paddingBottom = '0';
   }
   function showTabBar() {
     _tabBarHidden = false;
-    if (tabBar) tabBar.classList.remove('asgard-tabbar--hidden');
+    if (tabBar) {
+      tabBar.classList.remove('asgard-tabbar--hidden');
+      tabBar.style.removeProperty('display');
+    }
     var content = getContentZone();
     if (content) content.style.paddingBottom = '';
   }
