@@ -610,10 +610,41 @@ window.AsgardCorrespondencePage = (function(){
                   });
                   toast('Мимир', 'Заполнил ' + (filled || Object.keys(data.fields).length) + ' полей', 'ok');
                 } else {
-                  toast('Мимир', 'Недостаточно контекста', 'warn');
+                  // Мало данных — открыть Мимир FAB
+                  if (window.AsgardMimir) {
+                    AsgardMimir.open();
+                    setTimeout(() => {
+                      const msgs = document.getElementById('mimirMessages');
+                      if (msgs) {
+                        const tip = document.createElement('div');
+                        tip.style.cssText = 'padding:12px 16px;background:linear-gradient(135deg,rgba(212,168,67,.1),rgba(59,130,246,.05));border:1px solid rgba(212,168,67,.2);border-radius:12px;margin:8px 0;font-size:13px;color:#e5e7eb;line-height:1.5';
+                        tip.innerHTML = '🧙 <b style="color:#D4A843">Воин, мало информации!</b><br>Заполни хотя бы тему или контрагента — и я смогу помочь дальше.';
+                        msgs.appendChild(tip);
+                        msgs.scrollTop = msgs.scrollHeight;
+                      }
+                    }, 200);
+                  } else {
+                    toast('Мимир', 'Заполни хотя бы тему или контрагента', 'warn');
+                  }
                 }
               }
-            } catch(e) { toast('Мимир', e.message || 'Ошибка', 'err'); }
+            } catch(e) {
+              if (window.AsgardMimir) {
+                AsgardMimir.open();
+                setTimeout(() => {
+                  const msgs = document.getElementById('mimirMessages');
+                  if (msgs) {
+                    const tip = document.createElement('div');
+                    tip.style.cssText = 'padding:12px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;margin:8px 0;font-size:13px;color:#e5e7eb;line-height:1.5';
+                    tip.innerHTML = '🧙 <b style="color:#ef4444">Не получилось</b><br>' + (e.message || 'Ошибка') + '<br><span style="color:#9ca3af;font-size:12px">Попробуй заполнить пару полей вручную и нажми снова.</span>';
+                    msgs.appendChild(tip);
+                    msgs.scrollTop = msgs.scrollHeight;
+                  }
+                }, 200);
+              } else {
+                toast('Мимир', e.message || 'Ошибка', 'err');
+              }
+            }
             finally {
               btn.disabled = false;
               btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир';

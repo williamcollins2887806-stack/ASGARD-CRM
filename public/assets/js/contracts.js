@@ -1131,7 +1131,22 @@ window.AsgardContractsPage = (function(){
     mimirBtn.addEventListener('click', async () => {
       const context = smartSearch.value.trim() || nameInput.value.trim() || innInput.value.trim();
       if (!context) {
-        AsgardUI.toast('Мимир', 'Сначала введите название или ИНН контрагента', 'warn');
+        // Мало данных — открыть Мимир FAB
+        if (window.AsgardMimir) {
+          AsgardMimir.open();
+          setTimeout(() => {
+            const msgs = document.getElementById('mimirMessages');
+            if (msgs) {
+              const tip = document.createElement('div');
+              tip.style.cssText = 'padding:12px 16px;background:linear-gradient(135deg,rgba(212,168,67,.1),rgba(59,130,246,.05));border:1px solid rgba(212,168,67,.2);border-radius:12px;margin:8px 0;font-size:13px;color:#e5e7eb;line-height:1.5';
+              tip.innerHTML = '🧙 <b style="color:#D4A843">Воин, мало информации!</b><br>Введи название или ИНН контрагента — и я найду всё сам.';
+              msgs.appendChild(tip);
+              msgs.scrollTop = msgs.scrollHeight;
+            }
+          }, 200);
+        } else {
+          AsgardUI.toast('Мимир', 'Введи название или ИНН контрагента', 'warn');
+        }
         return;
       }
 
@@ -1180,7 +1195,21 @@ window.AsgardContractsPage = (function(){
             if (inn.length === 10 || inn.length === 12) {
               await doLookup();
             } else {
-              AsgardUI.toast('Мимир', 'Недостаточно данных. Попробуйте ввести ИНН.', 'warn');
+              if (window.AsgardMimir) {
+                AsgardMimir.open();
+                setTimeout(() => {
+                  const msgs = document.getElementById('mimirMessages');
+                  if (msgs) {
+                    const tip = document.createElement('div');
+                    tip.style.cssText = 'padding:12px 16px;background:linear-gradient(135deg,rgba(212,168,67,.1),rgba(59,130,246,.05));border:1px solid rgba(212,168,67,.2);border-radius:12px;margin:8px 0;font-size:13px;color:#e5e7eb;line-height:1.5';
+                    tip.innerHTML = '🧙 <b style="color:#D4A843">Воин, не нашёл!</b><br>Попробуй ввести точный ИНН (10 или 12 цифр) — и я найду контрагента в ЕГРЮЛ.';
+                    msgs.appendChild(tip);
+                    msgs.scrollTop = msgs.scrollHeight;
+                  }
+                }, 200);
+              } else {
+                AsgardUI.toast('Мимир', 'Попробуй ввести ИНН', 'warn');
+              }
             }
           }
         } else {
@@ -1193,7 +1222,21 @@ window.AsgardContractsPage = (function(){
         }
       } catch (err) {
         emptyFields.forEach(f => f.classList.remove('mimir-field-skeleton'));
-        AsgardUI.toast('Мимир', 'Не удалось заполнить: ' + err.message, 'err');
+        if (window.AsgardMimir) {
+          AsgardMimir.open();
+          setTimeout(() => {
+            const msgs = document.getElementById('mimirMessages');
+            if (msgs) {
+              const tip = document.createElement('div');
+              tip.style.cssText = 'padding:12px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;margin:8px 0;font-size:13px;color:#e5e7eb;line-height:1.5';
+              tip.innerHTML = '🧙 <b style="color:#ef4444">Не получилось</b><br>' + (err.message || 'Ошибка') + '<br><span style="color:#9ca3af;font-size:12px">Попробуй ввести ИНН или название и нажми снова.</span>';
+              msgs.appendChild(tip);
+              msgs.scrollTop = msgs.scrollHeight;
+            }
+          }, 200);
+        } else {
+          AsgardUI.toast('Мимир', 'Не удалось заполнить: ' + err.message, 'err');
+        }
       } finally {
         mimirBtn.disabled = false;
         mimirBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир заполнит';

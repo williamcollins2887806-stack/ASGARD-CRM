@@ -1589,8 +1589,8 @@ async function mimirRoutes(fastify, options) {
       }
 
       // ── Вызов AI ──
-      const aiResult = await aiProvider.chat({
-        systemPrompt,
+      const aiResult = await aiProvider.complete({
+        system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
         maxTokens: 1000,
         temperature: 0.3
