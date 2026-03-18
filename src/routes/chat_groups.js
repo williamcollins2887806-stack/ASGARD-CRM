@@ -26,6 +26,22 @@ module.exports = async function(fastify) {
   const _typingState = new Map();
   const TYPING_TTL = 4000; // 4 сек
 
+  // ── Members cache (chatId → { members[], expires }) ──
+  const _membersCache = new Map();
+  const MEMBERS_CACHE_TTL = 60000; // 60 сек
+
+  async function getChatMembers(chatId) {
+    const cached = _membersCache.get(chatId);
+    if (cached && cached.expires > Date.now()) return cached.members;
+    const { rows } = await db.query('SELECT user_id FROM chat_group_members WHERE chat_id = $1', [chatId]);
+    _membersCache.set(chatId, { members: rows, expires: Date.now() + MEMBERS_CACHE_TTL });
+    return rows;
+  }
+
+  function invalidateMembersCache(chatId) {
+    _membersCache.delete(chatId);
+  }
+
   function parsePositiveInt(value) {
     const rawValue = String(value || '').trim();
     if (!/^\d+$/.test(rawValue)) return null;
@@ -160,11 +176,10 @@ module.exports = async function(fastify) {
   // ═══════════════════════════════════════════════════════════════
   async function sseToMembers(chatId, senderUserId, event, data) {
     try {
-      const { rows } = await db.query(
-        'SELECT user_id FROM chat_group_members WHERE chat_id = $1 AND user_id != $2',
-        [chatId, senderUserId]
-      );
-      for (const m of rows) sendToUser(m.user_id, event, data);
+      const members = await getChatMembers(chatId);
+      for (const m of members) {
+        if (m.user_id !== senderUserId) sendToUser(m.user_id, event, data);
+      }
     } catch (e) {
       fastify.log.warn('SSE broadcast error:', e.message);
     }
@@ -481,6 +496,7 @@ module.exports = async function(fastify) {
       VALUES ($1, $2, $3, NOW())
       ON CONFLICT (chat_id, user_id) DO UPDATE SET role = $3
     `, [chatId, parseInt(user_id), role === 'admin' ? 'admin' : 'member']);
+    invalidateMembersCache(chatId);
 
     // Уведомить
     const { rows: [chat] } = await db.query('SELECT name FROM chats WHERE id = $1', [chatId]);
@@ -531,6 +547,7 @@ module.exports = async function(fastify) {
       'DELETE FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
       [chatId, targetUserId]
     );
+    invalidateMembersCache(chatId);
 
     return { success: true };
   });
@@ -744,14 +761,10 @@ module.exports = async function(fastify) {
     `, [chatId, userId]);
 
     const senderName = request.user.name || request.user.login;
-    for (const m of members) {
-      await notify(
-        m.user_id,
-        `💬 ${chat.name}`,
-        `${senderName}: ${text.trim().substring(0, 100)}${text.length > 100 ? '...' : ''}`,
-        `#/messenger?id=${chatId}`
-      );
-    }
+    // Batch notifications (non-blocking)
+    Promise.allSettled(members.map(m =>
+      notify(m.user_id, `💬 ${chat.name}`, `${senderName}: ${text.trim().substring(0, 100)}${text.length > 100 ? '...' : ''}`, `#/messenger?id=${chatId}`)
+    )).catch(() => {});
 
     // SSE broadcast new message
     sseToMembers(chatId, userId, 'chat:new_message', {
@@ -1158,6 +1171,43 @@ module.exports = async function(fastify) {
       return reply.code(403).send({ error: 'Не участник' });
     }
     return { settings: member.rows[0] };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/read — Mark messages as read
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/read', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID' });
+
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const { last_message_id } = request.body || {};
+    if (!last_message_id) return reply.code(400).send({ error: 'last_message_id required' });
+
+    // Update last_read_at and mark individual messages
+    await db.query(
+      'UPDATE chat_group_members SET last_read_at = NOW() WHERE chat_id = $1 AND user_id = $2',
+      [chatId, request.user.id]
+    );
+
+    // Mark messages as read
+    await db.query(
+      'UPDATE chat_messages SET is_read = true WHERE chat_id = $1 AND id <= $2 AND user_id != $3 AND is_read = false',
+      [chatId, last_message_id, request.user.id]
+    );
+
+    // Broadcast read receipt via SSE to message senders
+    sseToMembers(chatId, request.user.id, 'chat:read', {
+      chat_id: chatId,
+      user_id: request.user.id,
+      message_id: last_message_id
+    });
+
+    return { success: true };
   });
 
   // ───────────────────────────────────────────────────────────────

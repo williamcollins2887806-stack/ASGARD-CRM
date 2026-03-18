@@ -811,6 +811,90 @@ const API = (() => {
 
 
 /* ============================================================
+   5b. SSE MANAGER — Singleton SSE connection
+   ============================================================ */
+var SSEManager = (function() {
+  var _es = null;
+  var _listeners = new Map(); // event → Set of callbacks
+  var _retryDelay = 1000;
+  var _retryTimer = null;
+  var _connected = false;
+  var _connCallbacks = [];
+
+  function connect() {
+    if (_es && _es.readyState !== 2) return; // already connected or connecting
+    var token = API.getToken();
+    if (!token) return;
+    try {
+      _es = new EventSource('/api/sse/stream?token=' + token);
+      _es.onopen = function() {
+        _connected = true;
+        _retryDelay = 1000;
+        _connCallbacks.forEach(function(cb) { try { cb(true); } catch(e) {} });
+      };
+      _es.onerror = function() {
+        _connected = false;
+        if (_es) { try { _es.close(); } catch(e) {} _es = null; }
+        _connCallbacks.forEach(function(cb) { try { cb(false); } catch(e) {} });
+        clearTimeout(_retryTimer);
+        _retryTimer = setTimeout(function() {
+          if (navigator.onLine !== false) connect();
+        }, _retryDelay + Math.random() * 1000);
+        _retryDelay = Math.min(_retryDelay * 2, 30000);
+      };
+      // Wire all registered listeners to new EventSource
+      _listeners.forEach(function(cbs, evt) {
+        _es.addEventListener(evt, function(e) {
+          var data;
+          try { data = JSON.parse(e.data); } catch(_) { data = e.data; }
+          cbs.forEach(function(cb) { try { cb(data); } catch(err) {} });
+        });
+      });
+    } catch(e) { _connected = false; }
+  }
+
+  function on(event, callback) {
+    if (!_listeners.has(event)) _listeners.set(event, new Set());
+    _listeners.get(event).add(callback);
+    // If ES already active, add listener directly
+    if (_es && _es.readyState !== 2) {
+      _es.addEventListener(event, function handler(e) {
+        var data;
+        try { data = JSON.parse(e.data); } catch(_) { data = e.data; }
+        callback(data);
+      });
+    }
+    // Return unsubscribe function
+    return function off() {
+      var set = _listeners.get(event);
+      if (set) set.delete(callback);
+    };
+  }
+
+  function onConnection(cb) {
+    _connCallbacks.push(cb);
+    return function() { _connCallbacks = _connCallbacks.filter(function(c) { return c !== cb; }); };
+  }
+
+  function isConnected() { return _connected; }
+
+  function disconnect() {
+    clearTimeout(_retryTimer);
+    if (_es) { try { _es.close(); } catch(e) {} _es = null; }
+    _connected = false;
+  }
+
+  // Auto-connect when online, auto-reconnect
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', function() { if (!_connected) connect(); });
+    window.addEventListener('offline', function() { _connected = false; _connCallbacks.forEach(function(cb) { try { cb(false); } catch(e) {} }); });
+  }
+
+  return { connect: connect, on: on, onConnection: onConnection, isConnected: isConnected, disconnect: disconnect };
+})();
+
+
+/* ============================================================
    6. GESTURES — Touch-жесты
    ============================================================ */
 const Gestures = (() => {

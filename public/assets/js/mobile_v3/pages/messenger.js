@@ -462,8 +462,17 @@ const MessengerPage = {
         var info = el('div', { className: 'huginn-chat-row__info' });
         info.appendChild(el('div', { className: 'huginn-chat-row__name', textContent: name }));
 
-        var preview = _chatPreview(chat);
-        info.appendChild(el('div', { className: 'huginn-chat-row__preview', textContent: preview || (chat.is_group ? (chat.member_count || 0) + Utils.plural(chat.member_count || 0, ' участник', ' участника', ' участников') : '') }));
+        var draft = (typeof window !== 'undefined' && window._huginnDrafts && window._huginnDrafts[chat.id]) || '';
+        var previewEl = el('div', { className: 'huginn-chat-row__preview' });
+        if (draft) {
+          var draftLabel = el('span', { textContent: 'Черновик: ', style: { color: '#ff453a' } });
+          previewEl.appendChild(draftLabel);
+          previewEl.appendChild(document.createTextNode(draft.length > 40 ? draft.substring(0, 40) + '...' : draft));
+        } else {
+          var preview = _chatPreview(chat);
+          previewEl.textContent = preview || (chat.is_group ? (chat.member_count || 0) + Utils.plural(chat.member_count || 0, ' участник', ' участника', ' участников') : '');
+        }
+        info.appendChild(previewEl);
         row.appendChild(info);
 
         var rightCol = el('div', { className: 'huginn-chat-row__right' });
@@ -515,8 +524,7 @@ async function renderChat(chatId) {
   var emojiOpen = false;
   var emptyStateEl = null;
   var _lastTypingSent = 0;
-  var _sseConnected = false;
-  var _es = null;
+  var _sseConnected = (typeof SSEManager !== 'undefined') ? SSEManager.isConnected() : false;
 
   // Load chat info
   var chatInfo = {};
@@ -1743,28 +1751,51 @@ async function renderChat(chatId) {
     }
   }
 
-  // ── Load initial messages ──
-  try {
-    messagesWrap.appendChild(M.Skeleton({ type: 'list', count: 4 }));
-    var initResp = await API.fetch('/chat-groups/' + chatId + '/messages?limit=50');
-    var list = API.extractRows(initResp);
-    messagesWrap.replaceChildren();
+  // ── Load initial messages (cache-first) ──
+  var _cachedData = (typeof window !== 'undefined' && window._huginnMsgCache && window._huginnMsgCache[chatId]) || null;
+  if (_cachedData && _cachedData.messages && _cachedData.messages.length) {
+    // Instant render from cache
+    messages = _cachedData.messages;
+    lastMsgId = _cachedData.lastMsgId || Math.max.apply(null, messages.map(function(m) { return m.id; }));
+    oldestMsgId = Math.min.apply(null, messages.map(function(m) { return m.id; }));
+    hasOlder = true;
+    rerenderMessages();
+    setTimeout(function() { messagesWrap.scrollTop = _cachedData.scrollPos || messagesWrap.scrollHeight; }, 50);
+    // Background fetch for newer messages
+    API.fetch('/chat-groups/' + chatId + '/messages?limit=50&after_id=' + lastMsgId).then(function(resp) {
+      var newMsgs = API.extractRows(resp);
+      if (newMsgs.length) {
+        newMsgs.forEach(function(msg) {
+          if (!messages.find(function(m) { return m.id === msg.id; })) messages.push(msg);
+        });
+        lastMsgId = Math.max(lastMsgId, Math.max.apply(null, newMsgs.map(function(m) { return m.id; })));
+        rerenderMessages();
+      }
+    }).catch(function() {});
+  } else {
+    // Normal load
+    try {
+      messagesWrap.appendChild(M.Skeleton({ type: 'list', count: 4 }));
+      var initResp = await API.fetch('/chat-groups/' + chatId + '/messages?limit=50');
+      var list = API.extractRows(initResp);
+      messagesWrap.replaceChildren();
 
-    if (!list.length) {
-      emptyStateEl = M.Empty({ text: 'Начните диалог' });
-      messagesWrap.appendChild(emptyStateEl);
-    } else {
-      messages = list;
-      lastMsgId = Math.max.apply(null, list.map(function(m) { return m.id; }));
-      oldestMsgId = Math.min.apply(null, list.map(function(m) { return m.id; }));
-      hasOlder = list.length >= 50;
-      rerenderMessages();
-      setTimeout(function() { messagesWrap.scrollTop = messagesWrap.scrollHeight; }, 50);
+      if (!list.length) {
+        emptyStateEl = M.Empty({ text: 'Начните диалог' });
+        messagesWrap.appendChild(emptyStateEl);
+      } else {
+        messages = list;
+        lastMsgId = Math.max.apply(null, list.map(function(m) { return m.id; }));
+        oldestMsgId = Math.min.apply(null, list.map(function(m) { return m.id; }));
+        hasOlder = list.length >= 50;
+        rerenderMessages();
+        setTimeout(function() { messagesWrap.scrollTop = messagesWrap.scrollHeight; }, 50);
+      }
+    } catch (loadErr) {
+      console.error('[Huginn] messages load error:', loadErr);
+      messagesWrap.replaceChildren();
+      messagesWrap.appendChild(M.ErrorBanner({ text: 'Не удалось загрузить сообщения', onRetry: function() { Router.navigate('/messenger/' + chatId, { replace: true }); } }));
     }
-  } catch (loadErr) {
-    console.error('[Huginn] messages load error:', loadErr);
-    messagesWrap.replaceChildren();
-    messagesWrap.appendChild(M.ErrorBanner({ text: 'Не удалось загрузить сообщения', onRetry: function() { Router.navigate('/messenger/' + chatId, { replace: true }); } }));
   }
 
   // ── Load older messages ──
@@ -1786,127 +1817,116 @@ async function renderChat(chatId) {
     loadingOlder = false;
   }
 
-  // ── SSE Real-time with exponential backoff ──
-  var _sseRetryDelay = 1000;
-  var _sseRetryTimer = null;
+  // ── SSE via SSEManager (singleton — НЕ переподключается при навигации) ──
+  if (typeof SSEManager !== 'undefined') SSEManager.connect();
+  var _sseUnsubs = [];
 
-  function connectSSE() {
-    try {
-      var token = API.getToken();
-      if (!token) return;
-      if (_es) { try { _es.close(); } catch(e) {} }
-      _es = new EventSource('/api/sse/stream?token=' + token);
+  function _sseOn(evt, fn) { _sseUnsubs.push(SSEManager.on(evt, fn)); }
 
-      _es.addEventListener('chat:new_message', function(e) {
-        try {
-          var data = JSON.parse(e.data);
-          if (String(data.chat_id) !== String(chatId)) return;
-          var msg = data.message;
-          if (!msg || !msg.id) return;
-          if (messages.find(function(m) { return m.id === msg.id; })) return;
-          // Deduplicate with optimistic pending messages
-          var pendingIdx = (msg.user_id === userId) ? messages.findIndex(function(m) { return m._pending && m.message === msg.message; }) : -1;
-          if (pendingIdx >= 0) {
-            messages[pendingIdx] = msg;
-            if (msg.id > lastMsgId) lastMsgId = msg.id;
-            var pw = messagesWrap.querySelector('.huginn-msg-wrap--pending');
-            if (pw) { pw.dataset.msgId = String(msg.id); pw.classList.remove('huginn-msg-wrap--pending'); }
-            return;
-          }
-          if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
-          var wasAtBottom = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight < 100;
-          messages.push(msg);
-          if (msg.id > lastMsgId) lastMsgId = msg.id;
-          rerenderMessages();
-          if (wasAtBottom) messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
-          else if (msg.user_id !== userId) { _unreadBelow++; updateFabBadge(); }
-          if (msg.user_id !== userId) _huginnPlayNotifSound();
-        } catch (err) {}
-      });
-
-      _es.addEventListener('chat:typing', function(e) {
-        try {
-          var data = JSON.parse(e.data);
-          if (String(data.chat_id) !== String(chatId)) return;
-          if (data.user_id === userId) return;
-          _typingUser = data.user_name || 'Кто-то';
-          updateHeaderSubtitle();
-          clearTimeout(_typingTimer);
-          _typingTimer = setTimeout(function() {
-            _typingUser = null;
-            updateHeaderSubtitle();
-          }, 5000);
-        } catch (err) {}
-      });
-
-      _es.addEventListener('presence', function(e) {
-        try {
-          var data = JSON.parse(e.data);
-          if (directMember && data.user_id === directMember.user_id) {
-            directMember.online = data.online;
-            if (data.last_seen) directMember.last_login_at = data.last_seen;
-            updateHeaderSubtitle();
-          }
-        } catch (err) {}
-      });
-
-      _es.addEventListener('chat:message_edited', function(e) {
-        try {
-          var data = JSON.parse(e.data);
-          if (String(data.chat_id) !== String(chatId)) return;
-          var found = messages.find(function(m) { return m.id === data.message_id; });
-          if (found) { found.message = data.text; found.edited_at = data.edited_at; patchMessage(found.id, { message: data.text, edited_at: data.edited_at, created_at: found.created_at }); }
-        } catch (err) {}
-      });
-
-      _es.addEventListener('chat:message_deleted', function(e) {
-        try {
-          var data = JSON.parse(e.data);
-          if (String(data.chat_id) !== String(chatId)) return;
-          var found = messages.find(function(m) { return m.id === data.message_id; });
-          if (found) { found.deleted_at = new Date().toISOString(); patchMessage(found.id, { deleted_at: found.deleted_at }); }
-        } catch (err) {}
-      });
-
-      _es.addEventListener('chat:reaction', function(e) {
-        try {
-          var data = JSON.parse(e.data);
-          if (String(data.chat_id) !== String(chatId)) return;
-          var found = messages.find(function(m) { return m.id === data.message_id; });
-          if (found) { found.reactions = data.reactions; patchMessage(found.id, { reactions: data.reactions }); }
-        } catch (err) {}
-      });
-
-      _es.addEventListener('pin', function(e) {
-        try {
-          var data = JSON.parse(e.data);
-          if (String(data.chat_id) === String(chatId)) loadPinnedMessages();
-        } catch (err) {}
-      });
-      _es.addEventListener('unpin', function(e) {
-        try {
-          var data = JSON.parse(e.data);
-          if (String(data.chat_id) === String(chatId)) loadPinnedMessages();
-        } catch (err) {}
-      });
-
-      _es.onopen = function() { _sseConnected = true; _sseRetryDelay = 1000; };
-      _es.onerror = function() {
-        _sseConnected = false;
-        if (_es) { try { _es.close(); } catch(e) {} _es = null; }
-        // Exponential backoff: 1s → 2s → 4s → 8s → ... → max 30s
-        clearTimeout(_sseRetryTimer);
-        _sseRetryTimer = setTimeout(function() {
-          if (page.isConnected) connectSSE();
-        }, _sseRetryDelay + Math.random() * 1000);
-        _sseRetryDelay = Math.min(_sseRetryDelay * 2, 30000);
-      };
-    } catch (err) {
-      _sseConnected = false;
+  _sseOn('chat:new_message', function(data) {
+    if (String(data.chat_id) !== String(chatId)) return;
+    var msg = data.message;
+    if (!msg || !msg.id) return;
+    if (messages.find(function(m) { return m.id === msg.id; })) return;
+    var pendingIdx = (msg.user_id === userId) ? messages.findIndex(function(m) { return m._pending && m.message === msg.message; }) : -1;
+    if (pendingIdx >= 0) {
+      messages[pendingIdx] = msg;
+      if (msg.id > lastMsgId) lastMsgId = msg.id;
+      var pw = messagesWrap.querySelector('.huginn-msg-wrap--pending');
+      if (pw) { pw.dataset.msgId = String(msg.id); pw.classList.remove('huginn-msg-wrap--pending'); }
+      return;
     }
-  }
+    if (emptyStateEl && emptyStateEl.parentNode) { emptyStateEl.remove(); emptyStateEl = null; }
+    var wasAtBottom = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight < 100;
+    messages.push(msg);
+    if (msg.id > lastMsgId) lastMsgId = msg.id;
+    rerenderMessages();
+    if (wasAtBottom) { messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' }); markRead(); }
+    else if (msg.user_id !== userId) { _unreadBelow++; updateFabBadge(); }
+    if (msg.user_id !== userId) _huginnPlayNotifSound();
+  });
 
-  connectSSE();
+  _sseOn('chat:typing', function(data) {
+    if (String(data.chat_id) !== String(chatId) || data.user_id === userId) return;
+    _typingUser = data.user_name || 'Кто-то';
+    updateHeaderSubtitle();
+    clearTimeout(_typingTimer);
+    _typingTimer = setTimeout(function() { _typingUser = null; updateHeaderSubtitle(); }, 5000);
+  });
+
+  _sseOn('presence', function(data) {
+    if (directMember && data.user_id === directMember.user_id) {
+      directMember.online = data.online;
+      if (data.last_seen) directMember.last_login_at = data.last_seen;
+      updateHeaderSubtitle();
+    }
+  });
+
+  _sseOn('chat:message_edited', function(data) {
+    if (String(data.chat_id) !== String(chatId)) return;
+    var found = messages.find(function(m) { return m.id === data.message_id; });
+    if (found) { found.message = data.text; found.edited_at = data.edited_at; patchMessage(found.id, { message: data.text, edited_at: data.edited_at, created_at: found.created_at }); }
+  });
+
+  _sseOn('chat:message_deleted', function(data) {
+    if (String(data.chat_id) !== String(chatId)) return;
+    var found = messages.find(function(m) { return m.id === data.message_id; });
+    if (found) { found.deleted_at = new Date().toISOString(); patchMessage(found.id, { deleted_at: found.deleted_at }); }
+  });
+
+  _sseOn('chat:reaction', function(data) {
+    if (String(data.chat_id) !== String(chatId)) return;
+    var found = messages.find(function(m) { return m.id === data.message_id; });
+    if (found) { found.reactions = data.reactions; patchMessage(found.id, { reactions: data.reactions }); }
+  });
+
+  _sseOn('pin', function(data) { if (String(data.chat_id) === String(chatId)) loadPinnedMessages(); });
+  _sseOn('unpin', function(data) { if (String(data.chat_id) === String(chatId)) loadPinnedMessages(); });
+
+  _sseOn('chat:read', function(data) {
+    if (String(data.chat_id) !== String(chatId)) return;
+    if (data.user_id === userId) return;
+    // Update check marks: all messages up to data.message_id become read
+    messages.forEach(function(m) {
+      if (m.user_id === userId && m.id <= data.message_id && !m.is_read) {
+        m.is_read = true;
+        var bubble = messagesWrap.querySelector('[data-msg-id="' + m.id + '"] .huginn-check');
+        if (bubble) {
+          bubble.className = 'huginn-check huginn-check--read';
+          bubble.innerHTML = '<svg width="16" height="10" viewBox="0 0 16 10" fill="none"><path d="M1 5l3 3 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5l3 3 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        }
+      }
+    });
+  });
+
+  // Connection state indicator
+  var _connUnsub = SSEManager.onConnection(function(connected) {
+    _sseConnected = connected;
+    if (!connected) {
+      headerSub.textContent = 'Подключение...';
+      headerSub.style.color = 'var(--hg-hint)';
+    } else {
+      updateHeaderSubtitle();
+      // Fetch missed messages
+      pollNewMessages();
+    }
+  });
+
+  // ── Read receipts ──
+  var _readTimer = null;
+  function markRead() {
+    clearTimeout(_readTimer);
+    _readTimer = setTimeout(function() {
+      if (!lastMsgId) return;
+      API.fetch('/chat-groups/' + chatId + '/read', { method: 'POST', body: { last_message_id: lastMsgId } }).catch(function() {});
+    }, 1000);
+  }
+  // Mark read on open
+  markRead();
+  // Mark read on scroll to bottom
+  messagesWrap.addEventListener('scroll', function() {
+    if (messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight < 100) markRead();
+  }, { passive: true });
 
   // ── Fallback polling (only if SSE is down) ──
   async function pollNewMessages() {
@@ -1930,8 +1950,14 @@ async function renderChat(chatId) {
 
   // Fallback poll every 15 sec (only when SSE disconnected)
   var _pollFallback = setInterval(function() {
-    if (!_sseConnected) pollNewMessages();
+    if (!SSEManager.isConnected()) pollNewMessages();
   }, 15000);
+
+  // ── Draft cache ──
+  var _draftCache = (typeof window !== 'undefined' && window._huginnDrafts) || {};
+  if (typeof window !== 'undefined') window._huginnDrafts = _draftCache;
+  // Restore draft
+  if (_draftCache[chatId] && textarea) textarea.value = _draftCache[chatId];
 
   // Tab-bar: hide when in chat
   if (typeof Layout !== 'undefined' && Layout.hideTabBar) Layout.hideTabBar();
@@ -1940,8 +1966,17 @@ async function renderChat(chatId) {
   if (typeof Router !== 'undefined' && Router.onLeave) {
     Router.onLeave(function() {
       clearInterval(_pollFallback);
-      clearTimeout(_sseRetryTimer);
-      if (_es) { _es.close(); _es = null; }
+      // Save draft
+      if (textarea && textarea.value.trim()) _draftCache[chatId] = textarea.value;
+      else delete _draftCache[chatId];
+      // Save messages cache
+      if (typeof window !== 'undefined') {
+        if (!window._huginnMsgCache) window._huginnMsgCache = {};
+        window._huginnMsgCache[chatId] = { messages: messages.slice(-100), scrollPos: messagesWrap.scrollTop, lastMsgId: lastMsgId };
+      }
+      // Unsubscribe SSE listeners (but do NOT close the connection)
+      _sseUnsubs.forEach(function(unsub) { unsub(); });
+      _connUnsub();
       if (typeof Layout !== 'undefined' && Layout.showTabBar) Layout.showTabBar();
     });
   }
