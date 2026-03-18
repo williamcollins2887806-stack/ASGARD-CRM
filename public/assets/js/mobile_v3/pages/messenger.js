@@ -534,6 +534,11 @@ async function renderChat(chatId) {
   }
 
   var mc = chatMembers.length;
+  var myRole = (chatMembers.find(function(m) { return m.user_id === userId; }) || {}).role || 'member';
+  var isAdmin = (myRole === 'owner' || myRole === 'admin');
+  var _pinnedMsgs = [];
+  var _pinnedIds = [];
+  var _pinnedIdx = 0;
   var _typingUser = null;
   var _typingTimer = null;
 
@@ -565,7 +570,7 @@ async function renderChat(chatId) {
   headerActions.appendChild(el('div', {
     className: 'huginn-header-action',
     innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
-    onClick: function() { /* search — С6 */ },
+    onClick: function() { toggleSearchBar(); },
   }));
   headerActions.appendChild(el('div', {
     className: 'huginn-header-action',
@@ -574,6 +579,126 @@ async function renderChat(chatId) {
   }));
   headerEl.appendChild(headerActions);
   page.appendChild(headerEl);
+
+  // ── Search bar ──
+  var _searchOpen = false;
+  var _searchResults = [];
+  var _searchIdx = -1;
+  var searchBar = el('div', { className: 'huginn-search-bar' });
+  var searchInput = el('input', { placeholder: 'Поиск сообщений...' });
+  var searchNav = el('div', { className: 'huginn-search-nav' });
+  var searchCounter = el('span', { textContent: '' });
+  var searchUp = el('div', { className: 'huginn-search-nav__btn', innerHTML: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>' });
+  var searchDown = el('div', { className: 'huginn-search-nav__btn', innerHTML: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>' });
+  var searchClose = el('div', { className: 'huginn-search-close', textContent: '✕' });
+  searchNav.appendChild(searchCounter);
+  searchNav.appendChild(searchUp);
+  searchNav.appendChild(searchDown);
+  searchBar.appendChild(searchInput);
+  searchBar.appendChild(searchNav);
+  searchBar.appendChild(searchClose);
+  page.appendChild(searchBar);
+
+  var _searchDebounce = null;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(_searchDebounce);
+    var q = searchInput.value.trim();
+    if (q.length < 2) { _searchResults = []; _searchIdx = -1; searchCounter.textContent = ''; return; }
+    _searchDebounce = setTimeout(function() {
+      // Search in loaded messages
+      var results = [];
+      var qLower = q.toLowerCase();
+      messages.forEach(function(m) {
+        if (m.message && m.message.toLowerCase().indexOf(qLower) >= 0) results.push(m.id);
+      });
+      _searchResults = results;
+      _searchIdx = results.length ? 0 : -1;
+      searchCounter.textContent = results.length ? '1/' + results.length : '0';
+      if (_searchIdx >= 0) scrollToSearchResult();
+    }, 300);
+  });
+
+  searchUp.addEventListener('click', function() {
+    if (!_searchResults.length) return;
+    _searchIdx = (_searchIdx - 1 + _searchResults.length) % _searchResults.length;
+    searchCounter.textContent = (_searchIdx + 1) + '/' + _searchResults.length;
+    scrollToSearchResult();
+  });
+  searchDown.addEventListener('click', function() {
+    if (!_searchResults.length) return;
+    _searchIdx = (_searchIdx + 1) % _searchResults.length;
+    searchCounter.textContent = (_searchIdx + 1) + '/' + _searchResults.length;
+    scrollToSearchResult();
+  });
+  searchClose.addEventListener('click', function() { toggleSearchBar(); });
+
+  function scrollToSearchResult() {
+    if (_searchIdx < 0 || !_searchResults.length) return;
+    var msgId = _searchResults[_searchIdx];
+    var msgEl = messagesWrap.querySelector('[data-msg-id="' + msgId + '"]');
+    if (msgEl) {
+      msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      msgEl.classList.remove('huginn-highlight');
+      void msgEl.offsetWidth;
+      msgEl.classList.add('huginn-highlight');
+    }
+  }
+
+  function toggleSearchBar() {
+    _searchOpen = !_searchOpen;
+    if (_searchOpen) {
+      searchBar.classList.add('huginn-search-bar--visible');
+      setTimeout(function() { searchInput.focus(); }, 300);
+    } else {
+      searchBar.classList.remove('huginn-search-bar--visible');
+      searchInput.value = '';
+      _searchResults = [];
+      _searchIdx = -1;
+      searchCounter.textContent = '';
+    }
+  }
+
+  // ── Pinned bar ──
+  var pinnedBar = el('div', { className: 'huginn-pinned-bar', style: { display: 'none' } });
+  var pinnedIcon = el('div', { className: 'huginn-pinned-bar__icon', innerHTML: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>' });
+  var pinnedText = el('div', { className: 'huginn-pinned-bar__text' });
+  var pinnedCounter = el('div', { className: 'huginn-pinned-bar__counter' });
+  pinnedBar.appendChild(pinnedIcon);
+  pinnedBar.appendChild(pinnedText);
+  pinnedBar.appendChild(pinnedCounter);
+  page.appendChild(pinnedBar);
+
+  pinnedBar.addEventListener('click', function() {
+    if (!_pinnedMsgs.length) return;
+    _pinnedIdx = (_pinnedIdx + 1) % _pinnedMsgs.length;
+    updatePinnedBar();
+    var msgEl = messagesWrap.querySelector('[data-msg-id="' + _pinnedMsgs[_pinnedIdx].message_id + '"]');
+    if (msgEl) {
+      msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      msgEl.classList.remove('huginn-highlight');
+      void msgEl.offsetWidth;
+      msgEl.classList.add('huginn-highlight');
+    }
+  });
+
+  function updatePinnedBar() {
+    if (!_pinnedMsgs.length) { pinnedBar.style.display = 'none'; return; }
+    pinnedBar.style.display = '';
+    var pin = _pinnedMsgs[_pinnedIdx] || _pinnedMsgs[0];
+    var text = pin.message || '';
+    pinnedText.textContent = text.length > 60 ? text.substring(0, 60) + '...' : text;
+    pinnedCounter.textContent = _pinnedMsgs.length > 1 ? (_pinnedIdx + 1) + '/' + _pinnedMsgs.length : '';
+  }
+
+  function loadPinnedMessages() {
+    API.fetch('/chat-groups/' + chatId + '/pins').then(function(resp) {
+      _pinnedMsgs = resp.pins || [];
+      _pinnedIds = _pinnedMsgs.map(function(p) { return p.message_id; });
+      _pinnedIdx = 0;
+      updatePinnedBar();
+    }).catch(function() {});
+  }
+  loadPinnedMessages();
 
   function updateHeaderSubtitle() {
     headerSub.innerHTML = '';
@@ -1401,52 +1526,87 @@ async function renderChat(chatId) {
       if (touchDeltaX > 50) { if (navigator.vibrate) navigator.vibrate(5); setReply({ id: msg.id, message: msg.message, user_name: msg.user_name }); }
     }, { passive: true });
 
-    // Long press → ActionSheet (edit/delete/copy/react)
-    var longPressTimer = null;
-    wrap.addEventListener('touchstart', function() {
-      longPressTimer = setTimeout(function() { if (navigator.vibrate) navigator.vibrate(15); showMessageActions(msg, mine); }, 500);
+    // Long press 250ms → Context menu with blur
+    var _lpTimer = null, _lpStartX = 0, _lpStartY = 0, _lpCancelled = false;
+    wrap.addEventListener('touchstart', function(e) {
+      _lpStartX = e.touches[0].clientX; _lpStartY = e.touches[0].clientY; _lpCancelled = false;
+      _lpTimer = setTimeout(function() {
+        if (_lpCancelled) return;
+        if (navigator.vibrate) navigator.vibrate(15);
+        showContextMenu(msg, mine, _lpStartX, _lpStartY);
+      }, 250);
     }, { passive: true });
-    wrap.addEventListener('touchmove', function() { clearTimeout(longPressTimer); }, { passive: true });
-    wrap.addEventListener('touchend', function() { clearTimeout(longPressTimer); }, { passive: true });
+    wrap.addEventListener('touchmove', function(e) {
+      var dx = e.touches[0].clientX - _lpStartX, dy = e.touches[0].clientY - _lpStartY;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) { _lpCancelled = true; clearTimeout(_lpTimer); }
+    }, { passive: true });
+    wrap.addEventListener('touchend', function() { clearTimeout(_lpTimer); }, { passive: true });
 
     return wrap;
   }
 
-  function showMessageActions(msg, mine) {
-    var actions = [];
+  function showContextMenu(msg, mine, touchX, touchY) {
+    var overlay = el('div', { className: 'huginn-ctx-overlay' });
 
-    // Reply always available
-    actions.push({
-      icon: '↩️', label: 'Ответить',
-      onClick: function() { setReply({ id: msg.id, message: msg.message, user_name: msg.user_name }); }
-    });
-
-    // Reaction available for ALL messages (own + others)
-    actions.push({
-      icon: '😀', label: 'Реакция',
-      onClick: function() { showReactionPopup(msg, document.querySelector('[data-msg-id="' + msg.id + '"]')); }
-    });
-
-    if (mine) {
-      actions.push({
-        icon: '✏️', label: 'Редактировать',
-        onClick: function() { startEdit(msg); }
-      });
-      actions.push({
-        icon: '🗑️', label: 'Удалить',
-        onClick: function() { deleteMessage(msg); }
-      });
-    }
-
-    // Copy always available
+    // Preview of the message
+    var menu = el('div', { className: 'huginn-ctx-menu' });
     if (msg.message) {
-      actions.push({
-        icon: '📋', label: 'Копировать',
-        onClick: function() { _huginnCopyText(msg.message); M.Toast({ message: 'Скопировано', type: 'info' }); }
-      });
+      var preview = el('div', { className: 'huginn-ctx-bubble-preview' });
+      var previewText = msg.message.length > 120 ? msg.message.substring(0, 120) + '...' : msg.message;
+      preview.textContent = previewText;
+      menu.appendChild(preview);
+      menu.appendChild(el('div', { className: 'huginn-ctx-sep' }));
     }
 
-    M.ActionSheet({ title: 'Сообщение', actions: actions });
+    var items = [
+      { icon: '↩️', label: 'Ответить', action: function() { setReply({ id: msg.id, message: msg.message, user_name: msg.user_name }); } },
+      { icon: '😀', label: 'Реакция', action: function() { showReactionPopup(msg, document.querySelector('[data-msg-id="' + msg.id + '"]')); } },
+    ];
+    if (msg.message) {
+      items.push({ icon: '📋', label: 'Копировать', action: function() { _huginnCopyText(msg.message); M.Toast({ message: 'Скопировано', type: 'info' }); } });
+    }
+    // Pin (available to all)
+    var isPinned = _pinnedIds && _pinnedIds.indexOf(msg.id) >= 0;
+    items.push({
+      icon: '📌', label: isPinned ? 'Открепить' : 'Закрепить',
+      action: function() {
+        var method = isPinned ? 'DELETE' : 'POST';
+        API.fetch('/chat-groups/' + chatId + '/pin/' + msg.id, { method: method }).then(function() {
+          M.Toast({ message: isPinned ? 'Откреплено' : 'Закреплено', type: 'info' });
+          loadPinnedMessages();
+        }).catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
+      }
+    });
+    if (mine) {
+      items.push({ sep: true });
+      items.push({ icon: '✏️', label: 'Редактировать', action: function() { startEdit(msg); } });
+      items.push({ icon: '🗑️', label: 'Удалить', danger: true, action: function() { deleteMessage(msg); } });
+    } else if (isAdmin) {
+      items.push({ sep: true });
+      items.push({ icon: '🗑️', label: 'Удалить', danger: true, action: function() { deleteMessage(msg); } });
+    }
+
+    items.forEach(function(it) {
+      if (it.sep) { menu.appendChild(el('div', { className: 'huginn-ctx-sep' })); return; }
+      var item = el('div', { className: 'huginn-ctx-item' + (it.danger ? ' huginn-ctx-item--danger' : '') });
+      item.appendChild(el('span', { textContent: it.icon }));
+      item.appendChild(el('span', { textContent: it.label }));
+      item.addEventListener('click', function() { overlay.remove(); it.action(); });
+      menu.appendChild(item);
+    });
+
+    // Position menu
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var menuX = Math.min(touchX, vw - 220);
+    var menuY = Math.min(touchY, vh - items.length * 44 - 60);
+    if (menuX < 8) menuX = 8;
+    if (menuY < 60) menuY = 60;
+    menu.style.left = menuX + 'px';
+    menu.style.top = menuY + 'px';
+
+    overlay.appendChild(menu);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
   }
 
   function showImagePreview(url, title) {
@@ -1717,6 +1877,19 @@ async function renderChat(chatId) {
         } catch (err) {}
       });
 
+      _es.addEventListener('pin', function(e) {
+        try {
+          var data = JSON.parse(e.data);
+          if (String(data.chat_id) === String(chatId)) loadPinnedMessages();
+        } catch (err) {}
+      });
+      _es.addEventListener('unpin', function(e) {
+        try {
+          var data = JSON.parse(e.data);
+          if (String(data.chat_id) === String(chatId)) loadPinnedMessages();
+        } catch (err) {}
+      });
+
       _es.onopen = function() { _sseConnected = true; _sseRetryDelay = 1000; };
       _es.onerror = function() {
         _sseConnected = false;
@@ -1780,37 +1953,281 @@ async function renderChat(chatId) {
    ACTION SHEETS
    ═══════════════════════════════════════════ */
 function chatActionsSheet(chatId) {
-  // Check current mute status
+  var myId = (Store.get('user') || {}).id;
   API.fetch('/chat-groups/' + chatId).then(function(resp) {
     var chat = resp.chat || resp || {};
     var members = resp.members || [];
-    var me = members.find(function(m) { return m.user_id === (Store.get('user') || {}).id; });
+    var me = members.find(function(m) { return m.user_id === myId; });
     var isMuted = me && me.muted_until && new Date(me.muted_until) > new Date();
+    var amAdmin = me && (me.role === 'owner' || me.role === 'admin');
 
-    M.ActionSheet({
-      title: 'Действия',
-      actions: [
-        isMuted
-          ? { icon: '\uD83D\uDD14', label: 'Включить уведомления', onClick: function() {
-              API.fetch('/chat-groups/' + chatId + '/mute', { method: 'PUT', body: { until: null } })
-                .then(function() { M.Toast({ message: 'Уведомления включены', type: 'success' }); })
-                .catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
-            }}
-          : { icon: '\uD83D\uDD07', label: 'Выключить уведомления', onClick: function() { muteOptionsSheet(chatId); } },
-        { icon: '\uD83D\uDC65', label: 'Участники', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=members'); } },
-        { icon: '\uD83D\uDCCE', label: 'Файлы', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=files'); } },
-      ],
-    });
+    var actions = [
+      isMuted
+        ? { icon: '🔔', label: 'Включить уведомления', onClick: function() {
+            API.fetch('/chat-groups/' + chatId + '/mute', { method: 'PUT', body: { until: null } })
+              .then(function() { M.Toast({ message: 'Уведомления включены', type: 'success' }); })
+              .catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
+          }}
+        : { icon: '🔇', label: 'Выключить уведомления', onClick: function() { muteOptionsSheet(chatId); } },
+      { icon: '👥', label: 'Участники (' + members.length + ')', onClick: function() { showMembersSheet(chatId, members, amAdmin); } },
+      { icon: '📎', label: 'Файлы', onClick: function() { showFilesSheet(chatId); } },
+    ];
+    if (chat.is_group && amAdmin) {
+      actions.push({ icon: '⚙️', label: 'Настройки группы', onClick: function() { showGroupSettings(chatId, chat); } });
+    }
+
+    M.ActionSheet({ title: chat.name || 'Действия', actions: actions });
   }).catch(function() {
     M.ActionSheet({
       title: 'Действия',
       actions: [
-        { icon: '\uD83D\uDD07', label: 'Выключить уведомления', onClick: function() { muteOptionsSheet(chatId); } },
-        { icon: '\uD83D\uDC65', label: 'Участники', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=members'); } },
-        { icon: '\uD83D\uDCCE', label: 'Файлы', onClick: function() { Router.navigate('/messenger/' + chatId + '?tab=files'); } },
+        { icon: '🔇', label: 'Выключить уведомления', onClick: function() { muteOptionsSheet(chatId); } },
+        { icon: '👥', label: 'Участники', onClick: function() { showMembersSheet(chatId, [], false); } },
+        { icon: '📎', label: 'Файлы', onClick: function() { showFilesSheet(chatId); } },
       ],
     });
   });
+}
+
+/* ── Members BottomSheet ── */
+function showMembersSheet(chatId, members, amAdmin) {
+  var el = Utils.el;
+  var content = el('div');
+
+  // Add member button (admin only)
+  if (amAdmin) {
+    var addBtn = el('div', { className: 'huginn-member-row', style: { color: 'var(--hg-accent)' } });
+    addBtn.appendChild(el('div', { style: { width: '42px', height: '42px', borderRadius: '50%', background: 'rgba(106,178,242,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: '0' }, textContent: '+' }));
+    var addInfo = el('div', { className: 'huginn-member-info' });
+    addInfo.appendChild(el('div', { className: 'huginn-member-name', style: { color: 'var(--hg-accent)' }, textContent: 'Добавить участника' }));
+    addBtn.appendChild(addInfo);
+    addBtn.addEventListener('click', function() { addMemberSheet(chatId); });
+    content.appendChild(addBtn);
+  }
+
+  members.forEach(function(m) {
+    var row = el('div', { className: 'huginn-member-row' });
+    var avatarWrap = el('div', { className: 'huginn-member-avatar' });
+    avatarWrap.appendChild(M.Avatar({ name: m.name || '', size: 42 }));
+    // Online dot
+    var isOnline = m.last_login_at && (Date.now() - new Date(m.last_login_at).getTime() < 300000);
+    if (isOnline) avatarWrap.appendChild(el('div', { className: 'huginn-member-online' }));
+    row.appendChild(avatarWrap);
+
+    var info = el('div', { className: 'huginn-member-info' });
+    var nameRow = el('div', { className: 'huginn-member-name' });
+    nameRow.appendChild(el('span', { textContent: m.name || '' }));
+    if (m.role === 'owner') nameRow.appendChild(el('span', { className: 'huginn-member-role-badge', textContent: '👑' }));
+    else if (m.role === 'admin') nameRow.appendChild(el('span', { className: 'huginn-member-role-badge', textContent: '⭐' }));
+    info.appendChild(nameRow);
+
+    var statusText = isOnline ? 'онлайн' : (m.last_login_at ? _huginnOnlineLabel(m.last_login_at) : '');
+    var status = el('div', { className: 'huginn-member-status', textContent: statusText });
+    if (isOnline) status.style.color = 'var(--hg-online, #34C759)';
+    info.appendChild(status);
+    row.appendChild(info);
+
+    // Admin actions
+    if (amAdmin && m.user_id !== (Store.get('user') || {}).id) {
+      row.addEventListener('click', function() {
+        var actions = [];
+        if (m.role !== 'admin' && m.role !== 'owner') {
+          actions.push({ icon: '⭐', label: 'Назначить админом', onClick: function() {
+            API.fetch('/chat-groups/' + chatId + '/members/' + m.user_id + '/role', { method: 'PUT', body: { role: 'admin' } })
+              .then(function() { M.Toast({ message: 'Роль обновлена', type: 'success' }); })
+              .catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
+          }});
+        } else if (m.role === 'admin') {
+          actions.push({ icon: '👤', label: 'Снять админа', onClick: function() {
+            API.fetch('/chat-groups/' + chatId + '/members/' + m.user_id + '/role', { method: 'PUT', body: { role: 'member' } })
+              .then(function() { M.Toast({ message: 'Роль обновлена', type: 'success' }); })
+              .catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
+          }});
+        }
+        actions.push({ icon: '🗑️', label: 'Удалить из чата', onClick: function() {
+          API.fetch('/chat-groups/' + chatId + '/members/' + m.user_id, { method: 'DELETE' })
+            .then(function() { M.Toast({ message: 'Удалён', type: 'success' }); })
+            .catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
+        }});
+        if (actions.length) M.ActionSheet({ title: m.name, actions: actions });
+      });
+    }
+
+    content.appendChild(row);
+  });
+
+  M.BottomSheet({ title: 'Участники (' + members.length + ')', content: content });
+}
+
+/* ── Add member to group ── */
+function addMemberSheet(chatId) {
+  var el = Utils.el;
+  var content = el('div');
+  var searchInput = el('input', {
+    className: 'huginn-group-field',
+    placeholder: 'Поиск по имени...',
+  });
+  content.appendChild(searchInput);
+  var results = el('div', { style: { maxHeight: '300px', overflowY: 'auto' } });
+  content.appendChild(results);
+
+  var _timer = null;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(_timer);
+    var q = searchInput.value.trim();
+    if (q.length < 2) { results.replaceChildren(); return; }
+    _timer = setTimeout(function() {
+      API.fetch('/users?search=' + encodeURIComponent(q) + '&is_active=true&limit=20').then(function(resp) {
+        results.replaceChildren();
+        (resp.users || []).forEach(function(u) {
+          var row = el('div', { className: 'huginn-member-row' });
+          row.appendChild(M.Avatar({ name: u.name || u.login, size: 36 }));
+          var info = el('div', { className: 'huginn-member-info' });
+          info.appendChild(el('div', { className: 'huginn-member-name', textContent: u.name || u.login }));
+          info.appendChild(el('div', { className: 'huginn-member-status', textContent: u.role || '' }));
+          row.appendChild(info);
+          row.addEventListener('click', function() {
+            API.fetch('/chat-groups/' + chatId + '/members', { method: 'POST', body: { user_id: u.id } })
+              .then(function() { M.Toast({ message: (u.name || u.login) + ' добавлен', type: 'success' }); })
+              .catch(function() { M.Toast({ message: 'Ошибка добавления', type: 'error' }); });
+          });
+          results.appendChild(row);
+        });
+      }).catch(function() {});
+    }, 300);
+  });
+
+  M.BottomSheet({ title: 'Добавить участника', content: content });
+  setTimeout(function() { searchInput.focus(); }, 300);
+}
+
+/* ── Files BottomSheet ── */
+function showFilesSheet(chatId) {
+  var el = Utils.el;
+  var content = el('div');
+
+  // Tabs
+  var tabs = el('div', { className: 'huginn-files-tabs' });
+  var tabMedia = el('div', { className: 'huginn-files-tab huginn-files-tab--active', textContent: 'Медиа' });
+  var tabFiles = el('div', { className: 'huginn-files-tab', textContent: 'Файлы' });
+  var tabLinks = el('div', { className: 'huginn-files-tab', textContent: 'Ссылки' });
+  tabs.appendChild(tabMedia);
+  tabs.appendChild(tabFiles);
+  tabs.appendChild(tabLinks);
+  content.appendChild(tabs);
+
+  var body = el('div', { style: { maxHeight: '60vh', overflowY: 'auto' } });
+  content.appendChild(body);
+
+  var allFiles = [];
+
+  function renderTab(tab) {
+    [tabMedia, tabFiles, tabLinks].forEach(function(t) { t.classList.remove('huginn-files-tab--active'); });
+    tab.classList.add('huginn-files-tab--active');
+    body.replaceChildren();
+
+    if (tab === tabMedia) {
+      var grid = el('div', { className: 'huginn-media-grid' });
+      var mediaFiles = allFiles.filter(function(f) { return (f.mime_type || '').match(/^(image|video)\//); });
+      if (!mediaFiles.length) { body.appendChild(el('div', { style: { padding: '32px', textAlign: 'center', color: 'var(--hg-hint)', fontSize: '14px' }, textContent: 'Нет медиа' })); return; }
+      mediaFiles.forEach(function(f) {
+        var item = el('div', { className: 'huginn-media-grid__item' });
+        var fname = (f.file_path || f.file_name || '').split('/').pop();
+        var url = '/api/chat-groups/' + chatId + '/files/' + encodeURIComponent(fname) + '?token=' + API.getToken();
+        if ((f.mime_type || '').indexOf('image/') === 0) {
+          var img = el('img');
+          img.loading = 'lazy';
+          img.src = url;
+          item.appendChild(img);
+          item.addEventListener('click', function() {
+            var full = el('div', { style: { padding: '8px', display: 'flex', justifyContent: 'center' } });
+            var fullImg = el('img', { style: { maxWidth: '100%', maxHeight: '70vh', borderRadius: '8px' } });
+            fullImg.src = url;
+            full.appendChild(fullImg);
+            M.BottomSheet({ title: f.file_name, content: full });
+          });
+        } else {
+          item.style.background = '#1a1a2e';
+          item.appendChild(el('div', { className: 'huginn-media-grid__play', innerHTML: '<svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(255,255,255,0.8)"><polygon points="5 3 19 12 5 21 5 3"/></svg>' }));
+          item.addEventListener('click', function() {
+            var full = el('div', { style: { padding: '8px' } });
+            var vid = el('video', { style: { width: '100%', maxHeight: '70vh', borderRadius: '8px' } });
+            vid.controls = true; vid.autoplay = true; vid.src = url;
+            full.appendChild(vid);
+            M.BottomSheet({ title: f.file_name, content: full });
+          });
+        }
+        grid.appendChild(item);
+      });
+      body.appendChild(grid);
+    } else if (tab === tabFiles) {
+      var docs = allFiles.filter(function(f) { return !(f.mime_type || '').match(/^(image|video)\//); });
+      if (!docs.length) { body.appendChild(el('div', { style: { padding: '32px', textAlign: 'center', color: 'var(--hg-hint)', fontSize: '14px' }, textContent: 'Нет файлов' })); return; }
+      docs.forEach(function(f) {
+        var row = el('div', { className: 'huginn-file-list-row' });
+        var fi = _huginnFileIcon(f.file_name);
+        row.appendChild(el('div', { className: 'huginn-file-icon ' + fi.cls, textContent: fi.icon }));
+        var meta = el('div', { className: 'huginn-file-list-meta' });
+        meta.appendChild(el('div', { className: 'huginn-file-list-name', textContent: f.file_name }));
+        var sub = _huginnFileSize(f.file_size);
+        if (f.user_name) sub += (sub ? ' · ' : '') + f.user_name;
+        meta.appendChild(el('div', { className: 'huginn-file-list-sub', textContent: sub }));
+        row.appendChild(meta);
+        row.addEventListener('click', function() {
+          var fname = (f.file_path || f.file_name || '').split('/').pop();
+          _huginnDownloadFile('/api/chat-groups/' + chatId + '/files/' + encodeURIComponent(fname), f.file_name);
+        });
+        body.appendChild(row);
+      });
+    } else {
+      // Links — extract from messages (we don't have a dedicated link store)
+      body.appendChild(el('div', { style: { padding: '32px', textAlign: 'center', color: 'var(--hg-hint)', fontSize: '14px' }, textContent: 'Ссылки из сообщений пока недоступны' }));
+    }
+  }
+
+  tabMedia.addEventListener('click', function() { renderTab(tabMedia); });
+  tabFiles.addEventListener('click', function() { renderTab(tabFiles); });
+  tabLinks.addEventListener('click', function() { renderTab(tabLinks); });
+
+  // Load files
+  API.fetch('/chat-groups/' + chatId + '/files-list').then(function(resp) {
+    allFiles = resp.files || [];
+    renderTab(tabMedia);
+  }).catch(function() {
+    body.appendChild(el('div', { style: { padding: '32px', textAlign: 'center', color: 'var(--hg-hint)', fontSize: '14px' }, textContent: 'Ошибка загрузки' }));
+  });
+
+  M.BottomSheet({ title: 'Файлы чата', content: content });
+}
+
+/* ── Group Settings ── */
+function showGroupSettings(chatId, chat) {
+  var el = Utils.el;
+  var content = el('div', { style: { padding: '8px 0' } });
+
+  var nameInput = el('input', { className: 'huginn-group-field', value: chat.name || '', placeholder: 'Название группы' });
+  content.appendChild(el('div', { style: { fontSize: '13px', color: 'var(--hg-hint)', marginBottom: '4px' }, textContent: 'Название' }));
+  content.appendChild(nameInput);
+
+  var descInput = el('textarea', { className: 'huginn-group-field', style: { minHeight: '60px', resize: 'vertical' }, placeholder: 'Описание (необязательно)' });
+  descInput.value = chat.description || '';
+  content.appendChild(el('div', { style: { fontSize: '13px', color: 'var(--hg-hint)', marginBottom: '4px' }, textContent: 'Описание' }));
+  content.appendChild(descInput);
+
+  var saveBtn = el('button', { className: 'huginn-group-save', textContent: 'Сохранить' });
+  saveBtn.addEventListener('click', function() {
+    var name = nameInput.value.trim();
+    if (!name) { M.Toast({ message: 'Введите название', type: 'warning' }); return; }
+    API.fetch('/chat-groups/' + chatId, {
+      method: 'PUT',
+      body: { name: name, description: descInput.value.trim() || null },
+    }).then(function() {
+      M.Toast({ message: 'Настройки сохранены', type: 'success' });
+    }).catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
+  });
+  content.appendChild(saveBtn);
+
+  M.BottomSheet({ title: 'Настройки группы', content: content });
 }
 
 function muteOptionsSheet(chatId) {

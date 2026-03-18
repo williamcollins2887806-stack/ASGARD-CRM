@@ -1161,6 +1161,146 @@ module.exports = async function(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────
+  // GET /api/chat-groups/:id/files-list — Список файлов чата
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/:id/files-list', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const { rows } = await db.query(`
+      SELECT a.id, a.file_name, a.file_path, a.file_size, a.mime_type, a.created_at,
+        u.name as user_name
+      FROM chat_attachments a
+      JOIN chat_messages m ON m.id = a.message_id
+      JOIN users u ON u.id = m.user_id
+      WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+      ORDER BY a.created_at DESC
+    `, [chatId]);
+
+    return { files: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // Pinned messages — CRUD
+  // ───────────────────────────────────────────────────────────────
+  // Ensure table exists
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS pinned_messages (
+      chat_id INT NOT NULL,
+      message_id INT NOT NULL,
+      pinned_by INT,
+      pinned_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (chat_id, message_id)
+    )
+  `);
+
+  // GET /api/chat-groups/:id/pins
+  fastify.get('/:id/pins', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const { rows } = await db.query(`
+      SELECT p.message_id, p.pinned_at, p.pinned_by,
+        m.message, m.user_id, u.name as user_name, m.created_at as message_created_at
+      FROM pinned_messages p
+      JOIN chat_messages m ON m.id = p.message_id
+      JOIN users u ON u.id = m.user_id
+      WHERE p.chat_id = $1 AND m.deleted_at IS NULL
+      ORDER BY p.pinned_at DESC
+    `, [chatId]);
+
+    return { pins: rows };
+  });
+
+  // POST /api/chat-groups/:id/pin/:messageId
+  fastify.post('/:id/pin/:messageId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    const messageId = parseInt(request.params.messageId);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
+
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    // Verify message belongs to chat
+    const msgCheck = await db.query('SELECT id FROM chat_messages WHERE id = $1 AND chat_id = $2 AND deleted_at IS NULL', [messageId, chatId]);
+    if (!msgCheck.rows.length) return reply.code(404).send({ error: 'Сообщение не найдено' });
+
+    await db.query(`
+      INSERT INTO pinned_messages (chat_id, message_id, pinned_by)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (chat_id, message_id) DO NOTHING
+    `, [chatId, messageId, request.user.id]);
+
+    // Broadcast pin event via SSE
+    sseToMembers(chatId, request.user.id, 'pin', { chat_id: chatId, message_id: messageId, pinned_by: request.user.id });
+
+    return { success: true };
+  });
+
+  // DELETE /api/chat-groups/:id/pin/:messageId
+  fastify.delete('/:id/pin/:messageId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    const messageId = parseInt(request.params.messageId);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
+
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    await db.query('DELETE FROM pinned_messages WHERE chat_id = $1 AND message_id = $2', [chatId, messageId]);
+
+    sseToMembers(chatId, request.user.id, 'unpin', { chat_id: chatId, message_id: messageId });
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/chat-groups/:id — Обновить настройки группы
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID' });
+
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
+      return reply.code(403).send({ error: 'Нет прав' });
+    }
+
+    const { name, description } = request.body || {};
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${idx++}`);
+      params.push(String(name).trim().substring(0, 100));
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${idx++}`);
+      params.push(description ? String(description).trim().substring(0, 500) : null);
+    }
+    if (!updates.length) return reply.code(400).send({ error: 'Нечего обновлять' });
+
+    params.push(chatId);
+    await db.query(`UPDATE chats SET ${updates.join(', ')} WHERE id = $${idx}`, params);
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
   // DELETE /api/chat-groups/:id — Удалить чат (только owner)
   // ───────────────────────────────────────────────────────────────
   fastify.delete('/:id', {
