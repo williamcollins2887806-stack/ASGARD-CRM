@@ -911,6 +911,9 @@ window.AsgardContractsPage = (function(){
     const hideStatus = () => { ncStatus.style.display = 'none'; };
 
     // ═══ WOW: Cascade fill — делегируем в MimirForms (единая реализация) ═══
+    // Гарантируем что CSS-анимации MimirForms загружены
+    if (window.MimirForms) MimirForms.ensureStyles();
+
     const cascadeFill = (fieldsMap) => {
       if (window.MimirForms) {
         return MimirForms.cascadeFill(ncForm, fieldsMap);
