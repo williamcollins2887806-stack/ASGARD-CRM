@@ -461,7 +461,23 @@ const Layout = (() => {
   function getOverlayZone() { return overlayZone; }
   function getTabBar() { return tabBar; }
 
-  return { create, renderTabBar, getDefaultTabs, getPMTabs, setBadge, getContentZone, getOverlayZone, getTabBar, updateActiveTab };
+  // Tab-bar hide/show for fullscreen pages (messenger chat, mimir)
+  var _tabBarHidden = false;
+  function hideTabBar() {
+    _tabBarHidden = true;
+    if (tabBar) tabBar.style.display = 'none';
+    var content = getContentZone();
+    if (content) content.style.paddingBottom = '0';
+  }
+  function showTabBar() {
+    _tabBarHidden = false;
+    if (tabBar) tabBar.style.display = '';
+    var content = getContentZone();
+    if (content) content.style.paddingBottom = '';
+  }
+  function isTabBarHidden() { return _tabBarHidden; }
+
+  return { create, renderTabBar, getDefaultTabs, getPMTabs, setBadge, getContentZone, getOverlayZone, getTabBar, updateActiveTab, hideTabBar, showTabBar, isTabBarHidden };
 })();
 
 
@@ -1116,17 +1132,27 @@ const Utils = (() => {
       const keyboardOpen = window.innerHeight - window.visualViewport.height > 150;
       document.body.classList.toggle('keyboard-open', keyboardOpen);
 
+      // Hide tab-bar when keyboard opens (globally), restore only if page didn't hide it
+      var tb = Layout.getTabBar();
+      if (tb) {
+        if (keyboardOpen) {
+          tb.style.display = 'none';
+        } else if (!Layout.isTabBarHidden()) {
+          tb.style.display = '';
+        }
+      }
+
       // Scroll chat messages to bottom when keyboard opens
       if (keyboardOpen) {
         setTimeout(function() {
-          var msgArea = document.querySelector('.asgard-mimir-messages, .asgard-huginn-messages');
+          var msgArea = document.querySelector('.asgard-mimir-messages, .huginn-messages');
           if (msgArea) msgArea.scrollTop = msgArea.scrollHeight;
         }, 300);
       }
 
       // Scroll form inputs into view (not for chat — chat uses flex)
       if (focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT')) {
-        if (!focused.closest('.asgard-huginn-composer, .asgard-mimir-composer')) {
+        if (!focused.closest('.huginn-composer, .asgard-mimir-composer')) {
           setTimeout(() => {
             focused.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }, 100);
@@ -1268,6 +1294,13 @@ const App = (() => {
     }
     _setVH();
     window.addEventListener('resize', _setVH);
+
+    // iOS anti-zoom: prevent pinch-zoom and double-tap zoom
+    var vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.content = 'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover';
+    document.body.style.touchAction = 'pan-x pan-y';
+    document.documentElement.style.touchAction = 'pan-x pan-y';
+    document.body.style.webkitTextSizeAdjust = '100%';
 
     // Подхватить системную тему при загрузке (если пользователь не выбрал вручную)
     if (typeof DS !== 'undefined' && DS.setTheme) {

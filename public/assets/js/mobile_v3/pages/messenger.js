@@ -190,7 +190,7 @@ const MessengerPage = {
     const t = DS.t;
     if (params && params.id) return renderChat(params.id);
 
-    const page = el('div', { className: 'asgard-huginn-list page-container' });
+    const page = el('div', { className: 'huginn-list-page page-container' });
 
     page.appendChild(M.Header({
       title: 'Хугинн',
@@ -208,149 +208,7 @@ const MessengerPage = {
       onSearch: (q) => renderList(q),
     }));
 
-    // ── Stories strip ──
-    var storiesWrap = el('div', {
-      style: {
-        display: 'flex', gap: '12px', padding: '12px var(--sp-page,16px)',
-        overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory',
-        WebkitOverflowScrolling: 'touch', flexShrink: 0,
-      },
-      className: 'asgard-no-scrollbar',
-    });
-    page.appendChild(storiesWrap);
-
-    function loadStories() {
-      storiesWrap.replaceChildren();
-      var currentUser = Store.get('user') || {};
-      // "Вы" — первый элемент
-      var myStory = el('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer', flexShrink: 0, scrollSnapAlign: 'start' } });
-      var myAvaWrap = el('div', { style: { position: 'relative' } });
-      myAvaWrap.appendChild(M.Avatar({ name: currentUser.name || 'Вы', size: 56, src: currentUser.avatar_url || null }));
-      var addBadge = el('div', { style: { position: 'absolute', bottom: '-2px', right: '-2px', width: '20px', height: '20px', borderRadius: '50%', background: 'var(--hero-grad)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: '#fff', border: '2px solid ' + t.bg, fontWeight: 700 }, textContent: '+' });
-      myAvaWrap.appendChild(addBadge);
-      myStory.appendChild(myAvaWrap);
-      myStory.appendChild(el('div', { style: { ...DS.font('xs'), color: t.textSec, textAlign: 'center' }, textContent: 'Вы' }));
-      myStory.addEventListener('click', function() { createStorySheet(); });
-      storiesWrap.appendChild(myStory);
-
-      API.fetch('/stories').then(function(resp) {
-        var stories = resp.stories || [];
-        // Group by user
-        var byUser = {};
-        stories.forEach(function(s) {
-          if (!byUser[s.user_id]) byUser[s.user_id] = { name: s.user_name, avatar: s.avatar_url, items: [] };
-          byUser[s.user_id].items.push(s);
-        });
-        Object.keys(byUser).forEach(function(uid) {
-          if (String(uid) === String(currentUser.id)) return; // skip current user — already shown as "Вы"
-          var u = byUser[uid];
-          var storyEl = el('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer', flexShrink: 0, scrollSnapAlign: 'start' } });
-          var avaOuter = el('div', { style: { padding: '2px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffd60a, #c62828)' } });
-          avaOuter.appendChild(M.Avatar({ name: u.name || '?', size: 52, src: u.avatar || null }));
-          storyEl.appendChild(avaOuter);
-          var nameShort = (u.name || '').split(' ')[0] || '?';
-          storyEl.appendChild(el('div', { style: { ...DS.font('xs'), color: t.textSec, textAlign: 'center', maxWidth: '64px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, textContent: nameShort }));
-          storyEl.addEventListener('click', function() { viewStory(u, 0); });
-          storiesWrap.appendChild(storyEl);
-        });
-      }).catch(function() {}); // Тихий fail — stories не критичны
-    }
-
-    function createStorySheet() {
-      var content = Utils.el('div');
-      var imgUrl = null;
-      content.appendChild(M.Form({
-        fields: [
-          { id: 'content', label: 'Текст статуса', type: 'textarea', placeholder: 'Что нового?', required: true },
-        ],
-        submitLabel: 'Опубликовать',
-        onSubmit: function(data) {
-          API.fetch('/stories', { method: 'POST', body: { content: data.content, image_url: imgUrl } }).then(function() {
-            M.Toast({ message: 'Сторис опубликована', type: 'success' });
-            loadStories();
-          }).catch(function() { M.Toast({ message: 'Ошибка', type: 'error' }); });
-        },
-      }));
-      var photoBtn = el('div', { style: { padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: t.accent || '#ff4444' } });
-      photoBtn.appendChild(el('span', { textContent: '📷' }));
-      photoBtn.appendChild(el('span', { style: { ...DS.font('sm') }, textContent: 'Добавить фото' }));
-      photoBtn.addEventListener('click', function() {
-        var inp = document.createElement('input');
-        inp.type = 'file'; inp.accept = 'image/*';
-        inp.onchange = function() {
-          if (!inp.files[0]) return;
-          var fd = new FormData(); fd.append('file', inp.files[0]);
-          fetch('/api/files/upload', { method: 'POST', headers: { 'Authorization': 'Bearer ' + API.getToken() }, body: fd })
-            .then(function(r) { return r.json(); }).then(function(d) {
-              if (d.download_url) { imgUrl = d.download_url; photoBtn.querySelector('span:last-child').textContent = 'Фото добавлено ✓'; }
-            }).catch(function() { M.Toast({ message: 'Ошибка загрузки фото', type: 'error' }); });
-        };
-        inp.click();
-      });
-      content.appendChild(photoBtn);
-      M.BottomSheet({ title: 'Новая сторис', content: content });
-    }
-
-    function viewStory(userData, startIdx) {
-      var overlay = el('div', { style: {
-        position: 'fixed', top: 0, left: 0, width: '100vw', height: 'calc(var(--vh, 1vh) * 100)',
-        background: '#000', zIndex: 1000, display: 'flex', flexDirection: 'column',
-      } });
-      var idx = startIdx || 0;
-      var items = userData.items || [];
-
-      function showItem(i) {
-        overlay.replaceChildren();
-        if (i >= items.length) { overlay.remove(); return; }
-        var story = items[i];
-
-        // Progress bar
-        var progressWrap = el('div', { style: { display: 'flex', gap: '3px', padding: '8px 16px' } });
-        items.forEach(function(_, pi) {
-          progressWrap.appendChild(el('div', { style: { flex: 1, height: '2px', borderRadius: '1px', background: pi <= i ? '#fff' : 'rgba(255,255,255,0.3)' } }));
-        });
-        overlay.appendChild(progressWrap);
-
-        // Header
-        var hdr = el('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 16px' } });
-        hdr.appendChild(M.Avatar({ name: userData.name || '?', size: 32, src: userData.avatar || null }));
-        hdr.appendChild(el('div', { style: { color: '#fff', fontWeight: 600, fontSize: '14px' }, textContent: userData.name || '?' }));
-        var ago = story.created_at ? Utils.relativeTime(story.created_at) : '';
-        hdr.appendChild(el('div', { style: { color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginLeft: '8px' }, textContent: ago }));
-        var closeBtn = el('div', { style: { marginLeft: 'auto', color: '#fff', fontSize: '24px', cursor: 'pointer', padding: '4px' }, textContent: '✕' });
-        closeBtn.addEventListener('click', function() { clearTimeout(autoTimer); overlay.remove(); });
-        hdr.appendChild(closeBtn);
-        overlay.appendChild(hdr);
-
-        // Content
-        var contentArea = el('div', { style: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' } });
-        if (story.image_url) {
-          var img = el('img', { style: { maxWidth: '100%', maxHeight: '70vh', borderRadius: '12px', objectFit: 'contain' } });
-          img.src = story.image_url + (story.image_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + API.getToken();
-          contentArea.appendChild(img);
-        }
-        if (story.content) {
-          contentArea.appendChild(el('div', { style: { color: '#fff', fontSize: '18px', textAlign: 'center', lineHeight: '1.6', maxWidth: '300px', wordBreak: 'break-word' }, textContent: story.content }));
-        }
-        overlay.appendChild(contentArea);
-
-        // Tap zones
-        overlay.addEventListener('click', function(e) {
-          var x = e.clientX;
-          clearTimeout(autoTimer);
-          if (x < window.innerWidth * 0.3) { showItem(Math.max(0, i - 1)); }
-          else { showItem(i + 1); }
-        });
-
-        // Auto-advance 5 sec
-        var autoTimer = setTimeout(function() { showItem(i + 1); }, 5000);
-      }
-
-      showItem(0);
-      document.body.appendChild(overlay);
-    }
-
-    loadStories();
+    // Stories removed in HUGINN S1
 
     const listWrap = el('div', { style: { padding: '4px 0', minHeight: '200px', position: 'relative' } });
     page.appendChild(listWrap);
@@ -489,8 +347,8 @@ async function renderChat(chatId) {
   var t = DS.t;
   var userId = (Store.get('user') || {}).id;
   var page = el('div', {
-    className: 'asgard-huginn-chat asgard-slide-right',
-    style: { display: 'flex', flexDirection: 'column', height: '100%', background: t.bg, position: 'relative' },
+    className: 'huginn-chat-page',
+    style: { background: t.bg },
   });
 
   // State
@@ -548,73 +406,45 @@ async function renderChat(chatId) {
   }));
 
   // Typing indicator bar
-  var typingBar = el('div', {
-    style: {
-      height: '0', overflow: 'hidden', padding: '0 var(--sp-page,16px)',
-      transition: 'height 0.2s ease, padding 0.2s ease',
-      ...DS.font('xs'), color: t.accent || '#ff4444',
-    },
-  });
+  var typingBar = el('div', { className: 'huginn-typing' });
   page.appendChild(typingBar);
 
   // Messages area
-  var messagesWrap = el('div', {
-    style: {
-      flex: 1, overflowY: 'auto', padding: '8px var(--sp-page,16px) 8px',
-      display: 'flex', flexDirection: 'column',
-      WebkitOverflowScrolling: 'touch',
-    },
-  });
+  var messagesWrap = el('div', { className: 'huginn-messages' });
   page.appendChild(messagesWrap);
 
   // Scroll-to-bottom FAB
   var scrollFab = el('div', {
-    style: {
-      position: 'absolute', right: '16px', bottom: '80px',
-      width: '40px', height: '40px', borderRadius: '20px',
-      background: t.surface || '#222', border: '1px solid ' + (t.border || '#333'),
-      display: 'none', alignItems: 'center', justifyContent: 'center',
-      cursor: 'pointer', zIndex: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-    },
-    innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="' + (t.text || '#fff') + '" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>',
+    className: 'huginn-scroll-fab',
+    innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>',
     onClick: function() { messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' }); },
   });
   page.appendChild(scrollFab);
 
   messagesWrap.addEventListener('scroll', function() {
     var gap = messagesWrap.scrollHeight - messagesWrap.scrollTop - messagesWrap.clientHeight;
-    scrollFab.style.display = gap > 150 ? 'flex' : 'none';
+    scrollFab.classList.toggle('huginn-scroll-fab--visible', gap > 150);
     if (messagesWrap.scrollTop < 60 && hasOlder && !loadingOlder) loadOlderMessages();
   }, { passive: true });
 
   // Reply/Edit bar
-  var replyBar = el('div', {
-    style: {
-      display: 'none', padding: '8px 16px', background: t.surface || '#1a1a1a',
-      borderTop: '1px solid ' + (t.border || '#333'), alignItems: 'center', gap: '8px',
-    },
-  });
-  var replyContent = el('div', { style: { flex: 1, minWidth: 0, borderLeft: '2px solid ' + (t.accent || '#ff4444'), paddingLeft: '8px' } });
-  var replyName = el('div', { style: { ...DS.font('xs'), color: t.accent || '#ff4444', fontWeight: 600, marginBottom: '2px' } });
-  var replyTextEl = el('div', { style: { ...DS.font('sm'), color: t.textSec || '#999', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } });
+  var replyBar = el('div', { className: 'huginn-reply-bar' });
+  var replyContent = el('div', { className: 'huginn-reply-content' });
+  var replyName = el('div', { className: 'huginn-reply-name' });
+  var replyTextEl = el('div', { className: 'huginn-reply-text' });
   replyContent.appendChild(replyName);
   replyContent.appendChild(replyTextEl);
   replyBar.appendChild(replyContent);
   replyBar.appendChild(el('div', {
-    style: { width: '28px', height: '28px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
-    innerHTML: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="' + (t.textSec || '#999') + '" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    className: 'huginn-reply-close',
+    innerHTML: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
     onClick: function() { setReply(null); cancelEdit(); },
   }));
 
   // Emoji panel
-  var emojiPanel = el('div', {
-    style: {
-      display: 'none', height: '250px', background: t.surface || '#1a1a1a',
-      borderTop: '1px solid ' + (t.border || '#333'), flexDirection: 'column', overflow: 'hidden',
-    },
-  });
-  var emojiTabs = el('div', { style: { display: 'flex', borderBottom: '1px solid ' + (t.border || '#333') } });
-  var emojiGrid = el('div', { style: { flex: 1, overflowY: 'auto', padding: '8px', display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', alignContent: 'start' } });
+  var emojiPanel = el('div', { className: 'huginn-emoji-panel' });
+  var emojiTabs = el('div', { className: 'huginn-emoji-tabs' });
+  var emojiGrid = el('div', { className: 'huginn-emoji-grid' });
   var tabNames = Object.keys(HUGINN_EMOJI);
   var activeTab = 0;
 
@@ -623,20 +453,19 @@ async function renderChat(chatId) {
     emojiGrid.replaceChildren();
     HUGINN_EMOJI[tabNames[idx]].forEach(function(em) {
       emojiGrid.appendChild(el('div', {
-        style: { fontSize: '24px', textAlign: 'center', padding: '6px', cursor: 'pointer', borderRadius: '8px' },
+        className: 'huginn-emoji-item',
         textContent: em,
         onClick: function() { textarea.value += em; textarea.focus(); autoResize(); },
       }));
     });
     Array.from(emojiTabs.children).forEach(function(tab, i) {
-      tab.style.borderBottom = i === idx ? '2px solid ' + (t.accent || '#ff4444') : '2px solid transparent';
-      tab.style.color = i === idx ? (t.accent || '#ff4444') : (t.textSec || '#999');
+      tab.className = i === idx ? 'huginn-emoji-tab huginn-emoji-tab--active' : 'huginn-emoji-tab';
     });
   }
 
   tabNames.forEach(function(name, i) {
     emojiTabs.appendChild(el('div', {
-      style: { flex: 1, textAlign: 'center', padding: '8px 4px', cursor: 'pointer', ...DS.font('xs'), fontWeight: 600 },
+      className: i === 0 ? 'huginn-emoji-tab huginn-emoji-tab--active' : 'huginn-emoji-tab',
       textContent: name,
       onClick: function() { renderEmojiTab(i); },
     }));
@@ -645,26 +474,17 @@ async function renderChat(chatId) {
   emojiPanel.appendChild(emojiGrid);
 
   // Composer
-  var composerWrap = el('div', {
-    className: 'asgard-huginn-composer',
-    style: {
-      display: 'flex', alignItems: 'flex-end', gap: '8px',
-      padding: '8px var(--sp-page,16px)',
-      paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))',
-      background: t.bg, borderTop: '1px solid ' + (t.border || '#333'),
-    },
-  });
+  var composerWrap = el('div', { className: 'huginn-composer' });
 
   var emojiBtn = el('div', {
-    className: 'asgard-huginn-btn',
-    style: { width: '40px', height: '40px', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
-    innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="' + (t.textSec || '#999') + '" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>',
+    className: 'huginn-btn',
+    innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>',
     onClick: function() { toggleEmoji(); },
   });
   composerWrap.appendChild(emojiBtn);
 
   var textarea = el('textarea', {
-    className: 'asgard-huginn-textarea',
+    className: 'huginn-textarea',
     placeholder: 'Сообщение...',
     rows: 1,
   });
@@ -680,20 +500,14 @@ async function renderChat(chatId) {
   composerWrap.appendChild(textarea);
 
   composerWrap.appendChild(el('div', {
-    className: 'asgard-huginn-btn',
-    style: { width: '40px', height: '40px', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
-    innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="' + (t.textSec || '#999') + '" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>',
+    className: 'huginn-btn',
+    innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>',
     onClick: function() { attachFile(); },
   }));
 
   var sendBtn = el('div', {
-    className: 'asgard-huginn-send-btn',
-    style: {
-      width: '40px', height: '40px', borderRadius: '20px',
-      background: t.accent || '#ff4444', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      cursor: 'pointer', flexShrink: 0,
-    },
-    innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+    className: 'huginn-send-btn',
+    innerHTML: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
     onClick: function() { sendMessage(); },
   });
 
@@ -709,18 +523,16 @@ async function renderChat(chatId) {
 
   if (_huginnHasMedia) {
     micBtn = el('div', {
-      className: 'asgard-huginn-btn',
-      style: { width: '40px', height: '40px', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
-      innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="' + (t.textSec || '#999') + '" stroke-width="1.5"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v1a7 7 0 01-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
+      className: 'huginn-btn',
+      innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v1a7 7 0 01-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
       onClick: function() { startVoiceRecording(); },
     });
   }
 
   if (_huginnHasVideo) {
     videoRecBtn = el('div', {
-      className: 'asgard-huginn-btn',
-      style: { width: '40px', height: '40px', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
-      innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="' + (t.textSec || '#999') + '" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
+      className: 'huginn-btn',
+      innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
       onClick: function() { startVideoRecording(); },
     });
   }
@@ -782,7 +594,7 @@ async function renderChat(chatId) {
       preview.style.cssText = 'width:200px;height:200px;object-fit:cover;border-radius:50%;border:3px solid #c62828;';
       _recOverlay.appendChild(preview);
     } else {
-      var micIcon = el('div', { style: { width: '80px', height: '80px', borderRadius: '50%', background: '#c62828', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', animation: 'asgard-pulse 1.5s infinite' }, textContent: '🎤' });
+      var micIcon = el('div', { className: 'huginn-recording__icon', style: { width: '80px', height: '80px', borderRadius: '50%', background: 'var(--hg-destructive, #ec3942)', display: 'flex', alignItems: 'center', justifyContent: 'center' }, textContent: '🎤' });
       _recOverlay.appendChild(micIcon);
     }
     var timerEl = el('div', { style: { color: '#fff', fontSize: '24px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }, textContent: '0:00' });
@@ -875,19 +687,19 @@ async function renderChat(chatId) {
     replyTo = msg;
     if (msg) {
       editingMsg = null;
-      replyBar.style.display = 'flex';
+      replyBar.classList.add('huginn-reply-bar--visible');
       replyName.textContent = msg.user_name || 'Сообщение';
       replyTextEl.textContent = msg.message || '';
       textarea.focus();
     } else {
-      if (!editingMsg) replyBar.style.display = 'none';
+      if (!editingMsg) replyBar.classList.remove('huginn-reply-bar--visible');
     }
   }
 
   function startEdit(msg) {
     editingMsg = msg;
     replyTo = null;
-    replyBar.style.display = 'flex';
+    replyBar.classList.add('huginn-reply-bar--visible');
     replyName.textContent = 'Редактирование';
     replyTextEl.textContent = msg.message || '';
     textarea.value = msg.message || '';
@@ -900,13 +712,13 @@ async function renderChat(chatId) {
       editingMsg = null;
       textarea.value = '';
       autoResize();
-      replyBar.style.display = 'none';
+      replyBar.classList.remove('huginn-reply-bar--visible');
     }
   }
 
   function toggleEmoji() {
     emojiOpen = !emojiOpen;
-    emojiPanel.style.display = emojiOpen ? 'flex' : 'none';
+    emojiPanel.classList.toggle('huginn-emoji-panel--visible', emojiOpen);
     if (emojiOpen && emojiGrid.children.length === 0) renderEmojiTab(0);
   }
 
@@ -928,7 +740,7 @@ async function renderChat(chatId) {
       textarea.value = '';
       autoResize();
       cancelEdit();
-      replyBar.style.display = 'none';
+      replyBar.classList.remove('huginn-reply-bar--visible');
       try {
         await API.fetch('/chat-groups/' + chatId + '/messages/' + editId, { method: 'PUT', body: { text: text } });
         var found = messages.find(function(m) { return m.id === editId; });
@@ -1010,7 +822,7 @@ async function renderChat(chatId) {
         display: 'flex', flexDirection: mine ? 'row-reverse' : 'row',
         alignItems: 'flex-end', gap: '8px',
         marginTop: grouped ? '1px' : '8px',
-        animation: 'asgard-msg-in 0.2s ease-out',
+        animation: 'huginn-msg-in 0.2s ease-out',
       },
     });
     wrap.dataset.msgId = msg.id;
@@ -1359,11 +1171,15 @@ async function renderChat(chatId) {
     loadingOlder = false;
   }
 
-  // ── SSE Real-time ──
+  // ── SSE Real-time with exponential backoff ──
+  var _sseRetryDelay = 1000;
+  var _sseRetryTimer = null;
+
   function connectSSE() {
     try {
       var token = API.getToken();
       if (!token) return;
+      if (_es) { try { _es.close(); } catch(e) {} }
       _es = new EventSource('/api/sse/stream?token=' + token);
 
       _es.addEventListener('chat:new_message', function(e) {
@@ -1379,8 +1195,8 @@ async function renderChat(chatId) {
           if (msg.id > lastMsgId) lastMsgId = msg.id;
           appendMessage(msg, messages.length > 1 ? messages[messages.length - 2] : null);
           if (wasAtBottom) messagesWrap.scrollTo({ top: messagesWrap.scrollHeight, behavior: 'smooth' });
-          // Sound notification for messages from others
-          _huginnPlayNotifSound();
+          // Sound notification for messages from others ONLY
+          if (msg.user_id !== userId) _huginnPlayNotifSound();
         } catch (err) {}
       });
 
@@ -1391,12 +1207,10 @@ async function renderChat(chatId) {
           if (data.user_id === userId) return;
           var name = data.user_name || 'Кто-то';
           typingBar.textContent = name + ' печатает...';
-          typingBar.style.height = '24px';
-          typingBar.style.padding = '4px var(--sp-page,16px)';
+          typingBar.classList.add('huginn-typing--visible');
           clearTimeout(typingBar._hideTimer);
           typingBar._hideTimer = setTimeout(function() {
-            typingBar.style.height = '0';
-            typingBar.style.padding = '0 var(--sp-page,16px)';
+            typingBar.classList.remove('huginn-typing--visible');
           }, 4000);
         } catch (err) {}
       });
@@ -1428,8 +1242,17 @@ async function renderChat(chatId) {
         } catch (err) {}
       });
 
-      _es.onopen = function() { _sseConnected = true; };
-      _es.onerror = function() { _sseConnected = false; };
+      _es.onopen = function() { _sseConnected = true; _sseRetryDelay = 1000; };
+      _es.onerror = function() {
+        _sseConnected = false;
+        if (_es) { try { _es.close(); } catch(e) {} _es = null; }
+        // Exponential backoff: 1s → 2s → 4s → 8s → ... → max 30s
+        clearTimeout(_sseRetryTimer);
+        _sseRetryTimer = setTimeout(function() {
+          if (page.isConnected) connectSSE();
+        }, _sseRetryDelay + Math.random() * 1000);
+        _sseRetryDelay = Math.min(_sseRetryDelay * 2, 30000);
+      };
     } catch (err) {
       _sseConnected = false;
     }
@@ -1462,11 +1285,16 @@ async function renderChat(chatId) {
     if (!_sseConnected) pollNewMessages();
   }, 15000);
 
-  // Lifecycle: cleanup через Router.onLeave (вместо setInterval polling)
+  // Tab-bar: hide when in chat
+  if (typeof Layout !== 'undefined' && Layout.hideTabBar) Layout.hideTabBar();
+
+  // Lifecycle: cleanup через Router.onLeave
   if (typeof Router !== 'undefined' && Router.onLeave) {
     Router.onLeave(function() {
       clearInterval(_pollFallback);
+      clearTimeout(_sseRetryTimer);
       if (_es) { _es.close(); _es = null; }
+      if (typeof Layout !== 'undefined' && Layout.showTabBar) Layout.showTabBar();
     });
   }
 

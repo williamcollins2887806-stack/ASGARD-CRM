@@ -1,0 +1,1106 @@
+/* ═══════════════════════════════════════════════════════════════
+   HUGINN v2 — Messenger CSS System
+   Nuclear isolation: ALL classes prefixed .huginn-
+   No leaks to CRM — safe to load globally
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. CSS Custom Properties (Dark = default) ── */
+.huginn-root,
+.huginn-chat-page,
+.huginn-list-page {
+  --hg-bg: #17212b;
+  --hg-bg2: #232e3c;
+  --hg-chat-bg: #0e1621;
+  --hg-header-bg: rgba(23,33,43,0.85);
+  --hg-input-bar-bg: rgba(23,33,43,0.88);
+  --hg-text: #f5f5f5;
+  --hg-text2: #708499;
+  --hg-hint: #708499;
+  --hg-accent: #6ab2f2;
+  --hg-accent-btn: #5288c1;
+  --hg-link: #6ab3f3;
+  --hg-destructive: #ec3942;
+  --hg-sep: rgba(255,255,255,0.06);
+  --hg-in-bub: rgba(24,37,51,0.82);
+  --hg-out-bub: rgba(43,82,120,0.78);
+  --hg-in-text: #f5f5f5;
+  --hg-out-text: #f5f5f5;
+  --hg-in-time: #6b8399;
+  --hg-out-time: #68a0d2;
+  --hg-check-read: #68a0d2;
+  --hg-check-sent: #5c7d9e;
+  --hg-service-bg: rgba(14,22,33,0.65);
+  --hg-service-text: #8299ad;
+  --hg-online: #4fae4e;
+  --hg-badge: #3390ec;
+  --hg-badge-muted: #708499;
+  --hg-reply-bar: #6ab3f3;
+  --hg-reply-bg: rgba(106,178,242,0.08);
+  --hg-react-bg: rgba(59,130,246,0.12);
+  --hg-react-border: rgba(106,178,242,0.25);
+  --hg-react-active: #6ab2f2;
+  --hg-wave-active: #68a0d2;
+  --hg-wave-inactive: #3d5672;
+  --hg-input-field: rgba(35,46,60,0.5);
+  --hg-typing: #6ab2f2;
+  --hg-unread-sep: #3390ec;
+  --hg-edited: #5c7d9e;
+  --hg-scroll-fab-bg: rgba(23,33,43,0.85);
+  --hg-img-overlay: rgba(0,0,0,0.55);
+  --hg-bub-shadow: 0 1px 2px rgba(0,0,0,0.3);
+
+  /* 8 Peer colors (user_id % 8) */
+  --hg-peer-0: #c03d33;
+  --hg-peer-1: #4fad2d;
+  --hg-peer-2: #d09306;
+  --hg-peer-3: #168acd;
+  --hg-peer-4: #8544d6;
+  --hg-peer-5: #cd4073;
+  --hg-peer-6: #2996ad;
+  --hg-peer-7: #ce671b;
+
+  /* Typography */
+  --hg-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --hg-font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* Spacing */
+  --hg-sp-page: 16px;
+  --hg-radius-bub: 18px;
+  --hg-radius-sm: 12px;
+  --hg-radius-xs: 8px;
+}
+
+/* ── 2. Light Theme Override ── */
+[data-theme="light"] .huginn-root,
+[data-theme="light"] .huginn-chat-page,
+[data-theme="light"] .huginn-list-page,
+.huginn-root.huginn-light,
+.huginn-chat-page.huginn-light,
+.huginn-list-page.huginn-light {
+  --hg-bg: #ffffff;
+  --hg-bg2: #f4f4f5;
+  --hg-chat-bg: #d6e2ea;
+  --hg-header-bg: rgba(255,255,255,0.82);
+  --hg-input-bar-bg: rgba(255,255,255,0.85);
+  --hg-text: #000000;
+  --hg-text2: #999999;
+  --hg-hint: #999999;
+  --hg-accent: #3390ec;
+  --hg-accent-btn: #3390ec;
+  --hg-link: #168acd;
+  --hg-destructive: #df3f40;
+  --hg-sep: rgba(0,0,0,0.08);
+  --hg-in-bub: rgba(255,255,255,0.82);
+  --hg-out-bub: rgba(238,255,222,0.82);
+  --hg-in-text: #000000;
+  --hg-out-text: #000000;
+  --hg-in-time: #a1aab3;
+  --hg-out-time: #4fae4e;
+  --hg-check-read: #4fae4e;
+  --hg-check-sent: #a1aab3;
+  --hg-service-bg: rgba(255,255,255,0.65);
+  --hg-service-text: #8a8a8a;
+  --hg-online: #4fae4e;
+  --hg-badge: #3390ec;
+  --hg-badge-muted: #999999;
+  --hg-reply-bar: #3390ec;
+  --hg-reply-bg: rgba(51,144,236,0.06);
+  --hg-react-bg: rgba(51,144,236,0.08);
+  --hg-react-border: rgba(51,144,236,0.18);
+  --hg-react-active: #3390ec;
+  --hg-wave-active: #4fae4e;
+  --hg-wave-inactive: #c4dab2;
+  --hg-input-field: rgba(0,0,0,0.035);
+  --hg-typing: #3390ec;
+  --hg-unread-sep: #3390ec;
+  --hg-edited: #a1aab3;
+  --hg-scroll-fab-bg: rgba(255,255,255,0.85);
+  --hg-img-overlay: rgba(0,0,0,0.45);
+  --hg-bub-shadow: 0 1px 2px rgba(16,35,47,0.15);
+}
+
+/* ── 3. Root & Layout ── */
+.huginn-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-family: var(--hg-font);
+  color: var(--hg-text);
+  background: var(--hg-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.huginn-chat-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(var(--vh, 1vh) * 100);
+  min-height: 0;
+  position: relative;
+  font-family: var(--hg-font);
+  color: var(--hg-text);
+  background: var(--hg-chat-bg);
+  overflow: hidden;
+}
+
+.huginn-list-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-family: var(--hg-font);
+  color: var(--hg-text);
+}
+
+/* ── 4. Wallpaper SVG Pattern ── */
+.huginn-messages {
+  background-color: var(--hg-chat-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ccircle cx='20' cy='20' r='6' fill='rgba(255,255,255,0.022)'/%3E%3Ccircle cx='80' cy='50' r='4' fill='rgba(255,255,255,0.022)'/%3E%3Ccircle cx='50' cy='90' r='5' fill='rgba(255,255,255,0.022)'/%3E%3Ccircle cx='110' cy='15' r='3' fill='rgba(255,255,255,0.022)'/%3E%3Ccircle cx='30' cy='65' r='3.5' fill='rgba(255,255,255,0.022)'/%3E%3Ccircle cx='95' cy='85' r='4.5' fill='rgba(255,255,255,0.022)'/%3E%3Cpath d='M60 10 Q65 5 70 10 Q65 15 60 10Z' fill='rgba(255,255,255,0.022)'/%3E%3Cpath d='M10 100 Q15 95 20 100 Q15 105 10 100Z' fill='rgba(255,255,255,0.022)'/%3E%3Cpath d='M100 55 Q105 50 110 55 Q105 60 100 55Z' fill='rgba(255,255,255,0.022)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+[data-theme="light"] .huginn-messages,
+.huginn-light .huginn-messages {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ccircle cx='20' cy='20' r='6' fill='rgba(0,0,0,0.035)'/%3E%3Ccircle cx='80' cy='50' r='4' fill='rgba(0,0,0,0.035)'/%3E%3Ccircle cx='50' cy='90' r='5' fill='rgba(0,0,0,0.035)'/%3E%3Ccircle cx='110' cy='15' r='3' fill='rgba(0,0,0,0.035)'/%3E%3Ccircle cx='30' cy='65' r='3.5' fill='rgba(0,0,0,0.035)'/%3E%3Ccircle cx='95' cy='85' r='4.5' fill='rgba(0,0,0,0.035)'/%3E%3Cpath d='M60 10 Q65 5 70 10 Q65 15 60 10Z' fill='rgba(0,0,0,0.035)'/%3E%3Cpath d='M10 100 Q15 95 20 100 Q15 105 10 100Z' fill='rgba(0,0,0,0.035)'/%3E%3Cpath d='M100 55 Q105 50 110 55 Q105 60 100 55Z' fill='rgba(0,0,0,0.035)'/%3E%3C/svg%3E");
+}
+
+/* ── 5. Messages Container ── */
+.huginn-messages {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px var(--hg-sp-page) 8px;
+  display: flex;
+  flex-direction: column;
+  scroll-behavior: smooth;
+}
+
+.huginn-messages::-webkit-scrollbar { width: 4px; height: 0; }
+.huginn-messages::-webkit-scrollbar-track { background: transparent; }
+.huginn-messages::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 2px; }
+
+/* ── 6. Header ── */
+.huginn-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px var(--hg-sp-page);
+  background: var(--hg-header-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--hg-sep);
+  z-index: 10;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.huginn-header-back {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+  flex-shrink: 0;
+  color: var(--hg-accent);
+}
+.huginn-header-back:active {
+  background: var(--hg-sep);
+}
+
+.huginn-header-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.huginn-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--hg-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.huginn-header-subtitle {
+  font-size: 12px;
+  color: var(--hg-text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.huginn-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.huginn-header-action {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+  color: var(--hg-text2);
+}
+.huginn-header-action:active {
+  background: var(--hg-sep);
+}
+
+/* ── 7. Message Bubbles ── */
+.huginn-msg-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  animation: huginn-msg-in 0.2s ease-out;
+}
+.huginn-msg-wrap--mine {
+  flex-direction: row-reverse;
+}
+.huginn-msg-wrap--grouped {
+  margin-top: 1px;
+}
+.huginn-msg-wrap--spaced {
+  margin-top: 8px;
+}
+
+.huginn-bubble {
+  max-width: 75%;
+  padding: 8px 12px;
+  position: relative;
+  word-break: break-word;
+  box-shadow: var(--hg-bub-shadow);
+}
+
+/* Incoming */
+.huginn-bubble--in {
+  background: var(--hg-in-bub);
+  color: var(--hg-in-text);
+}
+/* Outgoing */
+.huginn-bubble--out {
+  background: var(--hg-out-bub);
+  color: var(--hg-out-text);
+}
+
+/* Border radius for bubble positions */
+.huginn-bubble--in.huginn-bubble--single {
+  border-radius: var(--hg-radius-bub) var(--hg-radius-bub) var(--hg-radius-bub) 4px;
+}
+.huginn-bubble--in.huginn-bubble--first {
+  border-radius: var(--hg-radius-bub) var(--hg-radius-bub) var(--hg-radius-bub) 4px;
+}
+.huginn-bubble--in.huginn-bubble--mid {
+  border-radius: 4px var(--hg-radius-bub) var(--hg-radius-bub) 4px;
+}
+.huginn-bubble--in.huginn-bubble--last {
+  border-radius: 4px var(--hg-radius-bub) var(--hg-radius-bub) var(--hg-radius-bub);
+}
+
+.huginn-bubble--out.huginn-bubble--single {
+  border-radius: var(--hg-radius-bub) var(--hg-radius-bub) 4px var(--hg-radius-bub);
+}
+.huginn-bubble--out.huginn-bubble--first {
+  border-radius: var(--hg-radius-bub) var(--hg-radius-bub) 4px var(--hg-radius-bub);
+}
+.huginn-bubble--out.huginn-bubble--mid {
+  border-radius: var(--hg-radius-bub) 4px 4px var(--hg-radius-bub);
+}
+.huginn-bubble--out.huginn-bubble--last {
+  border-radius: var(--hg-radius-bub) 4px var(--hg-radius-bub) var(--hg-radius-bub);
+}
+
+/* Deleted bubble */
+.huginn-bubble--deleted {
+  background: transparent;
+  border: 1px dashed var(--hg-sep);
+  box-shadow: none;
+}
+.huginn-deleted-msg {
+  font-size: 13px;
+  color: var(--hg-hint);
+  font-style: italic;
+  opacity: 0.6;
+}
+
+/* Sender name in group chats */
+.huginn-sender-name {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* Message text */
+.huginn-msg-text {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* Avatar spacer (for grouped messages) */
+.huginn-avatar-spacer {
+  width: 28px;
+  flex-shrink: 0;
+}
+
+/* ── 8. SVG Bubble Tails ── */
+.huginn-tail {
+  position: absolute;
+  bottom: 0;
+  width: 12px;
+  height: 20px;
+  pointer-events: none;
+}
+.huginn-tail--in {
+  left: -8px;
+  color: var(--hg-in-bub);
+}
+.huginn-tail--out {
+  right: -8px;
+  color: var(--hg-out-bub);
+  transform: scaleX(-1);
+}
+
+/* ── 9. Meta (time + checkmarks) ── */
+.huginn-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+.huginn-meta--mine {
+  justify-content: flex-end;
+}
+.huginn-meta--other {
+  justify-content: flex-start;
+}
+
+.huginn-time {
+  font-size: 10px;
+}
+.huginn-time--in { color: var(--hg-in-time); }
+.huginn-time--out { color: var(--hg-out-time); }
+
+.huginn-check { display: inline-flex; }
+.huginn-check--sent { color: var(--hg-check-sent); }
+.huginn-check--read { color: var(--hg-check-read); transition: color 0.3s ease; }
+
+/* ── 10. Composer ── */
+.huginn-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px var(--hg-sp-page);
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  background: var(--hg-input-bar-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--hg-sep);
+  flex-shrink: 0;
+}
+
+/* ── 11. Textarea ── */
+.huginn-textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 20px;
+  max-height: 120px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-family: var(--hg-font);
+  border-radius: 20px;
+  border: 1px solid var(--hg-sep);
+  background: var(--hg-input-field);
+  color: var(--hg-text);
+  resize: none;
+  overflow-y: auto;
+  line-height: 1.4;
+  outline: none;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.huginn-textarea::placeholder {
+  color: var(--hg-hint);
+}
+.huginn-textarea:focus {
+  border-color: var(--hg-accent);
+  box-shadow: none;
+}
+
+/* ── 12. Buttons ── */
+.huginn-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--hg-text2);
+  transition: background 0.15s ease;
+}
+.huginn-btn:active {
+  background: var(--hg-sep);
+}
+.huginn-btn svg {
+  stroke: var(--hg-text2);
+}
+
+.huginn-send-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+  background: var(--hg-accent);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.huginn-send-btn:active {
+  transform: scale(0.92);
+}
+.huginn-send-btn svg {
+  stroke: #fff;
+}
+
+/* ── 13. Scroll-to-bottom FAB ── */
+.huginn-scroll-fab {
+  position: absolute;
+  right: 16px;
+  bottom: 80px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--hg-scroll-fab-bg);
+  border: 1px solid var(--hg-sep);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  animation: huginn-fab-in 0.2s ease-out;
+}
+.huginn-scroll-fab--visible {
+  display: flex;
+}
+.huginn-scroll-fab svg {
+  stroke: var(--hg-text);
+}
+.huginn-scroll-fab:active {
+  transform: scale(0.92);
+}
+
+/* ── 14. Date Pills ── */
+.huginn-date-pill {
+  align-self: center;
+  padding: 4px 12px;
+  border-radius: 16px;
+  background: var(--hg-service-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--hg-service-text);
+  font-size: 12px;
+  font-weight: 500;
+  margin: 8px 0;
+  text-align: center;
+}
+
+/* ── 15. Reaction Pills ── */
+.huginn-reactions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.huginn-reaction-pill {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--hg-react-bg);
+  border: 1px solid transparent;
+  font-size: 14px;
+  transition: transform 0.15s ease;
+}
+.huginn-reaction-pill:active {
+  transform: scale(0.92);
+}
+.huginn-reaction-pill--mine {
+  background: var(--hg-react-active);
+  background: rgba(var(--hg-react-active), 0.15);
+  border-color: var(--hg-react-border);
+}
+.huginn-reaction-pill__count {
+  font-size: 11px;
+  color: var(--hg-text2);
+}
+
+/* ── 16. Video Circle ── */
+.huginn-video-circle {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid var(--hg-accent);
+}
+.huginn-video-circle video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.huginn-video-circle__overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hg-img-overlay);
+  border-radius: 50%;
+}
+
+/* ── 17. Voice Player ── */
+.huginn-voice-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+}
+.huginn-voice-play {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.huginn-voice-play:active {
+  background: rgba(255,255,255,0.25);
+}
+.huginn-voice-bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  height: 32px;
+}
+.huginn-voice-bar {
+  width: 3px;
+  border-radius: 1.5px;
+  background: var(--hg-wave-inactive);
+  transition: background 0.15s ease;
+}
+.huginn-voice-bar--active {
+  background: var(--hg-wave-active);
+}
+.huginn-voice-duration {
+  font-size: 12px;
+  color: rgba(255,255,255,0.6);
+  flex-shrink: 0;
+}
+
+/* ── 18. Recording Overlay ── */
+.huginn-recording {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 100;
+}
+.huginn-recording__icon {
+  font-size: 48px;
+  animation: huginn-pulse 1.5s infinite;
+}
+.huginn-recording__timer {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+.huginn-recording__hint {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+}
+.huginn-recording__stop {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--hg-destructive);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.huginn-recording__stop:active {
+  transform: scale(0.9);
+}
+
+/* ── 19. Reply Bar ── */
+.huginn-reply-bar {
+  display: none;
+  padding: 8px var(--hg-sp-page);
+  background: var(--hg-reply-bg);
+  border-top: 1px solid var(--hg-sep);
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.huginn-reply-bar--visible {
+  display: flex;
+}
+.huginn-reply-content {
+  flex: 1;
+  min-width: 0;
+  border-left: 2px solid var(--hg-reply-bar);
+  padding-left: 8px;
+}
+.huginn-reply-name {
+  font-size: 12px;
+  color: var(--hg-reply-bar);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.huginn-reply-text {
+  font-size: 13px;
+  color: var(--hg-text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.huginn-reply-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: var(--hg-text2);
+}
+.huginn-reply-close:active {
+  background: var(--hg-sep);
+}
+
+/* Reply inside bubble */
+.huginn-bubble-reply {
+  border-left: 2px solid var(--hg-reply-bar);
+  padding-left: 8px;
+  margin-bottom: 4px;
+  opacity: 0.8;
+}
+.huginn-bubble--out .huginn-bubble-reply {
+  border-left-color: rgba(255,255,255,0.5);
+}
+.huginn-bubble-reply__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hg-reply-bar);
+}
+.huginn-bubble--out .huginn-bubble-reply__name {
+  color: rgba(255,255,255,0.9);
+}
+.huginn-bubble-reply__text {
+  font-size: 12px;
+  color: var(--hg-text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.huginn-bubble--out .huginn-bubble-reply__text {
+  color: rgba(255,255,255,0.7);
+}
+
+/* ── 20. Typing Indicator ── */
+.huginn-typing {
+  height: 0;
+  overflow: hidden;
+  padding: 0 var(--hg-sp-page);
+  transition: height 0.2s ease, padding 0.2s ease;
+  font-size: 12px;
+  color: var(--hg-typing);
+}
+.huginn-typing--visible {
+  height: 24px;
+  padding: 4px var(--hg-sp-page);
+}
+
+.huginn-typing-dots {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.huginn-typing-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--hg-typing);
+  display: inline-block;
+  animation: huginn-typing-dots 1.2s infinite;
+}
+.huginn-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.huginn-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+/* ── 21. Emoji Panel ── */
+.huginn-emoji-panel {
+  display: none;
+  height: 250px;
+  background: var(--hg-bg2);
+  border-top: 1px solid var(--hg-sep);
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.huginn-emoji-panel--visible {
+  display: flex;
+}
+
+.huginn-emoji-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--hg-sep);
+}
+.huginn-emoji-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hg-text2);
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.huginn-emoji-tab--active {
+  color: var(--hg-accent);
+  border-bottom-color: var(--hg-accent);
+}
+
+.huginn-emoji-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  align-content: start;
+}
+.huginn-emoji-item {
+  font-size: 24px;
+  text-align: center;
+  padding: 6px;
+  cursor: pointer;
+  border-radius: var(--hg-radius-xs);
+  transition: background 0.1s ease;
+}
+.huginn-emoji-item:active {
+  background: var(--hg-sep);
+}
+
+/* ── 22. Chat List Row ── */
+.huginn-chat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px var(--hg-sp-page);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.huginn-chat-row:active {
+  background: var(--hg-sep);
+}
+
+.huginn-chat-row__info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.huginn-chat-row__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--hg-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.huginn-chat-row__preview {
+  font-size: 13px;
+  color: var(--hg-text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.huginn-chat-row__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.huginn-chat-row__time {
+  font-size: 11px;
+  color: var(--hg-text2);
+}
+
+.huginn-unread-badge {
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--hg-badge);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  animation: huginn-badge-in 0.3s ease-out;
+}
+.huginn-unread-badge--muted {
+  background: var(--hg-badge-muted);
+}
+
+/* ── 23. Pull-to-Refresh ── */
+.huginn-pull-indicator {
+  text-align: center;
+  height: 0;
+  overflow: hidden;
+  transition: height 0.2s ease;
+  font-size: 12px;
+  color: var(--hg-text2);
+}
+
+/* ── 24. Image Attachments ── */
+.huginn-img-wrap {
+  margin-top: 6px;
+  cursor: pointer;
+  border-radius: var(--hg-radius-sm);
+  overflow: hidden;
+  max-width: 240px;
+  max-height: 300px;
+  background: rgba(0,0,0,0.1);
+}
+.huginn-img-wrap img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: var(--hg-radius-sm);
+  max-height: 300px;
+  object-fit: cover;
+}
+
+/* Video attachment placeholder */
+.huginn-vid-wrap {
+  margin-top: 6px;
+  cursor: pointer;
+  border-radius: var(--hg-radius-sm);
+  overflow: hidden;
+  max-width: 240px;
+  height: 140px;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.huginn-vid-wrap svg {
+  fill: rgba(255,255,255,0.8);
+}
+.huginn-vid-name {
+  font-size: 12px;
+  color: var(--hg-text2);
+  margin-top: 2px;
+}
+
+/* File attachment */
+.huginn-file-att {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.huginn-file-att:hover { opacity: 1; }
+.huginn-file-att__name {
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+/* ── 25. Online Status Dot ── */
+.huginn-online-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hg-online);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* ── 26. Quick Reactions (long-press) ── */
+.huginn-quick-react {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: var(--hg-bg2);
+  border: 1px solid var(--hg-sep);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  z-index: 50;
+  animation: huginn-react-pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.huginn-quick-react__emoji {
+  font-size: 24px;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 6px;
+  transition: transform 0.1s ease;
+}
+.huginn-quick-react__emoji:active {
+  transform: scale(1.3);
+}
+
+/* ── 27. Unread Separator ── */
+.huginn-unread-sep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  color: var(--hg-unread-sep);
+  font-size: 12px;
+  font-weight: 600;
+}
+.huginn-unread-sep::before,
+.huginn-unread-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hg-unread-sep);
+  opacity: 0.4;
+}
+
+/* ── 28. Empty State ── */
+.huginn-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  opacity: 0.5;
+  padding: 40px 20px;
+  text-align: center;
+}
+.huginn-empty__icon {
+  font-size: 48px;
+}
+.huginn-empty__text {
+  font-size: 15px;
+  color: var(--hg-text2);
+}
+
+/* ══════════════════════════════════════════════
+   29. ANIMATIONS
+   ══════════════════════════════════════════════ */
+
+@keyframes huginn-msg-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes huginn-send-fly {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.95); }
+  60%  { opacity: 1; transform: translateY(-2px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes huginn-typing-dots {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30% { transform: translateY(-3.5px); opacity: 1; }
+}
+
+@keyframes huginn-pulse {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(236,57,66,0.5); }
+  50%  { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(236,57,66,0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(236,57,66,0); }
+}
+
+@keyframes huginn-react-pop {
+  0%   { transform: translateX(-50%) scale(0); }
+  50%  { transform: translateX(-50%) scale(1.1); }
+  100% { transform: translateX(-50%) scale(1); }
+}
+
+@keyframes huginn-fab-in {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes huginn-badge-in {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+
+@keyframes huginn-slide-up {
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes huginn-collapse {
+  from { max-height: 500px; opacity: 1; }
+  to   { max-height: 0; opacity: 0; overflow: hidden; }
+}
+
+@keyframes huginn-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ── 30. Utility Classes ── */
+.huginn-hidden { display: none !important; }
+.huginn-no-scrollbar::-webkit-scrollbar { display: none; }
+.huginn-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

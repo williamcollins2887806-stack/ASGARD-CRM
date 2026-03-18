@@ -177,61 +177,17 @@
 }
 
 /* ═══════════════════════════════════════════════
-   Хугинн — overrides для чата
+   Хугинн — overrides MOVED to huginn.css
+   Оставлены только mimir-composer legacy overrides
    ═══════════════════════════════════════════════ */
 
-/* Чат-страница: без нижнего padding от таб-бара */
-.asgard-huginn-chat {
-  padding-bottom: 0 !important;
-}
-.asgard-huginn-chat.asgard-slide-right {
-  animation: asgard-slide-right 0.25s ease-out !important;
-}
-
-/* Composer textarea */
-.asgard-huginn-composer .asgard-huginn-textarea {
-  min-height: 20px !important;
-  max-height: 120px !important;
-  height: 40px !important;
-  padding: 10px 14px !important;
-  font-size: 15px !important;
-  border-radius: 20px !important;
-  border: 1px solid rgba(255,255,255,0.15) !important;
-  background: rgba(255,255,255,0.08) !important;
-  color: var(--text, #fff) !important;
-  resize: none !important;
-  overflow-y: auto !important;
-  line-height: 1.4 !important;
-  outline: none !important;
-}
-.asgard-huginn-composer .asgard-huginn-textarea:focus {
-  border-color: var(--accent, #ff4444) !important;
-  box-shadow: none !important;
-}
-
-/* Composer кнопки — сброс shell min-height */
-.asgard-huginn-btn {
-  min-height: 40px !important;
-  min-width: 40px !important;
-}
-.asgard-huginn-send-btn {
-  min-height: 40px !important;
-  min-width: 40px !important;
-  flex-shrink: 0 !important;
-  margin-left: auto !important;
-}
-
-/* ── CHAT COMPOSER — fixed bottom, full width input ── */
-.asgard-huginn-composer,
+/* Mimir composer — legacy (пока не мигрировано в huginn.css) */
 .asgard-mimir-composer {
   display: flex !important;
   align-items: flex-end !important;
   box-sizing: border-box !important;
   width: 100% !important;
 }
-.asgard-huginn-composer .asgard-huginn-textarea,
-.asgard-huginn-composer .asgard-huginn-input,
-.asgard-mimir-composer .asgard-huginn-input,
 .asgard-mimir-composer .asgard-mimir-input {
   flex: 1 !important;
   min-width: 0 !important;

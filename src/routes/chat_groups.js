@@ -687,7 +687,7 @@ module.exports = async function(fastify) {
     const chatId = parseInt(request.params.id);
     if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
-    const { text, reply_to_id, message_type, file_url, file_duration } = request.body;
+    const { text, reply_to_id, message_type, file_url, file_duration, waveform } = request.body;
 
     const member = await getChatMembership(chatId, userId);
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
@@ -699,10 +699,10 @@ module.exports = async function(fastify) {
       return reply.code(400).send({ error: 'Текст сообщения обязателен' });
     }
 
-    // Создать сообщение
+    // Создать сообщение (includes waveform for voice messages)
     const { rows: [message] } = await db.query(`
-      INSERT INTO chat_messages (chat_id, user_id, message, is_read, reply_to, message_type, file_url, file_duration, created_at)
-      VALUES ($1, $2, $3, false, $4, $5, $6, $7, NOW())
+      INSERT INTO chat_messages (chat_id, user_id, message, is_read, reply_to, message_type, file_url, file_duration, waveform, created_at)
+      VALUES ($1, $2, $3, false, $4, $5, $6, $7, $8, NOW())
       RETURNING *
     `, [
       chatId,
@@ -711,12 +711,13 @@ module.exports = async function(fastify) {
       reply_to_id ? parseInt(reply_to_id) : null,
       message_type || 'text',
       file_url || null,
-      file_duration ? parseInt(file_duration) : null
+      file_duration ? parseInt(file_duration) : null,
+      waveform ? JSON.stringify(waveform) : null
     ]);
 
-    // Обновить метаданные чата
+    // Обновить метаданные чата (message_count + last_message_at)
     await db.query(`
-      UPDATE chats SET last_message_at = NOW(), updated_at = NOW()
+      UPDATE chats SET message_count = COALESCE(message_count, 0) + 1, last_message_at = NOW(), updated_at = NOW()
       WHERE id = $1
     `, [chatId]);
 

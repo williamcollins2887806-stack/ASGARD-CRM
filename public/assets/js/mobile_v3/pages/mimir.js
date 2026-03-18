@@ -294,6 +294,14 @@ var MimirPage = {
 
     page.appendChild(composerWrap);
 
+    // Tab-bar: hide on Mimir page
+    if (typeof Layout !== 'undefined' && Layout.hideTabBar) Layout.hideTabBar();
+    if (typeof Router !== 'undefined' && Router.onLeave) {
+      Router.onLeave(function() {
+        if (typeof Layout !== 'undefined' && Layout.showTabBar) Layout.showTabBar();
+      });
+    }
+
     return page;
   },
 };
