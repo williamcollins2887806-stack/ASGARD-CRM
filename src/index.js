@@ -392,6 +392,20 @@ try {
   fastify.log.warn('[Telephony] Job queue/escalation init skipped: ' + telErr.message);
 }
 
+// ── Mimir Cron: Daily Digests ──
+try {
+  const mimirCron = require('./services/mimir-cron');
+  fastify.addHook('onReady', async () => {
+    mimirCron.start();
+    fastify.log.info('[MimirCron] Daily digest cron started');
+  });
+  fastify.addHook('onClose', async () => {
+    mimirCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[MimirCron] Init skipped: ' + cronErr.message);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Additional API aliases for missing dedicated endpoints
 // ─────────────────────────────────────────────────────────────────────────────
