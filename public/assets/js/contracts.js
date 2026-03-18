@@ -249,12 +249,14 @@ window.AsgardContractsPage = (function(){
     s.id = CM_STYLE_ID;
     s.textContent = `
       #contractModal .cm-overlay,
-      #contractSelectorModal .cm-overlay { position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;z-index:1100;animation:cmFadeIn .2s ease }
+      #contractSelectorModal .cm-overlay,
+      #newCustomerModal .cm-overlay { position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;z-index:1100;animation:cmFadeIn .2s ease }
       @keyframes cmFadeIn { from{opacity:0} to{opacity:1} }
       @keyframes cmSlideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
 
       #contractModal .cm-card,
-      #contractSelectorModal .cm-card { width:100%;background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.04) inset;animation:cmSlideUp .25s ease;color:#e5e7eb }
+      #contractSelectorModal .cm-card,
+      #newCustomerModal .cm-card { width:100%;background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.04) inset;animation:cmSlideUp .25s ease;color:#e5e7eb }
 
       /* ── Premium inputs ── */
       #contractModal .cm-inp,
@@ -545,7 +547,13 @@ window.AsgardContractsPage = (function(){
     });
 
     // ── Close ──
-    function closeModal() { modal.remove(); document.removeEventListener('keydown', onKey); }
+    function closeModal() {
+      // Закрыть модалку контрагента если открыта
+      const ncm = document.getElementById('newCustomerModal');
+      if (ncm) ncm.remove();
+      modal.remove();
+      document.removeEventListener('keydown', onKey);
+    }
     const onKey = (e) => { if (e.key === 'Escape') closeModal(); };
     document.addEventListener('keydown', onKey);
     modal.querySelectorAll('.btnClose').forEach(b => b.addEventListener('click', closeModal));
@@ -746,6 +754,9 @@ window.AsgardContractsPage = (function(){
 
   // ═══════ WOW Модалка создания нового контрагента (inline из договора) ═══════
   function openNewCustomerModal(onCreated) {
+    // Не открывать дубль — если уже открыта, закрыть старую
+    const existing = document.getElementById('newCustomerModal');
+    if (existing) existing.remove();
     ensureModalStyles();
     const esc = AsgardUI.esc;
 
@@ -894,7 +905,7 @@ window.AsgardContractsPage = (function(){
 
     // ── Закрытие ──
     const closeNcm = () => { ncModal.remove(); document.removeEventListener('keydown', ncKey); };
-    const ncKey = (e) => { if (e.key === 'Escape') closeNcm(); };
+    const ncKey = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); closeNcm(); } };
     document.addEventListener('keydown', ncKey);
     ncModal.querySelectorAll('.ncm-close').forEach(b => b.addEventListener('click', closeNcm));
     ncOverlay.addEventListener('click', (e) => { if (e.target === ncOverlay) closeNcm(); });
