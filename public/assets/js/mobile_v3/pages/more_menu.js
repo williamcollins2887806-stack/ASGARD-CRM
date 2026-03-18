@@ -32,6 +32,12 @@ var MoreMenuPage = {
       } },
     ];
 
+    // RBAC: фильтрация пунктов меню по роли
+    var _userRole = (Store.get('user') || {}).role || '';
+    if (window.RoleAccess) {
+      menuItems = RoleAccess.filterMenu(menuItems, _userRole);
+    }
+
     var list = el('div', { style: { padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '2px' } });
 
     menuItems.forEach(function (item, idx) {

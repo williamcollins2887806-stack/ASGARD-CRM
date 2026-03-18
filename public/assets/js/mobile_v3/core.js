@@ -149,6 +149,36 @@ const Router = (() => {
 
     const allParams = { ...params, ...found.params };
 
+    // ── RBAC: проверка доступа по роли ──
+    if (window.RoleAccess) {
+      var _rbacUser = typeof Store !== 'undefined' ? Store.get('user') : null;
+      var _rbacRole = _rbacUser && _rbacUser.role;
+      if (_rbacRole && !RoleAccess.hasAccess(_rbacRole, path)) {
+        currentRoute = path;
+        Store.set('activeRoute', path);
+        var _rbacContent = Layout.getContentZone();
+        if (_rbacContent && typeof M !== 'undefined' && M.AccessDenied) {
+          Array.from(_rbacContent.querySelectorAll('.asgard-page')).forEach(function(o) {
+            o.classList.add('asgard-page-exit');
+            setTimeout(function() { if (o.parentNode) o.remove(); }, 350);
+          });
+          Array.from(_rbacContent.children).forEach(function(c) {
+            if (!c.classList.contains('asgard-page')) c.remove();
+          });
+          var _dp = document.createElement('div');
+          _dp.className = 'asgard-page asgard-fade';
+          _dp.appendChild(M.AccessDenied());
+          _rbacContent.appendChild(_dp);
+          _rbacContent.scrollTop = 0;
+          window.scrollTo(0, 0);
+        }
+        transitioning = false;
+        Layout.updateActiveTab();
+        window.dispatchEvent(new CustomEvent('asgard:route', { detail: { path: path, params: allParams, denied: true } }));
+        return;
+      }
+    }
+
     // Determine animation direction
     const prevIndex = historyIndex;
     const prevPath = currentRoute;
