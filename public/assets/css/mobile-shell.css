@@ -111,13 +111,11 @@
   left: 0 !important;
   right: 0 !important;
   bottom: 0 !important;
-  z-index: 9999 !important;
+  z-index: 1500 !important;
 }
 
-.asgard-sheet-overlay > div:last-child {
-  max-height: 85vh !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch;
+.asgard-sheet {
+  z-index: 1501 !important;
 }
 
 .asgard-sheet input,

@@ -452,7 +452,6 @@ const MessengerPage = {
 
     page.appendChild(M.Header({
       title: 'Хугинн',
-      subtitle: 'МЕССЕНДЖЕР',
       back: false,
       actions: [
         {
@@ -528,6 +527,11 @@ const MessengerPage = {
       var txt = chat.last_message_text || '';
       if (mt === 'voice') return '\uD83C\uDFA4 Голосовое';
       if (mt === 'video') return '\uD83C\uDFA5 Видеосообщение';
+      if (mt === 'file') {
+        var fname = txt ? txt.split('/').pop().split('?')[0] : '';
+        return '\uD83D\uDCCE ' + (fname || 'Файл');
+      }
+      if (mt === 'image') return '\uD83D\uDDBC\uFE0F Фото';
       if (txt.length > 60) txt = txt.substring(0, 60) + '…';
       if (!txt) return '';
       // In groups, prefix with sender first name
@@ -1204,7 +1208,8 @@ async function renderChat(chatId) {
     if (composerRight) {
       composerRight.classList.toggle('huginn-composer-right--has-text', hasText);
     } else {
-      sendBtn.style.display = hasText ? 'flex' : 'none';
+      // В Mimir-чате send-кнопка всегда видна (нет mic-кнопки)
+      sendBtn.style.display = isMimirChat ? 'flex' : (hasText ? 'flex' : 'none');
     }
     if (videoRecBtn) videoRecBtn.style.display = hasText ? 'none' : 'flex';
   }
@@ -2907,42 +2912,46 @@ function composeDirectChat() {
   var results = el('div', { style: { maxHeight: '300px', overflowY: 'auto' } });
   content.appendChild(results);
 
+  var myId = (Store.get('user') || {}).id;
+
+  function _renderUserResults(q) {
+    var url = '/users?is_active=true&limit=30' + (q ? '&search=' + encodeURIComponent(q) : '');
+    API.fetch(url).then(function(resp) {
+      var users = (resp.users || []).filter(function(u) { return u.id !== myId; });
+      results.replaceChildren();
+      if (!users.length) {
+        results.appendChild(el('div', { style: { padding: '16px', textAlign: 'center', color: 'var(--hg-hint)', fontSize: '14px' }, textContent: 'Никого не найдено' }));
+        return;
+      }
+      users.forEach(function(u) {
+        var row = el('div', {
+          className: 'huginn-chat-row',
+          onClick: function() {
+            API.fetch('/chat-groups/direct', { method: 'POST', body: { user_id: u.id } }).then(function(resp) {
+              var chatId = (resp.chat || resp).id;
+              Router.navigate('/messenger/' + chatId);
+            }).catch(function() { M.Toast({ message: 'Ошибка создания чата', type: 'error' }); });
+          },
+        });
+        row.appendChild(M.Avatar({ name: u.name || u.login, size: 40 }));
+        var info = el('div', { className: 'huginn-chat-row__info' });
+        info.appendChild(el('div', { className: 'huginn-chat-row__name', textContent: u.name || u.login }));
+        info.appendChild(el('div', { className: 'huginn-chat-row__preview', textContent: u.role || '' }));
+        row.appendChild(info);
+        results.appendChild(row);
+      });
+    }).catch(function() {});
+  }
+
   var _searchTimer = null;
   searchInput.addEventListener('input', function() {
     clearTimeout(_searchTimer);
     var q = searchInput.value.trim();
-    if (q.length < 2) { results.replaceChildren(); return; }
-    _searchTimer = setTimeout(function() {
-      API.fetch('/users?search=' + encodeURIComponent(q) + '&is_active=true&limit=20').then(function(resp) {
-        var users = resp.users || [];
-        results.replaceChildren();
-        var myId = (Store.get('user') || {}).id;
-        users.forEach(function(u) {
-          if (u.id === myId) return;
-          var row = el('div', {
-            className: 'huginn-chat-row',
-            onClick: function() {
-              API.fetch('/chat-groups/direct', { method: 'POST', body: { user_id: u.id } }).then(function(resp) {
-                var chatId = (resp.chat || resp).id;
-                Router.navigate('/messenger/' + chatId);
-              }).catch(function() { M.Toast({ message: 'Ошибка создания чата', type: 'error' }); });
-            },
-          });
-          row.appendChild(M.Avatar({ name: u.name || u.login, size: 40 }));
-          var info = el('div', { className: 'huginn-chat-row__info' });
-          info.appendChild(el('div', { className: 'huginn-chat-row__name', textContent: u.name || u.login }));
-          info.appendChild(el('div', { className: 'huginn-chat-row__preview', textContent: u.role || '' }));
-          row.appendChild(info);
-          results.appendChild(row);
-        });
-        if (!users.length || (users.length === 1 && users[0].id === myId)) {
-          results.appendChild(el('div', { style: { padding: '16px', textAlign: 'center', color: 'var(--hg-hint)', fontSize: '14px' }, textContent: 'Никого не найдено' }));
-        }
-      }).catch(function() {});
-    }, 300);
+    _searchTimer = setTimeout(function() { _renderUserResults(q); }, 300);
   });
 
   M.BottomSheet({ title: 'Новый личный чат', content: content });
+  _renderUserResults('');
   setTimeout(function() { searchInput.focus(); }, 300);
 }
 
