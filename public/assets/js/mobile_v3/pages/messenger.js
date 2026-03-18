@@ -707,6 +707,9 @@ async function renderChat(chatId) {
     style: { background: t.bg },
   });
 
+  // Tab-bar: скрываем сразу, до первого await
+  if (typeof Layout !== 'undefined' && Layout.hideTabBar) Layout.hideTabBar();
+
   // State
   var messages = [];
   var lastMsgId = 0;
@@ -2565,9 +2568,6 @@ async function renderChat(chatId) {
   if (typeof window !== 'undefined') window._huginnDrafts = _draftCache;
   // Restore draft
   if (_draftCache[chatId] && textarea) textarea.value = _draftCache[chatId];
-
-  // Tab-bar: hide when in chat
-  if (typeof Layout !== 'undefined' && Layout.hideTabBar) Layout.hideTabBar();
 
   // Lifecycle: cleanup через Router.onLeave
   if (typeof Router !== 'undefined' && Router.onLeave) {
