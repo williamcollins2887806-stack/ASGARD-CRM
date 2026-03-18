@@ -121,6 +121,7 @@ const SHELL_ASSETS = [
 // ═══════════════════════════════════════════════════════════════
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing', CACHE_NAME);
+  self.skipWaiting(); // активируем новый SW сразу, не ждём закрытия вкладок
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
