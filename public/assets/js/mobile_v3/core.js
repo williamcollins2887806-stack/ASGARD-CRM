@@ -419,9 +419,20 @@ const Layout = (() => {
     });
   }
 
-  // Мимир теперь на отдельной странице /mimir (pages/mimir.js)
+  // Мимир живёт в Хугинне — открываем чат с Мимиром напрямую
   function openMimirChat() {
-    Router.navigate('/mimir');
+    if (window._huginnMimirChatId) {
+      Router.navigate('/messenger/' + window._huginnMimirChatId);
+    } else {
+      API.fetch('/chat-groups/mimir').then(function(r) {
+        if (r && r.chat_id) {
+          window._huginnMimirChatId = r.chat_id;
+          Router.navigate('/messenger/' + r.chat_id);
+        } else {
+          Router.navigate('/messenger');
+        }
+      }).catch(function() { Router.navigate('/messenger'); });
+    }
   }
   window.openMimirChat = openMimirChat;
 
@@ -1465,13 +1476,15 @@ const App = (() => {
       Router.register('/register', { render: () => RegisterPage.render() });
     }
 
-    // Mimir page — redirect legacy route to /mimir
-    Router.register('/mimir-page', {
-      render: function () {
-        Router.navigate('/mimir', { replace: true });
+    // /mimir и /mimir-page → редирект в Хугинн-чат с Мимиром
+    var _mimirRedirect = {
+      render: function() {
+        openMimirChat();
         return document.createElement('div');
       }
-    });
+    };
+    Router.register('/mimir', _mimirRedirect);
+    Router.register('/mimir-page', _mimirRedirect);
 
     // Home page — registered by dashboard.js via Router.register('/home', DashboardPage)
 
