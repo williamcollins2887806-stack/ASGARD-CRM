@@ -175,7 +175,7 @@ var DashboardPage = {
           background: isHero ? 'transparent' : t.surface,
           borderRadius: isHero ? '0' : '16px',
           border: isHero ? 'none' : (isDark ? '0.5px solid rgba(255,255,255,0.06)' : 'none'),
-          overflow: 'hidden',
+          overflow: 'visible',
           boxShadow: isHero ? 'none' : (isDark
             ? '0 1px 2px rgba(0,0,0,0.2), 0 2px 8px rgba(0,0,0,0.15)'
             : '0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.06)'),
@@ -325,8 +325,14 @@ var DashboardPage = {
       // Вертикальный скролл — не свайп удаления
       if (dy > Math.abs(dx) && !swActive) { swLocked = true; return; }
       // Горизонтальный скролл внутри виджета (charts, pills) — не свайп удаления
-      var scrollEl = e.target.closest('[style*="overflow"]') || e.target.closest('.asgard-filter-pills');
-      if (scrollEl && scrollEl !== swCard && !swActive) { swLocked = true; return; }
+      var _swTarget = e.target;
+      while (_swTarget && _swTarget !== swCard) {
+        var _cs = getComputedStyle(_swTarget);
+        if (_cs.overflowX === 'auto' || _cs.overflowX === 'scroll') {
+          swLocked = true; return;
+        }
+        _swTarget = _swTarget.parentElement;
+      }
       if (dx < -20) {
         swActive = true;
         swCard.style.transform = 'translateX(' + Math.max(dx, -100) + 'px)';

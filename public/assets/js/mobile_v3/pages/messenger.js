@@ -490,7 +490,7 @@ async function renderChat(chatId) {
   var userId = (Store.get('user') || {}).id;
   var page = el('div', {
     className: 'asgard-huginn-chat asgard-slide-right',
-    style: { display: 'flex', flexDirection: 'column', height: 'calc(var(--vh, 1vh) * 100)', background: t.bg, position: 'relative' },
+    style: { display: 'flex', flexDirection: 'column', height: '100%', background: t.bg, position: 'relative' },
   });
 
   // State

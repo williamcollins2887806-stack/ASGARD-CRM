@@ -218,6 +218,12 @@ const Router = (() => {
       const newPage = document.createElement('div');
       newPage.className = 'asgard-page ' + animClass;
 
+      // Chat pages manage their own scroll — disable page-level scroll
+      const _chatRoutes = ['/messenger/', '/mimir'];
+      if (_chatRoutes.some(function(r) { return path.indexOf(r) === 0 || path === r; })) {
+        newPage.classList.add('asgard-page--chat');
+      }
+
       try {
         const mod = found.route.module || found.route;
         if (mod && typeof mod.render === 'function') {
@@ -283,7 +289,9 @@ const Router = (() => {
     return !!findRoute(path);
   }
 
-  return { register, addGuard, navigate, back, forward, init, current, parseHash, has, onLeave };
+  function forceRerender() { transitioning = false; handleRoute(); }
+
+  return { register, addGuard, navigate, back, forward, init, current, parseHash, has, onLeave, forceRerender };
 })();
 
 
@@ -1108,20 +1116,21 @@ const Utils = (() => {
       const keyboardOpen = window.innerHeight - window.visualViewport.height > 150;
       document.body.classList.toggle('keyboard-open', keyboardOpen);
 
-      // Move chat composer above keyboard
-      const composer = document.querySelector('.asgard-huginn-composer, .asgard-mimir-composer');
-      if (composer && composer.closest('.asgard-huginn-chat, .asgard-mimir-page')) {
-        if (keyboardOpen) {
-          composer.style.paddingBottom = 'calc(' + (window.innerHeight - window.visualViewport.height) + 'px + env(safe-area-inset-bottom, 0px))';
-        } else {
-          composer.style.paddingBottom = '';
-        }
+      // Scroll chat messages to bottom when keyboard opens
+      if (keyboardOpen) {
+        setTimeout(function() {
+          var msgArea = document.querySelector('.asgard-mimir-messages, .asgard-huginn-messages');
+          if (msgArea) msgArea.scrollTop = msgArea.scrollHeight;
+        }, 300);
       }
 
+      // Scroll form inputs into view (not for chat — chat uses flex)
       if (focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT')) {
-        setTimeout(() => {
-          focused.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
+        if (!focused.closest('.asgard-huginn-composer, .asgard-mimir-composer')) {
+          setTimeout(() => {
+            focused.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 100);
+        }
       }
     });
   }
@@ -1299,10 +1308,7 @@ const App = (() => {
 
     // Re-render current page on theme change
     window.addEventListener('asgard:theme', () => {
-      var currentPath = Store.get('activeRoute') || '/home';
-      setTimeout(() => {
-        Router.navigate(currentPath, { replace: true });
-      }, 50);
+      Router.forceRerender();
     });
 
     // SSE notifications
