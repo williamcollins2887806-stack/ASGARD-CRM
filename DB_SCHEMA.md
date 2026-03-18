@@ -413,6 +413,7 @@
 - message_type text DEFAULT 'text'::text
 - file_url text
 - file_duration integer
+- waveform jsonb
 
 ## chats
 - id integer NOT NULL DEFAULT nextval('chats_id_seq'::regclass)
