@@ -382,9 +382,9 @@ async function hintsRoutes(fastify) {
           try {
             const deadlines = await db.query(`
               SELECT COUNT(*) as cnt FROM works
-              WHERE work_end_plan IS NOT NULL
-                AND work_end_plan > CURRENT_DATE
-                AND work_end_plan <= CURRENT_DATE + INTERVAL '14 days'
+              WHERE end_plan IS NOT NULL
+                AND end_plan > CURRENT_DATE
+                AND end_plan <= CURRENT_DATE + INTERVAL '14 days'
                 AND work_status NOT IN ('Завершена','Отменена','Закрыта')
             `);
             const dlCnt = parseInt(deadlines.rows[0]?.cnt) || 0;

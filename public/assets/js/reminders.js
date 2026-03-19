@@ -234,12 +234,12 @@ window.AsgardReminders = (function(){
     if (hasDataAccess) try {
       const works = await AsgardDB.all('works') || [];
       for (const w of works) {
-        if (!w.work_end_plan) continue;
+        if (!w.end_plan) continue;
         if (w.work_status === 'Работы сдали') continue;
-        
+
         if (w.pm_id !== user.id && user.role !== 'ADMIN') continue;
-        
-        const endDate = new Date(w.work_end_plan);
+
+        const endDate = new Date(w.end_plan);
         const diffDays = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
         
         if (diffDays === 3) {
@@ -252,7 +252,7 @@ window.AsgardReminders = (function(){
               message: `${w.work_title || w.customer_name} — план. окончание через 3 дня`,
               entity_type: 'work',
               entity_id: w.id,
-              due_date: w.work_end_plan,
+              due_date: w.end_plan,
               user_id: user.id,
               auto_key: key
             });

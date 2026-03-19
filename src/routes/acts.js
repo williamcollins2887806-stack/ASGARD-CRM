@@ -61,13 +61,21 @@ async function actsRoutes(fastify, options) {
   fastify.post('/', {
     preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request) => {
-    const {
+    let {
       act_number, act_date, status = 'draft',
       work_id, customer_name, customer_inn,
-      description, amount, vat_pct = 22, total_amount,
+      description, amount, vat_pct = null, total_amount,
       signed_date, paid_date
     } = request.body;
-    
+
+    // Load VAT default from settings if not provided
+    if (vat_pct == null) {
+      try {
+        const vat = await db.query("SELECT value_json FROM settings WHERE key = 'vat_default_pct'");
+        vat_pct = vat.rows[0] ? JSON.parse(vat.rows[0].value_json) : 20;
+      } catch(_) { vat_pct = 20; }
+    }
+
     const result = await db.query(`
       INSERT INTO acts (
         act_number, act_date, status, work_id,

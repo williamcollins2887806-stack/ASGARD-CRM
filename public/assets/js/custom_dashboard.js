@@ -328,7 +328,7 @@ window.AsgardCustomDashboard = (function(){
   async function renderMyWorks(el, user) {
     const w = (await AsgardDB.getAll('works')||[]).filter(x=>x.pm_id===user.id&&x.work_status!=='Завершена'&&x.work_status!=='Работы сдали'&&x.work_status!=='Закрыт').slice(0,5);
     if (!w.length) { el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет активных работ</div>'; return; }
-    el.innerHTML = w.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--red)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.work_name||x.work_title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(x.customer_name)+' \u00B7 '+esc(x.work_status)+'</div></div>').join('');
+    el.innerHTML = w.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--red)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.work_title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(x.customer_name)+' \u00B7 '+esc(x.work_status)+'</div></div>').join('');
   }
 
   async function renderFunnel(el, user) {
@@ -407,7 +407,7 @@ window.AsgardCustomDashboard = (function(){
       return false;
     });
 
-    const sum = yWorks.reduce((s,x) => s + (Number(x.contract_sum) || Number(x.contract_value) || 0), 0);
+    const sum = yWorks.reduce((s,x) => s + (Number(x.contract_value) || 0), 0);
     el.innerHTML = '<div style="text-align:center;padding:8px 0"><div style="font-size:26px;font-weight:900;color:var(--gold)">'+formatMoney(sum)+'</div><div style="font-size:12px;color:var(--t3);margin-top:6px">Сумма договоров за '+y+' г.</div></div>';
   }
 
@@ -601,7 +601,7 @@ window.AsgardCustomDashboard = (function(){
       overdue.map(w => {
         const days = Math.round((now - new Date(w.end_plan)) / 86400000);
         return '<div style="padding:10px 0;display:flex;justify-content:space-between;gap:8px">' +
-          '<div style="font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || w.work_name || ('ID ' + w.id)) + '</div>' +
+          '<div style="font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || ('ID ' + w.id)) + '</div>' +
           '<div style="font-size:11px;color:var(--red);white-space:nowrap">+' + days + ' дн.</div>' +
         '</div>';
       }).join('') +
@@ -798,12 +798,12 @@ window.AsgardCustomDashboard = (function(){
     const y = new Date().getFullYear();
     const yTenders = tenders.filter(t => String(t.year) === String(y) || (t.period || '').startsWith(y));
     const yWorks = works.filter(w => {
-      const d = w.start_fact || w.work_start_plan || w.created_at;
+      const d = w.start_fact || w.start_plan || w.created_at;
       return d && new Date(d).getFullYear() === y;
     });
     const won = yTenders.filter(t => ['Выиграли','Контракт','Клиент согласился'].includes(t.tender_status)).length;
     const conv = yTenders.length > 0 ? Math.round((won / yTenders.length) * 100) : 0;
-    const revenue = yWorks.reduce((s, w) => s + (Number(w.contract_sum) || Number(w.contract_value) || 0), 0);
+    const revenue = yWorks.reduce((s, w) => s + (Number(w.contract_value) || 0), 0);
     const done = yWorks.filter(w => ['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
 
     el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
@@ -833,7 +833,7 @@ window.AsgardCustomDashboard = (function(){
       const days = Math.round((new Date(w.end_plan) - now) / 86400000);
       const color = days <= 3 ? 'var(--red)' : days <= 7 ? 'var(--amber)' : 'var(--text-muted)';
       return '<div style="padding:10px 0;display:flex;justify-content:space-between;gap:8px">' +
-        '<div style="font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || w.work_name || '') + '</div>' +
+        '<div style="font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || '') + '</div>' +
         '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap">' + days + ' дн.</div>' +
       '</div>';
     }).join('') +

@@ -49,7 +49,7 @@ export default function MoneySummaryWidget() {
         const monthlyRevenue = Array(12).fill(0);
 
         yearRows.forEach((r) => {
-          const sum = Number(r.contract_sum || r.contract_value) || 0;
+          const sum = Number(r.contract_value) || 0;
           const cost = Number(r.total_cost || r.expenses) || 0;
           revenue += sum;
           expenses += cost;

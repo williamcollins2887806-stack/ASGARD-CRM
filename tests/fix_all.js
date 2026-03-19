@@ -1,7 +1,7 @@
 /**
  * Comprehensive fix script:
  * 1. Import ~300 skipped general expenses (office, warehouse, etc.) with categories
- * 2. Fill contract_sum/cost_plan from project_data.json for works missing them
+ * 2. Fill contract_value/cost_plan from project_data.json for works missing them
  * 3. Delete test works (XSS probes, "Value test", etc.)
  * 4. Create auto-sync trigger for employee_assignments
  *
@@ -336,7 +336,7 @@ async function phase2_sums(client) {
   console.log('\n═══ PHASE 2: Fill contract sums and cost_plan from Excel ═══');
 
   const { rows: works } = await client.query(
-    "SELECT w.id, w.work_title, w.contract_sum, w.cost_plan, t.tender_title FROM works w LEFT JOIN tenders t ON w.tender_id = t.id"
+    "SELECT w.id, w.work_title, w.contract_value, w.cost_plan, t.tender_title FROM works w LEFT JOIN tenders t ON w.tender_id = t.id"
   );
 
   let updatedContract = 0;
@@ -364,24 +364,24 @@ async function phase2_sums(client) {
     const values = [];
     let idx = 1;
 
-    // Fill contract_sum if missing and we have it from Excel
-    if ((!work.contract_sum || parseFloat(work.contract_sum) === 0) && contractSum > 0) {
-      updates.push(`contract_sum = $${idx}`);
+    // Fill contract_value if missing and we have it from Excel
+    if ((!work.contract_value || parseFloat(work.contract_value) === 0) && contractSum > 0) {
+      updates.push(`contract_value = $${idx}`);
       values.push(contractSum);
       idx++;
       updatedContract++;
     }
 
-    // If no contract_sum but we have TKP sum, use it
-    if ((!work.contract_sum || parseFloat(work.contract_sum) === 0) && !contractSum && tkpSum > 0) {
-      updates.push(`contract_sum = $${idx}`);
+    // If no contract_value but we have TKP sum, use it
+    if ((!work.contract_value || parseFloat(work.contract_value) === 0) && !contractSum && tkpSum > 0) {
+      updates.push(`contract_value = $${idx}`);
       values.push(tkpSum);
       idx++;
       updatedTkp++;
     }
 
-    // Fill cost_plan = contract_sum / 2 if not set
-    const effectiveSum = contractSum || tkpSum || parseFloat(work.contract_sum) || 0;
+    // Fill cost_plan = contract_value / 2 if not set
+    const effectiveSum = contractSum || tkpSum || parseFloat(work.contract_value) || 0;
     if ((!work.cost_plan || parseFloat(work.cost_plan) === 0) && effectiveSum > 0) {
       updates.push(`cost_plan = $${idx}`);
       values.push(Math.round(effectiveSum / 2 * 100) / 100);
@@ -398,8 +398,8 @@ async function phase2_sums(client) {
     }
   }
 
-  console.log(`  Updated contract_sum from contractSum: ${updatedContract}`);
-  console.log(`  Updated contract_sum from tkpSum: ${updatedTkp}`);
+  console.log(`  Updated contract_value from contractSum: ${updatedContract}`);
+  console.log(`  Updated contract_value from tkpSum: ${updatedTkp}`);
   console.log(`  Updated cost_plan: ${updatedCost}`);
 }
 
@@ -638,13 +638,13 @@ async function run() {
 
     const { rows: workStats } = await client.query(`
       SELECT COUNT(*) as total,
-             COUNT(NULLIF(contract_sum, 0)) as with_sum,
+             COUNT(NULLIF(contract_value, 0)) as with_sum,
              COUNT(NULLIF(cost_plan, 0)) as with_cost_plan,
              COUNT(NULLIF(cost_fact, 0)) as with_cost_fact,
              COUNT(start_plan) as with_dates
       FROM works
     `);
-    console.log(`  Works: ${workStats[0].total}, with contract_sum: ${workStats[0].with_sum}, cost_plan: ${workStats[0].with_cost_plan}, cost_fact: ${workStats[0].with_cost_fact}, with dates: ${workStats[0].with_dates}`);
+    console.log(`  Works: ${workStats[0].total}, with contract_value: ${workStats[0].with_sum}, cost_plan: ${workStats[0].with_cost_plan}, cost_fact: ${workStats[0].with_cost_fact}, with dates: ${workStats[0].with_dates}`);
 
     const { rows: eaStats } = await client.query("SELECT COUNT(*) FROM employee_assignments");
     console.log(`  Employee assignments: ${eaStats[0].count}`);

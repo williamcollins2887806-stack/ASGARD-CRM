@@ -72,7 +72,7 @@ const InvoicesPage = {
       const q = (query || '').toLowerCase();
       const filtered = items.filter(inv => {
         if (filter !== 'all' && inv.status !== filter) return false;
-        if (q && !(inv.number || '').toLowerCase().includes(q) && !(inv.customer_name || '').toLowerCase().includes(q) && !(inv.work_name || '').toLowerCase().includes(q)) return false;
+        if (q && !(inv.number || '').toLowerCase().includes(q) && !(inv.customer_name || '').toLowerCase().includes(q) && !(inv.work_title || '').toLowerCase().includes(q)) return false;
         return true;
       });
 
@@ -88,7 +88,7 @@ const InvoicesPage = {
       filtered.forEach((inv, i) => {
         wrap.appendChild(M.Card({
           title: '№' + (inv.number || '—') + (inv.customer_name ? ' • ' + inv.customer_name : ''),
-          subtitle: inv.work_name || '',
+          subtitle: inv.work_title || '',
           badge: statusLabel[inv.status] || inv.status || '',
           badgeColor: statusMap[inv.status] || 'neutral',
           time: inv.date ? Utils.formatDate(inv.date) : '',
@@ -120,7 +120,7 @@ function viewInvoiceSheet(inv) {
       { label: 'Дата', value: inv.date ? Utils.formatDate(inv.date) : '—' },
       { label: 'Статус', value: inv.status || '—' },
       { label: 'Заказчик', value: inv.customer_name || '—' },
-      { label: 'Работа', value: inv.work_name || '—' },
+      { label: 'Работа', value: inv.work_title || '—' },
       { label: 'Сумма', value: inv.amount ? Utils.formatMoney(inv.amount) : '—' },
       { label: 'Сумма с НДС', value: inv.amount_with_vat ? Utils.formatMoney(inv.amount_with_vat) : '—' },
       { label: 'Оплачено', value: inv.paid_amount != null ? Utils.formatMoney(inv.paid_amount) : '—' },

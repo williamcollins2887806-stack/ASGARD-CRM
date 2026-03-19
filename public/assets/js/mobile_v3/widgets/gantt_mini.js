@@ -22,7 +22,7 @@ window.MobileWidgets.gantt_mini = {
           var db = el('div', { style: { width: '50px', padding: '6px 4px', borderRadius: '8px', textAlign: 'center', background: color + '15', flexShrink: '0' } });
           db.appendChild(el('div', { style: { fontSize: '11px', fontWeight: '700', color: color } }, Utils.formatDate(w.end_plan, 'short')));
           row.appendChild(db);
-          row.appendChild(el('div', { style: Object.assign({}, DS.font('sm'), { color: t.text, flex: '1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }) }, w.work_title || w.work_name || '#' + w.id));
+          row.appendChild(el('div', { style: Object.assign({}, DS.font('sm'), { color: t.text, flex: '1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }) }, w.work_title || '#' + w.id));
           list.appendChild(row);
         });
         container.replaceChildren(list);

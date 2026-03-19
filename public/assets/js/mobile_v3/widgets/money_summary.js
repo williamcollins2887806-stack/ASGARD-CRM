@@ -19,7 +19,7 @@ window.MobileWidgets.money_summary = {
           return d ? d.getFullYear() === y : true;
         }).forEach(function (x) { tIds[x.id] = true; });
         var yWorks = works.filter(function (x) { var d = x.start_fact || x.start_plan || x.created_at; if (d && new Date(d).getFullYear() === y) return true; if (x.tender_id && tIds[x.tender_id]) return true; return false; });
-        var revenue = yWorks.reduce(function (s, x) { return s + (Number(x.contract_sum) || Number(x.contract_value) || 0); }, 0);
+        var revenue = yWorks.reduce(function (s, x) { return s + (Number(x.contract_value) || 0); }, 0);
         var expenses = yWorks.reduce(function (s, x) { return s + (Number(x.total_cost) || Number(x.expenses) || 0); }, 0);
         var profit = revenue - expenses;
 
@@ -67,7 +67,7 @@ window.MobileWidgets.money_summary = {
           var mRev = yWorks.filter(function (x) {
             var d = x.start_fact || x.start_plan || x.created_at;
             return d && new Date(d).getMonth() === m;
-          }).reduce(function (s, x) { return s + (Number(x.contract_sum) || Number(x.contract_value) || 0); }, 0);
+          }).reduce(function (s, x) { return s + (Number(x.contract_value) || 0); }, 0);
           sparkData.push(mRev);
         }
         if (typeof M.Sparkline === 'function') {

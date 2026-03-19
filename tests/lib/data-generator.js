@@ -51,10 +51,10 @@ function work(overrides = {}) {
     work_title: `${TEST_PREFIX}Work_${id}`,
     work_status: 'Подготовка',
     customer_name: `${TEST_PREFIX}Customer_${id}`,
-    contract_sum: randomInt(50000, 2000000),
+    contract_value: randomInt(50000, 2000000),
     start_date: new Date().toISOString().split('T')[0],
     start_plan: futureDate(7),
-    end_date_plan: futureDate(60),
+    end_plan: futureDate(60),
     ...overrides,
   };
 }

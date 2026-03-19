@@ -104,7 +104,7 @@ window.AsgardEmployeePage=(function(){
       return `<tr${isCurrent?' style="background:rgba(34,197,94,.08)"':''}>
         <td style="white-space:nowrap">${a.date_from ? new Date(a.date_from).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'}</td>
         <td style="white-space:nowrap">${a.date_to ? new Date(a.date_to).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'}</td>
-        <td><b>${w?esc(w.work_title||w.work_name||""):"—"}</b></td>
+        <td><b>${w?esc(w.work_title||""):"—"}</b></td>
         <td>${esc(customer)}</td>
         <td>${esc(city)}</td>
         <td>${esc(a.role||a.role_on_work||"")}</td>
@@ -506,7 +506,7 @@ window.AsgardEmployeePage=(function(){
         var t2 = w2 ? tenderMap.get(w2?.tender_id) : null;
         var isCurr = !a2.date_to || a2.date_to.slice(0,10) >= todayStr;
         var bgColor = isCurr ? 'linear-gradient(135deg,#d4a825,#c9952a)' : 'linear-gradient(135deg,#22c55e,#1a8a4a)';
-        var label = w2 ? (w2.work_title||w2.work_name||'').substring(0,25) : '';
+        var label = w2 ? (w2.work_title||'').substring(0,25) : '';
         var customer = w2?.customer_name || t2?.customer_name || '';
         var pmName = w2?.pm_id ? (userMap.get(w2.pm_id)||'') : '';
         var role = a2.role || a2.role_on_work || '';

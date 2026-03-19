@@ -119,7 +119,7 @@ window.AsgardBonusApproval = (function(){
           <div class="modal-body" style="max-height:70vh;overflow-y:auto">
             <div style="margin-bottom:16px">
               <div class="help">Работа:</div>
-              <div style="font-weight:600">${esc(work.work_title || work.work_name || 'ID:' + workId)}</div>
+              <div style="font-weight:600">${esc(work.work_title || 'ID:' + workId)}</div>
             </div>
             
             <div class="tbl-wrap">
@@ -213,7 +213,7 @@ window.AsgardBonusApproval = (function(){
       const request = {
         id: undefined,
         work_id: workId,
-        work_title: work.work_title || work.work_name,
+        work_title: work.work_title||'',
         pm_id: user.id,
         pm_name: user.name || user.login,
         bonuses: bonuses,
@@ -264,7 +264,7 @@ window.AsgardBonusApproval = (function(){
                 action: 'created',
                 entityId: request.id,
                 toUserId: d.id,
-                details: `РП ${user.name || user.login} запрашивает согласование премий.\nРабота: ${work.work_title || work.work_name}\nСумма: ${formatMoney(total)}`
+                details: `РП ${user.name || user.login} запрашивает согласование премий.\nРабота: ${work.work_title||''}\nСумма: ${formatMoney(total)}`
               })
             }).catch(() => {});
           }

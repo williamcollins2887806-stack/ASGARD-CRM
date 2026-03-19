@@ -167,7 +167,7 @@ async function createWorks() {
     const costPlan = tkpSum ? tkpSum / 2 : (contractSum > 0 ? contractSum / 2 : null);
     if (!DRY_RUN) {
       try {
-        await pool.query("INSERT INTO works (tender_id, customer_name, customer_inn, work_title, work_status, contract_sum, cost_plan, pm_id, start_in_work_date, end_plan, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())", [t.id, t.customer_name, t.customer_inn, t.tender_title, '\u041d\u043e\u0432\u0430\u044f', contractSum, costPlan, t.responsible_pm_id, t.work_start_plan || null, t.work_end_plan || null]);
+        await pool.query("INSERT INTO works (tender_id, customer_name, customer_inn, work_title, work_status, contract_value, cost_plan, pm_id, start_in_work_date, end_plan, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())", [t.id, t.customer_name, t.customer_inn, t.tender_title, '\u041d\u043e\u0432\u0430\u044f', contractSum, costPlan, t.responsible_pm_id, t.work_start_plan || null, t.work_end_plan || null]);
         stats.works.created++;
       } catch(e) { console.error('Work error:', t.id, e.message); stats.works.errors++; }
     } else { stats.works.created++; }

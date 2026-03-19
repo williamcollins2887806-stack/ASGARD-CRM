@@ -47,14 +47,16 @@ async function routes(fastify, options) {
   });
 
   // SECURITY: Только WRITE_ROLES (HIGH-9)
+  const ALLOWED_COLS_INCOMES = new Set(['work_id', 'type', 'amount', 'date', 'counterparty', 'description', 'document_number', 'source', 'comment', 'confirmed', 'invoice_id']);
+
   fastify.put('/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const { id } = request.params;
-    const data = request.body;
+    const raw = request.body;
     const updates = [];
     const values = [];
     let idx = 1;
-    for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) { updates.push(`${key} = $${idx}`); values.push(value); idx++; }
+    for (const [key, value] of Object.entries(raw)) {
+      if (value !== undefined && ALLOWED_COLS_INCOMES.has(key)) { updates.push(`${key} = $${idx}`); values.push(value); idx++; }
     }
     updates.push('updated_at = NOW()');
     values.push(id);

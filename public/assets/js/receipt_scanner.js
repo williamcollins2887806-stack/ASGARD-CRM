@@ -582,7 +582,7 @@ window.AsgardReceiptScanner = (function(){
         activeWorks.forEach(w => {
           const opt = document.createElement('option');
           opt.value = w.id;
-          opt.textContent = w.work_name || w.work_title || `Работа #${w.id}`;
+          opt.textContent = w.work_title || `Работа #${w.id}`;
           if (currentWorkId && w.id === currentWorkId) {
             opt.selected = true;
           }

@@ -742,7 +742,7 @@ window.AsgardStaffSchedulePage=(function(){
             var w = fullWorkMap.get(a.work_id);
             var isCurr = !a.date_to || a.date_to.slice(0,10)>=todayS;
             var bgC = isCurr ? 'linear-gradient(135deg,#d4a825,#c9952a)' : 'linear-gradient(135deg,#22c55e,#1a8a4a)';
-            var lbl = w ? (w.work_title||w.work_name||w.customer_name||'').substring(0,28) : '';
+            var lbl = w ? (w.work_title||w.customer_name||'').substring(0,28) : '';
             var cust = w ? (w.customer_name||'') : '';
             var city = w ? (w.city||'') : '';
             var pm = w&&w.pm_id ? (userMap.get(w.pm_id)||'') : '';

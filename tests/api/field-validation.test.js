@@ -126,9 +126,9 @@ module.exports = {
           body: {
             work_title: 'Validation Work',
             work_status: 'Подготовка',
-            contract_sum: 500000,
+            contract_value: 500000,
             start_plan: '2026-03-01',
-            end_date_plan: '2026-06-01'
+            end_plan: '2026-06-01'
           }
         });
         assertOk(resp, 'create work');

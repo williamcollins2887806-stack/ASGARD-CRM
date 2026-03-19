@@ -799,7 +799,7 @@ window.AsgardPermitsPage = (function(){
           <label>Проект (для требований)</label>
           <select id="matrixWork" class="inp" style="min-width:250px">
             <option value="">Все типы</option>
-            ${works.filter(w => w.work_status !== 'Завершён').map(w => `<option value="${w.id}">${esc(w.work_title || w.work_name || 'ID:' + w.id)}</option>`).join('')}
+            ${works.filter(w => w.work_status !== 'Завершён').map(w => `<option value="${w.id}">${esc(w.work_title || 'ID:' + w.id)}</option>`).join('')}
           </select>
         </div>
         <button class="btn" id="btnLoadMatrix">Показать</button>
@@ -883,7 +883,7 @@ window.AsgardPermitsPage = (function(){
           <label>Выберите проект</label>
           <select id="projectSelect" class="inp">
             <option value="">— Выберите —</option>
-            ${works.filter(w => w.work_status !== 'Завершён').map(w => `<option value="${w.id}">${esc(w.work_title || w.work_name || 'Проект #' + w.id)}</option>`).join('')}
+            ${works.filter(w => w.work_status !== 'Завершён').map(w => `<option value="${w.id}">${esc(w.work_title || 'Проект #' + w.id)}</option>`).join('')}
           </select>
         </div>
       </div>

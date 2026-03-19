@@ -22,7 +22,7 @@ window.MobileWidgets.overdue_works = {
         var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } });
         overdue.forEach(function (w) {
           var days = Math.round((now - new Date(w.end_plan)) / 86400000);
-          list.appendChild(M.Card({ title: w.work_title || w.work_name || 'Работа #' + w.id, badge: 'Просрочено ' + days + ' дн', badgeColor: 'danger', fields: w.customer_name ? [{ label: 'Объект', value: w.customer_name }] : [] }));
+          list.appendChild(M.Card({ title: w.work_title || 'Работа #' + w.id, badge: 'Просрочено ' + days + ' дн', badgeColor: 'danger', fields: w.customer_name ? [{ label: 'Объект', value: w.customer_name }] : [] }));
         });
         container.replaceChildren(list);
         container.style.cursor = 'pointer';

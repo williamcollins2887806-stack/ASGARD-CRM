@@ -84,14 +84,14 @@ var GanttPage = (function () {
       { label: 'Статус', value: work.work_status || '—', type: 'badge', badgeColor: statusColor(work.work_status).indexOf('green') !== -1 ? 'success' : statusColor(work.work_status).indexOf('blue') !== -1 ? 'info' : 'warning' },
       { label: 'Объект', value: work.object_name || work.customer_name || '—' },
       { label: 'План начало', value: work.start_plan ? new Date(work.start_plan).toLocaleDateString('ru-RU') : '—' },
-      { label: 'План конец', value: (work.end_plan || work.end_date_plan) ? new Date(work.end_plan || work.end_date_plan).toLocaleDateString('ru-RU') : '—' },
+      { label: 'План конец', value: work.end_plan ? new Date(work.end_plan).toLocaleDateString('ru-RU') : '—' },
       { label: 'Факт начало', value: work.start_fact ? new Date(work.start_fact).toLocaleDateString('ru-RU') : '—' },
       { label: 'Факт конец', value: work.end_fact ? new Date(work.end_fact).toLocaleDateString('ru-RU') : '—' },
       { label: 'Ответственный', value: work.pm_name || work.manager_name || '—' },
     ];
 
-    if (work.contract_sum) {
-      fields.push({ label: 'Бюджет', value: Utils.formatMoney(parseFloat(work.contract_sum)) + ' ₽' });
+    if (work.contract_value) {
+      fields.push({ label: 'Бюджет', value: Utils.formatMoney(parseFloat(work.contract_value)) + ' ₽' });
     }
 
     content.appendChild(M.DetailFields({ fields: fields }));
@@ -308,11 +308,11 @@ var GanttPage = (function () {
 
       API.fetchCached('works', '/works?limit=500').then(function (data) {
         var works = (Array.isArray(data) ? data : API.extractRows(data))
-          .filter(function (w) { return w.start_plan || w.start_fact || w.start_date || w.end_plan || w.end_date_plan || w.end_fact; })
+          .filter(function (w) { return w.start_plan || w.start_fact || w.start_date || w.end_plan || w.end_fact; })
           .map(function (w) {
             return Object.assign({}, w, {
               _start: w.start_fact ? new Date(w.start_fact) : (w.start_plan ? new Date(w.start_plan) : (w.start_date ? new Date(w.start_date) : null)),
-              _end: w.end_fact ? new Date(w.end_fact) : (w.end_plan ? new Date(w.end_plan) : (w.end_date_plan ? new Date(w.end_date_plan) : null)),
+              _end: w.end_fact ? new Date(w.end_fact) : (w.end_plan ? new Date(w.end_plan) : null),
             });
           })
           .sort(function (a, b) {

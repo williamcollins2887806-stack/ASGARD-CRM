@@ -104,7 +104,7 @@ async function getDbStats(db, user) {
 
     // РАБОТЫ
     if (hasFullAccess(role) || isPM(role) || isBUH(role)) {
-      let worksQuery = 'SELECT COUNT(*) as total, COALESCE(SUM(contract_sum), 0) as sum FROM works';
+      let worksQuery = 'SELECT COUNT(*) as total, COALESCE(SUM(contract_value), 0) as sum FROM works';
       let params = [];
 
       if (isPM(role) && !hasFullAccess(role)) {
@@ -211,7 +211,7 @@ async function searchWorks(db, query, user) {
   if (!hasFullAccess(role) && !isPM(role) && !isBUH(role)) return [];
 
   try {
-    let sql = `SELECT id, work_number, work_title, customer_name, work_status, contract_sum, work_end_plan
+    let sql = `SELECT id, work_number, work_title, customer_name, work_status, contract_value, end_plan
                FROM works
                WHERE (work_title ILIKE $1 OR customer_name ILIKE $1 OR work_number ILIKE $1)`;
     let params = ['%' + query + '%'];
@@ -285,20 +285,20 @@ async function getUpcomingDeadlines(db, user) {
   if (!hasFullAccess(role) && !isPM(role)) return [];
 
   try {
-    let sql = `SELECT id, work_number, work_title, customer_name, work_end_plan
+    let sql = `SELECT id, work_number, work_title, customer_name, end_plan
                FROM works
                WHERE work_status NOT IN ('Работы сдали', 'Отменено')
-               AND work_end_plan IS NOT NULL
-               AND work_end_plan >= CURRENT_DATE
-               AND work_end_plan <= CURRENT_DATE + INTERVAL '14 days'`;
+               AND end_plan IS NOT NULL
+               AND end_plan >= CURRENT_DATE
+               AND end_plan <= CURRENT_DATE + INTERVAL '14 days'`;
 
     if (isPM(role) && !hasFullAccess(role)) {
       sql += ' AND pm_id = $1';
-      const results = await db.query(sql + ' ORDER BY work_end_plan LIMIT 10', [user.id]);
+      const results = await db.query(sql + ' ORDER BY end_plan LIMIT 10', [user.id]);
       return results.rows;
     }
 
-    const results = await db.query(sql + ' ORDER BY work_end_plan LIMIT 10');
+    const results = await db.query(sql + ' ORDER BY end_plan LIMIT 10');
     return results.rows;
   } catch (e) {
     return [];
@@ -386,7 +386,7 @@ async function processQuery(db, message, user) {
       results = deadlines;
       additionalData = '\n[Ближайших дедлайнов: ' + deadlines.length + ']\n' +
         deadlines.map(d => {
-          const date = new Date(d.work_end_plan).toLocaleDateString('ru-RU');
+          const date = new Date(d.end_plan).toLocaleDateString('ru-RU');
           return `• ${d.work_number || '№' + d.id} "${d.work_title}" — до ${date}`;
         }).join('\n');
     } else {

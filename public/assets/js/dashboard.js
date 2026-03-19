@@ -89,7 +89,7 @@ window.AsgardDashboardPage = (function(){
       worksProblems: thisYearWorks.filter(w => w.work_status === 'Проблема').length,
 
       // Деньги
-      contractSum: thisYearWorks.reduce((s, w) => s + (Number(w.contract_sum) || Number(w.contract_value) || 0), 0),
+      contractSum: thisYearWorks.reduce((s, w) => s + (Number(w.contract_value) || 0), 0),
       planSum: thisYearWorks.reduce((s, w) => s + (Number(w.cost_plan) || 0), 0),
       factSum: thisYearWorks.reduce((s, w) => s + (Number(w.cost_fact) || 0), 0),
       
@@ -166,7 +166,7 @@ window.AsgardDashboardPage = (function(){
         works: monthWorks.length,
         tenders: monthTenders.length,
         won: monthTenders.filter(t => WON_STATUSES.includes(t.tender_status)).length,
-        revenue: monthWorks.reduce((s, w) => s + (Number(w.contract_sum) || 0), 0)
+        revenue: monthWorks.reduce((s, w) => s + (Number(w.contract_value) || 0), 0)
       });
     }
 

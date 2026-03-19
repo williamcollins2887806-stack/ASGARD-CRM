@@ -326,7 +326,7 @@ window.AsgardBigScreen = (function(){
     const yT = d.tenders.filter(t => String(t.year) === String(d.y) || (t.period || '').startsWith(d.y));
     const won = yT.filter(t => ['Выиграли','Контракт','Клиент согласился'].includes(t.tender_status)).length;
     const yW = d.works.filter(w => { const dt = w.start_fact || w.start_plan || w.start_in_work_date || w.created_at; return dt && new Date(dt).getFullYear() === d.y; });
-    const revenue = yW.reduce((s, w) => s + (Number(w.contract_sum) || Number(w.contract_value) || 0), 0);
+    const revenue = yW.reduce((s, w) => s + (Number(w.contract_value) || 0), 0);
     const done = yW.filter(w => ['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
     const active = yW.filter(w => !['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
     const overdue = yW.filter(w => w.end_plan && !['Работы сдали','Завершена','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now).length;
@@ -355,7 +355,7 @@ window.AsgardBigScreen = (function(){
   // ───────────────────────────────────────────────────────
   function slideFinance(d) {
     const yW = d.works.filter(w => { const dt = w.start_fact || w.start_plan || w.start_in_work_date || w.created_at; return dt && new Date(dt).getFullYear() === d.y; });
-    const contractTotal = yW.reduce((s, w) => s + (Number(w.contract_sum) || Number(w.contract_value) || 0), 0);
+    const contractTotal = yW.reduce((s, w) => s + (Number(w.contract_value) || 0), 0);
     const received = yW.reduce((s, w) => s + (Number(w.balance_received) || 0) + (Number(w.advance_received) || 0), 0);
     const advanceTotal = yW.reduce((s, w) => s + (Number(w.advance_received) || 0), 0);
     const balanceTotal = yW.reduce((s, w) => s + (Number(w.balance_received) || 0), 0);
@@ -465,7 +465,7 @@ window.AsgardBigScreen = (function(){
       const active = pw.filter(w => !['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
       const completed = pw.filter(w => ['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
       const overdue = pw.filter(w => w.end_plan && !['Работы сдали','Завершена','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now).length;
-      const contract = pw.reduce((s,w) => s + (Number(w.contract_sum) || Number(w.contract_value) || 0), 0);
+      const contract = pw.reduce((s,w) => s + (Number(w.contract_value) || 0), 0);
       return { name: pm.name, active, completed, overdue, total: pw.length, contract };
     }).sort((a,b) => b.contract - a.contract).slice(0, 10);
 
@@ -494,7 +494,7 @@ window.AsgardBigScreen = (function(){
   function slideActiveWorks(d) {
     const byPm = new Map(d.users.map(u => [u.id, u.name]));
     const activeW = d.works.filter(w => !['Работы сдали','Завершена','Закрыт'].includes(w.work_status))
-      .sort((a,b) => (Number(b.contract_sum)||Number(b.contract_value)||0) - (Number(a.contract_sum)||Number(a.contract_value)||0))
+      .sort((a,b) => (Number(b.contract_value)||0) - (Number(a.contract_value)||0))
       .slice(0, 10);
 
     const statusColors = {
@@ -510,11 +510,11 @@ window.AsgardBigScreen = (function(){
           const sc = statusColors[w.work_status] || 'var(--t2)';
           return `<tr>
             <td class="rank">${i + 1}</td>
-            <td style="font-weight:600;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.work_title || w.work_name || '')}</td>
+            <td style="font-weight:600;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.work_title || '')}</td>
             <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(w.customer_name || '—')}</td>
             <td>${esc(byPm.get(w.pm_id) || '—')}</td>
             <td><span class="bs-status" style="background:${sc}"></span>${esc(w.work_status)}</td>
-            <td class="highlight">${_m(Number(w.contract_sum) || Number(w.contract_value) || 0)}</td>
+            <td class="highlight">${_m(Number(w.contract_value) || 0)}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>
@@ -548,7 +548,7 @@ window.AsgardBigScreen = (function(){
           const severity = days > 30 ? 'c-red' : days > 14 ? 'c-amber' : 'c-amber';
           return `<tr>
             <td class="rank">${i + 1}</td>
-            <td style="font-weight:600">${esc(w.work_title || w.work_name || '')}</td>
+            <td style="font-weight:600">${esc(w.work_title || '')}</td>
             <td>${esc(w.customer_name || '—')}</td>
             <td>${esc(byPm.get(w.pm_id) || '—')}</td>
             <td>${new Date(w.end_plan).toLocaleDateString('ru-RU')}</td>

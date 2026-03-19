@@ -89,7 +89,7 @@ window.AsgardExport = (function(){
     let filtered = works;
     if(filters.year){
       filtered = filtered.filter(w => {
-        const d = w.work_start_fact || w.work_start_plan;
+        const d = w.start_fact || w.start_plan;
         return d && new Date(d).getFullYear() === filters.year;
       });
     }
@@ -100,11 +100,11 @@ window.AsgardExport = (function(){
       w.work_title || '',
       w.work_status || '',
       usersMap.get(w.pm_id) || '',
-      fmtDate(w.work_start_plan),
-      fmtDate(w.work_start_fact),
-      fmtDate(w.work_end_plan),
+      fmtDate(w.start_plan),
+      fmtDate(w.start_fact),
+      fmtDate(w.end_plan),
       fmtDate(w.work_end_fact),
-      fmtMoney(w.contract_sum),
+      fmtMoney(w.contract_value),
       fmtMoney(w.plan_total),
       fmtMoney(w.fact_total)
     ]);
@@ -329,7 +329,7 @@ window.AsgardExport = (function(){
 
     const yearTenders = tenders.filter(t => t.year === currentYear);
     const yearWorks = works.filter(w => {
-      const d = w.work_start_fact || w.work_start_plan;
+      const d = w.start_fact || w.start_plan;
       return d && new Date(d).getFullYear() === currentYear;
     });
 
@@ -340,7 +340,7 @@ window.AsgardExport = (function(){
       'Работы: всего': yearWorks.length,
       'Работы: завершено': yearWorks.filter(w => w.work_status === 'Работы сдали').length,
       'Работы: проблемы': yearWorks.filter(w => w.work_status === 'Проблема').length,
-      'Выручка (контракты)': yearWorks.reduce((s, w) => s + (Number(w.contract_sum) || 0), 0),
+      'Выручка (контракты)': yearWorks.reduce((s, w) => s + (Number(w.contract_value) || 0), 0),
       'План (расходы)': yearWorks.reduce((s, w) => s + (Number(w.plan_total) || 0), 0),
       'Факт (расходы)': yearWorks.reduce((s, w) => s + (Number(w.fact_total) || 0), 0),
       'Расходы по работам': workExpenses.filter(e => e.date && new Date(e.date).getFullYear() === currentYear).reduce((s, e) => s + (Number(e.amount) || 0), 0),

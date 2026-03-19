@@ -195,7 +195,7 @@ async function phase3(client) {
 
   const { rows: works } = await client.query(`
     SELECT w.id, w.work_title, w.tender_id, w.customer_name, w.customer_inn,
-           w.contract_sum, w.cost_plan, t.customer_name as tcust
+           w.contract_value, w.cost_plan, t.customer_name as tcust
     FROM works w LEFT JOIN tenders t ON w.tender_id = t.id
     WHERE w.work_title NOT LIKE '%TEST%'
   `);
@@ -203,7 +203,7 @@ async function phase3(client) {
   let updated = 0, skipped = 0;
 
   for (const work of works) {
-    const currentSum = parseFloat(work.contract_sum) || 0;
+    const currentSum = parseFloat(work.contract_value) || 0;
     if (currentSum > 0) { skipped++; continue; }
 
     // 1. Match by tender_id
@@ -231,7 +231,7 @@ async function phase3(client) {
 
     if (!DRY_RUN) {
       await client.query(
-        'UPDATE works SET contract_sum = $1, cost_plan = $2 WHERE id = $3',
+        'UPDATE works SET contract_value = $1, cost_plan = $2 WHERE id = $3',
         [contractSum, costPlan, work.id]
       );
     }

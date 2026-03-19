@@ -5,20 +5,45 @@
 // SECURITY: Allowlist of columns for works
 const ALLOWED_COLS = new Set([
   'tender_id', 'pm_id', 'work_number', 'work_title', 'work_status',
-  'contract_sum', 'customer_name', 'start_date', 'start_plan', 'end_date_plan', 'end_fact',
+  'customer_name', 'start_date', 'start_plan', 'end_plan', 'end_fact',
   'created_by', 'created_at', 'updated_at',
-  'staff_ids_json', 'cost_plan', 'cost_fact', 'end_plan', 'start_fact', 'end_fact', 'customer_inn',
-  'start_in_work_date', 'work_start_plan', 'work_end_plan', 'start_date_plan',
-  'contract_value', 'responsible_pm_id', 'city', 'address', 'object_name',
+  'staff_ids_json', 'cost_plan', 'cost_fact', 'start_fact', 'customer_inn',
+  'start_in_work_date',
+  'contract_value', 'city', 'address', 'object_name',
   'contact_person', 'contact_phone', 'object_address', 'description', 'notes',
   'priority', 'is_vachta', 'rotation_days', 'hr_comment',
-  'advance_pct', 'advance_received', 'balance_received', 'site_id', 'w_adv_pct'
+  'advance_pct', 'advance_received', 'balance_received', 'site_id',
+  'advance_date_fact', 'payment_date_fact', 'act_signed_date_fact',
+  'delay_workdays', 'crew_size', 'comment',
+  'closeout_submitted_at', 'closeout_submitted_by', 'closed_at',
+  'vat_pct', 'customer_score'
 ]);
+
+// Маппинг устаревших имён колонок на канонические (обратная совместимость AsgardDB)
+const COL_ALIASES = {
+  contract_sum: 'contract_value',
+  w_adv_pct: 'advance_pct',
+  advance_percent: 'advance_pct',
+  work_name: 'work_title',
+  end_date_plan: 'end_plan',
+  start_date_plan: 'start_plan',
+  work_start_plan: 'start_plan',
+  work_end_plan: 'end_plan',
+  responsible_pm_id: 'pm_id',
+  status: 'work_status',
+  end_date_fact: 'end_fact',
+  advance_sum: 'advance_received',
+  balance_sum: 'balance_received'
+};
 
 function filterData(data) {
   const filtered = {};
   for (const [k, v] of Object.entries(data)) {
-    if (ALLOWED_COLS.has(k) && v !== undefined) filtered[k] = v;
+    const canonical = COL_ALIASES[k] || k;
+    if (ALLOWED_COLS.has(canonical) && v !== undefined) {
+      // Каноничное значение имеет приоритет — не перезаписываем если уже есть
+      if (!filtered[canonical]) filtered[canonical] = v;
+    }
   }
   return filtered;
 }
@@ -171,11 +196,11 @@ async function routes(fastify, options) {
         COUNT(w.id) as total_works,
         COUNT(w.id) FILTER (WHERE w.work_status NOT IN ('Работы сдали', 'Завершена', 'Закрыт')) as active,
         COUNT(w.id) FILTER (WHERE w.work_status IN ('Работы сдали', 'Завершена')) as completed,
-        COUNT(w.id) FILTER (WHERE w.end_date_plan < NOW() AND w.work_status NOT IN ('Работы сдали', 'Завершена', 'Закрыт')) as overdue,
-        COALESCE(SUM(COALESCE(w.contract_sum, w.contract_value)), 0) as total_contract,
+        COUNT(w.id) FILTER (WHERE w.end_plan < NOW() AND w.work_status NOT IN ('Работы сдали', 'Завершена', 'Закрыт')) as overdue,
+        COALESCE(SUM(w.contract_value), 0) as total_contract,
         COALESCE(SUM(w.cost_plan), 0) as total_cost_plan,
         COALESCE(SUM(w.cost_fact), 0) as total_cost_fact,
-        COALESCE(SUM(COALESCE(w.contract_sum, w.contract_value)), 0) - COALESCE(SUM(w.cost_fact), 0) as profit,
+        COALESCE(SUM(w.contract_value), 0) - COALESCE(SUM(w.cost_fact), 0) as profit,
         COUNT(DISTINCT e.id) as active_estimates
       FROM users u
       LEFT JOIN works w ON w.pm_id = u.id AND ${whereClause}
@@ -191,9 +216,9 @@ async function routes(fastify, options) {
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE work_status NOT IN ('Работы сдали', 'Завершена', 'Закрыт')) as active,
         COUNT(*) FILTER (WHERE work_status IN ('Работы сдали', 'Завершена')) as completed,
-        COUNT(*) FILTER (WHERE end_date_plan < NOW() AND work_status NOT IN ('Работы сдали', 'Завершена', 'Закрыт')) as overdue,
-        COALESCE(SUM(COALESCE(contract_sum, contract_value)), 0) as total_contract,
-        COALESCE(SUM(COALESCE(contract_sum, contract_value)), 0) - COALESCE(SUM(cost_fact), 0) as total_profit
+        COUNT(*) FILTER (WHERE end_plan < NOW() AND work_status NOT IN ('Работы сдали', 'Завершена', 'Закрыт')) as overdue,
+        COALESCE(SUM(contract_value), 0) as total_contract,
+        COALESCE(SUM(contract_value), 0) - COALESCE(SUM(cost_fact), 0) as total_profit
       FROM works w
       WHERE ${whereClause.replace(/w\./g, '')}
     `, params);
@@ -203,7 +228,7 @@ async function routes(fastify, options) {
       SELECT
         TO_CHAR(COALESCE(w.start_fact, w.start_plan, w.start_in_work_date, w.created_at), 'YYYY-MM') as month,
         COUNT(*) as total,
-        COALESCE(SUM(COALESCE(contract_sum, contract_value)), 0) as contract_sum,
+        COALESCE(SUM(contract_value), 0) as total_contract,
         COUNT(*) FILTER (WHERE work_status IN ('Работы сдали', 'Завершена')) as completed
       FROM works w
       WHERE COALESCE(w.start_fact, w.start_plan, w.start_in_work_date, w.created_at) >= NOW() - INTERVAL '12 months'

@@ -134,11 +134,11 @@ window.AsgardPMAnalytics = (function(){
   function renderMonthBars(byMonth){
     const el = $("#monthBars");
     if(!el || !byMonth) return;
-    const max = Math.max(...byMonth.map(m=>Number(m.contract_sum)||0), 1);
+    const max = Math.max(...byMonth.map(m=>Number(m.total_contract)||0), 1);
     el.innerHTML = byMonth.map(m=>{
       const total = Number(m.total)||0;
       const completed = Number(m.completed)||0;
-      const contractSum = Number(m.contract_sum)||0;
+      const contractSum = Number(m.total_contract)||0;
       const w = Math.round((contractSum/max)*100);
       return `<div class="barrow">
         <div>${esc(m.month)}</div>

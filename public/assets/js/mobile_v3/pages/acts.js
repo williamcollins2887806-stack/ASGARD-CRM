@@ -72,7 +72,7 @@ const ActsPage = {
       const q = (query || '').toLowerCase();
       const filtered = items.filter(a => {
         if (filter !== 'all' && a.status !== filter) return false;
-        if (q && !(a.number || '').toLowerCase().includes(q) && !(a.work_name || a.title || '').toLowerCase().includes(q) && !(a.customer_name || '').toLowerCase().includes(q)) return false;
+        if (q && !(a.number || '').toLowerCase().includes(q) && !(a.work_title || a.title || '').toLowerCase().includes(q) && !(a.customer_name || '').toLowerCase().includes(q)) return false;
         return true;
       });
 
@@ -88,13 +88,13 @@ const ActsPage = {
       filtered.forEach((act, i) => {
         wrap.appendChild(M.Card({
           title: act.number || act.title || 'Акт',
-          subtitle: act.customer_name || act.work_name || '',
+          subtitle: act.customer_name || act.work_title || '',
           badge: statusLabel[act.status] || act.status || '',
           badgeColor: statusMap[act.status] || 'neutral',
           time: act.date ? Utils.formatDate(act.date) : '',
           fields: [
             ...(act.amount ? [{ label: 'Сумма', value: Utils.formatMoney(act.amount) }] : []),
-            ...(act.work_name ? [{ label: 'Работа', value: act.work_name }] : []),
+            ...(act.work_title ? [{ label: 'Работа', value: act.work_title }] : []),
           ],
           onClick: () => viewActSheet(act),
           animDelay: i * 0.03,
@@ -116,7 +116,7 @@ function viewActSheet(act) {
       { label: 'Дата', value: act.date ? Utils.formatDate(act.date) : '—' },
       { label: 'Статус', value: act.status || '—' },
       { label: 'Заказчик', value: act.customer_name || '—' },
-      { label: 'Работа', value: act.work_name || '—' },
+      { label: 'Работа', value: act.work_title || '—' },
       { label: 'Сумма', value: act.amount ? Utils.formatMoney(act.amount) : '—' },
       { label: 'Сумма с НДС', value: act.amount_with_vat ? Utils.formatMoney(act.amount_with_vat) : '—' },
       { label: 'Ответственный', value: act.responsible_name || '—' },

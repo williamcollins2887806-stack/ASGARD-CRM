@@ -14,7 +14,7 @@ window.MobileWidgets.my_works = {
         var list = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } });
         works.forEach(function (w) {
           var statusMap = { 'В работе': 'info', 'Подготовка': 'warning', 'Согласование': 'gold' };
-          var card = M.Card({ title: w.work_title || w.work_name || 'Работа #' + w.id, badge: w.work_status || '—', badgeColor: statusMap[w.work_status] || 'neutral', fields: w.customer_name ? [{ label: 'Объект', value: w.customer_name }] : [] });
+          var card = M.Card({ title: w.work_title || 'Работа #' + w.id, badge: w.work_status || '—', badgeColor: statusMap[w.work_status] || 'neutral', fields: w.customer_name ? [{ label: 'Объект', value: w.customer_name }] : [] });
           var pct = Number(w.progress) || 0;
           if (pct > 0) { var pb = el('div', { style: { padding: '8px 0 0' } }); pb.appendChild(M.ProgressBar({ value: pct, label: pct + '%' })); card.appendChild(pb); }
           list.appendChild(card);
