@@ -213,8 +213,7 @@ async function routes(fastify, options) {
       delete raw.tender_number;
       if (raw.deadline && !raw.docs_deadline) { raw.docs_deadline = raw.deadline; }
       delete raw.deadline;
-      if (raw.tender_price !== undefined && raw.tender_price === undefined) { raw.tender_price = raw.tender_price; }
-      delete raw.tender_price;
+      // tender_price is a direct DB column, no mapping needed
       if (raw.tag && !raw.group_tag) { raw.group_tag = raw.tag; }
       delete raw.tag;
       if (raw.docs_link && !raw.purchase_url) { raw.purchase_url = raw.docs_link; }
@@ -331,7 +330,7 @@ async function routes(fastify, options) {
     const allowedFields = [
       'customer', 'customer_name', 'customer_inn', 'tender_number', 'tender_title',
       'tender_type', 'tender_status', 'period', 'deadline', 'docs_deadline',
-      'tender_price', 'tender_price', 'responsible_pm_id', 'tag', 'group_tag',
+      'tender_price', 'responsible_pm_id', 'tag', 'group_tag',
       'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason'
     ];
 
@@ -463,16 +462,17 @@ async function routes(fastify, options) {
       if (year) {
         whereClause += ` AND EXTRACT(YEAR FROM created_at) = $${idx}`;
         params.push(year);
+        idx++;
       }
 
       const stats = await db.query(`
         SELECT
           COUNT(*) as total,
-          COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
-          COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
-          COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Проиграли', 'Отказ')) as active,
+          COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
+          COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
+          COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Клиент согласился', 'Проиграли', 'Отказ', 'Клиент отказался', 'Отменён')) as active,
           COALESCE(SUM(tender_price), 0) as total_sum,
-          COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
+          COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
         FROM tenders
         WHERE ${whereClause}
       `, params);
@@ -549,14 +549,14 @@ async function routes(fastify, options) {
         COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
         COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
         COALESCE(SUM(tender_price), 0) as total_sum
-      FROM tenders
-      WHERE ${whereClause.replace(/t\./g, '')}
+      FROM tenders t
+      WHERE ${whereClause}
     `, params);
 
     // По статусам
     const byStatus = await db.query(`
       SELECT tender_status, COUNT(*) as count, COALESCE(SUM(tender_price), 0) as sum
-      FROM tenders WHERE ${whereClause.replace(/t\./g, '')}
+      FROM tenders t WHERE ${whereClause}
       GROUP BY tender_status ORDER BY count DESC
     `, params);
 

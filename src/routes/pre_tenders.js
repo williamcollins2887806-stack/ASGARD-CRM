@@ -440,8 +440,8 @@ module.exports = async function (fastify) {
             const tgMsg = `🔔 *Согласование заявки #${id}*\n\n` +
               `👤 Запросил: ${user.name || 'Сотрудник'}\n` +
               `🏢 Заказчик: ${pt.customer_name || '—'}\n` +
-              `📋 ${pt.tender_name || pt.description || ''}\n` +
-              `💰 Сумма: ${pt.budget ? pt.budget.toLocaleString('ru') + ' ₽' : 'не указана'}`;
+              `📋 ${pt.work_description || ''}\n` +
+              `💰 Сумма: ${pt.estimated_sum ? Number(pt.estimated_sum).toLocaleString('ru') + ' ₽' : 'не указана'}`;
             telegram.sendApprovalRequest(dir.id, tgMsg, { type: 'pre_tender', id: parseInt(id) });
           }
         } catch(e) { /* telegram optional */ }
@@ -488,51 +488,53 @@ module.exports = async function (fastify) {
 
     let tenderId;
     try {
-      const tenderRes = await db.query(`
-        INSERT INTO tenders (
-          customer_name, customer_inn, tender_type, tender_status,
-          tender_price, docs_deadline, responsible_pm_id,
-          comment_to, period, created_by, created_at
-        ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
-        RETURNING id
-      `, [
-        pt.customer_name || emailData.from_name || 'Не указан',
-        pt.customer_inn || null,
-        tenderType,
-        pt.estimated_sum || null,
-        pt.work_deadline || null,
-        assigned_pm_id || null,
-        commentTo,
-        period,
-        user.id
-      ]);
-      tenderId = tenderRes.rows[0].id;
-    } catch (tenderErr) {
-      console.error('[PreTender] Accept: tender INSERT error:', tenderErr.message, tenderErr.code);
-      return reply.code(400).send({ error: 'Ошибка создания тендера: ' + (tenderErr.message || 'неизвестная ошибка') });
+      tenderId = await db.transaction(async (client) => {
+        const tenderRes = await client.query(`
+          INSERT INTO tenders (
+            customer_name, customer_inn, tender_type, tender_status,
+            tender_price, docs_deadline, responsible_pm_id,
+            comment_to, period, created_by, created_at
+          ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
+          RETURNING id
+        `, [
+          pt.customer_name || emailData.from_name || 'Не указан',
+          pt.customer_inn || null,
+          tenderType,
+          pt.estimated_sum || null,
+          pt.work_deadline || null,
+          assigned_pm_id || null,
+          commentTo,
+          period,
+          user.id
+        ]);
+        const tId = tenderRes.rows[0].id;
+
+        await client.query(`
+          UPDATE pre_tender_requests SET
+            status = 'accepted',
+            decision_by = $1, decision_at = NOW(), decision_comment = $2,
+            created_tender_id = $3,
+            contact_person = COALESCE(NULLIF($4, ''), contact_person),
+            contact_phone = COALESCE(NULLIF($5, ''), contact_phone),
+            assigned_to = $6,
+            updated_at = NOW()
+          WHERE id = $7
+        `, [user.id, comment || null, tId, contact_person || '', contact_phone || '', assigned_pm_id || null, id]);
+
+        await client.query(`
+          INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+          VALUES ($1, 'pre_tender', $2, 'accept', $3, NOW())
+        `, [user.id, parseInt(id), JSON.stringify({ tender_id: tId, comment })]);
+
+        return tId;
+      });
+    } catch (txErr) {
+      console.error('[PreTender] Accept transaction error:', txErr.message);
+      return reply.code(500).send({ error: 'Ошибка: ' + txErr.message });
     }
 
-    // 2. Обновить заявку
+    // 2. Отправить письмо через /api/mailbox/send
     let responseEmailId = null;
-
-    try {
-      await db.query(`
-        UPDATE pre_tender_requests SET
-          status = 'accepted',
-          decision_by = $1, decision_at = NOW(), decision_comment = $2,
-          created_tender_id = $3,
-          contact_person = COALESCE(NULLIF($4, ''), contact_person),
-          contact_phone = COALESCE(NULLIF($5, ''), contact_phone),
-          assigned_to = $6,
-          updated_at = NOW()
-        WHERE id = $7
-      `, [user.id, comment || null, tenderId, contact_person || '', contact_phone || '', assigned_pm_id || null, id]);
-    } catch (updateErr) {
-      console.error('[PreTender] Accept: UPDATE error:', updateErr.message, updateErr.code);
-      // Tender was created, return success with warning
-    }
-
-    // 3. Отправить письмо через /api/mailbox/send
     if (send_email && pt.customer_email) {
       try {
         // Получаем шаблон tender_accept
@@ -581,15 +583,7 @@ module.exports = async function (fastify) {
       }
     }
 
-    // 4. Audit log
-    try {
-      await db.query(`
-        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
-        VALUES ($1, 'pre_tender', $2, 'accept', $3, NOW())
-      `, [user.id, parseInt(id), JSON.stringify({ tender_id: tenderId, comment })]);
-    } catch (_) {}
-
-    // 5. Уведомление назначенному РП
+    // 3. Уведомление назначенному РП
     if (assigned_pm_id) {
       createNotification(db, {
         user_id: assigned_pm_id,
@@ -789,7 +783,7 @@ module.exports = async function (fastify) {
           assigned_to = COALESCE($6, assigned_to),
           updated_at = NOW()
         WHERE id = $5
-      `, [user.id, comment || null, contact_person || '', contact_phone || '', id, assigned_pm_id || null]);
+      `, [user.id, comment || null, contact_person || '', contact_phone || '', id, pm_id || null]);
 
       // Notify all directors
       const dirRes = await db.query("SELECT id, name FROM users WHERE role IN ('ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active = true");
@@ -814,8 +808,8 @@ module.exports = async function (fastify) {
             const tgMsg = `🔔 *Согласование заявки #${id}*\n\n` +
               `👤 Запросил: ${user.name || 'Сотрудник'}\n` +
               `🏢 Заказчик: ${pt.customer_name || '—'}\n` +
-              `📋 ${pt.tender_name || pt.description || ''}\n` +
-              `💰 Сумма: ${pt.budget ? pt.budget.toLocaleString('ru') + ' ₽' : 'не указана'}`;
+              `📋 ${pt.work_description || ''}\n` +
+              `💰 Сумма: ${pt.estimated_sum ? Number(pt.estimated_sum).toLocaleString('ru') + ' ₽' : 'не указана'}`;
             telegram.sendApprovalRequest(dir.id, tgMsg, { type: 'pre_tender', id: parseInt(id) });
           }
         } catch(e) { /* telegram optional */ }
@@ -1004,11 +998,32 @@ module.exports = async function (fastify) {
   // 12. DELETE /:id — Удалить
   // ═══════════════════════════════════════════════════════════════════
   fastify.delete('/:id', {
-    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+    preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN'])]
   }, async (request, reply) => {
     const { id } = request.params;
-    // Удаляем заявку (обратной ссылки pre_tender_id нет в emails)
+    const user = request.user;
+
+    const ptRes = await db.query('SELECT id, status, created_tender_id FROM pre_tender_requests WHERE id = $1', [id]);
+    if (!ptRes.rows.length) {
+      return reply.code(404).send({ error: 'Заявка не найдена' });
+    }
+    const pt = ptRes.rows[0];
+
+    if (pt.created_tender_id) {
+      return reply.code(400).send({ error: 'Нельзя удалить заявку с привязанным тендером #' + pt.created_tender_id });
+    }
+
     await db.query('DELETE FROM pre_tender_requests WHERE id = $1', [id]);
+
+    try {
+      await db.query(`
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+        VALUES ($1, 'pre_tender', $2, 'delete', $3, NOW())
+      `, [user.id, parseInt(id), JSON.stringify({ status: pt.status })]);
+    } catch (_) {}
+
+    broadcast('pre_tender:deleted', { id: parseInt(id) });
+
     return { success: true };
   });
 
@@ -1050,7 +1065,7 @@ module.exports = async function (fastify) {
     // Extend the deadline/validity
     const updated = await db.query(
       `UPDATE pre_tender_requests SET 
-        status = COALESCE(NULLIF(status, 'expired'), status),
+        status = CASE WHEN status = 'expired' THEN 'new' ELSE status END,
         updated_at = NOW()
        WHERE id = $1 RETURNING *`,
       [id]
