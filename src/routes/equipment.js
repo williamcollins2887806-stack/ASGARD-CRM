@@ -11,7 +11,7 @@ async function equipmentRoutes(fastify, options) {
 
   // Роли с полным доступом к складу (M15: добавлен CHIEF_ENGINEER)
   const WAREHOUSE_ADMINS = ['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-  const PM_ROLES = ['PM', 'HEAD_PM', 'MANAGER', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER', 'HR'];
+  const PM_ROLES = ['PM', 'HEAD_PM', 'MANAGER', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER'];
 
   function canManageEquipment(role) {
     return WAREHOUSE_ADMINS.includes(role) || PM_ROLES.includes(role);

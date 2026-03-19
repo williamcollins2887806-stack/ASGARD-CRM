@@ -101,7 +101,7 @@ async function routes(fastify, options) {
   });
 
   // SECURITY B3: Role-based access
-  fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM'])] }, async (request, reply) => {
+  fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM'])] }, async (request, reply) => {
     const { inn, name, ...rest } = request.body;
     if (!inn || !name) return reply.code(400).send({ error: 'ИНН и наименование обязательны' });
 

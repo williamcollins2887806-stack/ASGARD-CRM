@@ -240,9 +240,7 @@ module.exports = {
       await assertFileServed('/assets/js/calendar.js');
     }},
 
-    { name: '3.16 JS: chat.js exists', run: async () => {
-      await assertFileServed('/assets/js/chat.js');
-    }},
+    // 3.16 chat.js — удалён при миграции Huginn v2 (коммит C10)
 
     { name: '3.17 JS: notifications_helper.js exists', run: async () => {
       await assertFileServed('/assets/js/notifications_helper.js');
@@ -460,9 +458,7 @@ module.exports = {
       await assertBodyContains('/assets/js/router.js', 'AsgardRouter', 'router.js AsgardRouter');
     }},
 
-    { name: '4.20 chat.js contains chat functionality', run: async () => {
-      await assertBodyContains('/assets/js/chat.js', 'chat', 'chat.js reference');
-    }},
+    // 4.20 chat.js — удалён при миграции Huginn v2
 
     { name: '4.21 invoices.js contains invoice module', run: async () => {
       await assertBodyContains('/assets/js/invoices.js', 'invoice', 'invoices.js reference');
@@ -802,9 +798,7 @@ module.exports = {
       await assertBodyContains('/', 'tasks.js', 'SPA tasks.js reference');
     }},
 
-    { name: '7.10 SPA shell loads chat.js', run: async () => {
-      await assertBodyContains('/', 'chat.js', 'SPA chat.js reference');
-    }},
+    // 7.10 chat.js — удалён при миграции Huginn v2
 
     { name: '7.11 SPA shell loads calculator_v2.js', run: async () => {
       await assertBodyContains('/', 'calculator_v2.js', 'SPA calculator_v2.js reference');

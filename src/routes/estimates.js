@@ -116,7 +116,7 @@ async function routes(fastify) {
   // Только обычные поля (comment, cost_plan, price_tkp и т.д.)
   // Смена статуса согласования — ТОЛЬКО через /api/approval/estimates/:id/*
   fastify.put('/:id', {
-    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'BUH'])]
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN'])]
   }, async (request, reply) => {
     const { id } = request.params;
     const body = request.body || {};

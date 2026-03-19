@@ -82,17 +82,7 @@ const TABLES = [
     }),
     updateBody: { status: 'Подтверждён' }
   },
-  {
-    table: 'correspondence',
-    createBody: () => ({
-      number: 'CORR-CRUD-' + Date.now(),
-      direction: 'outgoing',
-      type: 'Входящее',
-      subject: 'CRUD Test Correspondence',
-      date: '2025-01-15'
-    }),
-    updateBody: { subject: 'Updated Correspondence' }
-  },
+  // correspondence — has dedicated /api/correspondence endpoint, blocked via /api/data by design
   {
     table: 'contracts',
     createBody: () => ({
