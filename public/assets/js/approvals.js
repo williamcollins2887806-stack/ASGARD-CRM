@@ -71,7 +71,7 @@ window.AsgardApprovalsPage = (function(){
 
   async function getCore(){
     const core = await AsgardDB.get("settings","app");
-    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:20, status_colors:{tender:{}, work:{}}};
+    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:22, status_colors:{tender:{}, work:{}}};
   }
 
   async function getSLA(){

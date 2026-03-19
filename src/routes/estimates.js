@@ -7,6 +7,7 @@
  * CRUD: создание, чтение, обновление обычных полей, удаление.
  * Согласование (смена approval_status) — ТОЛЬКО через /api/approval/estimates/:id/*
  * PUT с approval_status → 400.
+ * version_no генерируется сервером автоматически.
  */
 
 const approvalService = require('../services/approvalService');
@@ -15,7 +16,7 @@ const ALLOWED_COLS = new Set([
   'tender_id', 'title', 'pm_id', 'approval_status',
   'margin', 'comment', 'amount', 'cost', 'notes', 'description',
   'customer', 'object_name', 'work_type', 'priority', 'deadline',
-  'items_json', 'status', 'work_id', 'approval_comment',
+  'items_json', 'work_id', 'approval_comment',
   'sent_for_approval_at', 'reject_reason', 'version_no',
   'cover_letter', 'assumptions', 'price_tkp', 'cost_plan',
   'calc_v2_json', 'calc_summary_json', 'quick_calc_json',
@@ -38,25 +39,39 @@ function filterData(data) {
 async function routes(fastify) {
   const db = fastify.db;
 
-  async function notifyDirectorsWithButtons(userId, estimateId, userName) {
-    await approvalService.notifyDirectorsForApproval(db, {
-      entityType: 'estimates', entityId: estimateId,
-      actorName: userName,
-      title: '📋 Просчёт на согласование',
-      message: `${userName || 'РП'} отправил просчёт #${estimateId}`,
-      requiresPayment: false
-    });
-  }
-
   // ─── LIST ───
+  // RBAC: фильтрация по ролям (Сессия 4)
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { tender_id, pm_id, status, limit = 100, offset = 0 } = request.query;
-    let sql = `SELECT e.*, t.customer_name as customer, u.name as pm_name 
-               FROM estimates e 
-               LEFT JOIN tenders t ON e.tender_id = t.id 
+    const role = request.user.role;
+    const userId = request.user.id;
+
+    // Роли без доступа к финансам просчётов
+    const NO_ACCESS = ['HR', 'HR_MANAGER', 'WAREHOUSE', 'PROC', 'OFFICE_MANAGER', 'CHIEF_ENGINEER'];
+    if (NO_ACCESS.includes(role)) return { estimates: [] };
+
+    let sql = `SELECT e.*, t.customer_name as customer, u.name as pm_name
+               FROM estimates e
+               LEFT JOIN tenders t ON e.tender_id = t.id
                LEFT JOIN users u ON e.pm_id = u.id WHERE 1=1`;
     const params = [];
     let idx = 1;
+
+    // PM → только свои просчёты
+    if (role === 'PM') {
+      sql += ` AND e.pm_id = $${idx}`;
+      params.push(userId);
+      idx++;
+    }
+
+    // BUH → только approved + requires_payment
+    if (role === 'BUH') {
+      sql += ` AND e.approval_status = 'approved' AND e.requires_payment = true`;
+    }
+
+    // ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, DIRECTOR_DEV, HEAD_PM → все
+    // TO, HEAD_TO → все (TO работает со всеми тендерами)
+
     if (tender_id) { sql += ` AND e.tender_id = $${idx}`; params.push(tender_id); idx++; }
     if (pm_id) { sql += ` AND e.pm_id = $${idx}`; params.push(pm_id); idx++; }
     if (status) { sql += ` AND e.approval_status = $${idx}`; params.push(status); idx++; }
@@ -67,20 +82,47 @@ async function routes(fastify) {
   });
 
   // ─── GET ───
+  // RBAC: проверка доступа по роли (Сессия 4)
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const role = request.user.role;
+    const userId = request.user.id;
+
+    // Роли без доступа к финансам просчётов
+    const NO_ACCESS = ['HR', 'HR_MANAGER', 'WAREHOUSE', 'PROC', 'OFFICE_MANAGER', 'CHIEF_ENGINEER'];
+    if (NO_ACCESS.includes(role)) {
+      return reply.code(403).send({ error: 'Нет доступа к просчётам' });
+    }
+
     const result = await db.query('SELECT * FROM estimates WHERE id = $1', [request.params.id]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Просчёт не найден' });
-    return { estimate: result.rows[0] };
+
+    const estimate = result.rows[0];
+
+    // PM → только свои
+    if (role === 'PM' && Number(estimate.pm_id) !== Number(userId)) {
+      return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
+    }
+
+    // BUH → только approved + requires_payment
+    if (role === 'BUH' && !(estimate.approval_status === 'approved' && estimate.requires_payment)) {
+      return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
+    }
+
+    return { estimate };
   });
 
   // ─── CREATE ───
   fastify.post('/', {
     preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN'])]
   }, async (request, reply) => {
+    const client = await db.connect();
     try {
+      await client.query('BEGIN');
+
       const body = request.body || {};
       if (body.name && !body.title) { body.title = body.name; delete body.name; }
       if (!body.title && !body.tender_id) {
+        await client.query('ROLLBACK');
         return reply.code(400).send({ error: 'Укажите название или тендер' });
       }
 
@@ -93,22 +135,44 @@ async function routes(fastify) {
         data.approval_status = data.approval_status || 'draft';
       }
 
+      // version_no — генерируется сервером, клиентское значение игнорируется
+      delete data.version_no;
+      if (data.tender_id && data.pm_id) {
+        const vResult = await client.query(
+          'SELECT COALESCE(MAX(version_no), 0) + 1 AS next_ver FROM estimates WHERE tender_id = $1 AND pm_id = $2',
+          [data.tender_id, data.pm_id]
+        );
+        data.version_no = vResult.rows[0].next_ver;
+      } else {
+        data.version_no = 1;
+      }
+
       const keys = Object.keys(data);
-      if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
+      if (!keys.length) { await client.query('ROLLBACK'); return reply.code(400).send({ error: 'Нет данных' }); }
       const values = Object.values(data);
       const sql = `INSERT INTO estimates (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-      const result = await db.query(sql, values);
+      const result = await client.query(sql, values);
       const estimate = result.rows[0];
 
       if (sendForApproval) {
-        await notifyDirectorsWithButtons(request.user.id, estimate.id, request.user.name);
+        await approvalService.notifyDirectorsForApproval(client, {
+          entityType: 'estimates', entityId: estimate.id,
+          actorName: request.user.name,
+          title: '📋 Просчёт на согласование',
+          message: `${request.user.name || 'РП'} отправил просчёт #${estimate.id}`,
+          requiresPayment: false
+        });
       }
 
+      await client.query('COMMIT');
       return { estimate };
     } catch (err) {
+      await client.query('ROLLBACK');
       if (err.code === '22003') return reply.code(400).send({ error: 'Число вне диапазона' });
       if (err.code === '23503') return reply.code(400).send({ error: 'Связанная запись не найдена' });
       return reply.code(500).send({ error: 'Ошибка создания просчёта' });
+    } finally {
+      client.release();
     }
   });
 

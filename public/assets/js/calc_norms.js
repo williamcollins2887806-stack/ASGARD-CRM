@@ -28,7 +28,7 @@ window.CALC_DEFAULTS = {
   overhead_pct: 10,
   fot_tax_pct: 50,
   profit_tax_pct: 20,
-  vat_pct: 20,
+  vat_pct: 22,
   profit_per_day_min: 20000,
   profit_per_day_norm: 25000,
   auto_days_multiplier: 1.2,

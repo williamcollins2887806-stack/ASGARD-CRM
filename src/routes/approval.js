@@ -8,7 +8,7 @@
  * POST /api/approval/:entityType/:id/rework       — доработка (директор/бух)
  * POST /api/approval/:entityType/:id/question      — вопрос (директор/бух)
  * POST /api/approval/:entityType/:id/reject        — директор отклоняет
- * POST /api/approval/:entityType/:id/resubmit      — инициатор переотправляет после доработки/вопроса
+ * POST /api/approval/:entityType/:id/resubmit     — PM переотправляет после доработки
  * POST /api/approval/:entityType/:id/pay-bank      — бух оплачивает через ПП
  * POST /api/approval/:entityType/:id/issue-cash    — бух выдаёт наличные
  * POST /api/approval/:entityType/:id/confirm-cash  — инициатор подтверждает получение
@@ -111,7 +111,7 @@ async function routes(fastify) {
     });
   });
 
-  // ─── Инициатор: переотправить после доработки/вопроса ───
+  // ─── PM: переотправить после доработки/вопроса ───
   fastify.post('/:entityType/:id/resubmit', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {

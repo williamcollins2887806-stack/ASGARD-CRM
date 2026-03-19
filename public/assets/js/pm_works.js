@@ -566,7 +566,7 @@ window.AsgardPmWorksPage=(function(){
   }
   async function getSettings(){
     const s = await AsgardDB.get("settings","app");
-    return s ? JSON.parse(s.value_json||"{}") : { vat_pct:20, gantt_start_iso:"2026-01-01T00:00:00.000Z", status_colors:{work:{},tender:{}} };
+    return s ? JSON.parse(s.value_json||"{}") : { vat_pct:22, gantt_start_iso:"2026-01-01T00:00:00.000Z", status_colors:{work:{},tender:{}} };
   }
   async function audit(actorId, entityType, entityId, action, payload){
     await AsgardDB.add("audit_log",{actor_user_id:actorId,entity_type:entityType,entity_id:entityId,action,payload_json:JSON.stringify(payload||{}),created_at:isoNow()});

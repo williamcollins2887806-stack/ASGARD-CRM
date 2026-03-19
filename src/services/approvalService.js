@@ -91,6 +91,17 @@ async function notifyBuhForPayment(db, { entityType, entityId, actorName, title,
 // Константы
 // ─────────────────────────────────────────────────────────────────
 
+// SQL injection protection: таблицы, разрешённые для операций через approvalService
+// Должен совпадать с ALLOWED_ENTITIES из approval.js (belt + suspenders)
+const SAFE_TABLES = new Set([
+  'cash_requests', 'pre_tender_requests', 'bonus_requests',
+  'work_expenses', 'office_expenses', 'expenses',
+  'one_time_payments', 'tmc_requests', 'payroll_sheets',
+  'business_trips', 'travel_expenses', 'training_applications',
+  'estimates', 'tkp', 'staff_requests', 'pass_requests',
+  'permit_applications', 'site_inspections', 'seal_transfers'
+]);
+
 const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const BUH_ROLES = ['BUH', 'ADMIN'];
 
@@ -105,6 +116,10 @@ const ESTIMATE_TRANSITIONS = {
   cancelled: []        // терминальный
 };
 
+/**
+ * Проверяет допустимость перехода статуса для estimates.
+ * Бросает ошибку 409 если переход недопустим.
+ */
 function validateEstimateTransition(currentStatus, newStatus) {
   const from = String(currentStatus || 'draft').toLowerCase();
   const allowed = ESTIMATE_TRANSITIONS[from];
@@ -196,6 +211,11 @@ function getColumns(entityType) {
  * Возвращает { sql, values }.
  */
 function buildUpdate(entityType, entityId, fields) {
+  // SQL injection hardening: проверка entityType по белому списку
+  if (!SAFE_TABLES.has(entityType)) {
+    throw new Error(`Invalid entity type: ${entityType}`);
+  }
+
   const setParts = [];
   const values = [];
   let idx = 1;
@@ -243,53 +263,82 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'approved');
+  }
+
   const requiresPayment = !!record.requires_payment;
   const label = `${getLabel(entityType)} #${entityId}`;
 
-  // Собираем поля для UPDATE динамически
-  const fields = {};
-  fields[statusField] = 'approved';
-  if (cols.approved_by) fields[cols.approved_by] = actor.id;
-  if (cols.approved_at) fields[cols.approved_at] = '__NOW__';
-  if (comment && cols.comment_field) fields[cols.comment_field] = comment;
-  if (requiresPayment) fields.payment_status = PAYMENT_STATUSES.PENDING;
+  // Оборачиваем в транзакцию: UPDATE + уведомления
+  const useTransaction = typeof db.connect === 'function';
+  const client = useTransaction ? await db.connect() : db;
+  try {
+    if (useTransaction) await client.query('BEGIN');
 
-  const { sql, values } = buildUpdate(entityType, entityId, fields);
-  await db.query(sql, values);
+    // Собираем поля для UPDATE динамически
+    const fields = {};
+    fields[statusField] = 'approved';
+    if (cols.approved_by) fields[cols.approved_by] = actor.id;
+    if (cols.approved_at) fields[cols.approved_at] = '__NOW__';
+    if (comment && cols.comment_field) fields[cols.comment_field] = comment;
+    if (requiresPayment) fields.payment_status = PAYMENT_STATUSES.PENDING;
 
-  if (requiresPayment) {
-    // Уведомляем бухгалтерию С КНОПКАМИ
-    await notifyBuhForPayment(db, {
-      entityType, entityId,
-      actorName: actor.name,
-      title: `💰 ${label} — ожидает оплаты`,
-      message: `${actor.name || 'Директор'} согласовал. Требуется оплата.${comment ? ' Комментарий: ' + comment : ''}`
+    const { sql, values } = buildUpdate(entityType, entityId, fields);
+    await client.query(sql, values);
+
+    // Audit log
+    await writeAuditLog(client, actor.id, entityType, entityId, 'approval_approve', {
+      from_status: record[statusField],
+      to_status: 'approved',
+      comment: comment || null,
+      requires_payment: requiresPayment
     });
 
-    // Уведомляем инициатора (простой текст)
-    const initiatorId = getInitiatorId(record, entityType);
-    if (initiatorId && initiatorId !== actor.id) {
-      createNotification(db, {
-        user_id: initiatorId,
-        title: `✅ ${label} — согласовано, передано в бухгалтерию`,
-        message: `${actor.name || 'Директор'} согласовал. Ожидает оплаты.`,
-        type: 'approval',
-        link: `#/${entityType}?id=${entityId}`
+    if (requiresPayment) {
+      // Уведомляем бухгалтерию С КНОПКАМИ
+      await notifyBuhForPayment(client, {
+        entityType, entityId,
+        actorName: actor.name,
+        title: `💰 ${label} — ожидает оплаты`,
+        message: `${actor.name || 'Директор'} согласовал. Требуется оплата.${comment ? ' Комментарий: ' + comment : ''}`
       });
+
+      // Уведомляем инициатора (простой текст)
+      const initiatorId = getInitiatorId(record, entityType);
+      if (initiatorId && initiatorId !== actor.id) {
+        createNotification(client, {
+          user_id: initiatorId,
+          title: `✅ ${label} — согласовано, передано в бухгалтерию`,
+          message: `${actor.name || 'Директор'} согласовал. Ожидает оплаты.`,
+          type: 'approval',
+          link: `#/${entityType}?id=${entityId}`
+        });
+      }
+
+      if (useTransaction) await client.query('COMMIT');
+      return { status: 'approved', payment_status: PAYMENT_STATUSES.PENDING };
+    } else {
+      const initiatorId = getInitiatorId(record, entityType);
+      if (initiatorId && initiatorId !== actor.id) {
+        createNotification(client, {
+          user_id: initiatorId,
+          title: `✅ ${label} — согласовано`,
+          message: `${actor.name || 'Директор'} согласовал.${comment ? ' ' + comment : ''}`,
+          type: 'approval',
+          link: `#/${entityType}?id=${entityId}`
+        });
+      }
+
+      if (useTransaction) await client.query('COMMIT');
+      return { status: 'approved' };
     }
-    return { status: 'approved', payment_status: PAYMENT_STATUSES.PENDING };
-  } else {
-    const initiatorId = getInitiatorId(record, entityType);
-    if (initiatorId && initiatorId !== actor.id) {
-      createNotification(db, {
-        user_id: initiatorId,
-        title: `✅ ${label} — согласовано`,
-        message: `${actor.name || 'Директор'} согласовал.${comment ? ' ' + comment : ''}`,
-        type: 'approval',
-        link: `#/${entityType}?id=${entityId}`
-      });
-    }
-    return { status: 'approved' };
+  } catch (err) {
+    if (useTransaction) await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    if (useTransaction) client.release();
   }
 }
 
@@ -309,6 +358,11 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'rework');
+  }
+
   const isBuhAction = isBuh(actor.role) && record.payment_status === PAYMENT_STATUSES.PENDING;
   const label = `${getLabel(entityType)} #${entityId}`;
 
@@ -326,6 +380,15 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
 
+  // Audit log
+  const newStatus = isBuhAction ? 'rework_buh' : 'rework';
+  await writeAuditLog(db, actor.id, entityType, entityId, 'approval_rework', {
+    from_status: record[statusField],
+    to_status: newStatus,
+    comment: comment.trim(),
+    requires_payment: !!record.requires_payment
+  });
+
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
     const who = isBuhAction ? 'Бухгалтерия' : 'Директор';
@@ -338,7 +401,7 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
     });
   }
 
-  return { status: isBuhAction ? 'rework_buh' : 'rework' };
+  return { status: newStatus };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -357,6 +420,11 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'question');
+  }
+
   const isBuhAction = isBuh(actor.role) && record.payment_status === PAYMENT_STATUSES.PENDING;
   const label = `${getLabel(entityType)} #${entityId}`;
 
@@ -374,6 +442,15 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
 
+  // Audit log
+  const newStatus = isBuhAction ? 'question_buh' : 'question';
+  await writeAuditLog(db, actor.id, entityType, entityId, 'approval_question', {
+    from_status: record[statusField],
+    to_status: newStatus,
+    comment: comment.trim(),
+    requires_payment: !!record.requires_payment
+  });
+
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
     const who = isBuhAction ? 'Бухгалтерия' : 'Директор';
@@ -386,7 +463,7 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
     });
   }
 
-  return { status: isBuhAction ? 'question_buh' : 'question' };
+  return { status: newStatus };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -405,12 +482,25 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'rejected');
+  }
+
   const fields = {};
   fields[statusField] = 'rejected';
   if (cols.comment_field) fields[cols.comment_field] = comment.trim();
 
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
+
+  // Audit log
+  await writeAuditLog(db, actor.id, entityType, entityId, 'approval_reject', {
+    from_status: record[statusField],
+    to_status: 'rejected',
+    comment: comment.trim(),
+    requires_payment: !!record.requires_payment
+  });
 
   const label = `${getLabel(entityType)} #${entityId}`;
   const initiatorId = getInitiatorId(record, entityType);
@@ -428,7 +518,7 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Действие 4.5: Инициатор переотправляет после доработки/вопроса
+// Действие 4.5: PM переотправляет после доработки/вопроса
 // ─────────────────────────────────────────────────────────────────
 async function resubmit(db, { entityType, entityId, actor }) {
   const statusField = getStatusField(entityType);
@@ -748,8 +838,29 @@ async function returnCash(db, { entityType, entityId, actor, amount, comment }) 
 // ─────────────────────────────────────────────────────────────────
 
 async function getRecord(db, entityType, entityId) {
+  // SQL injection hardening: проверка entityType по белому списку
+  if (!SAFE_TABLES.has(entityType)) {
+    throw new Error(`Invalid entity type: ${entityType}`);
+  }
   const result = await db.query(`SELECT * FROM ${entityType} WHERE id = $1`, [entityId]);
   return result.rows[0] || null;
+}
+
+/**
+ * Записать в audit_log действие согласования.
+ * Используется в approve/rework/question/reject.
+ */
+async function writeAuditLog(db, actorUserId, entityType, entityId, action, payload) {
+  try {
+    await db.query(
+      `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [actorUserId, entityType, entityId, action, JSON.stringify(payload)]
+    );
+  } catch (err) {
+    // audit_log не должен ломать основной flow — логируем и продолжаем
+    console.error('[approvalService] audit_log write failed:', err.message);
+  }
 }
 
 function getInitiatorId(record, entityType) {
@@ -842,11 +953,13 @@ module.exports = {
   notifyBuhForPayment,
   sendApprovalTelegram,
   validateEstimateTransition,
+  writeAuditLog,
 
   // Константы
   DIRECTOR_ROLES,
   BUH_ROLES,
   PAYMENT_STATUSES,
   ENTITY_LABELS,
-  ESTIMATE_TRANSITIONS
+  ESTIMATE_TRANSITIONS,
+  SAFE_TABLES
 };
