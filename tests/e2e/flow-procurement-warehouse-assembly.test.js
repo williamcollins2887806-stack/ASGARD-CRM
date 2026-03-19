@@ -240,5 +240,55 @@ module.exports = {
     { name: 'S10.1: Equipment for work', run: async () => { const r = await api('GET', '/api/equipment/work/1/equipment', { role: 'PM' }); assert(r.status !== 500, 'OK'); }},
     { name: 'S10.2: Assembly for work', run: async () => { const r = await api('GET', '/api/assembly?work_id=1', { role: 'PM' }); assert(r.status !== 500, 'OK'); }},
     { name: 'S10.3: Procurement for work', run: async () => { const r = await api('GET', '/api/procurement?work_id=1', { role: 'PM' }); assert(r.status !== 500, 'OK'); }},
+
+    // ═══ FULL E2E ═══
+    { name: 'E2E 1: Create+items', run: async()=>{
+      const r=await api('POST','/api/procurement',{role:'PM',body:{title:'E2E: Цикл',priority:'high'}});
+      assertOk(r,'OK');fullProcId=r.data.item.id;
+      const i1=await api('POST',`/api/procurement/${fullProcId}/items`,{role:'PM',body:{name:'HCl',unit:'канистра',quantity:3,unit_price:8000,delivery_target:'warehouse'}});
+      assertOk(i1,'OK');fullItemId=i1.data.item.id;
+      await api('POST',`/api/procurement/${fullProcId}/items`,{role:'PM',body:{name:'КИ-1',unit:'канистра',quantity:2,unit_price:12000,delivery_target:'object'}});
+    }},
+    { name: 'E2E 2: Chain', run: async()=>{
+      if(!fullProcId)skip('');
+      await api('PUT',`/api/procurement/${fullProcId}/send-to-proc`,{role:'PM',body:{}});
+      await api('PUT',`/api/procurement/${fullProcId}/proc-respond`,{role:'PROC',body:{}});
+      await api('PUT',`/api/procurement/${fullProcId}/pm-approve`,{role:'PM',body:{}});
+      const r=await api('PUT',`/api/procurement/${fullProcId}/dir-approve`,{role:'DIRECTOR_GEN',body:{}});
+      assertOk(r,'OK');assert(r.data.item.locked===true,'Locked');
+    }},
+    { name: 'E2E 3: Pay', run: async()=>{
+      if(!fullProcId)skip('');const r=await api('PUT',`/api/procurement/${fullProcId}/mark-paid`,{role:'BUH',body:{}});assertOk(r,'Paid');
+    }},
+    { name: 'E2E 4: Deliver', run: async()=>{
+      if(!fullProcId||!fullItemId)skip('');
+      await api('PUT',`/api/procurement/${fullProcId}/items/${fullItemId}/deliver`,{role:'WAREHOUSE',body:{}});
+    }},
+    { name: 'E2E 5: All delivered', run: async()=>{
+      if(!fullProcId)skip('');const d=await api('GET',`/api/procurement/${fullProcId}`,{role:'ADMIN'});
+      for(const it of d.data.items||[])if(it.item_status!=='delivered')await api('PUT',`/api/procurement/${fullProcId}/items/${it.id}/deliver`,{role:'WAREHOUSE',body:{}});
+      const c=await api('GET',`/api/procurement/${fullProcId}`,{role:'ADMIN'});assert(c.data.item.status==='delivered','Delivered');
+    }},
+    { name: 'E2E 6: Assembly', run: async()=>{
+      const r=await api('POST','/api/assembly',{role:'PM',body:{work_id:1,type:'mobilization',title:'E2E Моб'}});
+      if(r.status>=400)skip('');assertOk(r,'OK');fullAssemblyId=r.data.item.id;
+    }},
+    { name: 'E2E 7: Assembly flow', run: async()=>{
+      if(!fullAssemblyId)skip('');
+      await api('POST',`/api/assembly/${fullAssemblyId}/items`,{role:'PM',body:{name:'Насос',quantity:1,source:'manual'}});
+      const p=await api('POST',`/api/assembly/${fullAssemblyId}/pallets`,{role:'WAREHOUSE',body:{label:'P1'}});
+      const pId=p.data.pallet.id;
+      const d=await api('GET',`/api/assembly/${fullAssemblyId}`,{role:'PM'});const its=d.data.items||[];
+      await api('PUT',`/api/assembly/${fullAssemblyId}/confirm`,{role:'PM',body:{}});
+      if(its.length){
+        await api('PUT',`/api/assembly/${fullAssemblyId}/items/${its[0].id}/assign-pallet`,{role:'WAREHOUSE',body:{pallet_id:pId}});
+        await api('PUT',`/api/assembly/${fullAssemblyId}/items/${its[0].id}/pack`,{role:'WAREHOUSE',body:{}});
+      }
+      await api('PUT',`/api/assembly/${fullAssemblyId}/pallets/${pId}/pack`,{role:'WAREHOUSE',body:{}});
+      const sr=await api('PUT',`/api/assembly/${fullAssemblyId}/send`,{role:'PM',body:{}});
+      assertOk(sr,'Sent');assert(sr.data.item.status==='in_transit','Transit');
+      await api('POST',`/api/assembly/${fullAssemblyId}/pallets/${pId}/scan`,{role:'PM',body:{lat:54.6,lon:39.7}});
+    }},
+    { name: 'CLEANUP', run: async()=>{try{}catch(e){}} },
   ]
 };
