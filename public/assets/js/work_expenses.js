@@ -30,6 +30,18 @@ window.AsgardWorkExpenses = (function(){
     return expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
   }
 
+  // F6: Авто-синхронизация cost_fact на работе
+  async function syncCostFact(workId) {
+    if (!workId) return;
+    const total = await getTotalByWork(workId);
+    const work = await AsgardDB.get('works', Number(workId));
+    if (work) {
+      work.cost_fact = total;
+      work.updated_at = isoNow();
+      await AsgardDB.put('works', work);
+    }
+  }
+
   // Сумма расходов по категориям
   async function getTotalsByCategory(workId){
     const expenses = await getExpensesByWork(workId);
@@ -59,7 +71,9 @@ window.AsgardWorkExpenses = (function(){
       created_at: isoNow(),
       updated_at: isoNow()
     };
-    return await AsgardDB.add("work_expenses", expense);
+    const result = await AsgardDB.add("work_expenses", expense);
+    await syncCostFact(work_id);
+    return result;
   }
 
   // Обновить расход
@@ -68,12 +82,16 @@ window.AsgardWorkExpenses = (function(){
     if(!expense) throw new Error("Расход не найден");
     Object.assign(expense, updates, { updated_at: isoNow() });
     await AsgardDB.put("work_expenses", expense);
+    await syncCostFact(expense.work_id);
     return expense;
   }
 
   // Удалить расход
   async function deleteExpense(id){
+    const expense = await AsgardDB.get("work_expenses", Number(id));
+    const workId = expense?.work_id;
     await AsgardDB.del("work_expenses", Number(id));
+    if (workId) await syncCostFact(workId);
   }
 
   // ФОТ: добавить строку по сотруднику
@@ -101,7 +119,9 @@ window.AsgardWorkExpenses = (function(){
       fot_date_from: String(date_from || ''),
       fot_date_to: String(date_to || '')
     };
-    return await AsgardDB.add("work_expenses", expense);
+    const result = await AsgardDB.add("work_expenses", expense);
+    await syncCostFact(work_id);
+    return result;
   }
 
   // Модальное окно расходов для карточки работы

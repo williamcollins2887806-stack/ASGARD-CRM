@@ -1470,8 +1470,17 @@ window.AsgardPmWorksPage=(function(){
               showModal("Конфликт при перебронировании", `
                 <div class="help">При смене дат обнаружен конфликт брони персонала на новый период ${esc(newStart)} — ${esc(newEnd)}.</div>
                 <div style="margin-top:10px">${rows || ""}</div>
-                <div class="help" style="margin-top:10px">Работа будет сохранена, но бронь персонала НЕ обновлена. Обратитесь к HR для ручной корректировки графика.</div>
+                <div class="help" style="margin-top:10px">Работа будет сохранена, но бронь персонала НЕ обновлена. HR уведомлён.</div>
               `);
+              // BK3: Уведомить HR о конфликте перебронирования
+              const hrId = await AsgardWorksShared.findHrUserId();
+              if (hrId) {
+                await notify(hrId,
+                  'Конфликт перебронирования',
+                  `Работа "${esc(w.work_title||'')}" (${esc(w.customer_name||'')}): даты изменены ${newStart}—${newEnd}, бронь НЕ обновлена. Требуется ручная корректировка.`,
+                  '#/workers-schedule'
+                );
+              }
             }
             // Продолжаем сохранение даже при ошибке (работа важнее)
           } else if (rebookResult.written > 0) {
