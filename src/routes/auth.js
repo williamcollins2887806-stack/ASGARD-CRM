@@ -306,6 +306,43 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/auth/change-pin
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/change-pin', {
+    preHandler: [fastify.authenticate],
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['password', 'newPin'],
+        properties: {
+          password: { type: 'string' },
+          newPin: { type: 'string', pattern: '^\\d{4}$' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { password, newPin } = request.body;
+    const userId = request.user.id;
+
+    const { rows: [user] } = await db.query(
+      'SELECT password_hash FROM users WHERE id = $1', [userId]
+    );
+    if (!user) return reply.code(404).send({ error: 'Пользователь не найден' });
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return reply.code(401).send({ error: 'Неверный пароль' });
+
+    const pinHash = await bcrypt.hash(newPin, 10);
+    await db.query(
+      'UPDATE users SET pin_hash = $1, updated_at = NOW() WHERE id = $2',
+      [pinHash, userId]
+    );
+
+    return { success: true, message: 'PIN успешно изменён' };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // POST /api/auth/reset-password-request
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/reset-password-request', {

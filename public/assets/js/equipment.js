@@ -1,10 +1,10 @@
 /* ================================================================
-   AsgardWarehouse - FaceKit Premium Edition v2
+   AsgardEquipment - FaceKit Premium Edition v2
    Enhanced equipment management with card view, kits, grouping,
    search, works integration. Premium UX with skeleton loading,
    server pagination, custom modals, real export/QR.
    ================================================================ */
-window.AsgardWarehouse = (function () {
+window.AsgardEquipment = (function () {
   'use strict';
   const { $, $$, esc, toast, showModal, closeModal, skeleton, makeResponsiveTable, emptyState } = AsgardUI;
 
@@ -219,8 +219,8 @@ window.AsgardWarehouse = (function () {
       '<input type="file" id="fkPhotoInput" accept="image/*" style="display:none"/>' +
       '<div class="fk-photo-actions">' +
         '<button type="button" class="btn mini ghost" onclick="document.getElementById(\'fkPhotoInput\').click()">📷 Фото</button>' +
-        '<button type="button" class="btn mini ghost" onclick="AsgardWarehouse.pickIcon(' + (eqId||0) + ')">😀 Иконка</button>' +
-        (hasPhoto || hasIcon ? '<button type="button" class="btn mini ghost" onclick="AsgardWarehouse.removePhoto(' + eqId + ')">🗑️</button>' : '') +
+        '<button type="button" class="btn mini ghost" onclick="AsgardEquipment.pickIcon(' + (eqId||0) + ')">😀 Иконка</button>' +
+        (hasPhoto || hasIcon ? '<button type="button" class="btn mini ghost" onclick="AsgardEquipment.removePhoto(' + eqId + ')">🗑️</button>' : '') +
       '</div></div>';
   }
 
@@ -727,16 +727,16 @@ window.AsgardWarehouse = (function () {
           '<select class="fk-select" id="fkWh"><option value="">Склад</option>' + whOpts() + '</select>' +
         '</div>' +
         '<div class="fk-view-toggle">' +
-          '<button class="fk-view-btn ' + (viewMode==='cards'?'active':'') + '" onclick="AsgardWarehouse.toggleView(\'cards\')">◻◻</button>' +
-          '<button class="fk-view-btn ' + (viewMode==='table'?'active':'') + '" onclick="AsgardWarehouse.toggleView(\'table\')">☰</button>' +
+          '<button class="fk-view-btn ' + (viewMode==='cards'?'active':'') + '" onclick="AsgardEquipment.toggleView(\'cards\')">◻◻</button>' +
+          '<button class="fk-view-btn ' + (viewMode==='table'?'active':'') + '" onclick="AsgardEquipment.toggleView(\'table\')">☰</button>' +
         '</div>' +
       '</div>' +
       '<div class="fk-group-toggle" style="margin-bottom:16px">' +
-        '<button class="fk-group-btn ' + (groupBy==='category'?'active':'') + '" onclick="AsgardWarehouse.setGroupBy(\'category\')">По категории</button>' +
-        '<button class="fk-group-btn ' + (groupBy==='status'?'active':'') + '" onclick="AsgardWarehouse.setGroupBy(\'status\')">По статусу</button>' +
-        '<button class="fk-group-btn ' + (groupBy==='object'?'active':'') + '" onclick="AsgardWarehouse.setGroupBy(\'object\')">По объекту</button>' +
-        '<button class="fk-group-btn ' + (groupBy==='holder'?'active':'') + '" onclick="AsgardWarehouse.setGroupBy(\'holder\')">По ответственному</button>' +
-        '<button class="fk-group-btn ' + (groupBy==='none'?'active':'') + '" onclick="AsgardWarehouse.setGroupBy(\'none\')">Все</button>' +
+        '<button class="fk-group-btn ' + (groupBy==='category'?'active':'') + '" onclick="AsgardEquipment.setGroupBy(\'category\')">По категории</button>' +
+        '<button class="fk-group-btn ' + (groupBy==='status'?'active':'') + '" onclick="AsgardEquipment.setGroupBy(\'status\')">По статусу</button>' +
+        '<button class="fk-group-btn ' + (groupBy==='object'?'active':'') + '" onclick="AsgardEquipment.setGroupBy(\'object\')">По объекту</button>' +
+        '<button class="fk-group-btn ' + (groupBy==='holder'?'active':'') + '" onclick="AsgardEquipment.setGroupBy(\'holder\')">По ответственному</button>' +
+        '<button class="fk-group-btn ' + (groupBy==='none'?'active':'') + '" onclick="AsgardEquipment.setGroupBy(\'none\')">Все</button>' +
       '</div>' +
       '<div class="fk-chips" id="fkChips"></div>' +
       '<div id="fkRequests"></div>' +
@@ -772,13 +772,13 @@ window.AsgardWarehouse = (function () {
     if (!el) return;
     var s = stats;
     el.innerHTML =
-      '<div class="fk-metric" onclick="AsgardWarehouse.setFilter(\'\',\'\')">' +
+      '<div class="fk-metric" onclick="AsgardEquipment.setFilter(\'\',\'\')">' +
         '<div class="fk-metric-icon">📊</div><div class="fk-metric-value fk-counter" data-target="' + (s.total||0) + '">0</div><div class="fk-metric-label">Всего</div></div>' +
-      '<div class="fk-metric green" onclick="AsgardWarehouse.setFilter(\'status\',\'on_warehouse\')">' +
+      '<div class="fk-metric green" onclick="AsgardEquipment.setFilter(\'status\',\'on_warehouse\')">' +
         '<div class="fk-metric-icon">📦</div><div class="fk-metric-value fk-counter" data-target="' + (s.on_warehouse||0) + '">0</div><div class="fk-metric-label">На складе</div></div>' +
-      '<div class="fk-metric blue" onclick="AsgardWarehouse.setFilter(\'status\',\'issued\')">' +
+      '<div class="fk-metric blue" onclick="AsgardEquipment.setFilter(\'status\',\'issued\')">' +
         '<div class="fk-metric-icon">👷</div><div class="fk-metric-value fk-counter" data-target="' + (s.issued||0) + '">0</div><div class="fk-metric-label">Выдано</div></div>' +
-      '<div class="fk-metric amber" onclick="AsgardWarehouse.setFilter(\'status\',\'repair\')">' +
+      '<div class="fk-metric amber" onclick="AsgardEquipment.setFilter(\'status\',\'repair\')">' +
         '<div class="fk-metric-icon">🔧</div><div class="fk-metric-value fk-counter" data-target="' + (s.in_repair||0) + '">0</div><div class="fk-metric-label">Ремонт</div></div>' +
       '<div class="fk-metric red">' +
         '<div class="fk-metric-icon">❌</div><div class="fk-metric-value fk-counter" data-target="' + (s.broken||0) + '">0</div><div class="fk-metric-label">Сломано</div></div>' +
@@ -793,18 +793,18 @@ window.AsgardWarehouse = (function () {
     var el = $('#fkChips');
     if (!el) return;
     var html = '';
-    if (searchTerm) html += '<span class="fk-chip" onclick="AsgardWarehouse.clearSearch()">🔍 ' + esc(searchTerm) + ' <span class="fk-chip-x">×</span></span>';
+    if (searchTerm) html += '<span class="fk-chip" onclick="AsgardEquipment.clearSearch()">🔍 ' + esc(searchTerm) + ' <span class="fk-chip-x">×</span></span>';
     if (activeFilters.category_id) {
       var c = categories.find(function(x){return String(x.id)===String(activeFilters.category_id);});
-      html += '<span class="fk-chip" onclick="AsgardWarehouse.clearFilter(\'category_id\')">' + esc(c?.name||'Категория') + ' <span class="fk-chip-x">×</span></span>';
+      html += '<span class="fk-chip" onclick="AsgardEquipment.clearFilter(\'category_id\')">' + esc(c?.name||'Категория') + ' <span class="fk-chip-x">×</span></span>';
     }
     if (activeFilters.status) {
       var st = STATUS[activeFilters.status];
-      html += '<span class="fk-chip" onclick="AsgardWarehouse.clearFilter(\'status\')">' + (st?.i||'') + ' ' + esc(st?.l||activeFilters.status) + ' <span class="fk-chip-x">×</span></span>';
+      html += '<span class="fk-chip" onclick="AsgardEquipment.clearFilter(\'status\')">' + (st?.i||'') + ' ' + esc(st?.l||activeFilters.status) + ' <span class="fk-chip-x">×</span></span>';
     }
     if (activeFilters.warehouse_id) {
       var w = warehouses.find(function(x){return String(x.id)===String(activeFilters.warehouse_id);});
-      html += '<span class="fk-chip" onclick="AsgardWarehouse.clearFilter(\'warehouse_id\')">' + esc(w?.name||'Склад') + ' <span class="fk-chip-x">×</span></span>';
+      html += '<span class="fk-chip" onclick="AsgardEquipment.clearFilter(\'warehouse_id\')">' + esc(w?.name||'Склад') + ' <span class="fk-chip-x">×</span></span>';
     }
     el.innerHTML = html;
   }
@@ -818,7 +818,7 @@ window.AsgardWarehouse = (function () {
         message: searchTerm || Object.keys(activeFilters).length ? 'Попробуйте изменить фильтры' : 'Добавьте первое оборудование' });
       /* Add action button for empty state */
       if (isAdmin() && !searchTerm && !Object.keys(activeFilters).length) {
-        el.innerHTML += '<div style="text-align:center;margin-top:12px"><button class="btn" onclick="AsgardWarehouse.openEditForm && AsgardWarehouse.render ? document.getElementById(\'btnAddEquipment\')?.click() : void 0">+ Добавить</button></div>';
+        el.innerHTML += '<div style="text-align:center;margin-top:12px"><button class="btn" onclick="AsgardEquipment.openEditForm && AsgardEquipment.render ? document.getElementById(\'btnAddEquipment\')?.click() : void 0">+ Добавить</button></div>';
       }
       return;
     }
@@ -830,7 +830,7 @@ window.AsgardWarehouse = (function () {
       contentHtml = groups.map(function(g) {
         var isOpen = !collapsedGroups.has(g.key);
         return '<div class="fk-group">' +
-          '<div class="fk-group-header ' + (isOpen?'open':'') + '" onclick="AsgardWarehouse.toggleGroup(\'' + esc(g.key) + '\')">' +
+          '<div class="fk-group-header ' + (isOpen?'open':'') + '" onclick="AsgardEquipment.toggleGroup(\'' + esc(g.key) + '\')">' +
             '<span class="fk-group-chevron">▶</span>' +
             '<span class="fk-group-title">' + (g.icon ? g.icon+' ' : '') + esc(g.label) + '</span>' +
             '<span class="fk-group-count">' + g.items.length + '</span>' +
@@ -903,14 +903,14 @@ window.AsgardWarehouse = (function () {
     var actions = getCardActions(eq);
     return '<div class="fk-card" data-id="' + eq.id + '">' +
       '<div class="fk-card-badges"><span class="fk-badge" style="background:' + st.c + '22;color:' + st.c + '">' + st.i + ' ' + st.l + '</span></div>' +
-      '<div class="fk-card-top" onclick="AsgardWarehouse.openEquipmentCard(' + eq.id + ')">' +
+      '<div class="fk-card-top" onclick="AsgardEquipment.openEquipmentCard(' + eq.id + ')">' +
         '<div class="fk-card-photo">' + photo + '</div>' +
         '<div class="fk-card-info">' +
           '<div class="fk-card-name">' + highlightSearch(eq.name) + '</div>' +
           '<div class="fk-card-inv">' + highlightSearch(eq.inventory_number) + '</div>' +
           '<div class="fk-card-cat">' + esc(eq.category_name||'') + '</div>' +
         '</div></div>' +
-      '<div class="fk-card-body" onclick="AsgardWarehouse.openEquipmentCard(' + eq.id + ')">' +
+      '<div class="fk-card-body" onclick="AsgardEquipment.openEquipmentCard(' + eq.id + ')">' +
         '<div class="fk-card-row"><span class="fk-label">Состояние</span><span class="fk-value"><span class="fk-cond-dot" style="background:' + cn.c + '"></span>' + cn.l + '</span></div>' +
         (eq.holder_name ? '<div class="fk-card-row"><span class="fk-label">Ответственный</span><span class="fk-value">' + esc(eq.holder_name) + '</span></div>' : '') +
         (eq.object_name ? '<div class="fk-card-row"><span class="fk-label">Объект</span><span class="fk-value">' + esc(eq.object_name) + '</span></div>' : '') +
@@ -924,16 +924,16 @@ window.AsgardWarehouse = (function () {
   function getCardActions(eq) {
     var a = '';
     if (eq.status === 'on_warehouse' && isAdmin()) {
-      a += '<button class="fk-card-btn primary" onclick="event.stopPropagation();AsgardWarehouse.openIssueForm(' + eq.id + ')">📤 Выдать</button>';
+      a += '<button class="fk-card-btn primary" onclick="event.stopPropagation();AsgardEquipment.openIssueForm(' + eq.id + ')">📤 Выдать</button>';
     }
     if (eq.status === 'issued' && (isAdmin() || eq.current_holder_id === currentUser?.id)) {
-      a += '<button class="fk-card-btn" onclick="event.stopPropagation();AsgardWarehouse.doReturn(' + eq.id + ')">📥 Вернуть</button>';
+      a += '<button class="fk-card-btn" onclick="event.stopPropagation();AsgardEquipment.doReturn(' + eq.id + ')">📥 Вернуть</button>';
     }
     if (eq.status === 'issued' && isPM() && eq.current_holder_id === currentUser?.id) {
-      a += '<button class="fk-card-btn" onclick="event.stopPropagation();AsgardWarehouse.openTransferForm(' + eq.id + ')">🔄 Передать</button>';
+      a += '<button class="fk-card-btn" onclick="event.stopPropagation();AsgardEquipment.openTransferForm(' + eq.id + ')">🔄 Передать</button>';
     }
     if (isAdmin() && eq.status !== 'repair' && eq.status !== 'written_off') {
-      a += '<button class="fk-card-btn danger" onclick="event.stopPropagation();AsgardWarehouse.sendToRepair(' + eq.id + ')">🔧</button>';
+      a += '<button class="fk-card-btn danger" onclick="event.stopPropagation();AsgardEquipment.sendToRepair(' + eq.id + ')">🔧</button>';
     }
     return a;
   }
@@ -947,7 +947,7 @@ window.AsgardWarehouse = (function () {
     items.map(function(eq) {
       var st = STATUS[eq.status]||STATUS.on_warehouse;
       var cn = COND[eq.condition]||COND.good;
-      return '<tr onclick="AsgardWarehouse.openEquipmentCard(' + eq.id + ')">' +
+      return '<tr onclick="AsgardEquipment.openEquipmentCard(' + eq.id + ')">' +
         '<td><div class="fk-thumb">' + (eq.photo_url ? '<img src="' + esc(eq.photo_url) + '" style="width:36px;height:36px;border-radius:8px;object-fit:cover"/>' : resolveIcon(eq)) + '</div></td>' +
         '<td><strong>' + highlightSearch(eq.name) + '</strong>' + (eq.serial_number?'<br><small style="color:var(--text-muted)">S/N: ' + esc(eq.serial_number) + '</small>':'') + '</td>' +
         '<td><code style="font-size:12px">' + highlightSearch(eq.inventory_number) + '</code></td>' +
@@ -973,8 +973,8 @@ window.AsgardWarehouse = (function () {
           (r.target_holder_name?' → ' + esc(r.target_holder_name):'') +
           (r.work_title?' | Работа: ' + esc(r.work_title):'') +
         '</span></div><div class="fk-req-actions">' +
-        '<button class="btn mini" onclick="AsgardWarehouse.executeTransfer(' + r.id + ')">✅</button>' +
-        '<button class="btn mini ghost" onclick="AsgardWarehouse.rejectRequest(' + r.id + ')">❌</button>' +
+        '<button class="btn mini" onclick="AsgardEquipment.executeTransfer(' + r.id + ')">✅</button>' +
+        '<button class="btn mini ghost" onclick="AsgardEquipment.rejectRequest(' + r.id + ')">❌</button>' +
       '</div></div>'; }).join('') +
     '</div>';
   }
@@ -988,7 +988,7 @@ window.AsgardWarehouse = (function () {
       '<div id="fkKitsBody" class="fk-kits-grid">' +
       kits.map(function(k) {
         var pct = k.items_count > 0 ? Math.round((k.assigned_count/k.items_count)*100) : 0;
-        return '<div class="fk-kit-card" onclick="AsgardWarehouse.openKitDetail(' + k.id + ')">' +
+        return '<div class="fk-kit-card" onclick="AsgardEquipment.openKitDetail(' + k.id + ')">' +
           '<div class="fk-kit-icon">' + (k.icon||'🧰') + '</div>' +
           '<div class="fk-kit-name">' + esc(k.name) + '</div>' +
           '<div class="fk-kit-type">' + esc(k.work_type||'Универсальный') + '</div>' +
@@ -1014,7 +1014,7 @@ window.AsgardWarehouse = (function () {
 
       var html = '<div style="max-width:800px;width:min(95vw,800px)">' +
         '<div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:20px">' +
-          '<div class="fk-card-photo" style="width:80px;height:80px;font-size:36px;border-radius:14px;cursor:pointer" onclick="AsgardWarehouse.openPhotoManager(' + eq.id + ')" title="Изменить фото/иконку">' +
+          '<div class="fk-card-photo" style="width:80px;height:80px;font-size:36px;border-radius:14px;cursor:pointer" onclick="AsgardEquipment.openPhotoManager(' + eq.id + ')" title="Изменить фото/иконку">' +
             (eq.photo_url ? '<img src="' + esc(eq.photo_url) + '" style="width:100%;height:100%;object-fit:cover;border-radius:12px"/>' : resolveIcon(eq)) +
           '</div>' +
           '<div style="flex:1">' +
@@ -1032,9 +1032,9 @@ window.AsgardWarehouse = (function () {
           '<button class="fk-detail-tab" data-tab="qr">🏷️ QR</button></div>' +
         '<div class="fk-detail-content" id="fkDetailContent">' + renderInfoTab(eq) + '</div>' +
         '<div style="display:flex;gap:8px;margin-top:20px;flex-wrap:wrap">' +
-          (eq.status==='on_warehouse' && isAdmin() ? '<button class="btn" onclick="AsgardWarehouse.openIssueForm(' + eq.id + ');AsgardUI.closeModal()">📤 Выдать</button>' : '') +
-          (eq.status==='issued' && (isAdmin()||eq.current_holder_id===currentUser?.id) ? '<button class="btn" onclick="AsgardWarehouse.doReturn(' + eq.id + ')">📥 Вернуть</button>' : '') +
-          (isAdmin() ? '<button class="btn ghost" onclick="AsgardWarehouse.openEditForm(' + eq.id + ')">✏️ Редактировать</button>' : '') +
+          (eq.status==='on_warehouse' && isAdmin() ? '<button class="btn" onclick="AsgardEquipment.openIssueForm(' + eq.id + ');AsgardUI.closeModal()">📤 Выдать</button>' : '') +
+          (eq.status==='issued' && (isAdmin()||eq.current_holder_id===currentUser?.id) ? '<button class="btn" onclick="AsgardEquipment.doReturn(' + eq.id + ')">📥 Вернуть</button>' : '') +
+          (isAdmin() ? '<button class="btn ghost" onclick="AsgardEquipment.openEditForm(' + eq.id + ')">✏️ Редактировать</button>' : '') +
         '</div></div>';
 
       closeModal();
@@ -1116,7 +1116,7 @@ window.AsgardWarehouse = (function () {
 
   function renderMaintTab(maint, eq) {
     var icons = { scheduled_to:'🔄', repair:'🔧', calibration:'📏', inspection:'🔍' };
-    var html = isAdmin() ? '<button class="btn mini" style="margin-bottom:12px" onclick="AsgardWarehouse.openMaintenanceForm(' + eq.id + ')">+ Добавить запись</button>' : '';
+    var html = isAdmin() ? '<button class="btn mini" style="margin-bottom:12px" onclick="AsgardEquipment.openMaintenanceForm(' + eq.id + ')">+ Добавить запись</button>' : '';
     if (!maint.length) return html + emptyState({ icon: '🔧', title: 'Нет записей ТО', message: 'Добавьте первую запись обслуживания' });
     return html + '<div style="max-height:300px;overflow-y:auto">' + maint.map(function(m) {
       return '<div style="display:grid;grid-template-columns:auto 1fr 100px 80px;gap:10px;padding:10px;border-bottom:1px solid var(--border);font-size:13px;align-items:center">' +
@@ -1465,7 +1465,7 @@ window.AsgardWarehouse = (function () {
             '<div class="fk-work-item-name">' + esc(eq.name) + '</div>' +
             '<div class="fk-work-item-meta">' + esc(eq.inventory_number) + ' | ' + esc(eq.object_name||'—') + '</div>' +
           '</div>' +
-          '<button class="btn mini" onclick="AsgardWarehouse.doReturn(' + eq.id + ');AsgardUI.closeModal()">📥 Вернуть</button>' +
+          '<button class="btn mini" onclick="AsgardEquipment.doReturn(' + eq.id + ');AsgardUI.closeModal()">📥 Вернуть</button>' +
         '</div>';
       }).join('') + '</div>';
       showModal('👤 Моё оборудование (' + data.equipment.length + ')', html);
@@ -1557,11 +1557,11 @@ window.AsgardWarehouse = (function () {
               '<div class="fk-work-item-icon">' + (a.category_icon||'📦') + '</div>' +
               '<div class="fk-work-item-info"><div class="fk-work-item-name">' + esc(a.name) + '</div>' +
               '<div class="fk-work-item-meta">' + esc(a.inventory_number||'') + ' · ' + fmtDate(a.assigned_at) + '</div></div>' +
-              '<button class="btn mini ghost" onclick="AsgardWarehouse.unassignFromWork(' + workId + ',[' + a.equipment_id + '])">📥 Вернуть</button></div>';
+              '<button class="btn mini ghost" onclick="AsgardEquipment.unassignFromWork(' + workId + ',[' + a.equipment_id + '])">📥 Вернуть</button></div>';
           }).join('') : '<div style="padding:12px;color:var(--text-muted);font-size:13px">Оборудование не назначено</div>') +
         '</div><hr style="border:none;border-top:1px solid var(--border)"/>' +
         '<div><h4>📦 Доступное оборудование</h4>' +
-          '<input class="fk-avail-search" placeholder="Поиск..." oninput="AsgardWarehouse._filterAvailable(this.value)"/>' +
+          '<input class="fk-avail-search" placeholder="Поиск..." oninput="AsgardEquipment._filterAvailable(this.value)"/>' +
           '<div id="fkAvailList" style="max-height:300px;overflow-y:auto">' +
             available.slice(0,50).map(function(eq) {
               return '<label class="fk-work-item" style="cursor:pointer">' +
@@ -1571,7 +1571,7 @@ window.AsgardWarehouse = (function () {
                 '<div class="fk-work-item-meta">' + esc(eq.inventory_number||'') + ' · ' + esc(eq.category_name||'') + '</div></div></label>';
             }).join('') +
           '</div>' +
-          '<button class="btn" style="margin-top:10px" onclick="AsgardWarehouse.assignSelectedToWork(' + workId + ')">📤 Назначить выбранные</button>' +
+          '<button class="btn" style="margin-top:10px" onclick="AsgardEquipment.assignSelectedToWork(' + workId + ')">📤 Назначить выбранные</button>' +
         '</div>' +
         (recommendations?.recommendations?.length ? '<hr style="border:none;border-top:1px solid var(--border)"/><div><h4>💡 Рекомендуемый комплект</h4>' +
           recommendations.recommendations.map(function(rec) {
@@ -1721,4 +1721,4 @@ window.AsgardWarehouse = (function () {
   };
 })();
 
-window.AsgardEquipmentPage = window.AsgardWarehouse;
+window.AsgardEquipmentPage = window.AsgardEquipment;

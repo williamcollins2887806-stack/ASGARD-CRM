@@ -17,7 +17,7 @@ window.AsgardIntegrationsPage = (function(){
     exported_1c:{l:'Экспорт 1С',c:'var(--t2)'}, skipped:{l:'Пропущена',c:'var(--t2)'}
   };
 
-  function esc(s){return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function money(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(n||0);}
 
   async function api(path, opts) {

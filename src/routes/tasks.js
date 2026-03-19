@@ -379,6 +379,56 @@ module.exports = async function(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────
+  // PUT /api/tasks/:id/status — Диспетчер смены статуса
+  // Маппит русские названия статусов на существующие роуты
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/status', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const { status } = request.body || {};
+    if (!status) return reply.code(400).send({ error: 'Не указан статус' });
+
+    const STATUS_MAP = {
+      'Новая': 'new', 'В работе': 'in_progress',
+      'Выполнена': 'done', 'Закрыта': 'cancelled',
+      'new': 'new', 'in_progress': 'in_progress',
+      'done': 'done', 'cancelled': 'cancelled'
+    };
+    const mapped = STATUS_MAP[status];
+    if (!mapped) return reply.code(400).send({ error: 'Неизвестный статус: ' + status });
+
+    const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+
+    const userId = request.user.id;
+    const isDirector = DIRECTOR_ROLES.includes(request.user.role);
+
+    if (mapped === 'in_progress') {
+      const canStart = task.assignee_id === userId || task.assignee_id === null || isDirector;
+      if (!canStart) return reply.code(403).send({ error: 'Нет прав' });
+      const updates = ['status = $1', 'accepted_at = COALESCE(accepted_at, NOW())', 'updated_at = NOW()'];
+      const vals = ['in_progress'];
+      if (!task.assignee_id) { updates.push('assignee_id = $2'); vals.push(userId); }
+      vals.push(id);
+      await db.query(`UPDATE tasks SET ${updates.join(', ')} WHERE id = $${vals.length}`, vals);
+    } else if (mapped === 'done') {
+      const canComplete = task.assignee_id === userId || isDirector;
+      if (!canComplete) return reply.code(403).send({ error: 'Нет прав' });
+      await db.query('UPDATE tasks SET status = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2', ['done', id]);
+    } else if (mapped === 'cancelled') {
+      const canClose = task.creator_id === userId || isDirector;
+      if (!canClose) return reply.code(403).send({ error: 'Нет прав' });
+      await db.query('UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2', ['cancelled', id]);
+    } else if (mapped === 'new') {
+      if (!isDirector) return reply.code(403).send({ error: 'Нет прав' });
+      await db.query('UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2', ['new', id]);
+    }
+
+    return { success: true, status: mapped };
+  });
+
+  // ───────────────────────────────────────────────────────────────
   // PUT /api/tasks/:id/accept — Исполнитель принимает задачу
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:id/accept', {

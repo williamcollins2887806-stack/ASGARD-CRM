@@ -1024,11 +1024,6 @@ try{
       window.__ASG_LAST_ROUTE__ = window.location.hash;
     });
     
-    // Инициализируем AI-ассистента (только для авторизованных)
-    if(window.AsgardAssistant && auth){
-      AsgardAssistant.init();
-    }
-
     // Сигнал для подсказок Мимира: лейаут готов
     window.dispatchEvent(new CustomEvent('asgard:layout-ready'));
   }
@@ -2081,7 +2076,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/acts", ()=>AsgardActsPage.render({layout, title:"Акты выполненных работ"}), {auth:true, roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/invoices", ()=>AsgardInvoicesPage.render({layout, title:"Счета и оплаты"}), {auth:true, roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/reminders", ()=>AsgardReminders.render({layout, title:"Напоминания"}), {auth:true, roles:ALL_ROLES});
-    AsgardRouter.add("/warehouse", ()=>AsgardWarehouse.render({layout, title:"Склад ТМЦ"}), {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/warehouse", ()=>AsgardEquipment.render({layout, title:"Склад ТМЦ"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/my-equipment", ()=>AsgardMyEquipment.render({layout, title:"Моё оборудование"}), {auth:true, roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"]});
 
     // Касса (M2)
@@ -2374,36 +2369,6 @@ var _setupPinKeypad = null;
         });
       }
     }, { auth: true, roles: ALL_ROLES });
-
-    // Legacy redirect: /mob-more → /more
-    AsgardRouter.add("/mob-more", () => { location.hash = '#/home'; }, { auth: true, roles: ALL_ROLES });
-
-    // ═══ Mobile v2 Test Routes ═══
-    AsgardRouter.add("/test", async () => {
-      if (MOBILE_V2_ENABLED && window.App && window.M && window.DS) {
-        console.log("[MOBILE_V2] Launching test page via App.init()");
-        // Destroy SessionGuard so it doesn't overlay mobile_v2
-        try { if (window.AsgardSessionGuard) AsgardSessionGuard.destroy(); } catch(e) {}
-        // Stop desktop hashchange listener to prevent conflicts
-        window.removeEventListener("hashchange", window.__ASG_MOBILE_HASH__);
-        window.removeEventListener("hashchange", window._flyoutHashHandler);
-        await App.init();
-      } else {
-        var el = document.getElementById("app");
-        if (el) el.innerHTML = "<div style='padding:40px 20px;color:#fff;text-align:center'><h2>Mobile v2 не загружен</h2><p>Проверьте подключение core.js, ds.js, components.js, test.js</p><a href='#/home' style='color:#4A90D9'>← На главную</a></div>";
-      }
-    }, {auth:false});
-    AsgardRouter.add("/test-table", async () => {
-      if (MOBILE_V2_ENABLED && window.App && window.M && window.DS) {
-        try { if (window.AsgardSessionGuard) AsgardSessionGuard.destroy(); } catch(e) {}
-        window.removeEventListener("hashchange", window.__ASG_MOBILE_HASH__);
-        window.removeEventListener("hashchange", window._flyoutHashHandler);
-        await App.init();
-      } else {
-        location.hash = "#/test";
-      }
-    }, {auth:false});
-
 
     // TKP Follow-up: проверка напоминаний при старте (только если авторизован)
     if(window.AsgardTkpFollowup && localStorage.getItem('asgard_token')){

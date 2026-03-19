@@ -10979,3 +10979,42 @@ html[data-theme="light"] .chat-header {
   .routing-drag-handle { display: none; }
   .telephony-pagination { flex-wrap: wrap; }
 }
+
+/* ─── Audit v2: Missing CSS classes ─── */
+
+/* responsive-cards — mobile card view for tables (ui.js makeResponsiveTable) */
+@media (max-width: 768px) {
+  table.responsive-cards thead { display: none; }
+  table.responsive-cards tbody tr {
+    display: block; margin-bottom: 12px; padding: 12px;
+    border: 1px solid var(--brd); border-radius: var(--r-md); background: var(--bg2);
+  }
+  table.responsive-cards tbody td {
+    display: flex; justify-content: space-between; padding: 4px 0;
+    border: none; font-size: 13px;
+  }
+  table.responsive-cards tbody td::before {
+    content: attr(data-label); font-weight: 700; color: var(--t2); margin-right: 8px;
+  }
+}
+
+/* shake — PIN error animation (session-guard.js) */
+.shake { animation: shake-x 0.4s ease-in-out; }
+@keyframes shake-x {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+/* hiding — overlay fade-out (offline-guard.js) */
+.hiding {
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+  pointer-events: none;
+}
+
+/* is-open — Mimir FAB active state (mimir.js) */
+#mimirFab.is-open {
+  transform: rotate(45deg);
+  background: var(--bg3);
+}

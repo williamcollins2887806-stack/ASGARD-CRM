@@ -507,7 +507,7 @@ window.AsgardSealsPage = (function(){
 
   // Helpers
   function $(sel) { return document.querySelector(sel); }
-  function esc(s) { return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function today() { return new Date().toISOString().slice(0,10); }
   function formatDate(d) { return d ? new Date(d).toLocaleDateString('ru-RU') : ''; }
 

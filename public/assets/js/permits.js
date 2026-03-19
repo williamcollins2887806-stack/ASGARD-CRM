@@ -51,7 +51,7 @@ window.AsgardPermitsPage = (function(){
   // ═══════════════════════════════════════════════════════════════
   // HELPERS
   // ═══════════════════════════════════════════════════════════════
-  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function formatDate(d) { return d ? new Date(d).toLocaleDateString('ru-RU') : ''; }
 
   function getToken() {

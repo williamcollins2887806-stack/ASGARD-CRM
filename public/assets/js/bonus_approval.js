@@ -423,22 +423,12 @@ window.AsgardBonusApproval = (function(){
   }
 
   function attachRequestHandlers(empMap, isDirector) {
-    console.log('🟢 attachRequestHandlers called, isDirector:', isDirector);
     const cards = document.querySelectorAll('.bonus-request-card');
-    console.log('🟢 Found cards:', cards.length);
     document.querySelectorAll('.bonus-request-card').forEach(card => {
-      console.log('🟡 Processing card, id:', card.dataset.id);
       const id = card.dataset.id;
-      
+
       card.querySelector('.btnApprove')?.addEventListener('click', async () => {
-        console.log('🔴 CLICK on Approve button! Card id:', id);
-        alert('Кнопка нажата! ID: ' + id);
-        console.log('🔴 Before confirm dialog');
-        if (!confirm('Согласовать премии?')) {
-          console.log('🔴 User cancelled confirm');
-          return;
-        }
-        console.log('🔴 User confirmed, calling processRequest');
+        if (!confirm('Согласовать премии?')) return;
         await processRequest(id, 'approved', null, empMap);
       });
       
@@ -457,12 +447,10 @@ window.AsgardBonusApproval = (function(){
   }
 
   async function processRequest(requestId, newStatus, directorComment, empMap) {
-    console.log('🟣 processRequest START', {requestId, newStatus});
     const all = await getAll();
     const request = all.find(r => r.id === Number(requestId) || r.id === requestId);
-    
+
     if (!request) {
-      console.error('🔴 Request not found! ID:', requestId);
       AsgardUI.toast('Ошибка', 'Заявка не найдена', 'err');
       return;
     }
@@ -472,8 +460,6 @@ window.AsgardBonusApproval = (function(){
       try { request.bonuses = JSON.parse(request.bonuses); } catch(e) { request.bonuses = []; }
     }
     if (!Array.isArray(request.bonuses)) request.bonuses = [];
-    
-    console.log('🟣 Found request:', request);
     
     const auth = await AsgardAuth.requireUser();
     
@@ -571,7 +557,7 @@ window.AsgardBonusApproval = (function(){
   }
 
   // Helpers
-  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function formatMoney(n) { return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(n || 0); }
   function formatDateTime(d) { return d ? new Date(d).toLocaleString('ru-RU') : ''; }
 

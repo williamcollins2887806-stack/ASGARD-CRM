@@ -26,7 +26,7 @@ window.AsgardEmail = (function(){
 
 С уважением,
 ООО «Асгард Сервис»
-Тел: +7 (XXX) XXX-XX-XX
+Тел: +7 (499) 322-30-62
 Email: info@asgard-service.ru`
     },
     tkp_to: {
@@ -48,7 +48,7 @@ Email: info@asgard-service.ru`
 
 С уважением,
 ООО «Асгард Сервис»
-Тел: +7 (XXX) XXX-XX-XX
+Тел: +7 (499) 322-30-62
 Email: info@asgard-service.ru`
     },
     tkp_rp: {
@@ -70,7 +70,7 @@ Email: info@asgard-service.ru`
 
 С уважением,
 ООО «Асгард Сервис»
-Тел: +7 (XXX) XXX-XX-XX
+Тел: +7 (499) 322-30-62
 Email: info@asgard-service.ru`
     },
     invoice: {

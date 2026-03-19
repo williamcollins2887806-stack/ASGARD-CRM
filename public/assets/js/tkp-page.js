@@ -942,7 +942,7 @@ window.AsgardTkpPage = (function() {
     if (deadline) body += '\nСрок выполнения: ' + deadline;
     body += '\nСрок действия предложения: ' + validityDays + ' дней';
     if (services) body += '\n\nПеречень услуг:\n' + services;
-    body += '\n\nДетали предложения во вложении (PDF).\n\nС уважением,\nООО \u00ABАсгард Сервис\u00BB\nТел: +7 (XXX) XXX-XX-XX\nEmail: info@asgard-service.ru';
+    body += '\n\nДетали предложения во вложении (PDF).\n\nС уважением,\nООО \u00ABАсгард Сервис\u00BB\nТел: +7 (499) 322-30-62\nEmail: info@asgard-service.ru';
     return body;
   }
 

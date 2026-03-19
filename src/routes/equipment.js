@@ -2017,7 +2017,7 @@ async function equipmentRoutes(fastify, options) {
   });
 
   // ── Раздача фото оборудования ──
-  fastify.get('/photo/:filename', async (request, reply) => {
+  fastify.get('/photo/:filename', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { filename } = request.params;
     const safeName = path.basename(filename);
     const uploadDir = process.env.UPLOAD_DIR || './uploads';

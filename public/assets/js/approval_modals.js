@@ -8,7 +8,8 @@ window.AsgardApprovalModals = (function() {
   const { showModal, hideModal, toast, esc } = AsgardUI;
 
   function getHeaders() {
-    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '') };
+    const auth = typeof AsgardAuth !== 'undefined' ? AsgardAuth.getAuth() : null;
+    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (auth?.token || localStorage.getItem('asgard_token') || '') };
   }
 
   async function apiPost(path, body) {

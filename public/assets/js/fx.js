@@ -439,7 +439,7 @@ window.AsgardFX = (function(){
   }
 
   // Helper
-  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
   // Авто-инициализация
   if (document.readyState === 'loading') {
