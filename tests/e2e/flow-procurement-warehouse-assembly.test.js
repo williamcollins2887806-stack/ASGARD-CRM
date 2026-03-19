@@ -214,5 +214,9 @@ module.exports = {
         { role: 'PM', body: {} });
       assertOk(r, 'PM packs item');
     }},
+
+    // === STEP 7: DEAD CODE CLEANUP ===
+    { name: 'S7.1: API ok', run: async () => { const r = await api('GET', '/api/procurement', { role: 'PM' }); assertOk(r, 'OK'); }},
+    { name: 'S7.2: Stable', run: async () => { const r = await api('GET', '/api/users/me', { role: 'ADMIN' }); assertOk(r, 'OK'); }},
   ]
 };

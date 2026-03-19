@@ -43,8 +43,7 @@ window.AsgardSync = (function(){
     'one_time_payments',
     'staff_requests',
     'staff_request_messages',
-    'staff_replacements',
-    'purchase_requests'
+    'staff_replacements'
   ];
 
   // Статусы синхронизации

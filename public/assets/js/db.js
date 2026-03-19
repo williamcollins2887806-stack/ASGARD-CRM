@@ -560,7 +560,6 @@ window.AsgardDB = (function(){
     employees: { keyPath: "id" },
     employee_reviews: { keyPath: "id" },
     staff_requests: { keyPath: "id" },
-    purchase_requests: { keyPath: "id" },
     staff_request_messages: { keyPath: "id", indices: [{ name: "staff_request_id", keyPath: "staff_request_id" }] },
     staff_replacements: { keyPath: "id", indices: [{ name: "staff_request_id", keyPath: "staff_request_id" }] },
     documents: { keyPath: "id" },

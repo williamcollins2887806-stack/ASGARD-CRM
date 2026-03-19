@@ -530,27 +530,6 @@ window.AsgardPmWorksPage=(function(){
     }
   }
 
-  async function upsertPurchaseRequest({work, itemsObj}){
-    const reqs = await AsgardDB.all("purchase_requests");
-    let cur = reqs.find(r=>r.work_id===work.id);
-    const payload = {
-      work_id: work.id,
-      pm_id: work.pm_id,
-      status: "sent",
-      items_json: JSON.stringify(itemsObj||{}),
-      proc_comment: "",
-      created_at: cur?cur.created_at: isoNow(),
-      updated_at: isoNow(),
-    };
-    if(cur){
-      payload.id = cur.id;
-      await AsgardDB.put("purchase_requests", Object.assign(cur, payload));
-      return cur.id;
-    }else{
-      const id = await AsgardDB.add("purchase_requests", payload);
-      return id;
-    }
-  }
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
     return refs ? JSON.parse(refs.value_json||"{}") : { work_statuses:[], tender_statuses:[], reject_reasons:[] };
@@ -923,19 +902,6 @@ window.AsgardPmWorksPage=(function(){
           <button class="btn ghost" id="btnAskStaff">Вопрос</button>
         </div>
 
-        <hr class="hr"/>
-        <div class="help"><b>Закупки (заявка)</b></div>
-        <div class="formrow">
-          <div style="grid-column:1/-1"><label>Химия</label><input id="pr_chem" placeholder="перечень/объёмы" /></div>
-          <div style="grid-column:1/-1"><label>Оборудование</label><input id="pr_eq" placeholder="НВД/шланги/головки/прочее" /></div>
-          <div style="grid-column:1/-1"><label>Логистика</label><input id="pr_log" placeholder="транспорт/доставки/маршрут" /></div>
-        </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap">
-          <button class="btn" id="btnReqProc">Отправить в закупки</button>
-          <button class="btn ghost" id="btnViewProc">Открыть статус/ответ</button>
-          <button class="btn ghost" id="btnApproveProc">Согласовать</button>
-          <button class="btn ghost" id="btnReworkProc">На доработку</button>
-        </div>
 <hr class="hr"/>
         <div class="kpi" style="grid-template-columns:repeat(5,minmax(140px,1fr))">
           <div class="k"><div class="t">Получено</div><div class="v">${money(got)} ₽</div><div class="s">Аванс + остаток</div></div>
