@@ -302,7 +302,26 @@ window.AsgardPmWorksPage=(function(){
 
     const w = Object.assign({}, work);
 
+    // Проверка незакрытых закупок и ведомостей
+    const _token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    const _hdrs = { 'Authorization': 'Bearer ' + _token, 'Content-Type': 'application/json' };
+    let warnings = [];
+    try {
+      const procResp = await fetch(`/api/procurement?work_id=${w.id}&limit=100`, { headers: _hdrs });
+      const procData = await procResp.json();
+      const activeProc = (procData.items || []).filter(p => !['delivered', 'closed', 'dir_rejected'].includes(p.status));
+      if (activeProc.length > 0) warnings.push(`⚠️ ${activeProc.length} незакрытых заявок на закупку`);
+    } catch(e) {}
+    try {
+      const asmResp = await fetch(`/api/assembly?work_id=${w.id}`, { headers: _hdrs });
+      const asmData = await asmResp.json();
+      const activeAsm = (asmData.items || []).filter(a => !['returned', 'closed'].includes(a.status));
+      if (activeAsm.length > 0) warnings.push(`⚠️ ${activeAsm.length} незакрытых ведомостей сборки`);
+    } catch(e) {}
+    const warningHtml = warnings.length ? `<div style="background:var(--warn-bg);color:var(--warn-t);padding:12px;border-radius:var(--r-sm);margin-bottom:12px">${warnings.join('<br>')}</div>` : '';
+
     const html = `
+      ${warningHtml}
       <div class="help">Фиксируем <b>фактические данные</b>. После подтверждения директору уйдёт уведомление с актуальными значениями. Затем потребуется оценить сотрудников и заказчика.</div>
       <div class="formrow" style="margin-top:10px">
         <div><label>Старт работ (факт/вход в работу)</label><input id="c_start" type="date" value="${esc((w.start_in_work_date||'').slice(0,10))}"/></div>
@@ -1022,6 +1041,9 @@ window.AsgardPmWorksPage=(function(){
           // ─── Завершение ───
           if(user.role==="PM" && String(w.work_status||"")===triggerStatus){
             actions.push('---');
+            actions.push({ icon: '🛒', label: 'Закупки', desc: 'Заявки на закупку по работе', onClick: () => openProcurementForWork(w, user) });
+            actions.push({ icon: '📦', label: 'Склад', desc: 'Бронирование оборудования', onClick: () => openEquipmentForWork(w, user) });
+            actions.push({ icon: '🏗️', label: 'Сбор', desc: 'Мобилизация / демобилизация', onClick: () => openAssemblyForWork(w, user) });
             actions.push({
               icon: '✅', label: 'Работы завершены',
               desc: 'Завершить и закрыть работу',
@@ -1461,6 +1483,149 @@ window.AsgardPmWorksPage=(function(){
         openWork(id);
       });
     }
+  }
+
+  // ═══ ЗАКУПКИ ДЛЯ РАБОТЫ ═══
+  async function openProcurementForWork(work, user) {
+    const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    const hdrs = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    const resp = await fetch(`/api/procurement?work_id=${work.id}&limit=100`, { headers: hdrs });
+    const data = await resp.json();
+    const items = data.items || [];
+
+    let html = '<div style="padding:16px">';
+    if (items.length) {
+      html += '<table class="proc-items-table"><thead><tr><th>№</th><th>Дата</th><th>Заявка</th><th>Сумма</th><th>Статус</th></tr></thead><tbody>';
+      items.forEach(r => {
+        const st = { draft: 'Черновик', sent_to_proc: 'У закупщика', proc_responded: 'Ответ', pm_approved: 'РП ✓',
+          dir_approved: 'Дир ✓', paid: 'Оплачено', partially_delivered: 'Частично', delivered: 'Доставлено', closed: 'Закрыта' };
+        html += `<tr style="cursor:pointer" onclick="AsgardProcurementPage.openDetail(${r.id})">
+          <td>${r.id}</td><td>${r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : '—'}</td>
+          <td>${AsgardUI.esc(r.title || '')}</td><td>${r.items_total ? Number(r.items_total).toLocaleString('ru-RU') + ' ₽' : '—'}</td>
+          <td>${st[r.status] || r.status}</td></tr>`;
+      });
+      html += '</tbody></table>';
+    } else {
+      html += '<div style="text-align:center;color:var(--t2);padding:20px">Заявок нет</div>';
+    }
+    html += `<div style="margin-top:12px"><button class="btn primary" id="pw-new-proc">+ Новая заявка</button></div></div>`;
+
+    AsgardUI.showModal(html, { title: `Закупки — ${AsgardUI.esc(work.work_title || '#' + work.id)}`, width: '700px' });
+    document.getElementById('pw-new-proc').onclick = () => { AsgardUI.closeModal(); location.hash = '#/procurement'; };
+  }
+
+  // ═══ ОБОРУДОВАНИЕ ДЛЯ РАБОТЫ ═══
+  async function openEquipmentForWork(work, user) {
+    const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    const hdrs = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+    let reserved = [], available = [];
+    try { const r = await fetch(`/api/equipment/work/${work.id}/equipment`, { headers: hdrs }); const d = await r.json(); reserved = d.items || d.rows || d || []; } catch(e) {}
+    try { const r = await fetch('/api/equipment/available', { headers: hdrs }); const d = await r.json(); available = d.items || d.rows || d || []; } catch(e) {}
+
+    const reserveFrom = (work.start_plan || work.start_fact || '').toString().slice(0, 10);
+    const reserveTo = (work.end_plan || work.end_fact || '').toString().slice(0, 10);
+
+    let html = `<div style="padding:16px">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn primary eq-tab" data-tab="reserved">Забронировано (${Array.isArray(reserved)?reserved.length:0})</button>
+        <button class="btn ghost eq-tab" data-tab="available">Доступное</button>
+      </div>
+      <div id="eq-tab-reserved">`;
+
+    if (Array.isArray(reserved) && reserved.length) {
+      reserved.forEach(eq => {
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--brd);font-size:13px">
+          <span>${AsgardUI.esc(eq.name || eq.equipment_name || '')} — ${eq.quantity || 1} ${AsgardUI.esc(eq.unit || 'шт')}</span>
+          <span style="color:var(--t2)">${eq.status || ''}</span>
+        </div>`;
+      });
+    } else { html += '<div style="color:var(--t2);padding:12px">Нет забронированного оборудования</div>'; }
+    html += `</div><div id="eq-tab-available" style="display:none">`;
+
+    if (Array.isArray(available) && available.length) {
+      available.forEach(eq => {
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--brd);font-size:13px">
+          <input type="checkbox" class="eq-avail-check" data-id="${eq.id}">
+          <span>${AsgardUI.esc(eq.name || '')} — ${eq.quantity || 1} ${AsgardUI.esc(eq.unit || 'шт')}</span>
+        </div>`;
+      });
+      html += `<div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+        <label>С: <input type="date" id="eq-from" value="${reserveFrom}"></label>
+        <label>По: <input type="date" id="eq-to" value="${reserveTo}"></label>
+        <button class="btn primary" id="eq-book">Забронировать</button>
+      </div>`;
+    } else { html += '<div style="color:var(--t2);padding:12px">Нет доступного оборудования</div>'; }
+    html += '</div></div>';
+
+    AsgardUI.showModal(html, { title: `Оборудование — ${AsgardUI.esc(work.work_title || '')}`, width: '700px' });
+
+    document.querySelectorAll('.eq-tab').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.eq-tab').forEach(b => b.className = 'btn ghost eq-tab');
+        btn.className = 'btn primary eq-tab';
+        document.getElementById('eq-tab-reserved').style.display = btn.dataset.tab === 'reserved' ? '' : 'none';
+        document.getElementById('eq-tab-available').style.display = btn.dataset.tab === 'available' ? '' : 'none';
+      };
+    });
+
+    const bookBtn = document.getElementById('eq-book');
+    if (bookBtn) bookBtn.onclick = async () => {
+      const checks = document.querySelectorAll('.eq-avail-check:checked');
+      const from = document.getElementById('eq-from').value;
+      const to = document.getElementById('eq-to').value;
+      for (const ch of checks) {
+        await fetch('/api/equipment/reserve', { method: 'POST', headers: hdrs,
+          body: JSON.stringify({ equipment_id: +ch.dataset.id, work_id: work.id, reserved_from: from, reserved_to: to }) });
+      }
+      AsgardUI.toast('Забронировано', `${checks.length} ед.`, 'ok');
+      AsgardUI.closeModal();
+    };
+  }
+
+  // ═══ СБОРКА ДЛЯ РАБОТЫ ═══
+  async function openAssemblyForWork(work, user) {
+    const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    const hdrs = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    const resp = await fetch(`/api/assembly?work_id=${work.id}`, { headers: hdrs });
+    const data = await resp.json();
+    const items = data.items || [];
+
+    let html = '<div style="padding:16px">';
+    if (items.length) {
+      html += '<div class="asm-cards">';
+      items.forEach(a => {
+        const pct = a.items_count > 0 ? Math.round((a.packed_count / a.items_count) * 100) : 0;
+        const typeLabel = a.type === 'mobilization' ? '🚛 Мобилизация' : a.type === 'demobilization' ? '🏠 Демобилизация' : '↔️ Перемещение';
+        html += `<div class="asm-card" onclick="location.hash='#/assembly?id=${a.id}';AsgardUI.closeModal()">
+          <div class="asm-card__header"><span class="asm-card__title">${AsgardUI.esc(a.title || typeLabel)}</span>
+            <span class="asm-status asm-status--${(a.status||'').replace(/_/g,'-')}">${a.status}</span></div>
+          <div class="asm-card__meta">${typeLabel} • ${a.items_count||0} поз. • ${a.pallets_count||0} мест</div>
+          <div class="asm-card__progress"><div class="asm-progress"><div class="asm-progress__bar" style="width:${pct}%"></div></div>
+            <span style="font-size:11px;color:var(--t2)">${pct}% собрано</span></div>
+        </div>`;
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="text-align:center;color:var(--t2);padding:20px">Ведомостей нет</div>';
+    }
+    html += `<div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn primary" id="aw-mob">🚛 Мобилизация</button>
+      <button class="btn ghost" id="aw-demob">🏠 Демобилизация</button>
+    </div></div>`;
+
+    AsgardUI.showModal(html, { title: `Сбор — ${AsgardUI.esc(work.work_title || '')}`, width: '750px' });
+
+    const createAsm = async (type) => {
+      const r = await fetch('/api/assembly', { method: 'POST', headers: hdrs,
+        body: JSON.stringify({ work_id: work.id, type, destination: work.object_name || '' }) });
+      const d = await r.json();
+      if (d.error) { AsgardUI.toast('Ошибка', d.error, 'err'); return; }
+      AsgardUI.toast('Создано', '', 'ok'); AsgardUI.closeModal();
+      location.hash = '#/assembly?id=' + d.item.id;
+    };
+    document.getElementById('aw-mob').onclick = () => createAsm('mobilization');
+    document.getElementById('aw-demob').onclick = () => createAsm('demobilization');
   }
 
   return { render };

@@ -218,5 +218,10 @@ module.exports = {
     // === STEP 7: DEAD CODE CLEANUP ===
     { name: 'S7.1: API ok', run: async () => { const r = await api('GET', '/api/procurement', { role: 'PM' }); assertOk(r, 'OK'); }},
     { name: 'S7.2: Stable', run: async () => { const r = await api('GET', '/api/users/me', { role: 'ADMIN' }); assertOk(r, 'OK'); }},
+
+    // === STEP 10: PM_WORKS INTEGRATION ===
+    { name: 'S10.1: Equipment for work', run: async () => { const r = await api('GET', '/api/equipment/work/1/equipment', { role: 'PM' }); assert(r.status !== 500, 'OK'); }},
+    { name: 'S10.2: Assembly for work', run: async () => { const r = await api('GET', '/api/assembly?work_id=1', { role: 'PM' }); assert(r.status !== 500, 'OK'); }},
+    { name: 'S10.3: Procurement for work', run: async () => { const r = await api('GET', '/api/procurement?work_id=1', { role: 'PM' }); assert(r.status !== 500, 'OK'); }},
   ]
 };
