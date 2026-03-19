@@ -10,6 +10,8 @@ import PinEntry from '@/pages/PinEntry';
 import Home from '@/pages/Home';
 import Tasks from '@/pages/Tasks';
 import Chat from '@/pages/Chat';
+import ChatView from '@/pages/ChatView';
+import Mimir from '@/pages/Mimir';
 import Works from '@/pages/Works';
 import More from '@/pages/More';
 
@@ -31,7 +33,10 @@ function PinGuard({ children }) {
 
 function AppLayout() {
   const location = useLocation();
-  const hideTabBar = ['/login', '/pin', '/welcome'].includes(location.pathname);
+  const hideTabBar =
+    ['/login', '/pin', '/welcome'].includes(location.pathname) ||
+    location.pathname.startsWith('/chat/') ||
+    location.pathname === '/mimir';
 
   return (
     <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -49,6 +54,8 @@ function AppLayout() {
           <Route path="/" element={<ProtectedRoute section="dashboard"><PinGuard><Home /></PinGuard></ProtectedRoute>} />
           <Route path="/tasks" element={<ProtectedRoute section="tasks"><PinGuard><Tasks /></PinGuard></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute section="chat"><PinGuard><Chat /></PinGuard></ProtectedRoute>} />
+          <Route path="/chat/:chatId" element={<ProtectedRoute section="chat"><PinGuard><ChatView /></PinGuard></ProtectedRoute>} />
+          <Route path="/mimir" element={<ProtectedRoute section="chat"><PinGuard><Mimir /></PinGuard></ProtectedRoute>} />
           <Route path="/works" element={<ProtectedRoute section="works"><PinGuard><Works /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />

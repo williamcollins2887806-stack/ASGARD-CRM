@@ -1,30 +1,60 @@
+import { useState, useCallback } from 'react';
+import { Edit3 } from 'lucide-react';
 import { PageShell } from '@/components/layout/PageShell';
-import { EmptyState } from '@/components/shared/EmptyState';
-import { SkeletonList } from '@/components/shared/SkeletonKit';
-import { MessageCircle } from 'lucide-react';
+import { ChatList } from '@/components/chat/ChatList';
+import { NewChatSheet } from '@/components/chat/NewChatSheet';
+import { useChat } from '@/hooks/useChat';
+import { useSSE } from '@/hooks/useSSE';
+import { useHaptic } from '@/hooks/useHaptic';
 
+/**
+ * Chat — экран списка чатов + SSE для real-time обновлений
+ */
 export default function Chat() {
-  return (
-    <PageShell title="Хугинн">
-      <EmptyState
-        icon={MessageCircle}
-        iconColor="#7B68EE"
-        iconBg="rgba(123, 104, 238, 0.1)"
-        title="Мессенджер Хугинн"
-        description="Чаты команды, файлы и ИИ-помощник Мимир — всё в одном месте"
-        badge="Мимир ✦"
-      />
+  const { chats, loading, search, setSearch, updateChat } = useChat();
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const haptic = useHaptic();
 
-      {/* Skeleton preview */}
-      <div className="mt-2 px-1" style={{ opacity: 0.5 }}>
-        <p
-          className="text-xs font-medium mb-3 pl-1"
-          style={{ color: 'var(--text-tertiary)' }}
+  // SSE: обновляем last_message и unread в списке
+  const handleSSE = useCallback(
+    (event, data) => {
+      if (event === 'new_message' && data.chat_id) {
+        updateChat(data.chat_id, {
+          last_message: data.message?.message || '',
+          last_message_at: data.message?.created_at || new Date().toISOString(),
+          unread_count:
+            (chats.find((c) => c.id === data.chat_id)?.unread_count || 0) + 1,
+        });
+      }
+    },
+    [updateChat, chats]
+  );
+
+  useSSE(handleSSE);
+
+  return (
+    <PageShell
+      title="Хугинн"
+      headerRight={
+        <button
+          onClick={() => {
+            haptic.light();
+            setNewChatOpen(true);
+          }}
+          className="flex items-center justify-center spring-tap"
+          style={{ width: 44, height: 44, color: 'var(--blue)' }}
         >
-          Превью чатов
-        </p>
-        <SkeletonList count={4} />
-      </div>
+          <Edit3 size={20} />
+        </button>
+      }
+    >
+      <ChatList
+        chats={chats}
+        loading={loading}
+        search={search}
+        onSearch={setSearch}
+      />
+      <NewChatSheet open={newChatOpen} onClose={() => setNewChatOpen(false)} />
     </PageShell>
   );
 }
