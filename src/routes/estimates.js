@@ -121,6 +121,7 @@ async function routes(fastify) {
 
       const body = request.body || {};
       if (body.name && !body.title) { body.title = body.name; delete body.name; }
+      if (!body.pm_id) body.pm_id = request.user.id;
       if (!body.title && !body.tender_id) {
         await client.query('ROLLBACK');
         return reply.code(400).send({ error: 'Укажите название или тендер' });

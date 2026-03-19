@@ -280,6 +280,7 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
     // Собираем поля для UPDATE динамически
     const fields = {};
     fields[statusField] = 'approved';
+    if (entityType === 'estimates') fields.is_approved = true;
     if (cols.approved_by) fields[cols.approved_by] = actor.id;
     if (cols.approved_at) fields[cols.approved_at] = '__NOW__';
     if (comment && cols.comment_field) fields[cols.comment_field] = comment;
