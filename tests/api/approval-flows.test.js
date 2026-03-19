@@ -53,16 +53,15 @@ module.exports = {
     },
 
     // ═══════════════════════════════════════════════
-    // ???????????????????????????????????????????????
-    // 2.1 Estimates
-    // ???????????????????????????????????????????????
+    // 2.1 Estimates — Согласование через /api/approval/estimates/:id/*
+    // ═══════════════════════════════════════════════
     {
       name: '2.1.1 PM creates estimate -> draft',
       run: async () => {
         const resp = await api('POST', '/api/estimates', {
           role: 'PM',
           body: {
-            title: '???????? ???????',
+            title: 'Тестовый просчёт (draft)',
             tender_id: tenderId,
             pm_id: TEST_USERS.PM.id,
             amount: 500000,
@@ -80,131 +79,71 @@ module.exports = {
       }
     },
     {
-      name: '2.1.2 PM submits estimate -> director_review',
+      name: '2.1.2 PM creates estimate with status sent -> auto-submits for approval',
       run: async () => {
-        if (!estimateId) skip('No estimate');
-        const resp = await api('POST', `/api/estimates/${estimateId}/approval/submit`, {
-          role: 'PM',
-          body: { comment: '??????? ??????????? ??????', requires_payment: true }
-        });
-        assertOk(resp, 'submit estimate');
-        const est = resp.data?.estimate || resp.data;
-        const approval = resp.data?.approval || {};
-        assertMatch(est, { approval_status: 'sent' }, 'legacy status sent');
-        assertMatch(approval, { current_stage: 'director_review' }, 'workflow director review');
-      }
-    },
-    {
-      name: '2.1.3 DIRECTOR_GEN approves to accounting',
-      run: async () => {
-        if (!estimateId) skip('No estimate');
-        const resp = await api('POST', `/api/estimates/${estimateId}/approval/approve-to-accounting`, {
-          role: 'DIRECTOR_GEN',
-          body: { comment: '???????? ? ???????????' }
-        });
-        assertOk(resp, 'approve to accounting');
-        const est = resp.data?.estimate || resp.data;
-        const approval = resp.data?.approval || {};
-        assertMatch(est, { approval_status: 'accounting_review' }, 'legacy status accounting review');
-        assertMatch(approval, { current_stage: 'accounting_review' }, 'workflow accounting review');
-      }
-    },
-    {
-      name: '2.1.4 BUH accepts and moves to payment step',
-      run: async () => {
-        if (!estimateId) skip('No estimate');
-        const resp = await api('POST', `/api/estimates/${estimateId}/approval/accept`, {
-          role: 'BUH',
-          body: { comment: '??????? ????????????' }
-        });
-        assertOk(resp, 'accept accounting');
-        const est = resp.data?.estimate || resp.data;
-        const approval = resp.data?.approval || {};
-        assertMatch(est, { approval_status: 'payment_pending' }, 'payment pending status');
-        assertMatch(approval, { current_stage: 'payment_pending' }, 'workflow payment_pending');
-      }
-    },
-    {
-      name: '2.1.4a BUH marks paid with payment slip',
-      run: async () => {
-        if (!estimateId) skip('No estimate');
-        const token = await getToken('BUH');
-        const form = new FormData();
-        form.append('comment', '???????? ?? ?????????? ?????????');
-        form.append('payment_slip', new Blob(['payment slip'], { type: 'text/plain' }), 'payment-slip.txt');
-        const resp = await fetch(`${BASE_URL}/api/estimates/${estimateId}/approval/mark-paid`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: form
-        });
-        const data = await resp.json();
-        assert(resp.ok, `mark paid: expected 2xx, got ${resp.status} - ${JSON.stringify(data).slice(0, 200)}`);
-        const est = data?.estimate || data;
-        const approval = data?.approval || {};
-        assertMatch(est, { approval_status: 'paid' }, 'legacy paid');
-        assertMatch(approval, { current_stage: 'paid' }, 'workflow paid');
-      }
-    },
-    {
-      name: '2.1.4b DIRECTOR_GEN approves directly when payment review is not required',
-      run: async () => {
-        const create = await api('POST', '/api/estimates', {
+        const resp = await api('POST', '/api/estimates', {
           role: 'PM',
           body: {
-            title: 'Direct final test',
+            title: 'Тестовый просчёт (sent)',
             tender_id: tenderId,
-            approval_status: 'draft',
-            amount: 110000
+            pm_id: TEST_USERS.PM.id,
+            amount: 500000,
+            approval_status: 'sent',
+            description: 'Auto-submitted estimate'
           }
         });
-        assertOk(create, 'create direct final estimate');
-        const id = (create.data?.estimate || create.data).id;
-
-        assertOk(await api('POST', `/api/estimates/${id}/approval/submit`, {
-          role: 'PM',
-          body: { comment: 'Submit without accounting flag' }
-        }), 'submit direct final estimate');
-
-        const resp = await api('POST', `/api/estimates/${id}/approval/approve-to-accounting`, {
-          role: 'DIRECTOR_GEN',
-          body: { comment: 'Approved without payment review' }
-        });
-        assertOk(resp, 'director approves directly');
+        assertOk(resp, 'create sent estimate');
         const est = resp.data?.estimate || resp.data;
-        const approval = resp.data?.approval || {};
-        assertMatch(est, { approval_status: 'approved' }, 'legacy approved without accounting');
-        assertMatch(approval, { current_stage: 'approved_final', requires_payment: false }, 'workflow approved_final without accounting');
+        estimateId = est.id;
+        assert(estimateId, 'estimate id');
+        assertMatch(est, { approval_status: 'sent' }, 'status sent');
+      }
+    },
+    {
+      name: '2.1.3 DIRECTOR_GEN approves estimate',
+      run: async () => {
+        if (!estimateId) skip('No estimate');
+        const resp = await api('POST', `/api/approval/estimates/${estimateId}/approve`, {
+          role: 'DIRECTOR_GEN',
+          body: { comment: 'Одобрено директором' }
+        });
+        assertOk(resp, 'approve estimate');
+        assertMatch(resp.data, { status: 'approved' }, 'approval status approved');
+      }
+    },
+    {
+      name: '2.1.4 Approved estimate has correct status in DB',
+      run: async () => {
+        if (!estimateId) skip('No estimate');
+        const resp = await api('GET', `/api/estimates/${estimateId}`, { role: 'PM' });
+        assertOk(resp, 'get approved estimate');
+        const est = resp.data?.estimate || resp.data;
+        assertMatch(est, { approval_status: 'approved' }, 'DB status approved');
       }
     },
     {
       name: '2.1.5 DIRECTOR_GEN requests rework',
       run: async () => {
+        // Create + send new estimate for rework flow
         const create = await api('POST', '/api/estimates', {
           role: 'PM',
           body: {
             title: 'Rework test',
             tender_id: tenderId,
-            approval_status: 'draft',
+            pm_id: TEST_USERS.PM.id,
+            approval_status: 'sent',
             amount: 100000
           }
         });
         assertOk(create, 'create rework estimate');
         const id = (create.data?.estimate || create.data).id;
 
-        assertOk(await api('POST', `/api/estimates/${id}/approval/submit`, {
-          role: 'PM',
-          body: { comment: '???????? ?? ????????????' }
-        }), 'submit rework estimate');
-
-        const resp = await api('POST', `/api/estimates/${id}/approval/request-rework`, {
+        const resp = await api('POST', `/api/approval/estimates/${id}/rework`, {
           role: 'DIRECTOR_GEN',
-          body: { comment: '????? ???????????' }
+          body: { comment: 'Нужно пересчитать смету' }
         });
         assertOk(resp, 'request rework');
-        const est = resp.data?.estimate || resp.data;
-        const approval = resp.data?.approval || {};
-        assertMatch(est, { approval_status: 'rework' }, 'legacy rework');
-        assertMatch(approval, { current_stage: 'pm_rework' }, 'workflow pm_rework');
+        assertMatch(resp.data, { status: 'rework' }, 'status rework');
         module.exports._reworkEstimateId = id;
       }
     },
@@ -213,114 +152,115 @@ module.exports = {
       run: async () => {
         const id = module.exports._reworkEstimateId;
         if (!id) skip('No rework estimate');
-        const resp = await api('POST', `/api/estimates/${id}/approval/resubmit`, {
+        const resp = await api('POST', `/api/approval/estimates/${id}/resubmit`, {
           role: 'PM',
-          body: { comment: '?????????? ? ?????????? ????????' }
+          body: {}
         });
         assertOk(resp, 'resubmit estimate');
-        const est = resp.data?.estimate || resp.data;
-        const approval = resp.data?.approval || {};
-        assertMatch(est, { approval_status: 'sent' }, 'legacy sent after resubmit');
-        assertMatch(approval, { current_stage: 'director_review' }, 'workflow back to director review');
+        assertMatch(resp.data, { status: 'sent' }, 'status sent after resubmit');
       }
     },
     {
-      name: '2.1.7 DIRECTOR_GEN rejects at director stage',
+      name: '2.1.7 DIRECTOR_GEN rejects estimate',
       run: async () => {
+        // Create + send new estimate for rejection
         const create = await api('POST', '/api/estimates', {
           role: 'PM',
           body: {
-            title: 'Director reject test',
+            title: 'Reject test',
             tender_id: tenderId,
-            approval_status: 'draft',
+            pm_id: TEST_USERS.PM.id,
+            approval_status: 'sent',
             amount: 120000
           }
         });
-        assertOk(create, 'create director reject estimate');
+        assertOk(create, 'create reject estimate');
         const id = (create.data?.estimate || create.data).id;
 
-        assertOk(await api('POST', `/api/estimates/${id}/approval/submit`, {
-          role: 'PM',
-          body: { comment: 'Submit for director reject', requires_payment: true }
-        }), 'submit director reject estimate');
-
-        const resp = await api('POST', `/api/estimates/${id}/approval/reject`, {
+        const resp = await api('POST', `/api/approval/estimates/${id}/reject`, {
           role: 'DIRECTOR_GEN',
-          body: { comment: '???????????? ?????????' }
+          body: { comment: 'Отклонено — завышена стоимость' }
         });
         assertOk(resp, 'director rejects');
-        const est = resp.data?.estimate || resp.data;
-        const approval = resp.data?.approval || {};
-        assertMatch(est, { approval_status: 'rejected' }, 'legacy rejected');
-        assertMatch(approval, { current_stage: 'rejected' }, 'workflow rejected');
+        assertMatch(resp.data, { status: 'rejected' }, 'status rejected');
       }
     },
     {
-      name: '2.1.7b BUH cannot reject at accounting stage',
+      name: '2.1.7b BUH cannot approve estimates (not a director)',
       run: async () => {
         const create = await api('POST', '/api/estimates', {
           role: 'PM',
           body: {
-            title: 'Accounting reject forbidden test',
+            title: 'BUH forbidden test',
             tender_id: tenderId,
-            approval_status: 'draft',
+            pm_id: TEST_USERS.PM.id,
+            approval_status: 'sent',
             amount: 121000
           }
         });
-        assertOk(create, 'create accounting reject forbidden estimate');
+        assertOk(create, 'create estimate for BUH test');
         const id = (create.data?.estimate || create.data).id;
 
-        assertOk(await api('POST', `/api/estimates/${id}/approval/submit`, {
-          role: 'PM',
-          body: { comment: 'Submit for forbidden reject path', requires_payment: true }
-        }), 'submit accounting reject forbidden estimate');
-        assertOk(await api('POST', `/api/estimates/${id}/approval/approve-to-accounting`, {
-          role: 'DIRECTOR_GEN',
-          body: { comment: '???????? ? ???????????' }
-        }), 'director approves to accounting');
-
-        const resp = await api('POST', `/api/estimates/${id}/approval/reject`, {
+        const resp = await api('POST', `/api/approval/estimates/${id}/approve`, {
           role: 'BUH',
-          body: { comment: '?? ?????? ???? ????????' }
+          body: { comment: 'Бухгалтер не должен согласовывать' }
         });
-        assert(resp.status === 409 || resp.status === 403, `expected 403/409, got ${resp.status}`);
+        assert(resp.status === 403, `expected 403 for BUH approve, got ${resp.status}`);
       }
     },
     {
-      name: '2.1.8 Generic data API cannot edit submitted estimate directly',
+      name: '2.1.8 PUT /api/estimates/:id with approval_status -> 400 (use /api/approval)',
       run: async () => {
         const create = await api('POST', '/api/estimates', {
           role: 'PM',
           body: {
-            title: 'Bypass lock test',
+            title: 'Lock test',
             tender_id: tenderId,
             approval_status: 'draft',
             amount: 130000
           }
         });
-        assertOk(create, 'create bypass estimate');
+        assertOk(create, 'create lock estimate');
         const id = (create.data?.estimate || create.data).id;
 
-        assertOk(await api('POST', `/api/estimates/${id}/approval/submit`, {
+        // Try changing approval_status via PUT → should be blocked
+        const resp = await api('PUT', `/api/estimates/${id}`, {
           role: 'PM',
-          body: { comment: 'Submit for lock' }
-        }), 'submit bypass estimate');
-
-        const resp = await api('PUT', `/api/data/estimates/${id}`, {
-          role: 'PM',
-          body: { amount: 999999 }
+          body: { approval_status: 'approved' }
         });
-        assertStatus(resp, 409, 'submitted estimate is locked against generic direct edit');
+        assertStatus(resp, 400, 'approval_status change via PUT is blocked');
       }
     },
     {
-      name: '2.1.9 GET /api/estimates/:id/approval returns workflow trail',
+      name: '2.1.9 Director question flow',
       run: async () => {
-        if (!estimateId) skip('No estimate');
-        const resp = await api('GET', `/api/estimates/${estimateId}/approval`, { role: 'PM' });
-        assertOk(resp, 'get approval trail');
-        assert(resp.data?.approval, 'approval payload');
-        assertArray(resp.data?.events || [], 'approval events');
+        const create = await api('POST', '/api/estimates', {
+          role: 'PM',
+          body: {
+            title: 'Question test',
+            tender_id: tenderId,
+            pm_id: TEST_USERS.PM.id,
+            approval_status: 'sent',
+            amount: 90000
+          }
+        });
+        assertOk(create, 'create question estimate');
+        const id = (create.data?.estimate || create.data).id;
+
+        const resp = await api('POST', `/api/approval/estimates/${id}/question`, {
+          role: 'DIRECTOR_GEN',
+          body: { comment: 'Уточните стоимость материалов' }
+        });
+        assertOk(resp, 'director asks question');
+        assertMatch(resp.data, { status: 'question' }, 'status question');
+
+        // PM can resubmit from question status
+        const resub = await api('POST', `/api/approval/estimates/${id}/resubmit`, {
+          role: 'PM',
+          body: {}
+        });
+        assertOk(resub, 'resubmit after question');
+        assertMatch(resub.data, { status: 'sent' }, 'status sent after question resubmit');
       }
     },
     {
