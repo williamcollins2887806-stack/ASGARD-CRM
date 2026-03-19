@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '17.13.0';
+const SHELL_VERSION = '17.13.1';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -186,6 +186,11 @@ self.addEventListener('fetch', (event) => {
     // GET /api/push/* → Network Only (always fresh)
     if (url.pathname.startsWith('/api/push/')) {
       event.respondWith(networkOnly(request));
+      return;
+    }
+
+    // GET /api/telephony/* → bypass SW (response.clone() causes empty body)
+    if (url.pathname.startsWith('/api/telephony/')) {
       return;
     }
 
