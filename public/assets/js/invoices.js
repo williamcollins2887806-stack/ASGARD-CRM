@@ -48,7 +48,7 @@ window.AsgardInvoicesPage = (function(){
       'cancelled': { label: 'Отменён', color: 'var(--err-t)' }
     };
     
-    const formatMoney = n => (n||0).toLocaleString('ru-RU') + ' ₽';
+    const formatMoney = n => AsgardUI.money(n) + ' ₽';
     const formatDate = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
     
     const html = `
@@ -137,7 +137,7 @@ window.AsgardInvoicesPage = (function(){
       'cancelled': { label: 'Отменён', cls: 'status-red' }
     };
     const st = STATUSES[inv.status] || STATUSES.pending;
-    const formatMoney = n => (n||0).toLocaleString('ru-RU') + ' ₽';
+    const formatMoney = n => AsgardUI.money(n) + ' ₽';
     const formatDate = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
     const remaining = (inv.total_amount || 0) - (inv.paid_amount || 0);
 

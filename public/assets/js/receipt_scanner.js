@@ -711,7 +711,7 @@ window.AsgardReceiptScanner = (function(){
 
   // Helpers
   function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-  function formatMoney(n) { return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 }).format(n || 0); }
+  function formatMoney(n) { return AsgardUI.money(n) + ' ₽'; }
 
   return {
     openScanner,

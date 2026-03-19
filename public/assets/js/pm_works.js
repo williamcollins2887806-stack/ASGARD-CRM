@@ -136,7 +136,7 @@
   }
 
 window.AsgardPmWorksPage=(function(){
-  const { $, $$, esc, toast, showModal, formatDate } = AsgardUI;
+  const { $, $$, esc, toast, showModal, formatDate, money } = AsgardUI;
   const { dial } = AsgardCharts;
 
   function isoNow(){ return new Date().toISOString(); }
@@ -147,11 +147,6 @@ window.AsgardPmWorksPage=(function(){
     if(isNaN(da.getTime())||isNaN(db.getTime())) return null;
     da.setHours(0,0,0,0); db.setHours(0,0,0,0);
     return Math.round((db-da)/(24*60*60*1000))+1;
-  }
-  function money(x){
-    if(x===null||x===undefined||x==="") return "?";
-    const n=Number(x); if(isNaN(n)) return esc(String(x));
-    return n.toLocaleString("ru-RU");
   }
   function workDate(value){ return value ? formatDate(value) : "\u2014"; }
   const V = AsgardValidate;

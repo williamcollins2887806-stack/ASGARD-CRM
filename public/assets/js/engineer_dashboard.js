@@ -5,11 +5,7 @@
 window.AsgardEngineerDashboard = (function(){
   const { $, $$, esc, toast } = AsgardUI;
 
-  function money(x){
-    if(x===null||x===undefined||x==="") return "—";
-    const n=Number(x); if(isNaN(n)) return esc(String(x));
-    return n.toLocaleString("ru-RU")+" ₽";
-  }
+  function money(x) { return AsgardUI.money(x) + ' ₽'; }
 
   function headers(){
     return { 'Content-Type':'application/json', 'Authorization':'Bearer '+(localStorage.getItem('asgard_token')||'') };

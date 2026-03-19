@@ -44,10 +44,7 @@ window.AsgardExport = (function(){
 
   // Форматирование денег
   function fmtMoney(n){
-    if(n === null || n === undefined || n === '') return '';
-    const num = Number(n);
-    if(isNaN(num)) return String(n);
-    return num.toLocaleString('ru-RU');
+    return AsgardUI.money(n);
   }
 
   // ============================================

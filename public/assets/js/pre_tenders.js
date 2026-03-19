@@ -147,9 +147,7 @@ window.AsgardPreTendersPage = (function(){
     return html;
   }
 
-  function money(n) {
-    return Math.round(Number(n||0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' ₽';
-  }
+  function money(x) { return AsgardUI.money(Math.round(Number(x || 0))) + ' ₽'; }
 
   // ── Beautiful cost estimate report renderer ──
   function renderCostReport(raw) {

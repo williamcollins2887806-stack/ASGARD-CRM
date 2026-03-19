@@ -524,7 +524,18 @@ window.AsgardUI = (function(){
     </div>`;
   }
 
-  return { renderMarkdown, $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton };
+  /**
+   * money(x) — Canonical currency formatter. All files MUST use this.
+   * null/undefined/'' → '0', NaN → '0', valid → ru-RU formatted (e.g. '123 456,78')
+   * Does NOT add ₽ suffix — each template adds it where needed.
+   */
+  function money(x) {
+    if (x === null || x === undefined || x === '') return '0';
+    const n = Number(x);
+    return (isNaN(n) || !isFinite(n)) ? '0' : n.toLocaleString('ru-RU');
+  }
+
+  return { renderMarkdown, $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money };
 
   /**
    * renderMarkdown(md) — Renders Markdown text as styled HTML

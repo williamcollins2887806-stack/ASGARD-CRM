@@ -5,10 +5,9 @@
  * Без бухгалтерии, без оплаты. Просчёт — это калькуляция.
  */
 window.AsgardAllEstimatesPage = (function() {
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
   function ymNow() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
-  function money(x) { if (x === null || x === undefined || x === '') return '—'; const n = Number(x); return isNaN(n) ? esc(String(x)) : n.toLocaleString('ru-RU'); }
   function norm(s) { return String(s || '').toLowerCase().trim(); }
   function isDirectorRole(role) { return role === 'ADMIN' || String(role || '').startsWith('DIRECTOR'); }
 

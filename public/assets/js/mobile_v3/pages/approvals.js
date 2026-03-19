@@ -8,7 +8,7 @@ window.MobileApprovals = (function () {
 
   var el = Utils.el;
 
-  function money(v) { return v ? Number(v).toLocaleString('ru-RU') + ' ₽' : '—'; }
+  function money(v) { var n = Number(v || 0); return isNaN(n) ? '0 ₽' : n.toLocaleString('ru-RU') + ' ₽'; }
   function fmt(v) { return v ? new Date(v).toLocaleDateString('ru-RU') : '—'; }
 
   async function loadData() {

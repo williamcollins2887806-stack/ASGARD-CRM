@@ -272,7 +272,7 @@ window.AsgardObjectMap = (function() {
         const n = Number(v || 0);
         if (n >= 1000000) return (n / 1000000).toFixed(1) + ' млн ₽';
         if (n >= 1000) return (n / 1000).toFixed(0) + ' тыс ₽';
-        return n.toLocaleString('ru-RU') + ' ₽';
+        return AsgardUI.money(n) + ' ₽';
       };
 
       const workStatusIcon = (s) => {

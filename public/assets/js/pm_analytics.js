@@ -5,11 +5,7 @@
 window.AsgardPMAnalytics = (function(){
   const { $, $$, esc, toast } = AsgardUI;
 
-  function money(x){
-    if(x===null||x===undefined||x==="") return "—";
-    const n=Number(x); if(isNaN(n)) return esc(String(x));
-    return n.toLocaleString("ru-RU")+" ₽";
-  }
+  function money(x) { return AsgardUI.money(x) + ' ₽'; }
   function shortMoney(x){
     const n=Number(x)||0;
     if(n>=1000000) return (n/1000000).toFixed(1)+'М';

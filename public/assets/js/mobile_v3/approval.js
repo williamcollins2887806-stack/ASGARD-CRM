@@ -41,9 +41,7 @@ window.MobileApproval = (function () {
     return ENTITY_LABELS[type] || type || 'Заявка';
   }
 
-  function money(v) {
-    return v ? Number(v).toLocaleString('ru-RU') + ' ₽' : '—';
-  }
+  function money(v) { var n = Number(v || 0); return isNaN(n) ? '0 ₽' : n.toLocaleString('ru-RU') + ' ₽'; }
 
   function fmtDate(v) {
     return v ? new Date(v).toLocaleDateString('ru-RU') : '—';

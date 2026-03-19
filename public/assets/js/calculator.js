@@ -13,10 +13,7 @@
     const n = Number(String(v??"").replace(/\s/g, "").replace(",","."));
     return Number.isFinite(n) ? n : d;
   }
-  function money(n){
-    const x = Math.round(Number(n||0));
-    return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
-  }
+  function money(x) { return AsgardUI.money(Math.round(Number(x || 0))) + ' ₽'; }
   function clamp(n,min,max){ return Math.min(max, Math.max(min, n)); }
 
   async function getAppSettings(){

@@ -98,7 +98,7 @@ window.AsgardWarehouse = (function(){
     const stats = data.stats || {};
     
     // Форматирование денег
-    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₽';
+    const formatMoney = (v) => AsgardUI.money(v) + ' ₽';
     
     // Опции фильтров
     const categoryOptions = categories.map(c => 
@@ -212,7 +212,7 @@ window.AsgardWarehouse = (function(){
   function renderEquipmentRows(items, canEdit, isDirector = false) {
     if (!items.length) return '';
     
-    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const formatMoney = (v) => AsgardUI.money(v);
     
     return items.map(eq => {
       const status = STATUSES[eq.status] || STATUSES.on_warehouse;

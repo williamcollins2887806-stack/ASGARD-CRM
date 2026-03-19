@@ -1,5 +1,5 @@
 window.AsgardTendersPage = (function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
   const V = AsgardValidate;
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(r==="DIRECTOR"||String(r||"").startsWith("DIRECTOR_"));
 
@@ -326,14 +326,6 @@ async function getRefs(){
     }
     return {full:false, limited:false};
   }
-
-  function money(x){
-    if(x===null || x===undefined || x==="") return "";
-    const n=Number(x);
-    if(Number.isNaN(n)) return esc(x);
-    return n.toLocaleString("ru-RU");
-  }
-
   async function audit(actorId, entityType, entityId, action, payload){
     await AsgardDB.add("audit_log", {
       actor_user_id: actorId,

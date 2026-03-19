@@ -1606,10 +1606,7 @@ var _setupPinKeypad = null;
     const works=await AsgardDB.all("works");
     const estimates=await AsgardDB.all("estimates");
 
-    const fmtRub = (v)=>{
-      const n = Number(v||0);
-      try{ return n.toLocaleString('ru-RU') + ' ₽'; }catch(_){ return String(n) + ' ₽'; }
-    };
+    const fmtRub = (v) => AsgardUI.money(v) + ' ₽';
     const today = new Date();
     const dayMs = 24*60*60*1000;
 
@@ -1798,7 +1795,7 @@ var _setupPinKeypad = null;
           });
           if (resp.ok) {
             const data = await resp.json();
-            const formatMoney = (v) => (parseFloat(v) || 0).toLocaleString('ru-RU', {minimumFractionDigits: 2}) + ' руб.';
+            const formatMoney = (v) => AsgardUI.money(v) + ' руб.';
             document.getElementById('cashBalanceData').innerHTML = `
               <div class="kpi" style="grid-template-columns:repeat(2,1fr)">
                 <div class="k"><div class="t">На руках</div><div class="v" style="color:${data.balance > 0 ? 'var(--err-t)' : 'var(--ok-t)'}">${formatMoney(data.balance)}</div></div>

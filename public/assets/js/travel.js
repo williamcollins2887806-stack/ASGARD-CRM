@@ -21,7 +21,7 @@ window.AsgardTravelPage = (function(){
   }
 
   function fmtMoney(n){
-    return new Intl.NumberFormat('ru-RU', {style:'currency', currency:'RUB', maximumFractionDigits:0}).format(n||0);
+    return AsgardUI.money(n) + ' ₽';
   }
 
   async function render({layout, title}){

@@ -25,11 +25,7 @@ window.AsgardFunnelPage = (function(){
     return 'new';
   }
   
-  function money(x) {
-    const num = parseFloat(x) || 0;
-    if (!num && num !== 0) return '—';
-    return num.toLocaleString('ru-RU') + ' ₽';
-  }
+  function money(x) { return AsgardUI.money(x) + ' ₽'; }
   
   async function render({layout, title}) {
     const auth = await AsgardAuth.requireUser();

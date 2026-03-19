@@ -1,5 +1,5 @@
 window.AsgardApprovalsPage = (function(){
-  const { $, esc, toast, showModal } = AsgardUI;
+  const { $, esc, toast, showModal, money } = AsgardUI;
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(r==="DIRECTOR"||String(r||"").startsWith("DIRECTOR_"));
   function isoNow(){ return new Date().toISOString(); }
 
@@ -17,8 +17,6 @@ window.AsgardApprovalsPage = (function(){
   function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
   function norm(s){ return String(s||"").toLowerCase().trim(); }
   function num(x){ if(x===null||x===undefined||x==="") return null; const n=Number(String(x).replace(/\s/g,"").replace(",", ".")); return Number.isFinite(n)?n:null; }
-  function money(n){ if(n===null||n===undefined) return "—"; return Number(n).toLocaleString("ru-RU"); }
-
   // Цветные pill-стили для статусов
   const STATUS_COLORS = {
     draft:    { color:'#6b7280', bg:'rgba(107,114,128,.12)' },

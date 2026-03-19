@@ -5,11 +5,7 @@
 window.AsgardPayrollPage = (function(){
   const { $, $$, esc, toast, showModal, hideModal } = AsgardUI;
 
-  function money(x){
-    if(x===null||x===undefined||x==="") return "\u2014";
-    const n=Number(x); if(isNaN(n)) return esc(String(x));
-    return n.toLocaleString("ru-RU") + ' \u20BD';
-  }
+  function money(x) { return AsgardUI.money(x) + ' ₽'; }
   function moneyShort(x){
     const n=Number(x)||0;
     if(n>=1000000) return (n/1000000).toFixed(1)+'M';

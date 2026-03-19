@@ -741,8 +741,7 @@ window.AsgardCashPage = (function() {
   // HELPERS
   // ─────────────────────────────────────────────────────────────────
   function fmtMoney(val) {
-    const num = parseFloat(val) || 0;
-    return num.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' \u20BD';
+    return AsgardUI.money(Math.round(Number(val || 0))) + ' \u20BD';
   }
 
   function fmtDate(val) {

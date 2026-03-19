@@ -1,6 +1,6 @@
 // Stage 12: Финансовая аналитика (Расходы/Поступления) — как в Сбере/МТС
 window.AsgardFinancesPage = (function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
   const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
   const MONTHS_FULL = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
@@ -30,14 +30,6 @@ window.AsgardFinancesPage = (function(){
     { key: 'representation', label: 'Представительские', color: '#14b8a6', icon: '🎁' },
     { key: 'other_office', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
-
-  function money(x){ 
-    if(x===null||x===undefined||x==="") return "0"; 
-    const n=Number(x); 
-    if(isNaN(n)) return "0"; 
-    return n.toLocaleString("ru-RU"); 
-  }
-
   function moneyShort(x){
     if(x===null||x===undefined||x==="") return "0";
     const n=Math.abs(Number(x));

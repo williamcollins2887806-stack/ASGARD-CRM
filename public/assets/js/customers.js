@@ -1,6 +1,6 @@
 window.AsgardCustomersPage = (function(){
     let currentPage = 1, pageSize = window.AsgardPagination ? AsgardPagination.getPageSize() : 20;
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
   // DaData autocomplete helper
   function dadataAutocomplete(inputEl, type, onSelect) {
@@ -53,13 +53,6 @@ window.AsgardCustomersPage = (function(){
 
   function isoNow(){ return new Date().toISOString(); }
   function normInn(v){ return String(v||"").replace(/\D/g,""); }
-
-  function money(n){
-    const x = Number(n||0);
-    if(!isFinite(x)) return "0";
-    return x.toLocaleString("ru-RU");
-  }
-
   async function getCustomerByInn(inn){
     inn = normInn(inn);
     if(!inn) return null;

@@ -9,10 +9,7 @@
     return Number.isFinite(n) ? n : d;
   };
   
-  const money = (n) => {
-    const x = Math.round(Number(n||0));
-    return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
-  };
+  const money = (n) => AsgardUI.money(Math.round(Number(n || 0))) + ' ₽';
   
   const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
   const isoNow = () => new Date().toISOString();
@@ -719,7 +716,7 @@
 
     // Fallback на txt если XLSX не загружен
     if (typeof XLSX === 'undefined') {
-      const money = (n) => Math.round(Number(n || 0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' р.';
+      const money = (n) => AsgardUI.money(Math.round(Number(n || 0))) + ' р.';
       const txt = [
         'АСГАРД СЕРВИС',
         '═══════════════════════════════════════',

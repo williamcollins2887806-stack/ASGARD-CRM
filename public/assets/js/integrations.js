@@ -18,7 +18,7 @@ window.AsgardIntegrationsPage = (function(){
   };
 
   function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-  function money(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(n||0);}
+  function money(x) { return AsgardUI.money(Math.round(Number(x || 0))) + ' ₽'; }
 
   async function api(path, opts) {
     const auth = await AsgardAuth.getAuth();

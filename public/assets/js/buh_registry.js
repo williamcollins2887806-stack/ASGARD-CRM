@@ -3,7 +3,7 @@
 // Фильтры: заказчик, кто внёс, статус счёт-фактуры, год/месяц
 
 window.AsgardBuhRegistryPage = (function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
   // Категории расходов
   const EXPENSE_CATEGORIES = [
@@ -16,14 +16,6 @@ window.AsgardBuhRegistryPage = (function(){
     { key: 'subcontract', label: 'Субподряд', color: '#ec4899', icon: '🤝' },
     { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
-
-  function money(x){ 
-    if(x===null||x===undefined||x==="") return "0"; 
-    const n=Number(x); 
-    if(isNaN(n)) return "0"; 
-    return n.toLocaleString("ru-RU"); 
-  }
-
   function moneyShort(x){
     if(x===null||x===undefined||x==="") return "0";
     const n=Math.abs(Number(x));

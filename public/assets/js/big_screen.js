@@ -15,9 +15,7 @@ window.AsgardBigScreen = (function(){
   const SLIDE_INTERVAL = 60000; // 60 секунд
   const DATA_REFRESH   = 300000; // обновление данных каждые 5 мин
 
-  function _m(n) {
-    return new Intl.NumberFormat('ru-RU', {style:'currency',currency:'RUB',maximumFractionDigits:0}).format(n||0);
-  }
+  function _m(n) { return AsgardUI.money(n) + ' ₽'; }
   function _short(x) {
     const n = Number(x) || 0;
     if (n >= 1000000000) return (n/1000000000).toFixed(1) + ' млрд';

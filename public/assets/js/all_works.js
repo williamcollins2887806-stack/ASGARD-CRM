@@ -1,9 +1,7 @@
 window.AsgardAllWorksPage=(function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
   function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
-  function money(x){ if(x===null||x===undefined||x==="") return "\u2014"; const n=Number(x); if(isNaN(n)) return esc(String(x)); return n.toLocaleString("ru-RU"); }
-
   function getApiBase(){
     return (window.AsgardApp && AsgardApp.API_BASE) || localStorage.getItem('asgard_api_base') || '/api';
   }

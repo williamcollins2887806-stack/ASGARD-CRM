@@ -2,7 +2,7 @@
 // 10 категорий + workflow согласования с директорами
 
 window.AsgardOfficeExpensesPage = (function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
   // 10 категорий офисных расходов
   const CATEGORIES = [
@@ -29,14 +29,6 @@ window.AsgardOfficeExpensesPage = (function(){
   };
 
   const MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
-
-  function money(x){ 
-    if(x===null||x===undefined||x==="") return "0"; 
-    const n=Number(x); 
-    if(isNaN(n)) return "0"; 
-    return n.toLocaleString("ru-RU"); 
-  }
-
   function isoNow(){ return new Date().toISOString(); }
   function today(){ return new Date().toISOString().slice(0,10); }
 

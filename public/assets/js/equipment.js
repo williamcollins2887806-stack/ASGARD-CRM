@@ -6,7 +6,7 @@
    ================================================================ */
 window.AsgardEquipment = (function () {
   'use strict';
-  const { $, $$, esc, toast, showModal, closeModal, skeleton, makeResponsiveTable, emptyState } = AsgardUI;
+  const { $, $$, esc, toast, showModal, closeModal, skeleton, makeResponsiveTable, emptyState, money } = AsgardUI;
 
   /* --- CLOSURE-SCOPED VARIABLES (A12) --- */
   let _pendingPhoto = null;
@@ -54,7 +54,6 @@ window.AsgardEquipment = (function () {
   }
 
   /* --- HELPERS --- */
-  function money(x) { return (Number(x)||0).toLocaleString('ru-RU'); }
   function fmtDate(d) { if(!d) return '—'; try { return new Date(d).toLocaleDateString('ru-RU'); } catch(_) { return '—'; } }
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 

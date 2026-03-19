@@ -91,7 +91,7 @@ window.AsgardReports = (function(){
 
   // Форматирование суммы
   function fmtMoney(val) {
-    return (parseFloat(val) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₽';
+    return AsgardUI.money(Math.round(Number(val || 0))) + ' ₽';
   }
 
   // Отрисовка страницы отчётов

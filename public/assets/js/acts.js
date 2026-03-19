@@ -48,7 +48,7 @@ window.AsgardActsPage = (function(){
       'paid': { label: 'Оплачен', color: 'var(--ok)' }
     };
     
-    const formatMoney = n => (n||0).toLocaleString('ru-RU') + ' ₽';
+    const formatMoney = n => AsgardUI.money(n) + ' ₽';
     const formatDate = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
     
     const html = `

@@ -4,12 +4,10 @@
  */
 
 window.AsgardKpiWorksPage=(function(){
-  const { $, esc, showModal } = AsgardUI;
+  const { $, esc, showModal, money } = AsgardUI;
   const { stackedBar, divergent, dial, scoreRing } = AsgardCharts;
 
   function isSafe(){ try{return AsgardSafeMode.isOn();}catch(e){return false;} }
-  function money(x){ if(x===null||x===undefined||x==="") return "\u2014"; const n=Number(x); if(isNaN(n)) return esc(String(x)); return n.toLocaleString("ru-RU"); }
-
   function safeNumber(value){ const n = Number(value); return Number.isFinite(n) ? n : 0; }
 
   function toDate(d){

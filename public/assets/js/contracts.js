@@ -751,9 +751,7 @@ window.AsgardContractsPage = (function(){
     return d.toLocaleDateString('ru-RU');
   }
 
-  function formatMoney(amount) {
-    return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(amount);
-  }
+  function formatMoney(amount) { return AsgardUI.money(amount) + ' ₽'; }
 
   // ═══════ WOW Модалка создания нового контрагента (inline из договора) ═══════
   function openNewCustomerModal(onCreated) {

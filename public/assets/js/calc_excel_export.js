@@ -117,7 +117,7 @@
 
     // Fallback на txt если XLSX не загружен
     if (typeof XLSX === 'undefined') {
-      const money = (n) => Math.round(Number(n || 0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' р.';
+      const money = (n) => AsgardUI.money(Math.round(Number(n || 0))) + ' р.';
       const txt = [
         'АСГАРД СЕРВИС',
         '═══════════════════════════════════════',
