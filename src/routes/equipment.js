@@ -411,6 +411,48 @@ async function equipmentRoutes(fastify, options) {
   });
 
   // ============================================
+  // 12a. POST /from-procurement — Создание из закупки
+  // ============================================
+  fastify.post('/from-procurement', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const { procurement_item_id, name, article, unit, quantity, warehouse_id } = req.body;
+    if (!procurement_item_id) return reply.code(400).send({ error: 'procurement_item_id required' });
+    const dup = await db.query('SELECT id FROM equipment WHERE procurement_item_id=$1', [procurement_item_id]);
+    if (dup.rows.length) return reply.code(409).send({ error: 'Уже создано', equipment_id: dup.rows[0].id });
+    const wh = warehouse_id || (await db.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1")).rows[0]?.id;
+    const r = await db.query(
+      `INSERT INTO equipment(name,article,unit,quantity,warehouse_id,status,procurement_item_id,created_by)
+       VALUES($1,$2,$3,$4,$5,'on_warehouse',$6,$7) RETURNING *`,
+      [name, article, unit, quantity||1, wh, procurement_item_id, req.user.id]);
+    await db.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,performed_by,notes)
+       VALUES($1,'receipt',$2,$3,'Из закупки')`, [r.rows[0].id, wh, req.user.id]);
+    reply.send({ ok: true, item: r.rows[0] });
+  });
+
+  // ============================================
+  // 12b. GET /available — Доступное оборудование
+  // ============================================
+  fastify.get('/available', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const r = await db.query(
+      `SELECT e.* FROM equipment e WHERE e.status='on_warehouse'
+       AND NOT EXISTS(SELECT 1 FROM equipment_reservations er WHERE er.equipment_id=e.id AND er.status='active')
+       ORDER BY e.name`);
+    reply.send({ ok: true, items: r.rows });
+  });
+
+  // ============================================
+  // 12c. POST /reserve — Бронирование
+  // ============================================
+  fastify.post('/reserve', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const { equipment_id, work_id, reserved_from, reserved_to } = req.body;
+    if (!equipment_id || !work_id) return reply.code(400).send({ error: 'equipment_id, work_id required' });
+    const r = await db.query(
+      `INSERT INTO equipment_reservations(equipment_id,work_id,reserved_from,reserved_to,status,reserved_by)
+       VALUES($1,$2,$3,$4,'active',$5) RETURNING *`,
+      [equipment_id, work_id, reserved_from||null, reserved_to||null, req.user.id]);
+    reply.send({ ok: true, reservation: r.rows[0] });
+  });
+
+  // ============================================
   // 13. GET /:id — Детальная информация
   // ============================================
   fastify.get('/:id', {
@@ -2175,6 +2217,34 @@ async function equipmentRoutes(fastify, options) {
     }
 
     return result;
+  });
+
+  // ============================================
+  // POST /:id/return — Возврат на склад
+  // ============================================
+  fastify.post('/:id/return', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const { id } = req.params;
+    const { work_id, notes } = req.body || {};
+    const eq = await db.query('SELECT * FROM equipment WHERE id=$1', [id]);
+    if (!eq.rows.length) return reply.code(404).send({ error: 'Не найдено' });
+    const wh = (await db.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1")).rows[0]?.id;
+    await db.query("UPDATE equipment SET status='on_warehouse', warehouse_id=$2 WHERE id=$1", [id, wh]);
+    await db.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,performed_by,notes)
+       VALUES($1,'return',$2,$3,$4)`, [id, wh, req.user.id, notes || `Возврат${work_id ? ' с работы #'+work_id : ''}`]);
+    reply.send({ ok: true });
+  });
+
+  // ============================================
+  // POST /:id/write-off — Списание
+  // ============================================
+  fastify.post('/:id/write-off', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+    if (!reason) return reply.code(400).send({ error: 'reason required' });
+    await db.query("UPDATE equipment SET status='written_off' WHERE id=$1", [id]);
+    await db.query(`INSERT INTO equipment_movements(equipment_id,movement_type,performed_by,notes)
+       VALUES($1,'write_off',$2,$3)`, [id, req.user.id, reason]);
+    reply.send({ ok: true });
   });
 
 }

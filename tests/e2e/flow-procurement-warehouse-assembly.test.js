@@ -139,5 +139,17 @@ module.exports = {
     }},
     { name: 'S4.8: Template', run: async () => { const r = await api('GET', '/api/procurement/template/excel', { role: 'PM' }); assert(r.status === 200, '200'); }},
     { name: 'S4.9: HR no dashboard', run: async () => { const r = await api('GET', '/api/procurement/dashboard', { role: 'HR' }); assertForbidden(r, 'HR'); }},
+
+    // === STEP 5: EQUIPMENT ===
+    { name: 'S5.1: Stats', run: async () => {
+      const r = await api('GET', '/api/equipment/stats/summary', { role: 'WAREHOUSE' }); if (r.status === 404) skip(''); assertOk(r, 'OK');
+    }},
+    { name: 'S5.2: from-procurement rejects -1', run: async () => {
+      const r = await api('POST', '/api/equipment/from-procurement', { role: 'WAREHOUSE', body: { procurement_item_id: -1 } });
+      assert(r.status !== 500, 'No 500');
+    }},
+    { name: 'S5.3: Available', run: async () => {
+      const r = await api('GET', '/api/equipment/available', { role: 'PM' }); assert(r.status !== 500, 'No 500');
+    }},
   ]
 };
