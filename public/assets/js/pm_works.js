@@ -138,16 +138,8 @@
 window.AsgardPmWorksPage=(function(){
   const { $, $$, esc, toast, showModal, formatDate, money } = AsgardUI;
   const { dial } = AsgardCharts;
+  const { isoNow, ymNow, num, safeJson, toDate, diffDays, daysBetween, sortBy, audit, notify, notifyDirectors, calcProfit } = window.AsgardWorksShared || {};
 
-  function isoNow(){ return new Date().toISOString(); }
-  function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
-  function num(x){ if(x===null||x===undefined||x==="") return null; const n=Number(String(x).replace(/\s/g,"").replace(",", ".")); return isNaN(n)?null:n; }
-  function daysBetween(a,b){
-    const da=new Date(a); const db=new Date(b);
-    if(isNaN(da.getTime())||isNaN(db.getTime())) return null;
-    da.setHours(0,0,0,0); db.setHours(0,0,0,0);
-    return Math.round((db-da)/(24*60*60*1000))+1;
-  }
   function workDate(value){ return value ? formatDate(value) : "\u2014"; }
   const V = AsgardValidate;
 
@@ -360,18 +352,9 @@ window.AsgardPmWorksPage=(function(){
             w.advance_date_fact = advDate;
             w.payment_date_fact = payDate;
             w.act_signed_date_fact = actDate || w.act_signed_date_fact || null;
-            w.closeout_submitted_at = isoNow();
-            w.closeout_submitted_by = pmUser.id;
 
+            // Save fact data WITHOUT closeout_submitted_at (F7 fix: avoid hang if ratings cancelled)
             await AsgardDB.put('works', w);
-            await audit(pmUser.id, 'work', w.id, 'closeout_submit', {
-              work_id:w.id,
-              end_fact:w.end_fact,
-              cost_fact:w.cost_fact,
-              contract_value:w.contract_value,
-              paid:(Number(w.advance_received||0)+Number(w.balance_received||0)),
-              left:(Number(w.contract_value||0)-Number(w.advance_received||0)-Number(w.balance_received||0)),
-            });
 
             const paid = (Number(w.advance_received||0)+Number(w.balance_received||0));
             const left = (Number(w.contract_value||0)-paid);
@@ -384,12 +367,22 @@ window.AsgardPmWorksPage=(function(){
 
             // Mandatory ratings: employees + customer
             const okRatings = await collectCloseoutRatings({work:w, pmUser});
-            if(!okRatings) return;
+            if(!okRatings) return;   // user cancelled — no closeout_submitted_at, work stays editable
 
-            // Finalize
+            // Finalize: set closeout timestamp + status ONLY after successful ratings
+            w.closeout_submitted_at = isoNow();
+            w.closeout_submitted_by = pmUser.id;
             w.work_status = 'Работы сдали';
             w.closed_at = isoNow();
             await AsgardDB.put('works', w);
+            await audit(pmUser.id, 'work', w.id, 'closeout_submit', {
+              work_id:w.id,
+              end_fact:w.end_fact,
+              cost_fact:w.cost_fact,
+              contract_value:w.contract_value,
+              paid:paid,
+              left:left,
+            });
             await audit(pmUser.id, 'work', w.id, 'close', {work_status:w.work_status});
             toast('Закрытие','Контракт завершён');
             if(typeof onDone==='function') onDone();
@@ -509,8 +502,6 @@ window.AsgardPmWorksPage=(function(){
   }
 
 
-  function safeJson(s,def){ try{return JSON.parse(s||"");}catch(_){return def;} }
-
   async function upsertStaffRequest({work, pmUser, requestObj, comment}){
     const reqs = await AsgardDB.all("staff_requests");
     let cur = reqs.find(r=>r.work_id===work.id);
@@ -568,38 +559,6 @@ window.AsgardPmWorksPage=(function(){
     const s = await AsgardDB.get("settings","app");
     return s ? JSON.parse(s.value_json||"{}") : { vat_pct:22, gantt_start_iso:"2026-01-01T00:00:00.000Z", status_colors:{work:{},tender:{}} };
   }
-  async function audit(actorId, entityType, entityId, action, payload){
-    await AsgardDB.add("audit_log",{actor_user_id:actorId,entity_type:entityType,entity_id:entityId,action,payload_json:JSON.stringify(payload||{}),created_at:isoNow()});
-  }
-
-  async function notify(userId, title, body, linkHash){
-    if(!userId) return;
-    await AsgardDB.add("notifications",{
-      user_id:userId,
-      title:String(title||""),
-      // unified field name across app: notifications.message
-      message:String(body||""),
-      link_hash: String(linkHash||""),
-      is_read:false,
-      created_at:isoNow()
-    });
-  }
-
-  async function notifyDirectors(title, message, linkHash){
-    const users = await AsgardDB.all("users");
-    const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(String(r||"")==="DIRECTOR"||String(r||"").startsWith("DIRECTOR_"));
-    const directors = (users||[]).filter(u=>u && u.is_active && isDirRole(u.role));
-    for(const d of directors){
-      await notify(d.id, title, message, linkHash);
-    }
-  }
-
-  async function userIdByLogin(login){
-    const users = await AsgardDB.all("users");
-    const u = (users||[]).find(x=>String(x.login||"").toLowerCase()===String(login||"").toLowerCase());
-    return u ? u.id : null;
-  }
-
   async function render({layout,title}){
     let currentPage = 1, pageSize = window.AsgardPagination ? AsgardPagination.getPageSize() : 20;
     const auth=await AsgardAuth.requireUser();
@@ -686,19 +645,6 @@ window.AsgardPmWorksPage=(function(){
     const cCost = $("#kpi_cost");
     const cTime = $("#kpi_time");
 
-    function toDate(d){
-      if(!d) return null;
-      const s=String(d).trim();
-      if(!s) return null;
-      const m=s.match(/^\d{4}-\d{2}-\d{2}/);
-      if(m){ const y=+m[0].slice(0,4), mo=+m[0].slice(5,7), da=+m[0].slice(8,10); return new Date(Date.UTC(y,mo-1,da,0,0,0)); }
-      const dt=new Date(s); return isFinite(dt.getTime())?dt:null;
-    }
-    function diffDays(a,b){
-      const da=toDate(a); const db=toDate(b);
-      if(!da||!db) return null;
-      return Math.round((db.getTime()-da.getTime())/(24*3600*1000));
-    }
     function pctDelta(fact, plan){
       const p=Number(plan||0); const f=Number(fact||0);
       if(!isFinite(p) || p<=0) return null;
@@ -723,14 +669,6 @@ window.AsgardPmWorksPage=(function(){
 
 
     function norm(s){ return String(s||"").toLowerCase().trim(); }
-
-    function sortBy(key,dir){
-      return (a,b)=>{
-        const av=(a[key]??""); const bv=(b[key]??"");
-        if(typeof av==="number" && typeof bv==="number") return dir*(av-bv);
-        return dir*String(av).localeCompare(String(bv), "ru", {sensitivity:"base"});
-      };
-    }
 
     function row(w){
       const st=w.work_status||"";
@@ -1321,9 +1259,7 @@ window.AsgardPmWorksPage=(function(){
         }
       }
 
-      async function hrUserId(){
-        return await userIdByLogin("trukhin");
-      }
+      const hrUserId = AsgardWorksShared.findHrUserId;
 
       const btnReqStaff = document.getElementById("btnReqStaff");
       const btnViewStaff = document.getElementById("btnViewStaff");

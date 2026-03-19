@@ -6,18 +6,10 @@
 window.AsgardKpiWorksPage=(function(){
   const { $, esc, showModal, money } = AsgardUI;
   const { stackedBar, divergent, dial, scoreRing } = AsgardCharts;
+  const { toDate, diffDays, generatePeriodOptions } = window.AsgardWorksShared || {};
 
   function isSafe(){ try{return AsgardSafeMode.isOn();}catch(e){return false;} }
   function safeNumber(value){ const n = Number(value); return Number.isFinite(n) ? n : 0; }
-
-  function toDate(d){
-    if(!d) return null;
-    const s=String(d).trim();
-    if(!s) return null;
-    const m=s.match(/^\d{4}-\d{2}-\d{2}/);
-    if(m){ const [y,mo,da]=m[0].split('-').map(Number); return new Date(Date.UTC(y,mo-1,da,0,0,0)); }
-    const dt=new Date(s); return isFinite(dt.getTime())?dt:null;
-  }
 
   function startOfMonth(d){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0,0,0)); }
   function addMonths(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+n, 1, 0,0,0)); }
@@ -53,12 +45,6 @@ window.AsgardKpiWorksPage=(function(){
     return true;
   }
 
-  function diffDays(a,b){
-    const da=toDate(a); const db=toDate(b);
-    if(!da||!db) return null;
-    return Math.round((db.getTime()-da.getTime())/(24*3600*1000));
-  }
-
   async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim()); }
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
@@ -73,18 +59,6 @@ window.AsgardKpiWorksPage=(function(){
     let html = '';
     for (let y = currentYear; y >= currentYear - 5; y--) {
       html += `<option value="${y}"${y === currentYear ? ' selected' : ''}>${y}</option>`;
-    }
-    return html;
-  }
-
-  function generatePeriodOptions(currentYm) {
-    const now = new Date();
-    let html = '';
-    for (let i = 0; i < 24; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-      html += `<option value="${val}"${val === currentYm ? ' selected' : ''}>${label}</option>`;
     }
     return html;
   }

@@ -48,26 +48,84 @@ function filterData(data) {
   return filtered;
 }
 
+// B6: Валидация дат
+const DATE_FIELDS = new Set([
+  'start_in_work_date', 'end_plan', 'end_fact', 'start_plan', 'start_fact',
+  'advance_date_fact', 'payment_date_fact', 'act_signed_date_fact'
+]);
+
+function validateDates(data) {
+  for (const [key, value] of Object.entries(data)) {
+    if (DATE_FIELDS.has(key) && value !== undefined && value !== null && value !== '') {
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return `Некорректная дата: ${key} = "${value}"`;
+    }
+  }
+  return null;
+}
+
+// B9: State machine — разрешённые переходы статусов
+const STATUS_TRANSITIONS = {
+  'Новая':             ['Подготовка', 'Отменено'],
+  'Подготовка':        ['Согласование', 'Отменено', 'Новая'],
+  'Согласование':      ['Мобилизация', 'Подготовка', 'Отменено'],
+  'Мобилизация':       ['В работе', 'Согласование', 'Отменено'],
+  'В работе':          ['Выполнение', 'На паузе', 'Отменено'],
+  'На паузе':          ['В работе', 'Отменено'],
+  'Выполнение':        ['Подписание акта', 'В работе', 'На паузе'],
+  'Подписание акта':   ['Работы сдали'],
+  'Работы сдали':      ['Закрыт'],
+  'Закрыт':            [],
+  'Отменено':          ['Новая'],
+};
+
+function isValidTransition(from, to) {
+  if (!from) return true;
+  const allowed = STATUS_TRANSITIONS[from];
+  if (!allowed) return true; // Неизвестный статус — пропускаем (обратная совместимость)
+  return allowed.includes(to);
+}
+
 async function routes(fastify, options) {
   const db = fastify.db;
   const { createNotification } = require('../services/notify');
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { tender_id, pm_id, status, limit = 100, offset = 0 } = request.query;
-    let sql = 'SELECT w.*, t.customer_name as customer, u.name as pm_name FROM works w LEFT JOIN tenders t ON w.tender_id = t.id LEFT JOIN users u ON w.pm_id = u.id WHERE 1=1';
+    const { tender_id, pm_id, status, limit = 100, offset = 0, include_deleted } = request.query;
+    const user = request.user;
+    let sql = 'SELECT w.*, t.customer_name as customer, u.name as pm_name FROM works w LEFT JOIN tenders t ON w.tender_id = t.id LEFT JOIN users u ON w.pm_id = u.id WHERE w.deleted_at IS NULL';
     const params = [];
     let idx = 1;
+
+    // B2: PM видит только свои работы
+    if (user.role === 'PM') {
+      sql += ` AND w.pm_id = $${idx}`;
+      params.push(user.id);
+      idx++;
+    }
+
     if (tender_id) { sql += ` AND w.tender_id = $${idx}`; params.push(tender_id); idx++; }
     if (pm_id) { sql += ` AND w.pm_id = $${idx}`; params.push(pm_id); idx++; }
     if (status) { sql += ` AND w.work_status = $${idx}`; params.push(status); idx++; }
     sql += ` ORDER BY w.id DESC LIMIT $${idx} OFFSET $${idx + 1}`;
     params.push(limit, offset);
     const result = await db.query(sql, params);
+
+    // B2: Ограниченные роли — скрываем финансы
+    const FINANCE_HIDDEN_ROLES = new Set(['TO', 'HEAD_TO', 'WAREHOUSE', 'OFFICE_MANAGER']);
+    if (FINANCE_HIDDEN_ROLES.has(user.role)) {
+      const finFields = ['contract_value', 'cost_plan', 'cost_fact', 'advance_received',
+        'balance_received', 'advance_pct', 'advance_date_fact', 'payment_date_fact', 'vat_pct'];
+      for (const w of result.rows) {
+        for (const f of finFields) delete w[f];
+      }
+    }
+
     return { works: result.rows };
   });
 
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const result = await db.query('SELECT * FROM works WHERE id = $1', [request.params.id]);
+    const result = await db.query('SELECT * FROM works WHERE id = $1 AND deleted_at IS NULL', [request.params.id]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
     const expenses = await db.query('SELECT * FROM work_expenses WHERE work_id = $1', [request.params.id]);
     return { work: result.rows[0], expenses: expenses.rows };
@@ -85,6 +143,9 @@ async function routes(fastify, options) {
         body.work_title = body.work_title.substring(0, 1000);
       }
       const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
+      // B6: Валидация дат
+      const dateError = validateDates(data);
+      if (dateError) return reply.code(400).send({ error: dateError });
       const keys = Object.keys(data);
       if (!keys.length) return reply.code(400).send({ error: 'Нет данных' });
       const values = Object.values(data);
@@ -108,11 +169,35 @@ async function routes(fastify, options) {
     }
   });
 
-  // SECURITY: SQL injection fix + B3 role check
   fastify.put('/:id', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])] }, async (request, reply) => {
     const { id } = request.params;
-    const oldWork = await db.query('SELECT * FROM works WHERE id = $1', [id]);
+    const oldWork = await db.query('SELECT * FROM works WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (!oldWork.rows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
     const data = filterData(request.body);
+
+    // B6: Валидация дат
+    const dateError = validateDates(data);
+    if (dateError) return reply.code(400).send({ error: dateError });
+
+    // B9: State machine — проверка перехода статуса
+    if (data.work_status && data.work_status !== oldWork.rows[0].work_status) {
+      const oldStatus = oldWork.rows[0].work_status || '';
+      const newStatus = data.work_status;
+      if (!isValidTransition(oldStatus, newStatus)) {
+        // ADMIN и DIRECTOR_GEN могут обходить
+        if (!['ADMIN', 'DIRECTOR_GEN'].includes(request.user.role)) {
+          return reply.code(400).send({
+            error: `Недопустимый переход статуса: "${oldStatus}" → "${newStatus}"`,
+            allowed: STATUS_TRANSITIONS[oldStatus] || []
+          });
+        }
+      }
+      // PM не может напрямую поставить "Работы сдали" — только через closeout
+      if (newStatus === 'Работы сдали' && request.user.role === 'PM') {
+        return reply.code(400).send({ error: 'Используйте endpoint closeout для завершения работы' });
+      }
+    }
+
     const updates = [];
     const values = [];
     let idx = 1;
@@ -122,7 +207,7 @@ async function routes(fastify, options) {
     if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
     updates.push('updated_at = NOW()');
     values.push(id);
-    const sql = `UPDATE works SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`;
+    const sql = `UPDATE works SET ${updates.join(', ')} WHERE id = $${idx} AND deleted_at IS NULL RETURNING *`;
     const result = await db.query(sql, values);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
     const updated = result.rows[0];
@@ -149,17 +234,39 @@ async function routes(fastify, options) {
     return { work: updated };
   });
 
-  fastify.delete('/:id', { preHandler: [fastify.requireRoles(['ADMIN'])] }, async (request, reply) => {
+  // A1: Soft delete по умолчанию, hard delete только ADMIN с ?hard=true
+  // D10/B3: FK CASCADE/SET NULL делают основную работу при hard delete
+  fastify.delete('/:id', { preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN'])] }, async (request, reply) => {
     const workId = request.params.id;
+    const hard = request.query.hard === 'true';
+
     try {
-      // Delete related records first to avoid FK constraint violations
-      await db.query('DELETE FROM work_expenses WHERE work_id = $1', [workId]);
-      await db.query('DELETE FROM employee_assignments WHERE work_id = $1', [workId]);
-      await db.query('DELETE FROM employee_plan WHERE work_id = $1', [workId]);
-      await db.query('DELETE FROM incomes WHERE work_id = $1', [workId]);
+      if (!hard) {
+        // Soft delete
+        const result = await db.query(
+          'UPDATE works SET deleted_at = NOW(), deleted_by = $1 WHERE id = $2 AND deleted_at IS NULL RETURNING id',
+          [request.user.id, workId]
+        );
+        if (!result.rows[0]) return reply.code(404).send({ error: 'Работа не найдена или уже удалена' });
+        return { message: 'Работа помечена как удалённая', soft: true };
+      }
+
+      // Hard delete (только ADMIN)
+      if (request.user.role !== 'ADMIN') {
+        return reply.code(403).send({ error: 'Полное удаление доступно только ADMIN' });
+      }
+
+      // Чистим таблицы без FK CASCADE перед удалением
+      const srIds = await db.query('SELECT id FROM staff_requests WHERE work_id = $1', [workId]);
+      if (srIds.rows.length) {
+        const ids = srIds.rows.map(r => r.id);
+        await db.query('DELETE FROM staff_request_messages WHERE staff_request_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM staff_replacements WHERE staff_request_id = ANY($1)', [ids]);
+      }
+
       const result = await db.query('DELETE FROM works WHERE id = $1 RETURNING id', [workId]);
-      if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
-      return { message: 'Удалено' };
+      if (!result.rows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
+      return { message: 'Работа удалена', soft: false };
     } catch (err) {
       request.log.error(err, 'works delete error');
       return reply.code(500).send({ error: 'Не удалось удалить работу', detail: err.message });
@@ -203,14 +310,22 @@ async function routes(fastify, options) {
         COALESCE(SUM(w.contract_value), 0) - COALESCE(SUM(w.cost_fact), 0) as profit,
         COUNT(DISTINCT e.id) as active_estimates
       FROM users u
-      LEFT JOIN works w ON w.pm_id = u.id AND ${whereClause}
+      LEFT JOIN works w ON w.pm_id = u.id AND w.deleted_at IS NULL AND ${whereClause}
       LEFT JOIN estimates e ON e.pm_id = u.id AND e.approval_status NOT IN ('rejected', 'closed')
-      WHERE u.role IN ('PM', 'HEAD_PM', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER', 'HR') AND u.is_active = true AND EXISTS (SELECT 1 FROM works w2 WHERE w2.pm_id = u.id)
+      WHERE u.role IN ('PM', 'HEAD_PM', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER', 'HR') AND u.is_active = true AND EXISTS (SELECT 1 FROM works w2 WHERE w2.pm_id = u.id AND w2.deleted_at IS NULL)
       GROUP BY u.id, u.name, u.role, u.employment_date
       ORDER BY total_contract DESC
     `, params);
 
-    // Общая сводка
+    // B4: Общая сводка — отдельный WHERE без хрупкого .replace(/w\./g, '')
+    let deptWhere = 'deleted_at IS NULL';
+    const deptParams = [];
+    let deptIdx = 1;
+    if (year) {
+      deptWhere += ` AND (EXTRACT(YEAR FROM COALESCE(start_fact, start_plan, start_in_work_date, created_at)) = $${deptIdx} OR tender_id IN (SELECT id FROM tenders WHERE EXTRACT(YEAR FROM updated_at) = $${deptIdx}))`;
+      deptParams.push(parseInt(year));
+      deptIdx++;
+    }
     const deptTotal = await db.query(`
       SELECT
         COUNT(*) as total,
@@ -219,9 +334,9 @@ async function routes(fastify, options) {
         COUNT(*) FILTER (WHERE end_plan < NOW() AND work_status NOT IN ('Работы сдали', 'Завершена', 'Закрыт')) as overdue,
         COALESCE(SUM(contract_value), 0) as total_contract,
         COALESCE(SUM(contract_value), 0) - COALESCE(SUM(cost_fact), 0) as total_profit
-      FROM works w
-      WHERE ${whereClause.replace(/w\./g, '')}
-    `, params);
+      FROM works
+      WHERE ${deptWhere}
+    `, deptParams);
 
     // По месяцам
     const byMonth = await db.query(`
@@ -231,7 +346,7 @@ async function routes(fastify, options) {
         COALESCE(SUM(contract_value), 0) as total_contract,
         COUNT(*) FILTER (WHERE work_status IN ('Работы сдали', 'Завершена')) as completed
       FROM works w
-      WHERE COALESCE(w.start_fact, w.start_plan, w.start_in_work_date, w.created_at) >= NOW() - INTERVAL '12 months'
+      WHERE w.deleted_at IS NULL AND COALESCE(w.start_fact, w.start_plan, w.start_in_work_date, w.created_at) >= NOW() - INTERVAL '12 months'
       GROUP BY TO_CHAR(COALESCE(w.start_fact, w.start_plan, w.start_in_work_date, w.created_at), 'YYYY-MM')
       ORDER BY month
     `);
@@ -245,6 +360,124 @@ async function routes(fastify, options) {
       request.log.error(err, 'works analytics/team error');
       return reply.code(500).send({ error: 'Analytics error', details: err.message });
     }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // B8: Серверный closeout — закрытие работы с оценками и уведомлениями
+  // ═══════════════════════════════════════════════════════════════
+  fastify.post('/:id/closeout', {
+    preHandler: [fastify.requireRoles(['PM', 'HEAD_PM', 'ADMIN', 'DIRECTOR_GEN'])]
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const body = request.body || {};
+
+    try {
+      const workRes = await db.query('SELECT * FROM works WHERE id = $1 AND deleted_at IS NULL', [id]);
+      if (!workRes.rows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
+      const work = workRes.rows[0];
+
+      // Проверить статус
+      const triggerStatus = body.trigger_status || 'Подписание акта';
+      if (work.work_status !== triggerStatus) {
+        return reply.code(400).send({
+          error: `Closeout доступен только на статусе "${triggerStatus}". Текущий: "${work.work_status}"`
+        });
+      }
+
+      // Валидировать обязательные поля
+      const { end_fact, cost_fact, contract_value } = body;
+      if (!end_fact) return reply.code(400).send({ error: 'Обязательное поле: end_fact' });
+      if (cost_fact == null || isNaN(Number(cost_fact)) || Number(cost_fact) <= 0) {
+        return reply.code(400).send({ error: 'Обязательное поле: cost_fact (> 0)' });
+      }
+      if (contract_value == null || isNaN(Number(contract_value)) || Number(contract_value) <= 0) {
+        return reply.code(400).send({ error: 'Обязательное поле: contract_value (> 0)' });
+      }
+
+      // Валидировать оценки сотрудников
+      const { employee_ratings, customer_rating } = body;
+      if (Array.isArray(employee_ratings)) {
+        for (const r of employee_ratings) {
+          if (!r.employee_id) return reply.code(400).send({ error: 'Оценка сотрудника: обязательно employee_id' });
+          if (!r.score || r.score < 1 || r.score > 10) return reply.code(400).send({ error: `Оценка ${r.employee_id}: score 1-10` });
+        }
+      }
+
+      if (customer_rating) {
+        if (!customer_rating.score || customer_rating.score < 1 || customer_rating.score > 10) {
+          return reply.code(400).send({ error: 'Оценка заказчика: score 1-10' });
+        }
+      }
+
+      // Обновить работу
+      const updateRes = await db.query(`
+        UPDATE works SET
+          work_status = 'Работы сдали',
+          end_fact = $1,
+          cost_fact = $2,
+          contract_value = $3,
+          advance_received = COALESCE($4, advance_received),
+          balance_received = COALESCE($5, balance_received),
+          advance_date_fact = COALESCE($6, advance_date_fact),
+          payment_date_fact = COALESCE($7, payment_date_fact),
+          act_signed_date_fact = COALESCE($8, act_signed_date_fact),
+          closeout_submitted_at = NOW(),
+          closeout_submitted_by = $9,
+          closed_at = NOW(),
+          updated_at = NOW()
+        WHERE id = $10 AND deleted_at IS NULL RETURNING *
+      `, [
+        end_fact, cost_fact, contract_value,
+        body.advance_received, body.balance_received,
+        body.advance_date_fact, body.payment_date_fact, body.act_signed_date_fact,
+        request.user.id, id
+      ]);
+
+      // Сохранить оценки сотрудников
+      if (Array.isArray(employee_ratings)) {
+        for (const r of employee_ratings) {
+          await db.query(`
+            INSERT INTO employee_reviews (employee_id, work_id, pm_id, rating, score, comment, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $4, $5, NOW(), NOW())
+            ON CONFLICT DO NOTHING
+          `, [r.employee_id, id, request.user.id, r.score, r.comment || '']);
+        }
+      }
+
+      // Сохранить оценку заказчика
+      if (customer_rating) {
+        await db.query(`
+          INSERT INTO customer_reviews (work_id, pm_id, rating, score, comment, created_at, updated_at)
+          VALUES ($1, $2, $3, $3, $4, NOW(), NOW())
+          ON CONFLICT DO NOTHING
+        `, [id, request.user.id, customer_rating.score, customer_rating.comment || '']);
+      }
+
+      // Уведомить директоров
+      const directors = await db.query(
+        "SELECT id FROM users WHERE role IN ('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active = true"
+      );
+      const profit = Number(contract_value) - Number(cost_fact);
+      for (const d of directors.rows) {
+        createNotification(db, {
+          user_id: d.id,
+          title: 'Закрытие контракта',
+          message: `${work.customer_name || ''} — ${work.work_title || ''}\nПрибыль: ${Math.round(profit)} руб.`,
+          type: 'work',
+          link: `#/pm-works?id=${id}`
+        });
+      }
+
+      return { work: updateRes.rows[0], message: 'Контракт закрыт' };
+    } catch (err) {
+      fastify.log.error('Closeout error:', err);
+      return reply.code(500).send({ error: 'Ошибка закрытия', detail: err.message });
+    }
+  });
+
+  // B9: Справочник переходов статусов (для фронтенда)
+  fastify.get('/statuses/transitions', { preHandler: [fastify.authenticate] }, async () => {
+    return { transitions: STATUS_TRANSITIONS };
   });
 }
 

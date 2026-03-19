@@ -1,7 +1,6 @@
 window.AsgardAllWorksPage=(function(){
   const { $, $$, esc, toast, showModal, money } = AsgardUI;
-
-  function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
+  const { ymNow, sortBy } = window.AsgardWorksShared || {};
   function getApiBase(){
     return (window.AsgardApp && AsgardApp.API_BASE) || localStorage.getItem('asgard_api_base') || '/api';
   }
@@ -54,7 +53,7 @@ window.AsgardAllWorksPage=(function(){
           <div class="field"><label>Период</label><select id="f_period">${generatePeriodOptions(ymNow())}</select></div>
           <div class="field"><label>Поиск</label><input id="f_q" placeholder="заказчик / работа"/></div>
           <div class="field"><label>РП</label>
-            <select id="f_pm"><option value="">Все</option>${users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
+            <select id="f_pm"><option value="">Все</option>${(()=>{ const pmIds = new Set(works.map(w => w.pm_id).filter(Boolean)); return users.filter(u => pmIds.has(u.id)); })().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
           </div>
           <div class="field"><label>Статус</label>
             <select id="f_status"><option value="">Все</option>${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select>
@@ -87,13 +86,6 @@ window.AsgardAllWorksPage=(function(){
     const tb=$("#tb"), cnt=$("#cnt");
 
     function norm(s){ return String(s||"").toLowerCase().trim(); }
-    function sortBy(key,dir){
-      return (a,b)=>{
-        const av=(a[key]??""); const bv=(b[key]??"");
-        if(typeof av==="number" && typeof bv==="number") return dir*(av-bv);
-        return dir*String(av).localeCompare(String(bv),"ru",{sensitivity:"base"});
-      };
-    }
 
     function row(w){
       const t = tenders.find(x=>x.id===w.tender_id);
@@ -168,7 +160,11 @@ window.AsgardAllWorksPage=(function(){
 
       let list = works.filter(w=>{
         const t = tenders.find(x=>x.id===w.tender_id);
-        if(per && norm(t?.period||"")!==per) return false;
+        if(per) {
+          const period = t?.period || '';
+          if (!period) return false;
+          if (norm(period) !== per) return false;
+        }
         if(pm && String(w.pm_id)!==String(pm)) return false;
         if(st && w.work_status!==st) return false;
         if(q){

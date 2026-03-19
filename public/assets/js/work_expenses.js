@@ -1,6 +1,7 @@
 // Stage 13: Расходы по работам
 window.AsgardWorkExpenses = (function(){
   const { $, $$, esc, toast, showModal, hideModal, money } = AsgardUI;
+  const { isoNow } = window.AsgardWorksShared || {};
 
   // 8 категорий расходов по работам
   const EXPENSE_CATEGORIES = [
@@ -14,7 +15,6 @@ window.AsgardWorkExpenses = (function(){
     { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
 
-  function isoNow(){ return new Date().toISOString(); }
   // Получить все расходы по работе
   async function getExpensesByWork(workId){
     try {
