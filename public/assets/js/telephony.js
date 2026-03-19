@@ -163,21 +163,36 @@ window.AsgardTelephonyPage = (function () {
   function todayISO()    { return new Date().toISOString().slice(0, 10); }
   function monthAgoISO() { var d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); }
 
-  /* ---- API helper ---- */
+  /* ---- API helper (with retry for GET) ---- */
   async function api(path, opts) {
     opts = opts || {};
-    var res = await fetch('/api/telephony' + path, {
-      headers: Object.assign({ 'Authorization': 'Bearer ' + token(), 'Content-Type': 'application/json' }, opts.headers || {}),
-      method: opts.method || 'GET',
-      body: opts.body || undefined,
-    });
-    if (!res.ok) {
-      var errMsg = 'API ' + res.status;
-      try { var errBody = await res.json(); errMsg = errBody.error || errBody.message || errMsg; } catch (_) {}
-      if (res.status === 429) toast('Слишком много запросов, подождите', 'error');
-      throw new Error(errMsg);
+    var method = opts.method || 'GET';
+    var maxAttempts = method === 'GET' ? 2 : 1;
+    var lastErr;
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        var res = await fetch('/api/telephony' + path, {
+          headers: Object.assign({ 'Authorization': 'Bearer ' + token(), 'Content-Type': 'application/json' }, opts.headers || {}),
+          method: method,
+          body: opts.body || undefined,
+        });
+        if (!res.ok) {
+          var errMsg = 'API ' + res.status;
+          try { var errBody = await res.json(); errMsg = errBody.error || errBody.message || errMsg; } catch (_) {}
+          if (res.status === 429) toast('Слишком много запросов, подождите', 'error');
+          throw new Error(errMsg);
+        }
+        return await res.json();
+      } catch (err) {
+        lastErr = err;
+        console.error('[Telephony] api(' + path + ') attempt ' + attempt + ' failed:', err);
+        if (attempt < maxAttempts) {
+          await new Promise(function (r) { setTimeout(r, 600); });
+        }
+      }
     }
-    return res.json();
+    throw lastErr;
   }
 
   /* ---- DOM helpers ---- */
@@ -483,8 +498,9 @@ window.AsgardTelephonyPage = (function () {
       renderLogTable(wrap, data.items || []);
       renderPagination(data.total || 0);
     } catch (err) {
+      console.error('[Telephony] fetchLog error:', err);
       wrap.innerHTML = emptyState('\u26A0', 'Не удалось загрузить журнал');
-      toast('Ошибка загрузки журнала', 'error');
+      toast('Ошибка загрузки журнала', err.message || 'error', 'err');
     }
   }
 
@@ -606,8 +622,9 @@ window.AsgardTelephonyPage = (function () {
         });
       });
     } catch (err) {
+      console.error('[Telephony] renderMissed error:', err);
       container.innerHTML = emptyState('\u26A0', 'Не удалось загрузить пропущенные');
-      toast('Ошибка загрузки', 'error');
+      toast('Ошибка загрузки пропущенных', err.message || 'error', 'err');
     }
   }
 
@@ -696,8 +713,9 @@ window.AsgardTelephonyPage = (function () {
 
       drawCallsChart(stats.by_period || []);
     } catch (err) {
+      console.error('[Telephony] fetchStats error:', err);
       content.innerHTML = emptyState('\u26A0', 'Не удалось загрузить статистику');
-      toast('Ошибка загрузки статистики', 'error');
+      toast('Ошибка загрузки статистики', err.message || 'error', 'err');
     }
   }
 
