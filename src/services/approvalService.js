@@ -94,6 +94,28 @@ async function notifyBuhForPayment(db, { entityType, entityId, actorName, title,
 const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const BUH_ROLES = ['BUH', 'ADMIN'];
 
+// ─── Матрица допустимых переходов статусов для estimates ───
+const ESTIMATE_TRANSITIONS = {
+  draft:     ['sent'],
+  sent:      ['approved', 'rework', 'question', 'rejected'],
+  rework:    ['sent'],
+  question:  ['sent'],
+  rejected:  [],       // терминальный
+  approved:  [],       // терминальный
+  cancelled: []        // терминальный
+};
+
+function validateEstimateTransition(currentStatus, newStatus) {
+  const from = String(currentStatus || 'draft').toLowerCase();
+  const allowed = ESTIMATE_TRANSITIONS[from];
+  if (!allowed || !allowed.includes(newStatus)) {
+    throw Object.assign(
+      new Error(`Недопустимый переход статуса: ${from} → ${newStatus}`),
+      { statusCode: 409 }
+    );
+  }
+}
+
 const PAYMENT_STATUSES = {
   PENDING: 'pending_payment',    // ждёт бухгалтерию
   PAID_BANK: 'paid',            // оплачено через ПП
@@ -819,10 +841,12 @@ module.exports = {
   notifyDirectorsForApproval,
   notifyBuhForPayment,
   sendApprovalTelegram,
+  validateEstimateTransition,
 
   // Константы
   DIRECTOR_ROLES,
   BUH_ROLES,
   PAYMENT_STATUSES,
-  ENTITY_LABELS
+  ENTITY_LABELS,
+  ESTIMATE_TRANSITIONS
 };
