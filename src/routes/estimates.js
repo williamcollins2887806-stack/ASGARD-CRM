@@ -115,7 +115,7 @@ async function routes(fastify) {
   fastify.post('/', {
     preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN'])]
   }, async (request, reply) => {
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
 
