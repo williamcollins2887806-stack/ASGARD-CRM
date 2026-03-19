@@ -215,18 +215,38 @@ window.AsgardAllEstimatesPage = (function() {
       showModal(`Просчёт #${id}`, html);
 
       // ─── Обработчики кнопок директора ───
+      // Все действия через /api/approval/estimates/:id/<action>
+      const actionMap = { approved: 'approve', rework: 'rework', question: 'question', rejected: 'reject' };
+
       async function doAction(newStatus, requireComment) {
         const comm = (document.getElementById('a_comm')?.value || '').trim();
         if (requireComment && !comm) { toast('Ошибка', 'Нужен комментарий', 'err'); return; }
         try {
-          const resp = await fetch(`/api/data/estimates/${id}`, {
-            method: 'PUT', headers: getHeaders(),
-            body: JSON.stringify({ approval_status: newStatus, approval_comment: comm || null })
+          const action = actionMap[newStatus];
+          if (!action) throw new Error('Неизвестное действие');
+          const resp = await fetch(`/api/approval/estimates/${id}/${action}`, {
+            method: 'POST', headers: getHeaders(),
+            body: JSON.stringify({ comment: comm || null })
           });
           if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Ошибка'); }
           await AsgardDB.put('estimates', { ...(await AsgardDB.get('estimates', id)), approval_status: newStatus, approval_comment: comm });
           estimates = await AsgardDB.all('estimates');
           toast('Готово', statusLabel(newStatus), 'ok');
+          apply();
+          AsgardUI.hideModal();
+        } catch (err) { toast('Ошибка', err.message, 'err'); }
+      }
+
+      async function doResubmit() {
+        try {
+          const resp = await fetch(`/api/approval/estimates/${id}/resubmit`, {
+            method: 'POST', headers: getHeaders(),
+            body: JSON.stringify({})
+          });
+          if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Ошибка'); }
+          await AsgardDB.put('estimates', { ...(await AsgardDB.get('estimates', id)), approval_status: 'sent' });
+          estimates = await AsgardDB.all('estimates');
+          toast('Готово', 'Отправлено повторно', 'ok');
           apply();
           AsgardUI.hideModal();
         } catch (err) { toast('Ошибка', err.message, 'err'); }
@@ -242,7 +262,7 @@ window.AsgardAllEstimatesPage = (function() {
       if (btnRework) btnRework.addEventListener('click', () => doAction('rework', true));
       if (btnQuestion) btnQuestion.addEventListener('click', () => doAction('question', true));
       if (btnReject) btnReject.addEventListener('click', () => doAction('rejected', true));
-      if (btnResend) btnResend.addEventListener('click', () => doAction('sent', false));
+      if (btnResend) btnResend.addEventListener('click', () => doResubmit());
     }
 
     // ─── Events ───
