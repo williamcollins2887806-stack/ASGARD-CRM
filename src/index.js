@@ -382,6 +382,7 @@ fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
 fastify.register(require('./routes/tkp'), { prefix: '/api/tkp' });
 fastify.register(require('./routes/pass_requests'), { prefix: '/api/pass-requests' });
 fastify.register(require('./routes/procurement'), { prefix: '/api/procurement' });
+fastify.register(require('./routes/assembly'), { prefix: '/api/assembly' });
 fastify.register(async function(f){
   f.all('/api/tmc-requests', async(req,reply)=>{
     const url='/api/procurement'+(req.url.includes('?')?'?'+req.url.split('?')[1]:'');
