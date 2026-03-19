@@ -1,14 +1,14 @@
 'use strict';
 
 /**
- * Estimates Routes — Просчёты
+ * Estimates Routes — Просчёты (CRUD)
  * ═══════════════════════════════════════════════════════════════
- * 
- * Простое согласование: РП → директор (Согласовать/Доработка/Вопрос/Отклонить) → готово
- * БЕЗ бухгалтерии, БЕЗ оплаты. Просчёт — это калькуляция, не расход.
+ *
+ * CRUD: создание, чтение, обновление обычных полей, удаление.
+ * Согласование (смена approval_status) — ТОЛЬКО через /api/approval/estimates/:id/*
+ * PUT с approval_status → 400.
  */
 
-const { createNotification } = require('../services/notify');
 const approvalService = require('../services/approvalService');
 
 const ALLOWED_COLS = new Set([
@@ -113,81 +113,32 @@ async function routes(fastify) {
   });
 
   // ─── UPDATE ───
+  // Только обычные поля (comment, cost_plan, price_tkp и т.д.)
+  // Смена статуса согласования — ТОЛЬКО через /api/approval/estimates/:id/*
   fastify.put('/:id', {
     preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'BUH'])]
   }, async (request, reply) => {
     const { id } = request.params;
+    const body = request.body || {};
+
+    // Блокируем попытку сменить статус через PUT
+    if (body.approval_status) {
+      return reply.code(400).send({
+        error: 'Используйте /api/approval/estimates/:id/* для смены статуса'
+      });
+    }
+
     const currentResult = await db.query('SELECT * FROM estimates WHERE id = $1', [id]);
     const current = currentResult.rows[0];
     if (!current) return reply.code(404).send({ error: 'Просчёт не найден' });
 
-    const data = filterData(request.body || {});
-    const newStatus = String(data.approval_status || '').toLowerCase();
-    const oldStatus = String(current.approval_status || '').toLowerCase();
-    const initiatorId = current.pm_id || current.created_by;
+    const data = filterData(body);
 
-    if (newStatus && newStatus !== oldStatus) {
-      if (['sent', 'pending'].includes(newStatus) && ['draft', 'rework', 'question'].includes(oldStatus)) {
-        data.approval_status = 'sent';
-        data.sent_for_approval_at = new Date().toISOString();
-        data.is_approved = false;
-        data.approved_by = null;
-        data.approved_at = null;
-        data.reject_reason = null;
-        await notifyDirectorsWithButtons(request.user.id, id, request.user.name);
-      } else if (newStatus === 'approved') {
-        data.is_approved = true;
-        data.approved_by = request.user.id;
-        data.approved_at = new Date().toISOString();
-        data.decided_at = new Date().toISOString();
-        data.decided_by_user_id = request.user.id;
-        if (initiatorId && initiatorId !== request.user.id) {
-          createNotification(db, {
-            user_id: initiatorId,
-            title: '✅ Просчёт согласован',
-            message: `${request.user.name || 'Директор'} согласовал просчёт #${id}${data.approval_comment ? '. ' + data.approval_comment : ''}`,
-            type: 'estimate', link: '#/pm-calcs'
-          });
-        }
-      } else if (newStatus === 'rework') {
-        data.decided_at = new Date().toISOString();
-        data.decided_by_user_id = request.user.id;
-        if (initiatorId && initiatorId !== request.user.id) {
-          createNotification(db, {
-            user_id: initiatorId,
-            title: '🔄 Просчёт на доработку',
-            message: `${request.user.name || 'Директор'}: ${data.approval_comment || 'Доработайте'}`,
-            type: 'estimate', link: '#/pm-calcs'
-          });
-        }
-      } else if (newStatus === 'question') {
-        data.decided_at = new Date().toISOString();
-        data.decided_by_user_id = request.user.id;
-        if (initiatorId && initiatorId !== request.user.id) {
-          createNotification(db, {
-            user_id: initiatorId,
-            title: '❓ Вопрос по просчёту',
-            message: `${request.user.name || 'Директор'}: ${data.approval_comment || 'Вопрос'}`,
-            type: 'estimate', link: '#/pm-calcs'
-          });
-        }
-      } else if (newStatus === 'rejected') {
-        data.is_approved = false;
-        data.reject_reason = data.approval_comment || data.reject_reason || '';
-        data.decided_at = new Date().toISOString();
-        data.decided_by_user_id = request.user.id;
-        if (initiatorId && initiatorId !== request.user.id) {
-          createNotification(db, {
-            user_id: initiatorId,
-            title: '❌ Просчёт отклонён',
-            message: `${request.user.name || 'Директор'}: ${data.reject_reason || 'Без причины'}`,
-            type: 'estimate', link: '#/pm-calcs'
-          });
-        }
-      }
-    } else {
-      for (const field of APPROVAL_FIELDS) delete data[field];
-    }
+    // Удаляем approval-поля — они управляются только через /api/approval
+    for (const field of APPROVAL_FIELDS) delete data[field];
+    delete data.reject_reason;
+    delete data.approval_comment;
+    delete data.sent_for_approval_at;
 
     const updates = [];
     const values = [];
