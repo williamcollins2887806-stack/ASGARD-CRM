@@ -487,6 +487,15 @@ async function dataRoutes(fastify, options) {
         ? String(data.approval_status || '').trim().toLowerCase()
         : '';
 
+      // Просчёт: стрипаем все approval-поля, кроме тех что контролируем сами
+      if (table === 'estimates') {
+        // Удаляем поля, которые управляются только через /api/approval
+        delete data.reject_reason;
+        delete data.decided_at;
+        delete data.decided_by_user_id;
+        delete data.approval_comment;
+      }
+
       // Просчёт: если отправляют на согласование — ставим 'sent'
       if (table === 'estimates' && ['sent', 'pending'].includes(requestedEstimateApprovalStatus)) {
         data.approval_status = 'sent';
@@ -496,6 +505,11 @@ async function dataRoutes(fastify, options) {
         data.approved_at = null;
       } else if (table === 'estimates') {
         data.approval_status = requestedEstimateApprovalStatus || 'draft';
+        // Стрипаем оставшиеся approval-поля для неотправленных просчётов
+        delete data.is_approved;
+        delete data.approved_by;
+        delete data.approved_at;
+        delete data.sent_for_approval_at;
       }
 
       const TEXT_FIELDS = ['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'];
