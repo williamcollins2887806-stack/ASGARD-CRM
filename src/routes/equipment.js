@@ -414,18 +414,59 @@ async function equipmentRoutes(fastify, options) {
   // 12a. POST /from-procurement — Создание из закупки
   // ============================================
   fastify.post('/from-procurement', { preHandler: [fastify.authenticate] }, async (req, reply) => {
-    const { procurement_item_id, name, article, unit, quantity, warehouse_id } = req.body;
-    if (!procurement_item_id) return reply.code(400).send({ error: 'procurement_item_id required' });
-    const dup = await db.query('SELECT id FROM equipment WHERE procurement_item_id=$1', [procurement_item_id]);
-    if (dup.rows.length) return reply.code(409).send({ error: 'Уже создано', equipment_id: dup.rows[0].id });
-    const wh = warehouse_id || (await db.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1")).rows[0]?.id;
-    const r = await db.query(
-      `INSERT INTO equipment(name,article,unit,quantity,warehouse_id,status,procurement_item_id,created_by)
-       VALUES($1,$2,$3,$4,$5,'on_warehouse',$6,$7) RETURNING *`,
-      [name, article, unit, quantity||1, wh, procurement_item_id, req.user.id]);
-    await db.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,performed_by,notes)
-       VALUES($1,'receipt',$2,$3,'Из закупки')`, [r.rows[0].id, wh, req.user.id]);
-    reply.send({ ok: true, item: r.rows[0] });
+    const { procurement_item_id, warehouse_id } = req.body;
+    if (!procurement_item_id) return reply.code(400).send({ success: false, error: 'procurement_item_id required' });
+
+    // Найти позицию закупки
+    const pic = await db.query(
+      `SELECT pi.*, pi.equipment_id, pr.work_id, pr.pm_id, pr.id as proc_id
+       FROM procurement_items pi
+       JOIN procurement_requests pr ON pr.id = pi.procurement_id
+       WHERE pi.id = $1`, [procurement_item_id]);
+    if (!pic.rows.length) return reply.code(404).send({ success: false, error: 'Позиция не найдена' });
+    const item = pic.rows[0];
+
+    // Дубль — уже привязано оборудование
+    if (item.equipment_id) return reply.code(409).send({ success: false, error: 'Оборудование уже создано', equipment_id: item.equipment_id });
+
+    const whId = warehouse_id || (await db.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1")).rows[0]?.id || null;
+    const qrUuid = randomUUID();
+    const user = req.user;
+    const client = await db.connect();
+
+    try {
+      await client.query('BEGIN');
+      const eq = await client.query(
+        `INSERT INTO equipment(name, quantity, unit, purchase_price, status, warehouse_id, qr_uuid, qr_code, condition, notes, created_by)
+         VALUES($1,$2,$3,$4,'on_warehouse',$5,$6,$6,'new',$7,$8) RETURNING *`,
+        [item.name, item.quantity || 1, item.unit || 'шт', item.unit_price, whId, qrUuid, 'Из закупки #' + item.proc_id, user.id]);
+      const eqId = eq.rows[0].id;
+
+      // Линк обратно в procurement_items
+      await client.query('UPDATE procurement_items SET equipment_id=$1,updated_at=NOW() WHERE id=$2', [eqId, procurement_item_id]);
+
+      // Movement
+      await client.query(
+        `INSERT INTO equipment_movements(equipment_id, movement_type, to_warehouse_id, notes, created_by)
+         VALUES($1,'procurement_receipt',$2,$3,$4)`,
+        [eqId, whId, 'Приёмка из закупки #' + item.proc_id, user.id]);
+
+      // Авто-бронирование если есть work_id
+      if (item.work_id) {
+        await client.query(
+          `INSERT INTO equipment_reservations(equipment_id,work_id,reserved_by,reserved_from,reserved_to,status,notes)
+           VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE+INTERVAL '30 days','active',$4)`,
+          [eqId, item.work_id, item.pm_id || user.id, 'Автобронь из закупки #' + item.proc_id]);
+      }
+
+      await client.query('COMMIT');
+      return { success: true, equipment: eq.rows[0] };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   });
 
   // ============================================

@@ -61,3 +61,60 @@
 .proc-create-form{display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-3)}
 .proc-create-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--t2)}
 .proc-create-form input,.proc-create-form select,.proc-create-form textarea{padding:var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm);background:var(--bg0);color:var(--t1);font-size:14px}
+
+/* ═══ WOW DELIVERY UI ═══ */
+
+.proc-deliver{padding:var(--sp-3);max-height:70vh;overflow-y:auto}
+.proc-deliver__title{font-size:16px;font-weight:700;color:var(--t1);margin-bottom:var(--sp-2);display:flex;align-items:center;gap:var(--sp-2)}
+.proc-deliver__progress{height:6px;border-radius:3px;background:var(--bg3);margin-bottom:var(--sp-3);overflow:hidden}
+.proc-deliver__progress-bar{height:100%;border-radius:3px;background:linear-gradient(90deg,#2563eb,#10b981);transition:width .6s cubic-bezier(.4,0,.2,1);width:0}
+
+.proc-deliver-card{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3);margin-bottom:var(--sp-2);border-radius:var(--r-md);border:1px solid var(--brd);background:var(--bg1);transition:all .4s cubic-bezier(.4,0,.2,1);cursor:pointer;position:relative;overflow:hidden}
+.proc-deliver-card:hover{border-color:var(--blue);box-shadow:0 2px 12px rgba(37,99,235,.12)}
+.proc-deliver-card__icon{width:44px;height:44px;border-radius:var(--r-md);background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.proc-deliver-card__info{flex:1;min-width:0}
+.proc-deliver-card__name{font-size:14px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.proc-deliver-card__meta{font-size:12px;color:var(--t2);margin-top:2px;display:flex;gap:var(--sp-2)}
+.proc-deliver-card__check{width:24px;height:24px;border-radius:50%;border:2px solid var(--brd);display:flex;align-items:center;justify-content:center;transition:all .3s;flex-shrink:0;font-size:14px;color:transparent}
+.proc-deliver-card__check.checked{background:#10b981;border-color:#10b981;color:#fff}
+
+.proc-deliver-card.accepted{border-color:#10b981;background:linear-gradient(135deg,rgba(16,185,129,.06),rgba(16,185,129,.02));animation:proc-accept .5s cubic-bezier(.4,0,.2,1)}
+.proc-deliver-card.accepted .proc-deliver-card__icon{background:#10b981;color:#fff}
+.proc-deliver-card.eq-created{animation:proc-accept .5s,proc-glow 1.2s .5s}
+.proc-deliver-card.eq-created::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(212,168,67,.15),transparent);opacity:0;animation:proc-shimmer 1.2s .5s forwards}
+
+.proc-deliver__footer{display:flex;gap:var(--sp-2);justify-content:flex-end;padding-top:var(--sp-3);border-top:1px solid var(--brd);margin-top:var(--sp-3)}
+.proc-deliver__btn{padding:var(--sp-2) var(--sp-4);border-radius:var(--r-md);font-size:14px;font-weight:600;border:none;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:var(--sp-1)}
+.proc-deliver__btn--primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.3)}
+.proc-deliver__btn--primary:hover{box-shadow:0 4px 16px rgba(37,99,235,.4);transform:translateY(-1px)}
+.proc-deliver__btn--primary:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* Финальный экран */
+.proc-deliver-done{text-align:center;padding:var(--sp-4) var(--sp-3);animation:proc-done-in .5s cubic-bezier(.4,0,.2,1)}
+.proc-deliver-done__icon{font-size:56px;margin-bottom:var(--sp-3);animation:proc-done-bounce .6s .2s cubic-bezier(.4,0,.2,1)}
+.proc-deliver-done__title{font-size:20px;font-weight:700;color:var(--t1);margin-bottom:var(--sp-1)}
+.proc-deliver-done__sub{font-size:14px;color:var(--t2);margin-bottom:var(--sp-3)}
+.proc-deliver-done__stats{display:flex;justify-content:center;gap:var(--sp-4);margin-bottom:var(--sp-4)}
+.proc-deliver-done__stat{text-align:center}
+.proc-deliver-done__stat-val{font-size:28px;font-weight:700;color:#10b981}
+.proc-deliver-done__stat-val--gold{color:#D4A843}
+.proc-deliver-done__stat-label{font-size:12px;color:var(--t2);margin-top:2px}
+.proc-deliver-done__link{display:inline-flex;align-items:center;gap:var(--sp-1);color:var(--blue);font-weight:500;text-decoration:none;padding:var(--sp-2) var(--sp-3);border:1px solid var(--blue);border-radius:var(--r-md);transition:all .2s}
+.proc-deliver-done__link:hover{background:var(--blue);color:#fff}
+
+/* Бейдж оборудования в детальной карточке */
+.proc-eq-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:500;cursor:pointer;transition:all .2s}
+.proc-eq-badge--delivered{background:rgba(16,185,129,.1);color:#10b981}
+.proc-eq-badge--delivered:hover{background:rgba(16,185,129,.2)}
+.proc-eq-badge--transit{background:rgba(37,99,235,.1);color:#2563eb}
+.proc-eq-badge--pending{background:var(--bg3);color:var(--t3)}
+
+/* Golden particles */
+.proc-gold-particle{position:absolute;width:6px;height:6px;border-radius:50%;background:#D4A843;pointer-events:none;animation:proc-particle 1s forwards}
+
+@keyframes proc-accept{0%{transform:scale(1)}40%{transform:scale(1.03)}100%{transform:scale(1)}}
+@keyframes proc-glow{0%{box-shadow:0 0 0 0 rgba(212,168,67,.4)}50%{box-shadow:0 0 20px 4px rgba(212,168,67,.2)}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes proc-shimmer{0%{opacity:0}30%{opacity:1}100%{opacity:0}}
+@keyframes proc-done-in{0%{opacity:0;transform:scale(.9)}100%{opacity:1;transform:scale(1)}}
+@keyframes proc-done-bounce{0%{transform:scale(1)}50%{transform:scale(1.2)}100%{transform:scale(1)}}
+@keyframes proc-particle{0%{opacity:1;transform:translate(0,0) scale(1)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(0)}}

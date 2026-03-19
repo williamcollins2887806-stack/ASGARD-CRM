@@ -113,7 +113,13 @@ window.AsgardProcurementPage = (function() {
           <td>${isPROC&&canEditItems?`<input class="proc-items-table__input" value="${esc(it.supplier||'')}" data-id="${it.id}" data-field="supplier">`:esc(it.supplier||'—')}</td>
           <td>${isPROC&&canEditItems?`<input class="proc-items-table__input" type="number" value="${it.unit_price||''}" data-id="${it.id}" data-field="unit_price" style="width:90px">`:money(it.unit_price)}</td>
           <td>${money(it.total_price)}</td>
-          <td>${it.item_status==='delivered'?'✅':'⏳'}</td>
+          <td>${it.item_status==='delivered'
+            ? (it.equipment_id
+              ? '<span class="proc-eq-badge proc-eq-badge--delivered" onclick="location.hash=\'#/equipment?id='+it.equipment_id+'\'">📦 #'+it.equipment_id+'</span>'
+              : '<span class="proc-eq-badge proc-eq-badge--delivered">✅ Принято</span>')
+            : it.item_status==='cancelled'
+              ? '<span class="proc-eq-badge proc-eq-badge--pending">✕ Отменена</span>'
+              : '<span class="proc-eq-badge proc-eq-badge--transit">⏳ Ожидает</span>'}</td>
           <td>${it.invoice_file_name?`<span class="proc-invoice-badge"><a href="${esc(it.invoice_file_path)}" class="proc-invoice-badge__link" target="_blank">📎 ${esc(it.invoice_file_name)}</a></span>`
             :(isPROC&&canEditItems?`<button class="btn ghost" style="font-size:11px;padding:2px 6px" onclick="AsgardProcurementPage._attachInvoice(${p.id},${it.id})">📎</button>`:'—')}</td>
           ${canEditItems?`<td><button class="btn ghost" style="font-size:11px;padding:2px 6px;color:var(--err)" onclick="AsgardProcurementPage._deleteItem(${p.id},${it.id})">✕</button></td>`:''}
@@ -223,26 +229,113 @@ window.AsgardProcurementPage = (function() {
     };
   }
 
-  // -- Deliver modal --
+  // -- WOW Deliver modal --
+  const ITEM_ICONS = ['📦','🔩','⚙️','🔧','🛠️','🧱','🪣','🔌','🧰','💡'];
+  function _itemIcon(name) { let h=0; for(let i=0;i<name.length;i++) h=((h<<5)-h)+name.charCodeAt(i); return ITEM_ICONS[Math.abs(h)%ITEM_ICONS.length]; }
+  function _ding() { try { const ac=new(window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator();const g=ac.createGain();o.connect(g);g.connect(ac.destination);o.frequency.value=880;o.type='sine';g.gain.value=0.08;o.start();g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.3);o.stop(ac.currentTime+0.3); } catch(e){} }
+  function _spawnParticles(card) {
+    for(let i=0;i<8;i++){const p=document.createElement('span');p.className='proc-gold-particle';const a=Math.random()*Math.PI*2;const d=40+Math.random()*60;
+    p.style.cssText=`left:50%;top:50%;--dx:${Math.cos(a)*d}px;--dy:${Math.sin(a)*d}px`;card.appendChild(p);setTimeout(()=>p.remove(),1100);}
+  }
+
   async function openDeliverModal(procId) {
     const d = await apiFetch(`/api/procurement/${procId}`);
-    const undelivered = (d.items||[]).filter(i => i.item_status !== 'delivered');
+    const allItems = d.items || [];
+    const undelivered = allItems.filter(i => i.item_status !== 'delivered' && i.item_status !== 'cancelled');
     if (!undelivered.length) { toast('Всё доставлено', '', 'info'); return; }
-    let html = `<div style="padding:var(--sp-3)"><h3>Приёмка позиций</h3>`;
+
+    const selected = new Set(undelivered.map(i => i.id));
+    let html = `<div class="proc-deliver">
+      <div class="proc-deliver__title">📦 Приёмка позиций <span style="font-size:13px;font-weight:400;color:var(--t2)">${undelivered.length} из ${allItems.length}</span></div>
+      <div class="proc-deliver__progress"><div class="proc-deliver__progress-bar" id="dlv-bar"></div></div>
+      <div id="dlv-cards">`;
     undelivered.forEach(it => {
-      html += `<div style="display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2);border-bottom:1px solid var(--brd)">
-        <input type="checkbox" class="dlv-check" data-id="${it.id}" checked>
-        <span>${esc(it.name)} — ${it.quantity} ${esc(it.unit)}</span>
+      html += `<div class="proc-deliver-card" data-id="${it.id}">
+        <div class="proc-deliver-card__icon">${_itemIcon(it.name)}</div>
+        <div class="proc-deliver-card__info">
+          <div class="proc-deliver-card__name">${esc(it.name)}</div>
+          <div class="proc-deliver-card__meta">
+            <span>${it.quantity} ${esc(it.unit)}</span>
+            ${it.unit_price ? '<span>'+Number(it.unit_price).toLocaleString('ru-RU')+' ₽</span>' : ''}
+            ${it.supplier ? '<span>'+esc(it.supplier)+'</span>' : ''}
+          </div>
+        </div>
+        <div class="proc-deliver-card__check checked" data-check="${it.id}">✓</div>
       </div>`;
     });
-    html += `<button class="btn primary" id="dlv-confirm" style="margin-top:var(--sp-3)">Принять выбранные</button></div>`;
-    showModal(html, { title: 'Приёмка', width: '500px' });
+    html += `</div>
+      <div class="proc-deliver__footer">
+        <button class="proc-deliver__btn proc-deliver__btn--primary" id="dlv-confirm">✅ Принять выбранные (${undelivered.length})</button>
+      </div>
+    </div>`;
+
+    showModal(html, { title: 'Приёмка заявки #' + procId, width: '560px' });
+
+    // Toggle selection
+    document.querySelectorAll('.proc-deliver-card').forEach(card => {
+      card.onclick = (e) => {
+        if (card.classList.contains('accepted')) return;
+        const id = +card.dataset.id;
+        const ch = card.querySelector('.proc-deliver-card__check');
+        if (selected.has(id)) { selected.delete(id); ch.classList.remove('checked'); ch.textContent = ''; }
+        else { selected.add(id); ch.classList.add('checked'); ch.textContent = '✓'; }
+        const btn = document.getElementById('dlv-confirm');
+        if (btn) { btn.textContent = '✅ Принять выбранные (' + selected.size + ')'; btn.disabled = !selected.size; }
+      };
+    });
+
+    // Confirm delivery
     document.getElementById('dlv-confirm').onclick = async () => {
-      const checks = document.querySelectorAll('.dlv-check:checked');
-      for (const ch of checks) {
-        await apiPut(`/api/procurement/${procId}/items/${ch.dataset.id}/deliver`, {});
+      const btn = document.getElementById('dlv-confirm');
+      btn.disabled = true; btn.innerHTML = '<span class="mimir-spinner"></span> Принимаю...';
+      const ids = [...selected];
+      let done = 0, eqCreated = 0;
+      const bar = document.getElementById('dlv-bar');
+      const total = ids.length;
+
+      for (const itemId of ids) {
+        const r = await apiPut(`/api/procurement/${procId}/items/${itemId}/deliver`, {});
+        done++;
+        if (bar) bar.style.width = Math.round(done / total * 100) + '%';
+
+        const card = document.querySelector(`.proc-deliver-card[data-id="${itemId}"]`);
+        if (card) {
+          card.classList.add('accepted');
+          card.querySelector('.proc-deliver-card__check').classList.add('checked');
+          card.querySelector('.proc-deliver-card__check').textContent = '✓';
+          // Если создалось оборудование — golden glow
+          if (r.item && r.item.equipment_id) {
+            eqCreated++;
+            card.classList.add('eq-created');
+            _spawnParticles(card);
+          }
+          _ding();
+          await new Promise(ok => setTimeout(ok, 300));
+        }
       }
-      toast('Принято', `${checks.length} поз.`, 'ok'); closeModal(); refresh();
+
+      // Финальный экран
+      await new Promise(ok => setTimeout(ok, 400));
+      const container = document.querySelector('.proc-deliver');
+      if (container) {
+        container.innerHTML = `<div class="proc-deliver-done">
+          <div class="proc-deliver-done__icon">🎉</div>
+          <div class="proc-deliver-done__title">Приёмка завершена!</div>
+          <div class="proc-deliver-done__sub">Заявка #${procId} — все позиции приняты на склад</div>
+          <div class="proc-deliver-done__stats">
+            <div class="proc-deliver-done__stat">
+              <div class="proc-deliver-done__stat-val">${done}</div>
+              <div class="proc-deliver-done__stat-label">Принято</div>
+            </div>
+            ${eqCreated ? `<div class="proc-deliver-done__stat">
+              <div class="proc-deliver-done__stat-val proc-deliver-done__stat-val--gold">${eqCreated}</div>
+              <div class="proc-deliver-done__stat-label">Оборудование</div>
+            </div>` : ''}
+          </div>
+          ${eqCreated ? '<a class="proc-deliver-done__link" href="#/equipment">Перейти на склад →</a>' : ''}
+        </div>`;
+      }
+      refresh();
     };
   }
 

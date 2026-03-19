@@ -151,6 +151,67 @@ module.exports = {
     { name: 'S5.3: Available', run: async () => {
       const r = await api('GET', '/api/equipment/available', { role: 'PM' }); assert(r.status !== 500, 'No 500');
     }},
+    { name: 'S5.4: from-procurement creates equipment', run: async () => {
+      // Создаём отдельную заявку → проводим до paid → добавляем позицию warehouse → deliver → from-procurement
+      const cr = await api('POST', '/api/procurement', { role: 'PM', body: { title: 'S5.4: FromProc Test' } });
+      if (cr.status === 404) skip('No procurement');
+      assertOk(cr, 'Created');
+      const pid = cr.data.item.id;
+      const it = await api('POST', `/api/procurement/${pid}/items`, { role: 'PM', body: { name: 'Кабель ВВГ', unit: 'м', quantity: 100, unit_price: 150, delivery_target: 'warehouse' } });
+      assertOk(it, 'Item added');
+      const iid = it.data.item.id;
+      // Проводим через цепочку
+      await api('PUT', `/api/procurement/${pid}/send-to-proc`, { role: 'PM', body: {} });
+      await api('PUT', `/api/procurement/${pid}/proc-respond`, { role: 'PROC', body: {} });
+      await api('PUT', `/api/procurement/${pid}/pm-approve`, { role: 'PM', body: {} });
+      await api('PUT', `/api/procurement/${pid}/dir-approve`, { role: 'DIRECTOR_GEN', body: {} });
+      await api('PUT', `/api/procurement/${pid}/mark-paid`, { role: 'BUH', body: {} });
+      // Deliver — создаёт equipment автоматически (delivery_target=warehouse)
+      const dr = await api('PUT', `/api/procurement/${pid}/items/${iid}/deliver`, { role: 'WAREHOUSE', body: {} });
+      assertOk(dr, 'Delivered');
+      assert(dr.data.item.equipment_id, 'Equipment linked');
+      // Проверяем что equipment реально существует
+      const eq = await api('GET', `/api/equipment/${dr.data.item.equipment_id}`, { role: 'WAREHOUSE' });
+      assertOk(eq, 'Equipment exists');
+      assert(eq.data.equipment.status === 'on_warehouse', 'On warehouse');
+    }},
+    { name: 'S5.5: from-procurement manual creation', run: async () => {
+      // Создаём заявку с delivery_target=object → deliver → потом вручную from-procurement
+      const cr = await api('POST', '/api/procurement', { role: 'PM', body: { title: 'S5.5: Manual FromProc' } });
+      if (cr.status === 404) skip('');
+      const pid = cr.data.item.id;
+      const it = await api('POST', `/api/procurement/${pid}/items`, { role: 'PM', body: { name: 'Насос ЭЦВ', unit: 'шт', quantity: 1, unit_price: 85000, delivery_target: 'object' } });
+      const iid = it.data.item.id;
+      await api('PUT', `/api/procurement/${pid}/send-to-proc`, { role: 'PM', body: {} });
+      await api('PUT', `/api/procurement/${pid}/proc-respond`, { role: 'PROC', body: {} });
+      await api('PUT', `/api/procurement/${pid}/pm-approve`, { role: 'PM', body: {} });
+      await api('PUT', `/api/procurement/${pid}/dir-approve`, { role: 'DIRECTOR_GEN', body: {} });
+      await api('PUT', `/api/procurement/${pid}/mark-paid`, { role: 'BUH', body: {} });
+      await api('PUT', `/api/procurement/${pid}/items/${iid}/deliver`, { role: 'WAREHOUSE', body: {} });
+      // Manual from-procurement
+      const fp = await api('POST', '/api/equipment/from-procurement', { role: 'WAREHOUSE', body: { procurement_item_id: iid } });
+      assertOk(fp, 'Created'); assert(fp.data.equipment?.id, 'Eq ID');
+    }},
+    { name: 'S5.6: from-procurement duplicate → 409', run: async () => {
+      // Повторный вызов from-procurement для той же позиции
+      const cr = await api('POST', '/api/procurement', { role: 'PM', body: { title: 'S5.6: Dup Test' } });
+      if (cr.status === 404) skip('');
+      const pid = cr.data.item.id;
+      const it = await api('POST', `/api/procurement/${pid}/items`, { role: 'PM', body: { name: 'Кран шаровый', unit: 'шт', quantity: 2, unit_price: 3500, delivery_target: 'object' } });
+      const iid = it.data.item.id;
+      await api('PUT', `/api/procurement/${pid}/send-to-proc`, { role: 'PM', body: {} });
+      await api('PUT', `/api/procurement/${pid}/proc-respond`, { role: 'PROC', body: {} });
+      await api('PUT', `/api/procurement/${pid}/pm-approve`, { role: 'PM', body: {} });
+      await api('PUT', `/api/procurement/${pid}/dir-approve`, { role: 'DIRECTOR_GEN', body: {} });
+      await api('PUT', `/api/procurement/${pid}/mark-paid`, { role: 'BUH', body: {} });
+      await api('PUT', `/api/procurement/${pid}/items/${iid}/deliver`, { role: 'WAREHOUSE', body: {} });
+      // Первый вызов — ок
+      const fp1 = await api('POST', '/api/equipment/from-procurement', { role: 'WAREHOUSE', body: { procurement_item_id: iid } });
+      assertOk(fp1, 'First ok');
+      // Второй вызов — дубль
+      const fp2 = await api('POST', '/api/equipment/from-procurement', { role: 'WAREHOUSE', body: { procurement_item_id: iid } });
+      assert(fp2.status === 409, '409 duplicate');
+    }},
 
     // === STEP 6: ASSEMBLY ===
     { name: 'S6.1: Create assembly', run: async () => {
