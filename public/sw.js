@@ -31,7 +31,7 @@ const SHELL_ASSETS = [
   './assets/img/logo.png',
   './assets/img/asgard_logo.png',
   './assets/img/asgard_emblem.png'
-  // Mobile v3 removed — React app at /m/ (not cached by this SW)
+  // Mobile v2+v3 removed — React app at /m/
 ];
 
 // ═══════════════════════════════════════════════════════════════
