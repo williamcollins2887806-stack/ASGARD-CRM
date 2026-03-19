@@ -1,0 +1,63 @@
+/* ASGARD CRM — Procurement. Prefix: .proc-* */
+
+.proc-page{padding:var(--sp-4)}
+.proc-toolbar{display:flex;gap:var(--sp-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--sp-4);padding:var(--sp-3);background:var(--bg1);border-radius:var(--r-md);border:1px solid var(--brd)}
+.proc-toolbar select,.proc-toolbar input{padding:var(--sp-1) var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm);background:var(--bg0);color:var(--t1);font-size:13px}
+.proc-table-wrap{overflow-x:auto;border-radius:var(--r-md);border:1px solid var(--brd)}
+
+.proc-status{display:inline-flex;align-items:center;gap:var(--sp-1);padding:2px var(--sp-2);border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.proc-status--draft{background:var(--bg3);color:var(--t2)}
+.proc-status--sent-to-proc{background:var(--info-bg);color:var(--info-t)}
+.proc-status--proc-responded{background:color-mix(in srgb,var(--blue) 15%,transparent);color:var(--blue)}
+.proc-status--pm-approved{background:color-mix(in srgb,var(--gold) 15%,transparent);color:var(--gold)}
+.proc-status--dir-approved{background:var(--ok-bg);color:var(--ok-t)}
+.proc-status--dir-rework,.proc-status--dir-question{background:var(--warn-bg);color:var(--warn-t)}
+.proc-status--dir-rejected{background:var(--err-bg);color:var(--err-t)}
+.proc-status--paid{background:var(--ok-bg);color:var(--ok-t)}
+.proc-status--partially-delivered{background:color-mix(in srgb,var(--blue) 15%,transparent);color:var(--blue)}
+.proc-status--delivered{background:var(--ok-bg);color:var(--ok-t)}
+.proc-status--closed{background:var(--bg3);color:var(--t3)}
+
+.proc-detail{padding:var(--sp-4)}
+.proc-detail__header{display:flex;justify-content:space-between;align-items:start;margin-bottom:var(--sp-4);flex-wrap:wrap;gap:var(--sp-2)}
+.proc-detail__meta{display:grid;grid-template-columns:120px 1fr;gap:var(--sp-1) var(--sp-2);font-size:13px;margin-bottom:var(--sp-3)}
+.proc-detail__meta dt{color:var(--t2);font-weight:500}
+.proc-detail__meta dd{color:var(--t1);margin:0}
+.proc-detail__section{margin-bottom:var(--sp-4)}
+.proc-detail__section-title{font-size:14px;font-weight:600;color:var(--t1);margin-bottom:var(--sp-2);border-bottom:1px solid var(--brd);padding-bottom:var(--sp-1)}
+.proc-detail__actions{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-4);padding-top:var(--sp-3);border-top:1px solid var(--brd)}
+
+.proc-items-table{width:100%;border-collapse:collapse;font-size:13px}
+.proc-items-table th{background:var(--bg2);padding:var(--sp-2);text-align:left;font-weight:500;color:var(--t2);border-bottom:1px solid var(--brd)}
+.proc-items-table td{padding:var(--sp-2);border-bottom:1px solid var(--brd);vertical-align:middle}
+.proc-items-table tr:hover{background:var(--bg1)}
+.proc-items-table__input{width:100%;padding:4px 6px;border:1px solid var(--brd);border-radius:var(--r-sm);background:var(--bg0);color:var(--t1);font-size:13px}
+
+.proc-timeline{position:relative;padding-left:24px}
+.proc-timeline__entry{position:relative;padding-bottom:var(--sp-3)}
+.proc-timeline__entry::before{content:'';position:absolute;left:-20px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--blue)}
+.proc-timeline__entry::after{content:'';position:absolute;left:-17px;top:16px;bottom:0;width:2px;background:var(--brd)}
+.proc-timeline__entry:last-child::after{display:none}
+.proc-timeline__date{font-size:11px;color:var(--t3)}
+.proc-timeline__text{font-size:13px;color:var(--t1)}
+.proc-timeline__actor{font-weight:500;color:var(--blue)}
+
+.proc-overdue{color:var(--err);font-weight:600}
+.proc-overdue::before{content:'⚠️ '}
+
+.proc-dashboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-4)}
+.proc-dash-card{padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--brd);background:var(--bg1);cursor:pointer;transition:border-color .2s,box-shadow .2s}
+.proc-dash-card:hover{border-color:var(--blue);box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.proc-dash-card__count{font-size:28px;font-weight:700;color:var(--t1)}
+.proc-dash-card__label{font-size:12px;color:var(--t2);margin-top:4px}
+.proc-dash-card--overdue{border-left:3px solid var(--err)}.proc-dash-card--overdue .proc-dash-card__count{color:var(--err)}
+.proc-dash-card--pending{border-left:3px solid var(--blue)}.proc-dash-card--pending .proc-dash-card__count{color:var(--blue)}
+.proc-dash-card--upcoming{border-left:3px solid var(--gold)}.proc-dash-card--upcoming .proc-dash-card__count{color:var(--gold)}
+
+.proc-invoice-badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--blue)}
+.proc-invoice-badge__link{color:var(--blue);text-decoration:underline}
+.proc-invoice-badge__link:hover{color:var(--t1)}
+
+.proc-create-form{display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-3)}
+.proc-create-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--t2)}
+.proc-create-form input,.proc-create-form select,.proc-create-form textarea{padding:var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm);background:var(--bg0);color:var(--t1);font-size:14px}
