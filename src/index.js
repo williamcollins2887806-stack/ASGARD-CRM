@@ -150,12 +150,14 @@ fastify.addHook('onRequest', async (request, reply) => {
   }
 });
 
-// Gzip/Brotli compression for faster mobile loading (v8.1)
-fastify.register(require('@fastify/compress'), {
-  global: true,
-  encodings: ['gzip', 'deflate'],
-  threshold: 1024 // Only compress responses > 1KB
-});
+// Gzip/Brotli compression — DISABLED (nginx handles gzip at proxy level)
+// @fastify/compress v7 produces empty response bodies for some routes.
+// nginx gzip on + gzip_types already covers compression for all responses.
+// fastify.register(require('@fastify/compress'), {
+//   global: true,
+//   encodings: ['gzip', 'deflate'],
+//   threshold: 1024
+// });
 
 // Перехватываем / и /index.html ДО @fastify/static
 // + React mobile app SPA routing для /m/*
