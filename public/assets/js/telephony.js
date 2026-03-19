@@ -183,9 +183,11 @@ window.AsgardTelephonyPage = (function () {
           if (res.status === 429) toast('Слишком много запросов, подождите', 'error');
           throw new Error(errMsg);
         }
+        var hdrs = {};
+        res.headers.forEach(function(v, k) { hdrs[k] = v; });
         var text = await res.text();
-        console.log('[Telephony] api(' + path + ') status=' + res.status + ' bodyLen=' + text.length + ' body=' + text.slice(0, 200));
-        if (!text) throw new Error('Empty response body');
+        console.log('[Telephony] api(' + path + ') status=' + res.status + ' bodyLen=' + text.length + ' headers=' + JSON.stringify(hdrs));
+        if (!text) throw new Error('Empty response body (content-length=' + (hdrs['content-length'] || 'none') + ')');
         return JSON.parse(text);
       } catch (err) {
         lastErr = err;
@@ -355,6 +357,14 @@ window.AsgardTelephonyPage = (function () {
 
     _activeTab = query.tab || 'log';
     if (TABS.indexOf(_activeTab) === -1) _activeTab = 'log';
+
+    /* DIAGNOSTIC: test endpoints */
+    fetch('/api/employees?limit=1', { headers: { 'Authorization': 'Bearer ' + token() } })
+      .then(function(r) { return r.text().then(function(t) { console.log('[Telephony] DIAG /api/employees status=' + r.status + ' bodyLen=' + t.length); }); })
+      .catch(function(e) { console.error('[Telephony] DIAG /api/employees FAILED:', e); });
+    fetch('/api/telephony/ping', { headers: { 'Authorization': 'Bearer ' + token() } })
+      .then(function(r) { return r.text().then(function(t) { console.log('[Telephony] DIAG /api/telephony/ping status=' + r.status + ' bodyLen=' + t.length + ' body=' + t); }); })
+      .catch(function(e) { console.error('[Telephony] DIAG /api/telephony/ping FAILED:', e); });
 
     /* pre-fetch missed badge count (non-blocking) */
     fetchMissedBadge();

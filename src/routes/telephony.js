@@ -483,6 +483,13 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   //  PROTECTED API ENDPOINTS
   // ========================================
 
+  // --- DIAGNOSTIC: test endpoint ---
+  fastify.get('/ping', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    reply.send({ ok: true, ts: Date.now(), user: request.user.id });
+  });
+
   // --- Журнал звонков ---
   fastify.get('/calls', {
     preHandler: [fastify.authenticate]
