@@ -585,3 +585,22 @@ responsive.css   (120KB)  — Адаптив
 - `DS.setTheme()` — исправлен баг: теперь устанавливает `root.dataset.theme = name`
 - GitHub-токен: используется текущий (Nick предоставляет при пуше)
 - Сервер: SSH ключ `C:\Users\Nikita-ASGARD\.ssh\asgard_crm_migrate`
+
+---
+
+## Модули Закупки + Склад + Сбор (feature/procurement-warehouse-assembly)
+- V052: procurement_requests (ex tmc_requests) + items + payments + history
+- V053: assembly_orders + pallets (capacity_items, capacity_kg) + items
+- Backend: src/routes/procurement.js (~800 строк), src/routes/assembly.js (~700 строк)
+- Frontend: procurement-page.js (~450 строк), assembly-page.js (~300 строк), assembly-dnd.js (~500 строк VPB)
+- CSS: procurement.css (prefix proc-*), assembly.css (prefix asm-* page-level, vpb__* BEM for Visual Pallet Builder)
+- Visual Pallet Builder (VPB): drag-and-drop сборка паллетов, деревянная текстура CSS, FLIP-анимации,
+  Web Audio thud, stretch-film wrap, capacity limits (warning 80% / full 100% / overfill), touch/pointer
+- Роли: ASSEMBLY_MANAGERS (PM+WH+DIR) управляют сборкой, WH_ROLES — только receive-all (приёмка)
+- Демобилизация: return_status (returning/damaged/lost/consumed) popup на бейдже
+- Интеграция: pm_works.js (3 модалки в "Действия" + closeout проверки + возврат оборудования)
+- Удалено: purchase_requests, proc_requests.js, tmc_requests.js, upsertPurchaseRequest, notifyPurchaseRequest
+- approvalService.js: procurement_requests вместо tmc_requests
+- equipment.js: новые статусы + reserve/return/write-off/available/from-procurement
+- Мобильные заглушки: procurement.js, assembly.js (мини-статистика + ролевой доступ)
+- Тесты: tests/e2e/flow-procurement-warehouse-assembly.test.js (~50 тестов)
