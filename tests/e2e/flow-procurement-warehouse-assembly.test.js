@@ -215,6 +215,20 @@ module.exports = {
       assertOk(r, 'PM packs item');
     }},
 
+    // === STEP 11: VPB DnD ===
+    { name: 'S11.5: DnD assign/unassign API', run: async () => {
+      if (!assemblyId || !palletId) skip('');
+      const d = await api('GET', `/api/assembly/${assemblyId}`, { role: 'PM' });
+      const free = (d.data?.items||[]).find(i => !i.pallet_id);
+      if (!free) skip('All assigned');
+      const r1 = await api('PUT', `/api/assembly/${assemblyId}/items/${free.id}/assign-pallet`,
+        { role: 'PM', body: { pallet_id: palletId } });
+      assertOk(r1, 'Assigned'); assert(r1.data.item.pallet_id === palletId, 'Set');
+      const r2 = await api('PUT', `/api/assembly/${assemblyId}/items/${free.id}/unassign-pallet`,
+        { role: 'PM', body: {} });
+      assertOk(r2, 'Unassigned'); assert(r2.data.item.pallet_id === null, 'Cleared');
+    }},
+
     // === STEP 7: DEAD CODE CLEANUP ===
     { name: 'S7.1: API ok', run: async () => { const r = await api('GET', '/api/procurement', { role: 'PM' }); assertOk(r, 'OK'); }},
     { name: 'S7.2: Stable', run: async () => { const r = await api('GET', '/api/users/me', { role: 'ADMIN' }); assertOk(r, 'OK'); }},
