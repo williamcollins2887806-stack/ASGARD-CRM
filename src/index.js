@@ -381,7 +381,19 @@ fastify.register(require('./routes/integrations'), { prefix: '/api/integrations'
 fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
 fastify.register(require('./routes/tkp'), { prefix: '/api/tkp' });
 fastify.register(require('./routes/pass_requests'), { prefix: '/api/pass-requests' });
-fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
+fastify.register(require('./routes/procurement'), { prefix: '/api/procurement' });
+fastify.register(async function(f){
+  f.all('/api/tmc-requests', async(req,reply)=>{
+    const url='/api/procurement'+(req.url.includes('?')?'?'+req.url.split('?')[1]:'');
+    const r=await f.inject({method:req.method,url,payload:req.body,headers:req.headers});
+    reply.code(r.statusCode).headers(r.headers).send(r.payload);
+  });
+  f.all('/api/tmc-requests/*', async(req,reply)=>{
+    const url=req.url.replace('/api/tmc-requests','/api/procurement');
+    const r=await f.inject({method:req.method,url,payload:req.body,headers:req.headers});
+    reply.code(r.statusCode).headers(r.headers).send(r.payload);
+  });
+});
 fastify.register(require('./routes/sse'), { prefix: '/api/sse' });
 fastify.register(require('./routes/push'), { prefix: '/api/push' });
 fastify.register(require('./routes/webauthn'), { prefix: '/api/webauthn' });

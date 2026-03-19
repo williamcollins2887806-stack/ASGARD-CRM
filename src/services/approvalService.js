@@ -20,7 +20,7 @@
  * СУЩНОСТИ (12 с requires_payment):
  *   cash_requests, pre_tender_requests, bonus_requests,
  *   work_expenses, office_expenses, expenses,
- *   one_time_payments, tmc_requests, payroll_sheets,
+ *   one_time_payments, procurement_requests, payroll_sheets,
  *   business_trips, travel_expenses, training_applications
  * 
  * СУЩНОСТИ (7 без requires_payment — только директор):
@@ -96,7 +96,7 @@ async function notifyBuhForPayment(db, { entityType, entityId, actorName, title,
 const SAFE_TABLES = new Set([
   'cash_requests', 'pre_tender_requests', 'bonus_requests',
   'work_expenses', 'office_expenses', 'expenses',
-  'one_time_payments', 'tmc_requests', 'payroll_sheets',
+  'one_time_payments', 'procurement_requests', 'payroll_sheets',
   'business_trips', 'travel_expenses', 'training_applications',
   'estimates', 'tkp', 'staff_requests', 'pass_requests',
   'permit_applications', 'site_inspections', 'seal_transfers'
@@ -150,7 +150,7 @@ const ENTITY_LABELS = {
   office_expenses: 'Офисный расход',
   expenses: 'Расход',
   one_time_payments: 'Разовая выплата',
-  tmc_requests: 'Заявка на ТМЦ',
+  procurement_requests: 'Заявка на закупку',
   payroll_sheets: 'Ведомость ЗП',
   business_trips: 'Командировка',
   travel_expenses: 'Командировочный расход',
@@ -182,7 +182,7 @@ const COLUMN_MAP = {
   office_expenses:        { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
   expenses:               { approved_by: null,              approved_at: 'approved_at',   comment_field: null },
   one_time_payments:      { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: 'director_comment' },
-  tmc_requests:           { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
+  procurement_requests:   { approved_by: 'dir_approved_by', approved_at: 'dir_approved_at', comment_field: null },
   payroll_sheets:         { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: 'director_comment' },
   business_trips:         { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
   travel_expenses:        { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
@@ -902,7 +902,7 @@ async function getPendingForBuh(db) {
   const tables = [
     'pre_tender_requests', 'bonus_requests', 'work_expenses',
     'office_expenses', 'expenses', 'one_time_payments',
-    'tmc_requests', 'payroll_sheets', 'business_trips',
+    'procurement_requests', 'payroll_sheets', 'business_trips',
     'travel_expenses', 'training_applications'
   ];
 
