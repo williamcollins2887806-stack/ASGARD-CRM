@@ -1000,6 +1000,32 @@ const start = async () => {
     }, 30 * 60 * 1000); // каждые 30 мин
     console.log('[Cron] Cash receipt deadline checker scheduled (every 30 min)');
 
+    // ─── Procurement overdue monitor (every hour) ───
+    setInterval(async()=>{
+      try{
+        const {createNotification}=require('./services/notify');
+        const lock=await db.query('SELECT pg_try_advisory_lock(42001)');
+        if(!lock.rows[0].pg_try_advisory_lock)return;
+        try{
+          const ov=await db.query(`SELECT pr.id,pr.pm_id,pr.proc_id,pr.delivery_deadline,w.work_title,
+            CURRENT_DATE-pr.delivery_deadline as days_overdue FROM procurement_requests pr LEFT JOIN works w ON pr.work_id=w.id
+            WHERE pr.status IN('paid','partially_delivered') AND pr.delivery_deadline IS NOT NULL
+            AND pr.delivery_deadline<CURRENT_DATE AND pr.delivered_at IS NULL`);
+          for(const pr of ov.rows){
+            const dl=new Date(pr.delivery_deadline).toLocaleDateString('ru-RU');
+            const msg=`#${pr.id} «${pr.work_title||''}» — дедлайн ${dl} просрочен на ${pr.days_overdue} дн.`;
+            const ex=await db.query(`SELECT id FROM notifications WHERE user_id=$1 AND type='procurement_overdue' AND link=$2 AND created_at>CURRENT_DATE LIMIT 1`,
+              [pr.pm_id,`#/procurement?id=${pr.id}`]);
+            if(!ex.rows.length){
+              if(pr.pm_id) createNotification(db,{user_id:pr.pm_id,title:'⚠️ Просрочка',message:msg,type:'procurement_overdue',link:`#/procurement?id=${pr.id}`});
+              if(pr.proc_id) createNotification(db,{user_id:pr.proc_id,title:'⚠️ Просрочка',message:msg,type:'procurement_overdue',link:`#/procurement?id=${pr.id}`});
+            }
+          }
+        }finally{await db.query('SELECT pg_advisory_unlock(42001)');}
+      }catch(e){console.error('[overdue]',e.message);}
+    },3600000);
+    console.log('[Cron] Procurement overdue monitor scheduled (every hour)');
+
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

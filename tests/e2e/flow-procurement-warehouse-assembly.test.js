@@ -233,6 +233,9 @@ module.exports = {
     { name: 'S7.1: API ok', run: async () => { const r = await api('GET', '/api/procurement', { role: 'PM' }); assertOk(r, 'OK'); }},
     { name: 'S7.2: Stable', run: async () => { const r = await api('GET', '/api/users/me', { role: 'ADMIN' }); assertOk(r, 'OK'); }},
 
+    // === STEP 12: NOTIFICATIONS ===
+    { name: 'S12: Notifications', run: async () => { const r = await api('GET', '/api/notifications?limit=5', { role: 'PROC' }); assertOk(r, 'OK'); }},
+
     // === STEP 10: PM_WORKS INTEGRATION ===
     { name: 'S10.1: Equipment for work', run: async () => { const r = await api('GET', '/api/equipment/work/1/equipment', { role: 'PM' }); assert(r.status !== 500, 'OK'); }},
     { name: 'S10.2: Assembly for work', run: async () => { const r = await api('GET', '/api/assembly?work_id=1', { role: 'PM' }); assert(r.status !== 500, 'OK'); }},
