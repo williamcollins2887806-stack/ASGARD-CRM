@@ -40,14 +40,38 @@ async function routes(fastify) {
   const db = fastify.db;
 
   // ─── LIST ───
+  // RBAC: фильтрация по ролям (Сессия 4)
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { tender_id, pm_id, status, limit = 100, offset = 0 } = request.query;
-    let sql = `SELECT e.*, t.customer_name as customer, u.name as pm_name 
-               FROM estimates e 
-               LEFT JOIN tenders t ON e.tender_id = t.id 
+    const role = request.user.role;
+    const userId = request.user.id;
+
+    // Роли без доступа к финансам просчётов
+    const NO_ACCESS = ['HR', 'HR_MANAGER', 'WAREHOUSE', 'PROC', 'OFFICE_MANAGER', 'CHIEF_ENGINEER'];
+    if (NO_ACCESS.includes(role)) return { estimates: [] };
+
+    let sql = `SELECT e.*, t.customer_name as customer, u.name as pm_name
+               FROM estimates e
+               LEFT JOIN tenders t ON e.tender_id = t.id
                LEFT JOIN users u ON e.pm_id = u.id WHERE 1=1`;
     const params = [];
     let idx = 1;
+
+    // PM → только свои просчёты
+    if (role === 'PM') {
+      sql += ` AND e.pm_id = $${idx}`;
+      params.push(userId);
+      idx++;
+    }
+
+    // BUH → только approved + requires_payment
+    if (role === 'BUH') {
+      sql += ` AND e.approval_status = 'approved' AND e.requires_payment = true`;
+    }
+
+    // ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, DIRECTOR_DEV, HEAD_PM → все
+    // TO, HEAD_TO → все (TO работает со всеми тендерами)
+
     if (tender_id) { sql += ` AND e.tender_id = $${idx}`; params.push(tender_id); idx++; }
     if (pm_id) { sql += ` AND e.pm_id = $${idx}`; params.push(pm_id); idx++; }
     if (status) { sql += ` AND e.approval_status = $${idx}`; params.push(status); idx++; }
@@ -58,10 +82,33 @@ async function routes(fastify) {
   });
 
   // ─── GET ───
+  // RBAC: проверка доступа по роли (Сессия 4)
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const role = request.user.role;
+    const userId = request.user.id;
+
+    // Роли без доступа к финансам просчётов
+    const NO_ACCESS = ['HR', 'HR_MANAGER', 'WAREHOUSE', 'PROC', 'OFFICE_MANAGER', 'CHIEF_ENGINEER'];
+    if (NO_ACCESS.includes(role)) {
+      return reply.code(403).send({ error: 'Нет доступа к просчётам' });
+    }
+
     const result = await db.query('SELECT * FROM estimates WHERE id = $1', [request.params.id]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Просчёт не найден' });
-    return { estimate: result.rows[0] };
+
+    const estimate = result.rows[0];
+
+    // PM → только свои
+    if (role === 'PM' && Number(estimate.pm_id) !== Number(userId)) {
+      return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
+    }
+
+    // BUH → только approved + requires_payment
+    if (role === 'BUH' && !(estimate.approval_status === 'approved' && estimate.requires_payment)) {
+      return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
+    }
+
+    return { estimate };
   });
 
   // ─── CREATE ───
