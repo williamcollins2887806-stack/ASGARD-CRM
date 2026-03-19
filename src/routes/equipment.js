@@ -469,29 +469,9 @@ async function equipmentRoutes(fastify, options) {
     }
   });
 
-  // ============================================
-  // 12b. GET /available — Доступное оборудование
-  // ============================================
-  fastify.get('/available', { preHandler: [fastify.authenticate] }, async (req, reply) => {
-    const r = await db.query(
-      `SELECT e.* FROM equipment e WHERE e.status='on_warehouse'
-       AND NOT EXISTS(SELECT 1 FROM equipment_reservations er WHERE er.equipment_id=e.id AND er.status='active')
-       ORDER BY e.name`);
-    reply.send({ ok: true, items: r.rows });
-  });
+  // 12b. GET /available — дубликат удалён (см. секцию 9 выше)
 
-  // ============================================
-  // 12c. POST /reserve — Бронирование
-  // ============================================
-  fastify.post('/reserve', { preHandler: [fastify.authenticate] }, async (req, reply) => {
-    const { equipment_id, work_id, reserved_from, reserved_to } = req.body;
-    if (!equipment_id || !work_id) return reply.code(400).send({ error: 'equipment_id, work_id required' });
-    const r = await db.query(
-      `INSERT INTO equipment_reservations(equipment_id,work_id,reserved_from,reserved_to,status,reserved_by)
-       VALUES($1,$2,$3,$4,'active',$5) RETURNING *`,
-      [equipment_id, work_id, reserved_from||null, reserved_to||null, req.user.id]);
-    reply.send({ ok: true, reservation: r.rows[0] });
-  });
+  // 12c. POST /reserve — дубликат удалён (см. секцию 24 ниже)
 
   // ============================================
   // 13. GET /:id — Детальная информация
