@@ -16,7 +16,7 @@ const ALLOWED_COLS = new Set([
   'tender_id', 'title', 'pm_id', 'approval_status',
   'margin', 'comment', 'amount', 'cost', 'notes', 'description',
   'customer', 'object_name', 'work_type', 'priority', 'deadline',
-  'items_json', 'status', 'work_id', 'approval_comment',
+  'items_json', 'work_id', 'approval_comment',
   'sent_for_approval_at', 'reject_reason', 'version_no',
   'cover_letter', 'assumptions', 'price_tkp', 'cost_plan',
   'calc_v2_json', 'calc_summary_json', 'quick_calc_json',
