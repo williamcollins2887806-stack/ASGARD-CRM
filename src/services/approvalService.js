@@ -94,6 +94,32 @@ async function notifyBuhForPayment(db, { entityType, entityId, actorName, title,
 const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const BUH_ROLES = ['BUH', 'ADMIN'];
 
+// ─── Матрица допустимых переходов статусов для estimates ───
+const ESTIMATE_TRANSITIONS = {
+  draft:     ['sent'],
+  sent:      ['approved', 'rework', 'question', 'rejected'],
+  rework:    ['sent'],
+  question:  ['sent'],
+  rejected:  [],       // терминальный
+  approved:  [],       // терминальный
+  cancelled: []        // терминальный
+};
+
+/**
+ * Проверяет допустимость перехода статуса для estimates.
+ * Бросает ошибку 409 если переход недопустим.
+ */
+function validateEstimateTransition(currentStatus, newStatus) {
+  const from = String(currentStatus || 'draft').toLowerCase();
+  const allowed = ESTIMATE_TRANSITIONS[from];
+  if (!allowed || !allowed.includes(newStatus)) {
+    throw Object.assign(
+      new Error(`Недопустимый переход статуса: ${from} → ${newStatus}`),
+      { statusCode: 409 }
+    );
+  }
+}
+
 const PAYMENT_STATUSES = {
   PENDING: 'pending_payment',    // ждёт бухгалтерию
   PAID_BANK: 'paid',            // оплачено через ПП
@@ -221,53 +247,74 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'approved');
+  }
+
   const requiresPayment = !!record.requires_payment;
   const label = `${getLabel(entityType)} #${entityId}`;
 
-  // Собираем поля для UPDATE динамически
-  const fields = {};
-  fields[statusField] = 'approved';
-  if (cols.approved_by) fields[cols.approved_by] = actor.id;
-  if (cols.approved_at) fields[cols.approved_at] = '__NOW__';
-  if (comment && cols.comment_field) fields[cols.comment_field] = comment;
-  if (requiresPayment) fields.payment_status = PAYMENT_STATUSES.PENDING;
+  // Оборачиваем в транзакцию: UPDATE + уведомления
+  const useTransaction = typeof db.connect === 'function';
+  const client = useTransaction ? await db.connect() : db;
+  try {
+    if (useTransaction) await client.query('BEGIN');
 
-  const { sql, values } = buildUpdate(entityType, entityId, fields);
-  await db.query(sql, values);
+    // Собираем поля для UPDATE динамически
+    const fields = {};
+    fields[statusField] = 'approved';
+    if (cols.approved_by) fields[cols.approved_by] = actor.id;
+    if (cols.approved_at) fields[cols.approved_at] = '__NOW__';
+    if (comment && cols.comment_field) fields[cols.comment_field] = comment;
+    if (requiresPayment) fields.payment_status = PAYMENT_STATUSES.PENDING;
 
-  if (requiresPayment) {
-    // Уведомляем бухгалтерию С КНОПКАМИ
-    await notifyBuhForPayment(db, {
-      entityType, entityId,
-      actorName: actor.name,
-      title: `💰 ${label} — ожидает оплаты`,
-      message: `${actor.name || 'Директор'} согласовал. Требуется оплата.${comment ? ' Комментарий: ' + comment : ''}`
-    });
+    const { sql, values } = buildUpdate(entityType, entityId, fields);
+    await client.query(sql, values);
 
-    // Уведомляем инициатора (простой текст)
-    const initiatorId = getInitiatorId(record, entityType);
-    if (initiatorId && initiatorId !== actor.id) {
-      createNotification(db, {
-        user_id: initiatorId,
-        title: `✅ ${label} — согласовано, передано в бухгалтерию`,
-        message: `${actor.name || 'Директор'} согласовал. Ожидает оплаты.`,
-        type: 'approval',
-        link: `#/${entityType}?id=${entityId}`
+    if (requiresPayment) {
+      // Уведомляем бухгалтерию С КНОПКАМИ
+      await notifyBuhForPayment(client, {
+        entityType, entityId,
+        actorName: actor.name,
+        title: `💰 ${label} — ожидает оплаты`,
+        message: `${actor.name || 'Директор'} согласовал. Требуется оплата.${comment ? ' Комментарий: ' + comment : ''}`
       });
+
+      // Уведомляем инициатора (простой текст)
+      const initiatorId = getInitiatorId(record, entityType);
+      if (initiatorId && initiatorId !== actor.id) {
+        createNotification(client, {
+          user_id: initiatorId,
+          title: `✅ ${label} — согласовано, передано в бухгалтерию`,
+          message: `${actor.name || 'Директор'} согласовал. Ожидает оплаты.`,
+          type: 'approval',
+          link: `#/${entityType}?id=${entityId}`
+        });
+      }
+
+      if (useTransaction) await client.query('COMMIT');
+      return { status: 'approved', payment_status: PAYMENT_STATUSES.PENDING };
+    } else {
+      const initiatorId = getInitiatorId(record, entityType);
+      if (initiatorId && initiatorId !== actor.id) {
+        createNotification(client, {
+          user_id: initiatorId,
+          title: `✅ ${label} — согласовано`,
+          message: `${actor.name || 'Директор'} согласовал.${comment ? ' ' + comment : ''}`,
+          type: 'approval',
+          link: `#/${entityType}?id=${entityId}`
+        });
+      }
+
+      if (useTransaction) await client.query('COMMIT');
+      return { status: 'approved' };
     }
-    return { status: 'approved', payment_status: PAYMENT_STATUSES.PENDING };
-  } else {
-    const initiatorId = getInitiatorId(record, entityType);
-    if (initiatorId && initiatorId !== actor.id) {
-      createNotification(db, {
-        user_id: initiatorId,
-        title: `✅ ${label} — согласовано`,
-        message: `${actor.name || 'Директор'} согласовал.${comment ? ' ' + comment : ''}`,
-        type: 'approval',
-        link: `#/${entityType}?id=${entityId}`
-      });
-    }
-    return { status: 'approved' };
+  } catch (err) {
+    if (useTransaction) await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    if (useTransaction) client.release();
   }
 }
 
@@ -286,6 +333,11 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
   const cols = getColumns(entityType);
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'rework');
+  }
 
   const isBuhAction = isBuh(actor.role) && record.payment_status === PAYMENT_STATUSES.PENDING;
   const label = `${getLabel(entityType)} #${entityId}`;
@@ -335,6 +387,11 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'question');
+  }
+
   const isBuhAction = isBuh(actor.role) && record.payment_status === PAYMENT_STATUSES.PENDING;
   const label = `${getLabel(entityType)} #${entityId}`;
 
@@ -383,6 +440,11 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'rejected');
+  }
+
   const fields = {};
   fields[statusField] = 'rejected';
   if (cols.comment_field) fields[cols.comment_field] = comment.trim();
@@ -403,6 +465,54 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
   }
 
   return { status: 'rejected' };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Действие 4.5: PM переотправляет после доработки/вопроса
+// ─────────────────────────────────────────────────────────────────
+async function resubmit(db, { entityType, entityId, actor }) {
+  const statusField = getStatusField(entityType);
+  const record = await getRecord(db, entityType, entityId);
+  if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+
+  // Проверяем что actor = инициатор (pm_id или created_by) или ADMIN
+  const initiatorId = getInitiatorId(record, entityType);
+  if (Number(actor.id) !== Number(initiatorId) && actor.role !== 'ADMIN') {
+    throw Object.assign(new Error('Только инициатор может переотправить'), { statusCode: 403 });
+  }
+
+  // Текущий статус должен быть rework или question
+  const currentStatus = String(record[statusField] || '').toLowerCase();
+  if (!['rework', 'question'].includes(currentStatus)) {
+    throw Object.assign(
+      new Error(`Переотправка доступна только из статуса "rework" или "question", текущий: ${currentStatus}`),
+      { statusCode: 409 }
+    );
+  }
+
+  // Проверка по матрице переходов
+  if (entityType === 'estimates') {
+    validateEstimateTransition(currentStatus, 'sent');
+  }
+
+  const fields = {};
+  fields[statusField] = 'sent';
+  fields.sent_for_approval_at = '__NOW__';
+
+  const { sql, values } = buildUpdate(entityType, entityId, fields);
+  await db.query(sql, values);
+
+  // Уведомляем директоров
+  const label = `${getLabel(entityType)} #${entityId}`;
+  await notifyDirectorsForApproval(db, {
+    entityType, entityId,
+    actorName: actor.name,
+    title: `📋 ${label} — повторная отправка`,
+    message: `${actor.name || 'РП'} переотправил ${getLabel(entityType)} #${entityId} после доработки`,
+    requiresPayment: false
+  });
+
+  return { status: 'sent' };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -753,6 +863,7 @@ module.exports = {
   requestRework,
   askQuestion,
   directorReject,
+  resubmit,
   payByBankTransfer,
   issueCash,
   confirmCashReceived,
@@ -770,10 +881,12 @@ module.exports = {
   notifyDirectorsForApproval,
   notifyBuhForPayment,
   sendApprovalTelegram,
+  validateEstimateTransition,
 
   // Константы
   DIRECTOR_ROLES,
   BUH_ROLES,
   PAYMENT_STATUSES,
-  ENTITY_LABELS
+  ENTITY_LABELS,
+  ESTIMATE_TRANSITIONS
 };
