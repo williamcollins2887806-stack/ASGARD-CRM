@@ -253,7 +253,7 @@ window.AsgardInvoicesPage = (function(){
     
     $('#btnSaveInv')?.addEventListener('click', async () => {
       const amount = parseFloat($('#inv_amount').value) || 0;
-      const vatPct = parseFloat($('#inv_vat').value) || 20;
+      const vatPct = parseFloat($('#inv_vat').value) || 22;
       const totalAmount = amount * (1 + vatPct / 100);
       
       const data = {

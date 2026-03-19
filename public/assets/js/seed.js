@@ -4,7 +4,7 @@ window.AsgardSeed = (function(){
 
   // ===== Defaults (Settings + References) =====
   const DEFAULT_SETTINGS = {
-    vat_pct: 20,
+    vat_pct: 22,
     gantt_start_iso: "2026-01-01T00:00:00.000Z",
     require_docs_on_handoff: true,
     require_answer_on_question: true,

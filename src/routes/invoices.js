@@ -452,7 +452,7 @@ async function generateInvoicePdfKit(inv, db) {
   y += 10;
 
   const amount = Number(inv.amount || 0);
-  const vatPct = inv.vat_pct != null ? Number(inv.vat_pct) : 20;
+  const vatPct = inv.vat_pct != null ? Number(inv.vat_pct) : 22;
   const vatAmount = inv.vat_amount != null ? Number(inv.vat_amount) : (amount * vatPct / 100);
   const totalAmount = inv.total_amount != null ? Number(inv.total_amount) : (amount + vatAmount);
 

@@ -177,7 +177,7 @@ window.AsgardActsPage = (function(){
     
     $('#btnSaveAct')?.addEventListener('click', async () => {
       const amount = parseFloat($('#act_amount').value) || 0;
-      const vatPct = parseFloat($('#act_vat').value) || 20;
+      const vatPct = parseFloat($('#act_vat').value) || 22;
       const totalAmount = amount * (1 + vatPct / 100);
       
       const data = {

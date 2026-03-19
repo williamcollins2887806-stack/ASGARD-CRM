@@ -48,7 +48,7 @@ window.AsgardAllEstimatesPage = (function() {
     const users = await AsgardDB.all('users');
     const byId = new Map(users.filter(u => u.is_active).map(u => [u.id, u]));
     const settings = await AsgardDB.get('settings', 'app');
-    const vatPct = settings ? (JSON.parse(settings.value_json || '{}').vat_pct || 20) : 20;
+    const vatPct = settings ? (JSON.parse(settings.value_json || '{}').vat_pct || 22) : 22;
     const tenders = await AsgardDB.all('tenders');
     let estimates = await AsgardDB.all('estimates');
     let sortKey = 'sent_for_approval_at';

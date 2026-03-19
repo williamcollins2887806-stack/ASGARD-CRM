@@ -14,7 +14,7 @@ window.AsgardPmCalcsPage = (function(){
 
   async function getCore(){
     const core = await AsgardDB.get("settings","app");
-    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:20, status_colors:{tender:{}, work:{}}};
+    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:22, status_colors:{tender:{}, work:{}}};
   }
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
@@ -403,10 +403,10 @@ window.AsgardPmCalcsPage = (function(){
   function calcDerived({price_tkp, cost_plan, vat_pct, people_count, work_days}){
     const price = num(price_tkp);
     const cost = num(cost_plan);
-    const vat = Number(vat_pct||0);
+    const vat = Number(vat_pct) || 22;
     const noVat = (price!=null) ? (price/(1+vat/100)) : null;
-    const margin = (price!=null && cost!=null && price>0) ? ((price-cost)/price) : null;
-    const profit = (price!=null && cost!=null) ? (price-cost) : null;
+    const margin = (noVat!=null && cost!=null && noVat>0) ? ((noVat-cost)/noVat) : null;
+    const profit = (noVat!=null && cost!=null) ? (noVat-cost) : null;
     const denom = Math.max(1, (num(people_count)||0) * (num(work_days)||0));
     const profitPer = (profit!=null && denom>0) ? (profit/denom) : null;
     return { noVat, margin, profit, profitPer };

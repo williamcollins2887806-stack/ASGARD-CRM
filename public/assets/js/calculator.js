@@ -42,7 +42,7 @@
       equipment: [],
       transport_id: "AUTO",
       margin_pct: 20,
-      vat_pct: num(app.vat_pct, 20)
+      vat_pct: num(app.vat_pct, 22)
     };
   }
 
@@ -163,7 +163,7 @@
     const priceNoVat = denom>0 ? (costTotal*(1-pt))/denom : (costTotal*1.5);
     const profitBeforeTax = priceNoVat - costTotal;
     const netProfit = profitBeforeTax*(1-pt);
-    const vatPct = clamp(num(state.vat_pct, num(app.vat_pct,20)),0,30);
+    const vatPct = clamp(num(state.vat_pct, num(app.vat_pct,22)),0,30);
     const priceWithVat = priceNoVat * (1 + vatPct/100);
 
     const ppd = (peopleWork>0 && workDays>0) ? (netProfit/(peopleWork*workDays)) : 0;
