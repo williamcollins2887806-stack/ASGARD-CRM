@@ -438,56 +438,56 @@ module.exports = {
     },
 
     // ═══════════════════════════════════════════════
-    // 7.6 Estimate approval_status transitions
+    // 7.6 Estimate approval_status transitions (via /api/approval)
     // ═══════════════════════════════════════════════
     {
-      name: '7.6.1 Estimate: draft → pending → approved',
+      name: '7.6.1 Estimate: draft → sent → approved',
       run: async () => {
+        // Create with sent status (auto-submits for approval)
         const c = await api('POST', '/api/estimates', {
           role: 'PM',
-          body: { title: 'Est Status 1', approval_status: 'draft', amount: 100000 }
+          body: { title: 'Est Status 1', approval_status: 'sent', amount: 100000 }
         });
-        assertOk(c, 'create');
+        assertOk(c, 'create sent');
         const id = (c.data?.estimate || c.data).id;
 
-        const p = await api('PUT', `/api/estimates/${id}`, {
-          role: 'PM',
-          body: { approval_status: 'pending' }
-        });
-        assertOk(p, 'draft → pending');
-
-        const a = await api('PUT', `/api/estimates/${id}`, {
+        const a = await api('POST', `/api/approval/estimates/${id}/approve`, {
           role: 'DIRECTOR_GEN',
-          body: { approval_status: 'approved' }
+          body: { comment: 'OK' }
         });
-        assertOk(a, 'pending → approved');
+        assertOk(a, 'sent → approved');
       }
     },
     {
-      name: '7.6.2 Estimate: draft → pending → rejected → pending (re-submit)',
+      name: '7.6.2 Estimate: sent → rework → resubmit → rejected',
       run: async () => {
         const c = await api('POST', '/api/estimates', {
           role: 'PM',
-          body: { title: 'Est Status 2', approval_status: 'draft', amount: 200000 }
+          body: { title: 'Est Status 2', approval_status: 'sent', amount: 200000 }
         });
-        assertOk(c, 'create');
+        assertOk(c, 'create sent');
         const id = (c.data?.estimate || c.data).id;
 
-        await api('PUT', `/api/estimates/${id}`, {
-          role: 'PM',
-          body: { approval_status: 'pending' }
-        });
-
-        await api('PUT', `/api/estimates/${id}`, {
+        // Director sends to rework
+        const rw = await api('POST', `/api/approval/estimates/${id}/rework`, {
           role: 'DIRECTOR_GEN',
-          body: { approval_status: 'rejected', notes: 'Too expensive' }
+          body: { comment: 'Too expensive' }
         });
+        assertOk(rw, 'sent → rework');
 
-        const resubmit = await api('PUT', `/api/estimates/${id}`, {
+        // PM resubmits
+        const resub = await api('POST', `/api/approval/estimates/${id}/resubmit`, {
           role: 'PM',
-          body: { approval_status: 'pending', amount: 150000 }
+          body: {}
         });
-        assertOk(resubmit, 'rejected → pending re-submit');
+        assertOk(resub, 'rework → sent (resubmit)');
+
+        // Director rejects
+        const rej = await api('POST', `/api/approval/estimates/${id}/reject`, {
+          role: 'DIRECTOR_GEN',
+          body: { comment: 'Still too expensive' }
+        });
+        assertOk(rej, 'sent → rejected');
       }
     }
   ]

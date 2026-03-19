@@ -131,22 +131,22 @@ module.exports = {
         testTenderId = null;
       }
     },
-    // ── Estimate approval action ──
+    // ── Estimate approval action (via /api/approval) ──
     {
       name: 'Create estimate → approve action',
       run: async () => {
         const resp = await api('POST', '/api/estimates', {
           role: 'ADMIN',
-          body: { title: 'Modal estimate test', amount: 100000 }
+          body: { title: 'Modal estimate test', amount: 100000, approval_status: 'sent' }
         });
         assertOk(resp, 'create estimate');
         const estId = resp.data?.estimate?.id || resp.data?.id;
         if (!estId) return;
 
-        // Approve
-        const approve = await api('PUT', `/api/estimates/${estId}`, {
+        // Approve via universal approval route
+        const approve = await api('POST', `/api/approval/estimates/${estId}/approve`, {
           role: 'ADMIN',
-          body: { approval_status: 'approved' }
+          body: { comment: 'Approved via modal test' }
         });
         assertOk(approve, 'approve estimate');
 

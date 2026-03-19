@@ -406,6 +406,54 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Действие 4.5: Инициатор переотправляет после доработки/вопроса
+// ─────────────────────────────────────────────────────────────────
+async function resubmit(db, { entityType, entityId, actor }) {
+  const statusField = getStatusField(entityType);
+  const record = await getRecord(db, entityType, entityId);
+  if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+
+  // Проверяем что actor = инициатор (pm_id или created_by) или ADMIN
+  const initiatorId = getInitiatorId(record, entityType);
+  if (Number(actor.id) !== Number(initiatorId) && actor.role !== 'ADMIN') {
+    throw Object.assign(new Error('Только инициатор может переотправить'), { statusCode: 403 });
+  }
+
+  // Текущий статус должен быть rework или question
+  const currentStatus = String(record[statusField] || '').toLowerCase();
+  if (!['rework', 'question'].includes(currentStatus)) {
+    throw Object.assign(
+      new Error(`Переотправка доступна только из статуса "rework" или "question", текущий: ${currentStatus}`),
+      { statusCode: 409 }
+    );
+  }
+
+  // Проверка по матрице переходов
+  if (entityType === 'estimates') {
+    validateEstimateTransition(currentStatus, 'sent');
+  }
+
+  const fields = {};
+  fields[statusField] = 'sent';
+  fields.sent_for_approval_at = '__NOW__';
+
+  const { sql, values } = buildUpdate(entityType, entityId, fields);
+  await db.query(sql, values);
+
+  // Уведомляем директоров
+  const label = `${getLabel(entityType)} #${entityId}`;
+  await notifyDirectorsForApproval(db, {
+    entityType, entityId,
+    actorName: actor.name,
+    title: `📋 ${label} — повторная отправка`,
+    message: `${actor.name || 'РП'} переотправил ${getLabel(entityType)} #${entityId} после доработки`,
+    requiresPayment: false
+  });
+
+  return { status: 'sent' };
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Действие 5: Бухгалтерия — оплатить через ПП
 // ─────────────────────────────────────────────────────────────────
 async function payByBankTransfer(db, { entityType, entityId, actor, comment, documentId }) {
@@ -753,6 +801,7 @@ module.exports = {
   requestRework,
   askQuestion,
   directorReject,
+  resubmit,
   payByBankTransfer,
   issueCash,
   confirmCashReceived,
