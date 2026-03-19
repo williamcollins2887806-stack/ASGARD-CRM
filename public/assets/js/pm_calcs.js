@@ -7,8 +7,15 @@ window.AsgardPmCalcsPage = (function(){
   function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
   function num(x){ if(x===null||x===undefined||x==="") return null; const n=Number(String(x).replace(/\s/g,"").replace(",", ".")); return Number.isFinite(n)?n:null; }
   function norm(s){ return String(s||"").toLowerCase().trim(); }
+  function getHeaders(){
+    const auth = typeof AsgardAuth !== 'undefined' ? AsgardAuth.getAuth() : null;
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + (auth?.token || localStorage.getItem('asgard_token') || '')
+    };
+  }
   function approvalStatusLabel(status){
-    const map = { draft:"Черновик", sent:"На согласовании", approved:"Согласовано", approved_final:"Согласовано", rework:"На доработке", question:"Вопрос", rejected:"Отклонено", cancelled:"Отменено" };
+    const map = { draft:"Черновик", sent:"На согласовании", approved:"Согласовано", rework:"На доработке", question:"Вопрос", rejected:"Отклонено", cancelled:"Отменено" };
     return map[String(status||"draft")] || String(status||"Черновик");
   }
 
@@ -59,6 +66,13 @@ window.AsgardPmCalcsPage = (function(){
   async function ensureWorkFromTender(tender){
     const exist = (await AsgardDB.byIndex("works","tender_id", tender.id))[0];
     if(exist) return exist;
+
+    // Найти последний согласованный estimate для тендера
+    const estimates = await AsgardDB.byIndex("estimates","tender_id", tender.id);
+    const approved = estimates
+      .filter(e => e.approval_status === 'approved')
+      .sort((a,b) => (b.version_no||0) - (a.version_no||0))[0];
+
     const work = {
       tender_id: tender.id,
       pm_id: tender.responsible_pm_id,
@@ -68,15 +82,15 @@ window.AsgardPmCalcsPage = (function(){
       start_in_work_date: tender.work_start_plan || null,
       end_plan: tender.work_end_plan || null,
       end_fact: null,
-      contract_value: tender.tender_price || null,
-      advance_pct: 30,
+      contract_value: approved?.price_tkp || tender.tender_price || null,
+      advance_pct: null,
       advance_received: 0,
       advance_date_fact: null,
       act_signed_date_fact: null,
       delay_workdays: 5,
       balance_received: 0,
       payment_date_fact: null,
-      cost_plan: null,
+      cost_plan: approved?.cost_plan || null,
       cost_fact: null,
       comment: ""
     };
@@ -269,7 +283,9 @@ window.AsgardPmCalcsPage = (function(){
     // Сохранить черновик
     $("#qc_save").addEventListener("click", async ()=>{
       const data = collectQuickData();
-      await saveQuickEstimate(data, false);
+      try {
+        await saveQuickEstimate(data, false);
+      } catch(e) { return; }
       toast("Сохранено", "Черновик сохранён");
       AsgardUI.hideModal();
     });
@@ -285,18 +301,16 @@ window.AsgardPmCalcsPage = (function(){
         toast("Проверка", "Укажите цену ТКП", "err");
         return;
       }
-      await saveQuickEstimate(data, true);
-      
-      // Меняем статус тендера
+      try {
+        await saveQuickEstimate(data, true);
+      } catch(e) { return; }
+
+      // Меняем статус тендера на «Согласование ТКП»
       const cur = await AsgardDB.get("tenders", tenderId);
       cur.tender_status = "Согласование ТКП";
       await AsgardDB.put("tenders", cur);
-      
+
       toast("Отправлено", "Просчёт отправлен на согласование");
-
-
-
-
 
 
 
@@ -333,19 +347,26 @@ window.AsgardPmCalcsPage = (function(){
     }
     
     async function saveQuickEstimate(data, sendForApproval){
-      const v = await nextVersionNo(tenderId, tender.responsible_pm_id);
-      const obj = {
+      const body = {
         ...data,
-        version_no: v,
         approval_status: sendForApproval ? "sent" : "draft",
-        approval_comment: "",
-        sent_for_approval_at: sendForApproval ? isoNow() : null,
-        created_at: isoNow(),
         requires_payment: !!data.requires_payment
       };
-      const id = await AsgardDB.add("estimates", obj);
-      await audit(user.id, "estimate", id, sendForApproval ? "quick_send" : "quick_draft", { tender_id: tenderId, version_no: v });
-      return id;
+      try {
+        const resp = await fetch('/api/estimates', {
+          method: 'POST', headers: getHeaders(),
+          body: JSON.stringify(body)
+        });
+        if(!resp.ok){ const err = await resp.json(); throw new Error(err.error || 'Ошибка создания просчёта'); }
+        const result = await resp.json();
+        const estimate = result.estimate;
+        // Сохраняем в локальный кэш для немедленного отображения
+        await AsgardDB.put("estimates", estimate);
+        return estimate.id;
+      } catch(err) {
+        toast("Ошибка", err.message, "err");
+        throw err;
+      }
     }
   }
 
@@ -943,52 +964,57 @@ window.AsgardPmCalcsPage = (function(){
         }
 
         if(!createNewVersion && est && (est.approval_status==="draft" || !est.approval_status)){
-          const upd = Object.assign({}, est, data, { updated_at: isoNow() });
-
-      if(est.probability_pct!==null && est.probability_pct!==undefined){
-        const p = Number(est.probability_pct);
-        if(!Number.isFinite(p) || p<0 || p>100){ toast("Валидация","Вероятность должна быть 0..100","err"); return; }
-      }
-      const mf=["cost_plan","price_tkp"];
-      for(const f of mf){ if(est[f]!==null && est[f]!==undefined && !V.moneyGE0(est[f])){ toast("Валидация",`Поле ${f}: число >= 0`,"err"); return; } }
-          await AsgardDB.put("estimates", upd);
-          await audit(user.id,"estimate",upd.id,"update_draft",{tender_id:tenderId, version_no:upd.version_no});
-          toast("Просчёт","Сохранено (черновик)");
-          return upd;
+          // Обновляем существующий черновик через PUT /api/estimates/:id
+          try {
+            const resp = await fetch(`/api/estimates/${est.id}`, {
+              method: 'PUT', headers: getHeaders(),
+              body: JSON.stringify(data)
+            });
+            if(!resp.ok){ const err = await resp.json(); throw new Error(err.error || 'Ошибка сохранения'); }
+            const result = await resp.json();
+            const updated = result.estimate;
+            await AsgardDB.put("estimates", updated);
+            toast("Просчёт","Сохранено (черновик)");
+            return updated;
+          } catch(err) {
+            toast("Ошибка", err.message, "err");
+            return;
+          }
         }else{
-          const v = await nextVersionNo(tenderId, tender.responsible_pm_id);
-          const obj = Object.assign({}, data, {
-            version_no: v,
-            approval_status: "draft",
-            approval_comment: "",
-            sent_for_approval_at: null,
-            created_at: isoNow()
-          });
-          const id = await AsgardDB.add("estimates", obj);
-          await audit(user.id,"estimate",id,"create_version",{tender_id:tenderId, version_no:v});
-          toast("Просчёт",`Сохранено (версия ${v})`);
-          return await AsgardDB.get("estimates", id);
+          // Создаём новую версию через POST /api/estimates (сервер генерирует version_no)
+          const body = Object.assign({}, data, { approval_status: "draft" });
+          try {
+            const resp = await fetch('/api/estimates', {
+              method: 'POST', headers: getHeaders(),
+              body: JSON.stringify(body)
+            });
+            if(!resp.ok){ const err = await resp.json(); throw new Error(err.error || 'Ошибка создания версии'); }
+            const result = await resp.json();
+            const estimate = result.estimate;
+            await AsgardDB.put("estimates", estimate);
+            toast("Просчёт",`Сохранено (версия ${estimate.version_no || '?'})`);
+            return estimate;
+          } catch(err) {
+            toast("Ошибка", err.message, "err");
+            return;
+          }
         }
       }
 
       $("#btnSaveDraft").addEventListener("click", async ()=>{ await saveDraft(false); openTender(tenderId); });
       $("#btnNewVersion").addEventListener("click", async ()=>{ await saveDraft(true); openTender(tenderId); });
 
-      // Calculator
+      // Calculator (только v2)
       const btnCalc = $("#btnCalc");
       if(btnCalc){
         btnCalc.addEventListener("click", async ()=>{
           if(!(isPM || user.role==="ADMIN")) { toast("Права","Только РП/админ","err"); return; }
           const tcur = await AsgardDB.get("tenders", tenderId);
-          const estCur = await loadLatestEstimate(tenderId, tcur.responsible_pm_id);
-          // Используем калькулятор v2 если доступен
+          const estCur = await latestEstimate(tenderId, tcur.responsible_pm_id);
           if(window.AsgardCalcV2 && AsgardCalcV2.open){
             await AsgardCalcV2.open({ tender: tcur, estimate: estCur, user: user });
-          } else if(window.AsgardCalc && AsgardCalc.open){
-            const ok = await AsgardCalc.open({ tender: tcur, estimate: estCur, actor_user: user });
-            if(ok){ openTender(tenderId); }
           }else{
-            toast("Калькулятор","Модуль калькулятора не подключён","err");
+            toast("Калькулятор","Калькулятор v2 не подключён","err");
           }
         });
       }
@@ -1006,13 +1032,11 @@ window.AsgardPmCalcsPage = (function(){
       if(btnCalcView){
         btnCalcView.addEventListener("click", async ()=>{
           const tcur = await AsgardDB.get("tenders", tenderId);
-          const estCur = await loadLatestEstimate(tenderId, tcur.responsible_pm_id);
-          // Показываем калькулятор v2 для просмотра итогов
+          const estCur = await latestEstimate(tenderId, tcur.responsible_pm_id);
           if(window.AsgardCalcV2 && AsgardCalcV2.open && estCur?.calc_v2_json){
             await AsgardCalcV2.open({ tender: tcur, estimate: estCur, user: user });
           } else {
-            const calc = safeParse(estCur && estCur.calc_summary_json, {});
-            if(window.AsgardCalc && AsgardCalc.view) AsgardCalc.view(calc);
+            toast("Калькулятор","Нет данных калькулятора v2 для просмотра","err");
           }
         });
       }
@@ -1041,30 +1065,40 @@ window.AsgardPmCalcsPage = (function(){
           toast("Проверка","Добавьте сопроводительное письмо (хотя бы 2–3 строки)","err");
           return;
         }
+        if(!data.price_tkp || data.price_tkp <= 0){
+          toast("Проверка","Укажите цену ТКП (должна быть > 0)","err");
+          return;
+        }
 
-        // snapshot as new version, status=sent
-        const v = await nextVersionNo(tenderId, tender.responsible_pm_id);
-        const obj = Object.assign({}, data, {
-          version_no: v,
-          approval_status: "sent",
-          approval_comment: "",
-          sent_for_approval_at: isoNow(),
-          created_at: isoNow()
-        });
-        const id = await AsgardDB.add("estimates", obj);
-        await audit(user.id,"estimate",id,"send_for_approval",{tender_id:tenderId, version_no:v});
+        // Создаём estimate через POST /api/estimates с approval_status='sent'
+        // Сервер сам генерирует version_no и отправляет уведомления директорам
+        const body = Object.assign({}, data, { approval_status: "sent" });
+        try {
+          const resp = await fetch('/api/estimates', {
+            method: 'POST', headers: getHeaders(),
+            body: JSON.stringify(body)
+          });
+          if(!resp.ok){ const err = await resp.json(); throw new Error(err.error || 'Ошибка отправки'); }
+          const result = await resp.json();
+          const estimate = result.estimate;
+          // Сохраняем в локальный кэш
+          await AsgardDB.put("estimates", estimate);
+        } catch(err) {
+          toast("Ошибка", err.message, "err");
+          return;
+        }
 
-        // set tender status to "Согласование ТКП"
+        // Обновляем статус тендера на «Согласование ТКП»
         const cur = await AsgardDB.get("tenders", tenderId);
-        const before = cur.tender_status;
         cur.tender_status = "Согласование ТКП";
         await AsgardDB.put("tenders", cur);
-        await audit(user.id,"tender",tenderId,"status_change_auto",{before, after:"Согласование ТКП"});
 
         toast("Согласование","Просчёт отправлен на согласование");
-        // refresh list
-        tendersAll.splice(tendersAll.findIndex(x=>x.id===tenderId),1,cur);
-        tenders = tenders.map(x=>x.id===tenderId?cur:x);
+        // Перезагружаем данные из локального кэша
+        const refreshedTenders = await AsgardDB.all("tenders");
+        tenders.length = 0;
+        refreshedTenders.filter(t=>t.handoff_at).forEach(t=>tenders.push(t));
+        if(isPM) { const filtered = tenders.filter(t=>t.responsible_pm_id===user.id); tenders.length = 0; filtered.forEach(t=>tenders.push(t)); }
         apply();
         openTender(tenderId);
       });
