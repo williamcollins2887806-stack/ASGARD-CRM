@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '17.13.1';
+const SHELL_VERSION = '18.0.0';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -20,8 +20,6 @@ const SHELL_ASSETS = [
   './assets/css/layout.css?v=17.0.1',
   './assets/css/app.css?v=17.0.1',
   './assets/css/responsive.css?v=17.0.1',
-  './assets/css/mobile-shell.css?v=17.11.0',
-  './assets/css/huginn.css?v=17.11.0',
   // ── Core JS ──
   './assets/js/ui.js?v=17.0.1',
   './assets/js/sla.js?v=17.0.1',
@@ -32,90 +30,8 @@ const SHELL_ASSETS = [
   // ── Images ──
   './assets/img/logo.png',
   './assets/img/asgard_logo.png',
-  './assets/img/asgard_emblem.png',
-  // ── Mobile v3: Core ──
-  './assets/js/mobile_v3/approval.js?v=17.0.1',
-  './assets/js/mobile_v3/auth.js?v=17.0.1',
-  './assets/js/mobile_v3/components.js?v=17.0.1',
-  './assets/js/mobile_v3/core.js?v=17.12.0',
-  './assets/js/mobile_v3/ds.js?v=17.0.1',
-  './assets/js/mobile_v3/test.js?v=17.0.1',
-  './assets/js/mobile_v3/router.js?v=17.0.1',
-  // ── Mobile v3: Pages (51 files) ──
-  './assets/js/mobile_v3/pages/acts.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/alerts.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/all_estimates.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/all_works.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/approval_payment.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/approvals.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/backup.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/cash.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/cash_admin.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/contracts.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/correspondence.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/customers.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/dashboard.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/diag.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/finances.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/funnel.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/gantt.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/hr_requests.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/integrations.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/invoices.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/meetings.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/messenger.js?v=17.8.0',
-  './assets/js/mobile_v3/pages/my_equipment.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/my_mail.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/office_expenses.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/pass_requests.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/payroll.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/permits.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/personnel.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/pm_calcs.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/pm_works.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/pre_tenders.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/proc_requests.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/profile.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/proxies.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/seals.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/settings.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/tasks.js?v=17.10.0',
-  './assets/js/mobile_v3/pages/tasks_admin.js?v=17.10.0',
-  './assets/js/mobile_v3/pages/telegram.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/tenders.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/tmc_requests.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/training.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/travel.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/warehouse.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/workers_schedule.js?v=17.0.1',
-  // ── Mobile v3: Widgets (27 files) ──
-  './assets/js/mobile_v3/widgets/approvals.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/bank_summary.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/birthdays.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/calendar.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/cash_balance.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/equipment_alerts.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/equipment_value.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/gantt_mini.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/kpi_summary.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/money_summary.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/my_cash_balance.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/my_mail.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/my_works.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/notifications.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/overdue_works.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/payroll_pending.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/permits_expiry.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/platform_alerts.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/pre_tenders.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/quick_actions.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/receipt_scanner.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/team_workload.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/telephony.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/tender_dynamics.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/tenders_funnel.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/todo.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/welcome.js?v=17.0.1'
+  './assets/img/asgard_emblem.png'
+  // Mobile v3 removed — React app at /m/ (не кэшируется этим SW)
 ];
 
 // ═══════════════════════════════════════════════════════════════
