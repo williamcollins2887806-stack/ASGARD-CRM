@@ -91,6 +91,17 @@ async function notifyBuhForPayment(db, { entityType, entityId, actorName, title,
 // Константы
 // ─────────────────────────────────────────────────────────────────
 
+// SQL injection protection: таблицы, разрешённые для операций через approvalService
+// Должен совпадать с ALLOWED_ENTITIES из approval.js (belt + suspenders)
+const SAFE_TABLES = new Set([
+  'cash_requests', 'pre_tender_requests', 'bonus_requests',
+  'work_expenses', 'office_expenses', 'expenses',
+  'one_time_payments', 'tmc_requests', 'payroll_sheets',
+  'business_trips', 'travel_expenses', 'training_applications',
+  'estimates', 'tkp', 'staff_requests', 'pass_requests',
+  'permit_applications', 'site_inspections', 'seal_transfers'
+]);
+
 const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const BUH_ROLES = ['BUH', 'ADMIN'];
 
@@ -200,6 +211,11 @@ function getColumns(entityType) {
  * Возвращает { sql, values }.
  */
 function buildUpdate(entityType, entityId, fields) {
+  // SQL injection hardening: проверка entityType по белому списку
+  if (!SAFE_TABLES.has(entityType)) {
+    throw new Error(`Invalid entity type: ${entityType}`);
+  }
+
   const setParts = [];
   const values = [];
   let idx = 1;
@@ -271,6 +287,14 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
 
     const { sql, values } = buildUpdate(entityType, entityId, fields);
     await client.query(sql, values);
+
+    // Audit log
+    await writeAuditLog(client, actor.id, entityType, entityId, 'approval_approve', {
+      from_status: record[statusField],
+      to_status: 'approved',
+      comment: comment || null,
+      requires_payment: requiresPayment
+    });
 
     if (requiresPayment) {
       // Уведомляем бухгалтерию С КНОПКАМИ
@@ -356,6 +380,15 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
 
+  // Audit log
+  const newStatus = isBuhAction ? 'rework_buh' : 'rework';
+  await writeAuditLog(db, actor.id, entityType, entityId, 'approval_rework', {
+    from_status: record[statusField],
+    to_status: newStatus,
+    comment: comment.trim(),
+    requires_payment: !!record.requires_payment
+  });
+
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
     const who = isBuhAction ? 'Бухгалтерия' : 'Директор';
@@ -368,7 +401,7 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
     });
   }
 
-  return { status: isBuhAction ? 'rework_buh' : 'rework' };
+  return { status: newStatus };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -409,6 +442,15 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
 
+  // Audit log
+  const newStatus = isBuhAction ? 'question_buh' : 'question';
+  await writeAuditLog(db, actor.id, entityType, entityId, 'approval_question', {
+    from_status: record[statusField],
+    to_status: newStatus,
+    comment: comment.trim(),
+    requires_payment: !!record.requires_payment
+  });
+
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
     const who = isBuhAction ? 'Бухгалтерия' : 'Директор';
@@ -421,7 +463,7 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
     });
   }
 
-  return { status: isBuhAction ? 'question_buh' : 'question' };
+  return { status: newStatus };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -451,6 +493,14 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
 
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
+
+  // Audit log
+  await writeAuditLog(db, actor.id, entityType, entityId, 'approval_reject', {
+    from_status: record[statusField],
+    to_status: 'rejected',
+    comment: comment.trim(),
+    requires_payment: !!record.requires_payment
+  });
 
   const label = `${getLabel(entityType)} #${entityId}`;
   const initiatorId = getInitiatorId(record, entityType);
@@ -788,8 +838,29 @@ async function returnCash(db, { entityType, entityId, actor, amount, comment }) 
 // ─────────────────────────────────────────────────────────────────
 
 async function getRecord(db, entityType, entityId) {
+  // SQL injection hardening: проверка entityType по белому списку
+  if (!SAFE_TABLES.has(entityType)) {
+    throw new Error(`Invalid entity type: ${entityType}`);
+  }
   const result = await db.query(`SELECT * FROM ${entityType} WHERE id = $1`, [entityId]);
   return result.rows[0] || null;
+}
+
+/**
+ * Записать в audit_log действие согласования.
+ * Используется в approve/rework/question/reject.
+ */
+async function writeAuditLog(db, actorUserId, entityType, entityId, action, payload) {
+  try {
+    await db.query(
+      `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [actorUserId, entityType, entityId, action, JSON.stringify(payload)]
+    );
+  } catch (err) {
+    // audit_log не должен ломать основной flow — логируем и продолжаем
+    console.error('[approvalService] audit_log write failed:', err.message);
+  }
 }
 
 function getInitiatorId(record, entityType) {
@@ -882,11 +953,13 @@ module.exports = {
   notifyBuhForPayment,
   sendApprovalTelegram,
   validateEstimateTransition,
+  writeAuditLog,
 
   // Константы
   DIRECTOR_ROLES,
   BUH_ROLES,
   PAYMENT_STATUSES,
   ENTITY_LABELS,
-  ESTIMATE_TRANSITIONS
+  ESTIMATE_TRANSITIONS,
+  SAFE_TABLES
 };
