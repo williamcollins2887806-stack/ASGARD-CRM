@@ -173,7 +173,7 @@ window.AsgardTelephonyPage = (function () {
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         var res = await fetch('/api/telephony' + path, {
-          headers: Object.assign({ 'Authorization': 'Bearer ' + token(), 'Content-Type': 'application/json' }, opts.headers || {}),
+          headers: Object.assign({ 'Authorization': 'Bearer ' + token() }, opts.headers || {}),
           method: method,
           body: opts.body || undefined,
         });
@@ -183,7 +183,10 @@ window.AsgardTelephonyPage = (function () {
           if (res.status === 429) toast('Слишком много запросов, подождите', 'error');
           throw new Error(errMsg);
         }
-        return await res.json();
+        var text = await res.text();
+        console.log('[Telephony] api(' + path + ') status=' + res.status + ' bodyLen=' + text.length + ' body=' + text.slice(0, 200));
+        if (!text) throw new Error('Empty response body');
+        return JSON.parse(text);
       } catch (err) {
         lastErr = err;
         console.error('[Telephony] api(' + path + ') attempt ' + attempt + ' failed:', err);
