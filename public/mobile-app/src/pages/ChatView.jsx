@@ -4,6 +4,7 @@ import { api } from '@/api/client';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { MessageList } from '@/components/chat/MessageList';
 import { Composer } from '@/components/chat/Composer';
+import { EditMessageSheet } from '@/components/chat/EditMessageSheet';
 import { useMessages } from '@/hooks/useMessages';
 import { useTyping } from '@/hooks/useTyping';
 import { useSSE } from '@/hooks/useSSE';
@@ -16,6 +17,7 @@ export default function ChatView() {
   const [chat, setChat] = useState(null);
   const [members, setMembers] = useState([]);
   const [replyTo, setReplyTo] = useState(null);
+  const [editingMsg, setEditingMsg] = useState(null);
 
   const {
     messages,
@@ -72,8 +74,7 @@ export default function ChatView() {
 
   return (
     <div
-      className="flex flex-col h-full"
-      style={{ backgroundColor: 'var(--bg-primary)' }}
+      className="flex flex-col h-full bg-primary"
     >
       <ChatHeader chat={chat} members={members} />
 
@@ -85,10 +86,7 @@ export default function ChatView() {
         onReply={handleReply}
         onReaction={addReaction}
         onDelete={deleteMessage}
-        onEdit={(msg) => {
-          const newText = prompt('Редактировать сообщение:', msg.message);
-          if (newText && newText !== msg.message) editMessage(msg.id, newText);
-        }}
+        onEdit={(msg) => setEditingMsg(msg)}
         typingUsers={typingUsers}
       />
 
@@ -99,6 +97,14 @@ export default function ChatView() {
         onCancelReply={() => setReplyTo(null)}
         onTyping={sendTyping}
       />
+
+      {editingMsg && (
+        <EditMessageSheet
+          message={editingMsg}
+          onSave={editMessage}
+          onClose={() => setEditingMsg(null)}
+        />
+      )}
     </div>
   );
 }

@@ -54,10 +54,10 @@ export default function Training() {
   };
 
   return (
-    <PageShell title="Обучение" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--blue)' }}><Plus size={22} /></button>}>
+    <PageShell title="Обучение" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>}>
       <PullToRefresh onRefresh={fetchData}>
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}
+          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id}>{f.label}</button>)}
         </div>
         {loading ? <SkeletonList count={4} /> : filtered.length === 0 ? (
           <EmptyState icon={GraduationCap} iconColor="#7B68EE" iconBg="rgba(123,104,238,0.1)" title="Нет заявок" description="Заявки на обучение появятся здесь" />
@@ -66,16 +66,16 @@ export default function Training() {
             {filtered.map((item, i) => {
               const st = STATUS_MAP[item.status] || STATUS_MAP.draft;
               return (
-                <button key={item.id} onClick={() => { haptic.light(); setDetail(item); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={item.id} onClick={() => { haptic.light(); setDetail(item); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{item.title || item.course_name || `#${item.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{item.title || item.course_name || `#${item.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    {item.type && <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{TYPE_MAP[item.type] || item.type}</span>}
-                    {Number(item.cost) > 0 && <span className="text-[10px] font-semibold" style={{ color: 'var(--gold)' }}>{formatMoney(item.cost, { short: true })}</span>}
-                    {(item.employee_name || item.employee_fio) && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{item.employee_name || item.employee_fio}</span>}
+                    {item.type && <span className="text-[10px] c-secondary">{TYPE_MAP[item.type] || item.type}</span>}
+                    {Number(item.cost) > 0 && <span className="text-[10px] font-semibold c-gold">{formatMoney(item.cost, { short: true })}</span>}
+                    {(item.employee_name || item.employee_fio) && <span className="text-[10px] c-tertiary">{item.employee_name || item.employee_fio}</span>}
                   </div>
                 </button>
               );
@@ -105,11 +105,11 @@ function TrainingDetailSheet({ item, onClose, canApprove, onAction }) {
   return (
     <BottomSheet open={!!item} onClose={onClose} title={item.title || item.course_name || 'Обучение'}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
         {canApprove && item.status === 'pending_approval' && (
           <div className="flex gap-2 mt-2">
-            <button onClick={() => onAction(item.id, 'approve')} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}><Check size={16} /> Одобрить</button>
-            <button onClick={() => onAction(item.id, 'reject')} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap" style={{ background: 'color-mix(in srgb, var(--red-soft) 15%, transparent)', color: 'var(--red-soft)' }}><XIcon size={16} /> Отклонить</button>
+            <button onClick={() => onAction(item.id, 'approve')} className="btn-action spring-tap c-green" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}><Check size={16} /> Одобрить</button>
+            <button onClick={() => onAction(item.id, 'reject')} className="btn-action spring-tap c-red" style={{ background: 'color-mix(in srgb, var(--red-soft) 15%, transparent)' }}><XIcon size={16} /> Отклонить</button>
           </div>
         )}
       </div>
@@ -128,7 +128,6 @@ function CreateTrainingSheet({ open, onClose, onCreated }) {
   const [dateTo, setDateTo] = useState('');
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
   const handleSubmit = async () => {
     if (!title.trim()) return;
     haptic.light(); setSaving(true);
@@ -140,19 +139,19 @@ function CreateTrainingSheet({ open, onClose, onCreated }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Заявка на обучение">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Название *</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Курс, тренинг..." className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Тип</label><select value={type} onChange={(e) => setType(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none appearance-none" style={is}>{Object.entries(TYPE_MAP).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Сотрудник</label><input type="text" value={employee} onChange={(e) => setEmployee(e.target.value)} placeholder="ФИО" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
+        <div><label className="input-label">Название *</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Курс, тренинг..." className="input-field" /></div>
+        <div><label className="input-label">Тип</label><select value={type} onChange={(e) => setType(e.target.value)} className="input-field appearance-none">{Object.entries(TYPE_MAP).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+        <div><label className="input-label">Сотрудник</label><input type="text" value={employee} onChange={(e) => setEmployee(e.target.value)} placeholder="ФИО" className="input-field" /></div>
         <div className="grid grid-cols-2 gap-2">
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Провайдер</label><input type="text" value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="Компания" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Стоимость (₽)</label><input type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
+          <div><label className="input-label">Провайдер</label><input type="text" value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="Компания" className="input-field" /></div>
+          <div><label className="input-label">Стоимость (₽)</label><input type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0" className="input-field" /></div>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Начало</label><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Окончание</label><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
+          <div><label className="input-label">Начало</label><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input-field" /></div>
+          <div><label className="input-label">Окончание</label><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input-field" /></div>
         </div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Обоснование</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Зачем нужно обучение..." rows={2} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={is} /></div>
-        <button onClick={handleSubmit} disabled={!title.trim() || saving} className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: title.trim() ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: title.trim() ? '#fff' : 'var(--text-tertiary)', opacity: saving ? 0.6 : 1 }}>{saving ? 'Сохранение...' : 'Создать заявку'}</button>
+        <div><label className="input-label">Обоснование</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Зачем нужно обучение..." rows={2} className="input-field resize-none" /></div>
+        <button onClick={handleSubmit} disabled={!title.trim() || saving} className="btn-primary spring-tap mt-1">{saving ? 'Сохранение...' : 'Создать заявку'}</button>
       </div>
     </BottomSheet>
   );

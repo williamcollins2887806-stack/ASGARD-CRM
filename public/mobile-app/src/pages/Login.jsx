@@ -85,12 +85,11 @@ export default function Login() {
         {RUNES.map((r, i) => (
           <span
             key={i}
-            className="absolute"
+            className="absolute c-gold"
             style={{
               left: `${r.x}%`,
               bottom: '-20px',
               fontSize: r.size,
-              color: 'var(--gold)',
               opacity: 0,
               animation: `loginRuneFloat ${r.dur}s ease-in-out ${r.delay}s infinite`,
             }}
@@ -155,8 +154,7 @@ export default function Login() {
 
         {/* Subtitle */}
         <p
-          className="text-[11px] mt-3 tracking-[0.06em]"
-          style={{ color: 'var(--text-tertiary)' }}
+          className="text-[11px] mt-3 tracking-[0.06em] c-tertiary"
         >
           Управление бизнесом
         </p>
@@ -191,10 +189,9 @@ export default function Login() {
               autoCapitalize="none"
               autoCorrect="off"
               autoComplete="username"
-              className="w-full h-[52px] rounded-2xl px-4 text-[15px] border-0 outline-none login-input"
+              className="w-full h-[52px] rounded-2xl px-4 text-[15px] border-0 outline-none login-input c-primary"
               style={{
                 backgroundColor: 'rgba(255,255,255,0.05)',
-                color: 'var(--text-primary)',
                 caretColor: 'var(--gold)',
                 border: '1px solid rgba(255,255,255,0.06)',
               }}
@@ -234,10 +231,9 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
-              className="w-full h-[52px] rounded-2xl px-4 pr-12 text-[15px] border-0 outline-none login-input"
+              className="w-full h-[52px] rounded-2xl px-4 pr-12 text-[15px] border-0 outline-none login-input c-primary"
               style={{
                 backgroundColor: 'rgba(255,255,255,0.05)',
-                color: 'var(--text-primary)',
                 caretColor: 'var(--gold)',
                 border: '1px solid rgba(255,255,255,0.06)',
               }}
@@ -245,8 +241,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full"
-              style={{ color: 'var(--text-tertiary)' }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full c-tertiary"
             >
               {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
@@ -265,10 +260,9 @@ export default function Login() {
         {/* Error */}
         {error && (
           <div
-            className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm"
+            className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm c-red"
             style={{
               backgroundColor: 'rgba(198, 40, 40, 0.12)',
-              color: 'var(--red-soft)',
               border: '1px solid rgba(198, 40, 40, 0.15)',
               animation: 'fadeInUp 0.2s ease forwards',
             }}

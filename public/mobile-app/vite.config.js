@@ -16,6 +16,7 @@ export default defineConfig({
       '/api': 'http://92.242.61.184:3000',
     },
   },
+  base: '/m/',
   build: {
     outDir: 'dist',
   },

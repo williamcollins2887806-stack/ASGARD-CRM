@@ -55,7 +55,7 @@ export default function Integrations() {
           {TABS.map((t) => {
             const Icon = t.icon;
             return (
-              <button key={t.id} onClick={() => { haptic.light(); setTab(t.id); }} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold spring-tap" style={{ background: tab === t.id ? 'var(--bg-elevated)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: tab === t.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>
+              <button key={t.id} onClick={() => { haptic.light(); setTab(t.id); }} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl filter-pill spring-tap" data-active={tab === t.id}>
                 <Icon size={14} />{t.label}
               </button>
             );
@@ -65,15 +65,15 @@ export default function Integrations() {
         {tab === 'bank' && (
           <>
             {bankStats && !loading && (
-              <div className="rounded-2xl p-4 mb-3" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
+              <div className="card-hero mb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
                 <div className="flex items-center gap-2 mb-2">
-                  <Building2 size={16} style={{ color: 'var(--green)' }} />
-                  <span className="text-[12px] font-semibold" style={{ color: 'var(--green)' }}>Подключено</span>
+                  <Building2 size={16} className="c-green" />
+                  <span className="text-[12px] font-semibold c-green">Подключено</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <div><p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Транзакций</p><p className="text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>{bankStats.total_transactions || 0}</p></div>
-                  <div><p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Разнесено</p><p className="text-[14px] font-bold" style={{ color: 'var(--green)' }}>{bankStats.classified_count || 0}</p></div>
-                  <div><p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Ожидает</p><p className="text-[14px] font-bold" style={{ color: 'var(--gold)' }}>{bankStats.pending_count || 0}</p></div>
+                  <div><p className="text-[10px] c-tertiary">Транзакций</p><p className="text-[14px] font-bold c-primary">{bankStats.total_transactions || 0}</p></div>
+                  <div><p className="text-[10px] c-tertiary">Разнесено</p><p className="text-[14px] font-bold c-green">{bankStats.classified_count || 0}</p></div>
+                  <div><p className="text-[10px] c-tertiary">Ожидает</p><p className="text-[14px] font-bold c-gold">{bankStats.pending_count || 0}</p></div>
                 </div>
               </div>
             )}
@@ -82,12 +82,12 @@ export default function Integrations() {
             ) : (
               <div className="flex flex-col gap-2 pb-4">
                 {batches.map((b, i) => (
-                  <div key={b.id || i} className="rounded-2xl px-4 py-3" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
-                    <p className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>{b.filename || `Загрузка #${b.id}`}</p>
+                  <div key={b.id || i} className="rounded-2xl px-4 py-3 card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                    <p className="text-[14px] font-semibold c-primary">{b.filename || `Загрузка #${b.id}`}</p>
                     <div className="flex items-center gap-1.5 mt-1.5">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}>{b.status || 'OK'}</span>
-                      {b.transaction_count && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{b.transaction_count} транзакций</span>}
-                      {b.created_at && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{relativeTime(b.created_at)}</span>}
+                      <span className="status-badge c-green" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}>{b.status || 'OK'}</span>
+                      {b.transaction_count && <span className="text-[10px] c-tertiary">{b.transaction_count} транзакций</span>}
+                      {b.created_at && <span className="text-[10px] c-tertiary">{relativeTime(b.created_at)}</span>}
                     </div>
                   </div>
                 ))}
@@ -102,12 +102,12 @@ export default function Integrations() {
           ) : (
             <div className="flex flex-col gap-2 pb-4">
               {platforms.map((p, i) => (
-                <div key={p.id || i} className="rounded-2xl px-4 py-3" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <div key={p.id || i} className="rounded-2xl px-4 py-3 card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-center justify-between">
-                    <p className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>{p.name || `Площадка #${p.id}`}</p>
+                    <p className="text-[14px] font-semibold c-primary">{p.name || `Площадка #${p.id}`}</p>
                     <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.status === 'active' ? 'var(--green)' : 'var(--text-tertiary)' }} />
                   </div>
-                  {p.last_parsed_at && <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>Обновлено: {relativeTime(p.last_parsed_at)}</p>}
+                  {p.last_parsed_at && <p className="text-[10px] mt-1 c-tertiary">Обновлено: {relativeTime(p.last_parsed_at)}</p>}
                 </div>
               ))}
             </div>
@@ -117,12 +117,12 @@ export default function Integrations() {
         {tab === 'erp' && (
           <div className="flex flex-col gap-2 pb-4">
             {ERP_ITEMS.map((item, i) => (
-              <div key={i} className="rounded-2xl px-4 py-3" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 60}ms both` }}>
+              <div key={i} className="rounded-2xl px-4 py-3 card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 60}ms both` }}>
                 <div className="flex items-center justify-between">
-                  <p className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>{item.name}</p>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: item.status === 'active' ? 'color-mix(in srgb, var(--green) 15%, transparent)' : 'var(--bg-surface-alt)', color: item.status === 'active' ? 'var(--green)' : 'var(--text-tertiary)' }}>{item.status === 'active' ? 'Активно' : 'Не подключено'}</span>
+                  <p className="text-[14px] font-semibold c-primary">{item.name}</p>
+                  <span className={`status-badge ${item.status === 'active' ? 'c-green' : 'c-tertiary'}`} style={{ background: item.status === 'active' ? 'color-mix(in srgb, var(--green) 15%, transparent)' : 'var(--bg-surface-alt)' }}>{item.status === 'active' ? 'Активно' : 'Не подключено'}</span>
                 </div>
-                <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{item.desc}</p>
+                <p className="text-[12px] mt-0.5 c-tertiary">{item.desc}</p>
               </div>
             ))}
           </div>

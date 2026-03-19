@@ -24,7 +24,7 @@ export function PageShell({
   const isCompact = scrollY > 40;
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="flex flex-col h-full bg-primary">
       {title && (
         <header
           className="shrink-0 relative"
@@ -49,9 +49,8 @@ export function PageShell({
 
           <div className="relative flex items-center justify-between px-5 pb-2">
             <h1
-              className="font-bold tracking-tight"
+              className="font-bold tracking-tight c-primary"
               style={{
-                color: 'var(--text-primary)',
                 fontSize: isCompact && largeTitle ? '17px' : '22px',
                 transition: 'all var(--motion-normal) var(--ease-smooth-out)',
                 paddingTop: isCompact && largeTitle ? '4px' : '8px',

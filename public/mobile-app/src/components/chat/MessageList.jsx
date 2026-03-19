@@ -1,11 +1,12 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
+import { ChevronDown } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { DateSeparator } from './DateSeparator';
 import { TypingIndicator } from './TypingIndicator';
 
 /**
- * MessageList — скролл-контейнер сообщений с датами и infinite scroll
+ * MessageList — скролл-контейнер сообщений с датами, infinite scroll, ScrollToBottom FAB
  */
 export function MessageList({
   messages,
@@ -22,6 +23,8 @@ export function MessageList({
   const containerRef = useRef(null);
   const bottomRef = useRef(null);
   const prevLenRef = useRef(0);
+  const [showScrollFab, setShowScrollFab] = useState(false);
+  const [newMsgIds, setNewMsgIds] = useState(new Set());
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -29,6 +32,18 @@ export function MessageList({
       const isNewAtBottom =
         messages.length > 0 &&
         messages[messages.length - 1]?.user_id === userId;
+
+      // Track new message IDs for animation
+      if (prevLenRef.current > 0) {
+        const ids = new Set();
+        for (let i = prevLenRef.current; i < messages.length; i++) {
+          ids.add(messages[i]?.id);
+        }
+        setNewMsgIds(ids);
+        // Clear after animation
+        setTimeout(() => setNewMsgIds(new Set()), 300);
+      }
+
       if (isNewAtBottom || prevLenRef.current === 0) {
         bottomRef.current?.scrollIntoView({ behavior: prevLenRef.current === 0 ? 'instant' : 'smooth' });
       }
@@ -36,14 +51,24 @@ export function MessageList({
     prevLenRef.current = messages.length;
   }, [messages.length, userId]);
 
-  // Infinite scroll up
+  // Scroll position tracking for FAB
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
-    if (!el || !hasOlder) return;
-    if (el.scrollTop < 80) {
+    if (!el) return;
+
+    // Show FAB when scrolled up more than 200px from bottom
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollFab(distFromBottom > 200);
+
+    // Infinite scroll up
+    if (hasOlder && el.scrollTop < 80) {
       onLoadOlder?.();
     }
   }, [hasOlder, onLoadOlder]);
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
 
   // Group messages: same author within 2 minutes
   const getPosition = (msg, i) => {
@@ -66,7 +91,6 @@ export function MessageList({
     return 'single';
   };
 
-  // Check if date separator needed
   const needsDate = (msg, i) => {
     if (i === 0) return true;
     const prev = messages[i - 1];
@@ -91,51 +115,64 @@ export function MessageList({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 overflow-y-auto scroll-container"
-      onScroll={handleScroll}
-    >
-      {/* Load older indicator */}
-      {hasOlder && (
-        <div className="flex justify-center py-3">
-          <div
-            className="h-5 w-5 rounded-full animate-spin"
-            style={{
-              border: '2px solid var(--bg-elevated)',
-              borderTopColor: 'var(--gold)',
-            }}
-          />
+    <div className="flex-1 relative overflow-hidden">
+      <div
+        ref={containerRef}
+        className="h-full overflow-y-auto scroll-container"
+        onScroll={handleScroll}
+      >
+        {/* Load older indicator */}
+        {hasOlder && (
+          <div className="flex justify-center py-3">
+            <div
+              className="h-5 w-5 rounded-full animate-spin"
+              style={{
+                border: '2px solid var(--bg-elevated)',
+                borderTopColor: 'var(--gold)',
+              }}
+            />
+          </div>
+        )}
+
+        <div className="py-2">
+          {messages.map((msg, i) => {
+            const isMine = msg.user_id === userId;
+            const pos = getPosition(msg, i);
+
+            return (
+              <div key={msg.id}>
+                {needsDate(msg, i) && (
+                  <DateSeparator date={msg.created_at} />
+                )}
+                <MessageBubble
+                  msg={msg}
+                  isMine={isMine}
+                  grouped={pos === 'middle' || pos === 'last'}
+                  position={pos}
+                  onReply={onReply}
+                  onReaction={onReaction}
+                  onDelete={onDelete}
+                  onEdit={onEdit}
+                  isNew={newMsgIds.has(msg.id)}
+                />
+              </div>
+            );
+          })}
         </div>
-      )}
 
-      <div className="py-2">
-        {messages.map((msg, i) => {
-          const isMine = msg.user_id === userId;
-          const pos = getPosition(msg, i);
-
-          return (
-            <div key={msg.id}>
-              {needsDate(msg, i) && (
-                <DateSeparator date={msg.created_at} />
-              )}
-              <MessageBubble
-                msg={msg}
-                isMine={isMine}
-                grouped={pos === 'middle' || pos === 'last'}
-                position={pos}
-                onReply={onReply}
-                onReaction={onReaction}
-                onDelete={onDelete}
-                onEdit={onEdit}
-              />
-            </div>
-          );
-        })}
+        <TypingIndicator users={typingUsers} />
+        <div ref={bottomRef} />
       </div>
 
-      <TypingIndicator users={typingUsers} />
-      <div ref={bottomRef} />
+      {/* Scroll to bottom FAB */}
+      {showScrollFab && (
+        <button
+          onClick={scrollToBottom}
+          className="scroll-fab spring-tap"
+        >
+          <ChevronDown size={20} />
+        </button>
+      )}
     </div>
   );
 }

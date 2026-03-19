@@ -70,7 +70,7 @@ export default function Alerts() {
   return (
     <PageShell title="Уведомления" headerRight={
       unreadCount > 0 ? (
-        <button onClick={markAllRead} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--blue)' }}>
+        <button onClick={markAllRead} className="flex items-center justify-center spring-tap btn-icon c-blue">
           <CheckCheck size={20} />
         </button>
       ) : null
@@ -79,13 +79,13 @@ export default function Alerts() {
         {unreadCount > 0 && (
           <div className="flex items-center gap-2 px-2 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
             <span className="flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold" style={{ background: 'var(--red-soft)', color: '#fff' }}>{unreadCount}</span>
-            <span className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>непрочитанных</span>
+            <span className="text-[13px] c-secondary">непрочитанных</span>
           </div>
         )}
 
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => (
-            <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>
+            <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id ? 'true' : undefined}>
               {f.label}
             </button>
           ))}
@@ -109,25 +109,25 @@ export default function Alerts() {
                   <div className="flex items-start gap-2.5">
                     <span className="text-[16px] shrink-0 mt-0.5">{icon}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
+                      <p className="text-[14px] font-semibold leading-tight c-primary">
                         {n.title || n.message || 'Уведомление'}
                       </p>
                       {(n.text || n.body) && (
-                        <p className="text-[12px] mt-0.5 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
+                        <p className="text-[12px] mt-0.5 line-clamp-2 c-secondary">
                           {n.text || n.body}
                         </p>
                       )}
-                      <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                      <p className="text-[10px] mt-1 c-tertiary">
                         {n.created_at ? relativeTime(n.created_at) : ''}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {!isRead && (
-                        <button onClick={() => markRead(n.id)} className="flex items-center justify-center spring-tap" style={{ width: 30, height: 30, color: 'var(--blue)' }}>
+                        <button onClick={() => markRead(n.id)} className="flex items-center justify-center spring-tap c-blue" style={{ width: 30, height: 30 }}>
                           <CheckCheck size={16} />
                         </button>
                       )}
-                      <button onClick={() => deleteNotif(n.id)} className="flex items-center justify-center spring-tap" style={{ width: 30, height: 30, color: 'var(--text-tertiary)' }}>
+                      <button onClick={() => deleteNotif(n.id)} className="flex items-center justify-center spring-tap c-tertiary" style={{ width: 30, height: 30 }}>
                         <Trash2 size={14} />
                       </button>
                     </div>

@@ -8,8 +8,11 @@ const EmojiPicker = lazy(() =>
   import('./EmojiPicker').then((m) => ({ default: m.EmojiPicker }))
 );
 
+const CHAR_WARN = 500;
+
 /**
  * Composer — поле ввода + кнопки (emoji, attach, voice, send)
+ * Gold gradient send, morph mic→send, счётчик символов
  */
 export function Composer({
   chatId,
@@ -34,7 +37,6 @@ export function Composer({
     setText('');
     onCancelReply?.();
     setShowEmoji(false);
-    // Reset textarea height
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   }, [text, replyTo, hasText, onSend, onCancelReply, haptic]);
 
@@ -48,7 +50,6 @@ export function Composer({
   const handleInput = (e) => {
     setText(e.target.value);
     onTyping?.();
-    // Auto-grow
     const ta = textareaRef.current;
     if (ta) {
       ta.style.height = 'auto';
@@ -105,39 +106,50 @@ export function Composer({
         </button>
 
         {/* Textarea */}
-        <div
-          className="flex-1 rounded-2xl overflow-hidden"
-          style={{
-            background: 'var(--bg-surface-alt)',
-            border: '0.5px solid var(--border-norse)',
-          }}
-        >
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            placeholder="Сообщение..."
-            rows={1}
-            className="w-full px-3 py-2 resize-none outline-none text-[15px] leading-[1.35]"
+        <div className="flex-1 relative">
+          <div
+            className="rounded-2xl overflow-hidden"
             style={{
-              background: 'transparent',
-              color: 'var(--text-primary)',
-              caretColor: 'var(--gold)',
-              maxHeight: 120,
+              background: 'var(--bg-surface-alt)',
+              border: '0.5px solid var(--border-norse)',
             }}
-          />
+          >
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
+              placeholder="Сообщение..."
+              rows={1}
+              className="w-full px-3 py-2 resize-none outline-none text-[15px] leading-[1.35]"
+              style={{
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                caretColor: 'var(--gold)',
+                maxHeight: 120,
+              }}
+            />
+          </div>
+          {/* Character counter */}
+          {text.length > CHAR_WARN && (
+            <span
+              className="absolute -top-5 right-1 text-[10px] font-medium"
+              style={{ color: text.length > 2000 ? 'var(--red-soft)' : 'var(--text-tertiary)' }}
+            >
+              {text.length}
+            </span>
+          )}
         </div>
 
-        {/* Right buttons */}
+        {/* Right buttons — morph transition */}
         {hasText ? (
           <button
             onClick={handleSend}
-            className="shrink-0 flex items-center justify-center rounded-full spring-tap"
+            className="shrink-0 flex items-center justify-center rounded-full send-morph"
             style={{
               width: 36,
               height: 36,
-              background: 'linear-gradient(135deg, var(--bubble-own-start), var(--bubble-own-end))',
+              background: 'var(--gold-gradient)',
               color: '#fff',
             }}
           >
@@ -177,7 +189,7 @@ export function Composer({
 
             {/* Mic */}
             <button
-              className="flex items-center justify-center spring-tap"
+              className="flex items-center justify-center spring-tap send-morph"
               style={{ width: 36, height: 36, color: 'var(--text-tertiary)' }}
             >
               <Mic size={20} />

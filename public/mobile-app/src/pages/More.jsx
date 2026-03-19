@@ -24,7 +24,7 @@ const MENU_ITEMS = [
   { path: '/hr-requests',    icon: UserPlus,     label: 'Заявки HR',       section: 'personnel', color: '#7B68EE',        bg: 'rgba(123, 104, 238, 0.1)' },
   { path: '/travel',         icon: Plane,        label: 'Командировки',    section: 'personnel', color: 'var(--blue)',    bg: 'rgba(74, 144, 217, 0.1)' },
   { path: '/correspondence', icon: Mail,         label: 'Корреспонденция', section: 'works',     color: 'var(--gold)',    bg: 'var(--gold-glow)' },
-  { path: '/meetings',       icon: Calendar,     label: 'Совещания',       section: 'works',     color: 'var(--blue)',    bg: 'rgba(74, 144, 217, 0.1)' },
+  { path: '/meetings',       icon: Calendar,     label: 'Совещания',       section: 'dashboard', color: 'var(--blue)',    bg: 'rgba(74, 144, 217, 0.1)' },
   { path: '/tmc-requests',   icon: Package,      label: 'Заявки ТМЦ',      section: 'works',     color: 'var(--gold)',     bg: 'var(--gold-glow)' },
   { path: '/proc-requests',  icon: ShoppingCart, label: 'Закупки',         section: 'works',     color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
   { path: '/permits',        icon: Shield,       label: 'Допуски',         section: 'personnel', color: 'var(--green)',    bg: 'rgba(48, 209, 88, 0.1)' },
@@ -36,14 +36,14 @@ const MENU_ITEMS = [
   { path: '/office-expenses',icon: DollarSign,   label: 'Офис расходы',    section: 'finances',  color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
   { path: '/cash-admin',     icon: Wallet,       label: 'Касса (упр.)',    section: 'finances',  color: 'var(--gold)',     bg: 'var(--gold-glow)' },
   { path: '/approval-payment',icon: DollarSign,  label: 'Оплаты',          section: 'finances',  color: 'var(--green)',    bg: 'rgba(48, 209, 88, 0.1)' },
-  { path: '/tasks-admin',    icon: ShieldCheck,  label: 'Все задачи',      section: 'dashboard', color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
-  { path: '/warehouse',      icon: Package,      label: 'Склад',           section: 'works',     color: 'var(--gold)',     bg: 'var(--gold-glow)' },
+  { path: '/tasks-admin',    icon: ShieldCheck,  label: 'Все задачи',      section: 'settings',  color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
+  { path: '/warehouse',      icon: Package,      label: 'Склад',           section: 'dashboard', color: 'var(--gold)',     bg: 'var(--gold-glow)' },
   { path: '/gantt',          icon: Calendar,     label: 'Диаграмма Ганта', section: 'works',     color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
   { path: '/workers-schedule',icon: Calendar,    label: 'График рабочих',  section: 'personnel', color: '#7B68EE',         bg: 'rgba(123, 104, 238, 0.1)' },
-  { path: '/training',       icon: Users,        label: 'Обучение',        section: 'personnel', color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
+  { path: '/training',       icon: Users,        label: 'Обучение',        section: 'dashboard', color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
   { path: '/seals',          icon: Stamp,        label: 'Печати',          section: 'works',     color: 'var(--gold)',     bg: 'var(--gold-glow)' },
-  { path: '/my-mail',        icon: Mail,         label: 'Почта',           section: 'dashboard', color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
-  { path: '/my-equipment',   icon: Package,      label: 'Моё оборудование',section: 'dashboard', color: 'var(--gold)',    bg: 'var(--gold-glow)' },
+  { path: '/my-mail',        icon: Mail,         label: 'Почта',           section: 'profile',   color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
+  { path: '/my-equipment',   icon: Package,      label: 'Моё оборудование',section: 'profile',   color: 'var(--gold)',    bg: 'var(--gold-glow)' },
   { path: '/integrations',   icon: Settings,     label: 'Интеграции',      section: 'settings',  color: 'var(--blue)',     bg: 'rgba(74, 144, 217, 0.1)' },
   { path: '/diag',           icon: Settings,     label: 'Диагностика',     section: 'settings',  color: 'var(--text-secondary)', bg: 'color-mix(in srgb, var(--text-secondary) 10%, transparent)' },
   { path: '/alerts',         icon: Bell,         label: 'Уведомления',     section: 'dashboard', color: 'var(--red-soft)', bg: 'rgba(255, 69, 58, 0.1)' },
@@ -90,10 +90,10 @@ export default function More() {
       >
         <Icon size={18} style={{ color }} />
       </div>
-      <span className="flex-1 text-left text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+      <span className="flex-1 text-left text-[15px] font-medium c-primary">
         {label}
       </span>
-      <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
+      <ChevronRight size={16} className="c-tertiary" />
     </button>
   );
 
@@ -101,9 +101,8 @@ export default function More() {
     <PageShell title="Ещё">
       {/* User card with gradient ring */}
       <div
-        className="rounded-2xl p-4 mb-4 flex items-center gap-3.5"
+        className="rounded-2xl p-4 mb-4 flex items-center gap-3.5 bg-surface"
         style={{
-          backgroundColor: 'var(--bg-surface)',
           animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards',
         }}
       >
@@ -125,12 +124,11 @@ export default function More() {
         </div>
         <div className="flex-1 min-w-0">
           <p
-            className="text-[15px] font-semibold truncate"
-            style={{ color: 'var(--text-primary)' }}
+            className="text-[15px] font-semibold truncate c-primary"
           >
             {user?.full_name || user?.login || 'Пользователь'}
           </p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+          <p className="text-xs mt-0.5 c-tertiary">
             {user?.role || ''}
           </p>
         </div>
@@ -138,9 +136,8 @@ export default function More() {
 
       {/* Theme toggle with sunrise/sunset animation */}
       <div
-        className="rounded-2xl overflow-hidden mb-3"
+        className="rounded-2xl overflow-hidden mb-3 bg-surface"
         style={{
-          backgroundColor: 'var(--bg-surface)',
           animation: 'fadeInUp var(--motion-normal) var(--ease-enter) 50ms both',
         }}
       >
@@ -165,11 +162,11 @@ export default function More() {
             >
               {theme === 'dark'
                 ? <Sun size={18} style={{ color: '#FFCC00' }} />
-                : <Moon size={18} style={{ color: 'var(--blue)' }} />
+                : <Moon size={18} className="c-blue" />
               }
             </div>
           </div>
-          <span className="flex-1 text-left text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+          <span className="flex-1 text-left text-[15px] font-medium c-primary">
             {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
           </span>
           <div
@@ -196,8 +193,8 @@ export default function More() {
         <>
           <div className="section-label">Бизнес</div>
           <div
-            className="rounded-2xl overflow-hidden mb-3 divide-y"
-            style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-norse)' }}
+            className="rounded-2xl overflow-hidden mb-3 divide-y bg-surface"
+            style={{ borderColor: 'var(--border-norse)' }}
           >
             {visibleMenu.map((item, i) => renderItem(item, i))}
           </div>
@@ -207,20 +204,20 @@ export default function More() {
       {/* Account section label */}
       <div className="section-label">Аккаунт</div>
       <div
-        className="rounded-2xl overflow-hidden mb-3 divide-y"
-        style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-norse)' }}
+        className="rounded-2xl overflow-hidden mb-3 divide-y bg-surface"
+        style={{ borderColor: 'var(--border-norse)' }}
       >
         {visibleAccount.map((item, i) => renderItem(item, i))}
       </div>
 
       {/* Logout */}
-      <div className="rounded-2xl overflow-hidden mb-4" style={{ backgroundColor: 'var(--bg-surface)' }}>
+      <div className="rounded-2xl overflow-hidden mb-4 bg-surface">
         <button
           onClick={() => { haptic.medium(); logout(); navigate('/login'); }}
           className="w-full flex items-center justify-center gap-2 px-4 py-3.5 spring-tap"
         >
-          <LogOut size={18} style={{ color: 'var(--red-soft)' }} />
-          <span className="text-[15px] font-medium" style={{ color: 'var(--red-soft)' }}>
+          <LogOut size={18} className="c-red" />
+          <span className="text-[15px] font-medium c-red">
             Выйти
           </span>
         </button>
@@ -228,10 +225,10 @@ export default function More() {
 
       {/* App version */}
       <div className="flex items-center justify-center gap-1.5 pb-2">
-        <Info size={11} style={{ color: 'var(--text-tertiary)', opacity: 0.4 }} />
+        <Info size={11} className="c-tertiary" style={{ opacity: 0.4 }} />
         <p
-          className="text-[11px] font-medium"
-          style={{ color: 'var(--text-tertiary)', opacity: 0.4 }}
+          className="text-[11px] font-medium c-tertiary"
+          style={{ opacity: 0.4 }}
         >
           ASGARD Mobile v2.0.0
         </p>

@@ -57,10 +57,10 @@ export default function ProcRequests() {
   }, [requests, filter]);
 
   return (
-    <PageShell title="Закупки" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--blue)' }}><Plus size={22} /></button>}>
+    <PageShell title="Закупки" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>}>
       <PullToRefresh onRefresh={fetchData}>
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}
+          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id}>{f.label}</button>)}
         </div>
         {loading ? <SkeletonList count={4} /> : filtered.length === 0 ? (
           <EmptyState icon={ShoppingCart} iconColor="var(--blue)" iconBg="rgba(74,144,217,0.1)" title="Нет заявок" description="Заявки на закупку появятся здесь" />
@@ -71,17 +71,17 @@ export default function ProcRequests() {
               let itemsCount = 0;
               try { const arr = typeof req.items_json === 'string' ? JSON.parse(req.items_json) : (req.items_json || []); itemsCount = arr.length; } catch {}
               return (
-                <button key={req.id} onClick={() => { haptic.light(); setDetail(req); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={req.id} onClick={() => { haptic.light(); setDetail(req); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{req.work_title || req.title || `Заявка #${req.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{req.work_title || req.title || `Заявка #${req.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    {itemsCount > 0 && <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{itemsCount} поз.</span>}
-                    {Number(req.total_sum) > 0 && <span className="text-[10px] font-semibold" style={{ color: 'var(--gold)' }}>{formatMoney(req.total_sum, { short: true })}</span>}
-                    {req.pm_id && users[req.pm_id] && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{users[req.pm_id]}</span>}
-                    {req.created_at && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{relativeTime(req.created_at)}</span>}
+                    {itemsCount > 0 && <span className="text-[10px] c-secondary">{itemsCount} поз.</span>}
+                    {Number(req.total_sum) > 0 && <span className="text-[10px] font-semibold c-gold">{formatMoney(req.total_sum, { short: true })}</span>}
+                    {req.pm_id && users[req.pm_id] && <span className="text-[10px] c-tertiary">{users[req.pm_id]}</span>}
+                    {req.created_at && <span className="text-[10px] c-tertiary">{relativeTime(req.created_at)}</span>}
                   </div>
                 </button>
               );
@@ -111,15 +111,15 @@ function ProcDetailSheet({ request, onClose, users }) {
   return (
     <BottomSheet open={!!request} onClose={onClose} title={r.work_title || `Заявка #${r.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
         {items.length > 0 && (
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Состав ({items.length})</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 c-tertiary">Состав ({items.length})</p>
             <div className="flex flex-col gap-1.5">
               {items.map((item, i) => (
                 <div key={i} className="flex items-center justify-between px-3 py-2 rounded-xl" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
-                  <span className="text-[13px]" style={{ color: 'var(--text-primary)' }}>{item.name || '—'}</span>
-                  <span className="text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{item.quantity || ''} {item.unit || ''}</span>
+                  <span className="text-[13px] c-primary">{item.name || '—'}</span>
+                  <span className="text-[12px] font-semibold c-secondary">{item.quantity || ''} {item.unit || ''}</span>
                 </div>
               ))}
             </div>
@@ -137,7 +137,6 @@ function CreateProcSheet({ open, onClose, onCreated }) {
   const [totalSum, setTotalSum] = useState('');
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
   const handleSubmit = async () => {
     if (!workTitle.trim() || !itemsText.trim()) return;
     haptic.light(); setSaving(true);
@@ -151,11 +150,11 @@ function CreateProcSheet({ open, onClose, onCreated }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новая заявка">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Проект *</label><input type="text" value={workTitle} onChange={(e) => setWorkTitle(e.target.value)} placeholder="Название проекта" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Позиции * (по одной на строку)</label><textarea value={itemsText} onChange={(e) => setItemsText(e.target.value)} placeholder="Кабель ВВГнг 3x2.5&#10;Автомат ABB 25A&#10;..." rows={4} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Сумма (₽)</label><input type="number" value={totalSum} onChange={(e) => setTotalSum(e.target.value)} placeholder="0" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Комментарий</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Детали..." rows={2} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={is} /></div>
-        <button onClick={handleSubmit} disabled={!valid || saving} className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: valid ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: valid ? '#fff' : 'var(--text-tertiary)', opacity: saving ? 0.6 : 1 }}>{saving ? 'Сохранение...' : 'Создать заявку'}</button>
+        <div><label className="input-label">Проект *</label><input type="text" value={workTitle} onChange={(e) => setWorkTitle(e.target.value)} placeholder="Название проекта" className="input-field" /></div>
+        <div><label className="input-label">Позиции * (по одной на строку)</label><textarea value={itemsText} onChange={(e) => setItemsText(e.target.value)} placeholder="Кабель ВВГнг 3x2.5&#10;Автомат ABB 25A&#10;..." rows={4} className="input-field resize-none" /></div>
+        <div><label className="input-label">Сумма (₽)</label><input type="number" value={totalSum} onChange={(e) => setTotalSum(e.target.value)} placeholder="0" className="input-field" /></div>
+        <div><label className="input-label">Комментарий</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Детали..." rows={2} className="input-field resize-none" /></div>
+        <button onClick={handleSubmit} disabled={!valid || saving} className="btn-primary spring-tap mt-1">{saving ? 'Сохранение...' : 'Создать заявку'}</button>
       </div>
     </BottomSheet>
   );

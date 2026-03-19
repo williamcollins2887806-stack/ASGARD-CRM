@@ -41,8 +41,7 @@ export default function Chat() {
             haptic.light();
             setNewChatOpen(true);
           }}
-          className="flex items-center justify-center spring-tap"
-          style={{ width: 44, height: 44, color: 'var(--blue)' }}
+          className="flex items-center justify-center spring-tap btn-icon c-blue"
         >
           <Edit3 size={20} />
         </button>

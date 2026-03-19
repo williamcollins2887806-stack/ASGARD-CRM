@@ -29,7 +29,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="flex flex-col h-full bg-primary">
       <PullToRefresh onRefresh={handleRefresh}>
         <div
           className="px-3 pb-4"

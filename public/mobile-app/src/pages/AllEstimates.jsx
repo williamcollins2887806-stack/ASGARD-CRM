@@ -68,14 +68,14 @@ export default function AllEstimates() {
       <PullToRefresh onRefresh={fetchData}>
         {!loading && estimates.length > 0 && (
           <div className="grid grid-cols-4 gap-1.5 px-1 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{stats.total}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Всего</p></div>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--green)' }}>{stats.approved}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Одобрено</p></div>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--blue)' }}>{stats.sent}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>На рассмотр.</p></div>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--red-soft)' }}>{stats.rejected}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Отклонено</p></div>
+            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-primary">{stats.total}</p><p className="text-[9px] c-tertiary">Всего</p></div>
+            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-green">{stats.approved}</p><p className="text-[9px] c-tertiary">Одобрено</p></div>
+            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-blue">{stats.sent}</p><p className="text-[9px] c-tertiary">На рассмотр.</p></div>
+            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-red">{stats.rejected}</p><p className="text-[9px] c-tertiary">Отклонено</p></div>
           </div>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}
+          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id ? 'true' : undefined}>{f.label}</button>)}
         </div>
         {loading ? <SkeletonList count={5} /> : filtered.length === 0 ? (
           <EmptyState icon={Calculator} iconColor="var(--blue)" iconBg="rgba(74,144,217,0.1)" title="Нет расчётов" description="Расчёты появятся здесь" />
@@ -87,17 +87,17 @@ export default function AllEstimates() {
               const cost = Number(est.total_cost || est.cost || 0);
               const margin = price > 0 ? Math.round(((price - cost) / price) * 100) : 0;
               return (
-                <button key={est.id} onClick={() => { haptic.light(); setDetail(est); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={est.id} onClick={() => { haptic.light(); setDetail(est); }} className="w-full text-left card-glass px-4 py-3 spring-tap" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{est.name || (est.tender_id && tenders[est.tender_id]) || `Расчёт #${est.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{est.name || (est.tender_id && tenders[est.tender_id]) || `Расчёт #${est.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
-                  {est.tender_id && tenders[est.tender_id] && est.name && <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>{tenders[est.tender_id]}</p>}
+                  {est.tender_id && tenders[est.tender_id] && est.name && <p className="text-[12px] mt-0.5 truncate c-secondary">{tenders[est.tender_id]}</p>}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    {price > 0 && <span className="text-[10px] font-semibold" style={{ color: 'var(--blue)' }}>{formatMoney(price, { short: true })}</span>}
+                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    {price > 0 && <span className="text-[10px] font-semibold c-blue">{formatMoney(price, { short: true })}</span>}
                     {margin > 0 && <span className="text-[10px] font-semibold" style={{ color: margin >= 15 ? 'var(--green)' : 'var(--gold)' }}>{margin}%</span>}
-                    {est.created_at && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{relativeTime(est.created_at)}</span>}
+                    {est.created_at && <span className="text-[10px] c-tertiary">{relativeTime(est.created_at)}</span>}
                   </div>
                 </button>
               );
@@ -130,14 +130,14 @@ function EstimateDetailSheet({ estimate, onClose, tenders }) {
     <BottomSheet open={!!estimate} onClose={onClose} title={e.name || `Расчёт #${e.id}`}>
       <div className="flex flex-col gap-3 pb-4">
         {price > 0 && (
-          <div className="rounded-xl p-3" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}>
+          <div className="card-glass rounded-xl p-3">
             <div className="grid grid-cols-3 gap-2 mb-2">
-              <div className="text-center"><p className="text-[10px] uppercase font-semibold" style={{ color: 'var(--text-tertiary)' }}>Цена</p><p className="text-[14px] font-bold" style={{ color: 'var(--blue)' }}>{formatMoney(price, { short: true })}</p></div>
-              <div className="text-center"><p className="text-[10px] uppercase font-semibold" style={{ color: 'var(--text-tertiary)' }}>С/С</p><p className="text-[14px] font-bold" style={{ color: 'var(--gold)' }}>{formatMoney(cost, { short: true })}</p></div>
-              <div className="text-center"><p className="text-[10px] uppercase font-semibold" style={{ color: 'var(--text-tertiary)' }}>Прибыль</p><p className="text-[14px] font-bold" style={{ color: profit >= 0 ? 'var(--green)' : 'var(--red-soft)' }}>{formatMoney(profit, { short: true })}</p></div>
+              <div className="text-center"><p className="text-[10px] uppercase font-semibold c-tertiary">Цена</p><p className="text-[14px] font-bold c-blue">{formatMoney(price, { short: true })}</p></div>
+              <div className="text-center"><p className="text-[10px] uppercase font-semibold c-tertiary">С/С</p><p className="text-[14px] font-bold c-gold">{formatMoney(cost, { short: true })}</p></div>
+              <div className="text-center"><p className="text-[10px] uppercase font-semibold c-tertiary">Прибыль</p><p className="text-[14px] font-bold" style={{ color: profit >= 0 ? 'var(--green)' : 'var(--red-soft)' }}>{formatMoney(profit, { short: true })}</p></div>
             </div>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>Маржа</span>
+              <span className="text-[10px] font-semibold c-tertiary">Маржа</span>
               <span className="text-[12px] font-bold" style={{ color: margin >= 15 ? 'var(--green)' : 'var(--gold)' }}>{margin}%</span>
             </div>
             <div className="rounded-full overflow-hidden" style={{ height: 4, background: 'var(--bg-surface-alt)' }}>
@@ -145,7 +145,7 @@ function EstimateDetailSheet({ estimate, onClose, tenders }) {
             </div>
           </div>
         )}
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
       </div>
     </BottomSheet>
   );

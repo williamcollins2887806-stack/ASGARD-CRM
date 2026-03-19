@@ -77,22 +77,22 @@ export default function TasksAdmin() {
   return (
     <PageShell title="Все задачи" headerRight={
       <div className="flex items-center">
-        <button onClick={() => { haptic.light(); setShowSearch(!showSearch); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--text-tertiary)' }}><Search size={20} /></button>
-        <button onClick={() => { haptic.light(); setShowCreate(true); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--blue)' }}><Plus size={22} /></button>
+        <button onClick={() => { haptic.light(); setShowSearch(!showSearch); }} className="btn-icon spring-tap"><Search size={20} /></button>
+        <button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>
       </div>
     }>
       <PullToRefresh onRefresh={fetchData}>
         {showSearch && (
           <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}>
-            <div className="flex items-center gap-2 px-3 rounded-xl" style={{ height: 36, background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
-              <Search size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
-              <input type="text" placeholder="Поиск задач..." value={search} onChange={(e) => setSearch(e.target.value)} autoFocus className="flex-1 bg-transparent outline-none text-[14px]" style={{ color: 'var(--text-primary)', caretColor: 'var(--gold)' }} />
-              {search && <button onClick={() => setSearch('')} style={{ color: 'var(--text-tertiary)' }}><X size={16} /></button>}
+            <div className="search-bar">
+              <Search size={16} className="c-tertiary" style={{ flexShrink: 0 }} />
+              <input type="text" placeholder="Поиск задач..." value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+              {search && <button onClick={() => setSearch('')} className="c-tertiary"><X size={16} /></button>}
             </div>
           </div>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}
+          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id}>{f.label}</button>)}
         </div>
         {loading ? <SkeletonList count={5} /> : filtered.length === 0 ? (
           <EmptyState icon={ClipboardList} iconColor="var(--blue)" iconBg="rgba(74,144,217,0.1)" title={search ? 'Ничего не найдено' : 'Нет задач'} description="Задачи появятся здесь" />
@@ -102,16 +102,16 @@ export default function TasksAdmin() {
               const st = STATUS_MAP[task._status] || STATUS_MAP.new;
               const pr = PRIORITY_MAP[task.priority] || PRIORITY_MAP.normal;
               return (
-                <button key={task.id} onClick={() => { haptic.light(); setDetail(task); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={task.id} onClick={() => { haptic.light(); setDetail(task); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{task.title || task.text || `Задача #${task.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{task.title || task.text || `Задача #${task.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
                     {task.priority && task.priority !== 'normal' && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${pr.color} 15%, transparent)`, color: pr.color }}>{pr.label}</span>}
-                    {task.assignee_name && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{task.assignee_name}</span>}
-                    {task.deadline && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>до {formatDate(task.deadline)}</span>}
+                    {task.assignee_name && <span className="text-[10px] c-tertiary">{task.assignee_name}</span>}
+                    {task.deadline && <span className="text-[10px] c-tertiary">до {formatDate(task.deadline)}</span>}
                   </div>
                 </button>
               );
@@ -141,11 +141,11 @@ function TaskAdminDetailSheet({ task, onClose, onComplete, onDelete }) {
   return (
     <BottomSheet open={!!task} onClose={onClose} title={t.title || t.text || `Задача #${t.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
         {!isDone && (
           <div className="flex gap-2 mt-2">
-            <button onClick={() => onComplete(t.id)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}><Check size={16} /> Выполнено</button>
-            <button onClick={() => onDelete(t.id)} className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-[14px] spring-tap" style={{ background: 'color-mix(in srgb, var(--red-soft) 15%, transparent)', color: 'var(--red-soft)' }}><Trash2 size={16} /></button>
+            <button onClick={() => onComplete(t.id)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap c-green" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}><Check size={16} /> Выполнено</button>
+            <button onClick={() => onDelete(t.id)} className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-[14px] spring-tap c-red" style={{ background: 'color-mix(in srgb, var(--red-soft) 15%, transparent)' }}><Trash2 size={16} /></button>
           </div>
         )}
       </div>
@@ -161,7 +161,6 @@ function CreateTaskAdminSheet({ open, onClose, onCreated, users }) {
   const [deadline, setDeadline] = useState('');
   const [priority, setPriority] = useState('normal');
   const [saving, setSaving] = useState(false);
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
   const handleSubmit = async () => {
     if (!title.trim() || !assigneeId) return;
     haptic.light(); setSaving(true);
@@ -174,14 +173,14 @@ function CreateTaskAdminSheet({ open, onClose, onCreated, users }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новая задача">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Название *</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Что нужно сделать" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Описание</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Детали..." rows={2} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Исполнитель *</label><select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none appearance-none" style={is}><option value="">Выберите...</option>{users.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.login}</option>)}</select></div>
+        <div><label className="input-label">Название *</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Что нужно сделать" className="input-field" /></div>
+        <div><label className="input-label">Описание</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Детали..." rows={2} className="input-field resize-none" /></div>
+        <div><label className="input-label">Исполнитель *</label><select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="input-field appearance-none"><option value="">Выберите...</option>{users.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.login}</option>)}</select></div>
         <div className="grid grid-cols-2 gap-2">
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Дедлайн</label><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Приоритет</label><select value={priority} onChange={(e) => setPriority(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none appearance-none" style={is}><option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option><option value="urgent">Срочный</option></select></div>
+          <div><label className="input-label">Дедлайн</label><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="input-field" /></div>
+          <div><label className="input-label">Приоритет</label><select value={priority} onChange={(e) => setPriority(e.target.value)} className="input-field appearance-none"><option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option><option value="urgent">Срочный</option></select></div>
         </div>
-        <button onClick={handleSubmit} disabled={!valid || saving} className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: valid ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: valid ? '#fff' : 'var(--text-tertiary)', opacity: saving ? 0.6 : 1 }}>{saving ? 'Сохранение...' : 'Создать задачу'}</button>
+        <button onClick={handleSubmit} disabled={!valid || saving} className="btn-primary spring-tap mt-1">{saving ? 'Сохранение...' : 'Создать задачу'}</button>
       </div>
     </BottomSheet>
   );

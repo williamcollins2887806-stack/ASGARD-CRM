@@ -57,9 +57,8 @@ export function EmptyState({
 
       {/* Title */}
       <h3
-        className="text-lg font-bold mb-1.5"
+        className="text-lg font-bold mb-1.5 c-primary"
         style={{
-          color: 'var(--text-primary)',
           animation: 'fadeInUp var(--motion-slow) var(--ease-enter) 100ms both',
         }}
       >
@@ -68,9 +67,8 @@ export function EmptyState({
 
       {/* Description */}
       <p
-        className="text-sm text-center max-w-[260px] leading-relaxed"
+        className="text-sm text-center max-w-[260px] leading-relaxed c-secondary"
         style={{
-          color: 'var(--text-secondary)',
           animation: 'fadeInUp var(--motion-slow) var(--ease-enter) 200ms both',
         }}
       >

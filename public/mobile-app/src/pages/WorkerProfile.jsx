@@ -96,9 +96,9 @@ export default function WorkerProfile() {
   return (
     <PageShell title="Анкета" headerRight={
       editing ? (
-        <button onClick={handleSave} disabled={saving} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--green)' }}><Save size={20} /></button>
+        <button onClick={handleSave} disabled={saving} className="flex items-center justify-center spring-tap btn-icon c-green"><Save size={20} /></button>
       ) : (
-        <button onClick={() => { haptic.light(); setEditing(true); }} className="px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ color: 'var(--blue)' }}>Редактировать</button>
+        <button onClick={() => { haptic.light(); setEditing(true); }} className="px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap c-blue">Редактировать</button>
       )
     }>
       <PullToRefresh onRefresh={fetchData}>
@@ -107,11 +107,11 @@ export default function WorkerProfile() {
         ) : (
           <div className="flex flex-col gap-3 pb-4">
             {/* Hero card */}
-            <div className="rounded-2xl p-4 flex items-center gap-3" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-              <div className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold shrink-0" style={{ background: 'var(--hero-gradient)', color: '#fff' }}>{name.charAt(0)}</div>
+            <div className="rounded-2xl p-4 flex items-center gap-3 card-glass" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
+              <div className="w-14 h-14 avatar-hero text-xl">{name.charAt(0)}</div>
               <div className="flex-1 min-w-0">
-                <p className="text-[15px] font-bold truncate" style={{ color: 'var(--text-primary)' }}>{name}</p>
-                {employee.role_tag && <p className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>{employee.role_tag}</p>}
+                <p className="text-[15px] font-bold truncate c-primary">{name}</p>
+                {employee.role_tag && <p className="text-[12px] c-tertiary">{employee.role_tag}</p>}
               </div>
               {score > 0 && (
                 <div className="flex flex-col items-center">
@@ -126,14 +126,14 @@ export default function WorkerProfile() {
               const { total, filled } = countFilled(section);
               const isOpen = !!openSections[section.key];
               return (
-                <div key={section.key} className="rounded-2xl overflow-hidden" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${(si + 1) * 60}ms both` }}>
+                <div key={section.key} className="rounded-2xl overflow-hidden card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${(si + 1) * 60}ms both` }}>
                   <button onClick={() => toggleSection(section.key)} className="w-full flex items-center justify-between px-4 py-3 spring-tap">
                     <div className="flex items-center gap-2">
                       <span>{section.icon}</span>
-                      <span className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>{section.title}</span>
-                      <span className="text-[11px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-tertiary)' }}>{filled}/{total}</span>
+                      <span className="text-[14px] font-semibold c-primary">{section.title}</span>
+                      <span className="text-[11px] px-1.5 py-0.5 rounded-full c-tertiary" style={{ background: 'var(--bg-surface-alt)' }}>{filled}/{total}</span>
                     </div>
-                    {isOpen ? <ChevronUp size={16} style={{ color: 'var(--text-tertiary)' }} /> : <ChevronDown size={16} style={{ color: 'var(--text-tertiary)' }} />}
+                    {isOpen ? <ChevronUp size={16} className="c-tertiary" /> : <ChevronDown size={16} className="c-tertiary" />}
                   </button>
                   {isOpen && (
                     <div className="px-4 pb-4 flex flex-col gap-3">
@@ -153,17 +153,15 @@ export default function WorkerProfile() {
 }
 
 function ProfileField({ field, value, comment, editing, onChange, onComment }) {
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
-
   if (field.type === 'text' || field.type === 'textarea') {
     return (
       <div>
-        <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: field.important ? 'var(--red-soft)' : 'var(--text-tertiary)' }}>{field.label}</label>
+        <label className={`input-label ${field.important ? 'c-red' : ''}`}>{field.label}</label>
         {editing ? (
-          field.type === 'textarea' ? <textarea value={value || ''} onChange={(e) => onChange(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-xl text-[13px] outline-none resize-none" style={is} />
-          : <input type="text" value={value || ''} onChange={(e) => onChange(e.target.value)} className="w-full px-3 py-2 rounded-xl text-[13px] outline-none" style={is} />
+          field.type === 'textarea' ? <textarea value={value || ''} onChange={(e) => onChange(e.target.value)} rows={2} className="input-field text-[13px] resize-none" />
+          : <input type="text" value={value || ''} onChange={(e) => onChange(e.target.value)} className="input-field text-[13px]" />
         ) : (
-          <p className="text-[13px] whitespace-pre-wrap" style={{ color: value ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{value || '—'}</p>
+          <p className={`text-[13px] whitespace-pre-wrap ${value ? 'c-primary' : 'c-tertiary'}`}>{value || '—'}</p>
         )}
       </div>
     );
@@ -173,12 +171,12 @@ function ProfileField({ field, value, comment, editing, onChange, onComment }) {
     const selected = Array.isArray(value) ? value : (value ? [value] : []);
     return (
       <div>
-        <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>{field.label}</label>
+        <label className="input-label">{field.label}</label>
         <div className="flex flex-wrap gap-1.5">
           {field.options.map((opt, i) => {
             const active = selected.includes(opt);
             return (
-              <button key={opt} onClick={() => { if (!editing) return; onChange(active ? selected.filter((s) => s !== opt) : [...selected, opt]); }} className="px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: active ? 'color-mix(in srgb, var(--green) 15%, transparent)' : 'var(--bg-surface-alt)', color: active ? 'var(--green)' : 'var(--text-tertiary)', border: '0.5px solid var(--border-norse)', opacity: editing ? 1 : 0.7 }}>{field.labels[i]}</button>
+              <button key={opt} onClick={() => { if (!editing) return; onChange(active ? selected.filter((s) => s !== opt) : [...selected, opt]); }} className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${active ? 'c-green' : 'c-tertiary'}`} style={{ background: active ? 'color-mix(in srgb, var(--green) 15%, transparent)' : 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', opacity: editing ? 1 : 0.7 }}>{field.labels[i]}</button>
             );
           })}
         </div>
@@ -189,15 +187,15 @@ function ProfileField({ field, value, comment, editing, onChange, onComment }) {
   // Radio options
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: field.important ? 'var(--red-soft)' : 'var(--text-tertiary)' }}>{field.label}</label>
+      <label className={`input-label ${field.important ? 'c-red' : ''}`}>{field.label}</label>
       {editing ? (
         <div className="flex flex-wrap gap-1.5">
           {field.options.map((opt, i) => (
-            <button key={opt} onClick={() => onChange(opt)} className="px-2.5 py-1 rounded-full text-[11px] font-semibold spring-tap" style={{ background: value === opt ? 'color-mix(in srgb, var(--blue) 15%, transparent)' : 'var(--bg-surface-alt)', color: value === opt ? 'var(--blue)' : 'var(--text-tertiary)', border: '0.5px solid var(--border-norse)' }}>{field.labels[i]}</button>
+            <button key={opt} onClick={() => onChange(opt)} className={`px-2.5 py-1 rounded-full text-[11px] font-semibold spring-tap ${value === opt ? 'c-blue' : 'c-tertiary'}`} style={{ background: value === opt ? 'color-mix(in srgb, var(--blue) 15%, transparent)' : 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>{field.labels[i]}</button>
           ))}
         </div>
       ) : (
-        <p className="text-[13px]" style={{ color: value ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{value ? field.labels[field.options.indexOf(value)] || value : '—'}</p>
+        <p className={`text-[13px] ${value ? 'c-primary' : 'c-tertiary'}`}>{value ? field.labels[field.options.indexOf(value)] || value : '—'}</p>
       )}
     </div>
   );

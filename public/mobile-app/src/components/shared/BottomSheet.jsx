@@ -83,8 +83,7 @@ export function BottomSheet({ open, onClose, children, title }) {
         {title && (
           <div className="px-5 pb-3">
             <h3
-              className="text-lg font-bold"
-              style={{ color: 'var(--text-primary)' }}
+              className="text-lg font-bold c-primary"
             >
               {title}
             </h3>

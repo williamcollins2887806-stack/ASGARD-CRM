@@ -47,12 +47,11 @@ export default function Welcome() {
         {RUNES.map((r, i) => (
           <span
             key={i}
-            className="absolute"
+            className="absolute c-gold"
             style={{
               left: `${r.x}%`,
               bottom: '-24px',
               fontSize: r.size,
-              color: 'var(--gold)',
               opacity: 0,
               animation: `welcomeRuneDrift ${r.dur}s ease-in-out ${r.delay}s infinite`,
             }}

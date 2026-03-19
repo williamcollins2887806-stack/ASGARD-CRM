@@ -47,37 +47,37 @@ export default function OfficeExpenses() {
   }), [expenses]);
 
   return (
-    <PageShell title="Офис расходы" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--blue)' }}><Plus size={22} /></button>}>
+    <PageShell title="Офис расходы" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon c-blue spring-tap"><Plus size={22} /></button>}>
       <PullToRefresh onRefresh={fetchData}>
         {!loading && expenses.length > 0 && (
-          <div className="rounded-2xl p-4 mb-3" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Итого расходов</p>
-            <p className="text-[24px] font-bold" style={{ color: 'var(--text-primary)' }}>{formatMoney(stats.total)}</p>
+          <div className="card-hero mb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
+            <p className="input-label">Итого расходов</p>
+            <p className="text-[24px] font-bold c-primary">{formatMoney(stats.total)}</p>
             <div className="flex items-center gap-4 mt-2">
-              <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{stats.count} записей</span>
-              <span className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>{stats.categories} категорий</span>
+              <span className="text-[12px] c-secondary">{stats.count} записей</span>
+              <span className="text-[12px] c-tertiary">{stats.categories} категорий</span>
             </div>
           </div>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          <button onClick={() => { haptic.light(); setFilter('all'); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === 'all' ? 'var(--bg-elevated)' : 'transparent', color: filter === 'all' ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === 'all' ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>Все</button>
-          {topCategories.map((c) => <button key={c} onClick={() => { haptic.light(); setFilter(c); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === c ? 'var(--bg-elevated)' : 'transparent', color: filter === c ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === c ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{c}</button>)}
+          <button onClick={() => { haptic.light(); setFilter('all'); }} className="filter-pill spring-tap" data-active={filter === 'all' ? 'true' : undefined}>Все</button>
+          {topCategories.map((c) => <button key={c} onClick={() => { haptic.light(); setFilter(c); }} className="filter-pill spring-tap" data-active={filter === c ? 'true' : undefined}>{c}</button>)}
         </div>
         {loading ? <SkeletonList count={5} /> : filtered.length === 0 ? (
           <EmptyState icon={Building2} iconColor="var(--blue)" iconBg="rgba(74,144,217,0.1)" title="Нет расходов" description="Офисные расходы появятся здесь" />
         ) : (
           <div className="flex flex-col gap-2 pb-4">
             {filtered.map((exp, i) => (
-              <button key={exp.id} onClick={() => { haptic.light(); setDetail(exp); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+              <button key={exp.id} onClick={() => { haptic.light(); setDetail(exp); }} className="w-full text-left card-glass px-4 py-3 spring-tap" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{exp.description || exp.category || `#${exp.id}`}</p>
-                  <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                  <p className="text-[14px] font-semibold leading-tight c-primary">{exp.description || exp.category || `#${exp.id}`}</p>
+                  <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                 </div>
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: 'color-mix(in srgb, var(--blue) 15%, transparent)', color: 'var(--blue)' }}>{exp.category || 'Прочее'}</span>
-                  <span className="text-[10px] font-semibold" style={{ color: 'var(--gold)' }}>{formatMoney(exp.amount || 0, { short: true })}</span>
-                  {exp.created_at && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{relativeTime(exp.created_at)}</span>}
-                  {exp.user_name && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{exp.user_name}</span>}
+                  <span className="status-badge c-blue" style={{ background: 'color-mix(in srgb, var(--blue) 15%, transparent)' }}>{exp.category || 'Прочее'}</span>
+                  <span className="text-[10px] font-semibold c-gold">{formatMoney(exp.amount || 0, { short: true })}</span>
+                  {exp.created_at && <span className="text-[10px] c-tertiary">{relativeTime(exp.created_at)}</span>}
+                  {exp.user_name && <span className="text-[10px] c-tertiary">{exp.user_name}</span>}
                 </div>
               </button>
             ))}
@@ -104,7 +104,7 @@ function ExpenseDetailSheet({ expense, onClose }) {
   return (
     <BottomSheet open={!!expense} onClose={onClose} title={e.description || 'Расход'}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
       </div>
     </BottomSheet>
   );
@@ -117,7 +117,6 @@ function CreateExpenseSheet({ open, onClose, onCreated }) {
   const [description, setDescription] = useState('');
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
   const handleSubmit = async () => {
     if (!amount || !description.trim()) return;
     haptic.light(); setSaving(true);
@@ -130,11 +129,11 @@ function CreateExpenseSheet({ open, onClose, onCreated }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новый расход">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Категория *</label><select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none appearance-none" style={is}>{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Сумма (₽) *</label><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Описание *</label><input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="За что" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Комментарий</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Детали..." rows={2} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={is} /></div>
-        <button onClick={handleSubmit} disabled={!valid || saving} className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: valid ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: valid ? '#fff' : 'var(--text-tertiary)', opacity: saving ? 0.6 : 1 }}>{saving ? 'Сохранение...' : 'Добавить расход'}</button>
+        <div><label className="input-label">Категория *</label><select value={category} onChange={(e) => setCategory(e.target.value)} className="input-field appearance-none">{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
+        <div><label className="input-label">Сумма (₽) *</label><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="input-field" /></div>
+        <div><label className="input-label">Описание *</label><input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="За что" className="input-field" /></div>
+        <div><label className="input-label">Комментарий</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Детали..." rows={2} className="input-field resize-none" /></div>
+        <button onClick={handleSubmit} disabled={!valid || saving} className="btn-primary spring-tap mt-1">{saving ? 'Сохранение...' : 'Добавить расход'}</button>
       </div>
     </BottomSheet>
   );

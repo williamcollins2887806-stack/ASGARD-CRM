@@ -42,10 +42,10 @@ export function WidgetShell({ name, icon, loading, delay = 0, children }) {
       <div className="flex items-center gap-2 px-4 pt-3.5">
         {icon && <span style={{ fontSize: 14 }}>{icon}</span>}
         <span
+          className="c-secondary"
           style={{
             fontSize: 13,
             fontWeight: 600,
-            color: 'var(--text-secondary)',
             letterSpacing: 0.2,
           }}
         >
@@ -59,7 +59,7 @@ export function WidgetShell({ name, icon, loading, delay = 0, children }) {
           <SkeletonCard />
         ) : forceShow && loading ? (
           <div className="flex items-center justify-center py-4">
-            <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
+            <span className="c-tertiary" style={{ fontSize: 13 }}>
               Нет данных
             </span>
           </div>

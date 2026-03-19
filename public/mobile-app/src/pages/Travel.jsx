@@ -48,10 +48,10 @@ export default function Travel() {
   }, [trips, filter]);
 
   return (
-    <PageShell title="Командировки" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--blue)' }}><Plus size={22} /></button>}>
+    <PageShell title="Командировки" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>}>
       <PullToRefresh onRefresh={fetchTrips}>
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}
+          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id}>{f.label}</button>)}
         </div>
         {loading ? <SkeletonList count={4} /> : filtered.length === 0 ? (
           <EmptyState icon={Plane} iconColor="var(--blue)" iconBg="rgba(74,144,217,0.1)" title="Нет командировок" description="Командировки появятся здесь" />
@@ -60,16 +60,16 @@ export default function Travel() {
             {filtered.map((trip, i) => {
               const st = getTripStatus(trip);
               return (
-                <button key={trip.id} onClick={() => { haptic.light(); setDetail(trip); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both` }}>
+                <button key={trip.id} onClick={() => { haptic.light(); setDetail(trip); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{trip.destination || trip.city || `Командировка #${trip.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{trip.destination || trip.city || `Командировка #${trip.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
-                  {(trip.purpose || trip.object_name) && <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>{trip.purpose || trip.object_name}</p>}
+                  {(trip.purpose || trip.object_name) && <p className="text-[12px] mt-0.5 truncate c-secondary">{trip.purpose || trip.object_name}</p>}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    <span className="flex items-center gap-0.5 text-[10px]" style={{ color: 'var(--text-tertiary)' }}><Calendar size={10} />{formatDate(trip.start_date)} — {formatDate(trip.end_date)}</span>
-                    {trip.employee_name && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{trip.employee_name}</span>}
+                    <span className="flex items-center gap-0.5 text-[10px] c-tertiary"><Calendar size={10} />{formatDate(trip.start_date)} — {formatDate(trip.end_date)}</span>
+                    {trip.employee_name && <span className="text-[10px] c-tertiary">{trip.employee_name}</span>}
                   </div>
                 </button>
               );
@@ -101,7 +101,7 @@ function TripDetailSheet({ trip, onClose }) {
   return (
     <BottomSheet open={!!trip} onClose={onClose} title={trip.destination || trip.city || 'Командировка'}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px]" style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
       </div>
     </BottomSheet>
   );
@@ -115,7 +115,6 @@ function CreateTripSheet({ open, onClose, onCreated }) {
   const [endDate, setEndDate] = useState('');
   const [budget, setBudget] = useState('');
   const [saving, setSaving] = useState(false);
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
   const handleSubmit = async () => {
     if (!dest.trim() || !startDate || !endDate) return;
     haptic.light(); setSaving(true);
@@ -128,14 +127,14 @@ function CreateTripSheet({ open, onClose, onCreated }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новая командировка">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Направление *</label><input type="text" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Город / регион" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Цель</label><input type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Цель поездки" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
+        <div><label className="input-label">Направление *</label><input type="text" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Город / регион" className="input-field" /></div>
+        <div><label className="input-label">Цель</label><input type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Цель поездки" className="input-field" /></div>
         <div className="grid grid-cols-2 gap-2">
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Начало *</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Окончание *</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
+          <div><label className="input-label">Начало *</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input-field" /></div>
+          <div><label className="input-label">Окончание *</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input-field" /></div>
         </div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Бюджет (₽)</label><input type="number" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="0" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <button onClick={handleSubmit} disabled={!valid || saving} className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: valid ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: valid ? '#fff' : 'var(--text-tertiary)', opacity: saving ? 0.6 : 1 }}>{saving ? 'Сохранение...' : 'Создать'}</button>
+        <div><label className="input-label">Бюджет (₽)</label><input type="number" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="0" className="input-field" /></div>
+        <button onClick={handleSubmit} disabled={!valid || saving} className="btn-primary spring-tap mt-1">{saving ? 'Сохранение...' : 'Создать'}</button>
       </div>
     </BottomSheet>
   );

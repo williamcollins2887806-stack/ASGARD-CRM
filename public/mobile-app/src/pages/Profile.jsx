@@ -45,7 +45,7 @@ export default function Profile() {
         >
           {(user?.full_name || user?.login || 'A').charAt(0).toUpperCase()}
         </div>
-        <p className="text-[17px] font-bold" style={{ color: 'var(--text-primary)' }}>
+        <p className="text-[17px] font-bold c-primary">
           {user?.full_name || user?.login || 'Пользователь'}
         </p>
         <span
@@ -59,8 +59,8 @@ export default function Profile() {
       {/* My data section */}
       <SectionLabel>Мои данные</SectionLabel>
       <div
-        className="rounded-2xl overflow-hidden mb-4"
-        style={{ background: 'var(--bg-surface)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 50ms both' }}
+        className="rounded-2xl overflow-hidden mb-4 bg-surface"
+        style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 50ms both' }}
       >
         <InfoRow icon={User} label="Логин" value={user?.login || '—'} />
         <InfoRow
@@ -81,8 +81,8 @@ export default function Profile() {
       {/* Security section */}
       <SectionLabel>Безопасность</SectionLabel>
       <div
-        className="rounded-2xl overflow-hidden mb-4"
-        style={{ background: 'var(--bg-surface)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 100ms both' }}
+        className="rounded-2xl overflow-hidden mb-4 bg-surface"
+        style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 100ms both' }}
       >
         <InfoRow
           icon={Lock}
@@ -96,8 +96,8 @@ export default function Profile() {
       {/* Appearance section */}
       <SectionLabel>Внешний вид</SectionLabel>
       <div
-        className="rounded-2xl overflow-hidden mb-4"
-        style={{ background: 'var(--bg-surface)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 150ms both' }}
+        className="rounded-2xl overflow-hidden mb-4 bg-surface"
+        style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 150ms both' }}
       >
         <button
           onClick={() => { haptic.medium(); toggleTheme(); }}
@@ -107,9 +107,9 @@ export default function Profile() {
             className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
             style={{ background: theme === 'dark' ? 'rgba(255,204,0,0.12)' : 'rgba(74,144,217,0.12)' }}
           >
-            {theme === 'dark' ? <Sun size={18} style={{ color: '#FFCC00' }} /> : <Moon size={18} style={{ color: 'var(--blue)' }} />}
+            {theme === 'dark' ? <Sun size={18} style={{ color: '#FFCC00' }} /> : <Moon size={18} className="c-blue" />}
           </div>
-          <span className="flex-1 text-left text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+          <span className="flex-1 text-left text-[15px] font-medium c-primary">
             {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
           </span>
           <ToggleSwitch active={theme === 'dark'} />
@@ -118,15 +118,15 @@ export default function Profile() {
 
       {/* Logout */}
       <div
-        className="rounded-2xl overflow-hidden mb-6"
-        style={{ background: 'var(--bg-surface)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 200ms both' }}
+        className="rounded-2xl overflow-hidden mb-6 bg-surface"
+        style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 200ms both' }}
       >
         <button
           onClick={() => { haptic.medium(); logout(); navigate('/welcome'); }}
           className="w-full flex items-center justify-center gap-2 px-4 py-3.5 spring-tap"
         >
-          <LogOut size={18} style={{ color: 'var(--red-soft)' }} />
-          <span className="text-[15px] font-medium" style={{ color: 'var(--red-soft)' }}>Выйти</span>
+          <LogOut size={18} className="c-red" />
+          <span className="text-[15px] font-medium c-red">Выйти</span>
         </button>
       </div>
 
@@ -141,7 +141,7 @@ export default function Profile() {
 
 function SectionLabel({ children }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-wider px-1 pb-1.5 pt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+    <p className="text-[11px] font-semibold uppercase tracking-wider px-1 pb-1.5 pt-0.5 c-tertiary">
       {children}
     </p>
   );
@@ -159,15 +159,15 @@ function InfoRow({ icon: Icon, label, value, onClick, last }) {
         className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
         style={{ background: 'color-mix(in srgb, var(--text-secondary) 10%, transparent)' }}
       >
-        <Icon size={18} style={{ color: 'var(--text-secondary)' }} />
+        <Icon size={18} className="c-secondary" />
       </div>
       <div className="flex-1 min-w-0 text-left">
-        <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
-        <p className="text-[14px] truncate" style={{ color: value ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+        <p className="text-[11px] c-tertiary">{label}</p>
+        <p className={`text-[14px] truncate ${value ? 'c-primary' : 'c-tertiary'}`}>
           {value || '—'}
         </p>
       </div>
-      {onClick && <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />}
+      {onClick && <ChevronRight size={16} className="c-tertiary" />}
     </button>
   );
 }
@@ -217,7 +217,7 @@ function EditFieldSheet({ field, onClose, userId }) {
     <BottomSheet open={!!field} onClose={onClose} title={`Изменить ${field.label}`}>
       <div className="flex flex-col gap-3 pb-4">
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>
+          <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block c-tertiary">
             {field.label}
           </label>
           <input
@@ -225,8 +225,8 @@ function EditFieldSheet({ field, onClose, userId }) {
             value={value}
             onChange={(e) => setValue(e.target.value)}
             autoFocus
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none c-primary"
+            style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
           />
         </div>
         <button
@@ -271,7 +271,7 @@ function ChangePasswordSheet({ open, onClose }) {
     <BottomSheet open={open} onClose={onClose} title="Смена пароля">
       <div className="flex flex-col gap-3 pb-4">
         {error && (
-          <p className="text-[13px] px-3 py-2 rounded-xl" style={{ background: 'color-mix(in srgb, var(--red-soft) 15%, transparent)', color: 'var(--red-soft)' }}>
+          <p className="text-[13px] px-3 py-2 rounded-xl c-red" style={{ background: 'color-mix(in srgb, var(--red-soft) 15%, transparent)' }}>
             {error}
           </p>
         )}
@@ -298,15 +298,15 @@ function ChangePasswordSheet({ open, onClose }) {
 function PwdField({ label, value, onChange }) {
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>
+      <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block c-tertiary">
         {label}
       </label>
       <input
         type="password"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-        style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+        className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none c-primary"
+        style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
       />
     </div>
   );

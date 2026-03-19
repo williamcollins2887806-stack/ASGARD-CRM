@@ -48,8 +48,8 @@ export default function Settings() {
       {/* Notifications */}
       <SectionLabel>Уведомления</SectionLabel>
       <div
-        className="rounded-2xl overflow-hidden mb-4"
-        style={{ background: 'var(--bg-surface)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}
+        className="rounded-2xl overflow-hidden mb-4 bg-surface"
+        style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}
       >
         <ToggleRow
           icon={Bell}
@@ -62,8 +62,8 @@ export default function Settings() {
       {/* Appearance */}
       <SectionLabel>Внешний вид</SectionLabel>
       <div
-        className="rounded-2xl overflow-hidden mb-4"
-        style={{ background: 'var(--bg-surface)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 50ms both' }}
+        className="rounded-2xl overflow-hidden mb-4 bg-surface"
+        style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 50ms both' }}
       >
         <ToggleRow
           icon={theme === 'dark' ? Sun : Moon}
@@ -77,8 +77,8 @@ export default function Settings() {
       {/* System */}
       <SectionLabel>Система</SectionLabel>
       <div
-        className="rounded-2xl overflow-hidden mb-4"
-        style={{ background: 'var(--bg-surface)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 100ms both' }}
+        className="rounded-2xl overflow-hidden mb-4 bg-surface"
+        style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 100ms both' }}
       >
         <InfoRow icon={Info} label="Версия" value="ASGARD Mobile v2.0.0" />
         <InfoRow icon={Smartphone} label="Сервер" value={window.location.hostname} />
@@ -90,11 +90,11 @@ export default function Settings() {
           <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
             style={{ background: 'color-mix(in srgb, var(--text-secondary) 10%, transparent)' }}
           >
-            <Info size={18} style={{ color: 'var(--text-secondary)' }} />
+            <Info size={18} className="c-secondary" />
           </div>
           <div className="flex-1 text-left">
-            <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Размер кэша</p>
-            <p className="text-[14px]" style={{ color: 'var(--text-primary)' }}>{cacheSize || 'Нажмите для проверки'}</p>
+            <p className="text-[11px] c-tertiary">Размер кэша</p>
+            <p className="text-[14px] c-primary">{cacheSize || 'Нажмите для проверки'}</p>
           </div>
         </button>
         <button
@@ -104,9 +104,9 @@ export default function Settings() {
           <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
             style={{ background: 'rgba(255, 69, 58, 0.1)' }}
           >
-            <Trash2 size={18} style={{ color: 'var(--red-soft)' }} />
+            <Trash2 size={18} className="c-red" />
           </div>
-          <span className="flex-1 text-left text-[15px] font-medium" style={{ color: 'var(--red-soft)' }}>
+          <span className="flex-1 text-left text-[15px] font-medium c-red">
             Очистить кэш
           </span>
         </button>
@@ -117,7 +117,7 @@ export default function Settings() {
 
 function SectionLabel({ children }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-wider px-1 pb-1.5 pt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+    <p className="text-[11px] font-semibold uppercase tracking-wider px-1 pb-1.5 pt-0.5 c-tertiary">
       {children}
     </p>
   );
@@ -132,11 +132,11 @@ function InfoRow({ icon: Icon, label, value }) {
       <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
         style={{ background: 'color-mix(in srgb, var(--text-secondary) 10%, transparent)' }}
       >
-        <Icon size={18} style={{ color: 'var(--text-secondary)' }} />
+        <Icon size={18} className="c-secondary" />
       </div>
       <div className="flex-1">
-        <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
-        <p className="text-[14px]" style={{ color: 'var(--text-primary)' }}>{value}</p>
+        <p className="text-[11px] c-tertiary">{label}</p>
+        <p className="text-[14px] c-primary">{value}</p>
       </div>
     </div>
   );
@@ -150,7 +150,7 @@ function ToggleRow({ icon: Icon, iconColor, label, active, onToggle }) {
       >
         <Icon size={18} style={{ color: iconColor || 'var(--text-secondary)' }} />
       </div>
-      <span className="flex-1 text-left text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+      <span className="flex-1 text-left text-[15px] font-medium c-primary">
         {label}
       </span>
       <div

@@ -19,8 +19,10 @@ const fs = require('fs');
 // Кэшируем 2 версии index.html при старте (как Сбер/Яндекс)
 // ─────────────────────────────────────────────────────────────────────────────
 const indexHtmlPath = path.join(__dirname, '../public/index.html');
+const reactMobileHtmlPath = path.join(__dirname, '../public/m/index.html');
 let indexDesktop = '';
 let indexMobile = '';
+let reactMobileHtml = '';
 
 function buildIndexVersions() {
   const raw = fs.readFileSync(indexHtmlPath, 'utf8');
@@ -30,6 +32,12 @@ function buildIndexVersions() {
   // Мобильная: убираем десктопные скрипты
   indexMobile = raw
     .replace(/<!-- ASGARD_DESKTOP_START -->[\s\S]*?<!-- ASGARD_DESKTOP_END -->/g, '<!-- desktop scripts excluded by server -->');
+  // React mobile app (если собран)
+  try {
+    reactMobileHtml = fs.readFileSync(reactMobileHtmlPath, 'utf8');
+  } catch (_) {
+    reactMobileHtml = '';
+  }
 }
 
 buildIndexVersions();
@@ -114,6 +122,17 @@ fastify.addHook('onRequest', async (request, reply) => {
     return;
   }
 
+  // Allow React mobile app paths (/m/ and its assets)
+  if (url === '/m' || url === '/m/' || url.startsWith('/m/')) {
+    return;
+  }
+
+  // Block /mobile-app/ source directory from web access
+  if (url === '/mobile-app' || url.startsWith('/mobile-app/')) {
+    reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
+    return;
+  }
+
   // Block path traversal and sensitive paths
   if (url.includes('..') ||
       /\/\.env/i.test(url) ||
@@ -139,11 +158,33 @@ fastify.register(require('@fastify/compress'), {
 });
 
 // Перехватываем / и /index.html ДО @fastify/static
+// + React mobile app SPA routing для /m/*
 fastify.addHook('onRequest', (request, reply, done) => {
   const url = request.url.split('?')[0];
+
+  // React mobile app: /m → /m/ redirect
+  if (url === '/m') {
+    reply.redirect(301, '/m/');
+    return;
+  }
+
+  // React mobile app: SPA fallback для всех /m/* путей
+  if (url === '/m/' || (url.startsWith('/m/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
+    if (reactMobileHtml) {
+      reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
+      return;
+    }
+  }
+
+  // Root: мобильный UA → redirect на React app
   if (url === '/' || url === '/index.html') {
+    const ua = request.headers['user-agent'] || '';
+    if (isMobileUA(ua) && reactMobileHtml) {
+      reply.redirect(302, '/m/');
+      return;
+    }
     sendIndexHtml(request, reply);
-    return; // Не вызываем done() — ответ уже отправлен
+    return;
   }
   done();
 });
@@ -469,6 +510,13 @@ fastify.setNotFoundHandler((request, reply) => {
       /\/migrations\//i.test(decodedUrl) ||
       /\/tests\//i.test(decodedUrl)) {
     reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
+    return;
+  }
+
+  // React mobile app SPA fallback (/m/* routes)
+  const cleanUrl = request.url.split('?')[0];
+  if (cleanUrl.startsWith('/m/') && reactMobileHtml) {
+    reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
     return;
   }
 

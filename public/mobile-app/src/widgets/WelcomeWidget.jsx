@@ -97,10 +97,9 @@ export default function WelcomeWidget() {
         </div>
 
         <p
-          className="mt-1.5 capitalize"
+          className="mt-1.5 capitalize c-secondary"
           style={{
             fontSize: 13,
-            color: 'var(--text-secondary)',
           }}
         >
           {dateStr}
@@ -115,9 +114,9 @@ export default function WelcomeWidget() {
           }}
         >
           <p
+            className="c-gold"
             style={{
               fontSize: 13,
-              color: 'var(--gold)',
               fontStyle: 'italic',
               lineHeight: 1.4,
             }}

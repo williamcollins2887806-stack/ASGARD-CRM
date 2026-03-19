@@ -1,36 +1,42 @@
-import { useState, useRef } from 'react';
-import { Check, CheckCheck } from 'lucide-react';
+import { useState, useRef, useCallback } from 'react';
+import { Check, CheckCheck, Reply, Forward } from 'lucide-react';
 import { ReactionBadge } from './ReactionBadge';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoCircle } from './VideoCircle';
 import { ImagePreview } from './ImagePreview';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥', '👀', '✅'];
+const SWIPE_THRESHOLD = 60;
 
 /**
  * MessageBubble — бабл сообщения
- * Поддержка: text, voice, video, image, file, reply, reactions, deleted
+ * Swipe-to-reply, анимации, улучшенное контекстное меню
  */
 export function MessageBubble({
   msg,
   isMine,
   grouped,
-  position, // 'first' | 'middle' | 'last' | 'single'
+  position,
   onReply,
   onReaction,
   onDelete,
   onEdit,
+  isNew,
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const longPressTimer = useRef(null);
+
+  // Swipe state
+  const [swipeX, setSwipeX] = useState(0);
+  const touchStartRef = useRef({ x: 0, y: 0, swiping: false });
 
   // Deleted message
   if (msg.deleted_at) {
     return (
       <div className={`flex ${isMine ? 'justify-end' : 'justify-start'} px-3 py-0.5`}>
         <div
-          className="px-3 py-1.5 rounded-2xl text-[13px] italic"
-          style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}
+          className="px-3 py-1.5 rounded-2xl text-[13px] italic c-tertiary"
+          style={{ opacity: 0.6 }}
         >
           Сообщение удалено
         </div>
@@ -66,28 +72,90 @@ export function MessageBubble({
   const isVoice = msg.message_type === 'voice';
   const isVideo = msg.message_type === 'video';
 
-  const handleTouchStart = () => {
+  // Long press for context menu
+  const handleTouchStart = (e) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, swiping: false };
     longPressTimer.current = setTimeout(() => {
-      setShowMenu(true);
+      if (!touchStartRef.current.swiping) {
+        setShowMenu(true);
+      }
     }, 500);
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchMove = useCallback((e) => {
+    const touch = e.touches[0];
+    const dx = touch.clientX - touchStartRef.current.x;
+    const dy = touch.clientY - touchStartRef.current.y;
+
+    // If vertical scroll, cancel swipe
+    if (Math.abs(dy) > Math.abs(dx) && !touchStartRef.current.swiping) {
+      return;
+    }
+
+    // Start swiping if horizontal > 10px
+    if (Math.abs(dx) > 10) {
+      touchStartRef.current.swiping = true;
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    }
+
+    if (touchStartRef.current.swiping) {
+      // Own messages swipe left (negative), others swipe right (positive)
+      const clamp = isMine
+        ? Math.max(Math.min(dx, 0), -100)
+        : Math.min(Math.max(dx, 0), 100);
+      setSwipeX(clamp);
+    }
+  }, [isMine]);
+
+  const handleTouchEnd = useCallback(() => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
-  };
+    if (Math.abs(swipeX) >= SWIPE_THRESHOLD) {
+      onReply?.(msg);
+    }
+    setSwipeX(0);
+    touchStartRef.current.swiping = false;
+  }, [swipeX, msg, onReply]);
 
   const imageUrl =
     msg.attachments?.find((a) => a.mime_type?.startsWith('image/'))?.url ||
     msg.file_url;
 
+  const swipeProgress = Math.min(Math.abs(swipeX) / SWIPE_THRESHOLD, 1);
+
+  // Animation class
+  const animClass = isNew
+    ? isMine ? 'msg-enter-own' : 'msg-enter'
+    : '';
+
   return (
-    <div className={`relative ${isMine ? 'flex justify-end' : 'flex justify-start'} px-3`}
+    <div
+      className={`relative ${isMine ? 'flex justify-end' : 'flex justify-start'} px-3 ${animClass}`}
       style={{ marginTop: grouped ? 1 : 6 }}
     >
+      {/* Swipe reply icon */}
+      {swipeX !== 0 && (
+        <div
+          className="swipe-reply-icon"
+          style={{
+            [isMine ? 'right' : 'left']: isMine ? 'calc(80% + 12px)' : 'calc(80% + 12px)',
+            opacity: swipeProgress,
+            transform: `translateY(-50%) scale(${0.5 + swipeProgress * 0.5})`,
+          }}
+        >
+          <Reply size={20} />
+        </div>
+      )}
+
       <div
         className="relative"
-        style={{ maxWidth: '80%' }}
+        style={{
+          maxWidth: '80%',
+          transform: `translateX(${swipeX}px)`,
+          transition: swipeX === 0 ? 'transform 250ms var(--ease-spring)' : 'none',
+        }}
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
         onContextMenu={(e) => {
@@ -95,12 +163,9 @@ export function MessageBubble({
           setShowMenu(true);
         }}
       >
-        {/* Sender name (group chats, not mine, first in group) */}
+        {/* Sender name */}
         {!isMine && !grouped && msg.user_name && (
-          <p
-            className="text-[11px] font-semibold mb-0.5 ml-1"
-            style={{ color: 'var(--blue)' }}
-          >
+          <p className="text-[11px] font-semibold mb-0.5 ml-1 c-blue">
             {msg.user_name}
           </p>
         )}
@@ -125,10 +190,10 @@ export function MessageBubble({
               }}
             >
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--blue)' }}>
+                <p className="text-[11px] font-semibold truncate c-blue">
                   {msg.reply_user_name || ''}
                 </p>
-                <p className="text-[11px] truncate" style={{ color: 'var(--text-secondary)' }}>
+                <p className="text-[11px] truncate c-secondary">
                   {msg.reply_text}
                 </p>
               </div>
@@ -193,7 +258,14 @@ export function MessageBubble({
               {time}
             </span>
             {isMine && (
-              <span style={{ color: msg._sending ? 'rgba(255,255,255,0.3)' : msg.is_read ? '#4fc3f7' : 'rgba(255,255,255,0.5)' }}>
+              <span
+                className="check-animate"
+                style={{
+                  color: msg._sending
+                    ? 'rgba(255,255,255,0.3)'
+                    : msg.is_read ? '#4fc3f7' : 'rgba(255,255,255,0.5)',
+                }}
+              >
                 {msg._sending ? (
                   <Check size={12} />
                 ) : msg.is_read ? (
@@ -204,7 +276,7 @@ export function MessageBubble({
               </span>
             )}
             {msg._failed && (
-              <span className="text-[10px]" style={{ color: 'var(--red-soft)' }}>!</span>
+              <span className="text-[10px] c-red">!</span>
             )}
           </div>
         </div>
@@ -215,20 +287,20 @@ export function MessageBubble({
           onTap={(emoji) => onReaction?.(msg.id, emoji)}
         />
 
-        {/* Context menu (long press) */}
+        {/* Context menu (long press) — with backdrop blur + scale-in */}
         {showMenu && (
           <>
             <div
-              className="fixed inset-0"
-              style={{ zIndex: 55 }}
+              className="ctx-backdrop"
               onClick={() => setShowMenu(false)}
             />
             <div
-              className="absolute z-[56]"
+              className="absolute ctx-menu"
               style={{
                 [isMine ? 'right' : 'left']: 0,
                 bottom: '100%',
                 marginBottom: 4,
+                zIndex: 'var(--z-modal)',
               }}
             >
               {/* Quick reactions */}
@@ -237,7 +309,6 @@ export function MessageBubble({
                 style={{
                   background: 'var(--bg-elevated)',
                   boxShadow: 'var(--shadow-lg)',
-                  backdropFilter: 'blur(20px)',
                 }}
               >
                 {QUICK_REACTIONS.map((e) => (
@@ -265,18 +336,15 @@ export function MessageBubble({
                 }}
               >
                 <button
-                  className="w-full text-left px-4 py-2.5 text-[14px]"
-                  style={{ color: 'var(--text-primary)' }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[14px] c-primary"
                   onClick={() => { onReply?.(msg); setShowMenu(false); }}
                 >
+                  <Reply size={16} className="c-tertiary" />
                   Ответить
                 </button>
                 <button
-                  className="w-full text-left px-4 py-2.5 text-[14px]"
-                  style={{
-                    color: 'var(--text-primary)',
-                    borderTop: '0.5px solid var(--border-norse)',
-                  }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[14px] c-primary"
+                  style={{ borderTop: '0.5px solid var(--border-norse)' }}
                   onClick={() => {
                     navigator.clipboard?.writeText(msg.message || '').catch(() => {});
                     setShowMenu(false);
@@ -284,24 +352,26 @@ export function MessageBubble({
                 >
                   Копировать
                 </button>
+                <button
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[14px] c-primary"
+                  style={{ borderTop: '0.5px solid var(--border-norse)' }}
+                  onClick={() => setShowMenu(false)}
+                >
+                  <Forward size={16} className="c-tertiary" />
+                  Переслать
+                </button>
                 {isMine && (
                   <>
                     <button
-                      className="w-full text-left px-4 py-2.5 text-[14px]"
-                      style={{
-                        color: 'var(--text-primary)',
-                        borderTop: '0.5px solid var(--border-norse)',
-                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[14px] c-primary"
+                      style={{ borderTop: '0.5px solid var(--border-norse)' }}
                       onClick={() => { onEdit?.(msg); setShowMenu(false); }}
                     >
                       Редактировать
                     </button>
                     <button
-                      className="w-full text-left px-4 py-2.5 text-[14px]"
-                      style={{
-                        color: 'var(--red-soft)',
-                        borderTop: '0.5px solid var(--border-norse)',
-                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[14px] c-red"
+                      style={{ borderTop: '0.5px solid var(--border-norse)' }}
                       onClick={() => { onDelete?.(msg.id); setShowMenu(false); }}
                     >
                       Удалить

@@ -38,10 +38,10 @@ export default function MyMail() {
   };
 
   return (
-    <PageShell title="Почта" headerRight={<button onClick={() => { haptic.light(); setShowCompose(true); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--blue)' }}><Plus size={22} /></button>}>
+    <PageShell title="Почта" headerRight={<button onClick={() => { haptic.light(); setShowCompose(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>}>
       <PullToRefresh onRefresh={fetchEmails}>
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FOLDERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFolder(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: folder === f.id ? 'var(--bg-elevated)' : 'transparent', color: folder === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: folder === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}
+          {FOLDERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFolder(f.id); }} className="filter-pill spring-tap" data-active={folder === f.id}>{f.label}</button>)}
         </div>
         {loading ? <SkeletonList count={5} /> : emails.length === 0 ? (
           <EmptyState icon={Mail} iconColor="var(--blue)" iconBg="rgba(74,144,217,0.1)" title="Нет писем" description="Письма появятся здесь" />
@@ -50,15 +50,15 @@ export default function MyMail() {
             {emails.map((email, i) => {
               const unread = !email.is_read && !email.seen;
               return (
-                <button key={email.id} onClick={() => handleOpen(email)} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', borderLeft: unread ? '3px solid var(--blue)' : '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={email.id} onClick={() => handleOpen(email)} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ borderLeft: unread ? '3px solid var(--blue)' : '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className={`text-[14px] leading-tight ${unread ? 'font-bold' : 'font-semibold'}`} style={{ color: 'var(--text-primary)' }}>{email.subject || '(без темы)'}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className={`text-[14px] leading-tight c-primary ${unread ? 'font-bold' : 'font-semibold'}`}>{email.subject || '(без темы)'}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
-                  <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>{email.from_name || email.from || '—'}</p>
+                  <p className="text-[12px] mt-0.5 truncate c-secondary">{email.from_name || email.from || '—'}</p>
                   <div className="flex items-center gap-1.5 mt-1.5">
-                    {email.attachments?.length > 0 && <Paperclip size={10} style={{ color: 'var(--text-tertiary)' }} />}
-                    {email.date && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{relativeTime(email.date)}</span>}
+                    {email.attachments?.length > 0 && <Paperclip size={10} className="c-tertiary" />}
+                    {email.date && <span className="text-[10px] c-tertiary">{relativeTime(email.date)}</span>}
                   </div>
                 </button>
               );
@@ -80,20 +80,20 @@ function EmailDetailSheet({ email, onClose }) {
       <div className="flex flex-col gap-3 pb-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>{e.from_name || e.from || '—'}</p>
-            {e.to && <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Кому: {e.to}</p>}
+            <p className="text-[13px] font-semibold c-primary">{e.from_name || e.from || '—'}</p>
+            {e.to && <p className="text-[11px] c-tertiary">Кому: {e.to}</p>}
           </div>
-          {e.date && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{relativeTime(e.date)}</span>}
+          {e.date && <span className="text-[10px] c-tertiary">{relativeTime(e.date)}</span>}
         </div>
         <div className="rounded-xl p-3" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
-          <p className="text-[13px] whitespace-pre-wrap" style={{ color: 'var(--text-primary)' }}>{e.text || e.body || e.html_text || e.preview || '—'}</p>
+          <p className="text-[13px] whitespace-pre-wrap c-primary">{e.text || e.body || e.html_text || e.preview || '—'}</p>
         </div>
         {e.attachments?.length > 0 && (
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Вложения</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1 c-tertiary">Вложения</p>
             <div className="flex flex-wrap gap-1.5">
               {e.attachments.map((a, i) => (
-                <a key={i} href={`/api/my-mail/attachments/${a.id || i}/download`} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded-full text-[11px] font-semibold spring-tap" style={{ background: 'color-mix(in srgb, var(--blue) 15%, transparent)', color: 'var(--blue)' }}>
+                <a key={i} href={`/api/my-mail/attachments/${a.id || i}/download`} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded-full text-[11px] font-semibold spring-tap c-blue" style={{ background: 'color-mix(in srgb, var(--blue) 15%, transparent)' }}>
                   <Paperclip size={10} className="inline mr-1" />{a.filename || a.name || `Файл ${i + 1}`}
                 </a>
               ))}
@@ -111,7 +111,6 @@ function ComposeSheet({ open, onClose, onSent }) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
   const handleSend = async () => {
     if (!to.trim() || !body.trim()) return;
     haptic.light(); setSaving(true);
@@ -124,10 +123,10 @@ function ComposeSheet({ open, onClose, onSent }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новое письмо">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Кому *</label><input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="email@example.com" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Тема</label><input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Тема письма" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Сообщение *</label><textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Текст письма..." rows={4} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={is} /></div>
-        <button onClick={handleSend} disabled={!valid || saving} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: valid ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: valid ? '#fff' : 'var(--text-tertiary)', opacity: saving ? 0.6 : 1 }}><Send size={16} />{saving ? 'Отправка...' : 'Отправить'}</button>
+        <div><label className="input-label">Кому *</label><input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="email@example.com" className="input-field" /></div>
+        <div><label className="input-label">Тема</label><input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Тема письма" className="input-field" /></div>
+        <div><label className="input-label">Сообщение *</label><textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Текст письма..." rows={4} className="input-field resize-none" /></div>
+        <button onClick={handleSend} disabled={!valid || saving} className="btn-primary flex items-center justify-center gap-2 spring-tap mt-1" style={{ opacity: saving ? 0.6 : 1 }}><Send size={16} />{saving ? 'Отправка...' : 'Отправить'}</button>
       </div>
     </BottomSheet>
   );

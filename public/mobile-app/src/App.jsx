@@ -105,7 +105,7 @@ function AppLayout() {
           <Route path="/settings" element={<ProtectedRoute section="settings"><PinGuard><Settings /></PinGuard></ProtectedRoute>} />
           <Route path="/correspondence" element={<ProtectedRoute section="works"><PinGuard><Correspondence /></PinGuard></ProtectedRoute>} />
           <Route path="/alerts" element={<ProtectedRoute section="dashboard"><PinGuard><Alerts /></PinGuard></ProtectedRoute>} />
-          <Route path="/meetings" element={<ProtectedRoute section="works"><PinGuard><Meetings /></PinGuard></ProtectedRoute>} />
+          <Route path="/meetings" element={<ProtectedRoute section="dashboard"><PinGuard><Meetings /></PinGuard></ProtectedRoute>} />
           <Route path="/cash" element={<ProtectedRoute section="finances"><PinGuard><Cash /></PinGuard></ProtectedRoute>} />
           <Route path="/acts" element={<ProtectedRoute section="finances"><PinGuard><Acts /></PinGuard></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute section="finances"><PinGuard><Invoices /></PinGuard></ProtectedRoute>} />
@@ -121,8 +121,8 @@ function AppLayout() {
           <Route path="/payroll" element={<ProtectedRoute section="finances"><PinGuard><Payroll /></PinGuard></ProtectedRoute>} />
           <Route path="/office-expenses" element={<ProtectedRoute section="finances"><PinGuard><OfficeExpenses /></PinGuard></ProtectedRoute>} />
           <Route path="/cash-admin" element={<ProtectedRoute section="finances"><PinGuard><CashAdmin /></PinGuard></ProtectedRoute>} />
-          <Route path="/tasks-admin" element={<ProtectedRoute section="tasks"><PinGuard><TasksAdmin /></PinGuard></ProtectedRoute>} />
-          <Route path="/warehouse" element={<ProtectedRoute section="works"><PinGuard><Warehouse /></PinGuard></ProtectedRoute>} />
+          <Route path="/tasks-admin" element={<ProtectedRoute section="settings"><PinGuard><TasksAdmin /></PinGuard></ProtectedRoute>} />
+          <Route path="/warehouse" element={<ProtectedRoute section="dashboard"><PinGuard><Warehouse /></PinGuard></ProtectedRoute>} />
           <Route path="/gantt" element={<ProtectedRoute section="works"><PinGuard><Gantt /></PinGuard></ProtectedRoute>} />
           <Route path="/workers-schedule" element={<ProtectedRoute section="personnel"><PinGuard><WorkersSchedule /></PinGuard></ProtectedRoute>} />
           <Route path="/worker-profile/:id" element={<ProtectedRoute section="personnel"><PinGuard><WorkerProfile /></PinGuard></ProtectedRoute>} />
@@ -131,7 +131,7 @@ function AppLayout() {
           <Route path="/my-mail" element={<ProtectedRoute section="profile"><PinGuard><MyMail /></PinGuard></ProtectedRoute>} />
           <Route path="/seals" element={<ProtectedRoute section="works"><PinGuard><Seals /></PinGuard></ProtectedRoute>} />
           <Route path="/diag" element={<ProtectedRoute section="settings"><PinGuard><Diag /></PinGuard></ProtectedRoute>} />
-          <Route path="/training" element={<ProtectedRoute section="personnel"><PinGuard><Training /></PinGuard></ProtectedRoute>} />
+          <Route path="/training" element={<ProtectedRoute section="dashboard"><PinGuard><Training /></PinGuard></ProtectedRoute>} />
           <Route path="/integrations" element={<ProtectedRoute section="settings"><PinGuard><Integrations /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -157,7 +157,7 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/m">
       <AppLayout />
     </BrowserRouter>
   );

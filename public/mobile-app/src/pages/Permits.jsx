@@ -64,19 +64,19 @@ export default function Permits() {
   }, [permits, filter, search, employees]);
 
   return (
-    <PageShell title="Допуски" headerRight={<button onClick={() => { haptic.light(); setShowSearch(!showSearch); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--text-tertiary)' }}><Search size={20} /></button>}>
+    <PageShell title="Допуски" headerRight={<button onClick={() => { haptic.light(); setShowSearch(!showSearch); }} className="btn-icon spring-tap"><Search size={20} /></button>}>
       <PullToRefresh onRefresh={fetchData}>
         {showSearch && (
           <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}>
-            <div className="flex items-center gap-2 px-3 rounded-xl" style={{ height: 36, background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
-              <Search size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
-              <input type="text" placeholder="Поиск допусков..." value={search} onChange={(e) => setSearch(e.target.value)} autoFocus className="flex-1 bg-transparent outline-none text-[14px]" style={{ color: 'var(--text-primary)', caretColor: 'var(--gold)' }} />
-              {search && <button onClick={() => setSearch('')} style={{ color: 'var(--text-tertiary)' }}><X size={16} /></button>}
+            <div className="search-bar">
+              <Search size={16} className="c-tertiary" style={{ flexShrink: 0 }} />
+              <input type="text" placeholder="Поиск допусков..." value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+              {search && <button onClick={() => setSearch('')} className="c-tertiary"><X size={16} /></button>}
             </div>
           </div>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}
+          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id}>{f.label}</button>)}
         </div>
         {loading ? <SkeletonList count={4} /> : filtered.length === 0 ? (
           <EmptyState icon={Shield} iconColor="var(--green)" iconBg="rgba(48,209,88,0.1)" title={search ? 'Ничего не найдено' : 'Нет допусков'} description="Допуски и удостоверения появятся здесь" />
@@ -86,16 +86,16 @@ export default function Permits() {
               const st = getPermitStatus(permit);
               const empName = employees[permit.employee_id] || '';
               return (
-                <button key={permit.id} onClick={() => { haptic.light(); setDetail(permit); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={permit.id} onClick={() => { haptic.light(); setDetail(permit); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{permit.permit_type || permit.type_name || `Допуск #${permit.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{permit.permit_type || permit.type_name || `Допуск #${permit.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
-                  {empName && <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>{empName}</p>}
+                  {empName && <p className="text-[12px] mt-0.5 truncate c-secondary">{empName}</p>}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    {permit.number && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>№{permit.number}</span>}
-                    {permit.valid_to && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>до {formatDate(permit.valid_to)}</span>}
+                    {permit.number && <span className="text-[10px] c-tertiary">№{permit.number}</span>}
+                    {permit.valid_to && <span className="text-[10px] c-tertiary">до {formatDate(permit.valid_to)}</span>}
                   </div>
                 </button>
               );
@@ -137,7 +137,7 @@ function PermitDetailSheet({ permit, onClose, employees }) {
         {progressPct > 0 && progressPct < 100 && (
           <div className="rounded-xl px-4 py-3" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}>
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Срок действия</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Срок действия</p>
               <p className="text-[14px] font-bold" style={{ color: st.color }}>{progressPct}%</p>
             </div>
             <div className="rounded-full overflow-hidden" style={{ height: 4, background: 'var(--bg-surface-alt)' }}>
@@ -145,8 +145,8 @@ function PermitDetailSheet({ permit, onClose, employees }) {
             </div>
           </div>
         )}
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px]" style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
-        {p.scan_file && <a href={`/api/files/download/${p.scan_file}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: 'var(--bg-elevated)', color: 'var(--blue)' }}><ExternalLink size={16} /> Скачать скан</a>}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
+        {p.scan_file && <a href={`/api/files/download/${p.scan_file}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1 c-blue bg-elevated"><ExternalLink size={16} /> Скачать скан</a>}
       </div>
     </BottomSheet>
   );

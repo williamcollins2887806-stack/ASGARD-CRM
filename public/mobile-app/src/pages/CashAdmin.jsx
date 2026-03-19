@@ -68,18 +68,18 @@ export default function CashAdmin() {
     <PageShell title="Касса (упр.)">
       <PullToRefresh onRefresh={fetchData}>
         {balance && !loading && (
-          <div className="rounded-2xl p-4 mb-3" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Баланс кассы</p>
-            <p className="text-[24px] font-bold" style={{ color: 'var(--text-primary)' }}>{formatMoney(balance.total_balance || 0)}</p>
+          <div className="card-hero mb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
+            <p className="input-label">Баланс кассы</p>
+            <p className="text-[24px] font-bold c-primary">{formatMoney(balance.total_balance || 0)}</p>
             <div className="flex items-center gap-4 mt-2">
-              <span className="text-[12px]" style={{ color: 'var(--blue)' }}>Выдано: {formatMoney(balance.total_issued || 0, { short: true })}</span>
-              <span className="text-[12px]" style={{ color: 'var(--gold)' }}>Расход: {formatMoney(balance.total_spent || 0, { short: true })}</span>
-              <span className="text-[12px]" style={{ color: 'var(--green)' }}>Возврат: {formatMoney(balance.total_returned || 0, { short: true })}</span>
+              <span className="text-[12px] c-blue">Выдано: {formatMoney(balance.total_issued || 0, { short: true })}</span>
+              <span className="text-[12px] c-gold">Расход: {formatMoney(balance.total_spent || 0, { short: true })}</span>
+              <span className="text-[12px] c-green">Возврат: {formatMoney(balance.total_returned || 0, { short: true })}</span>
             </div>
           </div>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}
+          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id ? 'true' : undefined}>{f.label}</button>)}
         </div>
         {loading ? <SkeletonList count={4} /> : filtered.length === 0 ? (
           <EmptyState icon={Vault} iconColor="var(--gold)" iconBg="color-mix(in srgb, var(--gold) 10%, transparent)" title="Нет заявок" description="Кассовые заявки появятся здесь" />
@@ -88,16 +88,16 @@ export default function CashAdmin() {
             {filtered.map((req, i) => {
               const st = STATUS_MAP[req.status] || { label: req.status, color: 'var(--text-tertiary)' };
               return (
-                <button key={req.id} onClick={() => { haptic.light(); setDetail(req); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={req.id} onClick={() => { haptic.light(); setDetail(req); }} className="w-full text-left card-glass px-4 py-3 spring-tap" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{req.purpose || req.description || `Заявка #${req.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{req.purpose || req.description || `Заявка #${req.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    <span className="text-[12px] font-semibold" style={{ color: 'var(--gold)' }}>{formatMoney(req.amount || 0)}</span>
-                    {req.user_name && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{req.user_name}</span>}
-                    {req.created_at && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{relativeTime(req.created_at)}</span>}
+                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    <span className="text-[12px] font-semibold c-gold">{formatMoney(req.amount || 0)}</span>
+                    {req.user_name && <span className="text-[10px] c-tertiary">{req.user_name}</span>}
+                    {req.created_at && <span className="text-[10px] c-tertiary">{relativeTime(req.created_at)}</span>}
                   </div>
                 </button>
               );
@@ -127,15 +127,15 @@ function CashAdminDetailSheet({ request, onClose, onApprove, onReject, onIssue }
   return (
     <BottomSheet open={!!request} onClose={onClose} title={r.purpose || `Заявка #${r.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
         {r.status === 'requested' && (
           <div className="flex gap-2 mt-2">
-            <button onClick={() => onApprove(r.id)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}><Check size={16} /> Одобрить</button>
-            <button onClick={() => onReject(r.id)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap" style={{ background: 'color-mix(in srgb, var(--red-soft) 15%, transparent)', color: 'var(--red-soft)' }}><XIcon size={16} /> Отклонить</button>
+            <button onClick={() => onApprove(r.id)} className="btn-action spring-tap c-green" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}><Check size={16} /> Одобрить</button>
+            <button onClick={() => onReject(r.id)} className="btn-action spring-tap c-red" style={{ background: 'color-mix(in srgb, var(--red-soft) 15%, transparent)' }}><XIcon size={16} /> Отклонить</button>
           </div>
         )}
         {r.status === 'approved' && (
-          <button onClick={() => onIssue(r)} className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-2" style={{ background: 'var(--gold-gradient)', color: '#fff' }}>
+          <button onClick={() => onIssue(r)} className="btn-primary flex items-center justify-center gap-2 spring-tap mt-2">
             <Banknote size={16} /> Выдать наличные
           </button>
         )}
@@ -149,7 +149,6 @@ function IssueCashSheet({ request, onClose, onIssued }) {
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
 
   useEffect(() => { if (request) setAmount(String(request.amount || '')); }, [request]);
 
@@ -164,9 +163,9 @@ function IssueCashSheet({ request, onClose, onIssued }) {
   return (
     <BottomSheet open={!!request} onClose={onClose} title="Выдача наличных">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Сумма (₽) *</label><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Комментарий</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Примечание..." rows={2} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={is} /></div>
-        <button onClick={handleSubmit} disabled={!amount || saving} className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: amount ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: amount ? '#fff' : 'var(--text-tertiary)', opacity: saving ? 0.6 : 1 }}>{saving ? 'Выдаём...' : 'Выдать'}</button>
+        <div><label className="input-label">Сумма (₽) *</label><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="input-field" /></div>
+        <div><label className="input-label">Комментарий</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Примечание..." rows={2} className="input-field resize-none" /></div>
+        <button onClick={handleSubmit} disabled={!amount || saving} className="btn-primary spring-tap mt-1">{saving ? 'Выдаём...' : 'Выдать'}</button>
       </div>
     </BottomSheet>
   );

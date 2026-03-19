@@ -18,8 +18,7 @@ export default function Tasks() {
       {/* Skeleton preview */}
       <div className="mt-2 px-1" style={{ opacity: 0.5 }}>
         <p
-          className="text-xs font-medium mb-3 pl-1"
-          style={{ color: 'var(--text-tertiary)' }}
+          className="text-xs font-medium mb-3 pl-1 c-tertiary"
         >
           Превью интерфейса
         </p>

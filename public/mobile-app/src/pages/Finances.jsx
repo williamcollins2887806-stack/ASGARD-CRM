@@ -62,28 +62,22 @@ export default function Finances() {
         {/* Profit hero */}
         {!loading && (
           <div
-            className="rounded-2xl p-4 mb-3"
-            style={{
-              background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)',
-              backdropFilter: 'blur(8px)',
-              border: '0.5px solid var(--border-norse)',
-              animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards',
-            }}
+            className="card-hero mb-3"
+            style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}
           >
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1 c-tertiary">
               Прибыль
             </p>
             <p
-              className="text-[24px] font-bold"
-              style={{ color: stats.profit >= 0 ? 'var(--green)' : 'var(--red-soft)' }}
+              className={`text-[24px] font-bold ${stats.profit >= 0 ? 'c-green' : 'c-red'}`}
             >
               {formatMoney(stats.profit)}
             </p>
             <div className="flex items-center gap-4 mt-2">
-              <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--green)' }}>
+              <span className="flex items-center gap-1 text-[12px] c-green">
                 <TrendingUp size={14} /> {formatMoney(stats.revenue, { short: true })}
               </span>
-              <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--red-soft)' }}>
+              <span className="flex items-center gap-1 text-[12px] c-red">
                 <TrendingDown size={14} /> {formatMoney(stats.totalExp, { short: true })}
               </span>
             </div>
@@ -109,12 +103,8 @@ export default function Finances() {
             <button
               key={t.id}
               onClick={() => { haptic.light(); setTab(t.id); }}
-              className="flex-1 py-2 rounded-xl text-[13px] font-semibold spring-tap"
-              style={{
-                background: tab === t.id ? 'var(--bg-elevated)' : 'transparent',
-                color: tab === t.id ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                border: tab === t.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent',
-              }}
+              className="flex-1 py-2 rounded-xl text-[13px] font-semibold spring-tap filter-pill"
+              data-active={tab === t.id ? 'true' : undefined}
             >
               {t.label} ({tab === t.id ? currentExpenses.length : (t.id === 'work' ? workExpenses.length : officeExpenses.length)})
             </button>
@@ -137,36 +127,32 @@ export default function Finances() {
             {currentExpenses.map((exp, i) => (
               <div
                 key={exp.id || i}
-                className="rounded-2xl px-4 py-3"
-                style={{
-                  background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)',
-                  border: '0.5px solid var(--border-norse)',
-                  animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both`,
-                }}
+                className="card-glass px-4 py-3"
+                style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                    <p className="text-[14px] font-semibold truncate c-primary">
                       {exp.description || exp.category || `Расход #${exp.id}`}
                     </p>
                     {(exp.work_title || exp.category) && exp.description && (
-                      <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
+                      <p className="text-[11px] mt-0.5 truncate c-secondary">
                         {tab === 'work' ? exp.work_title : exp.category}
                       </p>
                     )}
                   </div>
-                  <span className="text-[14px] font-bold shrink-0" style={{ color: 'var(--red-soft)' }}>
+                  <span className="text-[14px] font-bold shrink-0 c-red">
                     {formatMoney(exp.amount || 0)}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 mt-1.5">
                   {(exp.created_at || exp.date) && (
-                    <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    <span className="text-[10px] c-tertiary">
                       {formatDate(exp.created_at || exp.date)}
                     </span>
                   )}
                   {exp.user_name && (
-                    <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    <span className="text-[10px] c-tertiary">
                       {exp.user_name}
                     </span>
                   )}
@@ -182,16 +168,10 @@ export default function Finances() {
 
 function StatCard({ icon: Icon, label, value, color }) {
   return (
-    <div
-      className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl"
-      style={{
-        background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)',
-        border: '0.5px solid var(--border-norse)',
-      }}
-    >
+    <div className="card-glass flex flex-col items-center gap-0.5 py-2.5">
       <Icon size={14} style={{ color }} />
       <p className="text-[11px] font-bold" style={{ color }}>{value}</p>
-      <p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+      <p className="text-[9px] c-tertiary">{label}</p>
     </div>
   );
 }

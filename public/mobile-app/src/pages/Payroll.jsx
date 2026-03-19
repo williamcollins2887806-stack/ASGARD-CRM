@@ -69,14 +69,14 @@ export default function Payroll() {
       <PullToRefresh onRefresh={fetchData}>
         {!loading && sheets.length > 0 && (
           <div className="grid grid-cols-4 gap-1.5 px-1 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{stats.total}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Всего</p></div>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--blue)' }}>{stats.pending}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Ожидает</p></div>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--green)' }}>{stats.paid}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Оплачено</p></div>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--gold)' }}>{formatMoney(stats.sum, { short: true })}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Сумма</p></div>
+            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-primary">{stats.total}</p><p className="text-[9px] c-tertiary">Всего</p></div>
+            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-blue">{stats.pending}</p><p className="text-[9px] c-tertiary">Ожидает</p></div>
+            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-green">{stats.paid}</p><p className="text-[9px] c-tertiary">Оплачено</p></div>
+            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-gold">{formatMoney(stats.sum, { short: true })}</p><p className="text-[9px] c-tertiary">Сумма</p></div>
           </div>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}
+          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id ? 'true' : undefined}>{f.label}</button>)}
         </div>
         {loading ? <SkeletonList count={4} /> : filtered.length === 0 ? (
           <EmptyState icon={Banknote} iconColor="var(--green)" iconBg="rgba(48,209,88,0.1)" title="Нет ведомостей" description="Ведомости ЗП появятся здесь" />
@@ -85,16 +85,16 @@ export default function Payroll() {
             {filtered.map((sheet, i) => {
               const st = STATUS_MAP[sheet.status] || STATUS_MAP.draft;
               return (
-                <button key={sheet.id} onClick={() => { haptic.light(); setDetail(sheet); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={sheet.id} onClick={() => { haptic.light(); setDetail(sheet); }} className="w-full text-left card-glass px-4 py-3 spring-tap" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{sheet.title || sheet.name || `Ведомость #${sheet.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{sheet.title || sheet.name || `Ведомость #${sheet.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    {(sheet.period || sheet.month) && <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{sheet.period || sheet.month}</span>}
-                    {Number(sheet.total_amount || sheet.amount || 0) > 0 && <span className="text-[10px] font-semibold" style={{ color: 'var(--gold)' }}>{formatMoney(sheet.total_amount || sheet.amount, { short: true })}</span>}
-                    {(sheet.employee_count || sheet.items_count) && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{sheet.employee_count || sheet.items_count} чел.</span>}
+                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    {(sheet.period || sheet.month) && <span className="text-[10px] c-secondary">{sheet.period || sheet.month}</span>}
+                    {Number(sheet.total_amount || sheet.amount || 0) > 0 && <span className="text-[10px] font-semibold c-gold">{formatMoney(sheet.total_amount || sheet.amount, { short: true })}</span>}
+                    {(sheet.employee_count || sheet.items_count) && <span className="text-[10px] c-tertiary">{sheet.employee_count || sheet.items_count} чел.</span>}
                   </div>
                 </button>
               );
@@ -122,14 +122,14 @@ function PayrollDetailSheet({ sheet, onClose, canApprove, onAction }) {
   return (
     <BottomSheet open={!!sheet} onClose={onClose} title={s.title || s.name || `Ведомость #${s.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px]" style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
         {s.status === 'draft' && (
-          <button onClick={() => onAction(s.id, 'submit')} className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-2" style={{ background: 'var(--gold-gradient)', color: '#fff' }}>
+          <button onClick={() => onAction(s.id, 'submit')} className="btn-primary flex items-center justify-center gap-2 spring-tap mt-2">
             <Send size={16} /> Отправить на согласование
           </button>
         )}
         {canApprove && (s.status === 'pending' || s.status === 'submitted') && (
-          <button onClick={() => onAction(s.id, 'approve')} className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-2" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}>
+          <button onClick={() => onAction(s.id, 'approve')} className="btn-action spring-tap mt-2 c-green" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}>
             <Check size={16} /> Согласовать
           </button>
         )}

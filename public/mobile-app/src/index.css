@@ -599,3 +599,353 @@ body {
   0%, 100% { transform: translateX(-150%); }
   50%      { transform: translateX(150%); }
 }
+
+/* ═══════════════════════════════════════════
+   UNIFIED COMPONENT CLASSES
+   ═══════════════════════════════════════════ */
+
+/* Glass card */
+.card-glass {
+  background: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  border: 0.5px solid var(--border-norse);
+  border-radius: 1rem;
+}
+
+/* Hero card */
+.card-hero {
+  background: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  border: 0.5px solid var(--border-norse);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+
+/* List container with divider */
+.list-container {
+  background: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 0.5px solid var(--border-norse);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+/* List item */
+.list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  width: 100%;
+  text-align: left;
+  border-bottom: 0.5px solid var(--border-norse);
+}
+.list-item:last-child { border-bottom: none; }
+
+/* Filter pill */
+.filter-pill {
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 0.5px solid transparent;
+  color: var(--text-tertiary);
+  background: transparent;
+  flex-shrink: 0;
+  transition: all var(--motion-fast) var(--ease-smooth);
+}
+.filter-pill[data-active="true"] {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+/* Form input & textarea */
+.input-field {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.75rem;
+  font-size: 14px;
+  background: var(--bg-surface-alt);
+  color: var(--text-primary);
+  border: 0.5px solid var(--border-norse);
+  caret-color: var(--gold);
+  outline: none;
+  transition: border-color var(--motion-fast) var(--ease-smooth);
+}
+.input-field:focus {
+  border-color: color-mix(in srgb, var(--gold) 50%, var(--border-norse));
+}
+.input-field::placeholder { color: var(--text-tertiary); }
+
+/* Form label */
+.input-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  margin-bottom: 0.25rem;
+}
+
+/* Primary button */
+.btn-primary {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--gold-gradient);
+  color: #fff;
+  transition: opacity var(--motion-fast) var(--ease-smooth);
+}
+.btn-primary:disabled {
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  opacity: 0.6;
+}
+
+/* Action button */
+.btn-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Status badge */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Header icon button (44x44) */
+.btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* Avatar hero */
+.avatar-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--hero-gradient);
+  color: #fff;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Search bar */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 36px;
+  padding: 0 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--bg-surface-alt);
+  border: 0.5px solid var(--border-norse);
+}
+.search-bar input {
+  flex: 1;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  border: none;
+  caret-color: var(--gold);
+}
+.search-bar input::placeholder { color: var(--text-tertiary); }
+
+/* Text color utilities */
+.c-primary { color: var(--text-primary); }
+.c-secondary { color: var(--text-secondary); }
+.c-tertiary { color: var(--text-tertiary); }
+.c-gold { color: var(--gold); }
+.c-blue { color: var(--blue); }
+.c-green { color: var(--green); }
+.c-red { color: var(--red-soft); }
+
+/* Background utilities */
+.bg-surface { background-color: var(--bg-surface); }
+.bg-primary { background-color: var(--bg-primary); }
+.bg-elevated { background-color: var(--bg-elevated); }
+
+/* ═══════════════════════════════════════════
+   HUGINN CHAT ANIMATIONS
+   ═══════════════════════════════════════════ */
+
+/* Message appear */
+@keyframes messageIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes messageInOwn {
+  from { opacity: 0; transform: translateX(20px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+.msg-enter {
+  animation: messageIn 200ms var(--ease-smooth-out) both;
+}
+.msg-enter-own {
+  animation: messageInOwn 200ms var(--ease-smooth-out) both;
+}
+
+/* Context menu backdrop */
+.ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: var(--z-overlay);
+  animation: ctxFadeIn 150ms var(--ease-enter) both;
+}
+@keyframes ctxFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Context menu scale-in */
+.ctx-menu {
+  animation: ctxScaleIn 200ms var(--ease-spring) both;
+}
+@keyframes ctxScaleIn {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Read receipt animation */
+@keyframes checkIn {
+  from { opacity: 0; transform: scale(0); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.check-animate {
+  animation: checkIn 200ms var(--ease-spring) both;
+}
+
+/* Reaction badge pulse */
+@keyframes reactionPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+.reaction-new {
+  animation: reactionPulse 300ms var(--ease-spring);
+}
+
+/* Online status pulse */
+.online-pulse {
+  animation: onlinePulse 2s ease-in-out infinite;
+}
+@keyframes onlinePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(48, 209, 88, 0); }
+}
+
+/* Scroll-to-bottom FAB */
+.scroll-fab {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--border-norse);
+  box-shadow: var(--elevation-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  z-index: var(--z-elevated);
+  animation: fabIn 200ms var(--ease-spring) both;
+}
+@keyframes fabIn {
+  from { opacity: 0; transform: scale(0.6) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Swipe reply icon */
+.swipe-reply-icon {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 100ms ease;
+  color: var(--text-tertiary);
+}
+
+/* Chat search bar */
+.chat-search-enter {
+  animation: chatSearchIn 200ms var(--ease-smooth-out) both;
+}
+@keyframes chatSearchIn {
+  from { opacity: 0; height: 0; }
+  to   { opacity: 1; height: 44px; }
+}
+.chat-search-exit {
+  animation: chatSearchOut 150ms var(--ease-exit) both;
+}
+@keyframes chatSearchOut {
+  from { opacity: 1; height: 44px; }
+  to   { opacity: 0; height: 0; }
+}
+
+/* Composer send button morph */
+.send-morph {
+  transition: transform 200ms var(--ease-spring), background 200ms ease;
+}
+.send-morph:active {
+  transform: scale(0.85);
+}
+
+/* Sheet slide up */
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+/* Swipe action reveal */
+.swipe-actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  z-index: -1;
+}
+.swipe-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 100%;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  flex-direction: column;
+  gap: 2px;
+}

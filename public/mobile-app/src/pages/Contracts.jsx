@@ -103,15 +103,13 @@ export default function Contracts() {
         <div className="flex items-center gap-1">
           <button
             onClick={() => { haptic.light(); setShowSearch(!showSearch); }}
-            className="flex items-center justify-center spring-tap"
-            style={{ width: 44, height: 44, color: 'var(--text-tertiary)' }}
+            className="btn-icon spring-tap"
           >
             <Search size={20} />
           </button>
           <button
             onClick={() => { haptic.light(); setShowCreate(true); }}
-            className="flex items-center justify-center spring-tap"
-            style={{ width: 44, height: 44, color: 'var(--blue)' }}
+            className="btn-icon spring-tap c-blue"
           >
             <Plus size={22} />
           </button>
@@ -121,22 +119,17 @@ export default function Contracts() {
       <PullToRefresh onRefresh={fetchContracts}>
         {showSearch && (
           <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}>
-            <div
-              className="flex items-center gap-2 px-3 rounded-xl"
-              style={{ height: 36, background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
-            >
-              <Search size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+            <div className="search-bar">
+              <Search size={16} className="c-tertiary" style={{ flexShrink: 0 }} />
               <input
                 type="text"
                 placeholder="Поиск договоров..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
-                className="flex-1 bg-transparent outline-none text-[14px]"
-                style={{ color: 'var(--text-primary)', caretColor: 'var(--gold)' }}
               />
               {search && (
-                <button onClick={() => setSearch('')} style={{ color: 'var(--text-tertiary)' }}>
+                <button onClick={() => setSearch('')} className="c-tertiary">
                   <X size={16} />
                 </button>
               )}
@@ -149,12 +142,8 @@ export default function Contracts() {
             <button
               key={f.id}
               onClick={() => { haptic.light(); setFilter(f.id); }}
-              className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap"
-              style={{
-                background: filter === f.id ? 'var(--bg-elevated)' : 'transparent',
-                color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent',
-              }}
+              className="filter-pill spring-tap"
+              data-active={filter === f.id ? 'true' : undefined}
             >
               {f.label}
             </button>
@@ -180,51 +169,46 @@ export default function Contracts() {
                 <button
                   key={c.id}
                   onClick={() => { haptic.light(); setDetail(c); }}
-                  className="w-full text-left rounded-2xl px-4 py-3 spring-tap"
-                  style={{
-                    background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)',
-                    backdropFilter: 'blur(8px)',
-                    border: '0.5px solid var(--border-norse)',
-                    animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both`,
-                  }}
+                  className="card-glass w-full text-left px-4 py-3 spring-tap"
+                  style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both` }}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
+                    <p className="text-[14px] font-semibold leading-tight c-primary">
                       {c.title || c.counterparty_name || c.contractor_name || `Договор ${c.number || `#${c.id}`}`}
                     </p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   {c.contractor_name && c.title && (
-                    <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
+                    <p className="text-[12px] mt-0.5 truncate c-secondary">
                       {c.contractor_name}
                     </p>
                   )}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span
-                      className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      className="status-badge"
                       style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}
                     >
                       {st.label}
                     </span>
                     {c.number && (
-                      <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                      <span className="text-[10px] c-tertiary">
                         № {c.number}
                       </span>
                     )}
                     {amount > 0 && (
-                      <span className="flex items-center gap-0.5 text-[10px]" style={{ color: 'var(--gold)' }}>
+                      <span className="flex items-center gap-0.5 text-[10px] c-gold">
                         <DollarSign size={10} />
                         {formatMoney(amount, { short: true })}
                       </span>
                     )}
                     {c.end_date && !c.is_perpetual && (
-                      <span className="flex items-center gap-0.5 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                      <span className="flex items-center gap-0.5 text-[10px] c-tertiary">
                         <Calendar size={10} />
                         до {formatDate(c.end_date)}
                       </span>
                     )}
                     {c.is_perpetual && (
-                      <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Бессрочный</span>
+                      <span className="text-[10px] c-tertiary">Бессрочный</span>
                     )}
                   </div>
                 </button>
@@ -264,18 +248,18 @@ function ContractDetailSheet({ contract, onClose }) {
       <div className="flex flex-col gap-3 pb-4">
         {fields.map((f, i) => (
           <div key={i}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">
               {f.label}
             </p>
             {f.color ? (
               <span
-                className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block"
+                className="status-badge px-2.5 py-1 text-[12px] inline-block"
                 style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}
               >
                 {f.value}
               </span>
             ) : (
-              <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>
+              <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>
                 {f.value}
               </p>
             )}
@@ -287,8 +271,7 @@ function ContractDetailSheet({ contract, onClose }) {
             href={c.file_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--blue)' }}
+            className="btn-action spring-tap mt-1 bg-elevated c-blue"
           >
             <ExternalLink size={16} /> Скачать договор
           </a>
@@ -348,15 +331,13 @@ function CreateContractSheet({ open, onClose, onCreated }) {
             <input
               type="text" value={number} onChange={(e) => setNumber(e.target.value)}
               placeholder="Д-2026/001"
-              className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-              style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+              className="input-field"
             />
           </FormField>
           <FormField label="Тип">
             <select
               value={type} onChange={(e) => setType(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none appearance-none"
-              style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)' }}
+              className="input-field appearance-none"
             >
               <option value="customer">Заказчик</option>
               <option value="supplier">Поставщик</option>
@@ -368,8 +349,7 @@ function CreateContractSheet({ open, onClose, onCreated }) {
           <input
             type="text" value={counterparty} onChange={(e) => setCounterparty(e.target.value)}
             placeholder="Наименование контрагента..."
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+            className="input-field"
           />
         </FormField>
 
@@ -378,8 +358,7 @@ function CreateContractSheet({ open, onClose, onCreated }) {
             value={subject} onChange={(e) => setSubject(e.target.value)}
             placeholder="Описание предмета..."
             rows={2}
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none"
-            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+            className="input-field resize-none"
           />
         </FormField>
 
@@ -387,8 +366,7 @@ function CreateContractSheet({ open, onClose, onCreated }) {
           <input
             type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
             placeholder="0"
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+            className="input-field"
           />
         </FormField>
 
@@ -396,19 +374,15 @@ function CreateContractSheet({ open, onClose, onCreated }) {
           <FormField label="Дата заключения">
             <input
               type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-              style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)' }}
+              className="input-field"
             />
           </FormField>
           <FormField label="Действует до">
             <input
               type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
               disabled={perpetual}
-              className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-              style={{
-                background: 'var(--bg-surface-alt)', color: 'var(--text-primary)',
-                border: '0.5px solid var(--border-norse)', opacity: perpetual ? 0.4 : 1,
-              }}
+              className="input-field"
+              style={{ opacity: perpetual ? 0.4 : 1 }}
             />
           </FormField>
         </div>
@@ -428,18 +402,14 @@ function CreateContractSheet({ open, onClose, onCreated }) {
           >
             {perpetual && <span className="text-white text-[12px] font-bold">✓</span>}
           </div>
-          <span className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>Бессрочный договор</span>
+          <span className="text-[13px] c-secondary">Бессрочный договор</span>
         </button>
 
         <button
           onClick={handleSubmit}
           disabled={!number.trim() || saving}
-          className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1"
-          style={{
-            background: number.trim() ? 'var(--gold-gradient)' : 'var(--bg-elevated)',
-            color: number.trim() ? '#fff' : 'var(--text-tertiary)',
-            opacity: saving ? 0.6 : 1,
-          }}
+          className="btn-primary spring-tap mt-1"
+          style={{ opacity: saving ? 0.6 : 1 }}
         >
           {saving ? 'Сохранение...' : 'Создать договор'}
         </button>
@@ -451,7 +421,7 @@ function CreateContractSheet({ open, onClose, onCreated }) {
 function FormField({ label, children }) {
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>
+      <label className="input-label">
         {label}
       </label>
       {children}

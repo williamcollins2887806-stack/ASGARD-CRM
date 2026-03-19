@@ -90,8 +90,7 @@ export default function Mimir() {
 
   return (
     <div
-      className="flex flex-col h-full"
-      style={{ backgroundColor: 'var(--bg-primary)' }}
+      className="flex flex-col h-full bg-primary"
     >
       {/* Header */}
       <header
@@ -109,8 +108,7 @@ export default function Mimir() {
             haptic.light();
             navigate('/chat');
           }}
-          className="flex items-center justify-center spring-tap"
-          style={{ width: 44, height: 44, color: 'var(--blue)' }}
+          className="flex items-center justify-center spring-tap btn-icon c-blue"
         >
           <ChevronLeft size={28} />
         </button>
@@ -126,12 +124,11 @@ export default function Mimir() {
         </div>
         <div className="flex-1 min-w-0">
           <p
-            className="text-[15px] font-semibold"
-            style={{ color: 'var(--gold)' }}
+            className="text-[15px] font-semibold c-gold"
           >
             Мимир
           </p>
-          <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+          <p className="text-[11px] c-tertiary">
             AI-ассистент ASGARD
           </p>
         </div>
@@ -175,27 +172,20 @@ export default function Mimir() {
                 >
                   {!isMine && (
                     <p
-                      className="text-[11px] font-semibold mb-1"
-                      style={{ color: 'var(--gold)' }}
+                      className="text-[11px] font-semibold mb-1 c-gold"
                     >
                       Мимир
                     </p>
                   )}
                   <p
-                    className="text-[15px] leading-[1.4] whitespace-pre-wrap"
-                    style={{
-                      color: isMine ? '#fff' : 'var(--text-primary)',
-                    }}
+                    className={`text-[15px] leading-[1.4] whitespace-pre-wrap ${isMine ? '' : 'c-primary'}`}
+                    style={isMine ? { color: '#fff' } : undefined}
                   >
                     {msg.text}
                   </p>
                   <p
-                    className="text-[10px] text-right mt-1"
-                    style={{
-                      color: isMine
-                        ? 'rgba(255,255,255,0.5)'
-                        : 'var(--text-tertiary)',
-                    }}
+                    className={`text-[10px] text-right mt-1 ${isMine ? '' : 'c-tertiary'}`}
+                    style={isMine ? { color: 'rgba(255,255,255,0.5)' } : undefined}
                   >
                     {new Date(msg.ts).toLocaleTimeString('ru-RU', {
                       hour: '2-digit',
@@ -269,10 +259,9 @@ export default function Mimir() {
             onKeyDown={handleKeyDown}
             placeholder="Спросите Мимира..."
             rows={1}
-            className="w-full px-3 py-2 resize-none outline-none text-[15px] leading-[1.35]"
+            className="w-full px-3 py-2 resize-none outline-none text-[15px] leading-[1.35] c-primary"
             style={{
               background: 'transparent',
-              color: 'var(--text-primary)',
               caretColor: 'var(--gold)',
               maxHeight: 120,
             }}
@@ -281,14 +270,14 @@ export default function Mimir() {
         <button
           onClick={() => sendMessage()}
           disabled={!text.trim() || loading}
-          className="shrink-0 flex items-center justify-center rounded-full spring-tap"
+          className={`shrink-0 flex items-center justify-center rounded-full spring-tap ${text.trim() ? '' : 'c-tertiary'}`}
           style={{
             width: 36,
             height: 36,
             background: text.trim()
               ? 'var(--gold-gradient)'
               : 'var(--bg-elevated)',
-            color: text.trim() ? '#fff' : 'var(--text-tertiary)',
+            ...(text.trim() ? { color: '#fff' } : {}),
             opacity: loading ? 0.5 : 1,
           }}
         >

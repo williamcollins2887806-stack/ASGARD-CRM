@@ -44,12 +44,12 @@ export default function Meetings() {
 
   return (
     <PageShell title="Совещания" headerRight={
-      <button onClick={() => { haptic.light(); setShowCreate(true); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--blue)' }}><Plus size={22} /></button>
+      <button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>
     }>
       <PullToRefresh onRefresh={fetchMeetings}>
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => (
-            <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === f.id ? 'var(--bg-elevated)' : 'transparent', color: filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>
+            <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id}>{f.label}</button>
           ))}
         </div>
         {loading ? <SkeletonList count={4} /> : filtered.length === 0 ? (
@@ -60,16 +60,16 @@ export default function Meetings() {
               const dt = new Date(m.date || m.start_time || m.start_date);
               const isPast = dt <= new Date();
               return (
-                <button key={m.id} onClick={() => { haptic.light(); setDetail(m); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both` }}>
+                <button key={m.id} onClick={() => { haptic.light(); setDetail(m); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{m.topic || m.title || `Совещание #${m.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{m.topic || m.title || `Совещание #${m.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: isPast ? 'color-mix(in srgb, var(--text-tertiary) 15%, transparent)' : 'color-mix(in srgb, var(--blue) 15%, transparent)', color: isPast ? 'var(--text-tertiary)' : 'var(--blue)' }}>{isPast ? 'Завершено' : 'Предстоит'}</span>
-                    <span className="flex items-center gap-0.5 text-[10px]" style={{ color: 'var(--text-tertiary)' }}><Clock size={10} />{formatDate(dt)}</span>
-                    {m.location && <span className="flex items-center gap-0.5 text-[10px]" style={{ color: 'var(--text-tertiary)' }}><MapPin size={10} />{m.location}</span>}
-                    {m.organizer_name && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{m.organizer_name}</span>}
+                    <span className="flex items-center gap-0.5 text-[10px] c-tertiary"><Clock size={10} />{formatDate(dt)}</span>
+                    {m.location && <span className="flex items-center gap-0.5 text-[10px] c-tertiary"><MapPin size={10} />{m.location}</span>}
+                    {m.organizer_name && <span className="text-[10px] c-tertiary">{m.organizer_name}</span>}
                   </div>
                 </button>
               );
@@ -100,8 +100,8 @@ function MeetingDetailSheet({ meeting, onClose }) {
       <div className="flex flex-col gap-3 pb-4">
         {fields.map((f, i) => (
           <div key={i}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>
-            <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{f.value}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>
+            <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>
           </div>
         ))}
       </div>
@@ -125,18 +125,17 @@ function CreateMeetingSheet({ open, onClose, onCreated }) {
       haptic.success(); setTopic(''); setDate(''); setTime(''); setLocation(''); setDescription(''); onClose(); onCreated();
     } catch {} setSaving(false);
   };
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
   return (
     <BottomSheet open={open} onClose={onClose} title="Новое совещание">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Тема *</label><input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Тема совещания..." className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
+        <div><label className="input-label">Тема *</label><input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Тема совещания..." className="input-field" /></div>
         <div className="grid grid-cols-2 gap-2">
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Дата *</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-          <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Время</label><input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
+          <div><label className="input-label">Дата *</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input-field" /></div>
+          <div><label className="input-label">Время</label><input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="input-field" /></div>
         </div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Место</label><input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Место проведения" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Описание</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Детали..." rows={2} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={is} /></div>
-        <button onClick={handleSubmit} disabled={!topic.trim() || !date || saving} className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: (topic.trim() && date) ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: (topic.trim() && date) ? '#fff' : 'var(--text-tertiary)', opacity: saving ? 0.6 : 1 }}>{saving ? 'Сохранение...' : 'Создать'}</button>
+        <div><label className="input-label">Место</label><input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Место проведения" className="input-field" /></div>
+        <div><label className="input-label">Описание</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Детали..." rows={2} className="input-field resize-none" /></div>
+        <button onClick={handleSubmit} disabled={!topic.trim() || !date || saving} className="btn-primary spring-tap mt-1">{saving ? 'Сохранение...' : 'Создать'}</button>
       </div>
     </BottomSheet>
   );

@@ -53,39 +53,39 @@ export default function Warehouse() {
   return (
     <PageShell title="Склад" headerRight={
       <div className="flex items-center">
-        <button onClick={() => { haptic.light(); setShowQr(true); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--gold)' }}><QrCode size={20} /></button>
-        <button onClick={() => { haptic.light(); setShowSearch(!showSearch); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--text-tertiary)' }}><Search size={20} /></button>
+        <button onClick={() => { haptic.light(); setShowQr(true); }} className="btn-icon spring-tap c-gold"><QrCode size={20} /></button>
+        <button onClick={() => { haptic.light(); setShowSearch(!showSearch); }} className="btn-icon spring-tap"><Search size={20} /></button>
       </div>
     }>
       <PullToRefresh onRefresh={fetchData}>
         {showSearch && (
           <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}>
-            <div className="flex items-center gap-2 px-3 rounded-xl" style={{ height: 36, background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
-              <Search size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
-              <input type="text" placeholder="Поиск оборудования..." value={search} onChange={(e) => setSearch(e.target.value)} autoFocus className="flex-1 bg-transparent outline-none text-[14px]" style={{ color: 'var(--text-primary)', caretColor: 'var(--gold)' }} />
-              {search && <button onClick={() => setSearch('')} style={{ color: 'var(--text-tertiary)' }}><X size={16} /></button>}
+            <div className="search-bar">
+              <Search size={16} className="c-tertiary" style={{ flexShrink: 0 }} />
+              <input type="text" placeholder="Поиск оборудования..." value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+              {search && <button onClick={() => setSearch('')} className="c-tertiary"><X size={16} /></button>}
             </div>
           </div>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          <button onClick={() => { haptic.light(); setFilter('all'); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === 'all' ? 'var(--bg-elevated)' : 'transparent', color: filter === 'all' ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === 'all' ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>Все</button>
-          {warehouses.map((w) => <button key={w.id} onClick={() => { haptic.light(); setFilter(String(w.id)); }} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: filter === String(w.id) ? 'var(--bg-elevated)' : 'transparent', color: filter === String(w.id) ? 'var(--text-primary)' : 'var(--text-tertiary)', border: filter === String(w.id) ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{w.name || `Склад #${w.id}`}</button>)}
+          <button onClick={() => { haptic.light(); setFilter('all'); }} className="filter-pill spring-tap" data-active={filter === 'all'}>Все</button>
+          {warehouses.map((w) => <button key={w.id} onClick={() => { haptic.light(); setFilter(String(w.id)); }} className="filter-pill spring-tap" data-active={filter === String(w.id)}>{w.name || `Склад #${w.id}`}</button>)}
         </div>
         {loading ? <SkeletonList count={5} /> : filtered.length === 0 ? (
           <EmptyState icon={Boxes} iconColor="var(--gold)" iconBg="color-mix(in srgb, var(--gold) 10%, transparent)" title={search ? 'Ничего не найдено' : 'Склад пуст'} description="Оборудование появится здесь" />
         ) : (
           <div className="flex flex-col gap-2 pb-4">
             {filtered.map((item, i) => (
-              <button key={item.id} onClick={() => { haptic.light(); setDetail(item); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+              <button key={item.id} onClick={() => { haptic.light(); setDetail(item); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{item.name || `#${item.id}`}</p>
-                  <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                  <p className="text-[14px] font-semibold leading-tight c-primary">{item.name || `#${item.id}`}</p>
+                  <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                 </div>
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                  {item.category_name && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: 'color-mix(in srgb, var(--blue) 15%, transparent)', color: 'var(--blue)' }}>{item.category_name}</span>}
-                  {item.inventory_number && <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>№{item.inventory_number}</span>}
-                  {item.quantity && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{item.quantity} {item.unit || 'шт.'}</span>}
-                  {item.warehouse_name && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{item.warehouse_name}</span>}
+                  {item.category_name && <span className="status-badge c-blue" style={{ background: 'color-mix(in srgb, var(--blue) 15%, transparent)' }}>{item.category_name}</span>}
+                  {item.inventory_number && <span className="text-[10px] c-secondary">№{item.inventory_number}</span>}
+                  {item.quantity && <span className="text-[10px] c-tertiary">{item.quantity} {item.unit || 'шт.'}</span>}
+                  {item.warehouse_name && <span className="text-[10px] c-tertiary">{item.warehouse_name}</span>}
                 </div>
               </button>
             ))}
@@ -116,7 +116,7 @@ function EquipmentDetailSheet({ item, onClose }) {
     <BottomSheet open={!!item} onClose={onClose} title={it.name || `#${it.id}`}>
       <div className="flex flex-col gap-3 pb-4">
         {(it.photo_url || it.image_url) && <img src={it.photo_url || it.image_url} alt="" className="w-full h-40 object-cover rounded-xl" style={{ background: 'var(--bg-surface-alt)' }} />}
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p><p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{f.value}</p></div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p><p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p></div>)}
       </div>
     </BottomSheet>
   );
@@ -124,12 +124,11 @@ function EquipmentDetailSheet({ item, onClose }) {
 
 function QrSearchSheet({ open, onClose, onSearch }) {
   const [query, setQuery] = useState('');
-  const is = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
   return (
     <BottomSheet open={open} onClose={onClose} title="Поиск по номеру">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>Инв. номер или QR</label><input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Введите номер..." autoFocus className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none" style={is} /></div>
-        <button onClick={() => onSearch(query)} disabled={!query.trim()} className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap" style={{ background: query.trim() ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: query.trim() ? '#fff' : 'var(--text-tertiary)' }}>Найти</button>
+        <div><label className="input-label">Инв. номер или QR</label><input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Введите номер..." autoFocus className="input-field" /></div>
+        <button onClick={() => onSearch(query)} disabled={!query.trim()} className="btn-primary spring-tap">Найти</button>
       </div>
     </BottomSheet>
   );

@@ -77,9 +77,9 @@ export default function Gantt() {
           <div className="overflow-x-auto pb-4 -mx-1" ref={scrollRef}>
             <div style={{ width: totalDays * DAY_W, minWidth: '100%' }}>
               {/* Month headers */}
-              <div className="flex sticky top-0 z-10" style={{ background: 'var(--bg-primary)' }}>
+              <div className="flex sticky top-0 z-10 bg-primary">
                 {months.map((m, i) => (
-                  <div key={i} className="text-center text-[10px] font-semibold py-1.5 shrink-0" style={{ width: m.width, color: 'var(--text-tertiary)', borderBottom: '0.5px solid var(--border-norse)' }}>{m.label}</div>
+                  <div key={i} className="text-center text-[10px] font-semibold py-1.5 shrink-0 c-tertiary" style={{ width: m.width, borderBottom: '0.5px solid var(--border-norse)' }}>{m.label}</div>
                 ))}
               </div>
               {/* Rows */}
@@ -120,7 +120,7 @@ function GanttDetailSheet({ work, onClose }) {
   return (
     <BottomSheet open={!!work} onClose={onClose} title={w.work_title || w.object_name || `#${w.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px]" style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className="text-[14px] c-primary">{f.value}</p>}</div>)}
       </div>
     </BottomSheet>
   );

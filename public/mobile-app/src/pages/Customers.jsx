@@ -52,15 +52,13 @@ export default function Customers() {
         <div className="flex items-center gap-1">
           <button
             onClick={() => { haptic.light(); setShowSearch(!showSearch); }}
-            className="flex items-center justify-center spring-tap"
-            style={{ width: 44, height: 44, color: 'var(--text-tertiary)' }}
+            className="btn-icon spring-tap"
           >
             <Search size={20} />
           </button>
           <button
             onClick={() => { haptic.light(); setShowCreate(true); }}
-            className="flex items-center justify-center spring-tap"
-            style={{ width: 44, height: 44, color: 'var(--blue)' }}
+            className="btn-icon spring-tap c-blue"
           >
             <Plus size={22} />
           </button>
@@ -70,22 +68,17 @@ export default function Customers() {
       <PullToRefresh onRefresh={fetchCustomers}>
         {showSearch && (
           <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}>
-            <div
-              className="flex items-center gap-2 px-3 rounded-xl"
-              style={{ height: 36, background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
-            >
-              <Search size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+            <div className="search-bar">
+              <Search size={16} className="c-tertiary" style={{ flexShrink: 0 }} />
               <input
                 type="text"
                 placeholder="Поиск по названию или ИНН..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
-                className="flex-1 bg-transparent outline-none text-[14px]"
-                style={{ color: 'var(--text-primary)', caretColor: 'var(--gold)' }}
               />
               {search && (
-                <button onClick={() => setSearch('')} style={{ color: 'var(--text-tertiary)' }}>
+                <button onClick={() => setSearch('')} className="c-tertiary">
                   <X size={16} />
                 </button>
               )}
@@ -109,13 +102,8 @@ export default function Customers() {
               <button
                 key={cust.inn || cust.id || i}
                 onClick={() => { haptic.light(); setDetail(cust); }}
-                className="w-full text-left rounded-2xl px-4 py-3 spring-tap"
-                style={{
-                  background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)',
-                  backdropFilter: 'blur(8px)',
-                  border: '0.5px solid var(--border-norse)',
-                  animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both`,
-                }}
+                className="card-glass w-full text-left px-4 py-3 spring-tap"
+                style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5 flex-1 min-w-0">
@@ -126,27 +114,27 @@ export default function Customers() {
                       <Building2 size={16} style={{ color: '#7B68EE' }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[14px] font-semibold leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
+                      <p className="text-[14px] font-semibold leading-tight truncate c-primary">
                         {cust.name || cust.short_name || 'Контрагент'}
                       </p>
                       {cust.inn && (
-                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                        <p className="text-[11px] mt-0.5 c-tertiary">
                           ИНН {cust.inn}
                         </p>
                       )}
                     </div>
                   </div>
-                  <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 10 }} />
+                  <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 10 }} />
                 </div>
                 {(cust.contact_person || cust.phone) && (
                   <div className="flex items-center gap-3 mt-2 pl-11.5">
                     {cust.contact_person && (
-                      <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                      <span className="text-[11px] c-secondary">
                         {cust.contact_person}
                       </span>
                     )}
                     {cust.phone && (
-                      <span className="flex items-center gap-0.5 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                      <span className="flex items-center gap-0.5 text-[11px] c-tertiary">
                         <Phone size={10} />
                         {cust.phone}
                       </span>
@@ -203,16 +191,16 @@ function CustomerDetailSheet({ customer, onClose }) {
       <div className="flex flex-col gap-3 pb-4">
         {fields.map((f, i) => (
           <div key={i}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">
               {f.label}
             </p>
             <div className="flex items-center gap-2">
               {f.link ? (
-                <a href={f.link} className="text-[14px]" style={{ color: 'var(--blue)' }}>
+                <a href={f.link} className="text-[14px] c-blue">
                   {f.value}
                 </a>
               ) : (
-                <p className={`text-[14px] flex-1 ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>
+                <p className={`text-[14px] flex-1 c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>
                   {f.value}
                 </p>
               )}
@@ -288,8 +276,7 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
             <input
               type="text" value={inn} onChange={(e) => setInn(e.target.value.replace(/\D/g, '').slice(0, 12))}
               placeholder="10 или 12 цифр"
-              className="flex-1 px-3 py-2.5 rounded-xl text-[14px] outline-none"
-              style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+              className="input-field flex-1"
             />
             <button
               onClick={lookupInn}
@@ -310,8 +297,7 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
           <input
             type="text" value={name} onChange={(e) => setName(e.target.value)}
             placeholder="ООО Компания"
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+            className="input-field"
           />
         </FormField>
 
@@ -319,8 +305,7 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
           <input
             type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
             placeholder="Общество с ограниченной ответственностью..."
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+            className="input-field"
           />
         </FormField>
 
@@ -329,16 +314,14 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
             <input
               type="text" value={contact} onChange={(e) => setContact(e.target.value)}
               placeholder="ФИО"
-              className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-              style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+              className="input-field"
             />
           </FormField>
           <FormField label="Телефон">
             <input
               type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
               placeholder="+7-900-000-00-00"
-              className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-              style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+              className="input-field"
             />
           </FormField>
         </div>
@@ -347,8 +330,7 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
           <input
             type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             placeholder="email@example.com"
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+            className="input-field"
           />
         </FormField>
 
@@ -356,20 +338,15 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
           <input
             type="text" value={address} onChange={(e) => setAddress(e.target.value)}
             placeholder="Юридический адрес"
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
-            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+            className="input-field"
           />
         </FormField>
 
         <button
           onClick={handleSubmit}
           disabled={!inn.trim() || !name.trim() || saving}
-          className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1"
-          style={{
-            background: (inn.trim() && name.trim()) ? 'var(--gold-gradient)' : 'var(--bg-elevated)',
-            color: (inn.trim() && name.trim()) ? '#fff' : 'var(--text-tertiary)',
-            opacity: saving ? 0.6 : 1,
-          }}
+          className="btn-primary spring-tap mt-1"
+          style={{ opacity: saving ? 0.6 : 1 }}
         >
           {saving ? 'Сохранение...' : 'Создать контрагента'}
         </button>
@@ -381,7 +358,7 @@ function CreateCustomerSheet({ open, onClose, onCreated }) {
 function FormField({ label, children }) {
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>
+      <label className="input-label">
         {label}
       </label>
       {children}

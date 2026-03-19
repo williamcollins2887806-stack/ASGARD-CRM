@@ -84,9 +84,9 @@ export default function WorkersSchedule() {
       <PullToRefresh onRefresh={fetchData}>
         {/* Month nav */}
         <div className="flex items-center justify-between px-2 pb-3">
-          <button onClick={prevMonth} className="spring-tap p-2" style={{ color: 'var(--text-tertiary)' }}><ChevronLeft size={20} /></button>
-          <p className="text-[14px] font-bold capitalize" style={{ color: 'var(--text-primary)' }}>{monthLabel}</p>
-          <button onClick={nextMonth} className="spring-tap p-2" style={{ color: 'var(--text-tertiary)' }}><ChevRight size={20} /></button>
+          <button onClick={prevMonth} className="spring-tap p-2 c-tertiary"><ChevronLeft size={20} /></button>
+          <p className="text-[14px] font-bold capitalize c-primary">{monthLabel}</p>
+          <button onClick={nextMonth} className="spring-tap p-2 c-tertiary"><ChevRight size={20} /></button>
         </div>
 
         {/* Legend */}
@@ -94,7 +94,7 @@ export default function WorkersSchedule() {
           {Object.entries(KIND_MAP).filter(([k]) => k !== 'free').map(([k, v]) => (
             <span key={k} className="flex items-center gap-1 shrink-0">
               <span className="w-2.5 h-2.5 rounded-sm" style={{ background: v.color }} />
-              <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{v.label}</span>
+              <span className="text-[10px] c-tertiary">{v.label}</span>
             </span>
           ))}
         </div>
@@ -109,12 +109,12 @@ export default function WorkersSchedule() {
               const todayEntry = scheduleMap[`${emp.id}_${todayDate}`];
               const todayKind = todayEntry ? (KIND_MAP[todayEntry.kind] || KIND_MAP.free) : KIND_MAP.free;
               return (
-                <div key={emp.id} className="rounded-2xl overflow-hidden" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 30}ms both` }}>
+                <div key={emp.id} className="rounded-2xl overflow-hidden card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 30}ms both` }}>
                   {/* Employee header */}
                   <button onClick={() => { haptic.light(); setDetail(emp); }} className="w-full flex items-center gap-2 px-3 py-2 spring-tap">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0" style={{ background: 'var(--hero-gradient)', color: '#fff' }}>{name.charAt(0)}</div>
+                    <div className="w-7 h-7 avatar-hero text-[11px]">{name.charAt(0)}</div>
                     <div className="flex-1 min-w-0 text-left">
-                      <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{name}</p>
+                      <p className="text-[13px] font-semibold truncate c-primary">{name}</p>
                     </div>
                     {todayKind.label !== 'Свободен' && <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold shrink-0" style={{ background: `color-mix(in srgb, ${todayKind.color} 15%, transparent)`, color: todayKind.color }}>{todayKind.label}</span>}
                   </button>
@@ -166,14 +166,14 @@ function EmployeeScheduleSheet({ employee, onClose, days, scheduleMap }) {
         )}
         {/* Day list */}
         {entries.length === 0 ? (
-          <p className="text-[13px]" style={{ color: 'var(--text-tertiary)' }}>Весь месяц свободен</p>
+          <p className="text-[13px] c-tertiary">Весь месяц свободен</p>
         ) : (
           <div className="flex flex-col gap-1.5">
             {entries.map((d) => {
               const km = KIND_MAP[d.entry.kind] || KIND_MAP.free;
               return (
                 <div key={d.date} className="flex items-center justify-between px-3 py-2 rounded-xl" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
-                  <span className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>{d.num}</span>
+                  <span className="text-[13px] font-semibold c-primary">{d.num}</span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${km.color} 15%, transparent)`, color: km.color }}>{km.label}</span>
                 </div>
               );
@@ -182,7 +182,7 @@ function EmployeeScheduleSheet({ employee, onClose, days, scheduleMap }) {
         )}
         {/* Phone */}
         {emp.phone && (
-          <a href={`tel:${emp.phone}`} className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}>
+          <a href={`tel:${emp.phone}`} className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1 c-green" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}>
             <Phone size={16} /> Позвонить
           </a>
         )}

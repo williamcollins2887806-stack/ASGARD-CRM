@@ -78,8 +78,7 @@ export default function Personnel() {
       headerRight={
         <button
           onClick={() => { haptic.light(); setShowSearch(!showSearch); }}
-          className="flex items-center justify-center spring-tap"
-          style={{ width: 44, height: 44, color: 'var(--text-tertiary)' }}
+          className="btn-icon spring-tap"
         >
           <Search size={20} />
         </button>
@@ -88,22 +87,17 @@ export default function Personnel() {
       <PullToRefresh onRefresh={fetchEmployees}>
         {showSearch && (
           <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}>
-            <div
-              className="flex items-center gap-2 px-3 rounded-xl"
-              style={{ height: 36, background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
-            >
-              <Search size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+            <div className="search-bar">
+              <Search size={16} className="c-tertiary" style={{ flexShrink: 0 }} />
               <input
                 type="text"
                 placeholder="Поиск по имени, городу..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
-                className="flex-1 bg-transparent outline-none text-[14px]"
-                style={{ color: 'var(--text-primary)', caretColor: 'var(--gold)' }}
               />
               {search && (
-                <button onClick={() => setSearch('')} style={{ color: 'var(--text-tertiary)' }}>
+                <button onClick={() => setSearch('')} className="c-tertiary">
                   <X size={16} />
                 </button>
               )}
@@ -143,38 +137,30 @@ export default function Personnel() {
                 <button
                   key={emp.id}
                   onClick={() => { haptic.light(); setDetail(emp); }}
-                  className="w-full text-left rounded-2xl px-4 py-3 spring-tap"
-                  style={{
-                    background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)',
-                    backdropFilter: 'blur(8px)',
-                    border: '0.5px solid var(--border-norse)',
-                    animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both`,
-                  }}
+                  className="card-glass w-full text-left px-4 py-3 spring-tap"
+                  style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}
                 >
                   <div className="flex items-center gap-3">
-                    <div
-                      className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold"
-                      style={{ background: 'var(--hero-gradient)', color: '#fff' }}
-                    >
+                    <div className="avatar-hero w-10 h-10 text-[14px]">
                       {name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[14px] font-semibold leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
+                      <p className="text-[14px] font-semibold leading-tight truncate c-primary">
                         {name}
                       </p>
-                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                      <p className="text-[11px] mt-0.5 c-secondary">
                         {getRoleName(emp.role_tag)}
-                        {emp.city && <span style={{ color: 'var(--text-tertiary)' }}> · {emp.city}</span>}
+                        {emp.city && <span className="c-tertiary"> · {emp.city}</span>}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {rating > 0 && (
-                        <span className="flex items-center gap-0.5 text-[12px] font-semibold" style={{ color: 'var(--gold)' }}>
+                        <span className="flex items-center gap-0.5 text-[12px] font-semibold c-gold">
                           <Star size={12} fill="var(--gold)" />
                           {rating.toFixed(1)}
                         </span>
                       )}
-                      <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
+                      <ChevronRight size={16} className="c-tertiary" />
                     </div>
                   </div>
                 </button>
@@ -193,12 +179,8 @@ function FilterPill({ active, label, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap"
-      style={{
-        background: active ? 'var(--bg-elevated)' : 'transparent',
-        color: active ? 'var(--text-primary)' : 'var(--text-tertiary)',
-        border: active ? '0.5px solid var(--border-light)' : '0.5px solid transparent',
-      }}
+      className="filter-pill spring-tap"
+      data-active={active ? 'true' : undefined}
     >
       {label}
     </button>
@@ -238,7 +220,7 @@ function EmployeeDetailSheet({ employee, onClose }) {
               style={{ color: s <= Math.round(rating) ? 'var(--gold)' : 'var(--text-tertiary)' }}
             />
           ))}
-          <span className="text-[13px] font-semibold ml-1" style={{ color: 'var(--gold)' }}>
+          <span className="text-[13px] font-semibold ml-1 c-gold">
             {rating.toFixed(1)}
           </span>
         </div>
@@ -269,29 +251,26 @@ function EmployeeDetailSheet({ employee, onClose }) {
       <div className="flex flex-col gap-3 pb-4">
         {/* Avatar hero */}
         <div className="flex items-center gap-3 pb-1">
-          <div
-            className="shrink-0 w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold"
-            style={{ background: 'var(--hero-gradient)', color: '#fff' }}
-          >
+          <div className="avatar-hero w-14 h-14 text-xl">
             {name.charAt(0).toUpperCase()}
           </div>
           <div>
-            <p className="text-[16px] font-bold" style={{ color: 'var(--text-primary)' }}>{name}</p>
-            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{getRoleName(e.role_tag)}</p>
+            <p className="text-[16px] font-bold c-primary">{name}</p>
+            <p className="text-[12px] c-secondary">{getRoleName(e.role_tag)}</p>
           </div>
         </div>
 
         {fields.map((f, i) => (
           <div key={i}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">
               {f.label}
             </p>
             {f.custom ? f.custom : (
               <div className="flex items-center gap-2">
                 {f.link ? (
-                  <a href={f.link} className="text-[14px]" style={{ color: 'var(--blue)' }}>{f.value}</a>
+                  <a href={f.link} className="text-[14px] c-blue">{f.value}</a>
                 ) : (
-                  <p className="text-[14px] flex-1" style={{ color: 'var(--text-primary)' }}>{f.value}</p>
+                  <p className="text-[14px] flex-1 c-primary">{f.value}</p>
                 )}
                 {f.action}
               </div>
@@ -304,8 +283,8 @@ function EmployeeDetailSheet({ employee, onClose }) {
           {e.phone && (
             <a
               href={`tel:${e.phone}`}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap"
-              style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}
+              className="btn-action spring-tap c-green"
+              style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}
             >
               <Phone size={16} /> Позвонить
             </a>

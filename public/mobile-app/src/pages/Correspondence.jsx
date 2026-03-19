@@ -50,8 +50,8 @@ export default function Correspondence() {
   return (
     <PageShell title="Корреспонденция" headerRight={
       <div className="flex items-center gap-1">
-        <button onClick={() => { haptic.light(); setShowSearch(!showSearch); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--text-tertiary)' }}><Search size={20} /></button>
-        <button onClick={() => { haptic.light(); setShowCreate(true); }} className="flex items-center justify-center spring-tap" style={{ width: 44, height: 44, color: 'var(--blue)' }}><Plus size={22} /></button>
+        <button onClick={() => { haptic.light(); setShowSearch(!showSearch); }} className="btn-icon spring-tap"><Search size={20} /></button>
+        <button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>
       </div>
     }>
       <PullToRefresh onRefresh={fetchDocs}>
@@ -64,17 +64,17 @@ export default function Correspondence() {
             {filtered.map((doc, i) => {
               const isIn = (doc.direction || '').toLowerCase().includes('вход') || doc.direction === 'incoming';
               return (
-                <button key={doc.id} onClick={() => { haptic.light(); setDetail(doc); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={doc.id} onClick={() => { haptic.light(); setDetail(doc); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{doc.title || doc.number || `Документ #${doc.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{doc.title || doc.number || `Документ #${doc.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: isIn ? 'color-mix(in srgb, var(--blue) 15%, transparent)' : 'color-mix(in srgb, var(--green) 15%, transparent)', color: isIn ? 'var(--blue)' : 'var(--green)' }}>
                       {isIn ? 'Входящий' : 'Исходящий'}
                     </span>
-                    {doc.number && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>№ {doc.number}</span>}
-                    {doc.date && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{formatDate(doc.date)}</span>}
+                    {doc.number && <span className="text-[10px] c-tertiary">№ {doc.number}</span>}
+                    {doc.date && <span className="text-[10px] c-tertiary">{formatDate(doc.date)}</span>}
                   </div>
                 </button>
               );
@@ -103,7 +103,7 @@ function DetailSheet({ doc, onClose }) {
     <BottomSheet open={!!doc} onClose={onClose} title={doc.title || `Документ #${doc.id}`}>
       <div className="flex flex-col gap-3 pb-4">
         {fields.map((f, i) => (<FieldRow key={i} {...f} />))}
-        {doc.file_url && <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: 'var(--bg-elevated)', color: 'var(--blue)' }}><ExternalLink size={16} /> Скачать документ</a>}
+        {doc.file_url && <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1 c-blue bg-elevated"><ExternalLink size={16} /> Скачать документ</a>}
       </div>
     </BottomSheet>
   );
@@ -128,22 +128,21 @@ function CreateSheet({ open, onClose, onCreated }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новый документ">
       <div className="flex flex-col gap-3 pb-4">
-        <FormField label="Название *"><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название документа..." className="form-input" style={inputStyle} /></FormField>
+        <FormField label="Название *"><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название документа..." className="input-field" /></FormField>
         <div className="grid grid-cols-2 gap-2">
-          <FormField label="Номер"><input type="text" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Вх-001" className="form-input" style={inputStyle} /></FormField>
-          <FormField label="Направление"><select value={direction} onChange={(e) => setDirection(e.target.value)} className="form-input appearance-none" style={inputStyle}><option value="incoming">Входящий</option><option value="outgoing">Исходящий</option></select></FormField>
+          <FormField label="Номер"><input type="text" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Вх-001" className="input-field" /></FormField>
+          <FormField label="Направление"><select value={direction} onChange={(e) => setDirection(e.target.value)} className="input-field appearance-none"><option value="incoming">Входящий</option><option value="outgoing">Исходящий</option></select></FormField>
         </div>
-        <FormField label="Тип"><input type="text" value={type} onChange={(e) => setType(e.target.value)} placeholder="Письмо, приказ..." className="form-input" style={inputStyle} /></FormField>
-        <FormField label="Примечание"><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Детали..." rows={2} className="form-input resize-none" style={inputStyle} /></FormField>
+        <FormField label="Тип"><input type="text" value={type} onChange={(e) => setType(e.target.value)} placeholder="Письмо, приказ..." className="input-field" /></FormField>
+        <FormField label="Примечание"><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Детали..." rows={2} className="input-field resize-none" /></FormField>
         <SubmitBtn label="Создать" disabled={!title.trim()} saving={saving} onClick={handleSubmit} />
       </div>
     </BottomSheet>
   );
 }
 
-const inputStyle = { background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' };
-function FormField({ label, children }) { return <div><label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>{label}</label>{children}</div>; }
-function FieldRow({ label, value, color, full }) { return <div><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{label}</p>{color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color }}>{value}</span> : <p className={`text-[14px] ${full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{value}</p>}</div>; }
-function SubmitBtn({ label, disabled, saving, onClick }) { return <button onClick={onClick} disabled={disabled || saving} className="w-full py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1" style={{ background: !disabled ? 'var(--gold-gradient)' : 'var(--bg-elevated)', color: !disabled ? '#fff' : 'var(--text-tertiary)', opacity: saving ? 0.6 : 1 }}>{saving ? 'Сохранение...' : label}</button>; }
-function SearchBar({ search, setSearch, placeholder }) { return <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}><div className="flex items-center gap-2 px-3 rounded-xl" style={{ height: 36, background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}><Search size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} /><input type="text" placeholder={placeholder} value={search} onChange={(e) => setSearch(e.target.value)} autoFocus className="flex-1 bg-transparent outline-none text-[14px]" style={{ color: 'var(--text-primary)', caretColor: 'var(--gold)' }} />{search && <button onClick={() => setSearch('')} style={{ color: 'var(--text-tertiary)' }}><X size={16} /></button>}</div></div>; }
-function FilterPills({ filters, active, onChange }) { return <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">{filters.map((f) => <button key={f.id} onClick={() => onChange(f.id)} className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap" style={{ background: active === f.id ? 'var(--bg-elevated)' : 'transparent', color: active === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)', border: active === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent' }}>{f.label}</button>)}</div>; }
+function FormField({ label, children }) { return <div><label className="input-label">{label}</label>{children}</div>; }
+function FieldRow({ label, value, color, full }) { return <div><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{label}</p>{color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color }}>{value}</span> : <p className={`text-[14px] c-primary ${full ? 'whitespace-pre-wrap' : ''}`}>{value}</p>}</div>; }
+function SubmitBtn({ label, disabled, saving, onClick }) { return <button onClick={onClick} disabled={disabled || saving} className="btn-primary spring-tap mt-1">{saving ? 'Сохранение...' : label}</button>; }
+function SearchBar({ search, setSearch, placeholder }) { return <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}><div className="search-bar"><Search size={16} className="c-tertiary" style={{ flexShrink: 0 }} /><input type="text" placeholder={placeholder} value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />{search && <button onClick={() => setSearch('')} className="c-tertiary"><X size={16} /></button>}</div></div>; }
+function FilterPills({ filters, active, onChange }) { return <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">{filters.map((f) => <button key={f.id} onClick={() => onChange(f.id)} className="filter-pill spring-tap" data-active={active === f.id}>{f.label}</button>)}</div>; }

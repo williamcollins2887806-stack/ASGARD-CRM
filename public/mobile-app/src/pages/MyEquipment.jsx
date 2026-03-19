@@ -38,8 +38,8 @@ export default function MyEquipment() {
       <PullToRefresh onRefresh={fetchData}>
         {!loading && items.length > 0 && (
           <div className="grid grid-cols-2 gap-1.5 px-1 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>{items.length}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Единиц</p></div>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', border: '0.5px solid var(--border-norse)' }}><p className="text-[13px] font-bold" style={{ color: 'var(--gold)' }}>{formatMoney(totalValue, { short: true })}</p><p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Стоимость</p></div>
+            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl card-glass"><p className="text-[13px] font-bold c-primary">{items.length}</p><p className="text-[9px] c-tertiary">Единиц</p></div>
+            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl card-glass"><p className="text-[13px] font-bold c-gold">{formatMoney(totalValue, { short: true })}</p><p className="text-[9px] c-tertiary">Стоимость</p></div>
           </div>
         )}
         {loading ? <SkeletonList count={4} /> : items.length === 0 ? (
@@ -49,15 +49,15 @@ export default function MyEquipment() {
             {items.map((item, i) => {
               const st = STATUS_MAP[item.status] || STATUS_MAP.active;
               return (
-                <button key={item.id} onClick={() => { haptic.light(); setDetail(item); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap" style={{ background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)', backdropFilter: 'blur(8px)', border: '0.5px solid var(--border-norse)', animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={item.id} onClick={() => { haptic.light(); setDetail(item); }} className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{item.name || `#${item.id}`}</p>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary">{item.name || `#${item.id}`}</p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    {item.category_name && <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{item.category_name}</span>}
-                    {item.inventory_number && <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>№{item.inventory_number}</span>}
+                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
+                    {item.category_name && <span className="text-[10px] c-secondary">{item.category_name}</span>}
+                    {item.inventory_number && <span className="text-[10px] c-tertiary">№{item.inventory_number}</span>}
                   </div>
                 </button>
               );
@@ -86,7 +86,7 @@ function EquipmentDetailSheet({ item, onClose }) {
   return (
     <BottomSheet open={!!item} onClose={onClose} title={item.name || `#${item.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>{f.value}</p>}</div>)}
+        {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
       </div>
     </BottomSheet>
   );

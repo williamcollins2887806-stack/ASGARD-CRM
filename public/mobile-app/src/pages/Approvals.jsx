@@ -97,43 +97,38 @@ export default function Approvals() {
               return (
                 <div
                   key={est.id}
-                  className="rounded-2xl px-4 py-3"
-                  style={{
-                    background: 'color-mix(in srgb, var(--bg-surface) 85%, transparent)',
-                    backdropFilter: 'blur(8px)',
-                    border: '0.5px solid var(--border-norse)',
-                    animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both`,
-                  }}
+                  className="card-glass px-4 py-3"
+                  style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both` }}
                 >
                   <button
                     onClick={() => { haptic.light(); setDetail(est); }}
                     className="w-full text-left"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-[14px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
+                      <p className="text-[14px] font-semibold leading-tight c-primary">
                         {tender?.customer_name || `Просчёт #${est.id}`}
                       </p>
-                      <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }} />
+                      <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
                     </div>
                     {(est.author_name || est.created_by_name) && (
-                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                      <p className="text-[11px] mt-0.5 c-secondary">
                         От: {est.author_name || est.created_by_name}
                       </p>
                     )}
                     <div className="flex items-center gap-3 mt-2">
                       <span
-                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                        style={{ background: 'color-mix(in srgb, var(--blue) 15%, transparent)', color: 'var(--blue)' }}
+                        className="status-badge c-blue"
+                        style={{ background: 'color-mix(in srgb, var(--blue) 15%, transparent)' }}
                       >
                         Согласование
                       </span>
                       {price > 0 && (
-                        <span className="text-[10px]" style={{ color: 'var(--gold)' }}>
+                        <span className="text-[10px] c-gold">
                           {formatMoney(price, { short: true })}
                         </span>
                       )}
                       {margin > 0 && (
-                        <span className="text-[10px]" style={{ color: margin >= 20 ? 'var(--green)' : 'var(--red-soft)' }}>
+                        <span className={`text-[10px] ${margin >= 20 ? 'c-green' : 'c-red'}`}>
                           Маржа {margin}%
                         </span>
                       )}
@@ -213,8 +208,8 @@ function ApprovalDetailSheet({ estimate, tender, onClose, onAction }) {
         {margin > 0 && (
           <div>
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Маржа</p>
-              <p className="text-[13px] font-bold" style={{ color: margin >= 20 ? 'var(--green)' : 'var(--red-soft)' }}>{margin}%</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Маржа</p>
+              <p className={`text-[13px] font-bold ${margin >= 20 ? 'c-green' : 'c-red'}`}>{margin}%</p>
             </div>
             <div className="rounded-full overflow-hidden" style={{ height: 4, background: 'var(--bg-surface-alt)' }}>
               <div
@@ -230,18 +225,18 @@ function ApprovalDetailSheet({ estimate, tender, onClose, onAction }) {
 
         {fields.map((f, i) => (
           <div key={i}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">
               {f.label}
             </p>
             {f.color ? (
               <span
-                className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block"
+                className="status-badge px-2.5 py-1 text-[12px] inline-block"
                 style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}
               >
                 {f.value}
               </span>
             ) : (
-              <p className="text-[14px]" style={{ color: 'var(--text-primary)' }}>{f.value}</p>
+              <p className="text-[14px] c-primary">{f.value}</p>
             )}
           </div>
         ))}
@@ -274,7 +269,7 @@ function FinanceCard({ label, value, color }) {
       className="rounded-xl px-3 py-2.5 text-center"
       style={{ background: `color-mix(in srgb, ${color} 8%, transparent)`, border: `0.5px solid color-mix(in srgb, ${color} 20%, transparent)` }}
     >
-      <p className="text-[10px] font-semibold uppercase" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+      <p className="text-[10px] font-semibold uppercase c-tertiary">{label}</p>
       <p className="text-[13px] font-bold mt-0.5" style={{ color }}>{value}</p>
     </div>
   );
@@ -301,7 +296,7 @@ function CommentSheet({ data, onClose, onSubmit }) {
     <BottomSheet open={!!data} onClose={onClose} title={action.label}>
       <div className="flex flex-col gap-3 pb-4">
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wider mb-1 block" style={{ color: 'var(--text-tertiary)' }}>
+          <label className="input-label">
             Комментарий
           </label>
           <textarea
@@ -310,8 +305,7 @@ function CommentSheet({ data, onClose, onSubmit }) {
             placeholder="Обязательный комментарий..."
             rows={3}
             autoFocus
-            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none"
-            style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)', caretColor: 'var(--gold)' }}
+            className="input-field resize-none"
           />
         </div>
         <button
