@@ -18,37 +18,16 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function Header({ title, subtitle, back = false, backHref, actions = [], transparent = false }) {
     const header = el('header', {
-      className: 'asgard-header',
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '12px var(--sp-page)',
-        paddingTop: '12px',
-        background: transparent ? 'transparent' : 'var(--surface)',
-        borderBottom: transparent ? 'none' : '1px solid var(--border)',
-        position: 'sticky',
-        top: 0,
-        zIndex: DS.z.sticky,
-        backdropFilter: transparent ? 'none' : 'blur(20px)',
-        WebkitBackdropFilter: transparent ? 'none' : 'blur(20px)',
-        minHeight: '52px',
-      },
+      className: 'asgard-header' + (transparent ? ' asgard-header--transparent' : ''),
     });
-
     header.setAttribute('role', 'banner');
 
     // Left: back + titles
-    const left = el('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 } });
+    const left = el('div', { className: 'asgard-header__left' });
 
     if (back) {
       const backBtn = el('button', {
         className: 'asgard-header__back',
-        style: {
-          background: 'none', border: 'none', cursor: 'pointer', padding: '10px',
-          color: 'var(--text)', display: 'flex', alignItems: 'center', flexShrink: 0,
-          minWidth: '44px', minHeight: '44px', justifyContent: 'center',
-        },
         innerHTML: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>',
         onClick: () => {
           if (backHref) Router.navigate(backHref);
@@ -59,25 +38,15 @@ const M = (() => {
       left.appendChild(backBtn);
     }
 
-    const titleWrap = el('div', { style: { minWidth: 0, flex: 1 } });
+    const titleWrap = el('div', { className: 'asgard-header__titles' });
     if (subtitle) {
       titleWrap.appendChild(el('div', {
-        style: {
-          ...DS.font('label'),
-          color: transparent ? 'rgba(255,255,255,0.55)' : 'var(--text-ter)',
-          marginBottom: '2px',
-        },
+        className: 'asgard-header__subtitle',
         textContent: subtitle,
       }));
     }
     titleWrap.appendChild(el('div', {
-      style: {
-        ...DS.font('lg'),
-        color: transparent ? '#fff' : 'var(--text)',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-      },
+      className: 'asgard-header__title',
       textContent: title,
     }));
     left.appendChild(titleWrap);
@@ -85,15 +54,10 @@ const M = (() => {
 
     // Right: actions
     if (actions.length > 0) {
-      const right = el('div', { style: { display: 'flex', gap: '8px', flexShrink: 0 } });
+      const right = el('div', { className: 'asgard-header__right' });
       actions.forEach(action => {
         const btn = el('button', {
-          style: {
-            background: 'none', border: 'none', cursor: 'pointer', padding: '10px',
-            color: transparent ? '#fff' : 'var(--text)', display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            minWidth: '44px', minHeight: '44px',
-          },
+          className: 'asgard-header__action',
           innerHTML: action.icon,
           onClick: action.onClick,
         });
@@ -111,58 +75,34 @@ const M = (() => {
   function HeroCard({ label, value, valuePrefix = '', valueSuffix = '', details = [], gradient }) {
     const card = el('div', {
       className: 'asgard-hero',
-      style: {
-        background: gradient || 'var(--hero-grad)',
-        borderRadius: 'var(--r-hero)',
-        padding: '20px',
-        position: 'relative',
-        overflow: 'hidden',
-        boxShadow: 'var(--hero-shadow)',
-        color: '#fff',
-        ...DS.anim(0.05),
-      },
+      style: Object.assign({ background: gradient || 'var(--hero-grad)' }, DS.anim(0.05)),
     });
 
-    // Logo watermark
-    card.appendChild(el('div', {
-      style: {
-        position: 'absolute', top: '14px', right: '18px',
-        fontSize: '16px', fontWeight: 800, opacity: 0.25, letterSpacing: '2px',
-      },
-      textContent: 'ASGARD',
-    }));
+    card.appendChild(el('div', { className: 'asgard-hero__watermark', textContent: 'ASGARD' }));
 
-    // Label
     if (label) {
-      card.appendChild(el('div', {
-        style: { fontSize: '11px', fontWeight: 500, opacity: 0.55, marginBottom: '4px' },
-        textContent: label,
-      }));
+      card.appendChild(el('div', { className: 'asgard-hero__label', textContent: label }));
     }
 
-    // Animated value
     const valEl = el('div', {
-      style: { ...DS.font('hero'), color: '#fff', marginBottom: details.length ? '14px' : 0 },
+      className: 'asgard-hero__value',
+      style: Object.assign({}, DS.font('hero'), { color: '#fff', marginBottom: details.length ? '14px' : 0 }),
     });
     const numEl = el('span');
     valEl.appendChild(document.createTextNode(valuePrefix));
     valEl.appendChild(numEl);
     valEl.appendChild(document.createTextNode(valueSuffix));
     card.appendChild(valEl);
-
     animateNumber(numEl, value);
 
-    // Details row
     if (details.length) {
-      const row = el('div', { style: { display: 'flex', gap: '20px' } });
+      const row = el('div', { className: 'asgard-hero__details' });
       details.forEach(d => {
         const item = el('div');
+        item.appendChild(el('div', { className: 'asgard-hero__detail-label', textContent: d.label }));
         item.appendChild(el('div', {
-          style: { fontSize: '10px', opacity: 0.55, marginBottom: '2px', letterSpacing: '0.3px' },
-          textContent: d.label,
-        }));
-        item.appendChild(el('div', {
-          style: { fontSize: '14px', fontWeight: 600, color: d.color || '#fff' },
+          className: 'asgard-hero__detail-value',
+          style: { color: d.color || '#fff' },
           textContent: d.value,
         }));
         row.appendChild(item);
@@ -205,29 +145,12 @@ const M = (() => {
      3. CARD
      ══════════════════════════════════════════════ */
   function Card({ title, subtitle, badge, badgeColor, fields = [], actions = [], href, arrow = true, time, swipeActions, onClick, style: customStyle, animDelay = 0 }) {
-    // Left color border based on status
-    const statusBorderColors = {
-      info: 'var(--blue)', success: 'var(--green)', warning: 'var(--orange)',
-      danger: 'var(--red)', gold: 'var(--gold)', neutral: 'var(--text-ter)',
-    };
-    const leftBorder = badgeColor && statusBorderColors[badgeColor];
-
+    const borderCls = badgeColor ? (' asgard-card--border-' + badgeColor) : '';
+    const linkCls = (href || onClick) ? ' asgard-card--link' : '';
+    const dynStyle = Object.assign({}, DS.anim(animDelay), customStyle || {});
     const card = el('div', {
-      className: 'asgard-card',
-      style: {
-        background: 'var(--surface)',
-        borderRadius: 'var(--r-xl)',
-        border: '1px solid var(--border)',
-        borderLeft: leftBorder ? `3px solid ${leftBorder}` : '1px solid var(--border)',
-        padding: '14px 16px',
-        boxShadow: 'var(--shadow)',
-        cursor: (href || onClick) ? 'pointer' : 'default',
-        transition: 'box-shadow 0.2s ease, transform 0.15s ease',
-        overflow: 'hidden',
-        position: 'relative',
-        ...DS.anim(animDelay),
-        ...customStyle,
-      },
+      className: 'asgard-card' + borderCls + linkCls,
+      style: Object.keys(dynStyle).length ? dynStyle : undefined,
     });
 
     if (href || onClick) {
@@ -240,26 +163,17 @@ const M = (() => {
     }
 
     // Top row: title + badge + arrow
-    const topRow = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: fields.length ? '8px' : 0 } });
+    const topRow = el('div', { className: 'asgard-card__top' + (fields.length ? ' asgard-card__top--has-fields' : '') });
 
-    const titleArea = el('div', { style: { flex: 1, minWidth: 0 } });
-    titleArea.appendChild(el('div', {
-      style: { ...DS.font('md'), color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-      textContent: title,
-    }));
+    const titleArea = el('div', { className: 'asgard-card__title-area' });
+    titleArea.appendChild(el('div', { className: 'asgard-card__title', textContent: title }));
     if (subtitle) {
-      titleArea.appendChild(el('div', {
-        style: { ...DS.font('sm'), color: 'var(--text-sec)', marginTop: '2px' },
-        textContent: subtitle,
-      }));
+      titleArea.appendChild(el('div', { className: 'asgard-card__subtitle', textContent: subtitle }));
     }
     topRow.appendChild(titleArea);
 
     if (time) {
-      topRow.appendChild(el('span', {
-        style: { ...DS.font('xs'), color: 'var(--text-ter)', flexShrink: 0 },
-        textContent: time,
-      }));
+      topRow.appendChild(el('span', { className: 'asgard-card__time', textContent: time }));
     }
 
     if (badge) {
@@ -268,7 +182,7 @@ const M = (() => {
 
     if ((href || onClick) && arrow) {
       topRow.appendChild(el('span', {
-        style: { color: 'var(--text-ter)', fontSize: '16px', flexShrink: 0 },
+        className: 'asgard-card__arrow',
         innerHTML: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>',
       }));
     }
@@ -277,17 +191,11 @@ const M = (() => {
 
     // Fields
     if (fields.length) {
-      const fieldsWrap = el('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '4px 16px' } });
+      const fieldsWrap = el('div', { className: 'asgard-card__fields' });
       fields.forEach(f => {
-        const pair = el('div', { style: { display: 'flex', gap: '4px', alignItems: 'baseline' } });
-        pair.appendChild(el('span', {
-          style: { ...DS.font('sm'), color: 'var(--text-ter)' },
-          textContent: f.label + ':',
-        }));
-        pair.appendChild(el('span', {
-          style: { ...DS.font('sm'), color: 'var(--text-sec)', fontWeight: 500 },
-          textContent: f.value,
-        }));
+        const pair = el('div', { className: 'asgard-card__field-pair' });
+        pair.appendChild(el('span', { className: 'asgard-card__field-label', textContent: f.label + ':' }));
+        pair.appendChild(el('span', { className: 'asgard-card__field-value', textContent: f.value }));
         fieldsWrap.appendChild(pair);
       });
       card.appendChild(fieldsWrap);
@@ -295,14 +203,10 @@ const M = (() => {
 
     // Actions row
     if (actions.length) {
-      const actRow = el('div', { style: { display: 'flex', gap: '8px', marginTop: '10px', borderTop: '1px solid var(--border)', paddingTop: '10px' } });
+      const actRow = el('div', { className: 'asgard-card__actions' });
       actions.forEach(a => {
         const btn = el('button', {
-          style: {
-            background: 'none', border: 'none', cursor: 'pointer', padding: '10px 12px',
-            ...DS.font('sm'), color: 'var(--blue)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
-            minHeight: '44px',
-          },
+          className: 'asgard-card__action-btn',
           onClick: (e) => { e.stopPropagation(); a.onClick(); },
         });
         if (a.icon) btn.innerHTML = a.icon + ' ';
@@ -336,20 +240,7 @@ const M = (() => {
 
     return el('span', {
       className: 'asgard-badge',
-      style: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '3px 10px',
-        borderRadius: '6px',
-        fontSize: '11px',
-        fontWeight: 600,
-        lineHeight: 1.3,
-        whiteSpace: 'nowrap',
-        flexShrink: 0,
-        color: p.c,
-        background: variant === 'solid' ? p.bg : 'transparent',
-        border: `1px solid ${p.border}`,
-      },
+      style: { color: p.c, background: variant === 'solid' ? p.bg : 'transparent', border: `1px solid ${p.border}` },
       textContent: text,
     });
   }
@@ -358,21 +249,11 @@ const M = (() => {
      5. FILTER PILLS
      ══════════════════════════════════════════════ */
   function FilterPills({ items, onChange }) {
-    const wrap = el('div', {
-      className: 'asgard-filter-pills asgard-no-scrollbar',
-      style: {
-        display: 'flex', gap: '8px', overflowX: 'auto', padding: '8px var(--sp-page)',
-        scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch',
-      },
-    });
+    const wrap = el('div', { className: 'asgard-filter-pills asgard-no-scrollbar' });
 
     items.forEach(item => {
       const pill = el('button', {
         className: 'asgard-pill' + (item.active ? ' asgard-pill--active' : ''),
-        style: {
-          ...pillStyle(item.active),
-          scrollSnapAlign: 'start',
-        },
         textContent: item.label,
         onClick: () => {
           items.forEach(i => i.active = false);
@@ -380,7 +261,6 @@ const M = (() => {
           wrap.querySelectorAll('.asgard-pill').forEach((p, idx) => {
             const isActive = items[idx].active;
             p.className = 'asgard-pill' + (isActive ? ' asgard-pill--active' : '');
-            Object.assign(p.style, pillStyle(isActive));
           });
           if (onChange) onChange(item.value);
         },
@@ -391,21 +271,6 @@ const M = (() => {
     return wrap;
   }
 
-  function pillStyle(active) {
-    return {
-      padding: '6px 14px',
-      borderRadius: 'var(--r-md)',
-      border: active ? '1px solid var(--red-border)' : '1px solid var(--border)',
-      background: active ? 'var(--red-bg)' : 'var(--surface-alt)',
-      color: active ? 'var(--red)' : 'var(--text-sec)',
-      fontSize: '13px',
-      fontWeight: 600,
-      cursor: 'pointer',
-      whiteSpace: 'nowrap',
-      transition: 'all 0.2s ease',
-      flexShrink: 0,
-    };
-  }
 
   /* ══════════════════════════════════════════════
      6. STATS
@@ -422,48 +287,29 @@ const M = (() => {
 
     items.forEach((item, i) => {
       const cell = el('div', {
-        className: 'asgard-stat',
-        style: {
-          background: 'var(--bg2, var(--surface))',
-          borderRadius: '12px',
-          padding: '14px',
-          cursor: item.href ? 'pointer' : 'default',
-          ...DS.anim(i * 0.05),
-        },
+        className: 'asgard-stat' + (item.href ? ' asgard-stat--link' : ''),
+        style: DS.anim(i * 0.05),
       });
 
       if (item.href) {
         cell.addEventListener('click', () => Router.navigate(item.href));
       }
 
-      // Icon with colored background
       if (item.icon) {
         const iconColor = item.color || 'var(--text)';
         const iconWrap = el('div', {
-          style: {
-            width: '28px', height: '28px', borderRadius: '8px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: '8px', color: iconColor,
-            background: `color-mix(in srgb, ${iconColor} 12%, transparent)`,
-          },
+          className: 'asgard-stat__icon',
+          style: { color: iconColor, background: `color-mix(in srgb, ${iconColor} 12%, transparent)` },
         });
         if (item.svgIcon) {
           iconWrap.innerHTML = item.svgIcon;
         } else {
           iconWrap.textContent = item.icon;
-          iconWrap.style.fontSize = '14px';
         }
         cell.appendChild(iconWrap);
       }
 
-      const valEl = el('div', {
-        style: {
-          ...DS.font('xl'),
-          color: 'var(--t1, var(--text))',
-          fontWeight: '700',
-          lineHeight: '1.1',
-        },
-      });
+      const valEl = el('div', { className: 'asgard-stat__value' });
       if (typeof item.value === 'number') {
         const numSpan = el('span');
         valEl.appendChild(numSpan);
@@ -473,10 +319,7 @@ const M = (() => {
       }
       cell.appendChild(valEl);
 
-      cell.appendChild(el('div', {
-        style: { ...DS.font('xs'), color: 'var(--t3, var(--text-sec))', marginTop: '4px' },
-        textContent: item.label,
-      }));
+      cell.appendChild(el('div', { className: 'asgard-stat__label', textContent: item.label }));
 
       grid.appendChild(cell);
     });
@@ -488,42 +331,24 @@ const M = (() => {
      7. SECTION
      ══════════════════════════════════════════════ */
   function Section({ title, content, collapsible = false, action, collapsed: initCollapsed = false }) {
-    const section = el('div', {
-      className: 'asgard-section',
-      style: { marginBottom: '16px' },
-    });
+    const section = el('div', { className: 'asgard-section' });
 
-    // Header
-    const head = el('div', {
-      style: {
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 var(--sp-page)', marginBottom: '10px',
-      },
-    });
+    const head = el('div', { className: 'asgard-section__head' });
 
     const titleRow = el('div', {
-      style: { display: 'flex', alignItems: 'center', gap: '8px', cursor: collapsible ? 'pointer' : 'default' },
+      className: 'asgard-section__title-row' + (collapsible ? ' asgard-section__title-row--collapsible' : ''),
     });
-    titleRow.appendChild(el('span', {
-      style: { ...DS.font('md'), color: 'var(--text)' },
-      textContent: title,
-    }));
+    titleRow.appendChild(el('span', { className: 'asgard-section__title', textContent: title }));
 
     let chevron;
     if (collapsible) {
-      chevron = el('span', {
-        style: { fontSize: '12px', color: 'var(--text-ter)', transition: 'transform 0.3s ease', display: 'inline-block' },
-        textContent: '▾',
-      });
+      chevron = el('span', { className: 'asgard-section__chevron', textContent: '▾' });
       titleRow.appendChild(chevron);
     }
     head.appendChild(titleRow);
 
     if (action) {
-      const actionBtn = el('a', {
-        style: { ...DS.font('sm'), color: 'var(--blue)', fontWeight: 600, textDecoration: 'none', cursor: 'pointer' },
-        textContent: action.label,
-      });
+      const actionBtn = el('a', { className: 'asgard-section__action', textContent: action.label });
       if (action.href) actionBtn.href = '#' + action.href;
       if (action.onClick) actionBtn.addEventListener('click', action.onClick);
       else if (action.href) actionBtn.addEventListener('click', (e) => { e.preventDefault(); Router.navigate(action.href); });
@@ -532,14 +357,7 @@ const M = (() => {
 
     section.appendChild(head);
 
-    // Content
-    const body = el('div', {
-      className: 'asgard-section__body',
-      style: {
-        overflow: 'hidden',
-        transition: 'max-height 0.35s ease, opacity 0.3s ease',
-      },
-    });
+    const body = el('div', { className: 'asgard-section__body' });
 
     if (content instanceof HTMLElement) body.appendChild(content);
     else if (typeof content === 'string') body.innerHTML = content;
@@ -585,23 +403,14 @@ const M = (() => {
       return empty || Empty({});
     }
 
-    const list = el('div', {
-      className: 'asgard-list',
-      style: { display: 'flex', flexDirection: 'column', gap: '0', padding: '0 var(--sp-page)' },
-    });
+    const list = el('div', { className: 'asgard-list' });
 
     items.forEach((item, i) => {
       const rendered = renderItem(item, i);
       if (rendered) {
         list.appendChild(rendered);
-        // Add divider between items
         if (divider && i < items.length - 1) {
-          list.appendChild(el('div', {
-            style: {
-              height: '1px', background: 'var(--border)',
-              margin: '0 16px',
-            },
-          }));
+          list.appendChild(el('div', { className: 'asgard-list-divider' }));
         }
       }
     });
@@ -636,25 +445,11 @@ const M = (() => {
     var svgKey = emojiToSvg[icon] || type || 'default';
     var svgHtml = svgIcons[svgKey] || svgIcons.default;
 
-    var wrapper = el('div', {
-      className: 'asgard-empty',
-      style: {
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        padding: '20px 16px', textAlign: 'center', gap: '8px',
-        maxHeight: '120px',
-        ...DS.anim(0.1),
-      },
-    });
-    var iconDiv = el('div', {
-      style: {
-        width: '36px', height: '36px',
-        color: DS.t.textTer,
-        opacity: '0.5',
-      },
-    });
+    var wrapper = el('div', { className: 'asgard-empty', style: DS.anim(0.1) });
+    var iconDiv = el('div', { className: 'asgard-empty__icon' });
     iconDiv.innerHTML = svgHtml;
     wrapper.appendChild(iconDiv);
-    wrapper.appendChild(el('div', { style: { ...DS.font('sm'), color: DS.t.textTer }, textContent: text || texts[type] || texts.default }));
+    wrapper.appendChild(el('div', { className: 'asgard-empty__text', textContent: text || texts[type] || texts.default }));
     return wrapper;
   }
 
@@ -662,32 +457,28 @@ const M = (() => {
      10. SKELETON
      ══════════════════════════════════════════════ */
   function Skeleton({ type = 'card', count = 3 }) {
-    const wrap = el('div', {
-      className: 'asgard-skeleton',
-      style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-gap)', padding: '0 var(--sp-page)' },
-    });
+    const wrap = el('div', { className: 'asgard-skeleton' });
 
     for (let i = 0; i < count; i++) {
       let skel;
       if (type === 'hero') {
-        skel = el('div', { style: { ...shimmerBlock(), height: '120px', borderRadius: 'var(--r-hero)' } });
+        skel = el('div', { className: 'asgard-shimmer', style: { height: '120px', borderRadius: 'var(--r-hero)' } });
       } else if (type === 'stats') {
-        const grid = el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' } });
+        const grid = el('div', { className: 'asgard-skeleton-stats' });
         for (let j = 0; j < 4; j++) {
-          grid.appendChild(el('div', { style: { ...shimmerBlock(), height: '64px', borderRadius: 'var(--r-lg)' } }));
+          grid.appendChild(el('div', { className: 'asgard-shimmer', style: { height: '64px', borderRadius: 'var(--r-lg)' } }));
         }
         skel = grid;
       } else if (type === 'list') {
-        skel = el('div', { style: { display: 'flex', gap: '12px', alignItems: 'center', padding: '10px 0' } });
-        skel.appendChild(el('div', { style: { ...shimmerBlock(), width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0 } }));
-        const lines = el('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' } });
-        lines.appendChild(el('div', { style: { ...shimmerBlock(), height: '14px', width: (60 + i * 10) + '%', borderRadius: '4px' } }));
-        lines.appendChild(el('div', { style: { ...shimmerBlock(), height: '10px', width: (30 + i * 8) + '%', borderRadius: '4px' } }));
+        skel = el('div', { className: 'asgard-skeleton-list' });
+        skel.appendChild(el('div', { className: 'asgard-shimmer asgard-skeleton-list__avatar' }));
+        const lines = el('div', { className: 'asgard-skeleton-list__lines' });
+        lines.appendChild(el('div', { className: 'asgard-shimmer', style: { height: '14px', width: (60 + i * 10) + '%', borderRadius: '4px' } }));
+        lines.appendChild(el('div', { className: 'asgard-shimmer', style: { height: '10px', width: (30 + i * 8) + '%', borderRadius: '4px' } }));
         skel.appendChild(lines);
       } else {
-        // card — varying heights for variety
         const heights = [78, 64, 52, 72, 60];
-        skel = el('div', { style: { ...shimmerBlock(), height: heights[i % heights.length] + 'px', borderRadius: 'var(--r-xl)' } });
+        skel = el('div', { className: 'asgard-shimmer', style: { height: heights[i % heights.length] + 'px', borderRadius: 'var(--r-xl)' } });
       }
       wrap.appendChild(skel);
     }
@@ -718,19 +509,11 @@ const M = (() => {
 
     const toast = el('div', {
       className: 'asgard-toast',
-      style: {
-        position: 'fixed', top: 'calc(12px + env(safe-area-inset-top, 0px))', left: '20px', right: '20px',
-        padding: '12px 16px', borderRadius: 'var(--r-lg)', zIndex: DS.z.modal,
-        background: c.bg, border: `1px solid ${c.border}`, color: c.color,
-        display: 'flex', alignItems: 'center', gap: '10px',
-        fontSize: '14px', fontWeight: 600, backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-        animation: 'asgardSlideDown 0.35s cubic-bezier(.34,1.56,.64,1)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-      },
+      style: { background: c.bg, border: `1px solid ${c.border}`, color: c.color },
     });
 
-    toast.appendChild(el('span', { textContent: c.icon, style: { fontSize: '16px' } }));
-    toast.appendChild(el('span', { textContent: message, style: { flex: 1 } }));
+    toast.appendChild(el('span', { className: 'asgard-toast__icon', textContent: c.icon }));
+    toast.appendChild(el('span', { className: 'asgard-toast__text', textContent: message }));
     toast.setAttribute('role', 'status');
     toast.setAttribute('aria-live', 'polite');
 
@@ -768,72 +551,32 @@ const M = (() => {
      12. BOTTOM SHEET
      ══════════════════════════════════════════════ */
   function BottomSheet({ title, content, fullscreen = false, onClose }) {
-    const overlay = el('div', {
-      className: 'asgard-sheet-overlay',
-      style: {
-        position: 'fixed', inset: 0, zIndex: DS.z.sheet,
-        background: 'var(--overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
-        animation: 'asgardFadeIn 0.25s ease',
-      },
-    });
+    const overlay = el('div', { className: 'asgard-sheet-overlay' });
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
 
     const sheet = el('div', {
       className: 'asgard-sheet',
-      style: {
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: DS.z.sheet + 1,
-        background: 'var(--surface)', borderRadius: '20px 20px 0 0',
-        maxHeight: fullscreen ? '95vh' : '70vh',
-        animation: 'asgardSlideSheetUp 0.35s cubic-bezier(.34,1.56,.64,1)',
-        display: 'flex', flexDirection: 'column',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-      },
+      style: { maxHeight: fullscreen ? '95vh' : '70vh' },
     });
 
     // Drag handle
-    const handle = el('div', {
-      style: {
-        display: 'flex', justifyContent: 'center', padding: '10px 0 6px',
-        cursor: 'grab', flexShrink: 0,
-      },
-    });
-    handle.appendChild(el('div', {
-      style: { width: '36px', height: '4px', borderRadius: '2px', background: 'var(--surface-alt)' },
-    }));
+    const handle = el('div', { className: 'asgard-sheet__handle' });
+    handle.appendChild(el('div', { className: 'asgard-sheet__handle-bar' }));
     sheet.appendChild(handle);
 
     // Title
     if (title) {
-      const titleBar = el('div', {
-        style: {
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 20px 12px', borderBottom: '1px solid var(--border)',
-          flexShrink: 0,
-        },
-      });
-      titleBar.appendChild(el('div', { style: { ...DS.font('md'), color: 'var(--text)' }, textContent: title }));
-
-      const closeBtn = el('button', {
-        style: {
-          background: 'var(--surface-alt)', border: 'none', borderRadius: '50%',
-          width: '36px', height: '36px', padding: '4px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', color: 'var(--text-sec)', fontSize: '16px',
-        },
-        textContent: '✕',
-        onClick: close,
-      });
+      const titleBar = el('div', { className: 'asgard-sheet__title-bar' });
+      titleBar.appendChild(el('div', { className: 'asgard-sheet__title', textContent: title }));
+      const closeBtn = el('button', { className: 'asgard-sheet__close', textContent: '✕', onClick: close });
       closeBtn.setAttribute('aria-label', 'Закрыть');
       titleBar.appendChild(closeBtn);
       sheet.appendChild(titleBar);
     }
 
     // Content
-    const body = el('div', {
-      className: 'asgard-sheet-body',
-      style: { flex: 1, overflowY: 'auto', padding: '16px 20px', WebkitOverflowScrolling: 'touch', overflowX: 'hidden', boxSizing: 'border-box' },
-    });
+    const body = el('div', { className: 'asgard-sheet-body' });
     if (content instanceof HTMLElement) body.appendChild(content);
     else if (typeof content === 'string') body.innerHTML = content;
     sheet.appendChild(body);
@@ -892,41 +635,31 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function Confirm({ title, message, okText = 'Подтвердить', cancelText = 'Отмена', danger = false }) {
     return new Promise((resolve) => {
-      const overlay = el('div', {
-        style: {
-          position: 'fixed', inset: 0, zIndex: DS.z.modal,
-          background: 'var(--overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
-          animation: 'asgardFadeIn 0.2s ease',
-        },
-      });
+      const overlay = el('div', { className: 'asgard-confirm-overlay' });
       overlay.setAttribute('role', 'alertdialog');
       overlay.setAttribute('aria-modal', 'true');
 
       const dialog = el('div', {
-        style: {
-          background: 'var(--surface)', borderRadius: 'var(--r-xl)', padding: '24px',
-          maxWidth: '320px', width: '100%', boxShadow: 'var(--shadow-hover)',
-          ...DS.animPop(0),
-        },
+        className: 'asgard-confirm-dialog',
+        style: DS.animPop(0),
       });
 
       if (title) {
-        const titleRow = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' } });
-        if (danger) titleRow.appendChild(el('span', { style: { fontSize: '20px' }, textContent: '⚠️' }));
+        const titleRow = el('div', { className: 'asgard-confirm-title-row' });
+        if (danger) titleRow.appendChild(el('span', { textContent: '⚠️' }));
         titleRow.appendChild(el('div', {
-          style: { ...DS.font('md'), color: danger ? 'var(--red)' : 'var(--text)' },
+          style: { color: danger ? 'var(--red)' : 'var(--text)' },
           textContent: title,
         }));
         dialog.appendChild(titleRow);
       }
 
       if (message) dialog.appendChild(el('div', {
-        style: { ...DS.font('base'), color: 'var(--text-sec)', marginBottom: '20px' },
+        className: 'asgard-confirm-message',
         textContent: message,
       }));
 
-      const btns = el('div', { style: { display: 'flex', gap: '10px' } });
+      const btns = el('div', { className: 'asgard-confirm-btns' });
 
       function dismiss(result) {
         overlay.remove();
@@ -935,20 +668,14 @@ const M = (() => {
       }
 
       btns.appendChild(el('button', {
-        style: {
-          flex: 1, padding: '12px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)',
-          background: 'transparent', color: 'var(--text-sec)', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-        },
+        className: 'asgard-confirm-cancel',
         textContent: cancelText,
         onClick: () => dismiss(false),
       }));
 
       btns.appendChild(el('button', {
-        style: {
-          flex: 1, padding: '12px', borderRadius: 'var(--r-md)', border: 'none',
-          background: danger ? 'var(--red)' : 'var(--blue)', color: '#fff',
-          fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-        },
+        className: 'asgard-confirm-ok',
+        style: { background: danger ? 'var(--red)' : 'var(--blue)' },
         textContent: okText,
         onClick: () => dismiss(true),
       }));
@@ -968,20 +695,8 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function FAB({ icon, onClick, gradient = true, pulse = true }) {
     const fab = el('button', {
-      className: 'asgard-fab',
-      style: {
-        position: 'fixed', bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))', right: '20px',
-        width: '56px', height: '56px', borderRadius: '50%',
-        background: gradient ? 'var(--hero-grad)' : 'var(--surface)',
-        border: gradient ? 'none' : '1px solid var(--border)',
-        color: gradient ? '#fff' : 'var(--text)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: gradient ? 'var(--fab-shadow)' : 'var(--shadow)',
-        cursor: 'pointer', zIndex: DS.z.fab,
-        animation: pulse ? 'asgardFabPulse 3s infinite' : 'none',
-        transition: 'transform 0.2s ease',
-        fontSize: '24px',
-      },
+      className: 'asgard-fab' + (gradient ? ' asgard-fab--gradient' : ' asgard-fab--outline'),
+      style: !pulse ? { animation: 'none' } : undefined,
       onClick,
     });
     fab.innerHTML = icon || '+';
@@ -1032,7 +747,7 @@ const M = (() => {
 
     // Stats
     if (stats) {
-      const statsWrap = el('div', { style: { marginTop: '12px', marginBottom: '4px' } });
+      const statsWrap = el('div', { className: 'asgard-table-page__stats' });
       statsWrap.appendChild(Stats({ items: stats }));
       page.appendChild(statsWrap);
     }
@@ -1048,10 +763,7 @@ const M = (() => {
     }
 
     // List
-    listContainer = el('div', {
-      className: 'asgard-table-page__list',
-      style: { padding: '12px 0', minHeight: '200px' },
-    });
+    listContainer = el('div', { className: 'asgard-table-page__list' });
     page.appendChild(listContainer);
 
     // FAB
@@ -1112,9 +824,7 @@ const M = (() => {
         return;
       }
 
-      const listEl = el('div', {
-        style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-gap)', padding: '0 var(--sp-page)' },
-      });
+      const listEl = el('div', { className: 'asgard-table-page__items' });
 
       // Virtual scroll for large lists
       if (data.length > 50) {
@@ -1218,13 +928,7 @@ const M = (() => {
       if (existing) existing.remove();
       const tooltip = el('div', {
         className: 'asgard-bar-tooltip',
-        style: {
-          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px',
-          padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--text)',
-          whiteSpace: 'nowrap', boxShadow: 'var(--shadow)', zIndex: DS.z.dropdown, marginBottom: '4px',
-          ...DS.animPop(0),
-        },
+        style: DS.animPop(0),
         textContent: typeof value === 'number' ? Utils.formatNumber(value) : value,
       });
       parent.appendChild(tooltip);
@@ -1232,37 +936,23 @@ const M = (() => {
     }
 
     const chart = el('div', {
-      className: 'asgard-bar-chart',
-      style: {
-        height: height + 'px',
-        display: 'flex',
-        alignItems: 'flex-end',
-        gap: dual ? '4px' : '6px',
-        padding: '0 var(--sp-page)',
-        paddingBottom: '20px',
-        position: 'relative',
-        ...DS.anim(0.1),
-      },
+      className: 'asgard-bar-chart' + (dual ? ' asgard-bar-chart--dual' : ''),
+      style: Object.assign({ height: height + 'px' }, DS.anim(0.1)),
     });
 
     data.forEach((d, i) => {
-      const group = el('div', {
-        style: {
-          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: dual ? '2px' : '0', height: '100%', justifyContent: 'flex-end',
-        },
-      });
+      const group = el('div', { className: 'asgard-bar-group' });
 
       if (dual) {
-        const barWrap = el('div', { style: { display: 'flex', gap: '2px', alignItems: 'flex-end', flex: 1, width: '100%' } });
+        const barWrap = el('div', { className: 'asgard-bar-dual-wrap' });
 
         // Bar 1
         const h1 = ((d.value / maxVal) * (height - 30)) + 'px';
         const bar1 = el('div', {
+          className: 'asgard-bar asgard-bar--dual',
           style: {
-            flex: 1, height: '0', background: `linear-gradient(to top, ${color || 'var(--blue)'}, ${color || 'var(--blue-bright)'})`,
-            borderRadius: '6px 6px 2px 2px', transition: `height 0.5s cubic-bezier(.34,1.56,.64,1) ${i * 0.05}s`,
-            cursor: 'pointer', position: 'relative',
+            background: `linear-gradient(to top, ${color || 'var(--blue)'}, ${color || 'var(--blue-bright)'})`,
+            transition: `height 0.5s cubic-bezier(.34,1.56,.64,1) ${i * 0.05}s`,
           },
         });
         bar1.addEventListener('click', () => {
@@ -1273,10 +963,10 @@ const M = (() => {
         // Bar 2
         const h2 = (((d.value2 || 0) / maxVal) * (height - 30)) + 'px';
         const bar2 = el('div', {
+          className: 'asgard-bar asgard-bar--dual',
           style: {
-            flex: 1, height: '0', background: 'linear-gradient(to top, var(--red), var(--red-bright))',
-            borderRadius: '6px 6px 2px 2px', transition: `height 0.5s cubic-bezier(.34,1.56,.64,1) ${i * 0.05 + 0.05}s`,
-            cursor: 'pointer', position: 'relative',
+            background: 'linear-gradient(to top, var(--red), var(--red-bright))',
+            transition: `height 0.5s cubic-bezier(.34,1.56,.64,1) ${i * 0.05 + 0.05}s`,
           },
         });
         bar2.addEventListener('click', () => {
@@ -1294,13 +984,10 @@ const M = (() => {
       } else {
         const h = ((d.value / maxVal) * (height - 30)) + 'px';
         const bar = el('div', {
+          className: 'asgard-bar asgard-bar--single',
           style: {
-            width: '100%', height: '0',
             background: color ? `linear-gradient(to top, ${color}, ${color})` : 'linear-gradient(to top, var(--blue), var(--red-bright))',
-            borderRadius: '6px 6px 2px 2px',
             transition: `height 0.5s cubic-bezier(.34,1.56,.64,1) ${i * 0.05}s`,
-            cursor: 'pointer',
-            position: 'relative',
           },
         });
 
@@ -1316,12 +1003,6 @@ const M = (() => {
       // Label
       const labelEl = el('div', {
         className: 'asgard-bar-label' + (dual ? ' asgard-bar-label--dual' : ''),
-        style: {
-          fontSize: dual ? '7px' : '9px', fontWeight: 500, color: 'var(--text-ter)', marginTop: '4px',
-          textAlign: 'center', position: 'absolute', bottom: 0,
-          maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          lineHeight: '1.1',
-        },
         textContent: d.label,
       });
       if (i % 2 === 1) labelEl.dataset.even = '';
@@ -1391,12 +1072,12 @@ const M = (() => {
   function BigNumber({ value, label, prefix = '', suffix = '', color, icon, trend }) {
     const wrap = el('div', {
       className: 'asgard-big-num',
-      style: { display: 'flex', flexDirection: 'column', ...DS.anim(0.05) },
+      style: DS.anim(0.05),
     });
 
-    const row = el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '6px' } });
+    const row = el('div', { className: 'asgard-big-num__row' });
 
-    if (icon) row.appendChild(el('span', { style: { fontSize: '20px' }, textContent: icon }));
+    if (icon) row.appendChild(el('span', { textContent: icon }));
 
     if (prefix) row.appendChild(el('span', { style: { ...DS.font('xl'), color: color || 'var(--text)' }, textContent: prefix }));
 
@@ -1418,12 +1099,7 @@ const M = (() => {
 
     wrap.appendChild(row);
 
-    if (label) {
-      wrap.appendChild(el('div', {
-        style: { ...DS.font('sm'), color: 'var(--text-sec)', marginTop: '2px' },
-        textContent: label,
-      }));
-    }
+    if (label) wrap.appendChild(el('div', { className: 'asgard-big-num__label', textContent: label }));
 
     return wrap;
   }
@@ -1434,7 +1110,6 @@ const M = (() => {
   function Form({ fields, onSubmit, submitLabel = 'Сохранить' }) {
     const form = el('form', {
       className: 'asgard-form',
-      style: { padding: '0 var(--sp-page)', maxWidth: '100%', overflow: 'hidden' },
       onSubmit: (e) => {
         e.preventDefault();
         // Двойной тап защита
@@ -1476,55 +1151,31 @@ const M = (() => {
       if (f.section && f.section !== currentSection) {
         currentSection = f.section;
         form.appendChild(el('div', {
-          style: {
-            ...DS.font('md'), color: 'var(--text)', marginTop: i > 0 ? '20px' : '0',
-            marginBottom: '12px',
-          },
+          className: 'asgard-form__section-heading' + (i > 0 ? ' asgard-form__section-heading--spaced' : ''),
           textContent: f.section,
         }));
       }
 
-      const group = el('div', {
-        className: 'asgard-form__group',
-        style: { marginBottom: '14px', position: 'relative' },
-      });
+      const group = el('div', { className: 'asgard-form__group' });
 
       if (f.type === 'toggle') {
         // Toggle row
-        const row = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', maxWidth: '100%' } });
-        row.appendChild(el('label', {
-          style: { ...DS.font('base'), color: 'var(--text)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-          textContent: f.label,
-        }));
+        const row = el('div', { className: 'asgard-form__toggle-row' });
+        row.appendChild(el('label', { className: 'asgard-form__toggle-label', textContent: f.label }));
 
         const toggleWrap = el('div', {
-          style: {
-            width: '46px', minWidth: '46px', height: '26px',
-            borderRadius: '13px', position: 'relative', cursor: 'pointer',
-            transition: 'background 0.3s ease',
-            background: f.value ? 'var(--red)' : 'var(--surface-alt)',
-            border: '1px solid var(--border)', flexShrink: 0,
-            boxSizing: 'border-box',
-          },
+          className: 'asgard-form__toggle-wrap',
+          style: { background: f.value ? 'var(--red)' : 'var(--surface-alt)' },
         });
         const toggleThumb = el('span', {
-          style: {
-            position: 'absolute', top: '2px',
-            left: f.value ? '22px' : '2px',
-            width: '20px', height: '20px', borderRadius: '50%',
-            background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-            transition: 'left 0.3s cubic-bezier(.34,1.56,.64,1)',
-            pointerEvents: 'none',
-          },
+          className: 'asgard-form__toggle-thumb',
+          style: { left: f.value ? '22px' : '2px' },
         });
         toggleWrap.appendChild(toggleThumb);
         const toggle = el('input', {
           type: 'checkbox',
           name: f.id,
-          style: {
-            position: 'absolute', opacity: '0', width: '100%', height: '100%',
-            top: '0', left: '0', margin: '0', cursor: 'pointer', zIndex: '1',
-          },
+          className: 'asgard-form__toggle-input',
         });
         if (f.value) toggle.checked = true;
         toggle.addEventListener('change', () => {
@@ -1536,20 +1187,11 @@ const M = (() => {
         group.appendChild(row);
       } else if (f.type === 'select') {
         // Select
-        group.appendChild(el('label', {
-          style: { ...DS.font('sm'), color: 'var(--text-sec)', marginBottom: '4px', display: 'block' },
-          textContent: f.label,
-        }));
+        group.appendChild(el('label', { className: 'asgard-form__label', textContent: f.label }));
 
         const select = el('select', {
           name: f.id,
-          style: {
-            ...inputStyle(),
-            appearance: 'none', WebkitAppearance: 'none',
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center',
-            textDecoration: 'none',
-          },
+          className: 'asgard-form__input asgard-form__select',
         });
         if (f.placeholder) {
           select.appendChild(el('option', { value: '', textContent: f.placeholder, disabled: true, selected: !f.value }));
@@ -1561,26 +1203,23 @@ const M = (() => {
         });
         group.appendChild(select);
       } else if (f.type === 'textarea') {
-        group.appendChild(el('label', {
-          style: { ...DS.font('sm'), color: 'var(--text-sec)', marginBottom: '4px', display: 'block' },
-          textContent: f.label,
-        }));
+        group.appendChild(el('label', { className: 'asgard-form__label', textContent: f.label }));
         group.appendChild(el('textarea', {
           name: f.id,
           placeholder: f.placeholder || '',
-          style: { ...inputStyle(), minHeight: '80px', resize: 'vertical' },
+          className: 'asgard-form__input asgard-form__textarea',
           textContent: f.value || '',
         }));
       } else {
         // Standard input with floating label
-        const inputWrap = el('div', { style: { position: 'relative' } });
+        const inputWrap = el('div', { className: 'asgard-form__input-wrap' });
 
         const input = el('input', {
           type: f.type || 'text',
           name: f.id,
           placeholder: ' ',
           value: f.value || '',
-          style: inputStyle(true),
+          className: 'asgard-form__input asgard-form__input--floating',
         });
         if (f.required) {
           input.required = true;
@@ -1588,12 +1227,7 @@ const M = (() => {
         }
 
         const label = el('label', {
-          style: {
-            position: 'absolute', left: '16px', top: '15px',
-            fontSize: '14px', fontWeight: 400, color: 'var(--text-ter)',
-            transition: 'all 0.2s cubic-bezier(.34,1.56,.64,1)', pointerEvents: 'none',
-            transformOrigin: 'left top',
-          },
+          className: 'asgard-form__float-label',
           textContent: f.label,
         });
 
@@ -1635,10 +1269,7 @@ const M = (() => {
       }
 
       // Error placeholder
-      group.appendChild(el('div', {
-        className: 'asgard-form__error',
-        style: { ...DS.font('xs'), color: 'var(--red)', marginTop: '4px', display: 'none' },
-      }));
+      group.appendChild(el('div', { className: 'asgard-form__error' }));
 
       form.appendChild(group);
     });
@@ -1649,23 +1280,6 @@ const M = (() => {
     return form;
   }
 
-  function inputStyle(floating = false) {
-    return {
-      width: '100%',
-      padding: floating ? '22px 16px 8px' : '12px 16px',
-      borderRadius: 'var(--r-md)',
-      border: '1px solid var(--border)',
-      background: 'var(--input-bg)',
-      color: 'var(--text)',
-      fontSize: '14px',
-      lineHeight: '1.5',
-      outline: 'none',
-      transition: 'border-color 0.2s ease, padding 0.2s ease',
-      boxSizing: 'border-box',
-      fontFamily: 'inherit',
-      minHeight: '48px',
-    };
-  }
 
   function showFieldError(input, msg) {
     input.style.borderColor = 'var(--red)';
@@ -1691,6 +1305,10 @@ const M = (() => {
      20. FULL WIDTH BUTTON
      ══════════════════════════════════════════════ */
   function FullWidthBtn({ label, onClick, href, icon, variant = 'primary', loading: isLoading = false }) {
+    const btn = el('button', {
+      className: 'asgard-btn-full asgard-btn-full--' + (variant || 'primary'),
+    });
+    // keep v for setLoading restore
     const variants = {
       primary: { background: 'var(--hero-grad)', color: '#fff', border: 'none' },
       secondary: { background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' },
@@ -1699,33 +1317,14 @@ const M = (() => {
     };
     const v = variants[variant] || variants.primary;
 
-    const btn = el('button', {
-      className: 'asgard-btn-full',
-      style: {
-        width: '100%', padding: '14px', borderRadius: 'var(--r-lg)',
-        ...v,
-        fontSize: '16px', fontWeight: 600, cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-        position: 'relative', overflow: 'hidden',
-        transition: 'transform 0.15s ease, opacity 0.15s ease',
-        fontFamily: 'inherit',
-      },
-    });
-
     if (icon) btn.innerHTML = icon + ' ';
     btn.appendChild(document.createTextNode(label));
 
     // Ripple effect
     btn.addEventListener('click', (e) => {
       const ripple = el('span', {
-        style: {
-          position: 'absolute', borderRadius: '50%',
-          background: 'rgba(255,255,255,0.3)',
-          width: '20px', height: '20px',
-          left: (e.offsetX - 10) + 'px', top: (e.offsetY - 10) + 'px',
-          animation: 'asgardRipple 0.5s ease forwards',
-          pointerEvents: 'none',
-        },
+        className: 'asgard-btn-ripple',
+        style: { left: (e.offsetX - 10) + 'px', top: (e.offsetY - 10) + 'px' },
       });
       btn.appendChild(ripple);
       setTimeout(() => ripple.remove(), 500);
@@ -1764,59 +1363,42 @@ const M = (() => {
      21. DETAIL FIELDS
      ══════════════════════════════════════════════ */
   function DetailFields({ fields }) {
-    const wrap = el('div', {
-      className: 'asgard-detail-fields',
-      style: { display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 var(--sp-page)' },
-    });
+    const wrap = el('div', { className: 'asgard-detail-fields' });
 
     fields.forEach((f, i) => {
       const row = el('div', {
-        style: {
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          paddingBottom: '12px', borderBottom: '1px solid var(--border)',
-          ...DS.anim(i * 0.03),
-        },
+        className: 'asgard-detail-row',
+        style: DS.anim(i * 0.03),
       });
 
-      row.appendChild(el('div', {
-        style: { ...DS.font('sm'), color: 'var(--text-sec)', flex: '0 0 auto', maxWidth: '40%' },
-        textContent: f.label,
-      }));
+      row.appendChild(el('div', { className: 'asgard-detail-row__label', textContent: f.label }));
 
-      const valWrap = el('div', { style: { display: 'flex', alignItems: 'center', gap: '6px', textAlign: 'right' } });
+      const valWrap = el('div', { className: 'asgard-detail-row__val' });
 
       if (f.type === 'badge') {
         valWrap.appendChild(Badge({ text: f.value, color: f.badgeColor || 'neutral' }));
       } else if (f.type === 'progress') {
         valWrap.appendChild(ProgressBar({ value: f.value, max: f.max || 100, label: f.value + '%' }));
       } else if (f.type === 'phone' || f.type === 'email') {
-        const link = el('a', {
-          style: { ...DS.font('base'), color: 'var(--blue)', fontWeight: 500, textDecoration: 'none' },
+        valWrap.appendChild(el('a', {
+          className: 'asgard-detail-row__link',
           href: f.type === 'phone' ? 'tel:' + f.value : 'mailto:' + f.value,
           textContent: f.value,
-        });
-        valWrap.appendChild(link);
+        }));
       } else if (f.type === 'link') {
-        const link = el('a', {
-          style: { ...DS.font('base'), color: 'var(--blue)', fontWeight: 500, textDecoration: 'none', cursor: 'pointer' },
-          textContent: f.value,
-        });
+        const link = el('a', { className: 'asgard-detail-row__link', textContent: f.value });
         if (f.href) link.addEventListener('click', () => Router.navigate(f.href));
         valWrap.appendChild(link);
       } else {
         valWrap.appendChild(el('span', {
-          style: { ...DS.font('base'), color: 'var(--text)', fontWeight: 500 },
+          className: 'asgard-detail-row__val-text',
           textContent: f.value || '—',
         }));
       }
 
       if (f.copy) {
         const copyBtn = el('button', {
-          style: {
-            background: 'var(--surface-alt)', border: '1px solid var(--border)', cursor: 'pointer',
-            padding: '4px 6px', borderRadius: '6px',
-            color: 'var(--text-sec)', fontSize: '16px', lineHeight: 1,
-          },
+          className: 'asgard-detail-row__copy',
           textContent: '📋',
           onClick: () => {
             navigator.clipboard.writeText(f.value).then(() => {
@@ -1840,23 +1422,14 @@ const M = (() => {
   function ProgressBar({ value, max = 100, color, label }) {
     const pct = Math.min(100, Math.max(0, (value / max) * 100));
 
-    const wrap = el('div', {
-      className: 'asgard-progress',
-      style: { display: 'flex', alignItems: 'center', gap: '8px', width: '100%' },
-    });
+    const wrap = el('div', { className: 'asgard-progress' });
 
-    const track = el('div', {
-      style: {
-        flex: 1, height: '6px', borderRadius: '3px',
-        background: 'var(--surface-alt)', overflow: 'hidden',
-      },
-    });
+    const track = el('div', { className: 'asgard-progress__track' });
 
     const bar = el('div', {
+      className: 'asgard-progress__bar',
       style: {
-        height: '100%', borderRadius: '3px', width: '0%',
         background: color || (pct >= 75 ? 'var(--green)' : pct >= 50 ? 'var(--gold)' : pct >= 25 ? 'var(--orange)' : 'var(--red)'),
-        transition: 'width 0.6s cubic-bezier(.34,1.56,.64,1)',
       },
     });
     track.appendChild(bar);
@@ -1864,12 +1437,7 @@ const M = (() => {
 
     setTimeout(() => { bar.style.width = pct + '%'; }, 50);
 
-    if (label) {
-      wrap.appendChild(el('span', {
-        style: { ...DS.font('xs'), color: 'var(--text-sec)', flexShrink: 0, minWidth: '30px', textAlign: 'right' },
-        textContent: label,
-      }));
-    }
+    if (label) wrap.appendChild(el('span', { className: 'asgard-progress__label', textContent: label }));
 
     return wrap;
   }
@@ -1878,43 +1446,18 @@ const M = (() => {
      23. TABS (внутренние)
      ══════════════════════════════════════════════ */
   function Tabs({ items, active, onChange }) {
-    const wrap = el('div', {
-      className: 'asgard-tabs asgard-no-scrollbar',
-      style: {
-        display: 'flex', overflowX: 'auto', borderBottom: '1px solid var(--border)',
-        position: 'relative', scrollSnapType: 'x mandatory',
-        width: '100%', maxWidth: '100vw',
-        WebkitOverflowScrolling: 'touch',
-      },
-    });
-
-    const indicator = el('div', {
-      className: 'asgard-tabs__indicator',
-      style: {
-        position: 'absolute', bottom: '-1px', height: '2px',
-        background: 'var(--red)', borderRadius: '1px',
-        transition: 'left 0.3s ease, width 0.3s ease',
-      },
-    });
+    const wrap = el('div', { className: 'asgard-tabs asgard-no-scrollbar' });
+    const indicator = el('div', { className: 'asgard-tabs__indicator' });
 
     items.forEach((item, i) => {
       const tab = el('button', {
         className: 'asgard-tab' + (item.value === active ? ' asgard-tab--active' : ''),
-        style: {
-          padding: '10px 16px', background: 'none', border: 'none',
-          ...DS.font('sm'),
-          fontWeight: 600,
-          color: item.value === active ? 'var(--text)' : 'var(--text-ter)',
-          cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-          transition: 'color 0.2s ease', scrollSnapAlign: 'start',
-        },
         textContent: item.label,
         onClick: () => {
           active = item.value;
           wrap.querySelectorAll('.asgard-tab').forEach((t, idx) => {
             const isActive = items[idx].value === active;
             t.className = 'asgard-tab' + (isActive ? ' asgard-tab--active' : '');
-            t.style.color = isActive ? 'var(--text)' : 'var(--text-ter)';
           });
           updateIndicator();
           if (onChange) onChange(item.value);
@@ -1941,26 +1484,12 @@ const M = (() => {
      24. QUICK ACTIONS
      ══════════════════════════════════════════════ */
   function QuickActions({ items }) {
-    const wrap = el('div', {
-      className: 'asgard-quick-actions asgard-no-scrollbar',
-      style: {
-        display: 'flex', gap: '8px', overflowX: 'auto', padding: '0 var(--sp-page)',
-        scrollSnapType: 'x mandatory',
-      },
-    });
+    const wrap = el('div', { className: 'asgard-quick-actions asgard-no-scrollbar' });
 
     items.forEach((item, i) => {
       const pill = el('button', {
-        style: {
-          display: 'flex', alignItems: 'center', gap: '6px',
-          padding: '8px 14px', borderRadius: 'var(--r-md)',
-          background: 'var(--surface-alt)', border: '1px solid var(--border)',
-          color: 'var(--text)', cursor: 'pointer', whiteSpace: 'nowrap',
-          ...DS.font('sm'), fontWeight: 600, flexShrink: 0,
-          scrollSnapAlign: 'start',
-          transition: 'background 0.2s ease, transform 0.15s ease',
-          ...DS.anim(i * 0.05),
-        },
+        className: 'asgard-quick-action',
+        style: DS.anim(i * 0.05),
         onClick: () => {
           if (item.onClick) item.onClick();
           else if (item.href) Router.navigate(item.href);
@@ -1985,24 +1514,12 @@ const M = (() => {
   function MimirBanner({ title, text, icon = '⚡' }) {
     return el('div', {
       className: 'asgard-mimir-banner',
-      style: {
-        background: 'var(--gold-bg)', border: '1px solid var(--gold-border)',
-        borderRadius: 'var(--r-lg)', padding: '14px 16px',
-        display: 'flex', gap: '12px', alignItems: 'flex-start',
-        margin: '0 var(--sp-page)',
-        ...DS.anim(0.1),
-      },
+      style: DS.anim(0.1),
     }, [
-      el('span', { style: { fontSize: '20px', flexShrink: 0, lineHeight: 1 }, textContent: icon }),
-      el('div', { style: { flex: 1 } }, [
-        el('div', {
-          style: { ...DS.font('sm'), fontWeight: 700, color: 'var(--gold)', marginBottom: '4px' },
-          textContent: title || 'Мимир подсказывает',
-        }),
-        el('div', {
-          style: { ...DS.font('sm'), color: 'var(--text-sec)', lineHeight: 1.4 },
-          textContent: text,
-        }),
+      el('span', { className: 'asgard-mimir-banner__icon', textContent: icon }),
+      el('div', { className: 'asgard-mimir-banner__body' }, [
+        el('div', { className: 'asgard-mimir-banner__title', textContent: title || 'Мимир подсказывает' }),
+        el('div', { className: 'asgard-mimir-banner__text', textContent: text }),
       ]),
     ]);
   }
@@ -2012,47 +1529,25 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function SearchBar({ placeholder = 'Поиск...', onSearch, sticky = false, autoFocus = false }) {
     const wrap = el('div', {
-      className: 'asgard-search',
-      style: {
-        padding: '8px var(--sp-page)',
-        position: sticky ? 'sticky' : 'relative',
-        top: sticky ? '0' : 'auto',
-        zIndex: sticky ? DS.z.sticky : 'auto',
-        background: sticky ? 'var(--bg)' : 'transparent',
-      },
+      className: 'asgard-search' + (sticky ? ' asgard-search--sticky' : ''),
     });
-
     wrap.setAttribute('role', 'search');
 
-    const inner = el('div', {
-      style: {
-        display: 'flex', alignItems: 'center', gap: '8px',
-        background: 'var(--surface-alt)', borderRadius: 'var(--r-md)',
-        padding: '10px 14px', border: '1px solid var(--border)',
-        transition: 'border-color 0.2s ease',
-      },
-    });
+    const inner = el('div', { className: 'asgard-search__inner' });
 
     inner.appendChild(el('span', {
-      style: { color: 'var(--text-ter)', fontSize: '16px', flexShrink: 0, lineHeight: 1 },
+      className: 'asgard-search__icon',
       innerHTML: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>',
     }));
 
     const input = el('input', {
       type: 'search',
       placeholder,
-      style: {
-        flex: 1, background: 'none', border: 'none', outline: 'none',
-        color: 'var(--text)', fontSize: '14px', fontFamily: 'inherit',
-        padding: 0,
-      },
+      className: 'asgard-search__input',
     });
 
     const clearBtn = el('button', {
-      style: {
-        background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
-        color: 'var(--text-ter)', fontSize: '16px', display: 'none', lineHeight: 1,
-      },
+      className: 'asgard-search__clear',
       textContent: '✕',
       onClick: () => {
         input.value = '';
@@ -2071,9 +1566,6 @@ const M = (() => {
       debouncedSearch(input.value);
     });
 
-    input.addEventListener('focus', () => { inner.style.borderColor = 'var(--blue)'; });
-    input.addEventListener('blur', () => { inner.style.borderColor = 'var(--border)'; });
-
     inner.appendChild(input);
     inner.appendChild(clearBtn);
     wrap.appendChild(inner);
@@ -2087,48 +1579,17 @@ const M = (() => {
      27. ACTION SHEET (iOS-стиль меню действий)
      ══════════════════════════════════════════════ */
   function ActionSheet({ title, actions = [], cancelText = 'Отмена', onClose }) {
-    const overlay = el('div', {
-      className: 'asgard-action-sheet-overlay',
-      style: {
-        position: 'fixed', inset: 0, zIndex: DS.z.sheet,
-        background: 'var(--overlay)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
-        animation: 'asgardFadeIn 0.2s ease',
-      },
-    });
-
-    const sheet = el('div', {
-      style: {
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: DS.z.sheet + 1,
-        padding: '0 8px', paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
-        animation: 'asgardSlideSheetUp 0.3s cubic-bezier(.34,1.56,.64,1)',
-      },
-    });
-
-    const group = el('div', {
-      style: { background: 'var(--surface)', borderRadius: '14px', overflow: 'hidden' },
-    });
+    const overlay = el('div', { className: 'asgard-action-sheet-overlay' });
+    const sheet = el('div', { className: 'asgard-action-sheet' });
+    const group = el('div', { className: 'asgard-action-sheet__group' });
 
     if (title) {
-      group.appendChild(el('div', {
-        style: {
-          padding: '14px 16px', textAlign: 'center',
-          ...DS.font('sm'), color: 'var(--text-ter)',
-          borderBottom: '1px solid var(--border)',
-        },
-        textContent: title,
-      }));
+      group.appendChild(el('div', { className: 'asgard-action-sheet__title', textContent: title }));
     }
 
     actions.forEach((action, i) => {
       const btn = el('button', {
-        style: {
-          width: '100%', padding: '16px', background: 'transparent',
-          border: 'none', borderTop: i > 0 || title ? '1px solid var(--border)' : 'none',
-          ...DS.font('md'), fontWeight: 400,
-          color: action.danger ? 'var(--red)' : 'var(--blue)',
-          cursor: 'pointer', fontFamily: 'inherit',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-        },
+        className: 'asgard-action-sheet__btn' + (action.danger ? ' asgard-action-sheet__btn--danger' : ''),
         onClick: () => { close(); if (action.onClick) action.onClick(); },
       });
       if (action.icon) btn.appendChild(el('span', { textContent: action.icon }));
@@ -2138,12 +1599,7 @@ const M = (() => {
     sheet.appendChild(group);
 
     const cancelBtn = el('button', {
-      style: {
-        width: '100%', padding: '16px', background: 'var(--surface)',
-        border: 'none', borderRadius: '14px', marginTop: '8px',
-        ...DS.font('md'), fontWeight: 600, color: 'var(--blue)',
-        cursor: 'pointer', fontFamily: 'inherit',
-      },
+      className: 'asgard-action-sheet__cancel',
       textContent: cancelText,
       onClick: close,
     });
@@ -2169,51 +1625,36 @@ const M = (() => {
      28. DATE PICKER
      ══════════════════════════════════════════════ */
   function DatePicker({ value, label, onChange, min, max }) {
-    const wrap = el('div', {
-      className: 'asgard-datepicker',
-      style: { position: 'relative' },
-    });
-
-    const display = el('div', {
-      style: {
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 16px', borderRadius: 'var(--r-md)',
-        background: 'var(--input-bg)', border: '1px solid var(--border)',
-        cursor: 'pointer', transition: 'border-color 0.2s ease',
-      },
-    });
+    const wrap = el('div', { className: 'asgard-datepicker' });
 
     if (label) {
-      wrap.insertBefore(el('div', {
-        style: { ...DS.font('sm'), color: 'var(--text-sec)', marginBottom: '6px' },
-        textContent: label,
-      }), wrap.firstChild);
+      wrap.appendChild(el('div', { className: 'asgard-datepicker__label', textContent: label }));
     }
 
+    const display = el('div', { className: 'asgard-datepicker__display' });
+
     const dateText = el('span', {
-      style: { ...DS.font('base'), color: value ? 'var(--text)' : 'var(--text-ter)' },
+      className: 'asgard-datepicker__text' + (value ? '' : ' asgard-datepicker__text--placeholder'),
       textContent: value ? formatDate(value) : 'Выберите дату',
     });
     display.appendChild(dateText);
 
     display.appendChild(el('span', {
-      style: { color: 'var(--text-ter)', fontSize: '16px' },
+      className: 'asgard-datepicker__icon',
       innerHTML: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
     }));
 
     const input = el('input', {
-      type: 'date', value: value || '',
-      style: {
-        position: 'absolute', opacity: 0, width: '100%', height: '100%',
-        top: 0, left: 0, cursor: 'pointer',
-      },
+      type: 'date',
+      value: value || '',
+      className: 'asgard-datepicker__input',
     });
     if (min) input.min = min;
     if (max) input.max = max;
 
     input.addEventListener('change', () => {
       dateText.textContent = input.value ? formatDate(input.value) : 'Выберите дату';
-      dateText.style.color = input.value ? 'var(--text)' : 'var(--text-ter)';
+      dateText.className = 'asgard-datepicker__text' + (input.value ? '' : ' asgard-datepicker__text--placeholder');
       if (onChange) onChange(input.value);
     });
 
@@ -2240,34 +1681,28 @@ const M = (() => {
     const wrap = el('div', {
       className: 'asgard-avatar',
       style: {
-        width: size + 'px', height: size + 'px', borderRadius: '50%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, position: 'relative', cursor: onClick ? 'pointer' : 'default',
-        overflow: 'visible',
+        width: size + 'px', height: size + 'px',
+        cursor: onClick ? 'pointer' : 'default',
       },
     });
     if (onClick) wrap.addEventListener('click', onClick);
 
     if (src) {
-      wrap.appendChild(el('img', {
-        src, style: { width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' },
-      }));
+      wrap.appendChild(el('img', { src }));
     } else {
       Object.assign(wrap.style, {
         background: `linear-gradient(135deg, ${colors[colorIdx]}, ${colors[(colorIdx + 2) % colors.length]})`,
-        color: '#fff', fontSize: Math.round(size * 0.38) + 'px', fontWeight: 700,
-        letterSpacing: '-0.5px',
+        color: '#fff', fontSize: Math.round(size * 0.38) + 'px',
       });
       wrap.textContent = initials;
     }
 
     if (status) {
       const dot = el('div', {
+        className: 'asgard-avatar__status asgard-avatar__status--' + status,
         style: {
-          position: 'absolute', bottom: '0', right: '0',
-          width: Math.round(size * 0.28) + 'px', height: Math.round(size * 0.28) + 'px',
-          borderRadius: '50%', border: '2px solid var(--surface)',
-          background: status === 'online' ? 'var(--green)' : status === 'busy' ? 'var(--red)' : 'var(--text-ter)',
+          width: Math.round(size * 0.28) + 'px',
+          height: Math.round(size * 0.28) + 'px',
         },
       });
       wrap.appendChild(dot);
@@ -2284,58 +1719,19 @@ const M = (() => {
     const iconText = icon || typeIcons[type] || typeIcons.info;
 
     const card = el('div', {
-      className: 'asgard-notif' + (read ? '' : ' asgard-notif--unread'),
-      style: {
-        display: 'flex', gap: '12px', padding: '14px 16px',
-        background: read ? 'transparent' : 'var(--blue-bg)',
-        borderRadius: 'var(--r-lg)', cursor: onClick ? 'pointer' : 'default',
-        transition: 'background 0.2s ease',
-        border: '1px solid ' + (read ? 'var(--border)' : 'var(--blue-border)'),
-      },
+      className: 'asgard-notif' + (read ? ' asgard-notif--read' : ' asgard-notif--unread') + (onClick ? ' asgard-notif--link' : ''),
     });
     if (onClick) card.addEventListener('click', onClick);
 
-    card.appendChild(el('div', {
-      style: { fontSize: '20px', flexShrink: 0, lineHeight: 1, marginTop: '2px' },
-      textContent: iconText,
-    }));
+    card.appendChild(el('div', { className: 'asgard-notif__icon', textContent: iconText }));
 
-    const body = el('div', { style: { flex: 1, minWidth: 0 } });
-    body.appendChild(el('div', {
-      style: {
-        ...DS.font('sm'), fontWeight: read ? 400 : 600, color: 'var(--text)',
-        marginBottom: '2px', display: '-webkit-box', WebkitLineClamp: 2,
-        WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      },
-      textContent: title,
-    }));
-    if (text) {
-      body.appendChild(el('div', {
-        style: {
-          ...DS.font('sm'), color: 'var(--text-sec)',
-          display: '-webkit-box', WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical', overflow: 'hidden',
-        },
-        textContent: text,
-      }));
-    }
+    const body = el('div', { className: 'asgard-notif__body' });
+    body.appendChild(el('div', { className: 'asgard-notif__title', textContent: title }));
+    if (text) body.appendChild(el('div', { className: 'asgard-notif__text', textContent: text }));
     card.appendChild(body);
 
-    if (time) {
-      card.appendChild(el('div', {
-        style: { ...DS.font('xs'), color: 'var(--text-ter)', flexShrink: 0, whiteSpace: 'nowrap' },
-        textContent: time,
-      }));
-    }
-
-    if (!read) {
-      card.appendChild(el('div', {
-        style: {
-          width: '8px', height: '8px', borderRadius: '50%',
-          background: 'var(--blue)', flexShrink: 0, marginTop: '6px',
-        },
-      }));
-    }
+    if (time) card.appendChild(el('div', { className: 'asgard-notif__time', textContent: time }));
+    if (!read) card.appendChild(el('div', { className: 'asgard-notif__dot' }));
 
     return card;
   }
@@ -2347,58 +1743,30 @@ const M = (() => {
     const wrap = el('div', { className: 'asgard-step-wizard' });
 
     // Progress bar
-    const progressWrap = el('div', {
-      style: {
-        display: 'flex', alignItems: 'center', gap: '0',
-        padding: '16px var(--sp-page)', position: 'relative',
-      },
-    });
+    const progressWrap = el('div', { className: 'asgard-wizard__progress' });
 
     steps.forEach((step, i) => {
       const isActive = i === current;
       const isDone = i < current;
 
-      const stepEl = el('div', {
-        style: {
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          flex: 1, position: 'relative', zIndex: 1,
-        },
-      });
+      const stepEl = el('div', { className: 'asgard-wizard__step' });
 
+      const circleCls = isDone ? 'asgard-wizard__circle--done' : isActive ? 'asgard-wizard__circle--active' : 'asgard-wizard__circle--pending';
       const circle = el('div', {
-        style: {
-          width: '32px', height: '32px', borderRadius: '50%',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '13px', fontWeight: 700,
-          background: isDone ? 'var(--green)' : isActive ? 'var(--hero-grad)' : 'var(--surface-alt)',
-          color: isDone || isActive ? '#fff' : 'var(--text-ter)',
-          border: isDone || isActive ? 'none' : '2px solid var(--border)',
-          transition: 'all 0.3s ease',
-          boxShadow: isActive ? '0 2px 12px rgba(198,40,40,0.3)' : 'none',
-        },
+        className: 'asgard-wizard__circle ' + circleCls,
         textContent: isDone ? '✓' : String(i + 1),
       });
       stepEl.appendChild(circle);
 
-      stepEl.appendChild(el('div', {
-        style: {
-          ...DS.font('xs'), color: isActive ? 'var(--text)' : 'var(--text-ter)',
-          fontWeight: isActive ? 600 : 400, marginTop: '6px', textAlign: 'center',
-          maxWidth: '64px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        },
-        textContent: step.label,
-      }));
+      const labelCls = 'asgard-wizard__step-label' + (isActive ? ' asgard-wizard__step-label--active' : '');
+      stepEl.appendChild(el('div', { className: labelCls, textContent: step.label }));
 
       progressWrap.appendChild(stepEl);
 
       // Connector line
       if (i < steps.length - 1) {
         progressWrap.appendChild(el('div', {
-          style: {
-            flex: 1, height: '2px', marginTop: '-20px',
-            background: isDone ? 'var(--green)' : 'var(--border)',
-            transition: 'background 0.3s ease', zIndex: 0,
-          },
+          className: 'asgard-wizard__connector' + (isDone ? ' asgard-wizard__connector--done' : ''),
         }));
       }
     });
@@ -2406,10 +1774,7 @@ const M = (() => {
     wrap.appendChild(progressWrap);
 
     // Content area
-    const content = el('div', {
-      className: 'asgard-step-wizard__content',
-      style: { padding: '0 var(--sp-page)' },
-    });
+    const content = el('div', { className: 'asgard-wizard__content' });
     if (steps[current] && steps[current].content) {
       if (steps[current].content instanceof HTMLElement) content.appendChild(steps[current].content);
       else content.innerHTML = steps[current].content;
@@ -2417,9 +1782,7 @@ const M = (() => {
     wrap.appendChild(content);
 
     // Navigation buttons
-    const nav = el('div', {
-      style: { display: 'flex', gap: '10px', padding: '16px var(--sp-page)' },
-    });
+    const nav = el('div', { className: 'asgard-wizard__nav' });
 
     if (current > 0) {
       nav.appendChild(FullWidthBtn({
@@ -2442,77 +1805,49 @@ const M = (() => {
      32. TIMELINE
      ══════════════════════════════════════════════ */
   function Timeline({ items }) {
-    const wrap = el('div', {
-      className: 'asgard-timeline',
-      style: { padding: '0 var(--sp-page)', position: 'relative' },
-    });
+    const wrap = el('div', { className: 'asgard-timeline' });
 
     items.forEach((item, i) => {
       const row = el('div', {
-        style: {
-          display: 'flex', gap: '14px', position: 'relative',
-          paddingBottom: i < items.length - 1 ? '20px' : '0',
-          ...DS.anim(i * 0.04),
-        },
+        className: 'asgard-timeline__row',
+        style: Object.assign({ paddingBottom: i < items.length - 1 ? '20px' : '0' }, DS.anim(i * 0.04)),
       });
 
       // Dot + line
-      const dotCol = el('div', {
-        style: {
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          flexShrink: 0, width: '20px',
-        },
-      });
+      const dotCol = el('div', { className: 'asgard-timeline__dot-col' });
 
       const dot = el('div', {
+        className: 'asgard-timeline__dot',
         style: {
-          width: '10px', height: '10px', borderRadius: '50%',
           background: item.color || (i === 0 ? 'var(--blue)' : 'var(--text-ter)'),
-          marginTop: '5px', flexShrink: 0,
           boxShadow: i === 0 ? '0 0 0 4px var(--blue-bg)' : 'none',
         },
       });
       dotCol.appendChild(dot);
 
       if (i < items.length - 1) {
-        dotCol.appendChild(el('div', {
-          style: {
-            width: '2px', flex: 1, background: 'var(--border)',
-            marginTop: '4px', borderRadius: '1px',
-          },
-        }));
+        dotCol.appendChild(el('div', { className: 'asgard-timeline__line' }));
       }
       row.appendChild(dotCol);
 
       // Content
-      const content = el('div', { style: { flex: 1, minWidth: 0, paddingBottom: '4px' } });
+      const content = el('div', { className: 'asgard-timeline__content' });
 
-      const headerRow = el('div', {
-        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' },
-      });
-      headerRow.appendChild(el('div', {
-        style: { ...DS.font('sm'), fontWeight: 600, color: 'var(--text)' },
-        textContent: item.title,
-      }));
+      const headerRow = el('div', { className: 'asgard-timeline__header' });
+      headerRow.appendChild(el('div', { className: 'asgard-timeline__title', textContent: item.title }));
       if (item.time) {
-        headerRow.appendChild(el('div', {
-          style: { ...DS.font('xs'), color: 'var(--text-ter)', flexShrink: 0 },
-          textContent: item.time,
-        }));
+        headerRow.appendChild(el('div', { className: 'asgard-timeline__time', textContent: item.time }));
       }
       content.appendChild(headerRow);
 
       if (item.text) {
-        content.appendChild(el('div', {
-          style: { ...DS.font('sm'), color: 'var(--text-sec)', lineHeight: 1.4 },
-          textContent: item.text,
-        }));
+        content.appendChild(el('div', { className: 'asgard-timeline__text', textContent: item.text }));
       }
 
       if (item.badge) {
-        content.appendChild(el('div', {
-          style: { marginTop: '6px' },
-        }, [Badge({ text: item.badge, color: item.badgeColor || 'info' })]));
+        content.appendChild(el('div', { className: 'asgard-timeline__badge' }, [
+          Badge({ text: item.badge, color: item.badgeColor || 'info' }),
+        ]));
       }
 
       row.appendChild(content);
@@ -2527,55 +1862,26 @@ const M = (() => {
      ══════════════════════════════════════════════ */
   function ChatBubble({ text, time, mine = false, name, avatar, status }) {
     const row = el('div', {
-      className: 'asgard-chat-row',
-      style: {
-        display: 'flex', gap: '8px', marginBottom: '8px',
-        flexDirection: mine ? 'row-reverse' : 'row',
-        alignItems: 'flex-end',
-      },
+      className: 'asgard-chat-row' + (mine ? ' asgard-chat-row--mine' : ''),
     });
 
     if (!mine && avatar !== false) {
       row.appendChild(Avatar({ name: name || '?', size: 28 }));
     }
 
-    const bubble = el('div', {
-      className: 'asgard-bubble' + (mine ? ' asgard-bubble--mine' : ''),
-      style: {
-        maxWidth: '75%', padding: '10px 14px',
-        borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-        background: mine ? 'var(--hero-grad)' : 'var(--surface)',
-        color: mine ? '#fff' : 'var(--text)',
-        border: mine ? 'none' : '1px solid var(--border)',
-        boxShadow: mine ? '0 2px 8px rgba(198,40,40,0.2)' : 'var(--shadow)',
-      },
-    });
+    const bubble = el('div', { className: 'asgard-bubble' + (mine ? ' asgard-bubble--mine' : '') });
 
     if (!mine && name) {
-      bubble.appendChild(el('div', {
-        style: { ...DS.font('xs'), fontWeight: 600, color: 'var(--blue)', marginBottom: '4px' },
-        textContent: name,
-      }));
+      bubble.appendChild(el('div', { className: 'asgard-bubble__sender', textContent: name }));
     }
 
-    bubble.appendChild(el('div', {
-      style: { ...DS.font('base'), lineHeight: 1.4, wordBreak: 'break-word' },
-      textContent: text,
-    }));
+    bubble.appendChild(el('div', { className: 'asgard-bubble__text', textContent: text }));
 
-    const meta = el('div', {
-      style: {
-        display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px',
-        marginTop: '4px',
-      },
-    });
-    if (time) meta.appendChild(el('span', {
-      style: { ...DS.font('xs'), color: mine ? 'rgba(255,255,255,0.6)' : 'var(--text-ter)' },
-      textContent: time,
-    }));
+    const meta = el('div', { className: 'asgard-bubble__meta' });
+    if (time) meta.appendChild(el('span', { className: 'asgard-bubble__time', textContent: time }));
     if (mine && status) {
       meta.appendChild(el('span', {
-        style: { fontSize: '12px', opacity: 0.6 },
+        className: 'asgard-bubble__status',
         textContent: status === 'read' ? '✓✓' : '✓',
       }));
     }
@@ -2589,23 +1895,11 @@ const M = (() => {
      34. MESSAGE COMPOSER
      ══════════════════════════════════════════════ */
   function MessageComposer({ placeholder = 'Сообщение...', onSend, onAttach }) {
-    const wrap = el('div', {
-      className: 'asgard-composer',
-      style: {
-        display: 'flex', alignItems: 'flex-end', gap: '8px',
-        padding: '8px 12px', background: 'var(--surface)',
-        borderTop: '1px solid var(--border)',
-        paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
-      },
-    });
+    const wrap = el('div', { className: 'asgard-composer' });
 
     if (onAttach) {
       wrap.appendChild(el('button', {
-        style: {
-          background: 'none', border: 'none', cursor: 'pointer', padding: '8px',
-          color: 'var(--text-sec)', fontSize: '20px', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        },
+        className: 'asgard-composer__attach',
         innerHTML: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>',
         onClick: onAttach,
       }));
@@ -2614,26 +1908,14 @@ const M = (() => {
     const input = el('input', {
       type: 'text',
       placeholder,
-      style: {
-        flex: 1, background: 'var(--input-bg)', border: '1px solid var(--border)',
-        borderRadius: '20px', padding: '10px 16px', color: 'var(--text)',
-        fontSize: '14px', fontFamily: 'inherit', outline: 'none',
-        height: '40px', lineHeight: '1',
-        transition: 'border-color 0.2s ease',
-        boxSizing: 'border-box',
-      },
+      className: 'asgard-composer__input',
     });
     input.addEventListener('focus', () => input.style.borderColor = 'var(--blue)');
     input.addEventListener('blur', () => input.style.borderColor = 'var(--border)');
     wrap.appendChild(input);
 
     const sendBtn = el('button', {
-      style: {
-        width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0,
-        background: 'var(--hero-grad)', border: 'none', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'transform 0.15s ease',
-      },
+      className: 'asgard-composer__send',
       innerHTML: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
       onClick: () => {
         if (input.value.trim() && onSend) {
@@ -2658,11 +1940,8 @@ const M = (() => {
     const chip = el('span', {
       className: 'asgard-chip',
       style: {
-        display: 'inline-flex', alignItems: 'center', gap: '4px',
-        padding: '4px 10px', borderRadius: 'var(--r-pill)',
         background: sc.bg, border: '1px solid ' + sc.border, color: sc.color,
-        fontSize: '12px', fontWeight: 600, cursor: onClick ? 'pointer' : 'default',
-        transition: 'all 0.2s ease', whiteSpace: 'nowrap',
+        cursor: onClick ? 'pointer' : 'default',
       },
     });
     if (onClick) chip.addEventListener('click', onClick);
@@ -2671,11 +1950,7 @@ const M = (() => {
 
     if (onRemove) {
       const x = el('button', {
-        style: {
-          background: 'none', border: 'none', cursor: 'pointer',
-          padding: '0 0 0 2px', color: 'inherit', fontSize: '14px', lineHeight: 1,
-          display: 'flex', alignItems: 'center',
-        },
+        className: 'asgard-chip__remove',
         textContent: '×',
         onClick: (e) => { e.stopPropagation(); chip.remove(); if (onRemove) onRemove(); },
       });
@@ -2689,38 +1964,13 @@ const M = (() => {
      36. SEGMENT CONTROL
      ══════════════════════════════════════════════ */
   function SegmentControl({ items, active, onChange }) {
-    const wrap = el('div', {
-      className: 'asgard-segment',
-      style: {
-        display: 'flex', background: 'var(--surface-alt)',
-        borderRadius: 'var(--r-md)', padding: '3px',
-        border: '1px solid var(--border)', position: 'relative',
-        overflow: 'hidden',
-      },
-    });
-
-    const slider = el('div', {
-      className: 'asgard-segment__slider',
-      style: {
-        position: 'absolute', top: '3px', bottom: '3px',
-        borderRadius: 'calc(var(--r-md) - 2px)',
-        background: 'var(--surface)', boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
-        transition: 'left 0.3s cubic-bezier(.34,1.56,.64,1), width 0.3s ease',
-        zIndex: 0,
-      },
-    });
+    const wrap = el('div', { className: 'asgard-segment' });
+    const slider = el('div', { className: 'asgard-segment__slider' });
     wrap.appendChild(slider);
 
     items.forEach((item, i) => {
       const btn = el('button', {
-        style: {
-          flex: 1, padding: '8px 12px', background: 'transparent',
-          border: 'none', cursor: 'pointer', zIndex: 1, position: 'relative',
-          ...DS.font('sm'), fontWeight: 600,
-          color: item.value === active ? 'var(--text)' : 'var(--text-sec)',
-          transition: 'color 0.2s ease', fontFamily: 'inherit',
-          whiteSpace: 'nowrap',
-        },
+        className: item.value === active ? 'active' : '',
         textContent: item.label,
         onClick: () => {
           active = item.value;
@@ -2734,7 +1984,7 @@ const M = (() => {
     function updateSegment() {
       const btns = wrap.querySelectorAll('button');
       btns.forEach((btn, idx) => {
-        btn.style.color = items[idx].value === active ? 'var(--text)' : 'var(--text-sec)';
+        btn.className = items[idx].value === active ? 'active' : '';
       });
       const activeIdx = items.findIndex(i => i.value === active);
       if (activeIdx >= 0 && btns[activeIdx]) {
@@ -2753,22 +2003,8 @@ const M = (() => {
      37. PULL TO REFRESH (визуальный индикатор)
      ══════════════════════════════════════════════ */
   function PullToRefresh({ onRefresh }) {
-    const indicator = el('div', {
-      className: 'asgard-ptr-indicator',
-      style: {
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '0', overflow: 'hidden', transition: 'height 0.3s ease',
-        background: 'var(--bg)',
-      },
-    });
-
-    const spinner = el('div', {
-      style: {
-        width: '24px', height: '24px', borderRadius: '50%',
-        border: '2.5px solid var(--border)', borderTopColor: 'var(--red)',
-        animation: 'asgardSpin 0.8s linear infinite',
-      },
-    });
+    const indicator = el('div', { className: 'asgard-ptr-indicator' });
+    const spinner = el('div', { className: 'asgard-ptr-spinner' });
     indicator.appendChild(spinner);
 
     indicator.show = () => {
@@ -2793,26 +2029,15 @@ const M = (() => {
      38. SWIPE CARD (демо-карточка с явными свайп-действиями)
      ══════════════════════════════════════════════ */
   function SwipeCard({ title, subtitle, leftActions = [], rightActions = [] }) {
-    const wrapper = el('div', {
-      className: 'asgard-swipe-card',
-      style: { position: 'relative', overflow: 'hidden', borderRadius: 'var(--r-xl)' },
-    });
+    const wrapper = el('div', { className: 'asgard-swipe-card' });
 
     // Right actions (revealed on left swipe)
     if (rightActions.length) {
-      const actionsEl = el('div', {
-        className: 'asgard-swipe-actions',
-        style: { position: 'absolute', top: 0, right: 0, bottom: 0, display: 'flex', zIndex: 0 },
-      });
+      const actionsEl = el('div', { className: 'asgard-swipe-actions' });
       rightActions.forEach(a => {
         actionsEl.appendChild(el('button', {
           className: 'asgard-swipe-action',
-          style: {
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexDirection: 'column', gap: '4px',
-            width: '72px', border: 'none', color: '#fff', fontSize: '11px', fontWeight: 600,
-            cursor: 'pointer', background: a.color || 'var(--red)',
-          },
+          style: { background: a.color || 'var(--red)' },
           innerHTML: (a.icon || '') + '<span>' + a.label + '</span>',
           onClick: a.onClick,
         }));
@@ -2821,24 +2046,11 @@ const M = (() => {
     }
 
     // Main card
-    const inner = el('div', {
-      className: 'asgard-swipe-inner',
-      style: {
-        position: 'relative', zIndex: 1, background: 'var(--surface)',
-        padding: '14px 16px', willChange: 'transform', transition: 'transform 0.3s ease',
-        border: '1px solid var(--border)',
-      },
-    });
+    const inner = el('div', { className: 'asgard-swipe-inner' });
 
-    inner.appendChild(el('div', {
-      style: { ...DS.font('md'), color: 'var(--text)', marginBottom: subtitle ? '4px' : 0 },
-      textContent: title,
-    }));
+    inner.appendChild(el('div', { className: 'asgard-swipe-inner__title', textContent: title }));
     if (subtitle) {
-      inner.appendChild(el('div', {
-        style: { ...DS.font('sm'), color: 'var(--text-sec)' },
-        textContent: subtitle,
-      }));
+      inner.appendChild(el('div', { className: 'asgard-swipe-inner__subtitle', textContent: subtitle }));
     }
 
     wrapper.appendChild(inner);
@@ -2884,10 +2096,7 @@ const M = (() => {
     const c = 2 * Math.PI * r;
     const offset = c * (1 - pct / 100);
 
-    const wrap = el('div', {
-      className: 'asgard-donut',
-      style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' },
-    });
+    const wrap = el('div', { className: 'asgard-donut' });
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
@@ -2912,22 +2121,12 @@ const M = (() => {
 
     // Center text
     const center = el('div', {
-      style: {
-        position: 'absolute', top: 0, left: 0, right: 0, bottom: label ? '20px' : 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        ...DS.font('md'), fontWeight: 700, color: 'var(--text)',
-      },
+      className: 'asgard-donut__center',
       textContent: Math.round(pct) + '%',
     });
-    wrap.style.position = 'relative';
     wrap.appendChild(center);
 
-    if (label) {
-      wrap.appendChild(el('div', {
-        style: { ...DS.font('xs'), color: 'var(--text-sec)', textAlign: 'center' },
-        textContent: label,
-      }));
-    }
+    if (label) wrap.appendChild(el('div', { className: 'asgard-donut__label', textContent: label }));
 
     // Animate
     setTimeout(() => {
@@ -2942,44 +2141,25 @@ const M = (() => {
      EXTRA: BURGER MENU (полноэкранное меню)
      ══════════════════════════════════════════════ */
   function BurgerMenu({ user, groups = [], onClose, onNavigate }) {
-    const overlay = el('div', {
-      className: 'asgard-burger-overlay',
-      style: {
-        position: 'fixed', inset: 0, zIndex: DS.z.modal,
-        background: 'var(--bg)', overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
-        animation: 'asgardSlideLeft 0.3s cubic-bezier(.34,1.56,.64,1)',
-      },
-    });
+    const overlay = el('div', { className: 'asgard-burger-overlay' });
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
 
     // Header
-    const header = el('div', {
-      style: {
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px var(--sp-page)', paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))',
-        borderBottom: '1px solid var(--border)',
-      },
-    });
+    const header = el('div', { className: 'asgard-burger-header' });
 
     if (user) {
-      const userRow = el('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } });
+      const userRow = el('div', { className: 'asgard-burger-user-row' });
       userRow.appendChild(Avatar({ name: user.name, src: user.avatar, size: 44, status: 'online' }));
       const info = el('div');
-      info.appendChild(el('div', { style: { ...DS.font('md'), color: 'var(--text)' }, textContent: user.name }));
-      info.appendChild(el('div', { style: { ...DS.font('sm'), color: 'var(--text-sec)' }, textContent: user.role || '' }));
+      info.appendChild(el('div', { className: 'asgard-burger-user-name', textContent: user.name }));
+      info.appendChild(el('div', { className: 'asgard-burger-user-role', textContent: user.role || '' }));
       userRow.appendChild(info);
       header.appendChild(userRow);
     }
 
-    overlay.setAttribute('role', 'dialog');
-    overlay.setAttribute('aria-modal', 'true');
-
     const closeBtn = el('button', {
-      style: {
-        background: 'var(--surface-alt)', border: 'none', borderRadius: '50%',
-        width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer', color: 'var(--text)', fontSize: '20px', flexShrink: 0,
-      },
+      className: 'asgard-burger-close',
       textContent: '✕',
       onClick: close,
     });
@@ -2988,59 +2168,30 @@ const M = (() => {
     overlay.appendChild(header);
 
     // Groups
-    const content = el('div', { style: { padding: '8px 0 120px' } });
+    const content = el('div', { className: 'asgard-burger-content' });
 
     groups.forEach((group, gi) => {
-      const section = el('div', { style: { marginBottom: '4px' } });
+      const section = el('div', { className: 'asgard-burger-section' });
 
-      const groupHeader = el('div', {
-        style: {
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px var(--sp-page)',
-          cursor: 'pointer',
-        },
-      });
-      groupHeader.appendChild(el('div', {
-        style: { ...DS.font('label'), color: 'var(--text-ter)' },
-        textContent: group.title,
-      }));
-      const chevron = el('span', {
-        style: { fontSize: '10px', color: 'var(--text-ter)', transition: 'transform 0.3s ease' },
-        textContent: '▾',
-      });
+      const groupHeader = el('div', { className: 'asgard-burger-group-header' });
+      groupHeader.appendChild(el('div', { className: 'asgard-burger-group-title', textContent: group.title }));
+      const chevron = el('span', { className: 'asgard-burger-chevron', textContent: '▾' });
       groupHeader.appendChild(chevron);
 
-      const items = el('div', { style: { overflow: 'hidden', transition: 'max-height 0.35s ease' } });
+      const items = el('div', { className: 'asgard-burger-items' });
 
       (group.items || []).forEach(item => {
         const row = el('div', {
-          style: {
-            display: 'flex', alignItems: 'center', gap: '12px',
-            padding: '12px var(--sp-page) 12px calc(var(--sp-page) + 8px)',
-            cursor: 'pointer', transition: 'background 0.15s ease',
-          },
+          className: 'asgard-burger-item',
           onClick: () => { close(); if (onNavigate) onNavigate(item.href); },
         });
         row.addEventListener('touchstart', () => row.style.background = 'var(--surface-alt)', { passive: true });
         row.addEventListener('touchend', () => row.style.background = '', { passive: true });
 
-        row.appendChild(el('span', {
-          style: { fontSize: '18px', width: '24px', textAlign: 'center', flexShrink: 0 },
-          textContent: item.icon || '•',
-        }));
-        row.appendChild(el('span', {
-          style: { ...DS.font('base'), color: 'var(--text)', flex: 1 },
-          textContent: item.label,
-        }));
+        row.appendChild(el('span', { className: 'asgard-burger-item__icon', textContent: item.icon || '•' }));
+        row.appendChild(el('span', { className: 'asgard-burger-item__label', textContent: item.label }));
         if (item.badge) {
-          row.appendChild(el('span', {
-            style: {
-              minWidth: '20px', height: '20px', borderRadius: '10px',
-              background: 'var(--red)', color: '#fff', fontSize: '11px', fontWeight: 700,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px',
-            },
-            textContent: item.badge,
-          }));
+          row.appendChild(el('span', { className: 'asgard-burger-item__badge', textContent: item.badge }));
         }
         items.appendChild(row);
       });
@@ -3090,38 +2241,20 @@ const M = (() => {
   function ErrorBanner({ text, onRetry } = {}) {
     const banner = el('div', {
       className: 'asgard-error-banner',
-      style: {
-        display: 'flex', alignItems: 'center', gap: '10px',
-        padding: '12px 16px', borderRadius: '12px',
-        background: `color-mix(in srgb, ${DS.t.red} 8%, transparent)`,
-        margin: '8px 0',
-      },
+      style: { background: `color-mix(in srgb, ${DS.t.red} 8%, transparent)` },
     });
 
-    // WiFi-off icon
-    const icon = el('div', {
-      style: { width: '20px', height: '20px', color: DS.t.red, flexShrink: '0', opacity: '0.7' },
-    });
+    const icon = el('div', { className: 'asgard-error-banner__icon' });
     icon.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M13.83 10.17A10 10 0 0 1 19 12.86"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
     banner.appendChild(icon);
 
-    // Text
     banner.appendChild(el('div', {
-      style: { ...DS.font('sm'), color: DS.t.textSec, flex: '1' },
+      className: 'asgard-error-banner__text',
       textContent: text || 'Не удалось загрузить',
     }));
 
-    // Retry button
     if (onRetry) {
-      const btn = el('button', {
-        style: {
-          ...DS.font('sm'), fontWeight: '600', color: DS.t.blue,
-          background: 'none', border: 'none', padding: '4px 8px',
-          cursor: 'pointer', flexShrink: '0', borderRadius: '8px',
-          WebkitTapHighlightColor: 'transparent',
-        },
-        textContent: 'Повторить',
-      });
+      const btn = el('button', { className: 'asgard-error-banner__retry', textContent: 'Повторить' });
       btn.addEventListener('click', onRetry);
       banner.appendChild(btn);
     }
@@ -3130,27 +2263,13 @@ const M = (() => {
   }
 
   function AccessDenied({ text } = {}) {
-    var wrap = el('div', {
-      className: 'asgard-access-denied',
-      style: {
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        padding: '40px 20px', textAlign: 'center', gap: '12px',
-      },
-    });
-    var icon = el('div', { style: { fontSize: '40px', opacity: '0.5' } });
+    var wrap = el('div', { className: 'asgard-access-denied' });
+    var icon = el('div', { className: 'asgard-access-denied__icon' });
     icon.textContent = '\uD83D\uDEE1\uFE0F';
     wrap.appendChild(icon);
-    wrap.appendChild(el('div', { style: Object.assign({}, DS.font('md'), { color: DS.t.text }), textContent: 'Доступ запрещён' }));
-    wrap.appendChild(el('div', { style: Object.assign({}, DS.font('sm'), { color: DS.t.textSec }), textContent: text || 'У вашей роли нет доступа к этому разделу' }));
-    var btn = el('button', {
-      style: {
-        marginTop: '12px', padding: '10px 24px', borderRadius: '10px',
-        background: 'var(--surface-alt)', border: '1px solid var(--border)',
-        color: 'var(--text)', cursor: 'pointer', fontFamily: 'inherit',
-        fontSize: '14px', fontWeight: '600',
-      },
-      textContent: '\u2190 Назад',
-    });
+    wrap.appendChild(el('div', { className: 'asgard-access-denied__title', textContent: 'Доступ запрещён' }));
+    wrap.appendChild(el('div', { className: 'asgard-access-denied__text', textContent: text || 'У вашей роли нет доступа к этому разделу' }));
+    var btn = el('button', { className: 'asgard-access-denied__back', textContent: '\u2190 Назад' });
     btn.addEventListener('click', function () { Router.navigate('/home'); });
     wrap.appendChild(btn);
     return wrap;
