@@ -607,13 +607,14 @@ async function handleConnection(socket) {
     if (sttStream) { try { sttStream.end(); } catch (_) {} sttStream = null; }
   }
 
-  /* ── AI streaming → TTS streaming pipeline ─────── */
+  /* ── AI streaming → parse JSON → speak text via TTS streaming ── */
   async function generateAndSpeak(context) {
     const systemPrompt = VOICE_OPERATOR_SYSTEM(context);
     const userPrompt = VOICE_OPERATOR_USER(context);
-    const startTime = Date.now();
+    const t0 = Date.now();
 
     try {
+      // ── Этап 1: AI streaming (собираем полный JSON) ──
       const streamResponse = await aiProvider.stream({
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
@@ -623,70 +624,88 @@ async function handleConnection(socket) {
 
       const streamParser = aiProvider.parseStream(streamResponse);
       let fullText = '';
-      let sentenceBuf = '';
-      isSpeaking = true;
+      let firstTokenTime = 0;
 
-      // Открываем TTS bidirectional stream
-      const ttsCall = ttsSynthesizer.streamSynthesis(grpcMetadata());
-      let ttsEnded = false;
-
-      // Настройки TTS
-      ttsCall.write({
-        options: {
-          voice: 'dasha', role: 'friendly', speed: 1.0,
-          outputAudioSpec: {
-            rawAudio: { audioEncoding: 'LINEAR16_PCM', sampleRateHertz: 8000 }
-          },
-          loudnessNormalizationType: 'LUFS'
-        }
-      });
-
-      // Когда TTS отдаёт аудио — сразу в AudioSocket
-      const ttsFinished = new Promise((resolve) => {
-        ttsCall.on('data', (r) => {
-          if (r.audioChunk && r.audioChunk.data && !destroyed) {
-            sendAudio(Buffer.from(r.audioChunk.data));
-          }
-        });
-        ttsCall.on('end', () => { ttsEnded = true; resolve(); });
-        ttsCall.on('error', (err) => {
-          console.error('[AudioSocket] TTS pipe error:', err.message);
-          ttsEnded = true;
-          resolve();
-        });
-        setTimeout(() => { if (!ttsEnded) resolve(); }, 20000);
-      });
-
-      // AI tokens → буфер → TTS по предложениям
       for await (const event of streamParser) {
         if (event.type === 'text') {
+          if (!firstTokenTime) firstTokenTime = Date.now();
           fullText += event.content;
-          sentenceBuf += event.content;
-
-          // Отправляем в TTS при конце предложения
-          if (/[.!?]\s*$/.test(sentenceBuf) && sentenceBuf.trim().length > 5) {
-            ttsCall.write({ synthesisInput: { text: sentenceBuf.trim() } });
-            ttsCall.write({ forceSynthesis: {} });
-            sentenceBuf = '';
-          }
         }
         if (event.type === 'done' || event.type === 'error') break;
       }
 
-      // Остаток текста
-      if (sentenceBuf.trim()) {
-        ttsCall.write({ synthesisInput: { text: sentenceBuf.trim() } });
-        ttsCall.write({ forceSynthesis: {} });
+      const aiMs = Date.now() - t0;
+      const firstTokenMs = firstTokenTime ? firstTokenTime - t0 : aiMs;
+      console.log(`[AudioSocket] AI: ${fullText.length} chars, total=${aiMs}ms, first_token=${firstTokenMs}ms`);
+
+      if (!fullText) return null;
+
+      // ── Этап 2: Парсим JSON ──
+      const parsed = parseAIResponse(fullText);
+      if (!parsed || !parsed.text) return parsed;
+
+      // ── Этап 3: TTS streaming (говорим только parsed.text) ──
+      const ttsStart = Date.now();
+      isSpeaking = true;
+
+      // Используем UtteranceSynthesis (streaming output) — надёжнее StreamSynthesis
+      const ttsRequest = {
+        text: parsed.text,
+        outputAudioSpec: {
+          rawAudio: { audioEncoding: 'LINEAR16_PCM', sampleRateHertz: 8000 }
+        },
+        hints: [
+          { voice: process.env.TTS_VOICE || 'dasha' },
+          { role: process.env.TTS_ROLE || 'friendly' },
+          { speed: 1.0 }
+        ],
+        loudnessNormalizationType: 'LUFS',
+        unsafeMode: parsed.text.length > 250
+      };
+
+      const ttsCall = ttsSynthesizer.utteranceSynthesis(ttsRequest, grpcMetadata());
+      let firstAudioTime = 0;
+      let totalAudioBytes = 0;
+
+      await new Promise((resolve) => {
+        ttsCall.on('data', (r) => {
+          if (r.audioChunk && r.audioChunk.data && !destroyed && socket.writable) {
+            if (!firstAudioTime) firstAudioTime = Date.now();
+            const buf = Buffer.from(r.audioChunk.data);
+            totalAudioBytes += buf.length;
+            // Отправляем аудио-чанки сразу по мере поступления от TTS
+            const CHUNK_SIZE = 320;
+            for (let i = 0; i < buf.length; i += CHUNK_SIZE) {
+              const chunk = buf.slice(i, Math.min(i + CHUNK_SIZE, buf.length));
+              try { socket.write(makeAudioFrame(chunk)); } catch (_) { break; }
+            }
+          }
+        });
+        ttsCall.on('end', resolve);
+        ttsCall.on('error', (err) => {
+          console.error('[AudioSocket] TTS error:', err.message);
+          resolve();
+        });
+        setTimeout(resolve, 15000);
+      });
+
+      const ttsMs = Date.now() - ttsStart;
+      const firstAudioMs = firstAudioTime ? firstAudioTime - ttsStart : ttsMs;
+      const totalMs = Date.now() - t0;
+
+      // Ждём пока аудио проиграется (примерно)
+      const audioDurationMs = (totalAudioBytes / 2 / 8000) * 1000;
+      const alreadyElapsed = Date.now() - (firstAudioTime || ttsStart);
+      if (audioDurationMs > alreadyElapsed) {
+        await new Promise(r => setTimeout(r, audioDurationMs - alreadyElapsed + 100));
       }
 
-      ttsCall.end();
-      await ttsFinished;
       isSpeaking = false;
 
-      const elapsed = Date.now() - startTime;
-      console.log(`[AudioSocket] AI+TTS: ${fullText.length} chars, ${elapsed}ms`);
+      console.log(`[AudioSocket] TTS: "${parsed.text.slice(0, 50)}..." ${totalAudioBytes}b, total=${ttsMs}ms, first_audio=${firstAudioMs}ms`);
+      console.log(`[AudioSocket] TOTAL: AI=${aiMs}ms + TTS=${ttsMs}ms = ${totalMs}ms (first_token=${firstTokenMs}ms, first_audio=${firstTokenMs + firstAudioMs}ms)`);
 
-      return parseAIResponse(fullText);
+      return parsed;
 
     } catch (err) {
       console.error('[AudioSocket] AI+TTS error:', err.message);
@@ -694,6 +713,7 @@ async function handleConnection(socket) {
 
       // Fallback: обычный complete() → speak()
       try {
+        console.log('[AudioSocket] Fallback: using complete()...');
         const response = await aiProvider.complete({
           system: VOICE_OPERATOR_SYSTEM(context),
           messages: [{ role: 'user', content: VOICE_OPERATOR_USER(context) }],
