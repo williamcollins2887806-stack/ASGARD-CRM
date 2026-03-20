@@ -733,10 +733,11 @@ module.exports = {
           const getResp = await api('GET', `/api/equipment/${S.equipmentId}`, { role: 'WAREHOUSE' });
           assertOk(getResp, 'R1.12 get equipment');
 
-          // Issue to employee
-          const issueResp = await api('POST', `/api/equipment/${S.equipmentId}/issue`, {
+          // Issue to employee (POST /api/equipment/issue with equipment_id in body)
+          const issueResp = await api('POST', '/api/equipment/issue', {
             role: 'WAREHOUSE',
             body: {
+              equipment_id: S.equipmentId,
               holder_id: S.employees[0]?.id,
               work_id: S.workId,
               issue_reason: 'Монтаж',
