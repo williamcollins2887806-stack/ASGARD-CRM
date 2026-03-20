@@ -57,11 +57,18 @@ class VoiceAgent {
     // Прогреваем кэш при первом звонке (не блокирует — async)
     this.warmupCache().catch(e => console.warn('[VoiceAgent] Cache warmup error:', e.message));
 
-    // Звонит наш сотрудник — персональное приветствие
+    // Звонит наш сотрудник — персональное приветствие в стиле Асгарда
     if (context.isInternal) {
-      const name = (context.internalCaller.display_name || context.internalCaller.name || '').split(' ')[0];
+      const firstName = this._extractFirstName(context.internalCaller.name);
       this._emit('greeting', { text: `Внутренний звонок: ${context.internalCaller.name}`, internal: true });
-      await this._speak(channel, `Здравствуйте, ${name}! Куда вас соединить?`);
+
+      const greetings = [
+        `Приветствую, воин Асга+рда ${firstName}! Чем могу помочь?`,
+        `Хе+й, ${firstName}! Рад слышать тебя, воин! Куда тебя направить?`,
+        `Славься, ${firstName}! Какой путь тебе указать сегодня?`,
+        `${firstName}, приветствую тебя в чертогах Асга+рда! Чем помочь?`,
+      ];
+      await this._speak(channel, greetings[Math.floor(Math.random() * greetings.length)]);
       return this._runConversation(channel, context, []);
     }
 
@@ -544,6 +551,7 @@ class VoiceAgent {
       callerNumber,
       internalCaller,
       isInternal: !!internalCaller,
+      internalFirstName: internalCaller ? this._extractFirstName(internalCaller.name) : null,
       clientName,
       clientCompany,
       clientInn,
@@ -608,6 +616,19 @@ class VoiceAgent {
       console.error('[VoiceAgent] Employees load error:', e.message);
       return this._employeeCache || [];
     }
+  }
+
+  /**
+   * Извлечь имя из ФИО: "Путков Дмитрий Вадимович" → "Дмитрий"
+   * Формат в БД: "Фамилия Имя Отчество"
+   */
+  _extractFirstName(fullName) {
+    if (!fullName) return 'воин';
+    const parts = fullName.trim().split(/\s+/);
+    // "Фамилия Имя Отчество" → parts[1] = Имя
+    if (parts.length >= 2) return parts[1];
+    // Только одно слово — возвращаем его
+    return parts[0];
   }
 
   /**
