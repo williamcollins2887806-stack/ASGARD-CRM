@@ -4,9 +4,10 @@
  * RecordingFetcher — фоновый сервис, который через Mango Stats API
  * забирает recording_id для звонков, у которых он отсутствует.
  *
- * Mango Office не всегда отправляет recording_id через вебхуки.
- * Этот сервис компенсирует это, запрашивая статистику напрямую
- * и запуская пайплайн (скачивание → транскрипция → AI-анализ).
+ * Стратегия:
+ * 1. Basic Stats API (stats/request) — быстрый, CSV с полем records
+ * 2. Extended Stats API (stats/calls/request) — JSON с recording_id в context_calls
+ * Если Basic Stats вернул пустые records, пробуем Extended.
  */
 
 const { getMangoService } = require('./mango');
@@ -34,7 +35,6 @@ class RecordingFetcher {
     }
     this.logger.info('[RecordingFetcher] Started (polling every 5 min)');
     this._interval = setInterval(() => this._run(), this._fetchIntervalMs);
-    // Первый запуск через 30с — дать серверу стабилизироваться
     setTimeout(() => this._run(), 30000);
   }
 
@@ -57,7 +57,7 @@ class RecordingFetcher {
   }
 
   async _fetchAndMatch() {
-    // 1. Звонки без recording_id (только отвеченные, duration > 0)
+    // 1. Звонки без recording_id (отвеченные, duration > 0)
     const { rows: pending } = await this.db.query(`
       SELECT id, mango_entry_id, created_at
       FROM call_history
@@ -70,9 +70,7 @@ class RecordingFetcher {
       LIMIT 500
     `);
 
-    if (!pending.length) {
-      return; // Все звонки уже обработаны
-    }
+    if (!pending.length) return;
 
     this.logger.info('[RecordingFetcher] Found ' + pending.length + ' calls without recording_id');
 
@@ -82,127 +80,194 @@ class RecordingFetcher {
       entryMap.set(row.mango_entry_id, row.id);
     }
 
-    // 3. Диапазон дат (Mango не принимает date_to в будущем)
+    // 3. Диапазон дат
     const dates = pending.map(r => new Date(r.created_at));
     const minDate = new Date(Math.min.apply(null, dates));
     const now = new Date();
-    const dateTo = Math.floor(now.getTime() / 1000);
-    const dateFrom = Math.floor(minDate.getTime() / 1000);
 
-    // 4. Запрос статистики с полем records + entry_id
-    this.logger.info('[RecordingFetcher] Requesting stats from ' + new Date(dateFrom * 1000).toISOString().slice(0,10) + ' to ' + new Date(dateTo * 1000).toISOString().slice(0,10));
+    // === Попытка 1: Basic Stats API ===
+    var matched = await this._tryBasicStats(entryMap, minDate, now);
+
+    // === Попытка 2: Extended Stats API (если Basic не нашёл записей) ===
+    if (matched === 0) {
+      this.logger.info('[RecordingFetcher] Basic Stats found 0 recordings, trying Extended Stats API...');
+      matched = await this._tryExtendedStats(entryMap, minDate, now);
+    }
+
+    this.logger.info('[RecordingFetcher] Total matched: ' + matched + ' out of ' + pending.length + ' pending');
+
+    // 4. Запуск пайплайна для найденных
+    if (matched > 0 && this._jobQueue) {
+      const { rows: toProcess } = await this.db.query(`
+        SELECT id FROM call_history
+        WHERE recording_id IS NOT NULL AND recording_id != ''
+          AND record_path IS NULL
+          AND created_at > NOW() - interval '30 days'
+        ORDER BY created_at DESC
+      `);
+      for (var j = 0; j < toProcess.length; j++) {
+        try {
+          await this._jobQueue.enqueue('download_recording', toProcess[j].id);
+        } catch (err) { /* дубликат — ок */ }
+      }
+      this.logger.info('[RecordingFetcher] Enqueued ' + toProcess.length + ' download jobs');
+    }
+  }
+
+  // ─── Basic Stats API (CSV) ───
+  async _tryBasicStats(entryMap, minDate, now) {
+    const dateFrom = Math.floor(minDate.getTime() / 1000);
+    const dateTo = Math.floor(now.getTime() / 1000);
+
     var statsKey;
     try {
       const resp = await this.mango.requestStats(dateFrom, dateTo, 'records,entry_id');
-      this.logger.info('[RecordingFetcher] Stats response: ' + JSON.stringify(resp).slice(0, 500));
       statsKey = resp.key;
     } catch (err) {
-      this.logger.error('[RecordingFetcher] Stats request failed: ' + err.message);
-      if (err.response) this.logger.error('[RecordingFetcher] API response: ' + JSON.stringify(err.response));
-      return;
+      this.logger.error('[RecordingFetcher] Basic stats request failed: ' + err.message);
+      return 0;
     }
+    if (!statsKey) return 0;
 
-    if (!statsKey) {
-      this.logger.warn('[RecordingFetcher] No key returned from stats/request');
-      return;
-    }
-
-    // 5. Поллинг результата (макс 60 секунд, каждые 5с)
+    // Поллинг CSV (макс 60с)
     var csvData = null;
     for (var attempt = 0; attempt < 12; attempt++) {
       await this._delay(5000);
       try {
         const resp = await this.mango.getStatsResult(statsKey);
-
-        // 204 = ещё не готово
-        if (resp.statusCode === 204 || (resp.raw !== undefined && resp.raw === '')) {
-          continue;
-        }
-
-        // CSV данные (raw = string или Buffer)
+        if (resp.statusCode === 204 || (resp.raw !== undefined && resp.raw === '')) continue;
         if (resp.raw) {
           csvData = typeof resp.raw === 'string' ? resp.raw : resp.raw.toString('utf8');
-          this.logger.info('[RecordingFetcher] Got CSV data: ' + csvData.length + ' bytes, first 500 chars: ' + csvData.slice(0, 500));
           break;
         }
-
-        // JSON-ответ (может быть ошибка или неожиданный формат)
         if (typeof resp === 'object' && !resp.raw) {
-          this.logger.info('[RecordingFetcher] Stats result response: ' + JSON.stringify(resp).slice(0, 500));
-          // Может быть JSON вместо CSV — попробуем обработать
           if (resp.statusCode && resp.statusCode !== 200) continue;
           break;
         }
       } catch (err) {
-        this.logger.warn('[RecordingFetcher] Stats result poll error: ' + err.message);
+        this.logger.warn('[RecordingFetcher] Basic stats poll error: ' + err.message);
         break;
       }
     }
 
-    if (!csvData || !csvData.trim()) {
-      this.logger.warn('[RecordingFetcher] No data from Mango stats API');
-      return;
-    }
+    if (!csvData || !csvData.trim()) return 0;
 
-    // 6. Парсинг CSV: колонки = [records, entry_id], разделитель = ;
+    // Парсинг CSV: [records];[entry_id]
     const lines = csvData.trim().split('\n');
-    this.logger.info('[RecordingFetcher] CSV lines: ' + lines.length + ', sample entry_ids from DB: ' + Array.from(entryMap.keys()).slice(0, 3).join(', '));
-    if (lines.length > 0) {
-      this.logger.info('[RecordingFetcher] First 3 CSV lines: ' + lines.slice(0, 3).join(' | '));
-    }
     var matched = 0;
 
     for (var i = 0; i < lines.length; i++) {
       const parts = lines[i].split(';');
       if (parts.length < 2) continue;
 
-      var recordsStr = (parts[0] || '').trim();
+      var recordsStr = (parts[0] || '').trim().replace(/^\[|\]$/g, '');
       const entryId = (parts[1] || '').trim();
 
-      if (!entryId || !entryMap.has(entryId)) continue;
-      if (!recordsStr) continue;
+      if (!entryId || !entryMap.has(entryId) || !recordsStr) continue;
 
-      // Убираем скобки если есть: [rec1,rec2] → rec1,rec2
-      recordsStr = recordsStr.replace(/^\[|\]$/g, '');
-      if (!recordsStr) continue;
-
-      // Берём первый recording_id
       const recordingId = recordsStr.split(',')[0].trim();
       if (!recordingId) continue;
 
-      const callHistoryId = entryMap.get(entryId);
-
-      await this.db.query(
-        "UPDATE call_history SET recording_id = $1, updated_at = NOW() WHERE id = $2 AND (recording_id IS NULL OR recording_id = '')",
-        [recordingId, callHistoryId]
-      );
-
+      await this._updateRecordingId(entryMap.get(entryId), recordingId);
       matched++;
-      this.logger.info('[RecordingFetcher] Call #' + callHistoryId + ': recording_id = ' + recordingId);
     }
 
-    this.logger.info('[RecordingFetcher] Matched ' + matched + ' recordings out of ' + pending.length + ' pending');
+    this.logger.info('[RecordingFetcher] Basic Stats: ' + matched + ' recordings matched');
+    return matched;
+  }
 
-    // 7. Запуск пайплайна для найденных записей
-    if (matched > 0 && this._jobQueue) {
-      const { rows: toProcess } = await this.db.query(`
-        SELECT id FROM call_history
-        WHERE recording_id IS NOT NULL
-          AND recording_id != ''
-          AND record_path IS NULL
-          AND created_at > NOW() - interval '30 days'
-        ORDER BY created_at DESC
-      `);
+  // ─── Extended Stats API (JSON) ───
+  async _tryExtendedStats(entryMap, minDate, now) {
+    // Формат даты: DD.MM.YYYY HH:MM:SS
+    const fmtDate = function(d) {
+      var dd = String(d.getDate()).padStart(2, '0');
+      var mm = String(d.getMonth() + 1).padStart(2, '0');
+      var yyyy = d.getFullYear();
+      return dd + '.' + mm + '.' + yyyy + ' 00:00:00';
+    };
+    const fmtDateEnd = function(d) {
+      var dd = String(d.getDate()).padStart(2, '0');
+      var mm = String(d.getMonth() + 1).padStart(2, '0');
+      var yyyy = d.getFullYear();
+      return dd + '.' + mm + '.' + yyyy + ' 23:59:59';
+    };
 
-      for (var j = 0; j < toProcess.length; j++) {
-        try {
-          await this._jobQueue.enqueue('download_recording', toProcess[j].id);
-        } catch (err) {
-          // Дубликат задачи — игнорируем
+    var statsKey;
+    try {
+      const resp = await this.mango.requestCallStats(fmtDate(minDate), fmtDateEnd(now));
+      this.logger.info('[RecordingFetcher] Extended stats response: ' + JSON.stringify(resp).slice(0, 300));
+      statsKey = resp.key;
+    } catch (err) {
+      this.logger.error('[RecordingFetcher] Extended stats request failed: ' + err.message);
+      return 0;
+    }
+    if (!statsKey) return 0;
+
+    // Поллинг JSON (макс 60с)
+    var result = null;
+    for (var attempt = 0; attempt < 12; attempt++) {
+      await this._delay(5000);
+      try {
+        const resp = await this.mango.getCallStatsResult(statsKey);
+        if (resp.statusCode === 204 || (resp.raw !== undefined && resp.raw === '')) continue;
+        if (resp.data || resp.status === 'complete') {
+          result = resp;
+          break;
+        }
+        // Может прийти как raw JSON строка
+        if (resp.raw && typeof resp.raw === 'string') {
+          try { result = JSON.parse(resp.raw); break; } catch (e) { /* not JSON */ }
+        }
+      } catch (err) {
+        this.logger.warn('[RecordingFetcher] Extended stats poll error: ' + err.message);
+        break;
+      }
+    }
+
+    if (!result) {
+      this.logger.warn('[RecordingFetcher] No Extended Stats result');
+      return 0;
+    }
+
+    this.logger.info('[RecordingFetcher] Extended stats status: ' + (result.status || 'unknown') +
+      ', data periods: ' + (result.data ? result.data.length : 0));
+
+    // Парсинг JSON: data[].list[].entry_id + context_calls[].recording_id[]
+    var matched = 0;
+    if (result.data && Array.isArray(result.data)) {
+      for (var p = 0; p < result.data.length; p++) {
+        var period = result.data[p];
+        if (!period.list) continue;
+        for (var e = 0; e < period.list.length; e++) {
+          var entry = period.list[e];
+          var entryId = entry.entry_id;
+          if (!entryId || !entryMap.has(entryId)) continue;
+
+          // Ищем recording_id в context_calls
+          if (!entry.context_calls) continue;
+          for (var c = 0; c < entry.context_calls.length; c++) {
+            var call = entry.context_calls[c];
+            if (call.recording_id && Array.isArray(call.recording_id) && call.recording_id.length > 0) {
+              var recId = call.recording_id[0];
+              await this._updateRecordingId(entryMap.get(entryId), recId);
+              matched++;
+              this.logger.info('[RecordingFetcher] Extended: call #' + entryMap.get(entryId) + ' recording_id = ' + recId);
+              break;
+            }
+          }
         }
       }
-      this.logger.info('[RecordingFetcher] Enqueued ' + toProcess.length + ' download jobs');
     }
+
+    this.logger.info('[RecordingFetcher] Extended Stats: ' + matched + ' recordings matched');
+    return matched;
+  }
+
+  async _updateRecordingId(callHistoryId, recordingId) {
+    await this.db.query(
+      "UPDATE call_history SET recording_id = $1, updated_at = NOW() WHERE id = $2 AND (recording_id IS NULL OR recording_id = '')",
+      [recordingId, callHistoryId]
+    );
   }
 
   _delay(ms) {

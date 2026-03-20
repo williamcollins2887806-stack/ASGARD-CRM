@@ -1205,9 +1205,63 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     if (event.type === 'call_end' && event.caller) {
       try {
         const normCaller = normalizePhone(event.caller);
+
+        // 1. Найти начало этого звонка (call_start)
+        const callStartRes = await db.query(
+          `SELECT created_at FROM telephony_events_log
+           WHERE event_type = 'agi_live' AND payload->>'caller' = $1 AND payload->>'type' = 'call_start'
+           ORDER BY created_at DESC LIMIT 1`,
+          [event.caller]
+        );
+        const sinceTime = callStartRes.rows.length
+          ? callStartRes.rows[0].created_at
+          : new Date(Date.now() - 15 * 60 * 1000);
+
+        // 2. Собрать все речевые события для этого звонка
+        const agiEvents = await db.query(
+          `SELECT payload, created_at FROM telephony_events_log
+           WHERE event_type = 'agi_live' AND payload->>'caller' = $1
+             AND payload->>'type' IN ('greeting', 'client_speech', 'ai_response')
+             AND created_at >= $2
+           ORDER BY created_at ASC`,
+          [event.caller, sinceTime]
+        );
+
+        // 3. Собрать транскрипт и сегменты
+        const segments = [];
+        const transcriptLines = [];
+        let routeTo = null;
+        let routeName = null;
+
+        for (const row of agiEvents.rows) {
+          const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+          let speaker, speakerLabel, text;
+
+          if (p.type === 'greeting') {
+            speaker = 1; speakerLabel = 'ИИ';
+            text = p.greeting || p.text || '';
+          } else if (p.type === 'client_speech') {
+            speaker = 0; speakerLabel = 'Клиент';
+            text = p.text || '';
+          } else if (p.type === 'ai_response') {
+            speaker = 1; speakerLabel = 'ИИ';
+            text = p.text || '';
+            if (p.route_to) { routeTo = p.route_to; routeName = p.route_name || ''; }
+          }
+
+          if (!text) continue;
+          segments.push({
+            speaker, speakerLabel, text,
+            startTime: new Date(row.created_at).getTime() / 1000
+          });
+          transcriptLines.push('[' + speakerLabel + ']: ' + text);
+        }
+
+        // 4. Найти user_id по route_to (из call_end или из ai_response)
         let routeUserId = null;
-        if (event.route_to) {
-          const normRoute = normalizePhone(event.route_to);
+        const rt = event.route_to || routeTo;
+        if (rt) {
+          const normRoute = normalizePhone(rt);
           const u = await db.query(
             `SELECT user_id FROM user_call_status WHERE replace(replace(fallback_mobile,'+',''),'-','') LIKE $1 LIMIT 1`,
             ['%' + normRoute.slice(-10)]
@@ -1215,22 +1269,44 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           if (u.rows.length) routeUserId = u.rows[0].user_id;
         }
 
+        // 5. Собрать UPDATE
         const sets = [];
         const params = [];
         let pi = 1;
+
         if (routeUserId) { sets.push('user_id = $' + pi++); params.push(routeUserId); }
         if (event.ai_summary) { sets.push('ai_summary = $' + pi++); params.push(event.ai_summary); }
         if (event.intent) { sets.push('ai_is_target = $' + pi++); params.push(!['spam','unknown','silence'].includes(event.intent)); }
         if (event.collected_data) { sets.push('ai_lead_data = $' + pi++); params.push(JSON.stringify(event.collected_data)); }
         if (event.sentiment) { sets.push('ai_sentiment = $' + pi++); params.push(event.sentiment); }
+
+        // Транскрипт из AGI-событий
+        if (transcriptLines.length > 0) {
+          sets.push('transcript = $' + pi++); params.push(transcriptLines.join('\n'));
+          sets.push('transcript_segments = $' + pi++); params.push(JSON.stringify(segments));
+          sets.push("transcript_status = 'done'");
+        }
+
         if (sets.length > 0) {
           sets.push('updated_at = NOW()');
           params.push('%' + normCaller.slice(-10));
-          await db.query(
+          const updateRes = await db.query(
             'UPDATE call_history SET ' + sets.join(', ') +
-            ' WHERE id = (SELECT id FROM call_history WHERE from_number LIKE $' + pi + ' ORDER BY created_at DESC LIMIT 1)',
+            ' WHERE id = (SELECT id FROM call_history WHERE from_number LIKE $' + pi + ' ORDER BY created_at DESC LIMIT 1) RETURNING id',
             params
           );
+
+          // Запустить AI-анализ по сохранённому транскрипту
+          if (updateRes.rows.length && transcriptLines.length > 0) {
+            const callHistoryId = updateRes.rows[0].id;
+            console.log('[Telephony] AGI transcript saved: call #' + callHistoryId + ' (' + segments.length + ' segments, ' + transcriptLines.length + ' lines)');
+            const pipeline = getPipeline();
+            if (pipeline) {
+              setImmediate(() => pipeline.processCall(callHistoryId).catch(e =>
+                console.error('[Telephony] AGI pipeline error:', e.message)
+              ));
+            }
+          }
         }
       } catch (e) {
         console.error('[Telephony] AGI call_end update error:', e.message);

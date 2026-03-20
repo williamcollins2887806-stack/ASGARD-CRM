@@ -257,6 +257,21 @@ class MangoService {
     return this.request('stats/result', { key });
   }
 
+  // Extended Stats API (JSON, includes recording_id in context_calls)
+  async requestCallStats(startDate, endDate, options = {}) {
+    const data = {
+      start_date: startDate,   // format: "DD.MM.YYYY HH:MM:SS"
+      end_date: endDate,
+      limit: String(options.limit || 1000),
+      offset: String(options.offset || 0)
+    };
+    return this.request('stats/calls/request', data);
+  }
+
+  async getCallStatsResult(key) {
+    return this.request('stats/calls/result/', { key });
+  }
+
   async getGroups() {
     return this.request('groups', {});
   }
