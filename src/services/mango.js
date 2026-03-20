@@ -253,8 +253,8 @@ class MangoService {
     return this.request('stats/request', data);
   }
 
-  async getStatsResult(requestId) {
-    return this.request('stats/result', { request_id: requestId });
+  async getStatsResult(key) {
+    return this.request('stats/result', { key });
   }
 
   async getGroups() {

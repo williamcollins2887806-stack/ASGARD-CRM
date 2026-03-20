@@ -1187,12 +1187,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     console.log('[Telephony] AGI event:', event.type, 'caller=' + (event.caller || 'unknown'));
     await logEvent('agi_live', event);
 
-    // Отправляем AGI события только диспетчеру + push-подписчикам (кэш 30с)
+    // Отправляем AGI события ТОЛЬКО диспетчеру (кэш 30с)
     try {
       if (!_agiSseCache || Date.now() - _agiSseCacheTime > 30000) {
         const d = await db.query('SELECT user_id FROM user_call_status WHERE is_call_dispatcher = true');
-        const p = await db.query('SELECT user_id FROM user_call_status WHERE receive_call_push = true AND is_call_dispatcher = false');
-        _agiSseCache = [...d.rows.map(r => r.user_id), ...p.rows.map(r => r.user_id)];
+        _agiSseCache = d.rows.map(r => r.user_id);
         _agiSseCacheTime = Date.now();
       }
       const sse = require('./sse');

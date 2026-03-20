@@ -429,6 +429,11 @@ try {
   pipeline.registerHandlers(jobQueue);
   pipeline.setEscalationChecker(escalationChecker);
 
+  // Recording Fetcher — забирает recording_id через Mango Stats API
+  const RecordingFetcher = require('./services/recording-fetcher');
+  const recordingFetcher = new RecordingFetcher(db, fastify.log);
+  recordingFetcher.setJobQueue(jobQueue);
+
   // Make queue and escalation available to routes
   fastify.decorate('telephonyQueue', jobQueue);
   fastify.decorate('escalationChecker', escalationChecker);
@@ -437,12 +442,14 @@ try {
   fastify.addHook('onReady', async () => {
     jobQueue.start();
     escalationChecker.start();
-    fastify.log.info('[Telephony] Job queue and escalation checker started');
+    recordingFetcher.start();
+    fastify.log.info('[Telephony] Job queue, escalation checker and recording fetcher started');
   });
 
   fastify.addHook('onClose', async () => {
     jobQueue.stop();
     escalationChecker.stop();
+    recordingFetcher.stop();
   });
 } catch (telErr) {
   fastify.log.warn('[Telephony] Job queue/escalation init skipped: ' + telErr.message);
