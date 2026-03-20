@@ -119,15 +119,18 @@ class RecordingFetcher {
           continue;
         }
 
-        // CSV данные
+        // CSV данные (raw = string или Buffer)
         if (resp.raw) {
           csvData = typeof resp.raw === 'string' ? resp.raw : resp.raw.toString('utf8');
+          this.logger.info('[RecordingFetcher] Got CSV data: ' + csvData.length + ' bytes, first 500 chars: ' + csvData.slice(0, 500));
           break;
         }
 
-        // Неожиданный JSON-ответ (возможно ошибка)
-        if (typeof resp === 'object' && !resp.raw && !resp.statusCode) {
-          this.logger.warn('[RecordingFetcher] Unexpected response from stats/result: ' + JSON.stringify(resp).slice(0, 200));
+        // JSON-ответ (может быть ошибка или неожиданный формат)
+        if (typeof resp === 'object' && !resp.raw) {
+          this.logger.info('[RecordingFetcher] Stats result response: ' + JSON.stringify(resp).slice(0, 500));
+          // Может быть JSON вместо CSV — попробуем обработать
+          if (resp.statusCode && resp.statusCode !== 200) continue;
           break;
         }
       } catch (err) {
@@ -143,6 +146,10 @@ class RecordingFetcher {
 
     // 6. Парсинг CSV: колонки = [records, entry_id], разделитель = ;
     const lines = csvData.trim().split('\n');
+    this.logger.info('[RecordingFetcher] CSV lines: ' + lines.length + ', sample entry_ids from DB: ' + Array.from(entryMap.keys()).slice(0, 3).join(', '));
+    if (lines.length > 0) {
+      this.logger.info('[RecordingFetcher] First 3 CSV lines: ' + lines.slice(0, 3).join(' | '));
+    }
     var matched = 0;
 
     for (var i = 0; i < lines.length; i++) {
