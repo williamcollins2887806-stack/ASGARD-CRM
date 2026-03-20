@@ -733,12 +733,12 @@ module.exports = {
           const getResp = await api('GET', `/api/equipment/${S.equipmentId}`, { role: 'WAREHOUSE' });
           assertOk(getResp, 'R1.12 get equipment');
 
-          // Issue to employee (POST /api/equipment/issue with equipment_id in body)
+          // Issue to PM user (holder_id is users.id, NOT employees.id — FK constraint)
           const issueResp = await api('POST', '/api/equipment/issue', {
             role: 'WAREHOUSE',
             body: {
               equipment_id: S.equipmentId,
-              holder_id: S.employees[0]?.id,
+              holder_id: S.pmUserId,
               work_id: S.workId,
               issue_reason: 'Монтаж',
               condition: 'good',
