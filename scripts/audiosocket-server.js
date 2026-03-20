@@ -355,29 +355,411 @@ function synthesizeToPCM(text) {
   });
 }
 
-/* ── Кэш приветствий (pre-synthesized PCM) ─────────── */
-const phraseCache = new Map();
-const CACHED_PHRASES = [
-  'Здравствуйте! Компания Асгард Сервис. Чем могу помочь?',
-  'Алло? Я вас слушаю.',
-  'Простите, не расслышал. Подскажите, чем могу помочь?',
-  'Секундочку, соединяю вас со специалистом.',
-  'Извините, не слышу вас. Если хотите, перезвоните нам позже. До свидания!',
-  'Куда вас соединить?',
-];
+/* ══════════════════════════════════════════════════════
+   CACHED INTENTS — кэшированные фразы с вариациями
+   Мгновенный ответ без LLM для типовых запросов
+   ══════════════════════════════════════════════════════ */
 
-async function warmupPhraseCache() {
-  console.log('[AudioSocket] Warming up phrase cache...');
-  let ok = 0;
-  for (const phrase of CACHED_PHRASES) {
-    try {
-      const pcm = await synthesizeToPCM(phrase);
-      if (pcm.length > 0) { phraseCache.set(phrase, pcm); ok++; }
-    } catch (e) {
-      console.warn(`[AudioSocket] Cache failed: "${phrase.slice(0, 35)}..." — ${e.message}`);
+const CACHED_INTENTS = {
+  greetings: {
+    standard: [
+      'Здравствуйте! Компания Асгард Сервис, меня зовут Фрейя. Чем могу помочь?',
+      'Добрый день! Асгард Сервис, Фрейя на связи. Слушаю вас!',
+      'Здравствуйте! Асгард Сервис. Подскажите, чем могу быть полезна?',
+      'Добрый день! Компания Асгард Сервис. Рада вас слышать, чем помочь?',
+    ],
+    known_client: [
+      'Здравствуйте, {name}! Рада снова слышать вас. Чем могу помочь?',
+      'Добрый день, {name}! Как ваши дела? Слушаю вас.',
+      '{name}, здравствуйте! На связи Фрейя. Чем могу помочь?',
+    ],
+    after_hours: [
+      'Добрый вечер! Компания Асгард Сервис. Сейчас нерабочее время, но я могу записать ваш вопрос и передать специалистам. Они перезвонят в рабочие часы.',
+      'Здравствуйте! Асгард Сервис. К сожалению, наши специалисты сейчас недоступны. Оставьте сообщение, и мы обязательно перезвоним.',
+      'Добрый вечер! Сейчас офис закрыт, но я запишу ваше обращение. Наши специалисты свяжутся с вами в ближайший рабочий день.',
+    ],
+  },
+  route_tender: [
+    'Соединяю вас с тендерным отделом, с Хосе Александром. Одну секунду.',
+    'Сейчас переведу на тендерный отдел. Хосе Александр вам поможет.',
+    'Переключаю на Хосе Александра, он у нас отвечает за тендеры. Минуточку!',
+  ],
+  route_accounting: [
+    'Соединяю вас с бухгалтерией. Одну минуту.',
+    'Сейчас переведу на бухгалтерию, подождите секундочку.',
+    'Переключаю на бухгалтерию. Не кладите трубку.',
+  ],
+  route_procurement: [
+    'Соединяю с отделом закупок. Секундочку.',
+    'Переключаю вас на отдел снабжения. Одну минуту.',
+  ],
+  refuse_director: [
+    'К сожалению, руководство не принимает звонки напрямую. Но я обязательно передам вашу информацию. Подскажите, по какому вопросу вы звоните?',
+    'Прямое соединение с руководством не предусмотрено, но я помогу разобраться с вашим вопросом. Расскажите подробнее?',
+    'Руководство сейчас недоступно для звонков. Давайте я запишу ваш вопрос и передам, или может быть я смогу помочь?',
+  ],
+  silence_first: [
+    'Алло? Слушаю вас!',
+    'Алло, вы на связи?',
+    'Алло? Я вас слушаю.',
+  ],
+  silence_second: [
+    'Простите, не расслышала. Подскажите, чем могу помочь?',
+    'Извините, плохо слышно. Повторите, пожалуйста?',
+    'Не могу вас расслышать. Скажите ещё раз, пожалуйста.',
+  ],
+  silence_hangup: [
+    'К сожалению, не слышу вас. Перезвоните, пожалуйста, когда будет удобно. До свидания!',
+    'Видимо, связь прервалась. Перезвоните нам по номеру четыре девять девять, три два два, тридцать, шестьдесят два. До свидания!',
+  ],
+  spam: [
+    'Спасибо, нам это не требуется. Всего доброго!',
+    'Благодарю за предложение, но мы не заинтересованы. До свидания!',
+    'Спасибо, не актуально. Хорошего дня!',
+  ],
+  route_specialist: [
+    'Секундочку, соединю вас со специалистом.',
+    'Одну минуту, переключаю на специалиста, который поможет.',
+    'Сейчас переведу вас на нужного специалиста. Не кладите трубку.',
+  ],
+  record_message: [
+    'Оставьте, пожалуйста, ваше имя, номер телефона и коротко суть вопроса. Мы перезвоним.',
+    'Запишу ваше обращение. Назовите имя, контактный телефон и по какому вопросу звоните.',
+  ],
+  goodbye: [
+    'Рада была помочь! Обращайтесь, если будут вопросы. До свидания!',
+    'Всего доброго! Будем рады видеть вас среди наших клиентов.',
+    'Спасибо за звонок! Хорошего дня!',
+    'До свидания! Если что — звоните, мы всегда на связи.',
+  ],
+  // Подтверждение перевода
+  confirm_tender: [
+    'Соединяю с Хосе Александром из тендерного отдела, верно?',
+    'Переключить на тендерный отдел, к Хосе Александру?',
+  ],
+  confirm_accounting: [
+    'Переключить на бухгалтерию?',
+    'Соединить с бухгалтерией, верно?',
+  ],
+  confirm_procurement: [
+    'Переключить на отдел закупок?',
+    'Соединить с отделом снабжения?',
+  ],
+};
+
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function fillTemplate(text, vars) {
+  let result = text;
+  for (const [key, val] of Object.entries(vars)) {
+    result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), val || '');
+  }
+  return result;
+}
+
+/* ══════════════════════════════════════════════════════
+   INTENT DETECTION — быстрое определение без LLM
+   ══════════════════════════════════════════════════════ */
+
+/**
+ * Быстрое определение intent без LLM.
+ * Возвращает { intent, response, action, route_to, route_name } или null если нужен LLM.
+ * pendingRoute используется для подтверждения перевода.
+ */
+function detectIntentByKeywords(text, context, pendingRoute) {
+  if (!text) return null;
+  const lower = text.toLowerCase().trim();
+
+  // ── Подтверждение ожидающего перевода ──
+  if (pendingRoute) {
+    if (/да|верно|соединяй|переключай|конечно|давай|ага|угу|точно/i.test(lower)) {
+      return {
+        intent: pendingRoute.intent,
+        response: pickRandom(CACHED_INTENTS['route_' + pendingRoute.department] || CACHED_INTENTS.route_specialist),
+        action: 'route',
+        route_to: pendingRoute.route_to,
+        route_name: pendingRoute.route_name,
+      };
+    }
+    if (/нет|не надо|не нужно|отмен|другой|другое/i.test(lower)) {
+      return {
+        intent: 'cancel_route',
+        response: 'Хорошо, не переключаю. Чем ещё могу помочь?',
+        action: 'continue',
+        route_to: null,
+        route_name: null,
+      };
+    }
+    // Непонятный ответ — пусть LLM разберётся
+    return null;
+  }
+
+  // ── ДИРЕКТОРА — отказ (только для внешних) ──
+  if (!context.isInternal && /директор|руководител|руководств|генеральн|коммерческ|кудряшов|гажилиев|сторожев/i.test(lower)) {
+    return {
+      intent: 'refuse_director',
+      response: pickRandom(CACHED_INTENTS.refuse_director),
+      action: 'continue',
+      route_to: null,
+      route_name: null,
+    };
+  }
+
+  // ── ТЕНДЕР / КОНКУРС — подтверждение ──
+  if (/тендер|конкурс|аукцион|котировк|запрос.+предложен|торг/i.test(lower)) {
+    const hose = (context.employees || []).find(e => /хосе|jose/i.test(e.name || e.display_name || ''));
+    const phone = hose ? (hose.fallback_mobile || '').replace(/[^0-9]/g, '') : null;
+    return {
+      intent: 'tender',
+      response: pickRandom(CACHED_INTENTS.confirm_tender),
+      action: 'continue',
+      route_to: null,
+      route_name: null,
+      _pendingRoute: { intent: 'tender', department: 'tender', route_to: phone, route_name: 'Хосе Александр' },
+    };
+  }
+
+  // ── БУХГАЛТЕРИЯ — подтверждение ──
+  if (/бухгалтер|бухгалтери|счёт|счет|акт.+сверк|налогов|ндс|платёж|оплат/i.test(lower)) {
+    if (/предлага|услуг|аутсорс/i.test(lower)) return null;
+    const buh = (context.employees || []).find(e => e.role === 'BUH' && e.fallback_mobile);
+    const phone = buh ? buh.fallback_mobile.replace(/[^0-9]/g, '') : null;
+    return {
+      intent: 'accounting',
+      response: pickRandom(CACHED_INTENTS.confirm_accounting),
+      action: 'continue',
+      route_to: null,
+      route_name: null,
+      _pendingRoute: { intent: 'accounting', department: 'accounting', route_to: phone, route_name: buh ? (buh.display_name || buh.name) : 'бухгалтерия' },
+    };
+  }
+
+  // ── ЗАКУПКИ / СНАБЖЕНИЕ — подтверждение ──
+  if (/закупк|снабжен|отдел.+закуп|поставщик/i.test(lower) && !/тендер/i.test(lower)) {
+    const proc = (context.employees || []).find(e => e.role === 'PROC' && e.fallback_mobile);
+    const phone = proc ? proc.fallback_mobile.replace(/[^0-9]/g, '') : null;
+    return {
+      intent: 'procurement',
+      response: pickRandom(CACHED_INTENTS.confirm_procurement),
+      action: 'continue',
+      route_to: null,
+      route_name: null,
+      _pendingRoute: { intent: 'procurement', department: 'procurement', route_to: phone, route_name: proc ? (proc.display_name || proc.name) : 'отдел закупок' },
+    };
+  }
+
+  // ── ЯВНЫЙ СПАМ ──
+  if (/реклам|продвижен|seo|сео|кредит|лизинг|тренинг|вебинар|опрос|автоинформатор/i.test(lower)) {
+    if (/очист|промыв|ремонт|теплообменник|котёл|котел|трубопровод/i.test(lower)) return null;
+    return {
+      intent: 'spam',
+      response: pickRandom(CACHED_INTENTS.spam),
+      action: 'hangup',
+      route_to: null,
+      route_name: null,
+    };
+  }
+
+  // ── ПЕРЕВОД НА КОНКРЕТНОГО ЧЕЛОВЕКА ПО ИМЕНИ — сразу route ──
+  if (/соедин|переведи|переключи|перевод|связ|позови|позвать/i.test(lower)) {
+    for (const emp of (context.employees || [])) {
+      const empName = (emp.display_name || emp.name || '').toLowerCase();
+      const nameParts = empName.split(/\s+/);
+      for (const part of nameParts) {
+        if (part.length >= 3 && lower.includes(part)) {
+          const phone = (emp.fallback_mobile || '').replace(/[^0-9]/g, '');
+          if (phone && phone.length === 11) {
+            return {
+              intent: 'transfer_request',
+              response: `Конечно, соединяю вас с ${emp.display_name || emp.name}. Одну секунду.`,
+              action: 'route',
+              route_to: phone,
+              route_name: emp.display_name || emp.name,
+            };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // ── КАРЬЕРА / ВАКАНСИИ ──
+  if (/вакансия|работа.+у.+вас|трудоустро|резюме|собеседован/i.test(lower)) {
+    return {
+      intent: 'career',
+      response: 'Вакансии можно посмотреть на нашем сайте: асгард-сервис точка ком, раздел Карьера. Если хотите, я могу переключить на отдел кадров.',
+      action: 'continue',
+      route_to: null,
+      route_name: null,
+    };
+  }
+
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════
+   YandexGPT Lite + Claude Haiku Direct (streaming)
+   ══════════════════════════════════════════════════════ */
+
+const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
+
+async function* callYandexGPTStream(systemPrompt, userMessage) {
+  const folderId = process.env.YANDEX_SPEECHKIT_FOLDER_ID || process.env.YANDEX_FOLDER_ID || '';
+  const apiKey = process.env.YANDEX_SPEECHKIT_API_KEY || '';
+  if (!folderId || !apiKey) throw new Error('Yandex credentials not configured');
+
+  const body = JSON.stringify({
+    modelUri: `gpt://${folderId}/yandexgpt-lite/latest`,
+    completionOptions: {
+      stream: true,
+      temperature: 0.3,
+      maxTokens: '300'
+    },
+    messages: [
+      { role: 'system', text: systemPrompt },
+      { role: 'user', text: userMessage }
+    ]
+  });
+
+  const response = await fetch(YANDEX_GPT_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Api-Key ${apiKey}`,
+      'x-folder-id': folderId
+    },
+    body
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`YandexGPT ${response.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let prevText = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const data = JSON.parse(line);
+        const alts = data.result && data.result.alternatives;
+        if (alts && alts.length > 0 && alts[0].message && alts[0].message.text) {
+          const fullText = alts[0].message.text;
+          if (fullText.length > prevText.length) {
+            const delta = fullText.slice(prevText.length);
+            prevText = fullText;
+            yield { type: 'text', content: delta };
+          }
+          if (alts[0].status === 'ALTERNATIVE_STATUS_FINAL') {
+            yield { type: 'done' };
+            return;
+          }
+        }
+      } catch (e) { /* skip malformed */ }
     }
   }
-  console.log(`[AudioSocket] Phrase cache: ${ok}/${CACHED_PHRASES.length}`);
+  yield { type: 'done' };
+}
+
+async function* callClaudeHaikuStream(systemPrompt, userMessage) {
+  const apiKey = process.env.ANTHROPIC_API_KEY || '';
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2024-10-22'
+    },
+    body: JSON.stringify({
+      model: process.env.VOICE_AI_MODEL || 'claude-haiku-4-5-20251001',
+      max_tokens: 300,
+      temperature: 0.3,
+      stream: true,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Claude ${response.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr || jsonStr === '[DONE]') continue;
+      try {
+        const event = JSON.parse(jsonStr);
+        if (event.type === 'content_block_delta' && event.delta && event.delta.text) {
+          yield { type: 'text', content: event.delta.text };
+        }
+        if (event.type === 'message_delta') {
+          yield { type: 'done' };
+          return;
+        }
+      } catch (e) { /* skip */ }
+    }
+  }
+  yield { type: 'done' };
+}
+
+/* ── Кэш фраз (pre-synthesized PCM) ─────────────────── */
+const phraseCache = new Map();
+
+async function warmupPhraseCache() {
+  console.log('[AudioSocket] Warming up phrase cache with all variants...');
+  let cached = 0, total = 0;
+
+  const allPhrases = new Set();
+  function addPhrases(obj) {
+    if (Array.isArray(obj)) {
+      obj.forEach(p => allPhrases.add(p));
+    } else if (typeof obj === 'object' && obj !== null) {
+      Object.values(obj).forEach(v => addPhrases(v));
+    }
+  }
+  addPhrases(CACHED_INTENTS);
+  total = allPhrases.size;
+
+  for (const phrase of allPhrases) {
+    if (phrase.includes('{')) continue; // шаблоны кэшируются при первом использовании
+    try {
+      const pcm = await synthesizeToPCM(phrase);
+      if (pcm && pcm.length > 0) { phraseCache.set(phrase, pcm); cached++; }
+    } catch (e) {
+      console.warn('[AudioSocket] Cache failed:', phrase.slice(0, 30), e.message);
+    }
+  }
+
+  console.log(`[AudioSocket] Phrase cache ready: ${cached}/${total} phrases`);
 }
 
 /* ══════════════════════════════════════════════════════
@@ -625,15 +1007,47 @@ async function handleConnection(socket) {
     const t0 = Date.now();
 
     try {
-      const streamResponse = await aiProvider.stream({
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-        maxTokens: 500,
-        temperature: 0.3,
-        model: VOICE_AI_MODEL
-      });
+      // ═══ Каскад AI провайдеров: YandexGPT Lite → Claude Haiku → aiProvider ═══
+      const voiceProvider = process.env.VOICE_AI_PROVIDER || 'yandexgpt';
+      let streamParser;
 
-      const streamParser = aiProvider.parseStream(streamResponse);
+      try {
+        if (voiceProvider === 'yandexgpt') {
+          console.log('[AudioSocket] AI: YandexGPT Lite');
+          streamParser = callYandexGPTStream(systemPrompt, userPrompt);
+        } else if (voiceProvider === 'claude') {
+          console.log('[AudioSocket] AI: Claude Haiku Direct');
+          streamParser = callClaudeHaikuStream(systemPrompt, userPrompt);
+        } else {
+          console.log('[AudioSocket] AI: aiProvider (' + VOICE_AI_MODEL + ')');
+          const streamResponse = await aiProvider.stream({
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+            maxTokens: 300, temperature: 0.3, model: VOICE_AI_MODEL
+          });
+          streamParser = aiProvider.parseStream(streamResponse);
+        }
+      } catch (primaryErr) {
+        console.warn(`[AudioSocket] Primary AI (${voiceProvider}) failed:`, primaryErr.message);
+        try {
+          if (voiceProvider === 'yandexgpt') {
+            console.log('[AudioSocket] Fallback: Claude Haiku Direct');
+            streamParser = callClaudeHaikuStream(systemPrompt, userPrompt);
+          } else {
+            console.log('[AudioSocket] Fallback: aiProvider (routerai)');
+            const streamResponse = await aiProvider.stream({
+              system: systemPrompt,
+              messages: [{ role: 'user', content: userPrompt }],
+              maxTokens: 300, temperature: 0.3, model: VOICE_AI_MODEL
+            });
+            streamParser = aiProvider.parseStream(streamResponse);
+          }
+        } catch (fallbackErr) {
+          console.error('[AudioSocket] All AI providers failed:', fallbackErr.message);
+          isSpeaking = false;
+          return null;
+        }
+      }
 
       // ── Аккумуляторы ──
       let fullOutput = '';        // всё что прислал AI
@@ -728,8 +1142,11 @@ async function handleConnection(socket) {
             } else {
               // Ещё текст для озвучки — копим по предложениям
               sentenceBuf += chunk;
-              // Отправляем при конце предложения (. ! ? или перенос)
-              if (/[.!?…]\s*$/.test(sentenceBuf) && sentenceBuf.trim().length > 8) {
+              // Агрессивный flush: запятая/точка/5+ слов
+              const shouldFlush =
+                (/[.!?,;:…]\s*$/.test(sentenceBuf) && sentenceBuf.trim().length > 5) ||
+                (sentenceBuf.split(/\s+/).length >= 5);
+              if (shouldFlush) {
                 flushSentenceToTTS(sentenceBuf);
                 sentenceBuf = '';
               }
@@ -957,8 +1374,8 @@ async function handleConnection(socket) {
 
     notifyCRM('call_start', { caller: callerNumber, uuid, time: new Date().toISOString() });
 
-    // ── Приветствие ──
-    console.log('[AudioSocket] Playing greeting...');
+    // ── Приветствие Фрейи ──
+    console.log('[AudioSocket] Playing Freya greeting...');
 
     // Сотрудник — персональное приветствие в стиле Асгарда
     if (context.isInternal) {
@@ -969,7 +1386,7 @@ async function handleConnection(socket) {
       notifyCRM('greeting', { caller: callerNumber, internal: true, employee: fullName });
       const greetings = [
         `Приветствую, воин Асга+рда ${firstName}! Чем могу помочь?`,
-        `Хе+й, ${firstName}! Рад слышать тебя, воин! Куда тебя направить?`,
+        `Хе+й, ${firstName}! Рада слышать тебя, воин! Куда тебя направить?`,
         `Славься, ${firstName}! Какой путь тебе указать сегодня?`,
         `${firstName}, приветствую тебя в чертогах Асга+рда! Чем помочь?`,
       ];
@@ -978,9 +1395,10 @@ async function handleConnection(socket) {
     // Известный клиент с менеджером в рабочее время — сразу перевод
     } else if (context.clientName && context.responsibleManager && context.isFullWorkHours) {
       notifyCRM('greeting', { caller: callerNumber, client: context.clientName });
-      await speak(`Здравствуйте, ${context.clientName}! Компания Асгард Сервис. Сейчас соединю вас с вашим менеджером, ${context.responsibleManager}. Одну минуточку.`);
+      const greeting = fillTemplate(pickRandom(CACHED_INTENTS.greetings.known_client), { name: context.clientName });
+      await speak(greeting);
+      await speak(`Сейчас соединю вас с вашим менеджером, ${context.responsibleManager}. Одну минуточку.`);
 
-      // Перевод через AMI
       if (context.managerPhone && ami.connected && channelName) {
         try {
           await ami.redirect(channelName, context.managerPhone);
@@ -993,22 +1411,21 @@ async function handleConnection(socket) {
 
     // Нерабочее время
     } else if (context.timeMode === 'off') {
-      await speak('Здравствуйте! Компания Асгард Сервис. Чем могу помочь?');
-      await speak('Сейчас нерабочее время. Наши часы работы — с девяти до восемнадцати, понедельник — пятница. Оставьте сообщение, и мы перезвоним в ближайший рабочий день.');
+      await speak(pickRandom(CACHED_INTENTS.greetings.after_hours));
       notifyCRM('after_hours', { caller: callerNumber });
-      // TODO: запись голосового сообщения через AMI Redirect → asgard-voicemail
       return;
 
     // Стандартное приветствие
     } else {
       notifyCRM('greeting', { caller: callerNumber });
-      await speak('Здравствуйте! Компания Асгард Сервис. Чем могу помочь?');
+      await speak(pickRandom(CACHED_INTENTS.greetings.standard));
     }
 
     // ── Цикл диалога ──
     const conversationHistory = [];
     let collectedData = {};
     let lastIntent = 'unknown';
+    let pendingRoute = null; // для подтверждения перевода
 
     for (let turn = 0; turn < MAX_TURNS && !destroyed; turn++) {
       // Слушаем клиента
@@ -1017,9 +1434,9 @@ async function handleConnection(socket) {
 
       // Тишина
       if (!clientText) {
-        if (turn === 0) { await speak('Алло? Я вас слушаю.'); continue; }
-        if (turn <= 1) { await speak('Простите, не расслышал. Подскажите, чем могу помочь?'); continue; }
-        await speak('Извините, не слышу вас. Если хотите, перезвоните нам позже. До свидания!');
+        if (turn === 0) { await speak(pickRandom(CACHED_INTENTS.silence_first)); continue; }
+        if (turn <= 1) { await speak(pickRandom(CACHED_INTENTS.silence_second)); continue; }
+        await speak(pickRandom(CACHED_INTENTS.silence_hangup));
         break;
       }
 
@@ -1027,7 +1444,36 @@ async function handleConnection(socket) {
       conversationHistory.push({ role: 'client', text: clientText });
       notifyCRM('client_speech', { caller: callerNumber, text: clientText, turn });
 
-      // ── AI streaming → TTS streaming ──
+      // ═══ БЫСТРЫЙ INTENT DETECTION (0ms AI) ═══
+      const quickIntent = detectIntentByKeywords(clientText, context, pendingRoute);
+      if (quickIntent) {
+        console.log(`[AudioSocket] Quick intent: ${quickIntent.intent} (no LLM needed)`);
+        await speak(quickIntent.response);
+        conversationHistory.push({ role: 'secretary', text: quickIntent.response });
+        notifyCRM('ai_response', { caller: callerNumber, text: quickIntent.response, action: quickIntent.action, intent: quickIntent.intent });
+
+        // Сохранить pending route для подтверждения
+        if (quickIntent._pendingRoute) {
+          pendingRoute = quickIntent._pendingRoute;
+        } else {
+          pendingRoute = null;
+        }
+
+        if (quickIntent.action === 'route' && quickIntent.route_to) {
+          notifyCRM('transfer', { caller: callerNumber, name: quickIntent.route_name, phone: quickIntent.route_to });
+          if (ami.connected && channelName) {
+            try { await ami.redirect(channelName, quickIntent.route_to); } catch (e) {
+              console.error('[AudioSocket] AMI redirect failed:', e.message);
+            }
+          }
+          return;
+        }
+        if (quickIntent.action === 'hangup') break;
+        continue; // action === 'continue' → следующий ход
+      }
+      pendingRoute = null; // сбросить если LLM отвечает
+
+      // ═══ LLM (YandexGPT Lite → Claude Haiku fallback) ═══
       const response = await generateAndSpeak({
         ...context,
         conversationHistory,
@@ -1035,7 +1481,7 @@ async function handleConnection(socket) {
       });
 
       if (!response) {
-        await speak('Секундочку, соединяю вас со специалистом.');
+        await speak(pickRandom(CACHED_INTENTS.route_specialist));
         // Fallback: перевод на первую линию
         const firstLinePhones = voiceAgentHelper._getFirstLinePhones(context.employees);
         if (firstLinePhones[0] && ami.connected && channelName) {
@@ -1111,11 +1557,11 @@ const server = net.createServer(handleConnection);
 
 server.listen(AUDIOSOCKET_PORT, '127.0.0.1', () => {
   console.log(`\n${'═'.repeat(60)}`);
-  console.log(`  ASGARD Voice Agent — AudioSocket Streaming Pipeline`);
+  console.log(`  ASGARD Freya — Voice AI Secretary`);
   console.log(`  Port: ${AUDIOSOCKET_PORT}`);
-  console.log(`  STT:  SpeechKit v3 gRPC streaming (stt.api.cloud.yandex.net)`);
+  console.log(`  STT:  SpeechKit v3 gRPC streaming`);
   console.log(`  TTS:  SpeechKit v3 gRPC streaming (dasha/friendly)`);
-  console.log(`  AI:   ${VOICE_AI_MODEL} via ${process.env.AI_PROVIDER || 'openai'}`);
+  console.log(`  AI:   ${process.env.VOICE_AI_PROVIDER || 'yandexgpt'} (primary) → Claude Haiku (fallback)`);
   console.log(`${'═'.repeat(60)}\n`);
 });
 
