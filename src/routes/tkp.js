@@ -272,7 +272,7 @@ async function routes(fastify, options) {
 
     // Fallback to PDFKit if Puppeteer failed or unavailable
     if (!pdfBuffer) {
-      pdfBuffer = await generateTkpPdfKit(tkp);
+      pdfBuffer = await generateTkpPdfKit(tkp, db);
     }
 
     // Save PDF
@@ -336,7 +336,24 @@ async function routes(fastify, options) {
  * PDFKit — PDF генератор ТКП
  * Динамические высоты, кириллица (DejaVuSans), авто-перенос текста, нумерация страниц
  */
-async function generateTkpPdfKit(tkp) {
+async function generateTkpPdfKit(tkp, db) {
+  // Load company profile from DB
+  let company = {};
+  try {
+    const { rows } = await db.query("SELECT value_json FROM settings WHERE key = 'company_profile'");
+    if (rows.length > 0) {
+      company = typeof rows[0].value_json === 'string' ? JSON.parse(rows[0].value_json) : rows[0].value_json;
+    }
+  } catch (_) {}
+  if (!company.name) {
+    company = {
+      name: 'ООО «Асгард-Сервис»', inn: '7736244785', kpp: '770101001', ogrn: '1157746388128',
+      legal_address: '105082, г. Москва, ул. Большая Почтовая, д. 55/59, строение 1, пом. 37',
+      phone: '8(499)322-30-62', email: 'info@asgard-service.com',
+      director_name: 'Кудряшов Олег Сергеевич', director_title: 'Генеральный директор',
+    };
+  }
+
   const fontPath = path.join(__dirname, '..', '..', 'public', 'assets', 'fonts');
   let regularFont, boldFont;
 
@@ -400,13 +417,13 @@ async function generateTkpPdfKit(tkp) {
     doc.image(logoPath, mL, mT, { width: 80, height: 46 });
   }
 
-  // ─── Реквизиты справа от лого ───
+  // ─── Реквизиты справа от лого (из БД) ───
   doc.font(FB).fontSize(12).fillColor('#1E4D8C')
-     .text('ООО «АСГАРД СЕРВИС»', 140, mT + 2);
+     .text(company.name || 'ООО «Асгард-Сервис»', 140, mT + 2);
   doc.font(F).fontSize(7.5).fillColor('#6B7280');
-  doc.text('ИНН 8911030530 | ОГРН 1178901002530 | КПП 891101001', 140, mT + 17);
-  doc.text('629830, ЯНАО, г. Губкинский, мкр. 12, д. 58, кв. 35', 140, mT + 27);
-  doc.text('Тел: +7 (922) 459-38-98 | info@asgard-service.ru', 140, mT + 37);
+  doc.text(`ИНН ${company.inn || ''} | ОГРН ${company.ogrn || ''} | КПП ${company.kpp || ''}`, 140, mT + 17);
+  doc.text(company.legal_address || '', 140, mT + 27);
+  doc.text(`Тел: ${company.phone || ''} | ${company.email || ''}`, 140, mT + 37);
 
   // ─── Акцентная линия (синяя + красная) ───
   const lineY = mT + 52;
@@ -647,8 +664,8 @@ async function generateTkpPdfKit(tkp) {
   doc.moveTo(mL, doc.y).lineTo(mL + contentW, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
   doc.moveDown(0.6);
 
-  const authorName = cj.author_name || 'Кудряшов О.С.';
-  const authorPos = cj.author_position || 'Генеральный директор';
+  const authorName = cj.author_name || company.director_name || 'Кудряшов О.С.';
+  const authorPos = cj.author_position || company.director_title || 'Генеральный директор';
 
   const signY = doc.y;
   doc.font(FB).fontSize(9.5).fillColor('#374151')
@@ -671,7 +688,7 @@ async function generateTkpPdfKit(tkp) {
     doc.switchToPage(i);
     doc.moveTo(mL, footerY).lineTo(mL + contentW, footerY).strokeColor('#E5E7EB').lineWidth(0.3).stroke();
     doc.font(F).fontSize(6.5).fillColor('#9CA3AF')
-       .text('ООО «АСГАРД СЕРВИС» — промышленный сервис, химическая и гидродинамическая очистка, HVAC',
+       .text(`${company.name || 'ООО «Асгард-Сервис»'} — ${company.phone || ''} — ${company.email || ''}`,
              mL, footerY + 4, { width: contentW - 60, lineBreak: false });
     doc.font(F).fontSize(6.5).fillColor('#9CA3AF')
        .text(`${i + 1} / ${totalPages}`, mL + contentW - 55, footerY + 4, { width: 55, align: 'right' });
