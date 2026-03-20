@@ -92,12 +92,15 @@ class RecordingFetcher {
     const dateTo = Math.floor(maxDate.getTime() / 1000);
 
     // 4. Запрос статистики с полем records + entry_id
+    this.logger.info('[RecordingFetcher] Requesting stats from ' + new Date(dateFrom * 1000).toISOString().slice(0,10) + ' to ' + new Date(dateTo * 1000).toISOString().slice(0,10));
     var statsKey;
     try {
       const resp = await this.mango.requestStats(dateFrom, dateTo, 'records,entry_id');
+      this.logger.info('[RecordingFetcher] Stats response: ' + JSON.stringify(resp).slice(0, 500));
       statsKey = resp.key;
     } catch (err) {
       this.logger.error('[RecordingFetcher] Stats request failed: ' + err.message);
+      if (err.response) this.logger.error('[RecordingFetcher] API response: ' + JSON.stringify(err.response));
       return;
     }
 
