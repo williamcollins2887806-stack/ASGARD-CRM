@@ -333,8 +333,8 @@ async function routes(fastify, options) {
 }
 
 /**
- * PDFKit — красивый PDF генератор ТКП
- * Лого, кириллица (DejaVuSans), таблица работ, НДС, подпись, нумерация страниц
+ * PDFKit — PDF генератор ТКП
+ * Динамические высоты, кириллица (DejaVuSans), авто-перенос текста, нумерация страниц
  */
 async function generateTkpPdfKit(tkp) {
   const fontPath = path.join(__dirname, '..', '..', 'public', 'assets', 'fonts');
@@ -349,10 +349,17 @@ async function generateTkpPdfKit(tkp) {
     boldFont = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
   }
 
+  const pageW = 595.28; // A4 width in pt
+  const pageH = 841.89; // A4 height in pt
+  const mL = 50, mR = 50, mT = 40, mB = 45;
+  const contentW = pageW - mL - mR;
+  const maxY = pageH - mB - 20; // leave space for footer
+
   const doc = new PDFDocument({
-    size: 'A4', margin: 50,
+    size: 'A4', margin: mL,
     info: { Title: tkp.subject || 'ТКП', Author: 'ООО АСГАРД СЕРВИС' },
-    bufferPages: true
+    bufferPages: true,
+    autoFirstPage: true
   });
 
   if (regularFont) doc.registerFont('F', regularFont);
@@ -363,153 +370,222 @@ async function generateTkpPdfKit(tkp) {
   const chunks = [];
   doc.on('data', c => chunks.push(c));
 
-  const fmtNum = (n) => n ? Number(n).toLocaleString('ru-RU') : '—';
+  const fmtNum = (n) => n ? Number(n).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00';
+
+  // Helper: ensure enough vertical space, add page if needed
+  function ensureSpace(needed) {
+    if (doc.y + needed > maxY) {
+      doc.addPage();
+      doc.x = mL;
+      doc.y = mT;
+    }
+  }
+
+  // Helper: measure text height
+  function textH(text, opts) {
+    return doc.heightOfString(text || '', { width: opts.width || contentW, font: opts.font || F, fontSize: opts.size || 10 });
+  }
+
+  // ─── Parse items from JSONB ───
+  let cj;
+  try {
+    cj = typeof tkp.items === 'string' ? JSON.parse(tkp.items || '{}') : (tkp.items || {});
+  } catch (_) { cj = {}; }
+  const rows = Array.isArray(cj.items) ? cj.items : [];
+  const vatPct = cj.vat_pct || 22;
 
   // ─── ЛОГО ───
   const logoPath = path.join(__dirname, '..', '..', 'public', 'assets', 'img', 'asgard_emblem.png');
   if (fs.existsSync(logoPath)) {
-    doc.image(logoPath, 50, 30, { width: 80, height: 46 });
+    doc.image(logoPath, mL, mT, { width: 80, height: 46 });
   }
 
   // ─── Реквизиты справа от лого ───
   doc.font(FB).fontSize(12).fillColor('#1E4D8C')
-     .text('ООО «АСГАРД СЕРВИС»', 140, 32);
+     .text('ООО «АСГАРД СЕРВИС»', 140, mT + 2);
   doc.font(F).fontSize(7.5).fillColor('#6B7280');
-  doc.text('ИНН 8911030530 | ОГРН 1178901002530 | КПП 891101001', 140, 47);
-  doc.text('629830, ЯНАО, г. Губкинский, мкр. 12, д. 58, кв. 35', 140, 57);
-  doc.text('Тел: +7 (922) 459-38-98 | info@asgard-service.ru', 140, 67);
+  doc.text('ИНН 8911030530 | ОГРН 1178901002530 | КПП 891101001', 140, mT + 17);
+  doc.text('629830, ЯНАО, г. Губкинский, мкр. 12, д. 58, кв. 35', 140, mT + 27);
+  doc.text('Тел: +7 (922) 459-38-98 | info@asgard-service.ru', 140, mT + 37);
 
   // ─── Акцентная линия (синяя + красная) ───
-  const lineY = 82;
-  doc.rect(50, lineY, 247, 3).fill('#1E4D8C');
-  doc.rect(297, lineY, 248, 3).fill('#C8293B');
-  doc.x = 50; doc.y = 96;
+  const lineY = mT + 52;
+  doc.rect(mL, lineY, contentW / 2, 3).fill('#1E4D8C');
+  doc.rect(mL + contentW / 2, lineY, contentW / 2, 3).fill('#C8293B');
+  doc.x = mL; doc.y = lineY + 14;
 
   // ─── ЗАГОЛОВОК ───
-  doc.font(FB).fontSize(16).fillColor('#1E4D8C')
-     .text('КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ', 50, doc.y, { width: 495, align: 'center' });
-  doc.moveDown(0.3);
+  doc.font(FB).fontSize(15).fillColor('#1E4D8C')
+     .text('КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ', mL, doc.y, { width: contentW, align: 'center' });
+  doc.moveDown(0.2);
 
   const tkpLabel = tkp.tkp_number || `№ ${tkp.id}`;
   const tkpDate = tkp.created_at ? new Date(tkp.created_at).toLocaleDateString('ru-RU') : '';
-  doc.font(F).fontSize(11).fillColor('#6B7280')
-     .text(`${tkpLabel} от ${tkpDate}`, 50, doc.y, { width: 495, align: 'center' });
-  doc.moveDown(1);
+  doc.font(F).fontSize(10).fillColor('#6B7280')
+     .text(`${tkpLabel} от ${tkpDate}`, mL, doc.y, { width: contentW, align: 'center' });
+  doc.moveDown(0.8);
 
-  // ─── КАРТОЧКА ЗАКАЗЧИКА (серый фон) ───
-  const cardY = doc.y;
+  // ─── КАРТОЧКА ЗАКАЗЧИКА (динамическая высота) ───
   const cardLines = [];
   if (tkp.customer_name) cardLines.push({ label: 'Заказчик:', value: tkp.customer_name });
-  if (tkp.customer_inn) cardLines.push({ label: 'ИНН:', value: tkp.customer_inn });
+  if (tkp.customer_inn) {
+    const kppStr = cj.customer_kpp ? ' / КПП: ' + cj.customer_kpp : '';
+    cardLines.push({ label: 'ИНН:', value: tkp.customer_inn + kppStr });
+  }
   if (tkp.customer_address) cardLines.push({ label: 'Адрес:', value: tkp.customer_address });
   if (tkp.contact_person) cardLines.push({ label: 'Контактное лицо:', value: tkp.contact_person });
   const contacts = [tkp.contact_phone, tkp.contact_email].filter(Boolean).join(' | ');
   if (contacts) cardLines.push({ label: 'Контакты:', value: contacts });
 
   if (cardLines.length > 0) {
-    const cardH = cardLines.length * 16 + 16;
-    doc.rect(50, cardY, 495, cardH).fill('#F3F4F6');
-    doc.rect(50, cardY, 495, cardH).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
+    const labelW = 105;
+    const valueW = contentW - labelW - 24; // padding
+    const cardPad = 10;
 
-    let cy = cardY + 8;
-    cardLines.forEach(line => {
-      doc.font(FB).fontSize(9).fillColor('#6B7280').text(line.label, 58, cy, { continued: true, width: 100 });
-      doc.font(F).fontSize(10).fillColor('#374151').text(' ' + line.value);
-      cy += 16;
+    // Measure actual height of each line
+    let totalCardH = cardPad * 2;
+    const lineMeasures = cardLines.map(line => {
+      doc.font(F).fontSize(9.5);
+      const h = Math.max(14, doc.heightOfString(line.value, { width: valueW }) + 4);
+      totalCardH += h;
+      return h;
     });
-    doc.x = 50;
-    doc.y = cardY + cardH + 10;
+
+    ensureSpace(totalCardH);
+    const cardY = doc.y;
+
+    // Background + border
+    doc.rect(mL, cardY, contentW, totalCardH).fill('#F8F9FA');
+    doc.rect(mL, cardY, contentW, totalCardH).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
+
+    let cy = cardY + cardPad;
+    cardLines.forEach((line, idx) => {
+      doc.font(FB).fontSize(8.5).fillColor('#6B7280')
+         .text(line.label, mL + 12, cy, { width: labelW });
+      doc.font(F).fontSize(9.5).fillColor('#374151')
+         .text(line.value, mL + 12 + labelW, cy, { width: valueW });
+      cy += lineMeasures[idx];
+    });
+
+    doc.x = mL;
+    doc.y = cardY + totalCardH + 10;
   }
 
   // ─── ПРЕДМЕТ ───
-  doc.x = 50;
+  doc.x = mL;
   if (tkp.subject) {
-    doc.font(FB).fontSize(12).fillColor('#1E4D8C')
-       .text('Предмет предложения', 50, doc.y, { width: 495 });
-    doc.moveDown(0.3);
-    doc.font(FB).fontSize(11).fillColor('#374151')
-       .text(tkp.subject, 50, doc.y, { width: 495 });
-    doc.moveDown(0.5);
+    ensureSpace(40);
+    doc.font(FB).fontSize(11).fillColor('#1E4D8C')
+       .text('Предмет предложения', mL, doc.y, { width: contentW });
+    doc.moveDown(0.2);
+    doc.font(FB).fontSize(10.5).fillColor('#374151')
+       .text(tkp.subject, mL, doc.y, { width: contentW });
+    doc.moveDown(0.4);
   }
 
   if (tkp.work_description) {
-    doc.font(F).fontSize(10).fillColor('#374151')
-       .text(tkp.work_description, 50, doc.y, { width: 495 });
-    doc.moveDown(0.5);
+    doc.font(F).fontSize(9.5).fillColor('#374151')
+       .text(tkp.work_description, mL, doc.y, { width: contentW });
+    doc.moveDown(0.4);
   }
 
-  // ─── ТАБЛИЦА РАБОТ ───
-  let cj;
-  try {
-    cj = typeof tkp.items === 'string' ? JSON.parse(tkp.items || '{}') : (tkp.items || {});
-  } catch (_) {
-    cj = {};
-  }
-  const rows = Array.isArray(cj.items) ? cj.items : [];
-  const vatPct = cj.vat_pct || 22;
-
+  // ─── ТАБЛИЦА РАБОТ (динамические высоты строк) ───
   if (rows.length > 0) {
-    doc.x = 50;
-    doc.font(FB).fontSize(12).fillColor('#1E4D8C')
-       .text('Состав работ и стоимость', 50, doc.y, { width: 495 });
-    doc.moveDown(0.5);
+    ensureSpace(60);
+    doc.x = mL;
+    doc.font(FB).fontSize(11).fillColor('#1E4D8C')
+       .text('Состав работ и стоимость', mL, doc.y, { width: contentW });
+    doc.moveDown(0.4);
 
-    const colW = [25, 250, 40, 35, 70, 75];
+    const colW = [25, 240, 40, 35, 72, 83];
     const totalW = colW.reduce((a, b) => a + b, 0);
-    const tableX = 50;
-    const rowH = 22;
-    const headerH = 26;
+    const tableX = mL;
+    const headerH = 24;
     let ty = doc.y;
 
-    // ── Шапка таблицы (синий фон) ──
+    // ── Table header ──
     doc.rect(tableX, ty, totalW, headerH).fill('#1E4D8C');
-    const headers = ['№', 'Наименование работ / услуг', 'Ед.', 'Кол', 'Цена, ₽', 'Сумма, ₽'];
+    const headers = ['№', 'Наименование работ / услуг', 'Ед.', 'Кол.', 'Цена, ₽', 'Сумма, ₽'];
     let hx = tableX;
-    doc.font(FB).fontSize(8).fillColor('#FFFFFF');
+    doc.font(FB).fontSize(7.5).fillColor('#FFFFFF');
     headers.forEach((h, i) => {
-      doc.text(h, hx + 3, ty + 8, { width: colW[i] - 6, align: i >= 4 ? 'right' : (i === 0 || i >= 2 ? 'center' : 'left') });
+      doc.text(h, hx + 3, ty + 7, { width: colW[i] - 6, align: i >= 4 ? 'right' : (i === 0 || i >= 2 ? 'center' : 'left') });
       hx += colW[i];
     });
     ty += headerH;
 
-    // ── Строки ──
+    // ── Rows with dynamic height ──
     rows.forEach((row, ri) => {
-      if (ty + rowH > 780) {
+      const name = row.name || 'Услуга';
+      doc.font(F).fontSize(8.5);
+      const nameH = doc.heightOfString(name, { width: colW[1] - 8 });
+      const rowH = Math.max(20, nameH + 8);
+
+      if (ty + rowH > maxY) {
         doc.addPage();
-        ty = 50;
+        ty = mT;
+        // Re-draw header on new page
+        doc.rect(tableX, ty, totalW, headerH).fill('#1E4D8C');
+        let hx2 = tableX;
+        doc.font(FB).fontSize(7.5).fillColor('#FFFFFF');
+        headers.forEach((h, i) => {
+          doc.text(h, hx2 + 3, ty + 7, { width: colW[i] - 6, align: i >= 4 ? 'right' : (i === 0 || i >= 2 ? 'center' : 'left') });
+          hx2 += colW[i];
+        });
+        ty += headerH;
       }
 
+      // Alternating row background
       if (ri % 2 === 1) {
-        doc.rect(tableX, ty, totalW, rowH).fill('#F3F4F6');
+        doc.rect(tableX, ty, totalW, rowH).fill('#F8F9FA');
       }
 
       const qty = row.qty || row.quantity || 1;
       const price = row.price || 0;
       const total = row.total || qty * price;
-      const cells = [
-        String(ri + 1),
-        row.name || 'Услуга',
-        row.unit || 'усл.',
-        String(qty),
-        fmtNum(price),
-        fmtNum(total)
-      ];
+      const cellY = ty + 4;
 
       let rx = tableX;
       doc.font(F).fontSize(8.5).fillColor('#374151');
-      cells.forEach((cell, ci) => {
-        doc.text(cell, rx + 3, ty + 6, { width: colW[ci] - 6, align: ci >= 4 ? 'right' : (ci === 0 || ci >= 2 ? 'center' : 'left') });
-        rx += colW[ci];
-      });
+      // №
+      doc.text(String(ri + 1), rx + 3, cellY, { width: colW[0] - 6, align: 'center' });
+      rx += colW[0];
+      // Name (wraps)
+      doc.text(name, rx + 4, cellY, { width: colW[1] - 8 });
+      rx += colW[1];
+      // Unit
+      doc.text(row.unit || 'усл.', rx + 3, cellY, { width: colW[2] - 6, align: 'center' });
+      rx += colW[2];
+      // Qty
+      doc.text(String(qty), rx + 3, cellY, { width: colW[3] - 6, align: 'center' });
+      rx += colW[3];
+      // Price
+      doc.text(fmtNum(price), rx + 3, cellY, { width: colW[4] - 6, align: 'right' });
+      rx += colW[4];
+      // Total
+      doc.text(fmtNum(total), rx + 3, cellY, { width: colW[5] - 6, align: 'right' });
 
+      // Row bottom border
       doc.strokeColor('#E5E7EB').lineWidth(0.3)
          .moveTo(tableX, ty + rowH).lineTo(tableX + totalW, ty + rowH).stroke();
+
+      // Vertical column borders
+      let bx = tableX;
+      colW.forEach(w => {
+        doc.moveTo(bx, ty).lineTo(bx, ty + rowH).stroke();
+        bx += w;
+      });
+      doc.moveTo(bx, ty).lineTo(bx, ty + rowH).stroke();
+
       ty += rowH;
     });
 
-    // ── Сброс курсора после таблицы ──
-    doc.x = 50;
-    doc.y = ty + 10;
+    // Bottom border of table
+    doc.strokeColor('#D1D5DB').lineWidth(0.5)
+       .moveTo(tableX, ty).lineTo(tableX + totalW, ty).stroke();
+
+    doc.x = mL;
+    doc.y = ty + 8;
   }
 
   // ─── ИТОГО ───
@@ -518,29 +594,31 @@ async function generateTkpPdfKit(tkp) {
     const vatSum = cj.vat_sum || Math.round(subtotal * vatPct / 100);
     const totalWithVat = cj.total_with_vat || (subtotal + vatSum);
 
-    doc.font(F).fontSize(10).fillColor('#6B7280')
-       .text(`Итого без НДС: ${fmtNum(subtotal)} ₽`, 50, doc.y, { width: 495, align: 'right' });
-    doc.font(F).fontSize(10).fillColor('#6B7280')
-       .text(`НДС ${vatPct}%: ${fmtNum(vatSum)} ₽`, 50, doc.y, { width: 495, align: 'right' });
-    doc.moveDown(0.2);
-    doc.moveTo(350, doc.y).lineTo(545, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
-    doc.moveDown(0.3);
-    doc.font(FB).fontSize(13).fillColor('#0D1117')
-       .text(`ИТОГО: ${fmtNum(totalWithVat)} ₽`, 50, doc.y, { width: 495, align: 'right' });
-    doc.moveDown(0.8);
+    ensureSpace(55);
+    doc.font(F).fontSize(9.5).fillColor('#6B7280')
+       .text(`Итого без НДС: ${fmtNum(subtotal)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
+    doc.font(F).fontSize(9.5).fillColor('#6B7280')
+       .text(`НДС ${vatPct}%: ${fmtNum(vatSum)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
+    doc.moveDown(0.15);
+    doc.moveTo(mL + contentW - 200, doc.y).lineTo(mL + contentW, doc.y).strokeColor('#1E4D8C').lineWidth(1).stroke();
+    doc.moveDown(0.25);
+    doc.font(FB).fontSize(12).fillColor('#1E4D8C')
+       .text(`ИТОГО: ${fmtNum(totalWithVat)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
+    doc.moveDown(0.6);
   } else if (tkp.total_sum) {
-    doc.font(FB).fontSize(13).fillColor('#0D1117')
-       .text(`Итого: ${fmtNum(tkp.total_sum)} ₽`, 50, doc.y, { width: 495, align: 'right' });
-    doc.moveDown(0.8);
+    doc.font(FB).fontSize(12).fillColor('#1E4D8C')
+       .text(`Итого: ${fmtNum(tkp.total_sum)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
+    doc.moveDown(0.6);
   }
 
   // ─── УСЛОВИЯ ───
-  doc.x = 50;
-  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
-  doc.moveDown(0.5);
-  doc.font(FB).fontSize(12).fillColor('#1E4D8C')
-     .text('Условия', 50, doc.y, { width: 495 });
-  doc.moveDown(0.3);
+  ensureSpace(60);
+  doc.x = mL;
+  doc.moveTo(mL, doc.y).lineTo(mL + contentW, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
+  doc.moveDown(0.4);
+  doc.font(FB).fontSize(11).fillColor('#1E4D8C')
+     .text('Условия', mL, doc.y, { width: contentW });
+  doc.moveDown(0.25);
 
   const paymentTerms = cj.payment_terms || '';
   const terms = [];
@@ -549,49 +627,54 @@ async function generateTkpPdfKit(tkp) {
   if (paymentTerms) terms.push(`Условия оплаты: ${paymentTerms}`);
 
   terms.forEach(t => {
-    doc.font(F).fontSize(10).fillColor('#374151')
-       .text(`•  ${t}`, 60, doc.y, { width: 485 });
-    doc.moveDown(0.2);
+    ensureSpace(18);
+    doc.font(F).fontSize(9.5).fillColor('#374151')
+       .text(`•  ${t}`, mL + 8, doc.y, { width: contentW - 8 });
+    doc.moveDown(0.15);
   });
 
-  if (tkp.notes) {
-    doc.moveDown(0.3);
-    doc.font(F).fontSize(10).fillColor('#374151')
-       .text(tkp.notes, 50, doc.y, { width: 495 });
+  if (cj.notes || tkp.notes) {
+    doc.moveDown(0.2);
+    ensureSpace(20);
+    doc.font(F).fontSize(9.5).fillColor('#374151')
+       .text(cj.notes || tkp.notes, mL, doc.y, { width: contentW });
   }
 
   // ─── ПОДПИСЬ ───
-  doc.x = 50;
-  doc.moveDown(1.5);
-  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
-  doc.moveDown(0.8);
+  ensureSpace(55);
+  doc.x = mL;
+  doc.moveDown(1);
+  doc.moveTo(mL, doc.y).lineTo(mL + contentW, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
+  doc.moveDown(0.6);
 
   const authorName = cj.author_name || 'Кудряшов О.С.';
   const authorPos = cj.author_position || 'Генеральный директор';
 
   const signY = doc.y;
-  doc.font(FB).fontSize(10).fillColor('#374151')
-     .text(authorPos, 50, signY, { width: 170 });
-  doc.font(F).fontSize(10).fillColor('#9CA3AF')
-     .text('_________________', 230, signY, { width: 100, align: 'center' });
-  doc.font(FB).fontSize(10).fillColor('#374151')
-     .text(authorName, 370, signY, { width: 175, align: 'right' });
+  doc.font(FB).fontSize(9.5).fillColor('#374151')
+     .text(authorPos, mL, signY, { width: 170 });
+  doc.font(F).fontSize(9.5).fillColor('#9CA3AF')
+     .text('_________________', mL + 180, signY, { width: 110, align: 'center' });
+  doc.font(FB).fontSize(9.5).fillColor('#374151')
+     .text(authorName, mL + 310, signY, { width: contentW - 310, align: 'right' });
 
-  doc.x = 50;
-  doc.y = signY + 20;
-  doc.font(F).fontSize(8).fillColor('#9CA3AF')
-     .text('М.П.', 50, doc.y, { width: 495, align: 'center' });
+  doc.x = mL;
+  doc.y = signY + 18;
+  doc.font(F).fontSize(7.5).fillColor('#9CA3AF')
+     .text('М.П.', mL, doc.y, { width: contentW, align: 'center' });
 
   // ─── ФУТЕР (на всех страницах) ───
+  const footerY = pageH - mB;
   const pages = doc.bufferedPageRange();
-  for (let i = pages.start; i < pages.start + pages.count; i++) {
+  const totalPages = pages.count;
+  for (let i = pages.start; i < pages.start + totalPages; i++) {
     doc.switchToPage(i);
-    doc.moveTo(50, 810).lineTo(545, 810).strokeColor('#E5E7EB').lineWidth(0.3).stroke();
-    doc.font(F).fontSize(7).fillColor('#9CA3AF')
+    doc.moveTo(mL, footerY).lineTo(mL + contentW, footerY).strokeColor('#E5E7EB').lineWidth(0.3).stroke();
+    doc.font(F).fontSize(6.5).fillColor('#9CA3AF')
        .text('ООО «АСГАРД СЕРВИС» — промышленный сервис, химическая и гидродинамическая очистка, HVAC',
-             50, 815, { width: 400 });
-    doc.font(F).fontSize(7).fillColor('#9CA3AF')
-       .text(`Стр. ${i + 1}`, 450, 815, { width: 95, align: 'right' });
+             mL, footerY + 4, { width: contentW - 60, lineBreak: false });
+    doc.font(F).fontSize(6.5).fillColor('#9CA3AF')
+       .text(`${i + 1} / ${totalPages}`, mL + contentW - 55, footerY + 4, { width: 55, align: 'right' });
   }
 
   // ─── ЗАКРЫТИЕ ───

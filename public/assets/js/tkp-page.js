@@ -40,6 +40,23 @@ window.AsgardTkpPage = (function() {
     'custom': 'Другое'
   };
 
+  function generatePaymentText(type, advancePct, deferredDays) {
+    if (type === 'advance') {
+      const pct = parseInt(advancePct) || 100;
+      if (pct >= 100) return '100% предоплата до начала работ';
+      return 'Аванс ' + pct + '% до начала работ, остаток ' + (100 - pct) + '% по акту выполненных работ';
+    }
+    if (type === 'postpay') {
+      const days = parseInt(deferredDays) || 10;
+      const pct = parseInt(advancePct) || 0;
+      if (pct > 0) {
+        return 'Аванс ' + pct + '%, остаток ' + (100 - pct) + '% в течение ' + days + ' банковских дней после подписания акта выполненных работ';
+      }
+      return 'Постоплата в течение ' + days + ' банковских дней после подписания акта выполненных работ';
+    }
+    return '';
+  }
+
   let vatPct = 22;
   let itemRows = [];
   let _docClickBound = false;
@@ -74,7 +91,11 @@ window.AsgardTkpPage = (function() {
       '@keyframes mimirRowFlash{' +
         '0%{background:rgba(212,168,67,0.15)}' +
         '100%{background:transparent}' +
-      '}';
+      '}' +
+      '.tkp-pay-radio.active,.tkp-pay-radio:has(input:checked){' +
+        'border-color:#1E4D8C!important;background:rgba(30,77,140,0.05)!important' +
+      '}' +
+      '.tkp-pay-radio:hover{border-color:rgba(30,77,140,0.4)!important;background:rgba(30,77,140,0.02)!important}';
     document.head.appendChild(s);
   }
 
@@ -308,10 +329,6 @@ window.AsgardTkpPage = (function() {
       '<option value="' + t.value + '"' + (t.value === o.typeVal ? ' selected' : '') + '>' + esc(t.label) + '</option>'
     ).join('');
 
-    const payOptions = Object.keys(PAYMENT_MAP).map(k =>
-      '<option value="' + k + '"' + (k === o.payPreset ? ' selected' : '') + '>' + (PAYMENT_LABELS[k] || k) + '</option>'
-    ).join('');
-
     const ddStyle = 'position:absolute;top:100%;left:0;right:0;z-index:100;background:var(--bg2);border:1px solid var(--brd);' +
       'border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;max-height:240px;overflow-y:auto';
 
@@ -386,13 +403,29 @@ window.AsgardTkpPage = (function() {
       // --- Секция 4: Условия ---
       sectionHdr('Условия') +
       '<div class="formrow">' +
-        '<div><label>Сроки выполнения</label><input id="tkpDeadline" value="' + esc(o.item.deadline || '') + '"/></div>' +
+        '<div><label>Сроки выполнения</label><input id="tkpDeadline" value="' + esc(o.item.deadline || '') + '" placeholder="30 рабочих дней"/></div>' +
         '<div><label>Срок действия, дней</label><input id="tkpValidity" type="number" value="' + (o.item.validity_days || 30) + '"/></div>' +
       '</div>' +
-      '<div class="formrow">' +
-        '<div><label>Условия оплаты</label><select id="tkpPaymentPreset">' + payOptions + '</select></div>' +
-        '<div><label>Текст условий</label><input id="tkpPaymentText" value="' + esc(o.payText) + '"/></div>' +
+      // --- Способ оплаты ---
+      '<div style="margin:12px 0 4px"><label style="font-weight:600;color:var(--t1)">Способ оплаты</label></div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:10px">' +
+        '<label class="tkp-pay-radio' + (o.payType === 'advance' ? ' active' : '') + '" style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--brd);border-radius:8px;cursor:pointer;transition:all .2s">' +
+          '<input type="radio" name="tkpPayType" value="advance"' + (o.payType === 'advance' ? ' checked' : '') + ' style="accent-color:#1E4D8C"/> ' +
+          '<span><b>Аванс</b><br><small style="color:var(--t3)">Предоплата до начала работ</small></span>' +
+        '</label>' +
+        '<label class="tkp-pay-radio' + (o.payType === 'postpay' ? ' active' : '') + '" style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--brd);border-radius:8px;cursor:pointer;transition:all .2s">' +
+          '<input type="radio" name="tkpPayType" value="postpay"' + (o.payType === 'postpay' ? ' checked' : '') + ' style="accent-color:#1E4D8C"/> ' +
+          '<span><b>Постоплата</b><br><small style="color:var(--t3)">Оплата после выполнения</small></span>' +
+        '</label>' +
       '</div>' +
+      '<div class="formrow" id="tkpPayFields">' +
+        '<div><label>Аванс, %</label><input id="tkpAdvancePct" type="number" min="0" max="100" value="' + (o.advancePct || (o.payType === 'advance' ? 100 : 0)) + '"/></div>' +
+        '<div id="tkpDeferredWrap" style="' + (o.payType === 'postpay' ? '' : 'display:none') + '"><label>Отсрочка, дней</label><input id="tkpDeferredDays" type="number" min="1" value="' + (o.deferredDays || 10) + '"/></div>' +
+      '</div>' +
+      '<div class="formrow"><div style="grid-column:1/-1">' +
+        '<label>Текст условий оплаты <small style="color:var(--t3)">(генерируется автоматически, можно редактировать)</small></label>' +
+        '<input id="tkpPaymentText" value="' + esc(o.payText) + '"/>' +
+      '</div></div>' +
 
       // --- Секция 5: Подпись ---
       sectionHdr('Подпись и примечания') +
@@ -425,6 +458,9 @@ window.AsgardTkpPage = (function() {
     const vatSum = Math.round(subtotal * vatPct / 100);
     const totalWithVat = subtotal + vatSum;
 
+    var checkedPay = document.querySelector('input[name="tkpPayType"]:checked');
+    var payType = checkedPay ? checkedPay.value : 'advance';
+
     return {
       subject: ($('#tkpSubject') || {}).value || '',
       customer_name: ($('#tkpCustomerSearch') || {}).value || '',
@@ -441,6 +477,9 @@ window.AsgardTkpPage = (function() {
         subtotal: subtotal,
         vat_sum: vatSum,
         total_with_vat: totalWithVat,
+        payment_type: payType,
+        advance_pct: parseInt(($('#tkpAdvancePct') || {}).value) || 0,
+        deferred_days: payType === 'postpay' ? (parseInt(($('#tkpDeferredDays') || {}).value) || 10) : 0,
         payment_terms: ($('#tkpPaymentText') || {}).value || '',
         author_name: ($('#tkpAuthorName') || {}).value || '',
         author_position: ($('#tkpAuthorPosition') || {}).value || '',
@@ -490,15 +529,18 @@ window.AsgardTkpPage = (function() {
     }
 
     const typeVal = parsed.tkp_type || item.tkp_type || 'to';
-    const payPreset = matchPaymentPreset(parsed.payment_terms);
-    const payText = parsed.payment_terms || PAYMENT_MAP['prepay100'];
+    const payType = parsed.payment_type || 'advance';
+    const advancePct = parsed.advance_pct != null ? parsed.advance_pct : (payType === 'advance' ? 100 : 0);
+    const deferredDays = parsed.deferred_days || 10;
+    const payText = parsed.payment_terms || generatePaymentText(payType, advancePct, deferredDays);
     const authorName = parsed.author_name || 'Кудряшов О.С.';
     const authorPos = parsed.author_position || 'Генеральный директор';
     const desc = parsed.description || item.work_description || '';
 
     const html = buildFormHtml({
       id: currentId, item: item, parsed: parsed, tenderTitle: tenderTitle,
-      typeVal: typeVal, payPreset: payPreset, payText: payText,
+      typeVal: typeVal, payType: payType, advancePct: advancePct,
+      deferredDays: deferredDays, payText: payText,
       authorName: authorName, authorPos: authorPos, desc: desc
     });
 
@@ -636,17 +678,39 @@ window.AsgardTkpPage = (function() {
         setupTenderAutocomplete(allTenders);
         ensureDocClick();
 
-        // Пресет оплаты
-        const presetSel = $('#tkpPaymentPreset');
-        if (presetSel) {
-          presetSel.addEventListener('change', function() {
-            const text = PAYMENT_MAP[presetSel.value];
-            if (text !== undefined) {
-              const inp = $('#tkpPaymentText');
-              if (inp) inp.value = text;
+        // Оплата: радио-кнопки (аванс / постоплата)
+        function updatePayText() {
+          var checked = document.querySelector('input[name="tkpPayType"]:checked');
+          var type = checked ? checked.value : 'advance';
+          var pct = ($('#tkpAdvancePct') || {}).value || 0;
+          var days = ($('#tkpDeferredDays') || {}).value || 10;
+          var inp = $('#tkpPaymentText');
+          if (inp) inp.value = generatePaymentText(type, pct, days);
+          // Show/hide deferred days
+          var dw = $('#tkpDeferredWrap');
+          if (dw) dw.style.display = type === 'postpay' ? '' : 'none';
+          // Update radio label styling
+          document.querySelectorAll('.tkp-pay-radio').forEach(function(lbl) {
+            var r = lbl.querySelector('input[type="radio"]');
+            if (r && r.checked) {
+              lbl.style.borderColor = '#1E4D8C';
+              lbl.style.background = 'rgba(30,77,140,0.05)';
+            } else {
+              lbl.style.borderColor = '';
+              lbl.style.background = '';
             }
           });
         }
+
+        document.querySelectorAll('input[name="tkpPayType"]').forEach(function(r) {
+          r.addEventListener('change', updatePayText);
+        });
+        var advInp = $('#tkpAdvancePct');
+        if (advInp) advInp.addEventListener('input', updatePayText);
+        var defInp = $('#tkpDeferredDays');
+        if (defInp) defInp.addEventListener('input', updatePayText);
+        // Initial styling
+        updatePayText();
 
         // + Новый заказчик
         const btnNew = $('#btnNewCustomer');
