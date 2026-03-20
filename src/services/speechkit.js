@@ -315,6 +315,7 @@ class SpeechKitService {
       role = 'friendly',
       speed = 1.0,
       format = 'OGG_OPUS',
+      telephony = false,
       ssml = false
     } = options;
 
@@ -334,13 +335,15 @@ class SpeechKitService {
         .trim();
     }
 
+    // Для телефонии: LINEAR16_PCM 8kHz — без двойной конвертации в Asterisk
+    // Для остального: OGG_OPUS (высокое качество)
+    const outputAudioSpec = telephony
+      ? { rawAudio: { audioEncoding: 'LINEAR16_PCM', sampleRateHertz: 8000 } }
+      : { containerAudio: { containerAudioType: format } };
+
     const request = {
       text: plainText,
-      outputAudioSpec: {
-        containerAudio: {
-          containerAudioType: format  // 'OGG_OPUS', 'WAV', 'MP3'
-        }
-      },
+      outputAudioSpec,
       hints: [
         { voice: voice },
         { role: role },
@@ -397,6 +400,7 @@ class SpeechKitService {
       role = 'friendly',
       speed = 1.0,
       format = 'OGG_OPUS',
+      telephony = false,
       ssml = false
     } = options;
 
@@ -413,11 +417,13 @@ class SpeechKitService {
         .replace(/<[^>]+>/g, '').trim();
     }
 
+    const outputAudioSpec = telephony
+      ? { rawAudio: { audioEncoding: 'LINEAR16_PCM', sampleRateHertz: 8000 } }
+      : { containerAudio: { containerAudioType: format } };
+
     const request = {
       text: plainText,
-      outputAudioSpec: {
-        containerAudio: { containerAudioType: format }
-      },
+      outputAudioSpec,
       hints: [
         { voice: voice },
         { role: role },
@@ -599,6 +605,8 @@ class SpeechKitService {
    * @returns {Promise<Buffer>}
    */
   async synthesizeSmart(text, options = {}) {
+    const telephony = !!options.telephony;
+
     // Пробуем v3 (лучший голос)
     if (this._grpcAvailable && this.isConfigured()) {
       try {
@@ -606,7 +614,7 @@ class SpeechKitService {
           voice: options.voice || 'dasha',
           role: options.role || options.emotion || 'friendly',
           speed: parseFloat(options.speed) || 1.0,
-          format: 'OGG_OPUS',
+          telephony,
           ssml: options.ssml || false
         });
       } catch (e) {
@@ -614,13 +622,13 @@ class SpeechKitService {
       }
     }
 
-    // Fallback на v1
+    // Fallback на v1 (lpcm 8kHz для телефонии, oggopus для остального)
     return this.synthesize(text, {
       voice: options.voice === 'dasha' ? 'alena' : (options.voice || 'alena'),
       emotion: options.emotion || options.role || 'good',
       speed: options.speed || '1.0',
-      format: options.format || 'oggopus',
-      sampleRate: options.sampleRate || 48000,
+      format: telephony ? 'lpcm' : (options.format || 'oggopus'),
+      sampleRate: telephony ? 8000 : (options.sampleRate || 48000),
       ssml: options.ssml || false
     });
   }

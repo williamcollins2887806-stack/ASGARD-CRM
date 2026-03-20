@@ -786,13 +786,16 @@ class VoiceAgent {
       fs.mkdirSync(this._cacheDir, { recursive: true });
     }
 
+    const ttsVoice = process.env.TTS_VOICE || 'dasha';
+    const ttsRole = process.env.TTS_ROLE || 'friendly';
+
     let cached = 0;
     for (const phrase of phrases) {
       try {
         // Для кэша используем plain text без ударений
         const plainPhrase = phrase.replace(/\+/g, '');
         const hash = crypto.createHash('md5').update(plainPhrase).digest('hex').slice(0, 12);
-        const filePath = path.join(this._cacheDir, `tts_${hash}.opus`);
+        const filePath = path.join(this._cacheDir, `tts_${hash}.slin`);
 
         if (fs.existsSync(filePath) && fs.statSync(filePath).size > 100) {
           this._phraseCache.set(plainPhrase, path.join(this._cacheDir, `tts_${hash}`));
@@ -801,10 +804,11 @@ class VoiceAgent {
         }
 
         const audioBuffer = await this.speechKit.synthesizeSmart(phrase, {
-          voice: 'dasha',
-          role: 'friendly',
+          voice: ttsVoice,
+          role: ttsRole,
           emotion: 'good',
           speed: '1.0',
+          telephony: true,
           ssml: false
         });
 
@@ -846,24 +850,27 @@ class VoiceAgent {
         return;
       }
 
-      // Проверяем файл на диске (мог быть синтезирован ранее)
-      if (fs.existsSync(filePath + '.opus') && fs.statSync(filePath + '.opus').size > 100) {
+      // Проверяем файл на диске (.slin — нативный формат Asterisk 8kHz)
+      if (fs.existsSync(filePath + '.slin') && fs.statSync(filePath + '.slin').size > 100) {
         if (channel && typeof channel.streamFile === 'function') {
           await channel.streamFile(filePath);
         }
         return;
       }
 
-      // Синтезируем: v3 dasha/friendly → v1 alena/good fallback
+      // Синтезируем: LINEAR16_PCM 8kHz — без конвертации в Asterisk
+      const ttsVoice = process.env.TTS_VOICE || 'dasha';
+      const ttsRole = process.env.TTS_ROLE || 'friendly';
       const audioBuffer = await this.speechKit.synthesizeSmart(text, {
-        voice: 'dasha',
-        role: 'friendly',
+        voice: ttsVoice,
+        role: ttsRole,
         emotion: 'good',
         speed: '1.0',
+        telephony: true,
         ssml: false
       });
 
-      fs.writeFileSync(filePath + '.opus', audioBuffer);
+      fs.writeFileSync(filePath + '.slin', audioBuffer);
 
       if (channel && typeof channel.streamFile === 'function') {
         await channel.streamFile(filePath);

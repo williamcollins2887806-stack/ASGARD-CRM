@@ -389,15 +389,18 @@ async function speakTTS(session, text) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `tts_${hash}`);
 
-  // synthesizeSmart: v3 dasha/friendly → v1 alena/good fallback
+  // synthesizeSmart: LINEAR16_PCM 8kHz для чистого звука в телефонии
+  const ttsVoice = process.env.TTS_VOICE || 'dasha';
+  const ttsRole = process.env.TTS_ROLE || 'friendly';
   const audioBuffer = await speechKit.synthesizeSmart(text, {
-    voice: 'dasha',
-    role: 'friendly',
+    voice: ttsVoice,
+    role: ttsRole,
     emotion: 'good',
     speed: '1.0',
+    telephony: true,
     ssml: false
   });
-  fs.writeFileSync(filePath + '.opus', audioBuffer);
+  fs.writeFileSync(filePath + '.slin', audioBuffer);
   await session.streamFile(filePath);
 }
 
