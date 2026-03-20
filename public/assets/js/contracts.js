@@ -1307,6 +1307,7 @@ window.AsgardContractsPage = (function(){
     findByCounterparty,
     openContractSelector,
     checkExpiringContracts,
+    openNewCustomerModal,
     CONTRACT_TYPES,
     CONTRACT_STATUSES
   };

@@ -652,10 +652,23 @@ window.AsgardTkpPage = (function() {
         const btnNew = $('#btnNewCustomer');
         if (btnNew) {
           btnNew.addEventListener('click', function() {
-            const fields = ['#tkpCustomerSearch', '#tkpInn', '#tkpKpp', '#tkpAddress', '#tkpContactPerson', '#tkpContactPhone', '#tkpContactEmail'];
-            fields.forEach(function(sel) { const f = $(sel); if (f) f.value = ''; });
-            const cs = $('#tkpCustomerSearch');
-            if (cs) cs.focus();
+            if (window.AsgardContractsPage && AsgardContractsPage.openNewCustomerModal) {
+              AsgardContractsPage.openNewCustomerModal(function(created) {
+                if (created && created.id) {
+                  const cs = $('#tkpCustomerSearch');
+                  if (cs) { cs.value = created.short_name || created.name || ''; }
+                  const inn = $('#tkpInn'); if (inn && created.inn) inn.value = created.inn;
+                  const kpp = $('#tkpKpp'); if (kpp && created.kpp) kpp.value = created.kpp;
+                  const addr = $('#tkpAddress'); if (addr && created.legal_address) addr.value = created.legal_address;
+                  const cp = $('#tkpContactPerson'); if (cp && created.contact_person) cp.value = created.contact_person;
+                  const cph = $('#tkpContactPhone'); if (cph && created.contact_phone) cph.value = created.contact_phone;
+                  const ce = $('#tkpContactEmail'); if (ce && created.contact_email) ce.value = created.contact_email;
+                  toast('Контрагент создан', created.short_name || created.name, 'ok');
+                }
+              });
+            } else {
+              toast('Ошибка', 'Модуль договоров не загружен', 'err');
+            }
           });
         }
 
