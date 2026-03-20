@@ -368,19 +368,30 @@ module.exports = {
       run: async () => {
         guard('R1.05');
         try {
-          // Submit for approval (set approval_status to sent)
-          const resubmit = await api('POST', `/api/approval/estimates/${S.estimateId}/resubmit`, {
+          // Delete old draft estimate and recreate with approval_status='sent'
+          // (POST /api/estimates with approval_status='sent' auto-submits)
+          await api('DELETE', `/api/estimates/${S.estimateId}`, { role: 'ADMIN' });
+
+          const resp = await api('POST', '/api/estimates', {
             role: 'PM',
-            body: {}
+            body: {
+              tender_id: S.tenderId,
+              title: PREFIX + 'Просчёт монтажных работ',
+              approval_status: 'sent',
+              margin: 25,
+              amount: 12000000,
+              cost: 9000000,
+              description: 'Монтаж инженерных систем на объекте заказчика',
+              customer: 'ПАО СБЕРБАНК',
+              object_name: 'БЦ Москва-Сити',
+              price_tkp: 14500000,
+              cost_plan: 9500000,
+            }
           });
-          // resubmit might fail if already draft — try direct update via data API
-          if (!resubmit.ok) {
-            // Fallback: set via data API
-            await api('PUT', `/api/data/estimates/${S.estimateId}`, {
-              role: 'ADMIN',
-              body: { approval_status: 'sent' }
-            });
-          }
+          assertOk(resp, 'R1.05 recreate estimate as sent');
+          const est = resp.data?.estimate || resp.data;
+          S.estimateId = est?.id;
+          assert(S.estimateId, 'R1.05: estimate id missing after recreate');
 
           // Director approves
           const approve = await api('POST', `/api/approval/estimates/${S.estimateId}/approve`, {
@@ -392,8 +403,8 @@ module.exports = {
           // Verify
           const check = await api('GET', `/api/estimates/${S.estimateId}`, { role: 'PM' });
           assertOk(check, 'R1.05 verify');
-          const est = check.data?.estimate || check.data;
-          assertOneOf(est?.approval_status, ['approved'], 'R1.05 approval_status');
+          const estData = check.data?.estimate || check.data;
+          assertOneOf(estData?.approval_status, ['approved'], 'R1.05 approval_status');
         } catch (e) { breakChain(e); }
       }
     },
