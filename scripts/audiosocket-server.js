@@ -42,6 +42,7 @@ const AUDIOSOCKET_PORT = parseInt(process.env.AUDIOSOCKET_PORT || '9092', 10);
 const CRM_HTTP_PORT = parseInt(process.env.PORT || '3000', 10);
 const YANDEX_API_KEY = process.env.YANDEX_SPEECHKIT_API_KEY || '';
 const YANDEX_FOLDER_ID = process.env.YANDEX_SPEECHKIT_FOLDER_ID || process.env.YANDEX_FOLDER_ID || '';
+const VOICE_AI_MODEL = process.env.VOICE_AI_MODEL || 'google/gemini-2.5-flash-lite';
 const MAX_TURNS = 8;
 
 /* ── gRPC ──────────────────────────────────────────── */
@@ -628,7 +629,8 @@ async function handleConnection(socket) {
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
         maxTokens: 500,
-        temperature: 0.3
+        temperature: 0.3,
+        model: VOICE_AI_MODEL
       });
 
       const streamParser = aiProvider.parseStream(streamResponse);
@@ -1113,7 +1115,7 @@ server.listen(AUDIOSOCKET_PORT, '127.0.0.1', () => {
   console.log(`  Port: ${AUDIOSOCKET_PORT}`);
   console.log(`  STT:  SpeechKit v3 gRPC streaming (stt.api.cloud.yandex.net)`);
   console.log(`  TTS:  SpeechKit v3 gRPC streaming (dasha/friendly)`);
-  console.log(`  AI:   ${process.env.AI_PROVIDER || 'openai'} streaming`);
+  console.log(`  AI:   ${VOICE_AI_MODEL} via ${process.env.AI_PROVIDER || 'openai'}`);
   console.log(`${'═'.repeat(60)}\n`);
 });
 

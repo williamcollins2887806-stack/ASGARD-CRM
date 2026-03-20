@@ -197,7 +197,7 @@ async function callAnthropic({ system, messages, maxTokens, temperature, stream 
 /**
  * Вызов OpenAI API
  */
-async function callOpenAI({ system, messages, maxTokens, temperature, stream = false }) {
+async function callOpenAI({ system, messages, maxTokens, temperature, stream = false, model = null }) {
   if (!OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY not configured');
   }
@@ -213,7 +213,7 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
   })));
 
   const body = {
-    model: OPENAI_MODEL,
+    model: model || OPENAI_MODEL,
     max_tokens: maxTokens || AI_MAX_TOKENS,
     temperature: temperature ?? AI_TEMPERATURE,
     messages: openaiMessages,
@@ -357,7 +357,7 @@ async function complete({ system, messages, maxTokens, temperature }) {
  * @param {number} options.temperature - Температура (0-1)
  * @returns {Promise<Response>} - Raw Response с SSE stream
  */
-async function stream({ system, messages, maxTokens, temperature }) {
+async function stream({ system, messages, maxTokens, temperature, model }) {
   await _loadKeysFromDB();
   const provider = AI_PROVIDER;
 
@@ -365,7 +365,7 @@ async function stream({ system, messages, maxTokens, temperature }) {
     if (provider === 'anthropic') {
       return await callAnthropic({ system, messages, maxTokens, temperature, stream: true });
     } else if (provider === 'openai') {
-      return await callOpenAI({ system, messages, maxTokens, temperature, stream: true });
+      return await callOpenAI({ system, messages, maxTokens, temperature, stream: true, model });
     } else {
       throw new Error(`Unknown AI provider: ${provider}`);
     }
@@ -381,7 +381,7 @@ async function stream({ system, messages, maxTokens, temperature }) {
       if (fallbackProvider === 'anthropic') {
         return await callAnthropic({ system, messages, maxTokens, temperature, stream: true });
       } else {
-        return await callOpenAI({ system, messages, maxTokens, temperature, stream: true });
+        return await callOpenAI({ system, messages, maxTokens, temperature, stream: true, model });
       }
     }
 
