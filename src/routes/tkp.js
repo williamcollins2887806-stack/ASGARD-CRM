@@ -752,10 +752,10 @@ async function generateTkpPdfKit(tkp, db, opts) {
   const stampPath = path.join(imgDir, 'stamp.png');
 
   if (opts.signature && fs.existsSync(sigPath)) {
-    doc.image(sigPath, mL + 180, signY - 82, { height: 100 });
+    doc.image(sigPath, mL + 180, signY - 50, { height: 100 });
   }
   if (opts.stamp && fs.existsSync(stampPath)) {
-    doc.image(stampPath, mL + 117, signY - 7, { height: 128 });
+    doc.image(stampPath, mL + 117, signY - 20, { height: 128 });
   }
 
   doc.x = mL;

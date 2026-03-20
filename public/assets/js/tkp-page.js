@@ -94,7 +94,7 @@ window.AsgardTkpPage = (function() {
       '}' +
       // Fix: select visibility (dark theme + table cells)
       '.modal select option,.modal-content select option{background:var(--bg2);color:var(--t1)}' +
-      '#tkpItemsTable select{padding:6px 28px 6px 8px;font-size:12px;color:var(--t1)!important;background:var(--bg2)!important;-webkit-appearance:none}' +
+      '#tkpItemsTable select{padding:6px 20px 6px 6px;font-size:12px;color:var(--t1)!important;background:var(--bg2)!important;-webkit-appearance:none;width:100%;box-sizing:border-box}' +
       '#tkpItemsTable select option{color:var(--t1);background:var(--bg2)}' +
       '#tkpItemsTable input{padding:6px 8px;font-size:12px}' +
       '#tkpItemsTable td{vertical-align:middle}' +
@@ -132,49 +132,26 @@ window.AsgardTkpPage = (function() {
       '.tkp-tbl-btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(30,77,140,0.06)}' +
       '.tkp-tbl-btn svg{width:15px;height:15px}' +
 
-      // ── PDF Dialog (WOW) ──
-      '@keyframes pdfDlgPulse{0%,100%{box-shadow:0 0 0 0 rgba(30,77,140,0.3)}50%{box-shadow:0 0 0 8px rgba(30,77,140,0)}}' +
-      '@keyframes pdfDlgShine{0%{background-position:200% center}100%{background-position:-200% center}}' +
-      '.pdf-dlg{text-align:center;padding:8px 0 0}' +
-      '.pdf-dlg-icon{margin:0 auto 12px;width:72px;height:72px;border-radius:50%;' +
-        'background:linear-gradient(135deg,rgba(30,77,140,0.1),rgba(200,41,59,0.1));' +
-        'display:flex;align-items:center;justify-content:center}' +
-      '.pdf-dlg-title{font-size:18px;font-weight:700;color:var(--t1);margin-bottom:4px}' +
-      '.pdf-dlg-sub{font-size:13px;color:var(--t3);margin-bottom:20px}' +
-
-      '.pdf-dlg-card{display:flex!important;align-items:center;gap:14px;' +
-        'padding:14px 18px;margin:0 0 10px;border-radius:12px;' +
-        'border:1.5px solid var(--brd);background:var(--bg2);' +
-        'cursor:pointer;transition:all .3s cubic-bezier(.34,1.56,.64,1);' +
-        'text-transform:none!important;letter-spacing:normal!important;font-size:inherit!important}' +
-      '.pdf-dlg-card:hover{border-color:var(--blue);background:rgba(30,77,140,0.04);transform:translateY(-2px);box-shadow:0 4px 16px rgba(30,77,140,0.1)}' +
-      '.pdf-dlg-card.active{border-color:var(--blue);background:rgba(30,77,140,0.06)}' +
-      '.pdf-dlg-card-icon{width:42px;height:42px;border-radius:10px;' +
-        'background:rgba(30,77,140,0.08);color:#1E4D8C;' +
-        'display:flex;align-items:center;justify-content:center;flex-shrink:0}' +
-      '.pdf-dlg-card.active .pdf-dlg-card-icon{background:rgba(30,77,140,0.15)}' +
-      '.pdf-dlg-card-text{flex:1;text-align:left}' +
-      '.pdf-dlg-card-title{font-size:14px;font-weight:600;color:var(--t1);line-height:1.3}' +
-      '.pdf-dlg-card-desc{font-size:11px;color:var(--t3);margin-top:2px}' +
-
-      // Toggle switch
-      '.pdf-dlg-toggle{position:relative;flex-shrink:0}' +
-      '.pdf-dlg-toggle input{display:none}' +
-      '.pdf-dlg-toggle-track{display:block;width:44px;height:24px;border-radius:12px;' +
-        'background:var(--brd);transition:background .25s;cursor:pointer;position:relative}' +
-      '.pdf-dlg-toggle input:checked+.pdf-dlg-toggle-track{background:linear-gradient(135deg,#1E4D8C,#2563EB)}' +
-      '.pdf-dlg-toggle-thumb{position:absolute;top:2px;left:2px;width:20px;height:20px;' +
-        'border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .25s cubic-bezier(.34,1.56,.64,1)}' +
-      '.pdf-dlg-toggle input:checked+.pdf-dlg-toggle-track .pdf-dlg-toggle-thumb{transform:translateX(20px)}' +
-
-      // Download button
-      '.pdf-dlg-btn{display:inline-flex;align-items:center;gap:10px;' +
-        'margin-top:16px;padding:12px 36px;border-radius:12px;border:none;' +
-        'font-size:15px;font-weight:700;color:#fff;cursor:pointer;' +
-        'background:linear-gradient(135deg,#1E4D8C,#2563EB,#1E4D8C);' +
-        'background-size:200% auto;transition:all .3s;' +
-        'animation:pdfDlgShine 3s linear infinite,pdfDlgPulse 2s ease infinite}' +
-      '.pdf-dlg-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(30,77,140,0.35)}';
+      // ── PDF Dialog (compact) ──
+      '.pdf-dlg{padding:4px 0}' +
+      '.pdf-dlg-row{display:flex;align-items:center;gap:8px}' +
+      '.pdf-dlg-opt{display:flex!important;align-items:center;gap:8px;' +
+        'padding:8px 14px;border-radius:8px;border:1.5px solid var(--brd);' +
+        'background:var(--bg2);cursor:pointer;transition:all .2s;' +
+        'text-transform:none!important;font-size:13px!important;font-weight:500!important;' +
+        'letter-spacing:normal!important;color:var(--t2)!important;margin:0!important;white-space:nowrap}' +
+      '.pdf-dlg-opt:hover{border-color:var(--blue)}' +
+      '.pdf-dlg-opt.active{border-color:var(--blue);color:var(--t1)!important;background:rgba(30,77,140,0.06)}' +
+      '.pdf-dlg-opt input{display:none}' +
+      '.pdf-dlg-sw{width:32px;height:18px;border-radius:9px;background:var(--brd);position:relative;transition:background .2s;flex-shrink:0}' +
+      '.pdf-dlg-opt.active .pdf-dlg-sw{background:linear-gradient(135deg,#1E4D8C,#2563EB)}' +
+      '.pdf-dlg-sw-dot{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.15);transition:transform .2s cubic-bezier(.34,1.56,.64,1)}' +
+      '.pdf-dlg-opt.active .pdf-dlg-sw-dot{transform:translateX(14px)}' +
+      '.pdf-dlg-lbl{font-size:13px}' +
+      '.pdf-dlg-go{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:8px;border:none;' +
+        'font-size:13px;font-weight:700;color:#fff;cursor:pointer;' +
+        'background:linear-gradient(135deg,#1E4D8C,#2563EB);transition:all .2s;white-space:nowrap;margin-left:auto}' +
+      '.pdf-dlg-go:hover{box-shadow:0 4px 12px rgba(30,77,140,0.3);transform:translateY(-1px)}';
 
     document.head.appendChild(s);
   }
@@ -491,7 +468,7 @@ window.AsgardTkpPage = (function() {
       '<table class="data-table" id="tkpItemsTable"><thead><tr>' +
         '<th style="width:30px">\u2116</th>' +
         '<th>Наименование работ / услуг</th>' +
-        '<th style="width:80px">Ед.</th>' +
+        '<th style="width:100px">Ед.</th>' +
         '<th style="width:65px">Кол-во</th>' +
         '<th style="width:110px">Цена, \u20BD</th>' +
         '<th style="width:110px">Сумма, \u20BD</th>' +
@@ -1141,91 +1118,42 @@ window.AsgardTkpPage = (function() {
   function showPdfDialog(tkpId) {
     var html =
       '<div class="pdf-dlg">' +
-        '<div class="pdf-dlg-icon">' +
-          '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="url(#pdfGrad)" stroke-width="1.5">' +
-            '<defs><linearGradient id="pdfGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1E4D8C"/><stop offset="100%" stop-color="#C8293B"/></linearGradient></defs>' +
-            '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/>' +
-          '</svg>' +
-        '</div>' +
-        '<div class="pdf-dlg-title">Параметры выгрузки PDF</div>' +
-        '<div class="pdf-dlg-sub">Выберите элементы для документа</div>' +
-
-        '<label class="pdf-dlg-card" id="pdfOptSig">' +
-          '<div class="pdf-dlg-card-icon">' +
-            '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-              '<path d="M12 19c-4 0-7-1.5-7-1.5V4s3-1.5 7-1.5 7 1.5 7 1.5v13.5S16 19 12 19z"/>' +
-              '<path d="M7 8.5c2.5-1 4.5-1 10 0"/>' +
-            '</svg>' +
-          '</div>' +
-          '<div class="pdf-dlg-card-text">' +
-            '<div class="pdf-dlg-card-title">Подпись директора</div>' +
-            '<div class="pdf-dlg-card-desc">Факсимиле Генерального директора</div>' +
-          '</div>' +
-          '<div class="pdf-dlg-toggle">' +
+        '<div class="pdf-dlg-row">' +
+          '<label class="pdf-dlg-opt active" id="pdfOptSig">' +
             '<input type="checkbox" id="pdfChkSig" checked/>' +
-            '<span class="pdf-dlg-toggle-track"><span class="pdf-dlg-toggle-thumb"></span></span>' +
-          '</div>' +
-        '</label>' +
-
-        '<label class="pdf-dlg-card" id="pdfOptStamp">' +
-          '<div class="pdf-dlg-card-icon" style="color:#C8293B">' +
-            '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-              '<circle cx="12" cy="12" r="10"/>' +
-              '<circle cx="12" cy="12" r="6"/>' +
-              '<circle cx="12" cy="12" r="2"/>' +
-            '</svg>' +
-          '</div>' +
-          '<div class="pdf-dlg-card-text">' +
-            '<div class="pdf-dlg-card-title">Печать организации</div>' +
-            '<div class="pdf-dlg-card-desc">Гербовая печать ООО Асгард-Сервис</div>' +
-          '</div>' +
-          '<div class="pdf-dlg-toggle">' +
+            '<span class="pdf-dlg-sw"><span class="pdf-dlg-sw-dot"></span></span>' +
+            '<span class="pdf-dlg-lbl">Подпись</span>' +
+          '</label>' +
+          '<label class="pdf-dlg-opt active" id="pdfOptStamp">' +
             '<input type="checkbox" id="pdfChkStamp" checked/>' +
-            '<span class="pdf-dlg-toggle-track"><span class="pdf-dlg-toggle-thumb"></span></span>' +
-          '</div>' +
-        '</label>' +
-
-        '<button class="pdf-dlg-btn" id="pdfDlgDownload">' +
-          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-            '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>' +
-            '<polyline points="7,10 12,15 17,10"/>' +
-            '<line x1="12" y1="15" x2="12" y2="3"/>' +
-          '</svg>' +
-          'Скачать PDF' +
-        '</button>' +
+            '<span class="pdf-dlg-sw"><span class="pdf-dlg-sw-dot"></span></span>' +
+            '<span class="pdf-dlg-lbl">Печать</span>' +
+          '</label>' +
+          '<button class="pdf-dlg-go" id="pdfDlgDownload">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
+              '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>' +
+              '<polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/>' +
+            '</svg>' +
+            'PDF' +
+          '</button>' +
+        '</div>' +
       '</div>';
 
     showModal({
-      title: '',
+      title: 'Выгрузка PDF',
       html: html,
       onMount: function() {
-        // Animate cards in
-        var cards = document.querySelectorAll('.pdf-dlg-card');
-        cards.forEach(function(c, i) {
-          c.style.opacity = '0';
-          c.style.transform = 'translateY(16px)';
-          setTimeout(function() {
-            c.style.transition = 'all .4s cubic-bezier(.34,1.56,.64,1)';
-            c.style.opacity = '1';
-            c.style.transform = 'translateY(0)';
-          }, 100 + i * 120);
-        });
-
-        // Toggle card selection
-        cards.forEach(function(card) {
-          card.addEventListener('click', function(e) {
+        // Toggle
+        document.querySelectorAll('.pdf-dlg-opt').forEach(function(opt) {
+          opt.addEventListener('click', function(e) {
             if (e.target.tagName === 'INPUT') return;
-            var cb = card.querySelector('input[type="checkbox"]');
+            var cb = opt.querySelector('input');
             cb.checked = !cb.checked;
-            card.classList.toggle('active', cb.checked);
+            opt.classList.toggle('active', cb.checked);
           });
-          var cb = card.querySelector('input[type="checkbox"]');
-          card.classList.toggle('active', cb.checked);
-          cb.addEventListener('change', function() {
-            card.classList.toggle('active', cb.checked);
-          });
+          var cb = opt.querySelector('input');
+          cb.addEventListener('change', function() { opt.classList.toggle('active', cb.checked); });
         });
-
         // Download
         document.getElementById('pdfDlgDownload').addEventListener('click', function() {
           var token = localStorage.getItem('asgard_token');
@@ -1235,10 +1163,6 @@ window.AsgardTkpPage = (function() {
           window.open(url, '_blank');
           hideModal();
         });
-
-        // Hide modal header
-        var mh = document.querySelector('.modalback .mh .h');
-        if (mh) mh.style.display = 'none';
       }
     });
   }
