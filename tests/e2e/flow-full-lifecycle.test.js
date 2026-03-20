@@ -114,11 +114,11 @@ module.exports = {
         }
 
         // Pass requests
-        const passes = await api('GET', '/api/pass_requests?limit=200', { role: 'ADMIN' });
+        const passes = await api('GET', '/api/pass-requests?limit=200', { role: 'ADMIN' });
         const passArr = passes.data?.items || (Array.isArray(passes.data) ? passes.data : []);
         for (const p of passArr) {
           if (p.notes && p.notes.startsWith(PREFIX)) {
-            await api('DELETE', `/api/pass_requests/${p.id}`, { role: 'ADMIN' });
+            await api('DELETE', `/api/pass-requests/${p.id}`, { role: 'ADMIN' });
           }
         }
 
@@ -863,7 +863,7 @@ module.exports = {
       run: async () => {
         guard('R1.14');
         try {
-          const resp = await api('POST', '/api/pass_requests', {
+          const resp = await api('POST', '/api/pass-requests', {
             role: 'PM',
             body: {
               work_id: S.workId,
