@@ -234,6 +234,11 @@ class RecordingFetcher {
 
     // Парсинг JSON: data[].list[].entry_id + context_calls[].recording_id[]
     var matched = 0;
+    var totalEntries = 0;
+    var entriesWithRecording = 0;
+    var sampleMangoIds = [];
+    var sampleDbIds = Array.from(entryMap.keys()).slice(0, 5);
+
     if (result.data && Array.isArray(result.data)) {
       for (var p = 0; p < result.data.length; p++) {
         var period = result.data[p];
@@ -241,6 +246,19 @@ class RecordingFetcher {
         for (var e = 0; e < period.list.length; e++) {
           var entry = period.list[e];
           var entryId = entry.entry_id;
+          totalEntries++;
+          if (sampleMangoIds.length < 5) sampleMangoIds.push(entryId || 'null');
+
+          // Проверяем recording_id
+          if (entry.context_calls) {
+            for (var cc = 0; cc < entry.context_calls.length; cc++) {
+              if (entry.context_calls[cc].recording_id && entry.context_calls[cc].recording_id.length > 0) {
+                entriesWithRecording++;
+                break;
+              }
+            }
+          }
+
           if (!entryId || !entryMap.has(entryId)) continue;
 
           // Ищем recording_id в context_calls
@@ -259,7 +277,9 @@ class RecordingFetcher {
       }
     }
 
-    this.logger.info('[RecordingFetcher] Extended Stats: ' + matched + ' recordings matched');
+    this.logger.info('[RecordingFetcher] Extended Stats: ' + matched + ' matched, ' + totalEntries + ' total entries, ' + entriesWithRecording + ' with recordings');
+    this.logger.info('[RecordingFetcher] Sample Mango entry_ids: ' + sampleMangoIds.join(', '));
+    this.logger.info('[RecordingFetcher] Sample DB entry_ids: ' + sampleDbIds.join(', '));
     return matched;
   }
 
