@@ -195,6 +195,10 @@ class AMIClient {
       if (h.event === 'Newchannel' && h.calleridnum && h.uniqueid) {
         this.callerIdMap.set(h.uniqueid, h.calleridnum);
         this.channelMap.set(h.uniqueid, h.channel);
+        // Track last incoming call for fallback lookup
+        if (h.channel && h.channel.includes('mango-trunk')) {
+          this.lastIncoming = { callerNumber: h.calleridnum, channelName: h.channel, time: Date.now() };
+        }
       }
 
       // Track AUUID: VarSet event maps random UUID → Asterisk uniqueid
@@ -254,8 +258,8 @@ class AMIClient {
 
   /** Resolve CallerID and channel by AudioSocket UUID (random UUID from dialplan) */
   async resolveByAuuid(auuid) {
-    // Wait for AMI VarSet event to arrive (up to 1.5s)
-    for (let i = 0; i < 5; i++) {
+    // Try VarSet mapping first (up to 1s)
+    for (let i = 0; i < 3; i++) {
       const astId = this.auuidMap.get(auuid);
       if (astId) {
         return {
@@ -264,6 +268,14 @@ class AMIClient {
         };
       }
       await new Promise(r => setTimeout(r, 300));
+    }
+    // Fallback: use last incoming mango-trunk call (within 5 seconds)
+    if (this.lastIncoming && (Date.now() - this.lastIncoming.time) < 5000) {
+      console.log(`[AMI] Fallback CallerID: ${this.lastIncoming.callerNumber}`);
+      return {
+        callerNumber: this.lastIncoming.callerNumber,
+        channelName: this.lastIncoming.channelName,
+      };
     }
     return { callerNumber: 'unknown', channelName: null };
   }
@@ -425,10 +437,11 @@ async function handleConnection(socket) {
 
   /* ── Произнести фразу (кэш → синтез) ───────────── */
   async function speak(text) {
-    if (destroyed) return;
+    if (destroyed) { console.log('[AudioSocket] speak: destroyed, skip'); return; }
     isSpeaking = true;
 
     let pcm = phraseCache.get(text);
+    const cached = !!pcm;
     if (!pcm) {
       try { pcm = await synthesizeToPCM(text); } catch (e) {
         console.error('[AudioSocket] TTS error:', e.message);
@@ -437,6 +450,7 @@ async function handleConnection(socket) {
       }
     }
 
+    console.log(`[AudioSocket] speak: "${text.slice(0, 40)}..." ${cached ? 'CACHED' : 'synthesized'}, ${pcm.length} bytes`);
     sendAudio(pcm);
     // Ждём пока аудио проиграется
     const durationMs = (pcm.length / 2 / 8000) * 1000;
@@ -770,11 +784,20 @@ async function handleConnection(socket) {
     console.log(`[AudioSocket] Call from: ${callerNumber}, channel: ${channelName}`);
 
     // Загружаем контекст из CRM (сотрудники, клиент, время и т.д.)
-    const context = await voiceAgentHelper._buildContext(callerNumber);
+    let context;
+    try {
+      context = await voiceAgentHelper._buildContext(callerNumber);
+      console.log(`[AudioSocket] Context: internal=${context.isInternal}, client=${context.clientName || 'none'}, timeMode=${context.timeMode}`);
+    } catch (e) {
+      console.error('[AudioSocket] _buildContext FAILED:', e.message);
+      // Fallback context
+      context = { isInternal: false, clientName: null, timeMode: 'full', isFullWorkHours: true, employeeList: '' };
+    }
 
     notifyCRM('call_start', { caller: callerNumber, uuid, time: new Date().toISOString() });
 
     // ── Приветствие ──
+    console.log('[AudioSocket] Playing greeting...');
 
     // Сотрудник — персональное приветствие
     if (context.isInternal) {
