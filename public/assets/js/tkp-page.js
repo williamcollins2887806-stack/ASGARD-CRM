@@ -92,10 +92,26 @@ window.AsgardTkpPage = (function() {
         '0%{background:rgba(212,168,67,0.15)}' +
         '100%{background:transparent}' +
       '}' +
-      '.tkp-pay-radio.active,.tkp-pay-radio:has(input:checked){' +
-        'border-color:#1E4D8C!important;background:rgba(30,77,140,0.05)!important' +
+      // Fix: select options visibility (dark theme)
+      '.modal select option,.modal-content select option{background:var(--bg2);color:var(--t1)}' +
+      '#tkpItemsTable select{padding:6px 28px 6px 8px;font-size:12px}' +
+      '#tkpItemsTable input{padding:6px 8px;font-size:12px}' +
+      // Payment radio cards — override global label styles
+      '.tkp-pay-card{' +
+        'display:flex!important;align-items:center;gap:10px;' +
+        'padding:12px 16px;border:1.5px solid var(--brd);border-radius:10px;' +
+        'cursor:pointer;transition:all .2s;flex:1;' +
+        'text-transform:none!important;font-size:inherit!important;' +
+        'letter-spacing:normal!important;color:var(--t1)!important;margin:0!important' +
       '}' +
-      '.tkp-pay-radio:hover{border-color:rgba(30,77,140,0.4)!important;background:rgba(30,77,140,0.02)!important}';
+      '.tkp-pay-card:hover{border-color:var(--blue);background:rgba(30,77,140,0.03)}' +
+      '.tkp-pay-card.selected{border-color:var(--blue);background:rgba(30,77,140,0.06);box-shadow:0 0 0 3px var(--blue-glow)}' +
+      '.tkp-pay-card input[type="radio"]{width:16px;height:16px;flex-shrink:0;margin:0}' +
+      '.tkp-pay-card .pay-title{font-size:14px;font-weight:600;color:var(--t1);line-height:1.3}' +
+      '.tkp-pay-card .pay-desc{font-size:11px;font-weight:400;color:var(--t3);margin-top:1px}' +
+      '.tkp-pay-fields{display:flex;gap:12px;margin-top:8px}' +
+      '.tkp-pay-fields>div{flex:1}' +
+      '.tkp-pay-fields label{text-transform:uppercase;font-size:11px}';
     document.head.appendChild(s);
   }
 
@@ -407,25 +423,24 @@ window.AsgardTkpPage = (function() {
         '<div><label>Срок действия, дней</label><input id="tkpValidity" type="number" value="' + (o.item.validity_days || 30) + '"/></div>' +
       '</div>' +
       // --- Способ оплаты ---
-      '<div style="margin:12px 0 4px"><label style="font-weight:600;color:var(--t1)">Способ оплаты</label></div>' +
-      '<div style="display:flex;gap:8px;margin-bottom:10px">' +
-        '<label class="tkp-pay-radio' + (o.payType === 'advance' ? ' active' : '') + '" style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--brd);border-radius:8px;cursor:pointer;transition:all .2s">' +
-          '<input type="radio" name="tkpPayType" value="advance"' + (o.payType === 'advance' ? ' checked' : '') + ' style="accent-color:#1E4D8C"/> ' +
-          '<span><b>Аванс</b><br><small style="color:var(--t3)">Предоплата до начала работ</small></span>' +
+      '<div style="margin:14px 0 8px"><label>Способ оплаты</label></div>' +
+      '<div style="display:flex;gap:10px;margin-bottom:12px">' +
+        '<label class="tkp-pay-card' + (o.payType === 'advance' ? ' selected' : '') + '">' +
+          '<input type="radio" name="tkpPayType" value="advance"' + (o.payType === 'advance' ? ' checked' : '') + '/>' +
+          '<div><div class="pay-title">Аванс</div><div class="pay-desc">Предоплата до начала работ</div></div>' +
         '</label>' +
-        '<label class="tkp-pay-radio' + (o.payType === 'postpay' ? ' active' : '') + '" style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--brd);border-radius:8px;cursor:pointer;transition:all .2s">' +
-          '<input type="radio" name="tkpPayType" value="postpay"' + (o.payType === 'postpay' ? ' checked' : '') + ' style="accent-color:#1E4D8C"/> ' +
-          '<span><b>Постоплата</b><br><small style="color:var(--t3)">Оплата после выполнения</small></span>' +
+        '<label class="tkp-pay-card' + (o.payType === 'postpay' ? ' selected' : '') + '">' +
+          '<input type="radio" name="tkpPayType" value="postpay"' + (o.payType === 'postpay' ? ' checked' : '') + '/>' +
+          '<div><div class="pay-title">Постоплата</div><div class="pay-desc">Оплата после выполнения</div></div>' +
         '</label>' +
       '</div>' +
-      '<div class="formrow" id="tkpPayFields">' +
+      '<div class="tkp-pay-fields">' +
         '<div><label>Аванс, %</label><input id="tkpAdvancePct" type="number" min="0" max="100" value="' + (o.advancePct || (o.payType === 'advance' ? 100 : 0)) + '"/></div>' +
         '<div id="tkpDeferredWrap" style="' + (o.payType === 'postpay' ? '' : 'display:none') + '"><label>Отсрочка, дней</label><input id="tkpDeferredDays" type="number" min="1" value="' + (o.deferredDays || 10) + '"/></div>' +
       '</div>' +
-      '<div class="formrow"><div style="grid-column:1/-1">' +
-        '<label>Текст условий оплаты <small style="color:var(--t3)">(генерируется автоматически, можно редактировать)</small></label>' +
-        '<input id="tkpPaymentText" value="' + esc(o.payText) + '"/>' +
-      '</div></div>' +
+      '<div style="margin-top:8px"><label>Текст условий оплаты</label>' +
+        '<input id="tkpPaymentText" value="' + esc(o.payText) + '" placeholder="Генерируется автоматически"/>' +
+      '</div>' +
 
       // --- Секция 5: Подпись ---
       sectionHdr('Подпись и примечания') +
@@ -678,7 +693,7 @@ window.AsgardTkpPage = (function() {
         setupTenderAutocomplete(allTenders);
         ensureDocClick();
 
-        // Оплата: радио-кнопки (аванс / постоплата)
+        // Оплата: радио-карточки (аванс / постоплата)
         function updatePayText() {
           var checked = document.querySelector('input[name="tkpPayType"]:checked');
           var type = checked ? checked.value : 'advance';
@@ -689,16 +704,10 @@ window.AsgardTkpPage = (function() {
           // Show/hide deferred days
           var dw = $('#tkpDeferredWrap');
           if (dw) dw.style.display = type === 'postpay' ? '' : 'none';
-          // Update radio label styling
-          document.querySelectorAll('.tkp-pay-radio').forEach(function(lbl) {
-            var r = lbl.querySelector('input[type="radio"]');
-            if (r && r.checked) {
-              lbl.style.borderColor = '#1E4D8C';
-              lbl.style.background = 'rgba(30,77,140,0.05)';
-            } else {
-              lbl.style.borderColor = '';
-              lbl.style.background = '';
-            }
+          // Toggle .selected on cards
+          document.querySelectorAll('.tkp-pay-card').forEach(function(card) {
+            var r = card.querySelector('input[type="radio"]');
+            card.classList.toggle('selected', r && r.checked);
           });
         }
 
@@ -709,7 +718,6 @@ window.AsgardTkpPage = (function() {
         if (advInp) advInp.addEventListener('input', updatePayText);
         var defInp = $('#tkpDeferredDays');
         if (defInp) defInp.addEventListener('input', updatePayText);
-        // Initial styling
         updatePayText();
 
         // + Новый заказчик
