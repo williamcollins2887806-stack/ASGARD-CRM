@@ -115,11 +115,95 @@ window.AsgardTelephonyPage = (function () {
       .routing-rule-card--drag-above{border-top:2px solid var(--blue,#3b82f6)}
       .routing-rule-card--drag-below{border-bottom:2px solid var(--blue,#3b82f6)}
 
+      /* ═══ WOW KEYFRAME ANIMATIONS ═══ */
+      @keyframes telRowSlideIn{0%{opacity:0;transform:translateY(18px)}100%{opacity:1;transform:translateY(0)}}
+      @keyframes telCardSlideUp{0%{opacity:0;transform:translateY(24px) scale(.97)}100%{opacity:1;transform:translateY(0) scale(1)}}
+      @keyframes telCountFlash{0%{box-shadow:0 0 0 0 rgba(212,168,67,.5)}50%{box-shadow:0 0 18px 4px rgba(212,168,67,.25)}100%{box-shadow:0 0 0 0 transparent}}
+      @keyframes telGoldenGlow{0%{box-shadow:0 0 0 0 rgba(212,168,67,0)}50%{box-shadow:0 0 16px 2px rgba(212,168,67,.18)}100%{box-shadow:0 0 0 0 rgba(212,168,67,0)}}
+      @keyframes telMissedPulse{0%,100%{border-color:var(--red,#ef4444);box-shadow:0 0 0 0 rgba(239,68,68,.3)}50%{border-color:#ff6b6b;box-shadow:0 0 12px 2px rgba(239,68,68,.15)}}
+      @keyframes telShimmerSweep{0%{left:-100%}100%{left:100%}}
+      @keyframes telRecordPulse{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
+      @keyframes telChartDraw{0%{stroke-dashoffset:var(--path-len,2000)}100%{stroke-dashoffset:0}}
+
+      /* ═══ JOURNAL — WOW ROWS ═══ */
+      .call-row-wow{animation:telRowSlideIn .3s ease both;border-left:3px solid transparent;transition:background .15s,box-shadow .15s}
+      .call-row-wow--inbound{border-left-color:var(--green,#22c55e)}
+      .call-row-wow--outbound{border-left-color:var(--blue,#3b82f6)}
+      .call-row-wow--missed{border-left-color:var(--red,#ef4444)}
+      .call-row-wow--internal{border-left-color:#D4A843}
+      .call-row-wow:hover{background:rgba(212,168,67,.04);box-shadow:inset 0 0 0 1px rgba(212,168,67,.08)}
+
+      /* Record icon in table */
+      .call-record-icon{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:rgba(59,130,246,.12);color:var(--blue,#3b82f6);font-size:11px;cursor:pointer;animation:telRecordPulse 2s ease-in-out infinite;vertical-align:middle;margin-left:4px}
+      .call-record-icon:hover{background:rgba(59,130,246,.25)}
+
+      /* DaData badge in table */
+      .call-dadata-badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:500;background:rgba(212,168,67,.1);color:#D4A843;border:1px solid rgba(212,168,67,.2);margin-left:6px;vertical-align:middle;white-space:nowrap}
+
+      /* AI preview popup on hover */
+      .call-ai-preview{position:absolute;z-index:200;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--bg1,#1a1a2e);color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.5;max-width:320px;white-space:normal;box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .2s;border:1px solid rgba(212,168,67,.15)}
+      .call-row-wow:hover .call-ai-preview{opacity:1}
+
+      /* Pill filter buttons */
+      .tel-filter-pills{display:flex;gap:4px;flex-wrap:wrap}
+      .tel-filter-pill{padding:6px 14px;border-radius:20px;border:1px solid var(--brd,#444);background:transparent;color:var(--t2,#9ca3af);font-size:12px;font-weight:500;cursor:pointer;transition:all .2s}
+      .tel-filter-pill:hover{border-color:rgba(212,168,67,.3);color:var(--t1,#e5e7eb)}
+      .tel-filter-pill--active{background:linear-gradient(135deg,rgba(200,41,59,.15),rgba(30,77,140,.15));color:#D4A843;border-color:rgba(212,168,67,.3);box-shadow:0 0 8px rgba(212,168,67,.1)}
+
+      /* ═══ KPI CARDS — WOW ═══ */
+      .telephony-kpi-wow{position:relative;background:var(--bg3,#1e1e2f);border:none;border-radius:12px;padding:20px 18px;text-align:center;overflow:hidden;transition:transform .25s,box-shadow .25s}
+      .telephony-kpi-wow::before{content:'';position:absolute;inset:-1px;border-radius:12px;background:linear-gradient(135deg,#C8293B,#1E4D8C);z-index:0;opacity:.7}
+      .telephony-kpi-wow::after{content:'';position:absolute;inset:1px;border-radius:11px;background:var(--bg3,#1e1e2f);z-index:1}
+      .telephony-kpi-wow>*{position:relative;z-index:2}
+      .telephony-kpi-wow:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(212,168,67,.12);animation:telGoldenGlow 1.5s ease-in-out}
+      .telephony-kpi-icon-wow{width:42px;height:42px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:8px}
+      .telephony-kpi-icon-wow--total{background:rgba(59,130,246,.12);color:var(--blue,#3b82f6)}
+      .telephony-kpi-icon-wow--inbound{background:rgba(34,197,94,.12);color:var(--green,#22c55e)}
+      .telephony-kpi-icon-wow--missed{background:rgba(239,68,68,.12);color:var(--red,#ef4444)}
+      .telephony-kpi-icon-wow--duration{background:rgba(212,168,67,.12);color:#D4A843}
+      .kpi-trend{display:inline-block;font-size:11px;font-weight:600;margin-top:4px;padding:2px 6px;border-radius:8px}
+      .kpi-trend--up{color:#22c55e;background:rgba(34,197,94,.1)}
+      .kpi-trend--down{color:#ef4444;background:rgba(239,68,68,.1)}
+
+      /* ═══ MISSED CARDS — WOW ═══ */
+      .missed-card-wow{animation:telCardSlideUp .35s ease both;position:relative;overflow:hidden}
+      .missed-card-wow--unack{animation:telCardSlideUp .35s ease both,telMissedPulse 2s ease-in-out 3;border:1px solid var(--red,#ef4444)}
+      .missed-card-wow--unack::after{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(239,68,68,.06),transparent);animation:telShimmerSweep 3s ease-in-out infinite;pointer-events:none}
+      .missed-time-ago{display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600;background:rgba(239,68,68,.1);color:var(--red,#ef4444);margin-left:6px}
+      .missed-dadata-info{display:inline-block;font-size:10px;color:var(--t3,#6b7280);margin-left:6px;padding:1px 6px;background:rgba(212,168,67,.08);border-radius:8px}
+
+      /* ═══ AI INSIGHTS CARD ═══ */
+      .tel-ai-insights{position:relative;background:var(--bg3,#1e1e2f);border-radius:12px;padding:20px;margin-bottom:20px;overflow:hidden;border:1px solid rgba(212,168,67,.2)}
+      .tel-ai-insights::before{content:'';position:absolute;inset:-1px;border-radius:12px;background:linear-gradient(135deg,rgba(212,168,67,.3),rgba(59,130,246,.2));z-index:0;pointer-events:none}
+      .tel-ai-insights::after{content:'';position:absolute;inset:1px;border-radius:11px;background:var(--bg3,#1e1e2f);z-index:1}
+      .tel-ai-insights>*{position:relative;z-index:2}
+      .tel-ai-insights-title{font-size:14px;font-weight:600;color:#D4A843;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+      .tel-ai-insights-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+      .tel-ai-insight-item{text-align:center}
+      .tel-ai-insight-value{font-size:24px;font-weight:700;color:var(--t1,#e5e7eb)}
+      .tel-ai-insight-label{font-size:11px;color:var(--t3,#6b7280);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+
+      /* ═══ TRANSCRIPT SEGMENTS (diarization) ═══ */
+      .transcript-seg-row{display:flex;gap:10px;padding:8px 12px;border-radius:6px;transition:background .15s;align-items:flex-start}
+      .transcript-seg-row:hover{background:rgba(255,255,255,.03)}
+      .transcript-seg-row--active{background:var(--blue-bg,rgba(59,130,246,.1)) !important}
+      .transcript-seg-time{font-size:11px;font-family:var(--mono,monospace);color:var(--blue,#3b82f6);cursor:pointer;white-space:nowrap;min-width:44px;padding-top:2px;transition:color .15s}
+      .transcript-seg-time:hover{color:#D4A843}
+      .transcript-seg-speaker--0{font-size:11px;font-weight:700;color:var(--blue-l,#60a5fa);min-width:60px;padding-top:2px}
+      .transcript-seg-speaker--1{font-size:11px;font-weight:700;color:#D4A843;min-width:60px;padding-top:2px}
+      .transcript-seg-text{font-size:13px;color:var(--t1,#e5e7eb);line-height:1.5;flex:1}
+
+      /* ═══ DETAIL DADATA CHIPS ═══ */
+      .detail-dadata-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+      .detail-dadata-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:16px;font-size:12px;font-weight:500;background:rgba(212,168,67,.08);color:#D4A843;border:1px solid rgba(212,168,67,.15)}
+      .detail-dadata-chip-icon{font-size:14px;opacity:.7}
+
       /* --- Responsive --- */
       @media(max-width:768px){
         .telephony-dashboard{grid-template-columns:1fr 1fr !important}
         .call-log-table{font-size:12px}
         .call-log-table .ai-col{display:none}
+        .tel-ai-insights-grid{grid-template-columns:1fr}
       }
       @media(max-width:480px){
         .telephony-dashboard{grid-template-columns:1fr !important}
@@ -163,6 +247,48 @@ window.AsgardTelephonyPage = (function () {
   function todayISO()    { return new Date().toISOString().slice(0, 10); }
   function monthAgoISO() { var d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); }
 
+  /* ---- WOW helpers ---- */
+  function fmtTimeAgo(iso) {
+    if (!iso) return '';
+    var diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return 'только что';
+    if (diff < 3600) return Math.floor(diff / 60) + ' мин. назад';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' ч. назад';
+    if (diff < 604800) return Math.floor(diff / 86400) + ' дн. назад';
+    return fmtDate(iso);
+  }
+
+  function animateCountUp(el, target, duration) {
+    duration = duration || 800;
+    var isNum = typeof target === 'number';
+    if (!isNum) { el.textContent = target; return; }
+    var start = 0;
+    var startTime = null;
+    function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
+    function step(ts) {
+      if (!startTime) startTime = ts;
+      var progress = Math.min((ts - startTime) / duration, 1);
+      var val = Math.round(easeOutQuart(progress) * target);
+      el.textContent = val;
+      if (progress < 1) { requestAnimationFrame(step); }
+      else { el.textContent = target; el.closest('.telephony-kpi-wow').style.animation = 'telCountFlash .6s ease'; }
+    }
+    requestAnimationFrame(step);
+  }
+
+  function staggerDelay(index, base) { return (base || 40) * index; }
+
+  function lerpColor(hexA, hexB, t) {
+    var a = parseInt(hexA.replace('#',''), 16);
+    var b = parseInt(hexB.replace('#',''), 16);
+    var rA = (a >> 16) & 0xff, gA = (a >> 8) & 0xff, bA = a & 0xff;
+    var rB = (b >> 16) & 0xff, gB = (b >> 8) & 0xff, bB = b & 0xff;
+    var r = Math.round(rA + (rB - rA) * t);
+    var g = Math.round(gA + (gB - gA) * t);
+    var bl = Math.round(bA + (bB - bA) * t);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
+  }
+
   /* ---- API helper (with retry for GET) ---- */
   async function api(path, opts) {
     opts = opts || {};
@@ -183,11 +309,8 @@ window.AsgardTelephonyPage = (function () {
           if (res.status === 429) toast('Слишком много запросов, подождите', 'error');
           throw new Error(errMsg);
         }
-        var hdrs = {};
-        res.headers.forEach(function(v, k) { hdrs[k] = v; });
         var text = await res.text();
-        console.log('[Telephony] api(' + path + ') status=' + res.status + ' bodyLen=' + text.length + ' headers=' + JSON.stringify(hdrs));
-        if (!text) throw new Error('Empty response body (content-length=' + (hdrs['content-length'] || 'none') + ')');
+        if (!text) throw new Error('Empty response body');
         return JSON.parse(text);
       } catch (err) {
         lastErr = err;
@@ -358,14 +481,6 @@ window.AsgardTelephonyPage = (function () {
     _activeTab = query.tab || 'log';
     if (TABS.indexOf(_activeTab) === -1) _activeTab = 'log';
 
-    /* DIAGNOSTIC: test endpoints */
-    fetch('/api/employees?limit=1', { headers: { 'Authorization': 'Bearer ' + token() } })
-      .then(function(r) { return r.text().then(function(t) { console.log('[Telephony] DIAG /api/employees status=' + r.status + ' bodyLen=' + t.length); }); })
-      .catch(function(e) { console.error('[Telephony] DIAG /api/employees FAILED:', e); });
-    fetch('/api/telephony/ping', { headers: { 'Authorization': 'Bearer ' + token() } })
-      .then(function(r) { return r.text().then(function(t) { console.log('[Telephony] DIAG /api/telephony/ping status=' + r.status + ' bodyLen=' + t.length + ' body=' + t); }); })
-      .catch(function(e) { console.error('[Telephony] DIAG /api/telephony/ping FAILED:', e); });
-
     /* pre-fetch missed badge count (non-blocking) */
     fetchMissedBadge();
 
@@ -452,23 +567,42 @@ window.AsgardTelephonyPage = (function () {
    *  TAB 1  --  ЖУРНАЛ (Call Log)
    * ====================================================================== */
   async function renderLog(container) {
+    var pills = [
+      { value: '', label: 'Все' },
+      { value: 'inbound', label: '\u2199 Входящие' },
+      { value: 'outbound', label: '\u2197 Исходящие' },
+      { value: 'missed', label: '\u21A9 Пропущенные' },
+      { value: 'internal', label: '\u21C4 Внутренние' },
+    ];
+    var pillsHtml = '<div class="tel-filter-pills" id="fTypePills">' +
+      pills.map(function(p) {
+        return '<button class="tel-filter-pill' + (p.value === '' ? ' tel-filter-pill--active' : '') + '" data-val="' + p.value + '">' + p.label + '</button>';
+      }).join('') + '</div>';
+
     container.innerHTML =
       '<div class="telephony-filters" id="logFilters">' +
         '<input type="date" id="fDateFrom" value="' + monthAgoISO() + '">' +
         '<input type="date" id="fDateTo" value="' + todayISO() + '">' +
-        '<select id="fType">' +
-          '<option value="">Все направления</option>' +
-          '<option value="inbound">Входящие</option>' +
-          '<option value="outbound">Исходящие</option>' +
-          '<option value="missed">Пропущенные</option>' +
-          '<option value="internal">Внутренние</option>' +
-        '</select>' +
+        pillsHtml +
         '<select id="fManager"><option value="">Все менеджеры</option></select>' +
         '<input type="text" id="fSearch" placeholder="Поиск по номеру / клиенту">' +
         '<button class="btn btn--primary" id="fApply">Применить</button>' +
       '</div>' +
       '<div id="logTableWrap">' + skeletonTable(5) + '</div>' +
       '<div class="telephony-pagination" id="logPagination"></div>';
+
+    /* pill toggle */
+    var pillWrap = $('#fTypePills');
+    if (pillWrap) {
+      pillWrap.addEventListener('click', function(e) {
+        var btn = e.target.closest('.tel-filter-pill');
+        if (!btn) return;
+        pillWrap.querySelectorAll('.tel-filter-pill').forEach(function(b){ b.classList.remove('tel-filter-pill--active'); });
+        btn.classList.add('tel-filter-pill--active');
+        _logPage = 1;
+        fetchLog();
+      });
+    }
 
     $('#fApply').addEventListener('click', function () { _logPage = 1; fetchLog(); });
     $('#fSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') { _logPage = 1; fetchLog(); } });
@@ -496,12 +630,14 @@ window.AsgardTelephonyPage = (function () {
     if (!wrap) return;
     wrap.innerHTML = skeletonTable(5);
 
+    var activePill = document.querySelector('.tel-filter-pill--active');
+    var callType = activePill ? (activePill.dataset.val || '') : '';
     var params = new URLSearchParams({
       page: _logPage,
       limit: PAGE_SIZE,
       date_from: ($('#fDateFrom') || {}).value || '',
       date_to:   ($('#fDateTo') || {}).value || '',
-      call_type: ($('#fType') || {}).value || '',
+      call_type: callType,
       user_id: ($('#fManager') || {}).value || '',
       search:    ($('#fSearch') || {}).value || '',
     });
@@ -523,22 +659,26 @@ window.AsgardTelephonyPage = (function () {
       return;
     }
 
-    var rows = calls.map(function (c) {
+    var rows = calls.map(function (c, idx) {
       var dir = c.call_type || 'missed';
       var dirCls  = 'call-dir call-dir--' + dir;
       var dirIcon = DIR_ICONS[dir] || '\u2014';
       var dirTip  = DIR_TOOLTIPS[dir] || '';
-      var rowCls  = dir === 'missed' ? ' call-row--missed' : '';
       var tStatus = c.transcript_status || 'none';
       var statusCls = 'call-status-badge--' + tStatus;
       var statusTip = STATUS_TOOLTIPS[tStatus] || '';
       var phone = dir === 'inbound' ? c.from_number : (c.line_number || c.to_number);
       var client = c.client_name ? esc(c.client_name) : esc(fmtPhone(phone));
+      var hasRecord = c.record_path || c.recording_id;
+      var recordIcon = hasRecord ? '<span class="call-record-icon" data-tooltip="Есть запись">\u23FA</span>' : '';
+      var dadataBadge = c.dadata_city ? '<span class="call-dadata-badge">' + esc(c.dadata_city) + '</span>' : '';
+      var aiPreview = c.ai_summary ? '<div class="call-ai-preview">' + esc(c.ai_summary.slice(0, 160)) + '</div>' : '';
+      var delay = staggerDelay(idx, 40);
 
-      return '<tr class="call-row' + rowCls + '" data-id="' + esc(String(c.id)) + '">' +
+      return '<tr class="call-row call-row-wow call-row-wow--' + dir + '" data-id="' + esc(String(c.id)) + '" style="animation-delay:' + delay + 'ms;position:relative">' +
         '<td>' + esc(fmtDate(c.created_at)) + '</td>' +
-        '<td><span class="' + dirCls + '" data-tooltip="' + esc(dirTip) + '">' + dirIcon + '</span></td>' +
-        '<td>' + client + '</td>' +
+        '<td><span class="' + dirCls + '" data-tooltip="' + esc(dirTip) + '">' + dirIcon + '</span>' + recordIcon + '</td>' +
+        '<td style="position:relative">' + client + dadataBadge + aiPreview + '</td>' +
         '<td>' + esc(fmtDuration(c.duration_seconds)) + '</td>' +
         '<td>' + esc(c.manager_name || '\u2014') + '</td>' +
         '<td class="ai-col">' + (c.ai_summary ? esc(c.ai_summary.slice(0, 60)) + (c.ai_summary.length > 60 ? '\u2026' : '') : '\u2014') + '</td>' +
@@ -601,18 +741,30 @@ window.AsgardTelephonyPage = (function () {
         return;
       }
 
-      container.innerHTML = items.map(function (c) {
-        return '<div class="missed-call-card' + (c.missed_acknowledged ? '' : ' missed-call-card--new') + '" data-id="' + esc(String(c.id)) + '">' +
+      container.innerHTML = items.map(function (c, idx) {
+        var unack = !c.missed_acknowledged;
+        var cardCls = 'missed-call-card missed-card-wow' + (unack ? ' missed-card-wow--unack' : '');
+        var delay = staggerDelay(idx, 60);
+        var timeAgo = fmtTimeAgo(c.created_at);
+        var dadataInfo = '';
+        if (c.dadata_operator || c.dadata_city) {
+          var parts = [];
+          if (c.dadata_operator) parts.push(c.dadata_operator);
+          if (c.dadata_city) parts.push(c.dadata_city);
+          dadataInfo = '<span class="missed-dadata-info">' + esc(parts.join(' \u2022 ')) + '</span>';
+        }
+        return '<div class="' + cardCls + '" data-id="' + esc(String(c.id)) + '" style="animation-delay:' + delay + 'ms">' +
           '<div class="missed-call-card-icon"><span class="call-dir call-dir--missed" data-tooltip="' + esc(DIR_TOOLTIPS.missed) + '">\u21A9</span></div>' +
           '<div class="missed-call-card-info">' +
             '<strong>' + esc(fmtPhone(c.from_number)) + '</strong>' +
-            '<span>' + esc(fmtDate(c.created_at)) + '</span>' +
+            (timeAgo ? '<span class="missed-time-ago">' + esc(timeAgo) + '</span>' : '') +
+            '<span>' + esc(fmtDate(c.created_at)) + dadataInfo + '</span>' +
             (c.client_name ? '<span>' + esc(c.client_name) + '</span>' : '') +
             (c.manager_name ? '<span style="color:var(--t2,#9ca3af);font-size:12px">' + esc(c.manager_name) + '</span>' : '') +
           '</div>' +
           '<div class="missed-call-card-actions">' +
-            '<button class="btn missed-call-btn--callback" data-phone="' + esc(c.from_number) + '" data-tooltip="Позвонить клиенту">☎ Перезвонить</button>' +
-            (!c.missed_acknowledged ? '<button class="btn btn--outline" data-ack="' + esc(String(c.id)) + '">Отметить</button>' : '') +
+            '<button class="btn missed-call-btn--callback" data-phone="' + esc(c.from_number) + '" data-tooltip="Позвонить клиенту">\u260E Перезвонить</button>' +
+            (unack ? '<button class="btn btn--outline" data-ack="' + esc(String(c.id)) + '">Отметить</button>' : '') +
           '</div>' +
         '</div>';
       }).join('');
@@ -703,19 +855,34 @@ window.AsgardTelephonyPage = (function () {
         avg_duration: 'Среднее время разговора',
       };
 
+      /* AI Insights — hidden data from backend */
+      var targetPct = t.total > 0 ? Math.round(((t.target_calls || 0) / t.total) * 100) : 0;
+      var convPct = (t.target_calls || 0) > 0 ? Math.round(((t.converted_to_leads || 0) / t.target_calls) * 100) : 0;
+      var missedPct = t.total > 0 ? Math.round(((t.missed || 0) / t.total) * 100) : 0;
+
+      var aiInsightsHtml = '<div class="tel-ai-insights">' +
+        '<div class="tel-ai-insights-title">\uD83E\uDDD9 AI Insights</div>' +
+        '<div class="tel-ai-insights-grid">' +
+          '<div class="tel-ai-insight-item"><div class="tel-ai-insight-value">' + targetPct + '%</div><div class="tel-ai-insight-label">Целевые звонки</div></div>' +
+          '<div class="tel-ai-insight-item"><div class="tel-ai-insight-value">' + convPct + '%</div><div class="tel-ai-insight-label">Конверсия в заявки</div></div>' +
+          '<div class="tel-ai-insight-item"><div class="tel-ai-insight-value">' + missedPct + '%</div><div class="tel-ai-insight-label">Пропущенные</div></div>' +
+        '</div>' +
+      '</div>';
+
       content.innerHTML =
         '<div class="telephony-dashboard">' +
-          kpiCard('Всего звонков', t.total != null ? t.total : 0, kpiDescriptions.total) +
-          kpiCard('Входящие', t.inbound != null ? t.inbound : 0, kpiDescriptions.inbound) +
-          kpiCard('Пропущенные', t.missed != null ? t.missed : 0, kpiDescriptions.missed) +
-          kpiCard('Средняя длительность', fmtDuration(t.avg_duration), kpiDescriptions.avg_duration) +
+          kpiCard('Всего звонков', t.total != null ? t.total : 0, kpiDescriptions.total, 'telephony-kpi-icon-wow--total', '\uD83D\uDCDE') +
+          kpiCard('Входящие', t.inbound != null ? t.inbound : 0, kpiDescriptions.inbound, 'telephony-kpi-icon-wow--inbound', '\u2199\uFE0F') +
+          kpiCard('Пропущенные', t.missed != null ? t.missed : 0, kpiDescriptions.missed, 'telephony-kpi-icon-wow--missed', '\u21A9\uFE0F') +
+          kpiCard('Средняя длительность', fmtDuration(t.avg_duration), kpiDescriptions.avg_duration, 'telephony-kpi-icon-wow--duration', '\u23F1') +
         '</div>' +
+        aiInsightsHtml +
         '<div class="telephony-chart-wrap">' +
           '<div class="telephony-chart-title">Звонки по дням</div>' +
           '<div class="chart-legend" id="chartLegend">' +
-            '<div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--green,#22c55e)"></div>Входящие</div>' +
-            '<div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--blue,#3b82f6)"></div>Исходящие</div>' +
-            '<div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--red,#ef4444)"></div>Пропущенные</div>' +
+            '<div class="chart-legend-item" data-series="inbound" style="cursor:pointer"><div class="chart-legend-dot" style="background:var(--green,#22c55e)"></div>Входящие</div>' +
+            '<div class="chart-legend-item" data-series="outbound" style="cursor:pointer"><div class="chart-legend-dot" style="background:var(--blue,#3b82f6)"></div>Исходящие</div>' +
+            '<div class="chart-legend-item" data-series="missed" style="cursor:pointer"><div class="chart-legend-dot" style="background:var(--red,#ef4444)"></div>Пропущенные</div>' +
           '</div>' +
           '<div style="position:relative">' +
             '<canvas id="chartCallsPerDay" style="width:100%;height:280px"></canvas>' +
@@ -723,6 +890,13 @@ window.AsgardTelephonyPage = (function () {
         '</div>' +
         '<div class="telephony-chart-title" style="margin-top:1.5rem">Статистика менеджеров</div>' +
         renderManagersTable(managers.managers || []);
+
+      /* count-up animation on KPI values */
+      content.querySelectorAll('.telephony-kpi-value').forEach(function(el) {
+        var raw = el.dataset.target;
+        var num = parseInt(raw, 10);
+        if (!isNaN(num) && num > 0) { animateCountUp(el, num, 900); }
+      });
 
       drawCallsChart(stats.by_period || []);
     } catch (err) {
@@ -732,9 +906,11 @@ window.AsgardTelephonyPage = (function () {
     }
   }
 
-  function kpiCard(label, value, tooltip) {
+  function kpiCard(label, value, tooltip, iconCls, icon) {
     var tip = tooltip ? ' data-tooltip="' + esc(tooltip) + '"' : '';
-    return '<div class="telephony-kpi"' + tip + '><div class="telephony-kpi-value">' + esc(String(value)) + '</div><div class="telephony-kpi-label">' + esc(label) + '</div></div>';
+    var iconHtml = icon ? '<div class="telephony-kpi-icon-wow ' + (iconCls || '') + '">' + icon + '</div>' : '';
+    var valId = 'kpi_' + label.replace(/\s/g,'_') + '_' + Date.now();
+    return '<div class="telephony-kpi-wow"' + tip + '>' + iconHtml + '<div class="telephony-kpi-value" id="' + valId + '" data-target="' + esc(String(value)) + '">' + (typeof value === 'number' ? '0' : esc(String(value))) + '</div><div class="telephony-kpi-label">' + esc(label) + '</div></div>';
   }
 
   function renderManagersTable(managers) {
@@ -890,9 +1066,51 @@ window.AsgardTelephonyPage = (function () {
     var ptsOutbound = toPoints(outboundData);
     var ptsMissed   = toPoints(missedData);
 
+    /* series visibility toggle */
+    var seriesVisible = { inbound: true, outbound: true, missed: true };
+
+    function redrawChart() {
+      ctx.clearRect(0, 0, W, H);
+      /* grid */
+      ctx.strokeStyle = colGrid; ctx.lineWidth = 1;
+      for (var gi = 0; gi <= gridLines; gi++) {
+        var gy2 = PAD.top + (ch / gridLines) * gi;
+        ctx.beginPath(); ctx.moveTo(PAD.left, gy2); ctx.lineTo(PAD.left + cw, gy2); ctx.stroke();
+        ctx.fillStyle = colText; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+        ctx.fillText(String(Math.round(maxVal - (maxVal / gridLines) * gi)), PAD.left - 8, gy2 + 4);
+      }
+      /* x labels */
+      ctx.fillStyle = colText; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+      labels.forEach(function (l, i) {
+        if (i % step !== 0 && i !== labels.length - 1) return;
+        var lx = PAD.left + (cw / Math.max(labels.length - 1, 1)) * i;
+        var short = l.length >= 10 ? l.slice(8,10)+"."+l.slice(5,7) : l;
+        ctx.fillText(short, lx, H - PAD.bottom + 18);
+      });
+      /* series */
+      if (seriesVisible.inbound) drawSmoothLine(ptsInbound, colGreen, '1a');
+      if (seriesVisible.outbound) drawSmoothLine(ptsOutbound, colBlue, '1a');
+      if (seriesVisible.missed) drawSmoothLine(ptsMissed, colRed, '1a');
+      baseImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    }
+
     drawSmoothLine(ptsInbound, colGreen, '1a');
     drawSmoothLine(ptsOutbound, colBlue, '1a');
     drawSmoothLine(ptsMissed, colRed, '1a');
+
+    /* clickable legend toggle */
+    var legendWrap = document.getElementById('chartLegend');
+    if (legendWrap) {
+      legendWrap.querySelectorAll('[data-series]').forEach(function(item) {
+        item.addEventListener('click', function() {
+          var s = item.dataset.series;
+          seriesVisible[s] = !seriesVisible[s];
+          item.style.opacity = seriesVisible[s] ? '1' : '0.35';
+          item.style.textDecoration = seriesVisible[s] ? 'none' : 'line-through';
+          redrawChart();
+        });
+      });
+    }
 
     /* ---- Hover crosshair ---- */
     /* store base image for fast redraw on hover */
@@ -1334,7 +1552,58 @@ window.AsgardTelephonyPage = (function () {
     /* Transcript */
     var transcriptText = (typeof call.transcript === 'string') ? call.transcript.trim() : '';
 
+    /* DaData chips */
+    var dadataChips = '';
+    if (call.dadata_region || call.dadata_city || call.dadata_operator) {
+      dadataChips = '<div class="call-detail-section"><div class="detail-dadata-chips">';
+      if (call.dadata_region) dadataChips += '<span class="detail-dadata-chip"><span class="detail-dadata-chip-icon">\uD83C\uDFD4</span>' + esc(call.dadata_region) + '</span>';
+      if (call.dadata_city) dadataChips += '<span class="detail-dadata-chip"><span class="detail-dadata-chip-icon">\uD83C\uDFD9</span>' + esc(call.dadata_city) + '</span>';
+      if (call.dadata_operator) dadataChips += '<span class="detail-dadata-chip"><span class="detail-dadata-chip-icon">\uD83D\uDCF6</span>' + esc(call.dadata_operator) + '</span>';
+      dadataChips += '</div></div>';
+    }
+
+    /* key_requirements from ai_lead_data */
+    var ld = call.ai_lead_data;
+    if (typeof ld === 'string') { try { ld = JSON.parse(ld); } catch(e) { ld = null; } }
+    var keyReqsHtml = '';
+    if (ld && ld.key_requirements && ld.key_requirements.length) {
+      keyReqsHtml = '<div class="call-detail-section"><div class="telephony-chart-title">Ключевые требования</div><ul class="ai-key-reqs">';
+      ld.key_requirements.forEach(function(r) { keyReqsHtml += '<li>' + esc(r) + '</li>'; });
+      keyReqsHtml += '</ul></div>';
+    }
+
+    /* Transcript segments (diarization with timestamps) */
+    var segmentsHtml = '';
+    var hasSegments = false;
+    if (call.transcript_segments) {
+      var segs = call.transcript_segments;
+      if (typeof segs === 'string') { try { segs = JSON.parse(segs); } catch(e) { segs = null; } }
+      if (segs && Array.isArray(segs) && segs.length) {
+        hasSegments = true;
+        segmentsHtml = '<div class="call-detail-section">' +
+          '<div class="telephony-chart-title">Транскрипция (диаризация) <button class="btn btn--sm transcript-copy-btn" id="copyTranscriptBtn" data-tooltip="Скопировать текст">\uD83D\uDCCB</button></div>' +
+          '<div class="transcript-viewer" id="transcriptViewer">';
+        segs.forEach(function(seg) {
+          var startSec = seg.start || 0;
+          var endSec = seg.end || 0;
+          var speaker = seg.speaker != null ? seg.speaker : 0;
+          var spkCls = 'transcript-seg-speaker--' + (speaker % 2);
+          var spkLabel = speaker === 0 ? 'Менеджер' : 'Клиент';
+          var timeFmt = fmtDuration(startSec);
+          segmentsHtml += '<div class="transcript-seg-row" data-start="' + startSec + '" data-end="' + endSec + '">' +
+            '<span class="transcript-seg-time">' + timeFmt + '</span>' +
+            '<span class="' + spkCls + '">' + esc(spkLabel) + '</span>' +
+            '<span class="transcript-seg-text">' + esc(seg.text || '') + '</span>' +
+          '</div>';
+        });
+        segmentsHtml += '</div></div>';
+      }
+    }
+
     container.innerHTML =
+      /* DaData chips at top */
+      dadataChips +
+
       /* Call info */
       '<div class="call-detail-section">' +
         '<table class="detail-info-table">' +
@@ -1347,15 +1616,18 @@ window.AsgardTelephonyPage = (function () {
           (call.ended_at ? '<tr><td>Завершение</td><td>' + esc(fmtDate(call.ended_at)) + '</td></tr>' : '') +
           '<tr><td>Менеджер</td><td>' + esc(call.manager_name || (call.user_id ? 'Сотрудник #' + call.user_id : 'Не назначен')) + '</td></tr>' +
           '<tr><td>Статус звонка</td><td>' + esc(call.duration_seconds > 0 ? 'Отвечен' : (dir === 'missed' ? 'Пропущен' : (dir === 'outbound' ? 'Без ответа' : 'Пропущен'))) + '</td></tr>' +
-          '<tr><td>Транскрипт</td><td><span class="call-status-badge--' + tStatus + '" data-tooltip="' + esc(statusTip) + '">' + esc(STATUS_LABELS[tStatus] || '—') + '</span></td></tr>' +
+          '<tr><td>Транскрипт</td><td><span class="call-status-badge--' + tStatus + '" data-tooltip="' + esc(statusTip) + '">' + esc(STATUS_LABELS[tStatus] || '\u2014') + '</span></td></tr>' +
         '</table>' +
       '</div>' +
 
       /* Audio player */
       (hasRecord ? '<div class="call-detail-section"><div class="audio-player" id="audioPlayerWrap"></div></div>' : '') +
 
-      /* Transcript (enhanced) */
-      renderTranscript(transcriptText) +
+      /* Diarized transcript (if segments available) or fallback to plain */
+      (hasSegments ? segmentsHtml : renderTranscript(transcriptText)) +
+
+      /* Key requirements */
+      keyReqsHtml +
 
       /* AI Summary & Analysis */
       renderAiAnalysis(call) +
@@ -1366,12 +1638,17 @@ window.AsgardTelephonyPage = (function () {
         (call.lead_id ? '<span class="ai-summary-tag--target" style="align-self:center">Заявка #' + call.lead_id + ' создана</span>' : '') +
         (hasRecord ? '<button class="btn btn--outline" id="retranscribeBtn" data-tooltip="Перезапустить транскрибацию">Перетранскрибировать</button>' : '') +
         (call.transcript ? '<button class="btn btn--outline" id="reanalyzeBtn" data-tooltip="Перезапустить ИИ-анализ">Переанализировать</button>' : '') +
-        '<button class="btn btn--primary" id="callbackBtn" data-tooltip="Инициировать исходящий звонок через Mango Office">☎ Перезвонить</button>' +
+        '<button class="btn btn--primary" id="callbackBtn" data-tooltip="Инициировать исходящий звонок через Mango Office">\u260E Перезвонить</button>' +
       '</div>';
 
     /* wire audio player */
     if (hasRecord) {
       createWaveformPlayer($('#audioPlayerWrap'), audioUrl);
+      /* wire transcript sync for diarized segments */
+      if (hasSegments && _detailAudio) {
+        var viewer = $('#transcriptViewer');
+        if (viewer) initTranscriptSync(_detailAudio, viewer);
+      }
     }
 
     /* wire copy transcript button */
@@ -1706,7 +1983,6 @@ window.AsgardTelephonyPage = (function () {
 
     var style     = getComputedStyle(document.documentElement);
     var colBase   = style.getPropertyValue('--bg4').trim()  || '#d1d5db';
-    var colPlayed = style.getPropertyValue('--blue').trim() || '#3b82f6';
 
     ctx.clearRect(0, 0, W, H);
 
@@ -1715,7 +1991,12 @@ window.AsgardTelephonyPage = (function () {
       var bh = Math.max(2, p * maxH);
       var played = (i / peaks.length) < progressPct;
 
-      ctx.fillStyle = played ? colPlayed : colBase;
+      if (played) {
+        var t = peaks.length > 1 ? i / (peaks.length - 1) : 0;
+        ctx.fillStyle = lerpColor('#C8293B', '#1E4D8C', t);
+      } else {
+        ctx.fillStyle = colBase;
+      }
       ctx.beginPath();
       if (ctx.roundRect) {
         ctx.roundRect(x, mid - bh, barW, bh * 2, barW / 2);
@@ -1730,7 +2011,7 @@ window.AsgardTelephonyPage = (function () {
    *  TRANSCRIPT SYNC  (for future timestamped transcripts)
    * ====================================================================== */
   function initTranscriptSync(audioElement, transcriptContainer) {
-    var segments = transcriptContainer.querySelectorAll('.transcript-segment');
+    var segments = transcriptContainer.querySelectorAll('.transcript-seg-row');
     if (!segments.length) return;
 
     function update() {
@@ -1741,7 +2022,7 @@ window.AsgardTelephonyPage = (function () {
         var start = parseFloat(seg.dataset.start);
         var end   = parseFloat(seg.dataset.end);
         var isActive = currentTime >= start && currentTime < end;
-        seg.classList.toggle('transcript-segment--active', isActive);
+        seg.classList.toggle('transcript-seg-row--active', isActive);
         if (isActive) activeEl = seg;
       });
 
@@ -1758,9 +2039,8 @@ window.AsgardTelephonyPage = (function () {
     audioElement.addEventListener('seeked', update);
 
     segments.forEach(function (seg) {
-      var timeEl = seg.querySelector('.transcript-segment-time');
+      var timeEl = seg.querySelector('.transcript-seg-time');
       if (timeEl) {
-        timeEl.style.cursor = 'pointer';
         timeEl.addEventListener('click', function () {
           audioElement.currentTime = parseFloat(seg.dataset.start);
           audioElement.play();
