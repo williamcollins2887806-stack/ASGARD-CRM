@@ -446,16 +446,16 @@ async function generateTkpPdfKit(tkp, db, opts) {
   // ─── ЛОГО ───
   const logoPath = path.join(__dirname, '..', '..', 'public', 'assets', 'img', 'asgard_emblem.png');
   if (fs.existsSync(logoPath)) {
-    doc.image(logoPath, mL, mT, { width: 80, height: 46 });
+    doc.image(logoPath, mL, mT, { width: 120, height: 69 });
   }
 
   // ─── Реквизиты справа от лого (из БД) ───
   doc.font(FB).fontSize(12).fillColor('#1E4D8C')
-     .text(company.name || 'ООО «Асгард-Сервис»', 140, mT + 2);
+     .text(company.name || 'ООО «Асгард-Сервис»', 180, mT + 2);
   doc.font(F).fontSize(7.5).fillColor('#6B7280');
-  doc.text(`ИНН ${company.inn || ''} | ОГРН ${company.ogrn || ''} | КПП ${company.kpp || ''}`, 140, mT + 17);
-  doc.text(company.legal_address || '', 140, mT + 27);
-  doc.text(`Тел: ${company.phone || ''} | ${company.email || ''}`, 140, mT + 37);
+  doc.text(`ИНН ${company.inn || ''} | ОГРН ${company.ogrn || ''} | КПП ${company.kpp || ''}`, 180, mT + 17);
+  doc.text(company.legal_address || '', 180, mT + 27);
+  doc.text(`Тел: ${company.phone || ''} | ${company.email || ''}`, 180, mT + 37);
 
   // ─── Акцентная линия (синяя + красная) ───
   const lineY = mT + 52;
@@ -653,17 +653,17 @@ async function generateTkpPdfKit(tkp, db, opts) {
     doc.moveDown(0.25);
     doc.font(FB).fontSize(12).fillColor('#1E4D8C')
        .text(`ИТОГО: ${fmtNum(totalWithVat)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
-    doc.moveDown(0.3);
+    doc.moveDown(0.9);
     const posCount = rows.length;
     const posWord = posCount === 1 ? 'позиция' : (posCount < 5 ? 'позиции' : 'позиций');
-    doc.font(F).fontSize(9).fillColor('#374151')
+    doc.font(F).fontSize(10.5).fillColor('#374151')
        .text(`Всего ${posCount} ${posWord} на сумму: ${numberToWordsRu(totalWithVat)}`, mL, doc.y, { width: contentW });
     doc.moveDown(0.5);
   } else if (tkp.total_sum) {
     doc.font(FB).fontSize(12).fillColor('#1E4D8C')
        .text(`Итого: ${fmtNum(tkp.total_sum)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
-    doc.moveDown(0.3);
-    doc.font(F).fontSize(9).fillColor('#374151')
+    doc.moveDown(0.9);
+    doc.font(F).fontSize(10.5).fillColor('#374151')
        .text(`Сумма: ${numberToWordsRu(parseFloat(tkp.total_sum))}`, mL, doc.y, { width: contentW });
     doc.moveDown(0.5);
   }
@@ -721,14 +721,14 @@ async function generateTkpPdfKit(tkp, db, opts) {
   const stampPath = path.join(imgDir, 'stamp.png');
 
   if (opts.signature && fs.existsSync(sigPath)) {
-    doc.image(sigPath, mL + 180, signY - 25, { height: 50 });
+    doc.image(sigPath, mL + 180, signY - 25, { height: 100 });
   }
   if (opts.stamp && fs.existsSync(stampPath)) {
-    doc.image(stampPath, mL + 60, signY - 35, { height: 80 });
+    doc.image(stampPath, mL + 117, signY + 50, { height: 128 });
   }
 
   doc.x = mL;
-  doc.y = signY + (opts.stamp || opts.signature ? 30 : 18);
+  doc.y = signY + (opts.stamp || opts.signature ? 80 : 18);
   if (!opts.stamp && !opts.signature) {
     doc.font(F).fontSize(7.5).fillColor('#9CA3AF')
        .text('М.П.', mL, doc.y, { width: contentW, align: 'center' });

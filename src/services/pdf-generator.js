@@ -238,7 +238,7 @@ async function generateTkpPdf(tkpId, opts) {
 ${BASE_CSS}
 /* ── Header ── */
 .hdr { display: flex; align-items: flex-start; gap: 16px; }
-.hdr-logo { width: 110px; flex-shrink: 0; }
+.hdr-logo { width: 165px; flex-shrink: 0; }
 .hdr-logo img { width: 100%; }
 .hdr-info { flex: 1; font-size: 9pt; color: #4B5563; line-height: 1.6; }
 .hdr-name { font-size: 13pt; font-weight: 700; color: #1E4D8C; margin-bottom: 2px; }
@@ -280,12 +280,12 @@ ${BASE_CSS}
 .sign-pos { font-size: 10pt; font-weight: 600; width: 180px; }
 .sign-line { flex: 1; border-bottom: 1px solid #000; height: 1px; margin-bottom: 4px; position: relative; }
 .sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; }
-.sign-images { position: relative; height: 80px; margin: -60px 0 -10px; }
-.sign-signature { position: absolute; left: 180px; top: 0; height: 70px; }
-.sign-stamp { position: absolute; left: 60px; top: -20px; height: 110px; opacity: 0.85; }
+.sign-images { position: relative; height: 220px; margin: -80px 0 -40px; }
+.sign-signature { position: absolute; left: 180px; top: 0; height: 140px; }
+.sign-stamp { position: absolute; left: 136px; top: 93px; height: 176px; opacity: 0.85; }
 
 /* ── Sum in words ── */
-.sum-words { font-size: 9.5pt; font-style: italic; color: #374151; margin: 6px 0 12px; }
+.sum-words { font-size: 11pt; font-style: italic; color: #374151; margin: 18px 0 12px; }
 
 /* ── Footer ── */
 .footer { margin-top: 30px; text-align: center; font-size: 7.5pt; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 6px; }
