@@ -421,18 +421,39 @@ async function handleConnection(socket) {
     console.log(`[AudioSocket] Call ended: UUID=${uuid}, caller=${callerNumber}`);
   }
 
-  socket.on('error', () => cleanup());
+  socket.setNoDelay(true); // Disable Nagle — send frames immediately
+  socket.on('error', (e) => { console.error('[AudioSocket] Socket error:', e.message); cleanup(); });
   socket.on('close', () => cleanup());
 
-  /* ── Отправить PCM в AudioSocket ────────────────── */
+  /* ── Отправить PCM в AudioSocket (paced, 20ms per frame) ── */
   function sendAudio(pcmBuffer) {
-    if (destroyed || !socket.writable) return;
-    // Отправляем чанками по 320 байт (20ms при 8kHz slin16)
-    const CHUNK_SIZE = 320;
-    for (let i = 0; i < pcmBuffer.length; i += CHUNK_SIZE) {
-      const chunk = pcmBuffer.slice(i, Math.min(i + CHUNK_SIZE, pcmBuffer.length));
-      try { socket.write(makeAudioFrame(chunk)); } catch (_) { break; }
-    }
+    return new Promise((resolve) => {
+      if (destroyed || !socket.writable) {
+        console.log(`[AudioSocket] sendAudio: skip (destroyed=${destroyed}, writable=${socket.writable})`);
+        return resolve();
+      }
+      const CHUNK_SIZE = 320; // 20ms @ 8kHz slin16
+      let offset = 0;
+      let framesSent = 0;
+
+      function sendNext() {
+        if (offset >= pcmBuffer.length || destroyed || !socket.writable) {
+          console.log(`[AudioSocket] sendAudio: done, ${framesSent} frames sent`);
+          return resolve();
+        }
+        const chunk = pcmBuffer.slice(offset, Math.min(offset + CHUNK_SIZE, pcmBuffer.length));
+        try {
+          socket.write(makeAudioFrame(chunk));
+          framesSent++;
+        } catch (e) {
+          console.error('[AudioSocket] sendAudio write error:', e.message);
+          return resolve();
+        }
+        offset += CHUNK_SIZE;
+        setTimeout(sendNext, 20);
+      }
+      sendNext();
+    });
   }
 
   /* ── Произнести фразу (кэш → синтез) ───────────── */
@@ -451,10 +472,9 @@ async function handleConnection(socket) {
     }
 
     console.log(`[AudioSocket] speak: "${text.slice(0, 40)}..." ${cached ? 'CACHED' : 'synthesized'}, ${pcm.length} bytes`);
-    sendAudio(pcm);
-    // Ждём пока аудио проиграется
-    const durationMs = (pcm.length / 2 / 8000) * 1000;
-    await new Promise(r => setTimeout(r, durationMs));
+    await sendAudio(pcm);
+    // Small buffer after playback
+    await new Promise(r => setTimeout(r, 200));
     isSpeaking = false;
   }
 
