@@ -437,7 +437,7 @@ async function routes(fastify) {
           VALUES($1,$2,NULL,$3,$4,$5,'on_warehouse',$6,$7,$8,$9) RETURNING id`,
           [item.name,invNum,item.quantity,item.unit,item.unit_price,whId,qr,qr,'Из закупки #'+procId]);
         await client.query('UPDATE procurement_items SET equipment_id=$1 WHERE id=$2',[eq.rows[0].id,itemId]);
-        await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,performed_by)VALUES($1,'procurement_receipt',$2,$3,$4)`,
+        await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,created_by)VALUES($1,'procurement_receipt',$2,$3,$4)`,
           [eq.rows[0].id,whId,'Приёмка из закупки #'+procId,user.id]);
         if(pc.row.work_id) await client.query(`INSERT INTO equipment_reservations(equipment_id,work_id,reserved_by,reserved_from,reserved_to,status,notes)
           VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE+INTERVAL '30 days','active',$4)`,[eq.rows[0].id,pc.row.work_id,pc.row.pm_id||user.id,'Автобронь #'+procId]);

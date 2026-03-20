@@ -364,13 +364,13 @@ async function routes(fastify) {
         const rs = item.return_status || 'returning';
         if (rs === 'returning') {
           await client.query("UPDATE equipment SET status='on_warehouse',current_holder_id=NULL,current_object_id=NULL WHERE id=$1", [item.equipment_id]);
-          await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,performed_by)
+          await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,created_by)
             VALUES($1,'return',(SELECT warehouse_id FROM equipment WHERE id=$1),$2,$3)`, [item.equipment_id, 'Возврат демоб #' + asmId, req.user.id]);
           retCnt++;
         } else {
           await client.query("UPDATE equipment SET status='written_off' WHERE id=$1", [item.equipment_id]);
           const reason = rs === 'damaged' ? 'Сломано' : rs === 'lost' ? 'Утеряно' : 'Израсходовано';
-          await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,notes,performed_by)VALUES($1,'write_off',$2,$3)`,
+          await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,notes,created_by)VALUES($1,'write_off',$2,$3)`,
             [item.equipment_id, `${reason}: ${item.return_reason || '—'} (демоб #${asmId})`, req.user.id]);
           dmgCnt++;
         }
