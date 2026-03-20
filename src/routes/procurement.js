@@ -432,9 +432,10 @@ async function routes(fastify) {
         const wh=await client.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1");
         const whId=item.warehouse_id||(wh.rows[0]&&wh.rows[0].id)||null;
         const qr=randomUUID();
-        const eq=await client.query(`INSERT INTO equipment(name,category_id,quantity,unit,purchase_price,status,warehouse_id,qr_uuid,qr_code,notes)
-          VALUES($1,NULL,$2,$3,$4,'on_warehouse',$5,$6,$7,$8) RETURNING id`,
-          [item.name,item.quantity,item.unit,item.unit_price,whId,qr,qr,'Из закупки #'+procId]);
+        const invNum='INV-'+Date.now().toString(36).toUpperCase();
+        const eq=await client.query(`INSERT INTO equipment(name,inventory_number,category_id,quantity,unit,purchase_price,status,warehouse_id,qr_uuid,qr_code,notes)
+          VALUES($1,$2,NULL,$3,$4,$5,'on_warehouse',$6,$7,$8,$9) RETURNING id`,
+          [item.name,invNum,item.quantity,item.unit,item.unit_price,whId,qr,qr,'Из закупки #'+procId]);
         await client.query('UPDATE procurement_items SET equipment_id=$1 WHERE id=$2',[eq.rows[0].id,itemId]);
         await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,performed_by)VALUES($1,'procurement_receipt',$2,$3,$4)`,
           [eq.rows[0].id,whId,'Приёмка из закупки #'+procId,user.id]);

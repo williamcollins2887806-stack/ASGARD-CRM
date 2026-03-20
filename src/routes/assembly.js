@@ -354,8 +354,9 @@ async function routes(fastify) {
         if (!item.equipment_id) {
           if (item.source === 'on_site_purchase' && item.return_status === 'returning') {
             const qr = randomUUID(); const wh = await client.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1");
-            await client.query(`INSERT INTO equipment(name,quantity,unit,status,warehouse_id,qr_uuid,qr_code,notes)VALUES($1,$2,$3,'on_warehouse',$4,$5,$6,$7)`,
-              [item.name, item.quantity, item.unit, wh.rows[0]?.id || null, qr, qr, 'Купл. на объекте, демоб #' + asmId]);
+            const invNum='INV-'+Date.now().toString(36).toUpperCase();
+            await client.query(`INSERT INTO equipment(name,inventory_number,quantity,unit,status,warehouse_id,qr_uuid,qr_code,notes)VALUES($1,$2,$3,$4,'on_warehouse',$5,$6,$7,$8)`,
+              [item.name, invNum, item.quantity, item.unit, wh.rows[0]?.id || null, qr, qr, 'Купл. на объекте, демоб #' + asmId]);
             retCnt++;
           }
           continue;

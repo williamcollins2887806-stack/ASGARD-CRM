@@ -436,10 +436,11 @@ async function equipmentRoutes(fastify, options) {
 
     try {
       await client.query('BEGIN');
+      const invNum = 'INV-' + Date.now().toString(36).toUpperCase();
       const eq = await client.query(
-        `INSERT INTO equipment(name, quantity, unit, purchase_price, status, warehouse_id, qr_uuid, qr_code, condition, notes, created_by)
-         VALUES($1,$2,$3,$4,'on_warehouse',$5,$6,$7,'new',$8,$9) RETURNING *`,
-        [item.name, item.quantity || 1, item.unit || 'шт', item.unit_price, whId, qrUuid, qrUuid, 'Из закупки #' + item.proc_id, user.id]);
+        `INSERT INTO equipment(name, inventory_number, quantity, unit, purchase_price, status, warehouse_id, qr_uuid, qr_code, condition, notes, created_by)
+         VALUES($1,$2,$3,$4,$5,'on_warehouse',$6,$7,$8,'new',$9,$10) RETURNING *`,
+        [item.name, invNum, item.quantity || 1, item.unit || 'шт', item.unit_price, whId, qrUuid, qrUuid, 'Из закупки #' + item.proc_id, user.id]);
       const eqId = eq.rows[0].id;
 
       // Линк обратно в procurement_items

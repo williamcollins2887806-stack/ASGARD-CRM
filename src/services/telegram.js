@@ -215,7 +215,7 @@ async function init() {
   // Callback-кнопки
   initCallbackHandler();
 
-  await bot.startPolling({ restart: false });
+  bot.startPolling({ restart: false }).catch(e => console.warn('[Telegram] Polling failed:', e.message));
   console.log('[Telegram] Bot started (v2.0 universal approvals)');
 }
 

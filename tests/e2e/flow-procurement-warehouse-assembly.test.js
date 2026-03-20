@@ -14,16 +14,16 @@ module.exports = {
     {
       name: 'Step 0: Server is alive',
       run: async () => {
-        const resp = await api('GET', '/api/users/me', { role: 'ADMIN' });
+        const resp = await api('GET', '/api/auth/me', { role: 'ADMIN' });
         assertOk(resp, 'Server responds');
         assert(resp.data?.user?.id, 'User ID returned');
       }
     },
     { name: 'Step 1.1: Server alive after V052', run: async () => {
-        const r = await api('GET', '/api/users/me', { role: 'ADMIN' }); assertOk(r, 'Alive');
+        const r = await api('GET', '/api/auth/me', { role: 'ADMIN' }); assertOk(r, 'Alive');
     }},
     { name: 'Step 1.2: Stable without purchase_requests', run: async () => {
-        const r = await api('GET', '/api/users/me', { role: 'ADMIN' }); assertOk(r, 'Stable');
+        const r = await api('GET', '/api/auth/me', { role: 'ADMIN' }); assertOk(r, 'Stable');
     }},
     // === STEP 2 ===
     { name: 'S2.1: PM creates', run: async () => {
@@ -292,7 +292,7 @@ module.exports = {
 
     // === STEP 7: DEAD CODE CLEANUP ===
     { name: 'S7.1: API ok', run: async () => { const r = await api('GET', '/api/procurement', { role: 'PM' }); assertOk(r, 'OK'); }},
-    { name: 'S7.2: Stable', run: async () => { const r = await api('GET', '/api/users/me', { role: 'ADMIN' }); assertOk(r, 'OK'); }},
+    { name: 'S7.2: Stable', run: async () => { const r = await api('GET', '/api/auth/me', { role: 'ADMIN' }); assertOk(r, 'OK'); }},
 
     // === STEP 12: NOTIFICATIONS ===
     { name: 'S12: Notifications', run: async () => { const r = await api('GET', '/api/notifications?limit=5', { role: 'PROC' }); assertOk(r, 'OK'); }},
