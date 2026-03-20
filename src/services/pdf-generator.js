@@ -280,9 +280,9 @@ ${BASE_CSS}
 .sign-pos { font-size: 10pt; font-weight: 600; width: 180px; }
 .sign-line { flex: 1; border-bottom: 1px solid #000; height: 1px; margin-bottom: 4px; position: relative; }
 .sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; }
-.sign-images { position: relative; height: 90px; overflow: hidden; margin: -70px 0 0; }
-.sign-signature { position: absolute; left: 180px; top: 0; height: 90px; }
-.sign-stamp { position: absolute; left: 120px; top: -10px; height: 110px; opacity: 0.85; }
+.sign-images { position: relative; height: 160px; overflow: hidden; margin: -60px 0 0; }
+.sign-signature { position: absolute; left: 180px; top: 0; height: 140px; }
+.sign-stamp { position: absolute; left: 136px; top: 0; height: 176px; opacity: 0.85; }
 
 /* ── Sum in words ── */
 .sum-words { font-size: 11pt; font-style: italic; color: #374151; margin: 18px 0 12px; }
