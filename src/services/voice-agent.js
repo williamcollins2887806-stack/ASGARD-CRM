@@ -723,10 +723,44 @@ class VoiceAgent {
   }
 
   /**
-   * Парсинг JSON-ответа от AI
+   * Парсинг ответа от AI (text-first формат + fallback на чистый JSON)
+   * Формат: "Текст для озвучки\n---JSON---\n{...метаданные...}"
    */
   _parseResponse(text) {
-    let cleaned = text.trim();
+    const raw = (text || '').trim();
+
+    // Новый формат: text ---JSON--- {...}
+    const sepIdx = raw.indexOf('---JSON---');
+    if (sepIdx !== -1) {
+      const spokenText = raw.slice(0, sepIdx).trim();
+      let jsonStr = raw.slice(sepIdx + 10).trim();
+      if (jsonStr.startsWith('```json')) jsonStr = jsonStr.slice(7);
+      if (jsonStr.startsWith('```')) jsonStr = jsonStr.slice(3);
+      if (jsonStr.endsWith('```')) jsonStr = jsonStr.slice(0, -3);
+      jsonStr = jsonStr.trim();
+
+      try {
+        const data = JSON.parse(jsonStr);
+        let routeTo = data.route_to || null;
+        if (routeTo && typeof routeTo === 'string') {
+          routeTo = routeTo.replace(/[^0-9]/g, '');
+          if (routeTo.startsWith('8') && routeTo.length === 11) routeTo = '7' + routeTo.slice(1);
+          if (routeTo.length !== 11) routeTo = null;
+        }
+        return {
+          text: (spokenText || String(data.text || '')).slice(0, 300),
+          action: ['route', 'record', 'hangup', 'continue'].includes(data.action) ? data.action : 'continue',
+          route_to: routeTo,
+          route_name: data.route_name || null,
+          intent: data.intent || 'unknown',
+          collected_data: data.collected_data || {},
+          reason: data.reason || null
+        };
+      } catch (_) {}
+    }
+
+    // Fallback: старый формат (чистый JSON)
+    let cleaned = raw;
     if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7);
     if (cleaned.startsWith('```')) cleaned = cleaned.slice(3);
     if (cleaned.endsWith('```')) cleaned = cleaned.slice(0, -3);
@@ -734,16 +768,12 @@ class VoiceAgent {
 
     try {
       const data = JSON.parse(cleaned);
-
       let routeTo = data.route_to || null;
       if (routeTo && typeof routeTo === 'string') {
         routeTo = routeTo.replace(/[^0-9]/g, '');
-        if (routeTo.startsWith('8') && routeTo.length === 11) {
-          routeTo = '7' + routeTo.slice(1);
-        }
+        if (routeTo.startsWith('8') && routeTo.length === 11) routeTo = '7' + routeTo.slice(1);
         if (routeTo.length !== 11) routeTo = null;
       }
-
       return {
         text: String(data.text || '').slice(0, 300),
         action: ['route', 'record', 'hangup', 'continue'].includes(data.action) ? data.action : 'continue',

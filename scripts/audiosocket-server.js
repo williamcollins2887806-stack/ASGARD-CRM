@@ -607,73 +607,55 @@ async function handleConnection(socket) {
     if (sttStream) { try { sttStream.end(); } catch (_) {} sttStream = null; }
   }
 
-  /* ── AI streaming → parse JSON → speak text via TTS streaming ── */
+  /* ── AI streaming → TTS streaming pipeline (text-first) ── */
+  /*
+   * Формат ответа AI:
+   *   Текст для озвучки (plain text)
+   *   ---JSON---
+   *   {"action":"route","route_to":"7916...","intent":"tender"}
+   *
+   * Стримим AI токены → как только набирается предложение → отправляем в TTS.
+   * После ---JSON--- прекращаем TTS, парсим JSON метаданные.
+   * Результат: первый звук через ~0.5с (AI first_token + TTS first_audio).
+   */
   async function generateAndSpeak(context) {
     const systemPrompt = VOICE_OPERATOR_SYSTEM(context);
     const userPrompt = VOICE_OPERATOR_USER(context);
     const t0 = Date.now();
 
     try {
-      // ── Этап 1: AI streaming (собираем полный JSON) ──
       const streamResponse = await aiProvider.stream({
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
-        maxTokens: 400,
+        maxTokens: 500,
         temperature: 0.3
       });
 
       const streamParser = aiProvider.parseStream(streamResponse);
-      let fullText = '';
+
+      // ── Аккумуляторы ──
+      let fullOutput = '';        // всё что прислал AI
+      let textPart = '';          // текст для озвучки (до ---JSON---)
+      let jsonPart = '';          // JSON метаданные (после ---JSON---)
+      let hitJsonSeparator = false;
+      let sentenceBuf = '';       // буфер текущего предложения для TTS
       let firstTokenTime = 0;
 
-      for await (const event of streamParser) {
-        if (event.type === 'text') {
-          if (!firstTokenTime) firstTokenTime = Date.now();
-          fullText += event.content;
-        }
-        if (event.type === 'done' || event.type === 'error') break;
-      }
-
-      const aiMs = Date.now() - t0;
-      const firstTokenMs = firstTokenTime ? firstTokenTime - t0 : aiMs;
-      console.log(`[AudioSocket] AI: ${fullText.length} chars, total=${aiMs}ms, first_token=${firstTokenMs}ms`);
-
-      if (!fullText) return null;
-
-      // ── Этап 2: Парсим JSON ──
-      const parsed = parseAIResponse(fullText);
-      if (!parsed || !parsed.text) return parsed;
-
-      // ── Этап 3: TTS streaming (говорим только parsed.text) ──
-      const ttsStart = Date.now();
+      // ── TTS StreamSynthesis (bidirectional) ──
       isSpeaking = true;
-
-      // Используем UtteranceSynthesis (streaming output) — надёжнее StreamSynthesis
-      const ttsRequest = {
-        text: parsed.text,
-        outputAudioSpec: {
-          rawAudio: { audioEncoding: 'LINEAR16_PCM', sampleRateHertz: 8000 }
-        },
-        hints: [
-          { voice: process.env.TTS_VOICE || 'dasha' },
-          { role: process.env.TTS_ROLE || 'friendly' },
-          { speed: 1.0 }
-        ],
-        loudnessNormalizationType: 'LUFS',
-        unsafeMode: parsed.text.length > 250
-      };
-
-      const ttsCall = ttsSynthesizer.utteranceSynthesis(ttsRequest, grpcMetadata());
+      const ttsCall = ttsSynthesizer.streamSynthesis(grpcMetadata());
+      let ttsOptionsWritten = false;
       let firstAudioTime = 0;
       let totalAudioBytes = 0;
+      let ttsDone = false;
 
-      await new Promise((resolve) => {
+      // Слушаем аудио от TTS → сразу в AudioSocket
+      const ttsFinished = new Promise((resolve) => {
         ttsCall.on('data', (r) => {
           if (r.audioChunk && r.audioChunk.data && !destroyed && socket.writable) {
             if (!firstAudioTime) firstAudioTime = Date.now();
             const buf = Buffer.from(r.audioChunk.data);
             totalAudioBytes += buf.length;
-            // Отправляем аудио-чанки сразу по мере поступления от TTS
             const CHUNK_SIZE = 320;
             for (let i = 0; i < buf.length; i += CHUNK_SIZE) {
               const chunk = buf.slice(i, Math.min(i + CHUNK_SIZE, buf.length));
@@ -681,30 +663,117 @@ async function handleConnection(socket) {
             }
           }
         });
-        ttsCall.on('end', resolve);
+        ttsCall.on('end', () => { ttsDone = true; resolve(); });
         ttsCall.on('error', (err) => {
-          console.error('[AudioSocket] TTS error:', err.message);
+          console.error('[AudioSocket] TTS stream error:', err.message);
+          ttsDone = true;
           resolve();
         });
-        setTimeout(resolve, 15000);
+        setTimeout(() => { if (!ttsDone) resolve(); }, 20000);
       });
 
-      const ttsMs = Date.now() - ttsStart;
-      const firstAudioMs = firstAudioTime ? firstAudioTime - ttsStart : ttsMs;
-      const totalMs = Date.now() - t0;
+      // Функция: отправить предложение в TTS
+      function flushSentenceToTTS(sentence) {
+        if (!sentence.trim() || destroyed) return;
+        if (!ttsOptionsWritten) {
+          ttsCall.write({
+            options: {
+              voice: process.env.TTS_VOICE || 'dasha',
+              role: process.env.TTS_ROLE || 'friendly',
+              speed: 1.0,
+              outputAudioSpec: {
+                rawAudio: { audioEncoding: 'LINEAR16_PCM', sampleRateHertz: 8000 }
+              },
+              loudnessNormalizationType: 'LUFS'
+            }
+          });
+          ttsOptionsWritten = true;
+        }
+        ttsCall.write({ synthesisInput: { text: sentence.trim() } });
+        ttsCall.write({ forceSynthesis: {} });
+      }
 
-      // Ждём пока аудио проиграется (примерно)
-      const audioDurationMs = (totalAudioBytes / 2 / 8000) * 1000;
-      const alreadyElapsed = Date.now() - (firstAudioTime || ttsStart);
-      if (audioDurationMs > alreadyElapsed) {
-        await new Promise(r => setTimeout(r, audioDurationMs - alreadyElapsed + 100));
+      // ── Основной цикл: читаем AI токены ──
+      for await (const event of streamParser) {
+        if (event.type === 'text') {
+          if (!firstTokenTime) firstTokenTime = Date.now();
+          const chunk = event.content;
+          fullOutput += chunk;
+
+          if (hitJsonSeparator) {
+            // Уже после ---JSON--- → копим JSON
+            jsonPart += chunk;
+          } else {
+            // Проверяем: не появился ли разделитель?
+            const sepIdx = fullOutput.indexOf('---JSON---');
+            if (sepIdx !== -1) {
+              hitJsonSeparator = true;
+              // Текст = всё до разделителя
+              textPart = fullOutput.slice(0, sepIdx).trim();
+              // JSON = всё после разделителя + \n
+              jsonPart = fullOutput.slice(sepIdx + 10).trim();
+
+              // Отправляем остаток текста в TTS
+              const remaining = textPart.slice(textPart.length - sentenceBuf.length);
+              // sentenceBuf может содержать часть, пересчитаем
+              // Просто отправим весь оставшийся sentenceBuf
+              if (sentenceBuf.trim()) {
+                flushSentenceToTTS(sentenceBuf);
+                sentenceBuf = '';
+              }
+              // Закрываем TTS вход
+              try { ttsCall.end(); } catch (_) {}
+            } else {
+              // Ещё текст для озвучки — копим по предложениям
+              sentenceBuf += chunk;
+              // Отправляем при конце предложения (. ! ? или перенос)
+              if (/[.!?…]\s*$/.test(sentenceBuf) && sentenceBuf.trim().length > 8) {
+                flushSentenceToTTS(sentenceBuf);
+                sentenceBuf = '';
+              }
+            }
+          }
+        }
+        if (event.type === 'done' || event.type === 'error') break;
+      }
+
+      const aiMs = Date.now() - t0;
+      const firstTokenMs = firstTokenTime ? firstTokenTime - t0 : aiMs;
+
+      // Если разделитель не найден — fallback: весь текст = plain text
+      if (!hitJsonSeparator) {
+        textPart = fullOutput.trim();
+        jsonPart = '';
+        // Отправляем остаток буфера
+        if (sentenceBuf.trim()) flushSentenceToTTS(sentenceBuf);
+        try { ttsCall.end(); } catch (_) {}
+      }
+
+      console.log(`[AudioSocket] AI: ${fullOutput.length} chars, text=${textPart.length}, json=${jsonPart.length}, total=${aiMs}ms, first_token=${firstTokenMs}ms`);
+
+      // Ждём завершения TTS
+      await ttsFinished;
+
+      const ttsMs = firstAudioTime ? Date.now() - firstAudioTime : 0;
+      const firstAudioMs = firstAudioTime ? firstAudioTime - t0 : 0;
+
+      // Ждём пока аудио доиграет
+      if (totalAudioBytes > 0) {
+        const audioDurationMs = (totalAudioBytes / 2 / 8000) * 1000;
+        const elapsed = Date.now() - (firstAudioTime || t0);
+        if (audioDurationMs > elapsed) {
+          await new Promise(r => setTimeout(r, audioDurationMs - elapsed + 100));
+        }
       }
 
       isSpeaking = false;
 
-      console.log(`[AudioSocket] TTS: "${parsed.text.slice(0, 50)}..." ${totalAudioBytes}b, total=${ttsMs}ms, first_audio=${firstAudioMs}ms`);
-      console.log(`[AudioSocket] TOTAL: AI=${aiMs}ms + TTS=${ttsMs}ms = ${totalMs}ms (first_token=${firstTokenMs}ms, first_audio=${firstTokenMs + firstAudioMs}ms)`);
+      const totalMs = Date.now() - t0;
+      console.log(`[AudioSocket] TTS: "${textPart.slice(0, 50)}..." ${totalAudioBytes}b`);
+      console.log(`[AudioSocket] TIMING: first_token=${firstTokenMs}ms, first_audio=${firstAudioMs}ms, AI=${aiMs}ms, total=${totalMs}ms`);
 
+      // Парсим JSON часть
+      const parsed = parseAIResponse(textPart, jsonPart);
       return parsed;
 
     } catch (err) {
@@ -717,10 +786,10 @@ async function handleConnection(socket) {
         const response = await aiProvider.complete({
           system: VOICE_OPERATOR_SYSTEM(context),
           messages: [{ role: 'user', content: VOICE_OPERATOR_USER(context) }],
-          maxTokens: 400, temperature: 0.3
+          maxTokens: 500, temperature: 0.3
         });
         const text = typeof response === 'string' ? response : (response.text || response.content || '');
-        const parsed = parseAIResponse(text);
+        const parsed = parseAIResponse(text, '');
         if (parsed && parsed.text) await speak(parsed.text);
         return parsed;
       } catch (e2) {
@@ -730,35 +799,80 @@ async function handleConnection(socket) {
     }
   }
 
-  /* ── Парсер JSON ответа AI ─────────────────────── */
-  function parseAIResponse(text) {
-    let cleaned = text.trim();
-    if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7);
-    if (cleaned.startsWith('```')) cleaned = cleaned.slice(3);
-    if (cleaned.endsWith('```')) cleaned = cleaned.slice(0, -3);
-    cleaned = cleaned.trim();
+  /* ── Парсер ответа AI (text-first формат) ──────── */
+  /*
+   * Новый формат: textPart (plain text) + jsonPart (JSON метаданные)
+   * Старый формат (чистый JSON) — тоже поддерживается как fallback
+   */
+  function parseAIResponse(textPart, jsonPart) {
+    const spokenText = (textPart || '').trim().slice(0, 300);
 
-    try {
-      const data = JSON.parse(cleaned);
-      let routeTo = data.route_to || null;
-      if (routeTo && typeof routeTo === 'string') {
-        routeTo = routeTo.replace(/[^0-9]/g, '');
-        if (routeTo.startsWith('8') && routeTo.length === 11) routeTo = '7' + routeTo.slice(1);
-        if (routeTo.length !== 11) routeTo = null;
+    // Пробуем парсить JSON-часть
+    if (jsonPart && jsonPart.trim()) {
+      let cleaned = jsonPart.trim();
+      if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7);
+      if (cleaned.startsWith('```')) cleaned = cleaned.slice(3);
+      if (cleaned.endsWith('```')) cleaned = cleaned.slice(0, -3);
+      cleaned = cleaned.trim();
+
+      try {
+        const data = JSON.parse(cleaned);
+        let routeTo = data.route_to || null;
+        if (routeTo && typeof routeTo === 'string') {
+          routeTo = routeTo.replace(/[^0-9]/g, '');
+          if (routeTo.startsWith('8') && routeTo.length === 11) routeTo = '7' + routeTo.slice(1);
+          if (routeTo.length !== 11) routeTo = null;
+        }
+
+        return {
+          text: spokenText || String(data.text || '').slice(0, 300),
+          action: ['route', 'record', 'hangup', 'continue'].includes(data.action) ? data.action : 'continue',
+          route_to: routeTo,
+          route_name: data.route_name || null,
+          intent: data.intent || 'unknown',
+          collected_data: data.collected_data || {},
+          reason: data.reason || null
+        };
+      } catch (_) {
+        console.warn('[AudioSocket] JSON parse failed, raw:', cleaned.slice(0, 100));
       }
-
-      return {
-        text: String(data.text || '').slice(0, 300),
-        action: ['route', 'record', 'hangup', 'continue'].includes(data.action) ? data.action : 'continue',
-        route_to: routeTo,
-        route_name: data.route_name || null,
-        intent: data.intent || 'unknown',
-        collected_data: data.collected_data || {},
-        reason: data.reason || null
-      };
-    } catch (_) {
-      return { text: cleaned.slice(0, 200), action: 'continue', route_to: null, intent: 'unknown', collected_data: {} };
     }
+
+    // Fallback: может весь textPart — это старый JSON формат?
+    if (!jsonPart && spokenText.startsWith('{')) {
+      try {
+        let cleaned = spokenText;
+        if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7);
+        if (cleaned.endsWith('```')) cleaned = cleaned.slice(0, -3);
+        const data = JSON.parse(cleaned.trim());
+        let routeTo = data.route_to || null;
+        if (routeTo && typeof routeTo === 'string') {
+          routeTo = routeTo.replace(/[^0-9]/g, '');
+          if (routeTo.startsWith('8') && routeTo.length === 11) routeTo = '7' + routeTo.slice(1);
+          if (routeTo.length !== 11) routeTo = null;
+        }
+        return {
+          text: String(data.text || '').slice(0, 300),
+          action: ['route', 'record', 'hangup', 'continue'].includes(data.action) ? data.action : 'continue',
+          route_to: routeTo,
+          route_name: data.route_name || null,
+          intent: data.intent || 'unknown',
+          collected_data: data.collected_data || {},
+          reason: data.reason || null
+        };
+      } catch (_) {}
+    }
+
+    // Текст есть, JSON нет — считаем action=continue
+    return {
+      text: spokenText || '(нет ответа)',
+      action: 'continue',
+      route_to: null,
+      route_name: null,
+      intent: 'unknown',
+      collected_data: {},
+      reason: null
+    };
   }
 
   /* ── Слушать одно высказывание клиента ──────────── */

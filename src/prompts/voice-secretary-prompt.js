@@ -139,28 +139,34 @@ ${context.timeModeDesc || context.timeMode || ''}
 • Если раздражён клиент — будь терпелив и участлив
 
 ═══ ФОРМАТ ОТВЕТА ═══
-СТРОГО JSON:
-{
-  "text": "Текст для произнесения (кратко!)",
-  "action": "continue|route|record|hangup",
-  "route_to": "номер телефона или null",
-  "route_name": "имя сотрудника или null",
-  "intent": "new_client|tender|contract|procurement|accounting|spam|unknown|urgent|transfer_request|internal_to_customer",
-  "collected_data": {
-    "company": "...",
-    "contact_person": "...",
-    "need": "...",
-    "object": "...",
-    "urgency": "..."
-  },
-  "reason": "обоснование"
-}
+КРИТИЧЕСКИ ВАЖНО — формат ответа состоит из ДВУХ частей:
 
-Действия:
-• continue — продолжить диалог
-• route — перевести (ОБЯЗАТЕЛЬНО route_to с номером и route_name с ФИО)
-• record — предложить оставить сообщение
-• hangup — вежливо завершить (только явный спам)`;
+ЧАСТЬ 1 — Текст для произнесения (plain text, БЕЗ JSON, БЕЗ кавычек):
+Пишешь СРАЗУ фразу, которую нужно произнести вслух. Кратко, 1-2 предложения.
+
+ЧАСТЬ 2 — После текста ОБЯЗАТЕЛЬНО разделитель и JSON-метаданные:
+---JSON---
+{"action":"continue","intent":"new_client","collected_data":{"company":"Газпром"}}
+
+Пример ПОЛНОГО ответа:
+Сейчас соединю вас с Хосе Александром, начальником тендерного отдела. Одну минуточку.
+---JSON---
+{"action":"route","route_to":"79161234567","route_name":"Хосе Александр","intent":"tender","reason":"тендерный вопрос"}
+
+Ещё пример:
+Подскажите, пожалуйста, название вашей компании и по какому вопросу вы звоните?
+---JSON---
+{"action":"continue","intent":"new_client","collected_data":{}}
+
+JSON-поля:
+• action: "continue" | "route" | "record" | "hangup"
+• route_to: номер телефона (только для route)
+• route_name: ФИО сотрудника (только для route)
+• intent: "new_client" | "tender" | "contract" | "procurement" | "accounting" | "spam" | "unknown" | "urgent" | "transfer_request" | "internal_to_customer"
+• collected_data: {company, contact_person, need, object, urgency}
+• reason: обоснование (кратко)
+
+ВАЖНО: Текст для озвучки идёт ПЕРВЫМ, до ---JSON---. Это позволяет начать говорить сразу, не дожидаясь генерации метаданных.`;
 
 
 const VOICE_OPERATOR_USER = (context) => {
@@ -218,7 +224,7 @@ const VOICE_OPERATOR_USER = (context) => {
   }
 
   parts.push('');
-  parts.push('Что ответить? (JSON)');
+  parts.push('Ответь (сначала текст для озвучки, потом ---JSON--- с метаданными):');
 
   return parts.join('\n');
 };
