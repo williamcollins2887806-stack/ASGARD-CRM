@@ -63,7 +63,7 @@ async function routes(fastify) {
     if (!type || !['mobilization', 'demobilization', 'transfer'].includes(type)) return reply.code(400).send({ error: 'type: mobilization/demobilization/transfer' });
     const wc = await db.query('SELECT id,work_title FROM works WHERE id=$1', [work_id]);
     if (!wc.rows[0]) return reply.code(400).send({ error: 'Работа не найдена' });
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(`INSERT INTO assembly_orders(work_id,type,title,destination,planned_date,notes,created_by)
@@ -172,7 +172,7 @@ async function routes(fastify) {
     const sc = await db.query('SELECT status FROM assembly_orders WHERE id=$1', [asmId]);
     if (!sc.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
     if (!['confirmed', 'packing'].includes(sc.rows[0].status)) return reply.code(409).send({ error: 'Только confirmed/packing' });
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(`UPDATE assembly_items SET packed=true,packed_at=NOW(),packed_by=$1 WHERE id=$2 AND assembly_id=$3 RETURNING *`,
@@ -237,7 +237,7 @@ async function routes(fastify) {
 
   fastify.put('/:id/pallets/:pid/pack', { preHandler: [fastify.requireRoles(ASSEMBLY_MANAGERS)] }, async (req, reply) => {
     const asmId = parseInt(req.params.id);
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
       const { rows } = await client.query("UPDATE assembly_pallets SET status='packed',packed_at=NOW() WHERE id=$1 AND assembly_id=$2 RETURNING *",
@@ -344,7 +344,7 @@ async function routes(fastify) {
     const asm = await db.query('SELECT * FROM assembly_orders WHERE id=$1', [asmId]);
     if (!asm.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
     if (asm.rows[0].type !== 'demobilization') return reply.code(409).send({ error: 'Только для демобилизации' });
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
       const items = await client.query('SELECT * FROM assembly_items WHERE assembly_id=$1', [asmId]);
@@ -388,7 +388,7 @@ async function routes(fastify) {
     const mob = await db.query('SELECT * FROM assembly_orders WHERE id=$1', [mobId]);
     if (!mob.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
     if (mob.rows[0].type !== 'mobilization') return reply.code(409).send({ error: 'Только из мобилизации' });
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(`INSERT INTO assembly_orders(work_id,type,title,destination,source_assembly_id,notes,created_by)

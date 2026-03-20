@@ -432,7 +432,7 @@ async function equipmentRoutes(fastify, options) {
     const whId = warehouse_id || (await db.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1")).rows[0]?.id || null;
     const qrUuid = randomUUID();
     const user = req.user;
-    const client = await db.connect();
+    const client = await db.pool.connect();
 
     try {
       await client.query('BEGIN');

@@ -52,7 +52,7 @@ async function routes(fastify) {
     if (isNaN(id)) return reply.code(400).send({error:'Неверный ID'});
     const user = req.user;
     if (!allowedRoles.includes(user.role)) return reply.code(403).send({error:'Нет прав'});
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
       const proc = await getProcCheck(client, id, fromStatuses);
@@ -261,7 +261,7 @@ async function routes(fastify) {
     const ck=await checkNotLocked(db,procId); if(ck.error) return reply.code(ck.code).send({error:ck.error});
     const items=req.body.items;
     if(!Array.isArray(items)||!items.length) return reply.code(400).send({error:'items обязателен'});
-    const client=await db.connect();
+    const client=await db.pool.connect();
     try{
       await client.query('BEGIN');
       const valid=items.filter(it=>it.name&&it.name.trim());
@@ -289,7 +289,7 @@ async function routes(fastify) {
       items.push({name:nm,article:(row.getCell(3).value||'').toString().trim()||null,unit:(row.getCell(4).value||'шт').toString().trim(),
         quantity:parseFloat(row.getCell(5).value)||0,notes:(row.getCell(6).value||'').toString().trim()||null});});
     if(!items.length) return reply.code(400).send({error:'Нет данных'});
-    const client=await db.connect();
+    const client=await db.pool.connect();
     try{await client.query('BEGIN');const ins=[];
       for(let idx=0;idx<items.length;idx++){const it=items[idx];
         const{rows}=await client.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,notes,sort_order)VALUES($1,$2,$3,$4,$5,$6,$7)RETURNING *`,
@@ -420,7 +420,7 @@ async function routes(fastify) {
   fastify.put('/:id/items/:itemId/deliver', {preHandler:[fastify.requireRoles([...WH_ROLES,...PM_ROLES])]}, async(req,reply)=>{
     const procId=parseInt(req.params.id),itemId=parseInt(req.params.itemId);const user=req.user;
     const pc=await getProcCheck(db,procId,['paid','partially_delivered']); if(pc.error) return reply.code(pc.code).send({error:pc.error});
-    const client=await db.connect();
+    const client=await db.pool.connect();
     try{
       await client.query('BEGIN');
       const ic=await client.query('SELECT * FROM procurement_items WHERE id=$1 AND procurement_id=$2',[itemId,procId]);
