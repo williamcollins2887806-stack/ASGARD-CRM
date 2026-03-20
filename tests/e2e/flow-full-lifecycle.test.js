@@ -295,7 +295,7 @@ module.exports = {
         guard('R1.03');
         try {
           const resp = await api('POST', '/api/customers', {
-            role: 'OFFICE_MANAGER',
+            role: 'PM',
             body: {
               inn: '7727466189',
               name: 'ПАО СБЕРБАНК',
@@ -1053,7 +1053,7 @@ module.exports = {
         guard('R1.18');
         try {
           const resp = await api('POST', '/api/data/contracts', {
-            role: 'OFFICE_MANAGER',
+            role: 'ADMIN',
             body: {
               number: PREFIX + 'ДОГ-001',
               date: '2026-03-20',
