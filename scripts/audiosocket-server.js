@@ -819,12 +819,20 @@ async function handleConnection(socket) {
     // ── Приветствие ──
     console.log('[AudioSocket] Playing greeting...');
 
-    // Сотрудник — персональное приветствие
+    // Сотрудник — персональное приветствие в стиле Асгарда
     if (context.isInternal) {
-      const name = (context.internalCaller.display_name || context.internalCaller.name || '').split(' ')[0];
-      console.log(`[AudioSocket] Internal call: ${context.internalCaller.name}`);
-      notifyCRM('greeting', { caller: callerNumber, internal: true, employee: context.internalCaller.name });
-      await speak(`Здравствуйте, ${name}! Куда вас соединить?`);
+      const fullName = context.internalCaller.name || '';
+      const parts = fullName.trim().split(/\s+/);
+      const firstName = parts.length >= 2 ? parts[1] : (parts[0] || 'воин');
+      console.log(`[AudioSocket] Internal call: ${fullName} → firstName: ${firstName}`);
+      notifyCRM('greeting', { caller: callerNumber, internal: true, employee: fullName });
+      const greetings = [
+        `Приветствую, воин Асга+рда ${firstName}! Чем могу помочь?`,
+        `Хе+й, ${firstName}! Рад слышать тебя, воин! Куда тебя направить?`,
+        `Славься, ${firstName}! Какой путь тебе указать сегодня?`,
+        `${firstName}, приветствую тебя в чертогах Асга+рда! Чем помочь?`,
+      ];
+      await speak(greetings[Math.floor(Math.random() * greetings.length)]);
 
     // Известный клиент с менеджером в рабочее время — сразу перевод
     } else if (context.clientName && context.responsibleManager && context.isFullWorkHours) {
