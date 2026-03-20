@@ -306,10 +306,6 @@ module.exports = {
               phone: '+7 (495) 500-55-50',
               email: 'info@sberbank.ru',
               contact_person: 'Иванов Иван Иванович',
-              bank_account: '30301810400006000001',
-              bank_name: 'ПАО СБЕРБАНК',
-              bik: '044525225',
-              notes: PREFIX + 'тестовый контрагент',
               category: 'Заказчик',
             }
           });
