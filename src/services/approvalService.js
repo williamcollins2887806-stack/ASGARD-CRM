@@ -40,12 +40,12 @@ function getTelegram() {
  * Для директора: 4 кнопки (Согласовать/Доработка/Вопрос/Отклонить)
  * Для бухгалтерии: 4 кнопки (ПП/Наличные/Доработка/Вопрос)
  */
-async function sendApprovalTelegram(userId, label, message, approvalData) {
+function sendApprovalTelegram(userId, label, message, approvalData) {
   const tg = getTelegram();
   if (!tg || !tg.sendApprovalRequest) return;
-  try {
-    await tg.sendApprovalRequest(userId, `🔔 *${label}*\n\n${message}`, approvalData);
-  } catch (e) { /* telegram optional */ }
+  // Fire-and-forget: don't await Telegram (can timeout 30s+ and block API response)
+  tg.sendApprovalRequest(userId, `🔔 *${label}*\n\n${message}`, approvalData)
+    .catch(() => { /* telegram optional */ });
 }
 
 /**
