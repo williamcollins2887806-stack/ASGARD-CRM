@@ -284,12 +284,17 @@ async function routes(fastify, options) {
     if (!rows[0]) return reply.code(404).send({ error: 'TKP not found' });
     const tkp = rows[0];
 
+    const pdfOpts = {
+      signature: request.query.signature === '1',
+      stamp: request.query.stamp === '1'
+    };
+
     let pdfBuffer;
 
     // Try Puppeteer-based generator first
     if (pdfGenerator) {
       try {
-        pdfBuffer = await pdfGenerator.generateTkpPdf(tkp.id);
+        pdfBuffer = await pdfGenerator.generateTkpPdf(tkp.id, pdfOpts);
       } catch (err) {
         fastify.log.warn(`[TKP PDF] Puppeteer failed for TKP ${tkp.id}: ${err.message}, falling back to PDFKit`);
         pdfBuffer = null;
@@ -298,7 +303,7 @@ async function routes(fastify, options) {
 
     // Fallback to PDFKit if Puppeteer failed or unavailable
     if (!pdfBuffer) {
-      pdfBuffer = await generateTkpPdfKit(tkp, db);
+      pdfBuffer = await generateTkpPdfKit(tkp, db, pdfOpts);
     }
 
     // Save PDF
@@ -362,7 +367,8 @@ async function routes(fastify, options) {
  * PDFKit — PDF генератор ТКП
  * Динамические высоты, кириллица (DejaVuSans), авто-перенос текста, нумерация страниц
  */
-async function generateTkpPdfKit(tkp, db) {
+async function generateTkpPdfKit(tkp, db, opts) {
+  opts = opts || {};
   // Load company profile from DB
   let company = {};
   try {
@@ -709,10 +715,24 @@ async function generateTkpPdfKit(tkp, db) {
   doc.font(FB).fontSize(9.5).fillColor('#374151')
      .text(authorName, mL + 310, signY, { width: contentW - 310, align: 'right' });
 
+  // Signature & stamp images
+  const imgDir = path.join(__dirname, '..', '..', 'public', 'assets', 'img');
+  const sigPath = path.join(imgDir, 'signature.png');
+  const stampPath = path.join(imgDir, 'stamp.png');
+
+  if (opts.signature && fs.existsSync(sigPath)) {
+    doc.image(sigPath, mL + 180, signY - 25, { height: 50 });
+  }
+  if (opts.stamp && fs.existsSync(stampPath)) {
+    doc.image(stampPath, mL + 60, signY - 35, { height: 80 });
+  }
+
   doc.x = mL;
-  doc.y = signY + 18;
-  doc.font(F).fontSize(7.5).fillColor('#9CA3AF')
-     .text('М.П.', mL, doc.y, { width: contentW, align: 'center' });
+  doc.y = signY + (opts.stamp || opts.signature ? 30 : 18);
+  if (!opts.stamp && !opts.signature) {
+    doc.font(F).fontSize(7.5).fillColor('#9CA3AF')
+       .text('М.П.', mL, doc.y, { width: contentW, align: 'center' });
+  }
 
   // ─── ФУТЕР (на всех страницах) ───
   const footerY = pageH - mB;

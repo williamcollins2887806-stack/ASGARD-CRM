@@ -113,7 +113,24 @@ window.AsgardTkpPage = (function() {
       '.tkp-pay-card .pay-desc{font-size:11px;font-weight:400;color:var(--t3);margin-top:1px}' +
       '.tkp-pay-fields{display:flex;gap:12px;margin-top:8px}' +
       '.tkp-pay-fields>div{flex:1}' +
-      '.tkp-pay-fields label{text-transform:uppercase;font-size:11px}';
+      '.tkp-pay-fields label{text-transform:uppercase;font-size:11px}' +
+      // Stamp & signature checkboxes
+      '.tkp-stamp-row{display:flex;gap:20px;margin:16px 0;padding:12px 16px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px}' +
+      '.tkp-check{display:flex!important;align-items:center;gap:8px;cursor:pointer;text-transform:none!important;font-size:13px!important;font-weight:500!important;color:var(--t1)!important;letter-spacing:normal!important;margin:0!important}' +
+      '.tkp-check input[type="checkbox"]{width:18px;height:18px;accent-color:var(--blue);cursor:pointer}' +
+      // Action buttons — modal footer
+      '.tkp-actions{display:flex;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid var(--brd)}' +
+      '.tkp-btn-save,.tkp-btn-pdf,.tkp-btn-send{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;border:none}' +
+      '.tkp-btn-save{flex:1;justify-content:center;background:var(--blue);color:#fff}' +
+      '.tkp-btn-save:hover{background:var(--blue-h);box-shadow:0 4px 12px rgba(30,77,140,0.3)}' +
+      '.tkp-btn-pdf{background:var(--bg3);color:var(--t1);border:1px solid var(--brd)!important}' +
+      '.tkp-btn-pdf:hover{border-color:var(--blue)!important;color:var(--blue);background:rgba(30,77,140,0.05)}' +
+      '.tkp-btn-send{background:linear-gradient(135deg,#1E4D8C,#2563EB);color:#fff}' +
+      '.tkp-btn-send:hover{box-shadow:0 4px 12px rgba(37,99,235,0.3);transform:translateY(-1px)}' +
+      // Table action buttons
+      '.tkp-tbl-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--brd);background:var(--bg2);color:var(--t2);cursor:pointer;transition:all .15s;padding:0}' +
+      '.tkp-tbl-btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(30,77,140,0.06)}' +
+      '.tkp-tbl-btn svg{width:15px;height:15px}';
     document.head.appendChild(s);
   }
 
@@ -312,10 +329,10 @@ window.AsgardTkpPage = (function() {
             '<td style="text-align:right">' + (i.total_sum ? fmt(i.total_sum) : '\u2014') + '</td>' +
             '<td><span style="color:' + st.color + ';font-weight:600">' + st.label + '</span></td>' +
             '<td>' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '') + '</td>' +
-            '<td>' +
-              '<button class="btn ghost mini" data-action="edit" data-id="' + i.id + '" title="Редактировать">\u270F\uFE0F</button>' +
-              '<button class="btn ghost mini" data-action="pdf" data-id="' + i.id + '" title="PDF">\uD83D\uDCC4</button>' +
-              '<button class="btn ghost mini" data-action="send" data-id="' + i.id + '" title="Отправить">\uD83D\uDCE8</button>' +
+            '<td style="white-space:nowrap">' +
+              '<button class="tkp-tbl-btn" data-action="edit" data-id="' + i.id + '" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+              '<button class="tkp-tbl-btn" data-action="pdf" data-id="' + i.id + '" title="Скачать PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>' +
+              '<button class="tkp-tbl-btn" data-action="send" data-id="' + i.id + '" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg></button>' +
             '</td></tr>';
         }).join('') : '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--t3)">Нет созданных ТКП</td></tr>') +
         '</tbody></table></div>';
@@ -455,12 +472,26 @@ window.AsgardTkpPage = (function() {
         '<div><label>Должность</label><input id="tkpAuthorPosition" value="' + esc(o.authorPos) + '"/></div>' +
       '</div>' +
 
+      // --- Печать и подпись на PDF ---
+      '<div class="tkp-stamp-row">' +
+        '<label class="tkp-check"><input type="checkbox" id="tkpAddSignature" checked/><span class="tkp-check-mark"></span> Подпись директора</label>' +
+        '<label class="tkp-check"><input type="checkbox" id="tkpAddStamp" checked/><span class="tkp-check-mark"></span> Печать организации</label>' +
+      '</div>' +
+
       // --- Кнопки ---
-      '<hr class="hr"/>' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-        '<button class="btn primary" id="btnSaveTkp" style="flex:1">' + (o.id ? 'Сохранить' : 'Создать черновик') + '</button>' +
-        '<button class="btn" id="btnSavePdf">\uD83D\uDCC4 Скачать PDF</button>' +
-        (o.id ? '<button class="btn ghost" id="btnSendTkpEmail">\uD83D\uDCE8 Отправить</button>' : '') +
+      '<div class="tkp-actions">' +
+        '<button class="tkp-btn-save" id="btnSaveTkp">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>' +
+          (o.id ? 'Сохранить' : 'Создать черновик') +
+        '</button>' +
+        '<button class="tkp-btn-pdf" id="btnSavePdf">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' +
+          'Скачать PDF' +
+        '</button>' +
+        (o.id ? '<button class="tkp-btn-send" id="btnSendTkpEmail">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg>' +
+          'Отправить' +
+        '</button>' : '') +
       '</div>';
   }
 
@@ -790,7 +821,12 @@ window.AsgardTkpPage = (function() {
                 const result = await resp.json();
                 if (!currentId) currentId = result.id || (result.item && result.item.id);
                 if (currentId) {
-                  window.open('/api/tkp/' + currentId + '/pdf?token=' + token, '_blank');
+                  var pdfUrl = '/api/tkp/' + currentId + '/pdf?token=' + token;
+                  var sigCb = $('#tkpAddSignature');
+                  var stCb = $('#tkpAddStamp');
+                  if (sigCb && sigCb.checked) pdfUrl += '&signature=1';
+                  if (stCb && stCb.checked) pdfUrl += '&stamp=1';
+                  window.open(pdfUrl, '_blank');
                 }
               } else {
                 const err = await resp.json().catch(function() { return {}; });

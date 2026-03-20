@@ -143,19 +143,22 @@ function numberToWords(num) {
   return numberToWordsRu(num);
 }
 
-// ── Logo as base64 ─────────────────────────────────────────
-let logoBase64Cache = null;
-function getLogoBase64() {
-  if (logoBase64Cache) return logoBase64Cache;
+// ── Images as base64 ──────────────────────────────────────
+const imgCache = {};
+function getImgBase64(name) {
+  if (imgCache[name] !== undefined) return imgCache[name];
   try {
-    const logoPath = path.join(__dirname, '..', '..', 'public', 'assets', 'img', 'asgard_logo.png');
-    const buf = fs.readFileSync(logoPath);
-    logoBase64Cache = 'data:image/png;base64,' + buf.toString('base64');
+    const imgPath = path.join(__dirname, '..', '..', 'public', 'assets', 'img', name);
+    const buf = fs.readFileSync(imgPath);
+    imgCache[name] = 'data:image/png;base64,' + buf.toString('base64');
   } catch (e) {
-    logoBase64Cache = '';
+    imgCache[name] = '';
   }
-  return logoBase64Cache;
+  return imgCache[name];
 }
+function getLogoBase64() { return getImgBase64('asgard_logo.png'); }
+function getSignatureBase64() { return getImgBase64('signature.png'); }
+function getStampBase64() { return getImgBase64('stamp.png'); }
 
 // ── Common CSS ─────────────────────────────────────────────
 const BASE_CSS = `
@@ -173,12 +176,15 @@ const BASE_CSS = `
 // ══════════════════════════════════════════════════════════════
 //  GENERATE TKP PDF
 // ══════════════════════════════════════════════════════════════
-async function generateTkpPdf(tkpId) {
+async function generateTkpPdf(tkpId, opts) {
+  opts = opts || {};
   const { rows: [tkp] } = await db.query('SELECT * FROM tkp WHERE id = $1', [tkpId]);
   if (!tkp) throw new Error('TKP not found');
 
   const company = await getCompanyProfile();
   const logo = getLogoBase64();
+  const signatureImg = opts.signature ? getSignatureBase64() : '';
+  const stampImg = opts.stamp ? getStampBase64() : '';
 
   // Parse items from JSONB
   let cj;
@@ -269,12 +275,14 @@ ${BASE_CSS}
 .cond-list li::before { content: '•'; position: absolute; left: 0; color: #1E4D8C; font-weight: 700; }
 
 /* ── Signature ── */
-.sign-block { margin-top: 36px; border-top: 1px solid #E5E7EB; padding-top: 20px; }
+.sign-block { margin-top: 36px; border-top: 1px solid #E5E7EB; padding-top: 20px; position: relative; }
 .sign-row { display: flex; align-items: flex-end; gap: 20px; }
 .sign-pos { font-size: 10pt; font-weight: 600; width: 180px; }
-.sign-line { flex: 1; border-bottom: 1px solid #000; height: 1px; margin-bottom: 4px; }
+.sign-line { flex: 1; border-bottom: 1px solid #000; height: 1px; margin-bottom: 4px; position: relative; }
 .sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; }
-.sign-mp { text-align: center; font-size: 8pt; color: #9CA3AF; margin-top: 12px; }
+.sign-images { position: relative; height: 80px; margin: -60px 0 -10px; }
+.sign-signature { position: absolute; left: 180px; top: 0; height: 70px; }
+.sign-stamp { position: absolute; left: 60px; top: -20px; height: 110px; opacity: 0.85; }
 
 /* ── Sum in words ── */
 .sum-words { font-size: 9.5pt; font-style: italic; color: #374151; margin: 6px 0 12px; }
@@ -377,7 +385,10 @@ ${items.length > 0 ? `
     <div class="sign-line"></div>
     <div class="sign-name">${authorName}</div>
   </div>
-  <div class="sign-mp">М.П.</div>
+${(signatureImg || stampImg) ? `  <div class="sign-images">
+    ${signatureImg ? `<img class="sign-signature" src="${signatureImg}" alt="">` : ''}
+    ${stampImg ? `<img class="sign-stamp" src="${stampImg}" alt="">` : ''}
+  </div>` : `  <div style="text-align:center;font-size:8pt;color:#9CA3AF;margin-top:12px">М.П.</div>`}
 </div>
 
 <!-- FOOTER -->
