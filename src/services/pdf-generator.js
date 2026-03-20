@@ -275,25 +275,25 @@ ${BASE_CSS}
 .cond-list li::before { content: '•'; position: absolute; left: 0; color: #1E4D8C; font-weight: 700; }
 
 /* ── Signature ── */
-.sign-block { margin-top: 14px; border-top: 1px solid #E5E7EB; padding-top: 14px; position: relative; page-break-inside: avoid; }
+.sign-block { margin-top: 14px; border-top: 1px solid #E5E7EB; padding-top: 14px; position: relative; }
 .sign-row { display: flex; align-items: flex-end; gap: 20px; }
 .sign-pos { font-size: 10pt; font-weight: 600; width: 180px; }
 .sign-line { flex: 1; border-bottom: 1px solid #000; height: 1px; margin-bottom: 4px; position: relative; }
 .sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; }
-.sign-images { position: relative; height: 0; overflow: visible; margin: 0; }
-.sign-signature { position: absolute; left: 180px; top: -50px; height: 140px; }
-.sign-stamp { position: absolute; left: 136px; top: -30px; height: 176px; opacity: 0.85; }
+.sign-images { position: relative; height: 90px; overflow: hidden; margin: -70px 0 0; }
+.sign-signature { position: absolute; left: 180px; top: 0; height: 90px; }
+.sign-stamp { position: absolute; left: 120px; top: -10px; height: 110px; opacity: 0.85; }
 
 /* ── Sum in words ── */
 .sum-words { font-size: 11pt; font-style: italic; color: #374151; margin: 18px 0 12px; }
 
 /* ── Footer ── */
-.footer { margin-top: 30px; text-align: center; font-size: 7.5pt; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 6px; }
+.footer { margin-top: 10px; text-align: center; font-size: 7.5pt; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 4px; }
 
 /* ── Print ── */
 html, body { height: auto !important; }
 tr { page-break-inside: avoid; }
-.card, .sign-block { page-break-inside: avoid; }
+.card { page-break-inside: avoid; }
 </style>
 </head>
 <body>

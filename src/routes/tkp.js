@@ -729,7 +729,7 @@ async function generateTkpPdfKit(tkp, db, opts) {
   }
 
   // ─── ПОДПИСЬ ───
-  ensureSpace(160);
+  ensureSpace(50);
   doc.x = mL;
   doc.moveDown(1);
   doc.moveTo(mL, doc.y).lineTo(mL + contentW, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
