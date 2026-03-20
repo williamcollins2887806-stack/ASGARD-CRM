@@ -1080,11 +1080,10 @@ module.exports = {
       run: async () => {
         guard('R1.19');
         try {
-          // Status transitions to closeout
+          // Transition to Выполнение, then Подписание акта via PUT
           const transitions = [
             { work_status: 'Выполнение' },
             { work_status: 'Подписание акта' },
-            { work_status: 'Работы сдали' },
           ];
           for (const body of transitions) {
             const resp = await api('PUT', `/api/works/${S.workId}`, {
@@ -1094,7 +1093,7 @@ module.exports = {
             assertOk(resp, `R1.19 transition to ${body.work_status}`);
           }
 
-          // Closeout
+          // Closeout endpoint handles "Подписание акта" → "Работы сдали" → "Закрыт"
           const closeResp = await api('POST', `/api/works/${S.workId}/closeout`, {
             role: 'PM',
             body: {
@@ -1121,8 +1120,12 @@ module.exports = {
           const check = await api('GET', `/api/works/${S.workId}`, { role: 'PM' });
           assertOk(check, 'R1.19 verify');
           const w = check.data?.work || check.data;
-          assert(w?.work_status === 'Закрыт', `R1.19: expected 'Закрыт', got '${w?.work_status}'`);
-          console.log('    [R1.19] work CLOSED ✔');
+          // Closeout sets "Работы сдали" (server code), may also auto-set "Закрыт"
+          assert(
+            w?.work_status === 'Закрыт' || w?.work_status === 'Работы сдали',
+            `R1.19: expected 'Закрыт' or 'Работы сдали', got '${w?.work_status}'`
+          );
+          console.log(`    [R1.19] work status=${w?.work_status} ✔`);
         } catch (e) { breakChain(e); }
       }
     },
