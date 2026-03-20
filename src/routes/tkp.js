@@ -267,6 +267,37 @@ async function routes(fastify, options) {
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // POST /:id/copy — Clone TKP
+  // ═══════════════════════════════════════════════════════════════
+  fastify.post('/:id/copy', {
+    preHandler: [fastify.requireRoles(WRITE_ROLES)]
+  }, async (request, reply) => {
+    const { rows } = await db.query('SELECT * FROM tkp WHERE id = $1', [request.params.id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'TKP not found' });
+    const src = rows[0];
+
+    const { rows: [copy] } = await db.query(`
+      INSERT INTO tkp (subject, tender_id, work_id, customer_name, customer_inn,
+                        contact_person, contact_phone, contact_email,
+                        customer_address, work_description,
+                        items, services, total_sum, deadline, validity_days,
+                        author_id, source, estimate_id, tkp_type)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+      RETURNING *
+    `, [
+      '(Копия) ' + (src.subject || ''), src.tender_id, src.work_id,
+      src.customer_name, src.customer_inn,
+      src.contact_person, src.contact_phone, src.contact_email,
+      src.customer_address, src.work_description,
+      src.items ? (typeof src.items === 'string' ? src.items : JSON.stringify(src.items)) : '{}',
+      src.services, src.total_sum, src.deadline, src.validity_days || 30,
+      request.user.id, src.source, src.estimate_id, src.tkp_type
+    ]);
+
+    return { item: copy };
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // GET /:id/pdf — Generate PDF (Puppeteer with PDFKit fallback)
   // ═══════════════════════════════════════════════════════════════
   fastify.get('/:id/pdf', {
@@ -446,16 +477,16 @@ async function generateTkpPdfKit(tkp, db, opts) {
   // ─── ЛОГО ───
   const logoPath = path.join(__dirname, '..', '..', 'public', 'assets', 'img', 'asgard_emblem.png');
   if (fs.existsSync(logoPath)) {
-    doc.image(logoPath, mL, mT, { width: 120, height: 69 });
+    doc.image(logoPath, mL, mT - 28, { width: 120, height: 69 });
   }
 
   // ─── Реквизиты справа от лого (из БД) ───
   doc.font(FB).fontSize(12).fillColor('#1E4D8C')
-     .text(company.name || 'ООО «Асгард-Сервис»', 180, mT + 2);
+     .text(company.name || 'ООО «Асгард-Сервис»', 180, mT - 26);
   doc.font(F).fontSize(7.5).fillColor('#6B7280');
-  doc.text(`ИНН ${company.inn || ''} | ОГРН ${company.ogrn || ''} | КПП ${company.kpp || ''}`, 180, mT + 17);
-  doc.text(company.legal_address || '', 180, mT + 27);
-  doc.text(`Тел: ${company.phone || ''} | ${company.email || ''}`, 180, mT + 37);
+  doc.text(`ИНН ${company.inn || ''} | ОГРН ${company.ogrn || ''} | КПП ${company.kpp || ''}`, 180, mT - 11);
+  doc.text(company.legal_address || '', 180, mT - 1);
+  doc.text(`Тел: ${company.phone || ''} | ${company.email || ''}`, 180, mT + 9);
 
   // ─── Акцентная линия (синяя + красная) ───
   const lineY = mT + 52;
@@ -698,7 +729,7 @@ async function generateTkpPdfKit(tkp, db, opts) {
   }
 
   // ─── ПОДПИСЬ ───
-  ensureSpace(55);
+  ensureSpace(160);
   doc.x = mL;
   doc.moveDown(1);
   doc.moveTo(mL, doc.y).lineTo(mL + contentW, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
@@ -721,10 +752,10 @@ async function generateTkpPdfKit(tkp, db, opts) {
   const stampPath = path.join(imgDir, 'stamp.png');
 
   if (opts.signature && fs.existsSync(sigPath)) {
-    doc.image(sigPath, mL + 180, signY - 25, { height: 100 });
+    doc.image(sigPath, mL + 180, signY - 82, { height: 100 });
   }
   if (opts.stamp && fs.existsSync(stampPath)) {
-    doc.image(stampPath, mL + 117, signY + 50, { height: 128 });
+    doc.image(stampPath, mL + 117, signY - 7, { height: 128 });
   }
 
   doc.x = mL;

@@ -237,7 +237,7 @@ async function generateTkpPdf(tkpId, opts) {
 <style>
 ${BASE_CSS}
 /* ── Header ── */
-.hdr { display: flex; align-items: flex-start; gap: 16px; }
+.hdr { display: flex; align-items: flex-start; gap: 16px; margin-top: -10mm; }
 .hdr-logo { width: 165px; flex-shrink: 0; }
 .hdr-logo img { width: 100%; }
 .hdr-info { flex: 1; font-size: 9pt; color: #4B5563; line-height: 1.6; }
@@ -275,14 +275,14 @@ ${BASE_CSS}
 .cond-list li::before { content: '•'; position: absolute; left: 0; color: #1E4D8C; font-weight: 700; }
 
 /* ── Signature ── */
-.sign-block { margin-top: 36px; border-top: 1px solid #E5E7EB; padding-top: 20px; position: relative; }
+.sign-block { margin-top: 36px; border-top: 1px solid #E5E7EB; padding-top: 20px; position: relative; page-break-inside: avoid; }
 .sign-row { display: flex; align-items: flex-end; gap: 20px; }
 .sign-pos { font-size: 10pt; font-weight: 600; width: 180px; }
 .sign-line { flex: 1; border-bottom: 1px solid #000; height: 1px; margin-bottom: 4px; position: relative; }
 .sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; }
-.sign-images { position: relative; height: 220px; margin: -80px 0 -40px; }
-.sign-signature { position: absolute; left: 180px; top: 0; height: 140px; }
-.sign-stamp { position: absolute; left: 136px; top: 93px; height: 176px; opacity: 0.85; }
+.sign-images { position: relative; height: 0; overflow: visible; margin: 0; }
+.sign-signature { position: absolute; left: 180px; top: -76px; height: 140px; }
+.sign-stamp { position: absolute; left: 136px; top: 17px; height: 176px; opacity: 0.85; }
 
 /* ── Sum in words ── */
 .sum-words { font-size: 11pt; font-style: italic; color: #374151; margin: 18px 0 12px; }
