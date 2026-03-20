@@ -57,6 +57,14 @@ class VoiceAgent {
     // Прогреваем кэш при первом звонке (не блокирует — async)
     this.warmupCache().catch(e => console.warn('[VoiceAgent] Cache warmup error:', e.message));
 
+    // Звонит наш сотрудник — персональное приветствие
+    if (context.isInternal) {
+      const name = (context.internalCaller.display_name || context.internalCaller.name || '').split(' ')[0];
+      this._emit('greeting', { text: `Внутренний звонок: ${context.internalCaller.name}`, internal: true });
+      await this._speak(channel, `Здравствуйте, ${name}! Куда вас соединить?`);
+      return this._runConversation(channel, context, []);
+    }
+
     // Приветствие
     if (context.clientName && context.responsibleManager && context.isFullWorkHours) {
       // Известный клиент с менеджером в рабочее время
@@ -180,6 +188,25 @@ class VoiceAgent {
         collectedData = { ...collectedData, ...response.collected_data };
       }
       lastIntent = response.intent || lastIntent;
+
+      // Сотрудник просит соединить с клиентом — ищем номер в CRM
+      if (context.isInternal && response.intent === 'internal_to_customer' && response.action === 'route') {
+        const query = (response.collected_data && (response.collected_data.company || response.collected_data.contact_person)) || '';
+        if (query && !response.route_to) {
+          const customers = await this._findCustomerPhone(query);
+          if (customers.length === 1) {
+            response.route_to = customers[0].phone.replace(/[^0-9]/g, '');
+            response.route_name = `${customers[0].contact_person || customers[0].name} (${customers[0].name})`;
+          } else if (customers.length > 1) {
+            const names = customers.map(c => `${c.name} — ${c.contact_person || 'нет контакта'}`).join(', ');
+            response.action = 'continue';
+            response.text = `Нашёл несколько: ${names}. Кого именно?`;
+          } else {
+            response.action = 'continue';
+            response.text = `Не нашёл клиента "${query}" в базе. Уточните название или имя контактного лица.`;
+          }
+        }
+      }
 
       // Произносим ответ
       await this._speak(channel, response.text);
@@ -379,6 +406,18 @@ class VoiceAgent {
     const { normalizePhone } = require('./mango');
     const normalized = normalizePhone(callerNumber);
 
+    // Проверяем, не звонит ли наш сотрудник
+    let internalCaller = null;
+    for (const emp of employees) {
+      if (emp.fallback_mobile) {
+        const empPhone = emp.fallback_mobile.replace(/[^0-9]/g, '');
+        if (empPhone.length >= 10 && normalized.slice(-10) === empPhone.slice(-10)) {
+          internalCaller = emp;
+          break;
+        }
+      }
+    }
+
     let clientName = null;
     let clientCompany = null;
     let clientInn = null;
@@ -498,11 +537,13 @@ class VoiceAgent {
       timeModeDesc = 'РЕЖИМ: Нерабочее время. НЕ переводить. Только запись сообщения.';
     }
 
-    const employeeList = this._formatEmployeeList(employees);
-    const availableEmployees = this._formatAvailableEmployees(employees, timeMode);
+    const employeeList = this._formatEmployeeList(employees, !!internalCaller);
+    const availableEmployees = this._formatAvailableEmployees(employees, timeMode, !!internalCaller);
 
     return {
       callerNumber,
+      internalCaller,
+      isInternal: !!internalCaller,
       clientName,
       clientCompany,
       clientInn,
@@ -520,6 +561,25 @@ class VoiceAgent {
       availableEmployees,
       employees
     };
+  }
+
+  /**
+   * Поиск телефона клиента/контрагента по названию компании или имени контактного лица
+   */
+  async _findCustomerPhone(query) {
+    try {
+      const res = await this.db.query(
+        `SELECT name, phone, contact_person, inn FROM customers
+         WHERE is_active = true AND phone IS NOT NULL AND phone != ''
+           AND (name ILIKE $1 OR contact_person ILIKE $1 OR inn = $2)
+         ORDER BY updated_at DESC NULLS LAST LIMIT 5`,
+        [`%${query}%`, query]
+      );
+      return res.rows;
+    } catch (e) {
+      console.error('[VoiceAgent] Customer phone lookup error:', e.message);
+      return [];
+    }
   }
 
   /**
@@ -553,13 +613,13 @@ class VoiceAgent {
   /**
    * Форматирование списка сотрудников для промпта
    */
-  _formatEmployeeList(employees) {
+  _formatEmployeeList(employees, isInternal) {
     if (!employees || !employees.length) return '(нет данных)';
 
     const lines = [];
     const byRole = {};
     for (const emp of employees) {
-      if (DIRECTOR_ROLES.includes(emp.role)) continue;
+      if (!isInternal && DIRECTOR_ROLES.includes(emp.role)) continue;
       if (!byRole[emp.role]) byRole[emp.role] = [];
       byRole[emp.role].push(emp);
     }
@@ -592,8 +652,20 @@ class VoiceAgent {
       }
     }
 
-    lines.push('');
-    lines.push('ДИРЕКТОРА (Кудряшов О.С., Гажилиев О.В., Сторожев А.А.) — НЕ ПЕРЕВОДИТЬ напрямую!');
+    if (isInternal) {
+      lines.push('');
+      lines.push('ДИРЕКТОРА:');
+      for (const role of DIRECTOR_ROLES) {
+        for (const emp of (byRole[role] || [])) {
+          const phone = emp.fallback_mobile || '';
+          const desc = ROLE_DESCRIPTIONS[emp.role] || emp.role;
+          lines.push(`  • ${emp.display_name || emp.name} — ${desc}, тел: ${phone}`);
+        }
+      }
+    } else {
+      lines.push('');
+      lines.push('ДИРЕКТОРА (Кудряшов О.С., Гажилиев О.В., Сторожев А.А.) — НЕ ПЕРЕВОДИТЬ напрямую!');
+    }
 
     return lines.join('\n');
   }
@@ -601,11 +673,11 @@ class VoiceAgent {
   /**
    * Список доступных сотрудников для текущего перевода
    */
-  _formatAvailableEmployees(employees, timeMode) {
-    if (timeMode === 'off') return 'Нерабочее время — переводы недоступны.';
+  _formatAvailableEmployees(employees, timeMode, isInternal) {
+    if (!isInternal && timeMode === 'off') return 'Нерабочее время — переводы недоступны.';
 
     const available = employees.filter(e =>
-      !DIRECTOR_ROLES.includes(e.role) &&
+      (isInternal || !DIRECTOR_ROLES.includes(e.role)) &&
       e.role !== 'ADMIN' &&
       e.fallback_mobile
     );
@@ -701,6 +773,7 @@ class VoiceAgent {
       'Сейчас соединю вас со специалистом, который поможет подробнее. Одну минутку.',
       'Сейчас нерабочее время. Наши часы работы — с девяти до восемнадцати, понедельник — пятница. Оставьте сообщение, и мы перезвоним в ближайший рабочий день.',
       'К сожалению, прямое соединение с руководством не предусмотрено. Подскажите ваш вопрос, я передам информацию.',
+      'Куда вас соединить?',
     ];
 
     console.log(`[VoiceAgent] Warming up TTS cache (${phrases.length} phrases)...`);
