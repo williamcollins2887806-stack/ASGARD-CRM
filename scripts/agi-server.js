@@ -123,6 +123,11 @@ const speechKit = new SpeechKitService(
 
 const voiceAgent = new VoiceAgent(speechKit, aiProvider, db);
 
+// Прогрев кэша TTS при старте сервера
+setTimeout(() => {
+  voiceAgent.warmupCache().catch(e => console.warn('[AGI] Cache warmup error:', e.message));
+}, 3000); // Через 3 сек после старта, чтобы не замедлять инициализацию
+
 // Wire live events to CRM
 voiceAgent.onEvent = (type, data) => {
   notifyCRM(type, { ...data, caller: voiceAgent._currentCaller || 'unknown' });
@@ -384,22 +389,13 @@ async function speakTTS(session, text) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `tts_${hash}`);
 
-  // Добавляем SSML паузы
-  let ssml = text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\.\s+/g, '. <break time="350ms"/> ')
-    .replace(/!\s+/g, '! <break time="350ms"/> ')
-    .replace(/\?\s+/g, '? <break time="400ms"/> ')
-    .replace(/,\s+/g, ', <break time="150ms"/> ');
-  ssml = '<speak>' + ssml + '</speak>';
-
-  const audioBuffer = await speechKit.synthesize(ssml, {
-    voice: 'madirus',
-    emotion: 'friendly',
-    speed: '0.95',
-    format: 'oggopus',
-    sampleRate: 48000,
-    ssml: true
+  // synthesizeSmart: v3 dasha/friendly → v1 alena/good fallback
+  const audioBuffer = await speechKit.synthesizeSmart(text, {
+    voice: 'dasha',
+    role: 'friendly',
+    emotion: 'good',
+    speed: '1.0',
+    ssml: false
   });
   fs.writeFileSync(filePath + '.opus', audioBuffer);
   await session.streamFile(filePath);

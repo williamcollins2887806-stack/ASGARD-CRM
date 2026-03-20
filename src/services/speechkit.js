@@ -5,6 +5,15 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// gRPC для API v3
+let grpc, protoLoader;
+try {
+  grpc = require('@grpc/grpc-js');
+  protoLoader = require('@grpc/proto-loader');
+} catch (e) {
+  console.warn('[SpeechKit] @grpc/grpc-js not installed — v3 API disabled, using v1 fallback');
+}
+
 class SpeechKitService {
   constructor(apiKey, folderId) {
     this.apiKey = apiKey || process.env.YANDEX_SPEECHKIT_API_KEY || '';
@@ -12,6 +21,8 @@ class SpeechKitService {
     this.sttUrl = 'https://stt.api.cloud.yandex.net';
     this.ttsUrl = 'https://tts.api.cloud.yandex.net';
     this.operationsUrl = 'https://operation.api.cloud.yandex.net';
+    this._ttsGrpcClient = null;
+    this._grpcAvailable = !!(grpc && protoLoader);
     if (!this.apiKey || !this.folderId) {
       console.warn('[SpeechKit] API key or folder ID not configured — SpeechKit disabled');
     }
@@ -234,6 +245,384 @@ class SpeechKitService {
     );
 
     return filePath;
+  }
+
+  // === TTS API v3 (gRPC) — голоса нового поколения ===
+
+  /**
+   * Инициализация gRPC клиента для TTS v3
+   * Ленивая — создаётся при первом вызове
+   */
+  _initTtsGrpc() {
+    if (this._ttsGrpcClient) return this._ttsGrpcClient;
+    if (!this._grpcAvailable) return null;
+
+    try {
+      const protoPath = path.resolve(__dirname, '../../proto/yandex/cloud/ai/tts/v3/tts_service.proto');
+      if (!fs.existsSync(protoPath)) {
+        console.warn('[SpeechKit] Proto files not found at', protoPath, '— v3 disabled');
+        return null;
+      }
+
+      const packageDef = protoLoader.loadSync(protoPath, {
+        keepCase: false,
+        longs: String,
+        enums: String,
+        defaults: true,
+        oneofs: true,
+        includeDirs: [path.resolve(__dirname, '../../proto')]
+      });
+
+      const proto = grpc.loadPackageDefinition(packageDef);
+      const Synthesizer = proto.speechkit.tts.v3.Synthesizer;
+
+      const channelCreds = grpc.credentials.createSsl();
+      this._ttsGrpcClient = new Synthesizer(
+        'tts.api.cloud.yandex.net:443',
+        channelCreds
+      );
+
+      console.log('[SpeechKit] TTS gRPC v3 client initialized (dasha + friendly available)');
+      return this._ttsGrpcClient;
+    } catch (e) {
+      console.error('[SpeechKit] gRPC v3 init failed:', e.message);
+      this._grpcAvailable = false;
+      return null;
+    }
+  }
+
+  /**
+   * gRPC metadata с авторизацией
+   */
+  _grpcMetadata() {
+    const metadata = new grpc.Metadata();
+    metadata.add('authorization', `Api-Key ${this.apiKey}`);
+    metadata.add('x-folder-id', this.folderId);
+    return metadata;
+  }
+
+  /**
+   * Синтез речи через API v3 (gRPC) — полный буфер
+   * Возвращает Buffer, совместимый с v1 synthesize()
+   *
+   * @param {string} text — текст или SSML
+   * @param {Object} [options]
+   * @returns {Promise<Buffer>} — аудио данные
+   */
+  async synthesizeV3(text, options = {}) {
+    const {
+      voice = 'dasha',
+      role = 'friendly',
+      speed = 1.0,
+      format = 'OGG_OPUS',
+      ssml = false
+    } = options;
+
+    const client = this._initTtsGrpc();
+    if (!client) {
+      throw new Error('gRPC v3 not available');
+    }
+
+    // Убираем SSML-теги если они были (v3 принимает plain text и сам расставляет интонации)
+    let plainText = text;
+    if (ssml) {
+      plainText = text
+        .replace(/<speak>/g, '')
+        .replace(/<\/speak>/g, '')
+        .replace(/<break[^>]*\/>/g, ', ')
+        .replace(/<[^>]+>/g, '')
+        .trim();
+    }
+
+    const request = {
+      text: plainText,
+      outputAudioSpec: {
+        containerAudio: {
+          containerAudioType: format  // 'OGG_OPUS', 'WAV', 'MP3'
+        }
+      },
+      hints: [
+        { voice: voice },
+        { role: role },
+        { speed: speed }
+      ],
+      loudnessNormalizationType: 'LUFS',
+      unsafeMode: plainText.length > 250
+    };
+
+    return new Promise((resolve, reject) => {
+      const metadata = this._grpcMetadata();
+      const chunks = [];
+      const startTime = Date.now();
+
+      const call = client.utteranceSynthesis(request, metadata);
+
+      call.on('data', (response) => {
+        if (response.audioChunk && response.audioChunk.data) {
+          chunks.push(Buffer.from(response.audioChunk.data));
+        }
+      });
+
+      call.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        const elapsed = Date.now() - startTime;
+        console.log(`[SpeechKit v3] TTS done: ${voice}/${role}, ${plainText.length} chars, ${buffer.length} bytes, ${elapsed}ms`);
+        resolve(buffer);
+      });
+
+      call.on('error', (err) => {
+        console.error(`[SpeechKit v3] TTS error: ${err.message}`);
+        reject(err);
+      });
+
+      // Таймаут 15 секунд
+      setTimeout(() => {
+        call.cancel();
+        reject(new Error('SpeechKit v3 TTS timeout'));
+      }, 15000);
+    });
+  }
+
+  /**
+   * Синтез речи v3 с потоковым возвратом (async generator)
+   * Отдаёт аудио чанки по мере синтеза — для мгновенного воспроизведения
+   *
+   * @param {string} text — текст
+   * @param {Object} [options]
+   * @yields {Buffer} — аудио чанки
+   */
+  async *synthesizeV3Stream(text, options = {}) {
+    const {
+      voice = 'dasha',
+      role = 'friendly',
+      speed = 1.0,
+      format = 'OGG_OPUS',
+      ssml = false
+    } = options;
+
+    const client = this._initTtsGrpc();
+    if (!client) {
+      throw new Error('gRPC v3 not available');
+    }
+
+    let plainText = text;
+    if (ssml) {
+      plainText = text
+        .replace(/<speak>/g, '').replace(/<\/speak>/g, '')
+        .replace(/<break[^>]*\/>/g, ', ')
+        .replace(/<[^>]+>/g, '').trim();
+    }
+
+    const request = {
+      text: plainText,
+      outputAudioSpec: {
+        containerAudio: { containerAudioType: format }
+      },
+      hints: [
+        { voice: voice },
+        { role: role },
+        { speed: speed }
+      ],
+      loudnessNormalizationType: 'LUFS',
+      unsafeMode: plainText.length > 250
+    };
+
+    const metadata = this._grpcMetadata();
+    const call = client.utteranceSynthesis(request, metadata);
+
+    // Преобразуем gRPC stream в async iterable
+    const queue = [];
+    let resolve = null;
+    let done = false;
+    let error = null;
+
+    call.on('data', (response) => {
+      if (response.audioChunk && response.audioChunk.data) {
+        const chunk = Buffer.from(response.audioChunk.data);
+        if (resolve) {
+          const r = resolve;
+          resolve = null;
+          r({ value: chunk, done: false });
+        } else {
+          queue.push(chunk);
+        }
+      }
+    });
+
+    call.on('end', () => {
+      done = true;
+      if (resolve) {
+        const r = resolve;
+        resolve = null;
+        r({ value: undefined, done: true });
+      }
+    });
+
+    call.on('error', (err) => {
+      error = err;
+      done = true;
+      if (resolve) {
+        const r = resolve;
+        resolve = null;
+        r({ value: undefined, done: true });
+      }
+    });
+
+    try {
+      while (true) {
+        if (queue.length > 0) {
+          yield queue.shift();
+          continue;
+        }
+        if (done) break;
+        const result = await new Promise(r => { resolve = r; });
+        if (result.done) break;
+        yield result.value;
+      }
+    } finally {
+      if (!done) call.cancel();
+    }
+
+    if (error) throw error;
+  }
+
+  /**
+   * Bidirectional streaming TTS v3 (для pipe AI output → TTS)
+   * Отправляет текст частями, получает аудио по мере готовности
+   *
+   * @param {Object} [options] — voice, role, speed, format
+   * @returns {{ write(text), end(), audioStream: AsyncGenerator<Buffer> }}
+   */
+  createStreamingSynthesis(options = {}) {
+    const {
+      voice = 'dasha',
+      role = 'friendly',
+      speed = 1.0,
+      format = 'OGG_OPUS'
+    } = options;
+
+    const client = this._initTtsGrpc();
+    if (!client) return null;
+
+    const metadata = this._grpcMetadata();
+    const call = client.streamSynthesis(metadata);
+
+    // Первое сообщение — настройки
+    call.write({
+      options: {
+        voice: voice,
+        role: role,
+        speed: speed,
+        outputAudioSpec: {
+          containerAudio: { containerAudioType: format }
+        },
+        loudnessNormalizationType: 'LUFS'
+      }
+    });
+
+    // Очередь аудио чанков
+    const audioQueue = [];
+    let audioResolve = null;
+    let streamDone = false;
+    let streamError = null;
+
+    call.on('data', (response) => {
+      if (response.audioChunk && response.audioChunk.data) {
+        const chunk = Buffer.from(response.audioChunk.data);
+        if (audioResolve) {
+          const r = audioResolve;
+          audioResolve = null;
+          r({ value: chunk, done: false });
+        } else {
+          audioQueue.push(chunk);
+        }
+      }
+    });
+
+    call.on('end', () => {
+      streamDone = true;
+      if (audioResolve) {
+        const r = audioResolve;
+        audioResolve = null;
+        r({ value: undefined, done: true });
+      }
+    });
+
+    call.on('error', (err) => {
+      streamError = err;
+      streamDone = true;
+      if (audioResolve) {
+        const r = audioResolve;
+        audioResolve = null;
+        r({ value: undefined, done: true });
+      }
+    });
+
+    return {
+      /** Отправить фрагмент текста в TTS */
+      write(text) {
+        call.write({ synthesisInput: { text: text } });
+      },
+
+      /** Принудительно синтезировать буфер */
+      flush() {
+        call.write({ forceSynthesis: {} });
+      },
+
+      /** Завершить отправку текста */
+      end() {
+        call.end();
+      },
+
+      /** Async generator аудио чанков */
+      async *audioStream() {
+        while (true) {
+          if (audioQueue.length > 0) {
+            yield audioQueue.shift();
+            continue;
+          }
+          if (streamDone) break;
+          const result = await new Promise(r => { audioResolve = r; });
+          if (result.done) break;
+          yield result.value;
+        }
+        if (streamError) throw streamError;
+      }
+    };
+  }
+
+  /**
+   * Умный синтез: пробует v3 (dasha/friendly), при ошибке — v1 (alena/good)
+   *
+   * @param {string} text — текст или SSML
+   * @param {Object} [options]
+   * @returns {Promise<Buffer>}
+   */
+  async synthesizeSmart(text, options = {}) {
+    // Пробуем v3 (лучший голос)
+    if (this._grpcAvailable && this.isConfigured()) {
+      try {
+        return await this.synthesizeV3(text, {
+          voice: options.voice || 'dasha',
+          role: options.role || options.emotion || 'friendly',
+          speed: parseFloat(options.speed) || 1.0,
+          format: 'OGG_OPUS',
+          ssml: options.ssml || false
+        });
+      } catch (e) {
+        console.warn('[SpeechKit] v3 failed, falling back to v1:', e.message);
+      }
+    }
+
+    // Fallback на v1
+    return this.synthesize(text, {
+      voice: options.voice === 'dasha' ? 'alena' : (options.voice || 'alena'),
+      emotion: options.emotion || options.role || 'good',
+      speed: options.speed || '1.0',
+      format: options.format || 'oggopus',
+      sampleRate: options.sampleRate || 48000,
+      ssml: options.ssml || false
+    });
   }
 
   // === Внутренние методы ===

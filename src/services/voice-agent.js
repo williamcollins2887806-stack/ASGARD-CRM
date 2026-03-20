@@ -37,6 +37,9 @@ class VoiceAgent {
     this._employeeCacheTime = 0;
     this.onEvent = null; // callback(type, data) — для live-мониторинга
     this.getPendingTransfer = null; // callback() — проверка CRM-команды на перевод
+    // Кэш часто используемых фраз — синтезируем при первом вызове
+    this._phraseCache = new Map();
+    this._cacheDir = '/var/lib/asterisk/sounds/asgard';
   }
 
   _emit(type, data) {
@@ -50,6 +53,9 @@ class VoiceAgent {
    */
   async handleIncoming(channel, callerNumber) {
     const context = await this._buildContext(callerNumber);
+
+    // Прогреваем кэш при первом звонке (не блокирует — async)
+    this.warmupCache().catch(e => console.warn('[VoiceAgent] Cache warmup error:', e.message));
 
     // Приветствие
     if (context.clientName && context.responsibleManager && context.isFullWorkHours) {
@@ -279,13 +285,20 @@ class VoiceAgent {
   }
 
   /**
-   * Генерация ответа через Claude API
+   * Генерация ответа через Claude API (streaming для скорости)
+   * Стримит токены и парсит JSON сразу по завершении — быстрее чем complete()
    */
   async generateResponse(context) {
     try {
       const systemPrompt = VOICE_OPERATOR_SYSTEM(context);
       const userPrompt = VOICE_OPERATOR_USER(context);
 
+      // Пробуем streaming — быстрее чем complete() за счёт убранного HTTP overhead
+      if (typeof this.aiProvider.stream === 'function' && typeof this.aiProvider.parseStream === 'function') {
+        return await this._generateResponseStream(systemPrompt, userPrompt);
+      }
+
+      // Fallback на complete() если streaming недоступен
       const response = await this.aiProvider.complete({
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
@@ -298,6 +311,63 @@ class VoiceAgent {
     } catch (err) {
       console.error('[VoiceAgent] AI error:', err.message);
       return null;
+    }
+  }
+
+  /**
+   * Streaming версия generateResponse
+   * AI отдаёт токены по мере генерации → собираем → парсим JSON сразу
+   * Выигрыш ~1-1.5с за счёт отсутствия HTTP buffering overhead
+   */
+  async _generateResponseStream(systemPrompt, userPrompt) {
+    const startTime = Date.now();
+
+    try {
+      const streamResponse = await this.aiProvider.stream({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        maxTokens: 400,
+        temperature: 0.3
+      });
+
+      const parser = this.aiProvider.parseStream(streamResponse);
+      let fullText = '';
+
+      for await (const event of parser) {
+        if (event.type === 'text') {
+          fullText += event.content;
+        }
+        if (event.type === 'error') {
+          console.error('[VoiceAgent] AI stream error:', event.message);
+          break;
+        }
+        if (event.type === 'done') {
+          break;
+        }
+      }
+
+      const elapsed = Date.now() - startTime;
+      console.log(`[VoiceAgent] AI stream response: ${fullText.length} chars, ${elapsed}ms`);
+
+      if (!fullText) return null;
+      return this._parseResponse(fullText);
+    } catch (err) {
+      console.error('[VoiceAgent] AI stream error:', err.message);
+
+      // Fallback на complete() при ошибке стриминга
+      try {
+        const response = await this.aiProvider.complete({
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }],
+          maxTokens: 400,
+          temperature: 0.3
+        });
+        const text = typeof response === 'string' ? response : (response.text || response.content || '');
+        return this._parseResponse(text);
+      } catch (fallbackErr) {
+        console.error('[VoiceAgent] AI fallback also failed:', fallbackErr.message);
+        return null;
+      }
     }
   }
 
@@ -615,7 +685,69 @@ class VoiceAgent {
   }
 
   /**
-   * Синтез речи и воспроизведение
+   * Прогрев кэша TTS — синтезируем частые фразы заранее
+   * Вызывается при первом звонке, не блокирует
+   */
+  async warmupCache() {
+    if (this._cacheWarmedUp) return;
+    this._cacheWarmedUp = true;
+
+    const phrases = [
+      'Здравствуйте! Компания Асга+рд Се+рвис. Чем могу помочь?',
+      'Алло? Я вас слушаю.',
+      'Простите, не расслышал. Подскажите, чем могу помочь?',
+      'Извините, не слышу вас. Если хотите, перезвоните нам позже. До свидания!',
+      'Секундочку, соединяю вас со специалистом.',
+      'Сейчас соединю вас со специалистом, который поможет подробнее. Одну минутку.',
+      'Сейчас нерабочее время. Наши часы работы — с девяти до восемнадцати, понедельник — пятница. Оставьте сообщение, и мы перезвоним в ближайший рабочий день.',
+      'К сожалению, прямое соединение с руководством не предусмотрено. Подскажите ваш вопрос, я передам информацию.',
+    ];
+
+    console.log(`[VoiceAgent] Warming up TTS cache (${phrases.length} phrases)...`);
+
+    const fs = require('fs');
+    const path = require('path');
+    const crypto = require('crypto');
+
+    if (!fs.existsSync(this._cacheDir)) {
+      fs.mkdirSync(this._cacheDir, { recursive: true });
+    }
+
+    let cached = 0;
+    for (const phrase of phrases) {
+      try {
+        // Для кэша используем plain text без ударений
+        const plainPhrase = phrase.replace(/\+/g, '');
+        const hash = crypto.createHash('md5').update(plainPhrase).digest('hex').slice(0, 12);
+        const filePath = path.join(this._cacheDir, `tts_${hash}.opus`);
+
+        if (fs.existsSync(filePath) && fs.statSync(filePath).size > 100) {
+          this._phraseCache.set(plainPhrase, path.join(this._cacheDir, `tts_${hash}`));
+          cached++;
+          continue;
+        }
+
+        const audioBuffer = await this.speechKit.synthesizeSmart(phrase, {
+          voice: 'dasha',
+          role: 'friendly',
+          emotion: 'good',
+          speed: '1.0',
+          ssml: false
+        });
+
+        fs.writeFileSync(filePath, audioBuffer);
+        this._phraseCache.set(plainPhrase, path.join(this._cacheDir, `tts_${hash}`));
+        cached++;
+      } catch (e) {
+        console.warn(`[VoiceAgent] Cache warmup failed for: "${phrase.slice(0, 40)}..."`, e.message);
+      }
+    }
+
+    console.log(`[VoiceAgent] TTS cache ready: ${cached}/${phrases.length} phrases`);
+  }
+
+  /**
+   * Синтез речи и воспроизведение (с кэшем)
    */
   async _speak(channel, text) {
     if (!this.speechKit || !this.speechKit.isConfigured()) {
@@ -624,24 +756,40 @@ class VoiceAgent {
     }
 
     try {
-      const ssmlText = this._textToSsml(text);
-
-      const audioBuffer = await this.speechKit.synthesize(ssmlText, {
-        voice: 'madirus',
-        emotion: 'friendly',
-        speed: '0.95',
-        format: 'oggopus',
-        sampleRate: 48000,
-        ssml: true
-      });
-
       const crypto = require('crypto');
       const fs = require('fs');
       const path = require('path');
       const hash = crypto.createHash('md5').update(text).digest('hex').slice(0, 12);
-      const dir = '/var/lib/asterisk/sounds/asgard';
+      const dir = this._cacheDir || '/var/lib/asterisk/sounds/asgard';
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       const filePath = path.join(dir, `tts_${hash}`);
+
+      // Проверяем кэш — мгновенное воспроизведение
+      if (this._phraseCache && this._phraseCache.has(text)) {
+        const cachedPath = this._phraseCache.get(text);
+        if (channel && typeof channel.streamFile === 'function') {
+          await channel.streamFile(cachedPath);
+        }
+        return;
+      }
+
+      // Проверяем файл на диске (мог быть синтезирован ранее)
+      if (fs.existsSync(filePath + '.opus') && fs.statSync(filePath + '.opus').size > 100) {
+        if (channel && typeof channel.streamFile === 'function') {
+          await channel.streamFile(filePath);
+        }
+        return;
+      }
+
+      // Синтезируем: v3 dasha/friendly → v1 alena/good fallback
+      const audioBuffer = await this.speechKit.synthesizeSmart(text, {
+        voice: 'dasha',
+        role: 'friendly',
+        emotion: 'good',
+        speed: '1.0',
+        ssml: false
+      });
+
       fs.writeFileSync(filePath + '.opus', audioBuffer);
 
       if (channel && typeof channel.streamFile === 'function') {
@@ -661,7 +809,7 @@ class VoiceAgent {
 
     try {
       const tmpFile = `/tmp/agi_rec_${Date.now()}`;
-      const recorded = await channel.recordFile(tmpFile, "wav", "#", 15000, 0, false, 3);
+      const recorded = await channel.recordFile(tmpFile, "wav", "#", 12000, 0, false, 1.5);
       if (!recorded) return null;
 
       const fs = require('fs');
