@@ -128,9 +128,9 @@ window.AsgardTkpPage = (function() {
       '.tkp-btn-send{background:linear-gradient(135deg,#1E4D8C,#2563EB);color:#fff}' +
       '.tkp-btn-send:hover{box-shadow:0 4px 12px rgba(37,99,235,0.3);transform:translateY(-1px)}' +
       // Table action buttons
-      '.tkp-tbl-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--brd);background:var(--bg2);color:var(--t2);cursor:pointer;transition:all .15s;padding:0}' +
+      '.tkp-tbl-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--brd);background:transparent;color:var(--t1);cursor:pointer;transition:all .15s;padding:0}' +
       '.tkp-tbl-btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(30,77,140,0.06)}' +
-      '.tkp-tbl-btn svg{width:15px;height:15px}' +
+      '.tkp-tbl-btn svg{width:15px;height:15px;stroke:currentColor}' +
 
       // ── PDF Dialog (compact) ──
       '.pdf-dlg{padding:4px 0}' +
