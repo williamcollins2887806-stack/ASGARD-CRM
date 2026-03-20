@@ -240,6 +240,15 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         [callId]
       );
 
+      // Запускаем запись звонка через Mango API
+      if (mango.isConfigured()) {
+        mango.startRecording(callId, fromNumber).then(() => {
+          console.log('[Telephony] Recording started for call ' + callId);
+        }).catch(e => {
+          console.warn('[Telephony] startRecording failed:', e.message);
+        });
+      }
+
       const ac = await db.query('SELECT assigned_user_id FROM active_calls WHERE mango_call_id = $1', [callId]);
       if (sseSendToUser && ac.rows.length && ac.rows[0].assigned_user_id) {
         sseSendToUser(ac.rows[0].assigned_user_id, 'call:connected', { callId });
