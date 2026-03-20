@@ -311,6 +311,7 @@ window.AsgardTkpPage = (function() {
   // ═══════════════════════════════════════════
 
   async function render({ layout, title }) {
+    injectMimirTkpStyles();
     await loadVat();
     await layout('<div id="tkp-page"><div class="loading">Загрузка...</div></div>', { title: title });
     await loadList();
