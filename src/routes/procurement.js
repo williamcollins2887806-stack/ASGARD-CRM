@@ -433,8 +433,8 @@ async function routes(fastify) {
         const whId=item.warehouse_id||(wh.rows[0]&&wh.rows[0].id)||null;
         const qr=randomUUID();
         const eq=await client.query(`INSERT INTO equipment(name,category_id,quantity,unit,purchase_price,status,warehouse_id,qr_uuid,qr_code,notes)
-          VALUES($1,NULL,$2,$3,$4,'on_warehouse',$5,$6,$6,$7) RETURNING id`,
-          [item.name,item.quantity,item.unit,item.unit_price,whId,qr,'Из закупки #'+procId]);
+          VALUES($1,NULL,$2,$3,$4,'on_warehouse',$5,$6,$7,$8) RETURNING id`,
+          [item.name,item.quantity,item.unit,item.unit_price,whId,qr,qr,'Из закупки #'+procId]);
         await client.query('UPDATE procurement_items SET equipment_id=$1 WHERE id=$2',[eq.rows[0].id,itemId]);
         await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,performed_by)VALUES($1,'procurement_receipt',$2,$3,$4)`,
           [eq.rows[0].id,whId,'Приёмка из закупки #'+procId,user.id]);
