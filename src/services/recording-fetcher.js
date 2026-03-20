@@ -82,14 +82,12 @@ class RecordingFetcher {
       entryMap.set(row.mango_entry_id, row.id);
     }
 
-    // 3. Диапазон дат
+    // 3. Диапазон дат (Mango не принимает date_to в будущем)
     const dates = pending.map(r => new Date(r.created_at));
     const minDate = new Date(Math.min.apply(null, dates));
-    const maxDate = new Date(Math.max.apply(null, dates));
-    maxDate.setDate(maxDate.getDate() + 1); // включить последний день
-
+    const now = new Date();
+    const dateTo = Math.floor(now.getTime() / 1000);
     const dateFrom = Math.floor(minDate.getTime() / 1000);
-    const dateTo = Math.floor(maxDate.getTime() / 1000);
 
     // 4. Запрос статистики с полем records + entry_id
     this.logger.info('[RecordingFetcher] Requesting stats from ' + new Date(dateFrom * 1000).toISOString().slice(0,10) + ' to ' + new Date(dateTo * 1000).toISOString().slice(0,10));
