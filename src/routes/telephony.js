@@ -1289,6 +1289,12 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         if (event.collected_data) { sets.push('ai_lead_data = $' + pi++); params.push(JSON.stringify(event.collected_data)); }
         if (event.sentiment) { sets.push('ai_sentiment = $' + pi++); params.push(event.sentiment); }
 
+        // MixMonitor recording path
+        if (event.recordingPath) {
+          sets.push('record_path = $' + pi++); params.push(event.recordingPath);
+          sets.push('record_url = $' + pi++); params.push('/api/telephony/calls/{id}/record');
+        }
+
         // Транскрипт из AGI-событий
         if (transcriptLines.length > 0) {
           sets.push('transcript = $' + pi++); params.push(transcriptLines.join('\n'));
@@ -1305,15 +1311,37 @@ module.exports = async function telephonyRoutes(fastify, opts) {
             params
           );
 
-          // Запустить AI-анализ по сохранённому транскрипту
-          if (updateRes.rows.length && transcriptLines.length > 0) {
+          if (updateRes.rows.length) {
             const callHistoryId = updateRes.rows[0].id;
-            console.log('[Telephony] AGI transcript saved: call #' + callHistoryId + ' (' + segments.length + ' segments, ' + transcriptLines.length + ' lines)');
-            const pipeline = getPipeline();
-            if (pipeline) {
-              setImmediate(() => pipeline.processCall(callHistoryId).catch(e =>
-                console.error('[Telephony] AGI pipeline error:', e.message)
-              ));
+
+            // Обновить record_url с реальным id
+            if (event.recordingPath) {
+              await db.query(
+                'UPDATE call_history SET record_url = $1 WHERE id = $2',
+                ['/api/telephony/calls/' + callHistoryId + '/record', callHistoryId]
+              );
+            }
+
+            // Запустить AI-анализ по сохранённому транскрипту
+            if (transcriptLines.length > 0) {
+              console.log('[Telephony] AGI transcript saved: call #' + callHistoryId + ' (' + segments.length + ' segments, ' + transcriptLines.length + ' lines)');
+              const pipeline = getPipeline();
+              if (pipeline) {
+                setImmediate(() => pipeline.processCall(callHistoryId).catch(e =>
+                  console.error('[Telephony] AGI pipeline error:', e.message)
+                ));
+              }
+            }
+
+            // Запустить транскрипцию + AI-анализ по MixMonitor записи
+            if (event.recordingPath && transcriptLines.length === 0) {
+              console.log('[Telephony] MixMonitor recording: call #' + callHistoryId + ', path=' + event.recordingPath);
+              const pipeline = getPipeline();
+              if (pipeline) {
+                setImmediate(() => pipeline.processLocalRecording(callHistoryId).catch(e =>
+                  console.error('[Telephony] MixMonitor pipeline error:', e.message)
+                ));
+              }
             }
           }
         }

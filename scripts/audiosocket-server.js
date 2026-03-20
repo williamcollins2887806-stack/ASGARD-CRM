@@ -265,6 +265,7 @@ class AMIClient {
         return {
           callerNumber: this.callerIdMap.get(astId) || 'unknown',
           channelName: this.channelMap.get(astId) || null,
+          asteriskUniqueId: astId,
         };
       }
       await new Promise(r => setTimeout(r, 300));
@@ -275,9 +276,10 @@ class AMIClient {
       return {
         callerNumber: this.lastIncoming.callerNumber,
         channelName: this.lastIncoming.channelName,
+        asteriskUniqueId: null,
       };
     }
-    return { callerNumber: 'unknown', channelName: null };
+    return { callerNumber: 'unknown', channelName: null, asteriskUniqueId: null };
   }
 
   onEvent(handler) { this._eventHandlers.push(handler); }
@@ -404,6 +406,7 @@ async function handleConnection(socket) {
   let uuid = null;
   let callerNumber = 'unknown';
   let channelName = null;
+  let asteriskUniqueId = null;
   let destroyed = false;
   let isSpeaking = false;
 
@@ -784,7 +787,8 @@ async function handleConnection(socket) {
       // Hangup
       if (frame.type === AS_TYPE_HANGUP) {
         console.log(`[AudioSocket] Hangup: UUID=${uuid}`);
-        notifyCRM('call_end', { caller: callerNumber, uuid, reason: 'hangup' });
+        const recPath = asteriskUniqueId ? `/var/spool/asterisk/recordings/${asteriskUniqueId}.wav` : null;
+        notifyCRM('call_end', { caller: callerNumber, uuid, reason: 'hangup', recordingPath: recPath });
         cleanup();
       }
     }
@@ -800,6 +804,7 @@ async function handleConnection(socket) {
       const resolved = await ami.resolveByAuuid(uuid);
       callerNumber = resolved.callerNumber;
       channelName = resolved.channelName;
+      asteriskUniqueId = resolved.asteriskUniqueId;
     }
     console.log(`[AudioSocket] Call from: ${callerNumber}, channel: ${channelName}`);
 
@@ -956,7 +961,8 @@ async function handleConnection(socket) {
       // 'continue' — следующий ход
     }
 
-    notifyCRM('call_end', { caller: callerNumber, uuid, turns: conversationHistory.length });
+    const recPath = asteriskUniqueId ? `/var/spool/asterisk/recordings/${asteriskUniqueId}.wav` : null;
+    notifyCRM('call_end', { caller: callerNumber, uuid, turns: conversationHistory.length, recordingPath: recPath });
     cleanup();
   }
 }

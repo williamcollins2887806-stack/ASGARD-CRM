@@ -236,6 +236,48 @@ class CallPipeline {
   }
 
   /**
+   * Обработка локальной записи (MixMonitor).
+   * Пропускает download — файл уже на диске.
+   */
+  async processLocalRecording(callHistoryId) {
+    const { rows } = await this.db.query('SELECT * FROM call_history WHERE id = $1', [callHistoryId]);
+    if (!rows.length) return;
+    const call = rows[0];
+
+    if (!call.record_path) {
+      console.log(`[CallPipeline] processLocalRecording: no record_path for call #${callHistoryId}`);
+      return;
+    }
+
+    if (!fs.existsSync(call.record_path)) {
+      console.log(`[CallPipeline] processLocalRecording: file not found ${call.record_path}`);
+      return;
+    }
+
+    console.log(`[CallPipeline] Processing local recording for call #${callHistoryId}: ${call.record_path}`);
+
+    // If jobQueue is available, enqueue transcription step
+    if (this.jobQueue) {
+      if (call.transcript_status === 'none' || !call.transcript_status) {
+        await this.jobQueue.enqueue('transcribe', callHistoryId);
+      }
+      return;
+    }
+
+    // Fallback: direct processing
+    // Шаг 1: Транскрипция
+    if (call.transcript_status === 'none' || !call.transcript_status) {
+      await this._transcribe(call);
+    }
+
+    // Шаг 2: AI-анализ
+    const updated = (await this.db.query('SELECT * FROM call_history WHERE id = $1', [callHistoryId])).rows[0];
+    if (updated && updated.transcript && updated.transcript_status === 'done' && !updated.ai_summary) {
+      await this._aiAnalyze(updated);
+    }
+  }
+
+  /**
    * Обработка пропущенного звонка: создание задачи + эскалация
    */
   async handleMissedCall(callId) {
