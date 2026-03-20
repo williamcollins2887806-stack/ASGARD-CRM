@@ -7,7 +7,7 @@ const https = require('https');
 const _sharedAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true, maxSockets: 10 });
 const http = require('http');
 
-const BASE_URL = 'https://127.0.0.1';
+const BASE_URL = process.env.TEST_BASE_URL || 'https://92.242.61.184';
 const API_URL = `${BASE_URL}/api`;
 
 const TEST_PASSWORD = 'Test123!';
