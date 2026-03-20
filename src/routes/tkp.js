@@ -21,10 +21,36 @@ const nodemailer = require('nodemailer');
 
 /* Try to load Puppeteer PDF generator */
 let pdfGenerator = null;
+let numberToWordsRu = null;
 try {
   pdfGenerator = require('../services/pdf-generator');
+  numberToWordsRu = pdfGenerator.numberToWordsRu;
 } catch (e) {
   console.warn('[TKP] pdf-generator not available, will use PDFKit:', e.message);
+}
+
+// Inline fallback for numberToWordsRu if pdf-generator unavailable
+if (!numberToWordsRu) {
+  numberToWordsRu = function(num) {
+    if (!num && num !== 0) return 'Ноль рублей 00 копеек';
+    const units = ['','один','два','три','четыре','пять','шесть','семь','восемь','девять'];
+    const unitsFem = ['','одна','две','три','четыре','пять','шесть','семь','восемь','девять'];
+    const teens = ['десять','одиннадцать','двенадцать','тринадцать','четырнадцать','пятнадцать','шестнадцать','семнадцать','восемнадцать','девятнадцать'];
+    const tens = ['','','двадцать','тридцать','сорок','пятьдесят','шестьдесят','семьдесят','восемьдесят','девяносто'];
+    const hundreds = ['','сто','двести','триста','четыреста','пятьсот','шестьсот','семьсот','восемьсот','девятьсот'];
+    function getForm(n, forms) { n = Math.abs(n) % 100; if (n > 10 && n < 20) return forms[2]; n = n % 10; if (n === 1) return forms[0]; if (n >= 2 && n <= 4) return forms[1]; return forms[2]; }
+    function triplet(n, fem) { if (n === 0) return ''; const p = []; const h = Math.floor(n/100), r = n%100, t = Math.floor(r/10), u = r%10; if (h>0) p.push(hundreds[h]); if (t===1) p.push(teens[u]); else { if (t>1) p.push(tens[t]); if (u>0) p.push(fem?unitsFem[u]:units[u]); } return p.join(' '); }
+    const rub = Math.floor(Math.abs(num)), kop = Math.round((Math.abs(num)-rub)*100);
+    if (rub === 0) return 'Ноль рублей ' + String(kop).padStart(2,'0') + ' ' + getForm(kop, ['копейка','копейки','копеек']);
+    const parts = [];
+    const billions = Math.floor(rub/1e9); if (billions>0) parts.push(triplet(billions,false)+' '+getForm(billions,['миллиард','миллиарда','миллиардов']));
+    const millions = Math.floor((rub%1e9)/1e6); if (millions>0) parts.push(triplet(millions,false)+' '+getForm(millions,['миллион','миллиона','миллионов']));
+    const thousands = Math.floor((rub%1e6)/1e3); if (thousands>0) parts.push(triplet(thousands,true)+' '+getForm(thousands,['тысяча','тысячи','тысяч']));
+    const remainder = rub%1000; if (remainder>0 || parts.length===0) parts.push(triplet(remainder,false));
+    let result = parts.join(' ').replace(/\s+/g,' ').trim();
+    result = result.charAt(0).toUpperCase() + result.slice(1);
+    return result + ' ' + getForm(rub,['рубль','рубля','рублей']) + ' ' + String(kop).padStart(2,'0') + ' ' + getForm(kop,['копейка','копейки','копеек']);
+  };
 }
 
 const WRITE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -621,11 +647,19 @@ async function generateTkpPdfKit(tkp, db) {
     doc.moveDown(0.25);
     doc.font(FB).fontSize(12).fillColor('#1E4D8C')
        .text(`ИТОГО: ${fmtNum(totalWithVat)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
-    doc.moveDown(0.6);
+    doc.moveDown(0.3);
+    const posCount = rows.length;
+    const posWord = posCount === 1 ? 'позиция' : (posCount < 5 ? 'позиции' : 'позиций');
+    doc.font(F).fontSize(9).fillColor('#374151')
+       .text(`Всего ${posCount} ${posWord} на сумму: ${numberToWordsRu(totalWithVat)}`, mL, doc.y, { width: contentW });
+    doc.moveDown(0.5);
   } else if (tkp.total_sum) {
     doc.font(FB).fontSize(12).fillColor('#1E4D8C')
        .text(`Итого: ${fmtNum(tkp.total_sum)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
-    doc.moveDown(0.6);
+    doc.moveDown(0.3);
+    doc.font(F).fontSize(9).fillColor('#374151')
+       .text(`Сумма: ${numberToWordsRu(parseFloat(tkp.total_sum))}`, mL, doc.y, { width: contentW });
+    doc.moveDown(0.5);
   }
 
   // ─── УСЛОВИЯ ───

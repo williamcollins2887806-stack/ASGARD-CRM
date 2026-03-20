@@ -276,10 +276,14 @@ ${BASE_CSS}
 .sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; }
 .sign-mp { text-align: center; font-size: 8pt; color: #9CA3AF; margin-top: 12px; }
 
+/* ── Sum in words ── */
+.sum-words { font-size: 9.5pt; font-style: italic; color: #374151; margin: 6px 0 12px; }
+
 /* ── Footer ── */
-.footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 7.5pt; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding: 6px 20mm; }
+.footer { margin-top: 30px; text-align: center; font-size: 7.5pt; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 6px; }
 
 /* ── Print ── */
+html, body { height: auto !important; }
 tr { page-break-inside: avoid; }
 .card, .sign-block { page-break-inside: avoid; }
 </style>
@@ -351,10 +355,14 @@ ${items.length > 0 ? `
   <div>Итого без НДС: <b>${formatMoney(subtotal)} ₽</b></div>
   <div>НДС ${vatPct}%: <b>${formatMoney(vatSum)} ₽</b></div>
   <div class="grand">ИТОГО с НДС: ${formatMoney(totalWithVat)} ₽</div>
-</div>` : (tkp.total_sum ? `
+</div>
+<div class="sum-words">Всего ${items.length} ${items.length === 1 ? 'позиция' : (items.length < 5 ? 'позиции' : 'позиций')} на сумму: <b>${numberToWordsRu(totalWithVat)}</b></div>
+` : (tkp.total_sum ? `
 <div class="totals-block">
   <div class="grand">Итого: ${formatMoney(tkp.total_sum)} ₽</div>
-</div>` : '')}
+</div>
+<div class="sum-words">Сумма: <b>${numberToWordsRu(parseFloat(tkp.total_sum))}</b></div>
+` : '')}
 
 <!-- CONDITIONS -->
 <div class="sec-title">Условия</div>

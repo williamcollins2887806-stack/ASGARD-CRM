@@ -92,10 +92,12 @@ window.AsgardTkpPage = (function() {
         '0%{background:rgba(212,168,67,0.15)}' +
         '100%{background:transparent}' +
       '}' +
-      // Fix: select options visibility (dark theme)
+      // Fix: select visibility (dark theme + table cells)
       '.modal select option,.modal-content select option{background:var(--bg2);color:var(--t1)}' +
-      '#tkpItemsTable select{padding:6px 28px 6px 8px;font-size:12px}' +
+      '#tkpItemsTable select{padding:6px 28px 6px 8px;font-size:12px;color:var(--t1)!important;background:var(--bg2)!important;-webkit-appearance:none}' +
+      '#tkpItemsTable select option{color:var(--t1);background:var(--bg2)}' +
       '#tkpItemsTable input{padding:6px 8px;font-size:12px}' +
+      '#tkpItemsTable td{vertical-align:middle}' +
       // Payment radio cards — override global label styles
       '.tkp-pay-card{' +
         'display:flex!important;align-items:center;gap:10px;' +
