@@ -121,6 +121,8 @@ class AMIClient {
     this.callerIdMap = new Map();
     // Channel mapping: Asterisk Uniqueid → channel name
     this.channelMap = new Map();
+    // AUUID mapping: random UUID (from dialplan Set) → Asterisk uniqueid
+    this.auuidMap = new Map();
   }
 
   async connect() {
@@ -195,6 +197,11 @@ class AMIClient {
         this.channelMap.set(h.uniqueid, h.channel);
       }
 
+      // Track AUUID: VarSet event maps random UUID → Asterisk uniqueid
+      if (h.event === 'VarSet' && h.variable === 'AUUID' && h.value && h.uniqueid) {
+        this.auuidMap.set(h.value.trim(), h.uniqueid);
+      }
+
       for (const handler of this._eventHandlers) {
         try { handler(h); } catch (_) {}
       }
@@ -243,6 +250,22 @@ class AMIClient {
   /** Получить имя канала для Uniqueid */
   getChannelName(uniqueid) {
     return this.channelMap.get(uniqueid) || null;
+  }
+
+  /** Resolve CallerID and channel by AudioSocket UUID (random UUID from dialplan) */
+  async resolveByAuuid(auuid) {
+    // Wait for AMI VarSet event to arrive (up to 1.5s)
+    for (let i = 0; i < 5; i++) {
+      const astId = this.auuidMap.get(auuid);
+      if (astId) {
+        return {
+          callerNumber: this.callerIdMap.get(astId) || 'unknown',
+          channelName: this.channelMap.get(astId) || null,
+        };
+      }
+      await new Promise(r => setTimeout(r, 300));
+    }
+    return { callerNumber: 'unknown', channelName: null };
   }
 
   onEvent(handler) { this._eventHandlers.push(handler); }
@@ -738,10 +761,11 @@ async function handleConnection(socket) {
      ══════════════════════════════════════════════════ */
 
   async function processCall() {
-    // Определяем CallerID через AMI
+    // Определяем CallerID через AMI (UUID от dialplan → Asterisk uniqueid → CallerID)
     if (ami.connected && uuid) {
-      callerNumber = await ami.getCallerIdForUniqueId(uuid) || 'unknown';
-      channelName = ami.getChannelName(uuid);
+      const resolved = await ami.resolveByAuuid(uuid);
+      callerNumber = resolved.callerNumber;
+      channelName = resolved.channelName;
     }
     console.log(`[AudioSocket] Call from: ${callerNumber}, channel: ${channelName}`);
 

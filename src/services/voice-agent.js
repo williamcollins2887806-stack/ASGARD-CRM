@@ -449,7 +449,7 @@ class VoiceAgent {
 
         // Ищем ответственного PM
         const tender = await this.db.query(
-          `SELECT t.id, t.name, t.pm_id, u.name as pm_name, ucs.fallback_mobile
+          `SELECT t.id, t.customer_name, t.pm_id, u.name as pm_name, ucs.fallback_mobile
            FROM tenders t
            LEFT JOIN users u ON u.id = t.pm_id
            LEFT JOIN user_call_status ucs ON ucs.user_id = t.pm_id
@@ -461,7 +461,7 @@ class VoiceAgent {
         if (tender.rows.length) {
           responsibleManager = tender.rows[0].pm_name;
           managerPhone = tender.rows[0].fallback_mobile;
-          lastTender = `${tender.rows[0].name} (ID: ${tender.rows[0].id})`;
+          lastTender = `${tender.rows[0].customer_name} (ID: ${tender.rows[0].id})`;
         }
       }
     } catch (e) {
