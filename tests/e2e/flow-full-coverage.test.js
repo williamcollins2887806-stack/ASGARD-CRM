@@ -493,7 +493,7 @@ module.exports = {
             name: 'E2E_COVERAGE Test Template',
             subject: 'Тестовый шаблон {{company}}',
             body: 'Уважаемый {{name}}, это тестовый шаблон.',
-            category: 'test'
+            category: 'custom'
           }
         });
         assertOk(cr, 'Create template');
@@ -661,7 +661,7 @@ module.exports = {
           // Create temp employee
           const emp = await api('POST', '/api/data/employees', {
             role: 'ADMIN',
-            body: { full_name: 'E2E_COVERAGE Тестовый Сотрудник', phone: '+70001112233', active: true }
+            body: { fio: 'E2E_COVERAGE Тестовый Сотрудник', phone: '+70001112233', active: true }
           });
           if (emp.ok && emp.data?.id) {
             empList = [{ id: emp.data.id }];

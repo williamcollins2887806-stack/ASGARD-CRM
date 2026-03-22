@@ -7,6 +7,7 @@ let palletId = null;
 let fullProcId = null;
 let fullItemId = null;
 let fullAssemblyId = null;
+let demobAssemblyId = null;
 let asmWorkId = null; // real work_id for assembly tests
 
 module.exports = {
@@ -260,27 +261,30 @@ module.exports = {
     { name: 'S6.10: Create demob', run: async () => {
       if (!assemblyId) skip(''); const r = await api('POST', `/api/assembly/${assemblyId}/create-demob`, { role: 'PM', body: {} });
       assertOk(r, 'OK'); assert(r.data.item.type === 'demobilization', 'Demob'); assert(r.data.items.length > 0, 'Items');
+      demobAssemblyId = r.data.item.id;
     }},
-    { name: 'S6.11: PM creates pallet', run: async () => {
-      if (!assemblyId) skip('No asm');
-      const r = await api('POST', `/api/assembly/${assemblyId}/pallets`, { role: 'PM', body: { label: 'PM-паллет', capacity_items: 8 } });
+    { name: 'S6.11: PM creates pallet on demob', run: async () => {
+      if (!demobAssemblyId) skip('No asm');
+      const r = await api('POST', `/api/assembly/${demobAssemblyId}/pallets`, { role: 'PM', body: { label: 'PM-паллет', capacity_items: 8 } });
       assertOk(r, 'PM creates pallet'); assert(r.data?.pallet?.id, 'Pallet created by PM');
     }},
-    { name: 'S6.12: PM assigns item to pallet', run: async () => {
-      if (!assemblyId || !palletId) skip('No data');
-      const d = await api('GET', `/api/assembly/${assemblyId}`, { role: 'PM' });
+    { name: 'S6.12: PM assigns item to pallet on demob', run: async () => {
+      if (!demobAssemblyId || !palletId) skip('No data');
+      const d = await api('GET', `/api/assembly/${demobAssemblyId}`, { role: 'PM' });
       const free = (d.data?.items || []).find(i => !i.pallet_id);
       if (!free) skip('No free items');
-      const r = await api('PUT', `/api/assembly/${assemblyId}/items/${free.id}/assign-pallet`,
+      const r = await api('PUT', `/api/assembly/${demobAssemblyId}/items/${free.id}/assign-pallet`,
         { role: 'PM', body: { pallet_id: palletId } });
       assertOk(r, 'PM assigns to pallet');
     }},
-    { name: 'S6.13: PM packs item', run: async () => {
-      if (!assemblyId) skip('No asm');
-      const d = await api('GET', `/api/assembly/${assemblyId}`, { role: 'PM' });
+    { name: 'S6.13: PM packs item on demob', run: async () => {
+      if (!demobAssemblyId) skip('No asm');
+      // Confirm demob first
+      await api('PUT', `/api/assembly/${demobAssemblyId}/confirm`, { role: 'PM', body: {} });
+      const d = await api('GET', `/api/assembly/${demobAssemblyId}`, { role: 'PM' });
       const unpacked = (d.data?.items || []).find(i => !i.packed && i.pallet_id);
       if (!unpacked) skip('No unpacked');
-      const r = await api('PUT', `/api/assembly/${assemblyId}/items/${unpacked.id}/pack`,
+      const r = await api('PUT', `/api/assembly/${demobAssemblyId}/items/${unpacked.id}/pack`,
         { role: 'PM', body: {} });
       assertOk(r, 'PM packs item');
     }},

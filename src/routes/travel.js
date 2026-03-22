@@ -30,7 +30,7 @@ module.exports = async function (fastify) {
     if (isAdmin) {
       query = `
         SELECT bt.*,
-               u.fio AS author_name,
+               u.name AS author_name,
                w.work_title AS work_name,
                si.object_name
         FROM business_trips bt
@@ -44,7 +44,7 @@ module.exports = async function (fastify) {
     } else {
       query = `
         SELECT bt.*,
-               u.fio AS author_name,
+               u.name AS author_name,
                w.work_title AS work_name,
                si.object_name
         FROM business_trips bt
