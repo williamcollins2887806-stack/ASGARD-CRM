@@ -1200,7 +1200,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     try {
       if (!_agiSseCache || Date.now() - _agiSseCacheTime > 30000) {
         const d = await db.query('SELECT user_id FROM user_call_status WHERE is_call_dispatcher = true');
-        _agiSseCache = d.rows.map(r => r.user_id);
+        _agiSseCache = [...new Set(d.rows.map(r => r.user_id))];
         _agiSseCacheTime = Date.now();
       }
       const sse = require('./sse');

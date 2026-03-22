@@ -941,6 +941,7 @@ async function handleConnection(socket) {
       }
     });
 
+    let finalSent = false; // дедупликация: eouUpdate и finalRefinement могут прийти оба
     sttStream.on('data', (response) => {
       // Partial — промежуточный
       if (response.partial) {
@@ -962,7 +963,7 @@ async function handleConnection(socket) {
       if (response.eouUpdate) {
         const text = currentPartialText.trim();
         currentPartialText = '';
-        if (text) onFinal(text);
+        if (text && !finalSent) { finalSent = true; onFinal(text); }
       }
 
       // FinalRefinement — нормализованный текст (более точный)
@@ -972,7 +973,7 @@ async function handleConnection(socket) {
         if (alts && alts.length > 0 && alts[0].text) {
           const text = alts[0].text.trim();
           currentPartialText = '';
-          if (text) onFinal(text);
+          if (text && !finalSent) { finalSent = true; onFinal(text); }
         }
       }
     });
@@ -1383,42 +1384,50 @@ async function handleConnection(socket) {
       const parts = fullName.trim().split(/\s+/);
       const firstName = parts.length >= 2 ? parts[1] : (parts[0] || 'воин');
       console.log(`[AudioSocket] Internal call: ${fullName} → firstName: ${firstName}`);
-      notifyCRM('greeting', { caller: callerNumber, internal: true, employee: fullName });
       const greetings = [
         `Приветствую, воин Асга+рда ${firstName}! Чем могу помочь?`,
         `Хе+й, ${firstName}! Рада слышать тебя, воин! Куда тебя направить?`,
         `Славься, ${firstName}! Какой путь тебе указать сегодня?`,
         `${firstName}, приветствую тебя в чертогах Асга+рда! Чем помочь?`,
       ];
-      await speak(greetings[Math.floor(Math.random() * greetings.length)]);
+      const greetingText = greetings[Math.floor(Math.random() * greetings.length)];
+      notifyCRM('greeting', { caller: callerNumber, internal: true, employee: fullName, text: greetingText });
+      await speak(greetingText);
 
     // Известный клиент с менеджером в рабочее время — сразу перевод
     } else if (context.clientName && context.responsibleManager && context.isFullWorkHours) {
-      notifyCRM('greeting', { caller: callerNumber, client: context.clientName });
       const greeting = fillTemplate(pickRandom(CACHED_INTENTS.greetings.known_client), { name: context.clientName });
+      const transferMsg = `Сейчас соединю вас с вашим менеджером, ${context.responsibleManager}. Одну минуточку.`;
+      notifyCRM('greeting', { caller: callerNumber, client: context.clientName, text: greeting });
       await speak(greeting);
-      await speak(`Сейчас соединю вас с вашим менеджером, ${context.responsibleManager}. Одну минуточку.`);
+      notifyCRM('ai_response', { caller: callerNumber, text: transferMsg, action: 'route', intent: 'known_client' });
+      await speak(transferMsg);
 
       if (context.managerPhone && ami.connected && channelName) {
         try {
+          console.log(`[AudioSocket] AMI redirect: channel=${channelName} → phone=${context.managerPhone} (${context.responsibleManager})`);
           await ami.redirect(channelName, context.managerPhone);
           notifyCRM('transfer', { caller: callerNumber, name: context.responsibleManager, phone: context.managerPhone });
         } catch (e) {
-          console.error('[AudioSocket] Transfer failed:', e.message);
+          console.error(`[AudioSocket] AMI redirect FAILED: channel=${channelName}, phone=${context.managerPhone}, error=${e.message}`);
+          notifyCRM('transfer_failed', { caller: callerNumber, name: context.responsibleManager, phone: context.managerPhone, error: e.message });
         }
       }
       return;
 
     // Нерабочее время
     } else if (context.timeMode === 'off') {
-      await speak(pickRandom(CACHED_INTENTS.greetings.after_hours));
+      const afterHoursText = pickRandom(CACHED_INTENTS.greetings.after_hours);
+      notifyCRM('greeting', { caller: callerNumber, text: afterHoursText });
+      await speak(afterHoursText);
       notifyCRM('after_hours', { caller: callerNumber });
       return;
 
     // Стандартное приветствие
     } else {
-      notifyCRM('greeting', { caller: callerNumber });
-      await speak(pickRandom(CACHED_INTENTS.greetings.standard));
+      const stdGreeting = pickRandom(CACHED_INTENTS.greetings.standard);
+      notifyCRM('greeting', { caller: callerNumber, text: stdGreeting });
+      await speak(stdGreeting);
     }
 
     // ── Цикл диалога ──

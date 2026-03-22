@@ -701,6 +701,11 @@ window.AsgardTelephonyPopup = (function () {
   }
 
   function addMessage(type, text) {
+    // Дедупликация: не добавлять если последнее сообщение такое же
+    if (state.messages.length > 0) {
+      var last = state.messages[state.messages.length - 1];
+      if (last.type === type && last.text === text) return;
+    }
     var msg = { type: type, text: text, time: timeStr() };
     state.messages.push(msg);
     renderMessage(msg);
