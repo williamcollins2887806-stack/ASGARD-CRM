@@ -31,7 +31,7 @@ module.exports = async function (fastify) {
       query = `
         SELECT bt.*,
                u.fio AS author_name,
-               w.name AS work_name,
+               w.work_title AS work_name,
                si.object_name
         FROM business_trips bt
         LEFT JOIN users u ON u.id = bt.author_id
@@ -45,7 +45,7 @@ module.exports = async function (fastify) {
       query = `
         SELECT bt.*,
                u.fio AS author_name,
-               w.name AS work_name,
+               w.work_title AS work_name,
                si.object_name
         FROM business_trips bt
         LEFT JOIN users u ON u.id = bt.author_id

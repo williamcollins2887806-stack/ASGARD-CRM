@@ -7,6 +7,7 @@ let palletId = null;
 let fullProcId = null;
 let fullItemId = null;
 let fullAssemblyId = null;
+let asmWorkId = null; // real work_id for assembly tests
 
 module.exports = {
   name: 'FLOW: Procurement + Warehouse + Assembly Pipeline',
@@ -214,11 +215,19 @@ module.exports = {
     }},
 
     // === STEP 6: ASSEMBLY ===
-    { name: 'S6.1: Create assembly', run: async () => {
-      const r = await api('POST', '/api/assembly', { role: 'PM', body: { work_id: 1, type: 'mobilization', title: 'PIPELINE_TEST: Моб', destination: 'НПЗ' } });
-      if (r.status === 404) skip(''); if (r.status >= 400) skip('No work=1'); assertOk(r, 'OK'); assemblyId = r.data?.item?.id; assert(assemblyId, 'ID');
+    { name: 'S6.0: Find work_id for assembly', run: async () => {
+      const r = await api('GET', '/api/works?limit=1', { role: 'ADMIN' });
+      assertOk(r, 'Get works');
+      const works = r.data?.works || r.data?.items || [];
+      if (works.length) asmWorkId = works[0].id;
+      if (!asmWorkId) skip('No works in DB');
     }},
-    { name: 'S6.2: Bad type', run: async () => { const r = await api('POST', '/api/assembly', { role: 'PM', body: { work_id: 1, type: 'xxx' } }); assert(r.status === 400, '400'); }},
+    { name: 'S6.1: Create assembly', run: async () => {
+      if (!asmWorkId) skip('No work_id');
+      const r = await api('POST', '/api/assembly', { role: 'PM', body: { work_id: asmWorkId, type: 'mobilization', title: 'PIPELINE_TEST: Моб', destination: 'НПЗ' } });
+      if (r.status === 404) skip(''); assertOk(r, 'OK'); assemblyId = r.data?.item?.id; assert(assemblyId, 'ID');
+    }},
+    { name: 'S6.2: Bad type', run: async () => { if (!asmWorkId) skip(''); const r = await api('POST', '/api/assembly', { role: 'PM', body: { work_id: asmWorkId, type: 'xxx' } }); assert(r.status === 400, '400'); }},
     { name: 'S6.3: Add item', run: async () => {
       if (!assemblyId) skip(''); const r = await api('POST', `/api/assembly/${assemblyId}/items`, { role: 'PM', body: { name: 'Насос', unit: 'шт', quantity: 1, source: 'manual' } });
       assertOk(r, 'OK');
@@ -331,7 +340,8 @@ module.exports = {
       const c=await api('GET',`/api/procurement/${fullProcId}`,{role:'ADMIN'});assert(c.data.item.status==='delivered','Delivered');
     }},
     { name: 'E2E 6: Assembly', run: async()=>{
-      const r=await api('POST','/api/assembly',{role:'PM',body:{work_id:1,type:'mobilization',title:'E2E Моб'}});
+      if(!asmWorkId)skip('');
+      const r=await api('POST','/api/assembly',{role:'PM',body:{work_id:asmWorkId,type:'mobilization',title:'E2E Моб'}});
       if(r.status>=400)skip('');assertOk(r,'OK');fullAssemblyId=r.data.item.id;
     }},
     { name: 'E2E 7: Assembly flow', run: async()=>{

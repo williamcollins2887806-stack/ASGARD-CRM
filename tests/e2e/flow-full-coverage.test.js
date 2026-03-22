@@ -13,6 +13,8 @@ const { api, assert, assertOk, assertStatus, assertForbidden, skip } = require('
 
 // Shared IDs
 const S = {};
+// Will be set in first test — any existing work_id for cash requests
+let realWorkId = null;
 
 module.exports = {
   name: 'FULL COVERAGE — All Remaining Modules',
@@ -23,11 +25,35 @@ module.exports = {
     // ═══════════════════════════════════════════════════════════════════
 
     {
+      name: 'APPROVAL: Find work_id for cash requests',
+      run: async () => {
+        const resp = await api('GET', '/api/works?limit=1', { role: 'ADMIN' });
+        if (resp.status === 404) skip('works endpoint not available');
+        assertOk(resp, 'Get works list');
+        const works = resp.data?.works || resp.data?.items || [];
+        if (works.length > 0) {
+          realWorkId = works[0].id;
+        } else {
+          // Create a temp work
+          const w = await api('POST', '/api/works', {
+            role: 'PM',
+            body: { work_title: 'E2E_COVERAGE Temp Work', customer_name: 'Test', work_status: 'Новая' }
+          });
+          if (w.ok) {
+            realWorkId = w.data?.work?.id || w.data?.id;
+            S.tempWorkId = realWorkId;
+          }
+        }
+        assert(realWorkId, 'Must have a work_id for cash tests');
+      }
+    },
+    {
       name: 'APPROVAL: PM creates cash_request for approval',
       run: async () => {
         const resp = await api('POST', '/api/cash', {
           role: 'PM',
           body: {
+            work_id: realWorkId,
             type: 'advance',
             amount: 50000,
             purpose: 'E2E_COVERAGE Тестовый аванс на расходные материалы',
@@ -58,7 +84,7 @@ module.exports = {
         // Create another cash request
         const cr = await api('POST', '/api/cash', {
           role: 'PM',
-          body: { type: 'advance', amount: 30000, purpose: 'E2E_COVERAGE Rework test' }
+          body: { work_id: realWorkId, type: 'advance', amount: 30000, purpose: 'E2E_COVERAGE Rework test' }
         });
         if (!cr.ok) skip('Cannot create cash for rework test');
         const id = cr.data?.item?.id || cr.data?.id;
@@ -92,7 +118,7 @@ module.exports = {
       run: async () => {
         const cr = await api('POST', '/api/cash', {
           role: 'PM',
-          body: { type: 'advance', amount: 20000, purpose: 'E2E_COVERAGE Question test' }
+          body: { work_id: realWorkId, type: 'advance', amount: 20000, purpose: 'E2E_COVERAGE Question test' }
         });
         if (!cr.ok) skip('Cannot create cash');
         const id = cr.data?.item?.id || cr.data?.id;
@@ -113,7 +139,7 @@ module.exports = {
       run: async () => {
         const cr = await api('POST', '/api/cash', {
           role: 'PM',
-          body: { type: 'advance', amount: 10000, purpose: 'E2E_COVERAGE Reject test' }
+          body: { work_id: realWorkId, type: 'advance', amount: 10000, purpose: 'E2E_COVERAGE Reject test' }
         });
         if (!cr.ok) skip('Cannot create cash');
         const id = cr.data?.item?.id || cr.data?.id;
@@ -628,9 +654,20 @@ module.exports = {
       name: 'COLLECTIONS: Add employees to collection',
       run: async () => {
         if (!S.collectionId) skip('No collection');
-        // Get some employees
+        // Get some employees — create temp if needed
         const emps = await api('GET', '/api/data/employees?limit=2', { role: 'ADMIN' });
-        const empList = emps.data?.data || emps.data?.items || [];
+        let empList = emps.data?.data || emps.data?.items || [];
+        if (empList.length < 1) {
+          // Create temp employee
+          const emp = await api('POST', '/api/data/employees', {
+            role: 'ADMIN',
+            body: { full_name: 'E2E_COVERAGE Тестовый Сотрудник', phone: '+70001112233', active: true }
+          });
+          if (emp.ok && emp.data?.id) {
+            empList = [{ id: emp.data.id }];
+            S.tempEmployeeId = emp.data.id;
+          }
+        }
         if (empList.length < 1) skip('No employees');
         const ids = empList.slice(0, 2).map(e => e.id);
 
@@ -926,6 +963,14 @@ module.exports = {
             });
             await api('DELETE', `/api/data/cash_requests/${id}`, { role: 'ADMIN' });
           }
+        }
+        // Delete temp employee
+        if (S.tempEmployeeId) {
+          await api('DELETE', `/api/data/employees/${S.tempEmployeeId}`, { role: 'ADMIN' });
+        }
+        // Delete temp work
+        if (S.tempWorkId) {
+          await api('DELETE', `/api/data/works/${S.tempWorkId}`, { role: 'ADMIN' });
         }
         console.log('    [cleanup] E2E_COVERAGE test data cleaned');
       }
