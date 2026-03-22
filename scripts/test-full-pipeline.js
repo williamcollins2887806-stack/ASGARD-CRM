@@ -282,15 +282,35 @@ function synthesizeStreaming(text) {
 const SYSTEM = 'Ты секретарь компании Асгард Сервис по имени Фрейя. Отвечай кратко 1-2 предложения на русском. Если клиент просит конкретный отдел - скажи что соединяешь.';
 
 const TEST_PHRASES = [
-  'Здравствуйте, мне нужен тендерный отдел',
-  'Мне нужно узнать статус оплаты по договору',
-  'Я звоню по поводу рекламации',
-  'Алло, а кто это?',
+  // ── ЛЁГКИЕ (короткие, быстрые) ──
+  { text: 'Здравствуйте',                              tag: 'EASY' },
+  { text: 'Алло',                                      tag: 'EASY' },
+  { text: 'Мне нужна бухгалтерия',                     tag: 'EASY' },
+  { text: 'Соедините с тендерным отделом',              tag: 'EASY' },
+
+  // ── СРЕДНИЕ (конкретные вопросы) ──
+  { text: 'Здравствуйте, я хотел бы узнать статус оплаты по нашему договору номер сто двадцать три', tag: 'MED' },
+  { text: 'Добрый день, подскажите, занимаетесь ли вы промывкой теплообменников?',                   tag: 'MED' },
+  { text: 'Мне нужно поговорить с кем-нибудь по поводу рекламации, оборудование не работает',        tag: 'MED' },
+  { text: 'А вы можете выслать коммерческое предложение на промывку котла?',                          tag: 'MED' },
+
+  // ── СЛОЖНЫЕ (длинные, контекстные) ──
+  { text: 'Послушайте, мы заказывали у вас промывку системы отопления в прошлом году, сейчас опять батареи холодные, нужно повторить, когда вы можете приехать и сколько это будет стоить?', tag: 'HARD' },
+  { text: 'У нас объект на Ленинградском шоссе, нужна химическая промывка теплообменника и замена уплотнений, объём работ большой, хотим обсудить сроки и стоимость',                     tag: 'HARD' },
+
+  // ── СПАМ ──
+  { text: 'Здравствуйте, хотим предложить вам продвижение сайта в топ Яндекса, у нас выгодные условия', tag: 'SPAM' },
+  { text: 'Добрый день, вас беспокоят из компании Кредит Плюс, хотим предложить выгодный кредит для бизнеса', tag: 'SPAM' },
+  { text: 'Мы проводим бесплатный вебинар по увеличению продаж, хотите зарегистрироваться?',               tag: 'SPAM' },
 ];
 
-async function runTest(phrase) {
+async function runTest(item) {
+  const phrase = typeof item === 'string' ? item : item.text;
+  const tag = typeof item === 'string' ? '' : item.tag;
+  const tagStr = tag ? ` [${tag}]` : '';
+
   console.log(`\n${'─'.repeat(80)}`);
-  console.log(`TEST: "${phrase}"`);
+  console.log(`TEST${tagStr}: "${phrase}"`);
   console.log(`${'─'.repeat(80)}`);
 
   const T_START = Date.now();
@@ -312,28 +332,24 @@ async function runTest(phrase) {
   const t3 = Date.now();
   const aiResult = await callYandexGPT(SYSTEM, sttResult.text || phrase);
   const stage3ms = Date.now() - t3;
-  console.log(`  [3] AI (GPT Pro):  ${stage3ms}ms → "${aiResult.text.slice(0, 70)}" (ft=${aiResult.firstTokenMs}ms, updates=${aiResult.updates})`);
+  const aiShort = aiResult.text.replace(/\n/g, ' ').slice(0, 80);
+  console.log(`  [3] AI (GPT Pro):  ${stage3ms}ms → "${aiShort}" (ft=${aiResult.firstTokenMs}ms, upd=${aiResult.updates})`);
 
-  // Stage 4: TTS — озвучиваем ответ
+  // Stage 4: TTS — озвучиваем ответ (только речевую часть, без JSON)
+  const spokenPart = aiResult.text.split('---JSON---')[0].trim();
   const t4 = Date.now();
-  const ttsResult = await synthesizeStreaming(aiResult.text);
+  const ttsResult = await synthesizeStreaming(spokenPart || aiResult.text);
   const stage4ms = Date.now() - t4;
   const respDuration = Math.round(ttsResult.totalBytes / 2 / 8000 * 1000);
   console.log(`  [4] TTS (ответ):   ${stage4ms}ms → ${ttsResult.totalBytes} bytes (${respDuration}ms audio, first_audio=${ttsResult.firstAudioMs}ms)`);
 
   const TOTAL = Date.now() - T_START;
-
-  // Real pipeline timing (what user would experience):
-  // User speaks → STT processes → AI responds → TTS starts playing
-  // In real pipeline: STT runs during speech, AI starts after STT, TTS starts after first AI token
-  // So real latency = STT_after_speech + AI_first_token + TTS_first_audio
   const realLatency = sttResult.firstTextMs + aiResult.firstTokenMs + ttsResult.firstAudioMs;
 
   console.log(`\n  TOTAL sequential:  ${TOTAL}ms`);
   console.log(`  REAL latency:      ~${realLatency}ms (STT=${sttResult.firstTextMs} + AI_ft=${aiResult.firstTokenMs} + TTS_fa=${ttsResult.firstAudioMs})`);
-  console.log(`  Pipeline stages:   STT=${stage2ms} | AI=${stage3ms} | TTS=${stage4ms}`);
 
-  return { phrase, stage1ms, stage2ms, stage3ms, stage4ms, total: TOTAL, realLatency, sttText: sttResult.text, aiText: aiResult.text, aiFirstToken: aiResult.firstTokenMs, ttsFirstAudio: ttsResult.firstAudioMs };
+  return { phrase, tag, stage1ms, stage2ms, stage3ms, stage4ms, total: TOTAL, realLatency, sttText: sttResult.text, aiText: aiResult.text, aiFirstToken: aiResult.firstTokenMs, ttsFirstAudio: ttsResult.firstAudioMs };
 }
 
 async function main() {
@@ -355,24 +371,37 @@ async function main() {
   // Summary
   if (results.length > 0) {
     console.log(`\n${'═'.repeat(80)}`);
-    console.log('  ИТОГО:');
+    console.log('  ИТОГО — ОБЩАЯ СВОДКА');
     console.log('═'.repeat(80));
 
-    const avgReal = Math.round(results.reduce((s, r) => s + r.realLatency, 0) / results.length);
-    const avgSTT = Math.round(results.reduce((s, r) => s + r.stage2ms, 0) / results.length);
-    const avgAI = Math.round(results.reduce((s, r) => s + r.stage3ms, 0) / results.length);
-    const avgAIft = Math.round(results.reduce((s, r) => s + r.aiFirstToken, 0) / results.length);
-    const avgTTS = Math.round(results.reduce((s, r) => s + r.stage4ms, 0) / results.length);
-    const avgTTSfa = Math.round(results.reduce((s, r) => s + r.ttsFirstAudio, 0) / results.length);
+    function avg(arr, fn) { return arr.length ? Math.round(arr.reduce((s, r) => s + fn(r), 0) / arr.length) : 0; }
+    function printGroup(label, group) {
+      if (!group.length) return;
+      console.log(`\n  ── ${label} (${group.length} тестов) ──`);
+      console.log(`  Avg REAL latency:  ${avg(group, r=>r.realLatency)}ms`);
+      console.log(`  Avg STT:           ${avg(group, r=>r.stage2ms)}ms`);
+      console.log(`  Avg AI first_tok:  ${avg(group, r=>r.aiFirstToken)}ms | total: ${avg(group, r=>r.stage3ms)}ms`);
+      console.log(`  Avg TTS first_aud: ${avg(group, r=>r.ttsFirstAudio)}ms | total: ${avg(group, r=>r.stage4ms)}ms`);
+    }
 
-    console.log(`  Avg REAL latency:  ${avgReal}ms (это задержка от конца речи до первого звука ответа)`);
-    console.log(`  Avg STT:           ${avgSTT}ms`);
-    console.log(`  Avg AI first_tok:  ${avgAIft}ms`);
-    console.log(`  Avg AI total:      ${avgAI}ms`);
-    console.log(`  Avg TTS first_aud: ${avgTTSfa}ms`);
-    console.log(`  Avg TTS total:     ${avgTTS}ms`);
-    console.log(`\n  Pipeline:  Речь клиента → [${avgSTT}ms STT] → [${avgAIft}ms AI ft] → [${avgTTSfa}ms TTS fa] → Звук ответа`);
-    console.log(`  Итого задержка: ~${avgReal}ms`);
+    const tags = ['EASY', 'MED', 'HARD', 'SPAM'];
+    for (const t of tags) {
+      printGroup(t, results.filter(r => r.tag === t));
+    }
+    printGroup('ALL', results);
+
+    const a = avg(results, r=>r.stage2ms);
+    const b = avg(results, r=>r.aiFirstToken);
+    const c = avg(results, r=>r.ttsFirstAudio);
+    console.log(`\n  Pipeline:  Речь → [${a}ms STT] → [${b}ms AI ft] → [${c}ms TTS fa] → Звук`);
+    console.log(`  Средняя задержка: ~${a+b+c}ms`);
+
+    // Таблица по каждому тесту
+    console.log(`\n  ── ДЕТАЛИ ──`);
+    console.log(`  ${'#'.padEnd(3)} ${'TAG'.padEnd(5)} ${'REAL'.padStart(6)} ${'STT'.padStart(6)} ${'AI_ft'.padStart(6)} ${'TTS_fa'.padStart(6)} ${'TOTAL'.padStart(7)}  PHRASE`);
+    results.forEach((r, i) => {
+      console.log(`  ${String(i+1).padEnd(3)} ${(r.tag||'-').padEnd(5)} ${String(r.realLatency+'ms').padStart(6)} ${String(r.stage2ms+'ms').padStart(6)} ${String(r.aiFirstToken+'ms').padStart(6)} ${String(r.ttsFirstAudio+'ms').padStart(6)} ${String(r.total+'ms').padStart(7)}  ${r.phrase.slice(0,50)}`);
+    });
   }
 
   process.exit(0);
