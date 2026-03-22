@@ -149,7 +149,7 @@ async function routes(fastify, options) {
           filled_count = $2,
           total_count = $3,
           overall_score = $4,
-          photo_url = ${hasPhoto ? '$5' : 'photo_url'},
+          photo_url = ${hasPhoto ? '$5' : 'COALESCE($5, photo_url)'},
           employee_id = COALESCE($6, employee_id),
           user_id = COALESCE($7, user_id),
           updated_by = $8,

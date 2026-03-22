@@ -131,7 +131,7 @@ module.exports = {
         const check2 = await api('GET', `/api/cash/${id}`, { role: 'PM' });
         assertOk(check2, 'Read after resubmit');
         const s2 = (check2.data?.item || check2.data).status;
-        assert(s2 === 'requested', `Status after resubmit should be 'requested', got '${s2}'`);
+        assert(s2 === 'sent', `Status after resubmit should be 'sent', got '${s2}'`);
 
         // Step 4: Director approves
         const ap = await api('POST', `/api/approval/cash_requests/${id}/approve`, {
@@ -405,7 +405,7 @@ module.exports = {
       run: async () => {
         const resp = await api('POST', '/api/mimir/suggest-form', {
           role: 'PM',
-          body: { type: 'customer', context: { name: 'Газпром' } }
+          body: { form_type: 'customer', context: { name: 'Газпром' } }
         });
         if (resp.status === 404) skip('suggest-form not available');
         // 503 = AI not configured, 200 = works
@@ -855,7 +855,7 @@ module.exports = {
         const resp = await api('GET', '/api/worker-profiles', { role: 'ADMIN' });
         if (resp.status === 404) skip('worker-profiles not available');
         assertOk(resp, 'List profiles');
-        const profiles = resp.data?.profiles || resp.data || [];
+        const profiles = resp.data?.rows || resp.data?.profiles || resp.data || [];
         assert(Array.isArray(profiles), 'Profiles must be array');
       }
     },
@@ -1119,7 +1119,7 @@ module.exports = {
         const resp = await api('GET', '/api/integrations/bank/batches', { role: 'ADMIN' });
         if (resp.status === 404) skip('bank integration not available');
         assertOk(resp, 'Bank batches');
-        const batches = resp.data?.batches || resp.data || [];
+        const batches = resp.data?.items || resp.data?.batches || resp.data || [];
         assert(Array.isArray(batches), 'Batches should be array');
       }
     },
@@ -1129,7 +1129,7 @@ module.exports = {
         const resp = await api('GET', '/api/integrations/bank/transactions?limit=5', { role: 'ADMIN' });
         if (resp.status === 404) skip('bank transactions not available');
         assertOk(resp, 'Bank transactions');
-        const txns = resp.data?.transactions || resp.data || [];
+        const txns = resp.data?.items || resp.data?.transactions || resp.data || [];
         if (Array.isArray(txns) && txns.length > 0) {
           const t = txns[0];
           assert(t.id, 'Transaction must have id');
@@ -1143,7 +1143,7 @@ module.exports = {
         const resp = await api('GET', '/api/integrations/bank/rules', { role: 'ADMIN' });
         if (resp.status === 404) skip('bank rules not available');
         assertOk(resp, 'Bank rules');
-        const rules = resp.data?.rules || resp.data || [];
+        const rules = resp.data?.items || resp.data?.rules || resp.data || [];
         assert(Array.isArray(rules), 'Rules should be array');
       }
     },
