@@ -95,6 +95,29 @@ function grpcMetadata() {
   return md;
 }
 
+/* ── Директория для записей AudioSocket ──────────── */
+const RECORDINGS_DIR = '/var/spool/asterisk/recordings';
+try { fs.mkdirSync(RECORDINGS_DIR, { recursive: true }); } catch (_) {}
+
+/* ── WAV заголовок (PCM 16-bit mono 8kHz) ────────── */
+function makeWavHeader(dataLength) {
+  const buf = Buffer.alloc(44);
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + dataLength, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16);       // chunk size
+  buf.writeUInt16LE(1, 20);        // PCM
+  buf.writeUInt16LE(1, 22);        // mono
+  buf.writeUInt32LE(8000, 24);     // sample rate
+  buf.writeUInt32LE(16000, 28);    // byte rate (8000 * 2)
+  buf.writeUInt16LE(2, 32);        // block align
+  buf.writeUInt16LE(16, 34);       // bits per sample
+  buf.write('data', 36);
+  buf.writeUInt32LE(dataLength, 40);
+  return buf;
+}
+
 /* ── Хелпер VoiceAgent для бизнес-логики ─────────── */
 // Создаём заглушку SpeechKit — нам не нужен TTS через него,
 // но VoiceAgent требует speechKit в конструкторе
@@ -793,6 +816,10 @@ async function handleConnection(socket) {
   let destroyed = false;
   let isSpeaking = false;
 
+  // Recording: собираем все PCM-фреймы от клиента + от Фрейи
+  const recordingChunks = [];
+  let recordingStartTime = null;
+
   // STT state
   let sttStream = null;
   let isListening = false;
@@ -804,6 +831,23 @@ async function handleConnection(socket) {
     if (sttStream) { try { sttStream.end(); } catch (_) {} sttStream = null; }
     isListening = false;
     socket.destroy();
+
+    // Сохраняем запись разговора с Фрейей в WAV
+    if (recordingChunks.length > 0) {
+      try {
+        const pcmData = Buffer.concat(recordingChunks);
+        const wavHeader = makeWavHeader(pcmData.length);
+        const filename = `freya_${callerNumber}_${Date.now()}.wav`;
+        const filePath = path.join(RECORDINGS_DIR, filename);
+        fs.writeFileSync(filePath, Buffer.concat([wavHeader, pcmData]));
+        const durationSec = Math.round(pcmData.length / 2 / 8000);
+        console.log(`[AudioSocket] Recording saved: ${filename} (${durationSec}s, ${pcmData.length} bytes)`);
+        notifyCRM('recording_saved', { caller: callerNumber, uuid, path: filePath, duration: durationSec });
+      } catch (e) {
+        console.error('[AudioSocket] Failed to save recording:', e.message);
+      }
+    }
+
     console.log(`[AudioSocket] Call ended: UUID=${uuid}, caller=${callerNumber}`);
   }
 
@@ -821,6 +865,9 @@ async function handleConnection(socket) {
       const CHUNK_SIZE = 320; // 20ms @ 8kHz slin16
       let offset = 0;
       let framesSent = 0;
+
+      // Записываем исходящее аудио (голос Фрейи)
+      recordingChunks.push(Buffer.from(pcmBuffer));
 
       function sendNext() {
         if (offset >= pcmBuffer.length || destroyed || !socket.writable) {
@@ -1031,18 +1078,13 @@ async function handleConnection(socket) {
       } catch (primaryErr) {
         console.warn(`[AudioSocket] Primary AI (${voiceProvider}) failed:`, primaryErr.message);
         try {
-          if (voiceProvider === 'yandexgpt') {
-            console.log('[AudioSocket] Fallback: Claude Haiku Direct');
-            streamParser = callClaudeHaikuStream(systemPrompt, userPrompt);
-          } else {
-            console.log('[AudioSocket] Fallback: aiProvider (routerai)');
-            const streamResponse = await aiProvider.stream({
-              system: systemPrompt,
-              messages: [{ role: 'user', content: userPrompt }],
-              maxTokens: 300, temperature: 0.3, model: VOICE_AI_MODEL
-            });
-            streamParser = aiProvider.parseStream(streamResponse);
-          }
+          console.log('[AudioSocket] Fallback: aiProvider (routerai, ' + VOICE_AI_MODEL + ')');
+          const streamResponse = await aiProvider.stream({
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+            maxTokens: 300, temperature: 0.3, model: VOICE_AI_MODEL
+          });
+          streamParser = aiProvider.parseStream(streamResponse);
         } catch (fallbackErr) {
           console.error('[AudioSocket] All AI providers failed:', fallbackErr.message);
           isSpeaking = false;
@@ -1073,6 +1115,8 @@ async function handleConnection(socket) {
             if (!firstAudioTime) firstAudioTime = Date.now();
             const buf = Buffer.from(r.audioChunk.data);
             totalAudioBytes += buf.length;
+            // Записываем исходящее аудио (голос Фрейи — streaming TTS)
+            recordingChunks.push(Buffer.from(buf));
             const CHUNK_SIZE = 320;
             for (let i = 0; i < buf.length; i += CHUNK_SIZE) {
               const chunk = buf.slice(i, Math.min(i + CHUNK_SIZE, buf.length));
@@ -1333,9 +1377,15 @@ async function handleConnection(socket) {
         });
       }
 
-      // Аудио → STT (только когда слушаем и AI не говорит)
-      if (frame.type === AS_TYPE_AUDIO && sttStream && isListening && !isSpeaking) {
-        try { sttStream.write({ chunk: { data: frame.payload } }); } catch (_) {}
+      // Аудио → STT (только когда слушаем и AI не говорит) + запись
+      if (frame.type === AS_TYPE_AUDIO) {
+        // Записываем ВСЕ входящие фреймы (голос клиента)
+        if (!recordingStartTime) recordingStartTime = Date.now();
+        recordingChunks.push(Buffer.from(frame.payload));
+
+        if (sttStream && isListening && !isSpeaking) {
+          try { sttStream.write({ chunk: { data: frame.payload } }); } catch (_) {}
+        }
       }
 
       // Hangup
@@ -1570,7 +1620,7 @@ server.listen(AUDIOSOCKET_PORT, '127.0.0.1', () => {
   console.log(`  Port: ${AUDIOSOCKET_PORT}`);
   console.log(`  STT:  SpeechKit v3 gRPC streaming`);
   console.log(`  TTS:  SpeechKit v3 gRPC streaming (dasha/friendly)`);
-  console.log(`  AI:   ${process.env.VOICE_AI_PROVIDER || 'yandexgpt'} (primary) → Claude Haiku (fallback)`);
+  console.log(`  AI:   ${process.env.VOICE_AI_PROVIDER || 'yandexgpt'} (primary) → routerai/${VOICE_AI_MODEL} (fallback)`);
   console.log(`${'═'.repeat(60)}\n`);
 });
 
