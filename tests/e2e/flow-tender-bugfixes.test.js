@@ -109,7 +109,7 @@ module.exports = {
           body: { status: 'expired' }
         });
 
-        const renew = await api('POST', `/api/pre-tenders/${ptId}/renew`, { role: 'ADMIN' });
+        const renew = await api('POST', `/api/pre-tenders/${ptId}/renew`, { role: 'ADMIN', body: {} });
         assertOk(renew, 'renew');
         const status = renew.data?.item?.status;
         assert(status === 'new', `status after renew should be 'new', got '${status}'`);
