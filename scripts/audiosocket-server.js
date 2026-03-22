@@ -43,6 +43,7 @@ const CRM_HTTP_PORT = parseInt(process.env.PORT || '3000', 10);
 const YANDEX_API_KEY = process.env.YANDEX_SPEECHKIT_API_KEY || '';
 const YANDEX_FOLDER_ID = process.env.YANDEX_SPEECHKIT_FOLDER_ID || process.env.YANDEX_FOLDER_ID || '';
 const VOICE_AI_MODEL = process.env.VOICE_AI_MODEL || 'google/gemini-2.5-flash-lite';
+const YANDEX_GPT_KEY = process.env.YANDEX_GPT_API_KEY || YANDEX_API_KEY; // отдельный ключ для GPT
 const MAX_TURNS = 8;
 
 /* ── gRPC ──────────────────────────────────────────── */
@@ -623,18 +624,17 @@ function detectIntentByKeywords(text, context, pendingRoute) {
 }
 
 /* ══════════════════════════════════════════════════════
-   YandexGPT Lite + Claude Haiku Direct (streaming)
+   YandexGPT Pro (streaming) — primary AI
    ══════════════════════════════════════════════════════ */
 
 const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
 async function* callYandexGPTStream(systemPrompt, userMessage) {
   const folderId = process.env.YANDEX_SPEECHKIT_FOLDER_ID || process.env.YANDEX_FOLDER_ID || '';
-  const apiKey = process.env.YANDEX_SPEECHKIT_API_KEY || '';
-  if (!folderId || !apiKey) throw new Error('Yandex credentials not configured');
+  if (!folderId || !YANDEX_GPT_KEY) throw new Error('Yandex GPT credentials not configured');
 
   const body = JSON.stringify({
-    modelUri: `gpt://${folderId}/yandexgpt-lite/latest`,
+    modelUri: `gpt://${folderId}/yandexgpt/latest`,
     completionOptions: {
       stream: true,
       temperature: 0.3,
@@ -650,7 +650,7 @@ async function* callYandexGPTStream(systemPrompt, userMessage) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Api-Key ${apiKey}`,
+      'Authorization': `Api-Key ${YANDEX_GPT_KEY}`,
       'x-folder-id': folderId
     },
     body
@@ -1061,7 +1061,7 @@ async function handleConnection(socket) {
 
       try {
         if (voiceProvider === 'yandexgpt') {
-          console.log('[AudioSocket] AI: YandexGPT Lite');
+          console.log('[AudioSocket] AI: YandexGPT Pro');
           streamParser = callYandexGPTStream(systemPrompt, userPrompt);
         } else if (voiceProvider === 'claude') {
           console.log('[AudioSocket] AI: Claude Haiku Direct');
@@ -1620,7 +1620,7 @@ server.listen(AUDIOSOCKET_PORT, '127.0.0.1', () => {
   console.log(`  Port: ${AUDIOSOCKET_PORT}`);
   console.log(`  STT:  SpeechKit v3 gRPC streaming`);
   console.log(`  TTS:  SpeechKit v3 gRPC streaming (dasha/friendly)`);
-  console.log(`  AI:   ${process.env.VOICE_AI_PROVIDER || 'yandexgpt'} (primary) → routerai/${VOICE_AI_MODEL} (fallback)`);
+  console.log(`  AI:   YandexGPT Pro (primary) → routerai/${VOICE_AI_MODEL} (fallback)`);
   console.log(`${'═'.repeat(60)}\n`);
 });
 
