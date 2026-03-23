@@ -29,7 +29,7 @@ test.describe('Negative Access Control', () => {
     const errors = h.setupConsoleCollector(page);
 
     await h.loginAs(page, 'HR');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const createBtn = page.locator('button:has-text("Создать"), button:has-text("Новая работа"), button:has-text("Добавить")');
@@ -66,7 +66,7 @@ test.describe('Negative Access Control', () => {
     const errors = h.setupConsoleCollector(page);
 
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     // WAREHOUSE should not be able to create work expenses
@@ -83,7 +83,7 @@ test.describe('Negative Access Control', () => {
     const errors = h.setupConsoleCollector(page);
 
     await h.loginAs(page, 'PROC');
-    await h.navigateTo(page, 'employees');
+    await h.navigateTo(page, 'personnel');
     await h.waitForPageLoad(page);
 
     const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить сотрудника"), button:has-text("Новый сотрудник")');
@@ -157,7 +157,7 @@ test.describe('Negative Access Control', () => {
     const errors = h.setupConsoleCollector(page);
 
     await h.loginAs(page, 'HR');
-    await h.navigateTo(page, 'users');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     // HR may not even have access to users management
@@ -182,7 +182,7 @@ test.describe('Negative Access Control', () => {
     const errors = h.setupConsoleCollector(page);
 
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // WAREHOUSE can see equipment but cannot write it off

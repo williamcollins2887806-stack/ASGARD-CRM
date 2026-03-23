@@ -67,7 +67,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
     const errors = h.setupConsoleCollector(page);
 
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'estimates');
+    await h.navigateTo(page, 'all-estimates');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -153,7 +153,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
     const errors = h.setupConsoleCollector(page);
 
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -292,7 +292,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
     const errors = h.setupConsoleCollector(page);
 
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -318,7 +318,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
     const urlAfter = page.url();
     // If assembly is not a standalone page, try assemblies
     if (!urlAfter.includes('assembly')) {
-      await h.navigateTo(page, 'assemblies');
+      await h.navigateTo(page, 'assembly');
       await h.waitForPageLoad(page);
     }
 
@@ -497,7 +497,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
 
     const urlAfter = page.url();
     if (!urlAfter.includes('correspondence')) {
-      await h.navigateTo(page, 'letters');
+      await h.navigateTo(page, 'correspondence');
       await h.waitForPageLoad(page);
     }
 
@@ -697,7 +697,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
     const errors = h.setupConsoleCollector(page);
 
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -753,7 +753,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
     await h.loginAs(page, 'ADMIN');
 
     // Check key pages all have non-trivial content
-    const pagesToCheck = ['tenders', 'works', 'invoices', 'acts', 'cash'];
+    const pagesToCheck = ['tenders', 'pm-works', 'invoices', 'acts', 'cash'];
     for (const pg of pagesToCheck) {
       await h.navigateTo(page, pg);
       await h.waitForPageLoad(page);
@@ -794,8 +794,8 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
     await h.loginAs(page, 'ADMIN');
 
     const sweep = [
-      'home', 'tenders', 'works', 'estimates', 'acts',
-      'invoices', 'cash', 'procurement', 'equipment', 'personnel'
+      'home', 'tenders', 'pm-works', 'all-estimates', 'acts',
+      'invoices', 'cash', 'procurement', 'warehouse', 'personnel'
     ];
     for (const pg of sweep) {
       await h.navigateTo(page, pg);

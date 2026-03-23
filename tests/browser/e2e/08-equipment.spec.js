@@ -19,7 +19,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('1. TO cannot create equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'TO');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить"), button:has-text("+ Новое")');
@@ -32,7 +32,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('2. WAREHOUSE creates equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     equipmentName = `E2E_Оборудование_${TS}`;
@@ -92,7 +92,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('3. Equipment details visible', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const row = page.locator('table tbody tr, .card[data-id], .list-item[data-id], [data-id]').first();
@@ -111,7 +111,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('4. WAREHOUSE can view equipment list', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     await h.expectListNotEmpty(page);
@@ -122,7 +122,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('5. Issue equipment to holder', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Open first equipment item
@@ -167,7 +167,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('6. Equipment shows issued status', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const bodyText = await page.textContent('body');
@@ -191,7 +191,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('7. Return equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Open first item
@@ -228,7 +228,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('8. Create maintenance record', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Open first equipment item
@@ -273,7 +273,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('9. Complete repair', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Open first equipment item
@@ -309,7 +309,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('10. Equipment back on warehouse', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const bodyText = await page.textContent('body');
@@ -332,7 +332,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('11. Movement history tab', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Open first equipment item
@@ -360,7 +360,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('12. PM cannot write off equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Open first equipment item
@@ -382,7 +382,7 @@ test.describe.serial('Equipment Maintenance Flow', () => {
   test('13. DIRECTOR_GEN can write off equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'DIRECTOR_GEN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Open first equipment item
@@ -410,7 +410,7 @@ test.describe('Equipment Premium Features', () => {
   test('14. Equipment page loads for ADMIN', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const bodyText = await page.textContent('body');
@@ -422,7 +422,7 @@ test.describe('Equipment Premium Features', () => {
   test('15. Equipment categories filter visible', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const catFilter = page.locator(
@@ -437,7 +437,7 @@ test.describe('Equipment Premium Features', () => {
   test('16. Equipment warehouses filter visible', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const warehouseFilter = page.locator(
@@ -452,7 +452,7 @@ test.describe('Equipment Premium Features', () => {
   test('17. Equipment list shows items', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     await h.expectListNotEmpty(page);
@@ -463,7 +463,7 @@ test.describe('Equipment Premium Features', () => {
   test('18. Equipment stats section visible', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const bodyText = await page.textContent('body');
@@ -482,7 +482,7 @@ test.describe('Equipment Premium Features', () => {
   test('19. Equipment kits visible', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const kitsTab = page.locator(
@@ -502,7 +502,7 @@ test.describe('Equipment Premium Features', () => {
   test('20. Card view toggle works', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const viewToggle = page.locator(
@@ -522,7 +522,7 @@ test.describe('Equipment Premium Features', () => {
   test('21. Equipment grouping by status', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const bodyText = await page.textContent('body');
@@ -543,7 +543,7 @@ test.describe('Equipment Premium Features', () => {
   test('22. Status badges displayed', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const badges = page.locator('.badge, .status-badge, [class*="badge"], [class*="status"]');
@@ -558,7 +558,7 @@ test.describe('Equipment Premium Features', () => {
   test('23. Detail modal opens', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const row = page.locator('table tbody tr, .card[data-id], .list-item[data-id], [data-id]').first();
@@ -577,7 +577,7 @@ test.describe('Equipment Premium Features', () => {
   test('24. Detail modal Info tab', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const row = page.locator('table tbody tr, .card[data-id], .list-item[data-id], [data-id]').first();
@@ -604,7 +604,7 @@ test.describe('Equipment Premium Features', () => {
   test('25. Detail modal Movements tab', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const row = page.locator('table tbody tr, .card[data-id], .list-item[data-id], [data-id]').first();
@@ -630,7 +630,7 @@ test.describe('Equipment Premium Features', () => {
   test('26. Detail modal Maintenance tab', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const row = page.locator('table tbody tr, .card[data-id], .list-item[data-id], [data-id]').first();
@@ -656,7 +656,7 @@ test.describe('Equipment Premium Features', () => {
   test('27. Search by name works', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const searchField = page.locator(
@@ -676,7 +676,7 @@ test.describe('Equipment Premium Features', () => {
   test('28. Search by inventory number', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const searchField = page.locator(
@@ -696,7 +696,7 @@ test.describe('Equipment Premium Features', () => {
   test('29. Filter by status: active', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const statusFilter = page.locator(
@@ -725,7 +725,7 @@ test.describe('Equipment Premium Features', () => {
   test('30. Filter by status: in repair', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const statusFilter = page.locator(
@@ -753,7 +753,7 @@ test.describe('Equipment Premium Features', () => {
   test('31. Filter by category', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const catFilter = page.locator(
@@ -776,7 +776,7 @@ test.describe('Equipment Premium Features', () => {
   test('32. Filter combination works', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Apply status filter
@@ -808,7 +808,7 @@ test.describe('Equipment Premium Features', () => {
   test('33. Clear filters works', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Apply a filter first
@@ -839,7 +839,7 @@ test.describe('Equipment Premium Features', () => {
   test('34. Work Equipment Modal opens', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Try to open "Оборудование работы" modal if button exists
@@ -863,7 +863,7 @@ test.describe('Equipment Premium Features', () => {
   test('35. Work Equipment Modal shows items', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const workEqBtn = page.locator(
@@ -887,7 +887,7 @@ test.describe('Equipment Premium Features', () => {
   test('36. Kit detail view', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Navigate to kits tab if present
@@ -914,7 +914,7 @@ test.describe('Equipment Premium Features', () => {
   test('37. Kit components list', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Navigate to kits tab
@@ -950,7 +950,7 @@ test.describe('Equipment Premium Features', () => {
   test('38. ADMIN sees all equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     await h.expectListNotEmpty(page);
@@ -961,7 +961,7 @@ test.describe('Equipment Premium Features', () => {
   test('39. PM sees equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const bodyText = await page.textContent('body');
@@ -973,7 +973,7 @@ test.describe('Equipment Premium Features', () => {
   test('40. WAREHOUSE sees equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     await h.expectListNotEmpty(page);
@@ -984,7 +984,7 @@ test.describe('Equipment Premium Features', () => {
   test('41. TO sees equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'TO');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const bodyText = await page.textContent('body');
@@ -996,7 +996,7 @@ test.describe('Equipment Premium Features', () => {
   test('42. Empty search shows no results', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const searchField = page.locator(
@@ -1053,7 +1053,7 @@ test.describe('Equipment Premium Features', () => {
   test('44. Re-issue equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const token = await h.getToken(page, 'WAREHOUSE');
@@ -1104,7 +1104,7 @@ test.describe('Equipment Premium Features', () => {
   test('45. Equipment pagination works', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const nextBtn = page.locator(
@@ -1124,7 +1124,7 @@ test.describe('Equipment Premium Features', () => {
   test('46. Pagination limit selector', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const limitSelect = page.locator(
@@ -1147,7 +1147,7 @@ test.describe('Equipment Premium Features', () => {
   test('47. Equipment list refreshes after create', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Count rows before
@@ -1179,7 +1179,7 @@ test.describe('Equipment Premium Features', () => {
   test('48. Equipment edit works', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Open first item
@@ -1217,7 +1217,7 @@ test.describe('Equipment Premium Features', () => {
   test('49. Equipment export button', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const exportBtn = page.locator(
@@ -1233,7 +1233,7 @@ test.describe('Equipment Premium Features', () => {
   test('50. Equipment print button', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const printBtn = page.locator(
@@ -1248,7 +1248,7 @@ test.describe('Equipment Premium Features', () => {
   test('51. Equipment filter by object', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const objectFilter = page.locator(
@@ -1274,7 +1274,7 @@ test.describe('Equipment Premium Features', () => {
   test('52. Equipment list column sorting', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     // Click a sortable column header
@@ -1298,7 +1298,7 @@ test.describe('Equipment Premium Features', () => {
     const errors = h.setupConsoleCollector(page);
     await page.setViewportSize({ width: 375, height: 812 });
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const bodyText = await page.textContent('body');
@@ -1315,7 +1315,7 @@ test.describe('Equipment Premium Features', () => {
     await h.loginAs(page, 'ADMIN');
 
     const start = Date.now();
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
     const elapsed = Date.now() - start;
 
@@ -1327,7 +1327,7 @@ test.describe('Equipment Premium Features', () => {
   test('55. Cleanup: delete test equipment', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const token = await h.getToken(page, 'ADMIN');
@@ -1363,7 +1363,7 @@ test.describe('Equipment Premium Features', () => {
     // Walk through the page as three different roles and confirm no JS errors
     for (const role of ['ADMIN', 'WAREHOUSE', 'PM']) {
       await h.loginAs(page, role);
-      await h.navigateTo(page, 'equipment');
+      await h.navigateTo(page, 'warehouse');
       await h.waitForPageLoad(page);
 
       const bodyText = await page.textContent('body');

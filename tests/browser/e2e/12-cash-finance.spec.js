@@ -144,7 +144,7 @@ test('Finance page loads and shows data', async ({ page }) => {
   const errors = h.setupConsoleCollector(page);
 
   await h.loginAs(page, 'PM');
-  await h.navigateTo(page, 'finance');
+  await h.navigateTo(page, 'finances');
   await h.waitForPageLoad(page);
 
   // Verify the page rendered meaningful content

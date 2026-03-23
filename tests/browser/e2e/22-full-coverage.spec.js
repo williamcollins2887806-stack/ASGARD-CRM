@@ -17,7 +17,7 @@ test.describe('Approval Chains', () => {
   test('Works page loads for PM', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
     const body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
@@ -27,7 +27,7 @@ test.describe('Approval Chains', () => {
   test('Approval button visible on works page', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     // Open the first work item to look for approval controls
@@ -54,7 +54,7 @@ test.describe('Approval Chains', () => {
   test('Submit for approval opens dialog', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const row = page.locator('tbody tr, .work-row, .work-card').first();
@@ -88,7 +88,7 @@ test.describe('Approval Chains', () => {
   test('Approval chain status visible', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const row = page.locator('tbody tr, .work-row, .work-card').first();
@@ -114,7 +114,7 @@ test.describe('Approval Chains', () => {
   test('Approval chain history', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const row = page.locator('tbody tr, .work-row, .work-card').first();
@@ -172,7 +172,7 @@ test.describe('Approval Chains', () => {
   test('Approval chain works for ADMIN', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
     const body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
@@ -218,7 +218,7 @@ test.describe('MIMIR Hints System', () => {
   test('Works page hints', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
     const body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
@@ -229,7 +229,7 @@ test.describe('MIMIR Hints System', () => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'BUH');
     // Try several possible finance page names
-    await h.navigateTo(page, 'finance');
+    await h.navigateTo(page, 'finances');
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('finance')) {
@@ -244,7 +244,7 @@ test.describe('MIMIR Hints System', () => {
   test('Equipment page hints', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
     const body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
@@ -568,7 +568,7 @@ test.describe('Employee Collections', () => {
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('collections')) {
-      await h.navigateTo(page, 'employee_collections');
+      await h.navigateTo(page, 'collections');
       await h.waitForPageLoad(page);
     }
     const body = await page.textContent('body');
@@ -583,7 +583,7 @@ test.describe('Employee Collections', () => {
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('collections')) {
-      await h.navigateTo(page, 'employee_collections');
+      await h.navigateTo(page, 'collections');
       await h.waitForPageLoad(page);
     }
 
@@ -604,7 +604,7 @@ test.describe('Employee Collections', () => {
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('collections')) {
-      await h.navigateTo(page, 'employee_collections');
+      await h.navigateTo(page, 'collections');
       await h.waitForPageLoad(page);
     }
 
@@ -638,7 +638,7 @@ test.describe('Employee Collections', () => {
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('collections')) {
-      await h.navigateTo(page, 'employee_collections');
+      await h.navigateTo(page, 'collections');
       await h.waitForPageLoad(page);
     }
 
@@ -671,7 +671,7 @@ test.describe('Employee Collections', () => {
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('collections')) {
-      await h.navigateTo(page, 'employee_collections');
+      await h.navigateTo(page, 'collections');
       await h.waitForPageLoad(page);
     }
     const body = await page.textContent('body');
@@ -686,7 +686,7 @@ test.describe('Employee Collections', () => {
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('collections')) {
-      await h.navigateTo(page, 'employee_collections');
+      await h.navigateTo(page, 'collections');
       await h.waitForPageLoad(page);
     }
 
@@ -716,11 +716,11 @@ test.describe('Stories Feed', () => {
   test('Stories/feed page loads', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'feed');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('feed') && !urlAfter.includes('stories')) {
-      await h.navigateTo(page, 'stories');
+      await h.navigateTo(page, 'alerts');
       await h.waitForPageLoad(page);
     }
     const body = await page.textContent('body');
@@ -731,11 +731,11 @@ test.describe('Stories Feed', () => {
   test('Post story button visible', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'feed');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('feed') && !urlAfter.includes('stories')) {
-      await h.navigateTo(page, 'stories');
+      await h.navigateTo(page, 'alerts');
       await h.waitForPageLoad(page);
     }
 
@@ -752,11 +752,11 @@ test.describe('Stories Feed', () => {
   test('Story feed shows content', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'feed');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('feed') && !urlAfter.includes('stories')) {
-      await h.navigateTo(page, 'stories');
+      await h.navigateTo(page, 'alerts');
       await h.waitForPageLoad(page);
     }
     const body = await page.textContent('body');
@@ -767,11 +767,11 @@ test.describe('Stories Feed', () => {
   test('Comment on story', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'feed');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('feed') && !urlAfter.includes('stories')) {
-      await h.navigateTo(page, 'stories');
+      await h.navigateTo(page, 'alerts');
       await h.waitForPageLoad(page);
     }
 
@@ -798,11 +798,11 @@ test.describe('Stories Feed', () => {
   test('React to story', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'feed');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('feed') && !urlAfter.includes('stories')) {
-      await h.navigateTo(page, 'stories');
+      await h.navigateTo(page, 'alerts');
       await h.waitForPageLoad(page);
     }
 
@@ -830,7 +830,7 @@ test.describe('Geo and Objects', () => {
   test('Objects page loads', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'sites');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
     const body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
@@ -840,7 +840,7 @@ test.describe('Geo and Objects', () => {
   test('Objects list not empty', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'sites');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     const token = await h.getToken(page, 'ADMIN');
@@ -857,7 +857,7 @@ test.describe('Geo and Objects', () => {
   test('Object detail shows coordinates', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'sites');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     const row = page.locator('tbody tr, .site-card, .object-item, [data-id]').first();
@@ -884,12 +884,12 @@ test.describe('Geo and Objects', () => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
     // Try map page if it exists separately
-    await h.navigateTo(page, 'map');
+    await h.navigateTo(page, 'object-map');
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('map')) {
       // Map may be embedded inside sites page
-      await h.navigateTo(page, 'sites');
+      await h.navigateTo(page, 'home');
       await h.waitForPageLoad(page);
     }
     const body = await page.textContent('body');
@@ -900,7 +900,7 @@ test.describe('Geo and Objects', () => {
   test('Object filter works', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'sites');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     // Use search or filter if available
@@ -987,7 +987,7 @@ test.describe('Push Notifications', () => {
       await page.keyboard.press('Escape');
     } else {
       // Try navigating directly to notifications page
-      await h.navigateTo(page, 'notifications');
+      await h.navigateTo(page, 'alerts');
       await h.waitForPageLoad(page);
       const body = await page.textContent('body');
       expect(body.length).toBeGreaterThan(50);
@@ -998,7 +998,7 @@ test.describe('Push Notifications', () => {
   test('Mark notification as read', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'notifications');
+    await h.navigateTo(page, 'alerts');
     await h.waitForPageLoad(page);
 
     const notifRow = page.locator(
@@ -1053,7 +1053,7 @@ test.describe('File Management', () => {
   test('File upload button visible on works', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     // Open first work to see file upload
@@ -1104,7 +1104,7 @@ test.describe('File Management', () => {
   test('Uploaded files list visible', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const row = page.locator('tbody tr, .work-row, .work-card').first();
@@ -1134,7 +1134,7 @@ test.describe('File Management', () => {
   test('File download link works', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const row = page.locator('tbody tr, .work-row').first();
@@ -1169,7 +1169,7 @@ test.describe('File Management', () => {
   test('File size limit shown', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const row = page.locator('tbody tr, .work-row').first();
@@ -1195,7 +1195,7 @@ test.describe('File Management', () => {
   test('File type validation', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const row = page.locator('tbody tr, .work-row').first();
@@ -1224,7 +1224,7 @@ test.describe('File Management', () => {
     await h.loginAs(page, 'ADMIN');
 
     // Navigate through pages known to have file attachments
-    const pages = ['works', 'tenders', 'acts'];
+    const pages = ['pm-works', 'tenders', 'acts'];
     for (const pg of pages) {
       await h.navigateTo(page, pg);
       await h.waitForPageLoad(page);
@@ -1369,11 +1369,11 @@ test.describe('Inbox and AI Applications', () => {
   test('Inbox page loads', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'inbox');
+    await h.navigateTo(page, 'inbox-applications');
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('inbox')) {
-      await h.navigateTo(page, 'applications');
+      await h.navigateTo(page, 'inbox-applications');
       await h.waitForPageLoad(page);
     }
     const body = await page.textContent('body');
@@ -1384,7 +1384,7 @@ test.describe('Inbox and AI Applications', () => {
   test('Applications list visible', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'inbox');
+    await h.navigateTo(page, 'inbox-applications');
     await h.waitForPageLoad(page);
     const urlAfter = page.url();
     if (!urlAfter.includes('inbox')) {
@@ -1553,7 +1553,7 @@ test.describe('Inbox and AI Applications', () => {
     await h.loginAs(page, 'ADMIN');
 
     // Navigate through inbox-related pages
-    const inboxPages = ['inbox', 'pre-tenders', 'notifications'];
+    const inboxPages = ['inbox-applications', 'pre-tenders', 'alerts'];
     for (const pg of inboxPages) {
       await h.navigateTo(page, pg);
       await h.waitForPageLoad(page);
