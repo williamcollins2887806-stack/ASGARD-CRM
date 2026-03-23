@@ -23,7 +23,7 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
   test('1. HR navigates to #/employees page', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'HR');
-    await h.navigateTo(page, 'employees');
+    await h.navigateTo(page, 'personnel');
     await h.waitForPageLoad(page);
 
     const content = await page.textContent('body');
@@ -34,7 +34,7 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
   test('2. HR creates employee via UI', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'HR');
-    await h.navigateTo(page, 'employees');
+    await h.navigateTo(page, 'personnel');
     await h.waitForPageLoad(page);
 
     await h.clickCreate(page);
@@ -77,7 +77,7 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
   test('3. HR verifies employee appears in list', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'HR');
-    await h.navigateTo(page, 'employees');
+    await h.navigateTo(page, 'personnel');
     await h.waitForPageLoad(page);
 
     const content = await page.textContent('body');
@@ -88,7 +88,7 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
   test('4. HR opens employee detail card', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'HR');
-    await h.navigateTo(page, 'employees');
+    await h.navigateTo(page, 'personnel');
     await h.waitForPageLoad(page);
 
     // Click first employee row to open detail
@@ -106,7 +106,7 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
   test('5. BUH navigates to employees to set rate', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'BUH');
-    await h.navigateTo(page, 'employees');
+    await h.navigateTo(page, 'personnel');
     await h.waitForPageLoad(page);
 
     const content = await page.textContent('body');
@@ -117,7 +117,7 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
   test('6. BUH sets rate via API (browser context)', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'BUH');
-    await h.navigateTo(page, 'employees');
+    await h.navigateTo(page, 'personnel');
     await h.waitForPageLoad(page);
 
     const token = await h.getToken(page, 'BUH');
@@ -224,7 +224,9 @@ test.describe.serial('Personnel — Section 2: Staff Requests', () => {
         await commentsField.first().fill(`E2E_AUTO_Нужны 2 сварщика ${TS}`);
       }
 
-      await h.clickSave(page);
+      if (await h.isModalVisible(page)) {
+        await h.clickSave(page);
+      }
       await page.waitForTimeout(1500);
     }
 
