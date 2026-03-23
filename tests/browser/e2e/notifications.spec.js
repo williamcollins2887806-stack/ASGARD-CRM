@@ -48,7 +48,7 @@ test.describe('Notifications', () => {
       }
 
       // Navigate to notifications page and verify
-      await h.navigateTo(page, 'notifications');
+      await h.navigateTo(page, 'alerts');
       await h.waitForPageLoad(page);
 
       const body = await page.textContent('body');
@@ -93,7 +93,7 @@ test.describe('Notifications', () => {
 
       // Login as PM and check notifications
       await h.loginAs(page, 'PM');
-      await h.navigateTo(page, 'notifications');
+      await h.navigateTo(page, 'alerts');
       await h.waitForPageLoad(page);
 
       const body = await page.textContent('body');
@@ -136,7 +136,7 @@ test.describe('Notifications', () => {
     }
 
     // Verify notification endpoint works (via navigating to notifications)
-    await h.navigateTo(page, 'notifications');
+    await h.navigateTo(page, 'alerts');
     await h.waitForPageLoad(page);
 
     const notifBody = await page.textContent('body');
@@ -148,7 +148,7 @@ test.describe('Notifications', () => {
   test('NOTIF-04: Notification CRUD — click, mark read, delete', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'notifications');
+    await h.navigateTo(page, 'alerts');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');

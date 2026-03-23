@@ -554,7 +554,7 @@ test.describe.serial('S4: Equipment from Procurement', () => {
   test('32 — Equipment page shows items in UI', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await page.waitForTimeout(1500);
 
     const rows = page.locator('table tbody tr, .card[data-id], .equipment-card, [data-id]');
@@ -567,7 +567,7 @@ test.describe.serial('S4: Equipment from Procurement', () => {
   test('33 — Equipment detail opens in UI', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'WAREHOUSE');
-    await h.navigateTo(page, 'equipment');
+    await h.navigateTo(page, 'warehouse');
     await page.waitForTimeout(1500);
 
     const row = page.locator('table tbody tr, .card[data-id], .equipment-card').first();

@@ -146,7 +146,7 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
   test('7. PM navigates to #/works page', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const content = await page.textContent('body');
@@ -157,7 +157,7 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
   test('8. PM creates work via UI', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить"), button:has-text("+")').first();
@@ -324,7 +324,7 @@ test.describe.serial('Personnel — Section 3: Assignments + Calendar', () => {
   test('15. PM navigates to #/works and opens a work', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const row = page.locator('table tbody tr, .card[data-id], .list-item').first();

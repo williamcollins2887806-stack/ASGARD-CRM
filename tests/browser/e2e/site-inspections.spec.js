@@ -11,7 +11,7 @@ test.describe('Site Inspections', () => {
   test('INSP-01: PM creates site inspection, fills fields, saves, verifies transitions', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'site_inspections');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -65,7 +65,7 @@ test.describe('Site Inspections', () => {
     }
 
     // Verify list updated
-    await h.navigateTo(page, 'site_inspections');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     // Open first row and check transitions
@@ -91,7 +91,7 @@ test.describe('Site Inspections', () => {
   test('INSP-02: Rejection & re-send cycle', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'site_inspections');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     // Open an inspection
@@ -148,7 +148,7 @@ test.describe('Site Inspections', () => {
     // Note: OFFICE_MANAGER is not in test accounts, so we use ADMIN to verify access control
     // If OFFICE_MANAGER account doesn't exist, we verify the page at least loads
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'site_inspections');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -165,7 +165,7 @@ test.describe('Site Inspections', () => {
 
     // Now test with a restricted role — HR should not be able to create inspections
     await h.loginAs(page, 'HR');
-    await h.navigateTo(page, 'site_inspections');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     // HR might not see create button or might be redirected
@@ -186,7 +186,7 @@ test.describe('Site Inspections', () => {
   test('INSP-04: PDF download — click PDF button, verify no error', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'site_inspections');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     // Open first inspection

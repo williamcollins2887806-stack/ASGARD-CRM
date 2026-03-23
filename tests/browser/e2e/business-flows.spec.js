@@ -209,7 +209,7 @@ test.describe('Business Flows — Core', () => {
   test('BIZ-09: Work with expenses', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -245,7 +245,7 @@ test.describe('Business Flows — Core', () => {
   test('BIZ-12: Notifications page', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'notifications');
+    await h.navigateTo(page, 'alerts');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -275,7 +275,7 @@ test.describe('Business Flows — Core', () => {
   test('BIZ-14: Sites management', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'sites');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -317,13 +317,13 @@ test.describe('Business Flows — Complete Scenarios', () => {
     expect(tendersBody.length).toBeGreaterThan(100);
 
     // Step 2: Navigate to works
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
     const worksBody = await page.textContent('body');
     expect(worksBody.length).toBeGreaterThan(50);
 
     // Step 3: Navigate to estimates
-    await h.navigateTo(page, 'estimates');
+    await h.navigateTo(page, 'all-estimates');
     await h.waitForPageLoad(page);
 
     // Step 4: Navigate to acts
@@ -454,14 +454,14 @@ test.describe('Business Flows — Complete Scenarios', () => {
   test('COMPLETE-06: Work with office expense', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
 
     // Navigate to expenses
-    await h.navigateTo(page, 'expenses');
+    await h.navigateTo(page, 'office-expenses');
     await h.waitForPageLoad(page);
     const expBody = await page.textContent('body');
     expect(expBody.length).toBeGreaterThan(50);
@@ -472,7 +472,7 @@ test.describe('Business Flows — Complete Scenarios', () => {
   test('COMPLETE-07: User CRUD (ADMIN)', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'users');
+    await h.navigateTo(page, 'settings');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -552,19 +552,19 @@ test.describe('Business Flows — Deep Integration', () => {
     await h.loginAs(page, 'PM');
 
     // Works page
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
     let body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
 
     // Expenses page
-    await h.navigateTo(page, 'expenses');
+    await h.navigateTo(page, 'office-expenses');
     await h.waitForPageLoad(page);
     body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
 
     // Income page
-    await h.navigateTo(page, 'income');
+    await h.navigateTo(page, 'finances');
     await h.waitForPageLoad(page);
     body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
@@ -642,7 +642,7 @@ test.describe('Business Flows — Deep Integration', () => {
     const siteName = 'PW Site CRUD ' + TS();
 
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'sites');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
 
     // Create site
@@ -665,7 +665,7 @@ test.describe('Business Flows — Deep Integration', () => {
     }
 
     // Verify page accessible (route /sites may redirect to home if not configured)
-    await h.navigateTo(page, 'sites');
+    await h.navigateTo(page, 'home');
     await h.waitForPageLoad(page);
     const body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(100);

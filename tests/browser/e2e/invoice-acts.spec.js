@@ -15,7 +15,7 @@ test.describe.serial('Invoice, Payment & Act Flow', () => {
   test('INV-01: PM creates work via UI (setup)', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'PM');
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
     workTitle = 'PW Work ' + TS();
@@ -389,7 +389,7 @@ test.describe.serial('Invoice, Payment & Act Flow', () => {
     body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
 
-    await h.navigateTo(page, 'works');
+    await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
     body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
