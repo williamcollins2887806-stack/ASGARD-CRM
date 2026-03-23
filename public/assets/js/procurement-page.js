@@ -173,7 +173,7 @@ window.AsgardProcurementPage = (function() {
     html += `<div style="margin-top:var(--sp-3)"><textarea id="proc-comment" rows="2" placeholder="Комментарий..." style="width:100%;padding:var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm);font-size:13px;resize:vertical"></textarea></div>`;
     html += `</div>`;
 
-    showModal(html, { title: `Заявка #${p.id}`, width: '900px' });
+    showModal({ title: `Заявка #${p.id}`, html: html });
 
     // Handlers
     document.querySelectorAll('.proc-detail__actions [data-action]').forEach(btn => {
@@ -269,7 +269,7 @@ window.AsgardProcurementPage = (function() {
       </div>
     </div>`;
 
-    showModal(html, { title: 'Приёмка заявки #' + procId, width: '560px' });
+    showModal({ title: 'Приёмка заявки #' + procId, html: html });
 
     // Toggle selection
     document.querySelectorAll('.proc-deliver-card').forEach(card => {
@@ -395,7 +395,7 @@ window.AsgardProcurementPage = (function() {
       <label>Примечание<textarea id="pc-notes" rows="3"></textarea></label>
       <button class="btn primary" id="pc-submit">Создать</button>
     </div>`;
-    showModal(html, { title: 'Новая заявка', width: '500px' });
+    showModal({ title: 'Новая заявка', html: html });
     document.getElementById('pc-submit').onclick = async () => {
       const body = {
         title: document.getElementById('pc-title').value,
@@ -424,18 +424,19 @@ window.AsgardProcurementPage = (function() {
     _user = ud.user || ud;
     currentFilters = {};
 
-    layout.innerHTML = '';
+    await layout('', { title: title || 'Закупки' });
+    const layoutEl = document.getElementById('layout');
+    layoutEl.innerHTML = '';
     const page = document.createElement('div'); page.className = 'proc-page';
     const dashEl = document.createElement('div');
     const filtEl = document.createElement('div');
     _tableEl = document.createElement('div');
     page.append(dashEl, filtEl, _tableEl);
-    layout.appendChild(page);
+    layoutEl.appendChild(page);
 
     await renderDashboard(dashEl);
     renderFilters(filtEl);
     await refresh();
-    document.title = title || 'Закупки';
   }
 
   return { render, openDetail, _attachInvoice, _deleteItem };

@@ -27,6 +27,17 @@ module.exports = defineConfig({
       use: { browserName: 'chromium' },
     },
     {
+      name: 'e2e-browser',
+      testDir: './tests/browser/e2e',
+      use: {
+        browserName: 'chromium',
+        screenshot: 'only-on-failure',
+        trace: 'retain-on-failure',
+        video: 'retain-on-failure',
+      },
+      timeout: 120000,
+    },
+    {
       name: 'mobile',
       testDir: './tests/mobile',
       use: {

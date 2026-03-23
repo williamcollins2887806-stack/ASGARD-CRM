@@ -100,7 +100,7 @@ window.AsgardAssemblyPage = (function() {
     html+=`<a href="/api/assembly/${a.id}/export-excel" target="_blank" class="btn ghost">📥 Excel</a>`;
     html+=`</div></div>`;
 
-    showModal(html,{title:`Ведомость #${a.id}`,width:'900px'});
+    showModal({title:`Ведомость #${a.id}`,html:html});
 
     // ── Init Visual Pallet Builder (WOW Edition) ──
     setTimeout(() => {
@@ -142,10 +142,12 @@ window.AsgardAssemblyPage = (function() {
 
   async function render({layout,title}){
     const ud=await apiFetch('/api/users/me');_user=ud.user||ud;_filters={};
-    layout.innerHTML='';const page=document.createElement('div');page.className='asm-page';
+    await layout('', { title: title || 'Сбор' });
+    const layoutEl=document.getElementById('layout');
+    layoutEl.innerHTML='';const page=document.createElement('div');page.className='asm-page';
     const filtEl=document.createElement('div');_tableEl=document.createElement('div');
-    page.append(filtEl,_tableEl);layout.appendChild(page);
-    renderFilters(filtEl);await refresh();document.title=title||'Сбор';
+    page.append(filtEl,_tableEl);layoutEl.appendChild(page);
+    renderFilters(filtEl);await refresh();
   }
 
   return {render};
