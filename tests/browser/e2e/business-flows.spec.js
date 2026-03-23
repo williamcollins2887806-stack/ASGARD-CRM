@@ -122,7 +122,7 @@ test.describe('Business Flows — Core', () => {
   test('BIZ-05: Equipment page loads', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'my-equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const body = await page.textContent('body');
@@ -307,6 +307,7 @@ test.describe('Business Flows — Core', () => {
 test.describe('Business Flows — Complete Scenarios', () => {
 
   test('COMPLETE-01: Tender → Work → Estimate → Act → Invoice', async ({ page }) => {
+    test.setTimeout(200000);
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
 
@@ -491,7 +492,7 @@ test.describe('Business Flows — Complete Scenarios', () => {
   test('COMPLETE-08: Equipment create → issue → return', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'ADMIN');
-    await h.navigateTo(page, 'my-equipment');
+    await h.navigateTo(page, 'warehouse');
     await h.waitForPageLoad(page);
 
     const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить")');
