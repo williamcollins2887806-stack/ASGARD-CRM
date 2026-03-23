@@ -43,7 +43,7 @@ test.describe('Chat / Messenger', () => {
       // Fill group chat name if field exists
       const nameField = page.locator(
         'input[placeholder*="Название"], input[name="name"], #chatName, ' +
-        '.modal input[name="title"], .modal input:first-of-type'
+        '.modal input[name="title"], .modal input[type="text"]'
       ).first();
       if (await nameField.count() > 0) {
         await nameField.fill('PW Group Chat ' + TS());
@@ -145,7 +145,7 @@ test.describe('Chat / Messenger', () => {
         // Type in search for BUH user
         const memberSearch = page.locator(
           'input[placeholder*="Участник"], input[placeholder*="Поиск"], ' +
-          'input[placeholder*="Добавить"], .modal input[type="text"], .modal input:first-of-type'
+          'input[placeholder*="Добавить"], .modal input[type="text"], .modal input[type="text"]'
         ).first();
         if (await memberSearch.count() > 0) {
           await memberSearch.fill('test_buh');

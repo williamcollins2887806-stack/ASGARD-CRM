@@ -1469,7 +1469,7 @@ test.describe('Inbox and AI Applications', () => {
 
       // Fill minimal required fields
       const custField = page.locator(
-        '.modal input[name="customer_name"], .modal input[name="name"], .modal input:first-of-type'
+        '.modal input[name="customer_name"], .modal input[name="name"], .modal input[type="text"]'
       ).first();
       if (await custField.count() > 0) {
         await custField.fill('PW App Submit ' + TS());

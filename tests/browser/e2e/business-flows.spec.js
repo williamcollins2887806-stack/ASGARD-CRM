@@ -289,7 +289,7 @@ test.describe('Business Flows — Core', () => {
       await createBtn.first().click();
       await page.waitForTimeout(500);
 
-      const nameField = page.locator('.modal input[name="name"], .modal input:first-of-type');
+      const nameField = page.locator('.modal input[name="name"], .modal input[type="text"]');
       if (await nameField.count() > 0) {
         await nameField.first().fill('PW Site ' + TS());
       }
@@ -352,7 +352,7 @@ test.describe('Business Flows — Complete Scenarios', () => {
       await createBtn.first().click({ force: true });
       await page.waitForTimeout(800);
 
-      const titleField = page.locator('.modal input[name="title"], .modal input[name="name"], .modal input:first-of-type');
+      const titleField = page.locator('.modal input[name="title"], .modal input[name="name"], .modal input[type="text"]');
       if (await titleField.count() > 0) {
         await titleField.first().fill('PW Task ' + TS());
       }
@@ -503,7 +503,7 @@ test.describe('Business Flows — Complete Scenarios', () => {
       await createBtn.first().click();
       await page.waitForTimeout(500);
 
-      const nameField = page.locator('.modal input[name="name"], .modal input:first-of-type');
+      const nameField = page.locator('.modal input[name="name"], .modal input[type="text"]');
       if (await nameField.count() > 0) {
         await nameField.first().fill('PW Equipment ' + TS());
       }
@@ -588,7 +588,7 @@ test.describe('Business Flows — Deep Integration', () => {
       await createBtn.first().click({ force: true });
       await page.waitForTimeout(800);
 
-      const titleField = page.locator('.modal input[name="title"], .modal input[name="name"], .modal input:first-of-type');
+      const titleField = page.locator('.modal input[name="title"], .modal input[name="name"], .modal input[type="text"]');
       if (await titleField.count() > 0) {
         await titleField.first().fill('PW Full Cycle Task ' + TS());
       }
@@ -655,7 +655,7 @@ test.describe('Business Flows — Deep Integration', () => {
       await createBtn.first().click();
       await page.waitForTimeout(500);
 
-      const nameField = page.locator('.modal input[name="name"], .modal input:first-of-type');
+      const nameField = page.locator('.modal input[name="name"], .modal input[type="text"]');
       if (await nameField.count() > 0) {
         await nameField.first().fill(siteName);
       }

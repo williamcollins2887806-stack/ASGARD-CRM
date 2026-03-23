@@ -66,7 +66,7 @@ test.describe.serial('Estimate Lifecycle', () => {
       await page.waitForTimeout(800);
 
       // Fill estimate form
-      const nameField = page.locator('.modal input[name="name"], .modal input[name="title"], .modal input:first-of-type');
+      const nameField = page.locator('.modal input[name="name"], .modal input[name="title"], .modal input[type="text"]');
       if (await nameField.count() > 0) {
         await nameField.first().fill(estimateName);
       }
@@ -156,7 +156,7 @@ test.describe.serial('Estimate Lifecycle', () => {
       await createBtn.first().click();
       await page.waitForTimeout(800);
 
-      const nameField = page.locator('.modal input[name="name"], .modal input[name="title"], .modal input:first-of-type');
+      const nameField = page.locator('.modal input[name="name"], .modal input[name="title"], .modal input[type="text"]');
       if (await nameField.count() > 0) {
         await nameField.first().fill('PW Estimate v2 ' + TS());
       }
@@ -260,7 +260,7 @@ test.describe.serial('Estimate Lifecycle', () => {
       await createBtn.first().click();
       await page.waitForTimeout(800);
 
-      const nameField = page.locator('.modal input[name="name"], .modal input[name="title"], .modal input:first-of-type');
+      const nameField = page.locator('.modal input[name="name"], .modal input[name="title"], .modal input[type="text"]');
       if (await nameField.count() > 0) {
         await nameField.first().fill('PW Estimate v3 ' + TS());
       }

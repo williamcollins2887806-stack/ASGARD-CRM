@@ -82,7 +82,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
       await page.waitForTimeout(700);
 
       const nameField = page.locator(
-        '.modal input[name="name"], .modal input[name="title"], .modal input:first-of-type'
+        '.modal input[name="name"], .modal input[name="title"], .modal input[type="text"]'
       ).first();
       if (await nameField.count() > 0) {
         await nameField.fill('PW Lifecycle Estimate ' + TS());
@@ -121,7 +121,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
       await page.waitForTimeout(700);
 
       const nameField = page.locator(
-        '.modal input[name="name"], .modal input[name="title"], .modal textarea, .modal input:first-of-type'
+        '.modal input[name="name"], .modal input[name="title"], .modal textarea, .modal input[type="text"]'
       ).first();
       if (await nameField.count() > 0) {
         await nameField.fill('PW Lifecycle TKP ' + TS());
@@ -167,7 +167,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
       await page.waitForTimeout(700);
 
       const nameField = page.locator(
-        '.modal input[name="name"], .modal input[name="title"], .modal textarea, .modal input:first-of-type'
+        '.modal input[name="name"], .modal input[name="title"], .modal textarea, .modal input[type="text"]'
       ).first();
       if (await nameField.count() > 0) {
         await nameField.fill('PW Lifecycle Work ' + TS());
@@ -260,7 +260,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
 
       const nameField = page.locator(
         '.modal input[name="name"], .modal input[name="title"], ' +
-        '.modal textarea, .modal input:first-of-type'
+        '.modal textarea, .modal input[type="text"]'
       ).first();
       if (await nameField.count() > 0) {
         await nameField.fill('PW Lifecycle Procurement ' + TS());
@@ -333,7 +333,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
       await page.waitForTimeout(700);
 
       const nameField = page.locator(
-        '.modal input[name="name"], .modal input:first-of-type, .modal textarea'
+        '.modal input[name="name"], .modal input[type="text"], .modal textarea'
       ).first();
       if (await nameField.count() > 0) {
         await nameField.fill('PW Lifecycle Assembly ' + TS());
@@ -374,7 +374,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
       // Fill employee or name field
       const empField = page.locator(
         '.modal input[name="employee_name"], .modal input[name="name"], ' +
-        '.modal input:first-of-type'
+        '.modal input[type="text"]'
       ).first();
       if (await empField.count() > 0) {
         await empField.fill('PW Pass Request ' + TS());
@@ -421,7 +421,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
 
       const nameField = page.locator(
         '.modal input[name="name"], .modal input[name="title"], ' +
-        '.modal textarea, .modal input:first-of-type'
+        '.modal textarea, .modal input[type="text"]'
       ).first();
       if (await nameField.count() > 0) {
         await nameField.fill('PW Lifecycle Payroll ' + TS());
@@ -512,7 +512,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
       await page.waitForTimeout(700);
 
       const subjectField = page.locator(
-        '.modal input[name="subject"], .modal input[name="title"], .modal input:first-of-type'
+        '.modal input[name="subject"], .modal input[name="title"], .modal input[type="text"]'
       ).first();
       if (await subjectField.count() > 0) {
         await subjectField.fill('PW Lifecycle Correspondence ' + TS());
@@ -619,7 +619,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
       await page.waitForTimeout(700);
 
       const numField = page.locator(
-        '.modal input[name="number"], .modal input[name="invoice_number"], .modal input:first-of-type'
+        '.modal input[name="number"], .modal input[name="invoice_number"], .modal input[type="text"]'
       ).first();
       if (await numField.count() > 0) {
         await numField.fill('PW-INV-' + TS());
@@ -665,7 +665,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
       await page.waitForTimeout(700);
 
       const numField = page.locator(
-        '.modal input[name="number"], .modal input[name="act_number"], .modal input:first-of-type'
+        '.modal input[name="number"], .modal input[name="act_number"], .modal input[type="text"]'
       ).first();
       if (await numField.count() > 0) {
         await numField.fill('PW-ACT-' + TS());
@@ -833,7 +833,7 @@ test.describe.serial('Route 2: Pre-tender Flow', () => {
 
     // Fill customer name
     const custField = page.locator(
-      '.modal input[name="customer_name"], .modal input[name="name"], .modal input:first-of-type'
+      '.modal input[name="customer_name"], .modal input[name="name"], .modal input[type="text"]'
     ).first();
     if (await custField.count() > 0) {
       await custField.fill(preTenderName);
@@ -1069,7 +1069,7 @@ test.describe.serial('Route 2: Pre-tender Flow', () => {
       await page.waitForTimeout(600);
 
       const custField = page.locator(
-        '.modal input[name="customer_name"], .modal input[name="name"], .modal input:first-of-type'
+        '.modal input[name="customer_name"], .modal input[name="name"], .modal input[type="text"]'
       ).first();
       if (await custField.count() > 0) {
         await custField.fill('PW RejectTest ' + TS());
