@@ -158,7 +158,7 @@ function callYandexGPT(systemPrompt, userMessage) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       modelUri: `gpt://${YANDEX_FOLDER_ID}/yandexgpt/latest`,
-      completionOptions: { stream: true, temperature: 0.3, maxTokens: '200' },
+      completionOptions: { stream: true, temperature: 0.3, maxTokens: '400' },
       messages: [
         { role: 'system', text: systemPrompt },
         { role: 'user', text: userMessage }
@@ -279,7 +279,36 @@ function synthesizeStreaming(text) {
 /* ══════════════════════════════════════════
    MAIN — Full Pipeline Test
    ══════════════════════════════════════════ */
-const SYSTEM = 'Ты секретарь компании Асгард Сервис по имени Фрейя. Отвечай кратко 1-2 предложения на русском. Если клиент просит конкретный отдел - скажи что соединяешь.';
+
+// Загружаем БОЕВОЙ промпт из production-файла
+const { VOICE_OPERATOR_SYSTEM } = require(path.join(CRM_ROOT, 'src/prompts/voice-secretary-prompt'));
+
+// Реалистичный контекст: неизвестный клиент, рабочее время, доступные сотрудники
+const TEST_CONTEXT = {
+  callerNumber: '+79991234567',
+  clientName: null,
+  clientCompany: null,
+  clientInn: null,
+  isInternal: false,
+  timeMode: 'full',
+  isFullWorkHours: true,
+  responsibleManager: null,
+  managerPhone: null,
+  lastTender: null,
+  lastCall: null,
+  conversationHistory: [],
+  lastClientMessage: null,
+  availableEmployees:
+    'Иванова Мария (Офис-менеджер, доб. 101)\n' +
+    'Смирнов Алексей (Тендерный специалист, доб. 102)\n' +
+    'Козлова Ирина (Бухгалтерия, доб. 103)\n' +
+    'Петров Дмитрий (Руководитель проекта, доб. 104)\n' +
+    'Сидоров Николай (Коммерческий директор, доб. 105)',
+};
+
+function getSystemPrompt(userPhrase) {
+  return VOICE_OPERATOR_SYSTEM({ ...TEST_CONTEXT, lastClientMessage: userPhrase });
+}
 
 const TEST_PHRASES = [
   // ── ЛЁГКИЕ (короткие, быстрые) ──
@@ -328,9 +357,10 @@ async function runTest(item) {
   const stage2ms = Date.now() - t2;
   console.log(`  [2] STT:           ${stage2ms}ms → "${sttResult.text}" (first_text=${sttResult.firstTextMs}ms)`);
 
-  // Stage 3: AI — YandexGPT Pro
+  // Stage 3: AI — YandexGPT Pro (боевой промпт)
   const t3 = Date.now();
-  const aiResult = await callYandexGPT(SYSTEM, sttResult.text || phrase);
+  const systemPrompt = getSystemPrompt(sttResult.text || phrase);
+  const aiResult = await callYandexGPT(systemPrompt, sttResult.text || phrase);
   const stage3ms = Date.now() - t3;
   const aiShort = aiResult.text.replace(/\n/g, ' ').slice(0, 80);
   console.log(`  [3] AI (GPT Pro):  ${stage3ms}ms → "${aiShort}" (ft=${aiResult.firstTokenMs}ms, upd=${aiResult.updates})`);
