@@ -54,7 +54,8 @@ async function loginAs(page, role) {
 
   // Click #btnShowLogin to reveal the login form (NOT #btnLoginGo which navigates away)
   await page.locator('#btnShowLogin').click().catch(() => {});
-  await page.waitForTimeout(600);
+  // Wait for login form to actually appear before filling
+  await page.waitForSelector('#w_login', { timeout: 5000 }).catch(() => {});
 
   // Fill login and password
   await page.locator('#w_login').fill(acc.login).catch(() => {});
@@ -62,7 +63,8 @@ async function loginAs(page, role) {
 
   // Submit login
   await page.locator('#btnDoLogin').click().catch(() => {});
-  await page.waitForTimeout(2000);
+  // Wait for server response — PIN or setup form (up to 6s)
+  await page.waitForSelector('#pinForm, #setupForm', { timeout: 6000 }).catch(() => {});
 
   // Check for first-time setup form (#setupForm shown when account has no password yet)
   const setupForm = page.locator('#setupForm');

@@ -128,8 +128,11 @@ test.describe('Business Flows — Core', () => {
     const body = await page.textContent('body');
     expect(body.length).toBeGreaterThan(50);
 
+    // Wait for equipment page toolbar to fully render (async fetch + DOM)
+    await page.waitForSelector('#btnAddEquipment, #btnAddEquip', { timeout: 10000 }).catch(() => {});
+
     // Verify create button exists for admin
-    const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить")');
+    const createBtn = page.locator('#btnAddEquipment, #btnAddEquip, button:has-text("Создать"), button:has-text("Добавить")');
     expect(await createBtn.count()).toBeGreaterThan(0);
 
     h.assertNoConsoleErrors(errors, 'BIZ-05 Equipment');
