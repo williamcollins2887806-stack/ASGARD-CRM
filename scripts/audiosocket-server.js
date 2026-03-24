@@ -383,6 +383,36 @@ function synthesizeToPCM(text) {
 /* ── CACHED_INTENTS, pickRandom, fillTemplate, detectIntentByKeywords ──
    Импортированы из src/helpers/voice-helpers.js (см. require выше) */
 
+/* ── Время суток (по МСК) + выбор приветствия ───────── */
+function getTimeOfDay() {
+  const now = new Date();
+  const mskOffset = 3 * 60;
+  const localOffset = now.getTimezoneOffset();
+  const mskDate = new Date(now.getTime() + (mskOffset + localOffset) * 60000);
+  const hour = mskDate.getHours();
+  const weekday = mskDate.getDay();
+  const isWeekend = weekday === 0 || weekday === 6;
+  if (hour >= 5 && hour < 11)  return { period: 'morning', isWeekend };
+  if (hour >= 11 && hour < 17) return { period: 'day',     isWeekend };
+  if (hour >= 17 && hour < 21) return { period: 'evening', isWeekend };
+  return { period: 'night', isWeekend };
+}
+
+function getGreeting(type, vars) {
+  vars = vars || {};
+  const { period, isWeekend } = getTimeOfDay();
+  let pool;
+  if (type === 'after_hours') {
+    pool = isWeekend
+      ? (CACHED_INTENTS.greetings.weekend[period] || CACHED_INTENTS.greetings.weekend.day)
+      : (CACHED_INTENTS.greetings.after_hours[period] || CACHED_INTENTS.greetings.after_hours.evening);
+  } else {
+    const greetingSet = CACHED_INTENTS.greetings[type];
+    pool = (greetingSet && (greetingSet[period] || greetingSet.day)) || CACHED_INTENTS.greetings.standard.day;
+  }
+  return fillTemplate(pickRandom(pool), vars);
+}
+
 /* ══════════════════════════════════════════════════════
    YandexGPT Pro (streaming) — primary AI
    ══════════════════════════════════════════════════════ */
@@ -523,9 +553,11 @@ async function warmupPhraseCache() {
 
   const allPhrases = new Set();
   function addPhrases(obj) {
-    if (Array.isArray(obj)) {
-      obj.forEach(p => allPhrases.add(p));
-    } else if (typeof obj === 'object' && obj !== null) {
+    if (typeof obj === 'string') {
+      allPhrases.add(obj);
+    } else if (Array.isArray(obj)) {
+      obj.forEach(p => addPhrases(p));
+    } else if (obj && typeof obj === 'object') {
       Object.values(obj).forEach(v => addPhrases(v));
     }
   }
@@ -1120,19 +1152,13 @@ async function handleConnection(socket) {
       const parts = fullName.trim().split(/\s+/);
       const firstName = parts.length >= 2 ? parts[1] : (parts[0] || 'воин');
       console.log(`[AudioSocket] Internal call: ${fullName} → firstName: ${firstName}`);
-      const greetings = [
-        `Приветствую, воин Асга+рда ${firstName}! Чем могу помочь?`,
-        `Хе+й, ${firstName}! Рада слышать тебя, воин! Куда тебя направить?`,
-        `Славься, ${firstName}! Какой путь тебе указать сегодня?`,
-        `${firstName}, приветствую тебя в чертогах Асга+рда! Чем помочь?`,
-      ];
-      const greetingText = greetings[Math.floor(Math.random() * greetings.length)];
+      const greetingText = getGreeting('internal', { firstName, name: fullName });
       notifyCRM('greeting', { caller: callerNumber, internal: true, employee: fullName, text: greetingText });
       await speak(greetingText);
 
     // Известный клиент с менеджером в рабочее время — сразу перевод
     } else if (context.clientName && context.responsibleManager && context.isFullWorkHours) {
-      const greeting = fillTemplate(pickRandom(CACHED_INTENTS.greetings.known_client), { name: context.clientName });
+      const greeting = getGreeting('known_client', { name: context.clientName });
       const transferMsg = `Сейчас соединю вас с вашим менеджером, ${context.responsibleManager}. Одну минуточку.`;
       notifyCRM('greeting', { caller: callerNumber, client: context.clientName, text: greeting });
       await speak(greeting);
@@ -1153,7 +1179,7 @@ async function handleConnection(socket) {
 
     // Нерабочее время
     } else if (context.timeMode === 'off') {
-      const afterHoursText = pickRandom(CACHED_INTENTS.greetings.after_hours);
+      const afterHoursText = getGreeting('after_hours', {});
       notifyCRM('greeting', { caller: callerNumber, text: afterHoursText });
       await speak(afterHoursText);
       notifyCRM('after_hours', { caller: callerNumber });
@@ -1161,7 +1187,7 @@ async function handleConnection(socket) {
 
     // Стандартное приветствие
     } else {
-      const stdGreeting = pickRandom(CACHED_INTENTS.greetings.standard);
+      const stdGreeting = getGreeting('standard', {});
       notifyCRM('greeting', { caller: callerNumber, text: stdGreeting });
       await speak(stdGreeting);
     }
