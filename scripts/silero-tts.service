@@ -1,0 +1,19 @@
+[Unit]
+Description=ASGARD Silero TTS Microservice
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/asgard-crm
+ExecStart=/usr/bin/python3 /var/www/asgard-crm/scripts/silero-tts-service.py
+Restart=always
+RestartSec=5
+Environment=SILERO_PORT=8765
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

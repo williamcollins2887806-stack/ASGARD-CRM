@@ -43,6 +43,12 @@ const CRM_HTTP_PORT = parseInt(process.env.PORT || '3000', 10);
 const YANDEX_API_KEY = process.env.YANDEX_SPEECHKIT_API_KEY || '';
 const YANDEX_FOLDER_ID = process.env.YANDEX_SPEECHKIT_FOLDER_ID || process.env.YANDEX_FOLDER_ID || '';
 const VOICE_AI_MODEL = process.env.VOICE_AI_MODEL || 'google/gemini-2.5-flash-lite';
+
+// Silero TTS микросервис (локальный Python, лучше качество чем Яндекс)
+const SILERO_URL = process.env.SILERO_URL || 'http://127.0.0.1:8765';
+const SILERO_SPEAKER = process.env.SILERO_SPEAKER || 'xenia';
+const USE_SILERO = process.env.USE_SILERO !== 'false'; // включён по умолчанию
+let sileroAvailable = false; // проверяется при старте
 const YANDEX_GPT_KEY = process.env.YANDEX_GPT_API_KEY || YANDEX_API_KEY; // отдельный ключ для GPT
 const MAX_TURNS = 8;
 
@@ -354,17 +360,61 @@ function makeAudioFrame(pcmData) {
    TTS — синтез в сырой PCM для AudioSocket
    ══════════════════════════════════════════════════════ */
 
-/** Синтезировать текст в raw slin16 PCM 8kHz (полный буфер) */
-function synthesizeToPCM(text) {
+/* ── Проверить доступность Silero при старте ──────────────────── */
+async function checkSileroAvailability() {
+  if (!USE_SILERO) { sileroAvailable = false; return; }
+  try {
+    const res = await fetch(`${SILERO_URL}/health`, { signal: AbortSignal.timeout(2000) });
+    const data = await res.json();
+    sileroAvailable = data.status === 'ready';
+    console.log(`[AudioSocket] Silero TTS: ${sileroAvailable ? '✅ ready' : '⏳ loading (fallback to Yandex)'}`);
+  } catch (e) {
+    sileroAvailable = false;
+    console.log(`[AudioSocket] Silero TTS: недоступен (${e.message}), используем Яндекс`);
+  }
+}
+
+/* ── Синтез через Silero ──────────────────────────────────────── */
+async function synthesizeWithSilero(text) {
+  const res = await fetch(`${SILERO_URL}/tts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, speaker: SILERO_SPEAKER }),
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!res.ok) throw new Error(`Silero HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
+  return Buffer.from(buf);
+}
+
+/** Синтезировать текст в raw slin16 PCM 8kHz: Silero (основной) → Яндекс (fallback) */
+async function synthesizeToPCM(text) {
+  // Пробуем Silero если доступен
+  if (USE_SILERO && sileroAvailable) {
+    try {
+      const t0 = Date.now();
+      const pcm = await synthesizeWithSilero(text);
+      if (pcm && pcm.length > 0) {
+        console.log(`[AudioSocket] Silero TTS: ${pcm.length}b в ${Date.now() - t0}ms`);
+        return pcm;
+      }
+    } catch (e) {
+      console.warn(`[AudioSocket] Silero fallback: ${e.message}`);
+      sileroAvailable = false; // временно отключаем
+      setTimeout(checkSileroAvailability, 30000); // восстановление через 30с
+    }
+  }
+
+  // Fallback: Яндекс SpeechKit
   return new Promise((resolve, reject) => {
     const request = {
-      text: text,
+      text,
       outputAudioSpec: {
         rawAudio: { audioEncoding: 'LINEAR16_PCM', sampleRateHertz: 8000 }
       },
       hints: [
-        { voice: 'dasha' },
-        { role: 'friendly' },
+        { voice: process.env.TTS_VOICE || 'dasha' },
+        { role: process.env.TTS_ROLE || 'friendly' },
         { speed: 1.0 }
       ],
       loudnessNormalizationType: 'LUFS',
@@ -376,7 +426,7 @@ function synthesizeToPCM(text) {
     call.on('data', (r) => { if (r.audioChunk && r.audioChunk.data) chunks.push(Buffer.from(r.audioChunk.data)); });
     call.on('end', () => resolve(Buffer.concat(chunks)));
     call.on('error', reject);
-    setTimeout(() => { call.cancel(); reject(new Error('TTS timeout')); }, 15000);
+    setTimeout(() => { call.cancel(); reject(new Error('Yandex TTS timeout')); }, 15000);
   });
 }
 
@@ -1331,9 +1381,14 @@ server.listen(AUDIOSOCKET_PORT, '127.0.0.1', () => {
   console.log(`  ASGARD Freya — Voice AI Secretary`);
   console.log(`  Port: ${AUDIOSOCKET_PORT}`);
   console.log(`  STT:  SpeechKit v3 gRPC streaming`);
-  console.log(`  TTS:  SpeechKit v3 gRPC streaming (dasha/friendly)`);
-  console.log(`  AI:   YandexGPT Pro (primary) → routerai/${VOICE_AI_MODEL} (fallback)`);
+  console.log(`  TTS:  Silero v5_ru (${SILERO_SPEAKER}) → Yandex dasha (fallback)`);
+  console.log(`  AI:   YandexGPT Pro (~300ms) → routerai/${VOICE_AI_MODEL} (fallback)`);
   console.log(`${'═'.repeat(60)}\n`);
+
+  // Проверить Silero через 2 секунды после старта
+  setTimeout(checkSileroAvailability, 2000);
+  // Периодически перепроверять каждые 60 секунд
+  setInterval(checkSileroAvailability, 60000);
 });
 
 // AMI подключение
