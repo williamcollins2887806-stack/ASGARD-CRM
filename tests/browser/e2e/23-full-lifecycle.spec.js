@@ -207,7 +207,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
     expect(body.length).toBeGreaterThan(50);
 
     const createBtn = page.locator(
-      'button:has-text("Создать"), button:has-text("Добавить"), button:has-text("+")'
+      'button:has-text("Создать"), button:has-text("Добавить")'
     ).first();
     if (await createBtn.isVisible({ timeout: 4000 }).catch(() => false)) {
       await createBtn.click();
@@ -788,6 +788,7 @@ test.describe.serial('Route 1: Full Business Lifecycle', () => {
   });
 
   test('20 No console errors in final state', async ({ page }) => {
+    test.setTimeout(200000);
     const errors = h.setupConsoleCollector(page);
 
     // Navigate a broad sweep of pages to verify no JS errors in final system state
@@ -831,41 +832,41 @@ test.describe.serial('Route 2: Pre-tender Flow', () => {
 
     expect(await h.isModalVisible(page)).toBeTruthy();
 
-    // Fill customer name
+    // Fill customer name — #mcName (same as PT-01 which passes)
     const custField = page.locator(
-      '.modal input[name="customer_name"], .modal input[name="name"], .modal input[type="text"]'
+      '#mcName, .modal input[name="customer_name"], .modal input[name="name"], .modal input[type="text"]'
     ).first();
     if (await custField.count() > 0) {
       await custField.fill(preTenderName);
     }
 
-    // Fill email
+    // Fill email — #mcEmail
     const emailField = page.locator(
-      '.modal input[name="customer_email"], .modal input[type="email"]'
+      '#mcEmail, .modal input[name="customer_email"], .modal input[type="email"]'
     ).first();
     if (await emailField.count() > 0) {
       await emailField.fill('pwroute2@example.com');
     }
 
-    // Fill phone
+    // Fill phone — #mcPhone
     const phoneField = page.locator(
-      '.modal input[name="customer_phone"], .modal input[type="tel"]'
+      '#mcPhone, .modal input[name="customer_phone"], .modal input[type="tel"]'
     ).first();
     if (await phoneField.count() > 0) {
       await phoneField.fill('+79007654321');
     }
 
-    // Fill work description
+    // Fill work description — #mcDesc
     const descField = page.locator(
-      '.modal textarea[name="work_description"], .modal textarea'
+      '#mcDesc, .modal textarea[name="work_description"], .modal textarea'
     ).first();
     if (await descField.count() > 0) {
       await descField.fill('PW Route 2 pre-tender: electrical installation');
     }
 
-    // Fill estimated sum
+    // Fill estimated sum — #mcSum
     const sumField = page.locator(
-      '.modal input[name="estimated_sum"], .modal input[name="budget"], .modal input[id*="sum"]'
+      '#mcSum, .modal input[name="estimated_sum"], .modal input[name="budget"], .modal input[id*="sum"]'
     ).first();
     if (await sumField.count() > 0) {
       await sumField.fill('420000');

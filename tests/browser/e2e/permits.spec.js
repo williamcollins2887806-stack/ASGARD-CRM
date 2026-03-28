@@ -21,48 +21,32 @@ test.describe.serial('Permits & Permit Applications', () => {
       await h.waitForPageLoad(page);
     }
 
-    {
-      await h.clickCreate(page);
-      await page.waitForTimeout(500);
+    // permit_applications.js uses #btnNewApp which navigates to #/permit-application-form (full page, no modal)
+    const newAppBtn = page.locator('#btnNewApp, #btnNewAppEmpty, button:has-text("Новая заявка")');
+    if (await newAppBtn.count() > 0) {
+      await newAppBtn.first().click();
+      // Wait for navigation to permit-application-form page
+      await page.waitForTimeout(1500);
+      await h.waitForPageLoad(page);
 
-      // Fill contractor
-      const contractorField = page.locator('.modal input[name="contractor_name"], .modal input[id*="contractor"], .modal input[name="title"]');
+      // Fill contractor name (page-level input, NOT modal)
+      const contractorField = page.locator('#fContractorName, input[id*="contractor"], input[placeholder*="подрядчик"]');
       if (await contractorField.count() > 0) {
         await contractorField.first().fill('PW Test Contractor LLC ' + TS());
       }
 
       // Fill contractor email
-      const emailField = page.locator('.modal input[name="contractor_email"], .modal input[type="email"]');
+      const emailField = page.locator('#fContractorEmail, input[type="email"]');
       if (await emailField.count() > 0) {
         await emailField.first().fill('pw-test@example.com');
       }
 
-      // Fill cover letter / description
-      const descField = page.locator('.modal textarea[name="cover_letter"], .modal textarea');
-      if (await descField.count() > 0) {
-        await descField.first().fill('PW autotest permit application');
+      // Save draft (page-level button, NOT inside .modal)
+      const saveDraftBtn = page.locator('#btnSaveDraft, button:has-text("Сохранить черновик")');
+      if (await saveDraftBtn.count() > 0) {
+        await saveDraftBtn.first().click();
+        await page.waitForTimeout(1500);
       }
-
-      // Try to select employee/item if there's a dropdown
-      const empSelect = page.locator('.modal select[name="employee_id"], .modal select[id*="employee"]');
-      if (await empSelect.count() > 0) {
-        const options = await empSelect.first().locator('option').count();
-        if (options > 1) {
-          await empSelect.first().selectOption({ index: 1 });
-        }
-      }
-
-      // Try to select permit type
-      const typeSelect = page.locator('.modal select[name="permit_type"], .modal select[name="type_id"], .modal select[id*="type"]');
-      if (await typeSelect.count() > 0) {
-        const options = await typeSelect.first().locator('option').count();
-        if (options > 1) {
-          await typeSelect.first().selectOption({ index: 1 });
-        }
-      }
-
-      await h.clickSave(page);
-      await page.waitForTimeout(1500);
     }
 
     const body = await page.textContent('body');

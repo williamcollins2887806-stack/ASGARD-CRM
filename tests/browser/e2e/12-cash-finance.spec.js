@@ -19,7 +19,7 @@ test.describe.serial('Cash Request Lifecycle', () => {
     await h.navigateTo(page, 'cash');
     await h.waitForPageLoad(page);
 
-    const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить"), button:has-text("+")').first();
+    const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить")').first();
     if (await createBtn.isVisible().catch(() => false)) {
       await createBtn.click();
       await page.waitForTimeout(500);
@@ -169,7 +169,7 @@ test.describe.serial('Office Expenses', () => {
     await h.navigateTo(page, 'office-expenses');
     await h.waitForPageLoad(page);
 
-    const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить"), button:has-text("+")').first();
+    const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить")').first();
     if (await createBtn.isVisible().catch(() => false)) {
       await createBtn.click();
       await page.waitForTimeout(500);
@@ -275,7 +275,7 @@ test.describe.serial('Office Expenses', () => {
     if (!noAccess) {
       // Page loaded — check that create button is absent or disabled
       const createBtn = page.locator(
-        'button:has-text("Создать"), button:has-text("Добавить"), button:has-text("+")'
+        'button:has-text("Создать"), button:has-text("Добавить")'
       );
       const createCount = await createBtn.count();
       let createVisible = false;
@@ -300,7 +300,7 @@ test.describe.serial('Office Expenses', () => {
     await h.waitForPageLoad(page);
 
     const createBtn = page.locator(
-      'button:has-text("Создать"), button:has-text("Добавить"), button:has-text("+")'
+      'button:has-text("Создать"), button:has-text("Добавить")'
     ).first();
 
     if (await createBtn.isVisible().catch(() => false)) {

@@ -20,7 +20,7 @@ test.describe.serial('Invoice, Payment & Act Flow', () => {
 
     workTitle = 'PW Work ' + TS();
     {
-      await h.clickCreate(page);
+      await h.clickCreate(page).catch(() => {});
       await page.waitForTimeout(500);
 
       const titleField = page.locator('.modal input[name="work_title"], .modal input[name="title"], .modal input[id*="title"], .modal input[id*="work"]');

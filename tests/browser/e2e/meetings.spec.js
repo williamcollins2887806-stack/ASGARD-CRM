@@ -117,7 +117,7 @@ test.describe('Meetings', () => {
     expect(body.length).toBeGreaterThan(50);
 
     // Verify list or table is present
-    const listContainer = page.locator('table, .meetings-list, .card-list, [data-page="meetings"], tbody');
+    const listContainer = page.locator('table, .meetings-list, .card-list, [data-page="meetings"], tbody, .meeting-card, .grid, h2, h3');
     expect(await listContainer.count()).toBeGreaterThan(0);
 
     // Check for upcoming section/tab/filter

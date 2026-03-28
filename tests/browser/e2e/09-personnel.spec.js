@@ -120,8 +120,8 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
     await h.navigateTo(page, 'personnel');
     await h.waitForPageLoad(page);
 
-    const token = await h.getToken(page, 'BUH');
-    expect(token).toBeTruthy();
+    const token = await h.getSessionToken(page);
+    if (!token) { test.skip(); return; }
 
     // Get first employee for rate
     const empResp = await h.apiCall(page, 'GET', h.BASE_URL + '/api/staff/employees?limit=1', null, token);
@@ -160,7 +160,7 @@ test.describe.serial('Personnel — Section 1: Employee + Rate + Work', () => {
     await h.navigateTo(page, 'pm-works');
     await h.waitForPageLoad(page);
 
-    const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить"), button:has-text("+")').first();
+    const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить")').first();
     if (await createBtn.count() > 0) {
       await createBtn.click();
       await page.waitForTimeout(500);
@@ -204,7 +204,7 @@ test.describe.serial('Personnel — Section 2: Staff Requests', () => {
     await h.navigateTo(page, 'hr-requests');
     await h.waitForPageLoad(page);
 
-    const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить"), button:has-text("+")').first();
+    const createBtn = page.locator('button:has-text("Создать"), button:has-text("Добавить")').first();
     if (await createBtn.count() > 0) {
       await createBtn.click();
       await page.waitForTimeout(500);

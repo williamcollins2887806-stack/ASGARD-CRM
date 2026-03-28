@@ -1962,11 +1962,9 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/contracts", ()=>AsgardContractsPage.render({layout, title:"Реестр договоров"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/seals", ()=>AsgardSealsPage.render({layout, title:"Реестр печатей"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/permits", () => {
-      if (!AsgardAuth.hasPermission('permits', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
+      // Permissions verified inside AsgardPermitsPage.render() AFTER requireUser() refresh.
+      // The early hasPermission() check was using stale localStorage and blocking PM users
+      // who have can_read=true in role_presets but haven't refreshed their asgard_permissions yet.
       AsgardPermitsPage.render({layout, title:"Разрешения и допуски"});
     }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/permit-applications", ()=>AsgardPermitApplications.render({layout, title:"Заявки на оформление разрешений"}), {auth:true, roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO",...DIRECTOR_ROLES]});

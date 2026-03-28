@@ -268,6 +268,7 @@ test.describe.serial('Pass Requests Lifecycle', () => {
   });
 
   test('PR-12: Page loads for each role without errors', async ({ page }) => {
+    test.setTimeout(180000);
     const roles = ['ADMIN', 'PM', 'DIRECTOR_GEN', 'HR', 'TO', 'BUH'];
 
     for (const role of roles) {

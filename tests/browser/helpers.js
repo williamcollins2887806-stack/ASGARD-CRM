@@ -86,6 +86,18 @@ async function loginAs(page, role) {
   const pinFormVisible = await page.locator('#pinForm').isVisible().catch(() => false);
   if (pinFormVisible) {
     await enterPin(page, acc.pin);
+    // Wait for PIN modal and its backdrop to fully close before interacting
+    await page.waitForSelector('#pinForm', { state: 'hidden', timeout: 5000 }).catch(() => {});
+    await page.waitForSelector('.modalback', { state: 'hidden', timeout: 5000 }).catch(() => {});
+    // Wait for the full session token (post-PIN) to be stored in localStorage
+    // and for navigation away from welcome page — guarantees getSessionToken() gets real token
+    await page.waitForFunction(
+      () => {
+        const t = localStorage.getItem('asgard_token');
+        return !!t && t.length > 50 && !window.location.hash.includes('/welcome');
+      },
+      { timeout: 8000 }
+    ).catch(() => {});
   }
 }
 
@@ -219,6 +231,7 @@ async function clickCreate(page) {
     const keywords = ['Создать', 'Добавить', 'Новый', 'Новое', 'New', '+ '];
     const buttons = Array.from(document.querySelectorAll('button'));
     for (const btn of buttons) {
+      if (btn.id === 'mimirNewChat') continue; // exclude Mimir chat "Новый диалог"
       const txt = (btn.textContent || '').trim();
       const isVisible = btn.offsetParent !== null &&
         window.getComputedStyle(btn).display !== 'none' &&
@@ -238,6 +251,7 @@ async function clickCreate(page) {
     await page.waitForFunction(() => {
       const keywords = ['Создать', 'Добавить', 'Новый', 'Новое', '+ '];
       return Array.from(document.querySelectorAll('button')).some(b => {
+        if (b.id === 'mimirNewChat') return false;
         const txt = (b.textContent || '').trim();
         const visible = b.offsetParent !== null;
         return visible && (keywords.some(k => txt.includes(k)) || /btn(New|Create|Add)/i.test(b.id || ''));
@@ -248,6 +262,7 @@ async function clickCreate(page) {
       const keywords = ['Создать', 'Добавить', 'Новый', 'Новое', '+ '];
       const buttons = Array.from(document.querySelectorAll('button'));
       for (const btn of buttons) {
+        if (btn.id === 'mimirNewChat') continue;
         const txt = (btn.textContent || '').trim();
         const visible = btn.offsetParent !== null;
         if (visible && (keywords.some(k => txt.includes(k)) || /btn(New|Create|Add)/i.test(btn.id || ''))) {
