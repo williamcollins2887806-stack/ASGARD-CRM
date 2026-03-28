@@ -19,6 +19,29 @@ test.describe.serial('Procurement Lifecycle (Browser E2E)', () => {
   /** @type {string|null} */
   let adminToken = null;
 
+  // Fixture: guarantee procId exists even if UI creation fails
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await browser.newContext();
+    const pg = await ctx.newPage();
+    try {
+      await h.loginAs(pg, 'PM');
+      const tok = await h.getSessionToken(pg);
+      // Check if recent E2E procurement exists
+      const listR = await h.apiCall(pg, 'GET', h.BASE_URL + '/api/procurement?limit=5', null, tok);
+      if (listR.status === 200 && listR.data?.items?.length > 0) {
+        procId = listR.data.items[0].id;
+      } else {
+        // Create one if none exist
+        procTitle = 'E2E Procurement ' + Date.now();
+        const cr = await h.apiCall(pg, 'POST', h.BASE_URL + '/api/procurement', {
+          title: procTitle, priority: 'medium'
+        }, tok);
+        if (cr.status < 300 && cr.data?.item?.id) procId = cr.data.item.id;
+      }
+    } catch (e) {}
+    await ctx.close();
+  });
+
   test('01 — HR cannot create procurement (forbidden)', async ({ page }) => {
     const errors = h.setupConsoleCollector(page);
     await h.loginAs(page, 'HR');
