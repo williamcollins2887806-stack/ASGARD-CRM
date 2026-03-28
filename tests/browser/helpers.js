@@ -44,13 +44,17 @@ async function loginAs(page, role) {
   const acc = ACCOUNTS[role];
   if (!acc) throw new Error(`No account for role: ${role}`);
 
+  // Clear any existing session to ensure fresh login for the requested role.
+  // Without this, the SPA auto-redirects #/welcome → #/home when a token exists,
+  // causing subsequent getSessionToken() to return the PREVIOUS user's token.
+  await page.evaluate(() => {
+    ['asgard_token', 'token', 'authToken', 'auth_token', 'access_token', 'jwt'].forEach(k => {
+      try { localStorage.removeItem(k); } catch (_) {}
+    });
+  }).catch(() => {});
+
   await page.goto(BASE_URL + '/#/welcome');
   await page.waitForTimeout(1500);
-
-  // If already on home/dashboard — already logged in
-  if (page.url().includes('#/home') || page.url().includes('#/dashboard')) {
-    return;
-  }
 
   // Click #btnShowLogin to reveal the login form (NOT #btnLoginGo which navigates away)
   await page.locator('#btnShowLogin').click().catch(() => {});
