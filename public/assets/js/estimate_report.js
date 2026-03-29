@@ -118,18 +118,20 @@ window.AsgardEstimateReportPage = (function () {
     await layoutFn('<div class="er-page"><div class="er-empty">Загрузка...</div></div>', { title: title || 'Отчёт просчёта' });
 
     // Fetch data in parallel
-    let est, calc, comments, analogs;
+    let est, calc, comments, analogs, diffData;
     try {
-      const [estR, calcR, commR, analR] = await Promise.all([
+      const [estR, calcR, commR, analR, diffR] = await Promise.all([
         api('GET', '/estimates/' + id, token),
         api('GET', '/estimates/' + id + '/calculation', token).catch(() => ({ calculation: null })),
         api('GET', '/approval/estimates/' + id + '/comments', token).catch(() => ({ comments: [] })),
-        api('GET', '/estimates/' + id + '/analogs', token).catch(() => ({ analogs: [] }))
+        api('GET', '/estimates/' + id + '/analogs', token).catch(() => ({ analogs: [] })),
+        api('GET', '/estimates/' + id + '/diff', token).catch(() => ({ diff: {} }))
       ]);
       est = estR.estimate;
       calc = calcR.calculation;
       comments = commR.comments || [];
       analogs = analR.analogs || [];
+      diffData = diffR.diff || {};
     } catch (e) {
       await layoutFn('<div class="er-page"><div class="er-empty">Ошибка загрузки: ' + esc(e.message) + '</div></div>', { title: 'Ошибка' });
       return;
@@ -150,11 +152,13 @@ window.AsgardEstimateReportPage = (function () {
     const canResubmit = isPM && isOwner && ['rework', 'question'].includes(est.approval_status);
     const canSend = isPM && isOwner && est.approval_status === 'draft';
     const showReworkBanner = canEdit && ['rework', 'question'].includes(est.approval_status) && est.last_director_comment;
+    const showDiff = ['rework', 'question'].includes(est.approval_status) && Object.keys(diffData).length >= 2;
 
     const body = `
     <div class="er-page" id="erPage" data-est-id="${est.id}">
       ${renderHeader(est, st, canEdit)}
       ${showReworkBanner ? renderReworkBanner(est) : ''}
+      ${showDiff ? renderChangesDiff(diffData, est) : ''}
       ${renderSummaryCards(calcData)}
       ${renderCostBar(calcData)}
       ${renderObjectInfo(est)}
@@ -170,6 +174,7 @@ window.AsgardEstimateReportPage = (function () {
 
     // ── Bind events ──
     bindObjectToggle();
+    bindExcelExport(est, calcData);
     bindFilePreview();
     if (canEdit) {
       bindEditableTable(id, token, calcData);
@@ -275,6 +280,7 @@ window.AsgardEstimateReportPage = (function () {
       </div>
       <div class="er-header-right">
         ${canEdit ? '<button class="er-btn er-btn--mimir" id="erAutoCalcBtn">🧙 Авторасчёт</button>' : ''}
+        <button class="er-btn er-btn--secondary" id="erExcelBtn">Excel</button>
         <a href="#/all-estimates" class="er-btn er-btn--secondary">← К списку</a>
       </div>
     </div>`;
@@ -590,6 +596,105 @@ window.AsgardEstimateReportPage = (function () {
   }
 
   // ──────────────────────────────────────────────────────────────
+  // COMPONENT: Changes Diff (rework/question — compare versions)
+  // ──────────────────────────────────────────────────────────────
+  function renderChangesDiff(diffData, est) {
+    const keys = Object.keys(diffData).sort();
+    if (keys.length < 2) return '';
+    const oldCalc = diffData[keys[0]];
+    const newCalc = diffData[keys[1]];
+    const v1 = oldCalc?.version_no || keys[0].replace('v', '');
+    const v2 = newCalc?.version_no || keys[1].replace('v', '');
+
+    const BLOCK_FIELDS = [
+      { key: 'personnel_json', name: 'Персонал и ФОТ' },
+      { key: 'current_costs_json', name: 'Текущие расходы' },
+      { key: 'travel_json', name: 'Командировочные' },
+      { key: 'transport_json', name: 'Транспорт' },
+      { key: 'chemistry_json', name: 'Химия и утилизация' }
+    ];
+    const SCALAR_FIELDS = [
+      { key: 'contingency_pct', name: 'Непредвиденные %' },
+      { key: 'subtotal', name: 'Промежуточный итог', fmt: fmtMoney },
+      { key: 'total_cost', name: 'Итого себестоимость', fmt: fmtMoney },
+      { key: 'margin_pct', name: 'Маржа %' },
+      { key: 'total_with_margin', name: 'Цена с наценкой', fmt: fmtMoney }
+    ];
+
+    const changes = [];
+
+    // Compare JSONB blocks
+    for (const bf of BLOCK_FIELDS) {
+      const oldRows = parseJsonField(oldCalc?.[bf.key]);
+      const newRows = parseJsonField(newCalc?.[bf.key]);
+      const maxLen = Math.max(oldRows.length, newRows.length);
+      for (let i = 0; i < maxLen; i++) {
+        const oRow = oldRows[i];
+        const nRow = newRows[i];
+        if (!oRow && nRow) {
+          changes.push({ block: bf.name, item: nRow.item || '—', field: '', old: '—', new_val: fmtMoney(nRow.total), type: 'added' });
+        } else if (oRow && !nRow) {
+          changes.push({ block: bf.name, item: oRow.item || '—', field: '', old: fmtMoney(oRow.total), new_val: 'удалено', type: 'removed' });
+        } else if (oRow && nRow) {
+          // Compare totals
+          const oTotal = parseFloat(oRow.total) || 0;
+          const nTotal = parseFloat(nRow.total) || 0;
+          if (Math.abs(oTotal - nTotal) > 1) {
+            changes.push({ block: bf.name, item: nRow.item || oRow.item || '—', field: 'итого', old: fmtMoney(oTotal), new_val: fmtMoney(nTotal) });
+          }
+          // Compare qty, rate, days
+          for (const f of ['qty', 'rate', 'days', 'volume_m3', 'rate_m3', 'distance_km', 'rate_km']) {
+            if (oRow[f] != null || nRow[f] != null) {
+              const ov = parseFloat(oRow[f]) || 0;
+              const nv = parseFloat(nRow[f]) || 0;
+              if (Math.abs(ov - nv) > 0.01) {
+                changes.push({ block: bf.name, item: nRow.item || oRow.item || '—', field: f, old: String(ov), new_val: String(nv) });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Compare scalar fields
+    for (const sf of SCALAR_FIELDS) {
+      const ov = parseFloat(oldCalc?.[sf.key]) || 0;
+      const nv = parseFloat(newCalc?.[sf.key]) || 0;
+      if (Math.abs(ov - nv) > 1) {
+        const fmt = sf.fmt || String;
+        changes.push({ block: 'Итоги', item: sf.name, field: '', old: fmt(ov), new_val: fmt(nv) });
+      }
+    }
+
+    if (!changes.length) return '';
+
+    const rows = changes.map(c => {
+      const cls = c.type === 'added' ? ' er-diff__added' : c.type === 'removed' ? ' er-diff__removed' : '';
+      return `<tr class="${cls}">
+        <td class="er-diff__block">${esc(c.block)}</td>
+        <td>${esc(c.item)}${c.field ? ' <span style="color:var(--t3);font-size:11px">(' + esc(c.field) + ')</span>' : ''}</td>
+        <td class="er-diff__old"><s>${esc(c.old)}</s></td>
+        <td class="er-diff__new"><b>${esc(c.new_val)}</b></td>
+      </tr>`;
+    }).join('');
+
+    return `
+    <div class="er-diff">
+      <div class="er-diff__title">Изменения в v.${v2} (от v.${v1})</div>
+      <table class="er-diff__table">
+        <thead><tr><th>Блок</th><th>Позиция</th><th>Было</th><th>Стало</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  function parseJsonField(val) {
+    if (!val) return [];
+    if (typeof val === 'string') { try { return JSON.parse(val); } catch { return []; } }
+    return Array.isArray(val) ? val : [];
+  }
+
+  // ──────────────────────────────────────────────────────────────
   // COMPONENT: Editable Calculation Table (PM view)
   // ──────────────────────────────────────────────────────────────
   function renderEditableTable(cd, est) {
@@ -799,6 +904,93 @@ window.AsgardEstimateReportPage = (function () {
       const obj = $('#erObject');
       if (obj) obj.classList.toggle('er-object--open');
     });
+  }
+
+  function bindExcelExport(est, calcData) {
+    const btn = document.getElementById('erExcelBtn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      try { exportToExcel(est, calcData); } catch (e) { toast('Ошибка экспорта: ' + e.message, 'error'); }
+    });
+  }
+
+  function exportToExcel(est, cd) {
+    if (typeof XLSX === 'undefined') { toast('SheetJS не загружен', 'error'); return; }
+    const wb = XLSX.utils.book_new();
+
+    // ── Sheet 1: Расчёт ──
+    const calcRows = [];
+    const blocks = cd.blocks || [];
+
+    // Header row
+    calcRows.push(['Просчёт #' + est.id + ': ' + (est.title || '')]);
+    calcRows.push(['Дата экспорта: ' + new Date().toLocaleDateString('ru-RU')]);
+    calcRows.push([]);
+
+    for (const b of blocks) {
+      const meta = BLOCK_META[b.id] || {};
+      calcRows.push([meta.name || b.name || b.id, '', '', '', '']);
+      calcRows.push(['Позиция', 'Кол-во', 'Ставка', 'Дни/Объём', 'Итого']);
+      for (const r of (b.rows || [])) {
+        const col2 = r.qty != null ? r.qty : '';
+        const col3 = r.rate || r.rate_m3 || r.rate_kg || r.rate_km || '';
+        const col4 = r.days || r.volume_m3 || (r.percent ? r.percent + '%' : '') || '';
+        calcRows.push([r.item || '', col2, col3, col4, r.total || 0]);
+      }
+      calcRows.push(['Итого ' + (meta.name || b.name || ''), '', '', '', b.subtotal || 0]);
+      calcRows.push([]);
+    }
+
+    const total = blocks.reduce((s, b) => s + (b.subtotal || 0), 0);
+    calcRows.push(['ИТОГО СЕБЕСТОИМОСТЬ', '', '', '', total]);
+
+    const ws1 = XLSX.utils.aoa_to_sheet(calcRows);
+    // Column widths
+    ws1['!cols'] = [{ wch: 35 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Расчёт');
+
+    // ── Sheet 2: Сводка ──
+    const s = cd.summary || {};
+    const summaryRows = [
+      ['СВОДКА ПРОСЧЁТА'],
+      [],
+      ['Просчёт', est.title || 'Просчёт #' + est.id],
+      ['Статус', (STATUS[est.approval_status] || {}).label || est.approval_status || '—'],
+      ['РП', est.pm_name || '—'],
+      ['Версия', est.current_version_no || 1],
+      ['Дедлайн', est.deadline ? fmtDate(est.deadline) : '—'],
+      [],
+      ['Заказчик', est.customer || '—'],
+      ['Город', est.object_city || '—'],
+      ['Расстояние', est.object_distance_km ? est.object_distance_km + ' км' : '—'],
+      ['Тип работ', est.work_type || '—'],
+      ['Бригада', est.crew_count ? est.crew_count + ' чел.' : '—'],
+      ['Рабочих дней', est.work_days || '—'],
+      ['Дней дороги', est.road_days || '—'],
+      [],
+      ['ФИНАНСЫ'],
+      ['Себестоимость', s.cost_no_vat || 0],
+      ['Наценка', '×' + (s.markup || 1).toFixed(1)],
+      ['Цена клиенту', s.price_no_vat || 0],
+      ['Маржа ₽', s.margin_rub || 0],
+      ['Маржа %', (s.margin_pct || 0).toFixed(1) + '%']
+    ];
+
+    // Block breakdown
+    summaryRows.push([], ['СТРУКТУРА СЕБЕСТОИМОСТИ']);
+    for (const b of blocks) {
+      const meta = BLOCK_META[b.id] || {};
+      const pct = total > 0 ? ((b.subtotal || 0) / total * 100).toFixed(1) : '0';
+      summaryRows.push([meta.name || b.name || b.id, b.subtotal || 0, pct + '%']);
+    }
+
+    const ws2 = XLSX.utils.aoa_to_sheet(summaryRows);
+    ws2['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Сводка');
+
+    // Download
+    const filename = 'Просчёт_' + est.id + '_v' + (est.current_version_no || 1) + '.xlsx';
+    XLSX.writeFile(wb, filename);
   }
 
   function bindTableExpand() {

@@ -469,9 +469,12 @@ async function routes(fastify) {
     const distanceKm = parseInt(estimate.object_distance_km) || 500;
     const workType = estimate.work_type || 'CHEM';
 
-    // Crew breakdown
+    // Crew breakdown: workers + ITR + master
     const masters = 1;
-    const workers = Math.max(crewCount - masters, 1);
+    const itrCount = 1; // ИТР (инженер/РП на объекте)
+    const ITR_RATE = 10000; // фиксированная ставка ₽/смена
+    const workers = Math.max(crewCount - masters - itrCount, 1);
+    const totalFieldCrew = workers + itrCount + masters; // все на объекте
     const warehouseStaff = Math.min(crewCount, 3);
     const warehouseDays = 2;
 
@@ -485,6 +488,12 @@ async function routes(fastify) {
       item: 'Рабочие (слесари)', qty: workers, rate: tariff.worker, days: totalDays,
       total: fotWorkers, source: 'tariff', editable: ['qty', 'rate', 'days']
     });
+    // ITR (engineer/PM on-site) — NOT from tariff grid, fixed rate
+    const fotITR = itrCount * ITR_RATE * totalDays;
+    personnelRows.push({
+      item: 'ИТР (инженер/РП)', qty: itrCount, rate: ITR_RATE, days: totalDays,
+      total: fotITR, source: 'fixed', editable: ['qty', 'rate', 'days']
+    });
     // Master
     const fotMaster = masters * tariff.master * totalDays;
     personnelRows.push({
@@ -497,32 +506,32 @@ async function routes(fastify) {
       item: 'Подготовка на складе', qty: warehouseStaff, rate: TARIFF_WAREHOUSE.worker, days: warehouseDays,
       total: fotWarehouse, source: 'tariff', editable: ['qty', 'rate', 'days']
     });
-    // Road days surcharge
-    const roadPay = crewCount * ROAD_RATE * roadDays;
+    // Road days surcharge (all field crew)
+    const roadPay = totalFieldCrew * ROAD_RATE * roadDays;
     personnelRows.push({
-      item: 'Дни дороги (6 баллов)', qty: crewCount, rate: ROAD_RATE, days: roadDays,
+      item: 'Дни дороги (6 баллов)', qty: totalFieldCrew, rate: ROAD_RATE, days: roadDays,
       total: roadPay, source: 'tariff', editable: ['qty', 'days']
     });
-    // Tax
-    const totalFOT = fotWorkers + fotMaster + fotWarehouse + roadPay;
+    // Tax on ALL FOT (workers + ITR + master + warehouse + road)
+    const totalFOT = fotWorkers + fotITR + fotMaster + fotWarehouse + roadPay;
     const tax = totalFOT * TAX_PCT / 100;
     personnelRows.push({
       item: 'Налоги на ФОТ (55%)', percent: TAX_PCT, base: totalFOT,
       total: tax, source: 'config', editable: []
     });
-    // Passes
-    const passes = crewCount * PASS_COST;
+    // Passes (all field crew)
+    const passes = totalFieldCrew * PASS_COST;
     personnelRows.push({
-      item: 'Пропуска и инструктаж', qty: crewCount, rate: PASS_COST,
+      item: 'Пропуска и инструктаж', qty: totalFieldCrew, rate: PASS_COST,
       total: passes, source: 'config', editable: ['qty', 'rate']
     });
 
     // ── BLOCK 2: Current costs ──
     const currentRows = [];
-    // PPE
-    const ppe = workers * PPE_WORKER + masters * PPE_ITR;
+    // PPE: workers × 5000, ITR × 7000, master × 7000
+    const ppe = workers * PPE_WORKER + itrCount * PPE_ITR + masters * PPE_ITR;
     currentRows.push({
-      item: 'СИЗ бригады', qty: crewCount, rate: PPE_WORKER,
+      item: 'СИЗ бригады', qty: totalFieldCrew, rate: PPE_WORKER,
       total: ppe, source: 'config', editable: ['total']
     });
     // Depreciation (default equipment cost 500k)
@@ -532,13 +541,13 @@ async function routes(fastify) {
       source: 'estimate', editable: ['total']
     });
     // Insurance
-    const insurance = crewCount * INSURANCE;
+    const insurance = totalFieldCrew * INSURANCE;
     currentRows.push({
-      item: 'Страховка бригады', qty: crewCount, rate: INSURANCE,
+      item: 'Страховка бригады', qty: totalFieldCrew, rate: INSURANCE,
       total: insurance, source: 'config', editable: ['qty', 'rate']
     });
     // Taxi or car rental
-    if (crewCount <= 5) {
+    if (totalFieldCrew <= 5) {
       currentRows.push({
         item: 'Такси (объект)', rate: TAXI_PER_DAY, days: workDays,
         total: TAXI_PER_DAY * workDays, source: 'config', editable: ['rate', 'days']
@@ -573,32 +582,32 @@ async function routes(fastify) {
     // ── BLOCK 3: Travel ──
     const travelRows = [];
     // Tickets Saratov-Moscow
-    const ticketSarMsk = crewCount * TICKET_SARATOV_MOSCOW;
+    const ticketSarMsk = totalFieldCrew * TICKET_SARATOV_MOSCOW;
     travelRows.push({
-      item: 'Билеты Саратов↔Москва', qty: crewCount, rate: TICKET_SARATOV_MOSCOW,
+      item: 'Билеты Саратов↔Москва', qty: totalFieldCrew, rate: TICKET_SARATOV_MOSCOW,
       total: ticketSarMsk, source: 'estimate', editable: ['qty', 'rate']
     });
     // Tickets Moscow-Object (estimate based on distance)
     const ticketMskObj = distanceKm > 1000 ? 15000 : distanceKm > 500 ? 8000 : 5000;
     travelRows.push({
-      item: 'Билеты Москва↔Объект', qty: crewCount, rate: ticketMskObj,
-      total: crewCount * ticketMskObj, source: 'estimate', editable: ['qty', 'rate']
+      item: 'Билеты Москва↔Объект', qty: totalFieldCrew, rate: ticketMskObj,
+      total: totalFieldCrew * ticketMskObj, source: 'estimate', editable: ['qty', 'rate']
     });
     // Hotel on-site
     const hotelRate = 1500;
     travelRows.push({
-      item: 'Проживание на объекте', qty: crewCount, rate: hotelRate, days: totalDays,
-      total: crewCount * hotelRate * totalDays, source: 'estimate', editable: ['qty', 'rate', 'days']
+      item: 'Проживание на объекте', qty: totalFieldCrew, rate: hotelRate, days: totalDays,
+      total: totalFieldCrew * hotelRate * totalDays, source: 'estimate', editable: ['qty', 'rate', 'days']
     });
     // Daily allowance
     travelRows.push({
-      item: 'Суточные', qty: crewCount, rate: DAILY_ALLOWANCE, days: totalDays,
-      total: crewCount * DAILY_ALLOWANCE * totalDays, source: 'config', editable: ['qty', 'days']
+      item: 'Суточные', qty: totalFieldCrew, rate: DAILY_ALLOWANCE, days: totalDays,
+      total: totalFieldCrew * DAILY_ALLOWANCE * totalDays, source: 'config', editable: ['qty', 'days']
     });
     // Rations
     travelRows.push({
-      item: 'Пайковые', qty: crewCount, rate: RATION, days: totalDays,
-      total: crewCount * RATION * totalDays, source: 'config', editable: ['qty', 'days']
+      item: 'Пайковые', qty: totalFieldCrew, rate: RATION, days: totalDays,
+      total: totalFieldCrew * RATION * totalDays, source: 'config', editable: ['qty', 'days']
     });
 
     // ── BLOCK 4: Transport ──
@@ -628,7 +637,8 @@ async function routes(fastify) {
     // ── BLOCK 5: Chemistry (only for CHEM) ──
     const chemistryRows = [];
     if (workType === 'CHEM') {
-      const volumeM3 = 10; // default guess
+      const body = request.body || {};
+      const volumeM3 = parseFloat(body.volume_m3) || parseFloat(estimate.volume_m3) || 8;
       // Acid
       chemistryRows.push({
         item: 'Соляная кислота 35%', volume_m3: volumeM3 * 0.10, rate_m3: 58000,

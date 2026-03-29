@@ -818,6 +818,57 @@
   margin-top: 6px;
 }
 
+/* ── Changes Diff (rework/question) ── */
+.er-diff {
+  background: rgba(212,168,67,.06);
+  border: 1px solid rgba(212,168,67,.25);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: var(--sp-4);
+  animation: erFadeIn 200ms ease;
+}
+.er-diff__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gold);
+  margin-bottom: 10px;
+}
+.er-diff__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.er-diff__table th {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--t3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid rgba(212,168,67,.15);
+}
+.er-diff__table td {
+  padding: 5px 8px;
+  color: var(--t2);
+  border-bottom: 1px solid rgba(255,255,255,.03);
+}
+.er-diff__block {
+  font-size: 11px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.er-diff__old {
+  color: var(--t3);
+}
+.er-diff__old s { text-decoration: line-through; }
+.er-diff__new {
+  color: var(--t1);
+}
+.er-diff__new b { font-weight: 600; }
+.er-diff__added td { background: rgba(76,175,80,.06); }
+.er-diff__removed td { background: rgba(200,41,59,.06); }
+
 /* ── Editable blocks (PM calculation) ── */
 .er-editable { margin-bottom: var(--sp-4); }
 
