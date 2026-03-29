@@ -111,6 +111,57 @@ async function routes(fastify) {
     });
   });
 
+  // ─── PM: отправить черновик на согласование ───
+  fastify.post('/:entityType/:id/send', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    return handleAction(reply, async () => {
+      validateEntity(request.params.entityType);
+      const entityType = request.params.entityType;
+      const entityId = parseInt(request.params.id);
+      const actor = request.user;
+
+      // Verify entity exists and is draft
+      const result = await db.query(`SELECT * FROM ${entityType} WHERE id = $1`, [entityId]);
+      const entity = result.rows[0];
+      if (!entity) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+      if (entity.approval_status !== 'draft') {
+        throw Object.assign(new Error('Отправить можно только черновик'), { statusCode: 400 });
+      }
+
+      // Update status to sent
+      await db.query(
+        `UPDATE ${entityType} SET approval_status = 'sent', sent_for_approval_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [entityId]
+      );
+
+      // Log
+      await db.query(
+        `INSERT INTO audit_log (entity_type, entity_id, action, user_id, details, created_at)
+         VALUES ($1, $2, 'send', $3, $4, NOW())`,
+        [entityType, entityId, actor.id, JSON.stringify({ actor_name: actor.name })]
+      );
+
+      // Record in approval_comments
+      await db.query(
+        `INSERT INTO approval_comments (entity_type, entity_id, user_id, action, comment)
+         VALUES ($1, $2, $3, 'resubmit', $4)`,
+        [entityType, entityId, actor.id, 'Отправлено на согласование']
+      );
+
+      // Notify directors
+      await approvalService.notifyDirectorsForApproval(db, {
+        entityType, entityId,
+        actorName: actor.name,
+        title: 'На согласование',
+        message: `${actor.name || 'РП'} отправил на согласование #${entityId}`,
+        requiresPayment: false
+      });
+
+      return { success: true, status: 'sent' };
+    });
+  });
+
   // ─── PM: переотправить после доработки/вопроса ───
   fastify.post('/:entityType/:id/resubmit', {
     preHandler: [fastify.authenticate]

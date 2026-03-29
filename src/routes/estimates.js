@@ -430,6 +430,290 @@ async function routes(fastify) {
     return { estimate: result.rows[0] };
   });
 
+  // ─── AUTO-CALCULATE (Mimir engine) ───
+  fastify.post('/:id/auto-calculate', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const role = request.user.role;
+    if (!CALC_ROLES.includes(role)) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+
+    const estimate = await checkEstimateAccess(db, request.params.id, request.user, reply);
+    if (!estimate) return;
+
+    // ── Tariff tables from MIMIR_CALCULATION_ENGINE_v2.md ──
+    const TARIFF_GROUND_NORMAL = { worker: 5500, master: 7000, shift_master: 6000 };
+    const TARIFF_GROUND_HEAVY  = { worker: 6500, master: 8000, shift_master: 7000 };
+    const TARIFF_WAREHOUSE     = { worker: 5000, master: 6000 };
+    const ROAD_RATE = 3000; // 6 баллов × 500₽
+    const TAX_PCT = 55; // % налог на ФОТ
+    const PASS_COST = 3000; // ₽/чел пропуска
+    const DAILY_ALLOWANCE = 1000; // суточные ₽/чел/день
+    const RATION = 1000; // пайковые ₽/чел/день
+    const PPE_WORKER = 5000; // СИЗ рабочий
+    const PPE_ITR = 7000; // СИЗ ИТР
+    const OVERHEAD_PCT = 15;
+    const CONSUMABLES_PCT = 3;
+    const CONTINGENCY_PCT = 5;
+    const HOTEL_MOSCOW = 3500; // ₽/чел/день
+    const TICKET_SARATOV_MOSCOW = 12000; // ₽/чел
+    const INSURANCE = 2000; // ₽/чел
+    const TAXI_PER_DAY = 1500;
+    const MANIPULATOR = 5000; // ₽/день
+    const TRANSPORT_RATES = { corporate: 50, gazelle: 70, truck10: 95, truck20: 100 };
+
+    // ── Extract params ──
+    const crewCount = parseInt(estimate.crew_count) || 4;
+    const workDays = parseInt(estimate.work_days) || 10;
+    const roadDays = parseInt(estimate.road_days) || 2;
+    const totalDays = workDays + roadDays;
+    const distanceKm = parseInt(estimate.object_distance_km) || 500;
+    const workType = estimate.work_type || 'CHEM';
+
+    // Crew breakdown
+    const masters = 1;
+    const workers = Math.max(crewCount - masters, 1);
+    const warehouseStaff = Math.min(crewCount, 3);
+    const warehouseDays = 2;
+
+    // ── BLOCK 1: Personnel ──
+    const personnelRows = [];
+    const tariff = TARIFF_GROUND_NORMAL;
+
+    // Workers
+    const fotWorkers = workers * tariff.worker * totalDays;
+    personnelRows.push({
+      item: 'Рабочие (слесари)', qty: workers, rate: tariff.worker, days: totalDays,
+      total: fotWorkers, source: 'tariff', editable: ['qty', 'rate', 'days']
+    });
+    // Master
+    const fotMaster = masters * tariff.master * totalDays;
+    personnelRows.push({
+      item: 'Мастер ответственный', qty: masters, rate: tariff.master, days: totalDays,
+      total: fotMaster, source: 'tariff', editable: ['qty', 'rate', 'days']
+    });
+    // Warehouse
+    const fotWarehouse = warehouseStaff * TARIFF_WAREHOUSE.worker * warehouseDays;
+    personnelRows.push({
+      item: 'Подготовка на складе', qty: warehouseStaff, rate: TARIFF_WAREHOUSE.worker, days: warehouseDays,
+      total: fotWarehouse, source: 'tariff', editable: ['qty', 'rate', 'days']
+    });
+    // Road days surcharge
+    const roadPay = crewCount * ROAD_RATE * roadDays;
+    personnelRows.push({
+      item: 'Дни дороги (6 баллов)', qty: crewCount, rate: ROAD_RATE, days: roadDays,
+      total: roadPay, source: 'tariff', editable: ['qty', 'days']
+    });
+    // Tax
+    const totalFOT = fotWorkers + fotMaster + fotWarehouse + roadPay;
+    const tax = totalFOT * TAX_PCT / 100;
+    personnelRows.push({
+      item: 'Налоги на ФОТ (55%)', percent: TAX_PCT, base: totalFOT,
+      total: tax, source: 'config', editable: []
+    });
+    // Passes
+    const passes = crewCount * PASS_COST;
+    personnelRows.push({
+      item: 'Пропуска и инструктаж', qty: crewCount, rate: PASS_COST,
+      total: passes, source: 'config', editable: ['qty', 'rate']
+    });
+
+    // ── BLOCK 2: Current costs ──
+    const currentRows = [];
+    // PPE
+    const ppe = workers * PPE_WORKER + masters * PPE_ITR;
+    currentRows.push({
+      item: 'СИЗ бригады', qty: crewCount, rate: PPE_WORKER,
+      total: ppe, source: 'config', editable: ['total']
+    });
+    // Depreciation (default equipment cost 500k)
+    const depreciation = 500000 * 0.005 * totalDays;
+    currentRows.push({
+      item: 'Амортизация оборудования', total: depreciation,
+      source: 'estimate', editable: ['total']
+    });
+    // Insurance
+    const insurance = crewCount * INSURANCE;
+    currentRows.push({
+      item: 'Страховка бригады', qty: crewCount, rate: INSURANCE,
+      total: insurance, source: 'config', editable: ['qty', 'rate']
+    });
+    // Taxi or car rental
+    if (crewCount <= 5) {
+      currentRows.push({
+        item: 'Такси (объект)', rate: TAXI_PER_DAY, days: workDays,
+        total: TAXI_PER_DAY * workDays, source: 'config', editable: ['rate', 'days']
+      });
+    } else {
+      currentRows.push({
+        item: 'Аренда авто', rate: 4000, days: workDays,
+        total: 4000 * workDays, source: 'estimate', editable: ['rate', 'days']
+      });
+    }
+    // Moscow hotel for warehouse prep
+    const moscowHotel = warehouseStaff * HOTEL_MOSCOW * warehouseDays;
+    currentRows.push({
+      item: 'Проживание Москва (склад)', qty: warehouseStaff, rate: HOTEL_MOSCOW, days: warehouseDays,
+      total: moscowHotel, source: 'config', editable: ['qty', 'rate', 'days']
+    });
+    // Block1 subtotal for overhead/consumables calc
+    const block1Sub = personnelRows.reduce((s, r) => s + (r.total || 0), 0);
+    const currentSub = currentRows.reduce((s, r) => s + (r.total || 0), 0);
+    const overheadBase = block1Sub + currentSub;
+    // Overhead 15%
+    currentRows.push({
+      item: 'Накладные расходы (15%)', percent: OVERHEAD_PCT, base: overheadBase,
+      total: overheadBase * OVERHEAD_PCT / 100, source: 'config', editable: []
+    });
+    // Consumables 3%
+    currentRows.push({
+      item: 'Расходные материалы (3%)', percent: CONSUMABLES_PCT, base: overheadBase,
+      total: overheadBase * CONSUMABLES_PCT / 100, source: 'config', editable: []
+    });
+
+    // ── BLOCK 3: Travel ──
+    const travelRows = [];
+    // Tickets Saratov-Moscow
+    const ticketSarMsk = crewCount * TICKET_SARATOV_MOSCOW;
+    travelRows.push({
+      item: 'Билеты Саратов↔Москва', qty: crewCount, rate: TICKET_SARATOV_MOSCOW,
+      total: ticketSarMsk, source: 'estimate', editable: ['qty', 'rate']
+    });
+    // Tickets Moscow-Object (estimate based on distance)
+    const ticketMskObj = distanceKm > 1000 ? 15000 : distanceKm > 500 ? 8000 : 5000;
+    travelRows.push({
+      item: 'Билеты Москва↔Объект', qty: crewCount, rate: ticketMskObj,
+      total: crewCount * ticketMskObj, source: 'estimate', editable: ['qty', 'rate']
+    });
+    // Hotel on-site
+    const hotelRate = 1500;
+    travelRows.push({
+      item: 'Проживание на объекте', qty: crewCount, rate: hotelRate, days: totalDays,
+      total: crewCount * hotelRate * totalDays, source: 'estimate', editable: ['qty', 'rate', 'days']
+    });
+    // Daily allowance
+    travelRows.push({
+      item: 'Суточные', qty: crewCount, rate: DAILY_ALLOWANCE, days: totalDays,
+      total: crewCount * DAILY_ALLOWANCE * totalDays, source: 'config', editable: ['qty', 'days']
+    });
+    // Rations
+    travelRows.push({
+      item: 'Пайковые', qty: crewCount, rate: RATION, days: totalDays,
+      total: crewCount * RATION * totalDays, source: 'config', editable: ['qty', 'days']
+    });
+
+    // ── BLOCK 4: Transport ──
+    const transportRows = [];
+    // Choose transport type based on crew size
+    const tType = crewCount > 8 ? 'truck10' : crewCount > 5 ? 'gazelle' : 'corporate';
+    const tRate = TRANSPORT_RATES[tType];
+    const tName = tType === 'truck10' ? 'Фура 10т' : tType === 'gazelle' ? 'Газель 5т' : 'Корпоративный';
+    const tCost = distanceKm * 2 * tRate;
+    transportRows.push({
+      item: `Доставка оборудования (${tName})`, distance_km: distanceKm, rate_km: tRate,
+      total: tCost, source: 'config', editable: ['distance_km', 'rate_km']
+    });
+    // DOPOG for CHEM
+    if (workType === 'CHEM') {
+      transportRows.push({
+        item: 'Надбавка ДОПОГ (+70%)', percent: 70, base: tCost,
+        total: tCost * 0.7, source: 'config', editable: []
+      });
+    }
+    // Manipulator
+    transportRows.push({
+      item: 'Манипулятор (склад)', rate: MANIPULATOR, days: 2,
+      total: MANIPULATOR * 2, source: 'config', editable: ['rate', 'days']
+    });
+
+    // ── BLOCK 5: Chemistry (only for CHEM) ──
+    const chemistryRows = [];
+    if (workType === 'CHEM') {
+      const volumeM3 = 10; // default guess
+      // Acid
+      chemistryRows.push({
+        item: 'Соляная кислота 35%', volume_m3: volumeM3 * 0.10, rate_m3: 58000,
+        total: volumeM3 * 0.10 * 58000, source: 'reference', editable: ['volume_m3', 'rate_m3']
+      });
+      // Alkali neutralization
+      chemistryRows.push({
+        item: 'Кальцинированная сода', volume_m3: volumeM3 * 0.10 * 0.40, rate_m3: 103251,
+        total: volumeM3 * 0.10 * 0.40 * 103251, source: 'reference', editable: ['volume_m3', 'rate_m3']
+      });
+      // Passivation
+      chemistryRows.push({
+        item: 'Пассивация (лимонная к-та)', volume_m3: volumeM3 * 0.01, rate_m3: 240000,
+        total: volumeM3 * 0.01 * 240000, source: 'reference', editable: ['volume_m3', 'rate_m3']
+      });
+      // Inhibitor
+      chemistryRows.push({
+        item: 'Ингибитор Друг СГ', qty: 7, rate: 3700,
+        total: 7 * 3700, source: 'reference', editable: ['qty', 'rate']
+      });
+      // Disposal
+      chemistryRows.push({
+        item: 'Утилизация отходов', volume_m3: volumeM3, rate_m3: 10000,
+        total: volumeM3 * 10000, source: 'reference', editable: ['volume_m3', 'rate_m3']
+      });
+      // Water supply
+      chemistryRows.push({
+        item: 'Водоснабжение (водовоз)', total: 15000,
+        source: 'estimate', editable: ['total']
+      });
+    }
+
+    // ── BLOCK 6: Contingency ──
+    const block1Total = personnelRows.reduce((s, r) => s + (r.total || 0), 0);
+    const block2Total = currentRows.reduce((s, r) => s + (r.total || 0), 0);
+    const block3Total = travelRows.reduce((s, r) => s + (r.total || 0), 0);
+    const block4Total = transportRows.reduce((s, r) => s + (r.total || 0), 0);
+    const block5Total = chemistryRows.reduce((s, r) => s + (r.total || 0), 0);
+    const subtotalAll = block1Total + block2Total + block3Total + block4Total + block5Total;
+    const contingencyAmount = subtotalAll * CONTINGENCY_PCT / 100;
+    const totalCost = subtotalAll + contingencyAmount;
+
+    // Default markup ×2.0
+    const markup = parseFloat(estimate.markup_multiplier) || 2.0;
+    const marginPct = (markup - 1) * 100;
+    const totalWithMargin = totalCost * markup;
+
+    const versionNo = estimate.current_version_no || 1;
+
+    // UPSERT calculation data
+    const result = await db.query(
+      `INSERT INTO estimate_calculation_data
+       (estimate_id, version_no, personnel_json, current_costs_json, travel_json, transport_json,
+        chemistry_json, contingency_pct, subtotal, contingency_amount, total_cost, margin_pct,
+        total_with_margin, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT (estimate_id, version_no) DO UPDATE SET
+         personnel_json = EXCLUDED.personnel_json,
+         current_costs_json = EXCLUDED.current_costs_json,
+         travel_json = EXCLUDED.travel_json,
+         transport_json = EXCLUDED.transport_json,
+         chemistry_json = EXCLUDED.chemistry_json,
+         contingency_pct = EXCLUDED.contingency_pct,
+         subtotal = EXCLUDED.subtotal,
+         contingency_amount = EXCLUDED.contingency_amount,
+         total_cost = EXCLUDED.total_cost,
+         margin_pct = EXCLUDED.margin_pct,
+         total_with_margin = EXCLUDED.total_with_margin,
+         notes = EXCLUDED.notes,
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        estimate.id, versionNo,
+        JSON.stringify(personnelRows), JSON.stringify(currentRows),
+        JSON.stringify(travelRows), JSON.stringify(transportRows),
+        JSON.stringify(chemistryRows), CONTINGENCY_PCT,
+        subtotalAll.toFixed(2), contingencyAmount.toFixed(2), totalCost.toFixed(2),
+        marginPct, totalWithMargin.toFixed(2),
+        'Авторасчёт Мимира', request.user.id
+      ]
+    );
+
+    return { success: true, calculation: result.rows[0] };
+  });
+
   // ─── DELETE ───
   fastify.delete('/:id', {
     preHandler: [fastify.requireRoles(['ADMIN'])]

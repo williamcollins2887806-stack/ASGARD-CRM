@@ -144,21 +144,26 @@ window.AsgardEstimateReportPage = (function () {
     const calcData = parseCalcData(est, calc);
     const st = STATUS[est.approval_status] || STATUS.draft;
     const canAct = isDirector(user.role) && est.approval_status === 'sent';
-    const canResubmit = (user.role === 'PM' || user.role === 'HEAD_PM' || user.role === 'ADMIN') &&
-                        ['rework', 'question'].includes(est.approval_status) &&
-                        (Number(est.pm_id) === Number(user.id) || user.role === 'ADMIN');
+    const isPM = ['PM', 'HEAD_PM'].includes(user.role) || user.role === 'ADMIN';
+    const isOwner = Number(est.pm_id) === Number(user.id) || user.role === 'ADMIN';
+    const canEdit = isPM && isOwner && ['draft', 'rework', 'question'].includes(est.approval_status);
+    const canResubmit = isPM && isOwner && ['rework', 'question'].includes(est.approval_status);
+    const canSend = isPM && isOwner && est.approval_status === 'draft';
+    const showReworkBanner = canEdit && ['rework', 'question'].includes(est.approval_status) && est.last_director_comment;
 
     const body = `
-    <div class="er-page" id="erPage">
-      ${renderHeader(est, st)}
+    <div class="er-page" id="erPage" data-est-id="${est.id}">
+      ${renderHeader(est, st, canEdit)}
+      ${showReworkBanner ? renderReworkBanner(est) : ''}
       ${renderSummaryCards(calcData)}
       ${renderCostBar(calcData)}
       ${renderObjectInfo(est)}
-      ${renderConsolidatedTable(calcData)}
+      ${canEdit ? renderEditableTable(calcData, est) : renderConsolidatedTable(calcData)}
+      ${canEdit ? renderMimirChat() : ''}
       ${renderAnalogs(analogs)}
       ${renderComments(comments)}
       ${canAct ? renderActionPanel() : ''}
-      ${canResubmit ? renderResubmitPanel() : ''}
+      ${canEdit ? renderPMActionPanel(canSend, canResubmit) : ''}
     </div>`;
 
     await layoutFn(body, { title: est.title || 'Просчёт #' + est.id });
@@ -166,10 +171,16 @@ window.AsgardEstimateReportPage = (function () {
     // ── Bind events ──
     bindObjectToggle();
     bindFilePreview();
-    bindTableExpand();
+    if (canEdit) {
+      bindEditableTable(id, token, calcData);
+      bindMimirChat(id, token);
+      if (canSend) bindSendButton(id, token);
+      if (canResubmit) bindResubmitButton(id, token);
+    } else {
+      bindTableExpand();
+    }
     bindCommentSubmit(id, token, user);
     if (canAct) bindActionButtons(id, token, user);
-    if (canResubmit) bindResubmitButton(id, token);
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -247,7 +258,7 @@ window.AsgardEstimateReportPage = (function () {
   // ──────────────────────────────────────────────────────────────
   // COMPONENT: Header
   // ──────────────────────────────────────────────────────────────
-  function renderHeader(est, st) {
+  function renderHeader(est, st, canEdit) {
     const dl = est.deadline ? fmtDate(est.deadline) : '';
     const dlClass = deadlineClass(est.deadline);
     return `
@@ -257,12 +268,15 @@ window.AsgardEstimateReportPage = (function () {
         <div class="er-header-sub">
           <span class="er-pill er-pill--${st.css}">${st.label}</span>
           ${est.pm_name ? '<span>' + esc(est.pm_name) + '</span>' : ''}
-          ${est.version_no ? '<span>v.' + est.version_no + '</span>' : ''}
+          ${est.current_version_no ? '<span>v.' + est.current_version_no + '</span>' : ''}
           ${dl ? '<span class="' + dlClass + '">Дедлайн: ' + dl + '</span>' : ''}
           ${est.work_type ? '<span class="er-wtype er-wtype--' + esc(est.work_type) + '">' + esc(WORK_TYPES[est.work_type] || est.work_type) + '</span>' : ''}
         </div>
       </div>
-      <a href="#/all-estimates" class="er-btn er-btn--secondary" style="margin-top:2px">← К списку</a>
+      <div class="er-header-right">
+        ${canEdit ? '<button class="er-btn er-btn--mimir" id="erAutoCalcBtn">🧙 Авторасчёт</button>' : ''}
+        <a href="#/all-estimates" class="er-btn er-btn--secondary">← К списку</a>
+      </div>
     </div>`;
   }
 
@@ -560,6 +574,151 @@ window.AsgardEstimateReportPage = (function () {
   }
 
   // ──────────────────────────────────────────────────────────────
+  // COMPONENT: Rework Banner (shown to PM when director returned)
+  // ──────────────────────────────────────────────────────────────
+  function renderReworkBanner(est) {
+    const actionLabel = est.approval_status === 'question' ? 'Вопрос директора' : 'Замечание директора';
+    return `
+    <div class="er-rework-banner">
+      <div class="er-rework-banner__icon">↻</div>
+      <div class="er-rework-banner__body">
+        <div class="er-rework-banner__title">${actionLabel}</div>
+        <div class="er-rework-banner__text">${esc(est.last_director_comment || '')}</div>
+        ${est.director_name ? '<div class="er-rework-banner__who">' + esc(est.director_name) + '</div>' : ''}
+      </div>
+    </div>`;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // COMPONENT: Editable Calculation Table (PM view)
+  // ──────────────────────────────────────────────────────────────
+  function renderEditableTable(cd, est) {
+    const blocks = cd.blocks || [];
+    if (!blocks.length) return `
+      <div class="er-empty">
+        <p>Данные расчёта ещё не заполнены</p>
+        <p style="font-size:12px;color:var(--t3);margin-top:4px">Нажмите «🧙 Авторасчёт» чтобы Мимир заполнил таблицу</p>
+      </div>`;
+
+    const total = blocks.reduce((s, b) => s + (b.subtotal || 0), 0);
+
+    const blockHtml = blocks.map(b => {
+      const meta = BLOCK_META[b.id] || { color: '#999' };
+      const rows = b.rows || [];
+      const isOpen = b.id === 'personnel' || b.id === 'chemistry'; // auto-expand first & chemistry
+
+      const rowsHtml = rows.map((r, ri) => {
+        const src = r.source ? `<span class="er-src er-src--${r.source}">${SRC_LABELS[r.source] || r.source}</span>` : '';
+        const editable = r.editable || [];
+        const inputCell = (field, val, unit) => {
+          if (editable.includes(field)) {
+            return `<input type="number" class="er-input" data-block="${b.id}" data-row="${ri}" data-field="${field}" value="${val || ''}" step="any">`;
+          }
+          return val != null ? String(val) : '—';
+        };
+
+        // Build description based on available fields
+        let descCells = '';
+        if (r.qty != null) descCells += `<td class="er-edit-cell">${inputCell('qty', r.qty)}</td>`;
+        else descCells += '<td></td>';
+
+        if (r.rate != null || r.rate_m3 != null || r.rate_kg != null || r.rate_km != null) {
+          const rateField = r.rate_m3 != null ? 'rate_m3' : r.rate_kg != null ? 'rate_kg' : r.rate_km != null ? 'rate_km' : 'rate';
+          const rateVal = r[rateField];
+          descCells += `<td class="er-edit-cell">${inputCell(rateField, rateVal)}</td>`;
+        } else descCells += '<td></td>';
+
+        if (r.days != null) descCells += `<td class="er-edit-cell">${inputCell('days', r.days)}</td>`;
+        else if (r.volume_m3 != null) descCells += `<td class="er-edit-cell">${inputCell('volume_m3', r.volume_m3)}</td>`;
+        else if (r.percent != null) descCells += `<td>${r.percent}%</td>`;
+        else descCells += '<td></td>';
+
+        const totalEditable = editable.includes('total');
+        const totalCell = totalEditable
+          ? `<td class="er-edit-cell"><input type="number" class="er-input" data-block="${b.id}" data-row="${ri}" data-field="total" value="${r.total || ''}" step="any"></td>`
+          : `<td class="er-edit-total">${fmtMoney(r.total)}</td>`;
+
+        return `<tr>
+          <td class="er-edit-item">${esc(r.item || '')} ${src}</td>
+          ${descCells}
+          ${totalCell}
+        </tr>`;
+      }).join('');
+
+      return `
+      <div class="er-eblock ${isOpen ? 'er-eblock--open' : ''}" data-block="${b.id}">
+        <div class="er-eblock__header" data-toggle="${b.id}">
+          <span class="er-eblock__dot" style="background:${meta.color}"></span>
+          <span class="er-eblock__name">${esc(b.name)}</span>
+          <span class="er-eblock__sum" id="erBlockSum_${b.id}">${fmtMoney(b.subtotal)}</span>
+          <span class="er-eblock__chevron">▸</span>
+        </div>
+        <div class="er-eblock__body">
+          <table class="er-etable">
+            <thead><tr>
+              <th>Позиция</th><th>Кол-во</th><th>Ставка</th><th>Дни/Объём</th><th>Итого</th>
+            </tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `
+    <div class="er-editable" id="erEditable">
+      ${blockHtml}
+      <div class="er-editable__footer">
+        <span>Итого себестоимость</span>
+        <span class="er-editable__total" id="erTotalCost">${fmtMoney(total)}</span>
+      </div>
+    </div>`;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // COMPONENT: MimirChat (mini, below table for PM)
+  // ──────────────────────────────────────────────────────────────
+  function renderMimirChat() {
+    return `
+    <div class="er-mimir" id="erMimir">
+      <div class="er-mimir__header">
+        <span class="er-mimir__avatar">M</span>
+        <span class="er-mimir__name">Мимир — ассистент расчёта</span>
+      </div>
+      <div class="er-mimir__body" id="erMimirBody">
+        <div class="er-mimir__hint">Мимир подскажет по химии, тарифам и логистике. Напишите вопрос или нажмите «Авторасчёт».</div>
+      </div>
+      <div class="er-mimir__legend">
+        <span class="er-src er-src--tariff">тариф</span> надёжный источник
+        <span class="er-src er-src--mimir" style="margin-left:8px">Мимир</span> требует проверки
+        <span class="er-src er-src--fixed" style="margin-left:8px">фикс.</span> константа
+      </div>
+      <div class="er-mimir__input">
+        <input type="text" id="erMimirInput" placeholder="Спросить Мимира..." />
+        <button class="er-mimir__send" id="erMimirSend">↗</button>
+      </div>
+    </div>`;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // COMPONENT: PM Action Panel (draft/rework)
+  // ──────────────────────────────────────────────────────────────
+  function renderPMActionPanel(canSend, canResubmit) {
+    if (canSend) {
+      return `
+      <div class="er-pm-actions" id="erPMActions">
+        <button class="er-btn er-btn--send" id="erSendBtn">Отправить на согласование →</button>
+      </div>`;
+    }
+    if (canResubmit) {
+      return `
+      <div class="er-pm-actions" id="erPMActions">
+        <button class="er-btn er-btn--resubmit" id="erResubmitBtn">Отправить повторно на согласование →</button>
+      </div>`;
+    }
+    return '';
+  }
+
+  // ──────────────────────────────────────────────────────────────
   // COMPONENT: Analogs
   // ──────────────────────────────────────────────────────────────
   function renderAnalogs(analogs) {
@@ -628,18 +787,7 @@ window.AsgardEstimateReportPage = (function () {
     </div>`;
   }
 
-  // ──────────────────────────────────────────────────────────────
-  // COMPONENT: Resubmit Panel (PM after rework/question)
-  // ──────────────────────────────────────────────────────────────
-  function renderResubmitPanel() {
-    return `
-    <div class="er-actions" id="erResubmit">
-      <div class="er-actions__title">Повторная отправка</div>
-      <div class="er-actions__btns">
-        <button class="er-btn er-btn--resubmit" id="erResubmitBtn">Отправить повторно на согласование →</button>
-      </div>
-    </div>`;
-  }
+  // (renderResubmitPanel removed — replaced by renderPMActionPanel)
 
   // ──────────────────────────────────────────────────────────────
   // EVENT BINDINGS
@@ -766,19 +914,206 @@ window.AsgardEstimateReportPage = (function () {
     });
   }
 
+  // ──────────────────────────────────────────────────────────────
+  // PM BINDINGS: Editable table, Mimir chat, Send/Resubmit
+  // ──────────────────────────────────────────────────────────────
+  let _calcData = null; // live reference for recalculation
+  let _saveTimer = null;
+
+  function bindEditableTable(estimateId, token, calcData) {
+    _calcData = calcData;
+
+    // Toggle blocks
+    document.querySelectorAll('.er-eblock__header[data-toggle]').forEach(hdr => {
+      hdr.addEventListener('click', () => {
+        hdr.parentElement.classList.toggle('er-eblock--open');
+      });
+    });
+
+    // Input change → recalculate
+    document.querySelectorAll('.er-input').forEach(input => {
+      input.addEventListener('input', () => {
+        const blockId = input.dataset.block;
+        const rowIdx = parseInt(input.dataset.row);
+        const field = input.dataset.field;
+        const val = parseFloat(input.value) || 0;
+
+        // Update calcData
+        const block = _calcData.blocks.find(b => b.id === blockId);
+        if (!block || !block.rows[rowIdx]) return;
+        const row = block.rows[rowIdx];
+        row[field] = val;
+
+        // Recalculate row total
+        recalcRow(row);
+
+        // Recalculate block subtotal
+        block.subtotal = block.rows.reduce((s, r) => s + (parseFloat(r.total) || 0), 0);
+
+        // Update DOM
+        const sumEl = document.getElementById('erBlockSum_' + blockId);
+        if (sumEl) { sumEl.textContent = fmtMoney(block.subtotal); sumEl.classList.add('er-flash'); setTimeout(() => sumEl.classList.remove('er-flash'), 500); }
+
+        // Recalc total
+        const total = _calcData.blocks.reduce((s, b) => s + (b.subtotal || 0), 0);
+        const totalEl = document.getElementById('erTotalCost');
+        if (totalEl) { totalEl.textContent = fmtMoney(total); totalEl.classList.add('er-flash'); setTimeout(() => totalEl.classList.remove('er-flash'), 500); }
+
+        // Update summary cards
+        if (_calcData.summary) {
+          _calcData.summary.cost_no_vat = total;
+          const markup = _calcData.summary.markup || 1;
+          _calcData.summary.price_no_vat = total * markup;
+          _calcData.summary.margin_rub = _calcData.summary.price_no_vat - total;
+          _calcData.summary.margin_pct = total > 0 ? ((_calcData.summary.price_no_vat - total) / total * 100) : 0;
+        }
+
+        // Debounced save
+        clearTimeout(_saveTimer);
+        _saveTimer = setTimeout(() => saveCalculation(estimateId, token), 2000);
+      });
+    });
+  }
+
+  function recalcRow(r) {
+    // Per-row recalculation based on available fields (Mimir engine rules)
+    if (r.qty != null && r.rate != null && r.days != null) {
+      r.total = r.qty * r.rate * r.days;
+    } else if (r.qty != null && r.rate != null) {
+      r.total = r.qty * r.rate;
+    } else if (r.volume_m3 != null && r.rate_m3 != null) {
+      r.total = r.volume_m3 * r.rate_m3;
+    } else if (r.qty_kg != null && r.rate_kg != null) {
+      r.total = r.qty_kg * r.rate_kg;
+    } else if (r.distance_km != null && r.rate_km != null) {
+      r.total = r.distance_km * 2 * r.rate_km; // round trip
+      if (r.round_trip === false) r.total = r.distance_km * r.rate_km;
+    } else if (r.percent != null && r.base != null) {
+      r.total = r.base * r.percent / 100;
+    } else if (r.percent != null) {
+      // Contingency — percent of all other blocks
+      // Will be recalculated in full recalc pass
+    }
+    // If editable=['total'] — user sets total directly, don't recalculate
+  }
+
+  async function saveCalculation(estimateId, token) {
+    if (!_calcData) return;
+    try {
+      // Build JSONB columns from calcData blocks
+      const findBlock = (id) => (_calcData.blocks.find(b => b.id === id) || {}).rows || [];
+      const contBlock = _calcData.blocks.find(b => b.id === 'contingency');
+      const contPct = contBlock?.rows?.[0]?.percent || 5;
+
+      const subtotal = _calcData.blocks.filter(b => b.id !== 'contingency').reduce((s, b) => s + (b.subtotal || 0), 0);
+      const contingencyAmount = subtotal * contPct / 100;
+      const totalCost = subtotal + contingencyAmount;
+      const marginPct = _calcData.summary?.margin_pct || 0;
+      const totalWithMargin = marginPct > 0 ? totalCost * (1 + marginPct / 100) : totalCost * (_calcData.summary?.markup || 1);
+
+      await api('PUT', '/estimates/' + estimateId + '/calculation', token, {
+        personnel_json: findBlock('personnel'),
+        current_costs_json: findBlock('current'),
+        travel_json: findBlock('travel'),
+        transport_json: findBlock('transport'),
+        chemistry_json: findBlock('chemistry'),
+        contingency_pct: contPct,
+        margin_pct: marginPct,
+        notes: _calcData.notes || ''
+      });
+    } catch (e) {
+      console.error('[EstReport] Save failed:', e);
+    }
+  }
+
+  function bindMimirChat(estimateId, token) {
+    const input = document.getElementById('erMimirInput');
+    const sendBtn = document.getElementById('erMimirSend');
+    const body = document.getElementById('erMimirBody');
+    if (!input || !sendBtn || !body) return;
+
+    const sendMsg = async () => {
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+
+      // Add user message
+      body.insertAdjacentHTML('beforeend', `<div class="er-mimir__msg er-mimir__msg--user">${esc(text)}</div>`);
+
+      // Add typing indicator
+      body.insertAdjacentHTML('beforeend', '<div class="er-mimir__msg er-mimir__msg--typing" id="erMimirTyping">Мимир думает…</div>');
+      body.scrollTop = body.scrollHeight;
+
+      try {
+        const res = await api('POST', '/mimir/chat', token, {
+          message: text,
+          context: { estimate_id: estimateId, type: 'calculation' }
+        });
+        const typing = document.getElementById('erMimirTyping');
+        if (typing) typing.remove();
+        const reply = res.reply || res.message || 'Без ответа';
+        body.insertAdjacentHTML('beforeend', `<div class="er-mimir__msg er-mimir__msg--bot">${esc(reply)}</div>`);
+      } catch (e) {
+        const typing = document.getElementById('erMimirTyping');
+        if (typing) typing.remove();
+        body.insertAdjacentHTML('beforeend', `<div class="er-mimir__msg er-mimir__msg--bot" style="color:var(--red)">Ошибка: ${esc(e.message)}</div>`);
+      }
+      body.scrollTop = body.scrollHeight;
+    };
+
+    sendBtn.addEventListener('click', sendMsg);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendMsg(); } });
+
+    // Auto-calculate button
+    const autoBtn = document.getElementById('erAutoCalcBtn');
+    if (autoBtn) {
+      autoBtn.addEventListener('click', async () => {
+        autoBtn.disabled = true;
+        autoBtn.textContent = '🧙 Считаю…';
+        try {
+          const res = await api('POST', '/estimates/' + estimateId + '/auto-calculate', token, {});
+          toast('Авторасчёт завершён', 'ok');
+          setTimeout(() => location.reload(), 500);
+        } catch (e) {
+          toast('Ошибка авторасчёта: ' + e.message, 'error');
+          autoBtn.disabled = false;
+          autoBtn.textContent = '🧙 Авторасчёт';
+        }
+      });
+    }
+  }
+
+  function bindSendButton(estimateId, token) {
+    const btn = document.getElementById('erSendBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      if (!confirm('Отправить просчёт на согласование директору?')) return;
+      btn.disabled = true;
+      try {
+        // Save calculation first
+        await saveCalculation(estimateId, token);
+        // Then send for approval
+        await api('POST', '/approval/estimates/' + estimateId + '/send', token, {});
+        toast('Отправлено на согласование', 'ok');
+        setTimeout(() => location.reload(), 500);
+      } catch (e) {
+        toast(e.message, 'error');
+        btn.disabled = false;
+      }
+    });
+  }
+
   function bindResubmitButton(estimateId, token) {
-    const btn = $('#erResubmitBtn');
+    const btn = document.getElementById('erResubmitBtn');
     if (!btn) return;
     btn.addEventListener('click', async () => {
       if (!confirm('Отправить просчёт повторно на согласование?')) return;
       btn.disabled = true;
       try {
+        await saveCalculation(estimateId, token);
         await api('POST', '/approval/estimates/' + estimateId + '/resubmit', token, {});
         toast('Отправлено на согласование', 'ok');
-        setTimeout(() => {
-          location.hash = '#/estimate-report?id=' + estimateId;
-          location.reload();
-        }, 500);
+        setTimeout(() => location.reload(), 500);
       } catch (e) {
         toast(e.message, 'error');
         btn.disabled = false;
