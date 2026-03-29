@@ -429,6 +429,8 @@ fastify.decorate('fieldAuthenticate', async function(request, reply) {
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.register(require('./routes/field-auth'), { prefix: '/api/field/auth' });
+fastify.register(require('./routes/field-worker'), { prefix: '/api/field/worker' });
+fastify.register(require('./routes/field-checkin'), { prefix: '/api/field/checkin' });
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
 fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });

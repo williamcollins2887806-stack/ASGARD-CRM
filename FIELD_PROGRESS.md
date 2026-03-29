@@ -6,9 +6,16 @@
 - fieldAuthenticate middleware: ✅ (в index.js, JWT + field_sessions)
 - Field SPA fallback: ✅ (/field/* -> field/index.html)
 - Тесты: 8/8 pass
-- Коммит: TBD
+- Коммит: fb679b4
 
-## Сессия 2: [⬜ TODO]
+## Сессия 2: [✅ DONE]
+- field-worker.js: ✅ (8 endpoints: me, active-project, projects, projects/:id, finances, finances/:id, logistics, logistics/history)
+- field-checkin.js: ✅ (4 endpoints: POST /, POST /checkout, POST /manual, GET /today)
+- Achievements: ✅ (8 ачивок, расчёт на лету из БД)
+- Tariff + rounding: ✅ (day_rate из tariff_grid, roundHours с half_up/ceil/floor)
+- Finances: ✅ (earned from checkins + per_diem + payroll + one_time_payments)
+- Routes registered in index.js: ✅
+- Тесты: 10/10 pass (field-worker-checkin.test.js)
 ## Сессия 3: [⬜ TODO]
 ## Сессия 4: [⬜ TODO]
 ## Сессия 5: [⬜ TODO]
