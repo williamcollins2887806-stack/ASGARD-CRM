@@ -135,11 +135,11 @@ module.exports = async function (fastify) {
     await fs.writeFile(filepath, await data.toBuffer());
 
     await db.query(`
-      INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+      INSERT INTO documents (filename, original_name, mime_type, size, type, trip_id, uploaded_by, download_url, created_at)
       VALUES ($1, $2, $3, $4, 'travel', $5, $6, $7, NOW())
     `, [
       filename, data.filename, data.mimetype, data.file.bytesRead || 0,
-      id, request.user.id, `/api/travel/${id}/files/${filename}`,
+      id, request.user.id, `/api/files/download/${filename}`,
     ]);
 
     return reply.send({ ok: true, filename });

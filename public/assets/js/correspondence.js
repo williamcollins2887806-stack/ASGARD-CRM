@@ -642,6 +642,7 @@ window.AsgardCorrespondencePage = (function(){
 
         // Загрузить файл если есть
         let filePath = null;
+        let uploadedDocId = null;
         const fileInput = document.getElementById('corr_file');
         if (fileInput && fileInput.files && fileInput.files[0]) {
           try {
@@ -656,6 +657,7 @@ window.AsgardCorrespondencePage = (function(){
             if (uploadResp.ok) {
               const uploadData = await uploadResp.json();
               filePath = uploadData.download_url || uploadData.filename || null;
+              uploadedDocId = uploadData.file?.id || null;
             }
           } catch(ue) { console.error('[Corr] File upload error:', ue); }
         }
@@ -681,6 +683,16 @@ window.AsgardCorrespondencePage = (function(){
           });
           const savedItem = response?.item || item;
           const savedId = savedItem.id || response?.id;
+
+          // Привязать загруженный файл к корреспонденции
+          if (uploadedDocId && savedId) {
+            try {
+              await apiFetch('/api/correspondence/' + savedId + '/link-doc', {
+                method: 'POST',
+                body: JSON.stringify({ document_id: uploadedDocId })
+              });
+            } catch(le) { console.error('[Corr] Link doc error:', le); }
+          }
 
           await audit(user.id, 'create', savedId, {
             direction: savedItem.direction,

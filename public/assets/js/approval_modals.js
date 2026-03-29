@@ -24,10 +24,12 @@ window.AsgardApprovalModals = (function() {
     return resp.json();
   }
 
-  async function uploadFile(file, type) {
+  async function uploadFile(file, type, opts) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('type', type || 'Документ');
+    if (opts?.tender_id) formData.append('tender_id', opts.tender_id);
+    if (opts?.estimate_id) formData.append('estimate_id', opts.estimate_id);
     const resp = await fetch('/api/files/upload', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '') },
@@ -35,7 +37,7 @@ window.AsgardApprovalModals = (function() {
     });
     if (!resp.ok) throw new Error('Ошибка загрузки файла');
     const data = await resp.json();
-    return data.id || data.document?.id || null;
+    return data.file?.id || data.id || null;
   }
 
   function setLoading(btn, loading) {

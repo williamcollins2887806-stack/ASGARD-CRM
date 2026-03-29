@@ -142,17 +142,22 @@ async function routes(fastify) {
       estimate.director_name = dirResult.rows[0]?.name || null;
     }
 
-    // Документы через tender_id
+    // Документы: через tender_id + напрямую через estimate_id
+    const docConditions = [];
+    const docParams = [];
     if (estimate.tender_id) {
-      const docsResult = await db.query(
-        `SELECT id, filename, original_name, mime_type, size, type, created_at
-         FROM documents WHERE tender_id = $1 ORDER BY created_at ASC`,
-        [estimate.tender_id]
-      );
-      estimate.documents = docsResult.rows;
-    } else {
-      estimate.documents = [];
+      docParams.push(estimate.tender_id);
+      docConditions.push(`tender_id = $${docParams.length}`);
     }
+    docParams.push(estimate.id);
+    docConditions.push(`estimate_id = $${docParams.length}`);
+
+    const docsResult = await db.query(
+      `SELECT id, filename, original_name, mime_type, size, type, created_at
+       FROM documents WHERE ${docConditions.join(' OR ')} ORDER BY created_at ASC`,
+      docParams
+    );
+    estimate.documents = docsResult.rows;
 
     return { estimate };
   });
