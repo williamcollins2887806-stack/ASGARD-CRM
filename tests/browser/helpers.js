@@ -44,17 +44,15 @@ async function loginAs(page, role) {
   const acc = ACCOUNTS[role];
   if (!acc) throw new Error(`No account for role: ${role}`);
 
-  // Ensure we're on the CRM domain before clearing localStorage,
-  // so we clear the CRM's localStorage (not about:blank's).
-  const currentUrl = page.url();
-  if (!currentUrl.startsWith(BASE_URL)) {
-    await page.goto(BASE_URL + '/').catch(() => {});
-    await page.waitForTimeout(300);
-  }
-
-  // Clear any existing session to ensure fresh login for the requested role.
-  // Without this, the SPA auto-redirects #/welcome → #/home when a token exists,
-  // causing subsequent getSessionToken() to return the PREVIOUS user's token.
+  // Clear any existing session to prevent the SPA from auto-redirecting #/welcome → #/home
+  // when a token exists in localStorage, which would cause getSessionToken() to return
+  // the PREVIOUS user's token (role-switch bug in multi-role tests).
+  //
+  // Note: if the page is at about:blank (fresh test start), this evaluate runs in the
+  // about:blank context and is a no-op — that's fine because each Playwright test gets
+  // a fresh browser context (fresh localStorage) so there's nothing to clear.
+  // If the page is already on the CRM domain (within-test role switch), this correctly
+  // removes the current user's token from CRM's localStorage.
   await page.evaluate(() => {
     ['asgard_token', 'token', 'authToken', 'auth_token', 'access_token', 'jwt'].forEach(k => {
       try { localStorage.removeItem(k); } catch (_) {}
