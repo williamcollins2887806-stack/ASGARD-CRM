@@ -34,5 +34,6 @@ export const ROUTE_SECTIONS = {
   '/finances':  'finances',
   '/personnel': 'personnel',
   '/profile':   'profile',
-  '/settings':  'settings',
+  '/settings':       'settings',
+  '/call-analytics': 'dashboard',
 };
