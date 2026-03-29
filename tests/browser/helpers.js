@@ -44,6 +44,14 @@ async function loginAs(page, role) {
   const acc = ACCOUNTS[role];
   if (!acc) throw new Error(`No account for role: ${role}`);
 
+  // Ensure we're on the CRM domain before clearing localStorage,
+  // so we clear the CRM's localStorage (not about:blank's).
+  const currentUrl = page.url();
+  if (!currentUrl.startsWith(BASE_URL)) {
+    await page.goto(BASE_URL + '/').catch(() => {});
+    await page.waitForTimeout(300);
+  }
+
   // Clear any existing session to ensure fresh login for the requested role.
   // Without this, the SPA auto-redirects #/welcome → #/home when a token exists,
   // causing subsequent getSessionToken() to return the PREVIOUS user's token.
