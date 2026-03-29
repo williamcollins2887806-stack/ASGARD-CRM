@@ -18,23 +18,19 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 
 # ── Словарь ударений ─────────────────────────────────────────────
-# Знак + ставится ПЕРЕД ударной гласной.
-# Расширяй список по мере появления новых проблемных слов.
-STRESS_DICT = {
-    # Бренд / компания
-    'Асгард Сервис':   'Асг+ард С+ервис',
-    'Асгард-Сервис':   'Асг+ард-С+ервис',
-    'Асгард':          'Асг+ард',
-    # Имя голосового секретаря
-    'Фрея':            'Фр+ея',
-    # Другие проблемные слова добавляй сюда:
-    # 'Слово': 'Сл+ово',
-}
+# Загружаем из stress_data.py (рядом с этим файлом).
+# Чтобы добавить слово — редактируй stress_data.py, затем:
+#   systemctl restart asgard-silero
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from stress_data import STRESS_SORTED
+    _stress_rules = STRESS_SORTED
+except ImportError:
+    _stress_rules = []
 
 def apply_stress(text: str) -> str:
-    """Заменяет слова из STRESS_DICT на варианты с расставленными ударениями."""
-    for word, stressed in STRESS_DICT.items():
-        # Регистронезависимо, но заменяем только целые слова (через \b не работает с кириллицей)
+    """Применяет словарь ударений. Длинные фразы заменяются первыми."""
+    for word, stressed in _stress_rules:
         text = re.sub(re.escape(word), stressed, text, flags=re.IGNORECASE)
     return text
 
