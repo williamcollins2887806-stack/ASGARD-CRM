@@ -682,6 +682,119 @@ async function mimirRoutes(fastify, options) {
     return { success: true, count: results.length, results };
   });
 
+  // Персональные подсказки для чипов Мимира
+  fastify.get('/suggestions', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const user = request.user;
+    const role = user?.role || 'USER';
+    const suggestions = [];
+
+    try {
+      // Общие подсказки — непрочитанные уведомления
+      const unreadRes = await db.query(
+        'SELECT COUNT(*) as cnt FROM notifications WHERE user_id = $1 AND is_read = false',
+        [user.id]
+      );
+      const unread = parseInt(unreadRes.rows[0]?.cnt || 0);
+      if (unread > 0) {
+        suggestions.push({ icon: '🔔', label: `Уведомления (${unread})`, query: `У меня ${unread} непрочитанных уведомлений. Что важного?` });
+      }
+
+      // Директора и админы — расширенные подсказки
+      if (mimirData.hasFullAccess(role)) {
+        // Пропущенные звонки
+        const missedRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM call_history
+           WHERE call_type = 'inbound' AND duration_seconds < 5
+           AND created_at > NOW() - INTERVAL '24 hours'`
+        );
+        const missed = parseInt(missedRes.rows[0]?.cnt || 0);
+        if (missed > 0) {
+          suggestions.push({ icon: '📞', label: `Пропущено: ${missed}`, query: `Покажи пропущенные звонки за сегодня` });
+        }
+
+        // Срочные тендеры (дедлайн < 3 дней)
+        const urgentRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM tenders
+           WHERE status IN ('in_progress','active','new')
+           AND deadline IS NOT NULL AND deadline < CURRENT_DATE + INTERVAL '3 days' AND deadline >= CURRENT_DATE`
+        );
+        const urgent = parseInt(urgentRes.rows[0]?.cnt || 0);
+        if (urgent > 0) {
+          suggestions.push({ icon: '⚡', label: `Срочные тендеры: ${urgent}`, query: `Покажи тендеры с дедлайном в ближайшие 3 дня` });
+        }
+
+        // Неоплаченные счета
+        const overdueRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM invoices
+           WHERE status NOT IN ('paid','cancelled') AND due_date < CURRENT_DATE`
+        );
+        const overdue = parseInt(overdueRes.rows[0]?.cnt || 0);
+        if (overdue > 0) {
+          suggestions.push({ icon: '💰', label: `Просрочено: ${overdue}`, query: `Покажи просроченные счета` });
+        }
+      }
+
+      // PM — активные тендеры и работы
+      if (mimirData.isPM(role)) {
+        const myTendersRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM tenders WHERE responsible_id = $1 AND status IN ('in_progress','active','new')`,
+          [user.id]
+        );
+        const myTenders = parseInt(myTendersRes.rows[0]?.cnt || 0);
+        if (myTenders > 0) {
+          suggestions.push({ icon: '📋', label: `Мои тендеры: ${myTenders}`, query: `Покажи мои активные тендеры` });
+        }
+
+        const staleRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM works
+           WHERE pm_id = $1 AND status = 'active' AND updated_at < NOW() - INTERVAL '14 days'`,
+          [user.id]
+        );
+        const stale = parseInt(staleRes.rows[0]?.cnt || 0);
+        if (stale > 0) {
+          suggestions.push({ icon: '⏳', label: `Застой: ${stale} работ`, query: `Покажи работы без обновлений более 2 недель` });
+        }
+      }
+
+      // BUH — ожидающие оплаты
+      if (mimirData.isBUH(role)) {
+        const pendingRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM invoices WHERE status = 'pending'`
+        );
+        const pending = parseInt(pendingRes.rows[0]?.cnt || 0);
+        if (pending > 0) {
+          suggestions.push({ icon: '💳', label: `К оплате: ${pending}`, query: `Покажи счета ожидающие оплаты` });
+        }
+      }
+
+      // TO — тендерный отдел
+      if (mimirData.isTO(role)) {
+        suggestions.push({ icon: '📊', label: 'Статистика тендеров', query: 'Покажи статистику по тендерам за этот месяц' });
+      }
+
+      // Дефолтные подсказки по роли (если мало персональных)
+      if (suggestions.length < 2) {
+        suggestions.push({ icon: '📊', label: 'Тендеры', query: 'Сколько у нас активных тендеров?' });
+        suggestions.push({ icon: '🔍', label: 'Поиск', query: 'Найди работы по Газпром' });
+        suggestions.push({ icon: '❓', label: 'Помощь', query: 'Как добавить новый расход?' });
+      }
+
+      return { success: true, suggestions: suggestions.slice(0, 6) };
+    } catch (err) {
+      fastify.log.error('[Mimir Suggestions] Error:', err.message);
+      return {
+        success: true,
+        suggestions: [
+          { icon: '📊', label: 'Тендеры', query: 'Сколько у нас активных тендеров?' },
+          { icon: '🔍', label: 'Поиск', query: 'Найди работы по Газпром' },
+          { icon: '❓', label: 'Помощь', query: 'Как добавить новый расход?' }
+        ]
+      };
+    }
+  });
+
   // Финансовая статистика
   fastify.get('/finance-stats', {
     preHandler: [fastify.authenticate]

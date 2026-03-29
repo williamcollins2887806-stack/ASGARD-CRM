@@ -8,6 +8,8 @@
 
 const nodemailer = require('nodemailer');
 const imapService = require('./imap');
+const path = require('path');
+const fs = require('fs');
 
 const transportCache = new Map();
 
@@ -140,13 +142,21 @@ async function sendCrmEmail(db, userId, mailOptions) {
     bccList.push(crmBcc);
   }
 
+  // Авто-упоминание вложений в тексте
+  let textBody = mailOptions.text || '';
+  const attachments = mailOptions.attachments || [];
+  if (attachments.length > 0 && textBody && !textBody.match(/вложени/i)) {
+    const names = attachments.map(a => a.filename || 'файл').join(', ');
+    textBody += `\n\nВо вложении: ${names}`;
+  }
+
   const options = {
     from,
     to: mailOptions.to,
     subject: mailOptions.subject,
-    text: mailOptions.text || '',
+    text: textBody,
     html: mailOptions.html || '',
-    attachments: mailOptions.attachments || []
+    attachments
   };
 
   if (mailOptions.cc) options.cc = mailOptions.cc;
@@ -175,6 +185,38 @@ async function sendCrmEmail(db, userId, mailOptions) {
       mailOptions.subject, (mailOptions.text || '').slice(0, 5000), (mailOptions.text || '').slice(0, 250),
       userId, null
     ]);
+
+    // Сохраняем вложения на диск и в email_attachments
+    if (attachments.length > 0) {
+      const emailRow = await db.query(
+        'SELECT id FROM emails WHERE message_id = $1 ORDER BY id DESC LIMIT 1',
+        [result.messageId]
+      );
+      const emailId = emailRow.rows[0]?.id;
+      if (emailId) {
+        const uploadDir = process.env.UPLOAD_DIR || './uploads';
+        const sentDir = path.join(uploadDir, 'email_sent');
+        fs.mkdirSync(sentDir, { recursive: true });
+
+        for (const att of attachments) {
+          try {
+            const fname = `${emailId}_${Date.now()}_${att.filename || 'file'}`;
+            const filePath = path.join(sentDir, fname);
+            if (att.content && Buffer.isBuffer(att.content)) {
+              fs.writeFileSync(filePath, att.content);
+            }
+            await db.query(
+              `INSERT INTO email_attachments (email_id, filename, filepath, size, content_type)
+               VALUES ($1, $2, $3, $4, $5)`,
+              [emailId, att.filename || 'file', `email_sent/${fname}`,
+               att.content?.length || 0, att.contentType || 'application/octet-stream']
+            );
+          } catch (attErr) {
+            console.error('[CRM-Mailer] Attachment save error:', attErr.message);
+          }
+        }
+      }
+    }
   } catch (e) {
     console.error('[CRM-Mailer] Log error:', e.message);
   }

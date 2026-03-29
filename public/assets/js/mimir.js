@@ -834,6 +834,49 @@ window.AsgardMimir = (function(){
     }
   }
 
+  function _loadSuggestionChips(container) {
+    const token = localStorage.getItem('asgard_token');
+    if (!token) return;
+    fetch('/api/mimir/suggestions', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(r => r.json())
+    .then(data => {
+      const chips = document.getElementById('mimir-suggestion-chips');
+      if (!chips) return;
+      const items = data.suggestions || [
+        { icon: '\uD83D\uDCCA', label: '\u0422\u0435\u043D\u0434\u0435\u0440\u044B', query: '\u0421\u043A\u043E\u043B\u044C\u043A\u043E \u0443 \u043D\u0430\u0441 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0442\u0435\u043D\u0434\u0435\u0440\u043E\u0432?' },
+        { icon: '\uD83D\uDD0D', label: '\u041F\u043E\u0438\u0441\u043A', query: '\u041D\u0430\u0439\u0434\u0438 \u0440\u0430\u0431\u043E\u0442\u044B \u043F\u043E \u0413\u0430\u0437\u043F\u0440\u043E\u043C' },
+        { icon: '\u2753', label: '\u041F\u043E\u043C\u043E\u0449\u044C', query: '\u041A\u0430\u043A \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043D\u043E\u0432\u044B\u0439 \u0440\u0430\u0441\u0445\u043E\u0434?' }
+      ];
+      chips.innerHTML = items.map(s =>
+        '<button class="mimir-welcome-chip" data-q="' + esc(s.query) + '">' + s.icon + ' ' + esc(s.label) + '</button>'
+      ).join('');
+      chips.querySelectorAll('.mimir-welcome-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const input = document.getElementById('mimirInput');
+          if (input) input.value = btn.dataset.q;
+          sendMessage();
+        });
+      });
+    })
+    .catch(() => {
+      const chips = document.getElementById('mimir-suggestion-chips');
+      if (!chips) return;
+      chips.innerHTML =
+        '<button class="mimir-welcome-chip" data-q="\u0421\u043A\u043E\u043B\u044C\u043A\u043E \u0443 \u043D\u0430\u0441 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0442\u0435\u043D\u0434\u0435\u0440\u043E\u0432?">\uD83D\uDCCA \u0422\u0435\u043D\u0434\u0435\u0440\u044B</button>' +
+        '<button class="mimir-welcome-chip" data-q="\u041D\u0430\u0439\u0434\u0438 \u0440\u0430\u0431\u043E\u0442\u044B \u043F\u043E \u0413\u0430\u0437\u043F\u0440\u043E\u043C">\uD83D\uDD0D \u041F\u043E\u0438\u0441\u043A</button>' +
+        '<button class="mimir-welcome-chip" data-q="\u041A\u0430\u043A \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043D\u043E\u0432\u044B\u0439 \u0440\u0430\u0441\u0445\u043E\u0434?">\u2753 \u041F\u043E\u043C\u043E\u0449\u044C</button>';
+      chips.querySelectorAll('.mimir-welcome-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const input = document.getElementById('mimirInput');
+          if (input) input.value = btn.dataset.q;
+          sendMessage();
+        });
+      });
+    });
+  }
+
   function renderMessages() {
     const container = document.getElementById('mimirMessages');
     if (!container) return;
@@ -844,20 +887,13 @@ window.AsgardMimir = (function(){
           '<div class="mimir-welcome-icon">\uD83E\uDDD9</div>' +
           '<h3>Приветствую тебя, ' + esc(userName) + '!</h3>' +
           '<p>Я \u2014 Мимир, хранитель мудрости. Спрашивай о тендерах, работах, финансах или прикрепи файл для анализа.</p>' +
-          '<div class="mimir-welcome-chips">' +
-            '<button class="mimir-welcome-chip" data-q="Сколько у нас активных тендеров?">\uD83D\uDCCA Тендеры</button>' +
-            '<button class="mimir-welcome-chip" data-q="Найди работы по Газпром">\uD83D\uDD0D Поиск</button>' +
-            '<button class="mimir-welcome-chip" data-q="Как добавить новый расход?">\u2753 Помощь</button>' +
+          '<div class="mimir-welcome-chips" id="mimir-suggestion-chips">' +
+            '<span style="opacity:0.5;font-size:12px">Загрузка подсказок\u2026</span>' +
           '</div>' +
         '</div>';
 
-      container.querySelectorAll('.mimir-welcome-chip').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const input = document.getElementById('mimirInput');
-          if (input) input.value = btn.dataset.q;
-          sendMessage();
-        });
-      });
+      // Загружаем персональные подсказки с сервера
+      _loadSuggestionChips(container);
       return;
     }
 

@@ -201,13 +201,15 @@ class CallPipeline {
           ai_is_target = $2,
           ai_lead_data = $3,
           ai_sentiment = $4,
+          ai_quality_score = $5,
           updated_at = NOW()
-        WHERE id = $5`,
+        WHERE id = $6`,
         [
           analysis.summary,
           analysis.is_target,
           JSON.stringify(analysis),
           analysis.sentiment,
+          analysis.quality_score || null,
           call.id
         ]
       );

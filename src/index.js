@@ -396,6 +396,7 @@ fastify.register(require("./routes/telephony"), { prefix: "/api/telephony" });
 fastify.register(require("./routes/approval"), { prefix: "/api/approval" });
 fastify.register(require('./routes/stories'), { prefix: '/api/stories' });
 fastify.register(require('./routes/worker_profiles'), { prefix: '/api/worker-profiles' });
+fastify.register(require('./routes/call-reports'), { prefix: '/api/call-reports' });
 
 // ── Telephony Job Queue & Escalation ──
 try {
@@ -456,6 +457,24 @@ try {
   });
 } catch (cronErr) {
   fastify.log.warn('[MimirCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Call Report Scheduler ──
+try {
+  const ReportScheduler = require('./services/report-scheduler');
+  const createNotification = require('./services/notify');
+  let aiProv = null;
+  try { aiProv = require('./services/ai-provider'); } catch (_) {}
+  const reportScheduler = new ReportScheduler(db, aiProv, createNotification, fastify.log);
+  fastify.addHook('onReady', async () => {
+    await reportScheduler.start();
+    fastify.log.info('[ReportScheduler] Call report scheduler started');
+  });
+  fastify.addHook('onClose', async () => {
+    reportScheduler.stop();
+  });
+} catch (schedErr) {
+  fastify.log.warn('[ReportScheduler] Init skipped: ' + schedErr.message);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

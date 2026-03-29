@@ -355,24 +355,45 @@ async function routes(fastify, options) {
     preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
-    const { rows } = await db.query('SELECT * FROM tkp WHERE id = $1', [id]);
+    const { rows } = await db.query('SELECT t.*, te.tender_title as tender_number FROM tkp t LEFT JOIN tenders te ON t.tender_id = te.id WHERE t.id = $1', [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'TKP not found' });
     const tkp = rows[0];
 
     const email = request.body.email || tkp.contact_email;
-    if (!email) return reply.code(400).send({ error: 'Specify recipient email' });
+    if (!email) return reply.code(400).send({ error: 'Укажите email получателя' });
 
-    // Generate PDF inline
-    const pdfRes = await fastify.inject({ method: 'GET', url: `/api/tkp/${id}/pdf`, headers: { authorization: request.headers.authorization } });
-    const pdfBuf = pdfRes.rawPayload;
+    // Прямая генерация PDF (без fastify.inject)
+    const pdfOpts = {
+      signature: request.body.with_signature === true || request.body.with_signature === '1',
+      stamp: request.body.with_stamp === true || request.body.with_stamp === '1'
+    };
 
-    // Send via CRM Mailer (personal mailbox + BCC to CRM)
+    let pdfBuf;
+    if (pdfGenerator) {
+      try {
+        pdfBuf = await pdfGenerator.generateTkpPdf(tkp.id, pdfOpts);
+      } catch (err) {
+        fastify.log.warn(`[TKP Send] Puppeteer failed: ${err.message}, fallback to PDFKit`);
+        pdfBuf = null;
+      }
+    }
+    if (!pdfBuf) {
+      pdfBuf = await generateTkpPdfKit(tkp, db, pdfOpts);
+    }
+
+    // Текст письма на русском + поддержка custom_text
+    const customText = request.body.custom_text || '';
+    const sumStr = tkp.total_sum ? Number(tkp.total_sum).toLocaleString('ru-RU') + ' руб.' : 'по запросу';
+    const emailText = customText ||
+      `Добрый день!\n\nНаправляем Вам технико-коммерческое предложение «${tkp.subject}».\nСумма: ${sumStr}\nСрок действия: ${tkp.validity_days || 30} дней\n\nС уважением,\nООО «Асгард Сервис»`;
+
+    // Отправка через CRM Mailer (личный ящик + BCC на CRM)
     const crmMailer = require('../services/crm-mailer');
     await crmMailer.sendCrmEmail(db, request.user.id, {
       to: email,
-      subject: `Commercial Proposal: ${tkp.subject}`,
-      text: `Hello!\n\nPlease find attached commercial proposal "${tkp.subject}".\nAmount: ${tkp.total_sum ? Number(tkp.total_sum).toLocaleString('ru-RU') + ' rub.' : 'upon request'}\nValidity: ${tkp.validity_days || 30} days\n\nBest regards,\nASGARD SERVICE`,
-      attachments: [{ filename: `TKP_${tkp.id}.pdf`, content: pdfBuf }]
+      subject: `Коммерческое предложение: ${tkp.subject}`,
+      text: emailText,
+      attachments: [{ filename: `ТКП_${tkp.id}.pdf`, content: pdfBuf, contentType: 'application/pdf' }]
     });
 
     await db.query(
@@ -383,14 +404,14 @@ async function routes(fastify, options) {
     if (tkp.author_id && tkp.author_id !== request.user.id) {
       createNotification(db, {
         user_id: tkp.author_id,
-        title: 'TKP sent',
-        message: `TKP "${tkp.subject}" sent to ${email}`,
+        title: 'ТКП отправлено',
+        message: `ТКП «${tkp.subject}» отправлено на ${email}`,
         type: 'tkp',
         link: `#/tkp?id=${id}`
       });
     }
 
-    return { success: true, message: `TKP sent to ${email}` };
+    return { success: true, message: `ТКП отправлено на ${email}` };
   });
 }
 

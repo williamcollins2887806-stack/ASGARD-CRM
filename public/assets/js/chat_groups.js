@@ -470,6 +470,21 @@ window.AsgardChatGroups = (function(){
     // Remove "no messages" placeholder
     const noMsg = container.querySelector('.chat-no-messages');
     if (noMsg) noMsg.remove();
+
+    // Дедупликация: если SSE пришёл для нашего оптимистичного сообщения — заменить tempId
+    if (msg.id && msg.user_id === _myId) {
+      const tempEls = container.querySelectorAll('[data-msg-id^="temp-"]');
+      for (const el of tempEls) {
+        const tempText = el.querySelector('.chat-message-text')?.textContent?.trim();
+        const msgText = (msg.message || msg.text || '').trim();
+        if (tempText === msgText) {
+          el.setAttribute('data-msg-id', msg.id);
+          el.classList.remove('chat-msg-pending');
+          return; // уже отрисовано оптимистично
+        }
+      }
+    }
+
     // Check if message already exists (avoid duplicate)
     if (container.querySelector(`[data-msg-id="${msg.id}"]`)) return;
     // Hide typing
@@ -496,6 +511,7 @@ window.AsgardChatGroups = (function(){
     if (msgEl) {
       msgEl.dataset.date = msgDate.toDateString();
       msgEl.style.animation = 'hgMsgIn 200ms ease-out';
+      if (msg._optimistic) msgEl.classList.add('chat-msg-pending');
       container.insertBefore(msgEl, typing);
     }
     // Auto scroll if near bottom
@@ -1041,19 +1057,48 @@ window.AsgardChatGroups = (function(){
     const sendBtn = $('.chat-send-btn');
     if (sendBtn) sendBtn.classList.add('sending');
 
+    // Оптимистичный UI: показать сообщение мгновенно
+    const tempId = 'temp-' + Date.now();
+    const auth = AsgardAuth?.getAuth?.();
+    const tempMsg = {
+      id: tempId,
+      chat_id: chatId,
+      user_id: _myId,
+      user_name: auth?.user?.name || 'Я',
+      message: text,
+      text: text,
+      created_at: new Date().toISOString(),
+      reply_to_id: _replyToId || null,
+      _optimistic: true
+    };
+    _appendMessage(tempMsg);
+
+    // Очищаем ввод сразу
+    input.value = '';
+    input.style.height = 'auto';
+    const savedReplyId = _replyToId;
+    cancelReply();
+
     try {
-      await API.sendMessage(chatId, text, _replyToId);
-      input.value = '';
-      input.style.height = 'auto';
-      cancelReply();
-      // SSE will deliver the message — no need to reload
-      // But as fallback, reload after brief delay
-      setTimeout(() => {
-        if ($('#chat-messages-container') && !$('#chat-messages-container').querySelector(`[data-msg-id]`)) {
-          loadChatMessages(chatId);
+      const result = await API.sendMessage(chatId, text, savedReplyId);
+      // Заменить tempId на реальный ID из ответа сервера
+      if (result?.message?.id || result?.id) {
+        const realId = result.message?.id || result.id;
+        const tempEl = document.querySelector(`[data-msg-id="${tempId}"]`);
+        if (tempEl) {
+          tempEl.setAttribute('data-msg-id', realId);
+          tempEl.classList.remove('chat-msg-pending');
         }
-      }, 2000);
+      }
     } catch (e) {
+      // Пометить сообщение как failed
+      const failedEl = document.querySelector(`[data-msg-id="${tempId}"]`);
+      if (failedEl) {
+        failedEl.classList.remove('chat-msg-pending');
+        failedEl.classList.add('chat-msg-failed');
+        const meta = failedEl.querySelector('.chat-message-time');
+        if (meta) meta.textContent = 'Ошибка отправки';
+      }
       toast('Ошибка отправки', 'error');
     } finally {
       if (sendBtn) sendBtn.classList.remove('sending');
