@@ -322,7 +322,21 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       }
     }
 
-    // Fallback 2: check AGI log for matching call
+    // Fallback 2: поиск по users.phone (если fallback_mobile не сработал)
+    if (!userId) {
+      const mgNum = direction === 'inbound' ? toNum : fromNum;
+      if (mgNum && !mgNum.startsWith('sip:')) {
+        const normMg = normalizePhone(mgNum);
+        const u2 = await db.query(
+          `SELECT id FROM users WHERE is_active = true
+           AND replace(replace(COALESCE(phone,''), '+', ''), '-', '') LIKE $1 LIMIT 1`,
+          ['%' + normMg.slice(-10)]
+        );
+        if (u2.rows.length) userId = u2.rows[0].id;
+      }
+    }
+
+    // Fallback 3: check AGI log for matching call
     if (!userId) {
       try {
         const agiLog = await db.query(
@@ -337,13 +351,24 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           const agiPayload = typeof agiLog.rows[0].payload === 'string' ? JSON.parse(agiLog.rows[0].payload) : agiLog.rows[0].payload;
           if (agiPayload.route_to) {
             const routeNorm = normalizePhone(agiPayload.route_to);
-            const u2 = await db.query(
+            const u3 = await db.query(
               `SELECT user_id FROM user_call_status WHERE replace(replace(fallback_mobile, '+', ''), '-', '') LIKE $1 LIMIT 1`,
               ['%' + routeNorm.slice(-10)]
             );
-            if (u2.rows.length) userId = u2.rows[0].user_id;
+            if (u3.rows.length) userId = u3.rows[0].user_id;
           }
         }
+      } catch (e) { /* non-critical */ }
+    }
+
+    // Fallback 4: для inbound на SIP-транк ищем из active_calls (кто принял)
+    if (!userId && direction === 'inbound' && toNum && toNum.startsWith('sip:')) {
+      try {
+        const ac = await db.query(
+          `SELECT assigned_user_id FROM active_calls WHERE mango_entry_id = $1 AND assigned_user_id IS NOT NULL LIMIT 1`,
+          [entryId]
+        );
+        if (ac.rows.length) userId = ac.rows[0].assigned_user_id;
       } catch (e) { /* non-critical */ }
     }
 
@@ -399,6 +424,20 @@ module.exports = async function telephonyRoutes(fastify, opts) {
          JSON.stringify(event)]
       );
       callHistoryId = res.rows[0].id;
+    }
+
+    // Metadata-based quality score (до транскрипции)
+    if (callType !== 'missed' && talkTime > 0) {
+      let metaScore;
+      if (talkTime < 15) metaScore = 3;
+      else if (talkTime < 30) metaScore = 4;
+      else if (talkTime < 60) metaScore = 5;
+      else if (talkTime < 180) metaScore = 6;
+      else metaScore = 7;
+      await db.query(
+        'UPDATE call_history SET ai_quality_score = COALESCE(ai_quality_score, $1) WHERE id = $2',
+        [metaScore, callHistoryId]
+      ).catch(() => {});
     }
 
     // Удаляем из active_calls

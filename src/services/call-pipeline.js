@@ -195,6 +195,8 @@ class CallPipeline {
       });
 
       // Сохраняем результат анализа
+      const qualityScore = analysis.quality_score != null ? analysis.quality_score : null;
+
       await this.db.query(
         `UPDATE call_history SET
           ai_summary = $1,
@@ -209,12 +211,12 @@ class CallPipeline {
           analysis.is_target,
           JSON.stringify(analysis),
           analysis.sentiment,
-          analysis.quality_score || null,
+          qualityScore,
           call.id
         ]
       );
 
-      console.log(`[CallPipeline] AI analysis done: target=${analysis.is_target}, sentiment=${analysis.sentiment}`);
+      console.log(`[CallPipeline] AI analysis done: target=${analysis.is_target}, sentiment=${analysis.sentiment}, quality=${qualityScore}`);
 
       // Создаём черновик заявки если целевой
       if (analysis.is_target && !call.lead_id) {
@@ -376,6 +378,29 @@ class CallPipeline {
     } catch (err) {
       console.error('[CallPipeline] Escalation error:', err.message);
     }
+  }
+
+  /**
+   * Оценка качества по метаданным (без транскрипции)
+   * Шкала 1-10 на основе длительности и типа звонка
+   */
+  _metadataQualityScore(call) {
+    const dur = call.duration_seconds || call.duration || 0;
+    const type = call.call_type || call.direction;
+
+    // Пропущенные — нет оценки
+    if (type === 'missed' || dur === 0) return null;
+
+    // Базовая оценка по длительности
+    let score;
+    if (dur < 15) score = 3;       // Очень короткий
+    else if (dur < 30) score = 4;   // Короткий
+    else if (dur < 60) score = 5;   // Нормальный
+    else if (dur < 180) score = 6;  // Хороший разговор
+    else if (dur < 300) score = 7;  // Длительный
+    else score = 7;                 // Очень длительный
+
+    return score;
   }
 
   _formatTranscript(result) {
