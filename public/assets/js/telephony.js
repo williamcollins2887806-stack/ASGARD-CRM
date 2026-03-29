@@ -17,8 +17,8 @@ window.AsgardTelephonyPage = (function () {
   const PAGE_SIZE       = 25;
   const WAVEFORM_BARS   = 200;
   const SPEED_OPTIONS   = [1, 1.5, 2];
-  const TABS            = ['log', 'missed', 'stats', 'routing'];
-  const TAB_LABELS      = { log: 'Журнал', missed: 'Пропущенные', stats: 'Статистика', routing: 'Маршрутизация' };
+  const TABS            = ['log', 'missed', 'stats', 'analytics', 'routing'];
+  const TAB_LABELS      = { log: 'Журнал', missed: 'Пропущенные', stats: 'Статистика', analytics: 'Аналитика', routing: 'Маршрутизация' };
   const DIR_ICONS       = { inbound: '\u2199', outbound: '\u2197', missed: '\u21A9', internal: '\u21C4' };
   const DIR_LABELS      = { inbound: 'Входящий', outbound: 'Исходящий', missed: 'Пропущенный', internal: 'Внутренний' };
   const DIR_TOOLTIPS    = { inbound: 'Входящий звонок', outbound: 'Исходящий звонок', missed: 'Пропущенный звонок', internal: 'Внутренний звонок' };
@@ -514,7 +514,11 @@ window.AsgardTelephonyPage = (function () {
     var isAdmin = r === 'ADMIN' || r === 'DIRECTOR_GEN' || r === 'DIRECTOR_COM';
 
     wrap.innerHTML = TABS
-      .filter(function (t) { return t !== 'routing' || isAdmin; })
+      .filter(function (t) {
+        if (t === 'routing') return isAdmin;
+        if (t === 'analytics') return isAdmin || r === 'DIRECTOR_COMM' || r === 'DIRECTOR_DEV';
+        return true;
+      })
       .map(function (t) {
         var badge = (t === 'missed' && _missedBadge > 0)
           ? '<span class="telephony-tab-badge">' + _missedBadge + '</span>' : '';
@@ -545,10 +549,11 @@ window.AsgardTelephonyPage = (function () {
 
     /* render new content */
     switch (tab) {
-      case 'log':     renderLog(c);     break;
-      case 'missed':  renderMissed(c);  break;
-      case 'stats':   renderStats(c);   break;
-      case 'routing': renderRouting(c); break;
+      case 'log':       renderLog(c);       break;
+      case 'missed':    renderMissed(c);    break;
+      case 'stats':     renderStats(c);     break;
+      case 'analytics': renderAnalytics(c); break;
+      case 'routing':   renderRouting(c);   break;
     }
 
     /* fade in */
@@ -2047,6 +2052,121 @@ window.AsgardTelephonyPage = (function () {
         });
       }
     });
+  }
+
+  /* ======================================================================
+   *  TAB 5  --  АНАЛИТИКА (Call Analytics — WOW)
+   * ====================================================================== */
+  async function renderAnalytics(container) {
+    container.innerHTML =
+      '<div class="tel-ai-insights cr-wow-card" style="margin-bottom:16px">' +
+        '<div class="tel-ai-insights-title">🧙 AI-аналитика звонков</div>' +
+        '<div class="tel-ai-insights-grid" id="telAnalyticsKPI">' +
+          '<div class="skeleton-kpi"><div class="skeleton skeleton-bar" style="width:60px;height:28px;margin:0 auto 10px"></div><div class="skeleton skeleton-bar" style="width:90px;height:12px;margin:0 auto"></div></div>' +
+          '<div class="skeleton-kpi"><div class="skeleton skeleton-bar" style="width:60px;height:28px;margin:0 auto 10px"></div><div class="skeleton skeleton-bar" style="width:90px;height:12px;margin:0 auto"></div></div>' +
+          '<div class="skeleton-kpi"><div class="skeleton skeleton-bar" style="width:60px;height:28px;margin:0 auto 10px"></div><div class="skeleton skeleton-bar" style="width:90px;height:12px;margin:0 auto"></div></div>' +
+        '</div>' +
+      '</div>' +
+      '<div id="telAnalyticsList">' + skeletonTable(5) + '</div>';
+
+    try {
+      var tkn = token();
+      var headers = { Authorization: 'Bearer ' + tkn };
+
+      // Загрузим последний отчёт + статистику за 7 дней
+      var [reportsRes, statsRes] = await Promise.all([
+        fetch('/api/call-reports?limit=5', { headers: headers }).then(function(r) { return r.json(); }),
+        fetch('/api/call-reports/dashboard', { headers: headers }).then(function(r) { return r.json(); }).catch(function() { return {}; })
+      ]);
+
+      var reports = (reportsRes && reportsRes.items) || [];
+      var stats = (statsRes && statsRes.stats) || {};
+
+      // KPI cards
+      var kpiEl = document.getElementById('telAnalyticsKPI');
+      if (kpiEl) {
+        kpiEl.innerHTML =
+          '<div class="tel-ai-insight-item"><div class="tel-ai-insight-value" data-animate="' + (stats.totalCalls || 0) + '">0</div><div class="tel-ai-insight-label">Звонков за период</div></div>' +
+          '<div class="tel-ai-insight-item"><div class="tel-ai-insight-value" data-animate="' + (stats.targetCalls || 0) + '">0</div><div class="tel-ai-insight-label">Целевых</div></div>' +
+          '<div class="tel-ai-insight-item"><div class="tel-ai-insight-value" data-animate="' + (stats.missedCalls || 0) + '">0</div><div class="tel-ai-insight-label">Пропущенных</div></div>';
+
+        kpiEl.querySelectorAll('[data-animate]').forEach(function(valEl) {
+          animateCountUp(valEl, parseInt(valEl.dataset.animate) || 0, 800);
+        });
+      }
+
+      // Report list with accordion
+      var listEl = document.getElementById('telAnalyticsList');
+      if (listEl) {
+        if (!reports.length) {
+          listEl.innerHTML = emptyState('📊', 'Отчётов пока нет');
+          return;
+        }
+
+        var TYPE_LABELS = { daily: 'Ежедневный', weekly: 'Еженедельный', monthly: 'Ежемесячный' };
+
+        listEl.innerHTML = reports.map(function(rpt, idx) {
+          var rptStats = {};
+          try { rptStats = typeof rpt.stats_json === 'string' ? JSON.parse(rpt.stats_json) : (rpt.stats_json || {}); } catch(_) {}
+          var recs = [];
+          try { recs = typeof rpt.recommendations_json === 'string' ? JSON.parse(rpt.recommendations_json) : (rpt.recommendations_json || []); } catch(_) {}
+
+          var badgeCls = rpt.report_type === 'daily' ? 'cr-badge--daily' : (rpt.report_type === 'weekly' ? 'cr-badge--weekly' : 'cr-badge--monthly');
+
+          var bodyHtml = '';
+          if (rpt.summary_text) {
+            bodyHtml += '<div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:8px;white-space:pre-wrap">' + esc(rpt.summary_text.slice(0, 600)) + '</div>';
+          }
+          if (rptStats.totalCalls !== undefined) {
+            bodyHtml += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">' +
+              '<div class="cr-detail__mini"><div class="cr-detail__mini-value">' + (rptStats.totalCalls || 0) + '</div><div class="cr-detail__mini-label">Звонков</div></div>' +
+              '<div class="cr-detail__mini"><div class="cr-detail__mini-value">' + (rptStats.targetCalls || 0) + '</div><div class="cr-detail__mini-label">Целевых</div></div>' +
+              '<div class="cr-detail__mini"><div class="cr-detail__mini-value">' + (rptStats.missedCalls || 0) + '</div><div class="cr-detail__mini-label">Пропущ.</div></div>' +
+            '</div>';
+          }
+          if (recs.length) {
+            bodyHtml += '<div style="font-size:12px;font-weight:600;color:var(--t3);margin-bottom:4px">РЕКОМЕНДАЦИИ</div>' +
+              '<ol style="margin:0;padding-left:18px">' + recs.slice(0, 5).map(function(r) { return '<li style="font-size:13px;color:var(--t2);padding:2px 0">' + esc(r) + '</li>'; }).join('') + '</ol>';
+          }
+          bodyHtml += '<div style="margin-top:8px"><button class="fk-btn fk-btn--sm" data-report-id="' + rpt.id + '" data-action="openReport">Открыть полный отчёт</button></div>';
+
+          return '<div class="cr-accordion cr-wow-card" style="animation-delay:' + (idx * 60) + 'ms;margin-bottom:8px">' +
+            '<div class="cr-accordion__head">' +
+              '<span><span class="cr-badge ' + badgeCls + '" style="margin-right:8px">' + (TYPE_LABELS[rpt.report_type] || rpt.report_type) + '</span> ' +
+              esc(rpt.title || 'Отчёт #' + rpt.id) + ' <span style="color:var(--t3);font-size:12px;margin-left:8px">' + fmtDate(rpt.created_at) + '</span></span>' +
+              '<span class="cr-accordion__arrow">▼</span>' +
+            '</div>' +
+            '<div class="cr-accordion__body"><div class="cr-accordion__content">' + bodyHtml + '</div></div>' +
+          '</div>';
+        }).join('');
+
+        // Accordion toggle
+        listEl.querySelectorAll('.cr-accordion__head').forEach(function(head) {
+          head.addEventListener('click', function() {
+            head.parentElement.classList.toggle('cr-accordion--open');
+          });
+        });
+
+        // Open report detail
+        listEl.querySelectorAll('[data-action="openReport"]').forEach(function(btn) {
+          btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var id = btn.dataset.reportId;
+            if (window.AsgardCallReportsPage) {
+              // Navigate to call-reports page with report detail
+              window.location.hash = '#/call-reports';
+              setTimeout(function() {
+                if (window.AsgardCallReportsPage && window.AsgardCallReportsPage.render) {
+                  // Page will load, user can find report there
+                }
+              }, 300);
+            }
+          });
+        });
+      }
+    } catch (err) {
+      container.innerHTML = '<div style="padding:20px;color:var(--err-t)">Ошибка: ' + esc(err.message) + '</div>';
+    }
   }
 
   /* ======================================================================

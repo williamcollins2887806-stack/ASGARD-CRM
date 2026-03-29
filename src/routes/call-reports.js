@@ -100,6 +100,49 @@ async function routes(fastify, options) {
     return { success: true, item: report };
   });
 
+  // GET /dashboard — Сводные данные для дашборда
+  fastify.get('/dashboard', {
+    preHandler: [fastify.requireRoles(REPORT_ROLES)]
+  }, async () => {
+    // Последний отчёт
+    const lastReport = await db.query(
+      'SELECT summary_text, stats_json FROM call_reports ORDER BY created_at DESC LIMIT 1'
+    );
+    let stats = {};
+    let latestSummary = '';
+    if (lastReport.rows[0]) {
+      try {
+        stats = typeof lastReport.rows[0].stats_json === 'string'
+          ? JSON.parse(lastReport.rows[0].stats_json)
+          : (lastReport.rows[0].stats_json || {});
+      } catch (_) {}
+      latestSummary = (lastReport.rows[0].summary_text || '').slice(0, 400);
+    }
+    stats.latestSummary = latestSummary;
+
+    // Chart data — последние 14 дней
+    const chartRes = await db.query(`
+      SELECT
+        created_at::date as day,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE ai_is_target = true) as target,
+        COUNT(*) FILTER (WHERE call_type = 'inbound' AND duration_seconds < 5) as missed
+      FROM call_history
+      WHERE created_at >= CURRENT_DATE - INTERVAL '14 days'
+      GROUP BY created_at::date
+      ORDER BY day
+    `);
+
+    const chartData = chartRes.rows.map(r => ({
+      label: new Date(r.day).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+      total: parseInt(r.total) || 0,
+      target: parseInt(r.target) || 0,
+      missed: parseInt(r.missed) || 0
+    }));
+
+    return { stats, chartData };
+  });
+
   // GET /schedule — Расписание
   fastify.get('/schedule', {
     preHandler: [fastify.requireRoles(['ADMIN'])]

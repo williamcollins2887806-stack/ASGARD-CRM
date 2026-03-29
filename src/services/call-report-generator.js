@@ -102,7 +102,8 @@ class CallReportGenerator {
 
     if (this.aiProvider) {
       try {
-        const aiResult = await this.aiProvider.complete({
+        const completeFn = this.aiProvider.completeAnalytics || this.aiProvider.complete || this.aiProvider;
+        const aiResult = await completeFn({
           system: systemPrompt,
           messages: [{ role: 'user', content: 'Сгенерируй отчёт на основе предоставленных данных.' }],
           maxTokens: 2000,

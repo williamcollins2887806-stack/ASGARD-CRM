@@ -24,6 +24,12 @@ const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '60000', 10); // 60 
 const ANTHROPIC_URL = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
 let OPENAI_URL = process.env.OPENAI_URL || 'https://routerai.ru/api/v1/chat/completions';
 
+// YandexGPT Pro
+let YANDEX_GPT_API_KEY = process.env.YANDEX_GPT_API_KEY || '';
+let YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID || '';
+const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'yandexgpt/latest';
+const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
+
 // DB settings cache
 let _dbKeysLoaded = false;
 
@@ -510,8 +516,82 @@ function parseStream(response, provider) {
   }
 }
 
+/**
+ * YandexGPT Pro — для аналитических задач (отчёты, анализ звонков/email)
+ */
+async function completeYandexGPT(options) {
+  const { system, messages, maxTokens = 4000, temperature = 0.3 } = options;
+
+  const yMessages = [];
+  if (system) yMessages.push({ role: 'system', text: system });
+  for (const m of messages) {
+    yMessages.push({ role: m.role, text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) });
+  }
+
+  const body = {
+    modelUri: `gpt://${YANDEX_FOLDER_ID}/${YANDEX_GPT_MODEL}`,
+    completionOptions: { stream: false, temperature, maxTokens: String(maxTokens) },
+    messages: yMessages
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(YANDEX_GPT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Api-Key ${YANDEX_GPT_API_KEY}`,
+        'x-folder-id': YANDEX_FOLDER_ID
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`YandexGPT error ${res.status}: ${errText.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+    const result = data.result;
+    const text = result.alternatives?.[0]?.message?.text || '';
+
+    return {
+      text,
+      usage: {
+        inputTokens: parseInt(result.usage?.inputTextTokens || 0),
+        outputTokens: parseInt(result.usage?.completionTokens || 0)
+      },
+      model: YANDEX_GPT_MODEL,
+      provider: 'yandexgpt'
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Аналитика — YandexGPT Pro (fallback на default provider)
+ * Для: отчётов по звонкам, анализа email, подсказок Мимира
+ */
+async function completeAnalytics(options) {
+  await _loadKeysFromDB();
+  if (YANDEX_GPT_API_KEY && YANDEX_FOLDER_ID) {
+    try {
+      return await completeYandexGPT(options);
+    } catch (e) {
+      console.warn('[AI] YandexGPT failed, falling back:', e.message);
+    }
+  }
+  return complete(options);
+}
+
 module.exports = {
   complete,
+  completeAnalytics,
+  completeYandexGPT,
   stream,
   parseStream,
   parseAnthropicStream,
