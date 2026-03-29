@@ -87,7 +87,7 @@ async function dataRoutes(fastify, options) {
     BUH: {
       tables: [
         'users', 'employees', 'staff', 'staff_plan', 'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages', 'user_call_status',
-        'tenders', 'works', 'work_expenses', 'office_expenses', 'incomes',
+        'tenders', 'estimates', 'works', 'work_expenses', 'office_expenses', 'incomes',
         'invoices', 'invoice_payments', 'acts', 'contracts', 'customers',
         'bank_rules', 'calendar_events', 'chats', 'chat_messages',
         'notifications', 'sync_meta', 'reminders', 'user_dashboard',

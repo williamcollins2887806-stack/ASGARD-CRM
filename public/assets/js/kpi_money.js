@@ -329,6 +329,7 @@ window.AsgardKpiMoneyPage = (function(){
       const monthly = aggregateByMonth(items, selectedYear);
 
       const container = $('#chartContainer');
+      if (!container) return; // navigated away before data loaded
       const maxVal = Math.max(...Object.values(monthly), 1);
 
       let html = `<svg viewBox="0 0 1000 280" style="width:100%; height:100%">`;
@@ -391,7 +392,8 @@ window.AsgardKpiMoneyPage = (function(){
           <div class="value">${items.length}</div>
         </div>
       `;
-      $('#summaryCards').innerHTML = cardsHtml;
+      const summaryEl = $('#summaryCards');
+      if (summaryEl) summaryEl.innerHTML = cardsHtml;
     }
 
     function openMonthModal(month, year, data, mode){
