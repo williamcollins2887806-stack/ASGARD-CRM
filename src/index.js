@@ -127,6 +127,11 @@ fastify.addHook('onRequest', async (request, reply) => {
     return;
   }
 
+  // Allow Field PWA paths (/field/ and its assets)
+  if (url === '/field' || url === '/field/' || url.startsWith('/field/')) {
+    return;
+  }
+
   // Block /mobile-app/ source directory from web access
   if (url === '/mobile-app' || url.startsWith('/mobile-app/')) {
     reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
@@ -159,8 +164,14 @@ fastify.addHook('onRequest', async (request, reply) => {
 //   threshold: 1024
 // });
 
+// Field PWA: read index.html at startup (like React mobile)
+const fieldIndexPath = path.join(__dirname, '../public/field/index.html');
+let fieldHtml = '';
+try { fieldHtml = fs.readFileSync(fieldIndexPath, 'utf8'); } catch (_) {}
+
 // Перехватываем / и /index.html ДО @fastify/static
 // + React mobile app SPA routing для /m/*
+// + Field PWA SPA routing для /field/*
 fastify.addHook('onRequest', (request, reply, done) => {
   const url = request.url.split('?')[0];
 
@@ -174,6 +185,20 @@ fastify.addHook('onRequest', (request, reply, done) => {
   if (url === '/m/' || (url.startsWith('/m/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
     if (reactMobileHtml) {
       reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
+      return;
+    }
+  }
+
+  // Field PWA: /field → /field/ redirect
+  if (url === '/field') {
+    reply.redirect(301, '/field/');
+    return;
+  }
+
+  // Field PWA: SPA fallback for all /field/* paths (except static assets)
+  if (url === '/field/' || (url.startsWith('/field/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
+    if (fieldHtml) {
+      reply.type('text/html').header('Cache-Control', 'no-cache').send(fieldHtml);
       return;
     }
   }
@@ -341,8 +366,69 @@ fastify.decorate('requirePermission', function(moduleKey, operation = 'read') {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Field Authentication Decorator (separate from CRM JWT)
+// ─────────────────────────────────────────────────────────────────────────────
+const fieldJwt = require('jsonwebtoken');
+const fieldCrypto = require('crypto');
+const FIELD_JWT_SECRET = process.env.FIELD_JWT_SECRET || process.env.JWT_SECRET;
+
+fastify.decorate('fieldAuthenticate', async function(request, reply) {
+  try {
+    const authHeader = request.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return reply.code(401).send({ error: 'Требуется авторизация Field' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    let payload;
+    try {
+      payload = fieldJwt.verify(token, FIELD_JWT_SECRET);
+    } catch (jwtErr) {
+      return reply.code(401).send({ error: 'Токен недействителен или истёк' });
+    }
+
+    if (payload.type !== 'field') {
+      return reply.code(401).send({ error: 'Неверный тип токена' });
+    }
+
+    // Check session exists
+    const tokenHash = fieldCrypto.createHash('sha256').update(token).digest('hex');
+    const { rows: sessions } = await db.query(
+      `SELECT id FROM field_sessions WHERE token_hash = $1 AND expires_at > NOW()`,
+      [tokenHash]
+    );
+
+    if (sessions.length === 0) {
+      return reply.code(401).send({ error: 'Сессия не найдена или истекла' });
+    }
+
+    // Load employee
+    const { rows: employees } = await db.query(
+      `SELECT id, fio, phone, city, position, role_tag, is_active, is_self_employed,
+              naks, naks_expiry, imt_number, imt_expires, permits, clothing_size, shoe_size,
+              phone_verified, field_last_login, day_rate
+       FROM employees WHERE id = $1`,
+      [payload.employee_id]
+    );
+
+    if (employees.length === 0 || !employees[0].is_active) {
+      return reply.code(403).send({ error: 'Сотрудник не активен' });
+    }
+
+    request.fieldEmployee = employees[0];
+
+    // Update last_active_at (fire-and-forget)
+    db.query(`UPDATE field_sessions SET last_active_at = NOW() WHERE id = $1`, [sessions[0].id])
+      .catch(() => {});
+  } catch (err) {
+    return reply.code(401).send({ error: 'Ошибка авторизации Field' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
+fastify.register(require('./routes/field-auth'), { prefix: '/api/field/auth' });
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
 fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });
