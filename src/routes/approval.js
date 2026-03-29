@@ -211,6 +211,61 @@ async function routes(fastify) {
     });
   });
 
+  // ─── История комментариев согласования ───
+  fastify.get('/:entityType/:id/comments', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { entityType, id } = request.params;
+    validateEntity(entityType);
+    const role = request.user.role;
+    const allowed = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM'];
+    if (!allowed.includes(role)) {
+      return reply.code(403).send({ error: 'Нет доступа к комментариям' });
+    }
+    const result = await db.query(
+      `SELECT ac.*, u.name as user_name, u.role as user_role
+       FROM approval_comments ac
+       JOIN users u ON ac.user_id = u.id
+       WHERE ac.entity_type = $1 AND ac.entity_id = $2
+       ORDER BY ac.created_at ASC`,
+      [entityType, parseInt(id)]
+    );
+    return { comments: result.rows };
+  });
+
+  // ─── Добавить комментарий ───
+  fastify.post('/:entityType/:id/comments', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { entityType, id } = request.params;
+    validateEntity(entityType);
+    const { comment, parent_id } = request.body || {};
+    if (!comment || !comment.trim()) {
+      return reply.code(400).send({ error: 'Укажите комментарий' });
+    }
+    const result = await db.query(
+      `INSERT INTO approval_comments (entity_type, entity_id, user_id, action, comment, parent_id)
+       VALUES ($1, $2, $3, 'comment', $4, $5) RETURNING *`,
+      [entityType, parseInt(id), request.user.id, comment.trim(), parent_id || null]
+    );
+    // SSE notify участников потока
+    if (fastify.sseManager) {
+      const participants = await db.query(
+        `SELECT DISTINCT user_id FROM approval_comments WHERE entity_type = $1 AND entity_id = $2 AND user_id != $3`,
+        [entityType, parseInt(id), request.user.id]
+      );
+      for (const p of participants.rows) {
+        fastify.sseManager.send(p.user_id, {
+          type: 'approval_comment',
+          entity_type: entityType,
+          entity_id: parseInt(id),
+          comment: result.rows[0]
+        });
+      }
+    }
+    return { comment: result.rows[0] };
+  });
+
   // ─── Очередь бухгалтерии ───
   fastify.get('/pending-buh', {
     preHandler: [fastify.authenticate]

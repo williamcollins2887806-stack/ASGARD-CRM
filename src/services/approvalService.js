@@ -297,6 +297,19 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
       requires_payment: requiresPayment
     });
 
+    // Потоковый комментарий
+    if (comment) {
+      await writeApprovalComment(client, entityType, entityId, actor.id, 'approve', comment);
+    }
+
+    // Обновить director_id и last_director_comment для estimates
+    if (entityType === 'estimates') {
+      const dirFields = { director_id: actor.id };
+      if (comment) dirFields.last_director_comment = comment;
+      const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
+      await client.query(dirSql, dirVals);
+    }
+
     if (requiresPayment) {
       // Уведомляем бухгалтерию С КНОПКАМИ
       await notifyBuhForPayment(client, {
@@ -390,6 +403,16 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
     requires_payment: !!record.requires_payment
   });
 
+  // Потоковый комментарий
+  await writeApprovalComment(db, entityType, entityId, actor.id, 'rework', comment.trim());
+
+  // Обновить director_id и last_director_comment для estimates
+  if (entityType === 'estimates' && !isBuhAction) {
+    const dirFields = { director_id: actor.id, last_director_comment: comment.trim() };
+    const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
+    await db.query(dirSql, dirVals);
+  }
+
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
     const who = isBuhAction ? 'Бухгалтерия' : 'Директор';
@@ -452,6 +475,16 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
     requires_payment: !!record.requires_payment
   });
 
+  // Потоковый комментарий
+  await writeApprovalComment(db, entityType, entityId, actor.id, 'question', comment.trim());
+
+  // Обновить director_id и last_director_comment для estimates
+  if (entityType === 'estimates' && !isBuhAction) {
+    const dirFields = { director_id: actor.id, last_director_comment: comment.trim() };
+    const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
+    await db.query(dirSql, dirVals);
+  }
+
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
     const who = isBuhAction ? 'Бухгалтерия' : 'Директор';
@@ -503,6 +536,16 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
     requires_payment: !!record.requires_payment
   });
 
+  // Потоковый комментарий
+  await writeApprovalComment(db, entityType, entityId, actor.id, 'reject', comment.trim());
+
+  // Обновить director_id и last_director_comment для estimates
+  if (entityType === 'estimates') {
+    const dirFields = { director_id: actor.id, last_director_comment: comment.trim() };
+    const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
+    await db.query(dirSql, dirVals);
+  }
+
   const label = `${getLabel(entityType)} #${entityId}`;
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
@@ -552,6 +595,9 @@ async function resubmit(db, { entityType, entityId, actor }) {
 
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
+
+  // Потоковый комментарий
+  await writeApprovalComment(db, entityType, entityId, actor.id, 'resubmit', 'Переотправлено после доработки');
 
   // Уведомляем директоров
   const label = `${getLabel(entityType)} #${entityId}`;
@@ -864,6 +910,21 @@ async function writeAuditLog(db, actorUserId, entityType, entityId, action, payl
   }
 }
 
+/**
+ * Записать потоковый комментарий в approval_comments.
+ */
+async function writeApprovalComment(db, entityType, entityId, userId, action, comment) {
+  try {
+    await db.query(
+      `INSERT INTO approval_comments (entity_type, entity_id, user_id, action, comment)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [entityType, entityId, userId, action, comment]
+    );
+  } catch (err) {
+    console.error('[approvalService] approval_comments write failed:', err.message);
+  }
+}
+
 function getInitiatorId(record, entityType) {
   // Разные таблицы хранят инициатора в разных полях
   return Number(
@@ -955,6 +1016,7 @@ module.exports = {
   sendApprovalTelegram,
   validateEstimateTransition,
   writeAuditLog,
+  writeApprovalComment,
 
   // Константы
   DIRECTOR_ROLES,
