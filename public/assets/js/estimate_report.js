@@ -165,6 +165,7 @@ window.AsgardEstimateReportPage = (function () {
 
     // ── Bind events ──
     bindObjectToggle();
+    bindFilePreview();
     bindTableExpand();
     bindCommentSubmit(id, token, user);
     if (canAct) bindActionButtons(id, token, user);
@@ -376,8 +377,108 @@ window.AsgardEstimateReportPage = (function () {
             <div class="er-object__desc-text">${esc(est.object_description || est.description || est.notes || '')}</div>
           </div>` : ''}
         </div>
+        ${renderFiles(est.documents || [])}
       </div>
     </div>`;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // COMPONENT: Files / Attachments
+  // ──────────────────────────────────────────────────────────────
+  const FILE_ICONS = {
+    'application/pdf': '📄', 'application/msword': '📝', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📝',
+    'application/vnd.ms-excel': '📊', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '📊',
+    'application/zip': '📦', 'application/x-rar-compressed': '📦', 'application/x-7z-compressed': '📦',
+    'application/gzip': '📦', 'application/x-tar': '📦',
+    'image/png': '🖼', 'image/jpeg': '🖼', 'image/gif': '🖼', 'image/webp': '🖼', 'image/svg+xml': '🖼'
+  };
+  const PREVIEWABLE_MIME = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
+  const ARCHIVE_MIME = ['application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed', 'application/gzip', 'application/x-tar'];
+
+  function fileIcon(mime) { return FILE_ICONS[mime] || '📎'; }
+  function fileSize(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' Б';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' КБ';
+    return (bytes / 1048576).toFixed(1) + ' МБ';
+  }
+  function fileDownloadUrl(doc) {
+    return '/api/files/download/' + encodeURIComponent(doc.filename);
+  }
+  function isPreviewable(mime) { return PREVIEWABLE_MIME.includes(mime); }
+  function isArchive(mime) { return ARCHIVE_MIME.includes(mime); }
+
+  function renderFiles(docs) {
+    if (!docs || !docs.length) return '';
+    const items = docs.map(d => {
+      const url = fileDownloadUrl(d);
+      const icon = fileIcon(d.mime_type);
+      const name = d.original_name || d.filename || 'Файл';
+      const size = fileSize(d.size);
+      const preview = isPreviewable(d.mime_type);
+      const archive = isArchive(d.mime_type);
+
+      return `
+      <div class="er-file" data-file-id="${d.id}" data-mime="${esc(d.mime_type || '')}">
+        <span class="er-file__icon">${icon}</span>
+        <div class="er-file__info">
+          <span class="er-file__name">${esc(name)}</span>
+          ${size ? '<span class="er-file__size">' + size + '</span>' : ''}
+        </div>
+        <div class="er-file__actions">
+          ${preview ? '<button class="er-file__btn er-file__btn--preview" data-url="' + esc(url) + '" data-mime="' + esc(d.mime_type) + '" data-name="' + esc(name) + '" title="Предпросмотр">👁</button>' : ''}
+          <a href="${esc(url)}" download="${esc(name)}" class="er-file__btn" title="Скачать">⬇</a>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `
+    <div class="er-files">
+      <div class="er-files__label">Вложения (${docs.length})</div>
+      <div class="er-files__list">${items}</div>
+    </div>
+    <div class="er-file-preview-overlay" id="erFilePreviewOverlay" style="display:none">
+      <div class="er-file-preview-modal" id="erFilePreviewModal">
+        <div class="er-file-preview-header">
+          <span id="erFilePreviewTitle"></span>
+          <button class="er-file-preview-close" id="erFilePreviewClose">✕</button>
+        </div>
+        <div class="er-file-preview-body" id="erFilePreviewBody"></div>
+      </div>
+    </div>`;
+  }
+
+  function bindFilePreview() {
+    const overlay = $('#erFilePreviewOverlay');
+    if (!overlay) return;
+    const modal = $('#erFilePreviewModal');
+    const body = $('#erFilePreviewBody');
+    const titleEl = $('#erFilePreviewTitle');
+    const closeBtn = $('#erFilePreviewClose');
+
+    // Preview buttons
+    document.querySelectorAll('.er-file__btn--preview').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const url = btn.dataset.url;
+        const mime = btn.dataset.mime;
+        const name = btn.dataset.name;
+        titleEl.textContent = name;
+
+        if (mime === 'application/pdf') {
+          body.innerHTML = '<iframe src="' + esc(url) + '#toolbar=1" class="er-file-preview-iframe"></iframe>';
+        } else if (mime && mime.startsWith('image/')) {
+          body.innerHTML = '<img src="' + esc(url) + '" class="er-file-preview-img" alt="' + esc(name) + '">';
+        }
+        overlay.style.display = 'flex';
+      });
+    });
+
+    // Close
+    closeBtn.addEventListener('click', () => { overlay.style.display = 'none'; body.innerHTML = ''; });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { overlay.style.display = 'none'; body.innerHTML = ''; }
+    });
   }
 
   // ──────────────────────────────────────────────────────────────

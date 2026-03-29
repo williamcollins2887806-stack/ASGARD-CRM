@@ -142,6 +142,18 @@ async function routes(fastify) {
       estimate.director_name = dirResult.rows[0]?.name || null;
     }
 
+    // Документы через tender_id
+    if (estimate.tender_id) {
+      const docsResult = await db.query(
+        `SELECT id, filename, original_name, mime_type, size, type, created_at
+         FROM documents WHERE tender_id = $1 ORDER BY created_at ASC`,
+        [estimate.tender_id]
+      );
+      estimate.documents = docsResult.rows;
+    } else {
+      estimate.documents = [];
+    }
+
     return { estimate };
   });
 
