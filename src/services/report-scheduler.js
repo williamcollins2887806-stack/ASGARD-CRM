@@ -23,25 +23,27 @@ class ReportScheduler {
   }
 
   async start() {
+    const tz = { timezone: 'Europe/Moscow' };
+
     try {
-      // Ежедневный: 08:00 МСК (05:00 UTC) Пн-Сб, проверка дня внутри
-      const dailyJob = cron.schedule('0 5 * * 1-6', async () => {
+      // Ежедневный: 08:00 МСК Пн-Сб
+      const dailyJob = cron.schedule('0 8 * * 1-6', async () => {
         await this._runDaily();
-      });
+      }, tz);
       this.jobs.push(dailyJob);
       this.log.info('[ReportScheduler] Daily reports: 08:00 MSK Mon-Sat');
 
-      // Еженедельный: 10:00 МСК (07:00 UTC) по понедельникам
-      const weeklyJob = cron.schedule('0 7 * * 1', async () => {
+      // Еженедельный: 10:00 МСК по понедельникам
+      const weeklyJob = cron.schedule('0 10 * * 1', async () => {
         await this._runWeekly();
-      });
+      }, tz);
       this.jobs.push(weeklyJob);
       this.log.info('[ReportScheduler] Weekly reports: 10:00 MSK Monday');
 
-      // Ежемесячный: 10:00 МСК (07:00 UTC) 1-го числа
-      const monthlyJob = cron.schedule('0 7 1 * *', async () => {
+      // Ежемесячный: 10:00 МСК 1-го числа
+      const monthlyJob = cron.schedule('0 10 1 * *', async () => {
         await this._runMonthly();
-      });
+      }, tz);
       this.jobs.push(monthlyJob);
       this.log.info('[ReportScheduler] Monthly reports: 10:00 MSK 1st of month');
     } catch (err) {
