@@ -9,12 +9,34 @@ ASGARD Silero TTS Microservice
 import os
 import io
 import sys
+import re
 import time
 import struct
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
+
+# ── Словарь ударений ─────────────────────────────────────────────
+# Знак + ставится ПЕРЕД ударной гласной.
+# Расширяй список по мере появления новых проблемных слов.
+STRESS_DICT = {
+    # Бренд / компания
+    'Асгард Сервис':   'Асг+ард С+ервис',
+    'Асгард-Сервис':   'Асг+ард-С+ервис',
+    'Асгард':          'Асг+ард',
+    # Имя голосового секретаря
+    'Фрея':            'Фр+ея',
+    # Другие проблемные слова добавляй сюда:
+    # 'Слово': 'Сл+ово',
+}
+
+def apply_stress(text: str) -> str:
+    """Заменяет слова из STRESS_DICT на варианты с расставленными ударениями."""
+    for word, stressed in STRESS_DICT.items():
+        # Регистронезависимо, но заменяем только целые слова (через \b не работает с кириллицей)
+        text = re.sub(re.escape(word), stressed, text, flags=re.IGNORECASE)
+    return text
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [Silero] %(levelname)s: %(message)s')
 log = logging.getLogger('silero-tts')
@@ -67,6 +89,7 @@ def synthesize(text: str, speaker: str = 'xenia') -> bytes:
         return b''
 
     text = text.strip()
+    text = apply_stress(text)
     if len(text) > 500:
         text = text[:500]
 
