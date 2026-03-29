@@ -57,6 +57,7 @@ window.AsgardCallReportsPage = (function() {
                 <button class="cr-period-btn" data-type="weekly">Неделя</button>
                 <button class="cr-period-btn" data-type="monthly">Месяц</button>
               </div>
+              <button id="crSettings" class="fk-btn fk-btn--ghost" title="Настройки уведомлений">\u2699\uFE0F</button>
               <button id="crGenerate" class="fk-btn fk-btn--primary">Создать отчёт</button>
             </div>
           </div>
@@ -97,6 +98,9 @@ window.AsgardCallReportsPage = (function() {
 
     var genBtn = document.getElementById('crGenerate');
     if (genBtn) genBtn.addEventListener('click', openGenerateModal);
+
+    var settBtn = document.getElementById('crSettings');
+    if (settBtn) settBtn.addEventListener('click', openSettingsModal);
   }
 
   /* ════════════ LOAD REPORTS ════════════ */
@@ -395,16 +399,25 @@ window.AsgardCallReportsPage = (function() {
           '</tbody></table></div></div></div>';
       }
 
+      var bodyContent;
+      if (r.report_html) {
+        // WOW HTML-отчёт из генератора
+        bodyContent = '<div class="cr-html-report-content">' + r.report_html + '</div>';
+      } else {
+        // Fallback на plain text
+        bodyContent = metricsHtml +
+          '<div class="cr-detail__summary">' + esc(r.summary_text || 'Нет текста отчёта') + '</div>' +
+          recsHtml +
+          managersDetail;
+      }
+
       var html =
         '<div class="cr-detail">' +
           '<div class="cr-detail__header">' +
             '<div class="cr-detail__title">' + esc(r.title || 'Отчёт') + '</div>' +
             '<div class="cr-detail__subtitle">' + (TYPE_LABELS[r.report_type] || r.report_type) + ' | ' + fmtDate(r.period_from) + ' — ' + fmtDate(r.period_to) + '</div>' +
           '</div>' +
-          metricsHtml +
-          '<div class="cr-detail__summary">' + esc(r.summary_text || 'Нет текста отчёта') + '</div>' +
-          recsHtml +
-          managersDetail +
+          bodyContent +
         '</div>';
 
       showModal(html, { title: 'Отчёт #' + r.id, width: 750 });
@@ -508,5 +521,62 @@ window.AsgardCallReportsPage = (function() {
     return new Date(d).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
-  return { render: render };
+  /* ════════════ SETTINGS MODAL ════════════ */
+  async function openSettingsModal() {
+    var data;
+    try { data = await API.getSchedule(); } catch(_) { data = {}; }
+
+    var types = [
+      { key: 'daily', label: 'Ежедневный', icon: '\uD83D\uDCC5' },
+      { key: 'weekly', label: 'Еженедельный', icon: '\uD83D\uDCC6' },
+      { key: 'monthly', label: 'Ежемесячный', icon: '\uD83D\uDCCA' }
+    ];
+
+    var html = '<div class="cr-settings">';
+    types.forEach(function(t) {
+      var p = data[t.key] || {};
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--brd)">' +
+        '<div style="font-size:14px;font-weight:600;color:var(--t1)">' + t.icon + ' ' + t.label + '</div>' +
+        '<div style="display:flex;gap:14px;align-items:center">' +
+          '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--t2);cursor:pointer"><input type="checkbox" data-type="' + t.key + '" data-field="is_enabled" ' + (p.is_enabled !== false ? 'checked' : '') + '> Вкл</label>' +
+          '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--t2);cursor:pointer"><input type="checkbox" data-type="' + t.key + '" data-field="via_huginn" ' + (p.via_huginn !== false ? 'checked' : '') + '> Huginn</label>' +
+          '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--t2);cursor:pointer"><input type="checkbox" data-type="' + t.key + '" data-field="via_email" ' + (p.via_email !== false ? 'checked' : '') + '> Email</label>' +
+        '</div>' +
+      '</div>';
+    });
+    html += '<button id="crSaveSettings" class="fk-btn fk-btn--primary" style="margin-top:16px;width:100%">Сохранить</button>';
+    html += '</div>';
+
+    showModal(html, { title: '\u2699\uFE0F Настройки отчётов', width: 480 });
+
+    setTimeout(function() {
+      var saveBtn = document.getElementById('crSaveSettings');
+      if (saveBtn) saveBtn.addEventListener('click', async function() {
+        var body = {};
+        types.forEach(function(t) {
+          body[t.key] = {};
+          document.querySelectorAll('[data-type="' + t.key + '"]').forEach(function(input) {
+            body[t.key][input.dataset.field] = input.checked;
+          });
+        });
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Сохраняю...';
+        try {
+          await fetch('/api/call-reports/schedule', {
+            method: 'PUT',
+            headers: { 'Authorization': 'Bearer ' + token(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          closeModal();
+          toast('Настройки сохранены', 'success');
+        } catch (e) {
+          toast('Ошибка: ' + e.message, 'error');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Сохранить';
+        }
+      });
+    }, 100);
+  }
+
+  return { render: render, openReportDetail: openReportDetail, openSettingsModal: openSettingsModal };
 })();

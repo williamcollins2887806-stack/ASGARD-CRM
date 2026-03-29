@@ -51,6 +51,15 @@ export default function CallAnalytics() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Deep link: report=ID из query string
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const reportId = params.get('report');
+    if (reportId) {
+      setExpanded(reportId);
+    }
+  }, []);
+
   const sparklineData = chartData.map(d => d.total || 0);
 
   return (

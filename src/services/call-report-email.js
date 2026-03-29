@@ -72,7 +72,7 @@ function generateReportEmail(report) {
     <ol style="margin:0;padding-left:18px;">${recsHtml}</ol>
   </td></tr>` : ''}
   <tr><td style="padding:16px;text-align:center;">
-    <a href="https://crm.asgard-service.com/#/telephony?tab=analytics&report=${report.id}"
+    <a href="https://asgard-crm.ru/#/telephony?tab=analytics&report=${report.id}"
        style="background:#3b82f6;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;font-size:14px;">
       Открыть полный отчёт в CRM
     </a>

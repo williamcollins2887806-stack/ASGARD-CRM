@@ -166,6 +166,33 @@ async function getDbStats(db, user) {
       } catch (e) { /* Table may not exist */ }
     }
 
+    // ЗВОНКИ (директора)
+    if (hasFullAccess(role)) {
+      try {
+        const callsRes = await db.query(`
+          SELECT
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE ai_is_target = true) as target,
+            COUNT(*) FILTER (WHERE call_type = 'inbound' AND duration_seconds < 5) as missed,
+            ROUND(AVG(duration_seconds) FILTER (WHERE duration_seconds > 0)) as avg_dur
+          FROM call_history WHERE created_at::date = CURRENT_DATE
+        `);
+        stats.calls_today = callsRes.rows[0] || {};
+      } catch (_) {}
+
+      try {
+        const lastReportRes = await db.query(
+          "SELECT summary_text, created_at FROM call_reports ORDER BY created_at DESC LIMIT 1"
+        );
+        if (lastReportRes.rows[0]) {
+          stats.last_call_report = {
+            summary: (lastReportRes.rows[0].summary_text || '').slice(0, 400),
+            date: lastReportRes.rows[0].created_at
+          };
+        }
+      } catch (_) {}
+    }
+
   } catch (e) {
     console.error('DB stats error:', e.message);
   }
@@ -456,6 +483,16 @@ ${statusList}
   Прибыль: ${((stats.profit || 0) / 1000000).toFixed(2)} млн ₽
   Просроченных счетов: ${stats.overdueInvoices || 0} на ${((stats.overdueSum || 0) / 1000).toFixed(0)} тыс ₽`;
 
+    // Звонки
+    if (stats.calls_today) {
+      const ct = stats.calls_today;
+      section += `\n\nЗВОНКИ СЕГОДНЯ: всего ${ct.total || 0}, целевых ${ct.target || 0}, пропущенных ${ct.missed || 0}`;
+      if (ct.avg_dur) section += `, средняя длительность ${ct.avg_dur} сек`;
+    }
+    if (stats.last_call_report) {
+      section += `\nПоследний отчёт по звонкам: ${stats.last_call_report.summary}`;
+    }
+
   } else if (isPM(role)) {
     const statusList = Object.entries(stats.tendersByStatus || {})
       .map(([k, v]) => `  • ${k}: ${v}`)
@@ -579,6 +616,7 @@ ${buildRestrictions(role, userName)}
 4. Рекомендации по тендерам на основе истории с заказчиком
 5. Помощь с расчётами, аналитикой, планированием
 6. Навигация по CRM — объяснять как пользоваться функциями системы
+7. Аналитика звонков — данные о звонках, рейтинг менеджеров, AI-инсайты из отчётов
 </capabilities>
 
 <rules>

@@ -1458,7 +1458,14 @@ var _setupPinKeypad = null;
     await new Promise(function(resolve){ setTimeout(resolve, 600); }); /* perf fix: was 2500ms */
     var ov = document.getElementById('asgard-loading-overlay');
     if (ov) ov.remove();
-    location.hash = "#/home";
+    // Deep link: вернуть на сохранённый URL после логина
+    var returnUrl = sessionStorage.getItem('asgard_return_url');
+    if (returnUrl) {
+      sessionStorage.removeItem('asgard_return_url');
+      location.hash = returnUrl;
+    } else {
+      location.hash = "#/home";
+    }
     // Post-login init
     try {
       if (loginState.login && window.AsgardWebAuthn) {
@@ -1526,8 +1533,14 @@ var _setupPinKeypad = null;
       location.hash = "#/welcome";
       return;
     }
-    // If already logged in, go home
-    location.hash = "#/home";
+    // If already logged in — deep link or home
+    var returnUrl = sessionStorage.getItem('asgard_return_url');
+    if (returnUrl) {
+      sessionStorage.removeItem('asgard_return_url');
+      location.hash = returnUrl;
+    } else {
+      location.hash = "#/home";
+    }
   }
 
   async function pageRegister(){
@@ -1541,7 +1554,12 @@ var _setupPinKeypad = null;
 
   async function pageHome(){
     const auth=await AsgardAuth.requireUser();
-    if(!auth){ location.hash="#/login"; return; }
+    if(!auth){
+      if (location.hash && location.hash !== '#/login' && location.hash !== '#/' && location.hash !== '#/home') {
+        sessionStorage.setItem('asgard_return_url', location.hash);
+      }
+      location.hash="#/login"; return;
+    }
 
     // Делегируем рендер в AsgardCustomDashboard
     if (window.AsgardCustomDashboard) {

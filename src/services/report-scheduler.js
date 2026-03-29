@@ -149,31 +149,34 @@ class ReportScheduler {
     if (!report) return;
 
     try {
-      const { rows: schedules } = await this.db.query(
-        'SELECT * FROM call_report_schedule WHERE report_type = $1 AND is_active = true',
-        [reportType]
-      );
-
-      const notifyRoles = schedules[0]?.notify_roles || ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
-      const { rows: users } = await this.db.query(
-        'SELECT id, email, name FROM users WHERE role = ANY($1) AND is_active = true',
-        [notifyRoles]
-      );
+      // Получаем пользователей с их персональными настройками
+      const { rows: users } = await this.db.query(`
+        SELECT u.id, u.email, u.name, u.role,
+          COALESCE(p.is_enabled, true) as pref_enabled,
+          COALESCE(p.via_crm, true)    as pref_crm,
+          COALESCE(p.via_huginn, true) as pref_huginn,
+          COALESCE(p.via_email, true)  as pref_email
+        FROM users u
+        LEFT JOIN call_report_user_prefs p ON p.user_id = u.id AND p.report_type = $1
+        WHERE u.role IN ('ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV')
+          AND u.is_active = true
+          AND COALESCE(p.is_enabled, true) = true
+      `, [reportType]);
 
       for (const user of users) {
         try {
           // 1. CRM-уведомление
-          if (this.notify) {
+          if (user.pref_crm && this.notify) {
             await this.notify(this.db, {
               user_id: user.id,
-              title: `Отчёт по звонкам: ${label}`,
+              title: `📊 Отчёт: ${label}`,
               message: report.title || label,
               type: 'call_report',
               link: `#/telephony?tab=analytics&report=${report.id}`
             });
           }
 
-          // 2. SSE
+          // 2. SSE (всегда)
           try {
             const { sendToUser } = require('../routes/sse');
             sendToUser(user.id, 'call_report:ready', {
@@ -184,7 +187,26 @@ class ReportScheduler {
           } catch (_) {}
 
           // 3. Мимир-дайджест в Huginn
-          await this._sendMimirDigest(report, user.id, label);
+          if (user.pref_huginn) {
+            await this._sendMimirDigest(report, user.id, label);
+          }
+
+          // 4. Email-рассылка (красивый HTML-отчёт)
+          if (user.pref_email && user.email) {
+            try {
+              const { generateReportEmail } = require('./call-report-email');
+              const crmMailer = require('./crm-mailer');
+              await crmMailer.sendCrmEmail(this.db, null, {
+                to: user.email,
+                subject: `📊 Отчёт: ${label} | ASGARD CRM`,
+                html: generateReportEmail(report),
+                text: (report.summary_text || '').slice(0, 500)
+              });
+              this.log.info(`[ReportScheduler] Email sent to ${user.email}`);
+            } catch (emailErr) {
+              this.log.error(`[ReportScheduler] Email to ${user.email}:`, emailErr.message);
+            }
+          }
 
         } catch (e) {
           this.log.error(`[ReportScheduler] Deliver to user ${user.id}:`, e.message);

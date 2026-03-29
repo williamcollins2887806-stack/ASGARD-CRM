@@ -679,8 +679,9 @@ window.AsgardTelephonyPage = (function () {
       var dadataBadge = c.dadata_city ? '<span class="call-dadata-badge">' + esc(c.dadata_city) + '</span>' : '';
       var aiPreview = c.ai_summary ? '<div class="call-ai-preview">' + esc(c.ai_summary.slice(0, 160)) + '</div>' : '';
       var delay = staggerDelay(idx, 40);
+      var hasAi = !!c.ai_summary;
 
-      return '<tr class="call-row call-row-wow call-row-wow--' + dir + '" data-id="' + esc(String(c.id)) + '" style="animation-delay:' + delay + 'ms;position:relative">' +
+      var mainRow = '<tr class="call-row call-row-wow call-row-wow--' + dir + (hasAi ? ' call-row--expandable' : '') + '" data-id="' + esc(String(c.id)) + '" style="animation-delay:' + delay + 'ms;position:relative">' +
         '<td>' + esc(fmtDate(c.created_at)) + '</td>' +
         '<td><span class="' + dirCls + '" data-tooltip="' + esc(dirTip) + '">' + dirIcon + '</span>' + recordIcon + '</td>' +
         '<td style="position:relative">' + client + dadataBadge + aiPreview + '</td>' +
@@ -689,6 +690,42 @@ window.AsgardTelephonyPage = (function () {
         '<td class="ai-col">' + (c.ai_summary ? esc(c.ai_summary.slice(0, 60)) + (c.ai_summary.length > 60 ? '\u2026' : '') : '\u2014') + '</td>' +
         '<td><span class="' + statusCls + '" data-tooltip="' + esc(statusTip) + '">' + esc(STATUS_LABELS[tStatus] || '\u2014') + '</span></td>' +
       '</tr>';
+
+      // Accordion expand row для AI-анализа
+      var expandRow = '';
+      if (hasAi) {
+        var tags = '';
+        if (c.ai_is_target != null) {
+          tags += '<span class="cr-badge ' + (c.ai_is_target ? 'cr-badge--weekly' : 'cr-badge--daily') + '">' +
+            (c.ai_is_target ? '\uD83C\uDFAF Целевой' : '\u2014 Нецелевой') + '</span> ';
+        }
+        if (c.ai_sentiment) {
+          var sentLabel = { positive: '\uD83D\uDFE2 Позитивный', neutral: '\uD83D\uDFE1 Нейтральный', negative: '\uD83D\uDD34 Негативный' };
+          tags += '<span class="cr-badge">' + (sentLabel[c.ai_sentiment] || c.ai_sentiment) + '</span> ';
+        }
+        var ld = {};
+        try { ld = typeof c.ai_lead_data === 'string' ? JSON.parse(c.ai_lead_data) : (c.ai_lead_data || {}); } catch(_){}
+        if (ld.quality_score) {
+          tags += '<span class="cr-badge" style="background:var(--gold-bg,#3d350d);color:var(--gold)">\u2B50 ' + ld.quality_score + '/10</span>';
+        }
+
+        expandRow = '<tr class="cr-call-expand" data-call-id="' + c.id + '" style="display:none">' +
+          '<td colspan="7">' +
+            '<div class="cr-call-analysis" style="padding:12px 16px;background:var(--bg2);border-radius:8px;margin:4px 0">' +
+              (tags ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + tags + '</div>' : '') +
+              '<div style="font-size:13px;color:var(--t2);line-height:1.6">' + esc(c.ai_summary) + '</div>' +
+              (ld.key_requirements && ld.key_requirements.length ? '<div style="margin-top:8px;font-size:12px;color:var(--t3)">Требования: ' + ld.key_requirements.map(esc).join('; ') + '</div>' : '') +
+              (ld.next_steps && ld.next_steps.length ? '<div style="margin-top:6px;font-size:12px;color:var(--t3)">Шаги: ' + ld.next_steps.map(esc).join('; ') + '</div>' : '') +
+              '<div style="display:flex;gap:8px;margin-top:10px">' +
+                '<button class="fk-btn fk-btn--sm" onclick="event.stopPropagation();openDetailPanel(' + c.id + ')">\uD83D\uDD0D Подробный AI-анализ</button>' +
+                (c.ai_is_target ? '<button class="fk-btn fk-btn--sm fk-btn--secondary" onclick="event.stopPropagation();location.hash=\'#/tenders?action=create&from_call=' + c.id + '\'">\uD83D\uDCCB Создать заявку</button>' : '') +
+              '</div>' +
+            '</div>' +
+          '</td>' +
+        '</tr>';
+      }
+
+      return mainRow + expandRow;
     }).join('');
 
     wrap.innerHTML = '<table class="call-log-table">' +
@@ -699,7 +736,15 @@ window.AsgardTelephonyPage = (function () {
       '<tbody>' + rows + '</tbody></table>';
 
     wrap.querySelectorAll('.call-row').forEach(function (row) {
-      row.addEventListener('click', function () { openDetailPanel(row.dataset.id); });
+      var next = row.nextElementSibling;
+      if (next && next.classList.contains('cr-call-expand')) {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', function () {
+          next.style.display = next.style.display === 'none' ? 'table-row' : 'none';
+        });
+      } else {
+        row.addEventListener('click', function () { openDetailPanel(row.dataset.id); });
+      }
     });
   }
 
@@ -2153,17 +2198,25 @@ window.AsgardTelephonyPage = (function () {
             e.stopPropagation();
             var id = btn.dataset.reportId;
             if (window.AsgardCallReportsPage) {
-              // Navigate to call-reports page with report detail
-              window.location.hash = '#/call-reports';
-              setTimeout(function() {
-                if (window.AsgardCallReportsPage && window.AsgardCallReportsPage.render) {
-                  // Page will load, user can find report there
-                }
-              }, 300);
+              window.AsgardCallReportsPage.openReportDetail(id);
             }
           });
         });
       }
+
+      // Deep link: проверить report=ID в URL
+      var params = new URLSearchParams(location.hash.split('?')[1] || '');
+      var deepReportId = params.get('report');
+      if (deepReportId) {
+        var cleanHash = location.hash.replace(/[?&]report=\d+/, '').replace(/\?$/, '');
+        history.replaceState(null, '', cleanHash);
+        setTimeout(function() {
+          if (window.AsgardCallReportsPage) {
+            window.AsgardCallReportsPage.openReportDetail(deepReportId);
+          }
+        }, 400);
+      }
+
     } catch (err) {
       container.innerHTML = '<div style="padding:20px;color:var(--err-t)">Ошибка: ' + esc(err.message) + '</div>';
     }

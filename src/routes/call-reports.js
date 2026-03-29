@@ -41,12 +41,21 @@ async function routes(fastify, options) {
     return { items: rows, total: parseInt(countRes.rows[0]?.total || 0) };
   });
 
-  // GET /:id — Детали отчёта
+  // GET /:id — Детали отчёта + ставим viewed_at
   fastify.get('/:id', {
     preHandler: [fastify.requireRoles(REPORT_ROLES)]
   }, async (request, reply) => {
     const { rows } = await db.query('SELECT * FROM call_reports WHERE id = $1', [request.params.id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Отчёт не найден' });
+
+    // Отмечаем как просмотренный
+    if (rows[0] && !rows[0].viewed_at) {
+      await db.query(
+        'UPDATE call_reports SET viewed_at = NOW(), viewed_by = $1 WHERE id = $2 AND viewed_at IS NULL',
+        [request.user.id, request.params.id]
+      );
+    }
+
     return { item: rows[0] };
   });
 
@@ -140,51 +149,74 @@ async function routes(fastify, options) {
       missed: parseInt(r.missed) || 0
     }));
 
-    return { stats, chartData };
+    // Непросмотренный отчёт
+    const unviewedRes = await db.query(
+      "SELECT id, title, report_type, created_at FROM call_reports WHERE viewed_at IS NULL ORDER BY created_at DESC LIMIT 1"
+    );
+    const unviewedReport = unviewedRes.rows[0] || null;
+
+    // Последние инсайты
+    let latestInsights = [];
+    let latestAttention = [];
+    try {
+      const insightsRes = await db.query(
+        "SELECT insights, attention_items FROM call_reports WHERE insights IS NOT NULL AND insights != '[]'::jsonb ORDER BY created_at DESC LIMIT 1"
+      );
+      if (insightsRes.rows[0]) {
+        latestInsights = insightsRes.rows[0].insights || [];
+        latestAttention = insightsRes.rows[0].attention_items || [];
+      }
+    } catch (_) {}
+
+    return { stats, chartData, unviewedReport, insights: latestInsights, attentionItems: latestAttention };
   });
 
-  // GET /schedule — Расписание
+  // GET /schedule — Персональные настройки текущего пользователя
   fastify.get('/schedule', {
-    preHandler: [fastify.requireRoles(['ADMIN'])]
-  }, async () => {
-    const { rows } = await db.query('SELECT * FROM call_report_schedule ORDER BY id');
-    return { items: rows };
-  });
-
-  // PUT /schedule/:id — Обновить расписание
-  fastify.put('/schedule/:id', {
-    preHandler: [fastify.requireRoles(['ADMIN'])]
-  }, async (request, reply) => {
-    const id = parseInt(request.params.id);
-    const { cron_expression, is_active, notify_roles } = request.body;
-
-    const updates = [];
-    const values = [];
-    let idx = 1;
-
-    if (cron_expression !== undefined) {
-      updates.push(`cron_expression = $${idx++}`);
-      values.push(cron_expression);
-    }
-    if (is_active !== undefined) {
-      updates.push(`is_active = $${idx++}`);
-      values.push(is_active);
-    }
-    if (notify_roles !== undefined) {
-      updates.push(`notify_roles = $${idx++}`);
-      values.push(notify_roles);
-    }
-
-    if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
-
-    values.push(id);
+    preHandler: [fastify.requireRoles(REPORT_ROLES)]
+  }, async (request) => {
+    const userId = request.user.id;
     const { rows } = await db.query(
-      `UPDATE call_report_schedule SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
-      values
+      'SELECT report_type, is_enabled, via_crm, via_huginn, via_email FROM call_report_user_prefs WHERE user_id = $1',
+      [userId]
     );
 
-    if (!rows[0]) return reply.code(404).send({ error: 'Расписание не найдено' });
-    return { success: true, item: rows[0] };
+    const prefs = {};
+    for (const r of rows) prefs[r.report_type] = r;
+
+    return {
+      daily:   prefs.daily   || { is_enabled: true, via_crm: true, via_huginn: true, via_email: true },
+      weekly:  prefs.weekly  || { is_enabled: true, via_crm: true, via_huginn: true, via_email: true },
+      monthly: prefs.monthly || { is_enabled: true, via_crm: true, via_huginn: true, via_email: true },
+    };
+  });
+
+  // PUT /schedule — Сохранить настройки
+  fastify.put('/schedule', {
+    preHandler: [fastify.requireRoles(REPORT_ROLES)]
+  }, async (request) => {
+    const userId = request.user.id;
+    const { daily, weekly, monthly } = request.body || {};
+
+    for (const [type, prefs] of Object.entries({ daily, weekly, monthly })) {
+      if (!prefs) continue;
+      await db.query(`
+        INSERT INTO call_report_user_prefs (user_id, report_type, is_enabled, via_crm, via_huginn, via_email, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        ON CONFLICT (user_id, report_type) DO UPDATE SET
+          is_enabled = EXCLUDED.is_enabled,
+          via_crm = EXCLUDED.via_crm,
+          via_huginn = EXCLUDED.via_huginn,
+          via_email = EXCLUDED.via_email,
+          updated_at = NOW()
+      `, [userId, type,
+          prefs.is_enabled !== false,
+          prefs.via_crm !== false,
+          prefs.via_huginn !== false,
+          prefs.via_email !== false]);
+    }
+
+    return { success: true };
   });
 }
 
