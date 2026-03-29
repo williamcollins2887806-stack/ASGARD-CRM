@@ -731,7 +731,7 @@ window.AsgardTelephonyPage = (function () {
     wrap.innerHTML = '<table class="call-log-table">' +
       '<thead><tr>' +
         '<th>Дата/время</th><th>Направление</th><th>Клиент/Номер</th>' +
-        '<th>Длительность</th><th>Менеджер</th><th>AI-резюме</th><th>Статус</th>' +
+        '<th>Длительность</th><th>Сотрудник</th><th>AI-резюме</th><th>Статус</th>' +
       '</tr></thead>' +
       '<tbody>' + rows + '</tbody></table>';
 
@@ -938,8 +938,8 @@ window.AsgardTelephonyPage = (function () {
             '<canvas id="chartCallsPerDay" style="width:100%;height:280px"></canvas>' +
           '</div>' +
         '</div>' +
-        '<div class="telephony-chart-title" style="margin-top:1.5rem">Статистика менеджеров</div>' +
-        renderManagersTable(managers.managers || []);
+        '<div class="telephony-chart-title" style="margin-top:1.5rem">Активность по сотрудникам</div>' +
+        renderEmployeesTable(managers.managers || []);
 
       /* count-up animation on KPI values */
       content.querySelectorAll('.telephony-kpi-value').forEach(function(el) {
@@ -963,8 +963,8 @@ window.AsgardTelephonyPage = (function () {
     return '<div class="telephony-kpi-wow"' + tip + '>' + iconHtml + '<div class="telephony-kpi-value" id="' + valId + '" data-target="' + esc(String(value)) + '">' + (typeof value === 'number' ? '0' : esc(String(value))) + '</div><div class="telephony-kpi-label">' + esc(label) + '</div></div>';
   }
 
-  function renderManagersTable(managers) {
-    if (!managers.length) return emptyState('\uD83D\uDC64', 'Нет данных по менеджерам');
+  function renderEmployeesTable(managers) {
+    if (!managers.length) return emptyState('\uD83D\uDC64', 'Нет данных по сотрудникам');
     var rows = managers.map(function (m) {
       return '<tr>' +
         '<td>' + esc(m.name) + '</td>' +
@@ -978,7 +978,7 @@ window.AsgardTelephonyPage = (function () {
     }).join('');
 
     return '<table class="managers-stats-table">' +
-      '<thead><tr><th>Менеджер</th><th>Всего</th><th>Вход.</th><th>Исход.</th><th>Пропущ.</th><th>Ср. длит.</th><th>Конверсии</th></tr></thead>' +
+      '<thead><tr><th>Сотрудник</th><th>Всего</th><th>Вход.</th><th>Исход.</th><th>Пропущ.</th><th>Ср. длит.</th><th>Целевые</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table>';
   }
 
@@ -1815,7 +1815,7 @@ window.AsgardTelephonyPage = (function () {
     if (ld.quality_score != null) {
       var qs = parseInt(ld.quality_score) || 0;
       var qColor = qs >= 8 ? '#22c55e' : qs >= 5 ? '#eab308' : '#ef4444';
-      html += '<div class="ai-analysis-section"><div class="ai-analysis-section-title">Качество менеджера: ' + qs + '/10</div>';
+      html += '<div class="ai-analysis-section"><div class="ai-analysis-section-title">Качество разговора: ' + qs + '/10</div>';
       html += '<div class="ai-quality-bar"><div class="ai-quality-fill" style="width:' + (qs * 10) + '%;background:' + qColor + '"></div></div>';
       if (ld.quality_notes) html += '<div style="margin-top:6px;font-size:12px;color:var(--t3,#6b7280)">' + esc(ld.quality_notes) + '</div>';
       html += '</div>';

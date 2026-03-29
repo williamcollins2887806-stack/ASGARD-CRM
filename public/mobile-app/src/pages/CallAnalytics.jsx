@@ -6,7 +6,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { StatCard } from '@/components/shared/StatCard';
 import { Sparkline } from '@/components/shared/Sparkline';
-import { Phone, PhoneIncoming, PhoneMissed, Clock, BarChart3, ChevronDown } from 'lucide-react';
+import { Phone, PhoneIncoming, PhoneMissed, BarChart3, ChevronDown } from 'lucide-react';
 
 const TYPE_LABELS = { daily: 'День', weekly: 'Неделя', monthly: 'Месяц' };
 const TYPE_COLORS = {
@@ -83,24 +83,24 @@ export default function CallAnalytics() {
               icon={PhoneIncoming}
               iconColor="var(--green)"
               iconBg="rgba(48, 209, 88, 0.1)"
-              value={stats.targetCalls || 0}
-              label="Целевых"
+              value={stats.targetPct ? stats.targetPct + '%' : (stats.totalCalls ? Math.round((stats.targetCalls || 0) / stats.totalCalls * 100) + '%' : '—')}
+              label="% целевых"
               delay={80}
             />
             <StatCard
               icon={PhoneMissed}
               iconColor="var(--red)"
               iconBg="rgba(198, 40, 40, 0.1)"
-              value={stats.missedCalls || 0}
-              label="Пропущенных"
+              value={stats.lostCalls || stats.missedCalls || 0}
+              label="Потеряно"
               delay={160}
             />
             <StatCard
-              icon={Clock}
+              icon={BarChart3}
               iconColor="var(--gold)"
               iconBg="rgba(200, 168, 78, 0.1)"
-              value={stats.avgDuration ? Math.round(stats.avgDuration) + 'с' : '—'}
-              label="Средн. длительность"
+              value={stats.avgQuality || '—'}
+              label="Качество AI"
               delay={240}
             />
           </div>

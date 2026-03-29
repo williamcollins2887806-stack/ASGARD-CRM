@@ -127,7 +127,7 @@ window.AsgardCallReportsPage = (function() {
       if (data && data.stats) {
         _renderInsight(document.getElementById('crInsight'), data);
         _renderChart(document.getElementById('crChart'), data.chartData || []);
-        _renderManagers(document.getElementById('crManagers'), data.stats);
+        _renderEmployees(document.getElementById('crManagers'), data.stats);
       }
     } catch (_) {
       // Dashboard endpoint may not exist yet — silent fail
@@ -274,39 +274,39 @@ window.AsgardCallReportsPage = (function() {
       '</div>';
   }
 
-  /* ════════════ MANAGERS ════════════ */
-  function _renderManagers(el, stats) {
+  /* ════════════ EMPLOYEES ════════════ */
+  function _renderEmployees(el, stats) {
     if (!el) return;
-    var managers = stats.byManager || [];
-    if (!managers.length) { el.innerHTML = ''; return; }
+    var employees = stats.byEmployee || stats.byManager || [];
+    if (!employees.length) { el.innerHTML = ''; return; }
 
     var maxTotal = 1;
-    for (var i = 0; i < managers.length; i++) {
-      if ((managers[i].total || 0) > maxTotal) maxTotal = managers[i].total;
+    for (var i = 0; i < employees.length; i++) {
+      if ((employees[i].total || 0) > maxTotal) maxTotal = employees[i].total;
     }
 
-    var rows = managers.slice(0, 10).map(function(mgr, i) {
-      var pct = Math.round(((mgr.total || 0) / maxTotal) * 100);
-      var rankCls = (i < 3) ? ' cr-managers__rank--' + (i + 1) : '';
+    var rows = employees.slice(0, 10).map(function(emp, i) {
+      var pct = Math.round(((emp.total || 0) / maxTotal) * 100);
+      var rankCls = (i < 3) ? ' cr-employees__rank--' + (i + 1) : '';
       var barCls = pct >= 70 ? 'good' : (pct >= 40 ? 'mid' : 'low');
       return '<tr class="cr-wow-card" style="animation-delay:' + (i * 40) + 'ms">' +
-        '<td><span class="cr-managers__rank' + rankCls + '">' + (i + 1) + '</span></td>' +
-        '<td>' + esc(mgr.name || '—') + '</td>' +
-        '<td style="text-align:center">' + (mgr.total || 0) + '</td>' +
-        '<td style="text-align:center">' + (mgr.target || 0) + '</td>' +
-        '<td style="text-align:center">' + (mgr.missed || 0) + '</td>' +
-        '<td><div class="cr-managers__bar"><div class="cr-managers__bar-fill cr-managers__bar-fill--' + barCls + '" style="width:' + pct + '%"></div></div></td>' +
+        '<td><span class="cr-employees__rank' + rankCls + '">' + (i + 1) + '</span></td>' +
+        '<td>' + esc(emp.name || '—') + '</td>' +
+        '<td style="text-align:center">' + (emp.total || 0) + '</td>' +
+        '<td style="text-align:center">' + (emp.target || 0) + '</td>' +
+        '<td style="text-align:center">' + (emp.missed || 0) + '</td>' +
+        '<td><div class="cr-employees__bar"><div class="cr-employees__bar-fill cr-employees__bar-fill--' + barCls + '" style="width:' + pct + '%"></div></div></td>' +
       '</tr>';
     }).join('');
 
     el.innerHTML =
-      '<div class="cr-managers cr-wow-card">' +
-        '<div class="cr-managers__title">Рейтинг менеджеров</div>' +
-        '<table class="cr-managers__table">' +
+      '<div class="cr-employees cr-wow-card">' +
+        '<div class="cr-employees__title">Активность по сотрудникам</div>' +
+        '<table class="cr-employees__table">' +
           '<thead><tr>' +
-            '<th>#</th><th>Менеджер</th><th style="text-align:center">Звонки</th>' +
+            '<th>#</th><th>Сотрудник</th><th style="text-align:center">Звонки</th>' +
             '<th style="text-align:center" class="cr-col-hide-sm">Целевые</th>' +
-            '<th style="text-align:center" class="cr-col-hide-sm">Пропущ.</th>' +
+            '<th style="text-align:center" class="cr-col-hide-sm">Потеряно</th>' +
             '<th>Прогресс</th>' +
           '</tr></thead>' +
           '<tbody>' + rows + '</tbody>' +
@@ -385,16 +385,16 @@ window.AsgardCallReportsPage = (function() {
         '</div>';
       }
 
-      // Manager table in detail
-      var managersDetail = '';
-      var byMgr = stats.byManager || [];
-      if (byMgr.length) {
-        managersDetail = '<div class="cr-accordion cr-wow-card" style="margin-top:12px">' +
-          '<div class="cr-accordion__head" onclick="this.parentElement.classList.toggle(\'cr-accordion--open\')">Рейтинг менеджеров <span class="cr-accordion__arrow">▼</span></div>' +
+      // Employee table in detail (fallback)
+      var employeesDetail = '';
+      var byEmp = stats.byEmployee || stats.byManager || [];
+      if (byEmp.length) {
+        employeesDetail = '<div class="cr-accordion cr-wow-card" style="margin-top:12px">' +
+          '<div class="cr-accordion__head" onclick="this.parentElement.classList.toggle(\'cr-accordion--open\')">Активность по сотрудникам <span class="cr-accordion__arrow">\u25BC</span></div>' +
           '<div class="cr-accordion__body"><div class="cr-accordion__content">' +
-            '<table class="cr-managers__table"><thead><tr><th>#</th><th>Менеджер</th><th style="text-align:center">Звонки</th><th style="text-align:center">Целевые</th><th style="text-align:center">Пропущ.</th></tr></thead><tbody>' +
-            byMgr.slice(0, 10).map(function(mgr, i) {
-              return '<tr><td>' + (i + 1) + '</td><td>' + esc(mgr.name || '—') + '</td><td style="text-align:center">' + (mgr.total || 0) + '</td><td style="text-align:center">' + (mgr.target || 0) + '</td><td style="text-align:center">' + (mgr.missed || 0) + '</td></tr>';
+            '<table class="cr-employees__table"><thead><tr><th>#</th><th>Сотрудник</th><th style="text-align:center">Звонки</th><th style="text-align:center">Целевые</th><th style="text-align:center">Потеряно</th></tr></thead><tbody>' +
+            byEmp.slice(0, 10).map(function(emp, i) {
+              return '<tr><td>' + (i + 1) + '</td><td>' + esc(emp.name || '\u2014') + '</td><td style="text-align:center">' + (emp.total || 0) + '</td><td style="text-align:center">' + (emp.target || 0) + '</td><td style="text-align:center">' + (emp.missed || 0) + '</td></tr>';
             }).join('') +
           '</tbody></table></div></div></div>';
       }
@@ -408,7 +408,7 @@ window.AsgardCallReportsPage = (function() {
         bodyContent = metricsHtml +
           '<div class="cr-detail__summary">' + esc(r.summary_text || 'Нет текста отчёта') + '</div>' +
           recsHtml +
-          managersDetail;
+          employeesDetail;
       }
 
       var html =

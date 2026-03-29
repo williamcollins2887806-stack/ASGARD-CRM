@@ -2,7 +2,7 @@
 
 /**
  * ASGARD CRM — Генератор отчётов по звонкам
- * Агрегирует данные из call_history и генерирует AI-отчёт
+ * Терминология: сотрудник (НЕ менеджер), % целевых (НЕ конверсия)
  */
 
 const { getCallReportPrompt } = require('../prompts/call-report-prompt');
@@ -24,25 +24,29 @@ class CallReportGenerator {
   async generate(reportType, dateFrom, dateTo, requestedBy = null) {
     const db = this.db;
 
-    // 1. Общая статистика
+    // 1. Общая статистика (новые метрики)
     const totalsRes = await db.query(`
       SELECT
         COUNT(*) as total_calls,
         COUNT(*) FILTER (WHERE ai_is_target = true) as target_calls,
-        COUNT(*) FILTER (WHERE call_type = 'inbound' AND duration_seconds < 5) as missed_calls,
+        ROUND(COUNT(*) FILTER (WHERE ai_is_target = true)::numeric / NULLIF(COUNT(*), 0) * 100, 1) as target_pct,
+        COUNT(*) FILTER (WHERE call_type = 'missed' AND COALESCE(missed_acknowledged, false) = false AND missed_callback_at IS NULL) as lost_calls,
+        ROUND(AVG(COALESCE(ai_quality_score, (ai_lead_data->>'quality_score')::int))
+          FILTER (WHERE ai_quality_score IS NOT NULL OR ai_lead_data->>'quality_score' IS NOT NULL), 1) as avg_quality,
+        COUNT(*) FILTER (WHERE lead_id IS NOT NULL) as leads_created,
         AVG(duration_seconds) FILTER (WHERE duration_seconds > 0) as avg_duration
       FROM call_history
       WHERE created_at >= $1::date AND created_at < ($2::date + INTERVAL '1 day')
     `, [dateFrom, dateTo]);
     const totals = totalsRes.rows[0];
 
-    // 2. По менеджерам
-    const byManagerRes = await db.query(`
+    // 2. По сотрудникам
+    const byEmployeeRes = await db.query(`
       SELECT
         u.name,
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE ch.ai_is_target = true) as target,
-        COUNT(*) FILTER (WHERE ch.call_type = 'inbound' AND ch.duration_seconds < 5) as missed,
+        COUNT(*) FILTER (WHERE ch.call_type = 'missed' AND COALESCE(ch.missed_acknowledged, false) = false AND ch.missed_callback_at IS NULL) as missed,
         AVG(ch.duration_seconds) FILTER (WHERE ch.duration_seconds > 0) as avg_duration
       FROM call_history ch
       LEFT JOIN users u ON ch.user_id = u.id
@@ -73,16 +77,19 @@ class CallReportGenerator {
       LIMIT 10
     `, [dateFrom, dateTo]);
 
-    // 5. Формируем промпт и вызываем AI
+    // 5. Формируем данные для промпта
     const reportData = {
       reportType,
       periodFrom: dateFrom,
       periodTo: dateTo,
       totalCalls: parseInt(totals.total_calls) || 0,
       targetCalls: parseInt(totals.target_calls) || 0,
-      missedCalls: parseInt(totals.missed_calls) || 0,
+      targetPct: parseFloat(totals.target_pct) || 0,
+      lostCalls: parseInt(totals.lost_calls) || 0,
+      avgQuality: parseFloat(totals.avg_quality) || 0,
+      leadsCreated: parseInt(totals.leads_created) || 0,
       avgDuration: parseFloat(totals.avg_duration) || 0,
-      byManager: byManagerRes.rows.map(r => ({
+      byEmployee: byEmployeeRes.rows.map(r => ({
         name: r.name || 'Неизвестный',
         total: parseInt(r.total),
         target: parseInt(r.target),
@@ -125,18 +132,19 @@ class CallReportGenerator {
           if (parsed.highlights) {
             statsJson = { ...reportData, highlights: parsed.highlights };
           }
-          if (parsed.manager_highlights) {
-            statsJson = { ...statsJson, manager_highlights: parsed.manager_highlights };
+          if (parsed.employee_highlights) {
+            statsJson = { ...statsJson, employee_highlights: parsed.employee_highlights };
           }
         } else {
           summaryText = text;
         }
       } catch (aiErr) {
         console.error('[CallReportGenerator] AI error:', aiErr.message);
-        summaryText = `Автоматический отчёт: ${reportData.totalCalls} звонков, ${reportData.targetCalls} целевых, ${reportData.missedCalls} пропущенных.`;
+        summaryText = `Автоматический отчёт: ${reportData.totalCalls} звонков, ${reportData.targetCalls} целевых, ${reportData.lostCalls} потеряно без ответа.`;
       }
     } else {
-      summaryText = `Всего звонков: ${reportData.totalCalls}. Целевых: ${reportData.targetCalls}. Пропущенных: ${reportData.missedCalls}. Средняя длительность: ${Math.round(reportData.avgDuration)} сек.`;
+      const m = reportData;
+      summaryText = `Всего звонков: ${m.totalCalls}. Целевых: ${m.targetCalls} (${m.targetPct}%). Потеряно без ответа: ${m.lostCalls}. Качество (AI): ${m.avgQuality || '—'}. Заявки из звонков: ${m.leadsCreated}.`;
     }
 
     // Генерируем WOW HTML для модалки
@@ -165,8 +173,8 @@ class CallReportGenerator {
     const m = data;
     const insights = aiResult.insights || [];
     const recs = aiResult.recommendations || [];
-    const managers = (m.byManager || []).slice(0, 10);
-    const maxCalls = Math.max(...managers.map(mg => mg.total || 0), 1);
+    const employees = (m.byEmployee || []).slice(0, 10);
+    const maxCalls = Math.max(...employees.map(e => e.total || 0), 1);
 
     const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -174,17 +182,19 @@ class CallReportGenerator {
   <div class="cr-metrics" style="margin-bottom:20px">
     ${[
       { icon: '\uD83D\uDCDE', value: m.totalCalls, label: 'Звонков', cls: 'total' },
-      { icon: '\uD83C\uDFAF', value: m.targetCalls, label: 'Целевых', cls: 'target' },
-      { icon: '\u274C', value: m.missedCalls, label: 'Пропущ.', cls: 'missed' },
-      { icon: '\u23F1', value: Math.round(m.avgDuration || 0) + 'с', label: 'Средняя', cls: 'duration' }
+      { icon: '\uD83C\uDFAF', value: m.targetPct ? m.targetPct + '%' : (m.targetCalls || 0), label: '% целевых', cls: 'target' },
+      { icon: '\u274C', value: m.lostCalls || 0, label: 'Потеряно', cls: 'missed' },
+      { icon: '\u2B50', value: m.avgQuality || '\u2014', label: 'Качество AI', cls: 'duration' }
     ].map(c => `
       <div class="cr-metric">
         <div class="cr-metric__icon cr-metric__icon--${c.cls}">${c.icon}</div>
-        <div class="cr-metric__value">${c.value || 0}</div>
+        <div class="cr-metric__value">${c.value}</div>
         <div class="cr-metric__label">${c.label}</div>
       </div>
     `).join('')}
   </div>
+
+  ${m.leadsCreated ? `<div style="font-size:13px;color:var(--gold);margin-bottom:16px">\uD83D\uDCCB Заявки из звонков: ${m.leadsCreated} из ${m.totalCalls} (${m.totalCalls ? Math.round(m.leadsCreated / m.totalCalls * 100) : 0}%)</div>` : ''}
 
   ${insights.length ? `
   <div style="margin-bottom:20px">
@@ -203,21 +213,21 @@ class CallReportGenerator {
 
   <div style="font-size:13px;color:var(--t2);line-height:1.7;margin-bottom:20px;white-space:pre-wrap">${esc(aiResult.summary || '')}</div>
 
-  ${managers.length ? `
+  ${employees.length ? `
   <div style="margin-bottom:20px">
-    <div style="font-size:14px;font-weight:600;color:var(--t1);margin-bottom:10px">\uD83D\uDC65 Менеджеры</div>
-    <table class="cr-managers__table">
-      <thead><tr><th>#</th><th>Менеджер</th><th style="text-align:center">Звонки</th><th style="text-align:center">Целевые</th><th>Прогресс</th></tr></thead>
+    <div style="font-size:14px;font-weight:600;color:var(--t1);margin-bottom:10px">\uD83D\uDC65 Активность по сотрудникам</div>
+    <table class="cr-employees__table">
+      <thead><tr><th>#</th><th>Сотрудник</th><th style="text-align:center">Звонки</th><th style="text-align:center">Целевые</th><th>Прогресс</th></tr></thead>
       <tbody>
-      ${managers.map((mg, i) => {
-        const pct = Math.round(((mg.total || 0) / maxCalls) * 100);
+      ${employees.map((e, i) => {
+        const pct = Math.round(((e.total || 0) / maxCalls) * 100);
         const barCls = pct >= 70 ? 'good' : pct >= 40 ? 'mid' : 'low';
         return `<tr>
-          <td><span class="cr-managers__rank${i < 3 ? ' cr-managers__rank--' + (i+1) : ''}">${i+1}</span></td>
-          <td>${esc(mg.name)}</td>
-          <td style="text-align:center">${mg.total || 0}</td>
-          <td style="text-align:center">${mg.target || 0}</td>
-          <td><div class="cr-managers__bar"><div class="cr-managers__bar-fill cr-managers__bar-fill--${barCls}" style="width:${pct}%"></div></div></td>
+          <td><span class="cr-employees__rank${i < 3 ? ' cr-employees__rank--' + (i+1) : ''}">${i+1}</span></td>
+          <td>${esc(e.name)}</td>
+          <td style="text-align:center">${e.total || 0}</td>
+          <td style="text-align:center">${e.target || 0}</td>
+          <td><div class="cr-employees__bar"><div class="cr-employees__bar-fill cr-employees__bar-fill--${barCls}" style="width:${pct}%"></div></div></td>
         </tr>`;
       }).join('')}
       </tbody>
