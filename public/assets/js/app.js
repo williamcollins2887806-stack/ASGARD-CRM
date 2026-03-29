@@ -2004,6 +2004,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/pm-works", ()=>AsgardPmWorksPage.render({layout, title:"Карта Похода • Работы"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/all-works", ()=>AsgardAllWorksPage.render({layout, title:"Свод Контрактов"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/all-estimates", ()=>AsgardAllEstimatesPage.render({layout, title:"Свод Расчётов"}), {auth:true, roles:["ADMIN","BUH","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/estimate-report", ({query})=>AsgardEstimateReportPage.render({layout, title:"Отчёт просчёта", query}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/finances", ()=>AsgardFinancesPage.render({layout, title:"Деньги • Аналитика"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/buh-registry", () => {
       if (!AsgardAuth.hasPermission('buh_registry', 'read')) {

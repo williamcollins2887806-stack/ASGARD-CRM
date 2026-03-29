@@ -121,7 +121,7 @@ window.AsgardAllEstimatesPage = (function() {
         <td>${statusPill(e.approval_status || 'draft')}${sent ? `<div class="help" style="margin-top:4px">${sent}</div>` : ''}</td>
         <td><b>${money(e.price_tkp)}</b>${priceNoVat != null ? `<div class="help">б/НДС: ${money(priceNoVat)}</div>` : ''}</td>
         <td>${money(e.cost_plan)}</td>
-        <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button></td>
+        <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button> <a href="#/estimate-report?id=${e.id}" class="btn" style="padding:6px 10px;background:var(--blue);color:#fff;text-decoration:none" data-act="report">Отчёт</a></td>
       </tr>`;
     }
 
