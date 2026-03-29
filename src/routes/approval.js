@@ -137,9 +137,9 @@ async function routes(fastify) {
 
       // Log
       await db.query(
-        `INSERT INTO audit_log (entity_type, entity_id, action, user_id, details, created_at)
-         VALUES ($1, $2, 'send', $3, $4, NOW())`,
-        [entityType, entityId, actor.id, JSON.stringify({ actor_name: actor.name })]
+        `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+         VALUES ($1, $2, $3, 'send', $4, NOW())`,
+        [actor.id, entityType, entityId, JSON.stringify({ actor_name: actor.name })]
       );
 
       // Record in approval_comments
