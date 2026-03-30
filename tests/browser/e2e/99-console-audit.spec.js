@@ -167,6 +167,14 @@ async function loginByApi(page, role) {
 
     // 3. Inject all auth data in browser localStorage (same as SPA does after verifyPin)
     await page.goto(BASE_URL + '/#/welcome', { waitUntil: 'domcontentloaded', timeout: 25000 });
+
+    // SW controllerchange triggers hard reload to /?_sw=TIMESTAMP — wait for it to settle
+    await page.waitForFunction(
+      () => !window.location.search.includes('_sw='),
+      { timeout: 5000 }
+    ).catch(() => {});
+    await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+
     await page.evaluate(({ t, u }) => {
       localStorage.setItem('asgard_token', t);
       if (u) {
@@ -177,7 +185,21 @@ async function loginByApi(page, role) {
     }, { t: token, u: pinData.user });
 
     // 4. Navigate home — SPA loads with real token
-    await page.goto(BASE_URL + '/#/home', { waitUntil: 'domcontentloaded', timeout: 25000 });
+    try {
+      await page.goto(BASE_URL + '/#/home', { waitUntil: 'domcontentloaded', timeout: 25000 });
+    } catch (_navErr) {
+      // SW redirect interrupted navigation — wait and retry once
+      await page.waitForTimeout(1500);
+      await page.evaluate(({ t, u }) => {
+        localStorage.setItem('asgard_token', t);
+        if (u) {
+          localStorage.setItem('asgard_user', JSON.stringify(u));
+          if (u.permissions) localStorage.setItem('asgard_permissions', JSON.stringify(u.permissions));
+          if (u.menu_settings) localStorage.setItem('asgard_menu_settings', JSON.stringify(u.menu_settings));
+        }
+      }, { t: token, u: pinData.user }).catch(() => {});
+      await page.goto(BASE_URL + '/#/home', { waitUntil: 'domcontentloaded', timeout: 25000 });
+    }
     await page.waitForTimeout(2000);
 
     return token;
