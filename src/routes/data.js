@@ -151,7 +151,7 @@ async function dataRoutes(fastify, options) {
         'acts', 'invoices', 'user_dashboard', 'employee_assignments',
         'employee_plan', 'bonus_requests', 'doc_sets', 'qa_messages',
         'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
-        'permits',
+        'permits', 'permit_types',
         'staff_requests', 'staff_request_messages', 'staff_replacements'
       ],
       ops: ['read', 'create', 'update']

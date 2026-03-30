@@ -109,7 +109,7 @@ window.AsgardReminders = (function(){
     const newReminders = [];
     
     // Роли, у которых есть доступ к тендерам/работам/счетам
-    const dataRoles = ['ADMIN','PM','TO','HEAD_PM','HEAD_TO','BUH','CHIEF_ENGINEER','HR_MANAGER'];
+    const dataRoles = ['ADMIN','PM','TO','HEAD_PM','HEAD_TO','BUH','HR_MANAGER'];
     const dirRole = user.role?.startsWith('DIRECTOR');
     const hasDataAccess = dataRoles.includes(user.role) || dirRole;
     
