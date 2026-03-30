@@ -72,7 +72,7 @@ const LoginPage = {
 
     // Emblem
     const emblem = el('img', {
-      src: '/assets/img/asgard_emblem.png',
+      src: '/assets/img/logo.png',
       style: {
         width:'100px', height:'100px', borderRadius:'20px',
         animation:'fieldGlow 3s ease infinite',

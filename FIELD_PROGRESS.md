@@ -90,3 +90,22 @@
 - Cached project data: ✅ (OfflineDB.cacheProject/getCachedProject)
 - Задеплоено: ✅ (https://asgard-crm.ru/field/ — HTTP 200)
 - Коммит: 7560f81
+
+## Сессия 11: [✅ DONE]
+- Миграция V061: ✅ (5 таблиц: field_master_funds, field_master_expenses, field_master_returns, field_packing_lists, field_packing_items)
+- field-funds.js: ✅ (12 endpoints: CRM: POST/GET/GET:id/PUT:close, Field: PUT:confirm/POST:expense/POST:return/GET:my/balance/GET:my)
+- field-packing.js: ✅ (15 endpoints: CRM: POST/GET/GET:id/PUT:id/POST:items/PUT:items/DELETE:items/POST:assign, Field: GET:my/PUT:start/PUT:items/POST:photo/PUT:complete)
+- field-tab.js: ✅ (6 sub-tabs: бригада/логистика/дашборд/табель/подотчёт/сборы, fund issue/detail/close modals, packing create/detail/assign modals)
+- pages/funds.js: ✅ (Field PWA: balance hero, fund cards, confirm button, expense BottomSheet with photo/category/source, return BottomSheet)
+- pages/packing.js: ✅ (Field PWA: progress hero, list cards, item check-off with photo/shortage/packed actions, start/complete buttons)
+- home.js: ✅ (added Подотчёт + Сборы quick actions for masters)
+- field/index.html: ✅ (added funds.js + packing.js script tags)
+- field/sw.js: ✅ (v2.1.0, added funds.js + packing.js to SHELL_URLS)
+- index.html (desktop): ✅ (field-tab.js?v=18.3.2)
+- index.js: ✅ (registered field-funds + field-packing routes)
+- Auto-sync: ✅ (каждый расход мастера → work_expenses с source='field_master')
+- Receipt upload: ✅ (multipart, /uploads/receipts/, UUID filenames)
+- Packing photo upload: ✅ (multipart, /uploads/packing/)
+- SMS уведомления: ✅ (при назначении сборщика через MangoService)
+- Тесты: field-s11-funds-packing.test.js (20 тестов)
+- НЕ задеплоено, НЕ запушено (ожидает ревью)

@@ -29,7 +29,7 @@ const F = {
 
     if (logo) {
       const img = el('img', {
-        src: '/assets/img/asgard_emblem.png',
+        src: '/assets/img/logo.png',
         style: { height:'28px', width:'28px', borderRadius:'6px' },
       });
       header.appendChild(img);

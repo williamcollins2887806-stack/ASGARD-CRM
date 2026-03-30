@@ -435,6 +435,8 @@ fastify.register(require('./routes/field-reports'), { prefix: '/api/field/report
 fastify.register(require('./routes/field-photos'), { prefix: '/api/field/photos' });
 fastify.register(require('./routes/field-manage'), { prefix: '/api/field/manage' });
 fastify.register(require('./routes/field-logistics'), { prefix: '/api/field/logistics' });
+fastify.register(require('./routes/field-funds'), { prefix: '/api/field/funds' });
+fastify.register(require('./routes/field-packing'), { prefix: '/api/field/packing' });
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
 fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });

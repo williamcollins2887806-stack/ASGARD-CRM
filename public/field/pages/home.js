@@ -73,7 +73,7 @@ const HomePage = {
       greeting: Utils.greeting() + ', ' + firstName + '!',
       date: Utils.todayStr(),
       quote: '\u00AB' + randomQuote(VIKING_QUOTES) + '\u00BB',
-      emblemSrc: '/assets/img/asgard_emblem.png',
+      emblemSrc: '/assets/img/logo.png',
     }));
 
     // Content area
@@ -228,6 +228,8 @@ function buildQuickActions(project, me) {
       { icon: '\uD83D\uDC65', label: '\u0411\u0440\u0438\u0433\u0430\u0434\u0430', href: '/field/crew' },
       { icon: '\uD83D\uDCDD', label: '\u041E\u0442\u0447\u0451\u0442', href: '/field/report' },
       { icon: '\u26A0\uFE0F', label: '\u0418\u043D\u0446\u0438\u0434\u0435\u043D\u0442', href: '/field/incidents' },
+      { icon: '\uD83D\uDCB0', label: '\u041F\u043E\u0434\u043E\u0442\u0447\u0451\u0442', href: '/field/funds' },
+      { icon: '\uD83D\uDCE6', label: '\u0421\u0431\u043E\u0440\u044B', href: '/field/packing' },
     );
   }
 

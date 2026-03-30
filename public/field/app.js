@@ -243,7 +243,7 @@ function showInstallBanner(shell) {
   });
 
   const icon = Utils.el('img', {
-    src: '/assets/img/asgard_emblem.png',
+    src: '/assets/img/logo.png',
     style: { width: '40px', height: '40px', borderRadius: '10px', flexShrink: '0' },
   });
 

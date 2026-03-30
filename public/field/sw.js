@@ -2,7 +2,7 @@
  * ASGARD Field — Service Worker v2.0.0
  * Shell caching + Background Sync + Push Notifications
  */
-const SHELL_VERSION = '2.0.0';
+const SHELL_VERSION = '2.1.0';
 const SHELL_CACHE = 'field-shell-' + SHELL_VERSION;
 const DATA_CACHE = 'field-data-v1';
 
@@ -24,7 +24,9 @@ const SHELL_URLS = [
   '/field/pages/report.js',
   '/field/pages/incidents.js',
   '/field/pages/photos.js',
-  '/assets/img/asgard_emblem.png',
+  '/field/pages/funds.js',
+  '/field/pages/packing.js',
+  '/assets/img/logo.png',
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -241,7 +243,7 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body || data.message || '',
-    icon: '/assets/img/asgard_emblem.png',
+    icon: '/assets/img/logo.png',
     badge: '/assets/img/icon-192.png',
     vibrate: [100, 50, 100],
     tag: data.tag || 'field-notification',

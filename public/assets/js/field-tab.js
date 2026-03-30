@@ -96,6 +96,8 @@ window.AsgardFieldTab = (function () {
       { id: 'logistics', label: '✈️ Логистика', render: () => renderLogisticsTab(content, work, user) },
       { id: 'dashboard', label: '📊 Дашборд', render: () => renderDashboardTab(content, work) },
       { id: 'timesheet', label: '📋 Табель', render: () => renderTimesheetTab(content, work) },
+      { id: 'funds', label: '💰 Подотчёт', render: () => renderFundsTab(content, work, user) },
+      { id: 'packing', label: '📦 Сборы', render: () => renderPackingTab(content, work, user) },
     ];
 
     root.innerHTML = '';
@@ -1062,6 +1064,476 @@ window.AsgardFieldTab = (function () {
     summary.style.cssText = 'margin-top:8px;font-size:12px';
     summary.textContent = `${timesheet.length} сотрудников · суточные ${money(perDiem)} ₽/день`;
     wrap.appendChild(summary);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TAB 5: ПОДОТЧЁТ (FUNDS)
+  // ═══════════════════════════════════════════════════════════════════
+  async function apiFunds(path, opts) {
+    const r = await fetch('/api/field/funds' + path, { headers: hdr(), ...opts });
+    return r.json();
+  }
+
+  const FUND_STATUS_LABELS = {
+    issued: '🟡 Выдан', confirmed: '🟢 Подтверждён', reporting: '🔵 Отчётность', closed: '⚫ Закрыт',
+  };
+
+  async function renderFundsTab(container, work, user) {
+    container.innerHTML = '<div class="help">Загрузка подотчётов…</div>';
+
+    let data;
+    try { data = await apiFunds('/?work_id=' + work.id); } catch (_) {}
+
+    container.innerHTML = '';
+
+    // Issue funds button
+    const topBar = document.createElement('div');
+    topBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px';
+    topBar.innerHTML = `<span style="font-weight:600;font-size:14px">Подотчёты мастеров</span>`;
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn gold';
+    addBtn.textContent = '+ Выдать средства';
+    addBtn.style.cssText = 'font-size:12px;padding:6px 14px';
+    addBtn.addEventListener('click', () => openIssueFundsModal(work, container, user));
+    topBar.appendChild(addBtn);
+    container.appendChild(topBar);
+
+    if (!data || !data.funds || data.funds.length === 0) {
+      container.innerHTML += '<div class="help" style="padding:32px;text-align:center">Нет подотчётов для этого проекта</div>';
+      return;
+    }
+
+    // Table
+    const table = document.createElement('table');
+    table.className = 'fk-table fk-table-small';
+    table.style.cssText = 'width:100%;font-size:12px';
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>Мастер</th><th>Цель</th><th style="text-align:right">Выдано</th><th style="text-align:right">Потрачено</th><th style="text-align:right">Возврат</th><th style="text-align:right">Остаток</th><th>Статус</th><th></th></tr>';
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const f of data.funds) {
+      const remainder = (parseFloat(f.amount) - parseFloat(f.spent) - parseFloat(f.returned)).toFixed(2);
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      tr.innerHTML = `
+        <td>${esc(f.master_name || '—')}</td>
+        <td>${esc(f.purpose || '—')}</td>
+        <td style="text-align:right">${money(f.amount)} ₽</td>
+        <td style="text-align:right;color:#ef4444">${money(f.spent)} ₽</td>
+        <td style="text-align:right;color:#22c55e">${money(f.returned)} ₽</td>
+        <td style="text-align:right;color:var(--gold,#D4A843);font-weight:600">${money(remainder)} ₽</td>
+        <td><span style="font-size:11px">${FUND_STATUS_LABELS[f.status] || f.status}</span></td>
+        <td>${f.status !== 'closed' ? '<button class="btn ghost close-fund" data-id="' + f.id + '" style="font-size:11px;padding:4px 8px">Закрыть</button>' : ''}</td>
+      `;
+      tr.addEventListener('click', (e) => {
+        if (e.target.classList.contains('close-fund')) return;
+        openFundDetailModal(f.id, work);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    // Close fund handlers
+    container.querySelectorAll('.close-fund').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Закрыть подотчёт? Это нельзя отменить.')) return;
+        try {
+          await fetch('/api/field/funds/' + btn.dataset.id + '/close', { method: 'PUT', headers: hdr() });
+          toast('Подотчёт закрыт');
+          renderFundsTab(container, work, user);
+        } catch (err) { toast('Ошибка: ' + err.message); }
+      });
+    });
+
+    // Summary
+    let totalIssued = 0, totalSpent = 0, totalReturned = 0;
+    for (const f of data.funds) {
+      totalIssued += parseFloat(f.amount);
+      totalSpent += parseFloat(f.spent);
+      totalReturned += parseFloat(f.returned);
+    }
+    const summaryDiv = document.createElement('div');
+    summaryDiv.className = 'help';
+    summaryDiv.style.cssText = 'margin-top:8px;font-size:12px';
+    summaryDiv.textContent = `Итого: выдано ${money(totalIssued)}₽ · потрачено ${money(totalSpent)}₽ · возврат ${money(totalReturned)}₽ · остаток ${money(totalIssued - totalSpent - totalReturned)}₽`;
+    container.appendChild(summaryDiv);
+  }
+
+  function openIssueFundsModal(work, parentContainer, user) {
+    AsgardUI.showModal({
+      title: '💰 Выдать средства',
+      html: `
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:480px">
+          <label>Мастер (сотрудник)
+            <select id="fundsMaster" class="inp" style="width:100%"><option value="">Загрузка…</option></select>
+          </label>
+          <label>Сумма, ₽
+            <input id="fundsAmount" type="number" step="0.01" class="inp" style="width:100%" placeholder="50000">
+          </label>
+          <label>Назначение
+            <input id="fundsPurpose" type="text" class="inp" style="width:100%" placeholder="Расходные материалы на объект">
+          </label>
+          <label>Дедлайн подтверждения
+            <input id="fundsDeadline" type="datetime-local" class="inp" style="width:100%">
+          </label>
+          <button id="fundsSubmit" class="btn gold" style="margin-top:8px">Выдать</button>
+        </div>
+      `,
+      onMount: async () => {
+        // Load crew for dropdown
+        try {
+          const crewData = await apiField('/logistics/?work_id=' + work.id);
+          const select = document.getElementById('fundsMaster');
+          select.innerHTML = '<option value="">— Выберите мастера —</option>';
+          const seen = new Set();
+          if (crewData && crewData.logistics) {
+            for (const item of crewData.logistics) {
+              if (!seen.has(item.employee_id)) {
+                seen.add(item.employee_id);
+                select.innerHTML += `<option value="${item.employee_id}">${esc(item.fio)}</option>`;
+              }
+            }
+          }
+          // Also try crew roster
+          try {
+            const crewResp = await api('/projects/' + work.id + '/dashboard');
+            if (crewResp && crewResp.crew) {
+              for (const c of crewResp.crew) {
+                if (!seen.has(c.employee_id)) {
+                  seen.add(c.employee_id);
+                  select.innerHTML += `<option value="${c.employee_id}">${esc(c.fio || c.employee_name)}</option>`;
+                }
+              }
+            }
+          } catch (_) {}
+        } catch (_) {}
+
+        document.getElementById('fundsSubmit').addEventListener('click', async () => {
+          const masterId = document.getElementById('fundsMaster').value;
+          const amount = parseFloat(document.getElementById('fundsAmount').value);
+          const purpose = document.getElementById('fundsPurpose').value.trim();
+          const deadline = document.getElementById('fundsDeadline').value || null;
+
+          if (!masterId) { toast('Выберите мастера'); return; }
+          if (!amount || amount <= 0) { toast('Укажите сумму'); return; }
+          if (!purpose) { toast('Укажите назначение'); return; }
+
+          try {
+            const result = await apiFunds('/', {
+              method: 'POST',
+              body: JSON.stringify({
+                work_id: work.id,
+                master_employee_id: parseInt(masterId),
+                amount, purpose,
+                confirm_deadline: deadline,
+              }),
+            });
+            if (result.error) { toast('Ошибка: ' + result.error); return; }
+            toast('Средства выданы!');
+            document.querySelector('.modal-overlay')?.remove();
+            renderFundsTab(parentContainer, work, user);
+          } catch (err) { toast('Ошибка: ' + err.message); }
+        });
+      }
+    });
+  }
+
+  async function openFundDetailModal(fundId, work) {
+    let data;
+    try { data = await apiFunds('/' + fundId); } catch (_) {}
+    if (!data || !data.fund) { toast('Не удалось загрузить'); return; }
+
+    const f = data.fund;
+    const remainder = (parseFloat(f.amount) - parseFloat(f.spent) - parseFloat(f.returned)).toFixed(2);
+
+    let expensesHtml = '';
+    if (data.expenses && data.expenses.length > 0) {
+      expensesHtml = '<table class="fk-table fk-table-small" style="width:100%;font-size:11px;margin-top:12px"><thead><tr><th>Дата</th><th>Описание</th><th>Категория</th><th style="text-align:right">Сумма</th><th>Источник</th><th>Чек</th></tr></thead><tbody>';
+      for (const e of data.expenses) {
+        const receiptLink = e.receipt_filename ? `<a href="/uploads/receipts/${esc(e.receipt_filename)}" target="_blank">📎</a>` : '—';
+        expensesHtml += `<tr><td>${formatDate(e.expense_date)}</td><td>${esc(e.description)}</td><td>${esc(e.category || '—')}</td><td style="text-align:right">${money(e.amount)}₽</td><td>${e.source === 'own' ? '💳 Свои' : '💰 Аванс'}</td><td>${receiptLink}</td></tr>`;
+      }
+      expensesHtml += '</tbody></table>';
+    }
+
+    let returnsHtml = '';
+    if (data.returns && data.returns.length > 0) {
+      returnsHtml = '<div style="margin-top:12px;font-weight:600;font-size:13px">Возвраты:</div><table class="fk-table fk-table-small" style="width:100%;font-size:11px"><thead><tr><th>Дата</th><th style="text-align:right">Сумма</th><th>Примечание</th></tr></thead><tbody>';
+      for (const r of data.returns) {
+        returnsHtml += `<tr><td>${formatDate(r.created_at)}</td><td style="text-align:right">${money(r.amount)}₽</td><td>${esc(r.note || '—')}</td></tr>`;
+      }
+      returnsHtml += '</tbody></table>';
+    }
+
+    AsgardUI.showModal({
+      title: '💰 ' + esc(f.purpose),
+      html: `
+        <div style="max-width:700px">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+            <div style="background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center">
+              <div style="font-size:11px;color:var(--text-sec,#aaa);text-transform:uppercase">Выдано</div>
+              <div style="font-size:18px;font-weight:700;margin-top:4px">${money(f.amount)}₽</div>
+            </div>
+            <div style="background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center">
+              <div style="font-size:11px;color:var(--text-sec,#aaa);text-transform:uppercase">Потрачено</div>
+              <div style="font-size:18px;font-weight:700;color:#ef4444;margin-top:4px">${money(f.spent)}₽</div>
+            </div>
+            <div style="background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center">
+              <div style="font-size:11px;color:var(--text-sec,#aaa);text-transform:uppercase">Возврат</div>
+              <div style="font-size:18px;font-weight:700;color:#22c55e;margin-top:4px">${money(f.returned)}₽</div>
+            </div>
+            <div style="background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center">
+              <div style="font-size:11px;color:var(--text-sec,#aaa);text-transform:uppercase">Остаток</div>
+              <div style="font-size:18px;font-weight:700;color:var(--gold,#D4A843);margin-top:4px">${money(remainder)}₽</div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-sec,#aaa);margin-bottom:4px">Мастер: <strong>${esc(f.master_name || '—')}</strong> · Статус: ${FUND_STATUS_LABELS[f.status] || f.status}</div>
+          ${data.expenses.length ? '<div style="font-weight:600;font-size:13px;margin-top:12px">Расходы:</div>' : ''}
+          ${expensesHtml}
+          ${returnsHtml}
+        </div>
+      `,
+      wide: true,
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TAB 6: СБОРЫ (PACKING)
+  // ═══════════════════════════════════════════════════════════════════
+  async function apiPacking(path, opts) {
+    const r = await fetch('/api/field/packing' + path, { headers: hdr(), ...opts });
+    return r.json();
+  }
+
+  const PACK_STATUS_LABELS = {
+    draft: '⚪ Черновик', sent: '🟡 Назначен', in_progress: '🔵 В сборке', completed: '🟢 Собран', shipped: '🟣 Отправлен',
+  };
+
+  async function renderPackingTab(container, work, user) {
+    container.innerHTML = '<div class="help">Загрузка листов сборки…</div>';
+
+    let data;
+    try { data = await apiPacking('/?work_id=' + work.id); } catch (_) {}
+
+    container.innerHTML = '';
+
+    // Create button
+    const topBar = document.createElement('div');
+    topBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px';
+    topBar.innerHTML = `<span style="font-weight:600;font-size:14px">Листы сборки</span>`;
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn gold';
+    addBtn.textContent = '+ Новый лист';
+    addBtn.style.cssText = 'font-size:12px;padding:6px 14px';
+    addBtn.addEventListener('click', () => openCreatePackingModal(work, container, user));
+    topBar.appendChild(addBtn);
+    container.appendChild(topBar);
+
+    if (!data || !data.lists || data.lists.length === 0) {
+      container.innerHTML += '<div class="help" style="padding:32px;text-align:center">Нет листов сборки для этого проекта</div>';
+      return;
+    }
+
+    // Table
+    const table = document.createElement('table');
+    table.className = 'fk-table fk-table-small';
+    table.style.cssText = 'width:100%;font-size:12px';
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>Название</th><th>Назначен</th><th>Прогресс</th><th>Срок</th><th>Статус</th><th></th></tr>';
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const l of data.lists) {
+      const pct = l.items_total > 0 ? Math.round((l.items_packed / l.items_total) * 100) : 0;
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      tr.innerHTML = `
+        <td><strong>${esc(l.title)}</strong>${l.description ? '<br><span style="font-size:10px;color:var(--text-sec)">' + esc(l.description.substring(0, 60)) + '</span>' : ''}</td>
+        <td>${esc(l.assigned_to_name || '—')}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;height:6px;background:var(--bg-3,#333);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#D4A843,#E5C06E);border-radius:3px"></div></div>
+            <span style="font-size:11px;white-space:nowrap">${l.items_packed}/${l.items_total}</span>
+          </div>
+        </td>
+        <td>${l.due_date ? formatDate(l.due_date) : '—'}</td>
+        <td><span style="font-size:11px">${PACK_STATUS_LABELS[l.status] || l.status}</span></td>
+        <td>${!l.assigned_to ? '<button class="btn ghost assign-pack" data-id="' + l.id + '" style="font-size:11px;padding:4px 8px">Назначить</button>' : ''}</td>
+      `;
+      tr.addEventListener('click', (e) => {
+        if (e.target.classList.contains('assign-pack')) return;
+        openPackingDetailModal(l.id, work, container, user);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    // Assign handlers
+    container.querySelectorAll('.assign-pack').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAssignPackingModal(parseInt(btn.dataset.id), work, container, user);
+      });
+    });
+  }
+
+  function openCreatePackingModal(work, parentContainer, user) {
+    AsgardUI.showModal({
+      title: '📦 Новый лист сборки',
+      html: `
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:480px">
+          <label>Название<input id="packTitle" type="text" class="inp" style="width:100%" placeholder="Основное оборудование"></label>
+          <label>Описание<textarea id="packDesc" class="inp" style="width:100%;min-height:60px" placeholder="Что нужно собрать"></textarea></label>
+          <label>Срок<input id="packDue" type="date" class="inp" style="width:100%"></label>
+          <div id="packItemsBlock">
+            <div style="font-weight:600;font-size:13px;margin-bottom:8px">Позиции</div>
+            <div id="packItemsList"></div>
+            <button id="packAddItem" class="btn ghost" style="font-size:12px;margin-top:4px">+ Добавить позицию</button>
+          </div>
+          <button id="packSubmit" class="btn gold" style="margin-top:8px">Создать</button>
+        </div>
+      `,
+      onMount: () => {
+        const list = document.getElementById('packItemsList');
+        let itemCount = 0;
+
+        function addItemRow() {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
+          row.innerHTML = `
+            <input type="text" class="inp pack-item-name" placeholder="Название" style="flex:2;font-size:12px">
+            <input type="number" class="inp pack-item-qty" placeholder="Кол-во" value="1" min="1" style="width:60px;font-size:12px">
+            <input type="text" class="inp pack-item-cat" placeholder="Категория" style="flex:1;font-size:12px">
+            <button class="btn ghost" style="font-size:11px;padding:4px 6px;color:#ef4444" onclick="this.parentElement.remove()">✕</button>
+          `;
+          list.appendChild(row);
+          itemCount++;
+        }
+
+        addItemRow();
+        document.getElementById('packAddItem').addEventListener('click', addItemRow);
+
+        document.getElementById('packSubmit').addEventListener('click', async () => {
+          const title = document.getElementById('packTitle').value.trim();
+          if (!title) { toast('Укажите название'); return; }
+
+          const items = [];
+          list.querySelectorAll('div').forEach(row => {
+            const name = row.querySelector('.pack-item-name')?.value.trim();
+            const qty = parseInt(row.querySelector('.pack-item-qty')?.value) || 1;
+            const cat = row.querySelector('.pack-item-cat')?.value.trim() || null;
+            if (name) items.push({ item_name: name, quantity_required: qty, item_category: cat });
+          });
+
+          try {
+            const result = await apiPacking('/', {
+              method: 'POST',
+              body: JSON.stringify({
+                work_id: work.id,
+                title,
+                description: document.getElementById('packDesc').value.trim() || null,
+                due_date: document.getElementById('packDue').value || null,
+                items,
+              }),
+            });
+            if (result.error) { toast('Ошибка: ' + result.error); return; }
+            toast('Лист сборки создан!');
+            document.querySelector('.modal-overlay')?.remove();
+            renderPackingTab(parentContainer, work, user);
+          } catch (err) { toast('Ошибка: ' + err.message); }
+        });
+      }
+    });
+  }
+
+  async function openPackingDetailModal(listId, work, parentContainer, user) {
+    let data;
+    try { data = await apiPacking('/' + listId); } catch (_) {}
+    if (!data || !data.list) { toast('Не удалось загрузить'); return; }
+
+    const l = data.list;
+    const items = data.items || [];
+    const pct = l.items_total > 0 ? Math.round((l.items_packed / l.items_total) * 100) : 0;
+
+    let itemsHtml = '';
+    if (items.length > 0) {
+      itemsHtml = '<table class="fk-table fk-table-small" style="width:100%;font-size:11px;margin-top:12px"><thead><tr><th>#</th><th>Позиция</th><th>Категория</th><th>Требуется</th><th>Собрано</th><th>Статус</th><th>Фото</th></tr></thead><tbody>';
+      items.forEach((it, i) => {
+        const itStatus = { pending: '⬜', packed: '✅', shortage: '⚠️', replaced: '🔄' };
+        const photoLink = it.photo_filename ? `<a href="/uploads/packing/${esc(it.photo_filename)}" target="_blank">📷</a>` : '—';
+        itemsHtml += `<tr><td>${i + 1}</td><td>${esc(it.item_name)}</td><td>${esc(it.item_category || '—')}</td><td>${it.quantity_required} ${esc(it.unit)}</td><td>${it.quantity_packed}</td><td>${itStatus[it.status] || it.status}${it.shortage_note ? ' <span style="color:#ef4444;font-size:10px">' + esc(it.shortage_note) + '</span>' : ''}</td><td>${photoLink}</td></tr>`;
+      });
+      itemsHtml += '</tbody></table>';
+    }
+
+    AsgardUI.showModal({
+      title: '📦 ' + esc(l.title),
+      html: `
+        <div style="max-width:700px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+            <div style="flex:1;height:8px;background:var(--bg-3,#333);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#D4A843,#E5C06E);border-radius:4px"></div></div>
+            <span style="font-size:13px;font-weight:600">${pct}%</span>
+            <span style="font-size:12px;color:var(--text-sec,#aaa)">${PACK_STATUS_LABELS[l.status] || l.status}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-sec,#aaa);margin-bottom:4px">
+            Назначен: <strong>${esc(l.assigned_to_name || 'не назначен')}</strong>
+            ${l.due_date ? ' · Срок: ' + formatDate(l.due_date) : ''}
+            ${l.tracking_number ? ' · Трек: ' + esc(l.tracking_number) : ''}
+          </div>
+          ${l.description ? '<div style="font-size:12px;margin-bottom:8px;color:var(--text-sec,#aaa)">' + esc(l.description) + '</div>' : ''}
+          ${itemsHtml}
+        </div>
+      `,
+      wide: true,
+    });
+  }
+
+  async function openAssignPackingModal(listId, work, parentContainer, user) {
+    AsgardUI.showModal({
+      title: '📦 Назначить сборщика',
+      html: `
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:400px">
+          <label>Сотрудник<select id="packAssignee" class="inp" style="width:100%"><option value="">Загрузка…</option></select></label>
+          <label><input type="checkbox" id="packSendSms" checked> Отправить SMS-уведомление</label>
+          <button id="packAssignSubmit" class="btn gold">Назначить</button>
+        </div>
+      `,
+      onMount: async () => {
+        try {
+          const crewResp = await api('/projects/' + work.id + '/dashboard');
+          const select = document.getElementById('packAssignee');
+          select.innerHTML = '<option value="">— Выберите —</option>';
+          if (crewResp && crewResp.crew) {
+            for (const c of crewResp.crew) {
+              select.innerHTML += `<option value="${c.employee_id}">${esc(c.fio || c.employee_name)}</option>`;
+            }
+          }
+        } catch (_) {}
+
+        document.getElementById('packAssignSubmit').addEventListener('click', async () => {
+          const empId = document.getElementById('packAssignee').value;
+          if (!empId) { toast('Выберите сотрудника'); return; }
+
+          try {
+            const result = await apiPacking('/' + listId + '/assign', {
+              method: 'POST',
+              body: JSON.stringify({
+                employee_id: parseInt(empId),
+                send_sms: document.getElementById('packSendSms').checked,
+              }),
+            });
+            if (result.error) { toast('Ошибка: ' + result.error); return; }
+            toast('Сборщик назначен!' + (result.sms_sent ? ' SMS отправлен' : ''));
+            document.querySelector('.modal-overlay')?.remove();
+            renderPackingTab(parentContainer, work, user);
+          } catch (err) { toast('Ошибка: ' + err.message); }
+        });
+      }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════
