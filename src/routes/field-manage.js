@@ -11,6 +11,7 @@
  * GET  /projects/:work_id/progress    — progress from reports
  */
 
+const ExcelJS = require('exceljs');
 const MangoService = require('../services/mango');
 const { createNotification } = require('../services/notify');
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
@@ -510,6 +511,105 @@ async function routes(fastify, options) {
         total_paid_hours: Math.round(emp.total_paid_hours * 100) / 100,
         total_earned: Math.round(emp.total_earned * 100) / 100,
       }));
+
+      // ── XLSX export ──
+      if (req.query.format === 'xlsx') {
+        const { rows: workInfo } = await db.query(`SELECT work_title FROM works WHERE id = $1`, [workId]);
+        const workTitle = workInfo[0]?.work_title || `Работа #${workId}`;
+
+        // Collect all dates
+        const allDates = new Set();
+        timesheet.forEach(emp => (emp.days || []).forEach(d => allDates.add(d.date)));
+        const dates = [...allDates].sort();
+
+        const wb = new ExcelJS.Workbook();
+        wb.creator = 'АСГАРД CRM';
+        wb.created = new Date();
+        const ws = wb.addWorksheet('Табель');
+
+        // Title
+        ws.mergeCells(1, 1, 1, dates.length + 6);
+        ws.getCell('A1').value = `ТАБЕЛЬ — ${workTitle}`;
+        ws.getCell('A1').font = { bold: true, size: 14 };
+
+        ws.mergeCells(2, 1, 2, dates.length + 6);
+        ws.getCell('A2').value = `Период: ${dateFrom || '—'} — ${dateTo || '—'} · Суточные: ${perDiem} ₽/день`;
+        ws.getCell('A2').font = { size: 10, italic: true, color: { argb: 'FF666666' } };
+
+        // Header row
+        const headers = ['№', 'ФИО'];
+        dates.forEach(d => {
+          const day = new Date(d + 'T00:00:00');
+          headers.push(String(day.getDate()).padStart(2, '0') + '.' + String(day.getMonth() + 1).padStart(2, '0'));
+        });
+        headers.push('Дней', 'Часов', 'Заработок', 'Суточные', 'ИТОГО');
+
+        const headerRow = ws.addRow(headers);
+        headerRow.number = 4;
+        ws.getRow(4).values = headers;
+        ws.getRow(4).font = { bold: true, size: 10 };
+        ws.getRow(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5E8F0' } };
+        ws.getRow(4).eachCell(c => { c.border = { bottom: { style: 'thin' } }; c.alignment = { horizontal: 'center' }; });
+
+        // Column widths
+        ws.getColumn(1).width = 5;
+        ws.getColumn(2).width = 30;
+        for (let i = 0; i < dates.length; i++) ws.getColumn(i + 3).width = 7;
+        ws.getColumn(dates.length + 3).width = 7;
+        ws.getColumn(dates.length + 4).width = 9;
+        ws.getColumn(dates.length + 5).width = 12;
+        ws.getColumn(dates.length + 6).width = 12;
+        ws.getColumn(dates.length + 7).width = 14;
+
+        // Data rows
+        let grandHours = 0, grandEarned = 0, grandPd = 0, grandTotal = 0;
+        timesheet.forEach((emp, idx) => {
+          const dayMap = {};
+          (emp.days || []).forEach(d => { dayMap[d.date] = d; });
+
+          const vals = [idx + 1, emp.fio || '—'];
+          dates.forEach(d => {
+            const day = dayMap[d];
+            vals.push(day ? parseFloat(day.hours_paid || day.hours_worked || 0) : '');
+          });
+          vals.push(emp.days_count || 0);
+          vals.push(emp.total_paid_hours || emp.total_hours || 0);
+          vals.push(emp.total_earned || 0);
+          vals.push(emp.per_diem_total || 0);
+          vals.push(emp.grand_total || 0);
+
+          const row = ws.addRow(vals);
+          row.getCell(vals.length).font = { bold: true };
+          row.getCell(vals.length).numFmt = '#,##0 "₽"';
+          row.getCell(vals.length - 1).numFmt = '#,##0 "₽"';
+          row.getCell(vals.length - 2).numFmt = '#,##0 "₽"';
+
+          grandHours += emp.total_paid_hours || emp.total_hours || 0;
+          grandEarned += emp.total_earned || 0;
+          grandPd += emp.per_diem_total || 0;
+          grandTotal += emp.grand_total || 0;
+        });
+
+        // Totals row
+        const totals = ['', 'ИТОГО'];
+        dates.forEach(() => totals.push(''));
+        totals.push(timesheet.reduce((s, e) => s + (e.days_count || 0), 0));
+        totals.push(Math.round(grandHours * 100) / 100);
+        totals.push(Math.round(grandEarned));
+        totals.push(Math.round(grandPd));
+        totals.push(Math.round(grandTotal));
+        const totalRow = ws.addRow(totals);
+        totalRow.font = { bold: true };
+        totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+        totalRow.getCell(totals.length).numFmt = '#,##0 "₽"';
+        totalRow.getCell(totals.length - 1).numFmt = '#,##0 "₽"';
+        totalRow.getCell(totals.length - 2).numFmt = '#,##0 "₽"';
+
+        const buffer = await wb.xlsx.writeBuffer();
+        reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        reply.header('Content-Disposition', `attachment; filename="timesheet_${workId}_${Date.now()}.xlsx"`);
+        return reply.send(Buffer.from(buffer));
+      }
 
       return { timesheet, per_diem_rate: perDiem };
     } catch (err) {

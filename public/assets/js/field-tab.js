@@ -1,0 +1,1071 @@
+/**
+ * AsgardFieldTab — Desktop CRM «Полевой модуль» (Session 9)
+ * ═══════════════════════════════════════════════════════════
+ * Вкладка на карточке работы: бригада, логистика, дашборд, табель.
+ *
+ * API: AsgardFieldTab.openFieldModal(work, user)
+ */
+window.AsgardFieldTab = (function () {
+  'use strict';
+
+  const { $, $$, esc, toast, money, formatDate } = AsgardUI;
+
+  function hdr() {
+    const t = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    return { 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json' };
+  }
+  async function api(path, opts) {
+    const r = await fetch('/api/field/manage' + path, { headers: hdr(), ...opts });
+    return r.json();
+  }
+  async function apiRaw(path, opts) {
+    return fetch('/api/field/manage' + path, { headers: hdr(), ...opts });
+  }
+  async function apiField(path, opts) {
+    const r = await fetch('/api/field' + path, { headers: hdr(), ...opts });
+    return r.json();
+  }
+
+  // ── Category labels ──────────────────────────────────────────────
+  const CATEGORIES = [
+    { value: 'offshore', label: 'МЛСП' },
+    { value: 'ground', label: 'Земля' },
+    { value: 'ground_heavy', label: 'Земля тяж.' },
+    { value: 'warehouse', label: 'Склад' },
+  ];
+
+  const ROLES = [
+    { value: 'worker', label: 'Рабочий' },
+    { value: 'shift_master', label: 'Мастер смены' },
+    { value: 'senior_master', label: 'Ст. мастер' },
+  ];
+
+  const LOG_TYPES = [
+    { value: 'ticket_to', label: '✈️ Туда', short: 'Билет туда' },
+    { value: 'hotel', label: '🏨 Отель', short: 'Гостиница' },
+    { value: 'ticket_back', label: '✈️ Обратно', short: 'Билет обратно' },
+    { value: 'visa', label: '📄 Виза', short: 'Виза/пропуск' },
+    { value: 'insurance', label: '🛡️ Страх.', short: 'Страховка' },
+  ];
+
+  const STATUS_COLORS = {
+    pending: '#f59e0b',
+    booked: '#3b82f6',
+    sent: '#8b5cf6',
+    confirmed: '#10b981',
+  };
+
+  // ═══════════════════════════════════════════════════════════════════
+  // MAIN ENTRY POINT
+  // ═══════════════════════════════════════════════════════════════════
+  async function openFieldModal(work, user) {
+    // Check if field project exists
+    let settings = null;
+    try {
+      const resp = await fetch(`/api/field/manage/projects/${work.id}/dashboard`, { headers: hdr() });
+      if (resp.ok) settings = await resp.json();
+    } catch (_) {}
+
+    let settingsData = null;
+    try {
+      const r2 = await fetch(`/api/data/field_project_settings?work_id=${work.id}`, { headers: hdr() });
+      const d2 = await r2.json();
+      settingsData = (d2.rows || d2.items || d2 || [])[0] || null;
+    } catch (_) {}
+
+    const isActive = !!settingsData?.is_active;
+
+    AsgardUI.showModal({
+      title: '⚔️ Полевой модуль — ' + esc(work.work_title || '#' + work.id),
+      html: '<div id="fieldTabRoot" style="min-height:400px"><div class="help">Загрузка…</div></div>',
+      wide: true,
+      onMount: ({ body }) => {
+        const root = document.getElementById('fieldTabRoot');
+        if (!root) return;
+        renderFieldTabs(root, work, user, settingsData, isActive);
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TABS NAVIGATION
+  // ═══════════════════════════════════════════════════════════════════
+  function renderFieldTabs(root, work, user, settingsData, isActive) {
+    const tabs = [
+      { id: 'crew', label: '👥 Бригада', render: () => renderCrewTab(content, work, user, settingsData, isActive) },
+      { id: 'logistics', label: '✈️ Логистика', render: () => renderLogisticsTab(content, work, user) },
+      { id: 'dashboard', label: '📊 Дашборд', render: () => renderDashboardTab(content, work) },
+      { id: 'timesheet', label: '📋 Табель', render: () => renderTimesheetTab(content, work) },
+    ];
+
+    root.innerHTML = '';
+
+    // Tab buttons
+    const tabBar = document.createElement('div');
+    tabBar.style.cssText = 'display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--brd, rgba(255,255,255,0.08));padding-bottom:8px;flex-wrap:wrap';
+    tabs.forEach((tab, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'btn ghost';
+      btn.textContent = tab.label;
+      btn.dataset.ftab = tab.id;
+      btn.style.cssText = 'padding:8px 16px;font-size:13px;border-radius:8px 8px 0 0;' + (i === 0 ? 'border-bottom:2px solid var(--gold, #D4A843);color:var(--gold, #D4A843);' : '');
+      btn.addEventListener('click', () => {
+        tabBar.querySelectorAll('button').forEach(b => {
+          b.style.borderBottom = 'none';
+          b.style.color = '';
+        });
+        btn.style.borderBottom = '2px solid var(--gold, #D4A843)';
+        btn.style.color = 'var(--gold, #D4A843)';
+        tab.render();
+      });
+      tabBar.appendChild(btn);
+    });
+    root.appendChild(tabBar);
+
+    // Content area
+    const content = document.createElement('div');
+    content.id = 'fieldTabContent';
+    root.appendChild(content);
+
+    // Render first tab
+    tabs[0].render();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TAB 1: БРИГАДА (CREW)
+  // ═══════════════════════════════════════════════════════════════════
+  async function renderCrewTab(container, work, user, settingsData, isActive) {
+    container.innerHTML = '<div class="help">Загрузка бригады…</div>';
+
+    // Load tariffs and employees
+    const [tariffsData, empsData, assignData] = await Promise.all([
+      api('/tariffs?category=all'),
+      fetch('/api/data/employees?limit=2000', { headers: hdr() }).then(r => r.json()),
+      fetch(`/api/data/employee_assignments?work_id=${work.id}&limit=500`, { headers: hdr() }).then(r => r.json()),
+    ]);
+
+    const allTariffs = tariffsData.tariffs || [];
+    const specials = tariffsData.specials || [];
+    const allEmployees = (empsData.rows || empsData.items || []).sort((a, b) => (a.fio || '').localeCompare(b.fio || ''));
+    const assignments = (assignData.rows || assignData.items || []).filter(a => a.is_active !== false);
+    const category = settingsData?.site_category || 'ground';
+
+    container.innerHTML = '';
+
+    // ── Settings bar ──
+    const settingsBar = document.createElement('div');
+    settingsBar.style.cssText = 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:12px;background:var(--bg2, #151922);border-radius:8px;border:1px solid var(--brd, rgba(255,255,255,0.08))';
+
+    // Category selector
+    const catLabel = document.createElement('span');
+    catLabel.textContent = 'Категория объекта:';
+    catLabel.style.cssText = 'font-size:13px;color:var(--t2, #8b949e)';
+    settingsBar.appendChild(catLabel);
+
+    const catSelect = document.createElement('select');
+    catSelect.id = 'fieldCategory';
+    catSelect.style.cssText = 'padding:6px 10px;border-radius:6px;background:var(--bg1, #0D1117);color:var(--t1, #e6edf3);border:1px solid var(--brd, rgba(255,255,255,0.08));font-size:13px';
+    CATEGORIES.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.value;
+      opt.textContent = c.label;
+      if (c.value === category) opt.selected = true;
+      catSelect.appendChild(opt);
+    });
+    settingsBar.appendChild(catSelect);
+
+    // Per diem
+    const pdLabel = document.createElement('span');
+    pdLabel.textContent = 'Суточные ₽/день:';
+    pdLabel.style.cssText = 'font-size:13px;color:var(--t2, #8b949e);margin-left:16px';
+    settingsBar.appendChild(pdLabel);
+
+    const pdInput = document.createElement('input');
+    pdInput.id = 'fieldPerDiem';
+    pdInput.value = settingsData?.per_diem || '0';
+    pdInput.style.cssText = 'width:80px;padding:6px 10px;border-radius:6px;background:var(--bg1, #0D1117);color:var(--t1, #e6edf3);border:1px solid var(--brd, rgba(255,255,255,0.08));font-size:13px';
+    settingsBar.appendChild(pdInput);
+
+    // Activate button
+    if (!isActive) {
+      const activateBtn = document.createElement('button');
+      activateBtn.className = 'btn';
+      activateBtn.textContent = '🚀 Запустить Field';
+      activateBtn.style.cssText = 'margin-left:auto;background:linear-gradient(135deg,#D4A843,#B8922E);color:#000;font-weight:600';
+      activateBtn.addEventListener('click', async () => {
+        activateBtn.disabled = true;
+        activateBtn.textContent = 'Активация…';
+        try {
+          await fetch(`/api/field/manage/projects/${work.id}/activate`, {
+            method: 'POST', headers: hdr(),
+            body: JSON.stringify({
+              site_category: catSelect.value,
+              per_diem: parseFloat(pdInput.value) || 0,
+              schedule_type: 'shift',
+              shift_hours: 11,
+            })
+          });
+          toast('Field', 'Полевой модуль активирован! ⚔️', 'ok');
+          isActive = true;
+          settingsData = { site_category: catSelect.value, per_diem: parseFloat(pdInput.value) || 0, is_active: true };
+          renderCrewTab(container, work, user, settingsData, true);
+        } catch (e) {
+          toast('Ошибка', String(e), 'err');
+          activateBtn.disabled = false;
+          activateBtn.textContent = '🚀 Запустить Field';
+        }
+      });
+      settingsBar.appendChild(activateBtn);
+    } else {
+      const badge = document.createElement('span');
+      badge.textContent = '✅ Активен';
+      badge.style.cssText = 'margin-left:auto;color:#10b981;font-size:13px;font-weight:600';
+      settingsBar.appendChild(badge);
+    }
+
+    container.appendChild(settingsBar);
+
+    // ── Crew table ──
+    const tableWrap = document.createElement('div');
+    tableWrap.style.cssText = 'overflow-x:auto;margin-bottom:16px';
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px';
+
+    // Header
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr style="background:var(--bg2, #151922)">
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd, rgba(255,255,255,0.08));color:var(--t2, #8b949e);font-weight:500;font-size:12px">ФИО</th>
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Роль</th>
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Тариф</th>
+      <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Баллы</th>
+      <th style="padding:8px 6px;text-align:right;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">₽/смену</th>
+      <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Совмещ.</th>
+      <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">SMS</th>
+      <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px"></th>
+    </tr>`;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    tbody.id = 'fieldCrewBody';
+    table.appendChild(tbody);
+
+    tableWrap.appendChild(table);
+    container.appendChild(tableWrap);
+
+    // Populate existing assignments
+    const currentCat = catSelect.value;
+    const filteredTariffs = allTariffs.filter(t => t.category === currentCat);
+    const comboTariffs = specials.concat(allTariffs.filter(t => t.is_combinable));
+
+    for (const a of assignments) {
+      const emp = allEmployees.find(e => e.id === a.employee_id);
+      if (!emp) continue;
+      addCrewRow(tbody, emp, a, filteredTariffs, comboTariffs, allEmployees);
+    }
+
+    // Category change → re-filter tariffs
+    catSelect.addEventListener('change', () => {
+      const newCat = catSelect.value;
+      const newFiltered = allTariffs.filter(t => t.category === newCat);
+      // Update all tariff dropdowns
+      tbody.querySelectorAll('select[data-field="tariff"]').forEach(sel => {
+        const curVal = sel.value;
+        sel.innerHTML = '<option value="">— выберите —</option>';
+        newFiltered.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)}₽)`;
+          if (String(t.id) === curVal) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        // Trigger points/rate recalc
+        sel.dispatchEvent(new Event('change'));
+      });
+    });
+
+    // ── Action buttons ──
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap';
+
+    // Add employee button
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn ghost';
+    addBtn.textContent = '➕ Добавить сотрудника';
+    addBtn.addEventListener('click', () => {
+      addCrewRow(tbody, null, null, filteredTariffs, comboTariffs, allEmployees);
+    });
+    actions.appendChild(addBtn);
+
+    // Save crew button
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn';
+    saveBtn.textContent = '💾 Сохранить бригаду';
+    saveBtn.addEventListener('click', async () => {
+      const rows = tbody.querySelectorAll('tr[data-crew-row]');
+      const employees = [];
+      rows.forEach(row => {
+        const empId = row.querySelector('select[data-field="employee"]')?.value;
+        const role = row.querySelector('select[data-field="role"]')?.value;
+        const tariffId = row.querySelector('select[data-field="tariff"]')?.value;
+        const comboId = row.querySelector('select[data-field="combo"]')?.value;
+        if (empId) {
+          employees.push({
+            employee_id: parseInt(empId),
+            field_role: role || 'worker',
+            tariff_id: tariffId ? parseInt(tariffId) : null,
+            combination_tariff_id: comboId ? parseInt(comboId) : null,
+          });
+        }
+      });
+
+      if (employees.length === 0) {
+        toast('Бригада', 'Нет сотрудников для сохранения', 'err');
+        return;
+      }
+
+      // First ensure project is activated with current settings
+      if (isActive) {
+        await fetch(`/api/field/manage/projects/${work.id}/activate`, {
+          method: 'POST', headers: hdr(),
+          body: JSON.stringify({
+            site_category: catSelect.value,
+            per_diem: parseFloat(pdInput.value) || 0,
+          })
+        });
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Сохранение…';
+      try {
+        const result = await api(`/projects/${work.id}/crew`, {
+          method: 'POST',
+          body: JSON.stringify({ employees }),
+        });
+        const ok = result.count || 0;
+        toast('Бригада', `Сохранено: ${ok} из ${employees.length}`, 'ok');
+        // Refresh
+        renderCrewTab(container, work, user, settingsData, isActive);
+      } catch (e) {
+        toast('Ошибка', String(e), 'err');
+      }
+      saveBtn.disabled = false;
+      saveBtn.textContent = '💾 Сохранить бригаду';
+    });
+    actions.appendChild(saveBtn);
+
+    // SMS button
+    const smsBtn = document.createElement('button');
+    smsBtn.className = 'btn ghost';
+    smsBtn.textContent = '📨 Отправить SMS бригаде';
+    smsBtn.addEventListener('click', async () => {
+      if (!confirm('Отправить SMS-приглашения всем в бригаде, кому ещё не отправлено?')) return;
+      smsBtn.disabled = true;
+      smsBtn.textContent = 'Отправка…';
+      try {
+        const result = await api(`/projects/${work.id}/send-invites`, { method: 'POST', body: '{}' });
+        toast('SMS', `Отправлено: ${result.sent}, ошибок: ${result.failed}`, result.failed ? 'warn' : 'ok');
+      } catch (e) {
+        toast('Ошибка SMS', String(e), 'err');
+      }
+      smsBtn.disabled = false;
+      smsBtn.textContent = '📨 Отправить SMS бригаде';
+    });
+    actions.appendChild(smsBtn);
+
+    container.appendChild(actions);
+  }
+
+  // ── Add a crew row ──
+  function addCrewRow(tbody, employee, assignment, tariffs, comboTariffs, allEmployees) {
+    const tr = document.createElement('tr');
+    tr.dataset.crewRow = '1';
+    tr.style.cssText = 'border-bottom:1px solid var(--brd, rgba(255,255,255,0.06))';
+
+    const cellStyle = 'padding:6px 8px;vertical-align:middle';
+
+    // Employee select
+    const tdEmp = document.createElement('td');
+    tdEmp.style.cssText = cellStyle;
+    const selEmp = document.createElement('select');
+    selEmp.dataset.field = 'employee';
+    selEmp.style.cssText = 'width:100%;min-width:180px;padding:5px;border-radius:4px;background:var(--bg1, #0D1117);color:var(--t1, #e6edf3);border:1px solid var(--brd)';
+    selEmp.innerHTML = '<option value="">— сотрудник —</option>';
+    allEmployees.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.fio + (e.phone ? ' · ' + e.phone : '');
+      if (employee && e.id === employee.id) opt.selected = true;
+      selEmp.appendChild(opt);
+    });
+    tdEmp.appendChild(selEmp);
+    tr.appendChild(tdEmp);
+
+    // Role select
+    const tdRole = document.createElement('td');
+    tdRole.style.cssText = cellStyle;
+    const selRole = document.createElement('select');
+    selRole.dataset.field = 'role';
+    selRole.style.cssText = 'padding:5px;border-radius:4px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)';
+    ROLES.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.value;
+      opt.textContent = r.label;
+      if (assignment && assignment.field_role === r.value) opt.selected = true;
+      selRole.appendChild(opt);
+    });
+    tdRole.appendChild(selRole);
+    tr.appendChild(tdRole);
+
+    // Tariff select
+    const tdTariff = document.createElement('td');
+    tdTariff.style.cssText = cellStyle;
+    const selTariff = document.createElement('select');
+    selTariff.dataset.field = 'tariff';
+    selTariff.style.cssText = 'min-width:200px;padding:5px;border-radius:4px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)';
+    selTariff.innerHTML = '<option value="">— выберите —</option>';
+    tariffs.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)}₽)`;
+      if (assignment && assignment.tariff_id === t.id) opt.selected = true;
+      selTariff.appendChild(opt);
+    });
+    tdTariff.appendChild(selTariff);
+    tr.appendChild(tdTariff);
+
+    // Points (auto)
+    const tdPoints = document.createElement('td');
+    tdPoints.style.cssText = cellStyle + ';text-align:center;font-weight:600';
+    tdPoints.dataset.field = 'points';
+    tdPoints.textContent = assignment?.tariff_points || '—';
+    tr.appendChild(tdPoints);
+
+    // Rate (auto)
+    const tdRate = document.createElement('td');
+    tdRate.style.cssText = cellStyle + ';text-align:right;font-weight:600;color:var(--gold, #D4A843)';
+    tdRate.dataset.field = 'rate';
+    tdRate.textContent = '—';
+    tr.appendChild(tdRate);
+
+    // Combination select
+    const tdCombo = document.createElement('td');
+    tdCombo.style.cssText = cellStyle + ';text-align:center';
+    const selCombo = document.createElement('select');
+    selCombo.dataset.field = 'combo';
+    selCombo.style.cssText = 'padding:5px;border-radius:4px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);max-width:120px';
+    selCombo.innerHTML = '<option value="">Нет</option>';
+    comboTariffs.forEach(t => {
+      if (!t.is_combinable) return;
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = `${t.position_name} (+${t.points || 1}б)`;
+      if (assignment && assignment.combination_tariff_id === t.id) opt.selected = true;
+      selCombo.appendChild(opt);
+    });
+    tdCombo.appendChild(selCombo);
+    tr.appendChild(tdCombo);
+
+    // SMS status
+    const tdSms = document.createElement('td');
+    tdSms.style.cssText = cellStyle + ';text-align:center';
+    if (assignment?.sms_sent) {
+      tdSms.innerHTML = '<span style="color:#10b981" title="SMS отправлено">✅</span>';
+    } else if (assignment) {
+      tdSms.innerHTML = '<span style="color:#6b7280" title="Не отправлено">📨</span>';
+    }
+    tr.appendChild(tdSms);
+
+    // Remove button
+    const tdDel = document.createElement('td');
+    tdDel.style.cssText = cellStyle + ';text-align:center';
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '✕';
+    delBtn.title = 'Удалить из бригады';
+    delBtn.style.cssText = 'background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:4px 8px';
+    delBtn.addEventListener('click', () => tr.remove());
+    tdDel.appendChild(delBtn);
+    tr.appendChild(tdDel);
+
+    // Tariff change → auto update points & rate
+    function updatePointsRate() {
+      const tariffId = selTariff.value;
+      const tariff = tariffs.find(t => String(t.id) === tariffId);
+      const comboId = selCombo.value;
+      const combo = comboTariffs.find(t => String(t.id) === comboId);
+
+      const basePoints = tariff ? (tariff.points || 0) : 0;
+      const comboPoints = combo ? (combo.points || 1) : 0;
+      const baseRate = tariff ? parseFloat(tariff.rate_per_shift || 0) : 0;
+      const comboRate = combo ? parseFloat(combo.rate_per_shift || 0) : 0;
+
+      const totalPoints = basePoints + (combo ? comboPoints : 0);
+      const totalRate = baseRate + comboRate;
+
+      tdPoints.textContent = totalPoints || '—';
+      tdRate.textContent = totalRate ? money(totalRate) + ' ₽' : '—';
+
+      if (combo && combo.requires_approval) {
+        tdCombo.style.background = 'rgba(245,158,11,0.1)';
+        tdCombo.title = 'Требует согласования';
+      } else {
+        tdCombo.style.background = '';
+        tdCombo.title = '';
+      }
+    }
+
+    selTariff.addEventListener('change', updatePointsRate);
+    selCombo.addEventListener('change', updatePointsRate);
+
+    // Initial calc
+    if (assignment?.tariff_id) {
+      const t = tariffs.find(t => t.id === assignment.tariff_id);
+      if (t) {
+        const comboT = assignment.combination_tariff_id ? comboTariffs.find(c => c.id === assignment.combination_tariff_id) : null;
+        const rate = parseFloat(t.rate_per_shift || 0) + (comboT ? parseFloat(comboT.rate_per_shift || 0) : 0);
+        tdRate.textContent = rate ? money(rate) + ' ₽' : '—';
+      }
+    }
+
+    tbody.appendChild(tr);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TAB 2: ЛОГИСТИКА
+  // ═══════════════════════════════════════════════════════════════════
+  async function renderLogisticsTab(container, work, user) {
+    container.innerHTML = '<div class="help">Загрузка логистики…</div>';
+
+    const [logData, assignData] = await Promise.all([
+      apiField(`/logistics?work_id=${work.id}`),
+      fetch(`/api/data/employee_assignments?work_id=${work.id}&limit=500`, { headers: hdr() }).then(r => r.json()),
+    ]);
+
+    const items = logData.items || logData.logistics || (Array.isArray(logData) ? logData : []);
+    const assignments = (assignData.rows || assignData.items || []).filter(a => a.is_active !== false);
+
+    // Load employee names
+    const empIds = [...new Set(assignments.map(a => a.employee_id))];
+    let empsMap = {};
+    if (empIds.length) {
+      try {
+        const empsData = await fetch('/api/data/employees?limit=2000', { headers: hdr() }).then(r => r.json());
+        (empsData.rows || empsData.items || []).forEach(e => { empsMap[e.id] = e; });
+      } catch (_) {}
+    }
+
+    container.innerHTML = '';
+
+    // Info
+    const info = document.createElement('div');
+    info.className = 'help';
+    info.style.marginBottom = '12px';
+    info.textContent = 'Матрица логистики: строки = сотрудники, колонки = тип. Нажмите «+» для добавления.';
+    container.appendChild(info);
+
+    // Matrix table
+    const tableWrap = document.createElement('div');
+    tableWrap.style.cssText = 'overflow-x:auto;margin-bottom:16px';
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px';
+
+    const thStyle = 'padding:8px 10px;text-align:center;border-bottom:1px solid var(--brd, rgba(255,255,255,0.08));color:var(--t2, #8b949e);font-weight:500;font-size:12px;white-space:nowrap';
+
+    const thead = document.createElement('thead');
+    let headerHtml = `<tr style="background:var(--bg2, #151922)"><th style="${thStyle};text-align:left">Сотрудник</th>`;
+    LOG_TYPES.forEach(lt => { headerHtml += `<th style="${thStyle}">${lt.label}</th>`; });
+    headerHtml += '</tr>';
+    thead.innerHTML = headerHtml;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    // Build lookup: employee_id -> { type -> item }
+    const matrix = {};
+    items.forEach(item => {
+      if (!matrix[item.employee_id]) matrix[item.employee_id] = {};
+      matrix[item.employee_id][item.item_type] = item;
+    });
+
+    for (const a of assignments) {
+      const emp = empsMap[a.employee_id];
+      if (!emp) continue;
+      const tr = document.createElement('tr');
+      tr.style.cssText = 'border-bottom:1px solid var(--brd, rgba(255,255,255,0.06))';
+
+      // Employee name
+      const tdName = document.createElement('td');
+      tdName.style.cssText = 'padding:8px 10px;font-weight:500;white-space:nowrap';
+      tdName.textContent = emp.fio || '—';
+      tr.appendChild(tdName);
+
+      // For each logistics type
+      LOG_TYPES.forEach(lt => {
+        const td = document.createElement('td');
+        td.style.cssText = 'padding:6px 8px;text-align:center';
+
+        const item = matrix[emp.id]?.[lt.value];
+        if (item) {
+          // Show status
+          const statusColor = STATUS_COLORS[item.status] || '#6b7280';
+          const badge = document.createElement('span');
+          badge.style.cssText = `display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:500;background:${statusColor}22;color:${statusColor}`;
+          badge.textContent = item.status === 'confirmed' ? '✅' : item.status === 'sent' ? '📨' : item.status === 'booked' ? '📋' : '⏳';
+          badge.title = `${item.title || lt.short} — ${item.status}`;
+          td.appendChild(badge);
+
+          // Send button if not sent
+          if (!item.sent_to_employee) {
+            const sendBtn = document.createElement('button');
+            sendBtn.textContent = '📨';
+            sendBtn.title = 'Отправить сотруднику';
+            sendBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;margin-left:4px';
+            sendBtn.addEventListener('click', async () => {
+              sendBtn.disabled = true;
+              try {
+                await apiField(`/logistics/${item.id}/send`, { method: 'POST', body: '{}' });
+                toast('Логистика', 'SMS отправлено!', 'ok');
+                renderLogisticsTab(container, work, user);
+              } catch (e) {
+                toast('Ошибка', String(e), 'err');
+              }
+            });
+            td.appendChild(sendBtn);
+          }
+        } else {
+          // Add button
+          const addBtn = document.createElement('button');
+          addBtn.textContent = '+';
+          addBtn.title = `Добавить ${lt.short}`;
+          addBtn.style.cssText = 'width:32px;height:32px;border-radius:8px;border:1px dashed var(--brd, rgba(255,255,255,0.15));background:transparent;color:var(--t2, #8b949e);cursor:pointer;font-size:16px;transition:all .15s';
+          addBtn.addEventListener('mouseenter', () => { addBtn.style.borderColor = 'var(--gold, #D4A843)'; addBtn.style.color = 'var(--gold, #D4A843)'; });
+          addBtn.addEventListener('mouseleave', () => { addBtn.style.borderColor = ''; addBtn.style.color = ''; });
+          addBtn.addEventListener('click', () => {
+            openLogisticsForm(container, work, user, emp, lt);
+          });
+          td.appendChild(addBtn);
+        }
+
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    }
+
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    container.appendChild(tableWrap);
+
+    if (assignments.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'help';
+      empty.style.cssText = 'text-align:center;padding:40px;color:var(--t2)';
+      empty.textContent = 'Сначала добавьте бригаду на вкладке «Бригада»';
+      container.appendChild(empty);
+    }
+  }
+
+  // ── Logistics form (add item) ──
+  function openLogisticsForm(parentContainer, work, user, emp, logType) {
+    const formHtml = `
+      <div class="formrow">
+        <div><label>Тип</label><input disabled value="${esc(logType.short)}" /></div>
+        <div><label>Сотрудник</label><input disabled value="${esc(emp.fio)}" /></div>
+      </div>
+      <div class="formrow">
+        <div style="grid-column:1/-1"><label>Название</label><input id="logTitle" placeholder="S7-2541 Москва → Кемерово" /></div>
+      </div>
+      <div class="formrow">
+        <div><label>Дата с</label><input id="logDateFrom" type="date" /></div>
+        <div><label>Дата по</label><input id="logDateTo" type="date" /></div>
+      </div>
+      <div class="formrow">
+        <div style="grid-column:1/-1"><label>Описание</label><input id="logDesc" placeholder="детали рейса, бронирования и т.д." /></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn" id="logSaveBtn">💾 Сохранить</button>
+        <button class="btn ghost" id="logCancelBtn">Отмена</button>
+      </div>
+    `;
+
+    AsgardUI.showModal('✈️ Добавить: ' + esc(logType.short) + ' — ' + esc(emp.fio), formHtml);
+
+    setTimeout(() => {
+      const saveBtn = document.getElementById('logSaveBtn');
+      const cancelBtn = document.getElementById('logCancelBtn');
+
+      if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+          const title = document.getElementById('logTitle')?.value;
+          if (!title) { toast('Логистика', 'Укажите название', 'err'); return; }
+
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Сохранение…';
+
+          try {
+            await apiField('/logistics', {
+              method: 'POST',
+              body: JSON.stringify({
+                work_id: work.id,
+                employee_id: emp.id,
+                item_type: logType.value,
+                title,
+                description: document.getElementById('logDesc')?.value || '',
+                date_from: document.getElementById('logDateFrom')?.value || null,
+                date_to: document.getElementById('logDateTo')?.value || null,
+              }),
+            });
+            toast('Логистика', 'Запись добавлена', 'ok');
+            AsgardUI.hideModal();
+            // Refresh logistics tab after short delay
+            setTimeout(() => renderLogisticsTab(parentContainer, work, user), 200);
+          } catch (e) {
+            toast('Ошибка', String(e), 'err');
+            saveBtn.disabled = false;
+            saveBtn.textContent = '💾 Сохранить';
+          }
+        });
+      }
+
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => AsgardUI.hideModal());
+      }
+    }, 50);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TAB 3: ДАШБОРД
+  // ═══════════════════════════════════════════════════════════════════
+  async function renderDashboardTab(container, work) {
+    container.innerHTML = '<div class="help">Загрузка дашборда…</div>';
+
+    let data;
+    try {
+      data = await api(`/projects/${work.id}/dashboard`);
+    } catch (e) {
+      container.innerHTML = '<div class="help" style="color:#ef4444">Не удалось загрузить дашборд. Убедитесь, что Field активирован.</div>';
+      return;
+    }
+
+    container.innerHTML = '';
+
+    // ── KPI cards ──
+    const kpi = document.createElement('div');
+    kpi.className = 'kpi';
+    kpi.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px';
+
+    const cards = [
+      { title: 'Сейчас на объекте', value: (data.online_now || []).length, sub: `из ${data.total_crew || 0}`, color: '#10b981' },
+      { title: 'Сегодня отмечено', value: data.today_count || 0, sub: 'чекинов', color: '#3b82f6' },
+      { title: 'Часов сегодня', value: (data.today_hours || 0).toFixed(1), sub: 'всего', color: '#8b5cf6' },
+      { title: 'Заработок сегодня', value: money(Math.round(data.today_earned || 0)) + ' ₽', sub: 'по бригаде', color: '#D4A843' },
+    ];
+
+    cards.forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'k';
+      card.style.cssText = `padding:16px;border-radius:10px;background:var(--bg2, #151922);border:1px solid var(--brd, rgba(255,255,255,0.08))`;
+      card.innerHTML = `
+        <div style="font-size:12px;color:var(--t2, #8b949e);margin-bottom:6px">${esc(c.title)}</div>
+        <div style="font-size:24px;font-weight:700;color:${c.color}">${esc(String(c.value))}</div>
+        <div style="font-size:11px;color:var(--t2);margin-top:4px">${esc(c.sub)}</div>
+      `;
+      kpi.appendChild(card);
+    });
+
+    container.appendChild(kpi);
+
+    // ── Progress bar ──
+    if (data.progress) {
+      const pct = data.progress.pct || 0;
+      const progWrap = document.createElement('div');
+      progWrap.style.cssText = 'margin-bottom:20px;padding:16px;border-radius:10px;background:var(--bg2);border:1px solid var(--brd)';
+      progWrap.innerHTML = `
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:13px;font-weight:600">Прогресс</span>
+          <span style="font-size:13px;color:var(--gold, #D4A843);font-weight:600">${pct}%</span>
+        </div>
+        <div style="width:100%;height:8px;background:var(--bg1, #0D1117);border-radius:4px;overflow:hidden">
+          <div style="width:${Math.min(pct, 100)}%;height:100%;background:linear-gradient(90deg,#D4A843,#B8922E);border-radius:4px;transition:width .5s"></div>
+        </div>
+        <div style="font-size:12px;color:var(--t2);margin-top:6px">${data.progress.done || 0} / ${data.progress.total || '?'} ${esc(data.progress.unit || '')}</div>
+      `;
+      container.appendChild(progWrap);
+    }
+
+    // ── Online now list ──
+    if ((data.online_now || []).length > 0) {
+      const onlineWrap = document.createElement('div');
+      onlineWrap.style.cssText = 'margin-bottom:16px';
+      onlineWrap.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:8px">🟢 Сейчас на объекте (${data.online_now.length})</div>`;
+
+      const list = document.createElement('div');
+      list.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
+      data.online_now.forEach(p => {
+        const chip = document.createElement('span');
+        chip.style.cssText = 'padding:5px 12px;border-radius:8px;font-size:12px;background:rgba(16,185,129,0.1);color:#10b981;font-weight:500';
+        const time = p.checkin_at ? new Date(p.checkin_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
+        chip.textContent = `${p.fio || '?'} · ${time}`;
+        list.appendChild(chip);
+      });
+      onlineWrap.appendChild(list);
+      container.appendChild(onlineWrap);
+    }
+
+    // ── Week summary ──
+    if ((data.week_summary || []).length > 0) {
+      const weekWrap = document.createElement('div');
+      weekWrap.style.cssText = 'padding:16px;border-radius:10px;background:var(--bg2);border:1px solid var(--brd)';
+      weekWrap.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:12px">📊 За неделю</div>';
+
+      const weekTable = document.createElement('table');
+      weekTable.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
+      weekTable.innerHTML = `
+        <thead><tr style="color:var(--t2)">
+          <th style="text-align:left;padding:4px 8px">Дата</th>
+          <th style="text-align:center;padding:4px 8px">Чел.</th>
+          <th style="text-align:center;padding:4px 8px">Часов</th>
+          <th style="text-align:right;padding:4px 8px">Заработок</th>
+        </tr></thead>
+      `;
+      const weekBody = document.createElement('tbody');
+      data.week_summary.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid var(--brd, rgba(255,255,255,0.04))';
+        tr.innerHTML = `
+          <td style="padding:6px 8px">${formatDate ? formatDate(d.date) : d.date}</td>
+          <td style="padding:6px 8px;text-align:center">${d.workers}</td>
+          <td style="padding:6px 8px;text-align:center">${parseFloat(d.hours).toFixed(1)}</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--gold, #D4A843)">${money(Math.round(parseFloat(d.earned)))} ₽</td>
+        `;
+        weekBody.appendChild(tr);
+      });
+      weekTable.appendChild(weekBody);
+      weekWrap.appendChild(weekTable);
+      container.appendChild(weekWrap);
+    }
+
+    // Refresh button
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'btn ghost';
+    refreshBtn.textContent = '🔄 Обновить';
+    refreshBtn.style.cssText = 'margin-top:12px';
+    refreshBtn.addEventListener('click', () => renderDashboardTab(container, work));
+    container.appendChild(refreshBtn);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TAB 4: ТАБЕЛЬ (TIMESHEET)
+  // ═══════════════════════════════════════════════════════════════════
+  async function renderTimesheetTab(container, work) {
+    container.innerHTML = '<div class="help">Загрузка табеля…</div>';
+
+    // Default: last 30 days
+    const today = new Date();
+    const monthAgo = new Date(today);
+    monthAgo.setDate(monthAgo.getDate() - 30);
+    const dfFrom = monthAgo.toISOString().slice(0, 10);
+    const dfTo = today.toISOString().slice(0, 10);
+
+    container.innerHTML = '';
+
+    // Date filters
+    const filters = document.createElement('div');
+    filters.style.cssText = 'display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap';
+    filters.innerHTML = `
+      <label style="font-size:13px;color:var(--t2)">С:</label>
+      <input id="tsFrom" type="date" value="${dfFrom}" style="padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px" />
+      <label style="font-size:13px;color:var(--t2)">По:</label>
+      <input id="tsTo" type="date" value="${dfTo}" style="padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px" />
+      <button class="btn ghost" id="tsLoad" style="font-size:13px">Загрузить</button>
+      <button class="btn" id="tsExport" style="font-size:13px;margin-left:auto;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff">📥 Выгрузить Excel</button>
+    `;
+    container.appendChild(filters);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.id = 'tsTableWrap';
+    tableWrap.style.cssText = 'overflow-x:auto';
+    container.appendChild(tableWrap);
+
+    async function loadTimesheet() {
+      const from = document.getElementById('tsFrom')?.value || dfFrom;
+      const to = document.getElementById('tsTo')?.value || dfTo;
+      tableWrap.innerHTML = '<div class="help">Загрузка…</div>';
+
+      try {
+        const data = await api(`/projects/${work.id}/timesheet?from=${from}&to=${to}`);
+        renderTimesheetTable(tableWrap, data, from, to);
+      } catch (e) {
+        tableWrap.innerHTML = '<div class="help" style="color:#ef4444">Ошибка загрузки табеля</div>';
+      }
+    }
+
+    document.getElementById('tsLoad')?.addEventListener('click', loadTimesheet);
+
+    document.getElementById('tsExport')?.addEventListener('click', async () => {
+      const from = document.getElementById('tsFrom')?.value || dfFrom;
+      const to = document.getElementById('tsTo')?.value || dfTo;
+      const btn = document.getElementById('tsExport');
+      btn.disabled = true;
+      btn.textContent = 'Генерация…';
+      try {
+        const resp = await apiRaw(`/projects/${work.id}/timesheet?from=${from}&to=${to}&format=xlsx`);
+        if (!resp.ok) throw new Error('Ошибка генерации');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `timesheet_work${work.id}_${from}_${to}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('Табель', 'Excel скачан', 'ok');
+      } catch (e) {
+        toast('Ошибка', String(e), 'err');
+      }
+      btn.disabled = false;
+      btn.textContent = '📥 Выгрузить Excel';
+    });
+
+    // Initial load
+    loadTimesheet();
+  }
+
+  function renderTimesheetTable(wrap, data, from, to) {
+    const timesheet = data.timesheet || [];
+    const perDiem = data.per_diem_rate || 0;
+
+    if (!timesheet.length) {
+      wrap.innerHTML = '<div class="help" style="text-align:center;padding:40px;color:var(--t2)">Нет данных за выбранный период</div>';
+      return;
+    }
+
+    // Collect all unique dates
+    const allDates = new Set();
+    timesheet.forEach(emp => (emp.days || []).forEach(d => allDates.add(d.date)));
+    const dates = [...allDates].sort();
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
+
+    // Header
+    const thStyle = 'padding:6px 8px;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:11px;white-space:nowrap;position:sticky;top:0;background:var(--bg2, #151922)';
+    let headerHtml = `<tr><th style="${thStyle};text-align:left;min-width:150px">ФИО</th>`;
+    dates.forEach(d => {
+      const day = new Date(d + 'T00:00:00');
+      const label = String(day.getDate()).padStart(2, '0') + '.' + String(day.getMonth() + 1).padStart(2, '0');
+      headerHtml += `<th style="${thStyle};text-align:center">${label}</th>`;
+    });
+    headerHtml += `<th style="${thStyle};text-align:center">Дней</th>`;
+    headerHtml += `<th style="${thStyle};text-align:right">Часов</th>`;
+    headerHtml += `<th style="${thStyle};text-align:right">Зараб.</th>`;
+    headerHtml += `<th style="${thStyle};text-align:right">Суточные</th>`;
+    headerHtml += `<th style="${thStyle};text-align:right;color:var(--gold)">Итого</th>`;
+    headerHtml += '</tr>';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = headerHtml;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    let grandHours = 0, grandEarned = 0, grandPerDiem = 0, grandTotal = 0;
+
+    timesheet.forEach(emp => {
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid var(--brd, rgba(255,255,255,0.04))';
+
+      // Name
+      const tdName = document.createElement('td');
+      tdName.style.cssText = 'padding:6px 8px;font-weight:500;white-space:nowrap';
+      tdName.textContent = emp.fio || '—';
+      tr.appendChild(tdName);
+
+      // Day cells
+      const dayMap = {};
+      (emp.days || []).forEach(d => { dayMap[d.date] = d; });
+
+      dates.forEach(d => {
+        const td = document.createElement('td');
+        td.style.cssText = 'padding:4px 6px;text-align:center';
+        const day = dayMap[d];
+        if (day) {
+          const h = parseFloat(day.hours_paid || day.hours_worked || 0);
+          td.textContent = h.toFixed(1);
+          td.style.color = h >= 10 ? '#D4A843' : h >= 8 ? '#10b981' : '#3b82f6';
+          td.title = `${d}: ${h.toFixed(1)}ч, ${money(Math.round(day.amount || 0))}₽`;
+        } else {
+          td.textContent = '—';
+          td.style.color = 'var(--t2, #4b5563)';
+        }
+        tr.appendChild(td);
+      });
+
+      // Summary cells
+      const daysCount = emp.days_count || 0;
+      const hours = emp.total_paid_hours || emp.total_hours || 0;
+      const earned = emp.total_earned || 0;
+      const pd = emp.per_diem_total || 0;
+      const total = emp.grand_total || 0;
+
+      grandHours += hours;
+      grandEarned += earned;
+      grandPerDiem += pd;
+      grandTotal += total;
+
+      [
+        { v: daysCount, align: 'center' },
+        { v: hours.toFixed(1), align: 'right' },
+        { v: money(Math.round(earned)) + ' ₽', align: 'right' },
+        { v: money(Math.round(pd)) + ' ₽', align: 'right' },
+        { v: money(Math.round(total)) + ' ₽', align: 'right', gold: true },
+      ].forEach(c => {
+        const td = document.createElement('td');
+        td.style.cssText = `padding:6px 8px;text-align:${c.align};font-weight:${c.gold ? '700' : '500'}`;
+        if (c.gold) td.style.color = 'var(--gold, #D4A843)';
+        td.textContent = c.v;
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    });
+
+    // Totals row
+    const totalTr = document.createElement('tr');
+    totalTr.style.cssText = 'border-top:2px solid var(--brd);font-weight:700;background:var(--bg2, #151922)';
+    const tdTotalLabel = document.createElement('td');
+    tdTotalLabel.colSpan = dates.length + 1;
+    tdTotalLabel.style.cssText = 'padding:8px 10px;text-align:right';
+    tdTotalLabel.textContent = 'ИТОГО:';
+    totalTr.appendChild(tdTotalLabel);
+
+    [
+      { v: grandHours.toFixed(1) },
+      { v: money(Math.round(grandEarned)) + ' ₽' },
+      { v: money(Math.round(grandPerDiem)) + ' ₽' },
+      { v: money(Math.round(grandTotal)) + ' ₽', gold: true },
+    ].forEach(c => {
+      const td = document.createElement('td');
+      td.style.cssText = `padding:8px 8px;text-align:right;${c.gold ? 'color:var(--gold, #D4A843)' : ''}`;
+      td.textContent = c.v;
+      totalTr.appendChild(td);
+    });
+    tbody.appendChild(totalTr);
+
+    table.appendChild(tbody);
+    wrap.innerHTML = '';
+    wrap.appendChild(table);
+
+    // Summary text
+    const summary = document.createElement('div');
+    summary.className = 'help';
+    summary.style.cssText = 'margin-top:8px;font-size:12px';
+    summary.textContent = `${timesheet.length} сотрудников · суточные ${money(perDiem)} ₽/день`;
+    wrap.appendChild(summary);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PUBLIC API
+  // ═══════════════════════════════════════════════════════════════════
+  return { openFieldModal };
+})();

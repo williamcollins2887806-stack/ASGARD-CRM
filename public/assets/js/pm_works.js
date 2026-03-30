@@ -1024,6 +1024,20 @@ window.AsgardPmWorksPage=(function(){
           });
 
 
+          // ─── Полевой модуль ───
+          actions.push({ section: 'Полевой модуль' });
+          actions.push({
+            icon: '⚔️', label: 'Полевой модуль',
+            desc: 'Бригада, логистика, дашборд, табель',
+            onClick: () => {
+              if(window.AsgardFieldTab && AsgardFieldTab.openFieldModal){
+                AsgardFieldTab.openFieldModal(w, user);
+              } else {
+                toast("Field", "Модуль не загружен", "err");
+              }
+            }
+          });
+
           // ─── Оборудование (FaceKit Premium) ───
           actions.push({ section: 'Оборудование' });
           actions.push({
