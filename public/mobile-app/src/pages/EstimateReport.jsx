@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
@@ -10,6 +11,7 @@ import { formatMoney, relativeTime, formatDate } from '@/lib/utils';
 import {
   ArrowLeft, ChevronRight, ChevronDown, ChevronUp,
   Check, RotateCcw, HelpCircle, X, Send, MessageCircle,
+  Sparkles, AlertTriangle,
 } from 'lucide-react';
 
 /* ── Constants ──────────────────────────────────────────── */
@@ -32,7 +34,7 @@ const STATUS_MAP = {
   rejected: { label: 'Отклонён', color: 'var(--red-soft)' },
 };
 
-const ACTIONS = [
+const DIRECTOR_ACTIONS = [
   { id: 'approve', label: 'Согласовать', icon: Check, color: 'var(--green)', needComment: false },
   { id: 'rework', label: 'На доработку', icon: RotateCcw, color: 'var(--gold)', needComment: true },
   { id: 'question', label: 'Задать вопрос', icon: HelpCircle, color: 'var(--blue)', needComment: true },
@@ -42,6 +44,14 @@ const ACTIONS = [
 const ACTION_LABELS = {
   approve: 'Согласовано', rework: 'На доработку', question: 'Вопрос',
   reject: 'Отклонено', resubmit: 'Переотправлено', comment: 'Комментарий', send: 'Отправлено',
+};
+
+const EDITABLE_INPUT_STYLE = {
+  height: 44, width: 88, borderRadius: 10, textAlign: 'right',
+  fontFamily: 'monospace', fontSize: 15, padding: '0 10px',
+  background: 'rgba(250,238,218,0.12)',
+  border: '1px solid rgba(212,168,67,0.3)',
+  color: 'var(--text-primary)',
 };
 
 /* ── Helpers ─────────────────────────────────────────────── */
@@ -54,7 +64,7 @@ function blockSubtotal(calc, block) {
   return arr.reduce((s, r) => s + (Number(r.total) || 0), 0);
 }
 
-function isDirector(role) {
+function isDirectorRole(role) {
   return role && role.startsWith('DIRECTOR');
 }
 
@@ -63,23 +73,56 @@ function initials(name) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+function recalcRow(row, blockKey) {
+  const qty = Number(row.qty || row.quantity) || 0;
+  const rate = Number(row.rate || row.price) || 0;
+  const days = Number(row.days) || 0;
+  if (blockKey === 'transport_json' && row.distance_km) {
+    row.total = (Number(row.distance_km) || 0) * 2 * rate;
+  } else if (row.percent && row.base) {
+    row.total = (Number(row.percent) / 100) * (Number(row.base) || 0);
+  } else if (qty && rate && days) {
+    row.total = qty * rate * days;
+  } else if (qty && rate) {
+    row.total = qty * rate;
+  }
+  return row;
+}
+
 /* ── Main Component ──────────────────────────────────────── */
 
 export default function EstimateReport() {
   const { id } = useParams();
   const navigate = useNavigate();
   const haptic = useHaptic();
+  const user = useAuthStore((s) => s.user);
 
   const [estimate, setEstimate] = useState(null);
   const [calculation, setCalculation] = useState(null);
   const [comments, setComments] = useState([]);
   const [analogs, setAnalogs] = useState([]);
+  const [diff, setDiff] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [actionSheet, setActionSheet] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [sending, setSending] = useState(false);
   const [objectExpanded, setObjectExpanded] = useState(false);
+  const [autoCalcing, setAutoCalcing] = useState(false);
+  const saveTimer = useRef(null);
+
+  /* ── Role logic ── */
+  const userRole = user?.role || '';
+  const userId = user?.id;
+  const isDirector = isDirectorRole(userRole);
+  const isPM = userRole === 'PM' || userRole === 'HEAD_PM';
+  const isAdmin = userRole === 'ADMIN';
+  const isOwner = estimate?.pm_id === userId || estimate?.created_by === userId;
+  const canEdit = (isPM || isAdmin) && isOwner && ['draft', 'rework', 'question'].includes(estimate?.approval_status);
+  const canResubmit = (isPM || isAdmin) && isOwner && ['rework', 'question'].includes(estimate?.approval_status);
+  const canSend = (isPM || isAdmin) && isOwner && estimate?.approval_status === 'draft';
+  const canDirectorAct = isDirector && ['sent', 'rework', 'question'].includes(estimate?.approval_status);
+  const showFooter = canDirectorAct || canSend || canResubmit;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -90,10 +133,16 @@ export default function EstimateReport() {
         api.get(`/approval/estimates/${id}/comments`).catch(() => ({ comments: [] })),
         api.get(`/estimates/${id}/analogs`).catch(() => ({ analogs: [] })),
       ]);
-      setEstimate(eRes.estimate || eRes);
-      setCalculation(cRes.calculation || (eRes.estimate || eRes).calculation || null);
+      const est = eRes.estimate || eRes;
+      setEstimate(est);
+      setCalculation(cRes.calculation || est.calculation || null);
       setComments(cmRes.comments || []);
       setAnalogs(aRes.analogs || []);
+
+      // Fetch diff if rework/question and has versions
+      if (['rework', 'question'].includes(est.approval_status) && (est.current_version_no || 0) >= 2) {
+        api.get(`/estimates/${id}/diff`).then(d => setDiff(d)).catch(() => {});
+      }
     } catch { /* silently fail */ }
     finally { setLoading(false); }
   }, [id]);
@@ -101,7 +150,6 @@ export default function EstimateReport() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const status = STATUS_MAP[estimate?.approval_status] || STATUS_MAP.draft;
-  const canAct = ['sent', 'rework', 'question'].includes(estimate?.approval_status);
 
   const totalCost = Number(calculation?.total_cost) || Number(estimate?.cost) || 0;
   const totalPrice = Number(calculation?.total_with_margin) || Number(estimate?.amount) || Number(estimate?.total_price) || 0;
@@ -126,8 +174,8 @@ export default function EstimateReport() {
     finally { setSending(false); }
   };
 
-  /* ── Action handler ── */
-  const handleAction = async (action) => {
+  /* ── Director action handler ── */
+  const handleDirectorAction = async (action) => {
     if (sending) return;
     setSending(true);
     haptic.light();
@@ -143,13 +191,90 @@ export default function EstimateReport() {
     finally { setSending(false); }
   };
 
+  /* ── PM send / resubmit ── */
+  const handlePmAction = async () => {
+    if (sending) return;
+    setSending(true);
+    haptic.light();
+    try {
+      const endpoint = canSend ? 'send' : 'resubmit';
+      await api.post(`/approval/estimates/${id}/${endpoint}`, {});
+      haptic.success();
+      navigate(-1);
+    } catch { haptic.error(); }
+    finally { setSending(false); }
+  };
+
+  /* ── Mimir auto-calculate ── */
+  const handleAutoCalc = async () => {
+    if (autoCalcing) return;
+    setAutoCalcing(true);
+    haptic.medium();
+    try {
+      const res = await api.post(`/estimates/${id}/auto-calculate`, {});
+      if (res.calculation) {
+        setCalculation(res.calculation);
+        haptic.success();
+      }
+    } catch { haptic.error(); }
+    finally { setAutoCalcing(false); }
+  };
+
+  /* ── Save calculation (debounced) ── */
+  const saveCalculation = useCallback((newCalc) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        await api.put(`/estimates/${id}/calculation`, {
+          personnel_json: newCalc.personnel_json,
+          current_costs_json: newCalc.current_costs_json,
+          travel_json: newCalc.travel_json,
+          transport_json: newCalc.transport_json,
+          chemistry_json: newCalc.chemistry_json,
+          contingency_pct: newCalc.contingency_pct,
+          margin_pct: newCalc.margin_pct,
+          notes: newCalc.notes,
+        });
+      } catch { /* silent */ }
+    }, 2000);
+  }, [id]);
+
+  /* ── Update a row in calculation ── */
+  const updateCalcRow = useCallback((blockKey, rowIndex, field, value) => {
+    setCalculation(prev => {
+      if (!prev) return prev;
+      const arr = [...(prev[blockKey] || [])];
+      arr[rowIndex] = recalcRow({ ...arr[rowIndex], [field]: value }, blockKey);
+      const updated = { ...prev, [blockKey]: arr };
+
+      // Recalc subtotal + contingency + total
+      let subtotal = 0;
+      for (const b of BLOCKS) {
+        if (b.key === 'contingency') continue;
+        const items = updated[b.key];
+        if (Array.isArray(items)) subtotal += items.reduce((s, r) => s + (Number(r.total) || 0), 0);
+      }
+      updated.subtotal = subtotal;
+      const contPct = Number(updated.contingency_pct) || 5;
+      updated.contingency_amount = subtotal * contPct / 100;
+      updated.total_cost = subtotal + updated.contingency_amount;
+      const marginPct = Number(updated.margin_pct) || 0;
+      updated.total_with_margin = marginPct > 0 ? updated.total_cost * (1 + marginPct / 100) : updated.total_cost;
+
+      saveCalculation(updated);
+      return updated;
+    });
+  }, [saveCalculation]);
+
   /* ── Block detail view ── */
   if (selectedBlock !== null) {
     return (
       <CostBlockDetail
         block={BLOCKS[selectedBlock]}
         calculation={calculation}
+        canEdit={canEdit}
         onBack={() => setSelectedBlock(null)}
+        onUpdateRow={(blockKey, rowIndex, field, value) => updateCalcRow(blockKey, rowIndex, field, value)}
       />
     );
   }
@@ -176,10 +301,13 @@ export default function EstimateReport() {
     );
   }
 
+  /* ── Director's last comment (for PM rework/question) ── */
+  const directorComment = (canEdit || canResubmit) ? (estimate.last_director_comment || estimate.approval_comment) : null;
+
   return (
     <PageShell title="" noPadding scrollable>
       <PullToRefresh onRefresh={fetchData}>
-        <div className="px-4 flex flex-col gap-3 pb-4" style={{ paddingBottom: canAct ? 80 : 16 }}>
+        <div className="px-4 flex flex-col gap-3 pb-4" style={{ paddingBottom: showFooter ? 80 : 16 }}>
 
           {/* 1. HEADER */}
           <div className="flex flex-col gap-1.5 pt-1">
@@ -193,6 +321,23 @@ export default function EstimateReport() {
               >
                 {status.label}
               </span>
+              {/* Mimir auto-calc button for PM */}
+              {canEdit && (
+                <button
+                  onClick={handleAutoCalc}
+                  disabled={autoCalcing}
+                  className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold spring-tap"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(212,168,67,0.15), rgba(212,168,67,0.05))',
+                    border: '1px solid rgba(212,168,67,0.3)',
+                    color: 'var(--gold)',
+                    opacity: autoCalcing ? 0.5 : 1,
+                  }}
+                >
+                  <Sparkles size={14} />
+                  {autoCalcing ? 'Расчёт...' : 'Авторасчёт'}
+                </button>
+              )}
             </div>
             <h2 className="text-[15px] font-semibold leading-snug c-primary line-clamp-2 px-0.5">
               {estimate.title || estimate.name || estimate.object_name || `Просчёт #${estimate.id}`}
@@ -203,6 +348,37 @@ export default function EstimateReport() {
               {!estimate.sent_for_approval_at && estimate.created_at && ` \u00B7 ${relativeTime(estimate.created_at)}`}
             </p>
           </div>
+
+          {/* DIRECTOR REMARK BANNER (for PM on rework/question) */}
+          {directorComment && (
+            <div
+              className="rounded-xl px-4 py-3"
+              style={{
+                background: 'rgba(212,168,67,0.1)',
+                border: '1px solid rgba(212,168,67,0.25)',
+                animation: 'fadeInUp 200ms var(--ease-spring) both',
+              }}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <AlertTriangle size={14} style={{ color: 'var(--gold)' }} />
+                <span className="text-[12px] font-semibold" style={{ color: 'var(--gold)' }}>
+                  {estimate.approval_status === 'question' ? 'Вопрос директора' : 'Замечание директора'}
+                </span>
+              </div>
+              <p className="text-[14px] c-primary">{directorComment}</p>
+              {estimate.director_name && (
+                <p className="text-[11px] c-tertiary mt-1">
+                  {estimate.director_name}
+                  {estimate.approved_at && ` \u00B7 ${relativeTime(estimate.approved_at)}`}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* CHANGES DIFF (for PM on rework/question with 2+ versions) */}
+          {canResubmit && diff?.diff?.v1 && diff?.diff?.v2 && (
+            <DiffBlock diff={diff} />
+          )}
 
           {/* 2. METRICS 2×2 */}
           <div className="grid grid-cols-2 gap-2.5">
@@ -312,7 +488,7 @@ export default function EstimateReport() {
             ) : (
               <div className="flex flex-col gap-2">
                 {comments.map((c) => {
-                  const dir = isDirector(c.user_role);
+                  const dir = isDirectorRole(c.user_role);
                   const actionLabel = ACTION_LABELS[c.action];
                   const actionColor = c.action === 'approve' ? 'var(--green)'
                     : c.action === 'reject' ? 'var(--red-soft)'
@@ -379,8 +555,8 @@ export default function EstimateReport() {
           </div>
         </div>
 
-        {/* 10. STICKY FOOTER — "Decision" button */}
-        {canAct && (
+        {/* 10. STICKY FOOTER */}
+        {showFooter && (
           <div
             style={{
               position: 'sticky', bottom: 0, zIndex: 20,
@@ -393,19 +569,36 @@ export default function EstimateReport() {
               pointerEvents: 'none',
             }} />
             <div className="px-4" style={{ background: 'var(--bg-primary)' }}>
-              <button
-                onClick={() => { haptic.medium(); setActionSheet(true); }}
-                className="w-full py-3 rounded-xl font-semibold text-[15px] spring-tap"
-                style={{ background: 'var(--hero-gradient)', color: '#fff' }}
-              >
-                Решение
-              </button>
+              {canDirectorAct ? (
+                <button
+                  onClick={() => { haptic.medium(); setActionSheet(true); }}
+                  className="w-full py-3 rounded-xl font-semibold text-[15px] spring-tap"
+                  style={{ background: 'var(--hero-gradient)', color: '#fff' }}
+                >
+                  Решение
+                </button>
+              ) : (
+                <button
+                  onClick={handlePmAction}
+                  disabled={sending}
+                  className="w-full py-3 rounded-xl font-semibold text-[15px] spring-tap"
+                  style={{
+                    background: canResubmit
+                      ? 'linear-gradient(135deg, var(--gold), #e6a817)'
+                      : 'var(--hero-gradient)',
+                    color: '#fff',
+                    opacity: sending ? 0.5 : 1,
+                  }}
+                >
+                  {sending ? 'Отправка...' : canResubmit ? 'Отправить повторно →' : 'Отправить на согласование →'}
+                </button>
+              )}
             </div>
           </div>
         )}
       </PullToRefresh>
 
-      {/* ACTION SHEET */}
+      {/* DIRECTOR ACTION SHEET */}
       <BottomSheet open={actionSheet} onClose={() => setActionSheet(false)} title="Решение">
         <div className="flex flex-col gap-2.5 pb-4">
           <textarea
@@ -415,13 +608,13 @@ export default function EstimateReport() {
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
           />
-          {ACTIONS.map((action) => {
+          {DIRECTOR_ACTIONS.map((action) => {
             const disabled = action.needComment && !commentText.trim();
             return (
               <button
                 key={action.id}
                 disabled={disabled || sending}
-                onClick={() => handleAction(action)}
+                onClick={() => handleDirectorAction(action)}
                 className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 spring-tap"
                 style={{
                   background: `color-mix(in srgb, ${action.color} 15%, transparent)`,
@@ -464,9 +657,73 @@ function ObjectRow({ label, value }) {
   );
 }
 
+/* ── DiffBlock — shows changes between versions ───────────── */
+
+function DiffBlock({ diff }) {
+  const v1 = diff.diff.v1;
+  const v2 = diff.diff.v2;
+  const changes = [];
+
+  for (const block of BLOCKS) {
+    if (block.key === 'contingency') continue;
+    const arr1 = v1[block.key] || [];
+    const arr2 = v2[block.key] || [];
+    const maxLen = Math.max(arr1.length, arr2.length);
+    for (let i = 0; i < maxLen; i++) {
+      const old = arr1[i];
+      const cur = arr2[i];
+      if (!old && cur) {
+        changes.push({ block: block.title, item: cur.item, oldVal: null, newVal: cur.total });
+      } else if (old && !cur) {
+        changes.push({ block: block.title, item: old.item, oldVal: old.total, newVal: null });
+      } else if (old && cur && Number(old.total) !== Number(cur.total)) {
+        changes.push({ block: block.title, item: cur.item || old.item, oldVal: old.total, newVal: cur.total });
+      }
+    }
+  }
+
+  if (changes.length === 0) return null;
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{
+        background: 'rgba(212,168,67,0.08)',
+        border: '1px solid rgba(212,168,67,0.2)',
+        animation: 'fadeInUp 200ms var(--ease-spring) both',
+      }}
+    >
+      <div className="px-4 py-2.5 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(212,168,67,0.15)' }}>
+        <RotateCcw size={13} style={{ color: 'var(--gold)' }} />
+        <span className="text-[12px] font-semibold" style={{ color: 'var(--gold)' }}>
+          Изменения (v{diff.v1} → v{diff.v2})
+        </span>
+      </div>
+      <div className="px-4 py-2">
+        {changes.map((c, i) => (
+          <div key={i} className="flex items-center justify-between py-1.5" style={{ borderBottom: i < changes.length - 1 ? '0.5px solid rgba(212,168,67,0.1)' : 'none' }}>
+            <div className="flex-1">
+              <p className="text-[12px] c-secondary">{c.block}</p>
+              <p className="text-[13px] c-primary">{c.item}</p>
+            </div>
+            <div className="text-right">
+              {c.oldVal != null && (
+                <p className="text-[12px] c-tertiary" style={{ textDecoration: 'line-through' }}>{formatMoney(Number(c.oldVal) || 0, { short: true })}</p>
+              )}
+              {c.newVal != null && (
+                <p className="text-[13px] font-bold c-primary">{formatMoney(Number(c.newVal) || 0, { short: true })}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── CostBlockDetail ──────────────────────────────────────── */
 
-function CostBlockDetail({ block, calculation, onBack }) {
+function CostBlockDetail({ block, calculation, canEdit, onBack, onUpdateRow }) {
   const haptic = useHaptic();
 
   if (block.key === 'contingency') {
@@ -520,7 +777,8 @@ function CostBlockDetail({ block, calculation, onBack }) {
           ) : (
             <div className="card-glass overflow-hidden">
               {items.map((row, i) => {
-                const formula = buildFormula(row, block.key);
+                const editableFields = row.editable || [];
+                const isEditable = canEdit && editableFields.length > 0;
                 return (
                   <div
                     key={i}
@@ -541,7 +799,23 @@ function CostBlockDetail({ block, calculation, onBack }) {
                         </span>
                       )}
                     </div>
-                    {formula && <p className="text-[12px] c-secondary mt-0.5">{formula}</p>}
+
+                    {isEditable ? (
+                      <EditableFields
+                        row={row}
+                        editableFields={editableFields}
+                        blockKey={block.key}
+                        rowIndex={i}
+                        onUpdate={onUpdateRow}
+                      />
+                    ) : (
+                      <>
+                        {buildFormula(row, block.key) && (
+                          <p className="text-[12px] c-secondary mt-0.5">{buildFormula(row, block.key)}</p>
+                        )}
+                      </>
+                    )}
+
                     <p className="text-[14px] font-bold c-primary mt-1 text-right">{formatMoney(Number(row.total) || 0)}</p>
                   </div>
                 );
@@ -556,6 +830,47 @@ function CostBlockDetail({ block, calculation, onBack }) {
         </div>
       </PullToRefresh>
     </PageShell>
+  );
+}
+
+/* ── EditableFields — editable row inputs ─────────────────── */
+
+function EditableFields({ row, editableFields, blockKey, rowIndex, onUpdate }) {
+  const FIELD_LABELS = { qty: 'Кол-во', rate: 'Ставка', days: 'Дни', quantity: 'Кол-во', price: 'Цена' };
+
+  return (
+    <div className="flex flex-wrap gap-2 mt-2">
+      {['qty', 'quantity', 'rate', 'price', 'days'].map((field) => {
+        if (!editableFields.includes(field)) return null;
+        const val = row[field] ?? '';
+        return (
+          <div key={field} className="flex flex-col gap-0.5">
+            <span className="text-[10px] c-tertiary uppercase">{FIELD_LABELS[field] || field}</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={val}
+              onChange={(e) => onUpdate(blockKey, rowIndex, field, e.target.value)}
+              style={EDITABLE_INPUT_STYLE}
+            />
+          </div>
+        );
+      })}
+
+      {/* Non-editable fields shown as labels */}
+      {['qty', 'quantity', 'rate', 'price', 'days'].map((field) => {
+        if (editableFields.includes(field) || row[field] == null) return null;
+        return (
+          <div key={field} className="flex flex-col gap-0.5">
+            <span className="text-[10px] c-tertiary uppercase">{FIELD_LABELS[field] || field}</span>
+            <div className="text-[14px] c-primary font-semibold" style={{ height: 44, display: 'flex', alignItems: 'center' }}>
+              {field === 'rate' || field === 'price' ? formatMoney(Number(row[field]) || 0) : row[field]}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
