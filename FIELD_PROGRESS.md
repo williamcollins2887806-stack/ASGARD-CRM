@@ -37,9 +37,40 @@
 - sw.js: ✅ (shell cache-first, API network-first)
 - Nginx: ✅ (/field SPA fallback)
 - Задеплоено: ✅ (https://asgard-crm.ru/field/)
-## Сессия 5: [⬜ TODO]
-## Сессия 6: [⬜ TODO]
-## Сессия 7: [⬜ TODO]
-## Сессия 8: [⬜ TODO]
+## Сессия 5: [✅ DONE]
+- pages/home.js: ✅ (hero banner, greeting, 26 viking quotes, project card, call buttons, shift button with live timer, MoneyCard, tariff info, quick actions 4-col grid, geo on checkin/checkout)
+- pages/shift.js: ✅ (big timer HH:MM:SS, progress bar % of 11h, 3 states: active/completed/not started, geo info, project card)
+- index.html: ✅ (added home.js + shift.js script tags)
+- sw.js: ✅ (v1.1.0, added home.js + shift.js to SHELL_URLS)
+- Коммит: dd4b509
+
+## Сессия 6: [✅ DONE]
+- pages/money.js: ✅ (hero card with countUp, tariff grid, breakdown, all-time summary, per-project cards, detail page with advances)
+- pages/logistics.js: ✅ (6 type icons, 4 statuses, current/archive tabs, PDF download, driver call button)
+- index.html: ✅ (added money.js + logistics.js)
+- sw.js: ✅ (v1.2.0)
+- Коммит: 3dd511e
+
+## Сессия 7: [✅ DONE]
+- pages/history.js: ✅ (stats pills, grouped by year, project cards, detail page with timesheet table)
+- pages/profile.js: ✅ (avatar, permits with expiry warnings, 10 achievements with gold glow, theme toggle, logout)
+- index.html: ✅ (added history.js + profile.js)
+- sw.js: ✅ (v1.3.0)
+- Коммит: 314a109
+
+## Сессия 8: [✅ DONE]
+- pages/crew.js: ✅ (stats header, crew cards with status/call/manual checkin, BottomSheet form for manual checkin)
+- pages/report.js: ✅ (dynamic form from template: select→pills, number→+/-, text→input, downtime, previous reports)
+- pages/incidents.js: ✅ (7 types grid, 4 severity levels, description, previous incidents)
+- pages/photos.js: ✅ (date-grouped 3-col grid, fullscreen viewer, upload BottomSheet with type/caption)
+- index.html: ✅ (added crew.js + report.js + incidents.js + photos.js)
+- sw.js: ✅ (v1.4.0)
+- Коммит: fba21d7
+
+## Preview: [✅ DONE]
+- preview.html: ✅ (11 screens with mock data, phone frames, all animations)
+- Задеплоено: ✅ (https://asgard-crm.ru/field/preview.html)
+- Коммит: c94aacb
+
 ## Сессия 9: [⬜ TODO]
 ## Сессия 10: [⬜ TODO]
