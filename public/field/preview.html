@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0D0D0F">
+  <title>ASGARD Field — Preview All Screens</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; }
+    body {
+      margin: 0; padding: 0;
+      background: #111113; color: #F4F4F5;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 16px; line-height: 1.5;
+    }
+    input, button, textarea, select { font-family: inherit; font-size: inherit; }
+    button { cursor: pointer; }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+    @font-face { font-family: 'Inter'; src: url('/assets/fonts/inter.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Inter'; src: url('/assets/fonts/inter-600.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Inter'; src: url('/assets/fonts/inter-700.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+
+    /* Preview layout */
+    .preview-container {
+      max-width: 430px;
+      margin: 0 auto;
+      padding: 20px 0;
+    }
+    .preview-banner {
+      text-align: center;
+      padding: 40px 20px 30px;
+      background: linear-gradient(135deg, #1A1A2E 0%, #16213E 50%, #0F3460 100%);
+      border-radius: 0 0 24px 24px;
+      margin-bottom: 20px;
+    }
+    .preview-banner h1 {
+      color: #D4A843;
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      margin-bottom: 4px;
+    }
+    .preview-banner p {
+      color: #A1A1AA;
+      font-size: 0.875rem;
+    }
+    .screen-label {
+      text-align: center;
+      padding: 24px 20px 8px;
+      color: #D4A843;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .screen-label span {
+      background: rgba(212,168,67,0.1);
+      padding: 6px 16px;
+      border-radius: 9999px;
+      border: 1px solid rgba(212,168,67,0.2);
+    }
+    .phone-frame {
+      background: #0D0D0F;
+      border-radius: 32px;
+      border: 3px solid rgba(255,255,255,0.06);
+      margin: 8px 12px 20px;
+      overflow: hidden;
+      min-height: 600px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+
+    /* Animations */
+    @keyframes fieldPulse{0%,100%{box-shadow:0 0 0 0 rgba(196,154,42,0.4)}50%{box-shadow:0 0 0 12px rgba(196,154,42,0)}}
+    @keyframes fieldGreenPulse{0%,100%{box-shadow:0 0 0 0 rgba(52,199,89,0.35)}50%{box-shadow:0 0 0 12px rgba(52,199,89,0)}}
+    @keyframes fieldGlow{0%,100%{filter:drop-shadow(0 0 8px rgba(196,154,42,0.3))}50%{filter:drop-shadow(0 0 16px rgba(196,154,42,0.6))}}
+    @keyframes fieldSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes fieldSlideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes fieldFadeIn{from{opacity:0}to{opacity:1}}
+    @keyframes fieldPop{0%{transform:scale(0)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
+    @keyframes fieldShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+    @keyframes fieldTimer{from{width:100%}to{width:0%}}
+    @keyframes fieldSpin{to{transform:rotate(360deg)}}
+    @keyframes fieldGradShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+    @keyframes fieldCountUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  </style>
+</head>
+<body>
+<div class="preview-container">
+  <!-- Banner -->
+  <div class="preview-banner">
+    <img src="/assets/img/asgard_emblem.png" style="width:56px;height:56px;border-radius:14px;margin:0 auto 12px;animation:fieldGlow 3s ease infinite" alt="">
+    <h1>ASGARD FIELD</h1>
+    <p>Preview — All Screens (v1.4.0)</p>
+    <p style="color:#71717A;font-size:0.75rem;margin-top:8px">10 screens with mock data</p>
+  </div>
+
+  <div id="screens"></div>
+</div>
+
+<script>
+// ─── Mini Design System ────────────────────────────────────────────────
+const t = {
+  bg0: '#0D0D0F', bg1: '#18181B', bg2: '#1E1E23', bg3: '#27272B',
+  surface: '#1E1E23', surfaceHover: '#27272B', surfaceActive: '#2E2E33',
+  border: 'rgba(255,255,255,0.08)', borderLight: 'rgba(255,255,255,0.04)',
+  text: '#F4F4F5', textSec: '#A1A1AA', textTer: '#71717A', textInv: '#0D0D0F',
+  gold: '#D4A843', goldDark: '#C49A2A', goldLight: '#E8C560',
+  green: '#34C759', greenBg: 'rgba(52,199,89,0.12)',
+  red: '#E53935', redBg: 'rgba(229,57,53,0.12)',
+  blue: '#3B82F6', blueBg: 'rgba(59,130,246,0.12)',
+  orange: '#F59E0B', orangeBg: 'rgba(245,158,11,0.12)',
+  heroGrad: 'linear-gradient(135deg, #1A1A2E 0%, #16213E 50%, #0F3460 100%)',
+  goldGrad: 'linear-gradient(135deg, #C49A2A 0%, #D4A843 50%, #E8C560 100%)',
+  shiftActiveGrad: 'linear-gradient(135deg, #1A9F4A 0%, #34C759 100%)',
+  dangerGrad: 'linear-gradient(135deg, #C62828 0%, #E53935 100%)',
+  goldBg: 'linear-gradient(135deg, rgba(196,154,42,0.08) 0%, rgba(212,168,67,0.04) 100%)',
+  cardGrad: 'linear-gradient(180deg, #1E1E23 0%, #18181B 100%)',
+};
+
+function el(tag, props, ...children) {
+  const element = document.createElement(tag);
+  if (props) {
+    for (const [k, v] of Object.entries(props)) {
+      if (k === 'style' && typeof v === 'object') Object.assign(element.style, v);
+      else if (k === 'className') element.className = v;
+      else if (k === 'innerHTML') element.innerHTML = v;
+      else if (k.startsWith('on') && typeof v === 'function') element.addEventListener(k.slice(2).toLowerCase(), v);
+      else element.setAttribute(k, v);
+    }
+  }
+  for (const child of children) {
+    if (child == null) continue;
+    if (typeof child === 'string' || typeof child === 'number') element.appendChild(document.createTextNode(String(child)));
+    else if (child instanceof Node) element.appendChild(child);
+  }
+  return element;
+}
+
+function fmtMoney(n) { return (n||0).toLocaleString('ru-RU', {maximumFractionDigits:0}); }
+function fmtDate(s) { return s ? new Date(s).toLocaleDateString('ru-RU', {day:'numeric',month:'short'}) : ''; }
+function fmtTime(s) { return s ? new Date(s).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : ''; }
+
+// ─── Render Helper ─────────────────────────────────────────────────────
+function addScreen(id, title) {
+  const screens = document.getElementById('screens');
+  const label = el('div', { className: 'screen-label' }, el('span', {}, title));
+  screens.appendChild(label);
+  const frame = el('div', { className: 'phone-frame', id });
+  screens.appendChild(frame);
+  return frame;
+}
+
+function header(title, hasBack, rightHtml) {
+  const h = el('div', { style: {
+    display:'flex', alignItems:'center', gap:'12px',
+    padding:'12px 20px', background:t.bg1, borderBottom:'1px solid '+t.border,
+    minHeight:'48px',
+  }});
+  if (hasBack) h.appendChild(el('div', { style: {fontSize:'1.25rem',color:t.textSec}, innerHTML:'&#8592;' }));
+  h.appendChild(el('img', { src:'/assets/img/asgard_emblem.png', style: {height:'28px',width:'28px',borderRadius:'6px'} }));
+  h.appendChild(el('div', { style: {flex:'1',color:t.text,fontWeight:'600',fontSize:'1.125rem'} }, title));
+  if (rightHtml) h.appendChild(rightHtml);
+  return h;
+}
+
+function badge(text, color) {
+  const c = color || t.gold;
+  return el('span', { style: {
+    fontSize:'0.6875rem', fontWeight:'600', padding:'3px 10px', borderRadius:'9999px',
+    background:c+'18', color:c,
+  }}, text);
+}
+
+function sectionLabel(text) {
+  return el('div', { style: {
+    color:t.textTer, fontSize:'0.6875rem', fontWeight:'600', letterSpacing:'0.08em',
+    textTransform:'uppercase', marginBottom:'10px',
+  }}, text);
+}
+
+function card(s) {
+  const c = el('div', { style: {
+    background:t.surface, borderRadius:'16px', padding:'16px',
+    border:'1px solid '+t.border, animation:'fieldSlideUp 0.4s ease '+(s.delay||0)+'s both',
+  }});
+  if (s.title) {
+    const top = el('div', { style: {display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'8px'} });
+    top.appendChild(el('div', { style: {color:t.text,fontWeight:'600',fontSize:'1rem',flex:'1'} }, s.title));
+    if (s.badge) top.appendChild(badge(s.badge, s.badgeColor));
+    c.appendChild(top);
+  }
+  if (s.sub) c.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.8125rem',marginTop:'4px'} }, s.sub));
+  return c;
+}
+
+function moneyCard(amount, label, detail, delay) {
+  const c = el('div', { style: {
+    background:t.goldBg, borderRadius:'16px', padding:'20px',
+    border:'1px solid rgba(196,154,42,0.15)', animation:'fieldSlideUp 0.4s ease '+(delay||0)+'s both',
+  }});
+  if (label) c.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.75rem',fontWeight:'600',letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:'8px'} }, label));
+  c.appendChild(el('div', { style: {color:t.gold,fontWeight:'700',fontSize:'2rem',lineHeight:'1.1'} },
+    fmtMoney(amount), el('span', { style: {fontSize:'1.25rem',fontWeight:'600',marginLeft:'4px',color:t.goldDark} }, ' \u20BD')));
+  if (detail) c.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.75rem',marginTop:'8px'} }, detail));
+  return c;
+}
+
+function bigButton(label, icon, variant, pulse) {
+  const grads = { gold:t.goldGrad, green:t.shiftActiveGrad, red:t.dangerGrad, secondary:t.bg3 };
+  return el('button', { style: {
+    width:'100%', height:'64px', border:'none', borderRadius:'44px',
+    background:grads[variant]||grads.gold, color:variant==='secondary'?t.text:'#FFF',
+    fontSize:'1.125rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px',
+    animation:pulse?'fieldPulse 2.5s infinite':'none',
+  }},
+    icon ? el('span', { style: {fontSize:'1.3rem'} }, icon) : null,
+    el('span', {}, label)
+  );
+}
+
+function wrap(padding) {
+  return el('div', { style: { padding:padding||'16px 20px 24px', display:'flex', flexDirection:'column', gap:'16px' } });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 1: LOGIN
+// ═══════════════════════════════════════════════════════════════════════
+(function renderLogin() {
+  const f = addScreen('s-login', '1. Login — \u0412\u0445\u043E\u0434 \u043F\u043E SMS');
+  const page = el('div', { style: {
+    minHeight:'700px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+    padding:'40px 24px', background:t.heroGrad, backgroundSize:'200% 200%', animation:'fieldGradShift 12s ease infinite',
+    position:'relative', overflow:'hidden',
+  }});
+  // Pattern
+  page.appendChild(el('div', { style: {
+    position:'absolute', inset:'0', opacity:'0.02',
+    backgroundImage:'radial-gradient(circle at 25% 25%, #fff 1px, transparent 1px)',
+    backgroundSize:'48px 48px', pointerEvents:'none',
+  }}));
+  const w = el('div', { style: {position:'relative',zIndex:'1',width:'100%',maxWidth:'340px',display:'flex',flexDirection:'column',alignItems:'center'} });
+  w.appendChild(el('img', { src:'/assets/img/asgard_emblem.png', style: {width:'100px',height:'100px',borderRadius:'20px',animation:'fieldGlow 3s ease infinite',marginBottom:'20px'} }));
+  w.appendChild(el('div', { style: {color:t.gold,fontWeight:'700',fontSize:'2rem',letterSpacing:'4px',marginBottom:'4px'} }, 'ASGARD'));
+  w.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.6875rem',fontWeight:'600',letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:'24px'} }, '\u041F\u041E\u041B\u0415\u0412\u041E\u0419 \u041C\u041E\u0414\u0423\u041B\u042C'));
+  w.appendChild(el('div', { style: {width:'40px',height:'2px',borderRadius:'1px',background:t.goldGrad,opacity:'0.4',marginBottom:'32px'} }));
+  // Phone input
+  const phoneWrap = el('div', { style: {width:'100%',display:'flex',flexDirection:'column',gap:'16px'} });
+  phoneWrap.appendChild(el('input', { type:'tel', value:'+7 (916) 555-12-34', readOnly:true, style: {
+    width:'100%',height:'56px',boxSizing:'border-box',background:'rgba(255,255,255,0.06)',
+    border:'2px solid '+t.gold, borderRadius:'14px', padding:'0 20px',
+    color:t.text, fontSize:'1.25rem', fontWeight:'500', letterSpacing:'0.5px', textAlign:'center', outline:'none',
+  }}));
+  phoneWrap.appendChild(bigButton('\u041F\u041E\u041B\u0423\u0427\u0418\u0422\u042C \u041A\u041E\u0414', null, 'gold'));
+  w.appendChild(phoneWrap);
+  page.appendChild(w);
+  // Quote
+  page.appendChild(el('div', { style: {
+    position:'absolute', bottom:'24px', left:'24px', right:'24px', textAlign:'center',
+    color:'rgba(255,255,255,0.15)', fontSize:'0.75rem', fontStyle:'italic',
+  }}, '\u00AB\u0420\u0430\u043D\u043E \u0432\u0441\u0442\u0430\u043B \u2014 \u0443\u0436\u0435 \u043F\u043E\u0431\u0435\u0434\u0438\u043B\u00BB'));
+  f.appendChild(page);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 2: HOME
+// ═══════════════════════════════════════════════════════════════════════
+(function renderHome() {
+  const f = addScreen('s-home', '2. Home — \u0413\u043B\u0430\u0432\u043D\u0430\u044F');
+  f.appendChild(header('ASGARD', false));
+  // Hero
+  const hero = el('div', { style: {
+    position:'relative', padding:'24px 20px 20px',
+    background:t.heroGrad, backgroundSize:'200% 200%', animation:'fieldGradShift 8s ease infinite',
+    overflow:'hidden', borderRadius:'0 0 20px 20px',
+  }});
+  hero.appendChild(el('div', { style: {position:'absolute',right:'-10px',top:'50%',transform:'translateY(-50%)',fontSize:'4rem',fontWeight:'900',color:'rgba(255,255,255,0.03)',letterSpacing:'4px',pointerEvents:'none'} }, 'ASGARD'));
+  const hc = el('div', { style: {position:'relative',zIndex:'1'} });
+  hc.appendChild(el('img', { src:'/assets/img/asgard_emblem.png', style: {width:'24px',height:'24px',borderRadius:'4px',marginBottom:'8px',animation:'fieldGlow 3s ease infinite'} }));
+  hc.appendChild(el('div', { style: {color:t.text,fontWeight:'700',fontSize:'1.5rem',lineHeight:'1.2',marginBottom:'4px'} }, '\u0414\u043E\u0431\u0440\u043E\u0435 \u0443\u0442\u0440\u043E, \u0410\u043B\u0435\u043A\u0441\u0435\u0439!'));
+  hc.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.875rem',marginBottom:'12px'} }, '\u0432\u043E\u0441\u043A\u0440\u0435\u0441\u0435\u043D\u044C\u0435, 30 \u043C\u0430\u0440\u0442\u0430'));
+  hc.appendChild(el('div', { style: {color:t.gold,fontStyle:'italic',fontSize:'0.8125rem',lineHeight:'1.4',animation:'fieldFadeIn 1s ease 0.5s both'} }, '\u00AB\u0410\u0441\u0433\u0430\u0440\u0434 \u0441\u0442\u0440\u043E\u0438\u0442\u0441\u044F \u043A\u0430\u0436\u0434\u044B\u0439 \u0434\u0435\u043D\u044C\u00BB'));
+  hero.appendChild(hc);
+  f.appendChild(hero);
+
+  const c = wrap();
+  // Project card
+  const pc = card({ title:'\u041B\u0443\u043A\u043E\u0439\u043B \u2014 \u041E\u0431\u0449\u0435\u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0440\u0430\u0431\u043E\u0442\u044B', sub:'\u041C\u043E\u0441\u043A\u0432\u0430 \u00B7 \u041B\u0443\u043A\u043E\u0439\u043B \u0420\u0443\u0441\u044C', badge:'\u25B6 \u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0439', badgeColor:t.green, delay:0.1 });
+  const callRow = el('div', { style: {display:'flex',gap:'8px',marginTop:'12px',flexWrap:'wrap'} });
+  callRow.appendChild(el('a', { href:'#', style: {display:'inline-flex',alignItems:'center',gap:'8px',padding:'8px 16px',borderRadius:'9999px',background:t.bg2,border:'1px solid '+t.border,color:t.text,fontSize:'0.875rem'} }, '\uD83D\uDCDE \u0420\u041F: \u0418\u0432\u0430\u043D\u043E\u0432 \u0410.\u0412.'));
+  callRow.appendChild(el('a', { href:'#', style: {display:'inline-flex',alignItems:'center',gap:'8px',padding:'8px 16px',borderRadius:'9999px',background:t.bg2,border:'1px solid '+t.border,color:t.text,fontSize:'0.875rem'} }, '\uD83D\uDCDE \u041C\u0430\u0441\u0442\u0435\u0440: \u041F\u0435\u0442\u0440\u043E\u0432'));
+  pc.appendChild(callRow);
+  c.appendChild(pc);
+
+  // Shift button
+  c.appendChild(el('div', { style: {animation:'fieldSlideUp 0.4s ease 0.2s both'} },
+    bigButton('\u041D\u0410\u0427\u0410\u0422\u042C \u0421\u041C\u0415\u041D\u0423', '\u2694\uFE0F', 'gold', true)
+  ));
+
+  // Money card
+  c.appendChild(moneyCard(4500, '\u0421\u0435\u0433\u043E\u0434\u043D\u044F \u0437\u0430\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E', '4 500\u20BD/\u0441\u043C\u0435\u043D\u0430 + \u043F\u0430\u0439\u043A\u043E\u0432\u044B\u0435 700\u20BD/\u0441\u0443\u0442', 0.3));
+
+  // Tariff
+  const tariffCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'14px 16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.4s both'} });
+  tariffCard.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.6875rem',fontWeight:'600',letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:'6px'} }, '\u0422\u0410\u0420\u0418\u0424'));
+  tariffCard.appendChild(el('div', { style: {color:t.text,fontSize:'0.875rem',fontWeight:'500'} }, '\u0418\u0437\u043E\u043B\u0438\u0440\u043E\u0432\u0449\u0438\u043A \u00B7 9 \u0431\u0430\u043B\u043B\u043E\u0432'));
+  tariffCard.appendChild(el('div', { style: {color:t.gold,fontSize:'0.8125rem',marginTop:'4px'} }, '+ \u0421\u043E\u0432\u043C\u0435\u0449\u0435\u043D\u0438\u0435: \u041C\u043E\u043D\u0442\u0430\u0436\u043D\u0438\u043A (+1 \u0431\u0430\u043B\u043B)'));
+  c.appendChild(tariffCard);
+
+  // Quick actions
+  const grid = el('div', { style: {display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:'12px',animation:'fieldSlideUp 0.4s ease 0.5s both'} });
+  const actions = [
+    {icon:'\uD83D\uDCB0',label:'\u0414\u0435\u043D\u044C\u0433\u0438'},{icon:'\u2708\uFE0F',label:'\u0411\u0438\u043B\u0435\u0442\u044B'},{icon:'\uD83D\uDCF7',label:'\u0424\u043E\u0442\u043E'},{icon:'\uD83D\uDCCB',label:'\u0418\u0441\u0442\u043E\u0440\u0438\u044F'},
+    {icon:'\uD83D\uDC65',label:'\u0411\u0440\u0438\u0433\u0430\u0434\u0430'},{icon:'\uD83D\uDCDD',label:'\u041E\u0442\u0447\u0451\u0442'},{icon:'\u26A0\uFE0F',label:'\u0418\u043D\u0446\u0438\u0434\u0435\u043D\u0442'},{icon:'\uD83D\uDC64',label:'\u041F\u0440\u043E\u0444\u0438\u043B\u044C'},
+  ];
+  for (const a of actions) {
+    const btn = el('div', { style: {
+      display:'flex',flexDirection:'column',alignItems:'center',gap:'6px',
+      padding:'14px 4px',borderRadius:'14px',background:t.surface,border:'1px solid '+t.border,
+    }});
+    btn.appendChild(el('span', { style: {fontSize:'1.5rem'} }, a.icon));
+    btn.appendChild(el('span', { style: {fontSize:'0.6875rem',fontWeight:'500',color:t.textSec} }, a.label));
+    grid.appendChild(btn);
+  }
+  c.appendChild(grid);
+  f.appendChild(c);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 3: SHIFT (active)
+// ═══════════════════════════════════════════════════════════════════════
+(function renderShift() {
+  const f = addScreen('s-shift', '3. Shift — \u0421\u043C\u0435\u043D\u0430 (\u0430\u043A\u0442\u0438\u0432\u043D\u0430\u044F)');
+  f.appendChild(header('\u0421\u043C\u0435\u043D\u0430', true));
+  const c = wrap('20px');
+
+  // Status card
+  const sc = el('div', { style: {
+    background:t.greenBg, borderRadius:'20px', padding:'24px', textAlign:'center',
+    border:'1px solid rgba(52,199,89,0.2)', animation:'fieldSlideUp 0.4s ease both',
+  }});
+  sc.appendChild(el('div', { style: {color:t.green,fontSize:'0.75rem',fontWeight:'600',letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:'8px'} }, '\u25CF \u041D\u0410 \u041E\u0411\u042A\u0415\u041A\u0422\u0415'));
+  sc.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.8125rem',marginBottom:'16px'} }, '\u041D\u0430\u0447\u0430\u043B\u043E \u0441\u043C\u0435\u043D\u044B: 07:15'));
+  sc.appendChild(el('div', { style: {
+    color:t.text, fontSize:'3.5rem', fontWeight:'700', fontFamily:"'Inter', monospace",
+    letterSpacing:'2px', lineHeight:'1', animation:'fieldCountUp 0.5s ease both',
+  }}, '04:32:17'));
+  // Progress
+  const bar = el('div', { style: {marginTop:'16px',background:'rgba(255,255,255,0.06)',borderRadius:'6px',height:'8px',overflow:'hidden'} });
+  bar.appendChild(el('div', { style: {height:'100%',width:'41%',borderRadius:'6px',background:t.shiftActiveGrad} }));
+  sc.appendChild(bar);
+  sc.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.75rem',marginTop:'6px'} }, '41% \u043E\u0442 \u043D\u043E\u0440\u043C\u0430\u0442\u0438\u0432\u043D\u043E\u0439 \u0441\u043C\u0435\u043D\u044B (11\u0447)'));
+  c.appendChild(sc);
+
+  c.appendChild(el('div', { style: {animation:'fieldSlideUp 0.4s ease 0.15s both'} },
+    bigButton('\u0417\u0410\u0412\u0415\u0420\u0428\u0418\u0422\u042C \u0421\u041C\u0415\u041D\u0423', '\uD83D\uDEE1\uFE0F', 'red')
+  ));
+
+  // Geo
+  const geoCard = el('div', { style: {background:t.surface,borderRadius:'14px',padding:'14px 16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.25s both'} });
+  geoCard.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.6875rem',fontWeight:'600',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:'6px'} }, '\uD83D\uDCCD \u0413\u0415\u041E\u041B\u041E\u041A\u0410\u0426\u0418\u042F'));
+  geoCard.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.8125rem'} }, '\u0422\u043E\u0447\u043D\u043E\u0441\u0442\u044C: 12\u043C'));
+  c.appendChild(geoCard);
+
+  // Project
+  const projCard = card({ title:'\u041B\u0443\u043A\u043E\u0439\u043B \u2014 \u041E\u0431\u0449\u0435\u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435', sub:'\u041C\u043E\u0441\u043A\u0432\u0430 \u00B7 \u041B\u0443\u043A\u043E\u0439\u043B \u0420\u0443\u0441\u044C', delay:0.35 });
+  const fields = el('div', { style: {display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginTop:'12px'} });
+  fields.appendChild(el('div', {},
+    el('div', { style: {color:t.textTer,fontSize:'0.6875rem',textTransform:'uppercase',letterSpacing:'0.06em'} }, '\u0421\u0442\u0430\u0432\u043A\u0430'),
+    el('div', { style: {color:t.text,fontSize:'0.875rem',fontWeight:'500',marginTop:'2px'} }, '4 500\u20BD/\u0441\u043C')
+  ));
+  fields.appendChild(el('div', {},
+    el('div', { style: {color:t.textTer,fontSize:'0.6875rem',textTransform:'uppercase',letterSpacing:'0.06em'} }, '\u0421\u043C\u0435\u043D\u0430'),
+    el('div', { style: {color:t.text,fontSize:'0.875rem',fontWeight:'500',marginTop:'2px'} }, '11\u0447')
+  ));
+  projCard.appendChild(fields);
+  c.appendChild(projCard);
+  f.appendChild(c);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 4: MONEY
+// ═══════════════════════════════════════════════════════════════════════
+(function renderMoney() {
+  const f = addScreen('s-money', '4. Money — \u0424\u0438\u043D\u0430\u043D\u0441\u044B');
+  f.appendChild(header('\u041C\u043E\u0438 \u0434\u0435\u043D\u044C\u0433\u0438', true));
+  const c = wrap();
+
+  // Hero
+  const heroCard = el('div', { style: {
+    background:t.heroGrad, backgroundSize:'200% 200%', animation:'fieldGradShift 8s ease infinite',
+    borderRadius:'20px', padding:'24px', position:'relative', overflow:'hidden',
+  }});
+  heroCard.appendChild(el('div', { style: {position:'absolute',right:'-10px',top:'50%',transform:'translateY(-50%)',fontSize:'4rem',fontWeight:'900',color:'rgba(255,255,255,0.03)',letterSpacing:'4px',pointerEvents:'none'} }, 'ASGARD'));
+  const hc = el('div', { style: {position:'relative',zIndex:'1'} });
+  hc.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.75rem',fontWeight:'600',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:'4px'} }, '\u0422\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0440\u043E\u0435\u043A\u0442: \u041B\u0443\u043A\u043E\u0439\u043B'));
+  hc.appendChild(el('div', { style: {color:t.gold,fontWeight:'700',fontSize:'2.5rem',lineHeight:'1.1'} }, '67 500', el('span', { style: {fontSize:'1.5rem',fontWeight:'600',marginLeft:'4px'} }, ' \u20BD')));
+  hc.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.8125rem',marginTop:'8px'} }, '\u041E\u0442\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E 15 \u0441\u043C\u0435\u043D'));
+  const pbar = el('div', { style: {marginTop:'10px',background:'rgba(255,255,255,0.08)',borderRadius:'4px',height:'6px',overflow:'hidden'} });
+  pbar.appendChild(el('div', { style: {height:'100%',width:'75%',borderRadius:'4px',background:t.goldGrad} }));
+  hc.appendChild(pbar);
+  hc.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.6875rem',marginTop:'4px'} }, '15 \u0438\u0437 20 \u0441\u043C\u0435\u043D'));
+  heroCard.appendChild(hc);
+  c.appendChild(heroCard);
+
+  // Tariff
+  const tariffCard = el('div', { style: {background:t.goldBg,borderRadius:'16px',padding:'16px',border:'1px solid rgba(196,154,42,0.12)',animation:'fieldSlideUp 0.4s ease 0.1s both'} });
+  tariffCard.appendChild(sectionLabel('\u0422\u0410\u0420\u0418\u0424\u041D\u0410\u042F \u0421\u0415\u0422\u041A\u0410'));
+  const tRows = [
+    ['\u0418\u0437\u043E\u043B\u0438\u0440\u043E\u0432\u0449\u0438\u043A', '9 \u0431\u0430\u043B\u043B\u043E\u0432 \u00D7 500\u20BD = 4 500\u20BD/\u0441\u043C'],
+    ['+ \u0421\u043E\u0432\u043C\u0435\u0449\u0435\u043D\u0438\u0435: \u041C\u043E\u043D\u0442\u0430\u0436\u043D\u0438\u043A', '+1 \u0431\u0430\u043B\u043B (+500\u20BD)'],
+    ['\u041F\u0430\u0439\u043A\u043E\u0432\u044B\u0435', '700\u20BD/\u0441\u0443\u0442'],
+  ];
+  for (const [l,v] of tRows) {
+    const r = el('div', { style: {display:'flex',justifyContent:'space-between',padding:'6px 0',gap:'8px'} });
+    r.appendChild(el('span', { style: {color:l.startsWith('+')?t.gold:t.textSec,fontSize:'0.8125rem',flex:'1'} }, l));
+    r.appendChild(el('span', { style: {color:t.text,fontSize:'0.8125rem',fontWeight:'600',textAlign:'right',whiteSpace:'nowrap'} }, v));
+    tariffCard.appendChild(r);
+  }
+  tariffCard.appendChild(el('div', { style: {borderTop:'1px solid '+t.border,marginTop:'8px',paddingTop:'8px',color:t.textTer,fontSize:'0.6875rem',fontStyle:'italic'} }, '\u0422\u0430\u0440\u0438\u0444\u043D\u0430\u044F \u0441\u0435\u0442\u043A\u0430 \u0443\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u041A\u0443\u0434\u0440\u044F\u0448\u043E\u0432\u044B\u043C \u041E.\u0421. 01.10.2025'));
+  c.appendChild(tariffCard);
+
+  // Breakdown
+  const breakCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.2s both'} });
+  breakCard.appendChild(sectionLabel('\u0420\u0410\u0417\u0411\u0418\u0412\u041A\u0410'));
+  const bRows = [
+    ['\u0421\u0442\u0430\u0432\u043A\u0430: 15 \u0441\u043C\u0435\u043D \u00D7 5 000\u20BD', '75 000\u20BD', null, false],
+    ['\u041F\u0430\u0439\u043A\u043E\u0432\u044B\u0435: 15 \u0434\u043D. \u00D7 700\u20BD', '10 500\u20BD', null, false],
+    ['\u0411\u043E\u043D\u0443\u0441\u044B', '+3 000\u20BD', t.green, false],
+    ['\u0410\u0432\u0430\u043D\u0441\u044B', '\u221220 000\u20BD', t.red, false],
+    ['\u0418\u0422\u041E\u0413\u041E \u043D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', '88 500\u20BD', null, true],
+    ['\u041A \u0412\u042B\u041F\u041B\u0410\u0422\u0415', '68 500\u20BD', t.gold, true],
+  ];
+  for (const [l,v,color,bold] of bRows) {
+    const r = el('div', { style: {
+      display:'flex',justifyContent:'space-between',padding:'6px 0',
+      borderTop:bold?'1px solid '+t.border:'none',marginTop:bold?'4px':'0',paddingTop:bold?'8px':'6px',
+    }});
+    r.appendChild(el('span', { style: {color:color||t.textSec,fontSize:'0.8125rem',fontWeight:bold?'700':'400'} }, l));
+    r.appendChild(el('span', { style: {color:color||t.text,fontSize:'0.8125rem',fontWeight:bold?'700':'600'} }, v));
+    breakCard.appendChild(r);
+  }
+  c.appendChild(breakCard);
+  f.appendChild(c);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 5: LOGISTICS
+// ═══════════════════════════════════════════════════════════════════════
+(function renderLogistics() {
+  const f = addScreen('s-logistics', '5. Logistics — \u0411\u0438\u043B\u0435\u0442\u044B');
+  f.appendChild(header('\u0411\u0438\u043B\u0435\u0442\u044B \u0438 \u043B\u043E\u0433\u0438\u0441\u0442\u0438\u043A\u0430', true));
+  // Tabs
+  const tabs = el('div', { style: {display:'flex',gap:'8px',padding:'8px 20px'} });
+  tabs.appendChild(el('button', { style: {padding:'8px 16px',borderRadius:'9999px',border:'none',background:t.gold+'20',color:t.gold,fontSize:'0.8125rem',fontWeight:'600'} }, '\u0422\u0435\u043A\u0443\u0449\u0438\u0435'));
+  tabs.appendChild(el('button', { style: {padding:'8px 16px',borderRadius:'9999px',border:'none',background:'transparent',color:t.textSec,fontSize:'0.8125rem',fontWeight:'600'} }, '\u0410\u0440\u0445\u0438\u0432'));
+  f.appendChild(tabs);
+  const c = wrap('8px 20px 24px');
+
+  const items = [
+    {icon:'\u2708\uFE0F',title:'\u0411\u0438\u043B\u0435\u0442 \u0442\u0443\u0434\u0430',detail:'SU-1524 \u00B7 15 \u043C\u0430\u0440. \u00B7 \u041C\u043E\u0441\u043A\u0432\u0430 DME',status:'\u2705 \u041F\u043E\u043B\u0443\u0447\u0435\u043D\u043E',color:t.green,bg:'rgba(59,130,246,0.1)'},
+    {icon:'\uD83C\uDFE8',title:'\u0413\u043E\u0441\u0442\u0438\u043D\u0438\u0446\u0430',detail:'Holiday Inn \u00B7 15 \u043C\u0430\u0440. \u2013 30 \u0430\u043F\u0440.',status:'\uD83D\uDCCB \u0417\u0430\u0431\u0440\u043E\u043D.',color:t.blue,bg:'rgba(245,158,11,0.1)'},
+    {icon:'\u2708\uFE0F',title:'\u0411\u0438\u043B\u0435\u0442 \u043E\u0431\u0440\u0430\u0442\u043D\u043E',detail:'30 \u0430\u043F\u0440. \u00B7 \u041C\u043E\u0441\u043A\u0432\u0430',status:'\u23F3 \u041E\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044F',color:t.orange,bg:'rgba(59,130,246,0.1)'},
+    {icon:'\uD83D\uDE90',title:'\u0422\u0440\u0430\u043D\u0441\u0444\u0435\u0440',detail:'\u0410\u044D\u0440\u043E\u043F\u043E\u0440\u0442 \u2192 \u041E\u0431\u044A\u0435\u043A\u0442',status:'\uD83D\uDCE8 \u041E\u0442\u043F\u0440\u0430\u0432\u043B.',color:t.blue,bg:t.bg2},
+  ];
+
+  let d = 0;
+  for (const item of items) {
+    d += 0.06;
+    const lc = el('div', { style: {
+      background:t.surface,borderRadius:'16px',padding:'16px',border:'1px solid '+t.border,
+      animation:'fieldSlideUp 0.4s ease '+d+'s both',
+    }});
+    const top = el('div', { style: {display:'flex',gap:'12px',alignItems:'flex-start'} });
+    top.appendChild(el('div', { style: {width:'40px',height:'40px',borderRadius:'12px',background:item.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.25rem',flexShrink:'0'} }, item.icon));
+    const info = el('div', { style: {flex:'1',minWidth:'0'} });
+    info.appendChild(el('div', { style: {color:t.text,fontWeight:'600',fontSize:'0.9375rem'} }, item.title));
+    info.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.8125rem',marginTop:'3px'} }, item.detail));
+    top.appendChild(info);
+    top.appendChild(badge(item.status, item.color));
+    lc.appendChild(top);
+    // PDF button
+    const actions = el('div', { style: {display:'flex',gap:'8px',marginTop:'12px'} });
+    actions.appendChild(el('button', { style: {
+      padding:'8px 14px',borderRadius:'10px',border:'1px solid '+t.border,
+      background:t.bg2,color:t.text,fontSize:'0.8125rem',fontWeight:'500',display:'flex',alignItems:'center',gap:'6px',
+    }}, '\uD83D\uDCC4 \u0421\u043A\u0430\u0447\u0430\u0442\u044C PDF'));
+    lc.appendChild(actions);
+    c.appendChild(lc);
+  }
+  f.appendChild(c);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 6: HISTORY
+// ═══════════════════════════════════════════════════════════════════════
+(function renderHistory() {
+  const f = addScreen('s-history', '6. History — \u0418\u0441\u0442\u043E\u0440\u0438\u044F \u0440\u0430\u0431\u043E\u0442');
+  f.appendChild(header('\u0418\u0441\u0442\u043E\u0440\u0438\u044F \u0440\u0430\u0431\u043E\u0442', true));
+  const c = wrap();
+
+  // Stats
+  const statsRow = el('div', { style: {display:'flex',gap:'12px',animation:'fieldSlideUp 0.4s ease both'} });
+  ['\uD83D\uDCC5 4 \u043F\u0440\u043E\u0435\u043A\u0442\u0430', '\u2694\uFE0F 87 \u0441\u043C\u0435\u043D', '\uD83D\uDCB0 348 000\u20BD'].forEach(text => {
+    statsRow.appendChild(el('div', { style: {
+      flex:'1',textAlign:'center',padding:'10px 6px',borderRadius:'12px',
+      background:t.surface,border:'1px solid '+t.border,color:t.textSec,fontSize:'0.6875rem',fontWeight:'600',
+    }}, text));
+  });
+  c.appendChild(statsRow);
+
+  // 2026
+  c.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.75rem',fontWeight:'700',letterSpacing:'0.1em',marginTop:'8px',padding:'4px 0',borderBottom:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.1s both'} }, '2026'));
+  c.appendChild(card({ title:'\u041B\u0443\u043A\u043E\u0439\u043B \u2014 \u041E\u0431\u0449\u0435\u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435', sub:'\u041C\u043E\u0441\u043A\u0432\u0430 \u00B7 15 \u043C\u0430\u0440. \u2013 ... \u00B7 \u0420\u0430\u0431\u043E\u0447\u0438\u0439 \u00B7 \u0420\u041F: \u0418\u0432\u0430\u043D\u043E\u0432 \u0410.\u0412.', badge:'\u25B6 \u0442\u0435\u043A\u0443\u0449\u0438\u0439', badgeColor:t.green, delay:0.15 }));
+  c.appendChild(card({ title:'\u0422\u043E\u0431\u043E\u043B\u044C\u0441\u043A \u2014 \u041D\u041F\u0417 \u043C\u043E\u0434\u0435\u0440\u043D\u0438\u0437\u0430\u0446\u0438\u044F', sub:'\u0422\u043E\u0431\u043E\u043B\u044C\u0441\u043A \u00B7 10 \u044F\u043D\u0432. \u2013 28 \u0444\u0435\u0432. \u00B7 \u0420\u0430\u0431\u043E\u0447\u0438\u0439', badge:'42 \u0441\u043C\u0435\u043D', badgeColor:t.textSec, delay:0.2 }));
+
+  // 2025
+  c.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.75rem',fontWeight:'700',letterSpacing:'0.1em',marginTop:'8px',padding:'4px 0',borderBottom:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.25s both'} }, '2025'));
+  c.appendChild(card({ title:'\u041A\u0443\u0440\u0441\u043A\u0430\u044F \u0410\u042D\u0421 \u2014 \u041C\u043E\u043D\u0442\u0430\u0436', sub:'\u041A\u0443\u0440\u0441\u043A \u00B7 1 \u0430\u0432\u0433. \u2013 15 \u043D\u043E\u044F. \u00B7 \u041C\u0430\u0441\u0442\u0435\u0440 \u0441\u043C\u0435\u043D\u043D\u044B\u0439', badge:'30 \u0441\u043C\u0435\u043D', badgeColor:t.textSec, delay:0.3 }));
+  c.appendChild(card({ title:'\u041A\u0430\u0437\u0430\u043D\u044C \u2014 \u0424\u0430\u0441\u0430\u0434\u043D\u044B\u0435 \u0440\u0430\u0431\u043E\u0442\u044B', sub:'\u041A\u0430\u0437\u0430\u043D\u044C \u00B7 1 \u043C\u0430\u0440. \u2013 30 \u0438\u044E\u043D. \u00B7 \u0420\u0430\u0431\u043E\u0447\u0438\u0439', badge:'15 \u0441\u043C\u0435\u043D', badgeColor:t.textSec, delay:0.35 }));
+
+  f.appendChild(c);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 7: PROFILE
+// ═══════════════════════════════════════════════════════════════════════
+(function renderProfile() {
+  const f = addScreen('s-profile', '7. Profile — \u041F\u0440\u043E\u0444\u0438\u043B\u044C');
+  f.appendChild(header('\u041F\u0440\u043E\u0444\u0438\u043B\u044C', true));
+  const c = wrap();
+
+  // Avatar + Name
+  const hdr = el('div', { style: {display:'flex',flexDirection:'column',alignItems:'center',padding:'8px 0 12px',animation:'fieldSlideUp 0.4s ease both'} });
+  hdr.appendChild(el('div', { style: {
+    width:'80px',height:'80px',borderRadius:'50%',background:t.goldGrad,
+    display:'flex',alignItems:'center',justifyContent:'center',
+    fontSize:'1.75rem',fontWeight:'700',color:'#FFF',
+    boxShadow:'0 4px 20px rgba(196,154,42,0.3)',marginBottom:'12px',
+  }}, '\u0410\u041F'));
+  hdr.appendChild(el('div', { style: {color:t.text,fontWeight:'700',fontSize:'1.25rem'} }, '\u041F\u0435\u0442\u0440\u043E\u0432 \u0410\u043B\u0435\u043A\u0441\u0435\u0439 \u0418\u0432\u0430\u043D\u043E\u0432\u0438\u0447'));
+  hdr.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.875rem',marginTop:'2px'} }, '\u0418\u0437\u043E\u043B\u0438\u0440\u043E\u0432\u0449\u0438\u043A'));
+  hdr.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.8125rem',marginTop:'4px'} }, '+7 (916) 555-12-34'));
+  c.appendChild(hdr);
+
+  // Permits
+  const perCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.1s both'} });
+  perCard.appendChild(sectionLabel('\u0414\u041E\u041F\u0423\u0421\u041A\u0418 \u0418 \u0423\u0414\u041E\u0421\u0422\u041E\u0412\u0415\u0420\u0415\u041D\u0418\u042F'));
+  const permits = [
+    ['\u041D\u0410\u041A\u0421', 'HDPE-01234', '\u0427\u0435\u0440\u0435\u0437 45 \u0434\u043D.', t.green],
+    ['\u0418\u041C\u0422', '456789', '\u0427\u0435\u0440\u0435\u0437 12 \u0434\u043D.', t.orange],
+    ['\u041E\u0445\u0440\u0430\u043D\u0430 \u0442\u0440\u0443\u0434\u0430', '\u0415\u0441\u0442\u044C', '\u0418\u0441\u0442\u0451\u043A', t.red],
+  ];
+  for (const [lab,val,exp,color] of permits) {
+    const r = el('div', { style: {display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0'} });
+    const left = el('div', {});
+    left.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.6875rem',fontWeight:'600'} }, lab));
+    left.appendChild(el('div', { style: {color:t.text,fontSize:'0.875rem',marginTop:'1px'} }, val));
+    r.appendChild(left);
+    r.appendChild(badge(exp, color));
+    perCard.appendChild(r);
+  }
+  c.appendChild(perCard);
+
+  // Achievements
+  const achCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.2s both'} });
+  achCard.appendChild(sectionLabel('\u0414\u041E\u0421\u0422\u0418\u0416\u0415\u041D\u0418\u042F'));
+  const achGrid = el('div', { style: {display:'grid',gridTemplateColumns:'repeat(5, 1fr)',gap:'8px'} });
+  const achs = [
+    {icon:'\uD83D\uDD25',name:'\u041F\u0435\u0440\u0432\u0430\u044F \u0441\u043C\u0435\u043D\u0430',earned:true},
+    {icon:'\u26A1',name:'\u0416\u0435\u043B\u0435\u0437\u043D\u044B\u0439',earned:true},
+    {icon:'\uD83C\uDFC6',name:'\u0412\u0435\u0442\u0435\u0440\u0430\u043D',earned:true},
+    {icon:'\uD83D\uDCF7',name:'\u041B\u0435\u0442\u043E\u043F\u0438\u0441\u0435\u0446',earned:false},
+    {icon:'\u23F0',name:'\u041F\u0443\u043D\u043A\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u0439',earned:true},
+    {icon:'\uD83D\uDEE1\uFE0F',name:'\u0411\u0435\u0440\u0441\u0435\u0440\u043A',earned:false},
+    {icon:'\uD83D\uDDFA\uFE0F',name:'\u0421\u0442\u0440\u0430\u043D\u043D\u0438\u043A',earned:true},
+    {icon:'\uD83D\uDC8E',name:'\u0417\u043E\u043B\u043E\u0442\u043E\u0439 \u0444\u043E\u043D\u0434',earned:false},
+    {icon:'\uD83C\uDF93',name:'\u041D\u0430\u0441\u0442\u0430\u0432\u043D\u0438\u043A',earned:false},
+    {icon:'\uD83C\uDF27\uFE0F',name:'\u0412\u0441\u0435\u043F\u043E\u0433\u043E\u0434\u043D\u044B\u0439',earned:true},
+  ];
+  for (const a of achs) {
+    const ae = el('div', { style: {
+      display:'flex',flexDirection:'column',alignItems:'center',gap:'4px',padding:'10px 4px',borderRadius:'12px',
+      background:a.earned?t.goldBg:'transparent',opacity:a.earned?'1':'0.35',
+    }});
+    ae.appendChild(el('span', { style: {fontSize:'1.5rem',filter:a.earned?'none':'grayscale(1)',animation:a.earned?'fieldGlow 3s ease infinite':'none'} }, a.icon));
+    ae.appendChild(el('span', { style: {fontSize:'0.5625rem',color:a.earned?t.gold:t.textTer,textAlign:'center',lineHeight:'1.2'} }, a.name));
+    achGrid.appendChild(ae);
+  }
+  achCard.appendChild(achGrid);
+  c.appendChild(achCard);
+
+  // Theme toggle
+  const themeCard = el('div', { style: {
+    background:t.surface,borderRadius:'16px',padding:'16px',border:'1px solid '+t.border,
+    display:'flex',justifyContent:'space-between',alignItems:'center',animation:'fieldSlideUp 0.4s ease 0.3s both',
+  }});
+  themeCard.appendChild(el('div', { style: {color:t.text,fontSize:'0.9375rem'} }, '\uD83C\uDF19  \u0422\u0435\u043C\u0430: \u0422\u0451\u043C\u043D\u0430\u044F'));
+  themeCard.appendChild(el('span', { style: {color:t.textSec,fontSize:'0.8125rem'} }, '\u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0438\u0442\u044C'));
+  c.appendChild(themeCard);
+
+  // Logout
+  c.appendChild(el('button', { style: {
+    width:'100%',padding:'16px',borderRadius:'14px',border:'1px solid '+t.red+'40',
+    background:t.redBg,color:t.red,fontSize:'0.9375rem',fontWeight:'600',animation:'fieldSlideUp 0.4s ease 0.35s both',
+  }}, '\u0412\u044B\u0439\u0442\u0438'));
+
+  c.appendChild(el('div', { style: {textAlign:'center',color:t.textTer,fontSize:'0.625rem',marginTop:'8px'} }, 'ASGARD Field v1.4.0'));
+  f.appendChild(c);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 8: CREW (master)
+// ═══════════════════════════════════════════════════════════════════════
+(function renderCrew() {
+  const f = addScreen('s-crew', '8. Crew — \u0411\u0440\u0438\u0433\u0430\u0434\u0430 (master)');
+  f.appendChild(header('\u0411\u0440\u0438\u0433\u0430\u0434\u0430', true));
+  const c = wrap();
+
+  // Stats
+  const statsRow = el('div', { style: {display:'flex',gap:'8px',animation:'fieldSlideUp 0.4s ease both'} });
+  const stats = [
+    ['\u041D\u0430 \u043E\u0431\u044A\u0435\u043A\u0442\u0435','5',t.green],
+    ['\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0438','2',t.blue],
+    ['\u0412\u0441\u0435\u0433\u043E','8',t.textSec],
+  ];
+  for (const [l,v,col] of stats) {
+    const w = el('div', { style: {flex:'1',textAlign:'center',padding:'12px 8px',borderRadius:'14px',background:t.surface,border:'1px solid '+t.border} });
+    w.appendChild(el('div', { style: {color:col,fontSize:'1.5rem',fontWeight:'700'} }, v));
+    w.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.625rem',fontWeight:'600',textTransform:'uppercase',letterSpacing:'0.06em',marginTop:'2px'} }, l));
+    statsRow.appendChild(w);
+  }
+  c.appendChild(statsRow);
+
+  // Crew cards
+  const crew = [
+    {name:'\u0418\u0432\u0430\u043D\u043E\u0432 \u0418.\u0418.',status:'active',time:'07:05',phone:true},
+    {name:'\u0421\u0438\u0434\u043E\u0440\u043E\u0432 \u0421.\u0421.',status:'active',time:'07:12',phone:true},
+    {name:'\u041A\u0443\u0437\u043D\u0435\u0446\u043E\u0432 \u041A.\u041A.',status:'active',time:'07:20',phone:true},
+    {name:'\u041C\u043E\u0440\u043E\u0437\u043E\u0432 \u041C.\u041C.',status:'active',time:'07:30',phone:false},
+    {name:'\u0412\u043E\u043B\u043A\u043E\u0432 \u0412.\u0412.',status:'active',time:'07:35',phone:true},
+    {name:'\u041D\u043E\u0432\u0438\u043A\u043E\u0432 \u041D.\u041D.',status:'completed',time:'07:00',hours:'10\u04471\u043C\u0438\u043D',phone:true},
+    {name:'\u0415\u0433\u043E\u0440\u043E\u0432 \u0415.\u0415.',status:'completed',time:'07:10',hours:'9\u04472\u043C\u0438\u043D',phone:false},
+    {name:'\u041F\u043E\u043F\u043E\u0432 \u041F.\u041F.',status:'none',phone:true},
+  ];
+
+  let d = 0.1;
+  for (const m of crew) {
+    d += 0.05;
+    const isActive = m.status==='active';
+    const isCompleted = m.status==='completed';
+    const icon = isActive?'\u2705':isCompleted?'\uD83D\uDD35':'\u2B55';
+    const label = isActive?'\u041D\u0430 \u043E\u0431\u044A\u0435\u043A\u0442\u0435':isCompleted?'\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u043B':'\u041D\u0435 \u043E\u0442\u043C\u0435\u0442\u0438\u043B\u0441\u044F';
+
+    const cc = el('div', { style: {
+      background:t.surface,borderRadius:'14px',padding:'14px 16px',
+      border:'1px solid '+(isActive?'rgba(52,199,89,0.15)':t.border),
+      animation:'fieldSlideUp 0.4s ease '+d+'s both',
+    }});
+    const top = el('div', { style: {display:'flex',alignItems:'center',gap:'10px'} });
+    top.appendChild(el('span', { style: {fontSize:'1.1rem'} }, icon));
+    const info = el('div', { style: {flex:'1'} });
+    info.appendChild(el('div', { style: {color:t.text,fontWeight:'600',fontSize:'0.9375rem'} }, m.name));
+    const meta = [];
+    if (m.time) meta.push(m.time);
+    if (m.hours) meta.push(m.hours);
+    if (meta.length) info.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.75rem',marginTop:'1px'} }, meta.join(' \u00B7 ')));
+    top.appendChild(info);
+    if (m.phone) top.appendChild(el('a', { href:'#', style: {width:'36px',height:'36px',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',background:t.bg2,border:'1px solid '+t.border,fontSize:'1rem'} }, '\uD83D\uDCDE'));
+    if (!isActive && !isCompleted) {
+      top.appendChild(el('button', { style: {padding:'4px 10px',borderRadius:'8px',border:'1px solid '+t.gold+'40',background:'transparent',color:t.gold,fontSize:'0.6875rem',fontWeight:'600'} }, '\u270F\uFE0F \u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C'));
+    }
+    cc.appendChild(top);
+    c.appendChild(cc);
+  }
+
+  c.appendChild(el('div', { style: {marginTop:'8px',animation:'fieldSlideUp 0.4s ease 0.6s both'} },
+    bigButton('\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043E\u0442\u0447\u0451\u0442', '\uD83D\uDCDD', 'gold')
+  ));
+  f.appendChild(c);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 9: REPORT (master)
+// ═══════════════════════════════════════════════════════════════════════
+(function renderReport() {
+  const f = addScreen('s-report', '9. Report — \u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043E\u0442\u0447\u0451\u0442 (master)');
+  f.appendChild(header('\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043E\u0442\u0447\u0451\u0442', true));
+  const c = wrap();
+
+  // Date
+  const dateCard = el('div', { style: {background:t.surface,borderRadius:'14px',padding:'14px 16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease both'} });
+  dateCard.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.75rem',fontWeight:'600',marginBottom:'4px'} }, '\u041E\u0442\u0447\u0451\u0442 \u0437\u0430 \u0432\u043E\u0441\u043A\u0440\u0435\u0441\u0435\u043D\u044C\u0435, 30 \u043C\u0430\u0440\u0442\u0430'));
+  dateCard.appendChild(el('div', { style: {color:t.text,fontSize:'0.9375rem',fontWeight:'500'} }, '\u041B\u0443\u043A\u043E\u0439\u043B \u2014 \u041E\u0431\u0449\u0435\u0441\u0442\u0440\u043E\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0440\u0430\u0431\u043E\u0442\u044B'));
+  c.appendChild(dateCard);
+
+  // Form
+  const formCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.1s both'} });
+
+  // Select field
+  formCard.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.75rem',fontWeight:'600',marginBottom:'6px'} }, '\u0422\u0438\u043F \u0440\u0430\u0431\u043E\u0442 *'));
+  const pills = el('div', { style: {display:'flex',flexWrap:'wrap',gap:'8px',marginBottom:'14px'} });
+  ['\u041C\u043E\u043D\u0442\u0430\u0436','\u0414\u0435\u043C\u043E\u043D\u0442\u0430\u0436','\u0418\u0437\u043E\u043B\u044F\u0446\u0438\u044F','\u041F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u043A\u0430'].forEach((p,i) => {
+    pills.appendChild(el('button', { style: {
+      padding:'8px 16px',borderRadius:'9999px',
+      border:'1px solid '+(i===2?t.gold:t.border),
+      background:i===2?t.gold+'20':t.bg2,
+      color:i===2?t.gold:t.textSec,fontSize:'0.875rem',fontWeight:'600',
+    }}, p));
+  });
+  formCard.appendChild(pills);
+
+  // Number field
+  formCard.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.75rem',fontWeight:'600',marginBottom:'6px'} }, '\u041C\u0435\u0442\u0440\u044B \u043F\u043E\u0433\u043E\u043D\u043D\u044B\u0435'));
+  const numRow = el('div', { style: {display:'flex',alignItems:'center',gap:'12px',marginBottom:'14px'} });
+  numRow.appendChild(el('button', { style: {width:'44px',height:'44px',borderRadius:'12px',border:'1px solid '+t.border,background:t.bg2,color:t.text,fontSize:'1.25rem',fontWeight:'700'} }, '\u2212'));
+  numRow.appendChild(el('input', { type:'number',value:'24',readOnly:true, style: {flex:'1',height:'44px',textAlign:'center',fontSize:'1.25rem',fontWeight:'600',background:t.bg2,border:'1px solid '+t.border,borderRadius:'12px',color:t.text,outline:'none'} }));
+  numRow.appendChild(el('button', { style: {width:'44px',height:'44px',borderRadius:'12px',border:'1px solid '+t.border,background:t.bg2,color:t.text,fontSize:'1.25rem',fontWeight:'700'} }, '+'));
+  formCard.appendChild(numRow);
+
+  // Notes
+  formCard.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.75rem',fontWeight:'600',marginBottom:'6px'} }, '\u0417\u0430\u043C\u0435\u0442\u043A\u0438'));
+  formCard.appendChild(el('textarea', { readOnly:true, value:'\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0430 \u0438\u0437\u043E\u043B\u044F\u0446\u0438\u044F \u0441\u0435\u043A\u0446\u0438\u0438 B3...', style: {
+    width:'100%',padding:'14px',borderRadius:'12px',border:'1px solid '+t.border,
+    background:t.bg2,color:t.text,fontSize:'0.9375rem',minHeight:'80px',boxSizing:'border-box',resize:'vertical',outline:'none',
+  }}));
+
+  // Downtime
+  const dtWrap = el('div', { style: {marginTop:'8px',borderTop:'1px solid '+t.border,paddingTop:'12px'} });
+  dtWrap.appendChild(el('div', { style: {color:t.textSec,fontSize:'0.75rem',fontWeight:'600',marginBottom:'6px'} }, '\u041F\u0440\u043E\u0441\u0442\u043E\u0439 (\u043C\u0438\u043D\u0443\u0442\u044B)'));
+  dtWrap.appendChild(el('input', { type:'number',value:'30',readOnly:true, style: {width:'100%',padding:'12px',borderRadius:'12px',border:'1px solid '+t.border,background:t.bg2,color:t.text,fontSize:'0.9375rem',boxSizing:'border-box',outline:'none'} }));
+  dtWrap.appendChild(el('input', { type:'text',value:'\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435 \u043C\u0430\u0442\u0435\u0440\u0438\u0430\u043B\u0430',readOnly:true, style: {width:'100%',padding:'12px',borderRadius:'12px',marginTop:'8px',border:'1px solid '+t.border,background:t.bg2,color:t.text,fontSize:'0.875rem',boxSizing:'border-box',outline:'none'} }));
+  formCard.appendChild(dtWrap);
+  c.appendChild(formCard);
+
+  c.appendChild(el('div', { style: {animation:'fieldSlideUp 0.4s ease 0.2s both'} },
+    bigButton('\u041E\u0422\u041F\u0420\u0410\u0412\u0418\u0422\u042C \u0420\u041F', '\uD83D\uDCE4', 'gold')
+  ));
+
+  // Previous
+  const prevCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'14px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.3s both'} });
+  prevCard.appendChild(sectionLabel('\u041F\u0420\u0415\u0414\u042B\u0414\u0423\u0429\u0418\u0415 \u041E\u0422\u0427\u0401\u0422\u042B'));
+  const prevRows = [
+    ['29 \u043C\u0430\u0440.','\u041F\u0440\u0438\u043D\u044F\u0442',t.green],
+    ['28 \u043C\u0430\u0440.','\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D',t.blue],
+    ['27 \u043C\u0430\u0440.','\u041F\u0440\u0438\u043D\u044F\u0442',t.green],
+  ];
+  for (const [d,s,sc] of prevRows) {
+    const r = el('div', { style: {display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:'1px solid '+t.borderLight} });
+    r.appendChild(el('span', { style: {color:t.text,fontSize:'0.8125rem'} }, d));
+    r.appendChild(badge(s, sc));
+    prevCard.appendChild(r);
+  }
+  c.appendChild(prevCard);
+  f.appendChild(c);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 10: INCIDENTS (master)
+// ═══════════════════════════════════════════════════════════════════════
+(function renderIncidents() {
+  const f = addScreen('s-incidents', '10. Incidents — \u0418\u043D\u0446\u0438\u0434\u0435\u043D\u0442 (master)');
+  f.appendChild(header('\u0418\u043D\u0446\u0438\u0434\u0435\u043D\u0442', true));
+  const c = wrap();
+
+  // Type card
+  const typeCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease both'} });
+  typeCard.appendChild(sectionLabel('\u0422\u0418\u041F \u0418\u041D\u0426\u0418\u0414\u0415\u041D\u0422\u0410'));
+  const typeGrid = el('div', { style: {display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:'8px'} });
+  const types = [
+    {icon:'\uD83D\uDCE6',label:'\u041D\u0435\u0442 \u043C\u0430\u0442\u0435\u0440.',active:false},
+    {icon:'\uD83D\uDD27',label:'\u041F\u043E\u043B\u043E\u043C\u043A\u0430',active:true},
+    {icon:'\uD83C\uDF27\uFE0F',label:'\u041F\u043E\u0433\u043E\u0434\u0430',active:false},
+    {icon:'\uD83D\uDEAB',label:'\u041D\u0435\u0442 \u0434\u043E\u043F\u0443\u0441\u043A\u0430',active:false},
+    {icon:'\uD83E\uDE79',label:'\u0422\u0440\u0430\u0432\u043C\u0430',active:false},
+    {icon:'\u26A0\uFE0F',label:'\u0411\u0440\u0430\u043A',active:false},
+    {icon:'\uD83D\uDCCB',label:'\u0414\u0440\u0443\u0433\u043E\u0435',active:false},
+  ];
+  for (const tp of types) {
+    const btn = el('button', { style: {
+      display:'flex',flexDirection:'column',alignItems:'center',gap:'4px',
+      padding:'12px 4px',borderRadius:'12px',
+      border:'1px solid '+(tp.active?t.red:t.border),
+      background:tp.active?t.red+'15':t.bg2,
+      color:tp.active?t.red:t.textSec,
+    }});
+    btn.appendChild(el('span', { style: {fontSize:'1.25rem'} }, tp.icon));
+    btn.appendChild(el('span', { style: {fontSize:'0.5625rem',fontWeight:'600',textAlign:'center'} }, tp.label));
+    typeGrid.appendChild(btn);
+  }
+  typeCard.appendChild(typeGrid);
+  c.appendChild(typeCard);
+
+  // Severity
+  const sevCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.1s both'} });
+  sevCard.appendChild(sectionLabel('\u0421\u0422\u0415\u041F\u0415\u041D\u042C \u0422\u042F\u0416\u0415\u0421\u0422\u0418'));
+  const sevRow = el('div', { style: {display:'flex',gap:'8px'} });
+  const sevs = [
+    ['\u041D\u0438\u0437\u043A\u0438\u0439',t.green,false],
+    ['\u0421\u0440\u0435\u0434\u043D\u0438\u0439',t.orange,true],
+    ['\u0412\u044B\u0441\u043E\u043A\u0438\u0439',t.red,false],
+    ['\u041A\u0440\u0438\u0442\u0438\u0447\u043D\u044B\u0439','#FF1744',false],
+  ];
+  for (const [l,col,active] of sevs) {
+    sevRow.appendChild(el('button', { style: {
+      flex:'1',padding:'10px 8px',borderRadius:'12px',
+      border:'1px solid '+(active?col:t.border),
+      background:active?col+'15':t.bg2,
+      color:active?col:t.textSec,
+      fontSize:'0.75rem',fontWeight:'600',
+    }}, l));
+  }
+  sevCard.appendChild(sevRow);
+  c.appendChild(sevCard);
+
+  // Description
+  const descCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'16px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.2s both'} });
+  descCard.appendChild(sectionLabel('\u041E\u041F\u0418\u0421\u0410\u041D\u0418\u0415 *'));
+  descCard.appendChild(el('textarea', { readOnly:true, value:'\u0412\u044B\u0448\u0435\u043B \u0438\u0437 \u0441\u0442\u0440\u043E\u044F \u043A\u043E\u043C\u043F\u0440\u0435\u0441\u0441\u043E\u0440 \u043D\u0430 \u0443\u0447\u0430\u0441\u0442\u043A\u0435 B2. \u041D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u0430 \u0437\u0430\u043C\u0435\u043D\u0430 \u043A\u043B\u0430\u043F\u0430\u043D\u0430.', style: {
+    width:'100%',padding:'14px',borderRadius:'12px',border:'1px solid '+t.border,
+    background:t.bg2,color:t.text,fontSize:'0.9375rem',minHeight:'100px',boxSizing:'border-box',resize:'vertical',outline:'none',
+  }}));
+  c.appendChild(descCard);
+
+  c.appendChild(el('div', { style: {animation:'fieldSlideUp 0.4s ease 0.3s both'} },
+    bigButton('\u041E\u0422\u041F\u0420\u0410\u0412\u0418\u0422\u042C \u0421\u0418\u0413\u041D\u0410\u041B', '\u26A0\uFE0F', 'red')
+  ));
+
+  // Previous
+  const prevCard = el('div', { style: {background:t.surface,borderRadius:'16px',padding:'14px',border:'1px solid '+t.border,animation:'fieldSlideUp 0.4s ease 0.4s both'} });
+  prevCard.appendChild(sectionLabel('\u041F\u0420\u0415\u0414\u042B\u0414\u0423\u0429\u0418\u0415 \u0418\u041D\u0426\u0418\u0414\u0415\u041D\u0422\u042B'));
+  const prevInc = [
+    ['\uD83C\uDF27\uFE0F','\u0421\u0438\u043B\u044C\u043D\u044B\u0439 \u0434\u043E\u0436\u0434\u044C, \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430 \u0440\u0430\u0431\u043E\u0442 \u043D\u0430 2\u0447','25 \u043C\u0430\u0440.','low',t.green],
+    ['\uD83D\uDCE6','\u0417\u0430\u0434\u0435\u0440\u0436\u043A\u0430 \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438 \u0443\u0442\u0435\u043F\u043B\u0438\u0442\u0435\u043B\u044F','20 \u043C\u0430\u0440.','medium',t.orange],
+  ];
+  for (const [icon,desc,date,sev,col] of prevInc) {
+    const r = el('div', { style: {display:'flex',alignItems:'center',gap:'8px',padding:'6px 0',borderBottom:'1px solid '+t.borderLight} });
+    r.appendChild(el('span', { style: {fontSize:'1rem'} }, icon));
+    const info = el('div', { style: {flex:'1'} });
+    info.appendChild(el('div', { style: {color:t.text,fontSize:'0.8125rem'} }, desc));
+    info.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.6875rem'} }, date));
+    r.appendChild(info);
+    r.appendChild(badge(sev, col));
+    prevCard.appendChild(r);
+  }
+  c.appendChild(prevCard);
+  f.appendChild(c);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCREEN 11: PHOTOS
+// ═══════════════════════════════════════════════════════════════════════
+(function renderPhotos() {
+  const f = addScreen('s-photos', '11. Photos — \u0424\u043E\u0442\u043E\u043E\u0442\u0447\u0451\u0442\u044B');
+  const rightBtn = el('button', { style: {padding:'6px 14px',borderRadius:'10px',border:'none',background:t.goldGrad,color:'#FFF',fontSize:'0.8125rem',fontWeight:'600'} }, '+ \u0424\u043E\u0442\u043E');
+  f.appendChild(header('\u0424\u043E\u0442\u043E\u043E\u0442\u0447\u0451\u0442\u044B', true, rightBtn));
+  const c = wrap();
+
+  // Date label
+  c.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.75rem',fontWeight:'600',marginTop:'4px',animation:'fieldSlideUp 0.4s ease both'} }, '30 \u043C\u0430\u0440\u0442\u0430 2026'));
+
+  // Photo grid
+  const grid = el('div', { style: {display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:'4px',borderRadius:'12px',overflow:'hidden',animation:'fieldSlideUp 0.4s ease 0.05s both'} });
+  const colors = ['#2a3a5c','#3a2a5c','#2a5c3a','#5c3a2a','#3a5c5c','#5c5c2a'];
+  for (let i = 0; i < 6; i++) {
+    const thumb = el('div', { style: {
+      aspectRatio:'1',background:colors[i],
+      display:'flex',alignItems:'center',justifyContent:'center',
+      color:'rgba(255,255,255,0.3)',fontSize:'2rem',
+    }}, '\uD83D\uDCF7');
+    if (i === 0) {
+      thumb.appendChild(el('div', { style: {
+        position:'absolute',bottom:'4px',left:'4px',
+        padding:'2px 6px',borderRadius:'4px',background:'rgba(0,0,0,0.6)',
+        color:'#FFF',fontSize:'0.5rem',fontWeight:'600',
+      }}, 'before'));
+      thumb.style.position = 'relative';
+    }
+    grid.appendChild(thumb);
+  }
+  c.appendChild(grid);
+
+  // Another date
+  c.appendChild(el('div', { style: {color:t.textTer,fontSize:'0.75rem',fontWeight:'600',marginTop:'4px',animation:'fieldSlideUp 0.4s ease 0.15s both'} }, '29 \u043C\u0430\u0440\u0442\u0430 2026'));
+  const grid2 = el('div', { style: {display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:'4px',borderRadius:'12px',overflow:'hidden',animation:'fieldSlideUp 0.4s ease 0.2s both'} });
+  for (let i = 0; i < 3; i++) {
+    grid2.appendChild(el('div', { style: {
+      aspectRatio:'1',background:colors[i+3],
+      display:'flex',alignItems:'center',justifyContent:'center',
+      color:'rgba(255,255,255,0.3)',fontSize:'2rem',
+    }}, '\uD83D\uDCF7'));
+  }
+  c.appendChild(grid2);
+  f.appendChild(c);
+})();
+
+// Footer
+const footer = el('div', { style: {textAlign:'center',padding:'40px 20px 60px',color:t.textTer,fontSize:'0.75rem'} });
+footer.appendChild(el('div', { style: {color:t.gold,fontSize:'1rem',fontWeight:'700',letterSpacing:'2px',marginBottom:'4px'} }, 'ASGARD FIELD v1.4.0'));
+footer.appendChild(el('div', {}, '11 screens \u00B7 Sessions 1\u20138 complete'));
+footer.appendChild(el('div', { style: {marginTop:'4px'} }, '\u00A9 2026 ASGARD CRM'));
+document.getElementById('screens').appendChild(footer);
+</script>
+</body>
+</html>
