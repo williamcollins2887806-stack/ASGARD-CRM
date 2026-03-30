@@ -16,7 +16,16 @@
 - Finances: ✅ (earned from checkins + per_diem + payroll + one_time_payments)
 - Routes registered in index.js: ✅
 - Тесты: 10/10 pass (field-worker-checkin.test.js)
-## Сессия 3: [⬜ TODO]
+## Сессия 3: [✅ DONE]
+- field-reports.js: ✅ (6 endpoints: template, submit, list, accept, incidents, incidents-list)
+- field-photos.js: ✅ (2 endpoints: upload multipart + list)
+- field-manage.js: ✅ (8 endpoints: activate, tariffs, crew, send-invites, broadcast, dashboard, timesheet, progress)
+- field-logistics.js: ✅ (6 endpoints: create, attach, send, list, my, my/history)
+- Notifications: ✅ (createNotification для reports + incidents)
+- SMS invites: ✅ (MangoService.sendSms + field_sms_log)
+- Category validation: ✅ (tariff category vs project site_category)
+- Routes registered in index.js: ✅
+- Тесты: 12/12 pass (field-s3.test.js)
 ## Сессия 4: [⬜ TODO]
 ## Сессия 5: [⬜ TODO]
 ## Сессия 6: [⬜ TODO]
