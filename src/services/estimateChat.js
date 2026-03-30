@@ -373,8 +373,8 @@ ${analogsSummary}
 
     const startTime = Date.now();
 
-    // 7. Вызвать AI
-    const aiResult = await aiProvider.complete({
+    // 7. Вызвать AI (YandexGPT Pro для авто-ответов, fallback на основной провайдер)
+    const aiResult = await aiProvider.completeAnalytics({
       system: systemPrompt,
       messages: [{ role: 'user', content: comment }],
       maxTokens: config.max_tokens || 500,
