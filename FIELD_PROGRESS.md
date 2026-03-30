@@ -88,4 +88,5 @@
 - Online/offline detection: ✅ (yellow banner, auto-sync trigger on reconnect)
 - Background Sync queues: ✅ (queueCheckin, queuePhoto, queueReport)
 - Cached project data: ✅ (OfflineDB.cacheProject/getCachedProject)
-- Коммит: pending
+- Задеплоено: ✅ (https://asgard-crm.ru/field/ — HTTP 200)
+- Коммит: 7560f81
