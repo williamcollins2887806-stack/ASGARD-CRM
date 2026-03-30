@@ -26,7 +26,17 @@
 - Category validation: ✅ (tariff category vs project site_category)
 - Routes registered in index.js: ✅
 - Тесты: 12/12 pass (field-s3.test.js)
-## Сессия 4: [⬜ TODO]
+## Сессия 4: [✅ DONE]
+- index.html: ✅ (loading screen, font preload, safe areas, CSS reset)
+- ds-field.js: ✅ (dark/light themes, gold accents, animations, font scale, spacing/radius tokens)
+- core.js: ✅ (Router hash-based, API with auth, Utils with el/formatMoney/countUp, Store)
+- components.js: ✅ (F.Header, HeroBanner, BigButton, MoneyCard, Card, CallButton, Toast, BottomSheet, Skeleton, Empty, StatusBadge)
+- app.js: ✅ (auth guard, shell build, SW registration)
+- pages/login.js: ✅ (phone mask, 4-digit code boxes, auto-submit, shake/success animations, timer)
+- manifest.json: ✅ (PWA standalone, theme gold, icons)
+- sw.js: ✅ (shell cache-first, API network-first)
+- Nginx: ✅ (/field SPA fallback)
+- Задеплоено: ✅ (https://asgard-crm.ru/field/)
 ## Сессия 5: [⬜ TODO]
 ## Сессия 6: [⬜ TODO]
 ## Сессия 7: [⬜ TODO]
