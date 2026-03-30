@@ -305,7 +305,7 @@ window.AsgardDB = (function(){
       
       return items;
     } catch(e) {
-      console.error('[AsgardDB] all() error:', store, e);
+      console.warn('[AsgardDB] all() error:', store, e.message || e);
       return [];
     }
   }
@@ -340,7 +340,7 @@ window.AsgardDB = (function(){
       
       return data.id || (data.item && data.item.id);
     } catch(e) {
-      console.error('[AsgardDB] add() error:', store, e);
+      console.warn('[AsgardDB] add() error:', store, e.message || e);
       throw e;
     }
   }
@@ -383,7 +383,7 @@ window.AsgardDB = (function(){
       
       return data.id || (data.item && data.item.id) || val.id;
     } catch(e) {
-      console.error('[AsgardDB] put() error:', store, e);
+      console.warn('[AsgardDB] put() error:', store, e.message || e);
       throw e;
     }
   }
@@ -402,7 +402,7 @@ window.AsgardDB = (function(){
       
       return true;
     } catch(e) {
-      console.error('[AsgardDB] del() error:', store, key, e);
+      console.warn('[AsgardDB] del() error:', store, key, e.message || e);
       return false;
     }
   }

@@ -314,7 +314,7 @@ window.AsgardTelephonyPage = (function () {
         return JSON.parse(text);
       } catch (err) {
         lastErr = err;
-        console.error('[Telephony] api(' + path + ') attempt ' + attempt + ' failed:', err);
+        console.warn('[Telephony] api(' + path + ') attempt ' + attempt + ' failed:', err.message || err);
         if (attempt < maxAttempts) {
           await new Promise(function (r) { setTimeout(r, 600); });
         }
