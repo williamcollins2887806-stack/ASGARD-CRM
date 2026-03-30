@@ -1,7 +1,7 @@
 /**
  * ASGARD Field — Service Worker
  */
-const SHELL_VERSION = '1.1.0';
+const SHELL_VERSION = '1.2.0';
 const SHELL_CACHE = 'field-shell-' + SHELL_VERSION;
 const DATA_CACHE = 'field-data-v1';
 
@@ -15,6 +15,8 @@ const SHELL_URLS = [
   '/field/pages/login.js',
   '/field/pages/home.js',
   '/field/pages/shift.js',
+  '/field/pages/money.js',
+  '/field/pages/logistics.js',
   '/assets/img/asgard_emblem.png',
 ];
 
