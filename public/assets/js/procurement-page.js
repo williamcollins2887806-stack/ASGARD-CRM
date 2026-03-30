@@ -23,7 +23,7 @@ window.AsgardProcurementPage = (function() {
   const dt = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
   const dtFull = d => d ? new Date(d).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
   function hdr() { const t=localStorage.getItem('asgard_token')||localStorage.getItem('auth_token'); return {'Authorization':'Bearer '+t,'Content-Type':'application/json'}; }
-  async function apiFetch(url,opts={}) { const r=await fetch(url,{headers:hdr(),...opts}); return r.json(); }
+  async function apiFetch(url,opts={}) { const r=await fetch(url,{headers:hdr(),...opts}); if(!r.ok) throw new Error('HTTP '+r.status+': '+url); return r.json(); }
   async function apiPut(url,body) { return apiFetch(url,{method:'PUT',body:JSON.stringify(body||{})}); }
   async function apiPost(url,body) { return apiFetch(url,{method:'POST',body:JSON.stringify(body||{})}); }
 
@@ -41,7 +41,7 @@ window.AsgardProcurementPage = (function() {
         <div class="proc-dash-card" data-f="paid"><div class="proc-dash-card__count">${paidCnt}</div><div class="proc-dash-card__label">Ждут доставку</div></div>
       </div>`;
       el.querySelectorAll('[data-f]').forEach(c=>c.addEventListener('click',()=>{ currentFilters.status=c.dataset.f; refresh(); }));
-    } catch(e) { console.error(e); }
+    } catch(e) { console.warn('[Procurement] dashboard error:', e.message || e); }
   }
 
   // -- Filters --
