@@ -515,12 +515,54 @@ window.AsgardChatGroups = (function(){
       if (msg._optimistic) msgEl.classList.add('chat-msg-pending');
       container.insertBefore(msgEl, typing);
     }
-    // Auto scroll if near bottom
+    // Auto scroll if near bottom, or force scroll for mimir_response
+    const isMimirMsg = msg.message_type === 'mimir_response' || msg.user_id === 4401;
     const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
-    if (dist < 200) {
+    if (dist < 200 || isMimirMsg) {
       requestAnimationFrame(() => container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }));
     }
     _lastMessageCount++;
+
+    // H4: Show "Мимир думает..." after director comment with approval_action in estimate chat
+    const isEstChat = _currentChatData && _currentChatData.entity_type === 'estimate';
+    if (isEstChat && msg.metadata) {
+      let meta = {};
+      try { meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : (msg.metadata || {}); } catch(e) {}
+      if (meta.approval_action && meta.approval_action !== 'approve') {
+        setTimeout(() => _showTyping('Мимир'), 500);
+      }
+    }
+
+    // H4: Update pinned card when estimate_update arrives
+    if (msg.message_type === 'estimate_update' && isEstChat) {
+      _updatePinnedCard(msg);
+    }
+  }
+
+  function _updatePinnedCard(msg) {
+    const card = document.querySelector('.ec-pinned-card');
+    if (!card) return;
+    let meta = {};
+    try { meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : (msg.metadata || {}); } catch(e) {}
+    const fmt = v => new Intl.NumberFormat('ru-RU').format(v || 0) + ' \u20BD';
+    const statusLabels = { draft: 'Черновик', sent: 'Отправлен', approved: 'Согласован', rework: 'Доработка', question: 'Вопрос', rejected: 'Отклонён' };
+    // Update status badge
+    const badge = card.querySelector('.ec-status-badge');
+    if (badge && meta.status) {
+      badge.className = 'ec-status-badge ec-status-badge--' + meta.status;
+      badge.textContent = statusLabels[meta.status] || meta.status;
+    }
+    // Update metrics
+    const values = card.querySelectorAll('.ec-metric__value');
+    if (values.length >= 3) {
+      if (meta.total_cost != null) values[0].textContent = fmt(meta.total_cost);
+      if (meta.total_with_margin != null) values[1].textContent = fmt(meta.total_with_margin);
+      if (meta.margin_pct != null) values[2].textContent = meta.margin_pct + '%';
+    }
+    // Flash animation
+    card.style.transition = 'box-shadow 300ms';
+    card.style.boxShadow = '0 0 12px rgba(212,168,67,.4)';
+    setTimeout(() => { card.style.boxShadow = ''; }, 1500);
   }
 
   function _updateSidebarPreview(chatId, msg) {
