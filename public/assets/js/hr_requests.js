@@ -117,6 +117,7 @@ window.AsgardHrRequestsPage=(function(){
       const works = await AsgardDB.all("works");
       const tenders = await AsgardDB.all("tenders");
 
+      if (!$("#f_period")) return; // page navigated away during async fetch
       const per = norm($("#f_period").value);
       const st = $("#f_status").value;
       const pm = $("#f_pm").value;

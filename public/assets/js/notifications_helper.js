@@ -347,6 +347,10 @@ window.AsgardNotify = (function(){
   // Проверка и запуск авто-отчётов (вызывается при загрузке)
   async function checkAutoReports() {
     try {
+      // Только роли с доступом к settings (ADMIN и DIRECTOR_*)
+      const auth = window.AsgardAuth && await AsgardAuth.getAuth();
+      const role = auth?.user?.role || '';
+      if (role !== 'ADMIN' && !role.startsWith('DIRECTOR_') && role !== 'DIRECTOR') return;
       const settings = await AsgardDB.get('settings', 'auto_reports');
       if (!settings?.value_json) return;
       
