@@ -213,8 +213,11 @@ async function syncCommentToChat(db, { entityId, action, comment, actor }) {
   try {
     await db.query(
       `UPDATE approval_comments SET chat_message_id = $1
-       WHERE entity_type = 'estimates' AND entity_id = $2 AND user_id = $3 AND action = $4
-       AND chat_message_id IS NULL ORDER BY created_at DESC LIMIT 1`,
+       WHERE id = (
+         SELECT id FROM approval_comments
+         WHERE entity_type = 'estimates' AND entity_id = $2 AND user_id = $3 AND action = $4
+         AND chat_message_id IS NULL ORDER BY created_at DESC LIMIT 1
+       )`,
       [msg.id, entityId, actor.id, action]
     );
   } catch (e) {
