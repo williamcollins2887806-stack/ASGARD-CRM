@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
@@ -20,6 +21,7 @@ const ACTIONS = [
 
 export default function Approvals() {
   const haptic = useHaptic();
+  const navigate = useNavigate();
   const [estimates, setEstimates] = useState([]);
   const [tenders, setTenders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,7 @@ export default function Approvals() {
                   style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both` }}
                 >
                   <button
-                    onClick={() => { haptic.light(); setDetail(est); }}
+                    onClick={() => { haptic.light(); navigate(`/estimate-report/${est.id}`); }}
                     className="w-full text-left"
                   >
                     <div className="flex items-start justify-between gap-2">

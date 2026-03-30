@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
-import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
@@ -25,11 +25,11 @@ const FILTERS = [
 
 export default function AllEstimates() {
   const haptic = useHaptic();
+  const navigate = useNavigate();
   const [estimates, setEstimates] = useState([]);
   const [tenders, setTenders] = useState({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
-  const [detail, setDetail] = useState(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -87,7 +87,7 @@ export default function AllEstimates() {
               const cost = Number(est.total_cost || est.cost || 0);
               const margin = price > 0 ? Math.round(((price - cost) / price) * 100) : 0;
               return (
-                <button key={est.id} onClick={() => { haptic.light(); setDetail(est); }} className="w-full text-left card-glass px-4 py-3 spring-tap" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button key={est.id} onClick={() => { haptic.light(); navigate(`/estimate-report/${est.id}`); }} className="w-full text-left card-glass px-4 py-3 spring-tap" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-[14px] font-semibold leading-tight c-primary">{est.name || (est.tender_id && tenders[est.tender_id]) || `Расчёт #${est.id}`}</p>
                     <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
@@ -105,48 +105,6 @@ export default function AllEstimates() {
           </div>
         )}
       </PullToRefresh>
-      <EstimateDetailSheet estimate={detail} onClose={() => setDetail(null)} tenders={tenders} />
     </PageShell>
-  );
-}
-
-function EstimateDetailSheet({ estimate, onClose, tenders }) {
-  if (!estimate) return null;
-  const e = estimate;
-  const st = STATUS_MAP[e.approval_status] || STATUS_MAP.draft;
-  const price = Number(e.total_price || e.price || 0);
-  const cost = Number(e.total_cost || e.cost || 0);
-  const profit = price - cost;
-  const margin = price > 0 ? Math.round((profit / price) * 100) : 0;
-  const fields = [
-    { label: 'Статус', value: st.label, color: st.color },
-    e.name && { label: 'Название', value: e.name },
-    e.tender_id && tenders[e.tender_id] && { label: 'Тендер', value: tenders[e.tender_id] },
-    (e.author_name || e.created_by_name) && { label: 'Автор', value: e.author_name || e.created_by_name },
-    e.created_at && { label: 'Создан', value: relativeTime(e.created_at) },
-    e.approval_comment && { label: 'Комментарий', value: e.approval_comment, full: true },
-  ].filter(Boolean);
-  return (
-    <BottomSheet open={!!estimate} onClose={onClose} title={e.name || `Расчёт #${e.id}`}>
-      <div className="flex flex-col gap-3 pb-4">
-        {price > 0 && (
-          <div className="card-glass rounded-xl p-3">
-            <div className="grid grid-cols-3 gap-2 mb-2">
-              <div className="text-center"><p className="text-[10px] uppercase font-semibold c-tertiary">Цена</p><p className="text-[14px] font-bold c-blue">{formatMoney(price, { short: true })}</p></div>
-              <div className="text-center"><p className="text-[10px] uppercase font-semibold c-tertiary">С/С</p><p className="text-[14px] font-bold c-gold">{formatMoney(cost, { short: true })}</p></div>
-              <div className="text-center"><p className="text-[10px] uppercase font-semibold c-tertiary">Прибыль</p><p className="text-[14px] font-bold" style={{ color: profit >= 0 ? 'var(--green)' : 'var(--red-soft)' }}>{formatMoney(profit, { short: true })}</p></div>
-            </div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold c-tertiary">Маржа</span>
-              <span className="text-[12px] font-bold" style={{ color: margin >= 15 ? 'var(--green)' : 'var(--gold)' }}>{margin}%</span>
-            </div>
-            <div className="rounded-full overflow-hidden" style={{ height: 4, background: 'var(--bg-surface-alt)' }}>
-              <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, margin))}%`, background: margin >= 15 ? 'var(--green)' : 'var(--gold)' }} />
-            </div>
-          </div>
-        )}
-        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
-      </div>
-    </BottomSheet>
   );
 }
