@@ -346,6 +346,19 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
       }
 
       if (useTransaction) await client.query('COMMIT');
+
+      // H2: Дублировать approve в чат (без Мимира)
+      if (entityType === 'estimates' && comment) {
+        setImmediate(async () => {
+          try {
+            const estimateChat = require('./estimateChat');
+            await estimateChat.syncCommentToChat(db, {
+              entityId, action: 'approve', comment, actor
+            });
+          } catch (err) { console.error('[H2] approve chat sync error:', err.message); }
+        });
+      }
+
       return { status: 'approved' };
     }
   } catch (err) {
@@ -425,6 +438,24 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
     });
   }
 
+  // H2: Дублировать комментарий в чат + Мимир автоответ
+  if (entityType === 'estimates' && !isBuhAction) {
+    setImmediate(async () => {
+      try {
+        const estimateChat = require('./estimateChat');
+        const result = await estimateChat.syncCommentToChat(db, {
+          entityId, action: 'rework', comment: comment.trim(), actor
+        });
+        if (result) {
+          await estimateChat.triggerMimirAutoRespond(db, {
+            entityId, chatId: result.chatId, action: 'rework',
+            comment: comment.trim(), actorName: actor.name
+          });
+        }
+      } catch (err) { console.error('[H2] rework chat sync error:', err.message); }
+    });
+  }
+
   return { status: newStatus };
 }
 
@@ -497,6 +528,24 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
     });
   }
 
+  // H2: Дублировать комментарий в чат + Мимир автоответ
+  if (entityType === 'estimates' && !isBuhAction) {
+    setImmediate(async () => {
+      try {
+        const estimateChat = require('./estimateChat');
+        const result = await estimateChat.syncCommentToChat(db, {
+          entityId, action: 'question', comment: comment.trim(), actor
+        });
+        if (result) {
+          await estimateChat.triggerMimirAutoRespond(db, {
+            entityId, chatId: result.chatId, action: 'question',
+            comment: comment.trim(), actorName: actor.name
+          });
+        }
+      } catch (err) { console.error('[H2] question chat sync error:', err.message); }
+    });
+  }
+
   return { status: newStatus };
 }
 
@@ -555,6 +604,24 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
       message: `${actor.name || 'Директор'}: ${comment.trim()}`,
       type: 'approval',
       link: `#/${entityType}?id=${entityId}`
+    });
+  }
+
+  // H2: Дублировать комментарий в чат + Мимир автоответ
+  if (entityType === 'estimates') {
+    setImmediate(async () => {
+      try {
+        const estimateChat = require('./estimateChat');
+        const result = await estimateChat.syncCommentToChat(db, {
+          entityId, action: 'reject', comment: comment.trim(), actor
+        });
+        if (result) {
+          await estimateChat.triggerMimirAutoRespond(db, {
+            entityId, chatId: result.chatId, action: 'reject',
+            comment: comment.trim(), actorName: actor.name
+          });
+        }
+      } catch (err) { console.error('[H2] reject chat sync error:', err.message); }
     });
   }
 
