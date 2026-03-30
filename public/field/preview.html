@@ -484,12 +484,16 @@ function wrap(padding) {
     top.appendChild(info);
     top.appendChild(badge(item.status, item.color));
     lc.appendChild(top);
-    // PDF button
+    // Document buttons
     const actions = el('div', { style: {display:'flex',gap:'8px',marginTop:'12px'} });
     actions.appendChild(el('button', { style: {
       padding:'8px 14px',borderRadius:'10px',border:'1px solid '+t.border,
       background:t.bg2,color:t.text,fontSize:'0.8125rem',fontWeight:'500',display:'flex',alignItems:'center',gap:'6px',
-    }}, '\uD83D\uDCC4 \u0421\u043A\u0430\u0447\u0430\u0442\u044C PDF'));
+    }}, '\uD83D\uDC41 \u041F\u0440\u043E\u0441\u043C\u043E\u0442\u0440'));
+    actions.appendChild(el('a', { href:'#', style: {
+      padding:'8px 14px',borderRadius:'10px',border:'1px solid '+t.border,
+      background:t.bg2,color:t.text,fontSize:'0.8125rem',fontWeight:'500',display:'flex',alignItems:'center',gap:'6px',textDecoration:'none',
+    }}, '\uD83D\uDCE5 \u0421\u043A\u0430\u0447\u0430\u0442\u044C'));
     lc.appendChild(actions);
     c.appendChild(lc);
   }

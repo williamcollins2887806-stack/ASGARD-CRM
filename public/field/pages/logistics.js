@@ -174,18 +174,38 @@ function buildLogisticsCard(item, animDelay, t) {
   const actions = el('div', { style: { display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' } });
 
   if (item.document_id || item.download_url) {
-    const pdfBtn = el('button', {
+    const fileUrl = item.download_url || ('/api/documents/' + item.document_id + '/download');
+    const fileName = item.filename || item.title || 'document';
+    const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileUrl) || /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
+
+    // View button
+    const viewBtn = el('button', {
       style: {
         padding: '8px 14px', borderRadius: '10px', border: '1px solid ' + t.border,
         background: t.bg2, color: t.text, fontSize: '0.8125rem', fontWeight: '500', cursor: 'pointer',
         display: 'flex', alignItems: 'center', gap: '6px',
       },
       onClick: () => {
-        const url = item.download_url || ('/api/documents/' + item.document_id + '/download');
-        window.open(url, '_blank');
+        if (isImage) {
+          showImageViewer(fileUrl, item.title);
+        } else {
+          window.open(fileUrl, '_blank');
+        }
       },
-    }, '\uD83D\uDCC4 \u0421\u043A\u0430\u0447\u0430\u0442\u044C PDF');
-    actions.appendChild(pdfBtn);
+    }, '\uD83D\uDC41 \u041F\u0440\u043E\u0441\u043C\u043E\u0442\u0440');
+    actions.appendChild(viewBtn);
+
+    // Download button
+    const dlLink = el('a', {
+      href: fileUrl,
+      download: fileName,
+      style: {
+        padding: '8px 14px', borderRadius: '10px', border: '1px solid ' + t.border,
+        background: t.bg2, color: t.text, fontSize: '0.8125rem', fontWeight: '500', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none',
+      },
+    }, '\uD83D\uDCE5 \u0421\u043A\u0430\u0447\u0430\u0442\u044C');
+    actions.appendChild(dlLink);
   }
 
   if (details.driver_phone) {
@@ -202,6 +222,29 @@ function buildLogisticsCard(item, animDelay, t) {
   }
 
   return card;
+}
+
+function showImageViewer(url, title) {
+  const t = DS.t;
+  const overlay = el('div', {
+    style: {
+      position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.95)',
+      zIndex: '500', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      animation: 'fieldFadeIn 0.2s ease',
+    },
+    onClick: () => overlay.remove(),
+  });
+  overlay.appendChild(el('img', {
+    src: url,
+    style: { maxWidth: '95vw', maxHeight: '80vh', borderRadius: '8px', objectFit: 'contain' },
+  }));
+  if (title) {
+    overlay.appendChild(el('div', {
+      style: { color: '#FFF', fontSize: '0.875rem', marginTop: '12px', textAlign: 'center', padding: '0 20px' },
+    }, title));
+  }
+  document.body.appendChild(overlay);
 }
 
 Router.register('/field/logistics', LogisticsPage);
