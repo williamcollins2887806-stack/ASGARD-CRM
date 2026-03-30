@@ -72,5 +72,20 @@
 - Задеплоено: ✅ (https://asgard-crm.ru/field/preview.html)
 - Коммит: c94aacb
 
-## Сессия 9: [⬜ TODO]
-## Сессия 10: [⬜ TODO]
+## Сессия 9: [✅ DONE]
+- field-tab.js: ✅ (AsgardFieldTab module, 4 sub-tabs: бригада/логистика/дашборд/табель)
+- pm_works.js: ✅ (⚔️ Полевой модуль action в AsgardActionMenu)
+- field-manage.js: ✅ (xlsx timesheet export via ExcelJS, format=xlsx query param)
+- index.html: ✅ (added field-tab.js script, bumped SHELL_VERSION 18.3.0)
+- sw.js (desktop): ✅ (v18.3.0)
+- Задеплоено: ✅ (https://asgard-crm.ru/)
+- Коммит: 124e2a8
+
+## Сессия 10: [✅ DONE]
+- sw.js (field): ✅ (v2.0.0, Background Sync: checkins/photos/reports, Push notifications, notificationclick)
+- core.js: ✅ (OfflineDB module: IndexedDB field-offline-db, 4 stores: pending_checkins/photos/reports/cached_project)
+- app.js: ✅ (PWA install prompt with gold banner, offline banner, pull-to-refresh, sync-complete listener)
+- Online/offline detection: ✅ (yellow banner, auto-sync trigger on reconnect)
+- Background Sync queues: ✅ (queueCheckin, queuePhoto, queueReport)
+- Cached project data: ✅ (OfflineDB.cacheProject/getCachedProject)
+- Коммит: pending

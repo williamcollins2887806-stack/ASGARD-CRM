@@ -240,9 +240,136 @@ window.addEventListener('hashchange', () => {
   Router._render(path);
 });
 
+// ─── OfflineDB (IndexedDB for Background Sync) ─────────────────────────
+const OfflineDB = {
+  _db: null,
+
+  async open() {
+    if (OfflineDB._db) return OfflineDB._db;
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('field-offline-db', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('pending_checkins')) db.createObjectStore('pending_checkins', { keyPath: 'id', autoIncrement: true });
+        if (!db.objectStoreNames.contains('pending_photos')) db.createObjectStore('pending_photos', { keyPath: 'id', autoIncrement: true });
+        if (!db.objectStoreNames.contains('pending_reports')) db.createObjectStore('pending_reports', { keyPath: 'id', autoIncrement: true });
+        if (!db.objectStoreNames.contains('cached_project')) db.createObjectStore('cached_project', { keyPath: 'key' });
+      };
+      req.onsuccess = () => { OfflineDB._db = req.result; resolve(req.result); };
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async add(storeName, item) {
+    const db = await OfflineDB.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.add(item);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async getAll(storeName) {
+    const db = await OfflineDB.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async put(storeName, item) {
+    const db = await OfflineDB.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.put(item);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async clear(storeName) {
+    const db = await OfflineDB.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.clear();
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  /** Queue a checkin for background sync */
+  async queueCheckin(endpoint, body) {
+    const token = API.getToken();
+    await OfflineDB.add('pending_checkins', { endpoint, body, token, created: Date.now() });
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg.sync) await reg.sync.register('field-checkin-sync');
+    }
+  },
+
+  /** Queue a photo for background sync */
+  async queuePhoto(blob, filename, workId, photoType, caption) {
+    const token = API.getToken();
+    await OfflineDB.add('pending_photos', { blob, filename, work_id: workId, photo_type: photoType, caption, token, created: Date.now() });
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg.sync) await reg.sync.register('field-photo-sync');
+    }
+  },
+
+  /** Queue a report for background sync */
+  async queueReport(body) {
+    const token = API.getToken();
+    await OfflineDB.add('pending_reports', { body, token, created: Date.now() });
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg.sync) await reg.sync.register('field-report-sync');
+    }
+  },
+
+  /** Cache project data for offline */
+  async cacheProject(data) {
+    await OfflineDB.put('cached_project', { key: 'active_project', data, updated: Date.now() });
+  },
+
+  /** Get cached project data */
+  async getCachedProject() {
+    try {
+      const db = await OfflineDB.open();
+      return new Promise((resolve) => {
+        const tx = db.transaction('cached_project', 'readonly');
+        const store = tx.objectStore('cached_project');
+        const req = store.get('active_project');
+        req.onsuccess = () => resolve(req.result?.data || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch { return null; }
+  },
+
+  /** Get pending items count */
+  async getPendingCount() {
+    try {
+      const [checkins, photos, reports] = await Promise.all([
+        OfflineDB.getAll('pending_checkins'),
+        OfflineDB.getAll('pending_photos'),
+        OfflineDB.getAll('pending_reports'),
+      ]);
+      return { checkins: checkins.length, photos: photos.length, reports: reports.length, total: checkins.length + photos.length + reports.length };
+    } catch { return { checkins: 0, photos: 0, reports: 0, total: 0 }; }
+  },
+};
+
 // ─── Exports ───────────────────────────────────────────────────────────
 window.Store = Store;
 window.API = API;
 window.Utils = Utils;
 window.Router = Router;
+window.OfflineDB = OfflineDB;
 })();
