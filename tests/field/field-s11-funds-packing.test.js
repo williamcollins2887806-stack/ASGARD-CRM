@@ -57,7 +57,7 @@ async function runTests() {
 
   // Find a work for testing
   try {
-    const { rows } = await dbQuery(`SELECT id FROM works WHERE is_active = true ORDER BY id DESC LIMIT 1`);
+    const { rows } = await dbQuery(`SELECT id FROM works WHERE work_status = 'active' ORDER BY id DESC LIMIT 1`);
     if (rows.length > 0) {
       testWorkId = rows[0].id;
       console.log('  [Setup] Test work_id:', testWorkId);
