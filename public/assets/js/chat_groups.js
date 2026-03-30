@@ -504,7 +504,8 @@ window.AsgardChatGroups = (function(){
       }
     }
     // Render message
-    const html = renderMessage(msg, _myId, []);
+    const isEstimateChat = _currentChatData && _currentChatData.entity_type === 'estimate';
+    const html = renderMessage(msg, _myId, [], false, isEstimateChat);
     const temp = document.createElement('div');
     temp.innerHTML = html;
     const msgEl = temp.firstElementChild;
@@ -528,9 +529,17 @@ window.AsgardChatGroups = (function(){
     const preview = item.querySelector('.chat-item-preview');
     const time = item.querySelector('.chat-item-time');
     if (preview) {
-      const text = msg.message || msg.text || '';
-      const prefix = msg.user_name && msg.user_id !== _myId ? msg.user_name.split(' ')[0] + ': ' : '';
-      preview.textContent = prefix + text.substring(0, 40);
+      if (msg.message_type === 'estimate_update') {
+        preview.textContent = '\uD83D\uDD04 Просчёт обновлён';
+      } else if (msg.message_type === 'estimate_card') {
+        preview.textContent = '\uD83D\uDCCB Карточка просчёта';
+      } else if (msg.message_type === 'mimir_response') {
+        preview.textContent = '\u041C\u0438\u043C\u0438\u0440: ' + (msg.message || msg.text || '').substring(0, 35);
+      } else {
+        const text = msg.message || msg.text || '';
+        const prefix = msg.user_name && msg.user_id !== _myId ? msg.user_name.split(' ')[0] + ': ' : '';
+        preview.textContent = prefix + text.substring(0, 40);
+      }
     }
     if (time) time.textContent = formatChatTime(msg.created_at);
     // Increment unread if not current chat
@@ -546,15 +555,29 @@ window.AsgardChatGroups = (function(){
         badge.textContent = Math.min(99, parseInt(badge.textContent || '0') + 1);
       }
     }
-    // Move chat to top
+    // Move chat to top (within its section)
     const list = item.parentNode;
     if (list) {
-      const mimirItem = list.querySelector('.chat-item[data-mimir="true"]');
+      const isEstimateItem = item.dataset.entityType === 'estimate';
       list.removeChild(item);
-      if (mimirItem && mimirItem.nextSibling) {
-        list.insertBefore(item, mimirItem.nextSibling);
+      if (isEstimateItem) {
+        // Move to top of estimate section (after section header)
+        const sectionHeader = list.querySelector('.ec-section-header');
+        if (sectionHeader && sectionHeader.nextSibling) {
+          list.insertBefore(item, sectionHeader.nextSibling);
+        } else {
+          const mimirItem = list.querySelector('.chat-item[data-mimir="true"]');
+          list.insertBefore(item, mimirItem ? mimirItem.nextSibling : list.firstChild);
+        }
       } else {
-        list.insertBefore(item, list.firstChild);
+        // Move to top of regular section (after last estimate item or mimir)
+        const lastEstimate = list.querySelector('.chat-item[data-entity-type="estimate"]:last-of-type');
+        if (lastEstimate && lastEstimate.nextSibling) {
+          list.insertBefore(item, lastEstimate.nextSibling);
+        } else {
+          const mimirItem = list.querySelector('.chat-item[data-mimir="true"]');
+          list.insertBefore(item, mimirItem && mimirItem.nextSibling ? mimirItem.nextSibling : list.firstChild);
+        }
       }
     }
   }
@@ -593,23 +616,25 @@ window.AsgardChatGroups = (function(){
       </div>
     `;
 
-    const chatListHtml = chats.length > 0 ? chats.map(c => {
+    function _renderChatItem(c) {
       const lastTime = formatChatTime(c.last_message_at || c.created_at);
       const isDirect = !c.is_group;
+      const isEstimate = c.entity_type === 'estimate';
       const displayName = isDirect ? (c.direct_user_name || c.name) : c.name;
       const avatarLetter = displayName?.[0] || '?';
       const avatarColor = isDirect ? getAvatarColor(displayName) : '';
       const previewText = c.last_message_text
         ? (c.last_message_sender_name && c.is_group ? c.last_message_sender_name.split(' ')[0] + ': ' : '') + c.last_message_text.substring(0, 40)
         : (isDirect ? 'Личное сообщение' : (c.member_count || 0) + ' уч.');
+      const typeBadge = isEstimate ? ' <span class="chat-item-type-badge">просчёт</span>' : (isDirect ? '' : ' <span class="chat-item-type-badge">дружина</span>');
 
       return `
-        <div class="chat-item ${currentChatId == c.id ? 'active' : ''}" data-chat-id="${c.id}" data-chat-type="${isDirect ? 'direct' : 'group'}" onclick="AsgardChatGroups.openChat(${c.id})">
+        <div class="chat-item ${currentChatId == c.id ? 'active' : ''}" data-chat-id="${c.id}" data-chat-type="${isDirect ? 'direct' : 'group'}" ${isEstimate ? 'data-entity-type="estimate"' : ''} onclick="AsgardChatGroups.openChat(${c.id})">
           <div class="chat-item-avatar${isDirect ? '' : ' group'}" ${isDirect ? `style="background:${avatarColor}"` : ''}>
             <span class="chat-item-avatar-letter">${esc(avatarLetter)}</span>
           </div>
           <div class="chat-item-info">
-            <div class="chat-item-name">${esc(displayName)}${isDirect ? '' : ' <span class="chat-item-type-badge">дружина</span>'}</div>
+            <div class="chat-item-name">${esc(displayName)}${typeBadge}</div>
             <div class="chat-item-preview">${esc(previewText)}</div>
           </div>
           <div class="chat-item-meta">
@@ -618,7 +643,18 @@ window.AsgardChatGroups = (function(){
           </div>
         </div>
       `;
-    }).join('') : `
+    }
+
+    const estimateChats = chats.filter(c => c.entity_type === 'estimate');
+    const regularChats = chats.filter(c => c.entity_type !== 'estimate');
+
+    const estimateSection = estimateChats.length > 0
+      ? `<div class="ec-section-header">📋 Просчёты</div>${estimateChats.map(_renderChatItem).join('')}`
+      : '';
+
+    const chatListHtml = chats.length > 0
+      ? estimateSection + regularChats.map(_renderChatItem).join('')
+      : `
       <div class="chat-empty-state">
         <div class="chat-empty-icon">🐦‍⬛</div>
         <div class="chat-empty-title">Тишина в чертогах</div>
@@ -725,15 +761,42 @@ window.AsgardChatGroups = (function(){
     _currentChatData = chat;
     const isDirect = !chat.is_group;
     const isMimir = chat.is_mimir;
+    const isEstimate = chat.entity_type === 'estimate';
     const shouldScroll = messages.length !== _lastMessageCount;
     _lastMessageCount = messages.length;
+
+    // Find pinned estimate card
+    let pinnedCardHtml = '';
+    if (isEstimate) {
+      const cardMsg = messages.find(m => m.message_type === 'estimate_card');
+      if (cardMsg) {
+        let meta = {};
+        try { meta = typeof cardMsg.metadata === 'string' ? JSON.parse(cardMsg.metadata) : (cardMsg.metadata || {}); } catch(e) {}
+        const fmt = v => new Intl.NumberFormat('ru-RU').format(v || 0) + ' \u20BD';
+        const status = meta.status || 'draft';
+        const statusLabels = { draft: 'Черновик', sent: 'Отправлен', approved: 'Согласован', rework: 'Доработка', question: 'Вопрос', rejected: 'Отклонён' };
+        pinnedCardHtml = `
+          <div class="ec-pinned-card">
+            <div class="ec-pinned-card__header">
+              <span class="ec-pinned-card__title">${esc(meta.title || chat.name || 'Просчёт')}</span>
+              <span class="ec-status-badge ec-status-badge--${status}">${statusLabels[status] || status}</span>
+            </div>
+            <div class="ec-pinned-card__metrics">
+              <div class="ec-metric"><span class="ec-metric__label">Себестоимость</span><span class="ec-metric__value">${fmt(meta.total_cost)}</span></div>
+              <div class="ec-metric"><span class="ec-metric__label">Клиенту</span><span class="ec-metric__value">${fmt(meta.total_with_margin)}</span></div>
+              <div class="ec-metric"><span class="ec-metric__label">Маржа</span><span class="ec-metric__value">${meta.margin_pct || 0}%</span></div>
+            </div>
+            <a class="ec-pinned-card__link" href="#/estimate-report?id=${meta.estimate_id || ''}">Открыть полный отчёт \u2192</a>
+          </div>`;
+      }
+    }
 
     // Group by date
     const grouped = _groupByDate(messages);
     let messagesHtml = '';
     for (const [label, msgs] of Object.entries(grouped)) {
       messagesHtml += `<div class="chat-date-divider"><span>${label}</span></div>`;
-      messagesHtml += msgs.map(m => renderMessage(m, _myId, members, isMimir)).join('');
+      messagesHtml += msgs.map(m => renderMessage(m, _myId, members, isMimir, isEstimate)).join('');
     }
 
     // Header
@@ -756,7 +819,9 @@ window.AsgardChatGroups = (function(){
       headerTitle = esc(chat.name);
       headerStatus = `<span class="chat-online-dot"></span> ${mc} уч., ${oc} онлайн`;
       headerAvatar = `<div class="chat-header-avatar group"><span>${esc(chat.name?.[0] || '?')}</span></div>`;
+      const addMemberBtn = isEstimate ? `<button class="chat-header-btn ec-add-member-btn" onclick="AsgardChatGroups.showMembersModal(${chatId})" title="Добавить участника"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></button>` : '';
       headerActions = `
+        ${addMemberBtn}
         <button class="chat-header-btn" onclick="AsgardChatGroups.showMembersModal(${chatId})" title="Участники"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
         <button class="chat-header-btn" onclick="AsgardChatGroups.showSettingsModal(${chatId})" title="Настройки"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
       `;
@@ -789,6 +854,7 @@ window.AsgardChatGroups = (function(){
         <span id="hg-search-count"></span>
         <button class="hg-search-close" onclick="AsgardChatGroups.toggleSearch()">&times;</button>
       </div>
+      ${pinnedCardHtml}
       <div class="chat-messages" id="chat-messages-container"
            ondragover="AsgardChatGroups._dragOver(event)"
            ondragleave="AsgardChatGroups._dragLeave(event)"
@@ -852,22 +918,60 @@ window.AsgardChatGroups = (function(){
   // Render single message
   // ═══════════════════════════════════════════════════════════════
 
-  function renderMessage(msg, userId, members, isMimir) {
+  function renderMessage(msg, userId, members, isMimir, isEstimateChat) {
+    // H3: Skip estimate_card — shown as pinned card
+    if (msg.message_type === 'estimate_card') return '';
+
+    // H3: estimate_update — system pill
+    if (msg.message_type === 'estimate_update') {
+      let meta = {};
+      try { meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : (msg.metadata || {}); } catch(e) {}
+      const ver = meta.version_no ? 'v' + meta.version_no : '';
+      const margin = meta.margin_pct ? ', маржа ' + meta.margin_pct + '%' : '';
+      return `<div class="ec-system-pill" data-msg-id="${msg.id}"><span class="ec-system-pill__icon">\uD83D\uDD04</span><span class="ec-system-pill__text">Просчёт обновлён${ver ? ' \u2014 ' + ver : ''}${margin}</span></div>`;
+    }
+
     const isOwn = msg.user_id === userId;
-    const isMimirBot = msg.user_id === 0 || msg.is_mimir_bot || msg.is_system;
+    const isMimirResponse = msg.message_type === 'mimir_response' || msg.user_id === 4401;
+    const isMimirBot = isMimirResponse || msg.user_id === 0 || msg.is_mimir_bot || msg.is_system;
     const time = new Date(msg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     const initials = getInitials(msg.user_name);
     const avatarColor = getAvatarColor(msg.user_name);
     const messageText = msg.message || msg.text || '';
     const atts = Array.isArray(msg.attachments) ? msg.attachments.filter(Boolean) : [];
 
+    // H3: Parse approval_action metadata
+    let actionBadgeHtml = '';
+    if (msg.metadata) {
+      let meta = {};
+      try { meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : (msg.metadata || {}); } catch(e) {}
+      if (meta.approval_action) {
+        const actionLabels = { approve: 'Согласовано', rework: 'На доработку', question: 'Вопрос', reject: 'Отклонено' };
+        actionBadgeHtml = `<span class="ec-action-badge ec-action-badge--${meta.approval_action}">${actionLabels[meta.approval_action] || meta.approval_action}</span>`;
+      }
+    }
+
+    // H3: Mimir response avatar & bubble overrides
+    const useMimirEstimateStyle = isMimirResponse && isEstimateChat;
+    const avatarHtml = !isOwn
+      ? (useMimirEstimateStyle
+        ? '<div class="chat-message-avatar ec-mimir-avatar"><span>\u041C</span></div>'
+        : (isMimirBot
+          ? '<div class="chat-message-avatar hg-mimir-avatar"><span>\u26A1</span></div>'
+          : `<div class="chat-message-avatar" style="background:${avatarColor}">${initials}</div>`))
+      : '';
+    const bubbleClass = useMimirEstimateStyle ? ' ec-mimir-bubble' : (isMimirBot ? ' hg-mimir-bubble' : '');
+    const senderHtml = !isOwn
+      ? `<div class="chat-message-sender" ${isMimirBot ? 'style="color:var(--gold,#D4A843)"' : `style="color:${avatarColor}"`}>${useMimirEstimateStyle ? '\u041C\u0438\u043C\u0438\u0440 <span class="ec-mimir-pill">\u0430\u0441\u0441\u0438\u0441\u0442\u0435\u043D\u0442</span>' : (isMimirBot ? '\u041C\u0438\u043C\u0438\u0440' : esc(msg.user_name))}${actionBadgeHtml}</div>`
+      : (actionBadgeHtml ? `<div class="chat-message-sender" style="color:${avatarColor};text-align:right">${esc(msg.user_name)}${actionBadgeHtml}</div>` : '');
+
     // Voice message?
     if (msg.message_type === 'voice' || (msg.file_url && (msg.file_url.endsWith('.webm') || msg.file_url.endsWith('.ogg')))) {
       const voiceHtml = renderVoicePlayer(msg);
       return `<div class="chat-message ${isOwn ? 'own' : ''} ${isMimirBot ? 'mimir-bot' : ''}" data-msg-id="${msg.id}" data-date="${new Date(msg.created_at).toDateString()}">
-        ${!isOwn ? (isMimirBot ? '<div class="chat-message-avatar hg-mimir-avatar"><span>⚡</span></div>' : `<div class="chat-message-avatar" style="background:${avatarColor}">${initials}</div>`) : ''}
-        <div class="chat-message-bubble${isMimirBot ? ' hg-mimir-bubble' : ''}">
-          ${!isOwn ? `<div class="chat-message-sender" ${isMimirBot ? 'style="color:var(--gold,#D4A843)"' : `style="color:${avatarColor}"`}>${isMimirBot ? 'Мимир' : esc(msg.user_name)}</div>` : ''}
+        ${avatarHtml}
+        <div class="chat-message-bubble${bubbleClass}">
+          ${senderHtml}
           ${voiceHtml}
           <div class="chat-message-footer"><span class="chat-message-time">${time}</span>${isOwn ? '<span class="chat-msg-read">&#10003;&#10003;</span>' : ''}</div>
         </div>
@@ -903,9 +1007,9 @@ window.AsgardChatGroups = (function(){
 
     return `
       <div class="chat-message ${isOwn ? 'own' : ''} ${isMimirBot ? 'mimir-bot' : ''}" data-msg-id="${msg.id}" data-date="${new Date(msg.created_at).toDateString()}" data-user-id="${msg.user_id}">
-        ${!isOwn ? (isMimirBot ? '<div class="chat-message-avatar hg-mimir-avatar"><span>⚡</span></div>' : `<div class="chat-message-avatar" style="background:${avatarColor}">${initials}</div>`) : ''}
-        <div class="chat-message-bubble${isMimirBot ? ' hg-mimir-bubble' : ''}">
-          ${!isOwn ? `<div class="chat-message-sender" ${isMimirBot ? 'style="color:var(--gold,#D4A843)"' : `style="color:${avatarColor}"`}>${isMimirBot ? 'Мимир' : esc(msg.user_name)}</div>` : ''}
+        ${avatarHtml}
+        <div class="chat-message-bubble${bubbleClass}">
+          ${senderHtml}
           ${replyHtml}
           ${textHtml}
           ${linkPreviewHtml}

@@ -3499,6 +3499,121 @@ details > *:not(summary) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────────
+   ESTIMATE CHATS (H3)
+   ───────────────────────────────────────────────────────────────────────────────── */
+
+/* Section header in sidebar */
+.ec-section-header {
+  padding: 10px 16px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--gold, #D4A843);
+}
+
+/* Estimate chat items in sidebar */
+.chat-item[data-entity-type="estimate"] {
+  border-left: 3px solid var(--gold, #D4A843);
+}
+.chat-item[data-entity-type="estimate"] .chat-item-type-badge {
+  background: rgba(212,168,67,.15);
+  color: var(--gold, #D4A843);
+}
+
+/* Status badges */
+.ec-status-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; white-space: nowrap; }
+.ec-status-badge--sent     { background: rgba(212,168,67,.15); color: #D4A843; }
+.ec-status-badge--approved { background: rgba(102,187,106,.15); color: #66BB6A; }
+.ec-status-badge--rework   { background: rgba(255,179,0,.15); color: #FFB300; }
+.ec-status-badge--question { background: rgba(126,176,232,.15); color: #7EB0E8; }
+.ec-status-badge--rejected { background: rgba(200,41,59,.15); color: #C8293B; }
+.ec-status-badge--draft    { background: rgba(136,136,136,.15); color: #888; }
+
+/* Pinned estimate card */
+.ec-pinned-card {
+  background: var(--bg3, #1e1e1e);
+  border: 1px solid rgba(212,168,67,.25);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 16px 8px;
+}
+.ec-pinned-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.ec-pinned-card__title {
+  font-weight: 600;
+  color: var(--t1, #fff);
+  font-size: 14px;
+}
+.ec-pinned-card__metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin: 10px 0;
+}
+.ec-metric { text-align: center; }
+.ec-metric__label { font-size: 11px; color: var(--t3, #888); display: block; margin-bottom: 2px; }
+.ec-metric__value { font-size: 16px; font-weight: 700; color: var(--t1, #fff); }
+.ec-pinned-card__link {
+  color: var(--gold, #D4A843);
+  font-size: 13px;
+  text-decoration: none;
+  display: block;
+  text-align: right;
+}
+.ec-pinned-card__link:hover { text-decoration: underline; }
+
+/* Mimir estimate avatar & bubble */
+.ec-mimir-avatar {
+  background: linear-gradient(135deg, #C8293B, #1E4D8C) !important;
+  border: 2px solid var(--gold, #D4A843) !important;
+}
+.ec-mimir-avatar span { color: var(--gold, #D4A843) !important; font-weight: 700; }
+.ec-mimir-bubble {
+  background: #1a1a0e !important;
+  border: 1px solid rgba(212,168,67,.3) !important;
+}
+.ec-mimir-pill {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: rgba(212,168,67,.15);
+  color: var(--gold, #D4A843);
+  border-radius: 8px;
+  margin-left: 6px;
+}
+
+/* Action badges (approval) */
+.ec-action-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; margin-left: 8px; }
+.ec-action-badge--approve  { background: rgba(102,187,106,.15); color: #66BB6A; }
+.ec-action-badge--rework   { background: rgba(255,179,0,.15); color: #FFB300; }
+.ec-action-badge--question { background: rgba(126,176,232,.15); color: #7EB0E8; }
+.ec-action-badge--reject   { background: rgba(200,41,59,.15); color: #C8293B; }
+
+/* System pill (estimate_update) */
+.ec-system-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  margin: 8px auto;
+  background: rgba(212,168,67,.08);
+  border: 1px solid rgba(212,168,67,.15);
+  border-radius: 16px;
+  width: fit-content;
+}
+.ec-system-pill__icon { font-size: 14px; }
+.ec-system-pill__text { font-size: 12px; color: var(--t2, #aaa); }
+
+/* Add member button accent for estimate chats */
+.ec-add-member-btn { color: var(--gold, #D4A843) !important; }
+.ec-add-member-btn:hover { background: rgba(212,168,67,.1) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────────────────
    MEETINGS
    ───────────────────────────────────────────────────────────────────────────────── */
 .meeting-card {
