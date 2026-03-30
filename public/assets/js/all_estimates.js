@@ -126,6 +126,7 @@ window.AsgardAllEstimatesPage = (function() {
     }
 
     function apply() {
+      if (!$('#f_period')) return; // DOM not ready
       const per = norm($('#f_period').value);
       const q = norm($('#f_q').value);
       const pm = $('#f_pm').value;

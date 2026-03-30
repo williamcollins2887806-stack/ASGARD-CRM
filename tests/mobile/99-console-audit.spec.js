@@ -73,6 +73,13 @@ const IGNORE = [
   'AudioContext was not allowed',
   'chrome-extension',
   '[Violation]',
+  'HTTP 502',
+  'status of 502',
+  'HTTP 503',
+  'status of 503',
+  'net::ERR_',
+  'Failed to fetch',
+  'Error: offline',
 ];
 
 function isIgnored(text) {

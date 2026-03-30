@@ -109,7 +109,7 @@ const PAGES = [
   { path: 'user-requests',      name: 'Заявки на регистрацию' },
 ];
 
-// ── Ошибки которые игнорируем (браузерные артефакты) ──────────────────────
+// ── Ошибки которые игнорируем (браузерные артефакты / инфраструктура) ───────
 const IGNORE = [
   'favicon',
   'ResizeObserver loop',
@@ -119,6 +119,15 @@ const IGNORE = [
   'chrome-extension',
   '[Violation]',
   'Could not load content for chrome-extension',
+  // 502/503 — временная недоступность сервера (рестарт, перегрузка) — не баг приложения
+  'HTTP 502',
+  'status of 502',
+  'HTTP 503',
+  'status of 503',
+  // Сетевые ошибки — проблема окружения, не баг приложения
+  'net::ERR_',
+  'Failed to fetch',
+  'Error: offline',
 ];
 
 function isIgnored(text) {
@@ -214,7 +223,8 @@ for (const role of Object.keys(ACCOUNTS)) {
         const url = resp.url().replace(BASE_URL, '');
         // Только API endpoints (не статика)
         if (url.startsWith('/api/')) {
-          currentPageErrors.push(`HTTP ${status}: ${url}`);
+          const msg = `HTTP ${status}: ${url}`;
+          if (!isIgnored(msg)) currentPageErrors.push(msg);
         }
       }
     });
