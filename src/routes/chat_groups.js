@@ -1661,6 +1661,205 @@ module.exports = async function(fastify) {
     reply.raw.end();
   });
 
+  // ═══ H1: Estimate Chat Integration ═══
+
+  /**
+   * POST /api/chat-groups/from-estimate
+   * Создать чат при отправке просчёта на согласование.
+   * Body: { estimate_id }
+   */
+  fastify.post('/from-estimate', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { estimate_id } = request.body || {};
+    if (!estimate_id) return reply.code(400).send({ error: 'estimate_id required' });
+
+    // 1. Проверить что чат для этого estimate ещё не существует
+    const existing = await db.query(
+      "SELECT id FROM chats WHERE entity_type = 'estimate' AND entity_id = $1", [estimate_id]
+    );
+    if (existing.rows[0]) {
+      return reply.send({ chat: existing.rows[0], already_existed: true });
+    }
+
+    // 2. Получить estimate + tender
+    const estResult = await db.query('SELECT * FROM estimates WHERE id = $1', [estimate_id]);
+    const estimate = estResult.rows[0];
+    if (!estimate) return reply.code(404).send({ error: 'Просчёт не найден' });
+
+    // 3. Собрать участников: PM + ТО (из тендера) + директоры + mimir_bot
+    const pmId = estimate.pm_id || estimate.created_by || request.user.id;
+    const participantIds = new Set([pmId]);
+
+    // ТО из тендера
+    if (estimate.tender_id) {
+      const tenderResult = await db.query('SELECT created_by FROM tenders WHERE id = $1', [estimate.tender_id]);
+      if (tenderResult.rows[0]?.created_by) participantIds.add(tenderResult.rows[0].created_by);
+    }
+
+    // Директоры
+    const directors = await db.query(
+      "SELECT id FROM users WHERE role IN ('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active = true"
+    );
+    for (const d of directors.rows) participantIds.add(d.id);
+
+    // Мимир-бот
+    const mimirBot = await db.query("SELECT id FROM users WHERE login = 'mimir_bot' LIMIT 1");
+    const mimirBotId = mimirBot.rows[0]?.id;
+    if (mimirBotId) participantIds.add(mimirBotId);
+
+    // 4. Создать чат
+    const chatName = `📊 Просчёт #${estimate_id} — ${estimate.title || estimate.object_name || 'Без названия'}`;
+    const { rows: [chat] } = await db.query(`
+      INSERT INTO chats (name, type, is_group, entity_type, entity_id, auto_created, created_at, updated_at)
+      VALUES ($1, 'group', true, 'estimate', $2, true, NOW(), NOW())
+      RETURNING *
+    `, [chatName, estimate_id]);
+
+    // 5. Добавить участников
+    const memberArr = [...participantIds];
+    for (let i = 0; i < memberArr.length; i++) {
+      const role = memberArr[i] === pmId ? 'owner' : 'member';
+      await db.query(
+        'INSERT INTO chat_group_members (chat_id, user_id, role, joined_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING',
+        [chat.id, memberArr[i], role]
+      );
+    }
+
+    // 6. Получить расчёт для pinned card
+    let calcData = null;
+    try {
+      const calcResult = await db.query(
+        'SELECT * FROM estimate_calculation_data WHERE estimate_id = $1 ORDER BY version_no DESC LIMIT 1',
+        [estimate_id]
+      );
+      calcData = calcResult.rows[0] || null;
+    } catch (e) { /* no calculation yet */ }
+
+    // 7. Pinned estimate_card сообщение
+    const cardMetadata = {
+      estimate_id,
+      status: estimate.approval_status || 'sent',
+      title: estimate.title || estimate.object_name,
+      customer: estimate.customer,
+      total_cost: calcData?.total_cost || null,
+      total_with_margin: calcData?.total_with_margin || null,
+      margin_pct: calcData?.margin_pct || null,
+      version_no: calcData?.version_no || 1
+    };
+    const { rows: [cardMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, metadata, is_system, created_at)
+      VALUES ($1, $2, $3, 'estimate_card', $4, false, NOW()) RETURNING *
+    `, [chat.id, pmId, `📊 Просчёт #${estimate_id}`, JSON.stringify(cardMetadata)]);
+
+    // Pin the card
+    await db.query(
+      'INSERT INTO pinned_messages (chat_id, message_id, pinned_by, pinned_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING',
+      [chat.id, cardMsg.id, pmId]
+    );
+
+    // 8. Системное сообщение
+    const actorName = request.user.name || 'РП';
+    await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, is_system, created_at)
+      VALUES ($1, $2, $3, 'system', true, NOW())
+    `, [chat.id, pmId, `${actorName} отправил просчёт на согласование`]);
+
+    // Update message_count
+    await db.query('UPDATE chats SET message_count = 2, last_message_at = NOW() WHERE id = $1', [chat.id]);
+
+    // 9. SSE notify
+    for (const uid of memberArr) {
+      if (uid !== pmId) {
+        sendToUser(uid, 'chat:new_chat', { chat_id: chat.id, chat_name: chatName, entity_type: 'estimate', entity_id: estimate_id });
+      }
+    }
+
+    return reply.send({ chat, participants: memberArr, card_message_id: cardMsg.id });
+  });
+
+  /**
+   * GET /api/chat-groups/by-entity?type=estimate&id=123
+   * Найти чат по привязанной сущности.
+   */
+  fastify.get('/by-entity', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { type, id } = request.query;
+    if (!type || !id) return reply.code(400).send({ error: 'type and id required' });
+
+    const result = await db.query(
+      'SELECT * FROM chats WHERE entity_type = $1 AND entity_id = $2 LIMIT 1',
+      [type, parseInt(id)]
+    );
+    return reply.send({ chat: result.rows[0] || null });
+  });
+
+  /**
+   * PUT /api/chat-groups/:chatId/update-estimate-card
+   * Обновить pinned-карточку просчёта в чате.
+   * Body: { estimate_id }
+   */
+  fastify.put('/:chatId/update-estimate-card', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const chatId = parseInt(request.params.chatId);
+    const { estimate_id } = request.body || {};
+    if (!estimate_id) return reply.code(400).send({ error: 'estimate_id required' });
+
+    // 1. Найти pinned message с message_type='estimate_card'
+    const pinnedResult = await db.query(`
+      SELECT cm.* FROM chat_messages cm
+      JOIN pinned_messages pm ON pm.message_id = cm.id AND pm.chat_id = cm.chat_id
+      WHERE cm.chat_id = $1 AND cm.message_type = 'estimate_card'
+      ORDER BY cm.id DESC LIMIT 1
+    `, [chatId]);
+
+    // 2. Получить актуальные данные
+    const estResult = await db.query('SELECT * FROM estimates WHERE id = $1', [estimate_id]);
+    const estimate = estResult.rows[0];
+    if (!estimate) return reply.code(404).send({ error: 'Просчёт не найден' });
+
+    let calcData = null;
+    try {
+      const calcResult = await db.query(
+        'SELECT * FROM estimate_calculation_data WHERE estimate_id = $1 ORDER BY version_no DESC LIMIT 1',
+        [estimate_id]
+      );
+      calcData = calcResult.rows[0] || null;
+    } catch (e) { /* ok */ }
+
+    const newMetadata = {
+      estimate_id,
+      status: estimate.approval_status || 'draft',
+      title: estimate.title || estimate.object_name,
+      customer: estimate.customer,
+      total_cost: calcData?.total_cost || null,
+      total_with_margin: calcData?.total_with_margin || null,
+      margin_pct: calcData?.margin_pct || null,
+      version_no: calcData?.version_no || 1
+    };
+
+    // 3. Обновить metadata pinned card
+    if (pinnedResult.rows[0]) {
+      await db.query(
+        'UPDATE chat_messages SET metadata = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(newMetadata), pinnedResult.rows[0].id]
+      );
+    }
+
+    // 4. Системное сообщение об обновлении
+    const versionNo = calcData?.version_no || 1;
+    const actorName = request.user.name || 'Пользователь';
+    await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, metadata, is_system, created_at)
+      VALUES ($1, $2, $3, 'estimate_update', $4, true, NOW())
+    `, [chatId, request.user.id, `${actorName} обновил расчёт (v.${versionNo})`, JSON.stringify(newMetadata)]);
+
+    await db.query('UPDATE chats SET message_count = COALESCE(message_count,0)+1, last_message_at = NOW(), updated_at = NOW() WHERE id = $1', [chatId]);
+
+    // SSE notify
+    await sseToMembers(chatId, request.user.id, 'chat:estimate_updated', {
+      chat_id: chatId, estimate_id, metadata: newMetadata
+    });
+
+    return reply.send({ success: true, metadata: newMetadata });
+  });
+
   // ═══ S12: Link Preview (Open Graph) ═══
   const _linkPreviewCache = new Map();
   const LINK_CACHE_TTL = 3600000; // 1 hour

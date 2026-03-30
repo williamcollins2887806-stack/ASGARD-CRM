@@ -158,6 +158,18 @@ async function routes(fastify) {
         requiresPayment: false
       });
 
+      // H1: Создать чат в Хугинне для просчётов
+      if (entityType === 'estimates') {
+        const estimateChat = require('../services/estimateChat');
+        setImmediate(async () => {
+          try {
+            await estimateChat.createEstimateChat(db, entityId, actor);
+          } catch (err) {
+            console.error('[H1] Chat creation error:', err.message);
+          }
+        });
+      }
+
       return { success: true, status: 'sent' };
     });
   });

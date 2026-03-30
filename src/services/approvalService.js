@@ -609,6 +609,18 @@ async function resubmit(db, { entityType, entityId, actor }) {
     requiresPayment: false
   });
 
+  // H1: Обновить карточку просчёта в чате + системное сообщение
+  if (entityType === 'estimates') {
+    setImmediate(async () => {
+      try {
+        const estimateChat = require('./estimateChat');
+        await estimateChat.updateEstimateCard(db, entityId, actor);
+      } catch (err) {
+        console.error('[H1] Chat card update error:', err.message);
+      }
+    });
+  }
+
   return { status: 'sent' };
 }
 

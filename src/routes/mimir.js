@@ -1735,6 +1735,188 @@ async function mimirRoutes(fastify, options) {
       return reply.code(500).send({ error: 'Ошибка AI: ' + error.message });
     }
   });
+  // ═══ H1: Мимир-автоответчик для просчётов ═══
+
+  /**
+   * POST /api/mimir/auto-respond
+   * Внутренний эндпоинт: Мимир анализирует комментарий директора и отвечает в чат.
+   * Body: { estimate_id, chat_id, trigger_action, director_comment, director_name }
+   */
+  fastify.post('/auto-respond', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { estimate_id, chat_id, trigger_action, director_comment, director_name } = request.body || {};
+    if (!estimate_id || !chat_id || !trigger_action || !director_comment) {
+      return reply.code(400).send({ error: 'estimate_id, chat_id, trigger_action, director_comment required' });
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // 1. Проверить mimir_auto_config
+      const configResult = await db.query(
+        "SELECT * FROM mimir_auto_config WHERE entity_type = 'estimate' AND trigger_action = $1 AND enabled = true",
+        [trigger_action]
+      );
+      if (!configResult.rows[0]) {
+        return reply.send({ skipped: true, reason: 'auto-respond disabled for this action' });
+      }
+      const config = configResult.rows[0];
+
+      // 2. Получить mimir_bot user id
+      const botResult = await db.query("SELECT id FROM users WHERE login = 'mimir_bot' LIMIT 1");
+      const botUserId = botResult.rows[0]?.id;
+      if (!botUserId) {
+        return reply.code(500).send({ error: 'mimir_bot user not found' });
+      }
+
+      // 3. Получить контекст: estimate + calculation + аналоги
+      const estResult = await db.query('SELECT * FROM estimates WHERE id = $1', [estimate_id]);
+      const estimate = estResult.rows[0];
+      if (!estimate) return reply.code(404).send({ error: 'Просчёт не найден' });
+
+      let calcData = null;
+      try {
+        const calcResult = await db.query(
+          'SELECT * FROM estimate_calculation_data WHERE estimate_id = $1 ORDER BY version_no DESC LIMIT 1',
+          [estimate_id]
+        );
+        calcData = calcResult.rows[0] || null;
+      } catch (e) { /* ok */ }
+
+      let analogs = [];
+      try {
+        const analogsResult = await db.query(
+          "SELECT title, total_cost, total_with_margin, margin_pct, crew_count, work_days FROM estimates WHERE id != $1 AND work_type = $2 AND approval_status = 'approved' ORDER BY created_at DESC LIMIT 3",
+          [estimate_id, estimate.work_type]
+        );
+        analogs = analogsResult.rows;
+      } catch (e) { /* ok */ }
+
+      // PM name
+      let pmName = 'РП';
+      if (estimate.pm_id) {
+        const pmResult = await db.query('SELECT name FROM users WHERE id = $1', [estimate.pm_id]);
+        pmName = pmResult.rows[0]?.name || 'РП';
+      }
+
+      // 4. Собрать расчёт summary
+      let calcSummary = 'Расчёт пока не создан.';
+      if (calcData) {
+        const blocks = [];
+        if (calcData.personnel_json) blocks.push(`Персонал: ${JSON.stringify(calcData.personnel_json).length > 10 ? 'есть данные' : 'пусто'}`);
+        blocks.push(`Итого себестоимость: ${calcData.total_cost || '?'} ₽`);
+        blocks.push(`Клиенту: ${calcData.total_with_margin || '?'} ₽`);
+        blocks.push(`Маржа: ${calcData.margin_pct || '?'}%`);
+        blocks.push(`Непредвиденные: ${calcData.contingency_pct || 5}%`);
+        calcSummary = blocks.join('\n');
+      }
+
+      let analogsSummary = 'Аналогов нет.';
+      if (analogs.length > 0) {
+        analogsSummary = analogs.map(a =>
+          `- ${a.title}: себес ${a.total_cost}₽, клиенту ${a.total_with_margin}₽, маржа ${a.margin_pct}%, бригада ${a.crew_count} чел, ${a.work_days} дней`
+        ).join('\n');
+      }
+
+      // 5. System prompt
+      const systemPrompt = `Ты Мимир — ИИ-ассистент ООО «Асгард-Сервис». Директор ${director_name || 'директор'} оставил комментарий к просчёту.
+
+ПРОСЧЁТ: ${estimate.title || estimate.object_name || 'Без названия'}
+Заказчик: ${estimate.customer || '—'}
+Объект: ${estimate.object_city || '—'}, ${estimate.object_distance_km || '?'} км
+Тип работ: ${estimate.work_type || '—'}
+Бригада: ${estimate.crew_count || '?'} чел, ${estimate.work_days || '?'} раб. дней
+
+РАСЧЁТ (себестоимость):
+${calcSummary}
+
+КОММЕНТАРИЙ ДИРЕКТОРА (${trigger_action}):
+"${director_comment}"
+
+АНАЛОГИЧНЫЕ ПРОЕКТЫ:
+${analogsSummary}
+
+ТВОЯ ЗАДАЧА:
+1. Начни с фразы "Пока ждём ответа от ${pmName}, я посмотрел информацию и вот что могу сказать:"
+2. Проанализируй комментарий директора
+3. Если можешь помочь — дай конкретные цифры, сравнения с аналогами, пересчитай если нужно
+4. Если не можешь — напиши: "Я хотел помочь, но не смог найти достаточно информации по этому вопросу. Ждём, что скажет ${pmName}."
+5. Если видишь риск (маржа падает ниже 15%, себестоимость превышает аналоги на >30%) — предупреди
+
+ПРАВИЛА:
+- Отвечай по-русски
+- Будь конкретным — цифры, проценты, суммы
+- Ссылайся на аналоги если есть
+- Не принимай решение за директора или РП — только рекомендуй
+- Максимум 200 слов
+- Используй тарифы и формулы из расчётного движка (ФОТ 55%, накладные 15%, расходные 3%, непредвиденные 5%)`;
+
+      // 6. Вызвать AI
+      const aiResult = await aiProvider.complete({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: director_comment }],
+        maxTokens: config.max_tokens || 500,
+        temperature: 0.4
+      });
+
+      const responseText = aiResult.text || '';
+      const durationMs = Date.now() - startTime;
+
+      // 7. Определить сценарий
+      let scenario = 'can_help';
+      if (responseText.includes('не смог найти достаточно информации') || responseText.includes('Ждём, что скажет')) {
+        scenario = 'cannot_help';
+      }
+      if (responseText.includes('предупред') || responseText.includes('риск') || responseText.includes('ниже 15%')) {
+        scenario = 'warning';
+      }
+
+      // 8. Записать сообщение в чат от mimir_bot
+      const msgMetadata = {
+        confidence: scenario === 'can_help' ? 'high' : scenario === 'warning' ? 'medium' : 'low',
+        trigger_action,
+        scenario,
+        tokens_input: aiResult.usage?.inputTokens || 0,
+        tokens_output: aiResult.usage?.outputTokens || 0
+      };
+      const { rows: [mimirMsg] } = await db.query(`
+        INSERT INTO chat_messages (chat_id, user_id, message, message_type, metadata, is_system, created_at)
+        VALUES ($1, $2, $3, 'mimir_response', $4, false, NOW()) RETURNING *
+      `, [chat_id, botUserId, responseText, JSON.stringify(msgMetadata)]);
+
+      // Update chat counters
+      await db.query(
+        'UPDATE chats SET message_count = COALESCE(message_count,0)+1, last_message_at = NOW(), updated_at = NOW() WHERE id = $1',
+        [chat_id]
+      );
+
+      // 9. SSE notify members
+      const { sendToUser: sse } = require('./sse');
+      const members = await db.query('SELECT user_id FROM chat_group_members WHERE chat_id = $1', [chat_id]);
+      for (const m of members.rows) {
+        sse(m.user_id, 'chat:new_message', {
+          chat_id,
+          message: { ...mimirMsg, user_name: 'Мимир', is_mimir_bot: true }
+        });
+      }
+
+      // 10. Записать в mimir_auto_log
+      await db.query(`
+        INSERT INTO mimir_auto_log (chat_id, estimate_id, trigger_action, trigger_comment, response, tokens_input, tokens_output, duration_ms, scenario)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, [chat_id, estimate_id, trigger_action, director_comment, responseText,
+          aiResult.usage?.inputTokens || 0, aiResult.usage?.outputTokens || 0, durationMs, scenario]);
+
+      return reply.send({
+        message_id: mimirMsg.id,
+        scenario,
+        duration_ms: durationMs
+      });
+
+    } catch (error) {
+      fastify.log.error('[Mimir auto-respond error]:', error.message);
+      return reply.code(500).send({ error: 'Ошибка автоответа Мимира: ' + error.message });
+    }
+  });
 }
 
 module.exports = mimirRoutes;
