@@ -212,6 +212,21 @@ async function loginByApi(page, role) {
     }
     await page.waitForTimeout(2000);
 
+    // Safety: SW controllerchange может сбросить token из localStorage в catch-блоке
+    // (evaluate с .catch(() => {}) тихо проваливается если контекст был уничтожен).
+    // Проверяем что токен ещё в localStorage и если нет — переинжектируем.
+    try {
+      const stillHasToken = await page.evaluate(() => !!localStorage.getItem('asgard_token'));
+      if (!stillHasToken) {
+        console.log(`  [${role}] token cleared during boot — re-injecting`);
+        await page.waitForFunction(() => !window.location.search.includes('_sw='), { timeout: 5000 }).catch(() => {});
+        await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+        await injectAuth();
+        await page.goto(BASE_URL + '/#/home', { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.waitForTimeout(1500);
+      }
+    } catch (_tokenCheck) {}
+
     return token;
   } catch (e) {
     console.log(`  [${role}] loginByApi error: ${e.message}`);
