@@ -175,7 +175,8 @@ async function loginByApi(page, role) {
     ).catch(() => {});
     await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
 
-    await page.evaluate(({ t, u }) => {
+    // Inject localStorage — retry if SW redirect fires during evaluate
+    const injectAuth = async () => page.evaluate(({ t, u }) => {
       localStorage.setItem('asgard_token', t);
       if (u) {
         localStorage.setItem('asgard_user', JSON.stringify(u));
@@ -183,6 +184,15 @@ async function loginByApi(page, role) {
         if (u.menu_settings) localStorage.setItem('asgard_menu_settings', JSON.stringify(u.menu_settings));
       }
     }, { t: token, u: pinData.user });
+
+    try {
+      await injectAuth();
+    } catch (_evalErr) {
+      // SW controllerchange fired during evaluate — wait for redirect and retry
+      await page.waitForFunction(() => !window.location.search.includes('_sw='), { timeout: 8000 }).catch(() => {});
+      await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+      await injectAuth();
+    }
 
     // 4. Navigate home — SPA loads with real token
     try {
