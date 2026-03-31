@@ -563,7 +563,9 @@ async function completeYandexGPT(options) {
   const yMessages = [];
   if (system) yMessages.push({ role: 'system', text: system });
   for (const m of messages) {
-    yMessages.push({ role: m.role, text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) });
+    const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+    if (!text || !text.trim()) continue; // YandexGPT rejects empty message text
+    yMessages.push({ role: m.role, text });
   }
 
   const body = {

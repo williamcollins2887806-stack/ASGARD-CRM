@@ -1504,10 +1504,12 @@ module.exports = async function(fastify) {
       }
     }
 
-    const aiMessages = history.map(m => ({
-      role: m.user_id === 0 ? 'assistant' : 'user',
-      content: m.message
-    }));
+    const aiMessages = history
+      .filter(m => m.message && m.message.trim())
+      .map(m => ({
+        role: m.user_id === 0 ? 'assistant' : 'user',
+        content: m.message
+      }));
 
     // Добавить содержимое файлов к контексту (перед последним сообщением)
     if (fileContents.length > 0) {
@@ -1648,7 +1650,7 @@ module.exports = async function(fastify) {
       ORDER BY created_at DESC LIMIT 20
     `, [chatId]);
 
-    const aiMessages = history.reverse().map(m => ({
+    const aiMessages = history.reverse().filter(m => m.message && m.message.trim()).map(m => ({
       role: m.user_id === 0 ? 'assistant' : 'user',
       content: m.message
     }));
