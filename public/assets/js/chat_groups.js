@@ -725,6 +725,7 @@ window.AsgardChatGroups = (function(){
             <button class="hg-chat-tab${_currentTab === 'all' ? ' active' : ''}" data-tab="all" onclick="AsgardChatGroups.filterByTab('all')">Все</button>
             <button class="hg-chat-tab${_currentTab === 'estimates' ? ' active' : ''}" data-tab="estimates" onclick="AsgardChatGroups.filterByTab('estimates')">Просчёты</button>
             <button class="hg-chat-tab${_currentTab === 'personal' ? ' active' : ''}" data-tab="personal" onclick="AsgardChatGroups.filterByTab('personal')">Личные</button>
+            <div class="hg-tab-indicator" id="hg-tab-indicator"></div>
           </div>
           <div class="chat-list" id="chat-list-container">
             ${mimirEntry}
@@ -745,6 +746,8 @@ window.AsgardChatGroups = (function(){
 
     // Initialize chat tabs
     filterByTab(_currentTab);
+    // Position indicator after DOM is ready
+    requestAnimationFrame(() => _updateTabIndicator());
 
     _setupSSE();
 
@@ -782,6 +785,17 @@ window.AsgardChatGroups = (function(){
     });
     filterChats();
     _updateTabBadges();
+    _updateTabIndicator();
+  }
+
+  function _updateTabIndicator() {
+    const indicator = $('#hg-tab-indicator');
+    const activeBtn = document.querySelector('#hg-chat-tabs .hg-chat-tab.active');
+    if (!indicator || !activeBtn) return;
+    const tabColors = { all: '#fff', estimates: '#D4A843', personal: '#1F6FEB' };
+    indicator.style.left = activeBtn.offsetLeft + 'px';
+    indicator.style.width = activeBtn.offsetWidth + 'px';
+    indicator.style.background = tabColors[_currentTab] || '#fff';
   }
 
   function _updateTabBadges() {
@@ -1026,7 +1040,8 @@ window.AsgardChatGroups = (function(){
       try { meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : (msg.metadata || {}); } catch(e) {}
       const ver = meta.version_no ? 'v' + meta.version_no : '';
       const margin = meta.margin_pct ? ', маржа ' + meta.margin_pct + '%' : '';
-      return `<div class="ec-system-pill" data-msg-id="${msg.id}"><span class="ec-system-pill__icon">\uD83D\uDD04</span><span class="ec-system-pill__text">Просчёт обновлён${ver ? ' \u2014 ' + ver : ''}${margin}</span></div>`;
+      const pillTime = new Date(msg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      return `<div class="ec-system-pill" data-msg-id="${msg.id}"><span class="ec-system-pill__icon">\uD83D\uDD04</span><span class="ec-system-pill__text">Просчёт обновлён${ver ? ' \u2014 ' + ver : ''}${margin}</span><span class="ec-system-pill__time">${pillTime}</span></div>`;
     }
 
     const isOwn = msg.user_id === userId;
@@ -1179,7 +1194,7 @@ window.AsgardChatGroups = (function(){
 
     // Optimistic user message
     _appendMessage({
-      id: 'tmp_' + Date.now(),
+      id: 'temp-' + Date.now(),
       chat_id: chatId,
       user_id: _myId,
       user_name: 'Вы',
@@ -1196,8 +1211,8 @@ window.AsgardChatGroups = (function(){
       const typing = $('#chat-typing');
       if (typing) typing.style.display = 'none';
       // If SSE didn't catch it, reload
-      if (resp?.ai_message) {
-        _appendMessage(resp.ai_message);
+      if (resp?.mimir_message) {
+        _appendMessage({ ...resp.mimir_message, user_name: 'Мимир', is_mimir_bot: true });
       }
     } catch (e) {
       const typing = $('#chat-typing');

@@ -647,10 +647,10 @@ module.exports = async function(fastify) {
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
 
     let sql = `
-      SELECT m.*, u.name as user_name, u.role as user_role,
+      SELECT m.*, COALESCE(u.name, 'Мимир') as user_name, u.role as user_role,
         rm.id as reply_id, rm.message as reply_text, ru.name as reply_user_name
       FROM chat_messages m
-      JOIN users u ON m.user_id = u.id
+      LEFT JOIN users u ON m.user_id = u.id
       LEFT JOIN chat_messages rm ON m.reply_to = rm.id
       LEFT JOIN users ru ON rm.user_id = ru.id
       WHERE m.chat_id = $1 AND m.deleted_at IS NULL
@@ -1502,7 +1502,7 @@ module.exports = async function(fastify) {
       const aiResult = await aiProvider.complete({
         system: systemPrompt,
         messages: aiMessages,
-        maxTokens: 4096,
+        maxTokens: 8000,
         temperature: 0.6
       });
       aiResponse = aiResult.content || aiResult.text || 'Не удалось получить ответ';
