@@ -497,7 +497,7 @@ try {
   const TelephonyJobQueue = require('./services/job-queue');
   const EscalationChecker = require('./services/escalation-checker');
   const CallPipeline = require('./services/call-pipeline');
-  const createNotification = require('./services/notify');
+  const { createNotification } = require('./services/notify');
 
   const jobQueue = new TelephonyJobQueue(db, fastify.log);
   const escalationChecker = new EscalationChecker(db, createNotification, fastify.log);
@@ -556,7 +556,7 @@ try {
 // ── Call Report Scheduler ──
 try {
   const ReportScheduler = require('./services/report-scheduler');
-  const createNotification = require('./services/notify');
+  const { createNotification } = require('./services/notify');
   let aiProv = null;
   try { aiProv = require('./services/ai-provider'); } catch (_) {}
   const reportScheduler = new ReportScheduler(db, aiProv, createNotification, fastify.log);

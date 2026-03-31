@@ -6,6 +6,26 @@
  * Email — единственное место где допускаются инлайн-стили
  */
 
+function fmtRuDate(d) {
+  if (!d) return '';
+  const date = d instanceof Date ? d : new Date(d);
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(' г.', '');
+}
+
+function periodLabel(report) {
+  if (report.report_type === 'monthly') {
+    const d = report.period_from instanceof Date ? report.period_from : new Date(report.period_from);
+    return d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '');
+  }
+  const from = fmtRuDate(report.period_from);
+  const to   = fmtRuDate(report.period_to);
+  return from === to ? from : `${from} — ${to}`;
+}
+
+function typeLabel(rt) {
+  return { daily: 'Ежедневный', weekly: 'Еженедельный', monthly: 'Ежемесячный' }[rt] || 'Ежедневный';
+}
+
 function generateReportEmail(report) {
   let stats = {};
   try { stats = typeof report.stats_json === 'string' ? JSON.parse(report.stats_json) : (report.stats_json || {}); } catch (_) {}
@@ -35,7 +55,8 @@ function generateReportEmail(report) {
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;">
   <tr><td style="background:linear-gradient(135deg,#1a2332,#0f1724);padding:24px;text-align:center;">
     <h1 style="color:#fff;margin:0;font-size:20px;">⚡ ASGARD CRM</h1>
-    <p style="color:#94a3b8;margin:4px 0 0;font-size:13px;">Отчёт по звонкам — ${report.title || ''}</p>
+    <p style="color:#e2e8f0;margin:6px 0 2px;font-size:16px;font-weight:bold;">${typeLabel(report.report_type)} отчёт по звонкам</p>
+    <p style="color:#94a3b8;margin:0;font-size:13px;">${periodLabel(report)}</p>
   </td></tr>
   <tr><td style="padding:16px;">
     <table width="100%" cellspacing="8" cellpadding="0"><tr>

@@ -198,9 +198,10 @@ class ReportScheduler {
             try {
               const { generateReportEmail } = require('./call-report-email');
               const crmMailer = require('./crm-mailer');
+              const _typeNames = { daily: 'ежедневный', weekly: 'еженедельный', monthly: 'ежемесячный' };
               await crmMailer.sendCrmEmail(this.db, null, {
                 to: user.email,
-                subject: `📊 Отчёт: ${label} | ASGARD CRM`,
+                subject: `📊 Ваш ${_typeNames[reportType] || 'ежедневный'} отчёт по звонкам`,
                 html: generateReportEmail(report),
                 text: (report.summary_text || '').slice(0, 500)
               });
