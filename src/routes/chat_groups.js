@@ -1622,15 +1622,15 @@ module.exports = async function(fastify) {
       const streamResponse = await aiProvider.stream({
         system: systemPrompt,
         messages: aiMessages,
-        maxTokens: 4096,
+        maxTokens: 8000,
         temperature: 0.6
       });
 
-      for await (const chunk of streamResponse) {
-        const text = chunk.content || chunk.text || chunk.delta?.text || '';
-        if (text) {
-          fullResponse += text;
-          reply.raw.write(`data: ${JSON.stringify({ type: 'text', text })}\n\n`);
+      const streamParser = aiProvider.parseStream(streamResponse, aiProvider.getProvider());
+      for await (const event of streamParser) {
+        if (event.type === 'text' && event.content) {
+          fullResponse += event.content;
+          reply.raw.write(`data: ${JSON.stringify({ type: 'text', text: event.content })}\n\n`);
         }
       }
     } catch (streamErr) {
