@@ -42,8 +42,9 @@ window.AsgardInvoicesPage = (function(){
     await loadData();
     
     const STATUSES = {
+      'sent': { label: 'Выставлен', color: 'var(--info)' },
       'pending': { label: 'Ожидает', color: 'var(--amber)' },
-      'partial': { label: 'Частично', color: 'var(--info)' },
+      'partial': { label: 'Частично', color: 'var(--warn, var(--amber))' },
       'paid': { label: 'Оплачен', color: 'var(--ok-t)' },
       'cancelled': { label: 'Отменён', color: 'var(--err-t)' }
     };
@@ -57,9 +58,11 @@ window.AsgardInvoicesPage = (function(){
           <input type="text" class="inp" id="searchInv" placeholder="🔍 Поиск..." style="flex:1;min-width:200px"/>
           <select class="inp" id="filterStatus" style="width:150px">
             <option value="">Все статусы</option>
+            <option value="sent">Выставлен</option>
             <option value="pending">Ожидает</option>
             <option value="partial">Частично</option>
             <option value="paid">Оплачен</option>
+            <option value="cancelled">Отменён</option>
           </select>
           <button class="btn primary" id="btnAddInvoice">➕ Новый счёт</button>
         </div>
@@ -131,6 +134,7 @@ window.AsgardInvoicesPage = (function(){
     if (!inv) return;
 
     const STATUSES = {
+      'sent': { label: 'Выставлен', cls: 'status-blue' },
       'pending': { label: 'Ожидает', cls: 'status-yellow' },
       'partial': { label: 'Частично', cls: 'status-blue' },
       'paid': { label: 'Оплачен', cls: 'status-green' },

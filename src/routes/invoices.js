@@ -35,6 +35,14 @@ async function invoicesRoutes(fastify, options) {
     return `${prefix}${String(next).padStart(3, '0')}`;
   }
 
+  // Auto-generate next invoice number (for frontend pre-fill)
+  fastify.get('/next-number', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
+    const number = await generateInvoiceNumber();
+    return { success: true, number };
+  });
+
   // Get all invoices
   fastify.get('/', {
     preHandler: [fastify.authenticate]

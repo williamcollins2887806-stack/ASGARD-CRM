@@ -1000,6 +1000,28 @@ window.AsgardPmWorksPage=(function(){
               location.hash = '#/payroll-sheet?work_id=' + w.id;
             }
           });
+          actions.push({
+            icon: '💰', label: 'Выставить счёт',
+            desc: 'Счёт на оплату по работе',
+            onClick: () => {
+              if(window.AsgardWorkDocuments && AsgardWorkDocuments.openInvoiceModal){
+                AsgardWorkDocuments.openInvoiceModal(w, user);
+              } else {
+                toast("Счёт", "Модуль документов не загружен", "err");
+              }
+            }
+          });
+          actions.push({
+            icon: '📋', label: 'Оформить акт',
+            desc: 'Акт выполненных работ',
+            onClick: () => {
+              if(window.AsgardWorkDocuments && AsgardWorkDocuments.openActModal){
+                AsgardWorkDocuments.openActModal(w, user);
+              } else {
+                toast("Акт", "Модуль документов не загружен", "err");
+              }
+            }
+          });
 
           // ─── Планирование ───
           actions.push({ section: 'Планирование' });
