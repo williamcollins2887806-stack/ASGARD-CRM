@@ -133,12 +133,15 @@ function EstimateChatItem({ chat }) {
 /* ─── Tab Bar ──────────────────────────────────────────── */
 
 function TabBar({ active, onSelect, unreadCounts }) {
+  const activeIdx = TABS.findIndex((t) => t.key === active);
+  const activeColor = TAB_COLORS[active] || '#fff';
+
   return (
     <div
-      className="flex gap-1 px-4 pb-2"
+      className="relative flex gap-1 px-4 pb-2"
       style={{ borderBottom: '0.5px solid var(--border-norse)' }}
     >
-      {TABS.map((tab) => {
+      {TABS.map((tab, i) => {
         const isActive = tab.key === active;
         const color = TAB_COLORS[tab.key];
         return (
@@ -151,7 +154,6 @@ function TabBar({ active, onSelect, unreadCounts }) {
               fontWeight: isActive ? 700 : 500,
               color: isActive ? color : 'var(--text-tertiary)',
               background: isActive ? `${color}15` : 'transparent',
-              borderBottom: isActive ? `2px solid ${color}` : '2px solid transparent',
             }}
           >
             {tab.label}
@@ -169,6 +171,7 @@ function TabBar({ active, onSelect, unreadCounts }) {
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  animation: 'badgePulse 300ms ease-out',
                 }}
               >
                 {unreadCounts[tab.key] > 99 ? '99+' : unreadCounts[tab.key]}
@@ -177,6 +180,19 @@ function TabBar({ active, onSelect, unreadCounts }) {
           </button>
         );
       })}
+      {/* Animated underline indicator */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: `calc(16px + ${activeIdx * 33.333}%)`,
+          width: `calc(33.333% - 4px)`,
+          height: 2,
+          background: activeColor,
+          borderRadius: 1,
+          transition: 'left 200ms cubic-bezier(.4,0,.2,1), background 200ms',
+        }}
+      />
     </div>
   );
 }
@@ -313,16 +329,36 @@ export default function Chat() {
   useSSE(handleSSE);
 
   // ─── Render helpers ───
-  const renderList = (items, type) => {
-    if (items.length === 0) {
+  const EMPTY_STATES = {
+    all: { icon: '🐦‍⬛', title: 'Тишина в чертогах', desc: 'Создайте чат или отправьте просчёт' },
+    estimates: { icon: '📊', title: 'Просчёты появятся здесь', desc: 'Отправьте просчёт на согласование\nи чат создастся автоматически' },
+    personal: { icon: '💬', title: 'Нет личных чатов', desc: 'Начните переписку с коллегой' },
+  };
+
+  const renderEmptyState = (tabKey) => {
+    if (search) {
       return (
-        <div className="flex items-center justify-center py-8">
-          <p className="text-[13px]" style={{ color: 'var(--text-tertiary)' }}>
-            {search ? 'Ничего не найдено' : 'Нет чатов'}
-          </p>
+        <div className="flex items-center justify-center py-12">
+          <p className="text-[13px]" style={{ color: 'var(--text-tertiary)' }}>Ничего не найдено</p>
         </div>
       );
     }
+    const state = EMPTY_STATES[tabKey] || EMPTY_STATES.all;
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
+        <span style={{ fontSize: 36 }}>{state.icon}</span>
+        <p className="mt-3 text-[15px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+          {state.title}
+        </p>
+        <p className="mt-1 text-[13px] whitespace-pre-line" style={{ color: 'var(--text-tertiary)' }}>
+          {state.desc}
+        </p>
+      </div>
+    );
+  };
+
+  const renderList = (items, type, tabKey) => {
+    if (items.length === 0) return renderEmptyState(tabKey);
     return items.map((chat) =>
       type === 'estimate' ? (
         <EstimateChatItem key={chat.id} chat={chat} />
@@ -335,12 +371,13 @@ export default function Chat() {
   const tabContent = {
     all: (
       <>
-        {estimateChats.length > 0 && renderList(estimateChats, 'estimate')}
-        {renderList(personalChats, 'personal')}
+        {estimateChats.length > 0 && renderList(estimateChats, 'estimate', 'estimates')}
+        {personalChats.length > 0 && renderList(personalChats, 'personal', 'personal')}
+        {estimateChats.length === 0 && personalChats.length === 0 && renderEmptyState('all')}
       </>
     ),
-    estimates: renderList(estimateChats, 'estimate'),
-    personal: renderList(personalChats, 'personal'),
+    estimates: renderList(estimateChats, 'estimate', 'estimates'),
+    personal: renderList(personalChats, 'personal', 'personal'),
   };
 
   return (

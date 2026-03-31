@@ -3537,6 +3537,11 @@ details > *:not(summary) {
   border-radius: 12px;
   padding: 14px 16px;
   margin: 0 16px 8px;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.ec-pinned-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(212,168,67,.12);
 }
 .ec-pinned-card__header {
   display: flex;
@@ -3605,9 +3610,21 @@ details > *:not(summary) {
   border: 1px solid rgba(212,168,67,.15);
   border-radius: 16px;
   width: fit-content;
+  position: relative;
+  cursor: default;
 }
 .ec-system-pill__icon { font-size: 14px; }
 .ec-system-pill__text { font-size: 12px; color: var(--t2, #aaa); }
+/* H6: Show timestamp on hover */
+.ec-system-pill .ec-system-pill__time {
+  display: none;
+  font-size: 10px;
+  color: var(--t3, #666);
+  margin-left: 4px;
+}
+.ec-system-pill:hover .ec-system-pill__time {
+  display: inline;
+}
 
 /* Add member button accent for estimate chats */
 .ec-add-member-btn { color: var(--gold, #D4A843) !important; }
@@ -5641,4 +5658,24 @@ textarea:focus:not(:focus-visible) {
 }
 .hg-chat-tab[data-tab="estimates"] .hg-tab-badge {
   background: #D4A843;
+}
+/* H6: Animated tab indicator */
+.hg-chat-tabs {
+  position: relative;
+}
+.hg-tab-indicator {
+  position: absolute;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  transition: left 200ms cubic-bezier(.4,0,.2,1), width 200ms cubic-bezier(.4,0,.2,1), background 200ms;
+}
+/* H6: Badge pulse animation */
+.hg-tab-badge {
+  animation: hgBadgePulse 300ms ease-out;
+}
+@keyframes hgBadgePulse {
+  0% { transform: scale(0.7); }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); }
 }
