@@ -1436,17 +1436,86 @@ module.exports = async function(fastify) {
       message: { ...userMsg, user_name: senderName }
     });
 
-    // 2. Собрать контекст (последние 20 сообщений)
+    // 2. Собрать контекст (последние 20 сообщений) + вложения
     const { rows: history } = await db.query(`
-      SELECT user_id, message, created_at FROM chat_messages
-      WHERE chat_id = $1 AND deleted_at IS NULL
-      ORDER BY created_at DESC LIMIT 20
+      SELECT m.id, m.user_id, m.message, m.created_at FROM chat_messages m
+      WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+      ORDER BY m.created_at DESC LIMIT 20
     `, [chatId]);
+    history.reverse();
 
-    const aiMessages = history.reverse().map(m => ({
+    // Подтянуть вложения для сообщений из истории
+    const histMsgIds = history.map(m => m.id);
+    let attachMap = new Map();
+    if (histMsgIds.length > 0) {
+      const { rows: atts } = await db.query(`
+        SELECT message_id, file_name, file_path, mime_type FROM chat_attachments
+        WHERE message_id = ANY($1::int[])
+      `, [histMsgIds]);
+      for (const a of atts) {
+        if (!attachMap.has(a.message_id)) attachMap.set(a.message_id, []);
+        attachMap.get(a.message_id).push(a);
+      }
+    }
+
+    // Извлечь содержимое файлов для AI контекста
+    const fileContents = [];
+    for (const [msgId, atts] of attachMap) {
+      for (const att of atts) {
+        try {
+          const ext = path.extname(att.file_name || '').toLowerCase();
+          const safeName = path.basename(att.file_path || att.file_name || '');
+          const filePath = path.resolve(chatUploadDir, safeName);
+          const buf = await fs.readFile(filePath);
+
+          let content = '';
+          if (ext === '.pdf') {
+            const pdfParse = require('pdf-parse');
+            const data = await pdfParse(buf);
+            content = data.text.substring(0, 50000);
+          } else if (ext === '.docx') {
+            const mammoth = require('mammoth');
+            const result = await mammoth.extractRawText({ buffer: buf });
+            content = result.value.substring(0, 50000);
+          } else if (['.xlsx', '.xls'].includes(ext)) {
+            const ExcelJS = require('exceljs');
+            const wb = new ExcelJS.Workbook();
+            await wb.xlsx.load(buf);
+            let txt = '';
+            wb.eachSheet((sheet) => {
+              txt += `\n=== Лист: ${sheet.name} ===\n`;
+              sheet.eachRow((row) => {
+                const vals = [];
+                row.eachCell((cell) => vals.push(String(cell.value ?? '')));
+                txt += vals.join(' | ') + '\n';
+              });
+            });
+            content = txt.substring(0, 50000);
+          } else if (['.csv', '.txt', '.json', '.xml', '.md'].includes(ext)) {
+            content = buf.toString('utf8').substring(0, 50000);
+          }
+
+          if (content) {
+            fileContents.push(`\n📎 Файл «${att.file_name}»:\n${content}`);
+          }
+        } catch (e) {
+          // Файл не найден или не читается — пропускаем
+        }
+      }
+    }
+
+    const aiMessages = history.map(m => ({
       role: m.user_id === 0 ? 'assistant' : 'user',
       content: m.message
     }));
+
+    // Добавить содержимое файлов к контексту (перед последним сообщением)
+    if (fileContents.length > 0) {
+      const filesContext = fileContents.join('\n');
+      // Вставить как системное сообщение с файлами перед user-сообщениями
+      aiMessages.unshift({ role: 'user', content: `[Вложенные файлы в чате]${filesContext}` });
+      aiMessages.splice(1, 0, { role: 'assistant', content: 'Понял, я вижу загруженные файлы. Готов ответить на вопросы по ним.' });
+    }
 
     // 3. Построить system prompt через mimir-data
     let systemPrompt;
