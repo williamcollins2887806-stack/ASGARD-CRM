@@ -5578,3 +5578,67 @@ textarea:focus:not(:focus-visible) {
 
   body.wp-desktop-print-active .wp-desktop-avatar { width: 60px !important; height: 60px !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   HUGINN — Chat Tabs (Telegram Folders)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.hg-chat-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: var(--bg2, #1a1a2e);
+}
+.hg-chat-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--t3, #888);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  border-radius: 6px 6px 0 0;
+}
+.hg-chat-tab:hover {
+  color: var(--t1, #eee);
+  background: rgba(255,255,255,0.04);
+}
+.hg-chat-tab[data-tab="all"].active {
+  color: #fff;
+  border-bottom-color: #fff;
+  font-weight: 600;
+}
+.hg-chat-tab[data-tab="estimates"].active {
+  color: #D4A843;
+  border-bottom-color: #D4A843;
+  font-weight: 600;
+}
+.hg-chat-tab[data-tab="personal"].active {
+  color: #1F6FEB;
+  border-bottom-color: #1F6FEB;
+  font-weight: 600;
+}
+.hg-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--accent-blue, #1F6FEB);
+  color: #fff;
+}
+.hg-chat-tab[data-tab="estimates"] .hg-tab-badge {
+  background: #D4A843;
+}

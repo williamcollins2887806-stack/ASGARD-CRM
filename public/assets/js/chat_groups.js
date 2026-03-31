@@ -19,6 +19,7 @@ window.AsgardChatGroups = (function(){
   let _searchMode = false;
   let _chatListCache = [];
   let _myId = null;
+  let _currentTab = localStorage.getItem('huginn_chat_tab_desktop') || 'all';
 
   const token = () => localStorage.getItem('asgard_token');
 
@@ -596,6 +597,7 @@ window.AsgardChatGroups = (function(){
       } else {
         badge.textContent = Math.min(99, parseInt(badge.textContent || '0') + 1);
       }
+      _updateTabBadges();
     }
     // Move chat to top (within its section)
     const list = item.parentNode;
@@ -719,6 +721,11 @@ window.AsgardChatGroups = (function(){
           <div class="chat-search-bar">
             <input type="text" class="chat-search-input" placeholder="Поиск..." oninput="AsgardChatGroups.filterChats(this.value)">
           </div>
+          <div class="hg-chat-tabs" id="hg-chat-tabs">
+            <button class="hg-chat-tab${_currentTab === 'all' ? ' active' : ''}" data-tab="all" onclick="AsgardChatGroups.filterByTab('all')">Все</button>
+            <button class="hg-chat-tab${_currentTab === 'estimates' ? ' active' : ''}" data-tab="estimates" onclick="AsgardChatGroups.filterByTab('estimates')">Просчёты</button>
+            <button class="hg-chat-tab${_currentTab === 'personal' ? ' active' : ''}" data-tab="personal" onclick="AsgardChatGroups.filterByTab('personal')">Личные</button>
+          </div>
           <div class="chat-list" id="chat-list-container">
             ${mimirEntry}
             ${chatListHtml}
@@ -736,6 +743,9 @@ window.AsgardChatGroups = (function(){
 
     await layout(html, { title: 'Хугинн', motto: 'Вороний Вестник' });
 
+    // Initialize chat tabs
+    filterByTab(_currentTab);
+
     _setupSSE();
 
     if (currentChatId) {
@@ -748,11 +758,57 @@ window.AsgardChatGroups = (function(){
   // ═══════════════════════════════════════════════════════════════
 
   function filterChats(query) {
-    const q = (query || '').toLowerCase();
+    const q = (query !== undefined ? query : ($('.chat-search-input')?.value || '')).toLowerCase();
+    const sectionHeader = document.querySelector('.ec-section-header');
+    if (sectionHeader) sectionHeader.style.display = _currentTab === 'all' ? '' : 'none';
     $$('#chat-list-container .chat-item').forEach(item => {
       if (item.dataset.mimir === 'true') { item.style.display = ''; return; }
+      // Tab filter
+      let tabMatch = true;
+      if (_currentTab === 'estimates') tabMatch = item.dataset.entityType === 'estimate';
+      else if (_currentTab === 'personal') tabMatch = item.dataset.entityType !== 'estimate';
+      // Search filter
       const name = item.querySelector('.chat-item-name');
-      item.style.display = (!q || (name && name.textContent.toLowerCase().includes(q))) ? '' : 'none';
+      const searchMatch = !q || (name && name.textContent.toLowerCase().includes(q));
+      item.style.display = (tabMatch && searchMatch) ? '' : 'none';
+    });
+  }
+
+  function filterByTab(tab) {
+    _currentTab = tab;
+    localStorage.setItem('huginn_chat_tab_desktop', tab);
+    $$('#hg-chat-tabs .hg-chat-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+    filterChats();
+    _updateTabBadges();
+  }
+
+  function _updateTabBadges() {
+    let estUnread = 0, persUnread = 0;
+    $$('#chat-list-container .chat-item').forEach(item => {
+      if (item.dataset.mimir === 'true') return;
+      const badge = item.querySelector('.chat-item-unread');
+      if (!badge) return;
+      const count = parseInt(badge.textContent) || 0;
+      if (item.dataset.entityType === 'estimate') estUnread += count;
+      else persUnread += count;
+    });
+    const total = estUnread + persUnread;
+    const counts = { all: total, estimates: estUnread, personal: persUnread };
+    $$('#hg-chat-tabs .hg-chat-tab').forEach(btn => {
+      const tab = btn.dataset.tab;
+      let badge = btn.querySelector('.hg-tab-badge');
+      if (counts[tab] > 0) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'hg-tab-badge';
+          btn.appendChild(badge);
+        }
+        badge.textContent = counts[tab] > 99 ? '99+' : counts[tab];
+      } else if (badge) {
+        badge.remove();
+      }
     });
   }
 
@@ -1723,7 +1779,7 @@ window.AsgardChatGroups = (function(){
     render, refresh, openChat, backToList, sendMessage, handleKeyDown, autoResizeInput,
     react, showNewChatMenu, createChat, startDirect, handleFileSelect,
     showMembersModal, addMember, leaveChat, showSettingsModal, muteChat,
-    filterChats, setReply, cancelReply, showReactionPicker, toggleEmojiPicker, insertEmoji,
+    filterChats, filterByTab, setReply, cancelReply, showReactionPicker, toggleEmojiPicker, insertEmoji,
     openMimir, toggleSearch, searchInChat, startVoiceRecording,
     _playVoice, _dragOver, _dragLeave, _drop, _onTyping
   };
