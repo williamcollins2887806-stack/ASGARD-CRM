@@ -96,6 +96,7 @@ module.exports = async function(fastify) {
     return {
       id: row.id,
       file_name: typeof row.file_name === 'string' ? row.file_name.trim() : '',
+      original_name: typeof row.original_name === 'string' ? row.original_name.trim() : '',
       file_path: typeof row.file_path === 'string' ? row.file_path.trim() : '',
       file_size: Number.isFinite(Number(row.file_size)) ? Number(row.file_size) : 0,
       mime_type: row.mime_type || 'application/octet-stream'
@@ -686,7 +687,7 @@ module.exports = async function(fastify) {
     if (orderedMessages.length > 0) {
       const messageIds = orderedMessages.map((row) => row.id);
       const attachmentResult = await db.query(`
-        SELECT id, message_id, file_name, file_path, file_size, mime_type, created_at
+        SELECT id, message_id, file_name, original_name, file_path, file_size, mime_type, created_at
         FROM chat_attachments
         WHERE message_id = ANY($1::int[])
         ORDER BY id ASC
@@ -996,10 +997,10 @@ module.exports = async function(fastify) {
 
     if (fileName) {
       const attachmentResult = await db.query(`
-        INSERT INTO chat_attachments (message_id, file_name, file_path, file_size, mime_type, created_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
-        RETURNING id, message_id, file_name, file_path, file_size, mime_type, created_at
-      `, [msg.id, fileName, filePath, fileSize, mimeType]);
+        INSERT INTO chat_attachments (message_id, file_name, original_name, file_path, file_size, mime_type, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        RETURNING id, message_id, file_name, original_name, file_path, file_size, mime_type, created_at
+      `, [msg.id, fileName, fileName, filePath, fileSize, mimeType]);
       attachment = serializeAttachment(attachmentResult.rows[0]);
     }
 
@@ -1073,10 +1074,10 @@ module.exports = async function(fastify) {
 
       const msg = msgResult.rows[0];
       const attachmentResult = await db.query(`
-        INSERT INTO chat_attachments (message_id, file_name, file_path, file_size, mime_type, created_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
-        RETURNING id, message_id, file_name, file_path, file_size, mime_type, created_at
-      `, [msg.id, originalName, storedFilePath, buffer.length, data.mimetype || 'application/octet-stream']);
+        INSERT INTO chat_attachments (message_id, file_name, original_name, file_path, file_size, mime_type, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        RETURNING id, message_id, file_name, original_name, file_path, file_size, mime_type, created_at
+      `, [msg.id, safeName, originalName, storedFilePath, buffer.length, data.mimetype || 'application/octet-stream']);
 
       await db.query('UPDATE chats SET last_message_at = NOW() WHERE id = $1', [chatId]);
 
@@ -1227,7 +1228,7 @@ module.exports = async function(fastify) {
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
 
     const { rows } = await db.query(`
-      SELECT a.id, a.file_name, a.file_path, a.file_size, a.mime_type, a.created_at,
+      SELECT a.id, a.file_name, a.original_name, a.file_path, a.file_size, a.mime_type, a.created_at,
         u.name as user_name
       FROM chat_attachments a
       JOIN chat_messages m ON m.id = a.message_id
@@ -1449,7 +1450,7 @@ module.exports = async function(fastify) {
     let attachMap = new Map();
     if (histMsgIds.length > 0) {
       const { rows: atts } = await db.query(`
-        SELECT message_id, file_name, file_path, mime_type FROM chat_attachments
+        SELECT message_id, file_name, original_name, file_path, mime_type FROM chat_attachments
         WHERE message_id = ANY($1::int[])
       `, [histMsgIds]);
       for (const a of atts) {
@@ -1496,7 +1497,7 @@ module.exports = async function(fastify) {
           }
 
           if (content) {
-            fileContents.push(`\n📎 Файл «${att.file_name}»:\n${content}`);
+            fileContents.push(`\n📎 Файл «${att.original_name || att.file_name}»:\n${content}`);
           }
         } catch (e) {
           // Файл не найден или не читается — пропускаем
