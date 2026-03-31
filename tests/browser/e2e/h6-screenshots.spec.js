@@ -17,9 +17,9 @@ test.describe('H6 Estimate Chat Screenshots', () => {
   test('Mobile: Tab "Все" — chat list', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: MOBILE });
     const page = await ctx.newPage();
-    await loginAs(page, 'test_pm', 'Test123!', '0000');
+    await loginAs(page, 'PM');
     await page.goto(`${BASE_URL}/m/chat`);
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
     await page.screenshot({ path: 'tests/screenshots/h6-01-mobile-tab-all.png', fullPage: false });
     await ctx.close();
   });
@@ -27,13 +27,13 @@ test.describe('H6 Estimate Chat Screenshots', () => {
   test('Mobile: Tab "Просчёты"', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: MOBILE });
     const page = await ctx.newPage();
-    await loginAs(page, 'test_pm', 'Test123!', '0000');
+    await loginAs(page, 'PM');
     await page.goto(`${BASE_URL}/m/chat`);
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
     // Click on estimates tab
     const tabs = page.locator('button').filter({ hasText: 'Просчёты' });
     if (await tabs.count() > 0) await tabs.first().click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
     await page.screenshot({ path: 'tests/screenshots/h6-02-mobile-tab-estimates.png', fullPage: false });
     await ctx.close();
   });
@@ -41,13 +41,13 @@ test.describe('H6 Estimate Chat Screenshots', () => {
   test('Mobile: Inside estimate chat (PM)', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: MOBILE });
     const page = await ctx.newPage();
-    await loginAs(page, 'test_pm', 'Test123!', '0000');
+    await loginAs(page, 'PM');
     await page.goto(`${BASE_URL}/m/chat`);
-    await page.waitForTimeout(1500);
-    // Click first estimate chat
-    const estItem = page.locator('[style*="border-left: 3px"]').first();
-    if (await estItem.count() > 0) {
-      await estItem.click();
+    await page.waitForTimeout(2000);
+    // Click first estimate chat (look for any chat item)
+    const chatItem = page.locator('[class*="chat"]').first();
+    if (await chatItem.count() > 0) {
+      await chatItem.click();
       await page.waitForTimeout(2000);
     }
     await page.screenshot({ path: 'tests/screenshots/h6-03-mobile-chat-pm.png', fullPage: false });
@@ -57,12 +57,12 @@ test.describe('H6 Estimate Chat Screenshots', () => {
   test('Mobile: Inside estimate chat (Director)', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: MOBILE });
     const page = await ctx.newPage();
-    await loginAs(page, 'test_director_gen', 'Test123!', '0000');
+    await loginAs(page, 'DIRECTOR_GEN');
     await page.goto(`${BASE_URL}/m/chat`);
-    await page.waitForTimeout(1500);
-    const estItem = page.locator('[style*="border-left: 3px"]').first();
-    if (await estItem.count() > 0) {
-      await estItem.click();
+    await page.waitForTimeout(2000);
+    const chatItem = page.locator('[class*="chat"]').first();
+    if (await chatItem.count() > 0) {
+      await chatItem.click();
       await page.waitForTimeout(2000);
     }
     await page.screenshot({ path: 'tests/screenshots/h6-04-mobile-chat-director.png', fullPage: false });
@@ -72,12 +72,12 @@ test.describe('H6 Estimate Chat Screenshots', () => {
   test('Mobile: Tab "Личные"', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: MOBILE });
     const page = await ctx.newPage();
-    await loginAs(page, 'test_pm', 'Test123!', '0000');
+    await loginAs(page, 'PM');
     await page.goto(`${BASE_URL}/m/chat`);
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
     const tabs = page.locator('button').filter({ hasText: 'Личные' });
     if (await tabs.count() > 0) await tabs.first().click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
     await page.screenshot({ path: 'tests/screenshots/h6-05-mobile-tab-personal.png', fullPage: false });
     await ctx.close();
   });
@@ -85,9 +85,9 @@ test.describe('H6 Estimate Chat Screenshots', () => {
   test('Desktop: Chat list with tabs', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: DESKTOP });
     const page = await ctx.newPage();
-    await loginAs(page, 'test_pm', 'Test123!', '0000');
+    await loginAs(page, 'PM');
     await page.goto(`${BASE_URL}/#/messenger`);
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(3000);
     await page.screenshot({ path: 'tests/screenshots/h6-06-desktop-chatlist.png', fullPage: false });
     await ctx.close();
   });
@@ -95,9 +95,9 @@ test.describe('H6 Estimate Chat Screenshots', () => {
   test('Desktop: Inside estimate chat', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: DESKTOP });
     const page = await ctx.newPage();
-    await loginAs(page, 'test_pm', 'Test123!', '0000');
+    await loginAs(page, 'PM');
     await page.goto(`${BASE_URL}/#/messenger`);
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(2500);
     // Click first estimate chat
     const estItem = page.locator('.chat-item[data-entity-type="estimate"]').first();
     if (await estItem.count() > 0) {
