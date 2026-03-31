@@ -253,7 +253,7 @@ window.AsgardReceiptScanner = (function(){
     
     // Закрытие
     modal.querySelector('.btnClose').onclick = () => closeScanner();
-    modal.onclick = e => { if (e.target === modal) closeScanner(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
     
     // Запускаем камеру
     await startCamera();

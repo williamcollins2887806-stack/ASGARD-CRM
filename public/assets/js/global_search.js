@@ -324,7 +324,7 @@ window.AsgardSearch = (function(){
     });
     
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeSearchModal();
+      if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY);
     });
     
     $('#closeSearch').addEventListener('click', closeSearchModal);

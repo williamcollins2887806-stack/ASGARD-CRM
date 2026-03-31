@@ -169,8 +169,8 @@ window.AsgardBonusApproval = (function(){
     
     // Закрытие
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
-    
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
+
     // Пересчёт итого
     const recalcTotal = () => {
       let total = 0;

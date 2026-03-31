@@ -96,6 +96,7 @@ export default function ChatView() {
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
         onTyping={sendTyping}
+        onFileUploaded={loadMessages}
       />
 
       {editingMsg && (

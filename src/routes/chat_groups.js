@@ -1437,11 +1437,11 @@ module.exports = async function(fastify) {
       message: { ...userMsg, user_name: senderName }
     });
 
-    // 2. Собрать контекст (последние 20 сообщений) + вложения
+    // 2. Собрать контекст (ВСЯ история чата) + вложения
     const { rows: history } = await db.query(`
       SELECT m.id, m.user_id, m.message, m.created_at FROM chat_messages m
       WHERE m.chat_id = $1 AND m.deleted_at IS NULL
-      ORDER BY m.created_at DESC LIMIT 20
+      ORDER BY m.created_at DESC
     `, [chatId]);
     history.reverse();
 
@@ -1529,7 +1529,15 @@ module.exports = async function(fastify) {
     }
 
     // Дополнить системный промпт для Хугинна
-    systemPrompt += '\n\nТы отвечаешь в мессенджере Хугинн. Будь более разговорным и дружелюбным чем в FAB-режиме. Используй markdown: **bold**, _italic_, `code`, ```блоки кода```, списки (-), заголовки (##). Отвечай подробно и развёрнуто.';
+    systemPrompt += `\n\nПРАВИЛА ОТВЕТА В ХУГИННЕ:
+- Отвечай РАЗВЁРНУТО и ПОДРОБНО, минимум 3-5 предложений
+- Используй markdown: **bold**, _italic_, списки (-), заголовки (##)
+- Будь дружелюбным и профессиональным
+- Приводи конкретные цифры, даты, суммы из данных CRM
+- При анализе файлов — перечисляй ключевые пункты ДЕТАЛЬНО
+- НИКОГДА не отвечай одним словом или одним предложением
+- Помни ВЕСЬ контекст переписки, ссылайся на предыдущие сообщения
+- При вопросах о просчётах — используй тарифную сетку, считай конкретные суммы`;
 
     // 4. Обработка быстрых команд
     let processedMessage = text;

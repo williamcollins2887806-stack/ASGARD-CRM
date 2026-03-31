@@ -20,6 +20,7 @@ export function Composer({
   replyTo,
   onCancelReply,
   onTyping,
+  onFileUploaded,
 }) {
   const [text, setText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
@@ -71,6 +72,7 @@ export function Composer({
         body: form,
       });
       if (!res.ok) throw new Error('Upload failed');
+      onFileUploaded?.();
     } catch {}
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';

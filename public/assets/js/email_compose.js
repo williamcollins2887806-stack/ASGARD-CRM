@@ -195,7 +195,7 @@ window.AsgardEmailCompose = (function(){
 
     // Event bindings
     overlay.querySelector('#compose-close').addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
     overlay.querySelector('#compose-send').addEventListener('click', sendEmail);
     overlay.querySelector('#compose-save-draft').addEventListener('click', saveDraft);
 

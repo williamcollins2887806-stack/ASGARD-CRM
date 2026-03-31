@@ -322,7 +322,7 @@ window.AsgardActionMenu = (function () {
 
     // Click outside panel
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) hide();
+      if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY);
     });
 
     // Escape key

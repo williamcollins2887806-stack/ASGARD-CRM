@@ -84,7 +84,7 @@ window.AsgardUI = (function(){
       m.classList.toggle("fullscreen");
     });
     modalBack.addEventListener("click", (e)=>{
-      if(e.target === modalBack) hideModal();
+      if(e.target === modalBack) _showOopsBubble(e.clientX, e.clientY);
     });
   }
 
@@ -535,7 +535,44 @@ window.AsgardUI = (function(){
     return (isNaN(n) || !isFinite(n)) ? '0' : n.toLocaleString('ru-RU');
   }
 
-  return { renderMarkdown, $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money };
+  // ═══════════════════════════════════════════════════════════════
+  // OOPS BUBBLE — всплывающая подсказка при клике за пределами модалки
+  // ═══════════════════════════════════════════════════════════════
+  const OOPS_PHRASES = [
+    'Закрыть можно крестиком',
+    'Модалка не кусается!',
+    'Нажми крестик для закрытия',
+    'Так не закроешь :)',
+    'Крестик наверху справа',
+    'Попробуй кнопку «Закрыть»',
+    'Мимо! Жми крестик',
+    'Почти попал, но нет',
+    'Тут ничего нет, а крестик — наверху',
+    'Ещё чуть-чуть... шучу, жми крестик',
+    'Эй, я тут! Закрой через крестик',
+    'Не туда! Крестик правее',
+    'Упс, промахнулся',
+    'Клик в пустоту...',
+    'А вот и нет!',
+    'Сюда нажимать бесполезно',
+    'Модалку так не закроешь',
+    'Крестик ждёт тебя наверху',
+    'Не-а, попробуй крестик',
+    'Окно закрывается кнопкой «Закрыть»'
+  ];
+
+  function _showOopsBubble(x, y) {
+    const phrase = OOPS_PHRASES[Math.floor(Math.random() * OOPS_PHRASES.length)];
+    const bubble = document.createElement('div');
+    bubble.className = 'oops-bubble';
+    bubble.textContent = phrase;
+    bubble.style.left = x + 'px';
+    bubble.style.top = y + 'px';
+    document.body.appendChild(bubble);
+    setTimeout(() => bubble.remove(), 1800);
+  }
+
+  return { renderMarkdown, $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money, oopsBubble: _showOopsBubble };
 
   /**
    * renderMarkdown(md) — Renders Markdown text as styled HTML

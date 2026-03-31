@@ -69,7 +69,7 @@ async function generateAnalysis(db, cacheKey, role, page, userId, hints, hintsHa
     const result = await aiProvider.complete({
       system: ANALYSIS_SYSTEM,
       messages: [{ role: 'user', content: userPrompt }],
-      maxTokens: 300,
+      maxTokens: 2000,
       temperature: 0.3
     });
 

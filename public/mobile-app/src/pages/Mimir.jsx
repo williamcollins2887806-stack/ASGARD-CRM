@@ -6,19 +6,52 @@ import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { MimirWelcome } from '@/components/chat/MimirWelcome';
 
+const CONV_KEY = 'mimir_conv_id';
+
 /**
- * Mimir — AI-ассистент
+ * Mimir — AI-ассистент (с персистентной историей)
  */
 export default function Mimir() {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState(null);
+  const [restoring, setRestoring] = useState(true);
   const userId = useAuthStore((s) => s.user?.id);
   const navigate = useNavigate();
   const haptic = useHaptic();
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
+
+  // При маунте — восстановить историю из API
+  useEffect(() => {
+    const savedId = localStorage.getItem(CONV_KEY);
+    if (!savedId) {
+      setRestoring(false);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await api.get(`/mimir/conversations/${savedId}`);
+        if (res.success && res.messages?.length > 0) {
+          setConversationId(parseInt(savedId));
+          setMessages(
+            res.messages.map((m) => ({
+              id: `hist-${m.id}`,
+              role: m.role,
+              text: m.content,
+              ts: m.created_at,
+            }))
+          );
+        }
+      } catch {
+        // Диалог не найден — сбросить
+        localStorage.removeItem(CONV_KEY);
+      } finally {
+        setRestoring(false);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -46,7 +79,10 @@ export default function Mimir() {
           message: t,
           conversation_id: conversationId || undefined,
         });
-        if (res.conversation_id) setConversationId(res.conversation_id);
+        if (res.conversation_id) {
+          setConversationId(res.conversation_id);
+          localStorage.setItem(CONV_KEY, String(res.conversation_id));
+        }
 
         const mimirMsg = {
           id: `mimir-${Date.now()}`,
@@ -135,7 +171,17 @@ export default function Mimir() {
       </header>
 
       {/* Messages or Welcome */}
-      {messages.length === 0 ? (
+      {restoring ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div
+            className="h-6 w-6 rounded-full animate-spin"
+            style={{
+              border: '2px solid var(--bg-elevated)',
+              borderTopColor: 'var(--gold)',
+            }}
+          />
+        </div>
+      ) : messages.length === 0 ? (
         <MimirWelcome onSuggest={sendMessage} />
       ) : (
         <div className="flex-1 overflow-y-auto scroll-container px-3 py-3">

@@ -560,7 +560,7 @@ window.AsgardContractsPage = (function(){
     const onKey = (e) => { if (e.key === 'Escape') closeModal(); };
     document.addEventListener('keydown', onKey);
     modal.querySelectorAll('.btnClose').forEach(b => b.addEventListener('click', closeModal));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     // ── Кнопка «+ Новый контрагент» ──
     document.getElementById('btnAddCustomerInline')?.addEventListener('click', () => {
@@ -727,7 +727,7 @@ window.AsgardContractsPage = (function(){
     const onKey = (e) => { if (e.key === 'Escape') closeModal(); };
     document.addEventListener('keydown', onKey);
     modal.querySelectorAll('.btnClose').forEach(b => b.addEventListener('click', closeModal));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     document.getElementById('btnCreateNewContract')?.addEventListener('click', () => {
       closeModal();
@@ -829,6 +829,10 @@ window.AsgardContractsPage = (function(){
                     </div>
                   </div>
                   <div class="cm-mt">
+                    <div class="cm-label">ОГРН</div>
+                    <input type="text" name="ogrn" class="cm-inp" placeholder="13 или 15 цифр" maxlength="15" inputmode="numeric"/>
+                  </div>
+                  <div class="cm-mt">
                     <div class="cm-label">Наименование <span class="req">*</span></div>
                     <input type="text" name="name" class="cm-inp" placeholder="ООО «Компания»" required/>
                   </div>
@@ -891,6 +895,7 @@ window.AsgardContractsPage = (function(){
     const smartSearch = document.getElementById('ncmSmartSearch');
     const innInput = ncForm.querySelector('[name="inn"]');
     const kppInput = ncForm.querySelector('[name="kpp"]');
+    const ogrnInput = ncForm.querySelector('[name="ogrn"]');
     const nameInput = ncForm.querySelector('[name="name"]');
     const fullNameInput = ncForm.querySelector('[name="full_name"]');
     const addressInput = ncForm.querySelector('[name="address"]');
@@ -1034,6 +1039,11 @@ window.AsgardContractsPage = (function(){
       kppInput.value = kppInput.value.replace(/\D/g, '').slice(0, 9);
     });
 
+    // ── Маска ОГРН: только цифры ──
+    ogrnInput.addEventListener('input', () => {
+      ogrnInput.value = ogrnInput.value.replace(/\D/g, '').slice(0, 15);
+    });
+
     // ── Маска телефона ──
     phoneInput.addEventListener('input', () => {
       const pos = phoneInput.selectionStart;
@@ -1077,7 +1087,7 @@ window.AsgardContractsPage = (function(){
       // Спиннер на кнопке + skeleton в полях
       lookupBtn.disabled = true;
       lookupBtn.innerHTML = '<span class="ncm-spinner"></span>';
-      const skeletonFields = [nameInput, fullNameInput, kppInput, addressInput];
+      const skeletonFields = [nameInput, fullNameInput, kppInput, ogrnInput, addressInput];
       skeletonFields.forEach(f => { if (!f.value) f.classList.add('ncm-skeleton-inp'); });
 
       try {
@@ -1096,6 +1106,7 @@ window.AsgardContractsPage = (function(){
           if (s.name && !nameInput.value) fields.name = s.name;
           if (s.full_name && !fullNameInput.value) fields.full_name = s.full_name;
           if (s.kpp && !kppInput.value) fields.kpp = s.kpp;
+          if (s.ogrn && !ogrnInput.value) fields.ogrn = s.ogrn;
           if (s.address && !addressInput.value) fields.address = s.address;
           cascadeFill(fields);
 
@@ -1237,6 +1248,7 @@ window.AsgardContractsPage = (function(){
         name,
         full_name: fullNameInput.value.trim(),
         kpp: kppInput.value.trim(),
+        ogrn: ogrnInput.value.trim(),
         address: addressInput.value.trim(),
         contact_person: contactInput.value.trim(),
         phone: phoneInput.value.trim(),

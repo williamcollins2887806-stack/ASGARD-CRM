@@ -236,7 +236,7 @@ window.AsgardMailSettingsPage = (function(){
     document.body.appendChild(overlay);
 
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     // Test IMAP
     overlay.querySelector('#acc-test-imap')?.addEventListener('click', async () => {
@@ -436,7 +436,7 @@ window.AsgardMailSettingsPage = (function(){
 
     document.body.appendChild(overlay);
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     overlay.querySelector('#rule-save')?.addEventListener('click', async () => {
       const pattern = $('#rule-pattern')?.value;
@@ -484,7 +484,7 @@ window.AsgardMailSettingsPage = (function(){
 
     document.body.appendChild(overlay);
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     overlay.querySelector('#tc-run')?.addEventListener('click', async () => {
       try {

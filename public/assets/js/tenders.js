@@ -1998,7 +1998,7 @@ ${docsHtml}</div>
                 </div>
               </div>`;
             document.body.appendChild(_overlay);
-            _overlay.addEventListener('click', (e) => { if (e.target === _overlay) _overlay.remove(); });
+            _overlay.addEventListener('click', (e) => { if (e.target === _overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
             document.getElementById('btnFillMissing').addEventListener('click', () => {
               _overlay.remove();
               const ids = missingFields.map(f => _fieldIdMap[f]).filter(Boolean);

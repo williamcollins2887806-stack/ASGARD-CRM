@@ -95,7 +95,7 @@ export default function Welcome() {
 
           <div className="relative" style={{ animation: 'breatheGlow 4s ease-in-out infinite' }}>
             <img
-              src="/asgard-logo.png"
+              src={import.meta.env.BASE_URL + 'asgard-logo.png'}
               alt="ASGARD"
               draggable={false}
               style={{ width: 120, height: 'auto', userSelect: 'none' }}

@@ -252,7 +252,7 @@ window.AsgardSealsPage = (function(){
     const modal = $('#sealModal');
     
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
     
     $('#btnSaveSeal').onclick = async () => {
       const name = $('#sealName').value.trim();
@@ -332,7 +332,7 @@ window.AsgardSealsPage = (function(){
     const modal = $('#transferModal');
     
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
     
     // Show/hide return date
     // Wire up employee picker for transfer
@@ -468,7 +468,7 @@ window.AsgardSealsPage = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = $('#historyModal');
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
   }
 
   // Подтверждение получения (вызывается из уведомлений)

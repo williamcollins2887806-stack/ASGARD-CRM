@@ -140,7 +140,7 @@ export default function Login() {
             }}
           >
             <img
-              src="/asgard-logo.png"
+              src={import.meta.env.BASE_URL + 'asgard-logo.png'}
               alt="ASGARD CRM"
               draggable={false}
               style={{

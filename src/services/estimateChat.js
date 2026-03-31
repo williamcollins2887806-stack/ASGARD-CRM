@@ -377,7 +377,7 @@ ${analogsSummary}
     const aiResult = await aiProvider.completeAnalytics({
       system: systemPrompt,
       messages: [{ role: 'user', content: comment }],
-      maxTokens: config.max_tokens || 500,
+      maxTokens: config.max_tokens || 8000,
       temperature: 0.4
     });
 

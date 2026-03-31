@@ -5679,3 +5679,27 @@ textarea:focus:not(:focus-visible) {
   60% { transform: scale(1.15); }
   100% { transform: scale(1); }
 }
+
+/* ═══ OOPS BUBBLE ═══ */
+.oops-bubble {
+  position: fixed;
+  z-index: 99999;
+  transform: translate(-50%, -100%);
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #D4A843, #B8860B);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(212, 168, 67, 0.4);
+  animation: oopsBubbleAnim 1.8s ease-out forwards;
+}
+@keyframes oopsBubbleAnim {
+  0% { opacity: 0; transform: translate(-50%, -100%) scale(0.7); }
+  15% { opacity: 1; transform: translate(-50%, -100%) scale(1.05); }
+  25% { transform: translate(-50%, -100%) scale(1); }
+  70% { opacity: 1; transform: translate(-50%, -140%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -180%) scale(0.8); }
+}

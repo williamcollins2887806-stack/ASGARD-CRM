@@ -213,12 +213,11 @@ async function mimirRoutes(fastify, options) {
         convId = newConv.rows[0].id;
       }
 
-      // Загружаем историю (последние 20 сообщений)
+      // Загружаем историю (ВСЯ)
       const history = await db.query(`
         SELECT role, content FROM mimir_messages
         WHERE conversation_id = $1
         ORDER BY created_at DESC
-        LIMIT 20
       `, [convId]);
 
       const historyMessages = history.rows.reverse();
@@ -355,12 +354,11 @@ async function mimirRoutes(fastify, options) {
 
       sendEvent({ type: 'start', conversation_id: convId });
 
-      // Загружаем историю
+      // Загружаем историю (ВСЯ)
       const history = await db.query(`
         SELECT role, content FROM mimir_messages
         WHERE conversation_id = $1
         ORDER BY created_at DESC
-        LIMIT 20
       `, [convId]);
 
       const historyMessages = history.rows.reverse();
@@ -1854,7 +1852,7 @@ ${analogsSummary}
       const aiResult = await aiProvider.complete({
         system: systemPrompt,
         messages: [{ role: 'user', content: director_comment }],
-        maxTokens: config.max_tokens || 500,
+        maxTokens: config.max_tokens || 8000,
         temperature: 0.4
       });
 

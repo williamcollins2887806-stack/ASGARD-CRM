@@ -497,7 +497,7 @@ window.AsgardEstimateReportPage = (function () {
     // Close
     closeBtn.addEventListener('click', () => { overlay.style.display = 'none'; body.innerHTML = ''; });
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) { overlay.style.display = 'none'; body.innerHTML = ''; }
+      if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY);
     });
   }
 

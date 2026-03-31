@@ -342,7 +342,7 @@ window.AsgardPermitsPage = (function(){
     const modal = document.getElementById('permitModal');
 
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnSavePermit').onclick = async () => {
       const typeId = document.getElementById('permitType').value;
@@ -456,7 +456,7 @@ window.AsgardPermitsPage = (function(){
     const modal = document.getElementById('renewModal');
 
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnDoRenew').onclick = async () => {
       const expiry = document.getElementById('renewExpiry').value;
@@ -517,7 +517,7 @@ window.AsgardPermitsPage = (function(){
     const modal = document.getElementById('bulkRenewModal');
 
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnDoBulkRenew').onclick = async () => {
       const expiry = document.getElementById('bulkExpiry').value;
@@ -785,7 +785,7 @@ window.AsgardPermitsPage = (function(){
         document.body.insertAdjacentHTML('beforeend', selectHtml);
         const modal = document.getElementById('selectEmployeeModal');
         modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-        modal.onclick = e => { if (e.target === modal) modal.remove(); };
+        modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
         document.getElementById('btnConfirmEmp').onclick = () => {
           const empId = parseInt(document.getElementById('empSelect').value);
@@ -1211,7 +1211,7 @@ window.AsgardPermitsPage = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('manageTypesModal');
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnAddType').onclick = async () => {
       const name = document.getElementById('newTypeName').value.trim();

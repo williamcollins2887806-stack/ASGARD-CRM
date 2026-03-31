@@ -771,7 +771,7 @@ window.AsgardPermitApplications = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('empSelectModal');
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     function updateCount() {
       const el = document.getElementById('empSelectedCount');
@@ -1040,7 +1040,7 @@ window.AsgardPermitApplications = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('permitSelectModal');
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     function refreshContent() {
       const contentEl = document.getElementById('permitModalContent');
@@ -1184,7 +1184,7 @@ window.AsgardPermitApplications = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('sendConfirmModal');
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnConfirmSend').onclick = async () => {
       const copyToSelf = document.getElementById('sendCopyToSelf')?.checked || false;
@@ -1290,7 +1290,7 @@ window.AsgardPermitApplications = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('viewAppModal');
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
   }
 
   return { render, renderForm };
