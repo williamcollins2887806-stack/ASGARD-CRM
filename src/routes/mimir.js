@@ -243,7 +243,7 @@ async function mimirRoutes(fastify, options) {
       const aiResult = await aiProvider.complete({
         system: systemPrompt,
         messages: aiMessages,
-        maxTokens: 4096,
+        maxTokens: 8000,
         temperature: 0.6
       });
 
@@ -390,7 +390,7 @@ async function mimirRoutes(fastify, options) {
       const streamResponse = await aiProvider.stream({
         system: systemPrompt,
         messages: aiMessages,
-        maxTokens: 4096,
+        maxTokens: 8000,
         temperature: 0.6
       });
 

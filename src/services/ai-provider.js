@@ -107,11 +107,12 @@ function _convertContentForOpenAI(contentArray) {
 function getConfig() {
   return {
     provider: AI_PROVIDER,
-    model: AI_PROVIDER === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL,
+    model: AI_PROVIDER === 'anthropic' ? ANTHROPIC_MODEL : AI_PROVIDER === 'yandexgpt' ? YANDEX_GPT_MODEL : OPENAI_MODEL,
     maxTokens: AI_MAX_TOKENS,
     temperature: AI_TEMPERATURE,
     hasAnthropicKey: !!ANTHROPIC_API_KEY,
-    hasOpenAIKey: !!OPENAI_API_KEY
+    hasOpenAIKey: !!OPENAI_API_KEY,
+    hasYandexKey: !!(YANDEX_GPT_API_KEY && YANDEX_FOLDER_ID)
   };
 }
 
@@ -298,7 +299,7 @@ async function complete({ system, messages, maxTokens, temperature }) {
   }
 
   // Demo mode: if no API keys configured, return a mock response
-  if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) {
+  if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY && !(YANDEX_GPT_API_KEY && YANDEX_FOLDER_ID)) {
     const lastMsg = messages[messages.length - 1]?.content || '';
     return {
       text: `[Demo] Получено сообщение (${lastMsg.length} символов). AI-провайдер не настроен — работает демо-режим.`,
@@ -319,6 +320,10 @@ async function complete({ system, messages, maxTokens, temperature }) {
     } else if (provider === 'openai') {
       const result = await callOpenAI({ system, messages, maxTokens, temperature });
       result.provider = 'openai';
+      result.durationMs = Date.now() - startTime;
+      return result;
+    } else if (provider === 'yandexgpt') {
+      const result = await completeYandexGPT({ system, messages, maxTokens, temperature });
       result.durationMs = Date.now() - startTime;
       return result;
     } else {
@@ -354,6 +359,34 @@ async function complete({ system, messages, maxTokens, temperature }) {
 }
 
 /**
+ * Fake SSE stream для провайдеров без поддержки стриминга (YandexGPT).
+ * Возвращает объект с body.getReader() в формате OpenAI SSE.
+ */
+function _fakeStream(result) {
+  const text = result.text || '';
+  const usage = result.usage || { inputTokens: 0, outputTokens: 0 };
+  // Формируем SSE-данные как OpenAI формат
+  const chunks = [];
+  // Разбиваем текст на куски ~80 символов для имитации стриминга
+  const chunkSize = 80;
+  for (let i = 0; i < text.length; i += chunkSize) {
+    const piece = text.slice(i, i + chunkSize);
+    chunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`);
+  }
+  chunks.push(`data: ${JSON.stringify({ choices: [{ finish_reason: 'stop' }], usage: { prompt_tokens: usage.inputTokens, completion_tokens: usage.outputTokens } })}\n\n`);
+  chunks.push('data: [DONE]\n\n');
+
+  const encoded = new TextEncoder().encode(chunks.join(''));
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoded);
+      controller.close();
+    }
+  });
+  return { body: stream };
+}
+
+/**
  * Стриминг запрос к AI (возвращает Response со stream)
  *
  * @param {Object} options
@@ -372,6 +405,9 @@ async function stream({ system, messages, maxTokens, temperature, model }) {
       return await callAnthropic({ system, messages, maxTokens, temperature, stream: true });
     } else if (provider === 'openai') {
       return await callOpenAI({ system, messages, maxTokens, temperature, stream: true, model });
+    } else if (provider === 'yandexgpt') {
+      const result = await completeYandexGPT({ system, messages, maxTokens, temperature });
+      return _fakeStream(result);
     } else {
       throw new Error(`Unknown AI provider: ${provider}`);
     }
@@ -509,9 +545,11 @@ async function* parseOpenAIStream(response) {
  * Универсальный парсер стрима в зависимости от провайдера
  */
 function parseStream(response, provider) {
-  if (provider === 'anthropic' || AI_PROVIDER === 'anthropic') {
+  const p = provider || AI_PROVIDER;
+  if (p === 'anthropic') {
     return parseAnthropicStream(response);
   } else {
+    // yandexgpt fake stream и openai используют одинаковый OpenAI SSE формат
     return parseOpenAIStream(response);
   }
 }
