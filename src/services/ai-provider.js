@@ -18,7 +18,7 @@ let OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 let OPENAI_MODEL = process.env.OPENAI_MODEL || 'anthropic/claude-sonnet-4.6';
 const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '4096', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
-const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '60000', 10); // 60 sec default
+const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '120000', 10); // 120 sec default (Qwen3-235B needs more time)
 
 // API endpoints (default: routerai.ru — OpenAI-compatible proxy to Claude)
 const ANTHROPIC_URL = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
@@ -27,7 +27,7 @@ let OPENAI_URL = process.env.OPENAI_URL || 'https://routerai.ru/api/v1/chat/comp
 // YandexGPT Pro
 let YANDEX_GPT_API_KEY = process.env.YANDEX_GPT_API_KEY || '';
 let YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID || '';
-const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'yandexgpt-32k/latest';
+const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'qwen3-235b-a22b-fp8/latest';
 const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
 // DB settings cache
