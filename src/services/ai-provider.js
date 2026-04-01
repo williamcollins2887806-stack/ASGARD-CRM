@@ -555,16 +555,25 @@ function parseStream(response, provider) {
 }
 
 /**
- * YandexGPT Pro — для аналитических задач (отчёты, анализ звонков/email)
+ * Yandex Cloud AI — YandexGPT и сторонние модели (Qwen3, Llama и др.)
+ * YandexGPT модели → Foundation Models API (gRPC)
+ * Сторонние модели → OpenAI-совместимый API
  */
 async function completeYandexGPT(options) {
   const { system, messages, maxTokens = 4000, temperature = 0.3 } = options;
+  const isNativeYandex = YANDEX_GPT_MODEL.startsWith('yandexgpt');
 
+  if (!isNativeYandex) {
+    // OpenAI-совместимый API для Qwen3, Llama и др.
+    return _completeYandexOpenAI(options);
+  }
+
+  // Foundation Models API для yandexgpt/yandexgpt-32k
   const yMessages = [];
   if (system) yMessages.push({ role: 'system', text: system });
   for (const m of messages) {
     const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-    if (!text || !text.trim()) continue; // YandexGPT rejects empty message text
+    if (!text || !text.trim()) continue;
     yMessages.push({ role: m.role, text });
   }
 
@@ -603,6 +612,65 @@ async function completeYandexGPT(options) {
       usage: {
         inputTokens: parseInt(result.usage?.inputTextTokens || 0),
         outputTokens: parseInt(result.usage?.completionTokens || 0)
+      },
+      model: YANDEX_GPT_MODEL,
+      provider: 'yandexgpt'
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Yandex Cloud OpenAI-совместимый API для сторонних моделей
+ */
+const YANDEX_OPENAI_URL = 'https://llm.api.cloud.yandex.net/v1/chat/completions';
+
+async function _completeYandexOpenAI(options) {
+  const { system, messages, maxTokens = 4000, temperature = 0.3 } = options;
+
+  const oaiMessages = [];
+  if (system) oaiMessages.push({ role: 'system', content: system });
+  for (const m of messages) {
+    const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+    if (!content || !content.trim()) continue;
+    oaiMessages.push({ role: m.role, content });
+  }
+
+  const body = {
+    model: `gpt://${YANDEX_FOLDER_ID}/${YANDEX_GPT_MODEL}`,
+    max_tokens: maxTokens,
+    temperature,
+    messages: oaiMessages
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(YANDEX_OPENAI_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Api-Key ${YANDEX_GPT_API_KEY}`
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Yandex OpenAI API error ${res.status}: ${errText.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || '';
+
+    return {
+      text,
+      usage: {
+        inputTokens: data.usage?.prompt_tokens || 0,
+        outputTokens: data.usage?.completion_tokens || 0
       },
       model: YANDEX_GPT_MODEL,
       provider: 'yandexgpt'
