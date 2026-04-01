@@ -27,7 +27,7 @@ let OPENAI_URL = process.env.OPENAI_URL || 'https://routerai.ru/api/v1/chat/comp
 // YandexGPT Pro
 let YANDEX_GPT_API_KEY = process.env.YANDEX_GPT_API_KEY || '';
 let YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID || '';
-const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'qwen3-235b-a22b-thinking/latest';
+const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'qwen3-235b-a22b-fp8/latest';
 const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
 // DB settings cache
