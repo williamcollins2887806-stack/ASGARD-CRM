@@ -697,6 +697,75 @@ async function _completeYandexOpenAI(options) {
 }
 
 /**
+ * Быстрый вызов через нативный YandexGPT Pro (yandexgpt-32k/latest).
+ * Для задач где критична скорость отклика (голосовой секретарь).
+ * Всегда использует Foundation Models API напрямую, минуя Qwen3.
+ */
+async function completeFast(options) {
+  await _loadKeysFromDB();
+  if (!YANDEX_GPT_API_KEY || !YANDEX_FOLDER_ID) {
+    return complete(options); // fallback на основной provider
+  }
+
+  const { system, messages, maxTokens = 400, temperature = 0.3 } = options;
+  const fastModel = 'yandexgpt-32k/latest';
+
+  const yMessages = [];
+  if (system) yMessages.push({ role: 'system', text: system });
+  for (const m of messages) {
+    const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+    if (!text || !text.trim()) continue;
+    yMessages.push({ role: m.role, text });
+  }
+
+  const body = {
+    modelUri: `gpt://${YANDEX_FOLDER_ID}/${fastModel}`,
+    completionOptions: { stream: false, temperature, maxTokens: String(maxTokens) },
+    messages: yMessages
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30с для скорости
+
+  try {
+    const res = await fetch(YANDEX_GPT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Api-Key ${YANDEX_GPT_API_KEY}`,
+        'x-folder-id': YANDEX_FOLDER_ID
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`YandexGPT fast error ${res.status}: ${errText.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+    const result = data.result;
+    const text = result.alternatives?.[0]?.message?.text || '';
+
+    return {
+      text,
+      usage: {
+        inputTokens: parseInt(result.usage?.inputTextTokens || 0),
+        outputTokens: parseInt(result.usage?.completionTokens || 0)
+      },
+      model: fastModel,
+      provider: 'yandexgpt'
+    };
+  } catch (e) {
+    console.warn('[AI] YandexGPT fast failed, falling back to main:', e.message);
+    return complete(options);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Аналитика — YandexGPT Pro (fallback на default provider)
  * Для: отчётов по звонкам, анализа email, подсказок Мимира
  */
@@ -714,6 +783,7 @@ async function completeAnalytics(options) {
 
 module.exports = {
   complete,
+  completeFast,
   completeAnalytics,
   completeYandexGPT,
   stream,

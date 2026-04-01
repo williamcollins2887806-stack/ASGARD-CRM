@@ -327,13 +327,9 @@ class VoiceAgent {
       const systemPrompt = VOICE_OPERATOR_SYSTEM(context);
       const userPrompt = VOICE_OPERATOR_USER(context);
 
-      // Пробуем streaming — быстрее чем complete() за счёт убранного HTTP overhead
-      if (typeof this.aiProvider.stream === 'function' && typeof this.aiProvider.parseStream === 'function') {
-        return await this._generateResponseStream(systemPrompt, userPrompt);
-      }
-
-      // Fallback на complete() если streaming недоступен
-      const response = await this.aiProvider.complete({
+      // Голосовой агент: всегда быстрый YandexGPT (не Qwen3 — долго для живого диалога)
+      const completeFn = this.aiProvider.completeFast || this.aiProvider.complete;
+      const response = await completeFn({
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
         maxTokens: 400,
@@ -388,9 +384,10 @@ class VoiceAgent {
     } catch (err) {
       console.error('[VoiceAgent] AI stream error:', err.message);
 
-      // Fallback на complete() при ошибке стриминга
+      // Fallback на completeFast() при ошибке стриминга — быстрый YandexGPT
       try {
-        const response = await this.aiProvider.complete({
+        const completeFn = this.aiProvider.completeFast || this.aiProvider.complete;
+        const response = await completeFn({
           system: systemPrompt,
           messages: [{ role: 'user', content: userPrompt }],
           maxTokens: 400,
