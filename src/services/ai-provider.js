@@ -27,7 +27,7 @@ let OPENAI_URL = process.env.OPENAI_URL || 'https://routerai.ru/api/v1/chat/comp
 // YandexGPT Pro
 let YANDEX_GPT_API_KEY = process.env.YANDEX_GPT_API_KEY || '';
 let YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID || '';
-const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'qwen3-235b-a22b-fp8/latest';
+const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'qwen3-235b-a22b-thinking/latest';
 const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
 // DB settings cache
@@ -622,6 +622,18 @@ async function completeYandexGPT(options) {
 }
 
 /**
+ * Очистка <think>...</think> блока из ответов Thinking-моделей (Qwen3-*-thinking).
+ * Модель возвращает: "<think>\nрассуждения...\n</think>\n\nОтвет"
+ * Оставляем только финальный ответ.
+ */
+function _stripThinkingBlock(text) {
+  if (!text) return text;
+  // Удаляем <think>...</think> блок (greedy, может быть многострочным)
+  const stripped = text.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+  return stripped || text; // Если после очистки пусто — вернуть оригинал
+}
+
+/**
  * Yandex Cloud OpenAI-совместимый API для сторонних моделей
  */
 const YANDEX_OPENAI_URL = 'https://llm.api.cloud.yandex.net/v1/chat/completions';
@@ -664,7 +676,11 @@ async function _completeYandexOpenAI(options) {
     }
 
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || '';
+    let text = data.choices?.[0]?.message?.content || '';
+
+    // Thinking-модели (Qwen3-*-thinking) добавляют <think>...</think> блок
+    // Очищаем его, оставляя только финальный ответ
+    text = _stripThinkingBlock(text);
 
     return {
       text,
