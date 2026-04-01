@@ -127,13 +127,50 @@ async function loadMoney(content) {
     '\u0422\u0430\u0440\u0438\u0444\u043D\u0430\u044F \u0441\u0435\u0442\u043A\u0430 \u0443\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u041A\u0443\u0434\u0440\u044F\u0448\u043E\u0432\u044B\u043C \u041E.\u0421. 01.10.2025. 1 \u0431\u0430\u043B\u043B = ' + Utils.formatMoney(pointValue) + '\u20BD'));
   content.appendChild(tariffCard);
 
+  // Trip stages breakdown (loaded async)
+  const stagesCard = el('div', {
+    style: { background: t.surface, borderRadius: '16px', padding: '16px', border: '1px solid ' + t.border, animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both', display: 'none' },
+  });
+  stagesCard.appendChild(el('div', {
+    style: { color: t.textTer, fontSize: '0.6875rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' },
+  }, '\u041C\u0410\u0420\u0428\u0420\u0423\u0422 \u0414\u041E \u041E\u0411\u042A\u0415\u041A\u0422\u0410'));
+  content.appendChild(stagesCard);
+
+  // Load stages for current project
+  const STAGE_LABELS_M = { medical: '\u041C\u0435\u0434\u043E\u0441\u043C\u043E\u0442\u0440', travel: '\u0414\u043E\u0440\u043E\u0433\u0430', waiting: '\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435', warehouse: '\u0421\u043A\u043B\u0430\u0434', day_off: '\u0412\u044B\u0445\u043E\u0434\u043D\u043E\u0439' };
+  const STATUS_ICONS_M = { completed: '\u2705', approved: '\u2705', adjusted: '\u2705', active: '\uD83D\uDD35', planned: '\u26AC', rejected: '\u274C' };
+  const workIdForStages = proj.work_id || proj.id;
+  if (workIdForStages) {
+    API.fetch('/stages/my/' + workIdForStages).then(stData => {
+      if (!stData || !stData.stages || stData.stages.length === 0) return;
+      stagesCard.style.display = '';
+      const preObj = stData.stages.filter(s => s.stage_type !== 'object' && s.status !== 'rejected');
+      let stagesTotal = 0;
+      for (const st of preObj) {
+        const earned = parseFloat(st.amount_earned || 0);
+        stagesTotal += earned;
+        const label = (STAGE_LABELS_M[st.stage_type] || st.stage_type) + ': ' + (st.days_count || 1) + ' \u0434\u043D. \u00D7 ' + Utils.formatMoney(parseFloat(st.rate_per_day || 0)) + '\u20BD';
+        const icon = STATUS_ICONS_M[st.status] || '';
+        const row = el('div', { style: { display: 'flex', justifyContent: 'space-between', padding: '5px 0' } });
+        row.appendChild(el('span', { style: { color: t.textSec, fontSize: '0.8125rem' } }, label));
+        row.appendChild(el('span', { style: { color: t.text, fontSize: '0.8125rem', fontWeight: '600' } }, Utils.formatMoney(earned) + '\u20BD ' + icon));
+        stagesCard.appendChild(row);
+      }
+      // Total
+      const totalRow = el('div', { style: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid ' + t.border, marginTop: '4px', paddingTop: '8px' } });
+      totalRow.appendChild(el('span', { style: { color: t.text, fontSize: '0.8125rem', fontWeight: '700' } }, '\u0418\u0442\u043E\u0433\u043E \u0434\u043E \u043E\u0431\u044A\u0435\u043A\u0442\u0430'));
+      totalRow.appendChild(el('span', { style: { color: t.gold, fontSize: '0.8125rem', fontWeight: '700' } }, Utils.formatMoney(stagesTotal) + '\u20BD'));
+      stagesCard.appendChild(totalRow);
+    }).catch(() => {});
+  }
+
   // Breakdown
   const breakCard = el('div', {
     style: { background: t.surface, borderRadius: '16px', padding: '16px', border: '1px solid ' + t.border, animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both' },
   });
   breakCard.appendChild(el('div', {
     style: { color: t.textTer, fontSize: '0.6875rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' },
-  }, '\u0420\u0410\u0417\u0411\u0418\u0412\u041A\u0410'));
+  }, '\u041D\u0410 \u041E\u0411\u042A\u0415\u041A\u0422\u0415'));
 
   const totalRate = ratePerShift + (tariff.combination_rate || assignment.combo_rate || 0);
   const shifts = cur.shifts_count || 0;

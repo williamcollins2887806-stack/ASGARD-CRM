@@ -143,10 +143,36 @@ async function loadData(content, me) {
   if (callRow.children.length) projectCard.appendChild(callRow);
   content.appendChild(projectCard);
 
-  // Shift button
+  // Shift button (or current stage)
   const btnWrap = el('div', { style: { animation: 'fieldSlideUp 0.4s ease ' + nextDelay() + 's both' } });
 
-  if (!checkin || checkin.status === 'completed' || checkin.status === 'cancelled') {
+  // Check current trip stage
+  const workIdForStage = project.work_id || project.id;
+  let currentStage = null;
+  try { currentStage = await API.fetch('/stages/my/current/' + workIdForStage); } catch (_) {}
+
+  if (currentStage && currentStage.stage_type && currentStage.stage_type !== 'object') {
+    // Worker is on a trip stage — show stage card instead of shift button
+    const STAGE_ICONS_H = { medical: '\uD83C\uDFE5', travel: '\u2708\uFE0F', waiting: '\u23F3', warehouse: '\uD83D\uDCE6', day_off: '\uD83D\uDECC' };
+    const STAGE_LABELS_H = { medical: '\u041C\u0435\u0434\u043E\u0441\u043C\u043E\u0442\u0440', travel: '\u0414\u043E\u0440\u043E\u0433\u0430', waiting: '\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435', warehouse: '\u0421\u043A\u043B\u0430\u0434', day_off: '\u0412\u044B\u0445\u043E\u0434\u043D\u043E\u0439' };
+    const STAGE_COLORS_H = { medical: '#9333EA', travel: '#3B82F6', waiting: '#F59E0B', warehouse: '#F97316', day_off: '#9CA3AF' };
+    const stDay = Math.max(1, Math.floor((Date.now() - new Date(currentStage.date_from).getTime()) / 86400000) + 1);
+    const stColor = STAGE_COLORS_H[currentStage.stage_type] || '#3B82F6';
+    const stCard = el('div', {
+      style: {
+        background: DS.t.surface, borderRadius: '16px', padding: '16px',
+        border: '2px solid ' + stColor, cursor: 'pointer',
+      },
+      onClick: () => Router.navigate('/field/stages/' + workIdForStage),
+    });
+    stCard.appendChild(el('div', { style: { color: stColor, fontWeight: '600', fontSize: '1rem' } },
+      (STAGE_ICONS_H[currentStage.stage_type] || '') + ' ' + (STAGE_LABELS_H[currentStage.stage_type] || currentStage.stage_type)));
+    stCard.appendChild(el('div', { style: { color: DS.t.textSec, fontSize: '0.8125rem', marginTop: '4px' } },
+      stDay + '-\u0439 \u0434\u0435\u043D\u044C \u00B7 ~' + Utils.formatMoney(stDay * parseFloat(currentStage.rate_per_day || 0)) + '\u20BD'));
+    stCard.appendChild(el('div', { style: { color: DS.t.gold, fontSize: '0.8125rem', marginTop: '6px' } },
+      '\u041F\u043E\u0434\u0440\u043E\u0431\u043D\u0435\u0435 \u2192'));
+    btnWrap.appendChild(stCard);
+  } else if (!checkin || checkin.status === 'completed' || checkin.status === 'cancelled') {
     // No active checkin — show START SHIFT
     btnWrap.appendChild(F.BigButton({
       label: '\u041D\u0410\u0427\u0410\u0422\u042C \u0421\u041C\u0415\u041D\u0423',
@@ -218,6 +244,7 @@ function buildQuickActions(project, me) {
 
   const actions = [
     { icon: '\uD83D\uDCB0', label: '\u0414\u0435\u043D\u044C\u0433\u0438', href: '/field/money' },
+    { icon: '\uD83D\uDDFA\uFE0F', label: '\u041C\u0430\u0440\u0448\u0440\u0443\u0442', href: '/field/stages' },
     { icon: '\u2708\uFE0F', label: '\u0411\u0438\u043B\u0435\u0442\u044B', href: '/field/logistics' },
     { icon: '\uD83D\uDCF7', label: '\u0424\u043E\u0442\u043E', href: '/field/photos' },
     { icon: '\uD83D\uDCCB', label: '\u0418\u0441\u0442\u043E\u0440\u0438\u044F', href: '/field/history' },
@@ -226,6 +253,7 @@ function buildQuickActions(project, me) {
   if (isMaster) {
     actions.push(
       { icon: '\uD83D\uDC65', label: '\u0411\u0440\u0438\u0433\u0430\u0434\u0430', href: '/field/crew' },
+      { icon: '\uD83D\uDCCB', label: '\u041C\u0430\u0440\u0448\u0440. \u0431\u0440\u0438\u0433.', href: '/field/crew-stages' },
       { icon: '\uD83D\uDCDD', label: '\u041E\u0442\u0447\u0451\u0442', href: '/field/report' },
       { icon: '\u26A0\uFE0F', label: '\u0418\u043D\u0446\u0438\u0434\u0435\u043D\u0442', href: '/field/incidents' },
       { icon: '\uD83D\uDCB0', label: '\u041F\u043E\u0434\u043E\u0442\u0447\u0451\u0442', href: '/field/funds' },

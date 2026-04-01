@@ -98,6 +98,7 @@ window.AsgardFieldTab = (function () {
       { id: 'timesheet', label: '📋 Табель', render: () => renderTimesheetTab(content, work) },
       { id: 'funds', label: '💰 Подотчёт', render: () => renderFundsTab(content, work, user) },
       { id: 'packing', label: '📦 Сборы', render: () => renderPackingTab(content, work, user) },
+      { id: 'stages', label: '🗺 Маршруты', render: () => renderStagesTab(content, work, user) },
     ];
 
     root.innerHTML = '';
@@ -1531,6 +1532,260 @@ window.AsgardFieldTab = (function () {
             document.querySelector('.modal-overlay')?.remove();
             renderPackingTab(parentContainer, work, user);
           } catch (err) { toast('Ошибка: ' + err.message); }
+        });
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TAB 7: МАРШРУТЫ (STAGES) — Session 12
+  // ═══════════════════════════════════════════════════════════════════
+  const STAGE_COLORS = {
+    medical: '#9333EA', travel: '#3B82F6', waiting: '#F59E0B',
+    warehouse: '#F97316', day_off: '#9CA3AF', object: '#22C55E',
+  };
+  const STAGE_LABELS_DT = {
+    medical: 'Медосмотр', travel: 'Дорога', waiting: 'Ожидание',
+    warehouse: 'Склад', day_off: 'Выходной', object: 'Объект',
+  };
+  const STAGE_ICONS_DT = {
+    medical: '🟣', travel: '🔵', waiting: '🟡',
+    warehouse: '🟠', day_off: '⚪', object: '🟢',
+  };
+
+  async function renderStagesTab(container, work, user) {
+    container.innerHTML = '<div class="help">Загрузка маршрутов…</div>';
+
+    // Date range: last 30 days to +15 days
+    const now = new Date();
+    const from = new Date(now); from.setDate(from.getDate() - 30);
+    const to = new Date(now); to.setDate(to.getDate() + 15);
+    const df = from.toISOString().slice(0, 10);
+    const dt = to.toISOString().slice(0, 10);
+
+    const [calData, listData] = await Promise.all([
+      apiField(`/stages/project/${work.id}/calendar?date_from=${df}&date_to=${dt}`),
+      apiField(`/stages/project/${work.id}`),
+    ]);
+
+    container.innerHTML = '';
+
+    // ── Legend ──
+    const legend = document.createElement('div');
+    legend.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;font-size:12px';
+    for (const [key, color] of Object.entries(STAGE_COLORS)) {
+      const item = document.createElement('span');
+      item.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:4px;vertical-align:middle"></span>${esc(STAGE_LABELS_DT[key])}`;
+      legend.appendChild(item);
+    }
+    container.appendChild(legend);
+
+    // ── Calendar grid ──
+    if (calData && calData.employees && calData.employees.length > 0) {
+      const calWrap = document.createElement('div');
+      calWrap.style.cssText = 'overflow-x:auto;margin-bottom:20px;border:1px solid var(--brd, rgba(255,255,255,0.08));border-radius:8px';
+
+      const table = document.createElement('table');
+      table.style.cssText = 'border-collapse:collapse;font-size:11px;min-width:100%';
+
+      // Header: dates
+      const dates = [];
+      const cur = new Date(df);
+      const end = new Date(dt);
+      while (cur <= end) {
+        dates.push(cur.toISOString().slice(0, 10));
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      headerRow.innerHTML = '<th style="padding:4px 8px;text-align:left;white-space:nowrap;position:sticky;left:0;background:var(--bg2,#151922);z-index:1">Сотрудник</th>';
+      for (const d of dates) {
+        const dd = new Date(d);
+        const isToday = d === now.toISOString().slice(0, 10);
+        headerRow.innerHTML += `<th style="padding:2px 1px;text-align:center;min-width:22px;font-weight:${isToday ? '700' : '400'};${isToday ? 'color:var(--gold,#D4A843)' : ''}">${dd.getDate()}</th>`;
+      }
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      for (const emp of calData.employees) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td style="padding:4px 8px;white-space:nowrap;position:sticky;left:0;background:var(--bg2,#151922);z-index:1;border-top:1px solid var(--brd,rgba(255,255,255,0.06))">${esc(emp.fio)}</td>`;
+        for (const d of dates) {
+          const cell = emp.days[d];
+          const bg = cell ? STAGE_COLORS[cell.type] || '#666' : 'transparent';
+          const title = cell ? `${STAGE_LABELS_DT[cell.type] || cell.type} (${cell.status})` : '';
+          tr.innerHTML += `<td style="padding:2px 1px;text-align:center;border-top:1px solid var(--brd,rgba(255,255,255,0.06))" title="${esc(title)}"><span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${bg}${cell ? '' : ';opacity:0.15'}"></span></td>`;
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      calWrap.appendChild(table);
+      container.appendChild(calWrap);
+    }
+
+    // ── Employee list with stages ──
+    const employees = (listData && listData.employees) || [];
+    if (employees.length === 0) {
+      container.innerHTML += '<div class="help">Нет этапов на этом проекте</div>';
+      return;
+    }
+
+    for (const emp of employees) {
+      const card = document.createElement('div');
+      card.style.cssText = 'background:var(--bg2,#151922);border:1px solid var(--brd,rgba(255,255,255,0.08));border-radius:8px;padding:12px;margin-bottom:12px';
+
+      const header = document.createElement('div');
+      header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+      header.innerHTML = `<strong>${esc(emp.fio)}</strong><span style="color:var(--gold,#D4A843);font-size:12px">${emp.total_days} дн. · ${money(emp.total_earned)}₽</span>`;
+      card.appendChild(header);
+
+      for (const s of emp.stages) {
+        const sRow = document.createElement('div');
+        sRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px';
+        const col = STAGE_COLORS[s.stage_type] || '#666';
+        const df2 = formatDate(s.date_from);
+        const dt2 = s.date_to ? ' – ' + formatDate(s.date_to) : '';
+        const statusBadge = s.status === 'approved' ? '✅' : s.status === 'rejected' ? '❌' : s.status === 'active' ? '🔵' : s.status === 'completed' ? '✅' : '⬜';
+        sRow.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col}"></span>` +
+          `<span>${esc(STAGE_LABELS_DT[s.stage_type] || s.stage_type)}</span>` +
+          `<span style="color:var(--text2,#999)">${df2}${dt2} · ${s.days_count || 1}д.</span>` +
+          `<span style="margin-left:auto;font-weight:600">${money(s.amount_earned)}₽ ${statusBadge}</span>`;
+
+        // Action buttons for non-approved
+        if (!['approved', 'adjusted', 'rejected'].includes(s.status)) {
+          const btnApprove = document.createElement('button');
+          btnApprove.className = 'btn ghost';
+          btnApprove.textContent = '✅';
+          btnApprove.title = 'Подтвердить';
+          btnApprove.style.cssText = 'padding:2px 6px;font-size:12px;margin-left:4px';
+          btnApprove.addEventListener('click', async () => {
+            await apiField(`/stages/${s.id}/approve`, { method: 'PUT', body: JSON.stringify({}) });
+            toast('Этап подтверждён');
+            renderStagesTab(container, work, user);
+          });
+          sRow.appendChild(btnApprove);
+
+          const btnReject = document.createElement('button');
+          btnReject.className = 'btn ghost';
+          btnReject.textContent = '❌';
+          btnReject.title = 'Отклонить';
+          btnReject.style.cssText = 'padding:2px 6px;font-size:12px';
+          btnReject.addEventListener('click', async () => {
+            const reason = prompt('Причина отклонения:');
+            if (!reason) return;
+            await apiField(`/stages/${s.id}/reject`, { method: 'PUT', body: JSON.stringify({ adjustment_note: reason }) });
+            toast('Этап отклонён');
+            renderStagesTab(container, work, user);
+          });
+          sRow.appendChild(btnReject);
+        }
+
+        card.appendChild(sRow);
+      }
+
+      // Add stage button
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn ghost';
+      addBtn.textContent = '+ Добавить этап';
+      addBtn.style.cssText = 'margin-top:8px;font-size:12px;color:var(--gold,#D4A843)';
+      addBtn.addEventListener('click', () => showAddStageModal(container, work, user, emp.employee_id, emp.fio));
+      card.appendChild(addBtn);
+
+      container.appendChild(card);
+    }
+
+    // Bulk action button
+    const bulkBtn = document.createElement('button');
+    bulkBtn.className = 'btn gold';
+    bulkBtn.textContent = '📋 Массовое действие';
+    bulkBtn.style.cssText = 'margin-top:8px;width:100%';
+    bulkBtn.addEventListener('click', () => showBulkStageModal(container, work, user, employees));
+    container.appendChild(bulkBtn);
+  }
+
+  function showAddStageModal(parentContainer, work, user, empId, empFio) {
+    const types = ['medical', 'travel', 'waiting', 'warehouse', 'day_off'];
+    const today = new Date().toISOString().slice(0, 10);
+    let selectedType = 'medical';
+
+    const typeSelect = types.map(t =>
+      `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0">
+        <input type="radio" name="stType" value="${t}" ${t === selectedType ? 'checked' : ''}>
+        ${STAGE_ICONS_DT[t]} ${esc(STAGE_LABELS_DT[t])}
+      </label>`
+    ).join('');
+
+    AsgardUI.showModal({
+      title: 'Добавить этап — ' + esc(empFio),
+      html: `<div style="display:flex;flex-direction:column;gap:12px">
+        <div>${typeSelect}</div>
+        <label>Дата начала<br><input type="date" id="stDateFrom" value="${today}" class="input"></label>
+        <label>Дата конца (опц.)<br><input type="date" id="stDateTo" class="input"></label>
+        <label>Заметка<br><input type="text" id="stNote" class="input" placeholder="Необязательно"></label>
+        <button class="btn gold" id="stSubmit">Создать</button>
+      </div>`,
+      onMount: () => {
+        document.querySelectorAll('input[name="stType"]').forEach(r => r.addEventListener('change', e => { selectedType = e.target.value; }));
+        document.getElementById('stSubmit').addEventListener('click', async () => {
+          const dateFrom = document.getElementById('stDateFrom').value;
+          const dateTo = document.getElementById('stDateTo').value || undefined;
+          const note = document.getElementById('stNote').value || undefined;
+          const result = await apiField('/stages/', {
+            method: 'POST',
+            body: JSON.stringify({ employee_id: empId, work_id: work.id, stage_type: selectedType, date_from: dateFrom, date_to: dateTo, note }),
+          });
+          if (result.error) { toast('Ошибка: ' + result.error); return; }
+          toast('Этап создан');
+          document.querySelector('.modal-overlay')?.remove();
+          renderStagesTab(parentContainer, work, user);
+        });
+      }
+    });
+  }
+
+  function showBulkStageModal(parentContainer, work, user, employees) {
+    const types = ['day_off', 'waiting', 'travel', 'medical', 'warehouse'];
+    const today = new Date().toISOString().slice(0, 10);
+
+    const empCheckboxes = employees.map(e =>
+      `<label style="display:flex;align-items:center;gap:6px;padding:2px 0"><input type="checkbox" value="${e.employee_id}" class="bulkEmpCb"> ${esc(e.fio)}</label>`
+    ).join('');
+
+    const typeOptions = types.map(t =>
+      `<option value="${t}">${STAGE_LABELS_DT[t]}</option>`
+    ).join('');
+
+    AsgardUI.showModal({
+      title: 'Массовое создание этапов',
+      html: `<div style="display:flex;flex-direction:column;gap:12px">
+        <div><label><input type="checkbox" id="bulkSelectAll"> Выбрать всех</label></div>
+        <div style="max-height:200px;overflow-y:auto">${empCheckboxes}</div>
+        <label>Тип этапа<br><select id="bulkType" class="input">${typeOptions}</select></label>
+        <label>Дата<br><input type="date" id="bulkDate" value="${today}" class="input"></label>
+        <button class="btn gold" id="bulkSubmit">Создать для выбранных</button>
+      </div>`,
+      onMount: () => {
+        document.getElementById('bulkSelectAll').addEventListener('change', (e) => {
+          document.querySelectorAll('.bulkEmpCb').forEach(cb => { cb.checked = e.target.checked; });
+        });
+        document.getElementById('bulkSubmit').addEventListener('click', async () => {
+          const ids = [...document.querySelectorAll('.bulkEmpCb:checked')].map(cb => parseInt(cb.value));
+          if (ids.length === 0) { toast('Выберите сотрудников'); return; }
+          const result = await apiField('/stages/bulk', {
+            method: 'POST',
+            body: JSON.stringify({
+              employee_ids: ids,
+              work_id: work.id,
+              stage_type: document.getElementById('bulkType').value,
+              date_from: document.getElementById('bulkDate').value,
+            }),
+          });
+          if (result.error) { toast('Ошибка: ' + result.error); return; }
+          toast(`Создано ${result.created_count} этапов`);
+          document.querySelector('.modal-overlay')?.remove();
+          renderStagesTab(parentContainer, work, user);
         });
       }
     });

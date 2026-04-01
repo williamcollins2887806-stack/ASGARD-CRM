@@ -499,7 +499,26 @@ async function routes(fastify, options) {
 
       const baseAmount = parseFloat(checkinAgg[0]?.base_amount || 0);
       const perDiemTotal = perDiemRate * perDiemDays;
-      const totalEarned = baseAmount + perDiemTotal + totalBonuses - totalPenalties;
+
+      // Trip stages (Session 12)
+      let stagesEarned = 0;
+      let stagesBreakdown = [];
+      try {
+        const { rows: stageRows } = await db.query(`
+          SELECT stage_type, SUM(COALESCE(days_approved, days_count)) AS days,
+                 AVG(rate_per_day) AS rate, SUM(amount_earned) AS amount
+          FROM field_trip_stages
+          WHERE employee_id = $1 AND work_id = $2 AND status IN ('completed','approved','adjusted')
+          GROUP BY stage_type ORDER BY stage_type
+        `, [empId, workId]);
+        for (const r of stageRows) {
+          const amt = parseFloat(r.amount || 0);
+          stagesEarned += amt;
+          stagesBreakdown.push({ type: r.stage_type, days: parseInt(r.days || 0), rate: parseFloat(r.rate || 0), amount: amt });
+        }
+      } catch (_) { /* table may not exist yet */ }
+
+      const totalEarned = baseAmount + perDiemTotal + totalBonuses - totalPenalties + stagesEarned;
 
       return {
         tariff: tariffInfo,
@@ -513,6 +532,8 @@ async function routes(fastify, options) {
         per_diem_total: perDiemTotal,
         bonuses: totalBonuses,
         penalties: totalPenalties,
+        stages_earned: stagesEarned,
+        stages_breakdown: stagesBreakdown,
         total_earned: totalEarned,
         advances_paid: totalAdvances,
         total_paid: totalPaid,

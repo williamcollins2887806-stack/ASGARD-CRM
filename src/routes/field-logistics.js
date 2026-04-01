@@ -56,7 +56,40 @@ async function routes(fastify, options) {
           details ? JSON.stringify(details) : '{}',
           date_from || null, date_to || null, userId]);
 
-      return { logistics_id: inserted[0].id, created_at: inserted[0].created_at };
+      const logisticsId = inserted[0].id;
+
+      // Auto-create travel stage for ticket_to / ticket_back (Session 12)
+      if ((item_type === 'ticket_to' || item_type === 'ticket_back') && date_from) {
+        try {
+          // Find tariff for travel
+          const { rows: tariffRows } = await db.query(
+            `SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Дорога%' LIMIT 1`
+          );
+          const tariff = tariffRows[0] || { id: null, points: 6, rate_per_shift: 3000 };
+          const tPoints = tariff.points;
+          const tRate = parseFloat(tariff.rate_per_shift);
+          const d1 = new Date(date_from);
+          const d2 = date_to ? new Date(date_to) : d1;
+          const days = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+          const amount = days * tRate;
+
+          await db.query(`
+            INSERT INTO field_trip_stages
+              (employee_id, work_id, stage_type, date_from, date_to, days_count,
+               tariff_id, tariff_points, rate_per_day, amount_earned, details,
+               logistics_id, source, status, created_by)
+            VALUES ($1,$2,'travel',$3,$4,$5,$6,$7,$8,$9,$10,$11,'auto','planned',$12)
+            ON CONFLICT DO NOTHING
+          `, [employee_id, work_id, date_from, date_to || null, days,
+              tariff.id || null, tPoints, tRate, amount,
+              JSON.stringify({ transport: 'auto', route: title }),
+              logisticsId, userId]);
+        } catch (stErr) {
+          fastify.log.warn('[field-logistics] auto-create travel stage:', stErr.message);
+        }
+      }
+
+      return { logistics_id: logisticsId, created_at: inserted[0].created_at };
     } catch (err) {
       fastify.log.error('[field-logistics] POST / error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });

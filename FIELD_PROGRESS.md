@@ -109,3 +109,17 @@
 - SMS уведомления: ✅ (при назначении сборщика через MangoService)
 - Тесты: field-s11-funds-packing.test.js (20 тестов)
 - НЕ задеплоено, НЕ запушено (ожидает ревью)
+
+## Сессия 12: [✅ DONE]
+- Миграция V063: ✅ (field_trip_stages — этапы командировки, 3 индекса + unique constraint)
+- field-stages.js: ✅ (17 endpoints: PM: POST/GET project/GET calendar/GET employee/PUT approve/PUT reject/PUT edit/DELETE/POST bulk, Master: GET my-crew/POST on-behalf/PUT on-behalf/POST request-correction, Worker: GET my/POST start/POST end/GET current)
+- field-tab.js: ✅ (7-й саб-таб «🗺 Маршруты» — цветная календарная сетка, список этапов по сотрудникам, approve/reject кнопки, добавление этапа, массовое создание)
+- pages/stages.js: ✅ (Field PWA: /field/stages — hero с countUp, текущий/завершённые/запланированные этапы, BottomSheet add/end, /field/crew-stages — мастер видит бригаду, поиск, фильтры, on-behalf, request-correction)
+- home.js: ✅ (quick action 🗺 Маршрут для всех + 📋 Маршр. бриг. для мастеров, показ текущего этапа вместо НАЧАТЬ СМЕНУ)
+- money.js: ✅ (секция «МАРШРУТ ДО ОБЪЕКТА» перед «НА ОБЪЕКТЕ» с разбивкой по типам этапов)
+- field-worker.js: ✅ (finances/:work_id включает stages_earned + stages_breakdown в total_earned)
+- field/index.html: ✅ (added stages.js script tag)
+- field/sw.js: ✅ (v2.2.0, added stages.js to SHELL_URLS)
+- index.js: ✅ (registered field-stages route /api/field/stages)
+- Тесты: field-s12-stages.test.js (17 тестов)
+- НЕ задеплоено, НЕ запушено (ожидает ревью)

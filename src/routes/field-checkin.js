@@ -115,6 +115,32 @@ async function routes(fastify, options) {
         return reply.code(409).send({ error: 'Вы уже отметились сегодня' });
       }
 
+      // Auto-close active trip stages (Session 12)
+      // При начале смены все незавершённые этапы автоматически закрываются
+      try {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yStr = yesterday.toISOString().slice(0, 10);
+        const { rows: activeStages } = await db.query(
+          `SELECT id, date_from, rate_per_day FROM field_trip_stages
+           WHERE employee_id = $1 AND work_id = $2 AND status = 'active'`,
+          [empId, work_id]
+        );
+        for (const st of activeStages) {
+          const d1 = new Date(st.date_from);
+          const d2 = new Date(yStr);
+          const days = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+          const amount = days * parseFloat(st.rate_per_day);
+          await db.query(
+            `UPDATE field_trip_stages SET date_to = $1, days_count = $2, amount_earned = $3,
+             status = 'completed', updated_at = NOW() WHERE id = $4`,
+            [yStr, days, amount, st.id]
+          );
+        }
+      } catch (stErr) {
+        fastify.log.warn('[field-checkin] auto-close stages error:', stErr.message);
+      }
+
       // Get day_rate
       const dayRate = await getDayRate(empId, work_id);
 
