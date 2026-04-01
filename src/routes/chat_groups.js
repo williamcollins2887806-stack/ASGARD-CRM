@@ -1437,11 +1437,11 @@ module.exports = async function(fastify) {
       message: { ...userMsg, user_name: senderName }
     });
 
-    // 2. Собрать контекст (ВСЯ история чата) + вложения
+    // 2. Собрать контекст (последние 50 сообщений) + вложения
     const { rows: history } = await db.query(`
       SELECT m.id, m.user_id, m.message, m.created_at FROM chat_messages m
       WHERE m.chat_id = $1 AND m.deleted_at IS NULL
-      ORDER BY m.created_at DESC
+      ORDER BY m.created_at DESC LIMIT 50
     `, [chatId]);
     history.reverse();
 

@@ -213,11 +213,11 @@ async function mimirRoutes(fastify, options) {
         convId = newConv.rows[0].id;
       }
 
-      // Загружаем историю (ВСЯ)
+      // Загружаем историю (последние 50 сообщений)
       const history = await db.query(`
         SELECT role, content FROM mimir_messages
         WHERE conversation_id = $1
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC LIMIT 50
       `, [convId]);
 
       const historyMessages = history.rows.reverse();
@@ -354,11 +354,11 @@ async function mimirRoutes(fastify, options) {
 
       sendEvent({ type: 'start', conversation_id: convId });
 
-      // Загружаем историю (ВСЯ)
+      // Загружаем историю (последние 50 сообщений)
       const history = await db.query(`
         SELECT role, content FROM mimir_messages
         WHERE conversation_id = $1
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC LIMIT 50
       `, [convId]);
 
       const historyMessages = history.rows.reverse();
