@@ -534,15 +534,20 @@ async function dataRoutes(fastify, options) {
       }
 
       // Санитизация: пустые строки → null для date/numeric/integer/boolean полей
+      // + конвертация DD.MM.YYYY → YYYY-MM-DD для date полей
       const colTypesPost = _columnTypeCache[dbTable] || {};
       for (const key of Object.keys(data)) {
-        if (data[key] === '' && colTypesPost[key]) {
-          const dt = colTypesPost[key];
+        const dt = colTypesPost[key];
+        if (!dt) continue;
+        if (data[key] === '') {
           if (dt === 'date' || dt.startsWith('timestamp') || dt === 'integer' || dt === 'bigint'
             || dt === 'smallint' || dt === 'numeric' || dt === 'real' || dt === 'double precision'
             || dt === 'boolean') {
             data[key] = null;
           }
+        } else if (data[key] && dt === 'date' && typeof data[key] === 'string') {
+          const m = data[key].match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+          if (m) data[key] = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
         }
       }
 
@@ -654,15 +659,20 @@ async function dataRoutes(fastify, options) {
       }
 
       // Санитизация: пустые строки → null для date/numeric/integer/boolean полей
+      // + конвертация DD.MM.YYYY → YYYY-MM-DD для date полей
       const colTypes = _columnTypeCache[dbTable] || {};
       for (const key of Object.keys(data)) {
-        if (data[key] === '' && colTypes[key]) {
-          const dt = colTypes[key];
+        const dt = colTypes[key];
+        if (!dt) continue;
+        if (data[key] === '') {
           if (dt === 'date' || dt.startsWith('timestamp') || dt === 'integer' || dt === 'bigint'
             || dt === 'smallint' || dt === 'numeric' || dt === 'real' || dt === 'double precision'
             || dt === 'boolean') {
             data[key] = null;
           }
+        } else if (data[key] && dt === 'date' && typeof data[key] === 'string') {
+          const m = data[key].match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+          if (m) data[key] = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
         }
       }
 
