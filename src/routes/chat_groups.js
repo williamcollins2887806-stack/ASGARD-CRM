@@ -14,7 +14,7 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { randomUUID } = require('crypto');
-const { sendToUser } = require('./sse');
+const { sendToUser, isUserOnline } = require('./sse');
 const aiProvider = require('../services/ai-provider');
 const mimirData = require('../services/mimir-data');
 
@@ -265,7 +265,7 @@ module.exports = async function(fastify) {
         (SELECT COUNT(*) FROM chat_group_members WHERE chat_id = c.id) as member_count,
         (SELECT COUNT(*) FROM chat_messages
          WHERE chat_id = c.id AND created_at > COALESCE(m.last_read_at, '1970-01-01')
-         AND deleted_at IS NULL) as unread_count,
+         AND deleted_at IS NULL AND user_id != $1) as unread_count,
         -- Last message preview
         (SELECT lm.message FROM chat_messages lm
          WHERE lm.chat_id = c.id AND lm.deleted_at IS NULL
@@ -323,6 +323,12 @@ module.exports = async function(fastify) {
     sql += ` ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`;
 
     const { rows } = await db.query(sql, params);
+    // BUG-8: Add is_online for direct chats
+    for (const chat of rows) {
+      if (!chat.is_group && chat.direct_user_id) {
+        chat.is_online = isUserOnline(chat.direct_user_id);
+      }
+    }
     return { chats: rows };
   });
 
@@ -358,6 +364,10 @@ module.exports = async function(fastify) {
         u.name
     `, [chatId]);
 
+    // BUG-8: Add is_online to each member
+    for (const m of members) {
+      m.is_online = isUserOnline(m.user_id);
+    }
     return { chat, members, myRole: member.role };
   });
 
@@ -1432,7 +1442,7 @@ module.exports = async function(fastify) {
     `, [chatId, userId, text]);
 
     // SSE: пользовательское сообщение (для синхронизации между вкладками)
-    sseToMembers(chatId, 0, 'chat:new_message', {
+    sseToMembers(chatId, userId, 'chat:new_message', {
       chat_id: chatId,
       message: { ...userMsg, user_name: senderName }
     });

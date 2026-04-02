@@ -34,7 +34,7 @@ export default function ChatView() {
 
   const { typingUsers, sendTyping, handleTypingEvent } = useTyping(chatId);
 
-  // Load chat details
+  // Load chat details + mark as read
   useEffect(() => {
     if (!chatId) return;
     (async () => {
@@ -45,6 +45,8 @@ export default function ChatView() {
       } catch {}
     })();
     loadMessages();
+    // Mark chat as read on server
+    api.post(`/chat-groups/${chatId}/read`).catch(() => {});
   }, [chatId, loadMessages]);
 
   // SSE handler

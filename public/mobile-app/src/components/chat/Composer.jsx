@@ -65,15 +65,26 @@ export function Composer({
     try {
       const form = new FormData();
       form.append('file', file);
+      if (file.name) form.append('original_name', file.name);
       const token = api.getToken();
       const res = await fetch(`/api/chat-groups/${chatId}/upload-file`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: form,
       });
-      if (!res.ok) throw new Error('Upload failed');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Upload failed (${res.status})`);
+      }
       onFileUploaded?.();
-    } catch {}
+    } catch (err) {
+      // Show native alert as simple toast
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('asgard:toast', {
+          detail: { message: err.message || 'Ошибка загрузки файла', type: 'error' }
+        }));
+      }
+    }
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };

@@ -157,9 +157,31 @@ async function sseRoutes(fastify) {
   });
 }
 
+/**
+ * Проверить, есть ли у пользователя активное SSE-соединение
+ */
+function isUserOnline(userId) {
+  const conns = clients.get(userId);
+  return !!(conns && conns.size > 0);
+}
+
+/**
+ * Получить Set всех online userId
+ */
+function getOnlineUserIds() {
+  const ids = [];
+  for (const [userId, conns] of clients) {
+    if (conns.size > 0) ids.push(userId);
+  }
+  return ids;
+}
+
 // Экспортируем route + функции для использования из других модулей
 module.exports = sseRoutes;
 module.exports.sendToUser = sendToUser;
 module.exports.sendToRoles = sendToRoles;
 module.exports.broadcast = broadcast;
 module.exports.getStats = getStats;
+module.exports.isUserOnline = isUserOnline;
+module.exports.getOnlineUserIds = getOnlineUserIds;
+module.exports.clients = clients;

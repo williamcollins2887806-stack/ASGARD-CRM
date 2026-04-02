@@ -5,6 +5,7 @@ import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { MimirWelcome } from '@/components/chat/MimirWelcome';
+import { MarkdownText } from '@/components/chat/MarkdownText';
 
 const CONV_KEY = 'mimir_conv_id';
 
@@ -223,12 +224,18 @@ export default function Mimir() {
                       Мимир
                     </p>
                   )}
-                  <p
-                    className={`text-[15px] leading-[1.4] whitespace-pre-wrap ${isMine ? '' : 'c-primary'}`}
-                    style={isMine ? { color: '#fff' } : undefined}
-                  >
-                    {msg.text}
-                  </p>
+                  {isMine ? (
+                    <p
+                      className="text-[15px] leading-[1.4] whitespace-pre-wrap"
+                      style={{ color: '#fff' }}
+                    >
+                      {msg.text}
+                    </p>
+                  ) : (
+                    <div className="text-[15px] leading-[1.4] whitespace-pre-wrap c-primary">
+                      <MarkdownText text={msg.text} />
+                    </div>
+                  )}
                   <p
                     className={`text-[10px] text-right mt-1 ${isMine ? '' : 'c-tertiary'}`}
                     style={isMine ? { color: 'rgba(255,255,255,0.5)' } : undefined}

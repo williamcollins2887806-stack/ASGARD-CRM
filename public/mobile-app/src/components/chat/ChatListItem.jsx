@@ -31,9 +31,9 @@ export function ChatListItem({ chat, onPin, onMute, onArchive }) {
     .join('')
     .toUpperCase();
 
-  const isOnline =
-    chat.last_login_at &&
-    Date.now() - new Date(chat.last_login_at).getTime() < 300000;
+  const isOnline = chat.is_online ||
+    (chat.direct_user_last_login &&
+      Date.now() - new Date(chat.direct_user_last_login).getTime() < 300000);
 
   const handleTap = () => {
     if (Math.abs(swipeX) > 5) return;

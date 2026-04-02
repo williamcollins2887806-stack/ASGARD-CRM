@@ -17,7 +17,7 @@ export function useMessages(chatId) {
     try {
       const data = await api.get(`/chat-groups/${chatId}/messages?limit=50`);
       const msgs = data.messages || api.extractRows(data);
-      setMessages(msgs.reverse());
+      setMessages(msgs);
       setHasOlder(msgs.length >= 50);
     } catch {
       setMessages([]);
@@ -36,7 +36,7 @@ export function useMessages(chatId) {
       );
       const older = data.messages || api.extractRows(data);
       if (older.length < 30) setHasOlder(false);
-      setMessages((prev) => [...older.reverse(), ...prev]);
+      setMessages((prev) => [...older, ...prev]);
     } catch {}
     loadingRef.current = false;
   }, [chatId, hasOlder, messages]);

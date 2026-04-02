@@ -22,13 +22,20 @@ export function ChatHeader({ chat, members, onSearch }) {
   const [query, setQuery] = useState('');
   const searchRef = useRef(null);
 
-  const isOnline =
-    members?.[0]?.last_login_at &&
-    Date.now() - new Date(members[0].last_login_at).getTime() < 300000;
+  // For direct chats, find the OTHER member (not self)
+  const otherMember = !chat?.is_group
+    ? members?.find((m) => m.is_online !== undefined) || members?.[0]
+    : null;
+
+  const isOnline = otherMember?.is_online ||
+    (otherMember?.last_login_at &&
+      Date.now() - new Date(otherMember.last_login_at).getTime() < 300000);
 
   const subtitle = chat?.is_group
     ? `${chat.member_count || members?.length || 0} участников`
-    : getOnlineLabel(members?.[0]?.last_login_at);
+    : isOnline
+      ? 'в сети'
+      : getOnlineLabel(otherMember?.last_login_at);
 
   const initials = (chat?.name || '??')
     .split(' ')

@@ -9,6 +9,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { useChat } from '@/hooks/useChat';
 import { useSSE } from '@/hooks/useSSE';
 import { useHaptic } from '@/hooks/useHaptic';
+import { useAuthStore } from '@/stores/authStore';
 import { relativeTime } from '@/lib/utils';
 
 const STATUS_COLORS = {
@@ -200,9 +201,10 @@ function TabBar({ active, onSelect, unreadCounts }) {
 /* ─── Main Chat Page ──────────────────────────────────── */
 
 export default function Chat() {
-  const { chats, loading, search, setSearch, updateChat } = useChat();
+  const { chats, loading, search, setSearch, updateChat, refetch } = useChat();
   const [newChatOpen, setNewChatOpen] = useState(false);
   const haptic = useHaptic();
+  const userId = useAuthStore((s) => s.user?.id);
 
   // Tab state (persisted to localStorage)
   const [activeTab, setActiveTab] = useState(() =>
@@ -256,6 +258,15 @@ export default function Chat() {
   useEffect(() => {
     localStorage.setItem('huginn_chat_tab', activeTab);
   }, [activeTab]);
+
+  // Refetch chats on visibility change (e.g. returning from ChatView)
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'visible') refetch();
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [refetch]);
 
   // ─── Swipe gestures ───
   const touchRef = useRef({ startX: 0, startY: 0, swiping: false, locked: false });
@@ -312,18 +323,21 @@ export default function Chat() {
   const handleSSE = useCallback(
     (event, data) => {
       if (event === 'new_message' && data.chat_id) {
+        const isMine = data.message?.user_id === userId;
         updateChat(data.chat_id, {
           last_message: data.message?.message || '',
           last_message_text: data.message?.message || '',
           last_message_sender: data.message?.user_name || '',
           last_message_type: data.message?.message_type || 'text',
           last_message_at: data.message?.created_at || new Date().toISOString(),
-          unread_count:
-            (chats.find((c) => c.id === data.chat_id)?.unread_count || 0) + 1,
+          ...(isMine ? {} : {
+            unread_count:
+              (chats.find((c) => String(c.id) === String(data.chat_id))?.unread_count || 0) + 1,
+          }),
         });
       }
     },
-    [updateChat, chats]
+    [updateChat, chats, userId]
   );
 
   useSSE(handleSSE);

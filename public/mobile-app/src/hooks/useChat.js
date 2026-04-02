@@ -42,16 +42,23 @@ export function useChat() {
     return db - da;
   });
 
+  const updateChat = useCallback((chatId, updates) => {
+    setChats((prev) =>
+      prev.map((c) => (String(c.id) === String(chatId) ? { ...c, ...updates } : c))
+    );
+  }, []);
+
+  const markChatRead = useCallback((chatId) => {
+    updateChat(chatId, { unread_count: 0 });
+  }, [updateChat]);
+
   return {
     chats: sorted,
     loading,
     search,
     setSearch,
     refetch: fetchChats,
-    updateChat: (chatId, updates) => {
-      setChats((prev) =>
-        prev.map((c) => (c.id === chatId ? { ...c, ...updates } : c))
-      );
-    },
+    updateChat,
+    markChatRead,
   };
 }
