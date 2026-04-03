@@ -77,6 +77,53 @@ async function routes(fastify, options) {
     }
   });
 
+  // Suggest companies by name via DaData API
+  fastify.get('/suggest', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { q, type = 'party' } = request.query;
+    if (!q || String(q).trim().length < 2) {
+      return { suggestions: [] };
+    }
+
+    const DADATA_TOKEN = process.env.DADATA_TOKEN;
+    if (!DADATA_TOKEN) {
+      return { suggestions: [], message: 'DaData API не настроен' };
+    }
+
+    try {
+      const response = await fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/party', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Token ${DADATA_TOKEN}`
+        },
+        body: JSON.stringify({ query: String(q).trim(), count: 5 })
+      });
+
+      if (!response.ok) {
+        throw new Error(`DaData API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const suggestions = (data.suggestions || []).map(s => {
+        const d = s.data || {};
+        return {
+          inn: d.inn || '',
+          name: d.name?.short_with_opf || s.value || '',
+          full_name: d.name?.full_with_opf || '',
+          kpp: d.kpp || '',
+          ogrn: d.ogrn || '',
+          address: d.address?.unrestricted_value || d.address?.value || ''
+        };
+      });
+
+      return { suggestions };
+    } catch (e) {
+      fastify.log.error('DaData suggest error:', e);
+      return { suggestions: [] };
+    }
+  });
+
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { search, limit = 100, offset = 0 } = request.query;
     let sql = 'SELECT * FROM customers WHERE 1=1';

@@ -60,12 +60,14 @@ async function loginAs(page, role) {
   }).catch(() => {});
 
   await page.goto(BASE_URL + '/#/welcome');
-  await page.waitForTimeout(1500);
+  // Wait for welcome page to be fully interactive (button visible, not just DOM loaded)
+  await page.waitForSelector('#btnShowLogin', { state: 'visible', timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(500);
 
   // Click #btnShowLogin to reveal the login form (NOT #btnLoginGo which navigates away)
   await page.locator('#btnShowLogin').click().catch(() => {});
   // Wait for login form to become VISIBLE (not just present in DOM)
-  await page.waitForSelector('#w_login', { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.waitForSelector('#w_login', { state: 'visible', timeout: 8000 }).catch(() => {});
 
   // Fill login and password
   await page.locator('#w_login').fill(acc.login).catch(() => {});
@@ -73,8 +75,8 @@ async function loginAs(page, role) {
 
   // Submit login
   await page.locator('#btnDoLogin').click().catch(() => {});
-  // Wait for PIN form to become VISIBLE after server responds (up to 8s)
-  await page.waitForSelector('#pinForm', { state: 'visible', timeout: 8000 }).catch(() => {});
+  // Wait for PIN form to become VISIBLE after server responds (up to 20s — slow server from local machine)
+  await page.waitForSelector('#pinForm', { state: 'visible', timeout: 20000 }).catch(() => {});
 
   // Check for first-time setup form (#setupForm shown when account has no password yet)
   const setupForm = page.locator('#setupForm');
@@ -106,7 +108,7 @@ async function loginAs(page, role) {
         const t = localStorage.getItem('asgard_token');
         return !!t && t.length > 50 && !window.location.hash.includes('/welcome');
       },
-      { timeout: 8000 }
+      { timeout: 20000 }
     ).catch(() => {});
   }
 }

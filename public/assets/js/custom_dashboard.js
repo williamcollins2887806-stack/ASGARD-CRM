@@ -1119,9 +1119,10 @@ window.AsgardCustomDashboard = (function(){
         }
       } catch(e) { console.warn('[Dashboard] Personal mail check failed:', e.message); }
 
-      // Fallback to company mailbox (only for roles with mailbox access)
-      const _MAILBOX_ROLES = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_TO','HEAD_PM','PM','TO'];
-      if ((!stats || stats.total === 0) && _MAILBOX_ROLES.includes(user && user.role)) {
+      // Fallback to company mailbox — только для ADMIN/DIRECTOR и только если личная почта НЕ подключена
+      // PM, TO и др. без личной почты видят "Почта не подключена" (не все письма компании)
+      const _MAILBOX_ROLES = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'];
+      if ((!stats || stats.configured === false) && _MAILBOX_ROLES.includes(user && user.role)) {
         try {
           const resp = await fetch('/api/mailbox/stats', {
             headers: { 'Authorization': 'Bearer ' + token }

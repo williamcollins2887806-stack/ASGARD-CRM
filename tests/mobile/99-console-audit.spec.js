@@ -141,6 +141,26 @@ async function loginByApi(page, role) {
     }
     await page.waitForTimeout(2500); // мобилка инициализируется чуть дольше
 
+    // Safety: SW controllerchange race может сбросить token из localStorage
+    // (evaluate с .catch(()=>{}) тихо проваливается если контекст уничтожен)
+    try {
+      const stillHasToken = await page.evaluate(() => !!localStorage.getItem('asgard_token'));
+      if (!stillHasToken) {
+        await page.waitForFunction(() => !window.location.search.includes('_sw='), { timeout: 5000 }).catch(() => {});
+        await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+        await page.evaluate(({ t, u }) => {
+          localStorage.setItem('asgard_token', t);
+          if (u) {
+            localStorage.setItem('asgard_user', JSON.stringify(u));
+            if (u.permissions) localStorage.setItem('asgard_permissions', JSON.stringify(u.permissions));
+            if (u.menu_settings) localStorage.setItem('asgard_menu_settings', JSON.stringify(u.menu_settings));
+          }
+        }, { t: token, u: pinData.user });
+        await page.goto(BASE_URL + '/#/home', { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.waitForTimeout(1500);
+      }
+    } catch (_tokenCheck) {}
+
     return token;
   } catch (e) {
     return null;

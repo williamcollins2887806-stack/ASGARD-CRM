@@ -266,7 +266,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"proxies",g:"resources"},
 
     // ── ПЕРСОНАЛ ──
-    {r:"/personnel",l:"Дружина",d:"Сотрудники",roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
+    {r:"/personnel",l:"Дружина",d:"Сотрудники",roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM","TO","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
     {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"hr_requests",g:"personnel"},
     {r:"/collections",l:"Подборки дружины",d:"Именные списки сотрудников",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
     {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},

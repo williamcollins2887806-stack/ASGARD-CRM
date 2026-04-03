@@ -367,3 +367,60 @@ test.describe('Procurement Lifecycle (Browser E2E)', () => {
   });
 
 });
+
+// ═══════════════════════════════════════════════════════════════
+// TMC-Заявки (ТМЦ) — отдельный модуль
+// ═══════════════════════════════════════════════════════════════
+
+test.describe('TMC Requests', () => {
+
+  test('15 — TMC create via API, submit button works (PUT /status → 200)', async ({ page }) => {
+    const errors = h.setupConsoleCollector(page);
+    await h.loginAs(page, 'PM');
+    const token = await h.getSessionToken(page);
+    // Create TMC request
+    const cr = await h.apiCall(page, 'POST', h.BASE_URL + '/api/tmc-requests', {
+      title: 'T06_TMC_' + Date.now(),
+      items: [{ name: 'Труба', qty: 5, unit: 'шт', price: 1000 }],
+      priority: 'medium'
+    }, token);
+    const tmcId = cr.data?.item?.id || cr.data?.id;
+    expect(tmcId, 'TMC created').toBeTruthy();
+    // Submit via status endpoint (was broken — proxy didn't have this route)
+    const sub = await h.apiCall(page, 'PUT', h.BASE_URL + `/api/tmc-requests/${tmcId}/status`, {
+      status: 'submitted'
+    }, token);
+    expect(sub.status, 'PUT /tmc-requests/:id/status → 200').toBe(200);
+    h.assertNoConsoleErrors(errors, 'TMC submit');
+  });
+
+  test('16 — TMC Excel export works (GET /:id/excel → 200)', async ({ page }) => {
+    const errors = h.setupConsoleCollector(page);
+    await h.loginAs(page, 'PM');
+    const token = await h.getSessionToken(page);
+    expect(token, 'PM token available').toBeTruthy();
+    // Create TMC
+    const cr = await h.apiCall(page, 'POST', h.BASE_URL + '/api/tmc-requests', {
+      title: 'T06_TMC_XLS_' + Date.now(),
+      priority: 'normal'
+    }, token);
+    expect(cr.status, `POST tmc-requests status (data: ${JSON.stringify(cr.data)})`).toBeLessThan(300);
+    const tmcId = cr.data?.item?.id || cr.data?.id;
+    expect(tmcId, 'TMC created for excel').toBeTruthy();
+    // Excel export
+    const ex = await h.apiCall(page, 'GET', h.BASE_URL + `/api/tmc-requests/${tmcId}/excel`, null, token);
+    expect(ex.status, 'GET /tmc-requests/:id/excel → 200').toBe(200);
+    h.assertNoConsoleErrors(errors, 'TMC excel export');
+  });
+
+  test('17 — TMC page renders in UI without errors', async ({ page }) => {
+    const errors = h.setupConsoleCollector(page);
+    await h.loginAs(page, 'PM');
+    await h.navigateTo(page, 'tmc-requests');
+    await h.waitForPageLoad(page);
+    const bodyText = await page.textContent('body');
+    expect(bodyText.length, 'page has content').toBeGreaterThan(50);
+    h.assertNoConsoleErrors(errors, 'TMC page renders');
+  });
+
+});

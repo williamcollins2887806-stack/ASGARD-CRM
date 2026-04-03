@@ -207,7 +207,7 @@ window.AsgardCustomersPage = (function(){
             <label>ИНН</label>
             <input id="inn" placeholder="10/12 цифр" value="${esc(c?.inn||'')}" ${c?.inn && !isNew ? 'disabled' : ''}/>
           </div>
-          ${!c?.inn || isNew ? '<button class="btn ghost" id="btnLookup" style="height:38px" title="Найти по ИНН">🔍</button>' : ''}
+          <button class="btn ghost" id="btnLookup" style="height:38px" title="Обновить данные из ЕГРЮЛ">${c?.inn && !isNew ? '🔄 ЕГРЮЛ' : '🔍'}</button>
         </div>
         <div style="grid-column:1/-1"><label>Название (краткое)</label><input id="name" value="${esc(c?.name||'')}"/></div>
         <div style="grid-column:1/-1"><label>Наименование полное</label><input id="full" value="${esc(c?.full_name||'')}"/></div>
@@ -253,38 +253,37 @@ window.AsgardCustomersPage = (function(){
       });
     });
 
-    // INN lookup button
+    // INN lookup button (works for both new and existing customers)
     const btnLookup = $("#btnLookup");
-    if(btnLookup){
-      btnLookup.addEventListener("click", async ()=>{
-        const inn = normInn($("#inn").value);
-        if(inn.length !== 10 && inn.length !== 12){
-          toast("Поиск","ИНН должен быть 10 или 12 цифр","err");
-          return;
+    const btnLookupLabel = btnLookup.textContent;
+    btnLookup.addEventListener("click", async ()=>{
+      const inn = normInn($("#inn").value);
+      if(inn.length !== 10 && inn.length !== 12){
+        toast("Поиск","ИНН должен быть 10 или 12 цифр","err");
+        return;
+      }
+      btnLookup.disabled = true;
+      btnLookup.textContent = "⏳";
+      try{
+        const result = await lookupByInn(inn);
+        if(result.found && result.suggestion){
+          const s = result.suggestion;
+          if(s.name) $("#name").value = s.name;
+          if(s.full_name) $("#full").value = s.full_name;
+          if(s.kpp) $("#kpp").value = s.kpp;
+          if(s.ogrn) $("#ogrn").value = s.ogrn;
+          if(s.address) $("#addr").value = s.address;
+          toast("ЕГРЮЛ","Данные обновлены из реестра","ok");
+        } else {
+          toast("ЕГРЮЛ", result.message || "Организация не найдена","warn");
         }
-        btnLookup.disabled = true;
-        btnLookup.textContent = "⏳";
-        try{
-          const result = await lookupByInn(inn);
-          if(result.found && result.suggestion){
-            const s = result.suggestion;
-            if(s.name) $("#name").value = s.name;
-            if(s.full_name) $("#full").value = s.full_name;
-            if(s.kpp) $("#kpp").value = s.kpp;
-            if(s.ogrn) $("#ogrn").value = s.ogrn;
-            if(s.address) $("#addr").value = s.address;
-            toast("Поиск","Данные заполнены из реестра","ok");
-          } else {
-            toast("Поиск", result.message || "Организация не найдена","warn");
-          }
-        }catch(e){
-          toast("Поиск", e.message||"Ошибка","err");
-        }finally{
-          btnLookup.disabled = false;
-          btnLookup.textContent = "🔍";
-        }
-      });
-    }
+      }catch(e){
+        toast("ЕГРЮЛ", e.message||"Ошибка","err");
+      }finally{
+        btnLookup.disabled = false;
+        btnLookup.textContent = btnLookupLabel;
+      }
+    });
 
     $("#btnSave").addEventListener("click", async ()=>{
       try{

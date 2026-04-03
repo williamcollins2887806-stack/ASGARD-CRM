@@ -22,7 +22,8 @@ window.AsgardPersonnelPage=(function(){
     const auth=await AsgardAuth.requireUser();
     if(!auth){ location.hash="#/login"; return; }
     const user=auth.user;
-    if(!(user.role==="ADMIN" || user.role==="HR" || user.role==="TO" || isDirRole(user.role))){
+    const _PERSONNEL_ROLES = ["ADMIN","HR","HR_MANAGER","PM","HEAD_PM","TO","OFFICE_MANAGER"];
+    if(!(_PERSONNEL_ROLES.includes(user.role) || isDirRole(user.role))){
       toast("Доступ","Недостаточно прав","err"); location.hash="#/home"; return;
     }
 

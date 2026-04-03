@@ -54,6 +54,7 @@ import Integrations from '@/pages/Integrations';
 import More from '@/pages/More';
 import CallAnalytics from '@/pages/CallAnalytics';
 import EstimateReport from '@/pages/EstimateReport';
+import HuginnEstimateChat from '@/pages/HuginnEstimateChat';
 
 function PinRoute() {
   const pinStatus = useAuthStore((s) => s.pinStatus);
@@ -77,7 +78,8 @@ function AppLayout() {
     ['/login', '/pin', '/welcome'].includes(location.pathname) ||
     location.pathname.startsWith('/chat/') ||
     location.pathname === '/mimir' ||
-    location.pathname.startsWith('/estimate-report/');
+    location.pathname.startsWith('/estimate-report/') ||
+    location.pathname.startsWith('/huginn-chat/');
 
   return (
     <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -138,6 +140,7 @@ function AppLayout() {
           <Route path="/integrations" element={<ProtectedRoute section="settings"><PinGuard><Integrations /></PinGuard></ProtectedRoute>} />
           <Route path="/call-analytics" element={<ProtectedRoute section="dashboard"><PinGuard><CallAnalytics /></PinGuard></ProtectedRoute>} />
           <Route path="/estimate-report/:id" element={<ProtectedRoute section="tenders"><PinGuard><EstimateReport /></PinGuard></ProtectedRoute>} />
+          <Route path="/huginn-chat/:chatId" element={<ProtectedRoute section="chat"><PinGuard><HuginnEstimateChat /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
