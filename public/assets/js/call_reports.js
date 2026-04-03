@@ -443,11 +443,7 @@ window.AsgardCallReportsPage = (function() {
     var html =
       '<div class="cr-generate">' +
         '<label class="cr-generate__label">Тип отчёта' +
-          '<select id="crGenType" class="fk-input">' +
-            '<option value="daily">Ежедневный</option>' +
-            '<option value="weekly" selected>Еженедельный</option>' +
-            '<option value="monthly">Ежемесячный</option>' +
-          '</select>' +
+          '<div id="crselect-crGenType"></div>' +
         '</label>' +
         '<label class="cr-generate__label">Дата от' +
           '<input type="date" id="crGenFrom" class="fk-input" value="' + weekAgo + '">' +
@@ -461,9 +457,19 @@ window.AsgardCallReportsPage = (function() {
     showModal(html, { title: 'Новый отчёт по звонкам', width: 420 });
 
     setTimeout(function() {
+      // CRSelect init — report type
+      document.getElementById('crselect-crGenType')?.appendChild(CRSelect.create({
+        id:'crGenType', fullWidth:true, value:'weekly',
+        options:[
+          {value:'daily', label:'Ежедневный'},
+          {value:'weekly', label:'Еженедельный'},
+          {value:'monthly', label:'Ежемесячный'},
+        ],
+      }));
+
       var submitBtn = document.getElementById('crGenSubmit');
       if (submitBtn) submitBtn.addEventListener('click', async function() {
-        var reportType = (document.getElementById('crGenType') || {}).value || 'weekly';
+        var reportType = CRSelect.getValue('crGenType') || 'weekly';
         var dateFrom = (document.getElementById('crGenFrom') || {}).value;
         var dateTo = (document.getElementById('crGenTo') || {}).value;
 

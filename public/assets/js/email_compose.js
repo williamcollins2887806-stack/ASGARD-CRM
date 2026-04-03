@@ -120,10 +120,7 @@ window.AsgardEmailCompose = (function(){
           <!-- Template selector -->
           <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center;">
             <label style="font-size:12px; color:var(--text-muted); white-space:nowrap;">Шаблон:</label>
-            <select id="compose-template" style="flex:1; padding:6px 8px; background:var(--bg-deep); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:13px;">
-              <option value="">Без шаблона</option>
-              ${templates.map(t => `<option value="${t.id}">${esc(t.name)} (${esc(t.category)})</option>`).join('')}
-            </select>
+            <div id="crselect-compose-template" style="flex:1"></div>
           </div>
 
           ${previewNumber ? `
@@ -193,16 +190,14 @@ window.AsgardEmailCompose = (function(){
 
     document.body.appendChild(overlay);
 
-    // Event bindings
-    overlay.querySelector('#compose-close').addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
-    overlay.querySelector('#compose-send').addEventListener('click', sendEmail);
-    overlay.querySelector('#compose-save-draft').addEventListener('click', saveDraft);
-
-    const tplSelect = overlay.querySelector('#compose-template');
-    if (tplSelect) {
-      tplSelect.addEventListener('change', async () => {
-        const tplId = tplSelect.value;
+    // CRSelect init — template selector
+    const _tplOpts = [{ value: '', label: 'Без шаблона' }];
+    templates.forEach(t => _tplOpts.push({ value: String(t.id), label: esc(t.name) + ' (' + esc(t.category) + ')' }));
+    const _tplWrap = overlay.querySelector('#crselect-compose-template');
+    if (_tplWrap) _tplWrap.appendChild(CRSelect.create({
+      id: 'compose-template', options: _tplOpts, fullWidth: true, dropdownClass: 'z-modal',
+      placeholder: 'Без шаблона',
+      onChange: async (tplId) => {
         if (!tplId) {
           selectedTemplate = null;
           const varsDiv = $('#compose-tpl-vars');
@@ -213,11 +208,15 @@ window.AsgardEmailCompose = (function(){
           const data = await apiFetch(`/api/mailbox/templates/${tplId}`);
           selectedTemplate = data.template;
           renderTemplateVars(selectedTemplate);
-        } catch (e) {
-          toast(e.message, 'error');
-        }
-      });
-    }
+        } catch (e) { toast(e.message, 'error'); }
+      },
+    }));
+
+    // Event bindings
+    overlay.querySelector('#compose-close').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
+    overlay.querySelector('#compose-send').addEventListener('click', sendEmail);
+    overlay.querySelector('#compose-save-draft').addEventListener('click', saveDraft);
 
     // Focus
     const toInput = overlay.querySelector('#compose-to');

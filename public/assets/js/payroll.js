@@ -174,10 +174,7 @@ window.AsgardPayrollPage = (function(){
         </div>
 
         <div class="payroll-filters">
-          <select id="filterWork" style="min-width:200px">
-            <option value="">Все работы</option>
-            ${myWorks.map(w=>`<option value="${w.id}" ${filterWorkId==w.id?'selected':''}>${esc((w.customer_name||'')+ ' — '+(w.work_title||''))}</option>`).join('')}
-          </select>
+          <div id="crselect-filterWork" style="min-width:200px"></div>
         </div>
 
         <div id="sheetsList">
@@ -221,12 +218,15 @@ window.AsgardPayrollPage = (function(){
         bindHandlers();
       });
 
-      document.getElementById('filterWork')?.addEventListener('change', async e=>{
-        filterWorkId = e.target.value;
-        await load();
-        await layout(renderContent(), {title});
-        bindHandlers();
-      });
+      // CRSelect — filter work
+      const _fwOpts = [{value:'', label:'Все работы'}];
+      myWorks.forEach(w => _fwOpts.push({value:String(w.id), label:esc((w.customer_name||'')+' — '+(w.work_title||''))}));
+      const _fwWrap = document.getElementById('crselect-filterWork');
+      if(_fwWrap) _fwWrap.appendChild(CRSelect.create({
+        id:'filterWork', options:_fwOpts, value:filterWorkId?String(filterWorkId):'',
+        placeholder:'Все работы', fullWidth:true,
+        onChange: async(v)=>{ filterWorkId=v; await load(); await layout(renderContent(),{title}); bindHandlers(); },
+      }));
 
       document.querySelectorAll('.payroll-card[data-id]').forEach(card=>{
         card.addEventListener('click', ()=>{
@@ -241,10 +241,7 @@ window.AsgardPayrollPage = (function(){
         showModal('Новая ведомость', `
           <div class="formrow"><div>
             <label>Работа *</label>
-            <select id="ps_work" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
-              <option value="">— Общая (без работы) —</option>
-              ${myWorks2.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' — '+(w.work_title||''))}</option>`).join('')}
-            </select>
+            <div id="crselect-ps_work"></div>
           </div></div>
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <div><label>Период с *</label><input type="date" id="ps_from" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
@@ -261,13 +258,20 @@ window.AsgardPayrollPage = (function(){
           <button class="btn primary" id="btnCreateSheet" style="margin-top:12px;width:100%">Создать</button>
         `);
 
+        // CRSelect init — work for new sheet
+        const _psWorkOpts = [{value:'', label:'— Общая (без работы) —'}];
+        myWorks2.forEach(w => _psWorkOpts.push({value:String(w.id), label:esc((w.customer_name||'')+' — '+(w.work_title||''))}));
+        document.getElementById('crselect-ps_work')?.appendChild(CRSelect.create({
+          id:'ps_work', options:_psWorkOpts, fullWidth:true, placeholder:'— Общая (без работы) —',
+        }));
+
         document.getElementById('btnCreateSheet')?.addEventListener('click', async ()=>{
           const pf = document.getElementById('ps_from')?.value;
           const pt = document.getElementById('ps_to')?.value;
           if(!pf || !pt){ toast('Ошибка','Укажите период','error'); return; }
           try{
             const res = await api('/sheets', { method:'POST', body:{
-              work_id: num(document.getElementById('ps_work')?.value),
+              work_id: num(CRSelect.getValue('ps_work')),
               title: document.getElementById('ps_title')?.value || null,
               period_from: pf,
               period_to: pt,
@@ -916,17 +920,12 @@ window.AsgardPayrollPage = (function(){
           <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <div><label>Сумма * (\u20BD)</label><input type="number" id="otpAmount" min="0" step="100" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)"/></div>
             <div><label>Тип</label>
-              <select id="otpType" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
-                ${Object.entries(PAYMENT_TYPES).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
-              </select>
+              <div id="crselect-otpType"></div>
             </div>
           </div>
           <div class="formrow"><div>
             <label>Работа</label>
-            <select id="otpWork" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-deep);border:1px solid var(--line);color:var(--text)">
-              <option value="">Без привязки</option>
-              ${myWorks.map(w=>`<option value="${w.id}">${esc((w.customer_name||'')+ ' \u2014 '+(w.work_title||''))}</option>`).join('')}
-            </select>
+            <div id="crselect-otpWork"></div>
           </div></div>
           <div class="formrow"><div>
             <label>Причина / описание *</label>
@@ -936,6 +935,18 @@ window.AsgardPayrollPage = (function(){
         `);
 
         if(window.AsgardEmployeePicker){AsgardEmployeePicker.renderButton('otpEmpPicker',{placeholder:'Выберите рабочего...',filter:e=>e.is_active!==false});}
+
+        // CRSelect init — otpType
+        const _ptOpts = Object.entries(PAYMENT_TYPES).map(([k,v])=>({value:k, label:v.icon+' '+v.label}));
+        document.getElementById('crselect-otpType')?.appendChild(CRSelect.create({
+          id:'otpType', options:_ptOpts, fullWidth:true, value:_ptOpts[0]?.value||'one_time',
+        }));
+        // CRSelect init — otpWork
+        const _owOpts = [{value:'', label:'Без привязки'}];
+        myWorks.forEach(w=>_owOpts.push({value:String(w.id), label:esc((w.customer_name||'')+' \u2014 '+(w.work_title||''))}));
+        document.getElementById('crselect-otpWork')?.appendChild(CRSelect.create({
+          id:'otpWork', options:_owOpts, fullWidth:true, placeholder:'Без привязки',
+        }));
 
         document.getElementById('btnDoOTP')?.addEventListener('click', async ()=>{
           const empId = num((document.getElementById('otpEmpPicker')?.pickerValue || ''));
@@ -948,8 +959,8 @@ window.AsgardPayrollPage = (function(){
           try{
             await api('/one-time', { method:'POST', body:{
               employee_id: empId, amount, reason,
-              work_id: num(document.getElementById('otpWork')?.value),
-              payment_type: document.getElementById('otpType')?.value || 'one_time'
+              work_id: num(CRSelect.getValue('otpWork')),
+              payment_type: CRSelect.getValue('otpType') || 'one_time'
             }});
             hideModal();
             toast('Запрос создан','Ожидает согласования','ok');

@@ -140,36 +140,56 @@ window.AsgardKanban = (function(){
     `;
 
     await layout(html, { title: 'Канбан-доска', motto: 'Визуальное управление задачами' });
+    _initKanbanFilterSelects();
     initDragDrop();
   }
 
   function renderFilters(users, currentUser) {
-    const activeUsers = users.filter(u => u.is_active && u.name && u.name.trim());
-
+    // Store data for CRSelect init after layout
+    _kanbanFilterData = { users, currentUser };
     return `
       <div class="kanban-filters">
         <div class="form-group">
           <label>Приоритет</label>
-          <select id="filter-priority" onchange="AsgardKanban.applyFilters()">
-            <option value="">Все</option>
-            ${Object.entries(PRIORITIES).map(([k, v]) => `
-              <option value="${k}" ${currentFilters.priority === k ? 'selected' : ''}>${v.icon} ${v.label}</option>
-            `).join('')}
-          </select>
+          <div id="crselect-filter-priority"></div>
         </div>
         <div class="form-group">
           <label>Исполнитель</label>
-          <select id="filter-assignee" onchange="AsgardKanban.applyFilters()">
-            <option value="">Все</option>
-            <option value="${currentUser.id}" ${currentFilters.assignee_id == currentUser.id ? 'selected' : ''}>👤 Мои задачи</option>
-            ${activeUsers.map(u => `
-              <option value="${u.id}" ${currentFilters.assignee_id == u.id ? 'selected' : ''}>${esc(u.name)}</option>
-            `).join('')}
-          </select>
+          <div id="crselect-filter-assignee"></div>
         </div>
         <button class="btn" onclick="AsgardKanban.clearFilters()">✕ Сбросить</button>
       </div>
     `;
+  }
+
+  let _kanbanFilterData = null;
+
+  function _initKanbanFilterSelects() {
+    if (!_kanbanFilterData) return;
+    const { users, currentUser } = _kanbanFilterData;
+    const activeUsers = users.filter(u => u.is_active && u.name && u.name.trim());
+
+    const priorityOpts = [{ value: '', label: 'Все' }];
+    Object.entries(PRIORITIES).forEach(([k, v]) => priorityOpts.push({ value: k, label: v.icon + ' ' + v.label }));
+
+    const assigneeOpts = [
+      { value: '', label: 'Все' },
+      { value: String(currentUser.id), label: '\u{1F464} Мои задачи' },
+    ];
+    activeUsers.forEach(u => assigneeOpts.push({ value: String(u.id), label: esc(u.name) }));
+
+    const pWrap = document.getElementById('crselect-filter-priority');
+    if (pWrap) pWrap.appendChild(CRSelect.create({
+      id: 'filter-priority', options: priorityOpts, value: currentFilters.priority || '',
+      placeholder: 'Все', onChange: () => applyFilters(),
+    }));
+
+    const aWrap = document.getElementById('crselect-filter-assignee');
+    if (aWrap) aWrap.appendChild(CRSelect.create({
+      id: 'filter-assignee', options: assigneeOpts,
+      value: currentFilters.assignee_id ? String(currentFilters.assignee_id) : '',
+      placeholder: 'Все', onChange: () => applyFilters(),
+    }));
   }
 
   function renderBoard(columns, usersById) {
@@ -414,8 +434,8 @@ window.AsgardKanban = (function(){
   // ═══════════════════════════════════════════════════════════════
 
   function applyFilters() {
-    const priority = $('#filter-priority')?.value || '';
-    const assignee = $('#filter-assignee')?.value || '';
+    const priority = CRSelect.getValue('filter-priority') || '';
+    const assignee = CRSelect.getValue('filter-assignee') || '';
 
     currentFilters = {};
     if (priority) currentFilters.priority = priority;

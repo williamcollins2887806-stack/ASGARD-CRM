@@ -589,7 +589,7 @@ window.AsgardTelephonyPage = (function () {
         '<input type="date" id="fDateFrom" value="' + monthAgoISO() + '">' +
         '<input type="date" id="fDateTo" value="' + todayISO() + '">' +
         pillsHtml +
-        '<select id="fManager"><option value="">Все менеджеры</option></select>' +
+        '<div id="crselect-fManager" style="min-width:160px"></div>' +
         '<input type="text" id="fSearch" placeholder="Поиск по номеру / клиенту">' +
         '<button class="btn btn--primary" id="fApply">Применить</button>' +
       '</div>' +
@@ -612,6 +612,11 @@ window.AsgardTelephonyPage = (function () {
     $('#fApply').addEventListener('click', function () { _logPage = 1; fetchLog(); });
     $('#fSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') { _logPage = 1; fetchLog(); } });
 
+    // CRSelect init — manager filter
+    document.getElementById('crselect-fManager')?.appendChild(CRSelect.create({
+      id:'fManager', options:[{value:'', label:'Все менеджеры'}],
+      placeholder:'Все менеджеры',
+    }));
     loadManagerOptions();
     fetchLog();
   }
@@ -619,14 +624,9 @@ window.AsgardTelephonyPage = (function () {
   async function loadManagerOptions() {
     try {
       var data = await api('/managers');
-      var sel = $('#fManager');
-      if (!sel) return;
-      (data.managers || []).forEach(function (m) {
-        var o = document.createElement('option');
-        o.value = m.id;
-        o.textContent = m.name;
-        sel.appendChild(o);
-      });
+      var opts = [{value:'', label:'Все менеджеры'}];
+      (data.managers || []).forEach(function (m) { opts.push({value:String(m.id), label:m.name}); });
+      CRSelect.setOptions('fManager', opts);
     } catch (e) { /* silent */ }
   }
 
@@ -643,7 +643,7 @@ window.AsgardTelephonyPage = (function () {
       date_from: ($('#fDateFrom') || {}).value || '',
       date_to:   ($('#fDateTo') || {}).value || '',
       call_type: callType,
-      user_id: ($('#fManager') || {}).value || '',
+      user_id: CRSelect.getValue('fManager') || '',
       search:    ($('#fSearch') || {}).value || '',
     });
 
@@ -1475,29 +1475,15 @@ window.AsgardTelephonyPage = (function () {
       title: isEdit ? 'Редактировать правило' : 'Новое правило',
       body:
         '<label>Название<input type="text" id="rmName" value="' + esc(existing ? existing.name || '' : '') + '"></label>' +
-        '<label>Тип условия' +
-          '<select id="rmCondType">' +
-            '<option value="default"' + (condType === 'default' ? ' selected' : '') + '>По умолчанию</option>' +
-            '<option value="number_prefix"' + (condType === 'number_prefix' ? ' selected' : '') + '>Префикс номера</option>' +
-            '<option value="time"' + (condType === 'time' ? ' selected' : '') + '>По времени</option>' +
-            '<option value="client_category"' + (condType === 'client_category' ? ' selected' : '') + '>Категория клиента</option>' +
-          '</select>' +
-        '</label>' +
+        '<label>Тип условия<div id="crselect-rmCondType"></div></label>' +
         '<div id="rmCondValWrap">' + conditionValueField(condType) + '</div>' +
-        '<label>Действие' +
-          '<select id="rmActType">' +
-            '<option value="route_to_user"' + (actType === 'route_to_user' ? ' selected' : '') + '>На менеджера</option>' +
-            '<option value="route_to_group"' + (actType === 'route_to_group' ? ' selected' : '') + '>На группу</option>' +
-            '<option value="queue"' + (actType === 'queue' ? ' selected' : '') + '>В очередь</option>' +
-            '<option value="ivr"' + (actType === 'ivr' ? ' selected' : '') + '>IVR</option>' +
-          '</select>' +
-        '</label>' +
+        '<label>Действие<div id="crselect-rmActType"></div></label>' +
         '<label>Внутренний номер (extension)<input type="text" id="rmExt" value="' + esc(av.extension || '') + '"></label>' +
         '<label>Приоритет<input type="number" id="rmPriority" value="' + (existing && existing.priority != null ? existing.priority : 0) + '"></label>' +
         (isEdit ? '<label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="rmActive" ' + (existing.is_active ? 'checked' : '') + '> Активно</label>' : ''),
       confirmText: isEdit ? 'Сохранить' : 'Создать',
       onConfirm: async function () {
-        var condTypeVal = $('#rmCondType').value;
+        var condTypeVal = CRSelect.getValue('rmCondType');
         var condRaw     = ($('#rmCondVal') || {}).value || '';
         condRaw = condRaw.trim();
 
@@ -1513,7 +1499,7 @@ window.AsgardTelephonyPage = (function () {
           name:            ($('#rmName') || {}).value ? $('#rmName').value.trim() : '',
           condition_type:  condTypeVal,
           condition_value: condValue,
-          action_type:     $('#rmActType').value,
+          action_type:     CRSelect.getValue('rmActType'),
           action_value:    { extension: ($('#rmExt') || {}).value ? $('#rmExt').value.trim() : '' },
           priority:        parseInt(($('#rmPriority') || {}).value, 10) || 0,
         };
@@ -1535,15 +1521,27 @@ window.AsgardTelephonyPage = (function () {
       },
     });
 
-    /* dynamic condition value field swap */
+    /* CRSelect init — rmCondType + rmActType */
     setTimeout(function () {
-      var sel = $('#rmCondType');
-      if (sel) {
-        sel.addEventListener('change', function () {
-          var wrap = $('#rmCondValWrap');
-          if (wrap) wrap.innerHTML = conditionValueField(sel.value);
-        });
-      }
+      document.getElementById('crselect-rmCondType')?.appendChild(CRSelect.create({
+        id:'rmCondType', fullWidth:true, value:condType,
+        options:[
+          {value:'default', label:'По умолчанию'},
+          {value:'number_prefix', label:'Префикс номера'},
+          {value:'time', label:'По времени'},
+          {value:'client_category', label:'Категория клиента'},
+        ],
+        onChange:function(v){ var wrap=$('#rmCondValWrap'); if(wrap) wrap.innerHTML=conditionValueField(v); },
+      }));
+      document.getElementById('crselect-rmActType')?.appendChild(CRSelect.create({
+        id:'rmActType', fullWidth:true, value:actType,
+        options:[
+          {value:'route_to_user', label:'На менеджера'},
+          {value:'route_to_group', label:'На группу'},
+          {value:'queue', label:'В очередь'},
+          {value:'ivr', label:'IVR'},
+        ],
+      }));
     }, 50);
   }
 

@@ -127,22 +127,8 @@ window.AsgardCashAdminPage = (function() {
           <div class="cash-card-header">
             <span class="card-title">Все заявки</span>
             <div class="cash-filter-bar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <select id="cashAdminFilterType" onchange="AsgardCashAdminPage.onFilterChange()" style="padding:8px 12px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); font-family:var(--font-sans); font-size:var(--text-sm); min-width:140px;">
-                <option value="">Все типы</option>
-                <option value="advance">Аванс</option>
-                <option value="loan">Долг до ЗП</option>
-              </select>
-              <select id="cashAdminFilter" onchange="AsgardCashAdminPage.onFilterChange()" style="padding:8px 12px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-primary); font-family:var(--font-sans); font-size:var(--text-sm); min-width:180px;">
-                <option value="">Все статусы</option>
-                <option value="requested">Ожидают согласования</option>
-                <option value="approved">Согласованы</option>
-                <option value="money_issued">Деньги выданы</option>
-                <option value="received">Получены</option>
-                <option value="reporting">Отчёт</option>
-                <option value="question">Вопрос</option>
-                <option value="closed">Закрыты</option>
-                <option value="rejected">Отклонены</option>
-              </select>
+              <div id="crselect-cashAdminFilterType"></div>
+              <div id="crselect-cashAdminFilter"></div>
               <button class="btn ghost mini" onclick="AsgardCashAdminPage.loadRequests()">Обновить</button>
             </div>
           </div>
@@ -167,6 +153,39 @@ window.AsgardCashAdminPage = (function() {
         </div>
       </div>
     `;
+
+    // CRSelect init — type filter
+    document.getElementById('crselect-cashAdminFilterType').appendChild(
+      CRSelect.create({
+        id: 'cashAdminFilterType',
+        options: [
+          { value: '', label: 'Все типы' },
+          { value: 'advance', label: 'Аванс' },
+          { value: 'loan', label: 'Долг до ЗП' },
+        ],
+        placeholder: 'Все типы',
+        onChange: () => onFilterChange(),
+      })
+    );
+    // CRSelect init — status filter
+    document.getElementById('crselect-cashAdminFilter').appendChild(
+      CRSelect.create({
+        id: 'cashAdminFilter',
+        options: [
+          { value: '', label: 'Все статусы' },
+          { value: 'requested', label: 'Ожидают согласования' },
+          { value: 'approved', label: 'Согласованы' },
+          { value: 'money_issued', label: 'Деньги выданы' },
+          { value: 'received', label: 'Получены' },
+          { value: 'reporting', label: 'Отчёт' },
+          { value: 'question', label: 'Вопрос' },
+          { value: 'closed', label: 'Закрыты' },
+          { value: 'rejected', label: 'Отклонены' },
+        ],
+        placeholder: 'Все статусы',
+        onChange: () => onFilterChange(),
+      })
+    );
 
     await Promise.all([loadRequests(), loadSummary(), loadCashBalance()]);
   }
@@ -560,10 +579,8 @@ window.AsgardCashAdminPage = (function() {
   }
 
   function onFilterChange() {
-    const statusEl = document.getElementById('cashAdminFilter');
-    const typeEl = document.getElementById('cashAdminFilterType');
-    if (statusEl) currentFilter.status = statusEl.value;
-    if (typeEl) currentFilter.type = typeEl.value;
+    currentFilter.status = CRSelect.getValue('cashAdminFilter') || '';
+    currentFilter.type = CRSelect.getValue('cashAdminFilterType') || '';
     loadRequests();
   }
 

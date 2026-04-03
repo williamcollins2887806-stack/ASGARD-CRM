@@ -284,12 +284,7 @@ window.AsgardKpiMoneyPage = (function(){
             <button class="tab" data-mode="incomes">💰 Поступления</button>
           </div>
           <div style="flex:1"></div>
-          <select id="yearSelect" style="padding:8px 16px; border-radius:var(--radius-sm); background:var(--bg-input); border:1px solid var(--border-input); color:var(--text); font-family:var(--font-sans); font-size:var(--input-font-size)">
-            <option value="" ${!selectedYear?'selected':''}>Все</option>
-            ${[currentYear, currentYear-1, currentYear-2, currentYear-3, currentYear-4].map(y =>
-              `<option value="${y}" ${y===selectedYear?'selected':''}>${y}</option>`
-            ).join('')}
-          </select>
+          <div id="crselect-yearSelect"></div>
           ${(isDirector(user) || isBuh(user)) ? `
             <button class="btn" id="btnAddIncome">+ Поступление</button>
           ` : ''}
@@ -503,11 +498,7 @@ window.AsgardKpiMoneyPage = (function(){
           </div>
           <div>
             <label>Тип</label>
-            <select id="inc_type">
-              <option value="advance">Аванс</option>
-              <option value="postpay">Постоплата</option>
-              <option value="other">Прочее</option>
-            </select>
+            <div id="crselect-inc_type"></div>
           </div>
           <div>
             <label>Сумма, ₽</label>
@@ -521,9 +512,7 @@ window.AsgardKpiMoneyPage = (function(){
           </div>
           <div>
             <label>Работа (опционально)</label>
-            <select id="inc_work">
-              <option value="">— Не привязано —</option>
-            </select>
+            <div id="crselect-inc_work"></div>
           </div>
         </div>
         <div class="formrow">
@@ -538,14 +527,20 @@ window.AsgardKpiMoneyPage = (function(){
 
       showModal('Добавить поступление', html);
 
+      // CRSelect init — inc_type
+      document.getElementById('crselect-inc_type')?.appendChild(CRSelect.create({
+        id:'inc_type', fullWidth:true, value:'advance',
+        options:[{value:'advance',label:'Аванс'},{value:'postpay',label:'Постоплата'},{value:'other',label:'Прочее'}],
+      }));
+      // CRSelect init — inc_work (populated async)
+      document.getElementById('crselect-inc_work')?.appendChild(CRSelect.create({
+        id:'inc_work', fullWidth:true, placeholder:'— Не привязано —',
+        options:[{value:'', label:'— Не привязано —'}],
+      }));
       AsgardDB.all('works').then(works => {
-        const select = $('#inc_work');
-        works.forEach(w => {
-          const opt = document.createElement('option');
-          opt.value = w.id;
-          opt.textContent = `#${w.id} ${w.customer_name || ''} — ${w.work_title || ''}`.slice(0, 60);
-          select.appendChild(opt);
-        });
+        const opts = [{value:'', label:'— Не привязано —'}];
+        works.forEach(w => opts.push({value:String(w.id), label:(`#${w.id} ${w.customer_name||''} — ${w.work_title||''}`).slice(0,60)}));
+        CRSelect.setOptions('inc_work', opts);
       });
 
       $('#btnSaveIncome')?.addEventListener('click', async () => {
@@ -557,11 +552,11 @@ window.AsgardKpiMoneyPage = (function(){
 
         const income = {
           date: $('#inc_date')?.value || new Date().toISOString().slice(0,10),
-          type: $('#inc_type')?.value || 'other',
+          type: CRSelect.getValue('inc_type') || 'other',
           amount: amount,
           counterparty: $('#inc_counterparty')?.value?.trim() || '',
           work_id: (() => {
-            const workId = safeInt($('#inc_work')?.value);
+            const workId = safeInt(CRSelect.getValue('inc_work'));
             return workId && workId > 0 ? workId : null;
           })(),
           comment: $('#inc_comment')?.value?.trim() || '',
@@ -588,10 +583,14 @@ window.AsgardKpiMoneyPage = (function(){
       }
     });
 
-    $('#yearSelect')?.addEventListener('change', (e) => {
-      selectedYear = e.target.value ? safeInt(e.target.value) : null;
-      renderChart();
-    });
+    // CRSelect init — year filter
+    const _yearOpts = [{value:'', label:'Все'}];
+    [currentYear, currentYear-1, currentYear-2, currentYear-3, currentYear-4].forEach(y => _yearOpts.push({value:String(y), label:String(y)}));
+    document.getElementById('crselect-yearSelect')?.appendChild(CRSelect.create({
+      id:'yearSelect', options:_yearOpts, value:selectedYear?String(selectedYear):'',
+      placeholder:'Все',
+      onChange:(v)=>{ selectedYear = v ? safeInt(v) : null; renderChart(); },
+    }));
 
     $('#btnAddIncome')?.addEventListener('click', openAddIncomeModal);
 

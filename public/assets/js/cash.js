@@ -293,14 +293,13 @@ window.AsgardCashPage = (function() {
         <form id="cashCreateForm">
           <div class="asg-form-group">
             <label>Тип</label>
-            <select name="type" id="cashType" onchange="AsgardCashPage.onTypeChange()">
-              <option value="advance">Аванс на проект</option>
-              <option value="loan">Личный долг до ЗП</option>
-            </select>
+            <input type="hidden" name="type" id="cashTypeHidden" value="advance">
+            <div id="crselect-cashType"></div>
           </div>
           <div class="asg-form-group" id="cashWorkGroup">
             <label>Проект</label>
-            <select name="work_id" id="cashWorkId">${worksOptions}</select>
+            <input type="hidden" name="work_id" id="cashWorkIdHidden" value="">
+            <div id="crselect-cashWorkId"></div>
           </div>
           <div class="asg-form-group">
             <label>Сумма</label>
@@ -321,13 +320,30 @@ window.AsgardCashPage = (function() {
         </form>
       `
     });
+
+    // CRSelect init — type
+    document.getElementById('crselect-cashType')?.appendChild(CRSelect.create({
+      id: 'cashType', fullWidth: true, value: 'advance',
+      options: [
+        { value: 'advance', label: 'Аванс на проект' },
+        { value: 'loan', label: 'Личный долг до ЗП' },
+      ],
+      onChange: (v) => { document.getElementById('cashTypeHidden').value = v; onTypeChange(); },
+    }));
+    // CRSelect init — work
+    const _workOpts = works.map(w => ({ value: String(w.id), label: esc(w.work_title || 'Проект #' + w.id) }));
+    document.getElementById('crselect-cashWorkId')?.appendChild(CRSelect.create({
+      id: 'cashWorkId', fullWidth: true, placeholder: 'Выберите проект',
+      options: _workOpts,
+      onChange: (v) => { document.getElementById('cashWorkIdHidden').value = v; },
+    }));
   }
 
   function onTypeChange() {
-    const typeEl = document.getElementById('cashType');
+    const typeVal = CRSelect.getValue('cashType');
     const workGroup = document.getElementById('cashWorkGroup');
-    if (typeEl && workGroup) {
-      workGroup.style.display = typeEl.value === 'advance' ? 'block' : 'none';
+    if (workGroup) {
+      workGroup.style.display = typeVal === 'advance' ? 'block' : 'none';
     }
   }
 
@@ -586,7 +602,8 @@ window.AsgardCashPage = (function() {
             <input type="hidden" name="request_id" value="${requestId}">
             <div class="asg-form-group">
               <label>Категория</label>
-              <select name="category">${categoryOptions}</select>
+              <input type="hidden" name="category" id="cashCategoryHidden" value="${EXPENSE_CATEGORIES[0]?.value || ''}">
+              <div id="crselect-cashCategory"></div>
             </div>
             <div class="asg-form-group">
               <label>Сумма</label>
@@ -612,6 +629,14 @@ window.AsgardCashPage = (function() {
           </form>
         `
       });
+
+      // CRSelect init — expense category
+      const _catOpts = EXPENSE_CATEGORIES.map(c => ({ value: c.value, label: c.icon + ' ' + c.label }));
+      document.getElementById('crselect-cashCategory')?.appendChild(CRSelect.create({
+        id: 'cashCategory', fullWidth: true, value: EXPENSE_CATEGORIES[0]?.value || '',
+        options: _catOpts,
+        onChange: (v) => { document.getElementById('cashCategoryHidden').value = v; },
+      }));
     }, 100);
   }
 
