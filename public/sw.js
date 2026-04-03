@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '18.5.0';
+const SHELL_VERSION = '18.5.1';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -146,7 +146,7 @@ async function networkFirstAPI(request) {
     var response = await fetch(request);
     if (response && response.ok) {
       var cache = await caches.open(API_CACHE_NAME);
-      cache.put(request, response.clone());
+      cache.put(request, response.clone()).catch(function() {});
     }
     return response;
   } catch (err) {
@@ -164,7 +164,7 @@ async function networkFirstWithOffline(request) {
     var response = await fetch(request);
     if (response && response.ok) {
       var cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
+      cache.put(request, response.clone()).catch(function() {});
     }
     return response;
   } catch (err) {
@@ -184,7 +184,7 @@ async function staleWhileRevalidate(request) {
   var cached = await cache.match(request);
   var fetchPromise = fetch(request)
     .then(function(response) {
-      if (response && response.ok) cache.put(request, response.clone());
+      if (response && response.ok) cache.put(request, response.clone()).catch(function() {});
       return response;
     })
     .catch(function() { return null; });
