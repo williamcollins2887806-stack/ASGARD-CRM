@@ -210,15 +210,15 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Кем выдан</label>
-              <input id="pass_issued_by" value="${esc(emp.pass_issued_by||"")}" ${canEdit?"":"disabled"}/>
+              <input id="passport_issued" value="${esc(emp.passport_issued||"")}" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>Дата выдачи</label>
-              <input id="pass_issued_date" type="date" value="${esc(normalizeDateInput(emp.pass_issued_date))}" ${canEdit?"":"disabled"}/>
+              <input id="passport_date" type="date" value="${esc(normalizeDateInput(emp.passport_date))}" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>Код подразделения</label>
-              <input id="pass_code" value="${esc(emp.pass_code||"")}" placeholder="123-456" ${canEdit?"":"disabled"}/>
+              <input id="passport_code" value="${esc(emp.passport_code||"")}" placeholder="123-456" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>ИНН</label>
@@ -245,11 +245,11 @@ window.AsgardEmployeePage=(function(){
           <div class="formrow" style="margin-top:12px">
             <div style="grid-column:1/-1">
               <label>Адрес регистрации (прописка)</label>
-              <input id="address_reg" value="${esc(emp.address_reg||"")}" ${canEdit?"":"disabled"}/>
+              <input id="registration_address" value="${esc(emp.registration_address||"")}" ${canEdit?"":"disabled"}/>
             </div>
             <div style="grid-column:1/-1">
               <label>Фактический адрес проживания</label>
-              <input id="address_fact" value="${esc(emp.address_fact||"")}" ${canEdit?"":"disabled"}/>
+              <input id="address_fact" value="${esc(emp.address||"")}" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>Телефон основной</label>
@@ -626,17 +626,17 @@ window.AsgardEmployeePage=(function(){
         // Документы
         emp.pass_series=$("#pass_series")?.value?.trim() || "";
         emp.pass_number=$("#pass_number")?.value?.trim() || "";
-        emp.pass_issued_by=$("#pass_issued_by")?.value?.trim() || "";
-        emp.pass_issued_date=$("#pass_issued_date")?.value || "";
-        emp.pass_code=$("#pass_code")?.value?.trim() || "";
+        emp.passport_issued=$("#passport_issued")?.value?.trim() || "";
+        emp.passport_date=$("#passport_date")?.value || "";
+        emp.passport_code=$("#passport_code")?.value?.trim() || "";
         emp.inn=$("#inn")?.value?.trim() || "";
         emp.snils=$("#snils")?.value?.trim() || "";
         emp.military_id=$("#military_id")?.value?.trim() || "";
         emp.driver_license=$("#driver_license")?.value?.trim() || "";
 
         // Адреса и контакты
-        emp.address_reg=$("#address_reg")?.value?.trim() || "";
-        emp.address_fact=$("#address_fact")?.value?.trim() || "";
+        emp.registration_address=$("#registration_address")?.value?.trim() || "";
+        emp.address=$("#address_fact")?.value?.trim() || "";
         emp.phone=$("#phone")?.value?.trim() || "";
         emp.phone2=$("#phone2")?.value?.trim() || "";
         emp.email=$("#email")?.value?.trim() || "";
