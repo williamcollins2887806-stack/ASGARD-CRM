@@ -1271,7 +1271,7 @@ window.AsgardTendersPage = (function(){
         </div>`;
       }).join("") : AsgardUI.emptyState({ icon:'📄', title:'Нет прикреплённых документов', desc:'Загрузите файл или добавьте ссылку' });
 
-      const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>🔒</b> Передано в ТО: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
+      const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>🔒</b> Передано в просчёт: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
       const canReassign = (isDirRole(user.role) || user.role==="ADMIN");
 
       const full = rights.full || isNew;

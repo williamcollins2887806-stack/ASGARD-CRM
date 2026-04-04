@@ -201,6 +201,7 @@ const PAGE_ROLES = {
   'pass-requests':      ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'HR', 'HR_MANAGER', ..._D],
   'tmc-requests':       ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH', ..._D],
   'purchase-requests':  ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH', ..._D],
+  'warehouse':          ['ADMIN', 'PM', 'HEAD_PM', 'CHIEF_ENGINEER', 'WAREHOUSE', ..._D],
   'my-equipment':       ['ADMIN', 'PM', 'HEAD_PM', 'CHIEF_ENGINEER', ..._D],
   'correspondence':     ['ADMIN', 'OFFICE_MANAGER', ..._D],
   'contracts':          ['ADMIN', 'OFFICE_MANAGER', 'BUH', ..._D],
@@ -784,6 +785,30 @@ async function hintsRoutes(fastify) {
 
         case 'warehouse':
         case 'my-equipment': {
+          // Метрика: оборудование по статусам
+          try {
+            const byStatus = await db.query(`
+              SELECT status, COUNT(*) as cnt FROM equipment
+              WHERE status NOT IN ('written_off')
+              GROUP BY status ORDER BY cnt DESC
+            `);
+            const statusLabels = {
+              available: 'Доступно', on_warehouse: 'На складе', issued: 'Выдано',
+              repair: 'В ремонте', reserved: 'Зарезервировано', in_transit: 'В пути'
+            };
+            const total = byStatus.rows.reduce((s, r) => s + parseInt(r.cnt), 0);
+            if (total > 0) {
+              const parts = byStatus.rows.map(r =>
+                (statusLabels[r.status] || r.status) + ': ' + r.cnt
+              ).join(', ');
+              hints.push({
+                id: 'equipment_total', type: 'metric', icon: '📦',
+                text: 'Оборудование на балансе: ' + plural(total, 'единица', 'единицы', 'единиц') +
+                  ' (' + parts + ')'
+              });
+            }
+          } catch (_) {}
+          // Списание в ближайшие 60 дней
           try {
             const equipExpiry = await db.query(`
               SELECT COUNT(*) as cnt FROM equipment
@@ -795,20 +820,52 @@ async function hintsRoutes(fastify) {
             const eqCnt = parseInt(equipExpiry.rows[0]?.cnt) || 0;
             if (eqCnt > 0) {
               hints.push({
-                id: 'equipment_expiring', type: 'info', icon: '🔧',
+                id: 'equipment_expiring', type: 'warning', icon: '⏰',
                 text: plural(eqCnt, 'единица', 'единицы', 'единиц') +
                   ' оборудования списывается в ближайшие 60 дней'
               });
             }
           } catch (_) {}
-          // Метрика: оборудование на балансе
+          // Оборудование по категориям (топ-5)
           try {
-            const onBal = await db.query("SELECT COUNT(*) as cnt FROM equipment WHERE status NOT IN ('written_off')");
-            const obCnt = parseInt(onBal.rows[0]?.cnt) || 0;
-            if (obCnt > 0) {
+            const byCat = await db.query(`
+              SELECT c.name, COUNT(*) as cnt
+              FROM equipment e
+              LEFT JOIN equipment_categories c ON c.id = e.category_id
+              WHERE e.status NOT IN ('written_off')
+              GROUP BY c.name ORDER BY cnt DESC LIMIT 5
+            `);
+            if (byCat.rows.length > 1) {
+              const catParts = byCat.rows.map(r => (r.name || 'Без категории') + ': ' + r.cnt).join(', ');
               hints.push({
-                id: 'equipment_total', type: 'metric', icon: '🔧',
-                text: 'Оборудование на балансе: ' + plural(obCnt, 'единица', 'единицы', 'единиц')
+                id: 'equipment_categories', type: 'info', icon: '📊',
+                text: 'По категориям: ' + catParts
+              });
+            }
+          } catch (_) {}
+          // Недавние перемещения (за 7 дней)
+          try {
+            const moves = await db.query(`
+              SELECT COUNT(*) as cnt FROM equipment_movements
+              WHERE created_at > CURRENT_DATE - INTERVAL '7 days'
+            `);
+            const moveCnt = parseInt(moves.rows[0]?.cnt) || 0;
+            if (moveCnt > 0) {
+              hints.push({
+                id: 'equipment_movements', type: 'info', icon: '🔄',
+                text: plural(moveCnt, 'перемещение', 'перемещения', 'перемещений') +
+                  ' за последние 7 дней'
+              });
+            }
+          } catch (_) {}
+          // Оборудование в ремонте
+          try {
+            const inRepair = await db.query("SELECT COUNT(*) as cnt FROM equipment WHERE status = 'repair'");
+            const repCnt = parseInt(inRepair.rows[0]?.cnt) || 0;
+            if (repCnt > 0) {
+              hints.push({
+                id: 'equipment_repair', type: 'warning', icon: '🔧',
+                text: plural(repCnt, 'единица', 'единицы', 'единиц') + ' в ремонте'
               });
             }
           } catch (_) {}

@@ -160,6 +160,35 @@ async function getDbStats(db, user) {
       } catch (e) { /* Table may not exist */ }
     }
 
+    // ОБОРУДОВАНИЕ/ТМЦ (директора, PM, инженеры)
+    if (hasFullAccess(role) || isPM(role) || ['CHIEF_ENGINEER', 'WAREHOUSE', 'HEAD_PM'].includes(role)) {
+      try {
+        const eqByStatus = await db.query(`
+          SELECT status, COUNT(*) as cnt FROM equipment
+          GROUP BY status ORDER BY cnt DESC
+        `);
+        stats.equipmentByStatus = {};
+        stats.equipmentTotal = 0;
+        eqByStatus.rows.forEach(r => {
+          stats.equipmentByStatus[r.status] = parseInt(r.cnt);
+          stats.equipmentTotal += parseInt(r.cnt);
+        });
+
+        const eqActive = await db.query("SELECT COUNT(*) as cnt FROM equipment WHERE status NOT IN ('written_off')");
+        stats.equipmentActive = parseInt(eqActive.rows[0]?.cnt) || 0;
+      } catch (_) {}
+
+      try {
+        const eqCats = await db.query(`
+          SELECT c.name, COUNT(*) as cnt
+          FROM equipment e LEFT JOIN equipment_categories c ON c.id = e.category_id
+          WHERE e.status NOT IN ('written_off')
+          GROUP BY c.name ORDER BY cnt DESC LIMIT 5
+        `);
+        stats.equipmentCategories = eqCats.rows;
+      } catch (_) {}
+    }
+
     // ЗВОНКИ (директора)
     if (hasFullAccess(role)) {
       try {
@@ -451,6 +480,25 @@ async function processQuery(db, message, user) {
 // СИСТЕМНЫЙ ПРОМПТ
 // ═══════════════════════════════════════════════════════════════════════════
 
+function buildEquipmentSection(stats) {
+  if (!stats.equipmentTotal) return '';
+  const statusLabels = {
+    available: 'Доступно', on_warehouse: 'На складе', issued: 'Выдано',
+    repair: 'В ремонте', written_off: 'Списано', reserved: 'Зарезервировано', in_transit: 'В пути'
+  };
+  const statusList = Object.entries(stats.equipmentByStatus || {})
+    .map(([k, v]) => `  • ${statusLabels[k] || k}: ${v}`)
+    .join('\n');
+  let text = `\n\nОБОРУДОВАНИЕ/ТМЦ: ${stats.equipmentTotal} всего (на балансе: ${stats.equipmentActive || 0})
+По статусам:
+${statusList}`;
+  if (stats.equipmentCategories && stats.equipmentCategories.length > 0) {
+    text += '\nПо категориям:\n' +
+      stats.equipmentCategories.map(c => `  • ${c.name || 'Без категории'}: ${c.cnt}`).join('\n');
+  }
+  return text;
+}
+
 /**
  * Построить раздел данных для промпта
  */
@@ -488,6 +536,9 @@ ${statusList}
       section += `\nПоследний отчёт по звонкам: ${stats.last_call_report.summary}`;
     }
 
+    // Оборудование/ТМЦ
+    section += buildEquipmentSection(stats);
+
   } else if (isPM(role)) {
     const statusList = Object.entries(stats.tendersByStatus || {})
       .map(([k, v]) => `  • ${k}: ${v}`)
@@ -500,6 +551,7 @@ ${statusList}
 
 РАБОТЫ ЭТОГО РП: ${stats.worksTotal || 0} (активных: ${stats.worksActive || 0})
 Сумма контрактов: ${((stats.worksSum || 0) / 1000000).toFixed(2)} млн ₽`;
+    section += buildEquipmentSection(stats);
 
   } else if (isTO(role)) {
     const statusList = Object.entries(stats.tendersByStatus || {})
@@ -524,6 +576,10 @@ ${statusList}
   Доходы: ${((stats.totalIncome || 0) / 1000000).toFixed(2)} млн ₽
   Расходы: ${((stats.totalExpenses || 0) / 1000000).toFixed(2)} млн ₽
   Просроченных счетов: ${stats.overdueInvoices || 0} на ${((stats.overdueSum || 0) / 1000).toFixed(0)} тыс ₽`;
+
+  } else if (['CHIEF_ENGINEER', 'WAREHOUSE'].includes(role)) {
+    section = 'ОБОРУДОВАНИЕ/ТМЦ — основная зона ответственности.';
+    section += buildEquipmentSection(stats);
 
   } else {
     section = 'Ограниченный доступ к данным.';
@@ -653,7 +709,7 @@ ${buildRestrictions(role, userName)}
 </tariffs>
 
 <capabilities>
-1. Отвечать на вопросы по данным CRM — используй конкретные цифры из раздела crm_data
+1. Отвечать на вопросы по данным CRM — используй конкретные цифры из crm_data и [ДАННЫЕ ИЗ БД]
 2. Анализировать загруженные документы (ТЗ, КП, договоры, чертежи, таблицы)
 3. Генерировать документы: ТКП, деловые письма, отчёты, сопроводительные
 4. Рекомендации по тендерам на основе истории с заказчиком
@@ -661,21 +717,31 @@ ${buildRestrictions(role, userName)}
 6. Навигация по CRM — объяснять как пользоваться функциями системы
 7. Аналитика звонков — данные о звонках, активность сотрудников, AI-инсайты из отчётов
 8. Расчёт просчётов — используй тарифную сетку из раздела tariffs, считай конкретные суммы
+9. Аналитика ТМЦ/оборудования — статусы, категории, перемещения, списания
 </capabilities>
 
+<data_access>
+У тебя есть ПРЯМОЙ ДОСТУП к базе данных CRM через Text-to-SQL.
+Если в сообщении пользователя есть раздел [ДАННЫЕ ИЗ БД] — это реальные данные из PostgreSQL.
+Используй их для точных ответов с конкретными цифрами, именами, датами.
+Если данных нет — используй агрегированную статистику из crm_data.
+</data_access>
+
 <rules>
-- Отвечай развёрнуто, профессионально, с конкретными данными
+- На ПРОСТЫЕ вопросы (кто, что, где, сколько) — КРАТКО: 2-4 предложения максимум
+- На СЛОЖНЫЕ (расчёт, анализ, сравнение) — подробно, с цифрами и таблицами
+- НИКОГДА не пиши "Что повелеваешь?", "Что ещё могу сделать?", "Обращайся!" в конце — просто ответь и остановись
+- Не предлагай список своих услуг если не спрашивали
 - При ответах о тендерах/работах — указывай номер, заказчика, статус
 - Если данных недостаточно — скажи что именно нужно уточнить
-- Форматируй ответы: заголовки (##), списки (-), **жирный** для важного, таблицы при необходимости
-- Финансовые суммы — с разделителями тысяч и указанием валюты (₽)
+- Форматируй: **жирный** для ключевых цифр, списки (-) для перечислений, таблицы при необходимости
+- НЕ используй ### заголовки — они выглядят громоздко в чате
+- Финансовые суммы: 1 234 567₽ (с разделителями и ₽)
 - НИКОГДА не выдумывай данные. Если информации нет — скажи прямо
-- Цифры в crm_data — ТОЧНЫЕ. Не округляй, не преувеличивай, не додумывай
+- Цифры в crm_data — ТОЧНЫЕ. Не округляй, не преувеличивай
 - НЕ используй слово "конверсия" — говори "% выигранных" или "% целевых заявок"
 - СТРОГО соблюдай ограничения роли из раздела role_restrictions
-- Поддерживай деловой, но дружелюбный тон
-- При анализе файлов — давай структурированный отчёт с выводами
-- Можешь использовать уместные отсылки к скандинавской мифологии
+- Деловой, но дружелюбный тон. Можешь использовать уместные отсылки к скандинавской мифологии
 </rules>`;
 }
 

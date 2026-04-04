@@ -20,6 +20,7 @@ const { Readable } = require('stream');
 // Сервисы
 const aiProvider = require('../services/ai-provider');
 const mimirData = require('../services/mimir-data');
+const mimirSchema = require('../services/mimir-schema');
 
 async function mimirRoutes(fastify, options) {
   const db = fastify.db;
@@ -213,21 +214,31 @@ async function mimirRoutes(fastify, options) {
         convId = newConv.rows[0].id;
       }
 
-      // Загружаем историю (последние 50 сообщений)
+      // Загружаем ВСЮ историю (270K контекст позволяет)
       const history = await db.query(`
         SELECT role, content FROM mimir_messages
         WHERE conversation_id = $1
-        ORDER BY created_at DESC LIMIT 50
+        ORDER BY created_at ASC
       `, [convId]);
 
-      const historyMessages = history.rows.reverse();
+      const historyMessages = history.rows;
 
-      // Обработка запроса — поиск данных
+      // Обработка запроса — поиск данных (regex)
       const { additionalData, results, action } = await mimirData.processQuery(db, message, user);
+
+      // Text-to-SQL: AI генерирует SQL → сервер выполняет → данные в контекст
+      let sqlContext = '';
+      try {
+        const { dataContext, sql, rowCount } = await mimirSchema.textToSQL(aiProvider, db, message, user);
+        if (dataContext) {
+          sqlContext = '\n\n[ДАННЫЕ ИЗ БД]\n' + dataContext;
+        }
+      } catch (e) { /* Text-to-SQL не критичен, продолжаем без данных */ }
 
       let userMessage = message;
       if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
       if (additionalData) userMessage += additionalData;
+      if (sqlContext) userMessage += sqlContext;
 
       // Строим системный промпт
       const systemPrompt = await mimirData.buildSystemPrompt(db, user);
@@ -243,7 +254,7 @@ async function mimirRoutes(fastify, options) {
         system: systemPrompt,
         messages: aiMessages,
         maxTokens: 8000,
-        temperature: 0.6
+        temperature: 0.5
       });
 
       const durationMs = Date.now() - startTime;
@@ -354,14 +365,14 @@ async function mimirRoutes(fastify, options) {
 
       sendEvent({ type: 'start', conversation_id: convId });
 
-      // Загружаем историю (последние 50 сообщений)
+      // Загружаем ВСЮ историю (270K контекст позволяет)
       const history = await db.query(`
         SELECT role, content FROM mimir_messages
         WHERE conversation_id = $1
-        ORDER BY created_at DESC LIMIT 50
+        ORDER BY created_at ASC
       `, [convId]);
 
-      const historyMessages = history.rows.reverse();
+      const historyMessages = history.rows;
 
       // Обработка запроса
       const { additionalData, results, action: streamAction } = await mimirData.processQuery(db, message, user);
@@ -373,9 +384,20 @@ async function mimirRoutes(fastify, options) {
         sendEvent({ type: 'action', data: streamAction });
       }
 
+      // Text-to-SQL: AI генерирует SQL → сервер выполняет → данные в контекст
+      let sqlContext = '';
+      try {
+        const { dataContext } = await mimirSchema.textToSQL(aiProvider, db, message, user);
+        if (dataContext) {
+          sqlContext = '\n\n[ДАННЫЕ ИЗ БД]\n' + dataContext;
+          sendEvent({ type: 'status', message: 'Данные из БД получены' });
+        }
+      } catch (e) { /* Text-to-SQL не критичен */ }
+
       let userMessage = message;
       if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
       if (additionalData) userMessage += additionalData;
+      if (sqlContext) userMessage += sqlContext;
 
       const systemPrompt = await mimirData.buildSystemPrompt(db, user);
 
@@ -389,7 +411,7 @@ async function mimirRoutes(fastify, options) {
         system: systemPrompt,
         messages: aiMessages,
         maxTokens: 8000,
-        temperature: 0.6
+        temperature: 0.5
       });
 
       // Парсим поток
