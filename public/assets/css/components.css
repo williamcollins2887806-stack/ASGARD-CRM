@@ -4755,6 +4755,71 @@ html[data-theme="light"] .viking-welcome .vw-saga-wrap {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   FILE PREVIEW
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.cr-file-preview-frame {
+  width: 100%;
+  height: calc(90vh - 80px);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--bg1);
+}
+
+.cr-file-preview-img-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-height: calc(90vh - 100px);
+  overflow: auto;
+}
+
+.cr-file-preview-img {
+  max-width: 100%;
+  max-height: calc(90vh - 120px);
+  object-fit: contain;
+  border-radius: var(--r-md);
+}
+
+/* Document list item */
+.cr-doc-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--bg3);
+  font-size: var(--text-sm);
+  color: var(--t2);
+}
+
+.cr-doc-item .cr-doc-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cr-doc-item .cr-doc-info b {
+  color: var(--t1);
+}
+
+.cr-doc-item .cr-doc-info a {
+  color: var(--blue-l);
+}
+
+.cr-doc-item .cr-doc-info a:hover {
+  text-decoration: underline;
+}
+
+.cr-doc-actions {
+  display: flex;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    PRE-TENDER KANBAN BOARD
    ═══════════════════════════════════════════════════════════════════════════════ */
 

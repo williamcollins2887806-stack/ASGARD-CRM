@@ -1,5 +1,5 @@
 window.AsgardTendersPage = (function(){
-  const { $, $$, esc, toast, showModal, money } = AsgardUI;
+  const { $, $$, esc, toast, showModal, hideModal, money } = AsgardUI;
   const V = AsgardValidate;
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(r==="DIRECTOR"||String(r||"").startsWith("DIRECTOR_"));
 
@@ -65,6 +65,41 @@ window.AsgardTendersPage = (function(){
       ? `href="${esc(url)}" download="${label}"`
       : `href="${esc(url)}" target="_blank" rel="noopener"`;
     return `<a ${attrs}>${label}</a>`;
+  }
+
+  function getFileExtension(doc){
+    const name = doc.original_name || doc.name || doc.filename || '';
+    const m = name.match(/\.(\w+)$/);
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  function isPreviewableExt(ext){
+    return /^(pdf|jpg|jpeg|png|gif|bmp|webp|svg)$/i.test(ext);
+  }
+
+  async function previewDocument(doc){
+    const url = buildDocumentLink(doc);
+    if(!url){ toast("Просмотр","Файл недоступен","err"); return; }
+    const ext = getFileExtension(doc);
+    const name = doc.name || doc.original_name || doc.filename || 'Документ';
+    if(!isPreviewableExt(ext)){
+      openDocumentLink(doc);
+      return;
+    }
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch(url, { headers:{ 'Authorization':'Bearer '+auth.token } });
+      if(!resp.ok) throw new Error('Не удалось загрузить');
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      if(/^pdf$/i.test(ext)){
+        showModal({ title:esc(name), html:`<iframe src="${blobUrl}" class="cr-file-preview-frame"></iframe>`, fullscreen:true });
+      } else {
+        showModal(esc(name), `<div class="cr-file-preview-img-wrap"><img src="${blobUrl}" class="cr-file-preview-img" alt="${esc(name)}"/></div>`);
+      }
+    } catch(e){
+      toast("Просмотр", e.message||"Ошибка","err");
+    }
   }
 
   const TENDER_TYPES = ["Тендер","Запрос предложений","Оценка рынка","Прямой запрос","Доп. объём"];
@@ -1175,12 +1210,17 @@ async function getRefs(){
       }).join("");
 
       const docList = (await AsgardDB.byIndex("documents","tender_id", tenderId||-1)) || [];
-      const docsHtml = docList.length ? docList.map(d=>`
-        <div class="pill" style="gap:10px">
-          <div class="who"><b>${esc(d.type||"Документ")}</b> — ${renderDocumentAnchor(d)}</div>
-          <button class="btn ghost" style="padding:6px 10px" data-del-doc="${d.id}">Удалить</button>
-        </div>
-      `).join("") : `<div class="help">Пока нет документов. Добавляйте ссылки на Я.Диск/площадку.</div>`;
+      const docsHtml = docList.length ? docList.map(d=>{
+        const ext = getFileExtension(d);
+        const canPreview = isPreviewableExt(ext);
+        return `<div class="cr-doc-item">
+          <div class="cr-doc-info"><b>${esc(d.type||"Документ")}</b> — ${renderDocumentAnchor(d)}</div>
+          <div class="cr-doc-actions">
+            ${canPreview ? `<button class="btn ghost mini" data-preview-doc="${d.id}" title="Предпросмотр">👁</button>` : ''}
+            <button class="btn ghost mini" data-del-doc="${d.id}">Удалить</button>
+          </div>
+        </div>`;
+      }).join("") : AsgardUI.emptyState({ icon:'📄', title:'Нет прикреплённых документов', desc:'Загрузите файл или добавьте ссылку' });
 
       const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>🔒</b> Передано в ТО: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
       const canReassign = (isDirRole(user.role) || user.role==="ADMIN");
@@ -1472,6 +1512,14 @@ ${docsHtml}</div>
         });
       });
 
+      $$("[data-preview-doc]").forEach(b=>{
+        b.addEventListener("click", async ()=>{
+          const did=Number(b.getAttribute("data-preview-doc"));
+          const doc = docList.find(d=>d.id===did);
+          if(doc) previewDocument(doc);
+        });
+      });
+
       $("#btnAddDoc").addEventListener("click", async ()=>{
         const html2=`
           <div class="formrow">
@@ -1491,25 +1539,30 @@ ${docsHtml}</div>
           const fileInput = document.getElementById("d_file");
           const file = fileInput.files[0];
           if(!file){ toast("Документ","Выберите файл","err"); return; }
-          if(!tenderId){ toast("Документ","Сначала сохраните тендер","err"); return; }
-          
+
+          let uploadId = tenderId;
+          if(!uploadId){
+            uploadId = await saveTender(true);
+            if(!uploadId) return;
+          }
+
           try {
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('tender_id', tenderId);
+            formData.append('tender_id', uploadId);
             formData.append('type', document.getElementById("d_type").value.trim() || "Документ");
-            
+
             const auth = await AsgardAuth.getAuth();
             const response = await fetch('/api/files/upload', {
               method: 'POST',
               headers: { 'Authorization': 'Bearer ' + auth.token },
               body: formData
             });
-            
+
             if (!response.ok) throw new Error('Ошибка загрузки');
             toast("Документ","Файл загружен");
-            closeModal();
-            openTenderEditor(tenderId);
+            hideModal();
+            openTenderEditor(uploadId);
           } catch (e) {
             toast("Ошибка", e.message, "err");
           }
@@ -1532,15 +1585,21 @@ ${docsHtml}</div>
         $("#d_save").addEventListener("click", async ()=>{
           const url=document.getElementById("d_url").value.trim();
           if(!url){ toast("Документ","Укажите ссылку","err"); return; }
-          if(!tenderId){ toast("Документ","Сначала сохраните тендер","err"); return; }
+
+          let uploadId = tenderId;
+          if(!uploadId){
+            uploadId = await saveTender(true);
+            if(!uploadId) return;
+          }
+
           await AsgardDB.add("documents",{
-            tender_id:tenderId, work_id:null, type:document.getElementById("d_type").value.trim()||"Документ",
+            tender_id:uploadId, work_id:null, type:document.getElementById("d_type").value.trim()||"Документ",
             name:document.getElementById("d_name").value.trim()||url,
             file_url:url, download_url:url, uploaded_by_user_id:user.id, created_at:isoNow()
           });
-          await audit(user.id,"tender",tenderId,"doc_add",{url});
+          await audit(user.id,"tender",uploadId,"doc_add",{url});
           toast("Документ","Добавлено");
-          openTenderEditor(tenderId);
+          openTenderEditor(uploadId);
         });
       });
 
