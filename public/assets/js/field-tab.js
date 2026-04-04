@@ -1197,7 +1197,7 @@ window.AsgardFieldTab = (function () {
       html: `
         <div style="display:flex;flex-direction:column;gap:12px;max-width:480px">
           <label>Мастер (сотрудник)
-            <select id="fundsMaster" class="inp" style="width:100%"><option value="">Загрузка…</option></select>
+            <div id="fundsMasterWrap" style="width:100%"></div>
           </label>
           <label>Сумма, ₽
             <input id="fundsAmount" type="number" step="0.01" class="inp" style="width:100%" placeholder="50000">
@@ -1212,36 +1212,40 @@ window.AsgardFieldTab = (function () {
         </div>
       `,
       onMount: async () => {
-        // Load crew for dropdown
+        // Load crew for dropdown (CRSelect)
+        const _fundsOpts = [];
         try {
           const crewData = await apiField('/logistics/?work_id=' + work.id);
-          const select = document.getElementById('fundsMaster');
-          select.innerHTML = '<option value="">— Выберите мастера —</option>';
           const seen = new Set();
           if (crewData && crewData.logistics) {
             for (const item of crewData.logistics) {
               if (!seen.has(item.employee_id)) {
                 seen.add(item.employee_id);
-                select.innerHTML += `<option value="${item.employee_id}">${esc(item.fio)}</option>`;
+                _fundsOpts.push({ value: String(item.employee_id), label: item.fio || 'ID ' + item.employee_id });
               }
             }
           }
-          // Also try crew roster
           try {
             const crewResp = await api('/projects/' + work.id + '/dashboard');
             if (crewResp && crewResp.crew) {
               for (const c of crewResp.crew) {
                 if (!seen.has(c.employee_id)) {
                   seen.add(c.employee_id);
-                  select.innerHTML += `<option value="${c.employee_id}">${esc(c.fio || c.employee_name)}</option>`;
+                  _fundsOpts.push({ value: String(c.employee_id), label: c.fio || c.employee_name || 'ID ' + c.employee_id });
                 }
               }
             }
           } catch (_) {}
         } catch (_) {}
+        const wrapFunds = document.getElementById('fundsMasterWrap');
+        if (wrapFunds && window.CRSelect) {
+          wrapFunds.appendChild(CRSelect.create({
+            id: 'fundsMaster', options: _fundsOpts, placeholder: '— Выберите мастера —', fullWidth: true
+          }));
+        }
 
         document.getElementById('fundsSubmit').addEventListener('click', async () => {
-          const masterId = document.getElementById('fundsMaster').value;
+          const masterId = window.CRSelect ? CRSelect.getValue('fundsMaster') : '';
           const amount = parseFloat(document.getElementById('fundsAmount').value);
           const purpose = document.getElementById('fundsPurpose').value.trim();
           const deadline = document.getElementById('fundsDeadline').value || null;
@@ -1526,25 +1530,30 @@ window.AsgardFieldTab = (function () {
       title: '📦 Назначить сборщика',
       html: `
         <div style="display:flex;flex-direction:column;gap:12px;max-width:400px">
-          <label>Сотрудник<select id="packAssignee" class="inp" style="width:100%"><option value="">Загрузка…</option></select></label>
+          <label>Сотрудник<div id="packAssigneeWrap" style="width:100%"></div></label>
           <label><input type="checkbox" id="packSendSms" checked> Отправить SMS-уведомление</label>
           <button id="packAssignSubmit" class="btn gold">Назначить</button>
         </div>
       `,
       onMount: async () => {
+        const _packOpts = [];
         try {
           const crewResp = await api('/projects/' + work.id + '/dashboard');
-          const select = document.getElementById('packAssignee');
-          select.innerHTML = '<option value="">— Выберите —</option>';
           if (crewResp && crewResp.crew) {
             for (const c of crewResp.crew) {
-              select.innerHTML += `<option value="${c.employee_id}">${esc(c.fio || c.employee_name)}</option>`;
+              _packOpts.push({ value: String(c.employee_id), label: c.fio || c.employee_name || 'ID ' + c.employee_id });
             }
           }
         } catch (_) {}
+        const wrapPack = document.getElementById('packAssigneeWrap');
+        if (wrapPack && window.CRSelect) {
+          wrapPack.appendChild(CRSelect.create({
+            id: 'packAssignee', options: _packOpts, placeholder: '— Выберите —', fullWidth: true
+          }));
+        }
 
         document.getElementById('packAssignSubmit').addEventListener('click', async () => {
-          const empId = document.getElementById('packAssignee').value;
+          const empId = window.CRSelect ? CRSelect.getValue('packAssignee') : '';
           if (!empId) { toast('Выберите сотрудника'); return; }
 
           try {

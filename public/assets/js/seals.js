@@ -341,8 +341,8 @@ window.AsgardSealsPage = (function(){
     // Show/hide return date
     // Wire up employee picker for transfer
     window.__sealTransferToOffice = '';
-    if(window.AsgardEmployeePicker) {
-      AsgardEmployeePicker.renderButton('transferToPicker', {
+    if(window.CREmployeePicker) {
+      CREmployeePicker.renderButton('transferToPicker', {
         placeholder: 'Выберите сотрудника...',
         title: 'Кому передать печать',
         onChange: (emp) => {

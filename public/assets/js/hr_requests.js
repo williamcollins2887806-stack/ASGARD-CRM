@@ -471,7 +471,7 @@ window.AsgardHrRequestsPage=(function(){
           </div>
         `;
         showModal("Замена сотрудника", `<div style="max-height:70vh; overflow:auto">${body}</div>`);
-        if(window.AsgardEmployeePicker && typeof okIds !== 'undefined'){const _okSet=new Set(okIds);AsgardEmployeePicker.renderButton('repNewPicker',{placeholder:'Выберите замену...',title:'Замена сотрудника',filter:e=>_okSet.has(e.id)});}
+        if(window.CREmployeePicker && typeof okIds !== 'undefined'){const _okSet=new Set(okIds);CREmployeePicker.renderButton('repNewPicker',{placeholder:'Выберите замену...',title:'Замена сотрудника',filter:e=>_okSet.has(e.id)});}
         const btnSend = document.getElementById("rep_send");
         const btnCancel = document.getElementById("rep_cancel");
         if(btnCancel) btnCancel.onclick = ()=>closeModal();

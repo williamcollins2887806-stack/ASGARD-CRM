@@ -640,7 +640,7 @@ window.AsgardPayrollPage = (function(){
         `);
 
         // Автозаполнение ставки при выборе рабочего
-        if(window.AsgardEmployeePicker){AsgardEmployeePicker.renderButton('addItemEmpPicker',{placeholder:'Выберите рабочего...',filter:e=>e.is_active!==false,onChange:async(emp)=>{if(!emp)return;try{const res=await api('/rates/current?employee_id='+emp.id);if(res.rate&&document.getElementById('addItemRate'))document.getElementById('addItemRate').value=res.rate.day_rate;else{const e2=employees.find(x=>x.id==emp.id);if(e2?.day_rate&&document.getElementById('addItemRate'))document.getElementById('addItemRate').value=e2.day_rate;}}catch(e){}}});}
+        if(window.CREmployeePicker){CREmployeePicker.renderButton('addItemEmpPicker',{placeholder:'Выберите рабочего...',filter:e=>e.is_active!==false,onChange:async(emp)=>{if(!emp)return;try{const res=await api('/rates/current?employee_id='+emp.id);if(res.rate&&document.getElementById('addItemRate'))document.getElementById('addItemRate').value=res.rate.day_rate;else{const e2=employees.find(x=>x.id==emp.id);if(e2?.day_rate&&document.getElementById('addItemRate'))document.getElementById('addItemRate').value=e2.day_rate;}}catch(e){}}});}
         // Rate auto-fill is handled by picker onChange below
 
         document.getElementById('btnDoAddItem')?.addEventListener('click', async ()=>{
@@ -934,7 +934,7 @@ window.AsgardPayrollPage = (function(){
           <button class="btn primary" id="btnDoOTP" style="margin-top:12px;width:100%">Запросить</button>
         `);
 
-        if(window.AsgardEmployeePicker){AsgardEmployeePicker.renderButton('otpEmpPicker',{placeholder:'Выберите рабочего...',filter:e=>e.is_active!==false});}
+        if(window.CREmployeePicker){CREmployeePicker.renderButton('otpEmpPicker',{placeholder:'Выберите рабочего...',filter:e=>e.is_active!==false});}
 
         // CRSelect init — otpType
         const _ptOpts = Object.entries(PAYMENT_TYPES).map(([k,v])=>({value:k, label:v.icon+' '+v.label}));

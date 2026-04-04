@@ -5,7 +5,7 @@
  *
  * Интеграция:
  *   - Вызывается из popup-grid меню работы (pm_works.js)
- *   - Использует AsgardEmployeePicker для выбора сотрудников
+ *   - Использует CREmployeePicker для выбора сотрудников
  *   - Использует AsgardEmail для предпросмотра/отправки email
  *   - Создаёт cash_request при необходимости аванса
  *   - Уведомляет OFFICE_MANAGER при необходимости билетов/карты
@@ -257,15 +257,15 @@ window.AsgardSiteInspection = (function () {
     // Add employee via picker
     const btnAddEmp = document.getElementById('btnAddEmp');
     if (btnAddEmp) btnAddEmp.addEventListener('click', async () => {
-      if (!window.AsgardEmployeePicker) { toast('Ошибка', 'Модуль выбора сотрудников не загружен', 'err'); return; }
-      const picked = await AsgardEmployeePicker.pickOne({
+      if (!window.CREmployeePicker) { toast('Ошибка', 'Модуль выбора сотрудников не загружен', 'err'); return; }
+      const picked = await CREmployeePicker.pickOne({
         filter: e => !employees.some(ex => ex.employee_id === e.id)
       });
       if (picked) {
         employees.push({
           employee_id: picked.id,
-          fio: picked.fio || '',
-          position: picked.position || picked.role_tag || '',
+          fio: picked.fio || picked.name || '',
+          position: picked.position || picked.role || '',
           passport_series: picked.passport_series || '',
           passport_number: picked.passport_number || '',
           phone: picked.phone || ''
@@ -654,12 +654,12 @@ window.AsgardSiteInspection = (function () {
 
     // Add employee
     document.getElementById('btnTrAddEmp')?.addEventListener('click', async () => {
-      if (!window.AsgardEmployeePicker) { toast('Ошибка', 'Модуль выбора сотрудников не загружен', 'err'); return; }
-      const picked = await AsgardEmployeePicker.pickOne({
+      if (!window.CREmployeePicker) { toast('Ошибка', 'Модуль выбора сотрудников не загружен', 'err'); return; }
+      const picked = await CREmployeePicker.pickOne({
         filter: e => !empList.some(ex => ex.employee_id === e.id)
       });
       if (picked) {
-        empList.push({ employee_id: picked.id, fio: picked.fio || '', position: picked.position || '' });
+        empList.push({ employee_id: picked.id, fio: picked.fio || picked.name || '', position: picked.position || '' });
         const wrap = document.getElementById('tr_emp_wrap');
         const idx = empList.length - 1;
         wrap.insertAdjacentHTML('beforeend', `

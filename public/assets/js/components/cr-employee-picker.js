@@ -327,6 +327,11 @@ const CREmployeePicker = (() => {
       document.removeEventListener('keydown', inst._escHandler);
       inst._escHandler = null;
     }
+    // pickOne cancel support
+    if (inst._pickOneResolve) {
+      inst._pickOneResolve();
+      inst._pickOneResolve = null;
+    }
   }
 
   function _renderModalList(inst, query, roleFilter) {
@@ -559,6 +564,89 @@ const CREmployeePicker = (() => {
 
     getAll() {
       return Array.from(_instances.keys());
+    },
+
+    /**
+     * Open a one-shot picker modal and return the selected employee.
+     * Returns { id, name, position, role, avatar } or null if cancelled.
+     * Compat bridge: also sets .fio = .name for legacy callers.
+     */
+    async pickOne({ filter, title, placeholder } = {}) {
+      const employees = await _fetchEmployees();
+      const filtered = filter ? employees.filter(filter) : employees;
+
+      return new Promise(resolve => {
+        const tempId = '__pickOne_' + Date.now();
+        let resolved = false;
+
+        const inst = {
+          id: tempId,
+          employees: filtered,
+          selected: [],
+          maxSelect: 1,
+          placeholder: placeholder || 'Выберите сотрудника',
+          showChips: false,
+          maxChips: 0,
+          title: title || 'Выберите сотрудника',
+          fullWidth: false,
+          onChange: (ids) => {
+            if (resolved) return;
+            resolved = true;
+            const empId = ids[0];
+            const emp = filtered.find(e => e.id === empId);
+            _instances.delete(tempId);
+            if (emp) emp.fio = emp.name; // compat
+            resolve(emp || null);
+          },
+          _overlay: null,
+          _modalList: null,
+          _modalCountLabel: null,
+          _tempSelected: [],
+          _escHandler: null,
+          _roleSelect: null,
+          _pickOneResolve: () => {
+            if (resolved) return;
+            resolved = true;
+            _instances.delete(tempId);
+            resolve(null);
+          },
+          root: document.createElement('div'),
+          trigger: document.createElement('div'),
+          chipsContainer: document.createElement('div'),
+          countEl: document.createElement('span'),
+        };
+
+        _instances.set(tempId, inst);
+        _openModal(inst);
+      });
+    },
+
+    /**
+     * Mount a single-select picker into a container element.
+     * Sets container.pickerValue on selection.
+     * Compat bridge for legacy AsgardEmployeePicker.renderButton().
+     */
+    async renderButton(containerId, { placeholder, title, filter, onChange } = {}) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const employees = await _fetchEmployees();
+      const filtered = filter ? employees.filter(filter) : employees;
+      const el = this.create({
+        id: containerId,
+        employees: filtered,
+        maxSelect: 1,
+        placeholder: placeholder || 'Выберите сотрудника',
+        title: title || 'Выберите сотрудника',
+        fullWidth: true,
+        onChange: (ids) => {
+          const empId = ids[0];
+          container.pickerValue = empId || '';
+          const emp = filtered.find(e => e.id === empId);
+          if (onChange) onChange(emp || null);
+        }
+      });
+      container.innerHTML = '';
+      container.appendChild(el);
     },
   };
 })();
