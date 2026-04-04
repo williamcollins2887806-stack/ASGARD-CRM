@@ -59,6 +59,7 @@ window.AsgardTkpPage = (function() {
 
   let vatPct = 22;
   let itemRows = [];
+  let _tkpRowId = 0;
   let _docClickBound = false;
   let _mimirStylesInjected = false;
 
@@ -233,18 +234,25 @@ window.AsgardTkpPage = (function() {
     const tbody = $('#tkpItemsBody');
     if (!tbody) return;
     const tr = document.createElement('tr');
-    const unitOpts = UNITS.map(u =>
-      '<option' + (u === (data.unit || 'усл.') ? ' selected' : '') + '>' + esc(u) + '</option>'
-    ).join('');
+    const rid = _tkpRowId++;
+    const crUnitId = 'tkp-unit-' + rid;
+    tr.dataset.crUnit = crUnitId;
     tr.innerHTML =
       '<td class="rn">' + (itemRows.length + 1) + '</td>' +
       '<td><input class="iname" value="' + esc(data.name || '') + '" placeholder="Наименование" style="width:100%"/></td>' +
-      '<td><select class="iunit">' + unitOpts + '</select></td>' +
+      '<td><div class="cr-iunit-wrap"></div></td>' +
       '<td><input class="iqty" type="number" min="0" step="any" value="' + (data.qty || '') + '" style="width:100%"/></td>' +
       '<td><input class="iprice" type="number" min="0" step="any" value="' + (data.price || '') + '" style="width:100%"/></td>' +
       '<td class="itotal" style="text-align:right;white-space:nowrap">' + (data.total ? fmt(data.total) : '') + '</td>' +
       '<td><button class="btn ghost mini idel" type="button">\u2715</button></td>';
     tbody.appendChild(tr);
+    var unitWrap = tr.querySelector('.cr-iunit-wrap');
+    unitWrap.appendChild(CRSelect.create({
+      id: crUnitId,
+      options: UNITS.map(function(u) { return { value: u, label: u }; }),
+      value: data.unit || 'усл.',
+      searchable: false
+    }));
     itemRows.push(tr);
 
     const qtyInp = tr.querySelector('.iqty');
@@ -263,6 +271,7 @@ window.AsgardTkpPage = (function() {
     priceInp.addEventListener('input', recalcRow);
 
     tr.querySelector('.idel').addEventListener('click', () => {
+      CRSelect.destroy(crUnitId);
       tr.remove();
       itemRows = itemRows.filter(r => r !== tr);
       renumber();
@@ -280,7 +289,7 @@ window.AsgardTkpPage = (function() {
   function getItems() {
     return itemRows.map(tr => {
       const name = (tr.querySelector('.iname') || {}).value || '';
-      const unit = (tr.querySelector('.iunit') || {}).value || '';
+      const unit = CRSelect.getValue(tr.dataset.crUnit) || '';
       const qty = parseFloat((tr.querySelector('.iqty') || {}).value) || 0;
       const price = parseFloat((tr.querySelector('.iprice') || {}).value) || 0;
       return { name: name.trim(), unit: unit, qty: qty, price: price, total: qty * price };
@@ -403,9 +412,7 @@ window.AsgardTkpPage = (function() {
   // ═══════════════════════════════════════════
 
   function buildFormHtml(o) {
-    const typeOptions = TKP_TYPES.map(t =>
-      '<option value="' + t.value + '"' + (t.value === o.typeVal ? ' selected' : '') + '>' + esc(t.label) + '</option>'
-    ).join('');
+    // typeOptions removed — CRSelect mounted in onMount
 
     const ddStyle = 'position:absolute;top:100%;left:0;right:0;z-index:100;background:var(--bg2);border:1px solid var(--brd);' +
       'border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;max-height:240px;overflow-y:auto';
@@ -449,7 +456,7 @@ window.AsgardTkpPage = (function() {
         '<input id="tkpSubject" value="' + esc(o.item.subject || o.item.title || '') + '" placeholder="Химическая очистка..."/>' +
       '</div></div>' +
       '<div class="formrow">' +
-        '<div><label>Тип</label><select id="tkpType">' + typeOptions + '</select></div>' +
+        '<div><label>Тип</label><div id="cr-tkpType-wrap"></div></div>' +
       '</div>' +
       '<div class="formrow"><div style="grid-column:1/-1">' +
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
@@ -574,7 +581,7 @@ window.AsgardTkpPage = (function() {
         payment_terms: ($('#tkpPaymentText') || {}).value || '',
         author_name: ($('#tkpAuthorName') || {}).value || '',
         author_position: ($('#tkpAuthorPosition') || {}).value || '',
-        tkp_type: ($('#tkpType') || {}).value || '',
+        tkp_type: (CRSelect.getValue('tkpType') || '') || '',
         customer_kpp: ($('#tkpKpp') || {}).value || '',
         notes: ($('#tkpNotes') || {}).value || ''
       }),
@@ -636,12 +643,24 @@ window.AsgardTkpPage = (function() {
     });
 
     itemRows = [];
+    _tkpRowId = 0;
 
     showModal({
       title: currentId ? 'Редактирование ТКП #' + currentId : 'Новое ТКП',
       html: html,
       wide: true,
       onMount: function() {
+        // CRSelect: тип ТКП
+        var tkpTypeWrap = document.getElementById('cr-tkpType-wrap');
+        if (tkpTypeWrap) {
+          tkpTypeWrap.appendChild(CRSelect.create({
+            id: 'tkpType',
+            options: TKP_TYPES.map(function(t) { return { value: t.value, label: t.label }; }),
+            value: typeVal,
+            searchable: false
+          }));
+        }
+
         // Таблица работ
         if (parsed.items && Array.isArray(parsed.items)) {
           parsed.items.forEach(function(row) { addItemRow(row); });
@@ -656,7 +675,7 @@ window.AsgardTkpPage = (function() {
         if (btnMD) {
           btnMD.addEventListener('click', async function() {
             var subject = ($('#tkpSubject') || {}).value;
-            var typeVal = ($('#tkpType') || {}).value;
+            var typeVal = (CRSelect.getValue('tkpType') || '');
             if (!subject) { toast('Внимание', 'Сначала заполните название ТКП', 'warn'); return; }
             btnMD.disabled = true;
             btnMD.innerHTML = '<span class="mimir-spinner"></span> Мимир думает\u2026';

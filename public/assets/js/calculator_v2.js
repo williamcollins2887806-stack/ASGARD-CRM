@@ -173,14 +173,13 @@
   }
   
   function tabObject(st, s) {
-    const wtOpts = (s.work_types || []).map(w => `<option value="${w.id}"${st.work_type_id===w.id?' selected':''}>${w.icon||''} ${w.name}</option>`).join('');
     const conds = (s.surcharges || []).filter(x => !x.roles).map(x => `<label class="cbl"><input type="checkbox" data-cond="${x.id}"${st.conditions?.includes(x.id)?' checked':''}> ${x.name} (+${x.pct}%)</label>`).join('');
     return `
       <div class="csec"><h3>📋 Тендер</h3>
         <div class="fr"><div><label>Заказчик</label><input class="inp" value="${esc(st.customer_name)}" disabled></div><div><label>Объект</label><input class="inp" value="${esc(st.tender_title)}" disabled></div></div>
       </div>
       <div class="csec"><h3>🎯 Тип работы</h3>
-        <select class="inp" id="c_wt">${wtOpts}</select>
+        <div id="cr-wt-wrap"></div>
       </div>
       <div class="csec"><h3>📍 Место выполнения</h3>
         <div class="fr">
@@ -209,7 +208,7 @@
     const fields = wt.params.map(p => {
       const v = st.params[p.id] ?? "";
       if (p.type === "select") {
-        return `<div><label>${esc(p.name)}</label><select class="inp" data-p="${p.id}">${(p.options||[]).map(o => `<option${v===o?' selected':''}>${o}</option>`).join('')}</select></div>`;
+        return `<div><label>${esc(p.name)}</label><div id="cr-param-${p.id}"></div></div>`;
       }
       return `<div><label>${esc(p.name)}${p.unit?` (${p.unit})`:''}</label><input class="inp" data-p="${p.id}" type="${p.type==='number'?'number':'text'}" value="${esc(String(v))}"></div>`;
     }).join('');
@@ -224,12 +223,11 @@
       return `<tr><td>${esc(role?.name||c.role_id)}</td><td><input class="inp" type="number" min="0" data-ci="${i}" name="crew_${i}" value="${c.count||0}" style="width:70px"></td><td>${money(rate)}</td><td><button class="btn ghost mini" data-cdel="${i}">✕</button></td></tr>`;
     }).join('');
     const total = (st.crew||[]).reduce((a,c)=>a+(c.count||0),0);
-    const roleOpts = (s.roles||[]).map(r => `<option value="${r.id}">${r.name}</option>`).join('');
     const surchs = (s.surcharges||[]).map(x => `<label class="cbl"><input type="checkbox" data-sur="${x.id}"${st.surcharges?.includes(x.id)?' checked':''}> ${x.name} (+${x.pct}%)</label>`).join('');
     return `<div class="csec"><h3>👷 Бригада</h3>
       <label class="cbl"><input type="checkbox" id="crewMan"${st.crew_manual?' checked':''}> Ручной режим</label>
       <table class="tbl"><thead><tr><th>Роль</th><th>Кол-во</th><th>Ставка</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td>Итого</td><td><b>${total}</b></td><td></td><td></td></tr></tfoot></table>
-      <div style="display:flex;gap:8px;margin-top:12px"><select class="inp" id="addRole">${roleOpts}</select><button class="btn ghost" id="addCrewBtn">+ Добавить</button></div></div>
+      <div style="display:flex;gap:8px;margin-top:12px"><div id="cr-addRole-wrap"></div><button class="btn ghost" id="addCrewBtn">+ Добавить</button></div></div>
       <div class="csec"><h3>💰 Доплаты</h3><div class="cgrid">${surchs}</div></div>`;
   }
   
@@ -251,11 +249,10 @@
       return `<tr><td>${esc(chem?.name||ch.id)}</td><td><input class="inp" type="number" data-chi="${i}" value="${ch.kg||0}" style="width:80px"></td><td>${money(chem?.price_kg||0)}/кг</td><td>${money((ch.kg||0)*(chem?.price_kg||0))}</td><td><button class="btn ghost mini" data-chdel="${i}">✕</button></td></tr>`;
     }).join('');
     const total = (st.chemicals||[]).reduce((a,ch) => { const c = s.chemicals?.find(x=>x.id===ch.id); return a + (ch.kg||0)*(c?.price_kg||0); }, 0);
-    const opts = (s.chemicals||[]).map(c => `<option value="${c.id}">${c.name} (${c.price_kg}₽/кг)</option>`).join('');
     return `<div class="csec"><h3>🧪 Химия</h3>
       <label class="cbl"><input type="checkbox" id="chemMan"${st.chem_manual?' checked':''}> Ручной режим</label>
       <table class="tbl"><thead><tr><th>Состав</th><th>Кг</th><th>Цена</th><th>Сумма</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="help">Нет</td></tr>'}</tbody><tfoot><tr><td colspan="3">Итого</td><td><b>${money(total)}</b></td><td></td></tr></tfoot></table>
-      <div style="display:flex;gap:8px;margin-top:12px"><select class="inp" id="addChem">${opts}</select><button class="btn ghost" id="addChemBtn">+ Добавить</button></div></div>`;
+      <div style="display:flex;gap:8px;margin-top:12px"><div id="cr-addChem-wrap"></div><button class="btn ghost" id="addChemBtn">+ Добавить</button></div></div>`;
   }
 
   function tabEquip(st, s) {
@@ -265,27 +262,22 @@
       if (!item) return '';
       const rate = eq.rent ? (item.rent_day||item.amort_day||0) : (item.amort_day||0);
       return `<tr><td>${esc(item.name)}</td><td><input class="inp" type="number" min="1" data-eqi="${i}" value="${eq.qty||1}" style="width:60px"></td>
-        <td><select class="inp" data-eqr="${i}"><option value="0"${!eq.rent?' selected':''}>Наше</option><option value="1"${eq.rent?' selected':''}>Аренда</option></select></td>
+        <td><div id="cr-eqr-${i}"></div></td>
         <td>${money(rate)}/сут</td><td><button class="btn ghost mini" data-eqdel="${i}">✕</button></td></tr>`;
     }).join('');
-    const cats = [...new Set(all.map(e => e.category))];
-    const opts = cats.map(cat => `<optgroup label="${cat}">${all.filter(e=>e.category===cat).map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}</optgroup>`).join('');
     return `<div class="csec"><h3>🔧 Оборудование</h3>
       <label class="cbl"><input type="checkbox" id="equipMan"${st.equip_manual?' checked':''}> Ручной режим</label>
       <table class="tbl"><thead><tr><th>Позиция</th><th>Кол.</th><th>Тип</th><th>Ставка</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="help">Нет</td></tr>'}</tbody></table>
-      <div style="display:flex;gap:8px;margin-top:12px"><select class="inp" id="addEq">${opts}</select><button class="btn ghost" id="addEqBtn">+ Добавить</button></div></div>`;
+      <div style="display:flex;gap:8px;margin-top:12px"><div id="cr-addEq-wrap"></div><button class="btn ghost" id="addEqBtn">+ Добавить</button></div></div>`;
   }
   
   function tabLogistics(st, s, sum) {
-    const trOpts = (s.transport||[]).map(t => `<option value="${t.id}"${st.transport_id===t.id?' selected':''}>${t.name} (до ${t.max_kg/1000}т) — ${t.rate_km}₽/км</option>`).join('');
-    const lodOpts = Object.entries(s.lodging||{}).map(([id,l]) => `<option value="${id}"${st.lodging_type===id?' selected':''}>${l.name} — ${l.rate_per_day}₽/сут</option>`).join('');
-    const mobOpts = Object.entries(s.mobilization||{}).map(([id,m]) => `<option value="${id}"${st.mobilization_type===id?' selected':''}>${m.name} — ${m.rate_per_person}₽/чел</option>`).join('');
     return `<div class="csec"><h3>🚛 Доставка</h3>
-      <select class="inp" id="c_tr"><option value="auto"${st.transport_id==='auto'?' selected':''}>🤖 Авто</option>${trOpts}</select>
+      <div id="cr-tr-wrap"></div>
       <div class="kpi4"><div class="k"><div class="t">Груз</div><div class="v">${Math.round(sum.total_weight_kg)} кг</div></div><div class="k"><div class="t">Транспорт</div><div class="v">${sum.transport?.name||'—'}</div></div><div class="k"><div class="t">Расстояние</div><div class="v">${sum.distance_km} км ×2</div></div><div class="k"><div class="t">Итого</div><div class="v">${money(sum.logistics_total)}</div></div></div></div>
-      <div class="csec"><h3>🏨 Проживание</h3><select class="inp" id="c_lod">${lodOpts}</select>
+      <div class="csec"><h3>🏨 Проживание</h3><div id="cr-lod-wrap"></div>
       <div class="kpi3"><div class="k"><div class="t">Ставка</div><div class="v">${money(s.lodging?.[st.lodging_type]?.rate_per_day||2500)}/сут</div></div><div class="k"><div class="t">Чел×Дней</div><div class="v">${sum.people_count}×${sum.total_days}</div></div><div class="k"><div class="t">Итого</div><div class="v">${money(sum.lodging_total)}</div></div></div></div>
-      <div class="csec"><h3>✈️ Мобилизация</h3><select class="inp" id="c_mob"><option value="auto"${st.mobilization_type==='auto'?' selected':''}>🤖 Авто</option>${mobOpts}</select>
+      <div class="csec"><h3>✈️ Мобилизация</h3><div id="cr-mob-wrap"></div>
       <div class="kpi3"><div class="k"><div class="t">Способ</div><div class="v">${s.mobilization?.[sum.mobilization_type]?.name||'Авто'}</div></div><div class="k"><div class="t">Чел×2</div><div class="v">${sum.people_count}×2</div></div><div class="k"><div class="t">Итого</div><div class="v">${money(sum.mobilization_total)}</div></div></div></div>`;
   }
   
@@ -386,9 +378,9 @@
     
     function bind() {
       $$('.calc-tabs .tab').forEach(btn => btn.onclick = () => { tab = btn.dataset.tab; render(); });
-      
+
       // Object tab
-      const wt = $('#c_wt'); if(wt) wt.onchange = () => { st.work_type_id = wt.value; st.params = {}; st.crew_manual = st.days_manual = st.chem_manual = st.equip_manual = false; render(); };
+      const wtWrap = $('#cr-wt-wrap'); if(wtWrap) { const wtOpts = (s.work_types || []).map(w => ({ value: w.id, label: (w.icon||'') + ' ' + w.name })); wtWrap.appendChild(CRSelect.create({ id: 'c_wt', options: wtOpts, value: st.work_type_id, placeholder: 'Тип работы...', onChange: (v) => { st.work_type_id = v; st.params = {}; st.crew_manual = st.days_manual = st.chem_manual = st.equip_manual = false; render(); } })); }
       const city = $('#c_city'); if(city) { city.oninput = () => { st.city = city.value; if(window.findCity){ const dl=$('#citylist'); if(dl) dl.innerHTML = window.findCity(city.value).map(c=>`<option value="${c.name}">${c.name} (${c.km} км)</option>`).join(''); } };
         city.onchange = () => { if(window.getCityDistance){ const km = window.getCityDistance(city.value); if(km!==null){ st.distance_km = km; const inp=$('#c_km'); if(inp) inp.value = km; } } }; }
       const km = $('#c_km'); if(km) km.oninput = () => { st.distance_km = num(km.value); };
@@ -397,15 +389,17 @@
       
       // Params tab
       $$('[data-p]').forEach(inp => inp.oninput = () => { st.params[inp.dataset.p] = inp.type==='number' ? num(inp.value) : inp.value; });
+      { const wt = s.work_types?.find(w => w.id === st.work_type_id); if(wt?.params?.length) { wt.params.forEach(p => { if(p.type === 'select') { const wrap = $('#cr-param-' + p.id); if(wrap) { const pOpts = (p.options||[]).map(o => ({ value: o, label: o })); wrap.appendChild(CRSelect.create({ id: 'param_' + p.id, options: pOpts, value: st.params[p.id] ?? '', placeholder: 'Выберите...', onChange: (v) => { st.params[p.id] = v; } })); } } }); } }
       const autoBtn = $('#autoBtn'); if(autoBtn) autoBtn.onclick = () => { st.crew_manual = st.days_manual = st.chem_manual = st.equip_manual = false; render(); toast("Авто","Пересчитано"); };
-      
+
       // Crew tab
       const crewMan = $('#crewMan'); if(crewMan) crewMan.onchange = () => { st.crew_manual = crewMan.checked; };
       $$('[data-ci]').forEach(inp => inp.oninput = () => { const i = +inp.dataset.ci; if(st.crew[i]) { st.crew[i].count = num(inp.value); st.crew_manual = true; render(); } });
       $$('[data-cdel]').forEach(btn => btn.onclick = () => { st.crew.splice(+btn.dataset.cdel, 1); st.crew_manual = true; render(); });
-      const addCrewBtn = $('#addCrewBtn'); if(addCrewBtn) addCrewBtn.onclick = () => { const rid = $('#addRole')?.value; if(rid && !st.crew.find(c=>c.role_id===rid)){ const role = s.roles?.find(r=>r.id===rid); st.crew.push({ role_id: rid, role_name: role?.name||rid, count: 1, per_diem: role?.per_diem||1000 }); st.crew_manual = true; render(); } };
+      const addRoleWrap = $('#cr-addRole-wrap'); if(addRoleWrap) { const roleOpts = (s.roles||[]).map(r => ({ value: r.id, label: r.name })); addRoleWrap.appendChild(CRSelect.create({ id: 'addRole', options: roleOpts, value: roleOpts[0]?.value || '', placeholder: 'Роль...', onChange: () => {} })); }
+      const addCrewBtn = $('#addCrewBtn'); if(addCrewBtn) addCrewBtn.onclick = () => { const rid = CRSelect.getValue('addRole'); if(rid && !st.crew.find(c=>c.role_id===rid)){ const role = s.roles?.find(r=>r.id===rid); st.crew.push({ role_id: rid, role_name: role?.name||rid, count: 1, per_diem: role?.per_diem||1000 }); st.crew_manual = true; render(); } };
       $$('[data-sur]').forEach(cb => cb.onchange = () => { const id = cb.dataset.sur; if(cb.checked){ if(!st.surcharges.includes(id)) st.surcharges.push(id); } else { st.surcharges = st.surcharges.filter(x=>x!==id); } render(); });
-      
+
       // Time tab
       const daysMan = $('#daysMan'); if(daysMan) daysMan.onchange = () => { st.days_manual = daysMan.checked; };
       ['prep','work','demob'].forEach(k => { const inp = $(`#c_${k}`); if(inp) inp.oninput = () => { st[k+'_days'] = num(inp.value); st.days_manual = true; render(); }; });
@@ -414,19 +408,21 @@
       const chemMan = $('#chemMan'); if(chemMan) chemMan.onchange = () => { st.chem_manual = chemMan.checked; };
       $$('[data-chi]').forEach(inp => inp.oninput = () => { const i = +inp.dataset.chi; if(st.chemicals[i]) { st.chemicals[i].kg = num(inp.value); st.chem_manual = true; render(); } });
       $$('[data-chdel]').forEach(btn => btn.onclick = () => { st.chemicals.splice(+btn.dataset.chdel, 1); st.chem_manual = true; render(); });
-      const addChemBtn = $('#addChemBtn'); if(addChemBtn) addChemBtn.onclick = () => { const cid = $('#addChem')?.value; if(cid && !st.chemicals.find(c=>c.id===cid)){ st.chemicals.push({ id: cid, kg: 100 }); st.chem_manual = true; render(); } };
-      
+      const addChemWrap = $('#cr-addChem-wrap'); if(addChemWrap) { const chemOpts = (s.chemicals||[]).map(c => ({ value: c.id, label: c.name + ' (' + c.price_kg + '\u20BD/\u043A\u0433)' })); addChemWrap.appendChild(CRSelect.create({ id: 'addChem', options: chemOpts, value: chemOpts[0]?.value || '', placeholder: 'Химия...', onChange: () => {} })); }
+      const addChemBtn = $('#addChemBtn'); if(addChemBtn) addChemBtn.onclick = () => { const cid = CRSelect.getValue('addChem'); if(cid && !st.chemicals.find(c=>c.id===cid)){ st.chemicals.push({ id: cid, kg: 100 }); st.chem_manual = true; render(); } };
+
       // Equip tab
       const equipMan = $('#equipMan'); if(equipMan) equipMan.onchange = () => { st.equip_manual = equipMan.checked; };
       $$('[data-eqi]').forEach(inp => inp.oninput = () => { const i = +inp.dataset.eqi; if(st.equipment[i]) { st.equipment[i].qty = num(inp.value); st.equip_manual = true; render(); } });
-      $$('[data-eqr]').forEach(sel => sel.onchange = () => { const i = +sel.dataset.eqr; if(st.equipment[i]) { st.equipment[i].rent = sel.value==='1'; st.equip_manual = true; render(); } });
+      (st.equipment||[]).forEach((eq, i) => { const eqrWrap = $('#cr-eqr-' + i); if(eqrWrap) { eqrWrap.appendChild(CRSelect.create({ id: 'eqr_' + i, options: [{ value: '0', label: 'Наше' }, { value: '1', label: 'Аренда' }], value: eq.rent ? '1' : '0', searchable: false, onChange: (v) => { if(st.equipment[i]) { st.equipment[i].rent = v === '1'; st.equip_manual = true; render(); } } })); } });
       $$('[data-eqdel]').forEach(btn => btn.onclick = () => { st.equipment.splice(+btn.dataset.eqdel, 1); st.equip_manual = true; render(); });
-      const addEqBtn = $('#addEqBtn'); if(addEqBtn) addEqBtn.onclick = () => { const eid = $('#addEq')?.value; if(eid && !st.equipment.find(e=>e.id===eid)){ st.equipment.push({ id: eid, qty: 1, rent: false }); st.equip_manual = true; render(); } };
-      
+      const addEqWrap = $('#cr-addEq-wrap'); if(addEqWrap) { const allEq = window.CALC_EQUIPMENT || []; const eqCats = [...new Set(allEq.map(e => e.category))]; const eqGrouped = eqCats.map(cat => ({ group: cat, items: allEq.filter(e => e.category === cat).map(e => ({ value: e.id, label: e.name })) })); addEqWrap.appendChild(CRSelect.create({ id: 'addEq', options: eqGrouped, value: '', placeholder: 'Оборудование...', onChange: () => {} })); }
+      const addEqBtn = $('#addEqBtn'); if(addEqBtn) addEqBtn.onclick = () => { const eid = CRSelect.getValue('addEq'); if(eid && !st.equipment.find(e=>e.id===eid)){ st.equipment.push({ id: eid, qty: 1, rent: false }); st.equip_manual = true; render(); } };
+
       // Logistics tab
-      const tr = $('#c_tr'); if(tr) tr.onchange = () => { st.transport_id = tr.value; render(); };
-      const lod = $('#c_lod'); if(lod) lod.onchange = () => { st.lodging_type = lod.value; render(); };
-      const mob = $('#c_mob'); if(mob) mob.onchange = () => { st.mobilization_type = mob.value; render(); };
+      const trWrap = $('#cr-tr-wrap'); if(trWrap) { const trOpts = [{ value: 'auto', label: '\uD83E\uDD16 Авто' }].concat((s.transport||[]).map(t => ({ value: t.id, label: t.name + ' (до ' + (t.max_kg/1000) + 'т) \u2014 ' + t.rate_km + '\u20BD/км' }))); trWrap.appendChild(CRSelect.create({ id: 'c_tr', options: trOpts, value: st.transport_id, placeholder: 'Транспорт...', onChange: (v) => { st.transport_id = v; render(); } })); }
+      const lodWrap = $('#cr-lod-wrap'); if(lodWrap) { const lodOpts = Object.entries(s.lodging||{}).map(([id,l]) => ({ value: id, label: l.name + ' \u2014 ' + l.rate_per_day + '\u20BD/сут' })); lodWrap.appendChild(CRSelect.create({ id: 'c_lod', options: lodOpts, value: st.lodging_type, placeholder: 'Проживание...', onChange: (v) => { st.lodging_type = v; render(); } })); }
+      const mobWrap = $('#cr-mob-wrap'); if(mobWrap) { const mobOpts = [{ value: 'auto', label: '\uD83E\uDD16 Авто' }].concat(Object.entries(s.mobilization||{}).map(([id,m]) => ({ value: id, label: m.name + ' \u2014 ' + m.rate_per_person + '\u20BD/чел' }))); mobWrap.appendChild(CRSelect.create({ id: 'c_mob', options: mobOpts, value: st.mobilization_type, placeholder: 'Мобилизация...', onChange: (v) => { st.mobilization_type = v; render(); } })); }
       
       // Totals tab
       const margin = $('#c_margin'); if(margin) margin.oninput = () => { st.margin_pct = num(margin.value); render(); };
@@ -537,7 +533,7 @@
       $$('.calc-tabs .tab').forEach(btn => btn.onclick = () => { tab = btn.dataset.tab; render(); });
 
       // Object tab
-      const wt = $('#c_wt'); if(wt) wt.onchange = () => { st.work_type_id = wt.value; st.params = {}; st.crew_manual = st.days_manual = st.chem_manual = st.equip_manual = false; render(); };
+      const wtWrap = $('#cr-wt-wrap'); if(wtWrap) { const wtOpts = (s.work_types || []).map(w => ({ value: w.id, label: (w.icon||'') + ' ' + w.name })); wtWrap.appendChild(CRSelect.create({ id: 'c_wt', options: wtOpts, value: st.work_type_id, placeholder: 'Тип работы...', onChange: (v) => { st.work_type_id = v; st.params = {}; st.crew_manual = st.days_manual = st.chem_manual = st.equip_manual = false; render(); } })); }
       const city = $('#c_city'); if(city) {
         city.oninput = () => { st.city = city.value; if(window.findCity){ const dl=$('#citylist'); if(dl) dl.innerHTML = window.findCity(city.value).map(c=>`<option value="${c.name}">${c.name} (${c.km} км)</option>`).join(''); } };
         city.onchange = () => { if(window.getCityDistance){ const km = window.getCityDistance(city.value); if(km!==null){ st.distance_km = km; const inp=$('#c_km'); if(inp) inp.value = km; } } };
@@ -548,13 +544,15 @@
 
       // Params tab
       $$('[data-p]').forEach(inp => inp.oninput = () => { st.params[inp.dataset.p] = inp.type==='number' ? num(inp.value) : inp.value; });
+      { const wt = s.work_types?.find(w => w.id === st.work_type_id); if(wt?.params?.length) { wt.params.forEach(p => { if(p.type === 'select') { const wrap = $('#cr-param-' + p.id); if(wrap) { const pOpts = (p.options||[]).map(o => ({ value: o, label: o })); wrap.appendChild(CRSelect.create({ id: 'param_' + p.id, options: pOpts, value: st.params[p.id] ?? '', placeholder: 'Выберите...', onChange: (v) => { st.params[p.id] = v; } })); } } }); } }
       const autoBtn = $('#autoBtn'); if(autoBtn) autoBtn.onclick = () => { st.crew_manual = st.days_manual = st.chem_manual = st.equip_manual = false; render(); toast("Авто","Пересчитано"); };
 
       // Crew tab
       const crewMan = $('#crewMan'); if(crewMan) crewMan.onchange = () => { st.crew_manual = crewMan.checked; };
       $$('[data-ci]').forEach(inp => inp.oninput = () => { const i = +inp.dataset.ci; if(st.crew[i]) { st.crew[i].count = num(inp.value); st.crew_manual = true; render(); } });
       $$('[data-cdel]').forEach(btn => btn.onclick = () => { st.crew.splice(+btn.dataset.cdel, 1); st.crew_manual = true; render(); });
-      const addCrewBtn = $('#addCrewBtn'); if(addCrewBtn) addCrewBtn.onclick = () => { const rid = $('#addRole')?.value; if(rid && !st.crew.find(c=>c.role_id===rid)){ const role = s.roles?.find(r=>r.id===rid); st.crew.push({ role_id: rid, role_name: role?.name||rid, count: 1, per_diem: role?.per_diem||1000 }); st.crew_manual = true; render(); } };
+      const addRoleWrap = $('#cr-addRole-wrap'); if(addRoleWrap) { const roleOpts = (s.roles||[]).map(r => ({ value: r.id, label: r.name })); addRoleWrap.appendChild(CRSelect.create({ id: 'addRole', options: roleOpts, value: roleOpts[0]?.value || '', placeholder: 'Роль...', onChange: () => {} })); }
+      const addCrewBtn = $('#addCrewBtn'); if(addCrewBtn) addCrewBtn.onclick = () => { const rid = CRSelect.getValue('addRole'); if(rid && !st.crew.find(c=>c.role_id===rid)){ const role = s.roles?.find(r=>r.id===rid); st.crew.push({ role_id: rid, role_name: role?.name||rid, count: 1, per_diem: role?.per_diem||1000 }); st.crew_manual = true; render(); } };
       $$('[data-sur]').forEach(cb => cb.onchange = () => { const id = cb.dataset.sur; if(cb.checked){ if(!st.surcharges.includes(id)) st.surcharges.push(id); } else { st.surcharges = st.surcharges.filter(x=>x!==id); } render(); });
 
       // Time tab
@@ -565,19 +563,21 @@
       const chemMan = $('#chemMan'); if(chemMan) chemMan.onchange = () => { st.chem_manual = chemMan.checked; };
       $$('[data-chi]').forEach(inp => inp.oninput = () => { const i = +inp.dataset.chi; if(st.chemicals[i]) { st.chemicals[i].kg = num(inp.value); st.chem_manual = true; render(); } });
       $$('[data-chdel]').forEach(btn => btn.onclick = () => { st.chemicals.splice(+btn.dataset.chdel, 1); st.chem_manual = true; render(); });
-      const addChemBtn = $('#addChemBtn'); if(addChemBtn) addChemBtn.onclick = () => { const cid = $('#addChem')?.value; if(cid && !st.chemicals.find(c=>c.id===cid)){ st.chemicals.push({ id: cid, kg: 100 }); st.chem_manual = true; render(); } };
+      const addChemWrap = $('#cr-addChem-wrap'); if(addChemWrap) { const chemOpts = (s.chemicals||[]).map(c => ({ value: c.id, label: c.name + ' (' + c.price_kg + '\u20BD/\u043A\u0433)' })); addChemWrap.appendChild(CRSelect.create({ id: 'addChem', options: chemOpts, value: chemOpts[0]?.value || '', placeholder: 'Химия...', onChange: () => {} })); }
+      const addChemBtn = $('#addChemBtn'); if(addChemBtn) addChemBtn.onclick = () => { const cid = CRSelect.getValue('addChem'); if(cid && !st.chemicals.find(c=>c.id===cid)){ st.chemicals.push({ id: cid, kg: 100 }); st.chem_manual = true; render(); } };
 
       // Equip tab
       const equipMan = $('#equipMan'); if(equipMan) equipMan.onchange = () => { st.equip_manual = equipMan.checked; };
       $$('[data-eqi]').forEach(inp => inp.oninput = () => { const i = +inp.dataset.eqi; if(st.equipment[i]) { st.equipment[i].qty = num(inp.value); st.equip_manual = true; render(); } });
-      $$('[data-eqr]').forEach(sel => sel.onchange = () => { const i = +sel.dataset.eqr; if(st.equipment[i]) { st.equipment[i].rent = sel.value==='1'; st.equip_manual = true; render(); } });
+      (st.equipment||[]).forEach((eq, i) => { const eqrWrap = $('#cr-eqr-' + i); if(eqrWrap) { eqrWrap.appendChild(CRSelect.create({ id: 'eqr_' + i, options: [{ value: '0', label: 'Наше' }, { value: '1', label: 'Аренда' }], value: eq.rent ? '1' : '0', searchable: false, onChange: (v) => { if(st.equipment[i]) { st.equipment[i].rent = v === '1'; st.equip_manual = true; render(); } } })); } });
       $$('[data-eqdel]').forEach(btn => btn.onclick = () => { st.equipment.splice(+btn.dataset.eqdel, 1); st.equip_manual = true; render(); });
-      const addEqBtn = $('#addEqBtn'); if(addEqBtn) addEqBtn.onclick = () => { const eid = $('#addEq')?.value; if(eid && !st.equipment.find(e=>e.id===eid)){ st.equipment.push({ id: eid, qty: 1, rent: false }); st.equip_manual = true; render(); } };
+      const addEqWrap = $('#cr-addEq-wrap'); if(addEqWrap) { const allEq = window.CALC_EQUIPMENT || []; const eqCats = [...new Set(allEq.map(e => e.category))]; const eqGrouped = eqCats.map(cat => ({ group: cat, items: allEq.filter(e => e.category === cat).map(e => ({ value: e.id, label: e.name })) })); addEqWrap.appendChild(CRSelect.create({ id: 'addEq', options: eqGrouped, value: '', placeholder: 'Оборудование...', onChange: () => {} })); }
+      const addEqBtn = $('#addEqBtn'); if(addEqBtn) addEqBtn.onclick = () => { const eid = CRSelect.getValue('addEq'); if(eid && !st.equipment.find(e=>e.id===eid)){ st.equipment.push({ id: eid, qty: 1, rent: false }); st.equip_manual = true; render(); } };
 
       // Logistics tab
-      const tr = $('#c_tr'); if(tr) tr.onchange = () => { st.transport_id = tr.value; render(); };
-      const lod = $('#c_lod'); if(lod) lod.onchange = () => { st.lodging_type = lod.value; render(); };
-      const mob = $('#c_mob'); if(mob) mob.onchange = () => { st.mobilization_type = mob.value; render(); };
+      const trWrap = $('#cr-tr-wrap'); if(trWrap) { const trOpts = [{ value: 'auto', label: '\uD83E\uDD16 Авто' }].concat((s.transport||[]).map(t => ({ value: t.id, label: t.name + ' (до ' + (t.max_kg/1000) + 'т) \u2014 ' + t.rate_km + '\u20BD/км' }))); trWrap.appendChild(CRSelect.create({ id: 'c_tr', options: trOpts, value: st.transport_id, placeholder: 'Транспорт...', onChange: (v) => { st.transport_id = v; render(); } })); }
+      const lodWrap = $('#cr-lod-wrap'); if(lodWrap) { const lodOpts = Object.entries(s.lodging||{}).map(([id,l]) => ({ value: id, label: l.name + ' \u2014 ' + l.rate_per_day + '\u20BD/сут' })); lodWrap.appendChild(CRSelect.create({ id: 'c_lod', options: lodOpts, value: st.lodging_type, placeholder: 'Проживание...', onChange: (v) => { st.lodging_type = v; render(); } })); }
+      const mobWrap = $('#cr-mob-wrap'); if(mobWrap) { const mobOpts = [{ value: 'auto', label: '\uD83E\uDD16 Авто' }].concat(Object.entries(s.mobilization||{}).map(([id,m]) => ({ value: id, label: m.name + ' \u2014 ' + m.rate_per_person + '\u20BD/чел' }))); mobWrap.appendChild(CRSelect.create({ id: 'c_mob', options: mobOpts, value: st.mobilization_type, placeholder: 'Мобилизация...', onChange: (v) => { st.mobilization_type = v; render(); } })); }
 
       // Totals tab
       const margin = $('#c_margin'); if(margin) margin.oninput = () => { st.margin_pct = num(margin.value); render(); };

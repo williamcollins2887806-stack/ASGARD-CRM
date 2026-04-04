@@ -563,14 +563,15 @@ function showCorrectionSheet(employees, workId) {
   const t = DS.t;
   const wrap = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
 
-  const empSelect = el('select', {
-    style: { width: '100%', height: '44px', borderRadius: '12px', border: '1px solid ' + t.border, background: t.bg2, color: t.text, padding: '0 12px', fontSize: '0.9375rem' },
+  const empSelectWrap = el('div', {});
+  const empSelectEl = CRSelect.create({
+    id: 'field-corr-emp',
+    options: employees.map(function(emp) { return { value: String(emp.stages[0]?.id || ''), label: emp.fio }; }),
+    placeholder: '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0430\u0431\u043E\u0447\u0435\u0433\u043E',
+    clearable: false,
   });
-  empSelect.appendChild(el('option', { value: '' }, '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0430\u0431\u043E\u0447\u0435\u0433\u043E'));
-  for (const emp of employees) {
-    empSelect.appendChild(el('option', { value: String(emp.stages[0]?.id || '') }, emp.fio));
-  }
-  wrap.appendChild(empSelect);
+  empSelectWrap.appendChild(empSelectEl);
+  wrap.appendChild(empSelectWrap);
 
   const noteInput = el('textarea', {
     placeholder: '\u0427\u0442\u043E \u043D\u0443\u0436\u043D\u043E \u0438\u0441\u043F\u0440\u0430\u0432\u0438\u0442\u044C...',
@@ -584,7 +585,7 @@ function showCorrectionSheet(employees, workId) {
       background: DS.t.goldGrad, color: '#FFF', fontSize: '1rem', fontWeight: '700', cursor: 'pointer',
     },
     onClick: async () => {
-      const stageId = parseInt(empSelect.value);
+      const stageId = parseInt(CRSelect.getValue('field-corr-emp') || '0');
       if (!stageId || !noteInput.value.trim()) { F.Toast({ message: '\u0417\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0432\u0441\u0435 \u043F\u043E\u043B\u044F', type: 'error' }); return; }
       const resp = await API.post('/stages/request-correction', { stage_id: stageId, note: noteInput.value.trim() });
       sheet.remove();

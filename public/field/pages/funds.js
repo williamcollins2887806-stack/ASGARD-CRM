@@ -300,18 +300,17 @@ function openExpenseSheet(fundId, fund, content) {
   });
   sheetContent.appendChild(descInput);
 
-  // Category selector
-  var catSelect = el('select', {
-    style: {
-      width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid ' + t.border,
-      background: t.bg2, color: t.text, fontSize: '1rem', boxSizing: 'border-box',
-    },
+  // Category selector (CRSelect)
+  var catSelectWrap = el('div', {});
+  var catSelectEl = CRSelect.create({
+    id: 'field-expense-cat',
+    options: EXPENSE_CATEGORIES.map(function(cat) { return { value: cat, label: cat }; }),
+    placeholder: 'Категория...',
+    clearable: false,
+    searchable: false,
   });
-  catSelect.appendChild(el('option', { value: '' }, 'Категория...'));
-  for (var cat of EXPENSE_CATEGORIES) {
-    catSelect.appendChild(el('option', { value: cat }, cat));
-  }
-  sheetContent.appendChild(catSelect);
+  catSelectWrap.appendChild(catSelectEl);
+  sheetContent.appendChild(catSelectWrap);
 
   // Supplier
   var supplierInput = el('input', {
@@ -414,7 +413,7 @@ function openExpenseSheet(fundId, fund, content) {
       var formData = new FormData();
       formData.append('amount', amount);
       formData.append('description', descInput.value.trim());
-      formData.append('category', catSelect.value);
+      formData.append('category', CRSelect.getValue('field-expense-cat') || '');
       formData.append('supplier', supplierInput.value.trim());
       formData.append('source', currentSource);
       if (photoInput.files && photoInput.files[0]) {

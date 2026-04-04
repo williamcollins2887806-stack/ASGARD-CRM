@@ -55,6 +55,10 @@ window.AsgardFieldTab = (function () {
     confirmed: '#10b981',
   };
 
+  /* ── CRSelect row counter for crew selects ── */
+  let _ftRowId = 0;
+  const _ftTariffIds = [];  // track tariff CRSelect IDs for category-change re-population
+
   // ═══════════════════════════════════════════════════════════════════
   // MAIN ENTRY POINT
   // ═══════════════════════════════════════════════════════════════════
@@ -138,6 +142,9 @@ window.AsgardFieldTab = (function () {
   // TAB 1: БРИГАДА (CREW)
   // ═══════════════════════════════════════════════════════════════════
   async function renderCrewTab(container, work, user, settingsData, isActive) {
+    // Clean up previous CRSelect instances for crew rows
+    _ftTariffIds.forEach(id => { try { CRSelect.destroy(id); } catch (_) {} });
+    _ftTariffIds.length = 0;
     container.innerHTML = '<div class="help">Загрузка бригады…</div>';
 
     // Load tariffs and employees
@@ -267,24 +274,24 @@ window.AsgardFieldTab = (function () {
       addCrewRow(tbody, emp, a, filteredTariffs, comboTariffs, allEmployees);
     }
 
-    // Category change → re-filter tariffs
+    // Category change → re-filter tariffs (CRSelect)
     catSelect.addEventListener('change', () => {
       const newCat = catSelect.value;
       const newFiltered = allTariffs.filter(t => t.category === newCat);
-      // Update all tariff dropdowns
-      tbody.querySelectorAll('select[data-field="tariff"]').forEach(sel => {
-        const curVal = sel.value;
-        sel.innerHTML = '<option value="">— выберите —</option>';
-        newFiltered.forEach(t => {
-          const opt = document.createElement('option');
-          opt.value = t.id;
-          opt.textContent = `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)}₽)`;
-          if (String(t.id) === curVal) opt.selected = true;
-          sel.appendChild(opt);
-        });
-        // Trigger points/rate recalc
-        sel.dispatchEvent(new Event('change'));
+      const newOpts = [{ value: '', label: '— выберите —' }].concat(
+        newFiltered.map(t => ({ value: String(t.id), label: `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)}₽)` }))
+      );
+      // Update all tariff CRSelect instances
+      _ftTariffIds.forEach(crId => {
+        try {
+          const curVal = CRSelect.getValue(crId);
+          CRSelect.setOptions(crId, newOpts);
+          if (curVal) CRSelect.setValue(crId, curVal);
+        } catch (_) { /* row may have been removed */ }
       });
+      // Re-populate filteredTariffs reference for addCrewRow
+      filteredTariffs.length = 0;
+      filteredTariffs.push(...newFiltered);
     });
 
     // ── Action buttons ──
@@ -308,13 +315,17 @@ window.AsgardFieldTab = (function () {
       const rows = tbody.querySelectorAll('tr[data-crew-row]');
       const employees = [];
       rows.forEach(row => {
-        const empId = row.querySelector('select[data-field="employee"]')?.value;
-        const role = row.querySelector('select[data-field="role"]')?.value;
-        const tariffId = row.querySelector('select[data-field="tariff"]')?.value;
-        const comboId = row.querySelector('select[data-field="combo"]')?.value;
+        const pickerWrap = row.querySelector('[data-field="employee"]');
+        const pId = pickerWrap?.dataset.pickerId;
+        const empIds = pId ? CREmployeePicker.getSelected(pId) : [];
+        const empId = empIds[0];
+        const rid = row.dataset.crewRid;
+        const role = rid != null ? CRSelect.getValue('ft-role-' + rid) : null;
+        const tariffId = rid != null ? CRSelect.getValue('ft-tariff-' + rid) : null;
+        const comboId = rid != null ? CRSelect.getValue('ft-combo-' + rid) : null;
         if (empId) {
           employees.push({
-            employee_id: parseInt(empId),
+            employee_id: empId,
             field_role: role || 'worker',
             tariff_id: tariffId ? parseInt(tariffId) : null,
             combination_tariff_id: comboId ? parseInt(comboId) : null,
@@ -381,61 +392,72 @@ window.AsgardFieldTab = (function () {
 
   // ── Add a crew row ──
   function addCrewRow(tbody, employee, assignment, tariffs, comboTariffs, allEmployees) {
+    const rid = _ftRowId++;
     const tr = document.createElement('tr');
     tr.dataset.crewRow = '1';
+    tr.dataset.crewRid = rid;
     tr.style.cssText = 'border-bottom:1px solid var(--brd, rgba(255,255,255,0.06))';
 
     const cellStyle = 'padding:6px 8px;vertical-align:middle';
 
-    // Employee select
+    // Employee picker (CREmployeePicker, single-select)
     const tdEmp = document.createElement('td');
-    tdEmp.style.cssText = cellStyle;
-    const selEmp = document.createElement('select');
-    selEmp.dataset.field = 'employee';
-    selEmp.style.cssText = 'width:100%;min-width:180px;padding:5px;border-radius:4px;background:var(--bg1, #0D1117);color:var(--t1, #e6edf3);border:1px solid var(--brd)';
-    selEmp.innerHTML = '<option value="">— сотрудник —</option>';
-    allEmployees.forEach(e => {
-      const opt = document.createElement('option');
-      opt.value = e.id;
-      opt.textContent = e.fio + (e.phone ? ' · ' + e.phone : '');
-      if (employee && e.id === employee.id) opt.selected = true;
-      selEmp.appendChild(opt);
+    tdEmp.style.cssText = cellStyle + ';min-width:200px';
+    const pickerId = 'crew-emp-' + (employee ? employee.id : Date.now() + '-' + Math.random().toString(36).slice(2, 6));
+    CREmployeePicker.destroy(pickerId);
+    const pickerEl = CREmployeePicker.create({
+      id: pickerId,
+      employees: allEmployees.map(e => ({
+        id: e.id,
+        name: e.fio || e.full_name || '',
+        position: e.role_tag || e.phone || '',
+        role: e.role_tag || '',
+      })),
+      selected: employee ? [employee.id] : [],
+      maxSelect: 1,
+      placeholder: '— сотрудник —',
+      showChips: true,
+      title: 'Выбор сотрудника',
     });
-    tdEmp.appendChild(selEmp);
+    pickerEl.dataset.field = 'employee';
+    pickerEl.dataset.pickerId = pickerId;
+    tdEmp.appendChild(pickerEl);
     tr.appendChild(tdEmp);
 
-    // Role select
+    // Role select (CRSelect)
     const tdRole = document.createElement('td');
     tdRole.style.cssText = cellStyle;
-    const selRole = document.createElement('select');
-    selRole.dataset.field = 'role';
-    selRole.style.cssText = 'padding:5px;border-radius:4px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)';
-    ROLES.forEach(r => {
-      const opt = document.createElement('option');
-      opt.value = r.value;
-      opt.textContent = r.label;
-      if (assignment && assignment.field_role === r.value) opt.selected = true;
-      selRole.appendChild(opt);
+    const roleId = 'ft-role-' + rid;
+    CRSelect.destroy(roleId);
+    const selRoleEl = CRSelect.create({
+      id: roleId,
+      options: ROLES.map(r => ({ value: r.value, label: r.label })),
+      value: assignment?.field_role || 'worker',
+      searchable: false,
+      clearable: false,
     });
-    tdRole.appendChild(selRole);
+    tdRole.appendChild(selRoleEl);
     tr.appendChild(tdRole);
 
-    // Tariff select
+    // Tariff select (CRSelect)
     const tdTariff = document.createElement('td');
-    tdTariff.style.cssText = cellStyle;
-    const selTariff = document.createElement('select');
-    selTariff.dataset.field = 'tariff';
-    selTariff.style.cssText = 'min-width:200px;padding:5px;border-radius:4px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)';
-    selTariff.innerHTML = '<option value="">— выберите —</option>';
-    tariffs.forEach(t => {
-      const opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)}₽)`;
-      if (assignment && assignment.tariff_id === t.id) opt.selected = true;
-      selTariff.appendChild(opt);
+    tdTariff.style.cssText = cellStyle + ';min-width:200px';
+    const tariffId = 'ft-tariff-' + rid;
+    CRSelect.destroy(tariffId);
+    const tariffOpts = [{ value: '', label: '— выберите —' }].concat(
+      tariffs.map(t => ({ value: String(t.id), label: `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)}₽)` }))
+    );
+    const selTariffEl = CRSelect.create({
+      id: tariffId,
+      options: tariffOpts,
+      value: assignment?.tariff_id ? String(assignment.tariff_id) : '',
+      placeholder: '— выберите —',
+      clearable: false,
+      onChange: () => updatePointsRate(),
     });
-    tdTariff.appendChild(selTariff);
+    tdTariff.appendChild(selTariffEl);
     tr.appendChild(tdTariff);
+    _ftTariffIds.push(tariffId);
 
     // Points (auto)
     const tdPoints = document.createElement('td');
@@ -451,22 +473,23 @@ window.AsgardFieldTab = (function () {
     tdRate.textContent = '—';
     tr.appendChild(tdRate);
 
-    // Combination select
+    // Combination select (CRSelect)
     const tdCombo = document.createElement('td');
     tdCombo.style.cssText = cellStyle + ';text-align:center';
-    const selCombo = document.createElement('select');
-    selCombo.dataset.field = 'combo';
-    selCombo.style.cssText = 'padding:5px;border-radius:4px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);max-width:120px';
-    selCombo.innerHTML = '<option value="">Нет</option>';
-    comboTariffs.forEach(t => {
-      if (!t.is_combinable) return;
-      const opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = `${t.position_name} (+${t.points || 1}б)`;
-      if (assignment && assignment.combination_tariff_id === t.id) opt.selected = true;
-      selCombo.appendChild(opt);
+    const comboId = 'ft-combo-' + rid;
+    CRSelect.destroy(comboId);
+    const comboOpts = [{ value: '', label: 'Нет' }].concat(
+      comboTariffs.filter(t => t.is_combinable).map(t => ({ value: String(t.id), label: `${t.position_name} (+${t.points || 1}б)` }))
+    );
+    const selComboEl = CRSelect.create({
+      id: comboId,
+      options: comboOpts,
+      value: assignment?.combination_tariff_id ? String(assignment.combination_tariff_id) : '',
+      placeholder: 'Нет',
+      clearable: false,
+      onChange: () => updatePointsRate(),
     });
-    tdCombo.appendChild(selCombo);
+    tdCombo.appendChild(selComboEl);
     tr.appendChild(tdCombo);
 
     // SMS status
@@ -486,16 +509,24 @@ window.AsgardFieldTab = (function () {
     delBtn.textContent = '✕';
     delBtn.title = 'Удалить из бригады';
     delBtn.style.cssText = 'background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:4px 8px';
-    delBtn.addEventListener('click', () => tr.remove());
+    delBtn.addEventListener('click', () => {
+      CREmployeePicker.destroy(pickerId);
+      CRSelect.destroy('ft-role-' + rid);
+      CRSelect.destroy('ft-tariff-' + rid);
+      CRSelect.destroy('ft-combo-' + rid);
+      const idx = _ftTariffIds.indexOf('ft-tariff-' + rid);
+      if (idx !== -1) _ftTariffIds.splice(idx, 1);
+      tr.remove();
+    });
     tdDel.appendChild(delBtn);
     tr.appendChild(tdDel);
 
-    // Tariff change → auto update points & rate
+    // Tariff/combo change → auto update points & rate (CRSelect onChange)
     function updatePointsRate() {
-      const tariffId = selTariff.value;
-      const tariff = tariffs.find(t => String(t.id) === tariffId);
-      const comboId = selCombo.value;
-      const combo = comboTariffs.find(t => String(t.id) === comboId);
+      const tVal = CRSelect.getValue('ft-tariff-' + rid);
+      const tariff = tariffs.find(t => String(t.id) === tVal);
+      const cVal = CRSelect.getValue('ft-combo-' + rid);
+      const combo = comboTariffs.find(t => String(t.id) === cVal);
 
       const basePoints = tariff ? (tariff.points || 0) : 0;
       const comboPoints = combo ? (combo.points || 1) : 0;
@@ -516,9 +547,6 @@ window.AsgardFieldTab = (function () {
         tdCombo.title = '';
       }
     }
-
-    selTariff.addEventListener('change', updatePointsRate);
-    selCombo.addEventListener('change', updatePointsRate);
 
     // Initial calc
     if (assignment?.tariff_id) {
@@ -1753,20 +1781,32 @@ window.AsgardFieldTab = (function () {
       `<label style="display:flex;align-items:center;gap:6px;padding:2px 0"><input type="checkbox" value="${e.employee_id}" class="bulkEmpCb"> ${esc(e.fio)}</label>`
     ).join('');
 
-    const typeOptions = types.map(t =>
-      `<option value="${t}">${STAGE_LABELS_DT[t]}</option>`
-    ).join('');
+    const bulkTypeOpts = types.map(t => ({ value: t, label: STAGE_LABELS_DT[t] }));
 
     AsgardUI.showModal({
       title: 'Массовое создание этапов',
       html: `<div style="display:flex;flex-direction:column;gap:12px">
         <div><label><input type="checkbox" id="bulkSelectAll"> Выбрать всех</label></div>
         <div style="max-height:200px;overflow-y:auto">${empCheckboxes}</div>
-        <label>Тип этапа<br><select id="bulkType" class="input">${typeOptions}</select></label>
+        <label>Тип этапа<br><div id="cr-bulkType-wrap"></div></label>
         <label>Дата<br><input type="date" id="bulkDate" value="${today}" class="input"></label>
         <button class="btn gold" id="bulkSubmit">Создать для выбранных</button>
       </div>`,
       onMount: () => {
+        // Mount CRSelect for bulkType
+        const bulkWrap = document.getElementById('cr-bulkType-wrap');
+        if (bulkWrap) {
+          CRSelect.destroy('bulkType');
+          const btEl = CRSelect.create({
+            id: 'bulkType',
+            options: bulkTypeOpts,
+            value: types[0] || '',
+            searchable: false,
+            clearable: false,
+          });
+          bulkWrap.appendChild(btEl);
+        }
+
         document.getElementById('bulkSelectAll').addEventListener('change', (e) => {
           document.querySelectorAll('.bulkEmpCb').forEach(cb => { cb.checked = e.target.checked; });
         });
@@ -1778,12 +1818,13 @@ window.AsgardFieldTab = (function () {
             body: JSON.stringify({
               employee_ids: ids,
               work_id: work.id,
-              stage_type: document.getElementById('bulkType').value,
+              stage_type: CRSelect.getValue('bulkType'),
               date_from: document.getElementById('bulkDate').value,
             }),
           });
           if (result.error) { toast('Ошибка: ' + result.error); return; }
           toast(`Создано ${result.created_count} этапов`);
+          CRSelect.destroy('bulkType');
           document.querySelector('.modal-overlay')?.remove();
           renderStagesTab(parentContainer, work, user);
         });
