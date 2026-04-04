@@ -288,7 +288,7 @@ window.AsgardAllWorksPage=(function(){
         return {start,end,label:(w.customer_name||t?.customer_name||""),sub:(w.work_title||t?.tender_title||""),barText:w.work_status||"",status:w.work_status||""};
       });
       const colors=settings.status_colors?.work||{};
-      showModal("Гантт \u2022 Все работы", AsgardGantt.navHtml()+'<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" style="max-height:70vh;overflow:auto"></div>');
+      showModal("Гантт \u2022 Все работы", AsgardGantt.navHtml()+'<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" class="cr-gantt-modal-body"></div>');
       setTimeout(()=>{
         const fi=document.getElementById('g-from'), ti=document.getElementById('g-to');
         if(!fi) return;

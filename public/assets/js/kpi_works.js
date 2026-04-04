@@ -556,7 +556,7 @@ window.AsgardKpiWorksPage=(function(){
         return {start,end,label:(w.customer_name||t?.customer_name||""),sub:(w.work_title||t?.tender_title||""),barText:w.work_status||"",status:w.work_status||""};
       });
       const colors=st.status_colors?.work||{};
-      showModal("\u0413\u0430\u043d\u0442\u0442 \u2022 \u0412\u0441\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", `${AsgardGantt.navHtml()}<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" style="max-height:70vh;overflow:auto"></div>`);
+      showModal("\u0413\u0430\u043d\u0442\u0442 \u2022 \u0412\u0441\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", `${AsgardGantt.navHtml()}<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" class="cr-gantt-modal-body"></div>`);
       setTimeout(()=>{
         const fi=document.getElementById('g-from'), ti=document.getElementById('g-to');
         if(!fi) return;

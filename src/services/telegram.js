@@ -14,6 +14,12 @@ let bot = null;
 // Состояние диалогов (chatId → ожидаемый ввод)
 const pendingInput = new Map();
 
+// Polling error tracking — exponential backoff + auto-stop
+let pollErrorCount = 0;
+let pollingStopped = false;
+const POLL_ERROR_LOG_THRESHOLD = 5;   // логировать первые N ошибок
+const POLL_ERROR_STOP_THRESHOLD = 50; // остановить polling после N ошибок подряд
+
 // ─────────────────────────────────────────────────────────────────
 // Initialize Bot
 // ─────────────────────────────────────────────────────────────────
@@ -39,9 +45,32 @@ async function init() {
     return;
   }
 
-  bot = new TelegramBot(token, { polling: false });
+  // Proxy support: set TELEGRAM_PROXY=socks5://host:port in .env
+  // Required when hosting provider blocks api.telegram.org
+  const botOptions = { polling: false };
+  const proxy = process.env.TELEGRAM_PROXY;
+  if (proxy) {
+    botOptions.request = { proxy };
+    console.log('[Telegram] Using proxy:', proxy);
+  }
+
+  bot = new TelegramBot(token, botOptions);
+
   bot.on('polling_error', (err) => {
-    console.error('[Telegram] Polling error:', err.code, err.message);
+    pollErrorCount++;
+    if (pollErrorCount <= POLL_ERROR_LOG_THRESHOLD) {
+      console.error(`[Telegram] Polling error (${pollErrorCount}):`, err.code, err.message);
+    }
+    if (pollErrorCount === POLL_ERROR_LOG_THRESHOLD + 1) {
+      console.error('[Telegram] Suppressing further polling errors (too many)');
+    }
+    if (pollErrorCount >= POLL_ERROR_STOP_THRESHOLD && !pollingStopped) {
+      pollingStopped = true;
+      console.error(`[Telegram] ${pollErrorCount} consecutive errors — stopping polling.`);
+      console.error('[Telegram] Possible cause: server cannot reach api.telegram.org (blocked by hosting provider?)');
+      console.error('[Telegram] Fix: set TELEGRAM_PROXY=socks5://host:port in .env, then restart');
+      bot.stopPolling();
+    }
   });
 
   // /start
@@ -215,6 +244,8 @@ async function init() {
   // Callback-кнопки
   initCallbackHandler();
 
+  pollErrorCount = 0;
+  pollingStopped = false;
   bot.startPolling({ restart: false }).catch(e => console.warn('[Telegram] Polling failed:', e.message));
   console.log('[Telegram] Bot started (v2.0 universal approvals)');
 }
@@ -583,6 +614,19 @@ ${event.description ? '\n📝 ' + event.description : ''}
   `);
 }
 
+async function restartPolling() {
+  if (!bot) {
+    console.warn('[Telegram] Cannot restart polling — bot not initialized');
+    return false;
+  }
+  try { bot.stopPolling(); } catch (e) {}
+  pollErrorCount = 0;
+  pollingStopped = false;
+  bot.startPolling({ restart: false }).catch(e => console.warn('[Telegram] Polling restart failed:', e.message));
+  console.log('[Telegram] Polling restarted manually');
+  return true;
+}
+
 async function shutdown() {
   if (bot) {
     try { await bot.stopPolling(); } catch (e) {}
@@ -598,6 +642,7 @@ module.exports = {
   broadcast,
   sendTempPassword,
   sendDeadlineReminder,
+  restartPolling,
   sendCalendarReminder,
   getBot: () => bot,
   shutdown

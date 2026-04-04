@@ -838,7 +838,7 @@ window.AsgardPmWorksPage=(function(){
         return { id:w.id, start, end, label, sub, barText:w.work_status||"" , status:w.work_status||"" };
       });
       const colors = settings.status_colors?.work||{};
-      showModal("Гантт • Работы", `${AsgardGantt.navHtml()}<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" style="max-height:70vh;overflow:auto"></div>`);
+      showModal("Гантт • Работы", `${AsgardGantt.navHtml()}<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" class="cr-gantt-modal-body"></div>`);
       setTimeout(()=>{
         const fi=document.getElementById('g-from'), ti=document.getElementById('g-to');
         if(!fi) return;
