@@ -1385,6 +1385,7 @@ ${docsHtml}</div>
           ${isNew ? `<button class="btn ghost" id="btnSaveDraft">💾 Черновик</button>` : ``}
           ${(t && !t.handoff_at && !t.distribution_requested_at && user.role==="TO") ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
           ${(t && !t.handoff_at && (user.role==="ADMIN"||isDirRole(user.role))) ? `<button class="btn red" id="btnHandoff">Передать в просчёт</button>` : ``}
+          ${(t && t.tender_status==='ТКП согласовано') ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено клиенту</button>` : ``}
         </div>
       `;
 
@@ -2390,6 +2391,22 @@ ${docsHtml}</div>
           await audit(user.id,"tender",id,"handoff",{to_pm:cur.responsible_pm_id});
           await AsgardDB.add("notifications",{user_id:cur.responsible_pm_id, is_read:false, created_at:isoNow(), title:"Новый тендер на просчёт", message:`${cur.customer_name} — ${cur.tender_title}`, link_hash:"#/pm-calcs"});
           toast("Передача","Тендер передан в просчёт");
+          await render({layout, title});
+          openTenderEditor(id);
+        });
+      }
+
+      // «КП отправлено клиенту» — quick-action button
+      if(document.getElementById("btnSentToClient")){
+        document.getElementById("btnSentToClient").addEventListener("click", async ()=>{
+          const id = tenderId;
+          const cur = await AsgardDB.get("tenders", id);
+          if(!cur || cur.tender_status !== 'ТКП согласовано'){ toast("Статус","Кнопка доступна только при статусе «ТКП согласовано»","err"); return; }
+          cur.tender_status = "КП отправлено";
+          await AsgardDB.put("tenders", cur);
+          await audit(user.id,"tender",id,"sent_to_client",{});
+          toast("Тендер","Статус изменён на «КП отправлено»");
+          if(window.AsgardTkpFollowup){ try { await AsgardTkpFollowup.activateFollowup(cur); } catch(e){} }
           await render({layout, title});
           openTenderEditor(id);
         });

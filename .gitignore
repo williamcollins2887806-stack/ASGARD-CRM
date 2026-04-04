@@ -18,3 +18,13 @@ _deprecated/
 *.pre_*
 public/temp_*
 public/*.tar.gz
+
+# Temp deploy/debug scripts
+_*.py
+/*.py
+/*.png
+/*.jpg
+/*.txt
+/*.html
+scripts/
+docs/

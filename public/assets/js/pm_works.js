@@ -1,3 +1,14 @@
+  const WORK_STATUS_TRANSITIONS = {
+    'Новая':            ['Подготовка'],
+    'Подготовка':       ['Мобилизация', 'Новая'],
+    'Мобилизация':      ['В работе', 'Подготовка'],
+    'В работе':         ['Подписание акта', 'На паузе'],
+    'На паузе':         ['В работе'],
+    'Подписание акта':  ['Работы сдали'],
+    'Работы сдали':     ['Закрыт'],
+    'Закрыт':           []
+  };
+
   function normalizeLinkValue(value){
     const raw = String(value || '').trim();
     if(!raw) return '';
@@ -945,7 +956,10 @@ window.AsgardPmWorksPage=(function(){
       `;
 
       showModal(`Работа #${w.id}`, html);
-      $('#w_status_w')?.appendChild(CRSelect.create({ id: 'w_status', options: (refs.work_statuses||[]).map(s=>({ value: s, label: s })), value: w.work_status || '', dropdownClass: 'z-modal' }));
+      const _curWorkStatus = w.work_status || '';
+      const _isAdminOrDir = user.role === 'ADMIN' || user.role === 'DIRECTOR_GEN';
+      const _workStatusOpts = _isAdminOrDir ? (refs.work_statuses||[]) : [...new Set((WORK_STATUS_TRANSITIONS[_curWorkStatus] || []).concat([_curWorkStatus]))];
+      $('#w_status_w')?.appendChild(CRSelect.create({ id: 'w_status', options: _workStatusOpts.map(s=>({ value: s, label: s })), value: _curWorkStatus, dropdownClass: 'z-modal' }));
 
       // вахта (UI)
       try{
