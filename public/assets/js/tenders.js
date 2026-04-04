@@ -112,7 +112,7 @@ window.AsgardTendersPage = (function(){
       customer_inn: document.getElementById("e_inn")?.value || '',
       customer_name: document.getElementById("e_customer")?.value || '',
       tender_title: document.getElementById("e_title")?.value || '',
-      tender_type: document.getElementById("e_type")?.value || '',
+      tender_type: CRSelect.getValue('e_type') || '',
       tender_price: document.getElementById("e_price")?.value || '',
       group_tag: document.getElementById("e_tag")?.value || '',
       work_start_plan: document.getElementById("e_ws")?.value || '',
@@ -130,7 +130,6 @@ window.AsgardTendersPage = (function(){
       'e_inn': draft.customer_inn,
       'e_customer': draft.customer_name,
       'e_title': draft.tender_title,
-      'e_type': draft.tender_type,
       'e_price': draft.tender_price,
       'e_tag': draft.group_tag,
       'e_ws': draft.work_start_plan,
@@ -143,6 +142,7 @@ window.AsgardTendersPage = (function(){
       const el = document.getElementById(id);
       if (el && value) el.value = value;
     }
+    if (draft.tender_type) CRSelect.setValue('e_type', draft.tender_type);
   }
 
   // === ПРОВЕРКА ДУБЛИКАТОВ (Этап 34) ===
@@ -480,22 +480,7 @@ async function getRefs(){
         <div class="tools m-tender-tools">
           <div class="field">
             <label>Период</label>
-            <select id="f_period">
-              <option value="">Все тендеры</option>
-              <option value="year:${new Date().getFullYear()}" selected>За ${new Date().getFullYear()} год</option>
-              <option value="year:${new Date().getFullYear()-1}">За ${new Date().getFullYear()-1} год</option>
-              ${(() => {
-                const opts = [];
-                const now = new Date();
-                for(let i = 0; i < 12; i++) {
-                  const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                  const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-                  const label = d.toLocaleDateString('ru-RU', {month:'long', year:'numeric'});
-                  opts.push('<option value="'+ym+'">'+label+'</option>');
-                }
-                return opts.join('');
-              })()}
-            </select>
+            <div id="f_period_w"></div>
           </div>
           <div class="field">
             <label>Поиск</label>
@@ -503,24 +488,15 @@ async function getRefs(){
           </div>
           <div class="field">
             <label>Тип</label>
-            <select id="f_type">
-              <option value="">Все</option>
-              ${TENDER_TYPES.map(tp=>`<option value="${esc(tp)}">${esc(tp)}</option>`).join("")}
-            </select>
+            <div id="f_type_w"></div>
           </div>
           <div class="field">
             <label>Статус</label>
-            <select id="f_status">
-              <option value="">Все</option>
-              ${refs.tender_statuses.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}
-            </select>
+            <div id="f_status_w"></div>
           </div>
           <div class="field">
             <label>Ответственный РП</label>
-            <select id="f_pm">
-              <option value="">Все</option>
-              ${pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}
-            </select>
+            <div id="f_pm_w"></div>
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap">
             <button class="btn" id="btnNew">+ Внести тендер</button>
@@ -561,6 +537,18 @@ async function getRefs(){
     `;
 
     await layout(body, {title: title||"Сага Тендеров"});
+
+    /* --- CRSelect: filter bar --- */
+    const _periodOpts = (() => {
+      const o = [{ value: '', label: 'Все тендеры' }, { value: 'year:' + new Date().getFullYear(), label: 'За ' + new Date().getFullYear() + ' год' }, { value: 'year:' + (new Date().getFullYear()-1), label: 'За ' + (new Date().getFullYear()-1) + ' год' }];
+      const now = new Date();
+      for(let i = 0; i < 12; i++) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); o.push({ value: ym, label: d.toLocaleDateString('ru-RU', {month:'long', year:'numeric'}) }); }
+      return o;
+    })();
+    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _periodOpts, value: 'year:' + new Date().getFullYear(), onChange: () => applyAndRender() }));
+    $('#f_type_w')?.appendChild(CRSelect.create({ id: 'f_type', options: [{ value: '', label: 'Все' }, ...TENDER_TYPES.map(tp => ({ value: tp, label: tp }))], onChange: () => applyAndRender() }));
+    $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...refs.tender_statuses.map(s => ({ value: s, label: s }))], onChange: () => applyAndRender() }));
+    $('#f_pm_w')?.appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...pms.map(p => ({ value: String(p.id), label: p.name }))], searchable: true, onChange: () => applyAndRender() }));
 
     const tb=$("#tb");
     const cnt=$("#cnt");
@@ -607,7 +595,7 @@ async function getRefs(){
             <td>${esc(ddl)}</td>
             <td>${esc(createdBy)}</td>
             <td style="white-space:nowrap">
-              <select id="dist_pm_${t.id}" style="min-width:220px">${opts}</select>
+              <div id="dist_pm_${t.id}_w" style="display:inline-block;min-width:220px;vertical-align:middle"></div>
               <button class="btn red" style="padding:6px 10px; margin-left:8px" data-assign="${t.id}">Назначить</button>
             </td>
           </tr>
@@ -633,11 +621,22 @@ async function getRefs(){
         <hr class="hr"/>
       `;
 
+      /* Mount CRSelect for each distribution row */
+      pending.forEach(t => {
+        const w = distPanel.querySelector(`#dist_pm_${t.id}_w`);
+        if (!w) return;
+        const distOpts = pms.map(p => {
+          const a = activeByPm.get(p.id)||0;
+          const dis = (lim>0 && a>=lim);
+          return { value: String(p.id), label: `${p.name} (${a}/${lim||'∞'})`, disabled: dis };
+        });
+        w.appendChild(CRSelect.create({ id: 'dist_pm_' + t.id, options: distOpts, placeholder: 'Выберите РП', searchable: true }));
+      });
+
       distPanel.querySelectorAll("button[data-assign]").forEach(btn=>{
         btn.addEventListener("click", async ()=>{
           const tid = Number(btn.getAttribute("data-assign"));
-          const sel = distPanel.querySelector(`#dist_pm_${tid}`);
-          const pmId = Number(sel && sel.value || 0);
+          const pmId = Number(CRSelect.getValue('dist_pm_' + tid) || 0);
           if(!pmId){ toast("Распределение","Выберите РП","err"); return; }
 
           // актуализируем и проверяем, что уже не назначено
@@ -726,6 +725,7 @@ async function getRefs(){
         await render({layout, title});
       }
 
+      const _winOptsMap = new Map();
       const rows = await Promise.all(reqs.map(async r=>{
         const t = await AsgardDB.get("tenders", r.tender_id);
         if(!t) return "";
@@ -734,6 +734,7 @@ async function getRefs(){
         const srcPm = (byId.get(r.source_pm_id)||{}).name || "—";
 
         const opts = [];
+        const crOpts = [];
         for(const p of pms){
           // overlap calc with existing works of PM
           const pmWorks = worksAll.filter(w=>Number(w.pm_id||0)===Number(p.id));
@@ -748,7 +749,9 @@ async function getRefs(){
           const warn = (maxOv>0 && maxOv<=7) ? ` ⚠${maxOv}д` : (maxOv>7 ? ` ⛔${maxOv}д` : "");
           const ovr = okOverride ? " ✅согл" : "";
           opts.push(`<option value="${p.id}" ${disabled}>${esc(p.name)}${warn}${ovr}</option>`);
+          crOpts.push({ value: String(p.id), label: p.name + warn + ovr, disabled: !!(maxOv>7 && !okOverride) });
         }
+        _winOptsMap.set(r.id, crOpts);
 
         return `
           <tr>
@@ -758,7 +761,7 @@ async function getRefs(){
             <td>${r.price_tkp!=null?money(r.price_tkp):"—"} / ${r.cost_plan!=null?money(r.cost_plan):"—"}</td>
             <td>${esc(srcPm)}</td>
             <td style="white-space:nowrap">
-              <select id="win_pm_${r.id}" style="min-width:240px">${opts.join("")}</select>
+              <div id="win_pm_${r.id}_w" style="display:inline-block;min-width:240px;vertical-align:middle"></div>
               <button class="btn red" style="padding:6px 10px; margin-left:8px" data-win-assign="${r.id}">Назначить</button>
               <button class="btn ghost" style="padding:6px 10px; margin-left:8px" data-win-consent="${r.id}">Запросить согласие</button>
             </td>
@@ -785,6 +788,12 @@ async function getRefs(){
         <hr class="hr"/>
       `;
 
+      /* Mount CRSelect for each win-assign row */
+      _winOptsMap.forEach((crOpts, reqId) => {
+        const w = winPanel.querySelector(`#win_pm_${reqId}_w`);
+        if (w) w.appendChild(CRSelect.create({ id: 'win_pm_' + reqId, options: crOpts, placeholder: 'Выберите РП', searchable: true }));
+      });
+
       winPanel.querySelectorAll("button[data-win-assign]").forEach(btn=>{
         btn.addEventListener("click", async ()=>{
           const reqId = Number(btn.getAttribute("data-win-assign"));
@@ -792,8 +801,7 @@ async function getRefs(){
           if(!req || req.status!=="pending"){ toast("Назначение","Уже обработано","warn"); await render({layout,title}); return; }
           const tender = await AsgardDB.get("tenders", req.tender_id);
           if(!tender){ toast("Назначение","Тендер не найден","err"); return; }
-          const sel = winPanel.querySelector(`#win_pm_${reqId}`);
-          const pmId = Number(sel && sel.value || 0);
+          const pmId = Number(CRSelect.getValue('win_pm_' + reqId) || 0);
           if(!pmId){ toast("Назначение","Выберите РП","err"); return; }
 
           // Check overlap again
@@ -860,8 +868,7 @@ async function getRefs(){
           const req = await AsgardDB.get("work_assign_requests", reqId);
           if(!req || req.status!=="pending"){ toast("Согласие","Запрос неактуален","warn"); return; }
           const tender = await AsgardDB.get("tenders", req.tender_id);
-          const sel = winPanel.querySelector(`#win_pm_${reqId}`);
-          const pmId = Number(sel && sel.value || 0);
+          const pmId = Number(CRSelect.getValue('win_pm_' + reqId) || 0);
           if(!pmId){ toast("Согласие","Выберите РП в списке","err"); return; }
           await requestOverride({reqId, pmId, tender});
         });
@@ -870,11 +877,11 @@ async function getRefs(){
 
     function applyAndRender(){
 
-      const periodVal = $("#f_period")?.value||"";
+      const periodVal = CRSelect.getValue('f_period')||"";
       const q = norm($("#f_q")?.value||"");
-      const tp = $("#f_type")?.value||"";
-      const st = $("#f_status")?.value||"";
-      const pm = $("#f_pm")?.value||"";
+      const tp = CRSelect.getValue('f_type')||"";
+      const st = CRSelect.getValue('f_status')||"";
+      const pm = CRSelect.getValue('f_pm')||"";
 
       let list = tenders.filter(t=>{
         // Фильтр по периоду
@@ -952,18 +959,15 @@ async function getRefs(){
       AsgardUI.makeResponsiveTable('.asg');
     }
 
-    $("#f_period").addEventListener("change", applyAndRender);
+    // CRSelect onChange уже вызывает applyAndRender()
     $("#f_q").addEventListener("input", applyAndRender);
-    $("#f_type").addEventListener("change", applyAndRender);
-    $("#f_status").addEventListener("change", applyAndRender);
-    $("#f_pm").addEventListener("change", applyAndRender);
 
     $("#btnReset").addEventListener("click", ()=>{
-      $("#f_period").value = "year:" + new Date().getFullYear();
+      CRSelect.setValue('f_period', 'year:' + new Date().getFullYear());
       $("#f_q").value="";
-      $("#f_type").value="";
-      $("#f_status").value="";
-      $("#f_pm").value="";
+      CRSelect.setValue('f_type', '');
+      CRSelect.setValue('f_status', '');
+      CRSelect.setValue('f_pm', '');
       applyAndRender();
     });
 
@@ -1006,15 +1010,16 @@ async function getRefs(){
         const html = `
           <div style="margin-bottom:16px">Выбрано тендеров: <b>${ids.length}</b></div>
           <div class="formrow">
-            <div><label>Новый ответственный РП</label><select id="bulk_sel_pm"><option value="">— выбрать —</option>${pmOpts}</select></div>
+            <div><label>Новый ответственный РП</label><div id="bulk_sel_pm_w"></div></div>
             <div><label>Причина</label><input id="bulk_sel_reason" value="Переназначение"/></div>
           </div>
           <hr class="hr"/>
           <button class="btn" id="bulk_sel_do">Переназначить</button>
         `;
         showModal("Переназначение выбранных тендеров", html);
+        $('#bulk_sel_pm_w')?.appendChild(CRSelect.create({ id: 'bulk_sel_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), searchable: true, dropdownClass: 'z-modal' }));
         $("#bulk_sel_do").addEventListener("click", async ()=>{
-          const newPmId = Number($("#bulk_sel_pm").value||0);
+          const newPmId = Number(CRSelect.getValue('bulk_sel_pm')||0);
           const reason = ($("#bulk_sel_reason").value||"").trim();
           if(!newPmId){ toast("Ошибка","Выберите РП","err"); return; }
           if(!reason){ toast("Ошибка","Укажите причину","err"); return; }
@@ -1080,17 +1085,11 @@ async function getRefs(){
           <div class="formrow">
             <div>
               <label>Статус тендеров для переноса</label>
-              <select id="bulk_status">
-                <option value="__ALL__">— Все статусы —</option>
-                ${statusOpts}
-              </select>
+              <div id="bulk_status_w"></div>
             </div>
             <div>
               <label>Новый ответственный РП</label>
-              <select id="bulk_pm">
-                <option value="">— выбрать —</option>
-                ${pmOpts}
-              </select>
+              <div id="bulk_pm_w"></div>
             </div>
           </div>
           <div class="formrow">
@@ -1107,10 +1106,12 @@ async function getRefs(){
         `;
         
         showModal("Массовое переназначение тендеров", html);
-        
+        $('#bulk_status_w')?.appendChild(CRSelect.create({ id: 'bulk_status', options: [{ value: '__ALL__', label: '— Все статусы —' }, ...Object.keys(byStatus).map(s => ({ value: s, label: s + ' (' + byStatus[s].length + ')' }))], value: '__ALL__', dropdownClass: 'z-modal' }));
+        $('#bulk_pm_w')?.appendChild(CRSelect.create({ id: 'bulk_pm', placeholder: '— выбрать —', options: pms.filter(p => p.login !== 'archive').map(p => ({ value: String(p.id), label: p.name })), searchable: true, dropdownClass: 'z-modal' }));
+
         $("#bulk_do").addEventListener("click", async ()=>{
-          const newPmId = Number($("#bulk_pm").value || 0);
-          const statusFilter = $("#bulk_status").value;
+          const newPmId = Number(CRSelect.getValue('bulk_pm') || 0);
+          const statusFilter = CRSelect.getValue('bulk_status') || '__ALL__';
           const reason = $("#bulk_reason").value.trim();
           
           if(!newPmId){ toast("Ошибка", "Выберите РП", "err"); return; }
@@ -1222,16 +1223,11 @@ async function getRefs(){
           </div>
           <div>
             <label>Тип заявки</label>
-            <select id="e_type" ${full?"":"disabled"}>
-              ${typeOptions}
-            </select>
+            <div id="e_type_w"></div>
           </div>
           <div>
             <label>Ответственный РП</label>
-            <select id="e_pm" ${(user.role==="TO")?"disabled":(full?"":"disabled")}>
-              <option value="">— выбрать —</option>
-              ${pmOptions}
-            </select>
+            <div id="e_pm_w"></div>
             ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="help">Назначение РП выполняет директор после кнопки «На распределение».</div>` : ``}
             ${(t && t.distribution_requested_at && !t.handoff_at) ? `<div class="help"><b>На распределении.</b> Ожидает назначения директором.</div>` : ``}
             ${(t && t.handoff_at && !canReassign) ? `<div class="help">Переназначение — только директор.</div>` : ``}
@@ -1239,9 +1235,7 @@ async function getRefs(){
           </div>
           <div>
             <label>Статус</label>
-            <select id="e_status" ${(!full||isNew)?"disabled":""}>
-              ${statusOptions}
-            </select>
+            <div id="e_status_w"></div>
           </div>
           <div>
             <label>Сумма (если есть)</label>
@@ -1305,6 +1299,14 @@ ${docsHtml}</div>
       `;
 
       showModal(isNew ? "Новый тендер" : `Тендер #${t.id}`, html);
+
+      /* Mount CRSelect for editor fields */
+      const _eTypeDis = !full;
+      const _ePmDis = (user.role==="TO") || !full;
+      const _eStatusDis = !full || isNew;
+      $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal' }));
+      $('#e_pm_w')?.appendChild(CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal' }));
+      $('#e_status_w')?.appendChild(CRSelect.create({ id: 'e_status', options: refs.tender_statuses.map(s => ({ value: s, label: s })), value: (t&&t.tender_status)||(isNew?'Черновик':''), disabled: _eStatusDis, dropdownClass: 'z-modal' }));
 
       // Restore draft for new tenders
       if (isNew) {
@@ -1650,15 +1652,16 @@ ${docsHtml}</div>
             <hr class="hr"/>
             <div class="formrow">
               <div><label>Новый РП</label>
-                <select id="r_pm"><option value="">— выбрать —</option>${pmOptions}</select>
+                <div id="r_pm_w"></div>
               </div>
               <div><label>Причина</label><input id="r_reason" placeholder="почему меняем ответственного"/></div>
             </div>
             <div style="margin-top:12px"><button class="btn" id="r_do">Переназначить</button></div>
           `;
           showModal("Переназначить РП", html3);
+          $('#r_pm_w')?.appendChild(CRSelect.create({ id: 'r_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), searchable: true, dropdownClass: 'z-modal' }));
           document.getElementById("r_do").addEventListener("click", async ()=>{
-            const newPm = Number(document.getElementById("r_pm").value||0);
+            const newPm = Number(CRSelect.getValue('r_pm')||0);
             const reason = document.getElementById("r_reason").value.trim();
             if(!newPm){ toast("Переназначение","Выберите РП","err"); return; }
             if(!reason){ toast("Переназначение","Укажите причину","err"); return; }
@@ -1818,9 +1821,9 @@ ${docsHtml}</div>
         const customer_inn = String(innRaw).replace(/\D/g, "");
         let customer=document.getElementById("e_customer").value.trim();
         const title=document.getElementById("e_title").value.trim();
-        const tenderType = (document.getElementById("e_type")?.value || "Тендер").trim();
-        const pmId = Number(document.getElementById("e_pm").value||0) || null;
-        const status=document.getElementById("e_status").value;
+        const tenderType = (CRSelect.getValue('e_type') || "Тендер").trim();
+        const pmId = Number(CRSelect.getValue('e_pm')||0) || null;
+        const status = CRSelect.getValue('e_status') || '';
         const priceRaw=document.getElementById("e_price").value.trim();
         const price = priceRaw ? Number(priceRaw.replace(/\s/g,"").replace(",", ".")) : null;
         const ws=document.getElementById("e_ws").value.trim()||null;
@@ -2342,12 +2345,7 @@ ${docsHtml}</div>
       </div></div>
       <div class="formrow">
         <div><label>Приоритет</label>
-          <select id="tmcPriority">
-            <option value="low">Низкий</option>
-            <option value="normal" selected>Обычный</option>
-            <option value="high">Высокий</option>
-            <option value="urgent">Срочный</option>
-          </select>
+          <div id="tmcPriority_w"></div>
         </div>
         <div><label>Нужно к дате</label><input id="tmcNeeded" type="date" value="${(tender.work_start_plan || '').slice(0,10)}" /></div>
       </div>
@@ -2368,6 +2366,7 @@ ${docsHtml}</div>
       </div>`;
 
     showModal('Заявка на ввоз/вывоз ТМЦ', html);
+    $('#tmcPriority_w')?.appendChild(CRSelect.create({ id: 'tmcPriority', options: [{ value: 'low', label: 'Низкий' },{ value: 'normal', label: 'Обычный' },{ value: 'high', label: 'Высокий' },{ value: 'urgent', label: 'Срочный' }], value: 'normal', dropdownClass: 'z-modal' }));
 
     $('#btnCreateTmcReq')?.addEventListener('click', async () => {
       const lines = ($('#tmcItems')?.value || '').split('\n').filter(s => s.trim());
@@ -2382,7 +2381,7 @@ ${docsHtml}</div>
       const body = {
         work_id: tender.work_id || null,
         title: $('#tmcTitle')?.value || '',
-        priority: $('#tmcPriority')?.value || 'normal',
+        priority: CRSelect.getValue('tmcPriority') || 'normal',
         needed_by: $('#tmcNeeded')?.value || null,
         supplier: $('#tmcSupplier')?.value || '',
         delivery_address: $('#tmcAddr')?.value || '',
