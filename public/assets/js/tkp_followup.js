@@ -195,9 +195,8 @@ window.AsgardTkpFollowup = (function(){
   function openResultModal(tender, onSave){
     const { $, esc, showModal, toast } = AsgardUI;
     
-    const statusOptions = Object.entries(FOLLOWUP_STATUSES)
-      .map(([key, info]) => `<option value="${key}">${info.label}</option>`)
-      .join('');
+    const statusOpts = Object.entries(FOLLOWUP_STATUSES)
+      .map(([key, info]) => ({ value: key, label: info.label }));
     
     const html = `
       <div class="help" style="margin-bottom:15px">
@@ -217,9 +216,7 @@ window.AsgardTkpFollowup = (function(){
       <div class="formrow">
         <div>
           <label>Решение клиента</label>
-          <select id="tkp_status">
-            ${statusOptions}
-          </select>
+          <div id="crw_tkp_status"></div>
         </div>
       </div>
       
@@ -229,10 +226,16 @@ window.AsgardTkpFollowup = (function(){
     `;
     
     showModal('Контроль ТКП', html);
-    
+
+    $('#crw_tkp_status')?.appendChild(CRSelect.create({
+      id: 'tkp_status', fullWidth: true,
+      options: statusOpts, value: statusOpts[0]?.value || '',
+      dropdownClass: 'z-modal'
+    }));
+
     $('#btnSendResult')?.addEventListener('click', async () => {
       const result = $('#tkp_result')?.value?.trim();
-      const status = $('#tkp_status')?.value;
+      const status = CRSelect.getValue('tkp_status');
       
       if(!result){
         toast('Ошибка', 'Опишите результат разговора', 'err');

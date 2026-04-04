@@ -187,17 +187,12 @@ window.AsgardKpiWorksPage=(function(){
         <div class="panel" style="margin-bottom:var(--sp-6);">
           <div class="tools">
             <div class="field"><label>\u041f\u0435\u0440\u0438\u043e\u0434</label>
-              <select id="f_mode">
-                <option value="all">\u0412\u0441\u0451 \u0432\u0440\u0435\u043c\u044f</option>
-                <option value="year">\u0413\u043e\u0434</option>
-                <option value="month" selected>\u041c\u0435\u0441\u044f\u0446</option>
-                <option value="last12">\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 12 \u043c\u0435\u0441\u044f\u0446\u0435\u0432</option>
-              </select>
+              <div id="crw_f_mode"></div>
             </div>
-            <div class="field" id="box_year" style="display:none"><label>\u0413\u043e\u0434</label><select id="f_year">${generateYearOptions(yNow)}</select></div>
-            <div class="field" id="box_month"><label>\u041c\u0435\u0441\u044f\u0446</label><select id="f_month">${generatePeriodOptions(ymNow)}</select></div>
+            <div class="field" id="box_year" style="display:none"><label>\u0413\u043e\u0434</label><div id="crw_f_year"></div></div>
+            <div class="field" id="box_month"><label>\u041c\u0435\u0441\u044f\u0446</label><div id="crw_f_month"></div></div>
             <div class="field"><label>\u0420\u041f</label>
-              <select id="f_pm"><option value="">\u0412\u0441\u0435</option>${pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
+              <div id="crw_f_pm"></div>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end">
               <button class="btn ghost mini" id="btnGantt">\u0413\u0430\u043d\u0442\u0442</button>
@@ -234,14 +229,14 @@ window.AsgardKpiWorksPage=(function(){
     const cDiv=$("#c_div");
 
     function pickMode(){
-      const mode=$("#f_mode").value;
+      const mode=CRSelect.getValue("f_mode")||"month";
       $("#box_year").style.display = (mode==="year") ? "block" : "none";
       $("#box_month").style.display = (mode==="month") ? "block" : "none";
     }
 
     function getRange(){
-      const mode=$("#f_mode").value;
-      return mkRange(mode, $("#f_year").value, $("#f_month").value);
+      const mode=CRSelect.getValue("f_mode")||"month";
+      return mkRange(mode, CRSelect.getValue("f_year")||"", CRSelect.getValue("f_month")||"");
     }
 
     function workDateForFilter(w){
@@ -368,7 +363,7 @@ window.AsgardKpiWorksPage=(function(){
     }
 
     function apply(){
-      const pmId = $("#f_pm").value;
+      const pmId = CRSelect.getValue("f_pm")||"";
       const range = getRange();
 
       const wList = works.filter(w=>{
@@ -520,13 +515,36 @@ window.AsgardKpiWorksPage=(function(){
       });
     }
 
+    // Монтируем CRSelect фильтры
+    const yearOpts = [];
+    for(let y=yNow; y>=yNow-5; y--) yearOpts.push({value:String(y), label:String(y)});
+
+    const periodOpts = [{value:'', label:'Все'}];
+    for(let i=0; i<24; i++){
+      const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const val=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      periodOpts.push({value:val, label:d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'})});
+    }
+
+    const pmOpts = [{value:'', label:'Все'}, ...pms.map(p=>({value:String(p.id), label:p.name}))];
+
+    $("#crw_f_mode")?.appendChild(CRSelect.create({
+      id:'f_mode', fullWidth:true, value:'month',
+      options:[{value:'all',label:'Всё время'},{value:'year',label:'Год'},{value:'month',label:'Месяц'},{value:'last12',label:'Последние 12 месяцев'}],
+      onChange:()=>{ pickMode(); apply(); }
+    }));
+    $("#crw_f_year")?.appendChild(CRSelect.create({
+      id:'f_year', fullWidth:true, options:yearOpts, value:String(yNow), onChange:apply
+    }));
+    $("#crw_f_month")?.appendChild(CRSelect.create({
+      id:'f_month', fullWidth:true, options:periodOpts, value:ymNow, onChange:apply
+    }));
+    $("#crw_f_pm")?.appendChild(CRSelect.create({
+      id:'f_pm', fullWidth:true, clearable:true, placeholder:'Все', options:pmOpts, value:'', onChange:apply
+    }));
+
     pickMode();
     apply();
-
-    $("#f_mode").addEventListener("change", ()=>{ pickMode(); apply(); });
-    $("#f_year").addEventListener("input", apply);
-    $("#f_month").addEventListener("input", apply);
-    $("#f_pm").addEventListener("change", apply);
 
     $("#btnGantt").addEventListener("click", async ()=>{
       const settings = await (async()=>{ const s=await AsgardDB.get("settings","app"); return s?JSON.parse(s.value_json||"{}"):{}; })();

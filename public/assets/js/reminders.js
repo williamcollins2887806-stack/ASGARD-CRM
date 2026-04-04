@@ -324,24 +324,23 @@ window.AsgardReminders = (function(){
     const auth = await AsgardAuth.getAuth();
     if (!auth?.user) return;
     
-    const typeOptions = Object.entries(REMINDER_TYPES).map(([k, v]) =>
-      `<option value="${k}" ${options.type === k ? 'selected' : ''}>${v.icon} ${v.label}</option>`
-    ).join('');
-    
-    const priorityOptions = Object.entries(REMINDER_PRIORITIES).map(([k, v]) =>
-      `<option value="${k}" ${(options.priority || 'normal') === k ? 'selected' : ''}>${v.label}</option>`
-    ).join('');
+    const typeOpts = Object.entries(REMINDER_TYPES).map(([k, v]) =>
+      ({ value: k, label: v.icon + ' ' + v.label })
+    );
+    const priorityOpts = Object.entries(REMINDER_PRIORITIES).map(([k, v]) =>
+      ({ value: k, label: v.label })
+    );
     
     const html = `
       <div class="stack" style="gap:16px">
         <div class="formrow">
           <div>
             <label>Тип</label>
-            <select class="inp" id="rem_type">${typeOptions}</select>
+            <div id="crw_rem_type"></div>
           </div>
           <div>
             <label>Приоритет</label>
-            <select class="inp" id="rem_priority">${priorityOptions}</select>
+            <div id="crw_rem_priority"></div>
           </div>
         </div>
         
@@ -374,7 +373,18 @@ window.AsgardReminders = (function(){
     `;
     
     showModal('🔔 Новое напоминание', html);
-    
+
+    $('#crw_rem_type')?.appendChild(CRSelect.create({
+      id: 'rem_type', fullWidth: true,
+      options: typeOpts, value: options.type || typeOpts[0]?.value || '',
+      dropdownClass: 'z-modal'
+    }));
+    $('#crw_rem_priority')?.appendChild(CRSelect.create({
+      id: 'rem_priority', fullWidth: true,
+      options: priorityOpts, value: options.priority || 'normal',
+      dropdownClass: 'z-modal'
+    }));
+
     $('#remCancel')?.addEventListener('click', closeModal);
     
     $('#remSave')?.addEventListener('click', async () => {
@@ -385,8 +395,8 @@ window.AsgardReminders = (function(){
       }
       
       const reminder = {
-        type: $('#rem_type').value,
-        priority: $('#rem_priority').value,
+        type: CRSelect.getValue('rem_type'),
+        priority: CRSelect.getValue('rem_priority'),
         title: title,
         message: $('#rem_message').value.trim(),
         due_date: $('#rem_date').value || null,

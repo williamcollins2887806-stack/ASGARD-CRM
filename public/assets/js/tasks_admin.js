@@ -77,26 +77,15 @@ window.AsgardTasksAdminPage = (function() {
         <div class="filters-panel" id="tasksFiltersPanel">
           <div class="filter-group">
             <label>Статус:</label>
-            <select id="filterStatus" onchange="AsgardTasksAdminPage.applyFilters()">
-              <option value="">Все</option>
-              <option value="new">Новые</option>
-              <option value="accepted">Принятые</option>
-              <option value="in_progress">В работе</option>
-              <option value="done">Выполненные</option>
-              <option value="overdue">Просроченные</option>
-            </select>
+            <div id="filterStatus_w" style="display:inline-block;min-width:140px"></div>
           </div>
           <div class="filter-group">
             <label>Исполнитель:</label>
-            <select id="filterAssignee" onchange="AsgardTasksAdminPage.applyFilters()">
-              <option value="">Все</option>
-            </select>
+            <div id="filterAssignee_w" style="display:inline-block;min-width:160px"></div>
           </div>
           <div class="filter-group">
             <label>Создатель:</label>
-            <select id="filterCreator" onchange="AsgardTasksAdminPage.applyFilters()">
-              <option value="">Все</option>
-            </select>
+            <div id="filterCreator_w" style="display:inline-block;min-width:160px"></div>
           </div>
           <button class="btn ghost" onclick="AsgardTasksAdminPage.resetFilters()">
             Сбросить
@@ -138,9 +127,7 @@ window.AsgardTasksAdminPage = (function() {
 
               <div class="form-group">
                 <label for="taskAssignee">Исполнитель *</label>
-                <select id="taskAssignee" required>
-                  <option value="">Выберите сотрудника</option>
-                </select>
+                <div id="taskAssignee_w"></div>
               </div>
 
               <div class="form-group">
@@ -162,12 +149,7 @@ window.AsgardTasksAdminPage = (function() {
                 </div>
                 <div class="form-group">
                   <label for="taskPriority">Приоритет</label>
-                  <select id="taskPriority">
-                    <option value="low">Низкий</option>
-                    <option value="normal" selected>Обычный</option>
-                    <option value="high">Высокий</option>
-                    <option value="urgent">Срочно</option>
-                  </select>
+                  <div id="taskPriority_w"></div>
                 </div>
               </div>
 
@@ -260,36 +242,18 @@ window.AsgardTasksAdminPage = (function() {
    * Заполнение селектов пользователей
    */
   function populateUserSelects() {
-    const assigneeFilter = document.getElementById('filterAssignee');
-    const creatorFilter = document.getElementById('filterCreator');
-    const taskAssignee = document.getElementById('taskAssignee');
-
     const activeUsers = users.filter(u => u.is_active && (u.display_name || u.username || u.name || '').trim());
+    const userOpts = activeUsers.map(u => ({ value: String(u.id), label: u.display_name || u.username }));
+    const userOptsRole = activeUsers.map(u => ({ value: String(u.id), label: (u.display_name || u.username) + ' (' + u.role + ')' }));
 
-    activeUsers.forEach(user => {
-      const displayName = user.display_name || user.username;
+    const statusOpts = [{ value: '', label: 'Все' }, { value: 'new', label: 'Новые' }, { value: 'accepted', label: 'Принятые' }, { value: 'in_progress', label: 'В работе' }, { value: 'done', label: 'Выполненные' }, { value: 'overdue', label: 'Просроченные' }];
+    const prioOpts = [{ value: 'low', label: 'Низкий' }, { value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочно' }];
 
-      if (assigneeFilter) {
-        const opt1 = document.createElement('option');
-        opt1.value = user.id;
-        opt1.textContent = displayName;
-        assigneeFilter.appendChild(opt1);
-      }
-
-      if (creatorFilter) {
-        const opt2 = document.createElement('option');
-        opt2.value = user.id;
-        opt2.textContent = displayName;
-        creatorFilter.appendChild(opt2);
-      }
-
-      if (taskAssignee) {
-        const opt3 = document.createElement('option');
-        opt3.value = user.id;
-        opt3.textContent = `${displayName} (${user.role})`;
-        taskAssignee.appendChild(opt3);
-      }
-    });
+    document.getElementById('filterStatus_w')?.appendChild(CRSelect.create({ id: 'filterStatus', options: statusOpts, onChange: () => applyFilters() }));
+    document.getElementById('filterAssignee_w')?.appendChild(CRSelect.create({ id: 'filterAssignee', options: [{ value: '', label: 'Все' }, ...userOpts], searchable: true, onChange: () => applyFilters() }));
+    document.getElementById('filterCreator_w')?.appendChild(CRSelect.create({ id: 'filterCreator', options: [{ value: '', label: 'Все' }, ...userOpts], searchable: true, onChange: () => applyFilters() }));
+    document.getElementById('taskAssignee_w')?.appendChild(CRSelect.create({ id: 'taskAssignee', options: [{ value: '', label: 'Выберите сотрудника' }, ...userOptsRole], searchable: true }));
+    document.getElementById('taskPriority_w')?.appendChild(CRSelect.create({ id: 'taskPriority', options: prioOpts, value: 'normal' }));
   }
 
   /**
@@ -411,9 +375,9 @@ window.AsgardTasksAdminPage = (function() {
    * Применение фильтров
    */
   function applyFilters() {
-    currentFilters.status = document.getElementById('filterStatus')?.value || '';
-    currentFilters.assignee = document.getElementById('filterAssignee')?.value || '';
-    currentFilters.creator = document.getElementById('filterCreator')?.value || '';
+    currentFilters.status = CRSelect.getValue('filterStatus') || '';
+    currentFilters.assignee = CRSelect.getValue('filterAssignee') || '';
+    currentFilters.creator = CRSelect.getValue('filterCreator') || '';
     renderTasksTable();
   }
 
@@ -421,9 +385,9 @@ window.AsgardTasksAdminPage = (function() {
    * Сброс фильтров
    */
   function resetFilters() {
-    document.getElementById('filterStatus').value = '';
-    document.getElementById('filterAssignee').value = '';
-    document.getElementById('filterCreator').value = '';
+    CRSelect.setValue('filterStatus', '');
+    CRSelect.setValue('filterAssignee', '');
+    CRSelect.setValue('filterCreator', '');
     currentFilters = { status: '', assignee: '', creator: '' };
     renderTasksTable();
   }
@@ -451,10 +415,10 @@ window.AsgardTasksAdminPage = (function() {
     document.getElementById('taskSubmitBtn').textContent = 'Сохранить';
     document.getElementById('taskId').value = taskId;
 
-    document.getElementById('taskAssignee').value = task.assigned_to;
+    CRSelect.setValue('taskAssignee', task.assigned_to ? String(task.assigned_to) : '');
     document.getElementById('taskTitle').value = task.title || '';
     document.getElementById('taskDescription').value = task.description || '';
-    document.getElementById('taskPriority').value = task.priority || 'normal';
+    CRSelect.setValue('taskPriority', task.priority || 'normal');
     document.getElementById('taskComment').value = task.creator_comment || '';
 
     if (task.deadline) {
@@ -495,10 +459,10 @@ window.AsgardTasksAdminPage = (function() {
     const isEdit = !!taskId;
 
     const data = {
-      assignee_id: parseInt(document.getElementById('taskAssignee').value),
+      assignee_id: parseInt(CRSelect.getValue('taskAssignee')),
       title: document.getElementById('taskTitle').value.trim(),
       description: document.getElementById('taskDescription').value.trim(),
-      priority: document.getElementById('taskPriority').value,
+      priority: CRSelect.getValue('taskPriority') || 'normal',
       creator_comment: document.getElementById('taskComment').value.trim()
     };
 

@@ -317,10 +317,7 @@ window.AsgardBonusApproval = (function(){
             <span class="help">Всего запросов: ${requests.length}</span>
             ${pendingCount > 0 ? `<span class="badge" style="background:var(--amber);color:#000;margin-left:8px">⏳ На согласовании: ${pendingCount}</span>` : ''}
           </div>
-          <select id="fltStatus" class="inp" style="width:180px">
-            <option value="">Все статусы</option>
-            ${Object.entries(BONUS_STATUSES).map(([id, s]) => `<option value="${id}">${s.name}</option>`).join('')}
-          </select>
+          <div id="crw_fltStatus" style="width:180px"></div>
         </div>
         
         ${requests.length === 0 ? '<div class="help" style="text-align:center;padding:40px">Запросов на согласование премий нет</div>' : `
@@ -332,18 +329,20 @@ window.AsgardBonusApproval = (function(){
     `;
     
     await layout(html, { title: title || 'Согласование премий' });
-    
-    // Фильтр по статусу
-    document.getElementById('fltStatus')?.addEventListener('change', (e) => {
-      const status = e.target.value;
-      document.querySelectorAll('.bonus-request-card').forEach(card => {
-        if (!status || card.dataset.status === status) {
-          card.style.display = '';
-        } else {
-          card.style.display = 'none';
-        }
-      });
-    });
+
+    $('#crw_fltStatus')?.appendChild(CRSelect.create({
+      id: 'fltStatus', fullWidth: true, placeholder: 'Все статусы', clearable: true,
+      options: Object.entries(BONUS_STATUSES).map(([id, s]) => ({ value: id, label: s.name })),
+      onChange: (status) => {
+        document.querySelectorAll('.bonus-request-card').forEach(card => {
+          if (!status || card.dataset.status === status) {
+            card.style.display = '';
+          } else {
+            card.style.display = 'none';
+          }
+        });
+      }
+    }));
     
     // Обработчики кнопок
     attachRequestHandlers(empMap, isDirector);

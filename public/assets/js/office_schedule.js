@@ -130,14 +130,14 @@ window.AsgardOfficeSchedulePage=(function(){
 
   async function openPicker({staffId, staffName, dateIso, currentCode, colors}){
     return new Promise(resolve=>{
-      const opts = STATUS.map(s=>`<option value="${esc(s.code)}"${s.code===currentCode?' selected':''}>${esc(s.label)}</option>`).join("");
+      const schedOpts = STATUS.map(s=>({ value: s.code, label: s.label }));
       const html = `
         <div class="stack" style="gap:12px">
           <div class="muted">Сотрудник: <b>${esc(staffName||"")}</b></div>
           <div class="muted">Дата: <b>${AsgardUI.formatDate(dateIso)}</b></div>
           <div>
             <label for="schedPick">Статус</label>
-            <select id="schedPick">${opts}</select>
+            <div id="crw_schedPick"></div>
           </div>
           <div class="row" style="gap:10px;justify-content:flex-end;margin-top:10px">
             <button class="btn ghost" data-act="clear">Очистить</button>
@@ -146,12 +146,15 @@ window.AsgardOfficeSchedulePage=(function(){
           </div>
         </div>`;
       showModal({title:"Статус дня", html, wide:false, onMount:()=>{
-        $("#schedPick")?.focus();
+        $("#crw_schedPick")?.appendChild(CRSelect.create({
+          id:'schedPick', fullWidth:true, value:currentCode||'',
+          options: schedOpts, dropdownClass:'z-modal'
+        }));
         $$("[data-act]").forEach(b=>b.addEventListener("click", async ()=>{
           const act=b.dataset.act;
           if(act==="cancel"){ closeModal(); resolve(null); return; }
           if(act==="clear"){ closeModal(); resolve(""); return; }
-          const code=$("#schedPick")?.value||"";
+          const code=CRSelect.getValue("schedPick")||"";
           closeModal();
           resolve(code);
         }));

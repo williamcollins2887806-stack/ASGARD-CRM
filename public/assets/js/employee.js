@@ -175,11 +175,7 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Пол</label>
-              <select id="gender" ${canEdit?"":"disabled"}>
-                <option value="">—</option>
-                <option value="male" ${emp.gender==="male"?"selected":""}>Мужской</option>
-                <option value="female" ${emp.gender==="female"?"selected":""}>Женский</option>
-              </select>
+              <div id="gender_w"></div>
             </div>
             <div>
               <label>Должность</label>
@@ -311,12 +307,7 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Семейное положение</label>
-              <select id="marital_status" ${canEdit?"":"disabled"}>
-                <option value="">—</option>
-                <option value="single" ${emp.marital_status==="single"?"selected":""}>Не женат/не замужем</option>
-                <option value="married" ${emp.marital_status==="married"?"selected":""}>Женат/замужем</option>
-                <option value="divorced" ${emp.marital_status==="divorced"?"selected":""}>Разведён(а)</option>
-              </select>
+              <div id="marital_status_w"></div>
             </div>
             <div>
               <label>Количество детей</label>
@@ -336,17 +327,7 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Группа крови</label>
-              <select id="blood_type" ${canEdit?"":"disabled"}>
-                <option value="">—</option>
-                <option value="O+" ${emp.blood_type==="O+"?"selected":""}>O(I)+</option>
-                <option value="O-" ${emp.blood_type==="O-"?"selected":""}>O(I)−</option>
-                <option value="A+" ${emp.blood_type==="A+"?"selected":""}>A(II)+</option>
-                <option value="A-" ${emp.blood_type==="A-"?"selected":""}>A(II)−</option>
-                <option value="B+" ${emp.blood_type==="B+"?"selected":""}>B(III)+</option>
-                <option value="B-" ${emp.blood_type==="B-"?"selected":""}>B(III)−</option>
-                <option value="AB+" ${emp.blood_type==="AB+"?"selected":""}>AB(IV)+</option>
-                <option value="AB-" ${emp.blood_type==="AB-"?"selected":""}>AB(IV)−</option>
-              </select>
+              <div id="blood_type_w"></div>
             </div>
             <div style="grid-column:1/-1">
               <label>Аллергии / мед. ограничения</label>
@@ -458,6 +439,12 @@ window.AsgardEmployeePage=(function(){
     `;
 
     await layout(html, {title: title || "Личное дело", motto: "Сильна дружина, где помнят имена и дела."});
+
+    // ─── CRSelect: employee form fields ───
+    $('#gender_w')?.appendChild(CRSelect.create({ id: 'gender', options: [{ value: '', label: '—' }, { value: 'male', label: 'Мужской' }, { value: 'female', label: 'Женский' }], value: emp.gender || '', disabled: !canEdit }));
+    $('#marital_status_w')?.appendChild(CRSelect.create({ id: 'marital_status', options: [{ value: '', label: '—' }, { value: 'single', label: 'Не женат/не замужем' }, { value: 'married', label: 'Женат/замужем' }, { value: 'divorced', label: 'Разведён(а)' }], value: emp.marital_status || '', disabled: !canEdit }));
+    const _bloodOpts = [{ value: '', label: '—' }, { value: 'O+', label: 'O(I)+' }, { value: 'O-', label: 'O(I)−' }, { value: 'A+', label: 'A(II)+' }, { value: 'A-', label: 'A(II)−' }, { value: 'B+', label: 'B(III)+' }, { value: 'B-', label: 'B(III)−' }, { value: 'AB+', label: 'AB(IV)+' }, { value: 'AB-', label: 'AB(IV)−' }];
+    $('#blood_type_w')?.appendChild(CRSelect.create({ id: 'blood_type', options: _bloodOpts, value: emp.blood_type || '', disabled: !canEdit }));
 
     // ── Timeline / Gantt ──
     (function renderTimeline(){
@@ -618,7 +605,7 @@ window.AsgardEmployeePage=(function(){
         const birth=$("#birth")?.value?.trim();
         if(!birth){ toast("Проверка","Дата рождения обязательна","err"); return; }
         emp.birth_date=birth;
-        emp.gender=$("#gender")?.value || "";
+        emp.gender=CRSelect.getValue('gender') || "";
         emp.role_tag=$("#role")?.value?.trim() || "";
         emp.grade=$("#grade")?.value?.trim() || "";
         emp.hire_date=$("#hire_date")?.value || "";
@@ -652,12 +639,12 @@ window.AsgardEmployeePage=(function(){
         // Дополнительно
         emp.education=$("#education")?.value?.trim() || "";
         emp.specialty=$("#specialty")?.value?.trim() || "";
-        emp.marital_status=$("#marital_status")?.value || "";
+        emp.marital_status=CRSelect.getValue('marital_status') || "";
         emp.children_count=$("#children_count")?.value ? Number($("#children_count").value) : null;
         emp.clothing_size=$("#clothing_size")?.value?.trim() || "";
         emp.shoe_size=$("#shoe_size")?.value?.trim() || "";
         emp.height=$("#height")?.value ? Number($("#height").value) : null;
-        emp.blood_type=$("#blood_type")?.value || "";
+        emp.blood_type=CRSelect.getValue('blood_type') || "";
         emp.medical_notes=$("#medical_notes")?.value?.trim() || "";
 
         // Допуски
@@ -679,10 +666,7 @@ window.AsgardEmployeePage=(function(){
           <div class="formrow">
             <div style="grid-column:1/-1">
               <label for="w">Контракт</label>
-              <select id="w">
-                <option value="">—</option>
-                ${(works||[]).map(w=>`<option value="${w.id}">${esc(w.work_title||"")}</option>`).join("")}
-              </select>
+              <div id="w_w"></div>
             </div>
             <div>
               <label for="score">Оценка (1..10)</label>
@@ -698,8 +682,9 @@ window.AsgardEmployeePage=(function(){
           </div>
         `;
         showModal("Оценка сотрудника", body);
+        $('#w_w')?.appendChild(CRSelect.create({ id: 'w_sel', options: [{ value: '', label: '—' }, ...(works||[]).map(w => ({ value: String(w.id), label: w.work_title || '' }))], searchable: true, dropdownClass: 'z-modal' }));
         $("#btnSend").onclick = async ()=>{
-          const work_id = Number($("#w").value||0) || null;
+          const work_id = Number(CRSelect.getValue('w_sel')||0) || null;
           const score = Number($("#score").value||0);
           if(!(score>=1 && score<=10)){ toast("Проверка","Оценка 1..10","err"); return; }
           const comm = $("#comm").value.trim();

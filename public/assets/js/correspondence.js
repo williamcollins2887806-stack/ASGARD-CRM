@@ -354,37 +354,10 @@ window.AsgardCorrespondencePage = (function(){
           </div>
 
           <div class="corr-filters">
-            <div class="corr-filter">
-              <label>Год</label>
-              <select id="f_year">
-                <option value="" ${!filters.year ? 'selected' : ''}>Все</option>
-                ${[currentYear, currentYear-1, currentYear-2, currentYear-3, currentYear-4].map(y =>
-                  `<option value="${y}" ${filters.year == y ? 'selected' : ''}>${y}</option>`
-                ).join('')}
-              </select>
-            </div>
-            <div class="corr-filter">
-              <label>Месяц</label>
-              <select id="f_month">
-                <option value="">Все</option>
-                ${MONTHS.map((m, i) => `<option value="${i}" ${filters.month === String(i) ? 'selected' : ''}>${m}</option>`).join('')}
-              </select>
-            </div>
-            <div class="corr-filter">
-              <label>Направление</label>
-              <select id="f_direction">
-                <option value="">Все</option>
-                <option value="incoming" ${filters.direction === 'incoming' ? 'selected' : ''}>📥 Входящие</option>
-                <option value="outgoing" ${filters.direction === 'outgoing' ? 'selected' : ''}>📤 Исходящие</option>
-              </select>
-            </div>
-            <div class="corr-filter">
-              <label>Тип</label>
-              <select id="f_docType">
-                <option value="">Все</option>
-                ${DOC_TYPES.map(t => `<option value="${t.key}" ${filters.docType === t.key ? 'selected' : ''}>${t.icon} ${t.label}</option>`).join('')}
-              </select>
-            </div>
+            <div class="corr-filter"><label>Год</label><div id="f_year_w"></div></div>
+            <div class="corr-filter"><label>Месяц</label><div id="f_month_w"></div></div>
+            <div class="corr-filter"><label>Направление</label><div id="f_direction_w"></div></div>
+            <div class="corr-filter"><label>Тип</label><div id="f_docType_w"></div></div>
             <div class="corr-filter" style="flex:1; min-width:200px">
               <label>Поиск</label>
               <input id="f_search" placeholder="Тема, контрагент, номер..." value="${esc(filters.search)}"/>
@@ -452,11 +425,15 @@ window.AsgardCorrespondencePage = (function(){
     }
 
     function bindEvents(){
-      // Фильтры
-      $('#f_year')?.addEventListener('change', e => { filters.year = e.target.value; corrCurrentPage = 1; renderPage(); });
-      $('#f_month')?.addEventListener('change', e => { filters.month = e.target.value; corrCurrentPage = 1; renderPage(); });
-      $('#f_direction')?.addEventListener('change', e => { filters.direction = e.target.value; corrCurrentPage = 1; renderPage(); });
-      $('#f_docType')?.addEventListener('change', e => { filters.docType = e.target.value; corrCurrentPage = 1; renderPage(); });
+      // ─── CRSelect filters ───
+      const _yrOpts = [{ value: '', label: 'Все' }, ...[currentYear, currentYear-1, currentYear-2, currentYear-3, currentYear-4].map(y => ({ value: String(y), label: String(y) }))];
+      const _moOpts = [{ value: '', label: 'Все' }, ...MONTHS.map((m, i) => ({ value: String(i), label: m }))];
+      const _dirOpts = [{ value: '', label: 'Все' }, { value: 'incoming', label: '📥 Входящие' }, { value: 'outgoing', label: '📤 Исходящие' }];
+      const _dtOpts = [{ value: '', label: 'Все' }, ...DOC_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label }))];
+      $('#f_year_w')?.appendChild(CRSelect.create({ id: 'f_year', options: _yrOpts, value: filters.year || '', onChange: v => { filters.year = v; corrCurrentPage = 1; renderPage(); } }));
+      $('#f_month_w')?.appendChild(CRSelect.create({ id: 'f_month', options: _moOpts, value: filters.month || '', onChange: v => { filters.month = v; corrCurrentPage = 1; renderPage(); } }));
+      $('#f_direction_w')?.appendChild(CRSelect.create({ id: 'f_direction', options: _dirOpts, value: filters.direction || '', onChange: v => { filters.direction = v; corrCurrentPage = 1; renderPage(); } }));
+      $('#f_docType_w')?.appendChild(CRSelect.create({ id: 'f_docType', options: _dtOpts, value: filters.docType || '', onChange: v => { filters.docType = v; corrCurrentPage = 1; renderPage(); } }));
       $('#f_search')?.addEventListener('input', e => { filters.search = e.target.value; corrCurrentPage = 1; renderPage(); });
 
       // Pagination controls
@@ -509,9 +486,7 @@ window.AsgardCorrespondencePage = (function(){
             <input id="corr_number" value="${esc(autoNumber)}" placeholder="${isOutgoing ? 'Будет присвоен сервером при сохранении' : ''}" ${isOutgoing ? 'readonly style="background:rgba(148,163,184,.12);color:var(--muted);font-weight:600"' : ''}/>
           </div>
           <div><label>Тип документа</label>
-            <select id="corr_type">
-              ${DOC_TYPES.map(t => `<option value="${t.key}">${t.icon} ${t.label}</option>`).join('')}
-            </select>
+            <div id="corr_type_w"></div>
           </div>
         </div>
         <div class="formrow">
@@ -536,6 +511,7 @@ window.AsgardCorrespondencePage = (function(){
       `;
 
       showModal(`Новый документ`, html);
+      $('#corr_type_w')?.appendChild(CRSelect.create({ id: 'corr_type', options: DOC_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label })), dropdownClass: 'z-modal' }));
 
       // ── WOW: Мимир автозаполнение для корреспонденции ──
       // Форма корреспонденции использует id-селекторы (не name), поэтому маппинг вручную
@@ -665,7 +641,7 @@ window.AsgardCorrespondencePage = (function(){
         const item = {
           direction,
           date: $('#corr_date')?.value || today(),
-          doc_type: $('#corr_type')?.value || 'letter',
+          doc_type: CRSelect.getValue('corr_type') || 'letter',
           subject,
           counterparty: $('#corr_counterparty')?.value?.trim() || '',
           contact_person: $('#corr_contact')?.value?.trim() || '',
@@ -724,9 +700,7 @@ window.AsgardCorrespondencePage = (function(){
           <div><label>Дата</label><input id="corr_date" type="date" value="${(item.date || '').slice(0,10)}" ${lockOutgoingIdentity ? 'readonly style="background:rgba(148,163,184,.12);color:var(--muted);font-weight:600"' : ''}/></div>
           <div><label>${isOutgoing ? 'Номер (серверный)' : 'Номер'}</label><input id="corr_number" value="${esc(item.number || '')}" ${isOutgoing ? 'readonly style="background:rgba(148,163,184,.12);color:var(--muted);font-weight:600"' : ''}/></div>
           <div><label>Тип документа</label>
-            <select id="corr_type">
-              ${DOC_TYPES.map(t => `<option value="${t.key}" ${item.doc_type === t.key ? 'selected' : ''}>${t.icon} ${t.label}</option>`).join('')}
-            </select>
+            <div id="corr_type_w"></div>
           </div>
         </div>
         <div class="formrow">
@@ -756,6 +730,7 @@ window.AsgardCorrespondencePage = (function(){
       `;
 
       showModal(`Редактировать документ`, html);
+      $('#corr_type_w')?.appendChild(CRSelect.create({ id: 'corr_type', options: DOC_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label })), value: item.doc_type || 'letter', dropdownClass: 'z-modal' }));
 
       $('#btnUpdateCorr')?.addEventListener('click', async () => {
         const subject = $('#corr_subject')?.value?.trim();
@@ -784,7 +759,7 @@ window.AsgardCorrespondencePage = (function(){
         const oldNumber = item.number;
         const payload = {
           date: $('#corr_date')?.value || today(),
-          doc_type: $('#corr_type')?.value || 'letter',
+          doc_type: CRSelect.getValue('corr_type') || 'letter',
           subject,
           counterparty: $('#corr_counterparty')?.value?.trim() || '',
           contact_person: $('#corr_contact')?.value?.trim() || '',

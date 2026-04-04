@@ -156,13 +156,7 @@ window.AsgardTrainingPage = (function() {
           '<input id="tfProvider" value="' + esc(item.provider || '') + '" placeholder="Учебный центр, платформа" />' +
         '</div>' +
         '<div><label>Тип обучения</label>' +
-          '<select id="tfType" name="type">' +
-            '<option value="external"' + (item.training_type === 'external' ? ' selected' : '') + '>Внешнее</option>' +
-            '<option value="internal"' + (item.training_type === 'internal' ? ' selected' : '') + '>Внутреннее</option>' +
-            '<option value="conference"' + (item.training_type === 'conference' ? ' selected' : '') + '>Конференция</option>' +
-            '<option value="certification"' + (item.training_type === 'certification' ? ' selected' : '') + '>Сертификация</option>' +
-            '<option value="online"' + (item.training_type === 'online' ? ' selected' : '') + '>Онлайн-курс</option>' +
-          '</select>' +
+          '<div id="crw_tfType"></div>' +
         '</div>' +
       '</div>' +
       '<div class="formrow">' +
@@ -186,6 +180,18 @@ window.AsgardTrainingPage = (function() {
 
     showModal(isEdit ? 'Редактирование заявки #' + item.id : 'Новая заявка на обучение', html);
 
+    $('#crw_tfType')?.appendChild(CRSelect.create({
+      id: 'tfType', fullWidth: true, dropdownClass: 'z-modal',
+      options: [
+        { value: 'external', label: 'Внешнее' },
+        { value: 'internal', label: 'Внутреннее' },
+        { value: 'conference', label: 'Конференция' },
+        { value: 'certification', label: 'Сертификация' },
+        { value: 'online', label: 'Онлайн-курс' }
+      ],
+      value: item.training_type || 'external'
+    }));
+
     var btnSave = $('#btnSaveTraining');
     if (btnSave) {
       btnSave.addEventListener('click', async function() {
@@ -197,7 +203,7 @@ window.AsgardTrainingPage = (function() {
         var body = {
           course_name: courseName,
           provider: ($('#tfProvider') || {}).value || null,
-          training_type: ($('#tfType') || {}).value || 'external',
+          training_type: CRSelect.getValue('tfType') || 'external',
           date_start: ($('#tfDateStart') || {}).value || null,
           date_end: ($('#tfDateEnd') || {}).value || null,
           cost: parseFloat(($('#tfCost') || {}).value) || 0,

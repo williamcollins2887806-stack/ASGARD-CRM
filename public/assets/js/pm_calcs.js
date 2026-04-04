@@ -128,8 +128,7 @@ window.AsgardPmCalcsPage = (function(){
         <div class="qc-form">
           <div>
             <label>Город</label>
-            <input class="inp" id="qc_city" value="${esc(quick.city||"")}" placeholder="Москва, Сургут..." list="qc_citylist">
-            <datalist id="qc_citylist"></datalist>
+            <div id="cr-qc-city-wrap"></div>
           </div>
           <div>
             <label>Расстояние от Москвы, км</label>
@@ -261,21 +260,10 @@ window.AsgardPmCalcsPage = (function(){
       if(el) el.addEventListener("input", updateKPI);
     });
     
-    // Автоподсказка города
-    const cityInp = $("#qc_city");
-    if(cityInp){
-      cityInp.addEventListener("input", ()=>{
-        if(window.findCity){
-          const dl = $("#qc_citylist");
-          if(dl) dl.innerHTML = window.findCity(cityInp.value).map(c => `<option value="${c.name}">${c.name} (${c.km} км)</option>`).join("");
-        }
-      });
-      cityInp.addEventListener("change", ()=>{
-        if(window.getCityDistance){
-          const km = window.getCityDistance(cityInp.value);
-          if(km !== null) $("#qc_distance").value = km;
-        }
-      });
+    // Автоподсказка города (CRAutocomplete)
+    const cityWrap = $("#cr-qc-city-wrap");
+    if(cityWrap){
+      cityWrap.appendChild(CRAutocomplete.create({ id: 'qc_city', value: quick.city||"", placeholder: 'Москва, Сургут...', minChars: 2, fullWidth: true, inputClass: 'inp', fetchOptions: async (q) => { if(!window.findCity) return []; return window.findCity(q).map(c => ({ value: c.name, label: c.name, sublabel: c.km + ' км от Москвы', km: c.km })); }, onSelect: (item) => { if(!item) return; if(window.getCityDistance){ const km = window.getCityDistance(item.label); if(km !== null) $("#qc_distance").value = km; } } }));
     }
     
     updateKPI();
@@ -470,7 +458,7 @@ window.AsgardPmCalcsPage = (function(){
         <div class="tools">
           <div class="field">
             <label>Период</label>
-            <select id="f_period">${generatePeriodOptions(ymNow())}</select>
+            <div id="f_period_w"></div>
           </div>
           <div class="field">
             <label>Поиск</label>
@@ -478,19 +466,13 @@ window.AsgardPmCalcsPage = (function(){
           </div>
           <div class="field">
             <label>Статус</label>
-            <select id="f_status">
-              <option value="">Все</option>
-              ${refs.tender_statuses.filter(s=>s!=="Новый").map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}
-            </select>
+            <div id="f_status_w"></div>
           </div>
 
           ${isDir ? `
           <div class="field">
             <label>РП</label>
-            <select id="f_pm">
-              <option value="">Все</option>
-              ${pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}
-            </select>
+            <div id="f_pm_w"></div>
           </div>` : ``}
 
           <div class="field" style="min-width:280px">
@@ -563,12 +545,12 @@ window.AsgardPmCalcsPage = (function(){
 
     function apply(){
       const q = norm($("#f_q").value);
-      const period = norm($("#f_period").value);
-      const st = $("#f_status").value;
+      const period = norm(CRSelect.getValue('f_period') || '');
+      const st = CRSelect.getValue('f_status') || '';
       const showRef = $("#f_refused").checked;
       const allPeriod = $("#f_allperiod").checked;
       const showWon = $("#f_won").checked;
-      const pmFilter = isDir ? $("#f_pm").value : "";
+      const pmFilter = isDir ? (CRSelect.getValue('f_pm') || '') : "";
 
       let list = tenders.slice();
 
@@ -601,24 +583,28 @@ window.AsgardPmCalcsPage = (function(){
       cnt.textContent = `Показано: ${list.length} из ${tenders.length}.`;
     }
 
+    // CRSelect init — filters
+    const _periodOpts = [{ value: '', label: 'Все' }];
+    { const _now = new Date(); for(let i=0;i<24;i++){ const d=new Date(_now.getFullYear(),_now.getMonth()-i,1); const val=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; _periodOpts.push({ value: val, label: d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'}) }); } }
+    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _periodOpts, value: ymNow(), onChange: apply }));
+    $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...refs.tender_statuses.filter(s=>s!=="Новый").map(s=>({ value: s, label: s }))], onChange: apply }));
+    if(isDir) $('#f_pm_w')?.appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...pms.map(p=>({ value: String(p.id), label: p.name }))], searchable: true, onChange: apply }));
+
     apply();
 
     $("#f_q").addEventListener("input", apply);
-    $("#f_period").addEventListener("input", apply);
-    $("#f_status").addEventListener("change", apply);
     $("#f_refused").addEventListener("change", apply);
     $("#f_allperiod").addEventListener("change", apply);
     $("#f_won").addEventListener("change", apply);
-    if(isDir) $("#f_pm").addEventListener("change", apply);
 
     $("#btnReset").addEventListener("click", ()=>{
       $("#f_q").value="";
-      $("#f_period").value=ymNow();
-      $("#f_status").value="";
+      CRSelect.setValue('f_period', ymNow());
+      CRSelect.setValue('f_status', '');
       $("#f_refused").checked=false;
       $("#f_allperiod").checked=false;
       $("#f_won").checked=false;
-      if(isDir) $("#f_pm").value="";
+      if(isDir) CRSelect.setValue('f_pm', '');
       apply();
     });
 
@@ -747,17 +733,12 @@ window.AsgardPmCalcsPage = (function(){
           <div class="formrow">
             <div>
               <label>Статус</label>
-              <select id="s_status" ${canEditStatus?"":"disabled"}>
-                ${statusSelect(refs.tender_statuses, tender.tender_status)}
-              </select>
+              <div id="s_status_w"></div>
               <div class="help">«Отправлено на просчёт» ставит ТО кнопкой передачи.</div>
             </div>
             <div>
               <label>Причина отказа (если «Клиент отказался»)</label>
-              <select id="s_reject" ${canEditStatus?"":"disabled"}>
-                <option value="">—</option>
-                ${refs.reject_reasons.map(r=>`<option value="${esc(r)}" ${(tender.reject_reason===r)?"selected":""}>${esc(r)}</option>`).join("")}
-              </select>
+              <div id="s_reject_w"></div>
             </div>
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
@@ -873,6 +854,10 @@ window.AsgardPmCalcsPage = (function(){
       `;
 
       showModal(`Просчёт — тендер #${tender.id}`, html);
+      const _statusOpts = refs.tender_statuses.filter(s=>s!=="Новый").map(s=>({ value: s, label: s }));
+      const _rejectOpts = [{ value: '', label: '—' }, ...refs.reject_reasons.map(r=>({ value: r, label: r }))];
+      $('#s_status_w')?.appendChild(CRSelect.create({ id: 's_status', options: _statusOpts, value: tender.tender_status || '', disabled: !canEditStatus, dropdownClass: 'z-modal' }));
+      $('#s_reject_w')?.appendChild(CRSelect.create({ id: 's_reject', options: _rejectOpts, value: tender.reject_reason || '', disabled: !canEditStatus, dropdownClass: 'z-modal' }));
 
       // History for tender
       if($("#btnHistory")){
@@ -888,8 +873,8 @@ window.AsgardPmCalcsPage = (function(){
 
       $("#btnSaveStatus").addEventListener("click", async ()=>{
         if(!canEditStatus){ toast("Права","Недоступно","err"); return; }
-        const st = $("#s_status").value;
-        const rej = $("#s_reject").value || null;
+        const st = CRSelect.getValue('s_status') || '';
+        const rej = CRSelect.getValue('s_reject') || null;
         if(st==="Клиент отказался" && !rej){
           toast("Проверка","Для отказа требуется причина","err"); return;
         }

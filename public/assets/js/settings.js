@@ -264,9 +264,7 @@ window.AsgardSettingsPage = (function(){
 
                 <div style="margin-top:12px">
                   <label for="app_close_trigger">Контракты: статус, при котором доступна кнопка «Работы завершены»</label>
-                  <select id="app_close_trigger">
-                    ${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}" ${app.work_close_trigger_status===s?"selected":""}>${esc(s)}</option>`).join("")}
-                  </select>
+                  <div id="crw_app_close_trigger"></div>
                   <div class="help">РП сможет закрывать контракт через мастер «Работы завершены» только при этом статусе.</div>
                 </div>
               </div>
@@ -530,6 +528,12 @@ window.AsgardSettingsPage = (function(){
     `;
 
     await layout(html, { title: title || "Кузница Настроек" });
+
+    $("#crw_app_close_trigger")?.appendChild(CRSelect.create({
+      id: 'app_close_trigger', fullWidth: true,
+      options: (refs.work_statuses||[]).map(s => ({ value: s, label: s })),
+      value: app.work_close_trigger_status || ''
+    }));
 
     // Init push notification settings and WebAuthn device management
     try { if (window.AsgardPush) AsgardPush.bindSettingsEvents(); } catch(e) {}

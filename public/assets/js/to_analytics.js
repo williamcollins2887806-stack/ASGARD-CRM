@@ -38,10 +38,7 @@ window.AsgardTOAnalytics = (function(){
         <hr class="hr"/>
         <div class="tools">
           <div class="field"><label>Год</label>
-            <select id="f_year">
-              <option value="">Все</option>
-              ${[yNow, yNow-1, yNow-2].map(y=>`<option value="${y}" ${y===yNow?"selected":""}>${y}</option>`).join("")}
-            </select>
+            <div id="crw_f_year"></div>
           </div>
           <button class="btn ghost" id="btnRefresh">Обновить</button>
         </div>
@@ -68,16 +65,21 @@ window.AsgardTOAnalytics = (function(){
     `;
 
     await layout(body, {title, motto:"Кто ведёт торг — тот правит севером"});
+
+    $("#crw_f_year")?.appendChild(CRSelect.create({
+      id:'f_year', fullWidth:true, placeholder:'Все', clearable:true,
+      options: [yNow, yNow-1, yNow-2].map(y=>({value:String(y), label:String(y)})),
+      value: String(yNow), onChange: loadData
+    }));
+
     await loadData();
 
-    const yearSel = $("#f_year");
-    if(yearSel) yearSel.onchange = loadData;
     const btnRef = $("#btnRefresh");
     if(btnRef) btnRef.onclick = loadData;
   }
 
   async function loadData(){
-    const year = ($("#f_year")||{}).value || "";
+    const year = CRSelect.getValue("f_year") || "";
     const qs = year ? `?year=${year}` : "";
 
     try {

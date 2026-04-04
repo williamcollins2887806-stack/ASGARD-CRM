@@ -50,14 +50,10 @@ window.AsgardAllWorksPage=(function(){
         <div class="help">\u00abСвод Контрактов\u00bb \u2014 все работы по компании. Девиз: \u201cДело идёт по плану \u2014 пока цифры честны.\u201d</div>
         <hr class="hr"/>
         <div class="tools">
-          <div class="field"><label>Период</label><select id="f_period">${generatePeriodOptions(ymNow())}</select></div>
+          <div class="field"><label>Период</label><div id="f_period_w"></div></div>
           <div class="field"><label>Поиск</label><input id="f_q" placeholder="заказчик / работа"/></div>
-          <div class="field"><label>РП</label>
-            <select id="f_pm"><option value="">Все</option>${(()=>{ const pmIds = new Set(works.map(w => w.pm_id).filter(Boolean)); return users.filter(u => pmIds.has(u.id)); })().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
-          </div>
-          <div class="field"><label>Статус</label>
-            <select id="f_status"><option value="">Все</option>${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select>
-          </div>
+          <div class="field"><label>РП</label><div id="f_pm_w"></div></div>
+          <div class="field"><label>Статус</label><div id="f_status_w"></div></div>
           <div style="display:flex; gap:10px; flex-wrap:wrap">
             <button class="btn ghost" id="btnGantt">Гантт по всем работам</button>
           </div>
@@ -84,6 +80,22 @@ window.AsgardAllWorksPage=(function(){
     await layout(body,{title:title||"Свод Контрактов"});
 
     const tb=$("#tb"), cnt=$("#cnt");
+
+    // ─── CRSelect filters ───
+    { const periodOpts = [{ value: '', label: 'Все' }];
+      const now2 = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
+      }
+      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => apply() }));
+    }
+    { const pmIds = new Set(works.map(w => w.pm_id).filter(Boolean));
+      const pmUsers = users.filter(u => pmIds.has(u.id));
+      $('#f_pm_w').appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...pmUsers.map(p => ({ value: String(p.id), label: p.name }))], onChange: () => apply() }));
+    }
+    $('#f_status_w').appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...(refs.work_statuses||[]).map(s => ({ value: s, label: s }))], onChange: () => apply() }));
 
     function norm(s){ return String(s||"").toLowerCase().trim(); }
 
@@ -153,10 +165,10 @@ window.AsgardAllWorksPage=(function(){
     }
 
     function apply(){
-      const per = norm($("#f_period").value);
+      const per = norm(CRSelect.getValue('f_period') || '');
       const q = norm($("#f_q").value);
-      const pm = $("#f_pm").value;
-      const st = $("#f_status").value;
+      const pm = CRSelect.getValue('f_pm') || '';
+      const st = CRSelect.getValue('f_status') || '';
 
       let list = works.filter(w=>{
         const t = tenders.find(x=>x.id===w.tender_id);
@@ -217,10 +229,7 @@ window.AsgardAllWorksPage=(function(){
     }
 
     apply();
-    $("#f_period").addEventListener("input", apply);
     $("#f_q").addEventListener("input", apply);
-    $("#f_pm").addEventListener("change", apply);
-    $("#f_status").addEventListener("change", apply);
 
     $$("[data-sort]").forEach(b=>{
       b.addEventListener("click", ()=>{

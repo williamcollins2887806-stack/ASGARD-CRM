@@ -19,11 +19,15 @@ window.AsgardAssemblyPage = (function() {
 
   function renderFilters(el){
     el.innerHTML=`<div class="asm-toolbar">
-      <select id="af-type"><option value="">Все типы</option><option value="mobilization">Мобилизация</option><option value="demobilization">Демобилизация</option></select>
-      <select id="af-status"><option value="">Все статусы</option>${Object.entries(STATUSES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+      <div id="af-type_w" style="display:inline-block"></div>
+      <div id="af-status_w" style="display:inline-block"></div>
     </div>`;
-    el.querySelector('#af-type').onchange=e=>{_filters.type=e.target.value;refresh();};
-    el.querySelector('#af-status').onchange=e=>{_filters.status=e.target.value;refresh();};
+    el.querySelector('#af-type_w').appendChild(CRSelect.create({ id: 'af-type', options: [
+      { value: '', label: 'Все типы' }, { value: 'mobilization', label: 'Мобилизация' }, { value: 'demobilization', label: 'Демобилизация' }
+    ], onChange: v => { _filters.type = v; refresh(); } }));
+    el.querySelector('#af-status_w').appendChild(CRSelect.create({ id: 'af-status', options: [
+      { value: '', label: 'Все статусы' }, ...Object.entries(STATUSES).map(([k,v]) => ({ value: k, label: v }))
+    ], onChange: v => { _filters.status = v; refresh(); } }));
   }
 
   let _filters={};

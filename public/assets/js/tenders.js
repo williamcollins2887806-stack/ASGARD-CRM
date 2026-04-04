@@ -109,8 +109,8 @@ window.AsgardTendersPage = (function(){
   function getDraftFormData() {
     return {
       period: document.getElementById("e_period")?.value || '',
-      customer_inn: document.getElementById("e_inn")?.value || '',
-      customer_name: document.getElementById("e_customer")?.value || '',
+      customer_inn: CRAutocomplete.getValue("e_inn") || '',
+      customer_name: CRAutocomplete.getValue("e_customer") || '',
       tender_title: document.getElementById("e_title")?.value || '',
       tender_type: CRSelect.getValue('e_type') || '',
       tender_price: document.getElementById("e_price")?.value || '',
@@ -127,8 +127,6 @@ window.AsgardTendersPage = (function(){
     if (!draft) return;
     const fields = {
       'e_period': draft.period,
-      'e_inn': draft.customer_inn,
-      'e_customer': draft.customer_name,
       'e_title': draft.tender_title,
       'e_price': draft.tender_price,
       'e_tag': draft.group_tag,
@@ -142,6 +140,8 @@ window.AsgardTendersPage = (function(){
       const el = document.getElementById(id);
       if (el && value) el.value = value;
     }
+    if (draft.customer_inn) CRAutocomplete.setValue('e_inn', draft.customer_inn);
+    if (draft.customer_name) CRAutocomplete.setValue('e_customer', draft.customer_name);
     if (draft.tender_type) CRSelect.setValue('e_type', draft.tender_type);
   }
 
@@ -1201,14 +1201,12 @@ async function getRefs(){
           </div>
           <div>
             <label>ИНН заказчика</label>
-            <input id="e_inn" value="${esc((t&&t.customer_inn)||"")}" ${full?"":"disabled"} list="innList" placeholder="10/12 цифр" />
-            <datalist id="innList"></datalist>
+            <div id="cr-inn-wrap"></div>
             <div class="help">Вводите ИНН — название подставится из справочника (Настройки → Справочник заказчиков).</div>
           </div>
           <div>
             <label>Заказчик</label>
-            <input id="e_customer" value="${esc((t&&t.customer_name)||"")}" ${full?"":"disabled"} placeholder="Название организации / ИНН" list="custNameList" />
-            <datalist id="custNameList"></datalist>
+            <div id="cr-customer-wrap"></div>
             <div class="help">Начните вводить название или ИНН — выбирайте из списка. Если ИНН нет в базе, создайте карточку в «Карта Контрагентов».</div>
             <div class="help" id="innWarn" style="display:none; margin-top:6px; color:var(--err-t)">ИНН не найден в базе. Создайте карточку контрагента.</div>
             <div class="row" id="innCreateRow" style="display:none; justify-content:flex-start; gap:8px; margin-top:8px">
@@ -1370,23 +1368,19 @@ ${docsHtml}</div>
         document.addEventListener('visibilitychange', _onVisChange);
       }
 
-      // Customers directory (INN -> name)
+      // Customers directory (INN -> name) via CRAutocomplete
       const normInn = (v)=>String(v||"").replace(/\D/g, "");
       const custList = await AsgardDB.all("customers");
-      const dl = document.getElementById("innList");
-      const dlName = document.getElementById("custNameList");
-      if(dl){
-        dl.innerHTML = (custList||[]).slice(0, 300).map(c=>
-          `<option value="${esc(c.inn||"")}">${esc(c.name||"")}</option>`
-        ).join("");
+      const innWrap = document.getElementById("cr-inn-wrap");
+      const custWrap = document.getElementById("cr-customer-wrap");
+      if(innWrap){
+        innWrap.appendChild(CRAutocomplete.create({ id: 'e_inn', value: (t&&t.customer_inn)||"", placeholder: '10/12 цифр', minChars: 1, fullWidth: true, inputClass: 'inp', disabled: !full, fetchOptions: async (q) => { const nq = q.replace(/\D/g, ""); if(!nq) return []; return (custList||[]).filter(c => String(c.inn||"").includes(nq)).slice(0,20).map(c => ({ value: c.inn||"", label: c.inn||"", sublabel: c.name||c.full_name||"", name: c.name||c.full_name||"" })); }, onSelect: (item) => { if(!item) return; const nameInp = CRAutocomplete.getInput('e_customer'); if(nameInp && (!nameInp.value || nameInp.value.trim().length<2)){ CRAutocomplete.setValue('e_customer', item.name||""); updateCustomerScore(item.name||""); } updateInnUi(); } }));
       }
-      if(dlName){
-        dlName.innerHTML = (custList||[]).slice(0, 300).map(c=>
-          `<option value="${esc(c.name||c.full_name||"")}" data-inn="${esc(c.inn||"")}"></option>`
-        ).join("");
+      if(custWrap){
+        custWrap.appendChild(CRAutocomplete.create({ id: 'e_customer', value: (t&&t.customer_name)||"", placeholder: 'Название организации / ИНН', minChars: 2, fullWidth: true, inputClass: 'inp', disabled: !full, fetchOptions: async (q) => { const ql = q.toLowerCase().trim(); return (custList||[]).filter(c => { const n = String(c.name||c.full_name||"").toLowerCase(); const inn = String(c.inn||""); return n.includes(ql) || inn.includes(ql); }).slice(0,20).map(c => ({ value: c.name||c.full_name||"", label: c.name||c.full_name||"", sublabel: 'ИНН ' + (c.inn||"—"), inn: c.inn||"" })); }, onSelect: (item) => { if(!item) return; const innInp = CRAutocomplete.getInput('e_inn'); if(innInp && !innInp.value) CRAutocomplete.setValue('e_inn', item.inn||""); updateInnUi(); updateCustomerScore(item.label||""); } }));
       }
-      const innInput = document.getElementById("e_inn");
-      const nameInput = document.getElementById("e_customer");
+      const innInput = CRAutocomplete.getInput("e_inn");
+      const nameInput = CRAutocomplete.getInput("e_customer");
       const innWarn = document.getElementById("innWarn");
       const innCreateRow = document.getElementById("innCreateRow");
       const btnCreateCustomer = document.getElementById("btnCreateCustomer");
@@ -1817,9 +1811,9 @@ ${docsHtml}</div>
       async function saveTender(forceDraft){
         const appS = await getAppSettings();
         const period=document.getElementById("e_period").value.trim();
-        const innRaw = document.getElementById("e_inn")?.value || "";
+        const innRaw = CRAutocomplete.getValue("e_inn") || "";
         const customer_inn = String(innRaw).replace(/\D/g, "");
-        let customer=document.getElementById("e_customer").value.trim();
+        let customer=(CRAutocomplete.getValue("e_customer") || "").trim();
         const title=document.getElementById("e_title").value.trim();
         const tenderType = (CRSelect.getValue('e_type') || "Тендер").trim();
         const pmId = Number(CRSelect.getValue('e_pm')||0) || null;
@@ -1977,7 +1971,7 @@ ${docsHtml}</div>
       document.getElementById("btnSave").addEventListener("click", async ()=>{
         if (isNew) {
           // Check required fields — offer draft save if missing
-          const chkCustomer = document.getElementById("e_customer")?.value?.trim() || '';
+          const chkCustomer = (CRAutocomplete.getValue("e_customer") || '').trim();
           const chkTitle = document.getElementById("e_title")?.value?.trim() || '';
           const chkPeriod = document.getElementById("e_period")?.value?.trim() || '';
           const chkDeadline = document.getElementById("e_docs_deadline")?.value?.trim() || '';
@@ -2006,13 +2000,13 @@ ${docsHtml}</div>
               _overlay.remove();
               const ids = missingFields.map(f => _fieldIdMap[f]).filter(Boolean);
               ids.forEach(fid => {
-                const el = document.getElementById(fid);
+                const el = CRAutocomplete.getInput(fid) || document.getElementById(fid);
                 if (el) {
                   el.style.border = '2px solid var(--err-t)';
                   el.addEventListener('input', () => { el.style.border = ''; }, { once: true });
                 }
               });
-              if (ids.length) { const first = document.getElementById(ids[0]); if (first) first.focus(); }
+              if (ids.length) { const first = CRAutocomplete.getInput(ids[0]) || document.getElementById(ids[0]); if (first) first.focus(); }
             });
             document.getElementById('btnDraftMissing').addEventListener('click', async () => {
               _overlay.remove();
@@ -2023,7 +2017,7 @@ ${docsHtml}</div>
           }
 
           // Проверка дубликатов для новых тендеров (Этап 34)
-          const customerInn = document.getElementById("e_inn")?.value?.trim() || '';
+          const customerInn = (CRAutocomplete.getValue("e_inn") || '').trim();
           const customerName = chkCustomer;
           const tenderTitle = chkTitle;
 

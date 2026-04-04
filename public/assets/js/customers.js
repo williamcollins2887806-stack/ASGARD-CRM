@@ -2,50 +2,33 @@ window.AsgardCustomersPage = (function(){
     let currentPage = 1, pageSize = window.AsgardPagination ? AsgardPagination.getPageSize() : 20;
   const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
-  // DaData autocomplete helper
+  // DaData autocomplete helper — replaced by CRAutocomplete
+  // Usage: wrap a container with CRAutocomplete.create({ fetchOptions via /api/customers/suggest })
   function dadataAutocomplete(inputEl, type, onSelect) {
-    let timer = null;
-    const dropdown = document.createElement('div');
-    dropdown.className = 'dadata-suggest-dropdown';
-    dropdown.style.cssText = 'position:absolute;z-index:9999;background:var(--bg2,#1e1e2e);border:1px solid var(--line,#333);border-radius:8px;max-height:220px;overflow-y:auto;display:none;width:100%;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
-    inputEl.parentElement.style.position = 'relative';
-    inputEl.parentElement.appendChild(dropdown);
-
-    inputEl.addEventListener('input', () => {
-      clearTimeout(timer);
-      const q = inputEl.value.trim();
-      if (q.length < 3) { dropdown.style.display = 'none'; return; }
-      timer = setTimeout(async () => {
+    const id = 'dadata-' + (inputEl.id || Date.now());
+    const wrap = document.createElement('div');
+    wrap.style.width = '100%';
+    inputEl.parentElement.insertBefore(wrap, inputEl);
+    inputEl.style.display = 'none';
+    wrap.appendChild(CRAutocomplete.create({
+      id, value: inputEl.value || '', placeholder: inputEl.placeholder || '',
+      minChars: 3, fullWidth: true,
+      fetchOptions: async (q) => {
         try {
           const auth = await AsgardAuth.getAuth();
           const r = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q) + '&type=' + type, {
             headers: { 'Authorization': 'Bearer ' + auth.token }
           });
           const data = await r.json();
-          if (!data.suggestions?.length) { dropdown.style.display = 'none'; return; }
-          dropdown.innerHTML = data.suggestions.map((s, i) =>
-            '<div class="dadata-suggest-item" data-idx="' + i + '" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--line,#333);font-size:13px">' +
-            '<div style="font-weight:600">' + (s.name||'') + '</div>' +
-            '<div style="color:var(--text-muted,#888);font-size:11px">\u0418\u041d\u041d ' + (s.inn||'') + (s.address ? ' \u2022 ' + s.address.slice(0,60) : '') + '</div>' +
-            '</div>'
-          ).join('');
-          dropdown.style.display = 'block';
-          dropdown.querySelectorAll('.dadata-suggest-item').forEach(el => {
-            el.addEventListener('mouseenter', () => el.style.background = 'var(--bg-hover,#2a2a3e)');
-            el.addEventListener('mouseleave', () => el.style.background = '');
-            el.addEventListener('click', () => {
-              const idx = parseInt(el.dataset.idx);
-              onSelect(data.suggestions[idx]);
-              dropdown.style.display = 'none';
-            });
-          });
-        } catch(e) { dropdown.style.display = 'none'; }
-      }, 300);
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!inputEl.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none';
-    });
+          return (data.suggestions || []).map(s => ({
+            value: s.inn || '', label: s.name || '',
+            sublabel: '\u0418\u041d\u041d ' + (s.inn||'') + (s.address ? ' \u2022 ' + s.address.slice(0,60) : ''),
+            _raw: s
+          }));
+        } catch(e) { return []; }
+      },
+      onSelect: (item) => { if(item && item._raw) onSelect(item._raw); }
+    }));
   }
 
 

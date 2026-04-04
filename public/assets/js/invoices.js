@@ -56,14 +56,7 @@ window.AsgardInvoicesPage = (function(){
       <div class="invoices-page">
         <div class="toolbar" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
           <input type="text" class="inp" id="searchInv" placeholder="🔍 Поиск..." style="flex:1;min-width:200px"/>
-          <select class="inp" id="filterStatus" style="width:150px">
-            <option value="">Все статусы</option>
-            <option value="sent">Выставлен</option>
-            <option value="pending">Ожидает</option>
-            <option value="partial">Частично</option>
-            <option value="paid">Оплачен</option>
-            <option value="cancelled">Отменён</option>
-          </select>
+          <div id="filterStatus_w" style="width:150px;display:inline-block"></div>
           <button class="btn primary" id="btnAddInvoice">➕ Новый счёт</button>
         </div>
         
@@ -105,6 +98,7 @@ window.AsgardInvoicesPage = (function(){
     `;
     
     await layout(html, { title: title || 'Счета и оплаты' });
+    $('#filterStatus_w')?.appendChild(CRSelect.create({ id: 'filterStatus', options: [{ value: '', label: 'Все статусы' }, { value: 'sent', label: 'Выставлен' }, { value: 'pending', label: 'Ожидает' }, { value: 'partial', label: 'Частично' }, { value: 'paid', label: 'Оплачен' }, { value: 'cancelled', label: 'Отменён' }] }));
     bindEvents();
   }
 
@@ -199,13 +193,8 @@ window.AsgardInvoicesPage = (function(){
   async function openInvoiceForm(invoiceId = null) {
     const inv = invoiceId ? invoices.find(i => i.id === invoiceId) : {};
     
-    const customerOptions = customers.map(c => 
-      `<option value="${c.id}" ${inv.customer_id == c.id ? 'selected' : ''}>${esc(c.name)}</option>`
-    ).join('');
-    
-    const workOptions = works.map(w => 
-      `<option value="${w.id}" ${inv.work_id == w.id ? 'selected' : ''}>${esc(w.work_number || '')} ${esc(w.work_title || w.customer_name || '')}</option>`
-    ).join('');
+    const customerOpts = [{ value: '', label: '— Выберите —' }, ...customers.map(c => ({ value: String(c.id), label: c.name }))];
+    const workOpts = [{ value: '', label: '— Без привязки —' }, ...works.map(w => ({ value: String(w.id), label: (w.work_number || '') + ' ' + (w.work_title || w.customer_name || '') }))];
     
     const html = `
       <div class="stack" style="gap:16px">
@@ -222,12 +211,12 @@ window.AsgardInvoicesPage = (function(){
         
         <div>
           <label>Контрагент</label>
-          <select class="inp" id="inv_customer"><option value="">— Выберите —</option>${customerOptions}</select>
+          <div id="inv_customer_w"></div>
         </div>
-        
+
         <div>
           <label>Привязка к работе</label>
-          <select class="inp" id="inv_work"><option value="">— Без привязки —</option>${workOptions}</select>
+          <div id="inv_work_w"></div>
         </div>
         
         <div class="formrow">
@@ -254,7 +243,9 @@ window.AsgardInvoicesPage = (function(){
     `;
     
     showModal(invoiceId ? '✏️ Редактирование счёта' : '➕ Новый счёт', html);
-    
+    $('#inv_customer_w')?.appendChild(CRSelect.create({ id: 'inv_customer', options: customerOpts, value: inv.customer_id ? String(inv.customer_id) : '', searchable: true, dropdownClass: 'z-modal' }));
+    $('#inv_work_w')?.appendChild(CRSelect.create({ id: 'inv_work', options: workOpts, value: inv.work_id ? String(inv.work_id) : '', searchable: true, dropdownClass: 'z-modal' }));
+
     $('#btnSaveInv')?.addEventListener('click', async () => {
       const amount = parseFloat($('#inv_amount').value) || 0;
       const vatPct = parseFloat($('#inv_vat').value) || 22;
@@ -264,9 +255,9 @@ window.AsgardInvoicesPage = (function(){
         id: invoiceId || undefined,
         invoice_number: $('#inv_number').value,
         invoice_date: $('#inv_date').value,
-        customer_id: $('#inv_customer').value || null,
-        customer_name: customers.find(c => c.id == $('#inv_customer').value)?.name || '',
-        work_id: $('#inv_work').value || null,
+        customer_id: CRSelect.getValue('inv_customer') || null,
+        customer_name: customers.find(c => String(c.id) === CRSelect.getValue('inv_customer'))?.name || '',
+        work_id: CRSelect.getValue('inv_work') || null,
         amount,
         vat_pct: vatPct,
         total_amount: totalAmount,

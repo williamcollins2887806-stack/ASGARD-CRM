@@ -63,21 +63,8 @@ window.AsgardInboxApplicationsPage = (function(){
 
         <!-- Фильтры -->
         <div class="inbox-filters" style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0;align-items:center">
-          <select id="fStatus" class="inp" style="width:160px">
-            <option value="">Все статусы</option>
-            <option value="new">Новые</option>
-            <option value="ai_processed">AI обработаны</option>
-            <option value="under_review">На рассмотрении</option>
-            <option value="accepted">Принятые</option>
-            <option value="rejected">Отклонённые</option>
-            <option value="archived">Архив</option>
-          </select>
-          <select id="fColor" class="inp" style="width:160px">
-            <option value="">Все цвета</option>
-            <option value="green">🟢 Зелёные</option>
-            <option value="yellow">🟡 Жёлтые</option>
-            <option value="red">🔴 Красные</option>
-          </select>
+          <div id="crw_fStatus" style="width:160px"></div>
+          <div id="crw_fColor" style="width:160px"></div>
           <input id="fSearch" class="inp" placeholder="Поиск..." style="flex:1;min-width:150px"/>
           <button class="btn ghost" id="btnRefreshInbox">↻ Обновить</button>
         </div>
@@ -116,13 +103,31 @@ window.AsgardInboxApplicationsPage = (function(){
 
     await layout(html, { title: title || 'Входящие заявки (AI)' });
 
+    $('#crw_fStatus')?.appendChild(CRSelect.create({
+      id: 'fStatus', fullWidth: true, placeholder: 'Все статусы', clearable: true,
+      options: [
+        { value: 'new', label: 'Новые' },
+        { value: 'ai_processed', label: 'AI обработаны' },
+        { value: 'under_review', label: 'На рассмотрении' },
+        { value: 'accepted', label: 'Принятые' },
+        { value: 'rejected', label: 'Отклонённые' },
+        { value: 'archived', label: 'Архив' }
+      ],
+      onChange: (v) => { currentFilter.status = v; loadList(); }
+    }));
+    $('#crw_fColor')?.appendChild(CRSelect.create({
+      id: 'fColor', fullWidth: true, placeholder: 'Все цвета', clearable: true,
+      options: [
+        { value: 'green', label: 'Зелёные' },
+        { value: 'yellow', label: 'Жёлтые' },
+        { value: 'red', label: 'Красные' }
+      ],
+      onChange: (v) => { currentFilter.color = v; loadList(); }
+    }));
+
     // Загрузить данные
     loadStats();
     loadList();
-
-    // Фильтры
-    $('#fStatus').addEventListener('change', e => { currentFilter.status = e.target.value; loadList(); });
-    $('#fColor').addEventListener('change', e => { currentFilter.color = e.target.value; loadList(); });
     let searchTimer;
     $('#fSearch').addEventListener('input', e => {
       clearTimeout(searchTimer);

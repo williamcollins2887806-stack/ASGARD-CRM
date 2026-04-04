@@ -47,14 +47,13 @@ window.AsgardProcurementPage = (function() {
   // -- Filters --
   function renderFilters(el) {
     el.innerHTML = `<div class="proc-toolbar">
-      <select id="pf-status"><option value="">Все статусы</option>${Object.entries(STATUSES).map(([k,v])=>`<option value="${k}">${v.l}</option>`).join('')}</select>
+      <div id="pf-status_w" style="display:inline-block;min-width:150px"></div>
       <input type="text" id="pf-search" placeholder="Поиск..." style="min-width:200px">
       <button class="btn primary" id="pf-create">+ Новая заявка</button>
       <button class="btn ghost" onclick="window.open('/api/procurement/export/excel')">📥 Excel</button>
       <button class="btn ghost" onclick="window.open('/api/procurement/template/excel')">📄 Шаблон</button>
     </div>`;
-    el.querySelector('#pf-status').value = currentFilters.status || '';
-    el.querySelector('#pf-status').onchange = e => { currentFilters.status = e.target.value; refresh(); };
+    el.querySelector('#pf-status_w')?.appendChild(CRSelect.create({ id: 'pf-status', options: [{ value: '', label: 'Все статусы' }, ...Object.entries(STATUSES).map(([k,v])=>({ value: k, label: v.l }))], value: currentFilters.status || '', onChange: v => { currentFilters.status = v; refresh(); } }));
     let tmr; el.querySelector('#pf-search').oninput = e => { clearTimeout(tmr); tmr = setTimeout(()=>{ currentFilters.search=e.target.value; refresh(); },300); };
     el.querySelector('#pf-create').onclick = () => openCreateModal();
   }
@@ -380,27 +379,29 @@ window.AsgardProcurementPage = (function() {
 
   // -- Create modal --
   async function openCreateModal(workId) {
-    let worksHtml = '<option value="">— без работы —</option>';
+    let workOpts = [{ value: '', label: '— без работы —' }];
     try {
       const wr = await apiFetch('/api/works?limit=200');
       (wr.items || wr.rows || []).forEach(w => {
-        worksHtml += `<option value="${w.id}" ${w.id==workId?'selected':''}>${esc(w.work_title||'#'+w.id)}</option>`;
+        workOpts.push({ value: String(w.id), label: w.work_title || '#' + w.id });
       });
     } catch(e) {}
 
     const html = `<div class="proc-create-form">
       <label>Название<input id="pc-title" value="Заявка на закупку" required></label>
-      <label>Работа<select id="pc-work">${worksHtml}</select></label>
-      <label>Приоритет<select id="pc-priority"><option value="normal">Обычный</option><option value="high">Высокий</option><option value="urgent">Срочный</option></select></label>
+      <label>Работа<div id="pc-work_w"></div></label>
+      <label>Приоритет<div id="pc-priority_w"></div></label>
       <label>Примечание<textarea id="pc-notes" rows="3"></textarea></label>
       <button class="btn primary" id="pc-submit">Создать</button>
     </div>`;
     showModal({ title: 'Новая заявка', html: html });
+    document.getElementById('pc-work_w')?.appendChild(CRSelect.create({ id: 'pc-work', options: workOpts, value: workId ? String(workId) : '', searchable: true, dropdownClass: 'z-modal' }));
+    document.getElementById('pc-priority_w')?.appendChild(CRSelect.create({ id: 'pc-priority', options: [{ value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочный' }], value: 'normal', dropdownClass: 'z-modal' }));
     document.getElementById('pc-submit').onclick = async () => {
       const body = {
         title: document.getElementById('pc-title').value,
-        work_id: document.getElementById('pc-work').value || null,
-        priority: document.getElementById('pc-priority').value,
+        work_id: CRSelect.getValue('pc-work') || null,
+        priority: CRSelect.getValue('pc-priority') || 'normal',
         notes: document.getElementById('pc-notes').value || null
       };
       const r = await apiPost('/api/procurement', body);

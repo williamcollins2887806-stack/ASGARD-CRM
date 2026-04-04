@@ -61,19 +61,9 @@ window.AsgardHrRequestsPage=(function(){
         <div class="help">«Казарма Дружины • Персонал» — запросы на людей по работам. Девиз: “Дружина сильна, когда строем управляют руны.”</div>
         <hr class="hr"/>
         <div class="tools">
-          <div class="field"><label>Период</label><select id="f_period">${generatePeriodOptions(ymNow())}</select></div>
-          <div class="field"><label>Статус</label>
-            <select id="f_status">
-              <option value="">Все</option>
-              <option value="sent">sent</option>
-              <option value="answered">answered</option>
-              <option value="approved">approved</option>
-              <option value="rework">rework</option>
-            </select>
-          </div>
-          <div class="field"><label>РП</label>
-            <select id="f_pm"><option value="">Все</option>${users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
-          </div>
+          <div class="field"><label>Период</label><div id="f_period_w"></div></div>
+          <div class="field"><label>Статус</label><div id="f_status_w"></div></div>
+          <div class="field"><label>РП</label><div id="f_pm_w"></div></div>
           <div class="field"><label>Поиск</label><input id="f_q" placeholder="заказчик / работа"/></div>
         </div>
         <hr class="hr"/>
@@ -96,6 +86,19 @@ window.AsgardHrRequestsPage=(function(){
     `;
     await layout(body,{title:title||"Казарма Дружины • Персонал"});
 
+    // ─── CRSelect filters ───
+    { const periodOpts = [{ value: '', label: 'Все' }];
+      const now2 = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
+      }
+      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => { currentPage=1; load(); } }));
+    }
+    $('#f_status_w').appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, { value: 'sent', label: 'Отправлен' }, { value: 'answered', label: 'Ответ HR' }, { value: 'approved', label: 'Согласован' }, { value: 'rework', label: 'Доработка' }], onChange: () => { currentPage=1; load(); } }));
+    $('#f_pm_w').appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...users.filter(u => u.role==='PM' || (Array.isArray(u.roles) && u.roles.includes('PM'))).map(p => ({ value: String(p.id), label: p.name }))], onChange: () => { currentPage=1; load(); } }));
+
     const tb=$("#tb"), cnt=$("#cnt");
 
     function norm(s){ return String(s||"").toLowerCase().trim(); }
@@ -117,10 +120,10 @@ window.AsgardHrRequestsPage=(function(){
       const works = await AsgardDB.all("works");
       const tenders = await AsgardDB.all("tenders");
 
-      if (!$("#f_period")) return; // page navigated away during async fetch
-      const per = norm($("#f_period").value);
-      const st = $("#f_status").value;
-      const pm = $("#f_pm").value;
+      if (!$('#f_period_w')) return; // page navigated away during async fetch
+      const per = norm(CRSelect.getValue('f_period') || '');
+      const st = CRSelect.getValue('f_status') || '';
+      const pm = CRSelect.getValue('f_pm') || '';
       const q  = norm($("#f_q").value);
 
       let list = reqs.filter(r=>{
@@ -163,8 +166,7 @@ window.AsgardHrRequestsPage=(function(){
     }
 
     await load();
-    ["f_period","f_q"].forEach(id=>$("#"+id).addEventListener("input", ()=>{ currentPage=1; load(); }));
-    ["f_status","f_pm"].forEach(id=>$("#"+id).addEventListener("change", ()=>{ currentPage=1; load(); }));
+    $("#f_q").addEventListener("input", ()=>{ currentPage=1; load(); });
     $$("[data-sort]").forEach(b=>{
       b.addEventListener("click", ()=>{
         const k=b.getAttribute("data-sort");

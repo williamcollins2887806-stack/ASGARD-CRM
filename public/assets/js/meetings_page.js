@@ -315,18 +315,10 @@ window.AsgardMeetings = (function(){
         </div>
 
         ${meeting.status !== 'completed' && meeting.status !== 'cancelled' ? `
-          <div class="row mb-4">
-            <select id="minutes-item-type" class="input">
-              <option value="note">📝 Заметка</option>
-              <option value="decision">✅ Решение</option>
-              <option value="action">📋 Поручение</option>
-              <option value="question">❓ Вопрос</option>
-            </select>
+          <div class="row mb-4" style="align-items:flex-start;gap:8px">
+            <div id="minutesTypeWrap"></div>
             <input type="text" id="minutes-item-content" class="input" style="flex: 2;" placeholder="Текст пункта...">
-            <select id="minutes-item-responsible" class="input">
-              <option value="">Ответственный...</option>
-              ${participants.map(p => `<option value="${p.user_id}">${esc(p.name)}</option>`).join('')}
-            </select>
+            <div id="minutesResponsibleWrap"></div>
             <button class="btn" onclick="AsgardMeetings.addMinutesItem(${meeting.id})">Добавить</button>
           </div>
 
@@ -343,6 +335,32 @@ window.AsgardMeetings = (function(){
     `;
 
     showModal(`Совещание #${meeting.id}`, html);
+
+    // Mount CRSelect for minutes type and responsible
+    const typeWrap = document.getElementById('minutesTypeWrap');
+    if (typeWrap) {
+      CRSelect.destroy('minutes-item-type');
+      typeWrap.appendChild(CRSelect.create({
+        id: 'minutes-item-type',
+        value: 'note',
+        options: [
+          { value: 'note', label: '\ud83d\udcdd Заметка' },
+          { value: 'decision', label: '\u2705 Решение' },
+          { value: 'action', label: '\ud83d\udccb Поручение' },
+          { value: 'question', label: '\u2753 Вопрос' },
+        ],
+      }));
+    }
+    const respWrap = document.getElementById('minutesResponsibleWrap');
+    if (respWrap) {
+      CRSelect.destroy('minutes-item-responsible');
+      respWrap.appendChild(CRSelect.create({
+        id: 'minutes-item-responsible',
+        placeholder: 'Ответственный...',
+        clearable: true,
+        options: participants.map(p => ({ value: String(p.user_id), label: p.name })),
+      }));
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -360,9 +378,9 @@ window.AsgardMeetings = (function(){
   }
 
   async function addMinutesItem(meetingId) {
-    const itemType = $('#minutes-item-type')?.value;
+    const itemType = CRSelect.getValue('minutes-item-type') || 'note';
     const content = $('#minutes-item-content')?.value?.trim();
-    const responsible = $('#minutes-item-responsible')?.value;
+    const responsible = CRSelect.getValue('minutes-item-responsible') || '';
 
     if (!content) {
       toast('Введите текст пункта', 'error');
@@ -422,22 +440,10 @@ window.AsgardMeetings = (function(){
   // Create Modal
   // ═══════════════════════════════════════════════════════════════
 
-  // Helpers for meeting participant picker
-  function _meetAvatarColor(name) {
-    if (!name) return 'var(--muted)';
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
-    const colors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9'];
-    return colors[Math.abs(h) % colors.length];
-  }
-  function _meetInitials(name) {
-    if (!name) return '??';
-    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-  }
+  const MEETING_PICKER_ID = 'meeting-participants';
 
   async function showCreateModal() {
     const users = await AsgardDB.getAll('users') || [];
-    // Filter: only active users with non-empty names
     const activeUsers = users.filter(u => u.is_active && u.name && u.name.trim());
     activeUsers.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru'));
 
@@ -447,83 +453,63 @@ window.AsgardMeetings = (function(){
     tomorrow.setHours(10, 0, 0, 0);
     const defaultDate = tomorrow.toISOString().slice(0, 16);
 
-    const participantsHtml = activeUsers.map(u => {
-      const bg = _meetAvatarColor(u.name);
-      const ini = _meetInitials(u.name);
-      return `<label class="emp-selector-item" data-uname="${esc((u.name||'').toLowerCase())}" data-urole="${esc((u.role||'').toLowerCase())}">
-        <input type="checkbox" name="meeting-participants" value="${u.id}">
-        <div class="emp-selector-check">\u2713</div>
-        <div class="emp-selector-avatar" style="background:${bg}">${ini}</div>
-        <div class="emp-selector-info">
-          <div class="emp-selector-name">${esc(u.name)}</div>
-          <div class="emp-selector-role">${esc(u.role || u.position || '')}</div>
-        </div>
-      </label>`;
-    }).join('');
-
     const html = `
       <div style="min-width: min(560px, calc(100vw - 32px)); max-width: min(640px, calc(100vw - 32px));">
         <div class="form-group">
-          <label>\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 *</label>
-          <input type="text" id="meeting-title" class="input" placeholder="\u0422\u0435\u043c\u0430 \u0441\u043e\u0432\u0435\u0449\u0430\u043d\u0438\u044f" autofocus>
+          <label>Название *</label>
+          <input type="text" id="meeting-title" class="input" placeholder="Тема совещания" autofocus>
         </div>
         <div class="grid2">
           <div class="form-group">
-            <label>\u0414\u0430\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f \u043d\u0430\u0447\u0430\u043b\u0430 *</label>
+            <label>Дата и время начала *</label>
             <input type="datetime-local" id="meeting-start" class="input" value="${defaultDate}">
           </div>
           <div class="form-group">
-            <label>\u0414\u0430\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f \u043e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u044f</label>
+            <label>Дата и время окончания</label>
             <input type="datetime-local" id="meeting-end" class="input">
           </div>
         </div>
         <div class="form-group">
-          <label>\u041c\u0435\u0441\u0442\u043e / \u0421\u0441\u044b\u043b\u043a\u0430</label>
-          <input type="text" id="meeting-location" class="input" placeholder="\u041f\u0435\u0440\u0435\u0433\u043e\u0432\u043e\u0440\u043d\u0430\u044f \u21161 \u0438\u043b\u0438 https://meet.google.com/...">
+          <label>Место / Ссылка</label>
+          <input type="text" id="meeting-location" class="input" placeholder="Переговорная №1 или https://meet.google.com/...">
         </div>
         <div class="form-group">
-          <label>\u041f\u043e\u0432\u0435\u0441\u0442\u043a\u0430 \u0434\u043d\u044f</label>
-          <textarea id="meeting-agenda" class="input" rows="3" placeholder="1. \u041e\u0431\u0441\u0443\u0436\u0434\u0435\u043d\u0438\u0435...\n2. \u041f\u0440\u0438\u043d\u044f\u0442\u0438\u0435 \u0440\u0435\u0448\u0435\u043d\u0438\u044f..."></textarea>
+          <label>Повестка дня</label>
+          <textarea id="meeting-agenda" class="input" rows="3" placeholder="1. Обсуждение...\n2. Принятие решения..."></textarea>
         </div>
         <div class="form-group">
-          <label>\u0423\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u0438 (${activeUsers.length} \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e)</label>
-          <input type="text" class="inp" placeholder="\u041f\u043e\u0438\u0441\u043a \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430..." id="meetingParticipantSearch" style="margin-bottom:12px;width:100%">
-          <div class="emp-selector" id="meetingParticipantList" style="max-height:280px">
-            ${participantsHtml || '<div class="text-muted" style="padding:12px">\u041d\u0435\u0442 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0445 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u0439</div>'}
-          </div>
-          <div id="meetingParticipantCount" style="font-size:12px;color:var(--muted);margin-top:6px;text-align:right">\u0412\u044b\u0431\u0440\u0430\u043d\u043e: 0</div>
+          <label>Участники (${activeUsers.length} доступно)</label>
+          <div id="meetingPickerWrap"></div>
         </div>
         <div class="row between mt-4">
-          <button class="btn" onclick="AsgardUI.closeModal()">\u041e\u0442\u043c\u0435\u043d\u0430</button>
-          <button class="btn primary" onclick="AsgardMeetings.createMeeting()">\u0421\u043e\u0437\u0434\u0430\u0442\u044c</button>
+          <button class="btn" onclick="AsgardUI.closeModal()">Отмена</button>
+          <button class="btn primary" onclick="AsgardMeetings.createMeeting()">Создать</button>
         </div>
       </div>
     `;
 
-    showModal('\ud83d\udcc5 \u0421\u043e\u0437\u0434\u0430\u0442\u044c \u0441\u043e\u0432\u0435\u0449\u0430\u043d\u0438\u0435', html);
+    showModal('\ud83d\udcc5 Создать совещание', html);
 
-    // Search filter for participants
-    const searchInput = document.getElementById('meetingParticipantSearch');
-    if (searchInput) {
-      searchInput.addEventListener('input', function() {
-        const q = this.value.toLowerCase().trim();
-        const items = document.querySelectorAll('#meetingParticipantList .emp-selector-item');
-        items.forEach(item => {
-          const name = item.dataset.uname || '';
-          const role = item.dataset.urole || '';
-          item.style.display = (!q || name.includes(q) || role.includes(q)) ? '' : 'none';
-        });
+    // Mount CREmployeePicker for participants
+    const wrap = document.getElementById('meetingPickerWrap');
+    if (wrap) {
+      CREmployeePicker.destroy(MEETING_PICKER_ID);
+      const pickerEl = CREmployeePicker.create({
+        id: MEETING_PICKER_ID,
+        employees: activeUsers.map(u => ({
+          id: u.id,
+          name: u.name || '',
+          position: u.role || u.position || '',
+          role: u.role || '',
+        })),
+        selected: [],
+        placeholder: 'Выберите участников...',
+        showChips: true,
+        maxChips: 4,
+        fullWidth: true,
+        title: 'Участники совещания',
       });
-    }
-
-    // Update selected count on checkbox change
-    const participantList = document.getElementById('meetingParticipantList');
-    const countEl = document.getElementById('meetingParticipantCount');
-    if (participantList && countEl) {
-      participantList.addEventListener('change', function() {
-        const checked = participantList.querySelectorAll('input[name="meeting-participants"]:checked').length;
-        countEl.textContent = '\u0412\u044b\u0431\u0440\u0430\u043d\u043e: ' + checked;
-      });
+      wrap.appendChild(pickerEl);
     }
   }
 
@@ -534,8 +520,7 @@ window.AsgardMeetings = (function(){
     const endTime = $('#meeting-end')?.value;
     const location = $('#meeting-location')?.value?.trim();
     const agenda = $('#meeting-agenda')?.value?.trim();
-    const participantCheckboxes = $$('input[name="meeting-participants"]:checked');
-    const participantIds = Array.from(participantCheckboxes).map(cb => parseInt(cb.value));
+    const participantIds = CREmployeePicker.getSelected(MEETING_PICKER_ID);
 
     if (!title) {
       toast('Укажите название', 'error');
@@ -556,6 +541,7 @@ window.AsgardMeetings = (function(){
         participant_ids: participantIds
       });
       toast('Совещание создано', 'success');
+      CREmployeePicker.destroy(MEETING_PICKER_ID);
       closeModal();
       await refresh();
     } catch (e) {

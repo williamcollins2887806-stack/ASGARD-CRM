@@ -117,12 +117,7 @@ window.AsgardTmcRequestsPage = (function() {
       </div></div>
       <div class="formrow">
         <div><label>Приоритет</label>
-          <select id="tmcPriority">
-            <option value="low" ${item.priority==='low'?'selected':''}>Низкий</option>
-            <option value="normal" ${item.priority!=='low'&&item.priority!=='high'&&item.priority!=='urgent'?'selected':''}>Обычный</option>
-            <option value="high" ${item.priority==='high'?'selected':''}>Высокий</option>
-            <option value="urgent" ${item.priority==='urgent'?'selected':''}>Срочный</option>
-          </select>
+          <div id="crw_tmcPriority"></div>
         </div>
         <div><label>Нужно к дате</label><input id="tmcNeeded" type="date" value="${item.needed_by || ''}" /></div>
       </div>
@@ -145,6 +140,18 @@ window.AsgardTmcRequestsPage = (function() {
 
     showModal(id ? `Заявка ТМЦ #${id}` : 'Новая заявка на ТМЦ', html);
 
+    const tmcPriorityVal = item.priority || 'normal';
+    $('#crw_tmcPriority')?.appendChild(CRSelect.create({
+      id: 'tmcPriority', fullWidth: true, dropdownClass: 'z-modal',
+      options: [
+        { value: 'low', label: 'Низкий' },
+        { value: 'normal', label: 'Обычный' },
+        { value: 'high', label: 'Высокий' },
+        { value: 'urgent', label: 'Срочный' }
+      ],
+      value: tmcPriorityVal
+    }));
+
     $('#btnSaveTmc')?.addEventListener('click', async () => {
       const lines = ($('#tmcItems')?.value || '').split('\n').filter(s => s.trim());
       const parsedItems = lines.map(line => {
@@ -157,7 +164,7 @@ window.AsgardTmcRequestsPage = (function() {
 
       const body = {
         title: $('#tmcTitle')?.value,
-        priority: $('#tmcPriority')?.value,
+        priority: CRSelect.getValue('tmcPriority'),
         needed_by: $('#tmcNeeded')?.value || null,
         supplier: $('#tmcSupplier')?.value,
         delivery_address: $('#tmcAddr')?.value,

@@ -120,12 +120,8 @@ window.AsgardReports = (function(){
             <h3>📅 Месячный отчёт</h3>
             <div class="stack" style="gap:12px;margin-top:12px">
               <div class="row" style="gap:10px">
-                <select id="monthly_year" class="inp" style="flex:1">
-                  ${[currentYear, currentYear-1, currentYear-2].map(y => `<option value="${y}" ${y===currentYear?'selected':''}>${y}</option>`).join('')}
-                </select>
-                <select id="monthly_month" class="inp" style="flex:1">
-                  ${MONTHS.slice(1).map((m,i) => `<option value="${i+1}" ${i+1===currentMonth?'selected':''}>${m}</option>`).join('')}
-                </select>
+                <div id="monthly_year_w" style="flex:1"></div>
+                <div id="monthly_month_w" style="flex:1"></div>
               </div>
               <div class="row" style="gap:10px">
                 <button class="btn" data-action="preview" data-type="monthly">👁 Просмотр</button>
@@ -139,12 +135,8 @@ window.AsgardReports = (function(){
             <h3>📊 Квартальный отчёт</h3>
             <div class="stack" style="gap:12px;margin-top:12px">
               <div class="row" style="gap:10px">
-                <select id="quarterly_year" class="inp" style="flex:1">
-                  ${[currentYear, currentYear-1, currentYear-2].map(y => `<option value="${y}" ${y===currentYear?'selected':''}>${y}</option>`).join('')}
-                </select>
-                <select id="quarterly_quarter" class="inp" style="flex:1">
-                  ${[1,2,3,4].map(q => `<option value="${q}" ${q===currentQuarter?'selected':''}>${q} квартал</option>`).join('')}
-                </select>
+                <div id="quarterly_year_w" style="flex:1"></div>
+                <div id="quarterly_quarter_w" style="flex:1"></div>
               </div>
               <div class="row" style="gap:10px">
                 <button class="btn" data-action="preview" data-type="quarterly">👁 Просмотр</button>
@@ -158,9 +150,7 @@ window.AsgardReports = (function(){
             <h3>📈 Годовой отчёт</h3>
             <div class="stack" style="gap:12px;margin-top:12px">
               <div class="row" style="gap:10px">
-                <select id="yearly_year" class="inp" style="flex:1">
-                  ${[currentYear, currentYear-1, currentYear-2, currentYear-3].map(y => `<option value="${y}" ${y===currentYear-1?'selected':''}>${y}</option>`).join('')}
-                </select>
+                <div id="yearly_year_w" style="flex:1"></div>
               </div>
               <div class="row" style="gap:10px">
                 <button class="btn" data-action="preview" data-type="yearly">👁 Просмотр</button>
@@ -210,6 +200,18 @@ window.AsgardReports = (function(){
       </div>
     `;
     
+    // ─── CRSelect: year/month/quarter pickers ───
+    const _yearOpts = [currentYear, currentYear-1, currentYear-2].map(y => ({ value: String(y), label: String(y) }));
+    const _yearOpts4 = [currentYear, currentYear-1, currentYear-2, currentYear-3].map(y => ({ value: String(y), label: String(y) }));
+    const _monthOpts = MONTHS.slice(1).map((m,i) => ({ value: String(i+1), label: m }));
+    const _quarterOpts = [1,2,3,4].map(q => ({ value: String(q), label: q + ' квартал' }));
+
+    $('#monthly_year_w').appendChild(CRSelect.create({ id: 'monthly_year', options: _yearOpts, value: String(currentYear) }));
+    $('#monthly_month_w').appendChild(CRSelect.create({ id: 'monthly_month', options: _monthOpts, value: String(currentMonth) }));
+    $('#quarterly_year_w').appendChild(CRSelect.create({ id: 'quarterly_year', options: _yearOpts, value: String(currentYear) }));
+    $('#quarterly_quarter_w').appendChild(CRSelect.create({ id: 'quarterly_quarter', options: _quarterOpts, value: String(currentQuarter) }));
+    $('#yearly_year_w').appendChild(CRSelect.create({ id: 'yearly_year', options: _yearOpts4, value: String(currentYear - 1) }));
+
     // Вкладки
     $$('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -282,17 +284,17 @@ window.AsgardReports = (function(){
   function getReportParams(type) {
     if (type === 'monthly') {
       return {
-        year: parseInt($('#monthly_year').value),
-        month: parseInt($('#monthly_month').value)
+        year: parseInt(CRSelect.getValue('monthly_year')),
+        month: parseInt(CRSelect.getValue('monthly_month'))
       };
     } else if (type === 'quarterly') {
       return {
-        year: parseInt($('#quarterly_year').value),
-        quarter: parseInt($('#quarterly_quarter').value)
+        year: parseInt(CRSelect.getValue('quarterly_year')),
+        quarter: parseInt(CRSelect.getValue('quarterly_quarter'))
       };
     } else {
       return {
-        year: parseInt($('#yearly_year').value)
+        year: parseInt(CRSelect.getValue('yearly_year'))
       };
     }
   }

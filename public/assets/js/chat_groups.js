@@ -1705,14 +1705,23 @@ window.AsgardChatGroups = (function(){
             <div class="chat-member-row-info"><div class="chat-member-row-name">${esc(m.name)}</div><div class="chat-member-row-role">${m.role === 'owner' ? 'Владелец' : m.role === 'admin' ? 'Админ' : 'Участник'}</div></div>
           </div>
         </div>`).join('')}</div>
-      ${(myRole === 'owner' || myRole === 'admin') && available.length > 0 ? `<div class="mt-3"><label>Добавить:</label><div class="row" style="gap:8px;margin-top:8px"><select id="add-member-select" class="input" style="flex:1">${available.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select><button class="btn primary" onclick="AsgardChatGroups.addMember(${chatId})">Добавить</button></div></div>` : ''}
+      ${(myRole === 'owner' || myRole === 'admin') && available.length > 0 ? `<div class="mt-3"><label>Добавить:</label><div class="row" style="gap:8px;margin-top:8px"><div id="crw_add_member" style="flex:1"></div><button class="btn primary" onclick="AsgardChatGroups.addMember(${chatId})">Добавить</button></div></div>` : ''}
       <div class="row between mt-4"><button class="btn" style="color:var(--error)" onclick="AsgardChatGroups.leaveChat(${chatId})">Покинуть</button><button class="btn" onclick="AsgardUI.closeModal()">Закрыть</button></div>
     </div>`;
     showModal('Участники', html);
+
+    // Монтируем CRSelect для добавления участника
+    if (available.length > 0) {
+      const memberOpts = available.map(u => ({ value: String(u.id), label: u.name }));
+      $('#crw_add_member')?.appendChild(CRSelect.create({
+        id: 'add_member_select', fullWidth: true, searchable: true, dropdownClass: 'z-modal',
+        options: memberOpts, value: memberOpts[0]?.value || ''
+      }));
+    }
   }
 
   async function addMember(chatId) {
-    const userId = $('#add-member-select')?.value;
+    const userId = CRSelect.getValue('add_member_select');
     if (!userId) return;
     try {
       const r = await API.addMember(chatId, parseInt(userId));

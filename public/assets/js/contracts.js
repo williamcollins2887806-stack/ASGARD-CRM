@@ -116,14 +116,8 @@ window.AsgardContractsPage = (function(){
     const filterHtml = `
       <div class="filters" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <input type="text" id="fltSearch" class="inp" placeholder="Поиск по номеру/названию..." style="flex:1;min-width:200px"/>
-        <select id="fltType" class="inp" style="width:180px">
-          <option value="">Все типы</option>
-          ${CONTRACT_TYPES.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
-        </select>
-        <select id="fltStatus" class="inp" style="width:160px">
-          <option value="">Все статусы</option>
-          ${CONTRACT_STATUSES.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-        </select>
+        <div id="crw_fltType" style="width:180px"></div>
+        <div id="crw_fltStatus" style="width:160px"></div>
         <button class="btn primary" id="btnAddContract">+ Новый договор</button>
       </div>
     `;
@@ -163,15 +157,15 @@ window.AsgardContractsPage = (function(){
 
     // Обработчики
     document.getElementById('btnAddContract')?.addEventListener('click', () => openContractModal(null, customers));
-    
+
     // Фильтры
     const applyFilters = () => {
       const search = document.getElementById('fltSearch')?.value.toLowerCase() || '';
-      const type = document.getElementById('fltType')?.value || '';
-      const status = document.getElementById('fltStatus')?.value || '';
-      
+      const type = CRSelect.getValue('fltType') || '';
+      const status = CRSelect.getValue('fltStatus') || '';
+
       const filtered = contracts.filter(c => {
-        const matchSearch = !search || 
+        const matchSearch = !search ||
           (c.number || '').toLowerCase().includes(search) ||
           (c.subject || '').toLowerCase().includes(search) ||
           (c.counterparty_name || '').toLowerCase().includes(search);
@@ -179,14 +173,22 @@ window.AsgardContractsPage = (function(){
         const matchStatus = !status || c.computed_status === status;
         return matchSearch && matchType && matchStatus;
       });
-      
+
       document.getElementById('contractsBody').innerHTML = renderRows(filtered, customers);
       attachRowHandlers(customers);
     };
 
+    document.getElementById('crw_fltType')?.appendChild(CRSelect.create({
+      id: 'fltType', fullWidth: true, placeholder: 'Все типы', clearable: true,
+      options: CONTRACT_TYPES.map(t => ({ value: t.id, label: t.name })),
+      onChange: applyFilters
+    }));
+    document.getElementById('crw_fltStatus')?.appendChild(CRSelect.create({
+      id: 'fltStatus', fullWidth: true, placeholder: 'Все статусы', clearable: true,
+      options: CONTRACT_STATUSES.map(s => ({ value: s.id, label: s.name })),
+      onChange: applyFilters
+    }));
     document.getElementById('fltSearch')?.addEventListener('input', applyFilters);
-    document.getElementById('fltType')?.addEventListener('change', applyFilters);
-    document.getElementById('fltStatus')?.addEventListener('change', applyFilters);
 
     attachRowHandlers(customers);
   }
@@ -421,18 +423,15 @@ window.AsgardContractsPage = (function(){
                     </div>
                     <div>
                       <div class="cm-label">Тип договора <span class="req">*</span></div>
-                      <select name="type" class="cm-inp" required>
-                        ${CONTRACT_TYPES.map(t => `<option value="${t.id}" ${contract?.type === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-                      </select>
+                      <div id="cm_type_w"></div>
+                      <input type="hidden" name="type" id="cm_type_hidden" value="${esc(contract?.type || CONTRACT_TYPES[0]?.id || '')}"/>
                     </div>
                   </div>
                   <div class="cm-mt">
                     <div class="cm-label">Контрагент <span class="req">*</span></div>
                     <div style="display:flex;gap:8px;align-items:center">
-                      <select name="counterparty_id" class="cm-inp" required style="flex:1">
-                        <option value="">-- Выберите контрагента --</option>
-                        ${customers.map(c => `<option value="${esc(c.inn)}" ${contract?.counterparty_id === c.inn ? 'selected' : ''}>${esc(c.name)}${c.inn ? ' (' + esc(c.inn) + ')' : ''}</option>`).join('')}
-                      </select>
+                      <div id="cm_counterparty_w" style="flex:1"></div>
+                      <input type="hidden" name="counterparty_id" id="cm_counterparty_hidden" value="${esc(contract?.counterparty_id || '')}"/>
                       <button type="button" id="btnAddCustomerInline" class="cm-btn-add-customer" title="Создать нового контрагента">
                         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="9" y1="4" x2="9" y2="14"/><line x1="4" y1="9" x2="14" y2="9"/></svg>
                       </button>
@@ -481,11 +480,8 @@ window.AsgardContractsPage = (function(){
                     </div>
                     <div>
                       <div class="cm-label">Статус</div>
-                      <select name="status" class="cm-inp">
-                        <option value="draft" ${contract?.status === 'draft' ? 'selected' : ''}>Черновик</option>
-                        <option value="active" ${(!contract?.status || contract?.status === 'active') ? 'selected' : ''}>Действует</option>
-                        <option value="terminated" ${contract?.status === 'terminated' ? 'selected' : ''}>Расторгнут</option>
-                      </select>
+                      <div id="cm_status_w"></div>
+                      <input type="hidden" name="status" id="cm_status_hidden" value="${esc(contract?.status || 'active')}"/>
                     </div>
                   </div>
                   <div class="cm-mt">
@@ -519,6 +515,12 @@ window.AsgardContractsPage = (function(){
     const modal = document.getElementById('contractModal');
     const overlay = modal.querySelector('.cm-overlay');
     const form = document.getElementById('contractForm');
+
+    // ─── CRSelect: contract form fields ───
+    document.getElementById('cm_type_w').appendChild(CRSelect.create({ id: 'cm_type', options: CONTRACT_TYPES.map(t => ({ value: t.id, label: t.name })), value: contract?.type || CONTRACT_TYPES[0]?.id || '', dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_type_hidden').value = v; } }));
+    document.getElementById('cm_counterparty_w').appendChild(CRSelect.create({ id: 'cm_counterparty', options: [{ value: '', label: '-- Выберите контрагента --' }, ...customers.map(c => ({ value: c.inn, label: c.name + (c.inn ? ' (' + c.inn + ')' : '') }))], value: contract?.counterparty_id || '', searchable: true, dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_counterparty_hidden').value = v; } }));
+    document.getElementById('cm_status_w').appendChild(CRSelect.create({ id: 'cm_status', options: [{ value: 'draft', label: 'Черновик' }, { value: 'active', label: 'Действует' }, { value: 'terminated', label: 'Расторгнут' }], value: contract?.status || 'active', dropdownClass: 'z-modal', onChange: v => { document.getElementById('cm_status_hidden').value = v; } }));
+
     const endDateInput = document.getElementById('cmEndDate');
     const perpetualToggle = document.getElementById('cmPerpetualToggle');
     const dateHintEl = document.getElementById('cmDateHint');
@@ -565,21 +567,12 @@ window.AsgardContractsPage = (function(){
     // ── Кнопка «+ Новый контрагент» ──
     document.getElementById('btnAddCustomerInline')?.addEventListener('click', () => {
       openNewCustomerModal((created) => {
-        const sel = form.querySelector('[name="counterparty_id"]');
-        // Проверка дубля: если ИНН уже в dropdown — выбрать существующий
-        const existing = sel.querySelector(`option[value="${created.inn}"]`);
-        if (existing) {
-          existing.selected = true;
-          sel.classList.remove('cm-err');
-          return;
-        }
-        const opt = document.createElement('option');
-        opt.value = created.inn;
-        opt.textContent = `${created.name}${created.inn ? ' (' + created.inn + ')' : ''}`;
-        opt.selected = true;
-        sel.appendChild(opt);
-        sel.classList.remove('cm-err');
         customers.push(created);
+        // Update CRSelect options and select the new customer
+        const newOpts = [{ value: '', label: '-- Выберите контрагента --' }, ...customers.map(c => ({ value: c.inn, label: c.name + (c.inn ? ' (' + c.inn + ')' : '') }))];
+        CRSelect.setOptions('cm_counterparty', newOpts);
+        CRSelect.setValue('cm_counterparty', created.inn);
+        document.getElementById('cm_counterparty_hidden').value = created.inn;
       });
     });
 
@@ -594,7 +587,7 @@ window.AsgardContractsPage = (function(){
       const mimirSlot = document.getElementById('cmMimirSlot');
       if (mimirSlot) {
         MimirForms.inject(form, 'contract', () => ({
-          counterparty_id: form.querySelector('[name="counterparty_id"]')?.value || '',
+          counterparty_id: CRSelect.getValue('cm_counterparty') || '',
           tender_id: null
         }), {
           target: mimirSlot,
@@ -801,13 +794,12 @@ window.AsgardContractsPage = (function(){
                     <span style="font-size:13px;font-weight:600;color:#D4A843">Умный поиск</span>
                     <span style="font-size:11px;color:#6b7280">— введите название или ИНН, мы найдём всё сами</span>
                   </div>
-                  <div style="position:relative" id="ncmSearchWrap">
-                    <input type="text" id="ncmSmartSearch" class="cm-inp" placeholder="ООО «Газпром» или 7736050003..." style="height:48px;font-size:15px;padding-right:90px;border-color:rgba(212,168,67,.2)"/>
-                    <button type="button" id="ncmLookup" style="position:absolute;right:4px;top:4px;height:40px;padding:0 16px;border-radius:7px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px">
+                  <div style="position:relative;display:flex;gap:6px;align-items:flex-start" id="ncmSearchWrap">
+                    <div id="ncmSmartSearchWrap" style="flex:1"></div>
+                    <button type="button" id="ncmLookup" style="height:40px;margin-top:1px;padding:0 16px;border-radius:7px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px;flex-shrink:0">
                       <svg width="14" height="14" fill="none" stroke="#fff" stroke-width="2"><circle cx="6" cy="6" r="5"/><line x1="10" y1="10" x2="13" y2="13"/></svg>
                       Найти
                     </button>
-                    <div id="ncmSuggestDropdown" class="ncm-suggest-dropdown"></div>
                   </div>
                 </div>
 
@@ -892,7 +884,6 @@ window.AsgardContractsPage = (function(){
     const ncOverlay = ncModal.querySelector('.cm-overlay');
     const ncForm = document.getElementById('newCustomerForm');
     const ncStatus = document.getElementById('ncmStatus');
-    const smartSearch = document.getElementById('ncmSmartSearch');
     const innInput = ncForm.querySelector('[name="inn"]');
     const kppInput = ncForm.querySelector('[name="kpp"]');
     const ogrnInput = ncForm.querySelector('[name="ogrn"]');
@@ -904,13 +895,54 @@ window.AsgardContractsPage = (function(){
     const contactInput = ncForm.querySelector('[name="contact_person"]');
     const lookupBtn = document.getElementById('ncmLookup');
     const saveBtn = document.getElementById('ncmSave');
-    const suggestDropdown = document.getElementById('ncmSuggestDropdown');
     const egrjulBadge = document.getElementById('ncmEgrjulBadge');
     const mimirBtn = document.getElementById('ncmMimirBtn');
-    let searchTimer = null;
+
+    // ═══ Smart Search — CRAutocomplete (replaces inline DaData dropdown) ═══
+    const smartSearchWrap = document.getElementById('ncmSmartSearchWrap');
+    let smartSearch; // will be the <input> element
+    if (smartSearchWrap) {
+      smartSearchWrap.appendChild(CRAutocomplete.create({
+        id: 'ncmSmartSearch', placeholder: 'ООО «Газпром» или 7736050003...',
+        minChars: 3, debounce: 300, fullWidth: true, inputClass: 'cm-inp',
+        dropdownClass: 'z-modal-ac',
+        fetchOptions: async (q) => {
+          // Skip pure digits (INN) — those go through doLookup
+          if (/^\d+$/.test(q)) return [];
+          try {
+            const token = localStorage.getItem('asgard_token');
+            const r = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q) + '&type=party', {
+              headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await r.json();
+            return (data.suggestions || []).map(s => ({
+              value: s.name || '', label: s.name || '',
+              sublabel: '\u0418\u041d\u041d ' + (s.inn||'') + (s.address ? ' \u2022 ' + esc(s.address.slice(0,60)) : ''),
+              _raw: s
+            }));
+          } catch(_) { return []; }
+        },
+        onSelect: (item) => {
+          if (!item || !item._raw) return;
+          const s = item._raw;
+          cascadeFill({ inn: s.inn, kpp: s.kpp, name: s.name, full_name: s.full_name, address: s.address });
+          egrjulBadge.innerHTML = '<div class="ncm-egrjul-badge ok"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 7 7 11 13 3"/></svg>Данные из ЕГРЮЛ</div>';
+          egrjulBadge.style.display = 'block';
+        }
+      }));
+      smartSearch = CRAutocomplete.getInput('ncmSmartSearch');
+      // Style the input to match the original
+      if (smartSearch) {
+        smartSearch.style.height = '40px';
+        smartSearch.style.fontSize = '15px';
+        smartSearch.style.borderColor = 'rgba(212,168,67,.2)';
+      }
+    } else {
+      smartSearch = document.getElementById('ncmSmartSearch');
+    }
 
     // ── Закрытие ──
-    const closeNcm = () => { ncModal.remove(); document.removeEventListener('keydown', ncKey); };
+    const closeNcm = () => { CRAutocomplete.destroy('ncmSmartSearch'); ncModal.remove(); document.removeEventListener('keydown', ncKey); };
     const ncKey = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); closeNcm(); } };
     document.addEventListener('keydown', ncKey);
     // Store cleanup fn on DOM element so parent modal can clean up if it closes first
@@ -945,60 +977,6 @@ window.AsgardContractsPage = (function(){
       });
       return Object.keys(fieldsMap).length;
     };
-
-    // ═══ WOW: Smart Search — DaData autocomplete по названию ═══
-    smartSearch.addEventListener('input', () => {
-      clearTimeout(searchTimer);
-      const q = smartSearch.value.trim();
-      // Если похоже на ИНН (только цифры) — не делаем suggest
-      if (!q || q.length < 3 || /^\d+$/.test(q)) {
-        suggestDropdown.style.display = 'none';
-        return;
-      }
-      searchTimer = setTimeout(async () => {
-        try {
-          const token = localStorage.getItem('asgard_token');
-          const r = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q) + '&type=party', {
-            headers: { 'Authorization': 'Bearer ' + token }
-          });
-          const data = await r.json();
-          if (!data.suggestions?.length) { suggestDropdown.style.display = 'none'; return; }
-          suggestDropdown.innerHTML = data.suggestions.map((s, i) =>
-            `<div class="ncm-suggest-item" data-idx="${i}">
-              <div class="ncm-s-name">${esc(s.name || '')}</div>
-              <div class="ncm-s-meta">ИНН ${esc(s.inn || '')}${s.address ? ' \u2022 ' + esc(s.address.slice(0, 60)) : ''}</div>
-            </div>`
-          ).join('');
-          suggestDropdown.style.display = 'block';
-          suggestDropdown.querySelectorAll('.ncm-suggest-item').forEach(el => {
-            el.addEventListener('click', () => {
-              const idx = parseInt(el.dataset.idx);
-              const s = data.suggestions[idx];
-              suggestDropdown.style.display = 'none';
-              smartSearch.value = s.name || '';
-              // Cascade заполнение
-              cascadeFill({
-                inn: s.inn,
-                kpp: s.kpp,
-                name: s.name,
-                full_name: s.full_name,
-                address: s.address
-              });
-              // ЕГРЮЛ badge
-              egrjulBadge.innerHTML = '<div class="ncm-egrjul-badge ok"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 7 7 11 13 3"/></svg>Данные из ЕГРЮЛ</div>';
-              egrjulBadge.style.display = 'block';
-            });
-          });
-        } catch (_) { suggestDropdown.style.display = 'none'; }
-      }, 300);
-    });
-
-    // Скрыть dropdown при клике вне
-    ncModal.addEventListener('click', (e) => {
-      if (!smartSearch.contains(e.target) && !suggestDropdown.contains(e.target)) {
-        suggestDropdown.style.display = 'none';
-      }
-    });
 
     // ── Smart Search: если ввели цифры (ИНН) — подставить в поле ИНН ──
     smartSearch.addEventListener('blur', () => {

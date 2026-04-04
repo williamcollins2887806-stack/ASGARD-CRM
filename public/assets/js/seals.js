@@ -223,9 +223,7 @@ window.AsgardSealsPage = (function(){
             </div>
             <div class="field" style="margin-top:12px">
               <label>Тип</label>
-              <select id="sealType" class="inp">
-                ${SEAL_TYPES.map(t => `<option value="${t.id}" ${seal?.type === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
-              </select>
+              <div id="crw_sealType"></div>
             </div>
             <div class="field" style="margin-top:12px">
               <label>Инвентарный номер</label>
@@ -250,7 +248,13 @@ window.AsgardSealsPage = (function(){
     
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = $('#sealModal');
-    
+
+    $('#crw_sealType')?.appendChild(CRSelect.create({
+      id: 'sealType', fullWidth: true, dropdownClass: 'z-modal',
+      options: SEAL_TYPES.map(t => ({ value: t.id, label: t.name })),
+      value: seal?.type || SEAL_TYPES[0]?.id || ''
+    }));
+
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
     
@@ -261,7 +265,7 @@ window.AsgardSealsPage = (function(){
       const data = {
         id: seal?.id || undefined,
         name,
-        type: $('#sealType').value,
+        type: CRSelect.getValue('sealType'),
         inv_number: $('#sealInv').value.trim(),
         purchase_date: $('#sealPurchase').value || null,
         comment: $('#sealComment').value.trim(),

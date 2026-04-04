@@ -601,7 +601,7 @@ window.AsgardPmWorksPage=(function(){
         <div class="tools">
           <div class="field">
             <label>Период</label>
-            <select id="f_period">${generatePeriodOptions(ymNow())}</select>
+            <div id="f_period_w"></div>
           </div>
           <div class="field">
             <label>Поиск</label>
@@ -609,10 +609,7 @@ window.AsgardPmWorksPage=(function(){
           </div>
           <div class="field">
             <label>Статус работ</label>
-            <select id="f_status">
-              <option value="">Все</option>
-              ${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}
-            </select>
+            <div id="f_status_w"></div>
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap">
             <button class="btn ghost" id="btnGantt">Гантт по работам</button>
@@ -734,9 +731,9 @@ window.AsgardPmWorksPage=(function(){
     }
 
     function apply(){
-      const per = norm($("#f_period").value);
+      const per = norm(CRSelect.getValue('f_period') || '');
       const q = norm($("#f_q").value);
-      const st = $("#f_status").value;
+      const st = CRSelect.getValue('f_status') || '';
 
       let list = works.filter(w=>{
         const t = allTenders.find(x=>x.id===w.tender_id);
@@ -794,10 +791,14 @@ window.AsgardPmWorksPage=(function(){
 
     drawKpi();
 
+    // CRSelect init — filters
+    const _pOpts = [{ value: '', label: 'Все' }];
+    { const _now = new Date(); for(let i=0;i<24;i++){ const d=new Date(_now.getFullYear(),_now.getMonth()-i,1); const val=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; _pOpts.push({ value: val, label: d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'}) }); } }
+    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _pOpts, value: ymNow(), onChange: apply }));
+    $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...(refs.work_statuses||[]).map(s=>({ value: s, label: s }))], onChange: apply }));
+
     apply();
-    $("#f_period").addEventListener("input", apply);
     $("#f_q").addEventListener("input", apply);
-    $("#f_status").addEventListener("change", apply);
 
     $$("[data-sort]").forEach(b=>{
       b.addEventListener("click", ()=>{
@@ -867,9 +868,7 @@ window.AsgardPmWorksPage=(function(){
 
         <div class="formrow">
           <div><label>Статус работ</label>
-            <select id="w_status">
-              ${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}" ${(w.work_status===s)?"selected":""}>${esc(s)}</option>`).join("")}
-            </select>
+            <div id="w_status_w"></div>
           </div>
           <div><label>Начало работ (факт/старт)</label><input id="w_start" value="${esc(w.start_in_work_date||t?.work_start_plan||"")}" placeholder="YYYY-MM-DD"/></div>
           <div><label>Окончание план</label><input id="w_end_plan" value="${esc(w.end_plan||t?.work_end_plan||"")}" placeholder="YYYY-MM-DD"/></div>
@@ -939,6 +938,7 @@ window.AsgardPmWorksPage=(function(){
       `;
 
       showModal(`Работа #${w.id}`, html);
+      $('#w_status_w')?.appendChild(CRSelect.create({ id: 'w_status', options: (refs.work_statuses||[]).map(s=>({ value: s, label: s })), value: w.work_status || '', dropdownClass: 'z-modal' }));
 
       // вахта (UI)
       try{
@@ -1420,7 +1420,7 @@ window.AsgardPmWorksPage=(function(){
         const oldStart = w.start_in_work_date || null;
         const oldEnd = w.end_plan || null;
 
-        w.work_status = $("#w_status").value;
+        w.work_status = CRSelect.getValue('w_status');
         w.start_in_work_date = $("#w_start").value.trim()||null;
         w.end_plan = $("#w_end_plan").value.trim()||null;
         w.end_fact = $("#w_end_fact").value.trim()||null;

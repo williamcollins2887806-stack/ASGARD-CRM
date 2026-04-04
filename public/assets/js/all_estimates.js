@@ -68,15 +68,10 @@ window.AsgardAllEstimatesPage = (function() {
 
     const filterHtml = `
       <div class="tools">
-        <div class="field"><label>Период</label><select id="f_period">${generatePeriodOptions(ymNow())}</select></div>
+        <div class="field"><label>Период</label><div id="f_period_w"></div></div>
         <div class="field"><label>Поиск</label><input id="f_q" placeholder="заказчик / тендер"/></div>
-        <div class="field"><label>РП</label><select id="f_pm"><option value="">Все</option>${
-          users.filter(u => u.is_active && (u.role === 'PM' || u.role === 'HEAD_PM'))
-            .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')
-        }</select></div>
-        <div class="field"><label>Статус</label><select id="f_a"><option value="">Все</option>${
-          Object.entries(STATUS_MAP).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')
-        }</select></div>
+        <div class="field"><label>РП</label><div id="f_pm_w"></div></div>
+        <div class="field"><label>Статус</label><div id="f_a_w"></div></div>
       </div>`;
 
     const body = `<div class="panel">
@@ -99,6 +94,19 @@ window.AsgardAllEstimatesPage = (function() {
     await layout(body, { title: title || 'Согласование просчётов' });
     const tb = $('#tb');
     const cnt = $('#cnt');
+
+    // ─── CRSelect filters ───
+    const periodOpts = [{ value: '', label: 'Все' }];
+    { const now2 = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
+      }
+    }
+    $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => apply() }));
+    $('#f_pm_w').appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...users.filter(u => u.is_active && (u.role === 'PM' || u.role === 'HEAD_PM')).map(p => ({ value: String(p.id), label: p.name }))], onChange: () => apply() }));
+    $('#f_a_w').appendChild(CRSelect.create({ id: 'f_a', options: [{ value: '', label: 'Все' }, ...Object.entries(STATUS_MAP).map(([k, v]) => ({ value: k, label: v.label }))], onChange: () => apply() }));
 
     function sortBy(key, dir) {
       return (a, b) => {
@@ -126,11 +134,11 @@ window.AsgardAllEstimatesPage = (function() {
     }
 
     function apply() {
-      if (!$('#f_period')) return; // DOM not ready
-      const per = norm($('#f_period').value);
+      if (!$('#f_period_w')) return; // DOM not ready
+      const per = norm(CRSelect.getValue('f_period') || '');
       const q = norm($('#f_q').value);
-      const pm = $('#f_pm').value;
-      const a = $('#f_a').value;
+      const pm = CRSelect.getValue('f_pm') || '';
+      const a = CRSelect.getValue('f_a') || '';
       let list = estimates.filter(e => {
         const t = tenders.find(x => x.id === e.tender_id);
         if (per && norm(t?.period || '') !== per) return false;
@@ -269,10 +277,7 @@ window.AsgardAllEstimatesPage = (function() {
     // ─── Events ───
     estimates = await AsgardDB.all('estimates');
     apply();
-    $('#f_period').addEventListener('input', apply);
     $('#f_q').addEventListener('input', apply);
-    $('#f_pm').addEventListener('change', apply);
-    $('#f_a').addEventListener('change', apply);
     $$('[data-sort]').forEach(th => {
       th.addEventListener('click', () => {
         const k = th.getAttribute('data-sort');

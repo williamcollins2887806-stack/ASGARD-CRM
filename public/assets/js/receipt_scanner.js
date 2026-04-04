@@ -544,14 +544,7 @@ window.AsgardReceiptScanner = (function(){
         </div>
         <div class="ocr-field">
           <label>Категория</label>
-          <select id="expCategory" class="inp">
-            <option value="logistics">🚚 Логистика</option>
-            <option value="accommodation">🏨 Проживание</option>
-            <option value="transfer">🚗 Трансфер</option>
-            <option value="chemicals">🧪 Химия</option>
-            <option value="equipment">🔧 Оборудование</option>
-            <option value="other" selected>📦 Прочее</option>
-          </select>
+          <div id="crw_expCategory"></div>
         </div>
         <div class="ocr-field">
           <label>Комментарий</label>
@@ -559,9 +552,7 @@ window.AsgardReceiptScanner = (function(){
         </div>
         <div class="ocr-field">
           <label>Работа</label>
-          <select id="expWorkId" class="inp">
-            <option value="">— Без привязки —</option>
-          </select>
+          <div id="crw_expWorkId"></div>
         </div>
         <div style="display:flex;gap:12px;margin-top:16px">
           <button type="submit" class="btn primary" style="flex:1">💾 Сохранить расход</button>
@@ -572,23 +563,31 @@ window.AsgardReceiptScanner = (function(){
 
   // Привязка событий формы
   async function bindFormEvents() {
+    // Категория
+    document.getElementById('crw_expCategory')?.appendChild(CRSelect.create({
+      id: 'expCategory', fullWidth: true, value: 'other',
+      options: [
+        { value: 'logistics', label: 'Логистика' },
+        { value: 'accommodation', label: 'Проживание' },
+        { value: 'transfer', label: 'Трансфер' },
+        { value: 'chemicals', label: 'Химия' },
+        { value: 'equipment', label: 'Оборудование' },
+        { value: 'other', label: 'Прочее' }
+      ]
+    }));
     // Загружаем работы
-    const workSelect = document.getElementById('expWorkId');
-    if (workSelect) {
-      try {
-        const works = await AsgardDB.getAll('works') || [];
-        const activeWorks = works.filter(w => w.work_status !== 'Закрыта' && w.work_status !== 'Завершена');
-        
-        activeWorks.forEach(w => {
-          const opt = document.createElement('option');
-          opt.value = w.id;
-          opt.textContent = w.work_title || `Работа #${w.id}`;
-          if (currentWorkId && w.id === currentWorkId) {
-            opt.selected = true;
-          }
-          workSelect.appendChild(opt);
-        });
-      } catch(e) {}
+    try {
+      const works = await AsgardDB.getAll('works') || [];
+      const activeWorks = works.filter(w => w.work_status !== 'Закрыта' && w.work_status !== 'Завершена');
+      const workOpts = activeWorks.map(w => ({ value: String(w.id), label: w.work_title || 'Работа #' + w.id }));
+      document.getElementById('crw_expWorkId')?.appendChild(CRSelect.create({
+        id: 'expWorkId', fullWidth: true, placeholder: '— Без привязки —', clearable: true,
+        options: workOpts, value: currentWorkId ? String(currentWorkId) : '', searchable: true
+      }));
+    } catch(e) {
+      document.getElementById('crw_expWorkId')?.appendChild(CRSelect.create({
+        id: 'expWorkId', fullWidth: true, placeholder: '— Без привязки —', options: []
+      }));
     }
     
     // Отправка формы
@@ -606,9 +605,9 @@ window.AsgardReceiptScanner = (function(){
     const amount = parseFloat(document.getElementById('expAmount').value);
     const date = document.getElementById('expDate').value;
     const supplier = document.getElementById('expSupplier').value.trim();
-    const category = document.getElementById('expCategory').value;
+    const category = CRSelect.getValue('expCategory') || 'other';
     const comment = document.getElementById('expComment').value.trim();
-    const workId = document.getElementById('expWorkId').value;
+    const workId = CRSelect.getValue('expWorkId') || '';
     
     if (!amount || amount <= 0) {
       AsgardUI.toast('Ошибка', 'Укажите сумму', 'err');

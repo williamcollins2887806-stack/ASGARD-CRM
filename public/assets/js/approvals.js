@@ -249,7 +249,7 @@ window.AsgardApprovalsPage = (function(){
         <div class="tools">
           <div class="field">
             <label>Период</label>
-            <select id="f_period">${generatePeriodOptions(ymNow())}</select>
+            <div id="f_period_w"></div>
           </div>
           <div class="field">
             <label>Поиск</label>
@@ -257,10 +257,7 @@ window.AsgardApprovalsPage = (function(){
           </div>
           <div class="field">
             <label>Показывать</label>
-            <select id="f_mode">
-              <option value="sent">Только на согласовании</option>
-              <option value="all">Все решения</option>
-            </select>
+            <div id="f_mode_w"></div>
           </div>
           <div style="display:flex; gap:10px">
             <button class="btn ghost" id="btnReset">Сброс</button>
@@ -293,10 +290,25 @@ window.AsgardApprovalsPage = (function(){
 
     const tb=$("#tb"), cnt=$("#cnt");
 
+    // ─── CRSelect filters ───
+    { const periodOpts = [{ value: '', label: 'Все' }];
+      const now2 = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
+      }
+      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => listEstimates() }));
+    }
+    $('#f_mode_w').appendChild(CRSelect.create({ id: 'f_mode', options: [
+      { value: 'sent', label: 'Только на согласовании' },
+      { value: 'all', label: 'Все решения' }
+    ], value: 'sent', onChange: () => listEstimates() }));
+
     async function listEstimates(){
-      const mode=$("#f_mode")?.value||"sent";
+      const mode=CRSelect.getValue('f_mode')||"sent";
       const q=norm($("#f_q")?.value||"");
-      const period=norm($("#f_period")?.value||"");
+      const period=norm(CRSelect.getValue('f_period')||"");
 
       let all = await AsgardDB.all("estimates");
       // QA flags (open questions)
@@ -369,13 +381,11 @@ window.AsgardApprovalsPage = (function(){
     await listEstimates();
 
     $("#f_q").addEventListener("input", listEstimates);
-    $("#f_period").addEventListener("input", listEstimates);
-    $("#f_mode").addEventListener("change", listEstimates);
 
     $("#btnReset").addEventListener("click", ()=>{
-      if($("#f_period")) $("#f_period").value=ymNow();
+      CRSelect.setValue('f_period', ymNow());
       if($("#f_q")) $("#f_q").value="";
-      if($("#f_mode")) $("#f_mode").value="sent";
+      CRSelect.setValue('f_mode', 'sent');
       listEstimates();
     });
 

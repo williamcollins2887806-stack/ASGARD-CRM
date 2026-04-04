@@ -195,19 +195,8 @@ window.AsgardProxiesPage = (function(){
     h += '<div class="prx-toolbar">';
     h += '<input type="text" id="prx-search" class="prx-input" placeholder="Поиск по ФИО / номеру..." value="'+esc(state.search)+'">';
     // Type filter
-    h += '<select id="prx-ftype" class="prx-select">';
-    h += '<option value="">Все типы</option>';
-    ['Генеральная','Общая','Получение ТМЦ','Представительство','Строительная площадка','Транспорт/Грузы'].forEach(function(t){
-      h += '<option value="'+esc(t)+'"'+(state.filterType===t?' selected':'')+'>'+esc(t)+'</option>';
-    });
-    h += '</select>';
-    // Status filter
-    h += '<select id="prx-fstatus" class="prx-select">';
-    h += '<option value="">Все статусы</option>';
-    [{v:'active',l:'Действует'},{v:'expiring',l:'Истекает'},{v:'expired',l:'Истекла'},{v:'revoked',l:'Отозвана'}].forEach(function(s){
-      h += '<option value="'+s.v+'"'+(state.filterStatus===s.v?' selected':'')+'>'+esc(s.l)+'</option>';
-    });
-    h += '</select>';
+    h += '<div id="crw_prx-ftype" style="min-width:180px"></div>';
+    h += '<div id="crw_prx-fstatus" style="min-width:160px"></div>';
     h += '<div class="prx-toolbar-right">';
     h += '<button id="prx-btn-csv" class="prx-btn prx-btn-sec" title="Экспорт CSV">📃 CSV</button>';
     h += '<button id="prx-btn-create" class="prx-btn prx-btn-prim">+ Создать доверенность</button>';
@@ -283,14 +272,20 @@ window.AsgardProxiesPage = (function(){
       }
     }
 
-    var ftEl = document.getElementById('prx-ftype');
-    if (ftEl) ftEl.addEventListener('change', function(){
-      state.filterType = ftEl.value; state.page = 1; loadAndRender();
-    });
-    var fsEl = document.getElementById('prx-fstatus');
-    if (fsEl) fsEl.addEventListener('change', function(){
-      state.filterStatus = fsEl.value; state.page = 1; loadAndRender();
-    });
+    var ftWrap = document.getElementById('crw_prx-ftype');
+    if (ftWrap) ftWrap.appendChild(CRSelect.create({
+      id:'prx-ftype', fullWidth:true, placeholder:'Все типы', clearable:true,
+      value: state.filterType||'',
+      options: ['Генеральная','Общая','Получение ТМЦ','Представительство','Строительная площадка','Транспорт/Грузы'].map(function(t){ return {value:t,label:t}; }),
+      onChange: function(v){ state.filterType=v||''; state.page=1; loadAndRender(); }
+    }));
+    var fsWrap = document.getElementById('crw_prx-fstatus');
+    if (fsWrap) fsWrap.appendChild(CRSelect.create({
+      id:'prx-fstatus', fullWidth:true, placeholder:'Все статусы', clearable:true,
+      value: state.filterStatus||'',
+      options: [{value:'active',label:'Действует'},{value:'expiring',label:'Истекает'},{value:'expired',label:'Истекла'},{value:'revoked',label:'Отозвана'}],
+      onChange: function(v){ state.filterStatus=v||''; state.page=1; loadAndRender(); }
+    }));
 
     // Sort - need to re-fetch from server for proper ordering
     var ths = document.querySelectorAll('.prx-th[data-sort]');

@@ -199,33 +199,19 @@ window.AsgardOfficeExpensesPage = (function(){
           <div class="oexp-filters">
             <div class="oexp-filter">
               <label>Год</label>
-              <select id="f_year">
-                <option value="" ${!filters.year ? 'selected' : ''}>Все</option>
-                ${[currentYear, currentYear-1, currentYear-2].map(y => 
-                  `<option value="${y}" ${filters.year == y ? 'selected' : ''}>${y}</option>`
-                ).join('')}
-              </select>
+              <div id="f_year_w" style="min-width:100px"></div>
             </div>
             <div class="oexp-filter">
               <label>Месяц</label>
-              <select id="f_month">
-                <option value="">Все</option>
-                ${MONTHS.map((m, i) => `<option value="${i}" ${filters.month === String(i) ? 'selected' : ''}>${m}</option>`).join('')}
-              </select>
+              <div id="f_month_w" style="min-width:100px"></div>
             </div>
             <div class="oexp-filter">
               <label>Категория</label>
-              <select id="f_category">
-                <option value="">Все</option>
-                ${CATEGORIES.map(c => `<option value="${c.key}" ${filters.category === c.key ? 'selected' : ''}>${c.icon} ${c.label}</option>`).join('')}
-              </select>
+              <div id="f_category_w" style="min-width:160px"></div>
             </div>
             <div class="oexp-filter">
               <label>Статус</label>
-              <select id="f_status">
-                <option value="">Все</option>
-                ${Object.entries(STATUSES).map(([k, v]) => `<option value="${k}" ${filters.status === k ? 'selected' : ''}>${v.label}</option>`).join('')}
-              </select>
+              <div id="f_status_w" style="min-width:130px"></div>
             </div>
           </div>
 
@@ -287,11 +273,16 @@ window.AsgardOfficeExpensesPage = (function(){
     }
 
     function bindEvents(){
-      // Фильтры
-      $('#f_year')?.addEventListener('change', e => { filters.year = e.target.value; oexpPage = 1; renderPage(); });
-      $('#f_month')?.addEventListener('change', e => { filters.month = e.target.value; oexpPage = 1; renderPage(); });
-      $('#f_category')?.addEventListener('change', e => { filters.category = e.target.value; oexpPage = 1; renderPage(); });
-      $('#f_status')?.addEventListener('change', e => { filters.status = e.target.value; oexpPage = 1; renderPage(); });
+      // Фильтры — CRSelect
+      const yearOpts = [{ value: '', label: 'Все' }, ...[currentYear, currentYear-1, currentYear-2].map(y => ({ value: String(y), label: String(y) }))];
+      const monthOpts = [{ value: '', label: 'Все' }, ...MONTHS.map((m, i) => ({ value: String(i), label: m }))];
+      const catOpts = [{ value: '', label: 'Все' }, ...CATEGORIES.map(c => ({ value: c.key, label: c.icon + ' ' + c.label }))];
+      const stOpts = [{ value: '', label: 'Все' }, ...Object.entries(STATUSES).map(([k, v]) => ({ value: k, label: v.label }))];
+
+      $('#f_year_w')?.appendChild(CRSelect.create({ id: 'f_year', options: yearOpts, value: filters.year ? String(filters.year) : '', onChange: v => { filters.year = v; oexpPage = 1; renderPage(); } }));
+      $('#f_month_w')?.appendChild(CRSelect.create({ id: 'f_month', options: monthOpts, value: filters.month, onChange: v => { filters.month = v; oexpPage = 1; renderPage(); } }));
+      $('#f_category_w')?.appendChild(CRSelect.create({ id: 'f_category', options: catOpts, value: filters.category, onChange: v => { filters.category = v; oexpPage = 1; renderPage(); } }));
+      $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: stOpts, value: filters.status, onChange: v => { filters.status = v; oexpPage = 1; renderPage(); } }));
 
       // Pagination
       if (window.AsgardPagination) {
@@ -410,9 +401,7 @@ window.AsgardOfficeExpensesPage = (function(){
         <div class="formrow">
           <div><label>Дата</label><input id="exp_date" type="date" value="${today()}"/></div>
           <div><label>Категория</label>
-            <select id="exp_category">
-              ${CATEGORIES.map(c => `<option value="${c.key}">${c.icon} ${c.label}</option>`).join('')}
-            </select>
+            <div id="exp_category_w"></div>
           </div>
           <div><label>Сумма, ₽</label><input id="exp_amount" type="number" placeholder="0"/></div>
           <div><label>Поставщик</label><input id="exp_supplier" placeholder="Название"/></div>
@@ -436,6 +425,8 @@ window.AsgardOfficeExpensesPage = (function(){
         </div>
       `;
       showModal('Новый офисный расход', html);
+      const expCatOpts = CATEGORIES.map(c => ({ value: c.key, label: c.icon + ' ' + c.label }));
+      $('#exp_category_w')?.appendChild(CRSelect.create({ id: 'exp_category', options: expCatOpts, dropdownClass: 'z-modal' }));
 
       // Обработчик галочки договора
       const contractCheck = $('#exp_has_contract');
@@ -475,7 +466,7 @@ window.AsgardOfficeExpensesPage = (function(){
 
         const expense = {
           date: $('#exp_date')?.value || today(),
-          category: $('#exp_category')?.value || 'other',
+          category: CRSelect.getValue('exp_category') || 'other',
           amount,
           supplier: $('#exp_supplier')?.value?.trim() || '',
           doc_number: $('#exp_doc')?.value?.trim() || '',
@@ -513,9 +504,7 @@ window.AsgardOfficeExpensesPage = (function(){
         <div class="formrow">
           <div><label>Дата</label><input id="exp_date" type="date" value="${expense.date || ''}"/></div>
           <div><label>Категория</label>
-            <select id="exp_category">
-              ${CATEGORIES.map(c => `<option value="${c.key}" ${expense.category === c.key ? 'selected' : ''}>${c.icon} ${c.label}</option>`).join('')}
-            </select>
+            <div id="exp_category_w"></div>
           </div>
           <div><label>Сумма, ₽</label><input id="exp_amount" type="number" value="${expense.amount || 0}"/></div>
           <div><label>Поставщик</label><input id="exp_supplier" value="${esc(expense.supplier || '')}"/></div>
@@ -532,13 +521,15 @@ window.AsgardOfficeExpensesPage = (function(){
         </div>
       `;
       showModal('Редактировать расход', html);
+      const expCatOpts = CATEGORIES.map(c => ({ value: c.key, label: c.icon + ' ' + c.label }));
+      $('#exp_category_w')?.appendChild(CRSelect.create({ id: 'exp_category', options: expCatOpts, value: expense.category || '', dropdownClass: 'z-modal' }));
 
       const save = async (submit) => {
         const amount = Number($('#exp_amount')?.value || 0);
         if(amount <= 0){ toast('Расход', 'Укажите сумму', 'err'); return; }
 
         expense.date = $('#exp_date')?.value || today();
-        expense.category = $('#exp_category')?.value || 'other';
+        expense.category = CRSelect.getValue('exp_category') || 'other';
         expense.amount = amount;
         expense.supplier = $('#exp_supplier')?.value?.trim() || '';
         expense.doc_number = $('#exp_doc')?.value?.trim() || '';

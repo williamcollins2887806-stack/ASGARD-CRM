@@ -99,8 +99,8 @@ window.AsgardIntegrationsPage = (function(){
         '<button class="btn primary" id="btnUploadBank">📥 Загрузить выписку</button>' +
         '<button class="btn ghost" id="btnExport1c">📤 Экспорт в 1С</button>' +
         '<button class="btn ghost" id="btnBankRules">⚙️ Правила</button>' +
-        '<select class="inp" id="fltBankStatus" style="width:140px"><option value="">Все статусы</option><option value="new">Новые</option><option value="classified">Классиф.</option><option value="confirmed">Подтв.</option><option value="distributed">Разнесённые</option></select>' +
-        '<select class="inp" id="fltBankDir" style="width:120px"><option value="">Все</option><option value="income">Доходы</option><option value="expense">Расходы</option></select>' +
+        '<div id="fltBankStatus_w" style="display:inline-block;width:140px"></div>' +
+        '<div id="fltBankDir_w" style="display:inline-block;width:120px"></div>' +
         '<input class="inp" id="fltBankSearch" placeholder="Поиск..." style="width:160px"/>' +
       '</div>' +
 
@@ -111,13 +111,12 @@ window.AsgardIntegrationsPage = (function(){
       '</div>' +
     '</div>';
 
+    document.getElementById('fltBankStatus_w')?.appendChild(CRSelect.create({ id: 'fltBankStatus', options: [{ value: '', label: 'Все статусы' }, { value: 'new', label: 'Новые' }, { value: 'classified', label: 'Классиф.' }, { value: 'confirmed', label: 'Подтв.' }, { value: 'distributed', label: 'Разнесённые' }], onChange: function(){ loadBankTx(); } }));
+    document.getElementById('fltBankDir_w')?.appendChild(CRSelect.create({ id: 'fltBankDir', options: [{ value: '', label: 'Все' }, { value: 'income', label: 'Доходы' }, { value: 'expense', label: 'Расходы' }], onChange: function(){ loadBankTx(); } }));
+
     loadBankTx();
 
-    var fS = document.getElementById('fltBankStatus');
-    var fD = document.getElementById('fltBankDir');
     var fQ = document.getElementById('fltBankSearch');
-    if(fS) fS.onchange = loadBankTx;
-    if(fD) fD.onchange = loadBankTx;
     if(fQ) { var t; fQ.oninput = function(){ clearTimeout(t); t = setTimeout(loadBankTx, 400); }; }
 
     document.getElementById('btnUploadBank')?.addEventListener('click', openBankUpload);
@@ -131,8 +130,8 @@ window.AsgardIntegrationsPage = (function(){
   async function loadBankTx() {
     var list = document.getElementById('bankTxList');
     if (!list) return;
-    var s = document.getElementById('fltBankStatus')?.value || '';
-    var d = document.getElementById('fltBankDir')?.value || '';
+    var s = CRSelect.getValue('fltBankStatus') || '';
+    var d = CRSelect.getValue('fltBankDir') || '';
     var q = document.getElementById('fltBankSearch')?.value || '';
     var params = '?limit=100';
     if (s) params += '&status=' + s;
@@ -271,14 +270,14 @@ window.AsgardIntegrationsPage = (function(){
 
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
         '<button class="btn primary" id="btnParseBatch">🔄 Обработать новые письма</button>' +
-        '<select class="inp" id="fltPlatform" style="width:160px"><option value="">Все площадки</option>' +
-          (s.by_platform||[]).map(function(p) { return '<option value="'+esc(p.platform_code)+'">'+esc(p.platform_name)+' ('+p.cnt+')</option>'; }).join('') +
-        '</select>' +
+        '<div id="fltPlatform_w" style="display:inline-block;width:160px"></div>' +
         '<input class="inp" id="fltPlatSearch" placeholder="Поиск..." style="width:160px"/>' +
       '</div>' +
 
       '<div id="platList"></div>' +
     '</div>';
+
+    document.getElementById('fltPlatform_w')?.appendChild(CRSelect.create({ id: 'fltPlatform', options: [{ value: '', label: 'Все площадки' }, ...(s.by_platform||[]).map(function(p) { return { value: p.platform_code, label: p.platform_name + ' (' + p.cnt + ')' }; })], onChange: function(){ loadPlatforms(); } }));
 
     loadPlatforms();
 
@@ -291,16 +290,14 @@ window.AsgardIntegrationsPage = (function(){
       loadPlatforms();
     });
 
-    var fP = document.getElementById('fltPlatform');
     var fQ = document.getElementById('fltPlatSearch');
-    if(fP) fP.onchange = loadPlatforms;
     if(fQ) { var t; fQ.oninput = function(){ clearTimeout(t); t = setTimeout(loadPlatforms, 400); }; }
   }
 
   async function loadPlatforms() {
     var list = document.getElementById('platList');
     if (!list) return;
-    var p = document.getElementById('fltPlatform')?.value || '';
+    var p = CRSelect.getValue('fltPlatform') || '';
     var q = document.getElementById('fltPlatSearch')?.value || '';
     var params = '?limit=100';
     if (p) params += '&platform_code=' + p;
@@ -443,18 +440,20 @@ window.AsgardIntegrationsPage = (function(){
     AsgardUI.showModal('+ Добавить ERP-подключение',
       '<div style="display:grid;gap:12px">' +
         '<div><label style="font-size:12px;font-weight:600">Название</label><input id="erpName" class="inp" placeholder="1С Бухгалтерия"/></div>' +
-        '<div><label style="font-size:12px;font-weight:600">Тип</label><select id="erpType" class="inp"><option value="1c">1С</option><option value="sap">SAP</option><option value="galaxy">Галактика</option><option value="custom">Custom</option></select></div>' +
+        '<div><label style="font-size:12px;font-weight:600">Тип</label><div id="erpType_w"></div></div>' +
         '<div><label style="font-size:12px;font-weight:600">URL API</label><input id="erpUrl" class="inp" placeholder="http://..."/></div>' +
-        '<div><label style="font-size:12px;font-weight:600">Направление</label><select id="erpDir" class="inp"><option value="both">Двустороннее</option><option value="export">Только экспорт</option><option value="import">Только импорт</option></select></div>' +
+        '<div><label style="font-size:12px;font-weight:600">Направление</label><div id="erpDir_w"></div></div>' +
         '<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button><button class="btn primary" id="erpSaveBtn">Сохранить</button></div>' +
       '</div>'
     );
+    document.getElementById('erpType_w')?.appendChild(CRSelect.create({ id: 'erpType', options: [{ value: '1c', label: '1С' }, { value: 'sap', label: 'SAP' }, { value: 'galaxy', label: 'Галактика' }, { value: 'custom', label: 'Custom' }], dropdownClass: 'z-modal' }));
+    document.getElementById('erpDir_w')?.appendChild(CRSelect.create({ id: 'erpDir', options: [{ value: 'both', label: 'Двустороннее' }, { value: 'export', label: 'Только экспорт' }, { value: 'import', label: 'Только импорт' }], dropdownClass: 'z-modal' }));
     document.getElementById('erpSaveBtn')?.addEventListener('click', async function() {
       var r = await api('/erp/connections', { body: {
         name: document.getElementById('erpName')?.value,
-        erp_type: document.getElementById('erpType')?.value,
+        erp_type: CRSelect.getValue('erpType'),
         connection_url: document.getElementById('erpUrl')?.value || null,
-        sync_direction: document.getElementById('erpDir')?.value
+        sync_direction: CRSelect.getValue('erpDir')
       }});
       if (r.success) { AsgardUI.toast('Создано', 'Подключение добавлено'); AsgardUI.hideModal(); renderERPTab(document.getElementById('tabContent')); }
       else AsgardUI.toast('Ошибка', r.error || '', 'err');
@@ -464,16 +463,17 @@ window.AsgardIntegrationsPage = (function(){
   function openExportModal(connId) {
     AsgardUI.showModal('📤 Экспорт данных',
       '<div style="display:grid;gap:12px">' +
-        '<div><label style="font-size:12px;font-weight:600">Тип данных</label><select id="expType" class="inp"><option value="payroll">Зарплата</option><option value="bank">Банковские операции</option><option value="tenders">Тендеры</option></select></div>' +
+        '<div><label style="font-size:12px;font-weight:600">Тип данных</label><div id="expType_w"></div></div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:12px;font-weight:600">С</label><input id="expFrom" type="date" class="inp"/></div><div><label style="font-size:12px;font-weight:600">По</label><input id="expTo" type="date" class="inp"/></div></div>' +
         '<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button><button class="btn primary" id="expRunBtn">Экспортировать</button></div>' +
       '</div>'
     );
+    document.getElementById('expType_w')?.appendChild(CRSelect.create({ id: 'expType', options: [{ value: 'payroll', label: 'Зарплата' }, { value: 'bank', label: 'Банковские операции' }, { value: 'tenders', label: 'Тендеры' }], dropdownClass: 'z-modal' }));
     document.getElementById('expRunBtn')?.addEventListener('click', async function() {
       var btn = document.getElementById('expRunBtn');
       if(btn) { btn.disabled = true; btn.textContent = '⏳...'; }
       var r = await api('/erp/connections/'+connId+'/export', { body: {
-        entity_type: document.getElementById('expType')?.value,
+        entity_type: CRSelect.getValue('expType'),
         date_from: document.getElementById('expFrom')?.value || null,
         date_to: document.getElementById('expTo')?.value || null
       }});

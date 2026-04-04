@@ -193,45 +193,37 @@ window.AsgardEmployeeCollections = (function(){
       var existingSet = new Set(employees.map(function(e){ return e.id; }));
       var available = (allEmps || []).filter(function(e){ return e.is_active && !existingSet.has(e.id) && (e.fio||e.full_name||'').trim(); });
 
-      var pickHtml = '<div style="max-height:60vh;overflow-y:auto">' +
-        '<input id="empSearch" class="inp" placeholder="Поиск по ФИО, должности, городу..." style="margin-bottom:12px"/>' +
-        '<div id="empPickList" class="emp-selector" style="max-height:50vh">' +
-        available.map(function(e) {
-          var _n = e.fio||e.full_name||'';
-          var _colors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9'];
-          var _h = 0; for(var j=0;j<_n.length;j++) _h = _n.charCodeAt(j)+((_h<<5)-_h);
-          var _bg = _colors[Math.abs(_h) % _colors.length];
-          var _ini = _n.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase() || '??';
-          return '<label class="emp-selector-item col-pick-emp" data-name="' + esc(_n.toLowerCase()) + '" data-role="' + esc((e.role_tag||"").toLowerCase()) + '" data-city="' + esc((e.city||"").toLowerCase()) + '">' +
-            '<input type="checkbox" value="' + e.id + '"/>' +
-            '<div class="emp-selector-check">✓</div>' +
-            '<div class="emp-selector-avatar" style="background:' + _bg + '">' + _ini + '</div>' +
-            '<div class="emp-selector-info">' +
-              '<div class="emp-selector-name">' + esc(_n) + '</div>' +
-              '<div class="emp-selector-role">' + esc(e.role_tag||"") + (e.city?" · "+esc(e.city):"") + (e.rating_avg?" · ★"+Number(e.rating_avg).toFixed(1):"") + '</div>' +
-            '</div>' +
-          '</label>';
-        }).join("") +
-        '</div>' +
-        '<button class="btn primary" id="btnConfirmAdd" style="margin-top:12px;width:100%">Добавить выбранных</button>' +
-      '</div>';
-      showModal("Добавить сотрудников", pickHtml);
-
-      $("#empSearch")?.addEventListener("input", function() {
-        var q = ($("#empSearch")?.value || "").toLowerCase().trim();
-        $$(".col-pick-emp").forEach(function(el) {
-          var n = el.dataset.name || "";
-          var r = el.dataset.role || "";
-          var c = el.dataset.city || "";
-          el.style.display = (!q || n.includes(q) || r.includes(q) || c.includes(q)) ? "" : "none";
-        });
+      var pickerId = 'col-add-emps-' + colId;
+      var pickerEmployees = available.map(function(e) {
+        return { id: e.id, name: e.fio || e.full_name || '', position: e.role_tag || '', role: e.role_tag || '' };
       });
 
+      var wrapHtml = '<div id="colPickerWrap" style="max-height:60vh;overflow-y:auto"></div>' +
+        '<button class="btn primary" id="btnConfirmAdd" style="margin-top:12px;width:100%">Добавить выбранных</button>';
+      showModal("Добавить сотрудников", wrapHtml);
+
+      var wrap = $("#colPickerWrap");
+      if (wrap) {
+        CREmployeePicker.destroy(pickerId);
+        var pickerEl = CREmployeePicker.create({
+          id: pickerId,
+          employees: pickerEmployees,
+          selected: [],
+          placeholder: 'Выберите сотрудников...',
+          showChips: true,
+          maxChips: 5,
+          fullWidth: true,
+          title: 'Добавить сотрудников'
+        });
+        wrap.appendChild(pickerEl);
+      }
+
       $("#btnConfirmAdd")?.addEventListener("click", async function() {
-        var ids = $$(".col-pick-emp input:checked").map(function(cb){ return Number(cb.value); }).filter(Boolean);
+        var ids = CREmployeePicker.getSelected(pickerId);
         if (!ids.length) { toast("Подборки", "Выберите сотрудников", "err"); return; }
         var res = await api("POST", "/" + colId + "/employees", { employee_ids: ids });
         if (res.success) {
+          CREmployeePicker.destroy(pickerId);
           hideModal();
           toast("Подборки", "Добавлено " + res.added + " сотр.");
           openCollection(colId);
