@@ -545,8 +545,13 @@ window.AsgardChatGroups = (function(){
     if (!card) return;
     let meta = {};
     try { meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : (msg.metadata || {}); } catch(e) {}
-    const fmt = v => new Intl.NumberFormat('ru-RU').format(v || 0) + ' \u20BD';
+    const fmt = v => v ? new Intl.NumberFormat('ru-RU').format(v) + ' \u20BD' : '\u2014';
     const statusLabels = { draft: 'Черновик', sent: 'Отправлен', approved: 'Согласован', rework: 'Доработка', question: 'Вопрос', rejected: 'Отклонён' };
+    // Update title
+    const titleEl = card.querySelector('.ec-pinned-card__title');
+    if (titleEl && (meta.title || meta.tender_title)) {
+      titleEl.textContent = meta.title || meta.tender_title;
+    }
     // Update status badge
     const badge = card.querySelector('.ec-status-badge');
     if (badge && meta.status) {
@@ -561,9 +566,8 @@ window.AsgardChatGroups = (function(){
       if (meta.margin_pct != null) values[2].textContent = meta.margin_pct + '%';
     }
     // Flash animation
-    card.style.transition = 'box-shadow 300ms';
-    card.style.boxShadow = '0 0 12px rgba(212,168,67,.4)';
-    setTimeout(() => { card.style.boxShadow = ''; }, 1500);
+    card.classList.add('ec-pinned-card--flash');
+    setTimeout(() => card.classList.remove('ec-pinned-card--flash'), 1500);
   }
 
   function _updateSidebarPreview(chatId, msg) {
@@ -884,19 +888,28 @@ window.AsgardChatGroups = (function(){
       if (cardMsg) {
         let meta = {};
         try { meta = typeof cardMsg.metadata === 'string' ? JSON.parse(cardMsg.metadata) : (cardMsg.metadata || {}); } catch(e) {}
-        const fmt = v => new Intl.NumberFormat('ru-RU').format(v || 0) + ' \u20BD';
+        const fmt = v => v ? new Intl.NumberFormat('ru-RU').format(v) + ' \u20BD' : '—';
         const status = meta.status || 'draft';
         const statusLabels = { draft: 'Черновик', sent: 'Отправлен', approved: 'Согласован', rework: 'Доработка', question: 'Вопрос', rejected: 'Отклонён' };
+        const cardTitle = meta.title || meta.tender_title || chat.name || 'Просчёт';
+        const infoParts = [meta.customer, meta.object_city, meta.work_type].filter(Boolean);
+        const detailParts = [];
+        if (meta.pm_name) detailParts.push(esc(meta.pm_name));
+        if (meta.crew_count) detailParts.push(meta.crew_count + ' чел.');
+        if (meta.work_days) detailParts.push(meta.work_days + ' дн.');
+        if (meta.version_no && meta.version_no > 1) detailParts.push('v.' + meta.version_no);
         pinnedCardHtml = `
           <div class="ec-pinned-card">
             <div class="ec-pinned-card__header">
-              <span class="ec-pinned-card__title">${esc(meta.title || chat.name || 'Просчёт')}</span>
+              <span class="ec-pinned-card__title">${esc(cardTitle)}</span>
               <span class="ec-status-badge ec-status-badge--${status}">${statusLabels[status] || status}</span>
             </div>
+            ${infoParts.length ? `<div class="ec-pinned-card__info">${esc(infoParts.join(' \u2022 '))}</div>` : ''}
+            ${detailParts.length ? `<div class="ec-pinned-card__details">${detailParts.join(' \u00B7 ')}</div>` : ''}
             <div class="ec-pinned-card__metrics">
               <div class="ec-metric"><span class="ec-metric__label">Себестоимость</span><span class="ec-metric__value">${fmt(meta.total_cost)}</span></div>
               <div class="ec-metric"><span class="ec-metric__label">Клиенту</span><span class="ec-metric__value">${fmt(meta.total_with_margin)}</span></div>
-              <div class="ec-metric"><span class="ec-metric__label">Маржа</span><span class="ec-metric__value">${meta.margin_pct || 0}%</span></div>
+              <div class="ec-metric"><span class="ec-metric__label">Маржа</span><span class="ec-metric__value">${meta.margin_pct != null ? meta.margin_pct + '%' : '—'}</span></div>
             </div>
             <a class="ec-pinned-card__link" href="#/estimate-report?id=${meta.estimate_id || ''}">Открыть полный отчёт \u2192</a>
           </div>`;

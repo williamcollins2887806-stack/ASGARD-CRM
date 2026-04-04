@@ -547,16 +547,27 @@ window.AsgardKpiWorksPage=(function(){
     apply();
 
     $("#btnGantt").addEventListener("click", async ()=>{
-      const settings = await (async()=>{ const s=await AsgardDB.get("settings","app"); return s?JSON.parse(s.value_json||"{}"):{}; })();
-      const startIso=(settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
+      const st = await (async()=>{ const s=await AsgardDB.get("settings","app"); return s?JSON.parse(s.value_json||"{}"):{}; })();
+      const defaultStart=(st.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
       const rows = works.map(w=>{
         const t=tenders.find(x=>x.id===w.tender_id);
         const start = w.start_in_work_date || t?.work_start_plan || w.end_plan || "2026-01-01";
         const end = w.end_fact || w.end_plan || t?.work_end_plan || start;
         return {start,end,label:(w.customer_name||t?.customer_name||""),sub:(w.work_title||t?.tender_title||""),barText:w.work_status||"",status:w.work_status||""};
       });
-      const html = AsgardGantt.renderBoard({startIso, weeks: 60, rows, getColor:(r)=>(settings.status_colors?.work||{})[r.status]||"#2a6cf1"});
-      showModal("\u0413\u0430\u043d\u0442\u0442 \u2022 \u0412\u0441\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", `<div style="max-height:80vh; overflow:auto">${html}</div>`);
+      const colors=st.status_colors?.work||{};
+      showModal("\u0413\u0430\u043d\u0442\u0442 \u2022 \u0412\u0441\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", `${AsgardGantt.navHtml()}<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" style="max-height:70vh;overflow:auto"></div>`);
+      setTimeout(()=>{
+        const fi=document.getElementById('g-from'), ti=document.getElementById('g-to');
+        if(!fi) return;
+        function render(){
+          const f=fi.value, t=ti.value;
+          let startIso=f||defaultStart, weeks=60;
+          if(f&&t){ const ms=7*864e5; weeks=Math.max(4,Math.ceil((new Date(t)-new Date(f))/ms)+1); }
+          document.getElementById('gModal').innerHTML=AsgardGantt.renderBoard({startIso,weeks,rows,getColor:r=>colors[r.status]||"#2a6cf1"});
+        }
+        AsgardGantt.initNav(fi,ti,render);
+      },0);
     });
   }
 

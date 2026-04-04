@@ -715,8 +715,8 @@ async function mimirRoutes(fastify, options) {
         // Срочные тендеры (дедлайн < 3 дней)
         const urgentRes = await db.query(
           `SELECT COUNT(*) as cnt FROM tenders
-           WHERE status IN ('in_progress','active','new')
-           AND deadline IS NOT NULL AND deadline < CURRENT_DATE + INTERVAL '3 days' AND deadline >= CURRENT_DATE`
+           WHERE deleted_at IS NULL AND tender_status NOT IN ('Закрыт', 'Отменён', 'Выиграли', 'Проиграли')
+           AND docs_deadline IS NOT NULL AND docs_deadline < CURRENT_DATE + INTERVAL '3 days' AND docs_deadline >= CURRENT_DATE`
         );
         const urgent = parseInt(urgentRes.rows[0]?.cnt || 0);
         if (urgent > 0) {
@@ -737,7 +737,7 @@ async function mimirRoutes(fastify, options) {
       // PM — активные тендеры и работы
       if (mimirData.isPM(role)) {
         const myTendersRes = await db.query(
-          `SELECT COUNT(*) as cnt FROM tenders WHERE responsible_id = $1 AND status IN ('in_progress','active','new')`,
+          `SELECT COUNT(*) as cnt FROM tenders WHERE deleted_at IS NULL AND responsible_pm_id = $1 AND tender_status NOT IN ('Закрыт', 'Отменён', 'Выиграли', 'Проиграли')`,
           [user.id]
         );
         const myTenders = parseInt(myTendersRes.rows[0]?.cnt || 0);
@@ -747,7 +747,7 @@ async function mimirRoutes(fastify, options) {
 
         const staleRes = await db.query(
           `SELECT COUNT(*) as cnt FROM works
-           WHERE pm_id = $1 AND status = 'active' AND updated_at < NOW() - INTERVAL '14 days'`,
+           WHERE deleted_at IS NULL AND pm_id = $1 AND work_status NOT IN ('Работы сдали', 'Отменено') AND updated_at < NOW() - INTERVAL '14 days'`,
           [user.id]
         );
         const stale = parseInt(staleRes.rows[0]?.cnt || 0);
@@ -926,13 +926,13 @@ async function mimirRoutes(fastify, options) {
         recommendation = 'Новый клиент. Требуется качественное КП.';
         score = 50;
       } else if (winRate >= 60) {
-        recommendation = 'Высокие шансы! Клиент лоялен, конверсия ' + winRate + '%';
+        recommendation = 'Высокие шансы! Клиент лоялен, % выигранных ' + winRate + '%';
         score = 85;
       } else if (winRate >= 30) {
-        recommendation = 'Средние шансы. Конверсия ' + winRate + '%. Подготовь конкурентное КП.';
+        recommendation = 'Средние шансы. % выигранных ' + winRate + '%. Подготовь конкурентное КП.';
         score = 60;
       } else {
-        recommendation = 'Низкие шансы. Конверсия ' + winRate + '%. Оцени целесообразность участия.';
+        recommendation = 'Низкие шансы. % выигранных ' + winRate + '%. Оцени целесообразность участия.';
         score = 30;
       }
 

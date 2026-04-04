@@ -160,6 +160,83 @@ window.AsgardGantt = (function(){
     `;
   }
 
-  return { renderMini, renderBoard, isoDate };
+  /* ── Quick-scale navigation bar (S9) ── */
+  const GMONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  function navHtml(){
+    return `<div class="cr-gantt-nav">
+      <div class="cr-gantt-nav__scales">
+        <button class="cr-gantt-nav__btn" data-gscale="month">Месяц</button>
+        <button class="cr-gantt-nav__btn" data-gscale="quarter">Квартал</button>
+        <button class="cr-gantt-nav__btn" data-gscale="year">Год</button>
+        <button class="cr-gantt-nav__btn" data-gscale="all">Всё</button>
+      </div>
+      <button class="cr-gantt-nav__arrow" id="g-prev" title="Назад">\u2190</button>
+      <span class="cr-gantt-nav__label" id="g-range-label"></span>
+      <button class="cr-gantt-nav__arrow" id="g-next" title="Вперёд">\u2192</button>
+      <button class="cr-gantt-nav__today" id="g-today">Сегодня</button>
+    </div>`;
+  }
+
+  function initNav(fromInp, toInp, applyFn){
+    let scale = 'month', offset = 0;
+
+    function updateLabel(){
+      const el = document.getElementById('g-range-label');
+      if(!el) return;
+      const now = new Date(); now.setHours(0,0,0,0);
+      if(scale==='month'){
+        const d = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+        el.textContent = GMONTHS[d.getMonth()] + ' ' + d.getFullYear();
+      }else if(scale==='quarter'){
+        const qm = Math.floor(now.getMonth()/3)*3;
+        const d = new Date(now.getFullYear(), qm+offset*3, 1);
+        el.textContent = (Math.floor(d.getMonth()/3)+1) + '-й кв. ' + d.getFullYear();
+      }else if(scale==='year'){
+        el.textContent = (now.getFullYear()+offset) + ' год';
+      }else{
+        el.textContent = 'Все данные';
+      }
+    }
+
+    function setScale(s, off){
+      scale = s; offset = off;
+      const now = new Date(); now.setHours(0,0,0,0);
+      if(s==='month'){
+        const d = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+        fromInp.value = isoDate(d);
+        toInp.value = isoDate(new Date(d.getFullYear(), d.getMonth()+1, 0));
+      }else if(s==='quarter'){
+        const qm = Math.floor(now.getMonth()/3)*3;
+        const d = new Date(now.getFullYear(), qm+offset*3, 1);
+        fromInp.value = isoDate(d);
+        toInp.value = isoDate(new Date(d.getFullYear(), d.getMonth()+3, 0));
+      }else if(s==='year'){
+        const d = new Date(now.getFullYear()+offset, 0, 1);
+        fromInp.value = isoDate(d);
+        toInp.value = isoDate(new Date(d.getFullYear(), 11, 31));
+      }else{
+        fromInp.value = ''; toInp.value = '';
+      }
+      document.querySelectorAll('.cr-gantt-nav__btn').forEach(b=>
+        b.classList.toggle('cr-gantt-nav__btn--active', b.dataset.gscale===s));
+      updateLabel();
+      applyFn();
+    }
+
+    document.querySelectorAll('.cr-gantt-nav__btn[data-gscale]').forEach(btn=>{
+      btn.addEventListener('click', ()=> setScale(btn.dataset.gscale, 0));
+    });
+    const prevB = document.getElementById('g-prev');
+    const nextB = document.getElementById('g-next');
+    const todayB = document.getElementById('g-today');
+    if(prevB) prevB.addEventListener('click', ()=>{ if(scale!=='all') setScale(scale, offset-1); });
+    if(nextB) nextB.addEventListener('click', ()=>{ if(scale!=='all') setScale(scale, offset+1); });
+    if(todayB) todayB.addEventListener('click', ()=> setScale(scale, 0));
+
+    setScale('month', 0);
+  }
+
+  return { renderMini, renderBoard, isoDate, navHtml, initNav };
 
 })();

@@ -4,6 +4,7 @@
   "description": "CRM система для управления тендерами, работами и персоналом",
   "start_url": "./index.html#/home",
   "scope": "./",
+  "id": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0d1428",

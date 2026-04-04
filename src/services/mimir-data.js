@@ -77,10 +77,10 @@ async function getDbStats(db, user) {
       let params = [];
 
       if (isPM(role) && !hasFullAccess(role)) {
-        tenderQuery += ' WHERE pm_id = $1';
+        tenderQuery += ' WHERE responsible_pm_id = $1';
         params.push(userId);
       }
-      tenderQuery += ' GROUP BY tender_status';
+      tenderQuery += (params.length ? ' AND' : ' WHERE') + ' deleted_at IS NULL GROUP BY tender_status';
 
       const tenders = await db.query(tenderQuery, params);
       stats.tendersTotal = 0;
@@ -91,24 +91,21 @@ async function getDbStats(db, user) {
       });
 
       // За месяц
-      let recentQuery = 'SELECT COUNT(*) as cnt FROM tenders WHERE created_at > NOW() - INTERVAL \'30 days\'';
+      let recentQuery = 'SELECT COUNT(*) as cnt FROM tenders WHERE created_at > NOW() - INTERVAL \'30 days\' AND deleted_at IS NULL';
       if (isPM(role) && !hasFullAccess(role)) {
-        recentQuery += ' AND pm_id = $1';
-        const recent = await db.query(recentQuery, [userId]);
-        stats.tendersLastMonth = parseInt(recent.rows[0].cnt || 0);
-      } else {
-        const recent = await db.query(recentQuery);
-        stats.tendersLastMonth = parseInt(recent.rows[0].cnt || 0);
+        recentQuery += ' AND responsible_pm_id = $1';
       }
+      const recent = await db.query(recentQuery, isPM(role) && !hasFullAccess(role) ? [userId] : []);
+      stats.tendersLastMonth = parseInt(recent.rows[0].cnt || 0);
     }
 
     // РАБОТЫ
     if (hasFullAccess(role) || isPM(role) || isBUH(role)) {
-      let worksQuery = 'SELECT COUNT(*) as total, COALESCE(SUM(contract_value), 0) as sum FROM works';
+      let worksQuery = 'SELECT COUNT(*) as total, COALESCE(SUM(contract_value), 0) as sum FROM works WHERE deleted_at IS NULL';
       let params = [];
 
       if (isPM(role) && !hasFullAccess(role)) {
-        worksQuery += ' WHERE pm_id = $1';
+        worksQuery += ' AND pm_id = $1';
         params.push(userId);
       }
 
@@ -117,15 +114,12 @@ async function getDbStats(db, user) {
       stats.worksSum = parseFloat(works.rows[0].sum || 0);
 
       // Активные работы
-      let activeQuery = 'SELECT COUNT(*) as cnt FROM works WHERE work_status NOT IN (\'Работы сдали\', \'Отменено\')';
+      let activeQuery = 'SELECT COUNT(*) as cnt FROM works WHERE deleted_at IS NULL AND work_status NOT IN (\'Работы сдали\', \'Отменено\')';
       if (isPM(role) && !hasFullAccess(role)) {
         activeQuery += ' AND pm_id = $1';
-        const active = await db.query(activeQuery, [userId]);
-        stats.worksActive = parseInt(active.rows[0].cnt || 0);
-      } else {
-        const active = await db.query(activeQuery);
-        stats.worksActive = parseInt(active.rows[0].cnt || 0);
       }
+      const active = await db.query(activeQuery, isPM(role) && !hasFullAccess(role) ? [userId] : []);
+      stats.worksActive = parseInt(active.rows[0].cnt || 0);
     }
 
     // СОТРУДНИКИ (только HR и директора)
@@ -212,11 +206,11 @@ async function searchTenders(db, query, user) {
   try {
     let sql = `SELECT id, customer_name, tender_title, tender_status, period, created_at
                FROM tenders
-               WHERE (customer_name ILIKE $1 OR tender_title ILIKE $1 OR CAST(id AS TEXT) = $2)`;
+               WHERE deleted_at IS NULL AND (customer_name ILIKE $1 OR tender_title ILIKE $1 OR CAST(id AS TEXT) = $2)`;
     let params = ['%' + query + '%', query];
 
     if (isPM(role) && !hasFullAccess(role)) {
-      sql += ' AND pm_id = $3';
+      sql += ' AND responsible_pm_id = $3';
       params.push(userId);
     }
 
@@ -240,7 +234,7 @@ async function searchWorks(db, query, user) {
   try {
     let sql = `SELECT id, work_number, work_title, customer_name, work_status, contract_value, end_plan
                FROM works
-               WHERE (work_title ILIKE $1 OR customer_name ILIKE $1 OR work_number ILIKE $1)`;
+               WHERE deleted_at IS NULL AND (work_title ILIKE $1 OR customer_name ILIKE $1 OR work_number ILIKE $1)`;
     let params = ['%' + query + '%'];
 
     if (isPM(role) && !hasFullAccess(role)) {
@@ -314,7 +308,8 @@ async function getUpcomingDeadlines(db, user) {
   try {
     let sql = `SELECT id, work_number, work_title, customer_name, end_plan
                FROM works
-               WHERE work_status NOT IN ('Работы сдали', 'Отменено')
+               WHERE deleted_at IS NULL
+               AND work_status NOT IN ('Работы сдали', 'Отменено')
                AND end_plan IS NOT NULL
                AND end_plan >= CURRENT_DATE
                AND end_plan <= CURRENT_DATE + INTERVAL '14 days'`;
@@ -498,10 +493,12 @@ ${statusList}
       .map(([k, v]) => `  • ${k}: ${v}`)
       .join('\n') || '  Нет данных';
 
-    section = `ТВОИ ТЕНДЕРЫ: ${stats.tendersTotal || 0}
+    section = `ДАННЫЕ ТОЛЬКО ЭТОГО РП (НЕ всей компании!):
+
+ТЕНДЕРЫ ЭТОГО РП: ${stats.tendersTotal || 0} (именно столько, не больше)
 ${statusList}
 
-ТВОИ РАБОТЫ: ${stats.worksTotal || 0} (активных: ${stats.worksActive || 0})
+РАБОТЫ ЭТОГО РП: ${stats.worksTotal || 0} (активных: ${stats.worksActive || 0})
 Сумма контрактов: ${((stats.worksSum || 0) / 1000000).toFixed(2)} млн ₽`;
 
   } else if (isTO(role)) {
@@ -540,15 +537,16 @@ ${statusList}
  */
 function buildRestrictions(role, userName) {
   if (hasFullAccess(role)) {
-    return 'У тебя ПОЛНЫЙ доступ ко всем данным системы. Можешь отвечать на любые вопросы.';
+    return 'У тебя ПО��НЫЙ доступ ко всем данным системы. Все цифры в crm_data — глобальная статистика компании.';
   }
 
   const restrictions = [];
 
   if (isPM(role)) {
-    restrictions.push(`Показывай ТОЛЬКО данные РП "${userName}"`);
-    restrictions.push('НЕ раскрывай тендеры и работы других руководителей проектов');
-    restrictions.push('НЕ раскрывай зарплаты сотрудников');
+    restrictions.push(`ВСЕ цифры в crm_data — это ТОЛЬКО данные РП "${userName}". Не говори "в компании" — говори "у тебя"`);
+    restrictions.push('НЕ придумывай цифры. Если в crm_data написано 2 работы — значит 2, не 168');
+    restrictions.push('НЕ ра��крывай тендеры и работы других руководителей проектов');
+    restrictions.push('НЕ раскрыв��й зарплаты сотруд��иков');
     restrictions.push('НЕ раскрывай общую прибыль компании');
   } else if (isTO(role)) {
     restrictions.push('Показывай информацию только по тендерам');
@@ -672,6 +670,8 @@ ${buildRestrictions(role, userName)}
 - Форматируй ответы: заголовки (##), списки (-), **жирный** для важного, таблицы при необходимости
 - Финансовые суммы — с разделителями тысяч и указанием валюты (₽)
 - НИКОГДА не выдумывай данные. Если информации нет — скажи прямо
+- Цифры в crm_data — ТОЧНЫЕ. Не округляй, не преувеличивай, не додумывай
+- НЕ используй слово "конверсия" — говори "% выигранных" или "% целевых заявок"
 - СТРОГО соблюдай ограничения роли из раздела role_restrictions
 - Поддерживай деловой, но дружелюбный тон
 - При анализе файлов — давай структурированный отчёт с выводами

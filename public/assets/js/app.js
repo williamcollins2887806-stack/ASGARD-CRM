@@ -405,6 +405,30 @@ console.log('[ASGARD] Global period functions loaded');
     return icons[name] || '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
   }
 
+  /** Update ALL notification badge elements (bell, sidebar, mobile tab) */
+  function updateNotifBadges(count) {
+    var badges = document.querySelectorAll('.bellcount, .notif-badge, .m-tab-badge');
+    badges.forEach(function(b) {
+      if (count > 0) {
+        b.textContent = count > 99 ? '99+' : String(count);
+        b.classList.remove('cr-field-hidden');
+        b.style.display = '';
+      } else {
+        b.style.display = 'none';
+      }
+    });
+    // If no .bellcount element exists yet (initial render), create it
+    if (count > 0 && !document.querySelector('.bellcount')) {
+      var btn = document.getElementById('btnBell');
+      if (btn) {
+        var span = document.createElement('span');
+        span.className = 'bellcount';
+        span.textContent = count > 99 ? '99+' : String(count);
+        btn.appendChild(span);
+      }
+    }
+  }
+
   async function layout(body,{title,motto,rightBadges=[]}={}){
     // Сохраняем позицию скролла меню
     const sidenav = document.querySelector('.sidenav');
@@ -419,16 +443,7 @@ console.log('[ASGARD] Global period functions loaded');
       /* Load notifications in background — don't block page render */
       AsgardDB.byIndex("notifications","user_id", user.id).then(function(nots) {
         unreadCount = (nots||[]).filter(function(n){return !n.is_read;}).length;
-        /* Update badge count in sidebar + tabbar */
-        var badges = document.querySelectorAll('.notif-badge, .m-tab-badge');
-        badges.forEach(function(b) {
-          if (unreadCount > 0) {
-            b.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
-            b.style.display = '';
-          } else {
-            b.style.display = 'none';
-          }
-        });
+        updateNotifBadges(unreadCount);
       }).catch(function(){});
     }
 // Prevent duplicate/stale global listeners between navigations / logout-login.
@@ -980,7 +995,13 @@ try{
           const id = Number(a.getAttribute("data-nid"));
           try{
             const n = await AsgardDB.get("notifications", id);
-            if(n && !n.is_read){ n.is_read=true; await AsgardDB.put("notifications", n); }
+            if(n && !n.is_read){
+              n.is_read=true; await AsgardDB.put("notifications", n);
+              // Decrement badge
+              const cur = document.querySelector('.bellcount');
+              const v = cur ? parseInt(cur.textContent,10)||0 : 0;
+              updateNotifBadges(Math.max(0, v - 1));
+            }
           }catch(e){}
           hide();
         }));
@@ -1005,6 +1026,7 @@ try{
         try{ items = await AsgardDB.byIndex("notifications","user_id", user.id); }catch(e){ items=[]; }
         for(const n of items){ if(n && !n.is_read){ n.is_read=true; await AsgardDB.put("notifications", n); } }
         await loadBell();
+        updateNotifBadges(0);
         toast("Уведомления", "Отмечено как прочитано");
       });
     }
@@ -2486,6 +2508,19 @@ _sseSource.addEventListener("call:missed", (e) => {        try {          if (wi
           }
         } catch(_) {}
       });
+      });
+
+      // Real-time notification badge update
+      _sseSource.addEventListener('notification', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.unread_count !== undefined) {
+            updateNotifBadges(data.unread_count);
+          }
+          if (data.title) {
+            toast(data.title, data.message || '', 'ok');
+          }
+        } catch(_) {}
       });
 
       _sseSource.addEventListener('error', () => {

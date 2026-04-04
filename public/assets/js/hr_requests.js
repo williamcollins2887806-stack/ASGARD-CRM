@@ -67,14 +67,14 @@ window.AsgardHrRequestsPage=(function(){
           <div class="field"><label>Поиск</label><input id="f_q" placeholder="заказчик / работа"/></div>
         </div>
         <hr class="hr"/>
-        <div style="overflow:auto">
+        <div class="table-wrap">
           <table class="asg">
             <thead>
               <tr>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="created_at">Запрос</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="pm_id">РП</button></th>
+                <th><button class="btn ghost mini" data-sort="created_at">Запрос</button></th>
+                <th><button class="btn ghost mini" data-sort="pm_id">РП</button></th>
                 <th>Состав</th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="status">Статус</button></th>
+                <th><button class="btn ghost mini" data-sort="status">Статус</button></th>
                 <th></th>
               </tr>
             </thead>
@@ -149,8 +149,8 @@ window.AsgardHrRequestsPage=(function(){
           <td><b>#${r.id}</b><div class="help">${esc(w?.customer_name||t?.customer_name||"")} — ${esc(w?.work_title||t?.tender_title||"")}</div><div class="help">${r.created_at?esc(new Date(r.created_at).toLocaleString("ru-RU")):""}</div></td>
           <td>${esc(pmU?pmU.name:"—")}</td>
           <td>${esc(compo(r))}</td>
-          <td><span class="pill" style="background:${{sent:'var(--info)',answered:'var(--amber)',approved:'var(--ok-t)',rework:'var(--err-t)'}[r.status]||'var(--t2)'};color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">${{sent:'Отправлен',answered:'Ответ HR',approved:'Согласован',rework:'Доработка'}[r.status]||r.status}</span></td>
-          <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button></td>
+          <td><span class="sr-status-pill sr-badge--${r.status||''}">${{sent:'Отправлен',answered:'Ответ HR',approved:'Согласован',rework:'Доработка'}[r.status]||r.status}</span></td>
+          <td><button class="btn mini" data-act="open">Открыть</button></td>
         </tr>`;
       }).join("");
       cnt.textContent = `Показано: ${paged_hr.length} из ${list.length}`;
@@ -207,16 +207,16 @@ window.AsgardHrRequestsPage=(function(){
           <div class="sr-role-header">
             <div>
               <span class="sr-role-name">${esc(role)}</span>
-              ${needed>0?`<span style="margin-left:8px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:rgba(74,144,217,0.15);color:var(--info)">нужно: ${needed}</span>`:''}
+              ${needed>0?`<span class="sr-role-need">нужно: ${needed}</span>`:''}
             </div>
-            <button class="btn ghost" style="padding:5px 12px;font-size:12px" data-act="pickRole" data-role="${esc(role)}">Авто-подбор</button>
+            <button class="btn ghost mini" data-act="pickRole" data-role="${esc(role)}">Авто-подбор</button>
           </div>
           <div class="sr-emp-grid">
             ${list.map(s=> isVachta ? `
               <div class="sr-emp-card ${chosenA.has(s.id)||chosenB.has(s.id)?'selected':''}" data-emp-id="${s.id}" data-emp-name="${esc(s.fio||s.name||'')}" data-emp-role="${esc(s.role_tag||'')}" data-emp-city="${esc(s.city||'')}">
-                <div style="display:flex;gap:6px;align-items:center;min-width:60px">
-                  <label style="display:flex;gap:4px;align-items:center;font-size:11px;cursor:pointer"><input type="checkbox" class="stchkA" data-id="${s.id}" ${chosenA.has(s.id)?"checked":""}/>A</label>
-                  <label style="display:flex;gap:4px;align-items:center;font-size:11px;cursor:pointer"><input type="checkbox" class="stchkB" data-id="${s.id}" ${chosenB.has(s.id)?"checked":""}/>B</label>
+                <div class="sr-emp-vachta">
+                  <label><input type="checkbox" class="stchkA" data-id="${s.id}" ${chosenA.has(s.id)?"checked":""}/>A</label>
+                  <label><input type="checkbox" class="stchkB" data-id="${s.id}" ${chosenB.has(s.id)?"checked":""}/>B</label>
                 </div>
                 <div>
                   <div class="sr-emp-name">${esc(s.fio||s.name||"")}${s.rating_avg ? " ★"+Number(s.rating_avg).toFixed(1) : ""}</div>
@@ -225,7 +225,7 @@ window.AsgardHrRequestsPage=(function(){
               </div>
             ` : `
               <label class="sr-emp-card ${chosen.has(s.id)?'selected':''}" data-emp-id="${s.id}" data-emp-name="${esc(s.fio||s.name||'')}" data-emp-role="${esc(s.role_tag||'')}" data-emp-city="${esc(s.city||'')}">
-                <input type="checkbox" class="stchk" value="${s.id}" ${chosen.has(s.id)?"checked":""} style="accent-color:var(--info)"/>
+                <input type="checkbox" class="stchk" value="${s.id}" ${chosen.has(s.id)?"checked":""}/>
                 <div>
                   <div class="sr-emp-name">${esc(s.fio||s.name||"")}${s.rating_avg ? " ★"+Number(s.rating_avg).toFixed(1) : ""}</div>
                   <div class="sr-emp-info">${esc(s.role_tag||"")}${s.city?" · "+esc(s.city):""}${s.phone?" · "+esc(s.phone):""}</div>
@@ -244,19 +244,19 @@ window.AsgardHrRequestsPage=(function(){
       const replaceHtml = (String(req.status||"")==="approved" && user.role==="HR") ? `
         <hr class="hr"/>
         <div class="sr-section-title">Замены сотрудников</div>
-        ${replaceList.length? `<div style="margin-top:8px">${replaceList.map(s=>{
+        ${replaceList.length? `<div class="sr-section">${replaceList.map(s=>{
             const crew = approvedA.has(s.id) ? "A" : (approvedB.has(s.id) ? "B" : "");
-            return `<div class="pill" style="justify-content:space-between; gap:10px">
-              <div><div class="who"><b>${esc(s.fio||s.name||"")}</b> ${crew?`<span class=\"tag\">вахта ${crew}</span>`:""}</div>
+            return `<div class="pill between">
+              <div><div class="who"><b>${esc(s.fio||s.name||"")}</b> ${crew?`<span class="tag">вахта ${crew}</span>`:""}</div>
               <div class="role">${esc(s.role_tag||"")}${s.city?" • "+esc(s.city):""}</div></div>
-              <button class="btn ghost" style="padding:6px 10px" data-act="replace" data-emp="${s.id}">Заменить</button>
+              <button class="btn ghost mini" data-act="replace" data-emp="${s.id}">Заменить</button>
             </div>`;
           }).join("")}</div>` : `<div class="help">Нет согласованных сотрудников для замены.</div>`}
       ` : ``;
 
       // --- Build composition cards ---
       const composParts = Object.entries(r).filter(([k,v])=>Number(v||0)>0);
-      const composHtml = composParts.length ? composParts.map(([k,v])=>`<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(74,144,217,0.1);border:1px solid rgba(74,144,217,0.2);border-radius:8px;padding:6px 12px;font-size:13px"><b>${esc(k)}</b><span style="background:var(--info);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${v}</span></div>`).join(' ') : '<span style="color:var(--t2)">Не указан</span>';
+      const composHtml = composParts.length ? composParts.map(([k,v])=>`<div class="sr-compos-badge"><b>${esc(k)}</b><span class="sr-compos-count">${v}</span></div>`).join(' ') : '<span class="sr-compos-empty">Не указан конкретный состав, подбор на усмотрение HR</span>';
 
       const statusColors = {sent:'var(--info)',answered:'var(--amber)',approved:'var(--ok-t)',rework:'var(--err-t)'};
       const statusLabels = {sent:'Отправлен',answered:'Ответ HR',approved:'Согласован',rework:'На доработке'};
@@ -264,60 +264,34 @@ window.AsgardHrRequestsPage=(function(){
       const stLabel = statusLabels[req.status]||req.status;
 
       const html = `
-        <style>
-          .sr-header{display:grid;grid-template-columns:1fr auto;gap:16px;padding:16px 20px;background:linear-gradient(135deg,rgba(13,20,40,0.7),rgba(30,61,114,0.2));border-radius:10px;border:1px solid rgba(255,255,255,0.06)}
-          .sr-header .title{font-size:16px;font-weight:700;color:var(--t1)}
-          .sr-header .sub{font-size:13px;color:var(--t2);margin-top:4px}
-          .sr-badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;color:#fff}
-          .sr-section{margin-top:16px}
-          .sr-section-title{font-size:13px;font-weight:700;color:var(--gold-l,#d4af37);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;display:flex;align-items:center;gap:8px}
-          .sr-role-group{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:14px;margin-bottom:10px}
-          .sr-role-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-          .sr-role-name{font-weight:700;font-size:14px;color:var(--t1)}
-          .sr-emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px;max-height:250px;overflow-y:auto;padding-right:4px}
-          .sr-emp-card{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all 0.15s}
-          .sr-emp-card:hover{background:rgba(74,144,217,0.08);border-color:rgba(74,144,217,0.2)}
-          .sr-emp-card.selected{background:rgba(74,144,217,0.12);border-color:rgba(74,144,217,0.4)}
-          .sr-emp-name{font-size:13px;font-weight:600;color:var(--t1)}
-          .sr-emp-info{font-size:11px;color:var(--t2)}
-          .sr-chat-msg{padding:10px 14px;border-radius:8px;margin-bottom:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)}
-          .sr-chat-msg .who{font-size:11px;color:var(--gold-l);font-weight:600}
-          .sr-chat-msg .when{font-size:10px;color:var(--t3)}
-          .sr-chat-msg .text{font-size:13px;color:var(--t1);margin-top:4px}
-          .sr-search{width:100%;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--t1);font-size:13px;margin-bottom:10px}
-          .sr-search::placeholder{color:var(--t3)}
-          .sr-actions{display:flex;gap:10px;flex-wrap:wrap;padding:16px 0 0;position:sticky;bottom:0;background:var(--bg-card);z-index:2}
-          .sr-section-title::after{content:'';flex:1;height:1px;background:rgba(212,168,67,0.2)}
-        </style>
-
         <div class="sr-header">
           <div>
             <div class="title">${esc(w?.customer_name||t?.customer_name||"Заказчик не указан")}</div>
             <div class="sub">${esc(w?.work_title||t?.tender_title||"Работа не указана")}</div>
-            <div class="sub" style="margin-top:6px">РП: <b style="color:var(--t1)">${esc(pmU?pmU.name:"Не назначен")}</b></div>
+            <div class="sub">РП: <b>${esc(pmU?pmU.name:"Не назначен")}</b></div>
           </div>
-          <div style="text-align:right">
-            <div class="sr-badge" style="background:${stColor}">${esc(stLabel)}</div>
-            <div style="font-size:11px;color:var(--t3);margin-top:6px">${req.created_at?new Date(req.created_at).toLocaleDateString("ru-RU"):""}</div>
+          <div class="sr-header__right">
+            <div class="sr-badge sr-badge--${esc(req.status||'')}">${esc(stLabel)}</div>
+            <div class="sr-header__date">${req.created_at?new Date(req.created_at).toLocaleDateString("ru-RU"):""}</div>
           </div>
         </div>
 
         <div class="sr-section">
           <div class="sr-section-title">Запрошенный состав</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px">${composHtml}</div>
-          ${isVachta ? '<div style="margin-top:8px;padding:8px 12px;background:rgba(212,168,67,0.08);border-radius:8px;font-size:12px;color:var(--gold-l)"><b>Вахтовый метод</b>: ротация ' + esc(String(req.rotation_days||"")) + ' дн. (бригады A/B)</div>' : ''}
+          <div class="row wrap">${composHtml}</div>
+          ${isVachta ? '<div class="sr-vachta-note"><b>Вахтовый метод</b>: ротация ' + esc(String(req.rotation_days||"")) + ' дн. (бригады A/B)</div>' : ''}
         </div>
 
         <div class="sr-section">
           <div class="sr-section-title">Комментарий HR</div>
-          <input id="hr_comment" value="${esc(comment)}" placeholder="Условия, доступность, ограничения..." style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--t1);font-size:13px"/>
+          <input id="hr_comment" class="sr-input" value="${esc(comment)}" placeholder="Условия, доступность, ограничения..."/>
         </div>
 
         <div class="sr-section">
           <div class="sr-section-title">Подбор сотрудников</div>
-          <div style="display:flex;gap:8px;margin-bottom:10px">
-            <input class="sr-search" id="sr_emp_search" placeholder="Поиск по ФИО, должности, городу..." style="flex:1;margin-bottom:0"/>
-            <button class="btn ghost" id="btnFromCollection" style="white-space:nowrap;border:1px solid var(--gold);color:var(--gold)">Из подборки</button>
+          <div class="sr-msg-row">
+            <div><input class="sr-search" id="sr_emp_search" placeholder="Поиск по ФИО, должности, городу..."/></div>
+            <button class="btn ghost" id="btnFromCollection">Из подборки</button>
           </div>
           <div id="sr_roles_container">${rolesHtml}</div>
         </div>
@@ -326,21 +300,19 @@ window.AsgardHrRequestsPage=(function(){
 
         <div class="sr-section">
           <div class="sr-section-title">Переписка с РП</div>
-          <div id="sr_chat" style="max-height:200px;overflow-y:auto"></div>
-          <div style="display:flex;gap:10px;align-items:flex-end;margin-top:10px">
-            <div style="flex:1">
-              <textarea id="sr_msg" rows="2" placeholder="Сообщение для РП..." style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--t1);font-size:13px;resize:vertical"></textarea>
-            </div>
-            <button class="btn" id="btnSendSrMsg" style="padding:10px 16px;white-space:nowrap">Отправить</button>
+          <div id="sr_chat" class="sr-chat-area"></div>
+          <div class="sr-msg-row">
+            <div><textarea id="sr_msg" class="sr-input" rows="2" placeholder="Сообщение для РП..."></textarea></div>
+            <button class="btn" id="btnSendSrMsg">Отправить</button>
           </div>
         </div>
 
         <div class="sr-actions">
-          <button class="btn primary" id="btnSend" style="flex:1;padding:12px 20px;font-size:14px;font-weight:700">Отправить ответ РП</button>
-          <button class="btn ghost" id="btnHistory" style="padding:12px 16px">История</button>
+          <button class="btn primary" id="btnSend">Отправить ответ РП</button>
+          <button class="btn ghost" id="btnHistory">История</button>
         </div>
       `;
-      showModal(`Запрос персонала #${id}`, `<div style="max-height:85vh; overflow-y:auto; padding:4px">${html}</div>`);
+      showModal(`Запрос персонала #${id}`, `<div class="sr-modal-scroll">${html}</div>`);
 
       // Collection picker button
       var btnCol = document.getElementById('btnFromCollection');
@@ -350,9 +322,9 @@ window.AsgardHrRequestsPage=(function(){
             var cols = await AsgardEmployeeCollections.getCollectionsList();
             if (!cols.length) { toast('Подборки', 'Нет подборок. Создайте в меню Подборки Дружины', 'err'); return; }
             var colHtml = cols.map(function(c2) {
-              return '<div class="col-pick" data-col-id="' + c2.id + '" style="padding:14px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;margin-bottom:6px"><div style="font-weight:700;color:var(--gold)">' + esc(c2.name) + '</div><div style="font-size:12px;color:var(--t3)">' + (c2.employee_count||0) + ' сотр.</div></div>';
+              return '<div class="col-pick sr-col-card" data-col-id="' + c2.id + '"><div class="sr-col-name">' + esc(c2.name) + '</div><div class="sr-col-count">' + (c2.employee_count||0) + ' сотр.</div></div>';
             }).join('');
-            showModal('Выберите подборку', '<div style="max-height:60vh;overflow-y:auto">' + colHtml + '</div>');
+            showModal('Выберите подборку', '<div class="sr-modal-scroll">' + colHtml + '</div>');
             document.querySelectorAll('.col-pick').forEach(function(el) {
               el.addEventListener('click', async function() {
                 var cid = Number(el.dataset.colId);
@@ -380,11 +352,11 @@ window.AsgardHrRequestsPage=(function(){
             const name = (card.getAttribute('data-emp-name')||'').toLowerCase();
             const role = (card.getAttribute('data-emp-role')||'').toLowerCase();
             const city = (card.getAttribute('data-emp-city')||'').toLowerCase();
-            card.style.display = (!q || name.includes(q) || role.includes(q) || city.includes(q)) ? '' : 'none';
+            card.classList.toggle('cr-field-hidden', !(!q || name.includes(q) || role.includes(q) || city.includes(q)));
           });
           document.querySelectorAll('.sr-role-group').forEach(g => {
-            const visible = g.querySelectorAll('.sr-emp-card:not([style*="display: none"])').length;
-            g.style.display = visible > 0 ? '' : 'none';
+            const visible = g.querySelectorAll('.sr-emp-card:not(.cr-field-hidden)').length;
+            g.classList.toggle('cr-field-hidden', visible === 0);
           });
         });
       }
@@ -460,17 +432,17 @@ window.AsgardHrRequestsPage=(function(){
         const opts = okIds.map(id2=>{ const s=staff.find(x=>x.id===id2); return `<option value="${id2}">${esc(s.fio||s.name||"")} (${esc(s.city||"")})</option>`; }).join("");
         const body = `
           <div class="help"><b>Замена</b>: ${esc(old.fio||old.name||"")} (${esc(old.role_tag||"")}) ${crew?`<span class=\"tag\">вахта ${crew}</span>`:""}</div>
-          <div class="help" style="margin-top:6px">Период: ${esc(start||"")} — ${esc(end||"")}</div>
-          <div class="formrow" style="margin-top:10px">
+          <div class="help">Период: ${esc(start||"")} — ${esc(end||"")}</div>
+          <div class="formrow">
           <div id="repNewPicker"></div>
-            <div style="grid-column:1/-1"><label>Комментарий (HR)</label><input id="rep_comment" placeholder="причина замены/контакт"/></div>
+            <div><label>Комментарий (HR)</label><input id="rep_comment" placeholder="причина замены/контакт"/></div>
           </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
+          <div class="sr-replace-btns">
             <button class="btn" id="rep_send">Отправить РП</button>
             <button class="btn ghost" id="rep_cancel">Закрыть</button>
           </div>
         `;
-        showModal("Замена сотрудника", `<div style="max-height:70vh; overflow:auto">${body}</div>`);
+        showModal("Замена сотрудника", `<div class="sr-replace-scroll">${body}</div>`);
         if(window.CREmployeePicker && typeof okIds !== 'undefined'){const _okSet=new Set(okIds);CREmployeePicker.renderButton('repNewPicker',{placeholder:'Выберите замену...',title:'Замена сотрудника',filter:e=>_okSet.has(e.id)});}
         const btnSend = document.getElementById("rep_send");
         const btnCancel = document.getElementById("rep_cancel");
@@ -517,7 +489,7 @@ window.AsgardHrRequestsPage=(function(){
           const u = uById.get(m.author_user_id)||{};
           const who = esc(u.name||("user#"+m.author_user_id));
           const dt = m.created_at ? new Date(m.created_at).toLocaleString("ru-RU") : "";
-          return `<div class="sr-chat-msg"><div style="display:flex;justify-content:space-between"><span class="who">${who}</span><span class="when">${esc(dt)}</span></div><div class="text">${esc(m.text||"")}</div></div>`;
+          return `<div class="sr-chat-msg"><div class="sr-chat-msg-head"><span class="who">${who}</span><span class="when">${esc(dt)}</span></div><div class="text">${esc(m.text||"")}</div></div>`;
         }).join("");
       }
       await renderChat();
@@ -603,7 +575,7 @@ window.AsgardHrRequestsPage=(function(){
           .sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
         const rows = logs.map(l=>`
           <div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(new Date(l.created_at).toLocaleString("ru-RU"))}</div><div class="role">${esc(l.actor_user_id)}</div></div>
-          <div class="help" style="margin:6px 0 10px">${esc(l.payload_json||"")}</div>
+          <div class="help sr-history-detail">${esc(l.payload_json||"")}</div>
         `).join("");
         showModal("История (staff_request)", rows || `<div class="help">Пусто.</div>`);
       });

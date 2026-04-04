@@ -125,6 +125,18 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/tenders/tags - List all tender tags
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/tags', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const result = await db.query(
+      'SELECT id, name FROM tender_tags ORDER BY sort_order, name'
+    );
+    return { tags: result.rows };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders/:id - Get single tender
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.get('/:id', {
@@ -231,7 +243,7 @@ async function routes(fastify, options) {
       const allowedCols = [
         'customer_name', 'customer_inn', 'tender_title', 'tender_type',
         'tender_status', 'period', 'docs_deadline', 'tender_price', 'responsible_pm_id',
-        'group_tag', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
+        'group_tag', 'tag_id', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
         'created_by', 'created_at'
       ];
       const data = {};
@@ -330,7 +342,7 @@ async function routes(fastify, options) {
     const allowedFields = [
       'customer', 'customer_name', 'customer_inn', 'tender_number', 'tender_title',
       'tender_type', 'tender_status', 'period', 'deadline', 'docs_deadline',
-      'tender_price', 'responsible_pm_id', 'tag', 'group_tag',
+      'tender_price', 'responsible_pm_id', 'tag', 'group_tag', 'tag_id',
       'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason'
     ];
 
@@ -704,6 +716,98 @@ async function routes(fastify, options) {
       request.log.error(err, 'tender calc-cost error');
       return reply.code(500).send({ error: err.message });
     }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/tenders/:id/comments - Лента комментариев тендера
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/:id/comments', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const { id } = request.params;
+    const result = await db.query(`
+      SELECT tc.id, tc.text, tc.created_at,
+             tc.user_id, u.name as user_name, u.role as user_role
+      FROM tender_comments tc
+      LEFT JOIN users u ON tc.user_id = u.id
+      WHERE tc.tender_id = $1
+      ORDER BY tc.created_at ASC
+    `, [id]);
+    return { comments: result.rows };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tenders/:id/comments - Добавить комментарий
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:id/comments', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { text } = request.body || {};
+    const user = request.user;
+
+    if (!text || !text.trim()) {
+      return reply.code(400).send({ error: 'Пустой комментарий' });
+    }
+
+    // Проверяем что тендер существует
+    const tender = (await db.query('SELECT id, responsible_pm_id FROM tenders WHERE id = $1 AND deleted_at IS NULL', [id])).rows[0];
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+
+    const result = await db.query(`
+      INSERT INTO tender_comments (tender_id, user_id, text)
+      VALUES ($1, $2, $3)
+      RETURNING id, created_at
+    `, [id, user.id, text.trim()]);
+
+    const comment = result.rows[0];
+
+    // SSE уведомление участникам
+    try {
+      if (tender.responsible_pm_id && tender.responsible_pm_id !== user.id) {
+        sendToUser(tender.responsible_pm_id, 'tender_comment', {
+          tender_id: Number(id), comment_id: comment.id,
+          user_name: user.name, text: text.trim().slice(0, 100)
+        });
+      }
+    } catch (_) {}
+
+    return {
+      id: comment.id,
+      text: text.trim(),
+      created_at: comment.created_at,
+      user_id: user.id,
+      user_name: user.name,
+      user_role: user.role
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DELETE /api/tenders/:id/comments/:commentId - Удалить свой комментарий (до 5 мин)
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.delete('/:id/comments/:commentId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { commentId } = request.params;
+    const user = request.user;
+
+    const comment = (await db.query('SELECT * FROM tender_comments WHERE id = $1', [commentId])).rows[0];
+    if (!comment) return reply.code(404).send({ error: 'Комментарий не найден' });
+
+    // Можно удалить свой в течение 5 минут или если ADMIN
+    const isOwn = comment.user_id === user.id;
+    const age = Date.now() - new Date(comment.created_at).getTime();
+    const withinLimit = age < 5 * 60 * 1000;
+
+    if (!isOwn && user.role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Нельзя удалить чужой комментарий' });
+    }
+    if (isOwn && !withinLimit && user.role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Удаление доступно только в течение 5 минут' });
+    }
+
+    await db.query('DELETE FROM tender_comments WHERE id = $1', [commentId]);
+    return { success: true };
   });
 }
 

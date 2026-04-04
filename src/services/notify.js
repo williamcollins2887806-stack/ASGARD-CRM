@@ -12,6 +12,20 @@ async function createNotification(db, { user_id, title, message, type, link }) {
       VALUES ($1, $2, $3, $4, $5, false, NOW())
     `, [user_id, title, message, type || 'info', link || null]);
 
+    // SSE real-time notification event
+    try {
+      const { sendToUser } = require('../routes/sse');
+      const countRes = await db.query(
+        'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false',
+        [user_id]
+      );
+      const unreadCount = parseInt(countRes.rows[0].count, 10);
+      sendToUser(user_id, 'notification', {
+        title, message, type: type || 'info', link: link || null,
+        unread_count: unreadCount
+      });
+    } catch (e) { /* SSE may not be available */ }
+
     // Telegram
     try {
       const telegram = require('./telegram');
@@ -54,18 +68,21 @@ async function createNotification(db, { user_id, title, message, type, link }) {
             badge_count: badgeCount,
             icon: './assets/img/icon-192.png'
           });
+          let pushSent = 0;
           for (const sub of subs.rows) {
             try {
               await webpush.sendNotification({
                 endpoint: sub.endpoint,
                 keys: { p256dh: sub.p256dh, auth: sub.auth }
               }, payload);
+              pushSent++;
             } catch (pushErr) {
               if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
                 await db.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
               }
             }
           }
+          if (pushSent > 0) console.log(`[notify] Push sent to user ${user_id}: ${pushSent}/${subs.rows.length} devices`);
         }
       }
     } catch (e) {

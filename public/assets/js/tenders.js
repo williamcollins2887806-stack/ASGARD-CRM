@@ -151,12 +151,12 @@ window.AsgardTendersPage = (function(){
       tender_title: document.getElementById("e_title")?.value || '',
       tender_type: CRSelect.getValue('e_type') || '',
       tender_price: document.getElementById("e_price")?.value || '',
-      group_tag: document.getElementById("e_tag")?.value || '',
+      tag_id: (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_tag')) || '',
       work_start_plan: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_ws')) || '',
       work_end_plan: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_we')) || '',
       purchase_url: document.getElementById("e_url")?.value || '',
       docs_deadline: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_docs_deadline')) || '',
-      tender_comment_to: document.getElementById("e_c_to")?.value || ''
+      tender_comment_to: '' // deprecated — comments are now in tender_comments table
     };
   }
 
@@ -165,9 +165,8 @@ window.AsgardTendersPage = (function(){
     const fields = {
       'e_title': draft.tender_title,
       'e_price': draft.tender_price,
-      'e_tag': draft.group_tag,
       'e_url': draft.purchase_url,
-      'e_c_to': draft.tender_comment_to
+      // e_c_to removed — comments now in feed
     };
     for (const [id, value] of Object.entries(fields)) {
       const el = document.getElementById(id);
@@ -184,6 +183,7 @@ window.AsgardTendersPage = (function(){
     if (draft.customer_inn) CRAutocomplete.setValue('e_inn', draft.customer_inn);
     if (draft.customer_name) CRAutocomplete.setValue('e_customer', draft.customer_name);
     if (draft.tender_type) CRSelect.setValue('e_type', draft.tender_type);
+    if (draft.tag_id) CRSelect.setValue('e_tag', draft.tag_id);
   }
 
   // === ПРОВЕРКА ДУБЛИКАТОВ (Этап 34) ===
@@ -1209,6 +1209,17 @@ async function getRefs(){
       const rights = canEditTender(user, t||{handoff_at:null});
       const isNew = !t;
 
+      // Load tender tags from API
+      let tenderTags = [];
+      try {
+        const auth = await AsgardAuth.getAuth();
+        const tagResp = await fetch('/api/tenders/tags', { headers: { 'Authorization': 'Bearer ' + auth.token } });
+        if (tagResp.ok) {
+          const tagData = await tagResp.json();
+          tenderTags = tagData.tags || [];
+        }
+      } catch(e) { /* fallback: empty list */ }
+
       const pmOptions = pms.map(p=>{
         const sel = (t && t.responsible_pm_id===p.id) ? "selected" : "";
         return `<option value="${p.id}" ${sel}>${esc(p.name)}</option>`;
@@ -1271,7 +1282,7 @@ async function getRefs(){
             <div id="customerScoreBlock" style="margin-top:10px;display:none"></div>
           </div>
           <div style="grid-column: 1 / -1">
-            <label>Тендер / закупка</label>
+            <label>Наименование работ</label>
             <input id="e_title" value="${esc((t&&t.tender_title)||"")}" ${full?"":"disabled"} />
           </div>
           <div>
@@ -1296,7 +1307,7 @@ async function getRefs(){
           </div>
           <div>
             <label>Тег/группа</label>
-            <input id="e_tag" value="${esc((t&&t.group_tag)||"")}" ${(full||limited)?"":"disabled"} placeholder="Промывка / Монтаж / Химия..."/>
+            <div id="e_tag_w"></div>
           </div>
           <div>
             <label>План: начало работ</label>
@@ -1310,13 +1321,17 @@ async function getRefs(){
             <label>Ссылка на комплект документов (Я.Диск/площадка)</label>
             <input id="e_url" value="${esc((t&&t.purchase_url)||"")}" ${(full||limited)?"":"disabled"} placeholder="https://..."/>
           </div>
-          <div>
+          <div id="e_deadline_row">
             <label>Дедлайн (окончание приема заявок)</label>
             <div id="e_deadline_w"></div>
           </div>
-          <div style="grid-column: 1 / -1">
-            <label>Комментарий ТО</label>
-            <input id="e_c_to" value="${esc((t&&t.tender_comment_to)||"")}" ${(full||limited)?"":"disabled"} placeholder="важные детали/контакты/сроки"/>
+          <div class="cr-field-full">
+            <label>Комментарии</label>
+            <div id="tc_feed" class="tc-feed"><div class="tc-empty">Загрузка...</div></div>
+            ${(full||limited) ? `<div class="tc-input-row">
+              <textarea id="tc_input" rows="1" placeholder="Комментарий..."></textarea>
+              <button class="btn mini" id="tc_send">Отправить</button>
+            </div>` : ''}
           </div>
           ${(t && t.reject_reason) ? `
           <div style="grid-column: 1 / -1">
@@ -1356,9 +1371,14 @@ ${docsHtml}</div>
       const _eTypeDis = !full;
       const _ePmDis = (user.role==="TO") || !full;
       const _eStatusDis = !full || isNew;
-      $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal' }));
+      $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal', onChange: (v) => applyTypeRules(v) }));
       $('#e_pm_w')?.appendChild(CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal' }));
       $('#e_status_w')?.appendChild(CRSelect.create({ id: 'e_status', options: refs.tender_statuses.map(s => ({ value: s, label: s })), value: (t&&t.tender_status)||(isNew?'Черновик':''), disabled: _eStatusDis, dropdownClass: 'z-modal' }));
+
+      /* Mount CRSelect for tag */
+      const _tagOpts = tenderTags.map(tg => ({ value: String(tg.id), label: tg.name }));
+      const _curTagId = (t && t.tag_id) ? String(t.tag_id) : '';
+      $('#e_tag_w')?.appendChild(CRSelect.create({ id: 'e_tag', placeholder: '— выбрать —', options: _tagOpts, value: _curTagId, disabled: !(full||limited), searchable: true, dropdownClass: 'z-modal' }));
 
       /* Mount Period: month + year CRSelect */
       const _curPeriod = (t&&t.period) || ymNow();
@@ -1378,6 +1398,128 @@ ${docsHtml}</div>
       $('#e_ws_w')?.appendChild(CRDatePicker.create({ id:'e_ws', value:(t&&t.work_start_plan)||'', placeholder:'Выберите дату', disabled:!full, dropdownClass:'z-modal' }));
       $('#e_we_w')?.appendChild(CRDatePicker.create({ id:'e_we', value:(t&&t.work_end_plan)||'', placeholder:'Выберите дату', disabled:!full, dropdownClass:'z-modal' }));
       $('#e_deadline_w')?.appendChild(CRDatePicker.create({ id:'e_docs_deadline', value:(t&&t.docs_deadline)||'', placeholder:'Выберите дату', disabled:!(full||limited), clearable:true, dropdownClass:'z-modal' }));
+
+      /* ── 3.2: Dynamic required fields by procedure type ── */
+      function applyTypeRules(tType) {
+        const deadlineRow = document.getElementById('e_deadline_row');
+        const urlLabel = document.querySelector('label[for="e_url"]') || document.getElementById('e_url')?.closest('div')?.querySelector('label');
+        const deadlineLabel = deadlineRow?.querySelector('label');
+        // Reset required markers
+        if(urlLabel) urlLabel.classList.remove('cr-required');
+        if(deadlineLabel) deadlineLabel.classList.remove('cr-required');
+
+        if (tType === 'Доп. объём') {
+          // No deadline
+          if(deadlineRow) deadlineRow.classList.add('cr-field-hidden');
+          CRDatePicker.setValue('e_docs_deadline', '');
+        } else if (tType === 'Прямой запрос') {
+          // Show deadline, auto-fill +5 days, disable
+          if(deadlineRow) deadlineRow.classList.remove('cr-field-hidden');
+          if (!CRDatePicker.getValue('e_docs_deadline')) {
+            CRDatePicker.setValue('e_docs_deadline', addDaysISO(new Date(), 5));
+          }
+          CRDatePicker.setDisabled('e_docs_deadline', true);
+        } else {
+          // Тендер, Запрос предложений, Оценка рынка — deadline required, manual
+          if(deadlineRow) deadlineRow.classList.remove('cr-field-hidden');
+          if(deadlineLabel) deadlineLabel.classList.add('cr-required');
+          CRDatePicker.setDisabled('e_docs_deadline', !(full||limited));
+        }
+      }
+      applyTypeRules((t&&t.tender_type) || (isNew ? 'Тендер' : ''));
+
+      /* ── 4.1: Comment feed ── */
+      if (t && t.id) {
+        const tcFeed = document.getElementById('tc_feed');
+        const tcInput = document.getElementById('tc_input');
+        const tcSend = document.getElementById('tc_send');
+
+        function renderCommentFeed(comments) {
+          if (!tcFeed) return;
+          if (!comments.length) {
+            tcFeed.innerHTML = '<div class="tc-empty">Комментариев нет</div>';
+            return;
+          }
+          tcFeed.innerHTML = comments.map(c => {
+            const initials = (c.user_name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+            const dt = c.created_at ? new Date(c.created_at).toLocaleString('ru-RU') : '';
+            const canDel = c.user_id === auth.user.id || auth.user.role === 'ADMIN';
+            return `<div class="tc-comment" data-cid="${c.id}">
+              <div class="tc-avatar">${esc(initials)}</div>
+              <div class="tc-body">
+                <div class="tc-header">
+                  <span class="tc-author">${esc(c.user_name || 'Пользователь')}</span>
+                  <span class="tc-time">${esc(dt)}</span>
+                  ${canDel ? `<span class="tc-delete" data-del="${c.id}">удалить</span>` : ''}
+                </div>
+                <div class="tc-text">${esc(c.text)}</div>
+              </div>
+            </div>`;
+          }).join('');
+          tcFeed.scrollTop = tcFeed.scrollHeight;
+        }
+
+        async function loadComments() {
+          try {
+            const resp = await fetch('/api/tenders/' + t.id + '/comments', {
+              headers: { 'Authorization': 'Bearer ' + auth.token }
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              renderCommentFeed(data.comments || []);
+            }
+          } catch (_) {
+            if (tcFeed) tcFeed.innerHTML = '<div class="tc-empty">Ошибка загрузки</div>';
+          }
+        }
+
+        loadComments();
+
+        if (tcSend && tcInput) {
+          tcSend.addEventListener('click', async () => {
+            const text = tcInput.value.trim();
+            if (!text) return;
+            tcSend.disabled = true;
+            try {
+              const resp = await fetch('/api/tenders/' + t.id + '/comments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + auth.token },
+                body: JSON.stringify({ text })
+              });
+              if (resp.ok) {
+                tcInput.value = '';
+                await loadComments();
+              } else {
+                toast('Ошибка', 'Не удалось отправить', 'err');
+              }
+            } catch (_) {
+              toast('Ошибка', 'Сеть недоступна', 'err');
+            } finally {
+              tcSend.disabled = false;
+            }
+          });
+          tcInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tcSend.click(); }
+          });
+        }
+
+        if (tcFeed) {
+          tcFeed.addEventListener('click', async (e) => {
+            const del = e.target.closest('[data-del]');
+            if (!del) return;
+            if (!confirm('Удалить комментарий?')) return;
+            try {
+              await fetch('/api/tenders/' + t.id + '/comments/' + del.dataset.del, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + auth.token }
+              });
+              await loadComments();
+            } catch (_) {}
+          });
+        }
+      } else if (document.getElementById('tc_feed')) {
+        document.getElementById('tc_feed').innerHTML = '<div class="tc-empty">Сохраните тендер, чтобы оставлять комментарии</div>';
+      }
 
       // Restore draft for new tenders
       if (isNew) {
@@ -1918,8 +2060,9 @@ ${docsHtml}</div>
         const we = CRDatePicker.getValue('e_we') || null;
         const url=document.getElementById("e_url").value.trim()||null;
         let docsDeadline = CRDatePicker.getValue('e_docs_deadline') || null;
-        const tag=document.getElementById("e_tag").value.trim()||null;
-        const cto=document.getElementById("e_c_to").value.trim()||"";
+        const tagId = Number(CRSelect.getValue('e_tag')) || null;
+        const tag = tagId ? (tenderTags.find(tg => tg.id === tagId)?.name || null) : null;
+        const cto=""; // deprecated — comments in tender_comments table
         const rejectEl=document.getElementById("e_reject"); const reject=rejectEl ? rejectEl.value||null : null;
 
         // Draft mode: skip strict validation, save with 'Черновик' status
@@ -1931,7 +2074,7 @@ ${docsHtml}</div>
             responsible_pm_id:pmId, tender_status:'Черновик',
             tender_price: price, work_start_plan: ws, work_end_plan: we,
             purchase_url: url, docs_deadline: docsDeadline,
-            reject_reason: reject, group_tag: tag, tender_comment_to: cto,
+            reject_reason: reject, group_tag: tag, tag_id: tagId, tender_comment_to: cto,
             created_by_user_id: user.id,
             handoff_at: null, handoff_by_user_id: null,
             distribution_requested_at: null, distribution_requested_by_user_id: null,
@@ -1959,7 +2102,7 @@ ${docsHtml}</div>
           docsDeadline = addDaysISO(new Date(), (appS?.sla?.direct_request_deadline_days ?? 5));
           CRDatePicker.setValue('e_docs_deadline', docsDeadline);
         }
-        if(!docsDeadline && tenderType!=="Прямой запрос"){
+        if(!docsDeadline && tenderType!=="Прямой запрос" && tenderType!=="Доп. объём"){
           toast("Проверка","Укажите дедлайн (окончание приема заявок)","err");
           return null;
         }
@@ -1978,7 +2121,7 @@ ${docsHtml}</div>
             purchase_url: url,
             docs_deadline: docsDeadline,
             reject_reason: reject,
-            group_tag: tag,
+            group_tag: tag, tag_id: tagId,
             tender_comment_to: cto,
             created_by_user_id: user.id,
             handoff_at: null, handoff_by_user_id: null,
@@ -2020,11 +2163,11 @@ ${docsHtml}</div>
             cur.tender_price=price;
             cur.work_start_plan=ws; cur.work_end_plan=we;
             cur.reject_reason=reject;
-            cur.purchase_url=url; cur.docs_deadline=docsDeadline; cur.group_tag=tag; cur.tender_comment_to=cto;
+            cur.purchase_url=url; cur.docs_deadline=docsDeadline; cur.group_tag=tag; cur.tag_id=tagId; cur.tender_comment_to=cto;
           }else if(rights2.limited){
             cur.purchase_url=url;
             cur.docs_deadline=docsDeadline;
-            cur.group_tag=tag;
+            cur.group_tag=tag; cur.tag_id=tagId;
             cur.tender_comment_to=cto;
           }else{
             toast("Права","Недостаточно прав для редактирования","err");

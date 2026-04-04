@@ -73,6 +73,9 @@ window.AsgardGanttFullPage=(function(){
     `;
   }
 
+  /* S9: use shared AsgardGantt.navHtml / .initNav */
+  const ganttNavHtml = AsgardGantt.navHtml;
+  const initGanttNav = AsgardGantt.initNav;
 
   async function renderCalcs({layout}={}){
     const auth=await AsgardAuth.requireUser();
@@ -101,27 +104,21 @@ window.AsgardGanttFullPage=(function(){
           </div>
         </div>
         <hr class="hr"/>
+        ${ganttNavHtml()}
         <div class="row" style="gap:10px; flex-wrap:wrap; align-items:end">
           <input id="q" placeholder="Поиск: заказчик / работа" style="max-width:360px"/>
           <div id="cr-flt-wrap" style="max-width:240px;min-width:180px"></div>
           <div id="cr-pm-wrap" style="max-width:240px;min-width:180px"></div>
           <div id="cr-st-wrap" style="max-width:260px;min-width:180px"></div>
           <div id="cr-per-wrap" style="max-width:220px;min-width:180px"></div>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">c</div>
-            <input id="from" type="date"/>
-          </div>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">по</div>
-            <input id="to" type="date"/>
-          </div>
+          <input id="from" type="hidden"/>
+          <input id="to" type="hidden"/>
           <div id="cr-zoom-wrap" style="max-width:190px;min-width:150px"></div>
-          <button class="btn ghost" id="btnApply">Применить</button>
         </div>
         <div id="g" style="margin-top:12px"></div>
       </div>
     `;
-    
+
     if(safeOn()){
       const body = renderSafeList(tenders, "renderCalcs");
       await layout(body, {title: "Гантт • Просчёты", motto: "Путь виден. Но сейчас — безопасный режим."});
@@ -295,13 +292,9 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
 
     $("#q").addEventListener("input", apply);
     // CRSelect onChange handlers already set above
-    fromInp.addEventListener("change", ()=>{ CRSelect.setValue('g-per','custom'); apply(); });
-    toInp.addEventListener("change", ()=>{ CRSelect.setValue('g-per','custom'); apply(); });
-    $("#btnApply").addEventListener("click", apply);
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт • Просчёты (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
       document.querySelector(".modal")?.classList.add("fullscreen");
-      // restore click handlers in cloned DOM
       setTimeout(()=>{
         document.querySelectorAll("#gfs [data-gitem]").forEach(el=>{
           el.addEventListener("click", ()=>{
@@ -312,7 +305,7 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
       }, 0);
     });
 
-    apply();
+    initGanttNav(fromInp, toInp, apply);
   }
 
   async function renderWorks({layout}={}){
@@ -340,27 +333,21 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
           </div>
         </div>
         <hr class="hr"/>
+        ${ganttNavHtml()}
         <div class="row" style="gap:10px; flex-wrap:wrap; align-items:end">
           <input id="q" placeholder="Поиск: компания / работа" style="max-width:360px"/>
           <div id="cr-flt-wrap" style="max-width:240px;min-width:180px"></div>
           <div id="cr-pm-wrap" style="max-width:240px;min-width:180px"></div>
           <div id="cr-st-wrap" style="max-width:260px;min-width:180px"></div>
           <div id="cr-per-wrap" style="max-width:220px;min-width:180px"></div>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">с</div>
-            <input id="from" type="date"/>
-          </div>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">по</div>
-            <input id="to" type="date"/>
-          </div>
+          <input id="from" type="hidden"/>
+          <input id="to" type="hidden"/>
           <div id="cr-zoom-wrap" style="max-width:190px;min-width:150px"></div>
-          <button class="btn ghost" id="btnApply">Применить</button>
         </div>
         <div id="g" style="margin-top:12px"></div>
       </div>
     `;
-    
+
     if(safeOn()){
       const body = renderSafeList(works, "renderWorks");
       await layout(body, {title: "Гантт • Работы", motto: "Путь виден. Но сейчас — безопасный режим."});
@@ -535,9 +522,6 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
 
     $("#q").addEventListener("input", apply);
     // CRSelect onChange handlers already set above
-    fromInp.addEventListener("change", ()=>{ CRSelect.setValue('g-per','custom'); apply(); });
-    toInp.addEventListener("change", ()=>{ CRSelect.setValue('g-per','custom'); apply(); });
-    $("#btnApply").addEventListener("click", apply);
 
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт • Работы (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
@@ -552,7 +536,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       }, 0);
     });
 
-    apply();
+    initGanttNav(fromInp, toInp, apply);
   }
 
   /**
@@ -595,22 +579,16 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
           </div>
         </div>
         <hr class="hr"/>
+        ${ganttNavHtml()}
         <div class="row" style="gap:10px; flex-wrap:wrap; align-items:end">
           <input id="q" placeholder="Поиск: заказчик / объект" style="max-width:360px"/>
           <div id="cr-typeFilter-wrap" style="max-width:200px;min-width:160px"></div>
           <div id="cr-flt-wrap" style="max-width:240px;min-width:180px"></div>
           <div id="cr-pm-wrap" style="max-width:240px;min-width:180px"></div>
           <div id="cr-per-wrap" style="max-width:220px;min-width:180px"></div>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">с</div>
-            <input id="from" type="date"/>
-          </div>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">по</div>
-            <input id="to" type="date"/>
-          </div>
+          <input id="from" type="hidden"/>
+          <input id="to" type="hidden"/>
           <div id="cr-zoom-wrap" style="max-width:190px;min-width:150px"></div>
-          <button class="btn ghost" id="btnApply">Применить</button>
         </div>
         <div id="g" style="margin-top:12px"></div>
       </div>
@@ -866,9 +844,6 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
     $("#q").addEventListener("input", apply);
     // CRSelect onChange handlers already set above
     fromInp.addEventListener("change", ()=>{ CRSelect.setValue('g-per','custom'); apply(); });
-    toInp.addEventListener("change", ()=>{ CRSelect.setValue('g-per','custom'); apply(); });
-    $("#btnApply").addEventListener("click", apply);
-
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт — Единая шкала (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
       document.querySelector(".modal")?.classList.add("fullscreen");
@@ -887,7 +862,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       }, 0);
     });
 
-    apply();
+    initGanttNav(fromInp, toInp, apply);
   }
 
   return {renderCalcs, renderWorks, renderCombined};

@@ -817,7 +817,7 @@ window.AsgardPmWorksPage=(function(){
     $("#btnGantt").addEventListener("click", ()=>openGantt());
 
     async function openGantt(){
-      const startIso = (settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
+      const defaultStart = (settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
       const rows = works.map(w=>{
         const t = allTenders.find(x=>x.id===w.tender_id);
         const start = w.start_in_work_date || t?.work_start_plan || w.end_plan || "2026-01-01";
@@ -826,12 +826,19 @@ window.AsgardPmWorksPage=(function(){
         const sub = `${w.work_title||t?.tender_title||""}`;
         return { id:w.id, start, end, label, sub, barText:w.work_status||"" , status:w.work_status||"" };
       });
-      const html = AsgardGantt.renderBoard({
-        startIso, weeks: 60,
-        rows,
-        getColor:(r)=>(settings.status_colors?.work||{})[r.status]||"#2a6cf1"
-      });
-      showModal("Гантт • Работы (недели)", `<div style="max-height:80vh; overflow:auto">${html}</div>`);
+      const colors = settings.status_colors?.work||{};
+      showModal("Гантт • Работы", `${AsgardGantt.navHtml()}<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" style="max-height:70vh;overflow:auto"></div>`);
+      setTimeout(()=>{
+        const fi=document.getElementById('g-from'), ti=document.getElementById('g-to');
+        if(!fi) return;
+        function render(){
+          const f=fi.value, t=ti.value;
+          let startIso=f||defaultStart, weeks=60;
+          if(f&&t){ const ms=7*864e5; weeks=Math.max(4,Math.ceil((new Date(t)-new Date(f))/ms)+1); }
+          document.getElementById('gModal').innerHTML=AsgardGantt.renderBoard({startIso,weeks,rows,getColor:r=>colors[r.status]||"#2a6cf1"});
+        }
+        AsgardGantt.initNav(fi,ti,render);
+      },0);
     }
 
     async function openWork(id){

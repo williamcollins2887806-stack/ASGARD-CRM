@@ -71,12 +71,34 @@ async function createEstimateChat(db, estimateId, actor) {
     calcData = calcResult.rows[0] || null;
   } catch (e) { /* ok */ }
 
+  // 6b. Получить tender_title и pm_name для карточки
+  let tenderTitle = null;
+  if (estimate.tender_id) {
+    try {
+      const tRes = await db.query('SELECT tender_title, customer_name FROM tenders WHERE id = $1', [estimate.tender_id]);
+      tenderTitle = tRes.rows[0]?.tender_title || null;
+    } catch (e) { /* ok */ }
+  }
+  let pmName = null;
+  if (pmId) {
+    try {
+      const pRes = await db.query('SELECT name FROM users WHERE id = $1', [pmId]);
+      pmName = pRes.rows[0]?.name || null;
+    } catch (e) { /* ok */ }
+  }
+
   // 7. Pinned estimate_card
   const cardMetadata = {
     estimate_id: estimateId,
     status: 'sent',
-    title: estimate.title || estimate.object_name,
+    title: estimate.title || estimate.object_name || tenderTitle,
+    tender_title: tenderTitle,
     customer: estimate.customer,
+    object_city: estimate.object_city || null,
+    work_type: estimate.work_type || null,
+    crew_count: estimate.crew_count || null,
+    work_days: estimate.work_days || null,
+    pm_name: pmName,
     total_cost: calcData?.total_cost || null,
     total_with_margin: calcData?.total_with_margin || null,
     margin_pct: calcData?.margin_pct || null,
@@ -137,11 +159,34 @@ async function updateEstimateCard(db, estimateId, actor) {
     calcData = calcResult.rows[0] || null;
   } catch (e) { /* ok */ }
 
+  // Получить tender_title и pm_name
+  let tenderTitle = null;
+  if (estimate.tender_id) {
+    try {
+      const tRes = await db.query('SELECT tender_title FROM tenders WHERE id = $1', [estimate.tender_id]);
+      tenderTitle = tRes.rows[0]?.tender_title || null;
+    } catch (e) { /* ok */ }
+  }
+  let pmName = null;
+  const pmId = estimate.pm_id || estimate.created_by;
+  if (pmId) {
+    try {
+      const pRes = await db.query('SELECT name FROM users WHERE id = $1', [pmId]);
+      pmName = pRes.rows[0]?.name || null;
+    } catch (e) { /* ok */ }
+  }
+
   const newMetadata = {
     estimate_id: estimateId,
     status: estimate.approval_status || 'sent',
-    title: estimate.title || estimate.object_name,
+    title: estimate.title || estimate.object_name || tenderTitle,
+    tender_title: tenderTitle,
     customer: estimate.customer,
+    object_city: estimate.object_city || null,
+    work_type: estimate.work_type || null,
+    crew_count: estimate.crew_count || null,
+    work_days: estimate.work_days || null,
+    pm_name: pmName,
     total_cost: calcData?.total_cost || null,
     total_with_margin: calcData?.total_with_margin || null,
     margin_pct: calcData?.margin_pct || null,

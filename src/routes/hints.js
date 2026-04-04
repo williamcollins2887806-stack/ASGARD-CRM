@@ -328,7 +328,7 @@ async function hintsRoutes(fastify) {
               const rate = Math.round(wonCnt / newCnt * 100);
               hints.push({
                 id: 'funnel_conversion', type: 'metric', icon: '📊',
-                text: 'Конверсия за 30 дней: ' + rate + '% (' + wonCnt + ' из ' + newCnt + ')'
+                text: '% целевых заявок за 30 дней: ' + rate + '% (' + wonCnt + ' из ' + newCnt + ')'
               });
             }
           } catch (_) {}
