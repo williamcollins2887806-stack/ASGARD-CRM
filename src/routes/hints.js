@@ -803,7 +803,7 @@ async function hintsRoutes(fastify) {
           } catch (_) {}
           // Метрика: оборудование на балансе
           try {
-            const onBal = await db.query("SELECT COUNT(*) as cnt FROM equipment WHERE balance_status IN ('on_balance','active')");
+            const onBal = await db.query("SELECT COUNT(*) as cnt FROM equipment WHERE status NOT IN ('written_off')");
             const obCnt = parseInt(onBal.rows[0]?.cnt) || 0;
             if (obCnt > 0) {
               hints.push({
