@@ -284,17 +284,17 @@ window.AsgardReports = (function(){
   function getReportParams(type) {
     if (type === 'monthly') {
       return {
-        year: parseInt(CRSelect.getValue('monthly_year')),
-        month: parseInt(CRSelect.getValue('monthly_month'))
+        year: parseInt(CRSelect.getValue('monthly_year') || '0', 10),
+        month: parseInt(CRSelect.getValue('monthly_month') || '0', 10)
       };
     } else if (type === 'quarterly') {
       return {
-        year: parseInt(CRSelect.getValue('quarterly_year')),
-        quarter: parseInt(CRSelect.getValue('quarterly_quarter'))
+        year: parseInt(CRSelect.getValue('quarterly_year') || '0', 10),
+        quarter: parseInt(CRSelect.getValue('quarterly_quarter') || '0', 10)
       };
     } else {
       return {
-        year: parseInt(CRSelect.getValue('yearly_year'))
+        year: parseInt(CRSelect.getValue('yearly_year') || '0', 10)
       };
     }
   }

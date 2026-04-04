@@ -172,17 +172,16 @@ window.AsgardFieldTab = (function () {
     catLabel.style.cssText = 'font-size:13px;color:var(--t2, #8b949e)';
     settingsBar.appendChild(catLabel);
 
-    const catSelect = document.createElement('select');
-    catSelect.id = 'fieldCategory';
-    catSelect.style.cssText = 'padding:6px 10px;border-radius:6px;background:var(--bg1, #0D1117);color:var(--t1, #e6edf3);border:1px solid var(--brd, rgba(255,255,255,0.08));font-size:13px';
-    CATEGORIES.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.value;
-      opt.textContent = c.label;
-      if (c.value === category) opt.selected = true;
-      catSelect.appendChild(opt);
-    });
-    settingsBar.appendChild(catSelect);
+    const catWrap = document.createElement('span');
+    catWrap.id = 'fieldCategory_w';
+    catWrap.style.cssText = 'display:inline-block;min-width:160px';
+    settingsBar.appendChild(catWrap);
+    catWrap.appendChild(CRSelect.create({
+      id: 'fieldCategory',
+      options: CATEGORIES.map(c => ({ value: c.value, label: c.label })),
+      value: category || CATEGORIES[0]?.value || '',
+      onChange: () => _onCategoryChange()
+    }));
 
     // Per diem
     const pdLabel = document.createElement('span');
@@ -209,7 +208,7 @@ window.AsgardFieldTab = (function () {
           await fetch(`/api/field/manage/projects/${work.id}/activate`, {
             method: 'POST', headers: hdr(),
             body: JSON.stringify({
-              site_category: catSelect.value,
+              site_category: CRSelect.getValue('fieldCategory'),
               per_diem: parseFloat(pdInput.value) || 0,
               schedule_type: 'shift',
               shift_hours: 11,
@@ -217,7 +216,7 @@ window.AsgardFieldTab = (function () {
           });
           toast('Field', 'Полевой модуль активирован! ⚔️', 'ok');
           isActive = true;
-          settingsData = { site_category: catSelect.value, per_diem: parseFloat(pdInput.value) || 0, is_active: true };
+          settingsData = { site_category: CRSelect.getValue('fieldCategory'), per_diem: parseFloat(pdInput.value) || 0, is_active: true };
           renderCrewTab(container, work, user, settingsData, true);
         } catch (e) {
           toast('Ошибка', String(e), 'err');
@@ -264,7 +263,7 @@ window.AsgardFieldTab = (function () {
     container.appendChild(tableWrap);
 
     // Populate existing assignments
-    const currentCat = catSelect.value;
+    const currentCat = CRSelect.getValue('fieldCategory');
     const filteredTariffs = allTariffs.filter(t => t.category === currentCat);
     const comboTariffs = specials.concat(allTariffs.filter(t => t.is_combinable));
 
@@ -274,9 +273,9 @@ window.AsgardFieldTab = (function () {
       addCrewRow(tbody, emp, a, filteredTariffs, comboTariffs, allEmployees);
     }
 
-    // Category change → re-filter tariffs (CRSelect)
-    catSelect.addEventListener('change', () => {
-      const newCat = catSelect.value;
+    // Category change → re-filter tariffs (CRSelect onChange)
+    function _onCategoryChange() {
+      const newCat = CRSelect.getValue('fieldCategory');
       const newFiltered = allTariffs.filter(t => t.category === newCat);
       const newOpts = [{ value: '', label: '— выберите —' }].concat(
         newFiltered.map(t => ({ value: String(t.id), label: `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)}₽)` }))
@@ -292,7 +291,7 @@ window.AsgardFieldTab = (function () {
       // Re-populate filteredTariffs reference for addCrewRow
       filteredTariffs.length = 0;
       filteredTariffs.push(...newFiltered);
-    });
+    }
 
     // ── Action buttons ──
     const actions = document.createElement('div');
@@ -343,7 +342,7 @@ window.AsgardFieldTab = (function () {
         await fetch(`/api/field/manage/projects/${work.id}/activate`, {
           method: 'POST', headers: hdr(),
           body: JSON.stringify({
-            site_category: catSelect.value,
+            site_category: CRSelect.getValue('fieldCategory'),
             per_diem: parseFloat(pdInput.value) || 0,
           })
         });

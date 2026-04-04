@@ -772,7 +772,7 @@ window.AsgardPermitsPage = (function(){
         modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
         document.getElementById('btnConfirmEmp').onclick = () => {
-          const empId = parseInt(CRSelect.getValue('empSelect'));
+          const empId = parseInt(CRSelect.getValue('empSelect') || '0', 10);
           if (!empId) { AsgardUI.toast('Ошибка', 'Выберите сотрудника', 'err'); return; }
           modal.remove();
           openPermitModal(empId, null, loadList);

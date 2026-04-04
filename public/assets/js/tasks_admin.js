@@ -459,7 +459,7 @@ window.AsgardTasksAdminPage = (function() {
     const isEdit = !!taskId;
 
     const data = {
-      assignee_id: parseInt(CRSelect.getValue('taskAssignee')),
+      assignee_id: parseInt(CRSelect.getValue('taskAssignee') || '0', 10) || null,
       title: document.getElementById('taskTitle').value.trim(),
       description: document.getElementById('taskDescription').value.trim(),
       priority: CRSelect.getValue('taskPriority') || 'normal',

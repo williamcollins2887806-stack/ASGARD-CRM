@@ -53,7 +53,7 @@ window.AsgardAlertsPage=(function(){
     const list=$("#list"), cnt=$("#cnt");
 
     async function fetchAll(){
-      const scope=CRSelect.getValue("scope")||$("#scope")?.value||"me";
+      const scope=CRSelect.getValue("scope")||"me";
       const flt=CRSelect.getValue("flt")||"unread";
       const q=norm($("#q")?.value||"");
       let items=[];
@@ -127,7 +127,7 @@ window.AsgardAlertsPage=(function(){
     $("#q").addEventListener("input", ()=>renderList());
 
     $("#markAll").addEventListener("click", async ()=>{
-      const scope=CRSelect.getValue("scope")||$("#scope")?.value||"me";
+      const scope=CRSelect.getValue("scope")||"me";
       let items=[];
       if(scope==="all" && (role==="ADMIN"||isDirRole(role))){
         items = await AsgardDB.all("notifications");
@@ -143,7 +143,7 @@ window.AsgardAlertsPage=(function(){
     });
 
     $("#clearRead").addEventListener("click", async ()=>{
-      const scope=CRSelect.getValue("scope")||$("#scope")?.value||"me";
+      const scope=CRSelect.getValue("scope")||"me";
       let items=[];
       if(scope==="all" && (role==="ADMIN"||isDirRole(role))){
         items = await AsgardDB.all("notifications");
