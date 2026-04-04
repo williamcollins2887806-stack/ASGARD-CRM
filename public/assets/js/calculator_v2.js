@@ -532,10 +532,7 @@
 
       // Object tab
       const wtWrap = $('#cr-wt-wrap'); if(wtWrap) { const wtOpts = (s.work_types || []).map(w => ({ value: w.id, label: (w.icon||'') + ' ' + w.name })); wtWrap.appendChild(CRSelect.create({ id: 'c_wt', options: wtOpts, value: st.work_type_id, placeholder: 'Тип работы...', onChange: (v) => { st.work_type_id = v; st.params = {}; st.crew_manual = st.days_manual = st.chem_manual = st.equip_manual = false; render(); } })); }
-      const city = $('#c_city'); if(city) {
-        city.oninput = () => { st.city = city.value; if(window.findCity){ const dl=$('#citylist'); if(dl) dl.innerHTML = window.findCity(city.value).map(c=>`<option value="${c.name}">${c.name} (${c.km} км)</option>`).join(''); } };
-        city.onchange = () => { if(window.getCityDistance){ const km = window.getCityDistance(city.value); if(km!==null){ st.distance_km = km; const inp=$('#c_km'); if(inp) inp.value = km; } } };
-      }
+      const cityWrap = $('#cr-city-wrap'); if(cityWrap) { cityWrap.appendChild(CRAutocomplete.create({ id: 'c_city', value: st.city, placeholder: 'Москва, Екатеринбург, Сургут...', minChars: 2, fullWidth: true, inputClass: 'inp', fetchOptions: async (q) => { if(!window.findCity) return []; return window.findCity(q).map(c => ({ value: c.name, label: c.name, sublabel: c.km + ' км от Москвы', km: c.km })); }, onSelect: (item) => { if(!item) return; st.city = item.label; if(item.km != null){ st.distance_km = item.km; const inp=$('#c_km'); if(inp) inp.value = item.km; } } })); const cityInput = CRAutocomplete.getInput('c_city'); if(cityInput) cityInput.addEventListener('input', () => { st.city = cityInput.value; }); }
       const km = $('#c_km'); if(km) km.oninput = () => { st.distance_km = num(km.value); };
       $$('[data-cond]').forEach(cb => cb.onchange = () => { const id = cb.dataset.cond; if(cb.checked){ if(!st.conditions.includes(id)) st.conditions.push(id); if(!st.surcharges.includes(id)) st.surcharges.push(id); } else { st.conditions = st.conditions.filter(x=>x!==id); st.surcharges = st.surcharges.filter(x=>x!==id); } });
       const assumptions = $('#c_assumptions'); if(assumptions) assumptions.oninput = () => { st.assumptions = assumptions.value; };
