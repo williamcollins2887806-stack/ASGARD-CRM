@@ -3,6 +3,29 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+// State machine тендеров — допустимые переходы
+const TENDER_TRANSITIONS = {
+  'Черновик':              ['Новый'],
+  'Новый':                 ['Отправлено на просчёт', 'Проиграли'],
+  'Отправлено на просчёт': ['Согласование ТКП', 'Проиграли'],
+  'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли'],
+  'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли'],
+  'КП отправлено':         ['Выиграли', 'Проиграли'],
+  'Выиграли':              [],
+  'Проиграли':             ['Новый']
+};
+
+const VALID_TENDER_STATUSES = Object.keys(TENDER_TRANSITIONS);
+
+function isValidTenderTransition(fromStatus, toStatus, userRole) {
+  if (userRole === 'ADMIN') return true;
+  if (toStatus === 'Новый' && fromStatus === 'Проиграли' && userRole !== 'ADMIN') return false;
+  if (!fromStatus) return true;
+  const allowed = TENDER_TRANSITIONS[fromStatus];
+  if (!allowed) return true;
+  return allowed.includes(toStatus);
+}
+
 async function routes(fastify, options) {
   const db = fastify.db;
   const { createNotification } = require('../services/notify');
@@ -329,6 +352,25 @@ async function routes(fastify, options) {
       }
     }
 
+    // State machine — проверка перехода статуса
+    if (data.tender_status && data.tender_status !== oldTender.tender_status) {
+      // Валидация что статус из допустимого списка
+      if (!VALID_TENDER_STATUSES.includes(data.tender_status) && request.user.role !== 'ADMIN') {
+        return reply.code(400).send({ error: `Недопустимый статус: "${data.tender_status}"` });
+      }
+      // Валидация перехода
+      if (!isValidTenderTransition(oldTender.tender_status, data.tender_status, request.user.role)) {
+        return reply.code(400).send({
+          error: `Недопустимый переход статуса: "${oldTender.tender_status}" → "${data.tender_status}"`,
+          allowed: TENDER_TRANSITIONS[oldTender.tender_status] || []
+        });
+      }
+      // «Проиграли» требует причину
+      if (data.tender_status === 'Проиграли' && !data.reject_reason && !oldTender.reject_reason) {
+        return reply.code(400).send({ error: 'Для статуса «Проиграли» обязательна причина отказа' });
+      }
+    }
+
     // Build update query — map API field names to DB columns
     const FIELD_MAP = {
       'customer': 'customer_name',
@@ -480,11 +522,11 @@ async function routes(fastify, options) {
       const stats = await db.query(`
         SELECT
           COUNT(*) as total,
-          COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-          COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
-          COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Клиент согласился', 'Проиграли', 'Отказ', 'Клиент отказался', 'Отменён')) as active,
+          COUNT(*) FILTER (WHERE tender_status = 'Выиграли') as won,
+          COUNT(*) FILTER (WHERE tender_status = 'Проиграли') as lost,
+          COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Проиграли')) as active,
           COALESCE(SUM(tender_price), 0) as total_sum,
-          COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+          COALESCE(SUM(tender_price) FILTER (WHERE tender_status = 'Выиграли'), 0) as won_sum
         FROM tenders
         WHERE ${whereClause}
       `, params);
@@ -539,10 +581,10 @@ async function routes(fastify, options) {
         u.name,
         u.role,
         COUNT(t.id) as total_tenders,
-        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
-        COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Контракт', 'Клиент согласился', 'Проиграли', 'Отказ', 'Клиент отказался', 'Отменён', 'Другое')) as active,
-        COALESCE(SUM(t.tender_price) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COUNT(t.id) FILTER (WHERE t.tender_status = 'Выиграли') as won,
+        COUNT(t.id) FILTER (WHERE t.tender_status = 'Проиграли') as lost,
+        COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Проиграли')) as active,
+        COALESCE(SUM(t.tender_price) FILTER (WHERE t.tender_status = 'Выиграли'), 0) as won_sum,
         COALESCE(SUM(t.tender_price), 0) as total_sum,
         COUNT(DISTINCT t.customer_inn) as unique_customers,
         MAX(t.created_at) as last_tender_at
@@ -557,9 +599,9 @@ async function routes(fastify, options) {
     const deptTotal = await db.query(`
       SELECT
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
-        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COUNT(*) FILTER (WHERE tender_status = 'Выиграли') as won,
+        COUNT(*) FILTER (WHERE tender_status = 'Проиграли') as lost,
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status = 'Выиграли'), 0) as won_sum,
         COALESCE(SUM(tender_price), 0) as total_sum
       FROM tenders t
       WHERE ${whereClause}
@@ -577,8 +619,8 @@ async function routes(fastify, options) {
       SELECT
         TO_CHAR(created_at, 'YYYY-MM') as month,
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+        COUNT(*) FILTER (WHERE tender_status = 'Выиграли') as won,
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status = 'Выиграли'), 0) as won_sum
       FROM tenders
       WHERE created_at >= NOW() - INTERVAL '12 months' AND tender_status != 'Черновик'
       GROUP BY TO_CHAR(created_at, 'YYYY-MM')

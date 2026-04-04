@@ -129,11 +129,11 @@ describe('BUG-03: fast-track не падает с ReferenceError', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// BUG-04: stats counts 'Клиент согласился' as won
+// BUG-04: stats counts 'Выиграли' as won
 // ═══════════════════════════════════════════════════════════════════
-describe('BUG-04: статистика считает Клиент согласился как won', () => {
-  test('won включает все 3 статуса побед', async () => {
-    const statuses = ['Выиграли', 'Контракт', 'Клиент согласился'];
+describe('BUG-04: статистика считает Выиграли как won', () => {
+  test('won включает статус Выиграли', async () => {
+    const statuses = ['Выиграли'];
     for (const s of statuses) {
       const { id } = await createTender(adminToken, {
         tender_price: 1000000,

@@ -74,7 +74,7 @@ window.AsgardSLA = (function(){
     v.sla.director_approval_due_workdays = Number.isFinite(v.sla.director_approval_due_workdays) ? v.sla.director_approval_due_workdays : 2;
     v.sla.pm_rework_due_workdays = Number.isFinite(v.sla.pm_rework_due_workdays) ? v.sla.pm_rework_due_workdays : 1;
     v.limits.pm_active_calcs_limit = Number.isFinite(v.limits.pm_active_calcs_limit) ? v.limits.pm_active_calcs_limit : 6;
-    v.limits.pm_active_calcs_done_statuses = (typeof v.limits.pm_active_calcs_done_statuses==="string" ? v.limits.pm_active_calcs_done_statuses : "").trim() || "Согласование ТКП, Клиент согласился, Клиент отказался";
+    v.limits.pm_active_calcs_done_statuses = (typeof v.limits.pm_active_calcs_done_statuses==="string" ? v.limits.pm_active_calcs_done_statuses : "").trim() || "Согласование ТКП, Выиграли, Проиграли";
     return v;
   }
 

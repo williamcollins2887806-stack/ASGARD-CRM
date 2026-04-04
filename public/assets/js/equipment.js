@@ -92,7 +92,7 @@ window.AsgardEquipment = (function () {
   const objOpts = (sel) => optionsHtml(objects, o=>o.id, o=>o.name, sel);
   const whOpts  = (sel) => optionsHtml(warehouses, w=>w.id, w=>w.name, sel);
   const pmOpts  = (sel) => optionsHtml(pmList, p=>p.id, p=>p.name, sel);
-  const workOpts = (sel) => optionsHtml(worksList.filter(w=>w.work_status!=='Завершена'), w=>w.id, w=>(w.work_number||'')+' — '+(w.work_title||w.customer_name||''), sel);
+  const workOpts = (sel) => optionsHtml(worksList.filter(w=>!['Работы сдали','Закрыт'].includes(w.work_status)), w=>w.id, w=>(w.work_number||'')+' — '+(w.work_title||w.customer_name||''), sel);
   const statusFilterOpts = () => Object.entries(STATUS).filter(([k])=>k!=='written_off').map(([k,v])=>'<option value="'+k+'">'+v.i+' '+v.l+'</option>').join('');
   const condOpts = (sel) => Object.entries(COND).map(([k,v])=>'<option value="'+k+'"'+(sel===k?' selected':'')+'>'+v.l+'</option>').join('');
 
@@ -101,7 +101,7 @@ window.AsgardEquipment = (function () {
   const _objArr = () => objects.map(o => ({ value: String(o.id), label: o.name }));
   const _whArr  = () => warehouses.map(w => ({ value: String(w.id), label: w.name }));
   const _pmArr  = () => pmList.map(p => ({ value: String(p.id), label: p.name }));
-  const _workArr = () => worksList.filter(w=>w.work_status!=='Завершена').map(w => ({ value: String(w.id), label: (w.work_number||'')+' — '+(w.work_title||w.customer_name||'') }));
+  const _workArr = () => worksList.filter(w=>!['Работы сдали','Закрыт'].includes(w.work_status)).map(w => ({ value: String(w.id), label: (w.work_number||'')+' — '+(w.work_title||w.customer_name||'') }));
   const _condArr = () => Object.entries(COND).map(([k,v]) => ({ value: k, label: v.l }));
   const _unitArr = () => ['шт','м','кг','л','компл'].map(u => ({ value: u, label: u }));
   const _statusFilterArr = () => Object.entries(STATUS).filter(([k])=>k!=='written_off').map(([k,v]) => ({ value: k, label: v.i + ' ' + v.l }));

@@ -341,14 +341,37 @@ window.AsgardTendersPage = (function(){
     // Limits defaults
     if(!Number.isFinite(obj.limits.pm_active_calcs_limit)) obj.limits.pm_active_calcs_limit = 6;
     if(typeof obj.limits.pm_active_calcs_done_statuses !== 'string')
-      obj.limits.pm_active_calcs_done_statuses = 'Согласование ТКП, ТКП согласовано, Клиент отказался, Клиент согласился';
+      obj.limits.pm_active_calcs_done_statuses = 'Согласование ТКП, ТКП согласовано, Выиграли, Проиграли';
 
     return obj;
   }
 
-async function getRefs(){
+// State machine тендеров — допустимые переходы (зеркало бэкенда)
+  const TENDER_TRANSITIONS = {
+    'Черновик':              ['Новый'],
+    'Новый':                 ['Отправлено на просчёт', 'Проиграли'],
+    'Отправлено на просчёт': ['Согласование ТКП', 'Проиграли'],
+    'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли'],
+    'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли'],
+    'КП отправлено':         ['Выиграли', 'Проиграли'],
+    'Выиграли':              [],
+    'Проиграли':             ['Новый']
+  };
+
+  const TENDER_STATUS_COLORS = {
+    'Черновик': '#6c757d', 'Новый': '#5b8def', 'Отправлено на просчёт': '#f39c12',
+    'Согласование ТКП': '#e67e22', 'ТКП согласовано': '#27ae60', 'КП отправлено': '#17a2b8',
+    'Выиграли': '#2ecc71', 'Проиграли': '#e74c3c'
+  };
+
+  function tenderStatusBadge(status) {
+    const bg = TENDER_STATUS_COLORS[status] || '#6c757d';
+    return `<span class="cr-status-badge" style="background:${bg}">${esc(status || '')}</span>`;
+  }
+
+  async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
-    const defaultStatuses = ['Черновик','Новый','В работе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Выиграли','Проиграли','Контракт','Клиент отказался','Клиент согласился','Отказ'];
+    const defaultStatuses = ['Черновик','Новый','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','КП отправлено','Выиграли','Проиграли'];
     if(refs && refs.tender_statuses && refs.tender_statuses.length) return refs;
     return { tender_statuses: defaultStatuses, reject_reasons: (refs && refs.reject_reasons) || [] };
   }
@@ -418,7 +441,7 @@ async function getRefs(){
       </td>
       <td>${esc(pmName||"—")}</td>
       <td>${esc(t.tender_type||"—")}</td>
-      <td>${t.tender_status==='Черновик'?'<span class="badge draft">Черновик</span>':esc(t.tender_status||"")}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
+      <td>${tenderStatusBadge(t.tender_status)}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
       <td>${ddl}</td>
       <td>${esc(createdByName||"—")}</td>
       <td>${t.tender_price?money(t.tender_price):"—"}</td>
@@ -439,8 +462,8 @@ async function getRefs(){
     // Status badge color
     let statusCls = '';
     const st = t.tender_status || '';
-    if (['Контракт','Выиграли','Клиент согласился'].includes(st)) statusCls = 'ok';
-    else if (['Проиграли','Отказ','Клиент отказался'].includes(st)) statusCls = 'err';
+    if (st === 'Выиграли') statusCls = 'ok';
+    else if (st === 'Проиграли') statusCls = 'err';
     else if (st === 'Черновик') statusCls = 'draft';
     else statusCls = 'info';
 
@@ -618,7 +641,7 @@ async function getRefs(){
       const doneRaw = String(appS?.limits?.pm_active_calcs_done_statuses||"");
       const done = new Set(doneRaw.split(",").map(s=>s.trim()).filter(Boolean));
       if(done.size===0){
-        ["Согласование ТКП","ТКП согласовано","Клиент отказался","Клиент согласился"].forEach(x=>done.add(x));
+        ["Согласование ТКП","ТКП согласовано","Выиграли","Проиграли"].forEach(x=>done.add(x));
       }
       const activeByPm = new Map();
       for(const t of tenders){
@@ -699,7 +722,7 @@ async function getRefs(){
           const doneRaw2 = String(appS2?.limits?.pm_active_calcs_done_statuses||"");
           const done2 = new Set(doneRaw2.split(",").map(s=>s.trim()).filter(Boolean));
           if(done2.size===0){
-            ["Согласование ТКП","ТКП согласовано","Клиент отказался","Клиент согласился"].forEach(x=>done2.add(x));
+            ["Согласование ТКП","ТКП согласовано","Выиграли","Проиграли"].forEach(x=>done2.add(x));
           }
           const all = await AsgardDB.all("tenders");
           const active = all.filter(t=>t.handoff_at && Number(t.responsible_pm_id||0)===pmId && !done2.has(String(t.tender_status||""))).length;
@@ -723,7 +746,7 @@ async function getRefs(){
       });
     })();
 
-    // ===== Stage 7: Назначение РП на работу после статуса «Клиент согласился» =====
+    // ===== Stage 7: Назначение РП на работу после статуса «Выиграли» =====
     await (async function renderWinAssignPanel(){
       if(!winPanel) return;
       const canWin = (isDirRole(user.role) || user.role==="ADMIN");
@@ -825,7 +848,7 @@ async function getRefs(){
             <h3 style="margin:0">Назначение РП на работу (победы)</h3>
             <span class="badge">${reqs.length}</span>
           </div>
-          <div class="help">Запрос создаётся после статуса «Клиент согласился» у РП в просчёте. Пересечение плановых сроков: ≤7 дней — предупреждение, >7 дней — блок (override только после согласия РП).</div>
+          <div class="help">Запрос создаётся после статуса «Выиграли» у РП в просчёте. Пересечение плановых сроков: ≤7 дней — предупреждение, >7 дней — блок (override только после согласия РП).</div>
           <div style="overflow:auto; margin-top:10px">
             <table class="t" style="min-width:1050px">
               <thead>
@@ -1373,7 +1396,10 @@ ${docsHtml}</div>
       const _eStatusDis = !full || isNew;
       $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal', onChange: (v) => applyTypeRules(v) }));
       $('#e_pm_w')?.appendChild(CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal' }));
-      $('#e_status_w')?.appendChild(CRSelect.create({ id: 'e_status', options: refs.tender_statuses.map(s => ({ value: s, label: s })), value: (t&&t.tender_status)||(isNew?'Черновик':''), disabled: _eStatusDis, dropdownClass: 'z-modal' }));
+      const _curStatus = (t&&t.tender_status)||(isNew?'Черновик':'');
+      const _isAdmin = user.role === 'ADMIN';
+      const _statusOpts = _isAdmin ? refs.tender_statuses : (TENDER_TRANSITIONS[_curStatus] || []).concat([_curStatus]);
+      $('#e_status_w')?.appendChild(CRSelect.create({ id: 'e_status', options: [...new Set(_statusOpts)].map(s => ({ value: s, label: s })), value: _curStatus, disabled: _eStatusDis, dropdownClass: 'z-modal' }));
 
       /* Mount CRSelect for tag */
       const _tagOpts = tenderTags.map(tg => ({ value: String(tg.id), label: tg.name }));
@@ -2108,7 +2134,7 @@ ${docsHtml}</div>
         }
 
         if(!pmId && status!=="Новый"){ toast("Проверка","Назначьте ответственного РП","err"); return null; }
-        if(status==="Клиент отказался" && !reject){ toast("Проверка","Для отказа нужна причина","err"); return null; }
+        if(status==="Проиграли" && !reject){ toast("Проверка","Для отказа нужна причина","err"); return null; }
 
         if(isNew){
           const obj={
@@ -2175,8 +2201,8 @@ ${docsHtml}</div>
           }
           await AsgardDB.put("tenders", cur);
           
-          // TKP Follow-up: активируем если "Прямой запрос" + "ТКП отправлено"
-          if(status === "ТКП отправлено" && window.AsgardTkpFollowup){
+          // TKP Follow-up: активируем если "Прямой запрос" + "КП отправлено"
+          if(status === "КП отправлено" && window.AsgardTkpFollowup){
             try { await AsgardTkpFollowup.activateFollowup(cur); } catch(e){ console.warn('TKP Followup error:', e); }
           }
           
@@ -2345,7 +2371,7 @@ ${docsHtml}</div>
               const allT = await AsgardDB.all("tenders");
               const doneRaw = String(appS?.limits?.pm_active_calcs_done_statuses||"");
               const done = new Set(doneRaw.split(",").map(x=>String(x).trim()).filter(Boolean));
-              if(done.size===0){ ["Согласование ТКП","ТКП согласовано","Клиент отказался","Клиент согласился"].forEach(x=>done.add(x)); }
+              if(done.size===0){ ["Согласование ТКП","ТКП согласовано","Выиграли","Проиграли"].forEach(x=>done.add(x)); }
               const active = (allT||[]).filter(t=>
                 t && t.handoff_at && Number(t.responsible_pm_id)===Number(cur.responsible_pm_id) && Number(t.id)!==Number(cur.id) &&
                 !done.has(String(t.tender_status||""))

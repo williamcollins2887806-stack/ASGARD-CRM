@@ -578,7 +578,7 @@ window.AsgardReceiptScanner = (function(){
     // Загружаем работы
     try {
       const works = await AsgardDB.getAll('works') || [];
-      const activeWorks = works.filter(w => w.work_status !== 'Закрыта' && w.work_status !== 'Завершена');
+      const activeWorks = works.filter(w => !['Работы сдали','Закрыт'].includes(w.work_status));
       const workOpts = activeWorks.map(w => ({ value: String(w.id), label: w.work_title || 'Работа #' + w.id }));
       document.getElementById('crw_expWorkId')?.appendChild(CRSelect.create({
         id: 'expWorkId', fullWidth: true, placeholder: '— Без привязки —', clearable: true,

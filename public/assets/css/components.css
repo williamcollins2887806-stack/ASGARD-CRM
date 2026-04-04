@@ -5383,6 +5383,20 @@ textarea:focus:not(:focus-visible) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   STATUS BADGES — Тендеры и Работы
+   ════════════════════════════════════════════════════════════ */
+.cr-status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  color: #fff;
+}
+
+/* ════════════════════════════════════════════════════════════
    PRINT STYLES — Worker Profile Desktop
    ════════════════════════════════════════════════════════════ */
 /* Scoped to body.wp-desktop-print-active so other prints aren't affected */

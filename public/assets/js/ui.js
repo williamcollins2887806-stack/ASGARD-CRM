@@ -326,12 +326,12 @@ window.AsgardUI = (function(){
     if (!statusText) return 'status-gray';
     const s = statusText.toLowerCase().trim();
 
-    if (/^(новый|новая|получен|черновик|draft|отменён|архив)/.test(s)) return 'status-gray';
-    if (/^(в просчёте|на просчёте|в работе|in.progress|выполняется|обработка)/.test(s)) return 'status-blue';
-    if (/^(кп отправлено|ткп отправлено|на согласовании|на проверке|review|ожидание)/.test(s)) return 'status-purple';
-    if (/^(переговоры|отложен|истекает|pending|вопрос|приостановлен)/.test(s)) return 'status-yellow';
-    if (/^(выиграли|контракт|оплачен|завершён|done|готов|выполнен|одобрен|согласован|подписан)/.test(s)) return 'status-green';
-    if (/^(проиграли|отказ|отклонён|просрочен|expired|rejected|ошибка)/.test(s)) return 'status-red';
+    if (/^(новый|новая|черновик|draft|отменён|архив)/.test(s)) return 'status-gray';
+    if (/^(отпра��лено на просчёт|в работе|in.progress|выполняется|обработка|подготовка|мобилизация)/.test(s)) return 'status-blue';
+    if (/^(кп отправлено|согласование ткп|на проверке|review|ожидание)/.test(s)) return 'status-purple';
+    if (/^(на паузе|отложен|истекает|pending|вопрос|приостановлен)/.test(s)) return 'status-yellow';
+    if (/^(выиграли|ткп согласовано|оплачен|завершён|done|готов|выполнен|одобрен|работы сдали|подписание акта)/.test(s)) return 'status-green';
+    if (/^(проиграли|отклонён|просрочен|expired|rejected|ошибка)/.test(s)) return 'status-red';
     if (/^(vip|премиум|срочный|важный)/.test(s)) return 'status-gold';
 
     return 'status-blue';

@@ -25,7 +25,7 @@ module.exports = {
       }
     },
     {
-      name: 'BUG-04: stats/summary считает Клиент согласился как won',
+      name: 'BUG-04: stats/summary считает Выиграли как won',
       run: async () => {
         const t = await api('POST', '/api/tenders', {
           role: 'TO',
@@ -37,7 +37,7 @@ module.exports = {
 
         await api('PUT', `/api/tenders/${tid}`, {
           role: 'ADMIN',
-          body: { tender_status: 'Клиент согласился' }
+          body: { tender_status: 'Выиграли' }
         });
 
         const stats = await api('GET', '/api/tenders/stats/summary', { role: 'ADMIN' });

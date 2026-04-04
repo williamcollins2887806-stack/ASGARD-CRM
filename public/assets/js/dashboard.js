@@ -53,9 +53,9 @@ window.AsgardDashboardPage = (function(){
 
     // Фильтрация по текущему году
     // === Статусы ===
-    const WON_STATUSES = ['Контракт', 'Выиграли', 'Клиент согласился'];
-    const LOST_STATUSES = ['Проиграли', 'Отказ', 'Клиент отказался'];
-    const DONE_STATUSES = ['Работы сдали', 'Завершена', 'Закрыт'];
+    const WON_STATUSES = ['Выиграли'];
+    const LOST_STATUSES = ['Проиграли'];
+    const DONE_STATUSES = ['Работы сдали', 'Закрыт'];
 
     const tenderMatchesYear = (t) => {
       if (Number(t.year) === currentYear) return true;

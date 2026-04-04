@@ -335,8 +335,8 @@ window.AsgardExport = (function(){
 
     const stats = {
       'Тендеры: всего': yearTenders.length,
-      'Тендеры: выиграно': yearTenders.filter(t => t.tender_status === 'Клиент согласился').length,
-      'Тендеры: проиграно': yearTenders.filter(t => t.tender_status === 'Клиент отказался').length,
+      'Тендеры: выиграно': yearTenders.filter(t => t.tender_status === 'Выиграли').length,
+      'Тендеры: проиграно': yearTenders.filter(t => t.tender_status === 'Проиграли').length,
       'Работы: всего': yearWorks.length,
       'Работы: завершено': yearWorks.filter(w => w.work_status === 'Работы сдали').length,
       'Работы: проблемы': yearWorks.filter(w => w.work_status === 'Проблема').length,

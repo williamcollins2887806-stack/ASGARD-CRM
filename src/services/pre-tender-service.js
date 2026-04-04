@@ -482,7 +482,7 @@ function fallbackAnalysis(pt) {
 async function getWorkloadInfo() {
   try {
     const [works, employees] = await Promise.all([
-      db.query(`SELECT COUNT(*) as cnt FROM works WHERE work_status IN ('В работе','Мобилизация','На объекте')`),
+      db.query(`SELECT COUNT(*) as cnt FROM works WHERE work_status IN ('В работе','Мобилизация','Подготовка','На паузе','Подписание акта')`),
       db.query(`SELECT COUNT(*) as cnt FROM employees WHERE is_active = true`)
     ]);
     const activeWorks = parseInt(works.rows[0]?.cnt || 0);

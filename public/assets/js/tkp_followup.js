@@ -1,5 +1,5 @@
 // Stage 25: TKP Follow-up — контроль обратной связи
-// Только для "Прямой запрос" + "ТКП отправлено"
+// Только для "Прямой запрос" + "КП отправлено"
 // Ежедневные напоминания PM до закрытия
 
 window.AsgardTkpFollowup = (function(){
@@ -42,15 +42,15 @@ window.AsgardTkpFollowup = (function(){
     }
   }
 
-  // Активировать follow-up при переходе в "ТКП отправлено"
+  // Активировать follow-up при переходе в "КП отправлено"
   async function activateFollowup(tender){
     if(!tender) return;
     
     // Только для "Прямой запрос"
     if(tender.request_type !== 'direct' && tender.type_request !== 'Прямой запрос') return;
     
-    // Только при статусе "ТКП отправлено"
-    if(tender.tender_status !== 'ТКП отправлено') return;
+    // Только при статусе "КП отправлено"
+    if(tender.tender_status !== 'КП отправлено') return;
     
     // Уже активен или закрыт?
     if(tender.tkp_followup_state === 'active' || tender.tkp_followup_state === 'closed') return;
@@ -202,7 +202,7 @@ window.AsgardTkpFollowup = (function(){
       <div class="help" style="margin-bottom:15px">
         <b>${esc(tender.customer_name)}</b> — ${esc(tender.tender_title || '')}
         <div style="color:var(--muted); font-size:12px; margin-top:5px">
-          ТКП отправлено: ${tender.tkp_sent_at ? new Date(tender.tkp_sent_at).toLocaleDateString('ru-RU') : '—'}
+          КП отправлено: ${tender.tkp_sent_at ? new Date(tender.tkp_sent_at).toLocaleDateString('ru-RU') : '—'}
         </div>
       </div>
       

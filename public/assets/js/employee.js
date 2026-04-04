@@ -520,7 +520,7 @@ window.AsgardEmployeePage=(function(){
         '</div>' +
         '<div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--t3)">' +
           '<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#d4a825,#c9952a);margin-right:4px;vertical-align:middle"></span>Активна</span>' +
-          '<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#22c55e,#1a8a4a);margin-right:4px;vertical-align:middle"></span>Завершена</span>' +
+          '<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#22c55e,#1a8a4a);margin-right:4px;vertical-align:middle"></span>Работы сдали</span>' +
           '<span style="margin-left:auto"><span style="display:inline-block;width:10px;height:2px;background:var(--red);margin-right:4px;vertical-align:middle"></span>Сегодня</span>' +
         '</div>' +
       '</div>';

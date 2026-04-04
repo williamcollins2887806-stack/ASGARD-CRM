@@ -22,7 +22,7 @@ module.exports = async function(fastify, options) {
         (SELECT COUNT(*) FROM works w WHERE w.site_id = s.id) as works_count,
         (SELECT COUNT(*) FROM tenders t WHERE t.site_id = s.id) as tenders_count,
         (SELECT COUNT(*) FROM works w WHERE w.site_id = s.id
-          AND w.work_status IN ('В работе','Мобилизация','На объекте','In Progress')) as active_works
+          AND w.work_status IN ('В работе','Мобилизация','Подготовка','На паузе','Подписание акта')) as active_works
       FROM sites s
       ORDER BY s.updated_at DESC
     `);

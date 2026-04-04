@@ -915,7 +915,7 @@ async function mimirRoutes(fastify, options) {
         GROUP BY tender_status
       `, [t.customer_name]);
 
-      const wonCount = parseInt(history.rows.find(r => r.tender_status === 'Клиент согласился')?.cnt || 0);
+      const wonCount = parseInt(history.rows.find(r => r.tender_status === 'Выиграли')?.cnt || 0);
       const totalCount = history.rows.reduce((s, r) => s + parseInt(r.cnt), 0);
       const winRate = totalCount > 0 ? Math.round((wonCount / totalCount) * 100) : 0;
 

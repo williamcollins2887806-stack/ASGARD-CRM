@@ -527,10 +527,10 @@ async function routes(fastify, options) {
         u.name,
         u.role,
         COUNT(t.id) as total_tenders,
-        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
-        COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Контракт', 'Клиент согласился', 'Проиграли', 'Отказ', 'Клиент отказался', 'Отменён', 'Другое')) as active,
-        COALESCE(SUM(t.tender_price) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Выиграли')) as won,
+        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Проиграли')) as lost,
+        COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Проиграли', 'Отменён', 'Другое')) as active,
+        COALESCE(SUM(t.tender_price) FILTER (WHERE t.tender_status IN ('Выиграли')), 0) as won_sum,
         COALESCE(SUM(t.tender_price), 0) as total_sum,
         COUNT(DISTINCT t.customer_inn) as unique_customers,
         MAX(t.created_at) as last_tender_at
@@ -545,9 +545,9 @@ async function routes(fastify, options) {
     const deptTotal = await db.query(`
       SELECT
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
-        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли')) as won,
+        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли')) as lost,
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли')), 0) as won_sum,
         COALESCE(SUM(tender_price), 0) as total_sum
       FROM tenders
       WHERE ${whereClause.replace(/t\./g, '')}
@@ -565,8 +565,8 @@ async function routes(fastify, options) {
       SELECT
         TO_CHAR(created_at, 'YYYY-MM') as month,
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли')) as won,
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли')), 0) as won_sum
       FROM tenders
       WHERE created_at >= NOW() - INTERVAL '12 months' AND tender_status != 'Черновик'
       GROUP BY TO_CHAR(created_at, 'YYYY-MM')

@@ -186,7 +186,7 @@ window.AsgardReminders = (function(){
       const tenders = await AsgardDB.all('tenders') || [];
       for (const t of tenders) {
         if (!t.deadline_date) continue;
-        if (t.tender_status === 'Клиент согласился' || t.tender_status === 'Клиент отказался') continue;
+        if (t.tender_status === 'Выиграли' || t.tender_status === 'Проиграли') continue;
         
         // Только для ответственного РП или админа
         if (t.responsible_pm_id !== user.id && user.role !== 'ADMIN') continue;

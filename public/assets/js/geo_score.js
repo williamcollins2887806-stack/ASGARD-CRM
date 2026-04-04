@@ -279,7 +279,7 @@ window.AsgardGeoScore = (function(){
     }
     
     // Считаем выигранные
-    const wonStatuses = ['Выиграли', 'Контракт', 'В работе', 'Завершена', 'Клиент согласился'];
+    const wonStatuses = ['Выиграли', 'В работе', 'Работы сдали', 'Закрыт'];
     const won = customerTenders.filter(t => wonStatuses.includes(t.tender_status)).length;
     const total = customerTenders.length;
     const rate = Math.round((won / total) * 100);

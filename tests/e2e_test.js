@@ -2378,7 +2378,7 @@ ${this.generateRecommendations()}
         const tenderUpdateResp = await fetch('/api/data/tenders/' + tenderId, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ ...tender, tender_status: 'Клиент согласился' })
+          body: JSON.stringify({ ...tender, tender_status: 'Выиграли' })
         });
         if (!tenderUpdateResp.ok) {
           const errData = await tenderUpdateResp.json().catch(() => ({}));
@@ -2741,13 +2741,13 @@ ${this.generateRecommendations()}
 
       // СТРОГИЕ проверки статусов после выполнения workflow
       // Ожидаемые статусы после полного цикла:
-      // - tender: 'Клиент согласился' (устанавливается в workflow.tender.07_work_created)
+      // - tender: 'Выиграли' (устанавливается в workflow.tender.07_work_created)
       // - estimate: 'approved' (устанавливается в workflow.tender.06_director_approves)
       // - work: 'Закрыто' (устанавливается в workflow.work.03_close)
       // - bonus: 'approved' (устанавливается в workflow.bonus.02_director_approves)
       // - expenses: должен быть хотя бы 1
 
-      const expectedTenderStatus = 'Клиент согласился';
+      const expectedTenderStatus = 'Выиграли';
       const expectedEstimateStatus = 'approved';
       const expectedWorkStatus = 'Закрыто';
       const expectedBonusStatus = 'approved';

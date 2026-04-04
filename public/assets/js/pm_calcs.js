@@ -558,10 +558,10 @@ window.AsgardPmCalcsPage = (function(){
         list = list.filter(t=>norm(t.period)===period);
       }
       if(!showRef){
-        list = list.filter(t=>t.tender_status!=="Клиент отказался");
+        list = list.filter(t=>t.tender_status!=="Проиграли");
       }
       if(!showWon){
-        list = list.filter(t=>t.tender_status!=="Клиент согласился");
+        list = list.filter(t=>t.tender_status!=="Выиграли");
       }
       if(st){
         list = list.filter(t=>t.tender_status===st);
@@ -737,7 +737,7 @@ window.AsgardPmCalcsPage = (function(){
               <div class="help">«Отправлено на просчёт» ставит ТО кнопкой передачи.</div>
             </div>
             <div>
-              <label>Причина отказа (если «Клиент отказался»)</label>
+              <label>Причина отказа (если «Проиграли»)</label>
               <div id="s_reject_w"></div>
             </div>
           </div>
@@ -854,7 +854,11 @@ window.AsgardPmCalcsPage = (function(){
       `;
 
       showModal(`Просчёт — тендер #${tender.id}`, html);
-      const _statusOpts = refs.tender_statuses.filter(s=>s!=="Новый").map(s=>({ value: s, label: s }));
+      const _TENDER_TR = {'Черновик':['Новый'],'Новый':['Отправлено на просчёт','Проиграли'],'Отправлено на просчёт':['Согласование ТКП','Проиграли'],'Согласование ТКП':['ТКП согласовано','Отправлено на просчёт','Проиграли'],'ТКП согласовано':['КП отправлено','Согласование ТКП','Проиграли'],'КП отправлено':['Выиграли','Проиграли'],'Выиграли':[],'Проиграли':['Новый']};
+      const _isAdm = user.role === 'ADMIN';
+      const _curSt = tender.tender_status || '';
+      const _allowedSt = _isAdm ? refs.tender_statuses : [...new Set((_TENDER_TR[_curSt]||[]).concat([_curSt]))];
+      const _statusOpts = _allowedSt.map(s=>({ value: s, label: s }));
       const _rejectOpts = [{ value: '', label: '—' }, ...refs.reject_reasons.map(r=>({ value: r, label: r }))];
       $('#s_status_w')?.appendChild(CRSelect.create({ id: 's_status', options: _statusOpts, value: tender.tender_status || '', disabled: !canEditStatus, dropdownClass: 'z-modal' }));
       $('#s_reject_w')?.appendChild(CRSelect.create({ id: 's_reject', options: _rejectOpts, value: tender.reject_reason || '', disabled: !canEditStatus, dropdownClass: 'z-modal' }));
@@ -875,7 +879,7 @@ window.AsgardPmCalcsPage = (function(){
         if(!canEditStatus){ toast("Права","Недоступно","err"); return; }
         const st = CRSelect.getValue('s_status') || '';
         const rej = CRSelect.getValue('s_reject') || null;
-        if(st==="Клиент отказался" && !rej){
+        if(st==="Проиграли" && !rej){
           toast("Проверка","Для отказа требуется причина","err"); return;
         }
         const cur = await AsgardDB.get("tenders", tenderId);
@@ -887,11 +891,11 @@ window.AsgardPmCalcsPage = (function(){
 
         const before = {status:cur.tender_status, reject_reason:cur.reject_reason};
         cur.tender_status = st;
-        cur.reject_reason = (st==="Клиент отказался") ? rej : null;
+        cur.reject_reason = (st==="Проиграли") ? rej : null;
         await AsgardDB.put("tenders", cur);
         await audit(user.id,"tender",tenderId,"status_change",{before, after:{status:st, reject_reason:cur.reject_reason}});
 
-        if(st==="Клиент согласился"){
+        if(st==="Выиграли"){
           const w = await ensureWorkFromTender(cur);
           await audit(user.id,"work",w.id,"auto_create_from_tender",{tender_id:tenderId});
           await notify(cur.responsible_pm_id, "Тендер согласован", "Создана работа в разделе «Работы».", "#/pm-works");

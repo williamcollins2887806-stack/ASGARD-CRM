@@ -242,7 +242,7 @@ window.AsgardSettingsPage = (function(){
               </div>
               <div style="grid-column:1/-1">
                 <label for="lim_pm_done">Просчёт НЕ считается активным при статусах (через запятую)</label>
-                <input id="lim_pm_done" type="text" value="${esc(String(limits.pm_active_calcs_done_statuses ?? "Согласование ТКП, ТКП согласовано, Клиент согласился, Клиент отказался"))}"/>
+                <input id="lim_pm_done" type="text" value="${esc(String(limits.pm_active_calcs_done_statuses ?? "Согласование ТКП, ТКП согласовано, Выиграли, Проиграли"))}"/>
                 <div class="help">Используется для лимита активных просчётов (этап 6).</div>
               </div>
               <div class="help" style="grid-column:1/-1">

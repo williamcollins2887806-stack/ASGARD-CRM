@@ -324,12 +324,12 @@ window.AsgardBigScreen = (function(){
   // ───────────────────────────────────────────────────────
   function slideKPI(d) {
     const yT = d.tenders.filter(t => String(t.year) === String(d.y) || (t.period || '').startsWith(d.y));
-    const won = yT.filter(t => ['Выиграли','Контракт','Клиент согласился'].includes(t.tender_status)).length;
+    const won = yT.filter(t => t.tender_status === 'Выиграли').length;
     const yW = d.works.filter(w => { const dt = w.start_fact || w.start_plan || w.start_in_work_date || w.created_at; return dt && new Date(dt).getFullYear() === d.y; });
     const revenue = yW.reduce((s, w) => s + (Number(w.contract_value) || 0), 0);
-    const done = yW.filter(w => ['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
-    const active = yW.filter(w => !['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
-    const overdue = yW.filter(w => w.end_plan && !['Работы сдали','Завершена','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now).length;
+    const done = yW.filter(w => ['Работы сдали','Закрыт'].includes(w.work_status)).length;
+    const active = yW.filter(w => !['Работы сдали','Закрыт'].includes(w.work_status)).length;
+    const overdue = yW.filter(w => w.end_plan && !['Работы сдали','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now).length;
     const teamActive = d.users.filter(u => u.is_active).length;
     const conv = _pct(won, yT.length);
 
@@ -393,12 +393,13 @@ window.AsgardBigScreen = (function(){
   function slideFunnel(d) {
     const yT = d.tenders.filter(t => String(t.year) === String(d.y) || (t.period || '').startsWith(d.y));
     const stages = [
-      { name: 'Новый', statuses: ['Новый','Получен'], color: 'var(--t2)' },
-      { name: 'Отправлено на просчёт', statuses: ['Отправлено на просчёт','В просчёте','На просчёте'], color: 'var(--info)' },
-      { name: 'КП отправлено', statuses: ['КП отправлено','ТКП отправлено'], color: 'var(--purple)' },
-      { name: 'Переговоры', statuses: ['Переговоры','На согласовании'], color: 'var(--amber)' },
-      { name: 'Выиграли', statuses: ['Выиграли','Контракт','Клиент согласился'], color: 'var(--ok-t)' },
-      { name: 'Проиграли', statuses: ['Проиграли','Клиент отказался','Отказ'], color: 'var(--err-t)' }
+      { name: 'Новый', statuses: ['Новый'], color: 'var(--t2)' },
+      { name: 'На просчёте', statuses: ['Отправлено на просчёт'], color: 'var(--info)' },
+      { name: 'Согласование', statuses: ['Согласование ТКП'], color: 'var(--amber)' },
+      { name: 'Согласовано', statuses: ['ТКП согласовано'], color: 'var(--ok)' },
+      { name: 'КП отправлено', statuses: ['КП отправлено'], color: 'var(--purple)' },
+      { name: 'Выиграли', statuses: ['Выиграли'], color: 'var(--ok-t)' },
+      { name: 'Проиграли', statuses: ['Проиграли'], color: 'var(--err-t)' }
     ];
     const data = stages.map(s => ({ ...s, count: yT.filter(t => s.statuses.includes(t.tender_status)).length }));
     const max = Math.max(...data.map(s => s.count), 1);
@@ -410,7 +411,7 @@ window.AsgardBigScreen = (function(){
       const key = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
       const label = dt.toLocaleDateString('ru-RU', { month: 'short' });
       const mT = d.tenders.filter(t => (t.period || '').startsWith(key) || (t.created_at || '').startsWith(key));
-      const mWon = mT.filter(t => ['Выиграли','Контракт','Клиент согласился'].includes(t.tender_status)).length;
+      const mWon = mT.filter(t => t.tender_status === 'Выиграли').length;
       months.push({ label, total: mT.length, won: mWon });
     }
     const mMax = Math.max(...months.map(m => m.total), 1);
@@ -462,9 +463,9 @@ window.AsgardBigScreen = (function(){
     const pms = d.users.filter(u => u.is_active && (pmRoles.has(u.role) || pmIds.has(u.id)));
     const rows = pms.map(pm => {
       const pw = d.works.filter(w => w.pm_id === pm.id);
-      const active = pw.filter(w => !['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
-      const completed = pw.filter(w => ['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
-      const overdue = pw.filter(w => w.end_plan && !['Работы сдали','Завершена','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now).length;
+      const active = pw.filter(w => !['Работы сдали','Закрыт'].includes(w.work_status)).length;
+      const completed = pw.filter(w => ['Работы сдали','Закрыт'].includes(w.work_status)).length;
+      const overdue = pw.filter(w => w.end_plan && !['Работы сдали','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now).length;
       const contract = pw.reduce((s,w) => s + (Number(w.contract_value) || 0), 0);
       return { name: pm.name, active, completed, overdue, total: pw.length, contract };
     }).sort((a,b) => b.contract - a.contract).slice(0, 10);
@@ -493,13 +494,13 @@ window.AsgardBigScreen = (function(){
   // ───────────────────────────────────────────────────────
   function slideActiveWorks(d) {
     const byPm = new Map(d.users.map(u => [u.id, u.name]));
-    const activeW = d.works.filter(w => !['Работы сдали','Завершена','Закрыт'].includes(w.work_status))
+    const activeW = d.works.filter(w => !['Работы сдали','Закрыт'].includes(w.work_status))
       .sort((a,b) => (Number(b.contract_value)||0) - (Number(a.contract_value)||0))
       .slice(0, 10);
 
     const statusColors = {
       'В работе': 'var(--ok-t)', 'Мобилизация': 'var(--info)', 'Подготовка': 'var(--purple)',
-      'На объекте': 'var(--cyan)', 'Демобилизация': 'var(--amber)'
+      'На паузе': 'var(--amber)', 'Подписание акта': 'var(--cyan)'
     };
 
     return `
@@ -526,7 +527,7 @@ window.AsgardBigScreen = (function(){
   // ───────────────────────────────────────────────────────
   function slideOverdue(d) {
     const byPm = new Map(d.users.map(u => [u.id, u.name]));
-    const overdue = d.works.filter(w => w.end_plan && !['Работы сдали','Завершена','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now)
+    const overdue = d.works.filter(w => w.end_plan && !['Работы сдали','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now)
       .sort((a,b) => new Date(a.end_plan) - new Date(b.end_plan)).slice(0, 10);
 
     if (!overdue.length) {

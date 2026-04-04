@@ -208,7 +208,7 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
       if(pmV && pmV!=="all") items = items.filter(t=> String(t.responsible_pm_id||"") === String(pmV));
       if(stV && stV!=="all") items = items.filter(t=> String(t.tender_status||"") === String(stV));
 
-      const lostSet=new Set(["Клиент отказался","Проиграли","Не участвуем","Отказ"]);
+      const lostSet=new Set(["Проиграли","Не участвуем"]);
       if(flt==="active") items=items.filter(t=> !lostSet.has(t.tender_status));
       if(flt==="lost") items=items.filter(t=> lostSet.has(t.tender_status));
 
@@ -718,7 +718,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       if(q) items=items.filter(it=> norm(it._label).includes(q));
       if(pmV && pmV!=="all") items = items.filter(it=> String(it._pmId||"") === String(pmV));
 
-      const doneSetTender = new Set(["Клиент отказался", "Проиграли", "Не подходит"]);
+      const doneSetTender = new Set(["Проиграли", "Не подходит"]);
       const doneSetWork = new Set(["Работы сдали", "Подписание акта"]);
       if(flt==="active"){
         items=items.filter(it=>{
@@ -728,7 +728,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       }
       if(flt==="done"){
         items=items.filter(it=>{
-          if(it._type==='tender') return doneSetTender.has(it._status) || it._status==='Клиент согласился';
+          if(it._type==='tender') return doneSetTender.has(it._status) || it._status==='Выиграли';
           return doneSetWork.has(it._status);
         });
       }

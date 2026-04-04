@@ -280,7 +280,7 @@ async function hintsRoutes(fastify) {
           try {
             const noTkp = await db.query(`
               SELECT COUNT(*) as cnt FROM tenders
-              WHERE tender_status IN ('В просчёте','На просчёте','Просчитан')
+              WHERE tender_status = 'Отправлено на просчёт'
                 AND id NOT IN (SELECT DISTINCT tender_id FROM tkp WHERE tender_id IS NOT NULL)
             `);
             const noTkpCnt = parseInt(noTkp.rows[0]?.cnt) || 0;
@@ -301,7 +301,7 @@ async function hintsRoutes(fastify) {
               WHERE deadline IS NOT NULL
                 AND deadline > CURRENT_DATE
                 AND deadline <= CURRENT_DATE + INTERVAL '7 days'
-                AND tender_status NOT IN ('Выиграли','Проиграли','Отказ','Отменён')
+                AND tender_status NOT IN ('Выиграли','Проиграли')
             `);
             const urgCnt = parseInt(urgentTenders.rows[0]?.cnt) || 0;
             if (urgCnt > 0) {
@@ -318,7 +318,7 @@ async function hintsRoutes(fastify) {
             const funnelStats = await db.query(`
               SELECT
                 COUNT(*) FILTER (WHERE created_at > CURRENT_DATE - INTERVAL '30 days') as new_30d,
-                COUNT(*) FILTER (WHERE tender_status IN ('Выиграли','Контракт')
+                COUNT(*) FILTER (WHERE tender_status = 'Выиграли'
                   AND updated_at > CURRENT_DATE - INTERVAL '30 days') as won_30d
               FROM tenders
             `);
@@ -385,7 +385,7 @@ async function hintsRoutes(fastify) {
               WHERE end_plan IS NOT NULL
                 AND end_plan > CURRENT_DATE
                 AND end_plan <= CURRENT_DATE + INTERVAL '14 days'
-                AND work_status NOT IN ('Завершена','Отменена','Закрыта')
+                AND work_status NOT IN ('Работы сдали','Закрыт')
             `);
             const dlCnt = parseInt(deadlines.rows[0]?.cnt) || 0;
             if (dlCnt > 0) {
@@ -400,7 +400,7 @@ async function hintsRoutes(fastify) {
           try {
             const noTeam = await db.query(`
               SELECT COUNT(*) as cnt FROM works
-              WHERE work_status IN ('Новая','Согласована','В подготовке')
+              WHERE work_status IN ('Новая','Подготовка')
                 AND id NOT IN (SELECT DISTINCT work_id FROM employee_assignments WHERE work_id IS NOT NULL)
             `);
             const noTeamCnt = parseInt(noTeam.rows[0]?.cnt) || 0;
@@ -415,7 +415,7 @@ async function hintsRoutes(fastify) {
           try {
             const activeWorks = await db.query(`
               SELECT COUNT(*) as cnt FROM works
-              WHERE work_status IN ('В работе','На мобилизации','На демобилизации')
+              WHERE work_status IN ('В работе','Мобилизация')
             `);
             const awCnt = parseInt(activeWorks.rows[0]?.cnt) || 0;
             if (awCnt > 0) {
@@ -569,7 +569,7 @@ async function hintsRoutes(fastify) {
               WHERE ea.employee_id = $1
                 AND (ea.date_to IS NULL OR ea.date_to >= CURRENT_DATE)
                 AND ea.date_from <= CURRENT_DATE
-                AND w.work_status NOT IN ('Завершена','Отменена','Закрыта')
+                AND w.work_status NOT IN ('Работы сдали','Закрыт')
               ORDER BY ea.date_from DESC LIMIT 1
             `, [empId]);
             if (currentAssign.rows[0]) {

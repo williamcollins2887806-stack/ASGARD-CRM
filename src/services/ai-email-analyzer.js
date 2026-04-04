@@ -862,8 +862,8 @@ function fallbackClassification({ subject, bodyText, fromEmail }) {
 async function getWorkloadData() {
   try {
     const [worksRes, tendersRes, employeesRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) as cnt FROM works WHERE work_status IN ('В работе','Мобилизация','На объекте')`),
-      db.query(`SELECT COUNT(*) as cnt FROM tenders WHERE tender_status IN ('Новый','В работе','Готовим КП')`),
+      db.query(`SELECT COUNT(*) as cnt FROM works WHERE work_status IN ('В работе','Мобилизация','Подготовка','На паузе','Подписание акта')`),
+      db.query(`SELECT COUNT(*) as cnt FROM tenders WHERE tender_status IN ('Новый','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','КП отправлено')`),
       db.query(`SELECT COUNT(*) as cnt FROM employees WHERE is_active = true`)
     ]);
 
