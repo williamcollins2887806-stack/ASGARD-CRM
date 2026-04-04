@@ -545,9 +545,15 @@ async function dataRoutes(fastify, options) {
             || dt === 'boolean') {
             data[key] = null;
           }
-        } else if (data[key] && dt === 'date' && typeof data[key] === 'string') {
+        } else if (data[key] && (dt === 'date' || dt.startsWith('timestamp')) && typeof data[key] === 'string') {
+          // DD.MM.YYYY → YYYY-MM-DD
           const m = data[key].match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
           if (m) data[key] = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+          // Validate: невалидные даты → null (фикс PG 22008 datetime_field_overflow)
+          if (dt === 'date' && typeof data[key] === 'string' && !/T/.test(data[key])) {
+            const d = new Date(data[key]);
+            if (isNaN(d.getTime()) || d.getFullYear() < 1900 || d.getFullYear() > 2100) data[key] = null;
+          }
         }
       }
 
@@ -597,6 +603,9 @@ async function dataRoutes(fastify, options) {
       }
       if (err.code === '23505') {
         return reply.code(409).send({ error: `Запись уже существует: ${err.detail || err.message}` });
+      }
+      if (err.code === '22008' || err.code === '22007') {
+        return reply.code(400).send({ error: `Некорректное значение даты: ${err.message}` });
       }
       return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }
@@ -670,9 +679,15 @@ async function dataRoutes(fastify, options) {
             || dt === 'boolean') {
             data[key] = null;
           }
-        } else if (data[key] && dt === 'date' && typeof data[key] === 'string') {
+        } else if (data[key] && (dt === 'date' || dt.startsWith('timestamp')) && typeof data[key] === 'string') {
+          // DD.MM.YYYY → YYYY-MM-DD
           const m = data[key].match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
           if (m) data[key] = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+          // Validate: невалидные даты → null (фикс PG 22008 datetime_field_overflow)
+          if (dt === 'date' && typeof data[key] === 'string' && !/T/.test(data[key])) {
+            const d = new Date(data[key]);
+            if (isNaN(d.getTime()) || d.getFullYear() < 1900 || d.getFullYear() > 2100) data[key] = null;
+          }
         }
       }
 
@@ -716,6 +731,9 @@ async function dataRoutes(fastify, options) {
       }
       if (err.code === '23505') {
         return reply.code(409).send({ error: `Запись уже существует: ${err.detail || err.message}` });
+      }
+      if (err.code === '22008' || err.code === '22007') {
+        return reply.code(400).send({ error: `Некорректное значение даты: ${err.message}` });
       }
       return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }

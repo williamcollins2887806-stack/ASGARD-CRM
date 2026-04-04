@@ -432,12 +432,11 @@ window.AsgardPmCalcsPage = (function(){
     const byId = new Map(users.map(u=>[u.id,u]));
     const tendersAll = await AsgardDB.all("tenders");
 
-    const isPM = user.role==="PM" || user.role==="ADMIN";
     const isDir = isDirRole(user.role) || user.role==="ADMIN";
 
     // PM sees only own; Director/Admin can see all handed-off
     let tenders = tendersAll.filter(t=>t.handoff_at);
-    if(isPM) tenders = tenders.filter(t=>t.responsible_pm_id===user.id);
+    if(user.role==="PM") tenders = tenders.filter(t=>t.responsible_pm_id===user.id);
 
     const pms = users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
 
