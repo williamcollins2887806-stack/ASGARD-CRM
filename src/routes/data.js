@@ -549,10 +549,18 @@ async function dataRoutes(fastify, options) {
           // DD.MM.YYYY → YYYY-MM-DD
           const m = data[key].match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
           if (m) data[key] = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-          // Validate: невалидные даты → null (фикс PG 22008 datetime_field_overflow)
-          if (dt === 'date' && typeof data[key] === 'string' && !/T/.test(data[key])) {
-            const d = new Date(data[key]);
-            if (isNaN(d.getTime()) || d.getFullYear() < 1900 || d.getFullYear() > 2100) data[key] = null;
+          // Валидация YYYY-MM-DD части (работает и для date, и для timestamp)
+          const dateStr = data[key].substring(0, 10);
+          const parts = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!parts) {
+            console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
+            data[key] = null;
+          } else {
+            const y = parseInt(parts[1], 10), mo = parseInt(parts[2], 10), dd = parseInt(parts[3], 10);
+            if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || dd < 1 || dd > 31) {
+              console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
+              data[key] = null;
+            }
           }
         }
       }
@@ -683,10 +691,18 @@ async function dataRoutes(fastify, options) {
           // DD.MM.YYYY → YYYY-MM-DD
           const m = data[key].match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
           if (m) data[key] = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-          // Validate: невалидные даты → null (фикс PG 22008 datetime_field_overflow)
-          if (dt === 'date' && typeof data[key] === 'string' && !/T/.test(data[key])) {
-            const d = new Date(data[key]);
-            if (isNaN(d.getTime()) || d.getFullYear() < 1900 || d.getFullYear() > 2100) data[key] = null;
+          // Валидация YYYY-MM-DD части (работает и для date, и для timestamp)
+          const dateStr = data[key].substring(0, 10);
+          const parts = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!parts) {
+            console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
+            data[key] = null;
+          } else {
+            const y = parseInt(parts[1], 10), mo = parseInt(parts[2], 10), dd = parseInt(parts[3], 10);
+            if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || dd < 1 || dd > 31) {
+              console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
+              data[key] = null;
+            }
           }
         }
       }

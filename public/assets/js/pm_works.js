@@ -888,18 +888,18 @@ window.AsgardPmWorksPage=(function(){
           <div><label>Статус работ</label>
             <div id="w_status_w"></div>
           </div>
-          <div><label>Начало работ (факт/старт)</label><input id="w_start" value="${esc(w.start_in_work_date||t?.work_start_plan||"")}" placeholder="YYYY-MM-DD"/></div>
-          <div><label>Окончание план</label><input id="w_end_plan" value="${esc(w.end_plan||t?.work_end_plan||"")}" placeholder="YYYY-MM-DD"/></div>
-          <div><label>Окончание факт</label><input id="w_end_fact" value="${esc(w.end_fact||"")}" placeholder="YYYY-MM-DD"/></div>
+          <div><label>Начало работ (факт/старт)</label><input type="date" id="w_start" value="${esc(w.start_in_work_date||t?.work_start_plan||"")}"/></div>
+          <div><label>Окончание план</label><input type="date" id="w_end_plan" value="${esc(w.end_plan||t?.work_end_plan||"")}"/></div>
+          <div><label>Окончание факт</label><input type="date" id="w_end_fact" value="${esc(w.end_fact||"")}"/></div>
 
           <div><label>Стоимость договора</label><input id="w_value" value="${esc(w.contract_value!=null?String(w.contract_value):"")}" placeholder="руб."/></div>
           <div><label>Аванс %</label><input id="w_adv_pct" value="${esc(w.advance_pct!=null?String(w.advance_pct):"30")}" placeholder="30"/></div>
           <div><label>Аванс получено</label><input id="w_adv_got" value="${esc(w.advance_received!=null?String(w.advance_received):"0")}" placeholder="руб."/></div>
-          <div><label>Дата аванса факт</label><input id="w_adv_date" value="${esc(w.advance_date_fact||"")}" placeholder="YYYY-MM-DD"/></div>
+          <div><label>Дата аванса факт</label><input type="date" id="w_adv_date" value="${esc(w.advance_date_fact||"")}"/></div>
 
           <div><label>Остаток получено</label><input id="w_bal_got" value="${esc(w.balance_received!=null?String(w.balance_received):"0")}" placeholder="руб."/></div>
-          <div><label>Дата оплаты остатка факт</label><input id="w_pay_date" value="${esc(w.payment_date_fact||"")}" placeholder="YYYY-MM-DD"/></div>
-          <div><label>Дата акта факт</label><input id="w_act_date" value="${esc(w.act_signed_date_fact||"")}" placeholder="YYYY-MM-DD"/></div>
+          <div><label>Дата оплаты остатка факт</label><input type="date" id="w_pay_date" value="${esc(w.payment_date_fact||"")}"/></div>
+          <div><label>Дата акта факт</label><input type="date" id="w_act_date" value="${esc(w.act_signed_date_fact||"")}"/></div>
           <div><label>Отсрочка, раб.дни</label><input id="w_delay" value="${esc(w.delay_workdays!=null?String(w.delay_workdays):"5")}" placeholder="5"/></div>
 
           <div><label>План себестоимость</label><input id="w_cost_plan" value="${esc(w.cost_plan!=null?String(w.cost_plan):"")}" placeholder="руб."/></div>
@@ -1465,6 +1465,16 @@ window.AsgardPmWorksPage=(function(){
           w.is_vachta = !!(document.getElementById("sr_is_vachta") && document.getElementById("sr_is_vachta").checked);
           w.rotation_days = Math.max(0, Math.round(num((document.getElementById("sr_rotation_days")||{}).value,0)));
         }catch(_){ }
+        // Validation: проверить формат дат YYYY-MM-DD
+        const _dateFields = ['start_in_work_date','end_plan','end_fact','advance_date_fact','payment_date_fact','act_signed_date_fact'];
+        for(const f of _dateFields){
+          const v = w[f];
+          if(!v) continue;
+          const p = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if(!p || +p[1]<1900 || +p[1]>2100 || +p[2]<1 || +p[2]>12 || +p[3]<1 || +p[3]>31){
+            toast("Валидация",`Некорректная дата в поле "${f}": ${v}`,"err"); return;
+          }
+        }
         // Validation layer (dates/money/required by key status)
         if(!V.dateOrder(w.start_in_work_date, w.end_plan)){ toast("Валидация","Плановый финиш не может быть раньше старта","err"); return; }
         if(w.end_fact && !V.dateOrder(w.start_in_work_date, w.end_fact)){ toast("Валидация","Факт. финиш не может быть раньше старта","err"); return; }
