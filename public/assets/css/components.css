@@ -6034,3 +6034,9 @@ label.cr-required::after {
   max-height: 70vh;
   overflow: auto;
 }
+.cr-drop-active {
+  outline: 2px dashed var(--accent, #2a6cf1);
+  outline-offset: -2px;
+  background: rgba(42, 108, 241, 0.05);
+  border-radius: 8px;
+}

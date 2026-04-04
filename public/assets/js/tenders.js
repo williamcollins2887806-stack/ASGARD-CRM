@@ -1771,6 +1771,51 @@ ${docsHtml}</div>
         });
       });
 
+      // Drag-n-drop загрузка файлов на зону документов
+      const docsBox = document.getElementById('docsBox');
+      if (docsBox) {
+        docsBox.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          docsBox.classList.add('cr-drop-active');
+        });
+        docsBox.addEventListener('dragleave', (e) => {
+          e.preventDefault();
+          docsBox.classList.remove('cr-drop-active');
+        });
+        docsBox.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          docsBox.classList.remove('cr-drop-active');
+          const files = e.dataTransfer.files;
+          if (!files.length) return;
+
+          let uploadId = tenderId;
+          if (!uploadId) {
+            uploadId = await saveTender(true);
+            if (!uploadId) return;
+          }
+
+          const auth = await AsgardAuth.getAuth();
+          for (const file of files) {
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+              formData.append('tender_id', uploadId);
+              formData.append('type', 'Документ');
+              const response = await fetch('/api/files/upload', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + auth.token },
+                body: formData
+              });
+              if (!response.ok) throw new Error('Ошибка загрузки');
+              toast("Документ", `${file.name} загружен`);
+            } catch (err) {
+              toast("Ошибка", `${file.name}: ${err.message}`, "err");
+            }
+          }
+          openTenderEditor(uploadId);
+        });
+      }
+
       // Добавление ссылки
       $("#btnAddLink")?.addEventListener("click", async ()=>{
         const html2=`
