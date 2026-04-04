@@ -11,6 +11,7 @@ import {
   DollarSign, Calendar, ExternalLink,
 } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/utils';
+import AsgardSelect from '@/components/ui/AsgardSelect';
 
 const STATUS_MAP = {
   active:     { label: 'Действующий',   color: 'var(--green)' },
@@ -335,13 +336,15 @@ function CreateContractSheet({ open, onClose, onCreated }) {
             />
           </FormField>
           <FormField label="Тип">
-            <select
-              value={type} onChange={(e) => setType(e.target.value)}
-              className="input-field appearance-none"
-            >
-              <option value="customer">Заказчик</option>
-              <option value="supplier">Поставщик</option>
-            </select>
+            <AsgardSelect
+              options={[
+                { value: 'customer', label: 'Заказчик' },
+                { value: 'supplier', label: 'Поставщик' },
+              ]}
+              value={type}
+              onChange={(val) => setType(val)}
+              placeholder="Тип"
+            />
           </FormField>
         </div>
 

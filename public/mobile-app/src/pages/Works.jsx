@@ -12,6 +12,7 @@ import {
   DollarSign, User, Briefcase, TrendingUp, CheckCircle2,
 } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/utils';
+import AsgardSelect from '@/components/ui/AsgardSelect';
 
 function getStatusColor(status) {
   if (!status) return 'var(--text-tertiary)';
@@ -488,16 +489,17 @@ function CreateWorkSheet({ open, onClose, onCreated }) {
             />
           </FormField>
           <FormField label="Статус">
-            <select
-              value={status} onChange={(e) => setStatus(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none appearance-none"
-              style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)' }}
-            >
-              <option value="Новая">Новая</option>
-              <option value="В работе">В работе</option>
-              <option value="На паузе">На паузе</option>
-              <option value="Мобилизация">Мобилизация</option>
-            </select>
+            <AsgardSelect
+              options={[
+                { value: 'Новая', label: 'Новая' },
+                { value: 'В работе', label: 'В работе' },
+                { value: 'На паузе', label: 'На паузе' },
+                { value: 'Мобилизация', label: 'Мобилизация' },
+              ]}
+              value={status}
+              onChange={(val) => setStatus(val)}
+              placeholder="Статус"
+            />
           </FormField>
         </div>
 

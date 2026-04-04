@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { ClipboardList, Plus, ChevronRight, Search, X, Check, Trash2 } from 'lucide-react';
 import { formatDate, relativeTime } from '@/lib/utils';
+import AsgardSelect from '@/components/ui/AsgardSelect';
 
 const STATUS_MAP = {
   new: { label: 'Новая', color: 'var(--gold)' },
@@ -175,10 +176,10 @@ function CreateTaskAdminSheet({ open, onClose, onCreated, users }) {
       <div className="flex flex-col gap-3 pb-4">
         <div><label className="input-label">Название *</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Что нужно сделать" className="input-field" /></div>
         <div><label className="input-label">Описание</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Детали..." rows={2} className="input-field resize-none" /></div>
-        <div><label className="input-label">Исполнитель *</label><select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="input-field appearance-none"><option value="">Выберите...</option>{users.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.login}</option>)}</select></div>
+        <div><label className="input-label">Исполнитель *</label><AsgardSelect options={users.map((u) => ({ value: String(u.id), label: u.full_name || u.login }))} value={assigneeId} onChange={(val) => setAssigneeId(val)} placeholder="Выберите исполнителя" searchable /></div>
         <div className="grid grid-cols-2 gap-2">
           <div><label className="input-label">Дедлайн</label><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="input-field" /></div>
-          <div><label className="input-label">Приоритет</label><select value={priority} onChange={(e) => setPriority(e.target.value)} className="input-field appearance-none"><option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option><option value="urgent">Срочный</option></select></div>
+          <div><label className="input-label">Приоритет</label><AsgardSelect options={[{ value: 'low', label: 'Низкий' }, { value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочный' }]} value={priority} onChange={(val) => setPriority(val)} placeholder="Приоритет" /></div>
         </div>
         <button onClick={handleSubmit} disabled={!valid || saving} className="btn-primary spring-tap mt-1">{saving ? 'Сохранение...' : 'Создать задачу'}</button>
       </div>

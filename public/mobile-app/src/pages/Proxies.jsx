@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Stamp, Plus, ChevronRight, ExternalLink } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import AsgardSelect from '@/components/ui/AsgardSelect';
 
 function getProxyStatus(proxy) {
   if (proxy.end_date && new Date(proxy.end_date) < new Date()) return { label: 'Истекла', color: 'var(--red-soft)' };
@@ -122,7 +123,7 @@ function CreateProxySheet({ open, onClose, onCreated }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новая доверенность">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="input-label">Шаблон *</label><select value={template} onChange={(e) => setTemplate(e.target.value)} className="input-field appearance-none">{Object.entries(TEMPLATE_MAP).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+        <div><label className="input-label">Шаблон *</label><AsgardSelect options={Object.entries(TEMPLATE_MAP).map(([k, v]) => ({ value: k, label: v }))} value={template} onChange={(val) => setTemplate(val)} placeholder="Шаблон" /></div>
         <div><label className="input-label">Представитель *</label><input type="text" value={representative} onChange={(e) => setRepresentative(e.target.value)} placeholder="ФИО" className="input-field" /></div>
         <div className="grid grid-cols-2 gap-2">
           <div><label className="input-label">Начало *</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input-field" /></div>

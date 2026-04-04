@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Building2, Plus, ChevronRight } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
+import AsgardSelect from '@/components/ui/AsgardSelect';
 
 const CATEGORIES = [
   'Аренда', 'Коммунальные', 'Связь/Интернет', 'Канцелярия', 'Хоз. нужды',
@@ -129,7 +130,7 @@ function CreateExpenseSheet({ open, onClose, onCreated }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новый расход">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="input-label">Категория *</label><select value={category} onChange={(e) => setCategory(e.target.value)} className="input-field appearance-none">{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
+        <div><label className="input-label">Категория *</label><AsgardSelect options={CATEGORIES.map((c) => ({ value: c, label: c }))} value={category} onChange={(val) => setCategory(val)} placeholder="Категория" /></div>
         <div><label className="input-label">Сумма (₽) *</label><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="input-field" /></div>
         <div><label className="input-label">Описание *</label><input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="За что" className="input-field" /></div>
         <div><label className="input-label">Комментарий</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Детали..." rows={2} className="input-field resize-none" /></div>

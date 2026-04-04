@@ -9,6 +9,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { UserPlus, Plus, ChevronRight, Check, X as XIcon } from 'lucide-react';
 import { relativeTime, formatDate } from '@/lib/utils';
+import AsgardSelect from '@/components/ui/AsgardSelect';
 
 const STATUS_MAP = {
   draft: { label: 'Черновик', color: 'var(--text-tertiary)' },
@@ -138,7 +139,7 @@ function CreateHrSheet({ open, onClose, onCreated }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Новая заявка HR">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="input-label">Тип *</label><select value={type} onChange={(e) => setType(e.target.value)} className="input-field appearance-none">{Object.entries(TYPE_MAP).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+        <div><label className="input-label">Тип *</label><AsgardSelect options={Object.entries(TYPE_MAP).map(([k, v]) => ({ value: k, label: v }))} value={type} onChange={(val) => setType(val)} placeholder="Тип заявки" /></div>
         <div><label className="input-label">Сотрудник *</label><input type="text" value={employee} onChange={(e) => setEmployee(e.target.value)} placeholder="ФИО сотрудника" className="input-field" /></div>
         <div><label className="input-label">Должность</label><input type="text" value={position} onChange={(e) => setPosition(e.target.value)} placeholder="Должность" className="input-field" /></div>
         <div className="grid grid-cols-2 gap-2">

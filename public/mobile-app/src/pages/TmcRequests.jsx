@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Package, Plus, ChevronRight, Download } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
+import AsgardSelect from '@/components/ui/AsgardSelect';
 
 const STATUS_MAP = {
   draft: { label: 'Черновик', color: 'var(--text-tertiary)' },
@@ -143,7 +144,7 @@ function CreateTmcSheet({ open, onClose, onCreated }) {
       <div className="flex flex-col gap-3 pb-4">
         <div><label className="input-label">Название *</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название заявки" className="input-field" /></div>
         <div><label className="input-label">Проект</label><input type="text" value={workTitle} onChange={(e) => setWorkTitle(e.target.value)} placeholder="Название проекта" className="input-field" /></div>
-        <div><label className="input-label">Приоритет</label><select value={priority} onChange={(e) => setPriority(e.target.value)} className="input-field appearance-none"><option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option><option value="urgent">Срочный</option></select></div>
+        <div><label className="input-label">Приоритет</label><AsgardSelect options={[{ value: 'low', label: 'Низкий' }, { value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочный' }]} value={priority} onChange={(val) => setPriority(val)} placeholder="Приоритет" /></div>
         <div><label className="input-label">Комментарий</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Детали..." rows={2} className="input-field resize-none" /></div>
         <button onClick={handleSubmit} disabled={!title.trim() || saving} className="btn-primary spring-tap mt-1">{saving ? 'Сохранение...' : 'Создать заявку'}</button>
       </div>

@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Mail, Search, Plus, ChevronRight, X, ExternalLink } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import AsgardSelect from '@/components/ui/AsgardSelect';
 
 const FILTERS = [
   { id: 'all', label: 'Все' },
@@ -131,7 +132,7 @@ function CreateSheet({ open, onClose, onCreated }) {
         <FormField label="Название *"><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название документа..." className="input-field" /></FormField>
         <div className="grid grid-cols-2 gap-2">
           <FormField label="Номер"><input type="text" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Вх-001" className="input-field" /></FormField>
-          <FormField label="Направление"><select value={direction} onChange={(e) => setDirection(e.target.value)} className="input-field appearance-none"><option value="incoming">Входящий</option><option value="outgoing">Исходящий</option></select></FormField>
+          <FormField label="Направление"><AsgardSelect options={[{ value: 'incoming', label: 'Входящий' }, { value: 'outgoing', label: 'Исходящий' }]} value={direction} onChange={(val) => setDirection(val)} placeholder="Направление" /></FormField>
         </div>
         <FormField label="Тип"><input type="text" value={type} onChange={(e) => setType(e.target.value)} placeholder="Письмо, приказ..." className="input-field" /></FormField>
         <FormField label="Примечание"><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Детали..." rows={2} className="input-field resize-none" /></FormField>
