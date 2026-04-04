@@ -784,7 +784,228 @@
   animation: crAcSpin 0.8s linear infinite;
 }
 
+/* ─── CRDatePicker ────────────────────────────────────────── */
+
+.cr-datepicker {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 160px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cr-datepicker__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: var(--t1);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.cr-datepicker__trigger:hover {
+  border-color: rgba(255,255,255,0.25);
+}
+
+.cr-datepicker--open .cr-datepicker__trigger {
+  border-color: #5b8def;
+  box-shadow: 0 0 0 2px rgba(91,141,239,0.18);
+}
+
+.cr-datepicker--disabled .cr-datepicker__trigger {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cr-datepicker__label {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cr-datepicker__placeholder {
+  color: var(--t3);
+}
+
+.cr-datepicker__icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.cr-datepicker__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1100;
+  min-width: 280px;
+  padding: 8px;
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  animation: cr-dp-fade-in .15s ease;
+}
+
+.cr-datepicker__dropdown--up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+@keyframes cr-dp-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Header: nav arrows + month/year */
+.cr-dp__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 8px;
+}
+
+.cr-dp__title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--t1);
+}
+
+.cr-dp__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t2);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.cr-dp__nav:hover {
+  background: var(--bg4);
+  color: var(--t1);
+}
+
+/* Calendar grid */
+.cr-dp__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.cr-dp__day-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t3);
+  text-transform: uppercase;
+}
+
+.cr-dp__day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--t1);
+  cursor: pointer;
+  transition: background .12s;
+}
+
+.cr-dp__day:hover {
+  background: var(--bg4);
+}
+
+.cr-dp__day--other {
+  color: var(--t3);
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cr-dp__day--other:hover {
+  background: transparent;
+}
+
+.cr-dp__day--today {
+  border: 1px solid var(--blue-l, #4A90D9);
+  font-weight: 600;
+}
+
+.cr-dp__day--sel {
+  background: var(--blue, #1E4D8C);
+  color: #fff;
+  font-weight: 600;
+}
+
+.cr-dp__day--sel:hover {
+  background: var(--blue-l, #4A90D9);
+}
+
+/* Footer */
+.cr-dp__footer {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  margin-top: 6px;
+}
+
+.cr-dp__today-btn,
+.cr-dp__clear-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--blue-l, #4A90D9);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .12s;
+}
+
+.cr-dp__today-btn:hover,
+.cr-dp__clear-btn:hover {
+  background: var(--bg3);
+}
+
+.cr-dp__clear-btn {
+  color: var(--t3);
+}
+
+/* Period row: month + year side by side */
+.cr-period-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cr-period-row .cr-select {
+  flex: 1;
+  min-width: 0;
+}
+
 /* z-index overrides for modals */
 .z-modal .cr-select__dropdown,
 .z-modal .cr-ac__dropdown { z-index: 1300; }
 .cr-ac__dropdown.z-modal-ac { z-index: 1300; }
+.z-modal.cr-datepicker__dropdown,
+.cr-datepicker__dropdown.z-modal { z-index: 1300; }

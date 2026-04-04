@@ -142,18 +142,20 @@ window.AsgardTendersPage = (function(){
   }
 
   function getDraftFormData() {
+    const _pm = (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_period_month')) || '';
+    const _py = (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_period_year')) || '';
     return {
-      period: document.getElementById("e_period")?.value || '',
+      period: (_py && _pm) ? `${_py}-${_pm}` : '',
       customer_inn: CRAutocomplete.getValue("e_inn") || '',
       customer_name: CRAutocomplete.getValue("e_customer") || '',
       tender_title: document.getElementById("e_title")?.value || '',
       tender_type: CRSelect.getValue('e_type') || '',
       tender_price: document.getElementById("e_price")?.value || '',
       group_tag: document.getElementById("e_tag")?.value || '',
-      work_start_plan: document.getElementById("e_ws")?.value || '',
-      work_end_plan: document.getElementById("e_we")?.value || '',
+      work_start_plan: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_ws')) || '',
+      work_end_plan: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_we')) || '',
       purchase_url: document.getElementById("e_url")?.value || '',
-      docs_deadline: document.getElementById("e_docs_deadline")?.value || '',
+      docs_deadline: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_docs_deadline')) || '',
       tender_comment_to: document.getElementById("e_c_to")?.value || ''
     };
   }
@@ -161,20 +163,24 @@ window.AsgardTendersPage = (function(){
   function restoreDraftToForm(draft) {
     if (!draft) return;
     const fields = {
-      'e_period': draft.period,
       'e_title': draft.tender_title,
       'e_price': draft.tender_price,
       'e_tag': draft.group_tag,
-      'e_ws': draft.work_start_plan,
-      'e_we': draft.work_end_plan,
       'e_url': draft.purchase_url,
-      'e_docs_deadline': draft.docs_deadline,
       'e_c_to': draft.tender_comment_to
     };
     for (const [id, value] of Object.entries(fields)) {
       const el = document.getElementById(id);
       if (el && value) el.value = value;
     }
+    if (draft.period) {
+      const [y, m] = draft.period.split('-');
+      if (y) CRSelect.setValue('e_period_year', y);
+      if (m) CRSelect.setValue('e_period_month', m);
+    }
+    if (draft.work_start_plan && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_ws', draft.work_start_plan);
+    if (draft.work_end_plan && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_we', draft.work_end_plan);
+    if (draft.docs_deadline && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_docs_deadline', draft.docs_deadline);
     if (draft.customer_inn) CRAutocomplete.setValue('e_inn', draft.customer_inn);
     if (draft.customer_name) CRAutocomplete.setValue('e_customer', draft.customer_name);
     if (draft.tender_type) CRSelect.setValue('e_type', draft.tender_type);
@@ -387,6 +393,15 @@ async function getRefs(){
 
   function norm(s){ return String(s||"").toLowerCase().trim(); }
 
+  const _monthNamesShort = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  function fmtPeriod(p){
+    if(!p) return '—';
+    const m = String(p).match(/^(\d{4})-(\d{2})$/);
+    if(!m) return esc(p);
+    const mi = Number(m[2])-1;
+    return `${_monthNamesShort[mi]||m[2]} ${m[1]}`;
+  }
+
   function tenderRow(t, pmName, createdByName){
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const ds = fmtDate(t.work_start_plan);
@@ -395,7 +410,7 @@ async function getRefs(){
     const ddl = fmtDate(t.docs_deadline);
     return `<tr data-id="${t.id}">
       <td><input type="checkbox" class="tender-check" value="${t.id}" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>
-      <td>${esc(t.period||"")}</td>
+      <td>${fmtPeriod(t.period)}</td>
       <td>
         <b>${esc(t.customer_name||"")}</b>
         <div class="help">${esc(t.customer_inn||"")}</div>
@@ -442,7 +457,7 @@ async function getRefs(){
         '<div class="m-tc-field"><span class="m-tc-label">Сумма</span><span class="m-tc-price">' + price + '</span></div>' +
       '</div>' +
       '<div class="m-tc-footer">' +
-        '<span class="m-tc-period">' + esc(t.period || '') + '</span>' +
+        '<span class="m-tc-period">' + fmtPeriod(t.period) + '</span>' +
         '<button class="btn mini" data-act="open">Открыть</button>' +
       '</div>' +
     '</div>';
@@ -1236,8 +1251,8 @@ async function getRefs(){
         <hr class="hr"/>
         <div class="formrow">
           <div>
-            <label>Период (YYYY-MM)</label>
-            <input id="e_period" value="${esc((t&&t.period)||ymNow())}" ${full?"":"disabled"} />
+            <label>Период</label>
+            <div class="cr-period-row" id="e_period_w"></div>
           </div>
           <div>
             <label>ИНН заказчика</label>
@@ -1285,11 +1300,11 @@ async function getRefs(){
           </div>
           <div>
             <label>План: начало работ</label>
-            <input id="e_ws" value="${esc((t&&t.work_start_plan)||"")}" ${full?"":"disabled"} placeholder="ДД.ММ.ГГГГ"/>
+            <div id="e_ws_w"></div>
           </div>
           <div>
             <label>План: окончание работ</label>
-            <input id="e_we" value="${esc((t&&t.work_end_plan)||"")}" ${full?"":"disabled"} placeholder="ДД.ММ.ГГГГ"/>
+            <div id="e_we_w"></div>
           </div>
           <div style="grid-column: 1 / -1">
             <label>Ссылка на комплект документов (Я.Диск/площадка)</label>
@@ -1297,8 +1312,7 @@ async function getRefs(){
           </div>
           <div>
             <label>Дедлайн (окончание приема заявок)</label>
-            <input id="e_docs_deadline" value="${esc((t&&t.docs_deadline)||"")}" ${(full||limited)?"":"disabled"} placeholder="ДД.ММ.ГГГГ или ГГГГ-ММ-ДД"/>
-            <div class="help">Формат: ДД.ММ.ГГГГ или ГГГГ-ММ-ДД. Напоминания формируются ежедневно за N дней до дедлайна.</div>
+            <div id="e_deadline_w"></div>
           </div>
           <div style="grid-column: 1 / -1">
             <label>Комментарий ТО</label>
@@ -1345,6 +1359,25 @@ ${docsHtml}</div>
       $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal' }));
       $('#e_pm_w')?.appendChild(CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal' }));
       $('#e_status_w')?.appendChild(CRSelect.create({ id: 'e_status', options: refs.tender_statuses.map(s => ({ value: s, label: s })), value: (t&&t.tender_status)||(isNew?'Черновик':''), disabled: _eStatusDis, dropdownClass: 'z-modal' }));
+
+      /* Mount Period: month + year CRSelect */
+      const _curPeriod = (t&&t.period) || ymNow();
+      const _pYear = Number(_curPeriod.slice(0,4));
+      const _pMonth = _curPeriod.slice(5,7);
+      const _monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+      const _monthOpts = _monthNames.map((n,i) => ({ value: String(i+1).padStart(2,'0'), label: n }));
+      const _yearOpts = [];
+      for(let y = 2024; y <= new Date().getFullYear()+2; y++) _yearOpts.push({ value: String(y), label: String(y) });
+      const periodW = document.getElementById('e_period_w');
+      if(periodW){
+        periodW.appendChild(CRSelect.create({ id:'e_period_month', options:_monthOpts, value:_pMonth, disabled:!full, dropdownClass:'z-modal' }));
+        periodW.appendChild(CRSelect.create({ id:'e_period_year', options:_yearOpts, value:String(_pYear), disabled:!full, dropdownClass:'z-modal' }));
+      }
+
+      /* Mount CRDatePicker for date fields */
+      $('#e_ws_w')?.appendChild(CRDatePicker.create({ id:'e_ws', value:(t&&t.work_start_plan)||'', placeholder:'Выберите дату', disabled:!full, dropdownClass:'z-modal' }));
+      $('#e_we_w')?.appendChild(CRDatePicker.create({ id:'e_we', value:(t&&t.work_end_plan)||'', placeholder:'Выберите дату', disabled:!full, dropdownClass:'z-modal' }));
+      $('#e_deadline_w')?.appendChild(CRDatePicker.create({ id:'e_docs_deadline', value:(t&&t.docs_deadline)||'', placeholder:'Выберите дату', disabled:!(full||limited), clearable:true, dropdownClass:'z-modal' }));
 
       // Restore draft for new tenders
       if (isNew) {
@@ -1869,7 +1902,9 @@ ${docsHtml}</div>
 
       async function saveTender(forceDraft){
         const appS = await getAppSettings();
-        const period=document.getElementById("e_period").value.trim();
+        const _pm = CRSelect.getValue('e_period_month') || String(new Date().getMonth()+1).padStart(2,'0');
+        const _py = CRSelect.getValue('e_period_year') || String(new Date().getFullYear());
+        const period = `${_py}-${_pm}`;
         const innRaw = CRAutocomplete.getValue("e_inn") || "";
         const customer_inn = String(innRaw).replace(/\D/g, "");
         let customer=(CRAutocomplete.getValue("e_customer") || "").trim();
@@ -1879,10 +1914,10 @@ ${docsHtml}</div>
         const status = CRSelect.getValue('e_status') || '';
         const priceRaw=document.getElementById("e_price").value.trim();
         const price = priceRaw ? Number(priceRaw.replace(/\s/g,"").replace(",", ".")) : null;
-        const ws=document.getElementById("e_ws").value.trim()||null;
-        const we=document.getElementById("e_we").value.trim()||null;
+        const ws = CRDatePicker.getValue('e_ws') || null;
+        const we = CRDatePicker.getValue('e_we') || null;
         const url=document.getElementById("e_url").value.trim()||null;
-        let docsDeadline=document.getElementById("e_docs_deadline").value.trim()||null;
+        let docsDeadline = CRDatePicker.getValue('e_docs_deadline') || null;
         const tag=document.getElementById("e_tag").value.trim()||null;
         const cto=document.getElementById("e_c_to").value.trim()||"";
         const rejectEl=document.getElementById("e_reject"); const reject=rejectEl ? rejectEl.value||null : null;
@@ -1922,8 +1957,7 @@ ${docsHtml}</div>
         // Deadline rules
         if(!docsDeadline && tenderType==="Прямой запрос"){
           docsDeadline = addDaysISO(new Date(), (appS?.sla?.direct_request_deadline_days ?? 5));
-          const inp = document.getElementById("e_docs_deadline");
-          if(inp) inp.value = docsDeadline;
+          CRDatePicker.setValue('e_docs_deadline', docsDeadline);
         }
         if(!docsDeadline && tenderType!=="Прямой запрос"){
           toast("Проверка","Укажите дедлайн (окончание приема заявок)","err");
@@ -1932,19 +1966,6 @@ ${docsHtml}</div>
 
         if(!pmId && status!=="Новый"){ toast("Проверка","Назначьте ответственного РП","err"); return null; }
         if(status==="Клиент отказался" && !reject){ toast("Проверка","Для отказа нужна причина","err"); return null; }
-        // Accept both DD.MM.YYYY and YYYY-MM-DD formats, convert to ISO
-        if(docsDeadline){
-          // Try to parse and normalize to YYYY-MM-DD
-          const isoDate = V.dateISO ? V.dateISO(docsDeadline) : null;
-          if(isoDate){
-            docsDeadline = isoDate;
-            const inp = document.getElementById("e_docs_deadline");
-            if(inp) inp.value = isoDate;
-          } else if(!/^\d{4}-\d{2}-\d{2}$/.test(docsDeadline)){
-            toast("Проверка","Дата должна быть в формате ДД.ММ.ГГГГ или ГГГГ-ММ-ДД","err");
-            return null;
-          }
-        }
 
         if(isNew){
           const obj={
@@ -2032,8 +2053,10 @@ ${docsHtml}</div>
           // Check required fields — offer draft save if missing
           const chkCustomer = (CRAutocomplete.getValue("e_customer") || '').trim();
           const chkTitle = document.getElementById("e_title")?.value?.trim() || '';
-          const chkPeriod = document.getElementById("e_period")?.value?.trim() || '';
-          const chkDeadline = document.getElementById("e_docs_deadline")?.value?.trim() || '';
+          const _cpm = CRSelect.getValue('e_period_month') || '';
+          const _cpy = CRSelect.getValue('e_period_year') || '';
+          const chkPeriod = (_cpy && _cpm) ? `${_cpy}-${_cpm}` : '';
+          const chkDeadline = CRDatePicker.getValue('e_docs_deadline') || '';
           const missingFields = [];
           if (!chkCustomer) missingFields.push('Заказчик');
           if (!chkTitle) missingFields.push('Название тендера');
