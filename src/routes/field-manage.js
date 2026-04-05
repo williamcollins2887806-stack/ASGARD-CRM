@@ -268,7 +268,8 @@ async function routes(fastify, options) {
       for (const member of crew) {
         if (!member.phone) { failed++; continue; }
 
-        const smsText = `ASGARD: Вы назначены на проект "${work[0].work_title}", ${work[0].city || ''}. Ваш ЛК: asgard-crm.ru/field`;
+        const city = work[0].city ? `, ${work[0].city}` : '';
+        const smsText = `ASGARD: Вы назначены на проект "${work[0].work_title}"${city}. Ваш ЛК: https://asgard-crm.ru/field`;
 
         try {
           const resp = await mango.sendSms(MANGO_SMS_FROM, member.phone, smsText);
