@@ -376,6 +376,16 @@ async function routes(fastify) {
           message: `${request.user.name || 'РП'} отправил просчёт #${estimate.id}`,
           requiresPayment: false
         });
+
+        // H1: Создать чат Huginn при отправке на согласование (как в approval.js)
+        const estimateChat = require('../services/estimateChat');
+        setImmediate(async () => {
+          try {
+            await estimateChat.createEstimateChat(db, estimate.id, request.user);
+          } catch (err) {
+            console.error('[QC→H1] Chat creation error:', err.message);
+          }
+        });
       }
 
       await client.query('COMMIT');
