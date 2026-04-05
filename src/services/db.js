@@ -4,7 +4,12 @@
  * SECURITY: Требуется DB_PASSWORD (CRIT-5)
  */
 
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// FIX: Prevent timezone drift — return DATE as raw "YYYY-MM-DD" string, not JS Date object.
+// Without this, pg parses DATE "2026-04-30" → new Date(2026,3,30) local midnight
+// → JSON.stringify → "2026-04-29T21:00:00.000Z" (UTC) → frontend extracts "2026-04-29" = -1 day.
+types.setTypeParser(1082, val => val); // OID 1082 = DATE
 
 // SECURITY: Проверка обязательных переменных окружения (CRIT-5)
 if (!process.env.DB_PASSWORD) {

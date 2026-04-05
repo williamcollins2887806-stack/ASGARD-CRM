@@ -5,6 +5,23 @@ window.AsgardHrRequestsPage=(function(){
   function isoNow(){ return new Date().toISOString(); }
   function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
 
+  // Role tag → human-readable Russian label
+  const ROLE_LABELS = {
+    'Мастер':'Мастер','Мастера':'Мастера','master':'Мастер',
+    'Слесарь':'Слесарь','Слесари':'Слесари','worker':'Слесарь',
+    'ПТО':'ПТО','pto':'ПТО',
+    'Промывщик':'Промывщик','Промывщики':'Промывщики','washer':'Промывщик',
+    'Химик':'Химик','chemist':'Химик',
+    'Сварщик':'Сварщик','welder':'Сварщик',
+    'Разнорабочий':'Разнорабочий','laborer':'Разнорабочий',
+    'ИТР':'ИТР','itr':'ИТР',
+    'pm':'Руководитель проекта','PM':'Руководитель проекта',
+    'office':'Офис','OFFICE':'Офис',
+    'driver':'Водитель',
+    'Другое':'Другое',
+  };
+  function roleLabel(tag){ return ROLE_LABELS[tag] || tag; }
+
   async function audit(actorId, entityType, entityId, action, payload){
     await AsgardDB.add("audit_log",{actor_user_id:actorId,entity_type:entityType,entity_id:entityId,action,payload_json:JSON.stringify(payload||{}),created_at:isoNow()});
   }
@@ -206,7 +223,7 @@ window.AsgardHrRequestsPage=(function(){
         return `<div class="sr-role-group" data-role="${esc(role)}">
           <div class="sr-role-header">
             <div>
-              <span class="sr-role-name">${esc(role)}</span>
+              <span class="sr-role-name">${esc(roleLabel(role))}</span>
               ${needed>0?`<span class="sr-role-need">нужно: ${needed}</span>`:''}
             </div>
             <button class="btn ghost mini" data-act="pickRole" data-role="${esc(role)}">Авто-подбор</button>
@@ -220,7 +237,7 @@ window.AsgardHrRequestsPage=(function(){
                 </div>
                 <div>
                   <div class="sr-emp-name">${esc(s.fio||s.name||"")}${s.rating_avg ? " ★"+Number(s.rating_avg).toFixed(1) : ""}</div>
-                  <div class="sr-emp-info">${esc(s.role_tag||"")}${s.city?" · "+esc(s.city):""}${s.phone?" · "+esc(s.phone):""}</div>
+                  <div class="sr-emp-info">${esc(roleLabel(s.role_tag||""))}${s.city?" · "+esc(s.city):""}${s.phone?" · "+esc(s.phone):""}</div>
                 </div>
               </div>
             ` : `
@@ -228,7 +245,7 @@ window.AsgardHrRequestsPage=(function(){
                 <input type="checkbox" class="stchk" value="${s.id}" ${chosen.has(s.id)?"checked":""}/>
                 <div>
                   <div class="sr-emp-name">${esc(s.fio||s.name||"")}${s.rating_avg ? " ★"+Number(s.rating_avg).toFixed(1) : ""}</div>
-                  <div class="sr-emp-info">${esc(s.role_tag||"")}${s.city?" · "+esc(s.city):""}${s.phone?" · "+esc(s.phone):""}</div>
+                  <div class="sr-emp-info">${esc(roleLabel(s.role_tag||""))}${s.city?" · "+esc(s.city):""}${s.phone?" · "+esc(s.phone):""}</div>
                 </div>
               </label>
             `).join("")}
@@ -248,7 +265,7 @@ window.AsgardHrRequestsPage=(function(){
             const crew = approvedA.has(s.id) ? "A" : (approvedB.has(s.id) ? "B" : "");
             return `<div class="pill between">
               <div><div class="who"><b>${esc(s.fio||s.name||"")}</b> ${crew?`<span class="tag">вахта ${crew}</span>`:""}</div>
-              <div class="role">${esc(s.role_tag||"")}${s.city?" • "+esc(s.city):""}</div></div>
+              <div class="role">${esc(roleLabel(s.role_tag||""))}${s.city?" • "+esc(s.city):""}</div></div>
               <button class="btn ghost mini" data-act="replace" data-emp="${s.id}">Заменить</button>
             </div>`;
           }).join("")}</div>` : `<div class="help">Нет согласованных сотрудников для замены.</div>`}
@@ -431,7 +448,7 @@ window.AsgardHrRequestsPage=(function(){
         for(const c of candidatesAll){ if(await isFree(c.id)) okIds.push(c.id); }
         const opts = okIds.map(id2=>{ const s=staff.find(x=>x.id===id2); return `<option value="${id2}">${esc(s.fio||s.name||"")} (${esc(s.city||"")})</option>`; }).join("");
         const body = `
-          <div class="help"><b>Замена</b>: ${esc(old.fio||old.name||"")} (${esc(old.role_tag||"")}) ${crew?`<span class=\"tag\">вахта ${crew}</span>`:""}</div>
+          <div class="help"><b>Замена</b>: ${esc(old.fio||old.name||"")} (${esc(roleLabel(old.role_tag||""))}) ${crew?`<span class=\"tag\">вахта ${crew}</span>`:""}</div>
           <div class="help">Период: ${esc(start||"")} — ${esc(end||"")}</div>
           <div class="formrow">
           <div id="repNewPicker"></div>

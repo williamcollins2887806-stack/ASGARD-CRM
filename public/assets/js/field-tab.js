@@ -408,9 +408,9 @@ window.AsgardFieldTab = (function () {
       id: pickerId,
       employees: allEmployees.map(e => ({
         id: e.id,
-        name: e.fio || e.full_name || '',
-        position: e.role_tag || e.phone || '',
-        role: e.role_tag || '',
+        name: e.fio || e.full_name || `${e.last_name || ''} ${e.first_name || ''}`.trim() || '',
+        position: e.position || e.role_display || e.role || '',
+        role: e.role || '',
       })),
       selected: employee ? [employee.id] : [],
       maxSelect: 1,
