@@ -418,6 +418,7 @@ window.AsgardHrRequestsPage=(function(){
                   if (card2) card2.classList.toggle('selected', cb.checked);
                 });
                 AsgardUI.hideModal();
+                updateCounters();
                 toast('Подборки', 'Сотрудники из подборки отмечены');
               });
             });
@@ -653,44 +654,51 @@ window.AsgardHrRequestsPage=(function(){
         });
       }
 
-      // quick pick: select first N in role
-      $$("[data-act='pickRole']").forEach(btn=>{
-        btn.addEventListener("click", ()=>{
-          const role=btn.getAttribute("data-role");
-          const need = Number(r[role]||0);
-          if(!need) return;
-          if(!isVachta){
-            let picked=0;
-            $$(".stchk").forEach(c=>{
-              const stId=Number(c.value);
-              const st=staff.find(x=>x.id===stId);
-              if(st?.role_tag===role){
-                if(picked<need){ c.checked=true; picked++; }
-                else c.checked=false;
-              }
-            });
-          }else{
-            // для вахты: отдельно набираем A и B одинаковой численности
-            const roleStaff = staff.filter(s=>String(s.role_tag||"")===String(role));
-            // очистим выделение по роли
-            $$(".stchkA").forEach(c=>{ const st=staff.find(x=>x.id===Number(c.getAttribute('data-id'))); if(st?.role_tag===role) c.checked=false; });
-            $$(".stchkB").forEach(c=>{ const st=staff.find(x=>x.id===Number(c.getAttribute('data-id'))); if(st?.role_tag===role) c.checked=false; });
-            let a=0, b=0;
-            for(const s of roleStaff){
-              if(a<need){
-                const el = $$(".stchkA").find(x=>Number(x.getAttribute('data-id'))===s.id);
-                if(el){ el.checked=true; a++; }
-                continue;
-              }
-              if(b<need){
-                const el = $$(".stchkB").find(x=>Number(x.getAttribute('data-id'))===s.id);
-                if(el){ el.checked=true; b++; }
-              }
-              if(a>=need && b>=need) break;
+      // Авто-подбор по роли: выбрать top-N по рейтингу (DOM-порядок уже отсортирован)
+      function autoPickRole(role) {
+        const need = Number(r[role]||0);
+        if (!need) return;
+        if (!isVachta) {
+          $$(".stchk").forEach(c => { if (c.dataset.role === role) { c.checked = false; c.closest('.sr-emp-card')?.classList.remove('selected'); } });
+          let picked = 0;
+          $$(".stchk").forEach(c => {
+            if (c.dataset.role === role && picked < need) {
+              c.checked = true; c.closest('.sr-emp-card')?.classList.add('selected'); picked++;
             }
+          });
+          if (picked < need) toast("Авто-подбор", `${role}: найдено ${picked} из ${need}`, "warn");
+        } else {
+          $$(".stchkA").forEach(c => { if (c.dataset.role === role) c.checked = false; });
+          $$(".stchkB").forEach(c => { if (c.dataset.role === role) c.checked = false; });
+          let a = 0, b = 0;
+          const allA = $$(".stchkA").filter(c => c.dataset.role === role);
+          const allB = $$(".stchkB").filter(c => c.dataset.role === role);
+          for (let i = 0; i < allA.length && a < need; i++) { allA[i].checked = true; a++; }
+          for (let i = 0; i < allB.length && b < need; i++) {
+            if (!allA[i]?.checked) { allB[i].checked = true; b++; }
+            else if (allB.length > allA.length && b < need) { allB[allA.length + b - need]&&(allB[allA.length + b - need].checked = true); b++; }
           }
-        });
+          // Fallback: just pick first N for B that aren't in A
+          if (b < need) {
+            const aIds = new Set(allA.filter(c=>c.checked).map(c=>c.dataset.id));
+            allB.forEach(c => { if (!aIds.has(c.dataset.id) && b < need && !c.checked) { c.checked = true; b++; } });
+          }
+          document.querySelectorAll('.sr-emp-card').forEach(card => {
+            const any = card.querySelector('.stchkA:checked') || card.querySelector('.stchkB:checked');
+            card.classList.toggle('selected', !!any);
+          });
+        }
+        updateCounters();
+      }
+
+      $$("[data-act='pickRole']").forEach(btn => {
+        btn.addEventListener("click", () => autoPickRole(btn.getAttribute("data-role")));
       });
+      // Кнопка "Авто-подбор всех"
+      const btnAutoAll = document.getElementById('btnAutoPickAll');
+      if (btnAutoAll) {
+        btnAutoAll.addEventListener('click', () => { requestedRoles.forEach(role => autoPickRole(role)); });
+      }
 
       $("#btnHistory").addEventListener("click", async ()=>{
         const logs = (await AsgardDB.all("audit_log"))
@@ -713,16 +721,15 @@ window.AsgardHrRequestsPage=(function(){
           idsA = $$(".stchkA").filter(c=>c.checked).map(c=>Number(c.getAttribute('data-id')));
           idsB = $$(".stchkB").filter(c=>c.checked).map(c=>Number(c.getAttribute('data-id')));
           ids = Array.from(new Set([...(idsA||[]),...(idsB||[])]));
-          // валидация: состав по каждой роли должен совпадать с запросом для A и для B
-          const staffById = new Map((staff||[]).map(s=>[s.id,s]));
+          // валидация по data-role атрибуту (маппинг запрошенных ролей)
           const bad = [];
-          Object.keys(r||{}).forEach(role=>{
+          requestedRoles.forEach(role => {
             const need = Number(r[role]||0);
-            if(!need) return;
-            const cntA = (idsA||[]).map(id3=>staffById.get(id3)).filter(s=>s&&String(s.role_tag||'')===String(role)).length;
-            const cntB = (idsB||[]).map(id3=>staffById.get(id3)).filter(s=>s&&String(s.role_tag||'')===String(role)).length;
-            if(cntA!==need) bad.push(`${role}: A=${cntA}/${need}`);
-            if(cntB!==need) bad.push(`${role}: B=${cntB}/${need}`);
+            if (!need) return;
+            const cntA = $$(".stchkA:checked").filter(c => c.dataset.role === role).length;
+            const cntB = $$(".stchkB:checked").filter(c => c.dataset.role === role).length;
+            if (cntA !== need) bad.push(`${role}: A=${cntA}/${need}`);
+            if (cntB !== need) bad.push(`${role}: B=${cntB}/${need}`);
           });
           if(bad.length){
             toast("Вахта","Нужно подобрать состав для A/B строго по заявке: " + bad.join('; '),"err", 8000);
@@ -730,6 +737,10 @@ window.AsgardHrRequestsPage=(function(){
           }
           req.proposed_staff_ids_a_json = JSON.stringify(idsA);
           req.proposed_staff_ids_b_json = JSON.stringify(idsB);
+        }
+        if (!ids.length) {
+          toast("HR", "Выберите хотя бы одного сотрудника", "err");
+          return;
         }
         req.proposed_staff_ids_json = JSON.stringify(ids);
         req.hr_comment = $("#hr_comment").value.trim()||"";

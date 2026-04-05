@@ -5713,10 +5713,11 @@ label.cr-required::after {
 }
 .sr-emp-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 6px;
   max-height: 400px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
 }
 .sr-emp-card {
@@ -5728,7 +5729,12 @@ label.cr-required::after {
   border: 1px solid rgba(255,255,255,0.06);
   cursor: pointer;
   transition: all 0.15s;
+  min-width: 0;
+  overflow: hidden;
 }
+.sr-emp-card > div { min-width: 0; }
+.sr-emp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-emp-info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sr-emp-card:hover {
   background: rgba(74,144,217,0.08);
   border-color: rgba(74,144,217,0.2);
@@ -5805,6 +5811,58 @@ label.cr-required::after {
   font-weight: 700;
 }
 .sr-compos-empty { color: var(--t2); font-style: italic; }
+
+/* Таблица запрошенного состава */
+.sr-compos-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.sr-compos-table th {
+  text-align: left;
+  padding: 6px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--t3);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.sr-compos-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--t1);
+}
+.sr-compos-table tr.sr-compos-total td {
+  border-top: 2px solid rgba(212,168,67,0.3);
+  border-bottom: none;
+}
+.sr-compos-picked { font-weight: 600; }
+.sr-counter-ok { color: var(--ok-t, #4caf50) !important; }
+.sr-counter-warn { color: var(--amber, #ff9800) !important; }
+
+.sr-role-picked {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255,255,255,0.05);
+  color: var(--t2);
+}
+.sr-role-picked.sr-counter-ok { background: rgba(76,175,80,0.12); }
+.sr-role-picked.sr-counter-warn { background: rgba(255,152,0,0.12); }
+
+.sr-pm-comment {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: rgba(74,144,217,0.06);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--t2);
+  font-style: italic;
+}
+
 .sr-vachta-note {
   margin-top: 8px;
   padding: 8px 12px;
