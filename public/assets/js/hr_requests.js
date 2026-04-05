@@ -23,30 +23,47 @@ window.AsgardHrRequestsPage=(function(){
   function roleLabel(tag){ return ROLE_LABELS[tag] || tag; }
 
   // Маппинг role_tag/position сотрудника → ключ из request_json заявки
+  // Данные из БД: role_tag = "Слесарь"(477), "Сварщик"(36), "РП"(8)
+  // position = NULL(203), "Изолировщик"(83), "Слесарь-монтажник"(57), "Сварщик 6 р"(32), etc.
   const TAG_TO_REQUEST = {
-    'Мастер':'Мастера','Мастера':'Мастера','master':'Мастера','Мастер-наставник':'Мастера','Мастер сменный':'Мастера','Мастер ответственный':'Мастера',
-    'Слесарь':'Слесари','Слесари':'Слесари','worker':'Слесари','Слесарь-ремонтник':'Слесари','Слесарь-монтажник':'Слесари',
-    'ПТО':'ПТО','pto':'ПТО','Инженер ПТО':'ПТО','Мастер ПТО':'ПТО',
-    'Промывщик':'Промывщики','Промывщики':'Промывщики','washer':'Промывщики','Оператор АВД':'Промывщики',
-    'Химик':'Химики','chemist':'Химики',
-    'Сварщик':'Сварщики','welder':'Сварщики',
-    'ИТР':'ИТР','itr':'ИТР',
-    'Разнорабочий':'Разнорабочие','laborer':'Разнорабочие',
-    'driver':'Водители','Водитель':'Водители',
+    // === role_tag маппинг ===
+    'Слесарь':'Слесари', 'Сварщик':'Сварщики',
+    // РП — офисные, не маппим
+
+    // === position маппинг ===
+    'Мастер':'Мастера', 'Мастер-наставник':'Мастера', 'Мастер сменный':'Мастера', 'Мастер ответственный':'Мастера',
+    'Слесарь-монтажник':'Слесари', 'Слесарь-ремонтник':'Слесари',
+    'Монтажник':'Слесари', 'Монтажник ТТ':'Слесари', 'Монтажник ТТ 5р':'Слесари', 'Монтажник ТТ 6р':'Слесари',
+    'ПТО':'ПТО', 'Инженер ПТО':'ПТО', 'Мастер ПТО':'ПТО',
+    'Сварщик 6 р':'Сварщики', 'Сварщик 5 р':'Сварщики',
+    'Изолировщик':'Изолировщики',
+    'Слесарь-монтажник, Изолировщик':'Слесари',
+    'Жестянщик':'Жестянщики',
+    'Водитель':'Водители',
+    'Промывщик':'Промывщики', 'Оператор АВД':'Промывщики',
+    'Химик':'Химики',
+    'ИТР':'ИТР',
+    'Разнорабочий':'Разнорабочие', 'Лесовик':'Разнорабочие',
   };
   // Системные/офисные теги — исключать из подбора полевого персонала
-  const OFFICE_TAGS = new Set(['pm','PM','office','OFFICE','ADMIN','admin','HR','hr','BUH','buh','PROC','proc']);
+  const OFFICE_TAGS = new Set([
+    'pm','PM','РП','рп',
+    'office','OFFICE','ADMIN','admin','HR','hr','BUH','buh','PROC','proc',
+    'Руководитель проектов','Менеджер тендерного отдела','Главный инженер',
+  ]);
 
   function empRequestRole(emp) {
-    // Определить к какой запрошенной роли относится сотрудник
-    const tag = String(emp.role_tag||'').trim();
+    // position приоритетнее — там точнее специальность
     const pos = String(emp.position||'').trim();
-    return TAG_TO_REQUEST[tag] || TAG_TO_REQUEST[pos] || null;
+    const tag = String(emp.role_tag||'').trim();
+    return TAG_TO_REQUEST[pos] || TAG_TO_REQUEST[tag] || null;
   }
   function isFieldWorker(emp) {
     const tag = String(emp.role_tag||'').trim();
+    const pos = String(emp.position||'').trim();
     if (OFFICE_TAGS.has(tag)) return false;
-    if (!tag && !emp.position) return false;
+    if (OFFICE_TAGS.has(pos)) return false;
+    if (!tag && !pos) return false;
     return true;
   }
 
@@ -86,7 +103,7 @@ window.AsgardHrRequestsPage=(function(){
     return all.filter(e => e.is_active !== false && isFieldWorker(e));
   }
 
-  function safeJson(s,def){ try{return JSON.parse(s||"");}catch(_){return def;} }
+  function safeJson(s,def){ if(Array.isArray(s)||(typeof s==='object'&&s!==null))return s; try{return JSON.parse(s||"");}catch(_){return def;} }
 
   async function render({layout,title}){
     const auth=await AsgardAuth.requireUser();
@@ -260,30 +277,54 @@ window.AsgardHrRequestsPage=(function(){
       });
 
       // Сортировка внутри групп: по рейтингу (desc), потом ФИО
-      const sortByRating = (a,b) => (Number(b.rating_avg||0) - Number(a.rating_avg||0)) || String(a.fio||'').localeCompare(String(b.fio||''),'ru');
+      const sortByRating = (a,b) => (Number(b.rating_avg||0) - Number(a.rating_avg||0)) || String(a.full_name||a.fio||'').localeCompare(String(b.full_name||b.fio||''),'ru');
       Object.values(rosterByRequestRole).forEach(arr => arr.sort(sortByRating));
       unmatchedStaff.sort(sortByRating);
 
+      function empName(s) {
+        return s.full_name || s.fio || `Сотрудник #${s.id}`;
+      }
+      function empAvatar(s) {
+        const name = empName(s);
+        const parts = name.split(' ');
+        const initials = parts.length >= 2
+          ? (parts[0][0] + parts[1][0]).toUpperCase()
+          : (name[0] || '?').toUpperCase();
+        const colors = ['#e57373','#4fc3f7','#81c784','#ffb74d','#ba68c8','#4db6ac','#ff8a65','#a1887f'];
+        const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+        return `<div class="sr-avatar" style="background:${colors[hash % colors.length]}">${initials}</div>`;
+      }
+
       function renderEmpCard(s, role) {
+        const name = empName(s);
         const pos = s.position || roleLabel(s.role_tag||'');
+        const infoLine = [pos, s.city, s.phone].filter(Boolean).join(' · ');
+        const rating = s.rating_avg && Number(s.rating_avg) > 0 ? `<div class="sr-emp-rating">★ ${Number(s.rating_avg).toFixed(1)}</div>` : '';
+        const avatar = empAvatar(s);
+        const searchData = `data-emp-id="${s.id}" data-emp-name="${esc(name)}" data-emp-role="${esc(role)}" data-emp-city="${esc(s.city||'')}"`;
+
         if (isVachta) {
-          return `<div class="sr-emp-card ${chosenA.has(s.id)||chosenB.has(s.id)?'selected':''}" data-emp-id="${s.id}" data-emp-name="${esc(s.fio||s.name||'')}" data-emp-role="${esc(role)}" data-emp-city="${esc(s.city||'')}">
+          return `<div class="sr-emp-card ${chosenA.has(s.id)||chosenB.has(s.id)?'selected':''}" ${searchData}>
             <div class="sr-emp-vachta">
               <label><input type="checkbox" class="stchkA" data-id="${s.id}" data-role="${esc(role)}" ${chosenA.has(s.id)?"checked":""}/>A</label>
               <label><input type="checkbox" class="stchkB" data-id="${s.id}" data-role="${esc(role)}" ${chosenB.has(s.id)?"checked":""}/>B</label>
             </div>
-            <div>
-              <div class="sr-emp-name">${esc(s.fio||s.name||"")}${s.rating_avg ? " ★"+Number(s.rating_avg).toFixed(1) : ""}</div>
-              <div class="sr-emp-info">${esc(pos)}${s.city?" · "+esc(s.city):""}${s.phone?" · "+esc(s.phone):""}</div>
+            ${avatar}
+            <div class="sr-emp-body">
+              <div class="sr-emp-name">${esc(name)}</div>
+              <div class="sr-emp-info">${esc(infoLine)}</div>
             </div>
+            ${rating}
           </div>`;
         }
-        return `<label class="sr-emp-card ${chosen.has(s.id)?'selected':''}" data-emp-id="${s.id}" data-emp-name="${esc(s.fio||s.name||'')}" data-emp-role="${esc(role)}" data-emp-city="${esc(s.city||'')}">
+        return `<label class="sr-emp-card ${chosen.has(s.id)?'selected':''}" ${searchData}>
           <input type="checkbox" class="stchk" value="${s.id}" data-role="${esc(role)}" ${chosen.has(s.id)?"checked":""}/>
-          <div>
-            <div class="sr-emp-name">${esc(s.fio||s.name||"")}${s.rating_avg ? " ★"+Number(s.rating_avg).toFixed(1) : ""}</div>
-            <div class="sr-emp-info">${esc(pos)}${s.city?" · "+esc(s.city):""}${s.phone?" · "+esc(s.phone):""}</div>
+          ${avatar}
+          <div class="sr-emp-body">
+            <div class="sr-emp-name">${esc(name)}</div>
+            <div class="sr-emp-info">${esc(infoLine)}</div>
           </div>
+          ${rating}
         </label>`;
       }
 
@@ -320,7 +361,7 @@ window.AsgardHrRequestsPage=(function(){
         ${replaceList.length? `<div class="sr-section">${replaceList.map(s=>{
             const crew = approvedA.has(s.id) ? "A" : (approvedB.has(s.id) ? "B" : "");
             return `<div class="pill between">
-              <div><div class="who"><b>${esc(s.fio||s.name||"")}</b> ${crew?`<span class="tag">вахта ${crew}</span>`:""}</div>
+              <div><div class="who"><b>${esc(empName(s))}</b> ${crew?`<span class="tag">вахта ${crew}</span>`:""}</div>
               <div class="role">${esc(roleLabel(s.role_tag||""))}${s.city?" • "+esc(s.city):""}</div></div>
               <button class="btn ghost mini" data-act="replace" data-emp="${s.id}">Заменить</button>
             </div>`;

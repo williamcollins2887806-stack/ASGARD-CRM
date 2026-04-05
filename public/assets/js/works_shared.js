@@ -20,7 +20,7 @@ window.AsgardWorksShared = (function(){
     return isNaN(n) ? (fallback !== undefined ? fallback : null) : n;
   }
 
-  function safeJson(s, def){ try{return JSON.parse(s||"");}catch(_){return def;} }
+  function safeJson(s, def){ if(Array.isArray(s)||(typeof s==='object'&&s!==null))return s; try{return JSON.parse(s||"");}catch(_){return def;} }
 
   function toDate(d){
     if(!d) return null;
