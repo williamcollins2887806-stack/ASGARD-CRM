@@ -99,9 +99,11 @@ window.AsgardPmCalcsPage = (function(){
   }
 
   // === БЫСТРЫЙ ПРОСЧЁТ (ручная форма без калькулятора) ===
+  function safeParse(v){ if(!v) return {}; if(typeof v==='object') return v; try{return JSON.parse(v);}catch(_){return {};} }
+
   async function openQuickCalcForm(tenderId, tender, est, core, user){
-    const calc = est?.calc_summary_json ? JSON.parse(est.calc_summary_json) : {};
-    const quick = est?.quick_calc_json ? JSON.parse(est.quick_calc_json) : calc;
+    const calc = safeParse(est?.calc_summary_json);
+    const quick = est?.quick_calc_json ? safeParse(est.quick_calc_json) : calc;
     
     const html = `
       <style>
@@ -317,7 +319,7 @@ window.AsgardPmCalcsPage = (function(){
         cover_letter: $("#qc_cover").value.trim(),
         assumptions: $("#qc_assumptions").value.trim(),
         quick_calc_json: JSON.stringify({
-          city: $("#qc_city").value.trim(),
+          city: (CRAutocomplete.getValue('qc_city') || "").trim(),
           distance_km: num($("#qc_distance").value),
           work_type: $("#qc_work_type").value.trim(),
           people_count: num($("#qc_people").value),
@@ -325,7 +327,7 @@ window.AsgardPmCalcsPage = (function(){
           assumptions: $("#qc_assumptions").value.trim()
         }),
         calc_summary_json: JSON.stringify({
-          city: $("#qc_city").value.trim(),
+          city: (CRAutocomplete.getValue('qc_city') || "").trim(),
           distance_km: num($("#qc_distance").value),
           people_count: num($("#qc_people").value),
           work_days: num($("#qc_days").value)
@@ -433,6 +435,7 @@ window.AsgardPmCalcsPage = (function(){
     const tendersAll = await AsgardDB.all("tenders");
 
     const isDir = isDirRole(user.role) || user.role==="ADMIN";
+    const isPM = user.role==="PM" || user.role==="HEAD_PM";
 
     // PM sees only own; Director/Admin can see all handed-off
     let tenders = tendersAll.filter(t=>t.handoff_at);
@@ -676,7 +679,7 @@ window.AsgardPmCalcsPage = (function(){
       const est = await latestEstimate(tenderId, tender.responsible_pm_id);
       const estStatus = est ? approvalStatusLabel(est.approval_status||"draft") : "Черновик";
 
-      const calc = est ? (JSON.parse(est.calc_summary_json||"{}")||{}) : {};
+      const calc = est ? safeParse(est.calc_summary_json) : {};
 
       const derived = calcDerived({
         price_tkp: est?est.price_tkp:null,
