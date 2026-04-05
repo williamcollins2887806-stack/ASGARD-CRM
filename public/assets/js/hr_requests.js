@@ -594,9 +594,9 @@ window.AsgardHrRequestsPage=(function(){
         };
         const okIds=[];
         for(const c of candidatesAll){ if(await isFree(c.id)) okIds.push(c.id); }
-        const opts = okIds.map(id2=>{ const s=staff.find(x=>x.id===id2); return `<option value="${id2}">${esc(s.fio||s.name||"")} (${esc(s.city||"")})</option>`; }).join("");
+        const opts = okIds.map(id2=>{ const s=staff.find(x=>x.id===id2); return `<option value="${id2}">${esc(empName(s))} (${esc(s.city||"")})</option>`; }).join("");
         const body = `
-          <div class="help"><b>Замена</b>: ${esc(old.fio||old.name||"")} (${esc(roleLabel(old.role_tag||""))}) ${crew?`<span class=\"tag\">вахта ${crew}</span>`:""}</div>
+          <div class="help"><b>Замена</b>: ${esc(empName(old))} (${esc(roleLabel(old.role_tag||""))}) ${crew?`<span class=\"tag\">вахта ${crew}</span>`:""}</div>
           <div class="help">Период: ${esc(start||"")} — ${esc(end||"")}</div>
           <div class="formrow">
           <div id="repNewPicker"></div>
