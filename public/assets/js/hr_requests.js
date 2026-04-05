@@ -296,7 +296,6 @@ window.AsgardHrRequestsPage=(function(){
       }
 
       function renderEmpCard(s, role) {
-        if(!window._empDbg){window._empDbg=true;console.log('[HR-DBG] emp obj keys:',Object.keys(s));console.log('[HR-DBG] fio:',JSON.stringify(s.fio),'full_name:',JSON.stringify(s.full_name),'empName:',JSON.stringify(empName(s)));}
         const name = empName(s);
         const pos = s.position || roleLabel(s.role_tag||'');
         const infoLine = [pos, s.city, s.phone].filter(Boolean).join(' · ');

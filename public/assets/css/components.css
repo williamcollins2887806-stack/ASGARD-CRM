@@ -5721,10 +5721,9 @@ label.cr-required::after {
   padding-right: 4px;
 }
 .sr-emp-card {
-  display: grid;
-  grid-template-columns: auto 40px 1fr auto;
-  gap: 10px;
+  display: flex;
   align-items: center;
+  gap: 10px;
   padding: 10px 14px;
   border-radius: 10px;
   background: rgba(255,255,255,0.03);
@@ -5734,7 +5733,7 @@ label.cr-required::after {
   min-width: 0;
   overflow: hidden;
 }
-.sr-emp-card > div, .sr-emp-card > label { min-width: 0; }
+.sr-emp-card > div { min-width: 0; }
 .sr-emp-card:hover {
   background: rgba(74,144,217,0.08);
   border-color: rgba(74,144,217,0.2);
@@ -5744,25 +5743,21 @@ label.cr-required::after {
   border-color: rgba(74,144,217,0.4);
 }
 .sr-avatar {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: white;
   flex-shrink: 0;
 }
-.sr-emp-body { min-width: 0; }
-.sr-emp-name { font-size: 15px; font-weight: 600; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sr-emp-info { font-size: 12px; color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
-.sr-emp-rating { font-size: 14px; font-weight: 700; color: #d4a843; white-space: nowrap; }
-/* Non-vachta label cards: checkbox is inline, grid = checkbox+avatar+body+rating */
-label.sr-emp-card { grid-template-columns: auto 40px 1fr auto; }
-/* Vachta div cards: vachta-btns+avatar+body+rating */
-div.sr-emp-card { grid-template-columns: auto 40px 1fr auto; }
+.sr-emp-body { min-width: 0; flex: 1; }
+.sr-emp-name { font-size: 14px; font-weight: 600; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-emp-info { font-size: 11px; color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.sr-emp-rating { font-size: 13px; font-weight: 700; color: #d4a843; white-space: nowrap; flex-shrink: 0; margin-left: auto; }
 .sr-emp-vachta {
   display: flex;
   gap: 6px;
