@@ -758,6 +758,8 @@ window.AsgardHrRequestsPage=(function(){
         let idsB = [];
         if(!isVachta){
           ids = $$(".stchk").filter(c=>c.checked).map(c=>Number(c.value));
+          req.proposed_staff_ids_a_json = null;
+          req.proposed_staff_ids_b_json = null;
         }else{
           idsA = $$(".stchkA").filter(c=>c.checked).map(c=>Number(c.getAttribute('data-id')));
           idsB = $$(".stchkB").filter(c=>c.checked).map(c=>Number(c.getAttribute('data-id')));

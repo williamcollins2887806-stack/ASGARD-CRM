@@ -1147,12 +1147,15 @@ window.AsgardPmWorksPage=(function(){
         const emps = await AsgardDB.all("employees");
         const byId = new Map((emps||[]).map(e=>[e.id,e]));
         const isVachta = !!req.is_vachta;
-        const idsA = safeJson(req.proposed_staff_ids_a_json, []);
-        const idsB = safeJson(req.proposed_staff_ids_b_json, []);
-        const ids = safeJson(req.proposed_staff_ids_json, []);
-        const listA = (idsA||[]).map(id=>byId.get(id)).filter(Boolean);
-        const listB = (idsB||[]).map(id=>byId.get(id)).filter(Boolean);
-        const list = (ids||[]).map(id=>byId.get(id)).filter(Boolean);
+        let idsA = safeJson(req.proposed_staff_ids_a_json, []);
+        let idsB = safeJson(req.proposed_staff_ids_b_json, []);
+        let ids = safeJson(req.proposed_staff_ids_json, []);
+        if (!Array.isArray(idsA)) idsA = [];
+        if (!Array.isArray(idsB)) idsB = [];
+        if (!Array.isArray(ids)) ids = [];
+        const listA = idsA.map(id=>byId.get(id)).filter(Boolean);
+        const listB = idsB.map(id=>byId.get(id)).filter(Boolean);
+        const list = ids.map(id=>byId.get(id)).filter(Boolean);
 
         // replacements
         let reps = [];
@@ -1224,11 +1227,14 @@ window.AsgardPmWorksPage=(function(){
             await AsgardDB.add("employee_plan", { employee_id:newId, date:dt, kind:"work", work_id:w.id, staff_request_id:req.id, created_by:user.id, created_at: isoNow(), note: rp.crew ? ("вахта "+rp.crew) : ("замена") });
           }
           // обновить списки в staff_request
-          const a = safeJson(req.approved_staff_ids_a_json, []);
-          const b = safeJson(req.approved_staff_ids_b_json, []);
-          const all = safeJson(req.approved_staff_ids_json, []);
+          let a = safeJson(req.approved_staff_ids_a_json, []);
+          let b = safeJson(req.approved_staff_ids_b_json, []);
+          let all = safeJson(req.approved_staff_ids_json, []);
+          if (!Array.isArray(a)) a = [];
+          if (!Array.isArray(b)) b = [];
+          if (!Array.isArray(all)) all = [];
           function repl(arr){
-            return (arr||[]).map(x=>Number(x)).filter(x=>x!==oldId);
+            return arr.map(x=>Number(x)).filter(x=>x!==oldId);
           }
           let a2=repl(a), b2=repl(b), all2=repl(all);
           if(!!req.is_vachta){
@@ -1346,10 +1352,13 @@ window.AsgardPmWorksPage=(function(){
           return;
         }
         const isVachta = !!req.is_vachta;
-        const idsA = safeJson(req.proposed_staff_ids_a_json, []);
-        const idsB = safeJson(req.proposed_staff_ids_b_json, []);
-        const ids = safeJson(req.proposed_staff_ids_json, []);
-        const roster = isVachta ? Array.from(new Set([...(idsA||[]),...(idsB||[])])) : ids;
+        let idsA2 = safeJson(req.proposed_staff_ids_a_json, []);
+        let idsB2 = safeJson(req.proposed_staff_ids_b_json, []);
+        let ids2 = safeJson(req.proposed_staff_ids_json, []);
+        if (!Array.isArray(idsA2)) idsA2 = [];
+        if (!Array.isArray(idsB2)) idsB2 = [];
+        if (!Array.isArray(ids2)) ids2 = [];
+        const roster = isVachta ? Array.from(new Set([...idsA2,...idsB2])) : ids2;
         if(!Array.isArray(roster) || !roster.length){ toast("Персонал","HR не выбрал людей","err"); return; }
 
         // Auto-booking to workers schedule (обычная/вахта)
