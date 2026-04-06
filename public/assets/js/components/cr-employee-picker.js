@@ -40,6 +40,22 @@ const CREmployeePicker = (() => {
   const CLOSE_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
   const REMOVE_SVG = `<svg width="8" height="8" viewBox="0 0 8 8" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
 
+  // ── Avatar helpers ──────────────────────────────────────
+  const _AV_COLORS = ['#5b8def','#e74c3c','#27ae60','#f39c12','#8e44ad','#1abc9c','#e67e22','#2980b9','#c0392b','#16a085'];
+  function _avColorIdx(name) {
+    if (!name) return 0;
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+    return Math.abs(h) % _AV_COLORS.length;
+  }
+  function _fmtPhone(p) {
+    if (!p) return '—';
+    const d = String(p).replace(/\D/g, '');
+    if (d.length === 11 && (d[0] === '7' || d[0] === '8'))
+      return `+7 ${d.slice(1,4)} ${d.slice(4,7)}-${d.slice(7,9)}-${d.slice(9)}`;
+    return p;
+  }
+
   // ── Employee cache ────────────────────────────────────────
   let _employeeCache = null;
   let _cacheTime = 0;
@@ -54,12 +70,15 @@ const CREmployeePicker = (() => {
       const res = await fetch('/api/employees?active=true');
       if (res.ok) {
         const data = await res.json();
-        _employeeCache = (data.rows || data || []).map(e => ({
+        _employeeCache = (data.employees || data.rows || data || []).map(e => ({
           id: e.id,
-          name: e.full_name || e.name || `${e.last_name || ''} ${e.first_name || ''}`.trim(),
+          name: e.full_name || e.fio || e.name || `${e.last_name || ''} ${e.first_name || ''}`.trim(),
           position: e.position || e.role_display || '',
-          role: e.role || '',
+          role: e.role || e.role_tag || '',
           avatar: e.avatar || null,
+          city: e.city || '',
+          phone: e.phone || '',
+          rating: e.rating_avg != null ? parseFloat(e.rating_avg) : 0,
         }));
         _cacheTime = now;
         return _employeeCache;
@@ -93,7 +112,8 @@ const CREmployeePicker = (() => {
       const q = query.toLowerCase();
       filtered = filtered.filter(e =>
         (e.name && e.name.toLowerCase().includes(q)) ||
-        (e.position && e.position.toLowerCase().includes(q))
+        (e.position && e.position.toLowerCase().includes(q)) ||
+        (e.city && e.city.toLowerCase().includes(q))
       );
     }
     return filtered;
@@ -350,68 +370,146 @@ const CREmployeePicker = (() => {
       return;
     }
 
-    const frag = document.createDocumentFragment();
+    const table = document.createElement('table');
+    table.className = 'cr-emp-picker__table';
 
-    for (const emp of filtered) {
+    // Column headers
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th class="cr-emp-picker__th-chk"></th><th></th><th>ФИО</th><th>Должность</th><th>Город</th><th>★</th><th>Телефон</th></tr>';
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    const groupBy = inst.groupBy;
+    const reqs = inst.requirements || {};
+
+    if (groupBy) {
+      const groups = new Map();
+      for (const emp of filtered) {
+        const key = emp[groupBy] || 'Другое';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(emp);
+      }
+      for (const [groupName, emps] of groups) {
+        const selCount = emps.filter(e => inst._tempSelected.includes(e.id)).length;
+        const needed = reqs[groupName];
+        const gtr = document.createElement('tr');
+        gtr.className = 'cr-emp-picker__group-hdr';
+        gtr.dataset.group = groupName;
+        const gtd = document.createElement('td');
+        gtd.colSpan = 7;
+        gtd.textContent = needed != null
+          ? `${groupName} — нужно: ${needed} | выбрано: ${selCount}/${needed}`
+          : `${groupName} — выбрано: ${selCount}`;
+        gtr.appendChild(gtd);
+        tbody.appendChild(gtr);
+        _appendTableRows(inst, tbody, emps, isSingle);
+      }
+    } else {
+      _appendTableRows(inst, tbody, filtered, isSingle);
+    }
+
+    table.appendChild(tbody);
+    list.appendChild(table);
+  }
+
+  function _appendTableRows(inst, tbody, employees, isSingle) {
+    for (const emp of employees) {
       const isSelected = inst._tempSelected.includes(emp.id);
-
-      const item = document.createElement('div');
-      item.className = 'cr-emp-picker__item' + (isSelected ? ' cr-emp-picker__item--selected' : '');
+      const tr = document.createElement('tr');
+      tr.className = 'cr-emp-picker__row' + (isSelected ? ' cr-emp-picker__row--sel' : '');
 
       // Checkbox
-      const checkbox = document.createElement('div');
-      checkbox.className = 'cr-emp-picker__checkbox';
-      checkbox.innerHTML = CHECK_SVG;
-      item.appendChild(checkbox);
+      const tdChk = document.createElement('td');
+      tdChk.className = 'cr-emp-picker__col-chk';
+      const cb = document.createElement('div');
+      cb.className = 'cr-emp-picker__checkbox';
+      cb.innerHTML = CHECK_SVG;
+      tdChk.appendChild(cb);
+      tr.appendChild(tdChk);
 
-      // Avatar
+      // Avatar (initials on colored bg)
+      const tdAv = document.createElement('td');
+      tdAv.className = 'cr-emp-picker__col-av';
       if (emp.avatar) {
         const img = document.createElement('img');
-        img.className = 'cr-emp-picker__avatar';
+        img.className = 'cr-emp-picker__av cr-emp-picker__av--img';
         img.src = emp.avatar;
         img.alt = '';
         img.loading = 'lazy';
-        item.appendChild(img);
+        tdAv.appendChild(img);
       } else {
-        const ph = document.createElement('div');
-        ph.className = 'cr-emp-picker__avatar-placeholder';
-        ph.textContent = _getInitials(emp.name);
-        item.appendChild(ph);
+        const av = document.createElement('div');
+        av.className = 'cr-emp-picker__av cr-emp-picker__av--c' + _avColorIdx(emp.name);
+        av.textContent = _getInitials(emp.name);
+        tdAv.appendChild(av);
       }
+      tr.appendChild(tdAv);
 
-      // Info
-      const info = document.createElement('div');
-      info.className = 'cr-emp-picker__info';
-      const name = document.createElement('div');
-      name.className = 'cr-emp-picker__name';
-      name.textContent = emp.name;
-      const position = document.createElement('div');
-      position.className = 'cr-emp-picker__position';
-      position.textContent = emp.position || emp.role || '';
-      info.appendChild(name);
-      info.appendChild(position);
-      item.appendChild(info);
+      // Name
+      const tdName = document.createElement('td');
+      tdName.className = 'cr-emp-picker__col-name';
+      tdName.textContent = emp.name;
+      tr.appendChild(tdName);
 
-      item.addEventListener('click', () => {
+      // Position
+      const tdPos = document.createElement('td');
+      tdPos.className = 'cr-emp-picker__col-pos';
+      tdPos.textContent = emp.position || '—';
+      tr.appendChild(tdPos);
+
+      // City
+      const tdCity = document.createElement('td');
+      tdCity.className = 'cr-emp-picker__col-city';
+      tdCity.textContent = emp.city || '—';
+      tr.appendChild(tdCity);
+
+      // Rating
+      const tdRat = document.createElement('td');
+      tdRat.className = 'cr-emp-picker__col-rat';
+      const rv = emp.rating > 0 ? emp.rating.toFixed(1) : '0.0';
+      tdRat.textContent = rv;
+      if (emp.rating >= 4) tdRat.classList.add('cr-emp-picker__rat--high');
+      else if (emp.rating >= 3) tdRat.classList.add('cr-emp-picker__rat--mid');
+      tr.appendChild(tdRat);
+
+      // Phone
+      const tdPh = document.createElement('td');
+      tdPh.className = 'cr-emp-picker__col-ph';
+      tdPh.textContent = _fmtPhone(emp.phone);
+      tr.appendChild(tdPh);
+
+      // Click handler
+      tr.addEventListener('click', () => {
         if (isSingle) {
-          // Single select: pick and close immediately
           inst.selected = [emp.id];
           _renderTrigger(inst);
           _closeModal(inst);
           if (inst.onChange) inst.onChange([emp.id]);
           return;
         }
-
-        // Multi select
         _toggleTempEmployee(inst, emp.id);
-        item.classList.toggle('cr-emp-picker__item--selected', inst._tempSelected.includes(emp.id));
+        const nowSel = inst._tempSelected.includes(emp.id);
+        tr.classList.toggle('cr-emp-picker__row--sel', nowSel);
         _updateModalCount(inst);
+        _refreshGroupHdrs(inst);
       });
 
-      frag.appendChild(item);
+      tbody.appendChild(tr);
     }
+  }
 
-    list.appendChild(frag);
+  function _refreshGroupHdrs(inst) {
+    if (!inst.groupBy || !inst._modalList) return;
+    const reqs = inst.requirements || {};
+    inst._modalList.querySelectorAll('.cr-emp-picker__group-hdr').forEach(gtr => {
+      const g = gtr.dataset.group;
+      const emps = inst.employees.filter(e => (e[inst.groupBy] || 'Другое') === g);
+      const sel = emps.filter(e => inst._tempSelected.includes(e.id)).length;
+      const n = reqs[g];
+      gtr.firstChild.textContent = n != null
+        ? `${g} — нужно: ${n} | выбрано: ${sel}/${n}`
+        : `${g} — выбрано: ${sel}`;
+    });
   }
 
   function _toggleTempEmployee(inst, empId) {
@@ -496,6 +594,8 @@ const CREmployeePicker = (() => {
         title: config.title || 'Выбор сотрудников',
         fullWidth: config.fullWidth ?? false,
         onChange: config.onChange || null,
+        groupBy: config.groupBy || null,
+        requirements: config.requirements || null,
         // Internal
         _overlay: null,
         _modalList: null,
