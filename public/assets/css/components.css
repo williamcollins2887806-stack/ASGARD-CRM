@@ -5711,66 +5711,94 @@ label.cr-required::after {
   background: rgba(74,144,217,0.15);
   color: var(--info);
 }
-.sr-emp-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
-  gap: 6px;
+/* ── Staff request: employee table ── */
+.sr-emp-table-wrap {
   max-height: 400px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg4, #333) transparent;
 }
-.sr-emp-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  cursor: pointer;
-  transition: all 0.15s;
-  min-width: 0;
-  overflow: hidden;
+.sr-emp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
 }
-.sr-emp-card > div { min-width: 0; }
-.sr-emp-card:hover {
-  background: rgba(74,144,217,0.08);
-  border-color: rgba(74,144,217,0.2);
+.sr-emp-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg2, #1a1d26);
 }
-.sr-emp-card.selected {
-  background: rgba(74,144,217,0.12);
-  border-color: rgba(74,144,217,0.4);
+.sr-emp-table th {
+  padding: 4px 8px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--t3);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
-.sr-avatar {
-  width: 36px;
+.sr-th-chk { width: 32px; }
+.sr-emp-row {
   height: 36px;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.sr-emp-row:hover { background: rgba(74,144,217,0.06); }
+.sr-emp-row.selected { background: rgba(74,144,217,0.12); }
+.sr-emp-row.selected:hover { background: rgba(74,144,217,0.18); }
+.sr-emp-row td {
+  padding: 4px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  vertical-align: middle;
+  color: var(--t1);
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.sr-td-chk { width: 32px; text-align: center; }
+.sr-td-av { width: 36px; }
+.sr-td-name { font-weight: 500; }
+.sr-td-pos { color: var(--t2) !important; font-size: 11px; }
+.sr-td-city { color: var(--t2) !important; font-size: 11px; }
+.sr-td-rat { width: 44px; text-align: center; font-size: 11px; color: var(--t3) !important; }
+.sr-td-ph { color: var(--t3) !important; font-size: 11px; }
+.sr-td-vachta { width: 70px; }
+.sr-td-vachta label { display: inline-flex; gap: 3px; align-items: center; margin-right: 6px; font-size: 11px; }
+
+.sr-rat--high { color: #27ae60 !important; }
+.sr-rat--mid { color: #f39c12 !important; }
+
+.sr-avatar {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 700;
   color: white;
   flex-shrink: 0;
 }
-.sr-emp-body { min-width: 0; flex: 1; }
-.sr-emp-name { font-size: 14px; font-weight: 600; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sr-emp-info { font-size: 11px; color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
-.sr-emp-rating { font-size: 13px; font-weight: 700; color: #d4a843; white-space: nowrap; flex-shrink: 0; margin-left: auto; }
-.sr-emp-vachta {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  min-width: 60px;
-}
-.sr-emp-vachta label {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  font-size: 11px;
-  cursor: pointer;
-}
+.sr-avatar--c0 { background: #5b8def; }
+.sr-avatar--c1 { background: #e74c3c; }
+.sr-avatar--c2 { background: #27ae60; }
+.sr-avatar--c3 { background: #f39c12; }
+.sr-avatar--c4 { background: #8e44ad; }
+.sr-avatar--c5 { background: #1abc9c; }
+.sr-avatar--c6 { background: #e67e22; }
+.sr-avatar--c7 { background: #2980b9; }
+.sr-avatar--c8 { background: #c0392b; }
+.sr-avatar--c9 { background: #16a085; }
+
+.sr-empty-hint { padding: 8px; font-size: 12px; color: var(--t3); }
+/* sr-emp-vachta: replaced by .sr-td-vachta in table layout */
 .sr-chat-msg {
   padding: 10px 14px;
   border-radius: 8px;

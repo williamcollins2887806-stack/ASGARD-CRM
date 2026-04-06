@@ -290,42 +290,51 @@ window.AsgardHrRequestsPage=(function(){
         const initials = parts.length >= 2
           ? (parts[0][0] + parts[1][0]).toUpperCase()
           : (name[0] || '?').toUpperCase();
-        const colors = ['#e57373','#4fc3f7','#81c784','#ffb74d','#ba68c8','#4db6ac','#ff8a65','#a1887f'];
         const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-        return `<div class="sr-avatar" style="background:${colors[hash % colors.length]}">${initials}</div>`;
+        return `<div class="sr-avatar sr-avatar--c${hash % 10}">${initials}</div>`;
       }
 
-      function renderEmpCard(s, role) {
+      function renderEmpRow(s, role) {
         const name = empName(s);
         const pos = s.position || roleLabel(s.role_tag||'');
-        const infoLine = [pos, s.city, s.phone].filter(Boolean).join(' · ');
-        const rating = s.rating_avg && Number(s.rating_avg) > 0 ? `<div class="sr-emp-rating">★ ${Number(s.rating_avg).toFixed(1)}</div>` : '';
+        const rat = s.rating_avg && Number(s.rating_avg) > 0 ? Number(s.rating_avg).toFixed(1) : '';
+        const ratCls = Number(s.rating_avg||0) >= 4 ? 'sr-rat--high' : Number(s.rating_avg||0) >= 3 ? 'sr-rat--mid' : '';
+        const phone = s.phone || '';
         const avatar = empAvatar(s);
         const searchData = `data-emp-id="${s.id}" data-emp-name="${esc(name)}" data-emp-role="${esc(role)}" data-emp-city="${esc(s.city||'')}"`;
 
         if (isVachta) {
-          return `<div class="sr-emp-card ${chosenA.has(s.id)||chosenB.has(s.id)?'selected':''}" ${searchData}>
-            <div class="sr-emp-vachta">
+          const isSel = chosenA.has(s.id)||chosenB.has(s.id);
+          return `<tr class="sr-emp-row ${isSel?'selected':''}" ${searchData}>
+            <td class="sr-td-vachta">
               <label><input type="checkbox" class="stchkA" data-id="${s.id}" data-role="${esc(role)}" ${chosenA.has(s.id)?"checked":""}/>A</label>
               <label><input type="checkbox" class="stchkB" data-id="${s.id}" data-role="${esc(role)}" ${chosenB.has(s.id)?"checked":""}/>B</label>
-            </div>
-            ${avatar}
-            <div class="sr-emp-body">
-              <div class="sr-emp-name">${esc(name)}</div>
-              <div class="sr-emp-info">${esc(infoLine)}</div>
-            </div>
-            ${rating}
-          </div>`;
+            </td>
+            <td class="sr-td-av">${avatar}</td>
+            <td class="sr-td-name">${esc(name)}</td>
+            <td class="sr-td-pos">${esc(pos)}</td>
+            <td class="sr-td-city">${esc(s.city||'')}</td>
+            <td class="sr-td-rat ${ratCls}">${rat}</td>
+            <td class="sr-td-ph">${esc(phone)}</td>
+          </tr>`;
         }
-        return `<label class="sr-emp-card ${chosen.has(s.id)?'selected':''}" ${searchData}>
-          <input type="checkbox" class="stchk" value="${s.id}" data-role="${esc(role)}" ${chosen.has(s.id)?"checked":""}/>
-          ${avatar}
-          <div class="sr-emp-body">
-            <div class="sr-emp-name">${esc(name)}</div>
-            <div class="sr-emp-info">${esc(infoLine)}</div>
-          </div>
-          ${rating}
-        </label>`;
+        return `<tr class="sr-emp-row ${chosen.has(s.id)?'selected':''}" ${searchData}>
+          <td class="sr-td-chk"><input type="checkbox" class="stchk" value="${s.id}" data-role="${esc(role)}" ${chosen.has(s.id)?"checked":""}></td>
+          <td class="sr-td-av">${avatar}</td>
+          <td class="sr-td-name">${esc(name)}</td>
+          <td class="sr-td-pos">${esc(pos)}</td>
+          <td class="sr-td-city">${esc(s.city||'')}</td>
+          <td class="sr-td-rat ${ratCls}">${rat}</td>
+          <td class="sr-td-ph">${esc(phone)}</td>
+        </tr>`;
+      }
+
+      function buildEmpTable(list, role) {
+        if (!list.length) return '<div class="help sr-empty-hint">Нет сотрудников с подходящей специальностью</div>';
+        return `<div class="sr-emp-table-wrap"><table class="sr-emp-table">
+          <thead><tr><th class="sr-th-chk"></th><th></th><th>ФИО</th><th>Должность</th><th>Город</th><th>★</th><th>Телефон</th></tr></thead>
+          <tbody>${list.map(s => renderEmpRow(s, role)).join("")}</tbody>
+        </table></div>`;
       }
 
       const rolesHtml = requestedRoles.map(role => {
@@ -340,14 +349,13 @@ window.AsgardHrRequestsPage=(function(){
             </div>
             <button class="btn ghost mini" data-act="pickRole" data-role="${esc(role)}">Авто-подбор</button>
           </div>
-          <div class="sr-emp-grid">${list.map(s => renderEmpCard(s, role)).join("")}</div>
-          ${!list.length ? '<div class="help" style="padding:8px">Нет сотрудников с подходящей специальностью</div>' : ''}
+          ${buildEmpTable(list, role)}
         </div>`;
       }).join("") + (unmatchedStaff.length ? `<div class="sr-role-group" data-role="__other">
         <div class="sr-role-header">
           <div><span class="sr-role-name">Остальные сотрудники</span></div>
         </div>
-        <div class="sr-emp-grid">${unmatchedStaff.map(s => renderEmpCard(s, '__other')).join("")}</div>
+        ${buildEmpTable(unmatchedStaff, '__other')}
       </div>` : '');
 
       // ===== Замены (HR инициирует, PM согласует) =====
@@ -455,8 +463,8 @@ window.AsgardHrRequestsPage=(function(){
                 var empIds = new Set(emps.map(function(e2){ return e2.id; }));
                 document.querySelectorAll('.stchk').forEach(function(cb) {
                   if (empIds.has(Number(cb.value))) { cb.checked = true; }
-                  var card2 = cb.closest('.sr-emp-card');
-                  if (card2) card2.classList.toggle('selected', cb.checked);
+                  var row2 = cb.closest('.sr-emp-row');
+                  if (row2) row2.classList.toggle('selected', cb.checked);
                 });
                 AsgardUI.hideModal();
                 updateCounters();
@@ -472,14 +480,14 @@ window.AsgardHrRequestsPage=(function(){
       if (searchInput) {
         searchInput.addEventListener('input', () => {
           const q = searchInput.value.toLowerCase().trim();
-          document.querySelectorAll('.sr-emp-card').forEach(card => {
-            const name = (card.getAttribute('data-emp-name')||'').toLowerCase();
-            const role = (card.getAttribute('data-emp-role')||'').toLowerCase();
-            const city = (card.getAttribute('data-emp-city')||'').toLowerCase();
-            card.classList.toggle('cr-field-hidden', !(!q || name.includes(q) || role.includes(q) || city.includes(q)));
+          document.querySelectorAll('.sr-emp-row').forEach(row => {
+            const name = (row.getAttribute('data-emp-name')||'').toLowerCase();
+            const role = (row.getAttribute('data-emp-role')||'').toLowerCase();
+            const city = (row.getAttribute('data-emp-city')||'').toLowerCase();
+            row.classList.toggle('cr-field-hidden', !(!q || name.includes(q) || role.includes(q) || city.includes(q)));
           });
           document.querySelectorAll('.sr-role-group').forEach(g => {
-            const visible = g.querySelectorAll('.sr-emp-card:not(.cr-field-hidden)').length;
+            const visible = g.querySelectorAll('.sr-emp-row:not(.cr-field-hidden)').length;
             g.classList.toggle('cr-field-hidden', visible === 0);
           });
         });
@@ -522,19 +530,27 @@ window.AsgardHrRequestsPage=(function(){
         }
       }
 
+      // Click on table row = toggle checkbox
+      document.querySelectorAll('.sr-emp-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          if (e.target.tagName === 'INPUT') return; // let native checkbox handle
+          const cb = row.querySelector('.stchk, .stchkA');
+          if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', {bubbles:true})); }
+        });
+      });
       document.querySelectorAll('.stchk').forEach(cb => {
         cb.addEventListener('change', () => {
-          const card = cb.closest('.sr-emp-card');
-          if (card) card.classList.toggle('selected', cb.checked);
+          const row = cb.closest('.sr-emp-row');
+          if (row) row.classList.toggle('selected', cb.checked);
           updateCounters();
         });
       });
       document.querySelectorAll('.stchkA, .stchkB').forEach(cb => {
         cb.addEventListener('change', () => {
-          const card = cb.closest('.sr-emp-card');
-          if (card) {
-            const anyChecked = card.querySelector('.stchkA:checked') || card.querySelector('.stchkB:checked');
-            card.classList.toggle('selected', !!anyChecked);
+          const row = cb.closest('.sr-emp-row');
+          if (row) {
+            const anyChecked = row.querySelector('.stchkA:checked') || row.querySelector('.stchkB:checked');
+            row.classList.toggle('selected', !!anyChecked);
           }
           updateCounters();
         });
@@ -700,11 +716,11 @@ window.AsgardHrRequestsPage=(function(){
         const need = Number(r[role]||0);
         if (!need) return;
         if (!isVachta) {
-          $$(".stchk").forEach(c => { if (c.dataset.role === role) { c.checked = false; c.closest('.sr-emp-card')?.classList.remove('selected'); } });
+          $$(".stchk").forEach(c => { if (c.dataset.role === role) { c.checked = false; c.closest('.sr-emp-row')?.classList.remove('selected'); } });
           let picked = 0;
           $$(".stchk").forEach(c => {
             if (c.dataset.role === role && picked < need) {
-              c.checked = true; c.closest('.sr-emp-card')?.classList.add('selected'); picked++;
+              c.checked = true; c.closest('.sr-emp-row')?.classList.add('selected'); picked++;
             }
           });
           if (picked < need) toast("Авто-подбор", `${role}: найдено ${picked} из ${need}`, "warn");
@@ -724,7 +740,7 @@ window.AsgardHrRequestsPage=(function(){
             const aIds = new Set(allA.filter(c=>c.checked).map(c=>c.dataset.id));
             allB.forEach(c => { if (!aIds.has(c.dataset.id) && b < need && !c.checked) { c.checked = true; b++; } });
           }
-          document.querySelectorAll('.sr-emp-card').forEach(card => {
+          document.querySelectorAll('.sr-emp-row').forEach(card => {
             const any = card.querySelector('.stchkA:checked') || card.querySelector('.stchkB:checked');
             card.classList.toggle('selected', !!any);
           });
