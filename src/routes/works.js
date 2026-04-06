@@ -573,7 +573,8 @@ async function routes(fastify, options) {
       const totalExpensesWithTax = Math.round((totalExpenses + totalTaxBurden) * 100) / 100;
 
       // === Profit ===
-      const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax) * 100) / 100;
+      // Real cost = expenses + tax burden - VAT deductible (input VAT is refunded)
+      const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax + totalVatDeductible) * 100) / 100;
       const incomeTaxRate = 25;
       const incomeTax = Math.round(profitBeforeTax * incomeTaxRate / 100 * 100) / 100;
       const netProfit = Math.round((profitBeforeTax - incomeTax) * 100) / 100;
