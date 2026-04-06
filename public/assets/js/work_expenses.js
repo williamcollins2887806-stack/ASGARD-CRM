@@ -3,16 +3,22 @@ window.AsgardWorkExpenses = (function(){
   const { $, $$, esc, toast, showModal, hideModal, money } = AsgardUI;
   const { isoNow } = window.AsgardWorksShared || {};
 
-  // 8 категорий расходов по работам
+  // Категории расходов по работам
   const EXPENSE_CATEGORIES = [
-    { key: 'fot', label: 'ФОТ', color: 'var(--err-t)', icon: '👷' },
-    { key: 'logistics', label: 'Логистика', color: 'var(--amber)', icon: '🚚' },
+    { key: 'payroll', label: 'ФОТ (начислено)', color: 'var(--err-t)', icon: '👷' },
+    { key: 'cash', label: 'Наличные', color: '#f59e0b', icon: '💵' },
+    { key: 'per_diem', label: 'Суточные', color: '#8b5cf6', icon: '🍽' },
+    { key: 'tickets', label: 'Билеты', color: 'var(--amber)', icon: '✈' },
     { key: 'accommodation', label: 'Проживание', color: 'var(--purple)', icon: '🏨' },
-    { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗' },
-    { key: 'chemicals', label: 'Химия', color: 'var(--ok-t)', icon: '🧪' },
-    { key: 'equipment', label: 'Оборудование', color: 'var(--info)', icon: '🔧' },
-    { key: 'subcontract', label: 'Субподряд', color: '#ec4899', icon: '🤝' },
-    { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
+    { key: 'materials', label: 'Материалы', color: 'var(--ok-t)', icon: '📦' },
+    { key: 'subcontract', label: 'Субподряд/агентское', color: '#ec4899', icon: '🤝' },
+    { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📋' },
+    // Legacy categories (backward compatibility)
+    { key: 'fot', label: 'ФОТ (legacy)', color: 'var(--err-t)', icon: '👷', hidden: true },
+    { key: 'logistics', label: 'Логистика', color: 'var(--amber)', icon: '🚚', hidden: true },
+    { key: 'chemicals', label: 'Химия', color: 'var(--ok-t)', icon: '🧪', hidden: true },
+    { key: 'equipment', label: 'Оборудование', color: 'var(--info)', icon: '🔧', hidden: true },
+    { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗', hidden: true },
   ];
 
   // Получить все расходы по работе
@@ -137,7 +143,7 @@ window.AsgardWorkExpenses = (function(){
       if(byCategory[e.category]) byCategory[e.category].push(e);
     });
 
-    const categoryRows = EXPENSE_CATEGORIES.map(c => {
+    const categoryRows = EXPENSE_CATEGORIES.filter(c => !c.hidden || (byCategory[c.key] && byCategory[c.key].length > 0)).map(c => {
       const items = byCategory[c.key] || [];
       const total = totals[c.key] || 0;
       const itemsHtml = items.length ? items.map(e => `
@@ -167,7 +173,7 @@ window.AsgardWorkExpenses = (function(){
             <span class="exp-cat-label">${c.label}</span>
             <span class="exp-cat-total">${money(total)} ₽</span>
             <button class="btn ghost mini" data-add-cat="${c.key}">+ Добавить</button>
-            ${c.key === 'fot' ? `<button class="btn ghost mini" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
+            ${(c.key === 'fot' || c.key === 'payroll') ? `<button class="btn ghost mini" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
           </div>
           <div class="exp-cat-items">${itemsHtml}</div>
         </div>
@@ -304,7 +310,7 @@ window.AsgardWorkExpenses = (function(){
   // Модальное окно добавления расхода
   function openAddExpenseModal(work, user, category){
     const cat = EXPENSE_CATEGORIES.find(c => c.key === category) || EXPENSE_CATEGORIES[7];
-    const isFot = category === 'fot';
+    const isFot = category === 'fot' || category === 'payroll';
 
     const html = isFot ? `
       <div class="help">ФОТ: расходы на оплату труда сотрудника</div>
@@ -386,7 +392,7 @@ window.AsgardWorkExpenses = (function(){
   // Модальное окно редактирования
   function openEditExpenseModal(work, user, expense){
     const cat = EXPENSE_CATEGORIES.find(c => c.key === expense.category) || EXPENSE_CATEGORIES[7];
-    const isFot = expense.category === 'fot';
+    const isFot = expense.category === 'fot' || expense.category === 'payroll';
 
     const html = isFot ? `
       <div class="help">ФОТ: редактирование</div>

@@ -472,6 +472,167 @@ async function routes(fastify, options) {
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /:id/financial-summary — financial dashboard (НДС, налоги, прибыль)
+  // ─────────────────────────────────────────────────────────────────────
+  const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM', 'PM', 'BUH'];
+  fastify.get('/:id/financial-summary', { preHandler: [fastify.requireRoles(DIRECTOR_ROLES)] }, async (request, reply) => {
+    try {
+      const workId = parseInt(request.params.id);
+
+      // Work data
+      const { rows: workRows } = await db.query(
+        'SELECT id, work_title, contract_value, vat_pct, cost_fact, cost_plan FROM works WHERE id = $1 AND deleted_at IS NULL',
+        [workId]
+      );
+      if (!workRows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
+      const work = workRows[0];
+
+      // Expenses by category
+      const { rows: expenses } = await db.query(
+        'SELECT id, category, amount, comment, supplier, invoice_needed, invoice_received, doc_number FROM work_expenses WHERE work_id = $1 ORDER BY category, id',
+        [workId]
+      );
+
+      // Incomes
+      const { rows: incomes } = await db.query(
+        'SELECT id, type, amount, date, comment, confirmed FROM incomes WHERE work_id = $1 ORDER BY date',
+        [workId]
+      );
+
+      // Tax rate from settings (fallback 55%)
+      let taxRate = 55;
+      try {
+        const { rows: settingsRows } = await db.query(
+          "SELECT value_json FROM settings WHERE key = 'payroll_tax_rate'"
+        );
+        if (settingsRows[0]) taxRate = parseFloat(JSON.parse(settingsRows[0].value_json)) || 55;
+      } catch (_) {}
+
+      const vatPct = parseFloat(work.vat_pct) || 20;
+      const contractValue = parseFloat(work.contract_value) || 0;
+
+      // === Revenue ===
+      // НДС начисленный = contract_value * vatPct / (100 + vatPct)
+      const vatCharged = Math.round(contractValue * vatPct / (100 + vatPct) * 100) / 100;
+      const revenueExVat = Math.round((contractValue - vatCharged) * 100) / 100;
+
+      // === Expense categories with tax logic ===
+      // 55% tax (НДФЛ + взносы / обналичка):
+      const TAX_CATEGORIES = ['payroll', 'fot', 'cash', 'per_diem', 'subcontract'];
+      // VAT deduction (безнал с НДС):
+      const VAT_CATEGORIES = ['materials', 'chemicals', 'equipment', 'tickets', 'logistics', 'accommodation', 'transfer', 'other'];
+
+      const catMap = {};
+      let totalExpenses = 0;
+      let totalVatDeductible = 0;
+      let totalTaxBurden = 0;
+
+      for (const exp of expenses) {
+        const cat = exp.category || 'other';
+        if (!catMap[cat]) {
+          catMap[cat] = { category: cat, sum: 0, count: 0, vatDeductible: 0, taxBurden: 0, items: [] };
+        }
+        const amount = parseFloat(exp.amount) || 0;
+        catMap[cat].sum += amount;
+        catMap[cat].count++;
+        catMap[cat].items.push(exp);
+        totalExpenses += amount;
+
+        // VAT deduction for non-cash categories (materials, equipment, etc.)
+        if (VAT_CATEGORIES.includes(cat)) {
+          // VAT deductible = amount * vatPct / (100 + vatPct)
+          const vatDed = Math.round(amount * vatPct / (100 + vatPct) * 100) / 100;
+          catMap[cat].vatDeductible += vatDed;
+          totalVatDeductible += vatDed;
+        }
+
+        // Tax burden for cash-based categories
+        if (TAX_CATEGORIES.includes(cat)) {
+          const tax = Math.round(amount * taxRate / 100 * 100) / 100;
+          catMap[cat].taxBurden += tax;
+          totalTaxBurden += tax;
+        }
+      }
+
+      // Round category totals
+      for (const c of Object.values(catMap)) {
+        c.sum = Math.round(c.sum * 100) / 100;
+        c.vatDeductible = Math.round(c.vatDeductible * 100) / 100;
+        c.taxBurden = Math.round(c.taxBurden * 100) / 100;
+      }
+
+      // === VAT block ===
+      totalVatDeductible = Math.round(totalVatDeductible * 100) / 100;
+      const vatPayable = Math.round((vatCharged - totalVatDeductible) * 100) / 100;
+
+      // === Tax block ===
+      totalTaxBurden = Math.round(totalTaxBurden * 100) / 100;
+
+      // === Total expenses including taxes ===
+      const totalExpensesWithTax = Math.round((totalExpenses + totalTaxBurden) * 100) / 100;
+
+      // === Profit ===
+      const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax) * 100) / 100;
+      const incomeTaxRate = 25;
+      const incomeTax = Math.round(profitBeforeTax * incomeTaxRate / 100 * 100) / 100;
+      const netProfit = Math.round((profitBeforeTax - incomeTax) * 100) / 100;
+      const margin = revenueExVat > 0 ? Math.round(netProfit / revenueExVat * 1000) / 10 : 0;
+
+      // === Income summary ===
+      const totalIncome = incomes.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+      const confirmedIncome = incomes.filter(i => i.confirmed).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+
+      return {
+        work_id: workId,
+        work_title: work.work_title,
+        contract_value: contractValue,
+        vat_pct: vatPct,
+        tax_rate: taxRate,
+
+        revenue: {
+          with_vat: contractValue,
+          ex_vat: revenueExVat,
+          vat_charged: vatCharged,
+        },
+
+        expenses: {
+          categories: Object.values(catMap).sort((a, b) => (b.sum - a.sum)),
+          total: Math.round(totalExpenses * 100) / 100,
+          total_with_tax: totalExpensesWithTax,
+        },
+
+        vat: {
+          charged: vatCharged,
+          deductible: totalVatDeductible,
+          payable: vatPayable,
+        },
+
+        taxes: {
+          rate: taxRate,
+          burden: totalTaxBurden,
+        },
+
+        profit: {
+          before_tax: profitBeforeTax,
+          income_tax_rate: incomeTaxRate,
+          income_tax: incomeTax,
+          net: netProfit,
+          margin: margin,
+        },
+
+        incomes: {
+          items: incomes,
+          total: Math.round(totalIncome * 100) / 100,
+          confirmed: Math.round(confirmedIncome * 100) / 100,
+        },
+      };
+    } catch (err) {
+      fastify.log.error('[works] financial-summary error:', err.message);
+      return reply.code(500).send({ error: 'Ошибка расчёта' });
+    }
+  });
+
   // B9: Справочник переходов статусов (для фронтенда)
   fastify.get('/statuses/transitions', { preHandler: [fastify.authenticate] }, async () => {
     return { transitions: STATUS_TRANSITIONS };

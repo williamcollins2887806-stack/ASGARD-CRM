@@ -1003,6 +1003,17 @@ window.AsgardPmWorksPage=(function(){
           // ─── Финансы ───
           actions.push({ section: 'Финансы' });
           actions.push({
+            icon: '📈', label: 'Фин. дашборд',
+            desc: 'Полная финансовая картина: НДС, налоги, прибыль',
+            onClick: () => {
+              if(window.AsgardWorkFinance && AsgardWorkFinance.openFinanceDashboard){
+                AsgardWorkFinance.openFinanceDashboard(w, user);
+              } else {
+                toast("Финансы", "Модуль фин. дашборда не загружен", "err");
+              }
+            }
+          });
+          actions.push({
             icon: '💰', label: 'Расходы',
             desc: 'Управление расходами по работе',
             onClick: () => {
