@@ -713,24 +713,26 @@ async function routes(fastify, options) {
     try {
       const workId = parseInt(req.params.work_id);
       const { employee_id, date, shift, hours_worked, hours_paid, day_rate,
-              amount_earned, status, notes } = req.body || {};
+              amount_earned, status, note } = req.body || {};
       if (!employee_id || !date) {
         return reply.code(400).send({ error: 'employee_id и date обязательны' });
       }
       const pts = day_rate != null ? day_rate : 0;
       const amt = amount_earned != null ? amount_earned : pts;
+      // checkin_at is NOT NULL — default to start of the date
+      const checkinAt = date + 'T08:00:00';
       const { rows } = await db.query(`
         INSERT INTO field_checkins (work_id, employee_id, date, shift,
-          hours_worked, hours_paid, day_rate, amount_earned, status,
-          checkin_source, notes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'manual', $10)
+          checkin_at, hours_worked, hours_paid, day_rate, amount_earned, status,
+          checkin_source, note)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'manual', $11)
         RETURNING *
-      `, [workId, employee_id, date, shift || 'day',
+      `, [workId, employee_id, date, shift || 'day', checkinAt,
           hours_worked || 11, hours_paid || 11, pts, amt,
-          status || 'completed', notes || null]);
+          status || 'completed', note || null]);
       return { ok: true, checkin: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-manage] create checkin error:', err);
+      fastify.log.error('[field-manage] create checkin error:', err.message);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -742,7 +744,7 @@ async function routes(fastify, options) {
     try {
       const id = parseInt(req.params.id);
       const workId = parseInt(req.params.work_id);
-      const { shift, hours_worked, hours_paid, day_rate, amount_earned, status, notes } = req.body || {};
+      const { shift, hours_worked, hours_paid, day_rate, amount_earned, status, note } = req.body || {};
       const { rows } = await db.query(`
         UPDATE field_checkins SET
           shift = COALESCE($3, shift),
@@ -751,17 +753,17 @@ async function routes(fastify, options) {
           day_rate = COALESCE($6, day_rate),
           amount_earned = COALESCE($7, amount_earned),
           status = COALESCE($8, status),
-          notes = COALESCE($9, notes),
+          note = COALESCE($9, note),
           updated_at = NOW()
         WHERE id = $1 AND work_id = $2
         RETURNING *
       `, [id, workId, shift || null, hours_worked != null ? hours_worked : null,
           hours_paid != null ? hours_paid : null, day_rate != null ? day_rate : null,
-          amount_earned != null ? amount_earned : null, status || null, notes !== undefined ? notes : null]);
+          amount_earned != null ? amount_earned : null, status || null, note !== undefined ? note : null]);
       if (rows.length === 0) return reply.code(404).send({ error: 'Запись не найдена' });
       return { ok: true, checkin: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-manage] update checkin error:', err);
+      fastify.log.error('[field-manage] update checkin error:', err.message);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
