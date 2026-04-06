@@ -15,6 +15,7 @@ window.AsgardWorkFinance = (function () {
   }
 
   const CAT_LABELS = {
+    payroll: { label: 'ФОТ (начислено)', icon: '👷', taxType: 'payroll' },
     fot: { label: 'ФОТ (начислено)', icon: '👷', taxType: 'payroll' },
     cash: { label: 'Наличные', icon: '💵', taxType: 'payroll' },
     per_diem: { label: 'Суточные', icon: '🍽', taxType: 'payroll' },
@@ -166,10 +167,17 @@ window.AsgardWorkFinance = (function () {
     const tl = d.timeline;
     if (!tl || (!tl.start_plan && !tl.start_fact)) return '';
 
-    const fmtDate = (s) => s ? new Date(s).toLocaleDateString('ru-RU') : '—';
+    const fmtDate = (s) => {
+      if (!s) return '—';
+      // Parse YYYY-MM-DD without timezone shift
+      const parts = s.split('T')[0].split('-');
+      return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    };
     const daysBetween = (a, b) => {
       if (!a || !b) return null;
-      return Math.round((new Date(b) - new Date(a)) / 86400000);
+      const da = new Date(a.split('T')[0] + 'T12:00:00');
+      const db = new Date(b.split('T')[0] + 'T12:00:00');
+      return Math.round((db - da) / 86400000);
     };
 
     const planDays = daysBetween(tl.start_plan, tl.end_plan);
