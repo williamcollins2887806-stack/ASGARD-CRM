@@ -3,11 +3,17 @@
  * ═══════════════════════════════════════════════════════════════
  * POST /projects/:work_id/activate    — activate field project
  * GET  /tariffs                       — tariff grid
+ * POST /tariffs                       — create tariff (ADMIN)
+ * PUT  /tariffs/:id                   — update tariff (ADMIN)
+ * DELETE /tariffs/:id                 — delete tariff (ADMIN)
  * POST /projects/:work_id/crew        — assign crew with tariffs
  * POST /projects/:work_id/send-invites — SMS invites to crew
  * POST /projects/:work_id/broadcast   — broadcast message
  * GET  /projects/:work_id/dashboard   — live dashboard
  * GET  /projects/:work_id/timesheet   — timesheet export
+ * POST /projects/:work_id/checkin     — create checkin
+ * PUT  /projects/:work_id/checkin/:id — update checkin
+ * DELETE /projects/:work_id/checkin/:id — delete checkin
  * GET  /projects/:work_id/progress    — progress from reports
  */
 
@@ -458,7 +464,7 @@ async function routes(fastify, options) {
 
       // Get all checkins for project
       const { rows: checkins } = await db.query(`
-        SELECT fc.employee_id, e.fio, fc.date, fc.shift,
+        SELECT fc.id, fc.employee_id, e.fio, fc.date, fc.shift,
                fc.checkin_at, fc.checkout_at, fc.hours_worked, fc.hours_paid,
                fc.day_rate, fc.amount_earned, fc.status, fc.checkin_source
         FROM field_checkins fc
@@ -489,6 +495,7 @@ async function routes(fastify, options) {
         }
         const emp = byEmployee[row.employee_id];
         emp.days.push({
+          id: row.id,
           date: row.date,
           shift: row.shift,
           hours_worked: parseFloat(row.hours_worked || 0),
@@ -615,6 +622,165 @@ async function routes(fastify, options) {
       return { timesheet, per_diem_rate: perDiem };
     } catch (err) {
       fastify.log.error('[field-manage] timesheet error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /tariffs — create tariff (ADMIN only)
+  // ─────────────────────────────────────────────────────────────────────
+  const adminCheck = { preHandler: [fastify.requireRoles(['ADMIN'])] };
+
+  fastify.post('/tariffs', adminCheck, async (req, reply) => {
+    try {
+      const { category, position_name, points, rate_per_shift, point_value,
+              sort_order, is_combinable, requires_approval, notes } = req.body || {};
+      if (!category || !position_name) {
+        return reply.code(400).send({ error: 'category и position_name обязательны' });
+      }
+      const { rows } = await db.query(`
+        INSERT INTO field_tariff_grid (category, position_name, points, rate_per_shift,
+          point_value, sort_order, is_active, is_combinable, requires_approval, notes)
+        VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9)
+        RETURNING *
+      `, [category, position_name, points || 0, rate_per_shift || 0,
+          point_value || 500, sort_order || 0, is_combinable || false,
+          requires_approval || false, notes || null]);
+      return { ok: true, tariff: rows[0] };
+    } catch (err) {
+      fastify.log.error('[field-manage] create tariff error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // PUT /tariffs/:id — update tariff (ADMIN only)
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.put('/tariffs/:id', adminCheck, async (req, reply) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { category, position_name, points, rate_per_shift, point_value,
+              sort_order, is_active, is_combinable, requires_approval, notes } = req.body || {};
+      const { rows } = await db.query(`
+        UPDATE field_tariff_grid SET
+          category = COALESCE($2, category),
+          position_name = COALESCE($3, position_name),
+          points = COALESCE($4, points),
+          rate_per_shift = COALESCE($5, rate_per_shift),
+          point_value = COALESCE($6, point_value),
+          sort_order = COALESCE($7, sort_order),
+          is_active = COALESCE($8, is_active),
+          is_combinable = COALESCE($9, is_combinable),
+          requires_approval = COALESCE($10, requires_approval),
+          notes = COALESCE($11, notes),
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `, [id, category || null, position_name || null, points != null ? points : null,
+          rate_per_shift != null ? rate_per_shift : null, point_value != null ? point_value : null,
+          sort_order != null ? sort_order : null, is_active != null ? is_active : null,
+          is_combinable != null ? is_combinable : null, requires_approval != null ? requires_approval : null,
+          notes !== undefined ? notes : null]);
+      if (rows.length === 0) return reply.code(404).send({ error: 'Тариф не найден' });
+      return { ok: true, tariff: rows[0] };
+    } catch (err) {
+      fastify.log.error('[field-manage] update tariff error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // DELETE /tariffs/:id — soft-delete tariff (ADMIN only)
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.delete('/tariffs/:id', adminCheck, async (req, reply) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { rowCount } = await db.query(
+        `UPDATE field_tariff_grid SET is_active = false, updated_at = NOW() WHERE id = $1`, [id]
+      );
+      if (rowCount === 0) return reply.code(404).send({ error: 'Тариф не найден' });
+      return { ok: true };
+    } catch (err) {
+      fastify.log.error('[field-manage] delete tariff error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /projects/:work_id/checkin — create checkin
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.post('/projects/:work_id/checkin', roleCheck, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id);
+      const { employee_id, date, shift, hours_worked, hours_paid, day_rate,
+              amount_earned, status, notes } = req.body || {};
+      if (!employee_id || !date) {
+        return reply.code(400).send({ error: 'employee_id и date обязательны' });
+      }
+      const pts = day_rate != null ? day_rate : 0;
+      const amt = amount_earned != null ? amount_earned : pts;
+      const { rows } = await db.query(`
+        INSERT INTO field_checkins (work_id, employee_id, date, shift,
+          hours_worked, hours_paid, day_rate, amount_earned, status,
+          checkin_source, notes)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'manual', $10)
+        RETURNING *
+      `, [workId, employee_id, date, shift || 'day',
+          hours_worked || 11, hours_paid || 11, pts, amt,
+          status || 'completed', notes || null]);
+      return { ok: true, checkin: rows[0] };
+    } catch (err) {
+      fastify.log.error('[field-manage] create checkin error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // PUT /projects/:work_id/checkin/:id — update checkin
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.put('/projects/:work_id/checkin/:id', roleCheck, async (req, reply) => {
+    try {
+      const id = parseInt(req.params.id);
+      const workId = parseInt(req.params.work_id);
+      const { shift, hours_worked, hours_paid, day_rate, amount_earned, status, notes } = req.body || {};
+      const { rows } = await db.query(`
+        UPDATE field_checkins SET
+          shift = COALESCE($3, shift),
+          hours_worked = COALESCE($4, hours_worked),
+          hours_paid = COALESCE($5, hours_paid),
+          day_rate = COALESCE($6, day_rate),
+          amount_earned = COALESCE($7, amount_earned),
+          status = COALESCE($8, status),
+          notes = COALESCE($9, notes),
+          updated_at = NOW()
+        WHERE id = $1 AND work_id = $2
+        RETURNING *
+      `, [id, workId, shift || null, hours_worked != null ? hours_worked : null,
+          hours_paid != null ? hours_paid : null, day_rate != null ? day_rate : null,
+          amount_earned != null ? amount_earned : null, status || null, notes !== undefined ? notes : null]);
+      if (rows.length === 0) return reply.code(404).send({ error: 'Запись не найдена' });
+      return { ok: true, checkin: rows[0] };
+    } catch (err) {
+      fastify.log.error('[field-manage] update checkin error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // DELETE /projects/:work_id/checkin/:id — cancel checkin
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.delete('/projects/:work_id/checkin/:id', roleCheck, async (req, reply) => {
+    try {
+      const id = parseInt(req.params.id);
+      const workId = parseInt(req.params.work_id);
+      const { rowCount } = await db.query(
+        `UPDATE field_checkins SET status = 'cancelled', updated_at = NOW() WHERE id = $1 AND work_id = $2`,
+        [id, workId]
+      );
+      if (rowCount === 0) return reply.code(404).send({ error: 'Запись не найдена' });
+      return { ok: true };
+    } catch (err) {
+      fastify.log.error('[field-manage] delete checkin error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

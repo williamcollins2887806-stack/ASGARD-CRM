@@ -909,9 +909,12 @@ window.AsgardFieldTab = (function () {
       <label style="font-size:13px;color:var(--t2)">По:</label>
       <input id="tsTo" type="date" value="${dfTo}" style="padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px" />
       <button class="btn ghost" id="tsLoad" style="font-size:13px">Загрузить</button>
+      <button class="btn" id="tsEdit" style="font-size:13px;background:linear-gradient(135deg,#D4A843,#b8922e);color:#fff">Редактировать</button>
       <button class="btn" id="tsExport" style="font-size:13px;margin-left:auto;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff">📥 Выгрузить Excel</button>
     `;
     container.appendChild(filters);
+
+    let editMode = false;
 
     const tableWrap = document.createElement('div');
     tableWrap.id = 'tsTableWrap';
@@ -925,11 +928,21 @@ window.AsgardFieldTab = (function () {
 
       try {
         const data = await api(`/projects/${work.id}/timesheet?from=${from}&to=${to}`);
-        renderTimesheetTable(tableWrap, data, from, to);
+        renderTimesheetTable(tableWrap, data, from, to, editMode, work);
       } catch (e) {
         tableWrap.innerHTML = '<div class="help" style="color:#ef4444">Ошибка загрузки табеля</div>';
       }
     }
+
+    document.getElementById('tsEdit')?.addEventListener('click', () => {
+      editMode = !editMode;
+      const btn = document.getElementById('tsEdit');
+      if (btn) {
+        btn.textContent = editMode ? 'Просмотр' : 'Редактировать';
+        btn.style.background = editMode ? 'linear-gradient(135deg,#ef4444,#dc2626)' : 'linear-gradient(135deg,#D4A843,#b8922e)';
+      }
+      loadTimesheet();
+    });
 
     document.getElementById('tsLoad')?.addEventListener('click', loadTimesheet);
 
@@ -961,11 +974,11 @@ window.AsgardFieldTab = (function () {
     loadTimesheet();
   }
 
-  function renderTimesheetTable(wrap, data, from, to) {
+  function renderTimesheetTable(wrap, data, from, to, editMode, work) {
     const timesheet = data.timesheet || [];
     const perDiem = data.per_diem_rate || 0;
 
-    if (!timesheet.length) {
+    if (!timesheet.length && !editMode) {
       wrap.innerHTML = '<div class="help" style="text-align:center;padding:40px;color:var(--t2)">Нет данных за выбранный период</div>';
       return;
     }
@@ -991,6 +1004,7 @@ window.AsgardFieldTab = (function () {
     headerHtml += `<th style="${thStyle};text-align:right">Зараб.</th>`;
     headerHtml += `<th style="${thStyle};text-align:right">Суточные</th>`;
     headerHtml += `<th style="${thStyle};text-align:right;color:var(--gold)">Итого</th>`;
+    if (editMode) headerHtml += `<th style="${thStyle};width:40px"></th>`;
     headerHtml += '</tr>';
 
     const thead = document.createElement('thead');
@@ -1019,14 +1033,36 @@ window.AsgardFieldTab = (function () {
         const td = document.createElement('td');
         td.style.cssText = 'padding:4px 6px;text-align:center';
         const day = dayMap[d];
-        if (day) {
-          const h = parseFloat(day.hours_paid || day.hours_worked || 0);
-          td.textContent = h.toFixed(1);
-          td.style.color = h >= 10 ? '#D4A843' : h >= 8 ? '#10b981' : '#3b82f6';
-          td.title = `${d}: ${h.toFixed(1)}ч, ${money(Math.round(day.amount || 0))}₽`;
+
+        if (editMode) {
+          // Editable mode — show points (day_rate / 500)
+          td.style.cursor = 'pointer';
+          td.style.border = '1px dashed var(--brd, rgba(255,255,255,0.15))';
+          td.style.borderRadius = '4px';
+          if (day) {
+            const pts = Math.round(parseFloat(day.day_rate || 0) / 500) || 0;
+            td.textContent = pts;
+            td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
+            td.title = `${pts} баллов = ${money(pts * 500)} ₽. Клик для редактирования`;
+            td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work));
+          } else {
+            td.textContent = '+';
+            td.style.color = 'var(--t2, #4b5563)';
+            td.style.opacity = '0.5';
+            td.title = 'Добавить смену';
+            td.addEventListener('click', () => addCheckinCell(td, emp, d, work));
+          }
         } else {
-          td.textContent = '—';
-          td.style.color = 'var(--t2, #4b5563)';
+          // View mode — show hours
+          if (day) {
+            const h = parseFloat(day.hours_paid || day.hours_worked || 0);
+            td.textContent = h.toFixed(1);
+            td.style.color = h >= 10 ? '#D4A843' : h >= 8 ? '#10b981' : '#3b82f6';
+            td.title = `${d}: ${h.toFixed(1)}ч, ${money(Math.round(day.amount || 0))}₽`;
+          } else {
+            td.textContent = '—';
+            td.style.color = 'var(--t2, #4b5563)';
+          }
         }
         tr.appendChild(td);
       });
@@ -1057,6 +1093,12 @@ window.AsgardFieldTab = (function () {
         tr.appendChild(td);
       });
 
+      if (editMode) {
+        const tdDel = document.createElement('td');
+        tdDel.style.cssText = 'padding:6px 4px;text-align:center';
+        tr.appendChild(tdDel);
+      }
+
       tbody.appendChild(tr);
     });
 
@@ -1080,11 +1122,21 @@ window.AsgardFieldTab = (function () {
       td.textContent = c.v;
       totalTr.appendChild(td);
     });
+    if (editMode) totalTr.appendChild(document.createElement('td'));
     tbody.appendChild(totalTr);
 
     table.appendChild(tbody);
     wrap.innerHTML = '';
     wrap.appendChild(table);
+
+    // Edit mode legend
+    if (editMode) {
+      const legend = document.createElement('div');
+      legend.className = 'help';
+      legend.style.cssText = 'margin-top:8px;font-size:11px;color:var(--t2);display:flex;gap:16px;flex-wrap:wrap';
+      legend.innerHTML = `<span>6 = дорога (3000₽)</span><span>10 = склад (5000₽)</span><span>12 = обычная (6000₽)</span><span>18 = переработка (9000₽)</span><span style="color:var(--gold)">Баллы × 500₽ = ставка</span>`;
+      wrap.appendChild(legend);
+    }
 
     // Summary text
     const summary = document.createElement('div');
@@ -1092,6 +1144,103 @@ window.AsgardFieldTab = (function () {
     summary.style.cssText = 'margin-top:8px;font-size:12px';
     summary.textContent = `${timesheet.length} сотрудников · суточные ${money(perDiem)} ₽/день`;
     wrap.appendChild(summary);
+  }
+
+  // ── Inline edit checkin cell ──
+  function editCheckinCell(td, day, emp, date, work) {
+    const pts = Math.round(parseFloat(day.day_rate || 0) / 500) || 0;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = pts;
+    input.min = 0;
+    input.max = 30;
+    input.style.cssText = 'width:48px;padding:2px 4px;font-size:12px;text-align:center;border:1px solid var(--gold);border-radius:4px;background:var(--bg1);color:var(--t1);outline:none';
+    td.innerHTML = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    async function save() {
+      const newPts = parseInt(input.value) || 0;
+      if (newPts === pts) {
+        td.textContent = pts;
+        td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
+        return;
+      }
+      const newRate = newPts * 500;
+      try {
+        await api(`/projects/${work.id}/checkin/${day.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ day_rate: newRate, amount_earned: newRate }),
+        });
+        td.textContent = newPts;
+        td.style.color = newPts >= 18 ? '#D4A843' : newPts >= 12 ? '#10b981' : '#3b82f6';
+        td.style.transition = 'background 0.5s';
+        td.style.background = 'rgba(16,185,129,0.2)';
+        setTimeout(() => { td.style.background = ''; }, 800);
+      } catch (e) {
+        toast('Ошибка', 'Не удалось сохранить', 'err');
+        td.textContent = pts;
+      }
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { td.textContent = pts; td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6'; }
+    });
+  }
+
+  // ── Add new checkin cell ──
+  function addCheckinCell(td, emp, date, work) {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.value = '12';
+    input.min = 0;
+    input.max = 30;
+    input.style.cssText = 'width:48px;padding:2px 4px;font-size:12px;text-align:center;border:1px solid var(--gold);border-radius:4px;background:var(--bg1);color:var(--t1);outline:none';
+    td.innerHTML = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    async function save() {
+      const pts = parseInt(input.value) || 0;
+      if (pts === 0) { td.textContent = '+'; td.style.color = 'var(--t2)'; td.style.opacity = '0.5'; return; }
+      const rate = pts * 500;
+      try {
+        await api(`/projects/${work.id}/checkin`, {
+          method: 'POST',
+          body: JSON.stringify({
+            employee_id: emp.employee_id,
+            date: date,
+            shift: 'day',
+            hours_worked: 11,
+            hours_paid: 11,
+            day_rate: rate,
+            amount_earned: rate,
+          }),
+        });
+        td.textContent = pts;
+        td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
+        td.style.opacity = '1';
+        td.style.transition = 'background 0.5s';
+        td.style.background = 'rgba(16,185,129,0.2)';
+        setTimeout(() => { td.style.background = ''; }, 800);
+        toast('Табель', `Смена ${date} добавлена`, 'ok');
+      } catch (e) {
+        toast('Ошибка', 'Не удалось создать запись', 'err');
+        td.textContent = '+';
+        td.style.color = 'var(--t2)';
+        td.style.opacity = '0.5';
+      }
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { td.textContent = '+'; td.style.color = 'var(--t2)'; td.style.opacity = '0.5'; }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════
