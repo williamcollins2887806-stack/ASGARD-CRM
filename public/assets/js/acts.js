@@ -49,7 +49,7 @@ window.AsgardActsPage = (function(){
     };
     
     const formatMoney = n => AsgardUI.money(n) + ' ₽';
-    const formatDate = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
+    const formatDate = AsgardUI.formatDate;
     
     const html = `
       <div class="acts-page">

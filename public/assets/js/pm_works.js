@@ -1087,7 +1087,7 @@ window.AsgardPmWorksPage=(function(){
                 .filter(l=>l.entity_type==="work" && l.entity_id===w.id)
                 .sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
               const rows = logs.map(l=>`
-                <div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(new Date(l.created_at).toLocaleString("ru-RU"))}</div><div class="role">${esc(l.actor_user_id)}</div></div>
+                <div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(AsgardUI.formatDateTime(l.created_at))}</div><div class="role">${esc(l.actor_user_id)}</div></div>
                 <div class="help" style="margin:6px 0 10px">${esc(l.payload_json||"")}</div>
               `).join("");
               showModal("История (work)", rows || `<div class="help">Пусто.</div>`);
@@ -1310,7 +1310,7 @@ window.AsgardPmWorksPage=(function(){
           box.innerHTML = msgs.map(m=>{
             const u = uById.get(m.author_user_id)||{};
             const who = esc(u.name||("user#"+m.author_user_id));
-            const dt = m.created_at ? new Date(m.created_at).toLocaleString("ru-RU") : "";
+            const dt = m.created_at ? AsgardUI.formatDateTime(m.created_at) : "";
             return `<div class="pill"><div class="who"><b>${who}</b> • ${esc(dt)}</div><div class="role">${esc(m.text||"")}</div></div>`;
           }).join("");
         }
@@ -1604,7 +1604,7 @@ window.AsgardPmWorksPage=(function(){
         const st = { draft: 'Черновик', sent_to_proc: 'У закупщика', proc_responded: 'Ответ', pm_approved: 'РП ✓',
           dir_approved: 'Дир ✓', paid: 'Оплачено', partially_delivered: 'Частично', delivered: 'Доставлено', closed: 'Закрыта' };
         html += `<tr style="cursor:pointer" onclick="AsgardProcurementPage.openDetail(${r.id})">
-          <td>${r.id}</td><td>${r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : '—'}</td>
+          <td>${r.id}</td><td>${r.created_at ? AsgardUI.formatDate(r.created_at) : '—'}</td>
           <td>${AsgardUI.esc(r.title || '')}</td><td>${r.items_total ? Number(r.items_total).toLocaleString('ru-RU') + ' ₽' : '—'}</td>
           <td>${st[r.status] || r.status}</td></tr>`;
       });

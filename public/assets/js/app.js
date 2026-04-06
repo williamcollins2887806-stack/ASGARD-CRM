@@ -978,7 +978,7 @@ try{
           return;
         }
         list.innerHTML = items.map(n=>{
-          const when = n.created_at ? new Date(n.created_at).toLocaleString("ru-RU") : "—";
+          const when = n.created_at ? AsgardUI.formatDateTime(n.created_at) : "—";
           const dot = n.is_read ? `<span class="dot" style="background:var(--t2)"></span>` : `<span class="dot" style="background:var(--amber)"></span>`;
           const link = n.link || n.link_hash || "#/alerts";
           return `<a class="bellitem" href="${esc(link)}" data-nid="${n.id}">
@@ -1874,7 +1874,7 @@ var _setupPinKeypad = null;
               const priorityColors = {urgent: 'var(--err-t)', high: 'var(--orange)', normal: 'var(--info)', low: 'var(--t2)'};
               const statusLabels = {new: 'Новая', accepted: 'Принята', in_progress: 'В работе'};
               document.getElementById('tasksWidgetContent').innerHTML = activeTasks.map(t => {
-                const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleDateString('ru-RU') : '';
+                const deadlineStr = t.deadline ? AsgardUI.formatDate(t.deadline) : '';
                 const isOverdue = t.deadline && new Date(t.deadline) < new Date();
                 return `<div style="padding:12px 16px; margin-bottom:8px; background:rgba(42,59,102,.35); border-left:3px solid ${priorityColors[t.priority] || 'var(--info)'}; border-radius:6px">
                   <div style="font-weight:600">${esc(t.title)}</div>

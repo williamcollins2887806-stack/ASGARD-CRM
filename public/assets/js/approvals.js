@@ -348,10 +348,10 @@ window.AsgardApprovalsPage = (function(){
         const t = tendById.get(e.tender_id)||{};
         const pm = byId.get(e.pm_id)||{};
         const d = calcDerived({price_tkp:e.price_tkp, cost_plan:e.cost_plan});
-        const sent = e.sent_for_approval_at ? new Date(e.sent_for_approval_at).toLocaleString("ru-RU") : "—";
+        const sent = e.sent_for_approval_at ? AsgardUI.formatDateTime(e.sent_for_approval_at) : "—";
         const due = (e.approval_status==="sent") ? addWorkdays(e.sent_for_approval_at||e.created_at||new Date().toISOString(), sla.director_approval_due_workdays) : null;
         const overdue = (e.approval_status==="sent" && due && (Date.now() > due.getTime()));
-        const dueLine = overdue ? `<div class="help">Просрочено: до ${due.toLocaleDateString("ru-RU")}</div>` : ``;
+        const dueLine = overdue ? `<div class="help">Просрочено: до ${AsgardUI.formatDate(due)}</div>` : ``;
         return `<tr data-id="${e.id}"${overdue?` class="overdue"`:``}>
           <td><b>${esc(t.customer_name||"")}</b><div class="help">${esc(t.tender_title||"")}</div></td>
           <td>${esc(pm.name||"")}</td>
@@ -404,7 +404,7 @@ window.AsgardApprovalsPage = (function(){
       const pm = byId.get(est.pm_id)||{};
       const calcRaw = safeParseJSON(est.calc_summary_json, {});
       const calc = calcView(calcRaw);
-      const sent = est.sent_for_approval_at ? new Date(est.sent_for_approval_at).toLocaleString("ru-RU") : "—";
+      const sent = est.sent_for_approval_at ? AsgardUI.formatDateTime(est.sent_for_approval_at) : "—";
       
       // Проверяем есть ли данные калькулятора v2
       const calcV2 = est.calc_v2_json ? safeParseJSON(est.calc_v2_json, null) : null;

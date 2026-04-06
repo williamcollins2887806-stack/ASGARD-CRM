@@ -50,7 +50,7 @@ window.AsgardInvoicesPage = (function(){
     };
     
     const formatMoney = n => AsgardUI.money(n) + ' ₽';
-    const formatDate = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
+    const formatDate = AsgardUI.formatDate;
     
     const html = `
       <div class="invoices-page">
@@ -136,7 +136,7 @@ window.AsgardInvoicesPage = (function(){
     };
     const st = STATUSES[inv.status] || STATUSES.pending;
     const formatMoney = n => AsgardUI.money(n) + ' ₽';
-    const formatDate = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
+    const formatDate = AsgardUI.formatDate;
     const remaining = (inv.total_amount || 0) - (inv.paid_amount || 0);
 
     const html = `

@@ -121,7 +121,7 @@ window.AsgardAllEstimatesPage = (function() {
       const t = tenders.find(x => x.id === e.tender_id);
       const pm = byId.get(e.pm_id);
       const priceNoVat = e.price_tkp != null ? Math.round(Number(e.price_tkp) / (1 + vatPct / 100)) : null;
-      const sent = e.sent_for_approval_at ? new Date(e.sent_for_approval_at).toLocaleDateString('ru-RU') : '';
+      const sent = e.sent_for_approval_at ? AsgardUI.formatDate(e.sent_for_approval_at) : '';
       return `<tr data-id="${e.id}">
         <td><b>${esc(t?.customer_name || '—')}</b><div class="help">${esc(t?.tender_title || '—')}</div></td>
         <td>${esc(pm ? pm.name : '—')}</td>
@@ -165,8 +165,8 @@ window.AsgardAllEstimatesPage = (function() {
       if (!e) { toast('Ошибка', 'Просчёт не найден', 'err'); return; }
       const t = tenders.find(x => x.id === e.tender_id);
       const pm = byId.get(e.pm_id);
-      const sent = e.sent_for_approval_at ? new Date(e.sent_for_approval_at).toLocaleString('ru-RU') : '—';
-      const decided = e.decided_at ? new Date(e.decided_at).toLocaleString('ru-RU') : null;
+      const sent = e.sent_for_approval_at ? AsgardUI.formatDateTime(e.sent_for_approval_at) : '—';
+      const decided = e.decided_at ? AsgardUI.formatDateTime(e.decided_at) : null;
       const decidedBy = e.decided_by_user_id ? byId.get(e.decided_by_user_id) : null;
 
       const canAct = isDirectorRole(user.role) && e.approval_status === 'sent';

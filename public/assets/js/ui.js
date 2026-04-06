@@ -361,7 +361,7 @@ window.AsgardUI = (function(){
   }
 
   // ===== Date Formatting =====
-  function normalizeDateValue(value) {
+  function normalizeDateValue(value, dateOnly) {
     if (value instanceof Date) return new Date(value.getTime());
     if (value === null || value === undefined || value === '') return null;
     if (typeof value === 'number') {
@@ -372,9 +372,24 @@ window.AsgardUI = (function(){
     const raw = String(value).trim();
     if (!raw) return null;
 
-    const ymd = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?!\d)/);
-    if (ymd && !/[T\s]\d{2}:\d{2}/.test(raw)) {
-      return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+    // Extract YYYY-MM-DD from any ISO string
+    const ymd = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (ymd) {
+      const hasRealTime = /[T\s](\d{2}):(\d{2})/.test(raw);
+      const isMidnight = /T00:00:00/.test(raw);
+      // Use local Date constructor when: no time, midnight, or dateOnly mode
+      if (!hasRealTime || isMidnight || dateOnly) {
+        return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+      }
+      // Non-midnight time — parse with timezone
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // DD.MM.YYYY format
+    const dmy = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+    if (dmy) {
+      return new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
     }
 
     const d = new Date(raw);
@@ -387,7 +402,7 @@ window.AsgardUI = (function(){
 
   function formatDate(value, mode = 'dd.mm.yyyy') {
     if (!value) return '—';
-    const d = normalizeDateValue(value);
+    const d = normalizeDateValue(value, true);
     if (!d) return String(value);
 
     const year = d.getFullYear();

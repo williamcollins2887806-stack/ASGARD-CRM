@@ -669,7 +669,7 @@ window.AsgardChatGroups = (function(){
       const isDirect = !c.is_group;
       const isEstimate = c.entity_type === 'estimate';
       const displayName = isDirect ? (c.direct_user_name || c.name) : c.name;
-      const avatarLetter = displayName?.[0] || '?';
+      const avatarLetter = isEstimate ? '📊' : (displayName?.[0] || '?');
       const avatarColor = isDirect ? getAvatarColor(displayName) : '';
       const previewText = c.last_message_text
         ? (c.last_message_sender_name && c.is_group ? c.last_message_sender_name.split(' ')[0] + ': ' : '') + c.last_message_text.substring(0, 40)
@@ -943,7 +943,9 @@ window.AsgardChatGroups = (function(){
       const oc = members.filter(m => m.is_active).length;
       headerTitle = esc(chat.name);
       headerStatus = `<span class="chat-online-dot"></span> ${mc} уч., ${oc} онлайн`;
-      headerAvatar = `<div class="chat-header-avatar group"><span>${esc(chat.name?.[0] || '?')}</span></div>`;
+      headerAvatar = isEstimate
+        ? '<div class="chat-header-avatar group" style="background:linear-gradient(135deg,#d4a843,#b8860b)"><span>📊</span></div>'
+        : `<div class="chat-header-avatar group"><span>${esc(chat.name?.[0] || '?')}</span></div>`;
       const addMemberBtn = isEstimate ? `<button class="chat-header-btn ec-add-member-btn" onclick="AsgardChatGroups.showMembersModal(${chatId})" title="Добавить участника"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></button>` : '';
       headerActions = `
         ${addMemberBtn}

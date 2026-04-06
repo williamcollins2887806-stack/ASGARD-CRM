@@ -106,7 +106,7 @@ window.AsgardAllWorksPage=(function(){
       const color=(settings.status_colors?.work||{})[st]||"#2a6cf1";
       const got = (Number(w.advance_received||0)+Number(w.balance_received||0))||0;
       const left = (w.contract_value||0) ? Math.max(0, Number(w.contract_value||0)-got) : 0;
-      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '\u2014');
+      const fmtDate = AsgardUI.formatDate;
       const start = fmtDate(w.start_in_work_date || t?.work_start_plan);
       const end = fmtDate(w.end_fact || w.end_plan || t?.work_end_plan);
       return `<tr data-id="${w.id}" data-tender-id="${w.tender_id||""}">
@@ -130,7 +130,7 @@ window.AsgardAllWorksPage=(function(){
       const got = (Number(w.advance_received||0) + Number(w.balance_received||0)) || 0;
       const contractVal = Number(w.contract_value||0);
       const pct = contractVal > 0 ? Math.min(100, Math.round((got / contractVal) * 100)) : 0;
-      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+      const fmtDate = AsgardUI.formatDate;
       const start = fmtDate(w.start_in_work_date || t?.work_start_plan);
       const end = fmtDate(w.end_fact || w.end_plan || t?.work_end_plan);
 
