@@ -103,6 +103,7 @@ window.AsgardFieldTab = (function () {
       { id: 'funds', label: '💰 Подотчёт', render: () => renderFundsTab(content, work, user) },
       { id: 'packing', label: '📦 Сборы', render: () => renderPackingTab(content, work, user) },
       { id: 'stages', label: '🗺 Маршруты', render: () => renderStagesTab(content, work, user) },
+      { id: 'payments', label: '💳 Выплаты', render: () => renderPaymentsTab(content, work, user) },
     ];
 
     root.innerHTML = '';
@@ -1984,6 +1985,324 @@ window.AsgardFieldTab = (function () {
           CRSelect.destroy('bulkType');
           document.querySelector('.modal-overlay')?.remove();
           renderStagesTab(parentContainer, work, user);
+        });
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // TAB 8: ВЫПЛАТЫ (PAYMENTS)
+  // ═══════════════════════════════════════════════════════════════════
+
+  async function apiPayments(path, opts) {
+    const r = await fetch('/api/worker-payments' + path, { headers: hdr(), ...opts });
+    return r.json();
+  }
+
+  const PAY_TYPE_LABELS = {
+    per_diem: '🌙 Суточные', salary: '💰 ЗП', advance: '💸 Аванс',
+    bonus: '🎁 Премия', penalty: '⚠️ Удержание'
+  };
+
+  const PAY_STATUS_LABELS = {
+    pending: '🟡 Ожидает', paid: '🟢 Выплачено', confirmed: '✅ Подтверждено', cancelled: '⚫ Отменено'
+  };
+
+  async function renderPaymentsTab(container, work, user) {
+    container.innerHTML = '<div class="help">Загрузка выплат…</div>';
+
+    let summary;
+    try { summary = await apiPayments('/project/' + work.id + '/summary'); } catch (_) {}
+
+    let allPayments;
+    try { allPayments = await apiPayments('/?work_id=' + work.id); } catch (_) {}
+
+    container.innerHTML = '';
+
+    // ─── KPI cards ───────────────────────────────────────────────
+    const kpiData = summary?.totals || {};
+    const kpiItems = [
+      { label: 'ФОТ начислено', value: kpiData.salary || 0, color: '#3b82f6' },
+      { label: 'Суточные', value: kpiData.per_diem || 0, color: '#f59e0b' },
+      { label: 'Авансы', value: kpiData.advance || 0, color: '#8b5cf6' },
+      { label: 'К выплате', value: kpiData.net || 0, color: 'var(--gold, #D4A843)' },
+    ];
+    const kpiRow = document.createElement('div');
+    kpiRow.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px';
+    for (const k of kpiItems) {
+      const card = document.createElement('div');
+      card.style.cssText = 'background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center';
+      card.innerHTML = `<div style="font-size:11px;opacity:.6">${k.label}</div>
+        <div style="font-size:18px;font-weight:700;color:${k.color};margin-top:4px">${money(k.value)} ₽</div>`;
+      kpiRow.appendChild(card);
+    }
+    container.appendChild(kpiRow);
+
+    // ─── Action buttons ──────────────────────────────────────────
+    const actBar = document.createElement('div');
+    actBar.style.cssText = 'display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap';
+    const actions = [
+      { label: '+ Суточные', handler: () => openBulkPerDiemModal(work, container, user) },
+      { label: '+ Аванс', handler: () => openSinglePaymentModal(work, container, user, 'advance') },
+      { label: '+ Премия', handler: () => openSinglePaymentModal(work, container, user, 'bonus') },
+      { label: '+ Удержание', handler: () => openSinglePaymentModal(work, container, user, 'penalty') },
+      { label: '📋 Ведомость ЗП', handler: () => openGenerateSalaryModal(work, container, user) },
+    ];
+    for (const a of actions) {
+      const btn = document.createElement('button');
+      btn.className = 'btn ghost';
+      btn.textContent = a.label;
+      btn.style.cssText = 'font-size:12px;padding:6px 12px';
+      btn.addEventListener('click', a.handler);
+      actBar.appendChild(btn);
+    }
+    container.appendChild(actBar);
+
+    // ─── Employees summary table ─────────────────────────────────
+    const emps = summary?.employees || [];
+    if (emps.length > 0) {
+      const tbl = document.createElement('table');
+      tbl.className = 'fk-table fk-table-small';
+      tbl.style.cssText = 'width:100%;font-size:12px;margin-bottom:12px';
+      tbl.innerHTML = `<thead><tr>
+        <th>ФИО</th><th style="text-align:right">Баллы</th><th style="text-align:right">ЗП</th>
+        <th style="text-align:right">Суточные</th><th style="text-align:right">Авансы</th>
+        <th style="text-align:right">Премии</th><th style="text-align:right">Удержания</th>
+        <th style="text-align:right;color:var(--gold)">К выплате</th><th>Статус</th>
+      </tr></thead>`;
+      const tbody = document.createElement('tbody');
+      for (const e of emps) {
+        const net = parseFloat(e.salary_total) + parseFloat(e.bonus_total)
+          - parseFloat(e.penalty_total) - parseFloat(e.advance_total);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${esc(e.employee_name)}</td>
+          <td style="text-align:right">${e.total_points || 0}</td>
+          <td style="text-align:right">${money(e.salary_total)} ₽</td>
+          <td style="text-align:right">${money(e.per_diem_total)} ₽</td>
+          <td style="text-align:right">${money(e.advance_total)} ₽</td>
+          <td style="text-align:right">${money(e.bonus_total)} ₽</td>
+          <td style="text-align:right">${money(e.penalty_total)} ₽</td>
+          <td style="text-align:right;font-weight:600;color:var(--gold)">${money(net)} ₽</td>
+          <td><span style="font-size:11px">${PAY_STATUS_LABELS[e.salary_status] || '—'}</span></td>
+        `;
+        tbody.appendChild(tr);
+      }
+      tbl.appendChild(tbody);
+      container.appendChild(tbl);
+    }
+
+    // ─── All payments list ───────────────────────────────────────
+    const payments = allPayments?.payments || [];
+    if (payments.length > 0) {
+      const hd = document.createElement('div');
+      hd.style.cssText = 'font-weight:600;font-size:13px;margin:12px 0 8px';
+      hd.textContent = 'Все операции (' + payments.length + ')';
+      container.appendChild(hd);
+
+      const tbl2 = document.createElement('table');
+      tbl2.className = 'fk-table fk-table-small';
+      tbl2.style.cssText = 'width:100%;font-size:11px';
+      tbl2.innerHTML = `<thead><tr>
+        <th>Дата</th><th>Тип</th><th>Сотрудник</th><th style="text-align:right">Сумма</th>
+        <th>Комментарий</th><th>Статус</th><th></th>
+      </tr></thead>`;
+      const tbody2 = document.createElement('tbody');
+      for (const p of payments) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${formatDate(p.created_at)}</td>
+          <td>${PAY_TYPE_LABELS[p.type] || p.type}</td>
+          <td>${esc(p.employee_name || '—')}</td>
+          <td style="text-align:right;font-weight:600">${money(p.amount)} ₽</td>
+          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.comment || '—')}</td>
+          <td>${PAY_STATUS_LABELS[p.status] || p.status}</td>
+          <td>${p.status === 'pending' ? '<button class="btn ghost cancel-pay" data-id="' + p.id + '" style="font-size:10px;padding:3px 6px;color:#ef4444">✕</button>' : ''}</td>
+        `;
+        tbody2.appendChild(tr);
+      }
+      tbl2.appendChild(tbody2);
+      container.appendChild(tbl2);
+
+      // Cancel handlers
+      container.querySelectorAll('.cancel-pay').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Отменить эту выплату?')) return;
+          try {
+            await fetch('/api/worker-payments/' + btn.dataset.id, { method: 'DELETE', headers: hdr() });
+            toast('Выплата отменена');
+            renderPaymentsTab(container, work, user);
+          } catch (err) { toast('Ошибка: ' + err.message); }
+        });
+      });
+    } else if (emps.length === 0) {
+      container.innerHTML += '<div class="help" style="padding:32px;text-align:center">Нет выплат для этого проекта</div>';
+    }
+  }
+
+  // ─── Modal: массовые суточные ──────────────────────────────────
+  async function openBulkPerDiemModal(work, parentContainer, user) {
+    // Load crew
+    let crewOptions = [];
+    try {
+      const dash = await api('/projects/' + work.id + '/dashboard');
+      if (dash?.crew) crewOptions = dash.crew.map(c => ({ id: c.employee_id, fio: c.fio || c.employee_name || 'ID ' + c.employee_id }));
+    } catch (_) {}
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    let checkboxesHtml = crewOptions.map(c =>
+      `<label style="display:flex;align-items:center;gap:6px;padding:4px 0">
+        <input type="checkbox" class="pd-emp-cb" value="${c.id}" checked> ${esc(c.fio)}
+      </label>`
+    ).join('');
+
+    AsgardUI.showModal({
+      title: '🌙 Начислить суточные',
+      html: `
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:520px">
+          <div style="font-weight:600;font-size:13px">Сотрудники:</div>
+          <div style="max-height:200px;overflow-y:auto;border:1px solid var(--brd,rgba(255,255,255,0.1));border-radius:8px;padding:8px">
+            ${checkboxesHtml || '<span class="help">Нет сотрудников в бригаде</span>'}
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <label>Период с<input id="pdFrom" type="date" class="inp" value="${today}"></label>
+            <label>Период по<input id="pdTo" type="date" class="inp" value="${today}"></label>
+          </div>
+          <label>Ставка, ₽/день<input id="pdRate" type="number" class="inp" value="1000" style="width:100%"></label>
+          <label>Комментарий<input id="pdComment" type="text" class="inp" style="width:100%" placeholder="Командировка..."></label>
+          <button id="pdSubmit" class="btn gold" style="margin-top:8px">Начислить</button>
+        </div>
+      `,
+      onMount: () => {
+        document.getElementById('pdSubmit').addEventListener('click', async () => {
+          const empIds = Array.from(document.querySelectorAll('.pd-emp-cb:checked')).map(cb => parseInt(cb.value));
+          const from = document.getElementById('pdFrom').value;
+          const to = document.getElementById('pdTo').value;
+          const rate = parseFloat(document.getElementById('pdRate').value);
+          const comment = document.getElementById('pdComment').value.trim();
+
+          if (empIds.length === 0) { toast('Выберите сотрудников'); return; }
+          if (!from || !to) { toast('Укажите период'); return; }
+          if (!rate || rate <= 0) { toast('Укажите ставку'); return; }
+
+          try {
+            const result = await apiPayments('/bulk-per-diem', {
+              method: 'POST',
+              body: JSON.stringify({
+                work_id: work.id, employee_ids: empIds,
+                period_from: from, period_to: to,
+                rate_per_day: rate, comment: comment || null
+              })
+            });
+            if (result.error) { toast('Ошибка: ' + result.error); return; }
+            toast(`Суточные начислены: ${result.count} чел.`);
+            document.querySelector('.modal-overlay')?.remove();
+            renderPaymentsTab(parentContainer, work, user);
+          } catch (err) { toast('Ошибка: ' + err.message); }
+        });
+      }
+    });
+  }
+
+  // ─── Modal: одиночная выплата (аванс/премия/удержание) ─────────
+  function openSinglePaymentModal(work, parentContainer, user, type) {
+    const typeLabel = { advance: 'Аванс', bonus: 'Премия', penalty: 'Удержание' }[type] || type;
+    const typeIcon = { advance: '💸', bonus: '🎁', penalty: '⚠️' }[type] || '💳';
+
+    AsgardUI.showModal({
+      title: typeIcon + ' ' + typeLabel,
+      html: `
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:480px">
+          <label>Сотрудник<div id="spEmpWrap" style="width:100%"></div></label>
+          <label>Сумма, ₽<input id="spAmount" type="number" step="0.01" class="inp" style="width:100%" placeholder="10000"></label>
+          <label>Комментарий<input id="spComment" type="text" class="inp" style="width:100%" placeholder="Причина..."></label>
+          <button id="spSubmit" class="btn gold" style="margin-top:8px">Создать</button>
+        </div>
+      `,
+      onMount: async () => {
+        // Load crew options
+        const _spOpts = [];
+        try {
+          const dash = await api('/projects/' + work.id + '/dashboard');
+          if (dash?.crew) {
+            for (const c of dash.crew) {
+              _spOpts.push({ value: String(c.employee_id), label: c.fio || c.employee_name || 'ID ' + c.employee_id });
+            }
+          }
+        } catch (_) {}
+        const wrap = document.getElementById('spEmpWrap');
+        if (wrap && window.CRSelect) {
+          wrap.appendChild(CRSelect.create({
+            id: 'spEmp', options: _spOpts, placeholder: '— Выберите сотрудника —', fullWidth: true
+          }));
+        }
+
+        document.getElementById('spSubmit').addEventListener('click', async () => {
+          const empId = window.CRSelect ? CRSelect.getValue('spEmp') : '';
+          const amount = parseFloat(document.getElementById('spAmount').value);
+          const comment = document.getElementById('spComment').value.trim();
+
+          if (!empId) { toast('Выберите сотрудника'); return; }
+          if (!amount || amount <= 0) { toast('Укажите сумму'); return; }
+
+          try {
+            const result = await apiPayments('/', {
+              method: 'POST',
+              body: JSON.stringify({
+                employee_id: parseInt(empId), work_id: work.id,
+                type, amount, comment: comment || null
+              })
+            });
+            if (result.error) { toast('Ошибка: ' + result.error); return; }
+            toast(typeLabel + ' создан(а)!');
+            try { CRSelect.destroy('spEmp'); } catch (_) {}
+            document.querySelector('.modal-overlay')?.remove();
+            renderPaymentsTab(parentContainer, work, user);
+          } catch (err) { toast('Ошибка: ' + err.message); }
+        });
+      }
+    });
+  }
+
+  // ─── Modal: генерация ведомости ЗП ─────────────────────────────
+  function openGenerateSalaryModal(work, parentContainer, user) {
+    const now = new Date();
+    const curMonth = now.getMonth() + 1;
+    const curYear = now.getFullYear();
+
+    AsgardUI.showModal({
+      title: '📋 Сгенерировать ведомость ЗП',
+      html: `
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:400px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <label>Месяц<input id="salMonth" type="number" min="1" max="12" class="inp" value="${curMonth}"></label>
+            <label>Год<input id="salYear" type="number" min="2024" max="2099" class="inp" value="${curYear}"></label>
+          </div>
+          <label>Стоимость балла, ₽<input id="salPointVal" type="number" class="inp" value="500" style="width:100%"></label>
+          <div class="help" style="font-size:11px">1 балл = 1 рабочая смена. Ведомость формируется из табеля (field_checkins).</div>
+          <button id="salSubmit" class="btn gold" style="margin-top:8px">Сгенерировать</button>
+        </div>
+      `,
+      onMount: () => {
+        document.getElementById('salSubmit').addEventListener('click', async () => {
+          const month = parseInt(document.getElementById('salMonth').value);
+          const year = parseInt(document.getElementById('salYear').value);
+          const pv = parseFloat(document.getElementById('salPointVal').value);
+
+          if (!month || month < 1 || month > 12) { toast('Некорректный месяц'); return; }
+          if (!year) { toast('Некорректный год'); return; }
+
+          try {
+            const result = await apiPayments(`/generate-salary/${year}/${month}`, {
+              method: 'POST',
+              body: JSON.stringify({ point_value: pv, work_id: work.id })
+            });
+            if (result.error) { toast('Ошибка: ' + result.error); return; }
+            toast(`Ведомость: ${result.count} чел. по ${pv}₽/балл`);
+            document.querySelector('.modal-overlay')?.remove();
+            renderPaymentsTab(parentContainer, work, user);
+          } catch (err) { toast('Ошибка: ' + err.message); }
         });
       }
     });

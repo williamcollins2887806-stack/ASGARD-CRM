@@ -407,6 +407,33 @@ async function routes(fastify, options) {
       const totalEarned = parseFloat(allTime[0]?.total_earned || 0);
       const totalPaid = parseFloat(allPaid[0]?.total_paid || 0) + parseFloat(allOTP[0]?.total_otp || 0);
 
+      // Worker payments summary (from worker_payments table)
+      let wpSummary = null;
+      try {
+        const { rows: wpRows } = await db.query(`
+          SELECT
+            SUM(CASE WHEN type IN ('salary','per_diem','bonus') THEN amount ELSE 0 END) as total_earned,
+            SUM(CASE WHEN type IN ('advance','penalty') THEN amount ELSE 0 END) as total_deductions,
+            SUM(CASE WHEN status IN ('paid','confirmed') THEN
+              CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
+                   WHEN type IN ('advance','penalty') THEN -amount ELSE 0 END
+            ELSE 0 END) as total_paid,
+            SUM(CASE WHEN status = 'pending' THEN
+              CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
+                   WHEN type IN ('advance','penalty') THEN -amount ELSE 0 END
+            ELSE 0 END) as total_pending
+          FROM worker_payments WHERE employee_id = $1 AND status != 'cancelled'
+        `, [empId]);
+        if (wpRows[0] && parseFloat(wpRows[0].total_earned || 0) > 0) {
+          wpSummary = {
+            earned: parseFloat(wpRows[0].total_earned || 0),
+            deductions: parseFloat(wpRows[0].total_deductions || 0),
+            paid: parseFloat(wpRows[0].total_paid || 0),
+            pending: parseFloat(wpRows[0].total_pending || 0),
+          };
+        }
+      } catch (_) {}
+
       return {
         current_project: currentProject,
         all_time: {
@@ -414,6 +441,7 @@ async function routes(fastify, options) {
           total_paid: totalPaid,
           total_pending: totalEarned - totalPaid,
         },
+        worker_payments_summary: wpSummary,
       };
     } catch (err) {
       fastify.log.error('[field-worker] /finances error:', err);

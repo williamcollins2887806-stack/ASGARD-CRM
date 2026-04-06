@@ -491,6 +491,7 @@ fastify.register(require("./routes/telephony"), { prefix: "/api/telephony" });
 fastify.register(require("./routes/approval"), { prefix: "/api/approval" });
 fastify.register(require('./routes/stories'), { prefix: '/api/stories' });
 fastify.register(require('./routes/worker_profiles'), { prefix: '/api/worker-profiles' });
+fastify.register(require('./routes/worker-payments'), { prefix: '/api/worker-payments' });
 fastify.register(require('./routes/call-reports'), { prefix: '/api/call-reports' });
 
 // ── Telephony Job Queue & Escalation ──

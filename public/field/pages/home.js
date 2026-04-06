@@ -248,6 +248,7 @@ function buildQuickActions(project, me) {
     { icon: '\u2708\uFE0F', label: '\u0411\u0438\u043B\u0435\u0442\u044B', href: '/field/logistics' },
     { icon: '\uD83D\uDCF7', label: '\u0424\u043E\u0442\u043E', href: '/field/photos' },
     { icon: '\uD83D\uDCCB', label: '\u0418\u0441\u0442\u043E\u0440\u0438\u044F', href: '/field/history' },
+    { icon: '\uD83D\uDCB3', label: '\u0412\u044B\u043F\u043B\u0430\u0442\u044B', href: '/field/earnings' },
   ];
 
   if (isMaster) {

@@ -47,7 +47,8 @@ async function dataRoutes(fastify, options) {
     'pre_tender_requests', 'saved_reports', 'tasks',
     'proxies',
     'hr_requests', 'meetings', 'meeting_participants', 'meeting_minutes',
-    'inbox_applications', 'user_requests', 'training_applications', 'call_history'
+    'inbox_applications', 'user_requests', 'training_applications', 'call_history',
+    'worker_payments'
   ];
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -70,7 +71,8 @@ async function dataRoutes(fastify, options) {
         'bonus_requests', 'doc_sets', 'qa_messages', 'user_dashboard',
         'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
         'permits', 'tasks',
-        'staff_requests', 'staff_request_messages', 'staff_replacements'
+        'staff_requests', 'staff_request_messages', 'staff_replacements',
+        'worker_payments'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -92,7 +94,8 @@ async function dataRoutes(fastify, options) {
         'bank_rules', 'calendar_events', 'chats', 'chat_messages',
         'notifications', 'sync_meta', 'reminders', 'user_dashboard',
         'employee_rates', 'payroll_sheets', 'payroll_items',
-        'payment_registry', 'self_employed', 'one_time_payments'
+        'payment_registry', 'self_employed', 'one_time_payments',
+        'worker_payments'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -152,7 +155,8 @@ async function dataRoutes(fastify, options) {
         'employee_plan', 'bonus_requests', 'doc_sets', 'qa_messages',
         'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
         'permits', 'permit_types',
-        'staff_requests', 'staff_request_messages', 'staff_replacements'
+        'staff_requests', 'staff_request_messages', 'staff_replacements',
+        'worker_payments'
       ],
       ops: ['read', 'create', 'update']
     },

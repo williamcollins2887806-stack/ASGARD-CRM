@@ -1,0 +1,924 @@
+/**
+ * ASGARD Worker Payments API — Выплаты рабочим
+ * ═══════════════════════════════════════════════════════════════
+ * CRM endpoints (PM/HEAD_PM/DIRECTOR/BUH/ADMIN):
+ *   GET    /                              — список выплат (фильтры)
+ *   POST   /                              — создать выплату
+ *   PUT    /:id                           — обновить (если pending)
+ *   DELETE /:id                           — отменить (status=cancelled)
+ *   POST   /bulk-per-diem                 — массовые суточные
+ *   POST   /generate-salary/:year/:month  — ведомость из field_checkins
+ *   POST   /pay-salary/:year/:month       — массово отметить выплату
+ *   GET    /project/:work_id/summary      — сводка по объекту
+ *
+ * Field endpoints (fieldAuthenticate):
+ *   GET    /my                            — мои выплаты
+ *   GET    /my/balance                    — мой баланс
+ *   POST   /my/:id/confirm               — подтвердить получение
+ *
+ * Reports endpoints (DIRECTOR/ADMIN/BUH):
+ *   GET    /reports/payroll/:year/:month          — сводный табель
+ *   GET    /reports/payroll/:year/:month/export   — Excel
+ *   GET    /reports/per-diem/:year/:month         — суточные
+ *   GET    /reports/labor-costs/:year/:month      — ФОТ по объектам
+ *   GET    /reports/worker/:employee_id/year/:year — годовая карточка
+ *   GET    /reports/debts                         — задолженности
+ */
+
+const MANAGE_ROLES = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
+const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
+
+async function routes(fastify, options) {
+  const db = fastify.db;
+  const crmAuth = { preHandler: [fastify.requireRoles(MANAGE_ROLES)] };
+  const fieldAuth = { preHandler: [fastify.fieldAuthenticate] };
+  const dirAuth = { preHandler: [fastify.requireRoles(DIRECTOR_ROLES)] };
+
+  // ═══════════════════════════════════════════════════════════════════
+  // CRM ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ─── GET / — список выплат (фильтры) ──────────────────────────────
+  fastify.get('/', crmAuth, async (req, reply) => {
+    try {
+      const { work_id, employee_id, type, status, pay_year, pay_month, limit: lim, offset: off } = req.query;
+      const conditions = [];
+      const params = [];
+      let idx = 1;
+
+      if (work_id) { conditions.push(`wp.work_id = $${idx++}`); params.push(parseInt(work_id)); }
+      if (employee_id) { conditions.push(`wp.employee_id = $${idx++}`); params.push(parseInt(employee_id)); }
+      if (type) { conditions.push(`wp.type = $${idx++}`); params.push(type); }
+      if (status) { conditions.push(`wp.status = $${idx++}`); params.push(status); }
+      if (pay_year) { conditions.push(`wp.pay_year = $${idx++}`); params.push(parseInt(pay_year)); }
+      if (pay_month) { conditions.push(`wp.pay_month = $${idx++}`); params.push(parseInt(pay_month)); }
+
+      // PM filter: only own projects (unless director/admin)
+      const role = req.user.role;
+      if (!DIRECTOR_ROLES.includes(role) && role !== 'HEAD_PM') {
+        conditions.push(`(wp.work_id IS NULL OR EXISTS (SELECT 1 FROM works w2 WHERE w2.id = wp.work_id AND w2.pm_id = $${idx++}))`);
+        params.push(req.user.id);
+      }
+
+      const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+      const limit = Math.min(parseInt(lim) || 500, 2000);
+      const offset = parseInt(off) || 0;
+
+      const { rows } = await db.query(`
+        SELECT wp.*, e.fio as employee_name, e.phone as employee_phone,
+               w.work_title, w.work_number,
+               cb.fio as created_by_name,
+               pb.fio as paid_by_name
+        FROM worker_payments wp
+        JOIN employees e ON e.id = wp.employee_id
+        LEFT JOIN works w ON w.id = wp.work_id
+        LEFT JOIN employees cb ON cb.user_id = wp.created_by
+        LEFT JOIN employees pb ON pb.user_id = wp.paid_by
+        ${where}
+        ORDER BY wp.created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `, params);
+
+      const { rows: countRows } = await db.query(
+        `SELECT COUNT(*) as total FROM worker_payments wp ${where}`, params
+      );
+
+      return { payments: rows, total: parseInt(countRows[0].total) };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET / error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST / — создать выплату ──────────────────────────────────────
+  fastify.post('/', crmAuth, async (req, reply) => {
+    try {
+      const userId = req.user.id;
+      const {
+        employee_id, work_id, type, period_from, period_to,
+        pay_month, pay_year, amount, days, rate_per_day,
+        total_points, point_value, works_detail,
+        payment_method, comment
+      } = req.body || {};
+
+      if (!employee_id || !type || !amount) {
+        return reply.code(400).send({ error: 'Укажите employee_id, type, amount' });
+      }
+      if (parseFloat(amount) <= 0 && type !== 'penalty') {
+        return reply.code(400).send({ error: 'Сумма должна быть больше 0' });
+      }
+
+      const validTypes = ['per_diem', 'salary', 'advance', 'bonus', 'penalty'];
+      if (!validTypes.includes(type)) {
+        return reply.code(400).send({ error: 'Недопустимый тип: ' + type });
+      }
+
+      // Verify employee
+      const { rows: emp } = await db.query('SELECT id FROM employees WHERE id = $1', [employee_id]);
+      if (emp.length === 0) return reply.code(404).send({ error: 'Сотрудник не найден' });
+
+      // Verify work if provided
+      if (work_id) {
+        const { rows: work } = await db.query('SELECT id FROM works WHERE id = $1', [work_id]);
+        if (work.length === 0) return reply.code(404).send({ error: 'Проект не найден' });
+      }
+
+      const { rows: inserted } = await db.query(`
+        INSERT INTO worker_payments (
+          employee_id, work_id, type, period_from, period_to,
+          pay_month, pay_year, amount, days, rate_per_day,
+          total_points, point_value, works_detail,
+          payment_method, comment, created_by
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        RETURNING *
+      `, [
+        employee_id, work_id || null, type,
+        period_from || null, period_to || null,
+        pay_month ? parseInt(pay_month) : null,
+        pay_year ? parseInt(pay_year) : null,
+        parseFloat(amount), days ? parseInt(days) : null,
+        rate_per_day ? parseFloat(rate_per_day) : null,
+        total_points ? parseFloat(total_points) : null,
+        point_value ? parseFloat(point_value) : null,
+        works_detail ? JSON.stringify(works_detail) : null,
+        payment_method || null, comment || null, userId
+      ]);
+
+      return { payment: inserted[0] };
+    } catch (err) {
+      fastify.log.error('[worker-payments] POST / error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── PUT /:id — обновить выплату (если pending) ────────────────────
+  fastify.put('/:id', crmAuth, async (req, reply) => {
+    try {
+      const paymentId = parseInt(req.params.id);
+      const { rows: existing } = await db.query('SELECT * FROM worker_payments WHERE id = $1', [paymentId]);
+      if (existing.length === 0) return reply.code(404).send({ error: 'Выплата не найдена' });
+      if (existing[0].status !== 'pending') {
+        return reply.code(400).send({ error: 'Можно редактировать только pending выплаты' });
+      }
+
+      const allowed = ['amount', 'days', 'rate_per_day', 'total_points', 'point_value',
+        'payment_method', 'comment', 'period_from', 'period_to', 'pay_month', 'pay_year',
+        'works_detail', 'work_id'];
+      const sets = [];
+      const params = [];
+      let idx = 1;
+
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) {
+          sets.push(`${key} = $${idx++}`);
+          const val = req.body[key];
+          params.push(key === 'works_detail' && val ? JSON.stringify(val) : val === '' ? null : val);
+        }
+      }
+      if (sets.length === 0) return reply.code(400).send({ error: 'Нет полей для обновления' });
+
+      sets.push(`updated_at = NOW()`);
+      params.push(paymentId);
+
+      const { rows } = await db.query(
+        `UPDATE worker_payments SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, params
+      );
+
+      return { payment: rows[0] };
+    } catch (err) {
+      fastify.log.error('[worker-payments] PUT /:id error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── DELETE /:id — отменить выплату ────────────────────────────────
+  fastify.delete('/:id', crmAuth, async (req, reply) => {
+    try {
+      const paymentId = parseInt(req.params.id);
+      const { rows: existing } = await db.query('SELECT * FROM worker_payments WHERE id = $1', [paymentId]);
+      if (existing.length === 0) return reply.code(404).send({ error: 'Выплата не найдена' });
+      if (existing[0].status === 'cancelled') return reply.code(400).send({ error: 'Уже отменена' });
+
+      await db.query(
+        `UPDATE worker_payments SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+        [paymentId]
+      );
+
+      return { ok: true };
+    } catch (err) {
+      fastify.log.error('[worker-payments] DELETE /:id error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /bulk-per-diem — массовые суточные ──────────────────────
+  fastify.post('/bulk-per-diem', crmAuth, async (req, reply) => {
+    try {
+      const userId = req.user.id;
+      const { work_id, employee_ids, period_from, period_to, rate_per_day, payment_method, comment } = req.body || {};
+
+      if (!work_id || !employee_ids || !employee_ids.length || !period_from || !period_to) {
+        return reply.code(400).send({ error: 'Укажите work_id, employee_ids, period_from, period_to' });
+      }
+
+      const rate = parseFloat(rate_per_day) || 1000;
+      const from = new Date(period_from);
+      const to = new Date(period_to);
+      if (isNaN(from.getTime()) || isNaN(to.getTime()) || to < from) {
+        return reply.code(400).send({ error: 'Некорректный период' });
+      }
+
+      const days = Math.round((to - from) / (1000 * 60 * 60 * 24)) + 1;
+      const amount = days * rate;
+
+      const created = [];
+      for (const empId of employee_ids) {
+        const { rows } = await db.query(`
+          INSERT INTO worker_payments (
+            employee_id, work_id, type, period_from, period_to,
+            days, rate_per_day, amount, payment_method, comment, created_by, status
+          ) VALUES ($1,$2,'per_diem',$3,$4,$5,$6,$7,$8,$9,$10,'pending')
+          RETURNING *
+        `, [empId, work_id, period_from, period_to, days, rate, amount,
+            payment_method || null, comment || null, userId]);
+        created.push(rows[0]);
+      }
+
+      return { payments: created, count: created.length };
+    } catch (err) {
+      fastify.log.error('[worker-payments] POST /bulk-per-diem error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /generate-salary/:year/:month — ведомость из checkins ───
+  fastify.post('/generate-salary/:year/:month', crmAuth, async (req, reply) => {
+    try {
+      const userId = req.user.id;
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+      const pointValue = parseFloat(req.body?.point_value) || 500;
+      const workIdFilter = req.body?.work_id ? parseInt(req.body.work_id) : null;
+
+      if (!year || !month || month < 1 || month > 12) {
+        return reply.code(400).send({ error: 'Некорректный год/месяц' });
+      }
+
+      // Check if already generated
+      const { rows: existCheck } = await db.query(
+        `SELECT COUNT(*) as cnt FROM worker_payments
+         WHERE type = 'salary' AND pay_year = $1 AND pay_month = $2 AND status != 'cancelled'
+         ${workIdFilter ? 'AND work_id = $3' : ''}`,
+        workIdFilter ? [year, month, workIdFilter] : [year, month]
+      );
+      if (parseInt(existCheck[0].cnt) > 0) {
+        return reply.code(409).send({ error: 'Ведомость за этот период уже сгенерирована' });
+      }
+
+      // Aggregate checkins by employee
+      const { rows: checkins } = await db.query(`
+        SELECT fc.employee_id, fc.work_id, w.work_title,
+               COUNT(*) as shift_count,
+               SUM(COALESCE(fc.hours_paid, fc.hours_worked, 0)) as total_hours,
+               SUM(COALESCE(fc.amount_earned, 0)) as total_earned
+        FROM field_checkins fc
+        JOIN works w ON w.id = fc.work_id
+        WHERE EXTRACT(YEAR FROM fc.date) = $1
+          AND EXTRACT(MONTH FROM fc.date) = $2
+          AND fc.status = 'active'
+          ${workIdFilter ? 'AND fc.work_id = $3' : ''}
+        GROUP BY fc.employee_id, fc.work_id, w.work_title
+        ORDER BY fc.employee_id
+      `, workIdFilter ? [year, month, workIdFilter] : [year, month]);
+
+      if (checkins.length === 0) {
+        return reply.code(404).send({ error: 'Нет данных табеля за указанный период' });
+      }
+
+      // Group by employee (may have multiple works)
+      const byEmployee = {};
+      for (const c of checkins) {
+        if (!byEmployee[c.employee_id]) {
+          byEmployee[c.employee_id] = { totalPoints: 0, worksDetail: [] };
+        }
+        const points = parseFloat(c.shift_count); // 1 смена = 1 балл
+        byEmployee[c.employee_id].totalPoints += points;
+        byEmployee[c.employee_id].worksDetail.push({
+          work_id: c.work_id,
+          work_title: c.work_title,
+          days: parseInt(c.shift_count),
+          points,
+          amount: points * pointValue
+        });
+      }
+
+      const created = [];
+      for (const [empId, data] of Object.entries(byEmployee)) {
+        const amount = data.totalPoints * pointValue;
+        const primaryWorkId = data.worksDetail.length === 1
+          ? data.worksDetail[0].work_id
+          : data.worksDetail.sort((a, b) => b.days - a.days)[0].work_id;
+
+        const { rows } = await db.query(`
+          INSERT INTO worker_payments (
+            employee_id, work_id, type, pay_month, pay_year,
+            amount, total_points, point_value, works_detail, created_by
+          ) VALUES ($1,$2,'salary',$3,$4,$5,$6,$7,$8,$9)
+          RETURNING *
+        `, [empId, primaryWorkId, month, year, amount,
+            data.totalPoints, pointValue, JSON.stringify(data.worksDetail), userId]);
+        created.push(rows[0]);
+      }
+
+      return { payments: created, count: created.length, point_value: pointValue };
+    } catch (err) {
+      fastify.log.error('[worker-payments] POST /generate-salary error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /pay-salary/:year/:month — массово отметить выплату ─────
+  fastify.post('/pay-salary/:year/:month', crmAuth, async (req, reply) => {
+    try {
+      const userId = req.user.id;
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+      const paymentMethod = req.body?.payment_method || 'transfer';
+      const workId = req.body?.work_id ? parseInt(req.body.work_id) : null;
+
+      let query = `
+        UPDATE worker_payments
+        SET status = 'paid', paid_at = NOW(), paid_by = $1, payment_method = $2, updated_at = NOW()
+        WHERE type = 'salary' AND pay_year = $3 AND pay_month = $4 AND status = 'pending'
+      `;
+      const params = [userId, paymentMethod, year, month];
+
+      if (workId) {
+        query += ' AND work_id = $5';
+        params.push(workId);
+      }
+
+      const result = await db.query(query, params);
+
+      return { ok: true, updated: result.rowCount };
+    } catch (err) {
+      fastify.log.error('[worker-payments] POST /pay-salary error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /project/:work_id/summary — сводка по объекту ────────────
+  fastify.get('/project/:work_id/summary', crmAuth, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id);
+
+      const { rows } = await db.query(`
+        SELECT
+          wp.employee_id,
+          e.fio as employee_name,
+          SUM(CASE WHEN wp.type = 'salary' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as salary_total,
+          SUM(CASE WHEN wp.type = 'per_diem' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as per_diem_total,
+          SUM(CASE WHEN wp.type = 'advance' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as advance_total,
+          SUM(CASE WHEN wp.type = 'bonus' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as bonus_total,
+          SUM(CASE WHEN wp.type = 'penalty' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as penalty_total,
+          SUM(CASE WHEN wp.type = 'salary' AND wp.status != 'cancelled' THEN COALESCE(wp.total_points, 0) ELSE 0 END) as total_points,
+          COUNT(DISTINCT CASE WHEN wp.type = 'per_diem' AND wp.status != 'cancelled' THEN wp.id END) as per_diem_count,
+          MAX(CASE WHEN wp.type = 'salary' THEN wp.status END) as salary_status
+        FROM worker_payments wp
+        JOIN employees e ON e.id = wp.employee_id
+        WHERE wp.work_id = $1 AND wp.status != 'cancelled'
+        GROUP BY wp.employee_id, e.fio
+        ORDER BY e.fio
+      `, [workId]);
+
+      // Totals
+      let salarySum = 0, perDiemSum = 0, advanceSum = 0, bonusSum = 0, penaltySum = 0;
+      for (const r of rows) {
+        salarySum += parseFloat(r.salary_total);
+        perDiemSum += parseFloat(r.per_diem_total);
+        advanceSum += parseFloat(r.advance_total);
+        bonusSum += parseFloat(r.bonus_total);
+        penaltySum += parseFloat(r.penalty_total);
+      }
+
+      return {
+        employees: rows,
+        totals: {
+          salary: salarySum,
+          per_diem: perDiemSum,
+          advance: advanceSum,
+          bonus: bonusSum,
+          penalty: penaltySum,
+          net: salarySum + bonusSum - penaltySum - advanceSum,
+          grand_total: salarySum + perDiemSum + bonusSum - penaltySum
+        }
+      };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /project/:id/summary error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // FIELD ENDPOINTS (worker via Field PWA)
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ─── GET /my — мои выплаты ─────────────────────────────────────────
+  fastify.get('/my', fieldAuth, async (req, reply) => {
+    try {
+      const empId = req.fieldEmployee.id;
+      const { type, limit: lim } = req.query;
+      const limit = Math.min(parseInt(lim) || 50, 200);
+
+      let query = `
+        SELECT wp.*, w.work_title
+        FROM worker_payments wp
+        LEFT JOIN works w ON w.id = wp.work_id
+        WHERE wp.employee_id = $1 AND wp.status != 'cancelled'
+      `;
+      const params = [empId];
+
+      if (type) {
+        query += ' AND wp.type = $2';
+        params.push(type);
+      }
+
+      query += ` ORDER BY wp.created_at DESC LIMIT ${limit}`;
+
+      const { rows } = await db.query(query, params);
+      return { payments: rows };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /my error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /my/balance — мой баланс ──────────────────────────────────
+  fastify.get('/my/balance', fieldAuth, async (req, reply) => {
+    try {
+      const empId = req.fieldEmployee.id;
+      const year = parseInt(req.query.year) || new Date().getFullYear();
+
+      const { rows } = await db.query(`
+        SELECT
+          SUM(CASE WHEN type = 'salary' THEN amount ELSE 0 END) as salary_total,
+          SUM(CASE WHEN type = 'per_diem' THEN amount ELSE 0 END) as per_diem_total,
+          SUM(CASE WHEN type = 'advance' THEN amount ELSE 0 END) as advance_total,
+          SUM(CASE WHEN type = 'bonus' THEN amount ELSE 0 END) as bonus_total,
+          SUM(CASE WHEN type = 'penalty' THEN amount ELSE 0 END) as penalty_total,
+          SUM(CASE WHEN status = 'paid' OR status = 'confirmed' THEN
+            CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
+                 WHEN type IN ('advance','penalty') THEN -amount ELSE 0 END
+          ELSE 0 END) as total_paid,
+          SUM(CASE WHEN status = 'pending' THEN
+            CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
+                 WHEN type IN ('advance','penalty') THEN -amount ELSE 0 END
+          ELSE 0 END) as total_pending
+        FROM worker_payments
+        WHERE employee_id = $1 AND status != 'cancelled'
+          AND EXTRACT(YEAR FROM created_at) = $2
+      `, [empId, year]);
+
+      const b = rows[0];
+
+      // Per-diem breakdown
+      const { rows: perDiemRows } = await db.query(`
+        SELECT
+          SUM(CASE WHEN status IN ('paid','confirmed') THEN amount ELSE 0 END) as pd_paid,
+          SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) as pd_pending,
+          SUM(amount) as pd_total
+        FROM worker_payments
+        WHERE employee_id = $1 AND type = 'per_diem' AND status != 'cancelled'
+          AND EXTRACT(YEAR FROM created_at) = $2
+      `, [empId, year]);
+
+      const pd = perDiemRows[0];
+
+      return {
+        year,
+        salary: parseFloat(b.salary_total) || 0,
+        per_diem: parseFloat(b.per_diem_total) || 0,
+        advance: parseFloat(b.advance_total) || 0,
+        bonus: parseFloat(b.bonus_total) || 0,
+        penalty: parseFloat(b.penalty_total) || 0,
+        total_earned: (parseFloat(b.salary_total) || 0) + (parseFloat(b.per_diem_total) || 0) + (parseFloat(b.bonus_total) || 0) - (parseFloat(b.penalty_total) || 0),
+        total_paid: parseFloat(b.total_paid) || 0,
+        total_pending: parseFloat(b.total_pending) || 0,
+        per_diem_paid: parseFloat(pd.pd_paid) || 0,
+        per_diem_pending: parseFloat(pd.pd_pending) || 0,
+        per_diem_balance: parseFloat(pd.pd_total) || 0
+      };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /my/balance error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /my/:id/confirm — подтвердить получение ──────────────────
+  fastify.post('/my/:id/confirm', fieldAuth, async (req, reply) => {
+    try {
+      const paymentId = parseInt(req.params.id);
+      const empId = req.fieldEmployee.id;
+
+      const { rows } = await db.query(
+        'SELECT * FROM worker_payments WHERE id = $1 AND employee_id = $2',
+        [paymentId, empId]
+      );
+      if (rows.length === 0) return reply.code(404).send({ error: 'Выплата не найдена' });
+      if (rows[0].status !== 'paid') {
+        return reply.code(400).send({ error: 'Можно подтвердить только выплаченные (paid)' });
+      }
+
+      await db.query(`
+        UPDATE worker_payments
+        SET confirmed_by_worker = true, confirmed_at = NOW(), status = 'confirmed', updated_at = NOW()
+        WHERE id = $1
+      `, [paymentId]);
+
+      return { ok: true, status: 'confirmed' };
+    } catch (err) {
+      fastify.log.error('[worker-payments] POST /my/:id/confirm error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // REPORTS ENDPOINTS (Director/BUH/Admin)
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ─── GET /reports/payroll/:year/:month — сводный табель ────────────
+  fastify.get('/reports/payroll/:year/:month', dirAuth, async (req, reply) => {
+    try {
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+
+      const { rows } = await db.query(`
+        SELECT
+          wp.employee_id, e.fio as employee_name,
+          wp.work_id, w.work_title,
+          SUM(CASE WHEN wp.type = 'salary' THEN wp.amount ELSE 0 END) as salary,
+          SUM(CASE WHEN wp.type = 'per_diem' THEN wp.amount ELSE 0 END) as per_diem,
+          SUM(CASE WHEN wp.type = 'advance' THEN wp.amount ELSE 0 END) as advance,
+          SUM(CASE WHEN wp.type = 'bonus' THEN wp.amount ELSE 0 END) as bonus,
+          SUM(CASE WHEN wp.type = 'penalty' THEN wp.amount ELSE 0 END) as penalty,
+          SUM(CASE WHEN wp.type = 'salary' THEN COALESCE(wp.total_points, 0) ELSE 0 END) as points,
+          SUM(CASE WHEN wp.type = 'salary' THEN COALESCE(wp.days, 0) ELSE 0 END) as shifts,
+          MAX(wp.status) as payment_status
+        FROM worker_payments wp
+        JOIN employees e ON e.id = wp.employee_id
+        LEFT JOIN works w ON w.id = wp.work_id
+        WHERE wp.pay_year = $1 AND wp.pay_month = $2 AND wp.status != 'cancelled'
+        GROUP BY wp.employee_id, e.fio, wp.work_id, w.work_title
+        ORDER BY e.fio, w.work_title
+      `, [year, month]);
+
+      // Totals
+      let totalSalary = 0, totalPerDiem = 0, totalAdvance = 0, totalBonus = 0, totalPenalty = 0;
+      for (const r of rows) {
+        totalSalary += parseFloat(r.salary);
+        totalPerDiem += parseFloat(r.per_diem);
+        totalAdvance += parseFloat(r.advance);
+        totalBonus += parseFloat(r.bonus);
+        totalPenalty += parseFloat(r.penalty);
+      }
+
+      return {
+        year, month,
+        rows,
+        totals: {
+          salary: totalSalary,
+          per_diem: totalPerDiem,
+          advance: totalAdvance,
+          bonus: totalBonus,
+          penalty: totalPenalty,
+          fot: totalSalary + totalBonus - totalPenalty,
+          tax: Math.round((totalSalary + totalBonus - totalPenalty) * 0.55),
+          grand_total: totalSalary + totalPerDiem + totalBonus - totalPenalty
+        }
+      };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /reports/payroll error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /reports/per-diem/:year/:month — суточные ─────────────────
+  fastify.get('/reports/per-diem/:year/:month', dirAuth, async (req, reply) => {
+    try {
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+
+      const { rows } = await db.query(`
+        SELECT wp.*, e.fio as employee_name, w.work_title
+        FROM worker_payments wp
+        JOIN employees e ON e.id = wp.employee_id
+        LEFT JOIN works w ON w.id = wp.work_id
+        WHERE wp.type = 'per_diem' AND wp.pay_year = $1 AND wp.pay_month = $2
+          AND wp.status != 'cancelled'
+        ORDER BY e.fio
+      `, [year, month]);
+
+      return { rows };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /reports/per-diem error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /reports/labor-costs/:year/:month — ФОТ по объектам ───────
+  fastify.get('/reports/labor-costs/:year/:month', dirAuth, async (req, reply) => {
+    try {
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+
+      const { rows } = await db.query(`
+        SELECT
+          wp.work_id, w.work_title, w.work_number,
+          SUM(CASE WHEN wp.type = 'salary' THEN wp.amount ELSE 0 END) as salary,
+          SUM(CASE WHEN wp.type = 'per_diem' THEN wp.amount ELSE 0 END) as per_diem,
+          SUM(CASE WHEN wp.type = 'bonus' THEN wp.amount ELSE 0 END) as bonus,
+          SUM(CASE WHEN wp.type = 'penalty' THEN wp.amount ELSE 0 END) as penalty,
+          COUNT(DISTINCT wp.employee_id) as worker_count
+        FROM worker_payments wp
+        LEFT JOIN works w ON w.id = wp.work_id
+        WHERE wp.pay_year = $1 AND wp.pay_month = $2 AND wp.status != 'cancelled'
+        GROUP BY wp.work_id, w.work_title, w.work_number
+        ORDER BY w.work_title
+      `, [year, month]);
+
+      // Add tax and totals
+      for (const r of rows) {
+        const fot = parseFloat(r.salary) + parseFloat(r.bonus) - parseFloat(r.penalty);
+        r.fot = fot;
+        r.tax = Math.round(fot * 0.55);
+        r.full_cost = fot + r.tax + parseFloat(r.per_diem);
+      }
+
+      return { rows };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /reports/labor-costs error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /reports/worker/:employee_id/year/:year — годовая карточка
+  fastify.get('/reports/worker/:employee_id/year/:year', dirAuth, async (req, reply) => {
+    try {
+      const empId = parseInt(req.params.employee_id);
+      const year = parseInt(req.params.year);
+
+      const { rows: emp } = await db.query('SELECT id, fio, phone FROM employees WHERE id = $1', [empId]);
+      if (emp.length === 0) return reply.code(404).send({ error: 'Сотрудник не найден' });
+
+      const { rows } = await db.query(`
+        SELECT
+          pay_month,
+          SUM(CASE WHEN type = 'salary' THEN amount ELSE 0 END) as salary,
+          SUM(CASE WHEN type = 'per_diem' THEN amount ELSE 0 END) as per_diem,
+          SUM(CASE WHEN type = 'advance' THEN amount ELSE 0 END) as advance,
+          SUM(CASE WHEN type = 'bonus' THEN amount ELSE 0 END) as bonus,
+          SUM(CASE WHEN type = 'penalty' THEN amount ELSE 0 END) as penalty
+        FROM worker_payments
+        WHERE employee_id = $1 AND pay_year = $2 AND status != 'cancelled'
+        GROUP BY pay_month
+        ORDER BY pay_month
+      `, [empId, year]);
+
+      return { employee: emp[0], year, months: rows };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /reports/worker/:id/year/:y error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /reports/debts — задолженности ────────────────────────────
+  fastify.get('/reports/debts', dirAuth, async (req, reply) => {
+    try {
+      const { rows } = await db.query(`
+        SELECT
+          wp.employee_id, e.fio as employee_name,
+          SUM(CASE WHEN wp.type IN ('salary','per_diem','bonus') THEN wp.amount ELSE 0 END) as earned,
+          SUM(CASE WHEN wp.type IN ('advance','penalty') THEN wp.amount ELSE 0 END) as deductions,
+          SUM(CASE WHEN wp.status IN ('paid','confirmed') THEN
+            CASE WHEN wp.type IN ('salary','per_diem','bonus') THEN wp.amount
+                 WHEN wp.type IN ('advance','penalty') THEN -wp.amount ELSE 0 END
+          ELSE 0 END) as paid,
+          SUM(CASE WHEN wp.status = 'pending' THEN
+            CASE WHEN wp.type IN ('salary','per_diem','bonus') THEN wp.amount
+                 WHEN wp.type IN ('advance','penalty') THEN -wp.amount ELSE 0 END
+          ELSE 0 END) as debt
+        FROM worker_payments wp
+        JOIN employees e ON e.id = wp.employee_id
+        WHERE wp.status != 'cancelled'
+        GROUP BY wp.employee_id, e.fio
+        HAVING SUM(CASE WHEN wp.status = 'pending' THEN 1 ELSE 0 END) > 0
+        ORDER BY SUM(CASE WHEN wp.status = 'pending' THEN
+          CASE WHEN wp.type IN ('salary','per_diem','bonus') THEN wp.amount ELSE -wp.amount END
+        ELSE 0 END) DESC
+      `);
+
+      return { rows };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /reports/debts error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /reports/payroll/:year/:month/export — Excel ──────────────
+  fastify.get('/reports/payroll/:year/:month/export', dirAuth, async (req, reply) => {
+    try {
+      const ExcelJS = require('exceljs');
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+      const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+      const mName = monthNames[month - 1] || '';
+      const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5E8F0' } };
+      const totalFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+      const boldFont = { bold: true, size: 11 };
+      const numFmt = '#,##0.00';
+
+      // ── Fetch all data ──
+      const { rows: payroll } = await db.query(`
+        SELECT wp.employee_id, e.fio, wp.work_id, w.work_title, w.work_number,
+          SUM(CASE WHEN wp.type='salary' THEN wp.amount ELSE 0 END) as salary,
+          SUM(CASE WHEN wp.type='per_diem' THEN wp.amount ELSE 0 END) as per_diem,
+          SUM(CASE WHEN wp.type='advance' THEN wp.amount ELSE 0 END) as advance,
+          SUM(CASE WHEN wp.type='bonus' THEN wp.amount ELSE 0 END) as bonus,
+          SUM(CASE WHEN wp.type='penalty' THEN wp.amount ELSE 0 END) as penalty,
+          SUM(CASE WHEN wp.type='salary' THEN COALESCE(wp.total_points,0) ELSE 0 END) as points,
+          MAX(wp.status) as status
+        FROM worker_payments wp
+        JOIN employees e ON e.id=wp.employee_id
+        LEFT JOIN works w ON w.id=wp.work_id
+        WHERE wp.pay_year=$1 AND wp.pay_month=$2 AND wp.status!='cancelled'
+        GROUP BY wp.employee_id, e.fio, wp.work_id, w.work_title, w.work_number
+        ORDER BY e.fio, w.work_title
+      `, [year, month]);
+
+      const { rows: perDiem } = await db.query(`
+        SELECT wp.*, e.fio, w.work_title
+        FROM worker_payments wp JOIN employees e ON e.id=wp.employee_id LEFT JOIN works w ON w.id=wp.work_id
+        WHERE wp.type='per_diem' AND wp.pay_year=$1 AND wp.pay_month=$2 AND wp.status!='cancelled'
+        ORDER BY e.fio
+      `, [year, month]);
+
+      const { rows: advances } = await db.query(`
+        SELECT wp.*, e.fio, w.work_title
+        FROM worker_payments wp JOIN employees e ON e.id=wp.employee_id LEFT JOIN works w ON w.id=wp.work_id
+        WHERE wp.type='advance' AND wp.pay_year=$1 AND wp.pay_month=$2 AND wp.status!='cancelled'
+        ORDER BY e.fio
+      `, [year, month]);
+
+      const { rows: laborCosts } = await db.query(`
+        SELECT wp.work_id, w.work_title, w.work_number,
+          SUM(CASE WHEN wp.type='salary' THEN wp.amount ELSE 0 END) as salary,
+          SUM(CASE WHEN wp.type='per_diem' THEN wp.amount ELSE 0 END) as per_diem,
+          SUM(CASE WHEN wp.type='bonus' THEN wp.amount ELSE 0 END) as bonus,
+          SUM(CASE WHEN wp.type='penalty' THEN wp.amount ELSE 0 END) as penalty,
+          COUNT(DISTINCT wp.employee_id) as workers
+        FROM worker_payments wp LEFT JOIN works w ON w.id=wp.work_id
+        WHERE wp.pay_year=$1 AND wp.pay_month=$2 AND wp.status!='cancelled'
+        GROUP BY wp.work_id, w.work_title, w.work_number ORDER BY w.work_title
+      `, [year, month]);
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = '\u0410\u0421\u0413\u0410\u0420\u0414 CRM';
+      wb.created = new Date();
+
+      // ── Sheet 1: Сводный табель ──
+      const ws1 = wb.addWorksheet('\u0421\u0432\u043E\u0434\u043D\u044B\u0439 \u0442\u0430\u0431\u0435\u043B\u044C');
+      ws1.mergeCells('A1:I1');
+      ws1.getCell('A1').value = `\u0421\u0412\u041E\u0414\u041D\u042B\u0419 \u0422\u0410\u0411\u0415\u041B\u042C \u0412\u042B\u041F\u041B\u0410\u0422 \u2014 ${mName} ${year}`;
+      ws1.getCell('A1').font = { bold: true, size: 14 };
+      ws1.addRow([]);
+      const h1 = ws1.addRow(['\u2116', '\u0424\u0418\u041E', '\u041E\u0431\u044A\u0435\u043A\u0442', '\u0411\u0430\u043B\u043B\u044B', '\u0417\u041F', '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435', '\u0410\u0432\u0430\u043D\u0441\u044B', '\u041F\u0440\u0435\u043C./\u0423\u0434\u0435\u0440\u0436.', '\u0418\u0442\u043E\u0433\u043E']);
+      h1.font = boldFont;
+      h1.eachCell(c => { c.fill = headerFill; c.border = { bottom: { style: 'thin' } }; });
+      ws1.getColumn(1).width = 5; ws1.getColumn(2).width = 28; ws1.getColumn(3).width = 25;
+      ws1.getColumn(4).width = 10; ws1.getColumn(5).width = 14; ws1.getColumn(6).width = 14;
+      ws1.getColumn(7).width = 14; ws1.getColumn(8).width = 14; ws1.getColumn(9).width = 16;
+
+      let t1s=0,t1pd=0,t1a=0,t1bp=0,t1tot=0;
+      payroll.forEach((r, i) => {
+        const net = parseFloat(r.salary)+parseFloat(r.bonus)-parseFloat(r.penalty)+parseFloat(r.per_diem)-parseFloat(r.advance);
+        const row = ws1.addRow([i+1, r.fio, r.work_title||'', parseFloat(r.points), parseFloat(r.salary), parseFloat(r.per_diem), parseFloat(r.advance), parseFloat(r.bonus)-parseFloat(r.penalty), net]);
+        [5,6,7,8,9].forEach(c => { row.getCell(c).numFmt = numFmt; });
+        t1s+=parseFloat(r.salary); t1pd+=parseFloat(r.per_diem); t1a+=parseFloat(r.advance);
+        t1bp+=parseFloat(r.bonus)-parseFloat(r.penalty); t1tot+=net;
+      });
+      const tot1 = ws1.addRow(['', '\u0418\u0422\u041E\u0413\u041E', '', '', t1s, t1pd, t1a, t1bp, t1tot]);
+      tot1.font = boldFont;
+      tot1.eachCell(c => { c.fill = totalFill; });
+      [5,6,7,8,9].forEach(c => { tot1.getCell(c).numFmt = numFmt; });
+
+      // ── Sheet 2: ФОТ ──
+      const ws2 = wb.addWorksheet('\u0424\u041E\u0422');
+      ws2.mergeCells('A1:F1');
+      ws2.getCell('A1').value = `\u0424\u041E\u041D\u0414 \u041E\u041F\u041B\u0410\u0422\u042B \u0422\u0420\u0423\u0414\u0410 \u2014 ${mName} ${year}`;
+      ws2.getCell('A1').font = { bold: true, size: 14 };
+      ws2.addRow([]);
+      const h2 = ws2.addRow(['\u0424\u0418\u041E', '\u0417\u041F', '\u041F\u0440\u0435\u043C\u0438\u0438', '\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F', '\u0424\u041E\u0422', '\u041D\u0430\u043B\u043E\u0433\u0438 55%']);
+      h2.font = boldFont; h2.eachCell(c => { c.fill = headerFill; });
+      ws2.getColumn(1).width = 28; ws2.getColumn(2).width = 14; ws2.getColumn(3).width = 14;
+      ws2.getColumn(4).width = 14; ws2.getColumn(5).width = 14; ws2.getColumn(6).width = 14;
+
+      // Group by employee
+      const byEmp = {};
+      for (const r of payroll) {
+        if (!byEmp[r.employee_id]) byEmp[r.employee_id] = { fio: r.fio, salary: 0, bonus: 0, penalty: 0 };
+        byEmp[r.employee_id].salary += parseFloat(r.salary);
+        byEmp[r.employee_id].bonus += parseFloat(r.bonus);
+        byEmp[r.employee_id].penalty += parseFloat(r.penalty);
+      }
+      let t2s=0, t2b=0, t2p=0;
+      for (const e of Object.values(byEmp)) {
+        const fot = e.salary + e.bonus - e.penalty;
+        const tax = Math.round(fot * 0.55);
+        const row = ws2.addRow([e.fio, e.salary, e.bonus, e.penalty, fot, tax]);
+        [2,3,4,5,6].forEach(c => { row.getCell(c).numFmt = numFmt; });
+        t2s += e.salary; t2b += e.bonus; t2p += e.penalty;
+      }
+      const fotTotal = t2s + t2b - t2p;
+      const tot2 = ws2.addRow(['\u0418\u0422\u041E\u0413\u041E', t2s, t2b, t2p, fotTotal, Math.round(fotTotal * 0.55)]);
+      tot2.font = boldFont; tot2.eachCell(c => { c.fill = totalFill; });
+      [2,3,4,5,6].forEach(c => { tot2.getCell(c).numFmt = numFmt; });
+
+      // ── Sheet 3: Суточные ──
+      const ws3 = wb.addWorksheet('\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435');
+      ws3.mergeCells('A1:F1');
+      ws3.getCell('A1').value = `\u0421\u0423\u0422\u041E\u0427\u041D\u042B\u0415 \u2014 ${mName} ${year}`;
+      ws3.getCell('A1').font = { bold: true, size: 14 };
+      ws3.addRow([]);
+      const h3 = ws3.addRow(['\u0424\u0418\u041E', '\u041E\u0431\u044A\u0435\u043A\u0442', '\u0414\u043D\u0435\u0439', '\u0421\u0442\u0430\u0432\u043A\u0430', '\u041D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', '\u0421\u0442\u0430\u0442\u0443\u0441']);
+      h3.font = boldFont; h3.eachCell(c => { c.fill = headerFill; });
+      ws3.getColumn(1).width = 28; ws3.getColumn(2).width = 25; ws3.getColumn(3).width = 10;
+      ws3.getColumn(4).width = 12; ws3.getColumn(5).width = 14; ws3.getColumn(6).width = 14;
+
+      let t3 = 0;
+      for (const p of perDiem) {
+        const row = ws3.addRow([p.fio, p.work_title||'', p.days||'', parseFloat(p.rate_per_day)||'', parseFloat(p.amount), p.status]);
+        row.getCell(5).numFmt = numFmt;
+        t3 += parseFloat(p.amount);
+      }
+      const tot3 = ws3.addRow(['', '', '', '\u0418\u0422\u041E\u0413\u041E', t3, '']);
+      tot3.font = boldFont; tot3.eachCell(c => { c.fill = totalFill; }); tot3.getCell(5).numFmt = numFmt;
+
+      // ── Sheet 4: Авансы ──
+      const ws4 = wb.addWorksheet('\u0410\u0432\u0430\u043D\u0441\u044B');
+      ws4.mergeCells('A1:E1');
+      ws4.getCell('A1').value = `\u0410\u0412\u0410\u041D\u0421\u042B \u2014 ${mName} ${year}`;
+      ws4.getCell('A1').font = { bold: true, size: 14 };
+      ws4.addRow([]);
+      const h4 = ws4.addRow(['\u0424\u0418\u041E', '\u041E\u0431\u044A\u0435\u043A\u0442', '\u0421\u0443\u043C\u043C\u0430', '\u0414\u0430\u0442\u0430', '\u041A\u043E\u043C\u043C\u0435\u043D\u0442\u0430\u0440\u0438\u0439']);
+      h4.font = boldFont; h4.eachCell(c => { c.fill = headerFill; });
+      ws4.getColumn(1).width = 28; ws4.getColumn(2).width = 25; ws4.getColumn(3).width = 14;
+      ws4.getColumn(4).width = 14; ws4.getColumn(5).width = 30;
+
+      let t4 = 0;
+      for (const a of advances) {
+        const row = ws4.addRow([a.fio, a.work_title||'', parseFloat(a.amount),
+          a.created_at ? new Date(a.created_at).toLocaleDateString('ru-RU') : '', a.comment||'']);
+        row.getCell(3).numFmt = numFmt;
+        t4 += parseFloat(a.amount);
+      }
+      const tot4 = ws4.addRow(['', '\u0418\u0422\u041E\u0413\u041E', t4, '', '']);
+      tot4.font = boldFont; tot4.eachCell(c => { c.fill = totalFill; }); tot4.getCell(3).numFmt = numFmt;
+
+      // ── Sheet 5: Сводка по объектам ──
+      const ws5 = wb.addWorksheet('\u041F\u043E \u043E\u0431\u044A\u0435\u043A\u0442\u0430\u043C');
+      ws5.mergeCells('A1:G1');
+      ws5.getCell('A1').value = `\u0421\u0412\u041E\u0414\u041A\u0410 \u041F\u041E \u041E\u0411\u042A\u0415\u041A\u0422\u0410\u041C \u2014 ${mName} ${year}`;
+      ws5.getCell('A1').font = { bold: true, size: 14 };
+      ws5.addRow([]);
+      const h5 = ws5.addRow(['\u041E\u0431\u044A\u0435\u043A\u0442', '\u0420\u0430\u0431\u043E\u0447\u0438\u0445', '\u0424\u041E\u0422', '\u041D\u0430\u043B\u043E\u0433\u0438', '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435', '\u041F\u043E\u043B\u043D\u0430\u044F \u0441\u0442\u043E\u0438\u043C\u043E\u0441\u0442\u044C']);
+      h5.font = boldFont; h5.eachCell(c => { c.fill = headerFill; });
+      ws5.getColumn(1).width = 30; ws5.getColumn(2).width = 12; ws5.getColumn(3).width = 14;
+      ws5.getColumn(4).width = 14; ws5.getColumn(5).width = 14; ws5.getColumn(6).width = 18;
+
+      let t5f=0, t5t=0, t5pd=0, t5fc=0, t5w=0;
+      for (const r of laborCosts) {
+        const fot = parseFloat(r.salary)+parseFloat(r.bonus)-parseFloat(r.penalty);
+        const tax = Math.round(fot * 0.55);
+        const pd = parseFloat(r.per_diem);
+        const full = fot + tax + pd;
+        const row = ws5.addRow([r.work_title||'\u0411\u0435\u0437 \u043E\u0431\u044A\u0435\u043A\u0442\u0430', parseInt(r.workers), fot, tax, pd, full]);
+        [3,4,5,6].forEach(c => { row.getCell(c).numFmt = numFmt; });
+        t5f+=fot; t5t+=tax; t5pd+=pd; t5fc+=full; t5w+=parseInt(r.workers);
+      }
+      const tot5 = ws5.addRow(['\u0418\u0422\u041E\u0413\u041E', t5w, t5f, t5t, t5pd, t5fc]);
+      tot5.font = boldFont; tot5.eachCell(c => { c.fill = totalFill; });
+      [3,4,5,6].forEach(c => { tot5.getCell(c).numFmt = numFmt; });
+
+      // ── Send ──
+      const buffer = await wb.xlsx.writeBuffer();
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      reply.header('Content-Disposition', `attachment; filename="worker_payments_${year}_${month}.xlsx"`);
+      return reply.send(Buffer.from(buffer));
+    } catch (err) {
+      fastify.log.error('[worker-payments] Excel export error:', err);
+      return reply.code(500).send({ error: '\u041E\u0448\u0438\u0431\u043A\u0430 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0430' });
+    }
+  });
+}
+
+module.exports = routes;
