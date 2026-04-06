@@ -65,7 +65,12 @@ window.AsgardFinancesPage = (function(){
     const officeExpenses = await AsgardDB.all("office_expenses").catch(()=>[]);
 
     // Маппинг алиасов категорий
-    const CAT_ALIASES = { 'chemistry': 'chemicals', 'transport': 'transfer', 'Материалы': 'chemicals' };
+    const CAT_ALIASES = {
+      'chemistry': 'chemicals', 'transport': 'transfer', 'Материалы': 'chemicals',
+      'payroll': 'fot', 'fot_tax': 'fot',
+      'per_diem': 'logistics', 'tickets': 'logistics',
+      'cash': 'other', 'materials': 'chemicals'
+    };
     function normCat(c) { return CAT_ALIASES[c] || c || 'other'; }
     function catExists(c) { return EXPENSE_CATEGORIES.some(x => x.key === c); }
 
