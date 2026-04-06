@@ -465,6 +465,17 @@ async function routes(fastify, options) {
         });
       }
 
+      // Обновить completed_at
+      await db.query('UPDATE works SET completed_at = NOW() WHERE id = $1', [id]);
+
+      // Создать чат при закрытии (fire-and-forget)
+      try {
+        const { createCloseoutChat } = require('../services/workChat');
+        createCloseoutChat(db, parseInt(id), request.user).catch(e =>
+          console.error('[WorkChat] createCloseoutChat error:', e.message)
+        );
+      } catch (e) { console.error('[WorkChat] import error:', e.message); }
+
       return { work: updateRes.rows[0], message: 'Контракт закрыт' };
     } catch (err) {
       fastify.log.error('Closeout error:', err);
@@ -480,16 +491,66 @@ async function routes(fastify, options) {
     try {
       const workId = parseInt(request.params.id);
 
-      // Work data
+      // Work data (extended)
       const { rows: workRows } = await db.query(
         `SELECT id, work_title, contract_value, vat_pct, cost_fact, cost_plan,
                 start_plan, end_plan, start_fact, end_fact,
-                started_at, completed_at, start_in_work_date
+                started_at, completed_at, start_in_work_date,
+                customer_name, customer_inn, pm_id, city, object_name,
+                work_status, tender_id, work_number
          FROM works WHERE id = $1 AND deleted_at IS NULL`,
         [workId]
       );
       if (!workRows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
       const work = workRows[0];
+
+      // PM name
+      let pmName = null;
+      if (work.pm_id) {
+        try {
+          const pmRes = await db.query('SELECT name FROM users WHERE id = $1', [work.pm_id]);
+          pmName = pmRes.rows[0]?.name || null;
+        } catch (_) {}
+      }
+
+      // Crew: employee assignments with shifts/hours/earned
+      let crew = [];
+      try {
+        const crewRes = await db.query(`
+          SELECT e.id, e.full_name, e.position,
+                 COUNT(DISTINCT fc.checkin_date) as shifts,
+                 COALESCE(SUM(fc.hours_worked), 0) as hours,
+                 COALESCE(SUM(fc.earned), 0) as earned
+          FROM employee_assignments ea
+          JOIN employees e ON e.id = ea.employee_id
+          LEFT JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = $1
+          WHERE ea.work_id = $1
+          GROUP BY e.id, e.full_name, e.position
+          ORDER BY earned DESC
+        `, [workId]);
+        crew = crewRes.rows;
+      } catch (_) {}
+
+      // Tender + Estimate data (for timeline)
+      let tenderData = null;
+      let estimateData = null;
+      if (work.tender_id) {
+        try {
+          const tRes = await db.query(
+            'SELECT id, tender_title, customer_name, created_at, status FROM tenders WHERE id = $1',
+            [work.tender_id]
+          );
+          tenderData = tRes.rows[0] || null;
+        } catch (_) {}
+        try {
+          const eRes = await db.query(
+            `SELECT id, title, approval_status, created_at, sent_at
+             FROM estimates WHERE tender_id = $1 ORDER BY id DESC LIMIT 1`,
+            [work.tender_id]
+          );
+          estimateData = eRes.rows[0] || null;
+        } catch (_) {}
+      }
 
       // Expenses by category
       const { rows: expenses } = await db.query(
@@ -613,6 +674,25 @@ async function routes(fastify, options) {
         contract_value: contractValue,
         vat_pct: vatPct,
         tax_rate: taxRate,
+
+        work_meta: {
+          work_number: work.work_number,
+          customer_name: work.customer_name,
+          customer_inn: work.customer_inn,
+          pm_name: pmName,
+          pm_id: work.pm_id,
+          city: work.city,
+          object_name: work.object_name,
+          work_status: work.work_status,
+          tender_id: work.tender_id,
+          completed_at: work.completed_at,
+          cost_plan: parseFloat(work.cost_plan) || 0,
+          cost_fact: parseFloat(work.cost_fact) || 0,
+        },
+
+        crew,
+        tender: tenderData,
+        estimate: estimateData,
 
         revenue: {
           with_vat: contractValue,
