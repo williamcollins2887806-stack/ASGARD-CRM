@@ -482,7 +482,10 @@ async function routes(fastify, options) {
 
       // Work data
       const { rows: workRows } = await db.query(
-        'SELECT id, work_title, contract_value, vat_pct, cost_fact, cost_plan FROM works WHERE id = $1 AND deleted_at IS NULL',
+        `SELECT id, work_title, contract_value, vat_pct, cost_fact, cost_plan,
+                start_plan, end_plan, start_fact, end_fact,
+                started_at, completed_at, start_in_work_date
+         FROM works WHERE id = $1 AND deleted_at IS NULL`,
         [workId]
       );
       if (!workRows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
@@ -500,16 +503,24 @@ async function routes(fastify, options) {
         [workId]
       );
 
-      // Tax rate from settings (fallback 55%)
+      // Tax rates from settings
       let taxRate = 55;
+      let incomeTaxRate = 25;
+      let defaultVatPct = 22;
       try {
         const { rows: settingsRows } = await db.query(
-          "SELECT value_json FROM settings WHERE key = 'payroll_tax_rate'"
+          "SELECT key, value_json FROM settings WHERE key IN ('payroll_tax_rate', 'income_tax_rate', 'vat_default_pct')"
         );
-        if (settingsRows[0]) taxRate = parseFloat(JSON.parse(settingsRows[0].value_json)) || 55;
+        for (const s of settingsRows) {
+          const v = parseFloat(JSON.parse(s.value_json));
+          if (!v) continue;
+          if (s.key === 'payroll_tax_rate') taxRate = v;
+          if (s.key === 'income_tax_rate') incomeTaxRate = v;
+          if (s.key === 'vat_default_pct') defaultVatPct = v;
+        }
       } catch (_) {}
 
-      const vatPct = parseFloat(work.vat_pct) || 20;
+      const vatPct = parseFloat(work.vat_pct) || defaultVatPct;
       const contractValue = parseFloat(work.contract_value) || 0;
 
       // === Revenue ===
@@ -575,14 +586,26 @@ async function routes(fastify, options) {
       // === Profit ===
       // Real cost = expenses + tax burden - VAT deductible (input VAT is refunded)
       const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax + totalVatDeductible) * 100) / 100;
-      const incomeTaxRate = 25;
       const incomeTax = Math.round(profitBeforeTax * incomeTaxRate / 100 * 100) / 100;
       const netProfit = Math.round((profitBeforeTax - incomeTax) * 100) / 100;
       const margin = revenueExVat > 0 ? Math.round(netProfit / revenueExVat * 1000) / 10 : 0;
 
-      // === Income summary ===
+      // === Payment summary ===
+      const today = new Date().toISOString().slice(0, 10);
       const totalIncome = incomes.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
       const confirmedIncome = incomes.filter(i => i.confirmed).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+      const pendingIncome = Math.round((totalIncome - confirmedIncome) * 100) / 100;
+      const receivables = Math.round((contractValue - confirmedIncome) * 100) / 100;
+      const paymentPct = contractValue > 0 ? Math.round(confirmedIncome / contractValue * 1000) / 10 : 0;
+      const overdueItems = incomes.filter(i => !i.confirmed && i.date && i.date < today);
+
+      // === Timeline ===
+      const timeline = {
+        start_plan: work.start_plan || null,
+        end_plan: work.end_plan || null,
+        start_fact: work.start_fact || work.start_in_work_date || null,
+        end_fact: work.end_fact || null,
+      };
 
       return {
         work_id: workId,
@@ -622,6 +645,19 @@ async function routes(fastify, options) {
           margin: margin,
         },
 
+        timeline: timeline,
+
+        payments: {
+          items: incomes,
+          total: Math.round(totalIncome * 100) / 100,
+          confirmed: Math.round(confirmedIncome * 100) / 100,
+          pending: pendingIncome,
+          receivables: receivables,
+          payment_pct: paymentPct,
+          overdue: overdueItems.length,
+        },
+
+        // deprecated, use payments
         incomes: {
           items: incomes,
           total: Math.round(totalIncome * 100) / 100,
