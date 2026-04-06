@@ -229,7 +229,7 @@ window.AsgardOfficeSchedulePage=(function(){
 
       // Строки сотрудников
       const bodyRows = staffSorted.map(s=>{
-        const editable = (s.user_id===user.id) || (!officeStrictOwn && (user.role==="ADMIN" || isDirRole(user.role)));
+        const editable = (s.user_id===user.id) || (!officeStrictOwn && (user.role==="ADMIN" || user.role==="OFFICE_MANAGER" || isDirRole(user.role)));
         const cells=[];
         for(let d=1; d<=numDays; d++){
           const dt = new Date(viewYear, viewMonth, d);

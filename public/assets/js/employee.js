@@ -58,7 +58,7 @@ window.AsgardEmployeePage=(function(){
     const auth=await AsgardAuth.requireUser();
     if(!auth){ location.hash="#/login"; return; }
     const user=auth.user;
-    if(!(user.role==="ADMIN" || user.role==="HR" || user.role==="PM" || user.role==="TO" || isDirRole(user.role))){
+    if(!(user.role==="ADMIN" || user.role==="HR" || user.role==="PM" || user.role==="TO" || user.role==="OFFICE_MANAGER" || user.role==="HR_MANAGER" || user.role==="HEAD_PM" || user.role==="HEAD_TO" || isDirRole(user.role))){
       toast("Доступ","Недостаточно прав","err"); location.hash="#/home"; return;
     }
 

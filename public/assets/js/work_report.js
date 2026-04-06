@@ -502,11 +502,11 @@ window.AsgardWorkReport = (function () {
     const factDays = daysBetween(tl.start_fact, tl.end_fact);
     const devDays = (planDays !== null && factDays !== null) ? factDays - planDays : null;
     const devColor = devDays === null ? 'var(--t2)' : devDays <= 0 ? '#10b981' : '#ef4444';
-    const devText = devDays === null ? '\u2014' : devDays === 0 ? 'в срок' : (devDays > 0 ? '+' + devDays + ' дн.' : devDays + ' дн.');
+    const devText = devDays === null ? '—' : devDays === 0 ? 'В срок ✓' : (devDays > 0 ? 'Задержка +' + devDays + ' дн.' : 'Раньше на ' + Math.abs(devDays) + ' дн.');
 
     const costDev = wm.cost_plan > 0 ? Math.round((wm.cost_fact - wm.cost_plan) / wm.cost_plan * 100) : null;
     const costColor = costDev === null ? 'var(--t2)' : costDev <= 0 ? '#10b981' : '#ef4444';
-    const costText = costDev === null ? '\u2014' : (costDev > 0 ? '+' + costDev + '%' : costDev + '%');
+    const costText = costDev === null ? '—' : (costDev > 0 ? 'Перерасход +' + costDev + '%' : 'Экономия ' + Math.abs(costDev) + '%');
 
     return `<div class="wr-card">
       <div class="wr-card-title">План vs Факт</div>

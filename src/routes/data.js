@@ -31,7 +31,7 @@ async function dataRoutes(fastify, options) {
     'contracts', 'seals', 'seal_transfers', 'employee_permits', 'bonus_requests',
     'sync_meta', 'chats', 'chat_messages', 'call_history', 'user_call_status',
     'user_dashboard', 'bank_rules', 'customers', 'staff', 'staff_plan',
-    'employees', 'employee_reviews', 'customer_reviews', 'employee_assignments',
+    'employees', 'employee_reviews', 'customer_reviews', 'employee_assignments', 'field_project_settings', 'field_project_settings',
     'employee_plan', 'staff_requests', 'staff_request_messages', 'staff_replacements',
     'purchase_requests', 'qa_messages', 'doc_sets', 'documents', 'audit_log',
     'notifications', 'acts', 'invoices', 'invoice_payments', 'email_history',
@@ -67,7 +67,7 @@ async function dataRoutes(fastify, options) {
         'calendar_events', 'customers', 'documents', 'chats', 'chat_messages',
         'equipment', 'equipment_movements', 'equipment_requests',
         'equipment_reservations', 'acts', 'invoices', 'notifications',
-        'sync_meta', 'employee_assignments', 'employee_plan', 'reminders',
+        'sync_meta', 'employee_assignments', 'field_project_settings', 'employee_plan', 'reminders',
         'bonus_requests', 'doc_sets', 'qa_messages', 'user_dashboard',
         'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
         'permits', 'tasks',
@@ -102,7 +102,7 @@ async function dataRoutes(fastify, options) {
     HR: {
       tables: [
         'users', 'tenders', 'works', 'user_call_status',
-        'employees', 'employee_reviews', 'employee_assignments', 'employee_plan',
+        'employees', 'employee_reviews', 'employee_assignments', 'field_project_settings', 'employee_plan',
         'staff', 'staff_plan', 'staff_requests', 'staff_request_messages',
         'staff_replacements', 'employee_permits', 'calendar_events',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
@@ -151,7 +151,7 @@ async function dataRoutes(fastify, options) {
         'work_expenses', 'work_assign_requests', 'pm_consents',
         'contracts', 'customers', 'calendar_events', 'documents',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
-        'acts', 'invoices', 'user_dashboard', 'employee_assignments',
+        'acts', 'invoices', 'user_dashboard', 'employee_assignments', 'field_project_settings',
         'employee_plan', 'bonus_requests', 'doc_sets', 'qa_messages',
         'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
         'permits', 'permit_types',
@@ -174,7 +174,7 @@ async function dataRoutes(fastify, options) {
     HR_MANAGER: {
       tables: [
         'users', 'tenders', 'works', 'user_call_status',
-        'employees', 'employee_reviews', 'employee_assignments', 'employee_plan',
+        'employees', 'employee_reviews', 'employee_assignments', 'field_project_settings', 'employee_plan',
         'staff', 'staff_plan', 'staff_requests', 'staff_request_messages',
         'staff_replacements', 'employee_permits', 'calendar_events',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',

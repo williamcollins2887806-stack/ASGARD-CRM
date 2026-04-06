@@ -92,8 +92,19 @@ window.AsgardUI = (function(){
    * showModal(title, html)
    * showModal({ title, html, fullscreen, onMount })
    */
+  const _modalStack = [];
+
   function showModal(a, b){
     ensureModal();
+    // Stack: if modal is already visible, save current state
+    if(modalBack && modalBack.style.display === "flex"){
+      _modalStack.push({
+        title: $("#modalTitle", modalBack).textContent,
+        html: $("#modalBody", modalBack).innerHTML,
+        fullscreen: $(".modal", modalBack).classList.contains("fullscreen"),
+        wide: $(".modal", modalBack).classList.contains("wide")
+      });
+    }
     let title = "Окно";
     let html = "";
     let fullscreen = false;
@@ -129,6 +140,18 @@ window.AsgardUI = (function(){
 
   function hideModal(){
     if(!modalBack) return;
+    // Stack: if there's a previous modal, restore it instead of hiding
+    if(_modalStack.length > 0){
+      const prev = _modalStack.pop();
+      $("#modalTitle", modalBack).textContent = prev.title;
+      $("#modalBody", modalBack).innerHTML = prev.html;
+      const m = $(".modal", modalBack);
+      if(m){
+        m.classList.toggle("fullscreen", prev.fullscreen);
+        m.classList.toggle("wide", prev.wide);
+      }
+      return;
+    }
     // Animate close on mobile
     const m = $(".modal", modalBack);
     if(m && window.innerWidth <= 768) {

@@ -518,9 +518,9 @@ async function routes(fastify, options) {
       try {
         const crewRes = await db.query(`
           SELECT e.id, e.full_name, e.position,
-                 COUNT(DISTINCT fc.checkin_date) as shifts,
-                 COALESCE(SUM(fc.hours_worked), 0) as hours,
-                 COALESCE(SUM(fc.earned), 0) as earned
+                 COUNT(DISTINCT fc.date) as shifts,
+                 COALESCE(SUM(fc.hours_paid), 0) as hours,
+                 COALESCE(SUM(fc.amount_earned), 0) as earned
           FROM employee_assignments ea
           JOIN employees e ON e.id = ea.employee_id
           LEFT JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = $1

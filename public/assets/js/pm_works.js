@@ -1,4 +1,4 @@
-  const WORK_STATUS_TRANSITIONS = {
+const WORK_STATUS_TRANSITIONS = {
     'Новая':            ['Подготовка'],
     'Подготовка':       ['Мобилизация', 'Новая'],
     'Мобилизация':      ['В работе', 'Подготовка'],
@@ -942,9 +942,9 @@ window.AsgardPmWorksPage=(function(){
         <div class="kpi" style="grid-template-columns:repeat(5,minmax(140px,1fr))">
           <div class="k"><div class="t">Получено</div><div class="v">${money(got)} ₽</div><div class="s">Аванс + остаток</div></div>
           <div class="k"><div class="t">Должны</div><div class="v">${money(left)} ₽</div><div class="s">Остаток к оплате</div></div>
-          <div class="k"><div class="t">Прибыль</div><div class="v">${profit==null?"—":money(Math.round(profit))+" ₽"}</div><div class="s">стоимость − себест.</div></div>
-          <div class="k"><div class="t">Прибыль/день</div><div class="v">${profitPerDay==null?"—":money(Math.round(profitPerDay))+" ₽"}</div><div class="s">по длительности</div></div>
-          <div class="k"><div class="t">Прибыль/чел‑день</div><div class="v">${profitPerManDay==null?"—":money(Math.round(profitPerManDay))+" ₽"}</div><div class="s">по людям×дни</div></div>
+          <div class="k"><div class="t">Прибыль</div><div class="v" id="kpiProfit">${profit==null?"—":money(Math.round(profit))+" ₽"}</div><div class="s" id="kpiProfitSub">валовая (загрузка...)</div></div>
+          <div class="k"><div class="t">Прибыль/день</div><div class="v" id="kpiProfitDay">${profitPerDay==null?"—":money(Math.round(profitPerDay))+" ₽"}</div><div class="s">по длительности</div></div>
+          <div class="k"><div class="t">Прибыль/чел‑день</div><div class="v" id="kpiProfitManDay">${profitPerManDay==null?"—":money(Math.round(profitPerManDay))+" ₽"}</div><div class="s">по людям×дни</div></div>
         </div>
 
         <hr class="hr"/>
@@ -956,6 +956,29 @@ window.AsgardPmWorksPage=(function(){
       `;
 
       showModal(`Работа #${w.id}`, html);
+
+      // Fetch NET profit from financial-summary API
+      (async function(){
+        try {
+          const resp = await fetch('/api/works/' + w.id + '/financial-summary', {headers: hdr()});
+          if(!resp.ok) return;
+          const fs = await resp.json();
+          const el = document.getElementById('kpiProfit');
+          const elDay = document.getElementById('kpiProfitDay');
+          const elManDay = document.getElementById('kpiProfitManDay');
+          const elSub = document.getElementById('kpiProfitSub');
+          if(el && fs.profit) {
+            const net = Math.round(fs.profit.net || 0);
+            el.textContent = money(net) + ' ₽';
+            el.style.color = net >= 0 ? '#10b981' : '#ef4444';
+            if(elSub) elSub.textContent = 'чистая · маржа ' + (fs.profit.margin||0) + '%';
+            const dur = fs.timeline ? daysBetween(fs.timeline.start_fact||fs.timeline.start_plan, fs.timeline.end_fact||fs.timeline.end_plan) : null;
+            const crewN = (fs.crew && fs.crew.length) || Number(w.crew_size||0) || 1;
+            if(elDay && dur > 0) elDay.textContent = money(Math.round(net/dur)) + ' ₽';
+            if(elManDay && dur > 0 && crewN > 0) elManDay.textContent = money(Math.round(net/(crewN*dur))) + ' ₽';
+          }
+        } catch(_){}
+      })();
       const _curWorkStatus = w.work_status || '';
       const _isAdminOrDir = user.role === 'ADMIN' || user.role === 'DIRECTOR_GEN';
       const _workStatusOpts = _isAdminOrDir ? (refs.work_statuses||[]) : [...new Set((WORK_STATUS_TRANSITIONS[_curWorkStatus] || []).concat([_curWorkStatus]))];

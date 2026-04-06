@@ -394,8 +394,11 @@ async function routes(fastify, options) {
         FROM field_checkins WHERE employee_id = $1 AND status = 'completed'
       `, [empId]);
 
+      // Only count ACTUAL payments from worker_payments (not payroll accruals)
       const { rows: allPaid } = await db.query(
-        `SELECT COALESCE(SUM(payout), 0) as total_paid FROM payroll_items WHERE employee_id = $1`,
+        `SELECT COALESCE(SUM(CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
+                                   WHEN type IN ('advance') THEN -amount ELSE 0 END), 0) as total_paid
+         FROM worker_payments WHERE employee_id = $1 AND status = 'paid'`,
         [empId]
       );
 
@@ -523,7 +526,17 @@ async function routes(fastify, options) {
       const totalAdvances = payrollItems.reduce((s, p) => s + parseFloat(p.advance_paid || 0), 0);
       const totalBonuses = payrollItems.reduce((s, p) => s + parseFloat(p.bonus || 0), 0);
       const totalPenalties = payrollItems.reduce((s, p) => s + parseFloat(p.penalty || 0), 0);
-      const totalPaid = payrollItems.reduce((s, p) => s + parseFloat(p.payout || 0), 0);
+      // Actual payments from worker_payments table (not payroll accruals)
+      let totalPaid = 0;
+      try {
+        const { rows: wpPaid } = await db.query(
+          `SELECT COALESCE(SUM(CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
+                                     WHEN type IN ('advance') THEN -amount ELSE 0 END), 0) as paid
+           FROM worker_payments WHERE employee_id = $1 AND work_id = $2 AND status = 'paid'`,
+          [empId, workId]
+        );
+        totalPaid = parseFloat(wpPaid[0]?.paid || 0);
+      } catch(_) {}
 
       const baseAmount = parseFloat(checkinAgg[0]?.base_amount || 0);
       const perDiemTotal = perDiemRate * perDiemDays;
