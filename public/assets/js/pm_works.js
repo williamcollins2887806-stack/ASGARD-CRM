@@ -669,8 +669,8 @@ window.AsgardPmWorksPage=(function(){
       }
       const costPct = pctDelta(factCost, planCost);
       const timePct = pctDelta(factDays, planDays);
-      try{ if(cCost) dial(cCost, costPct, { title:'Δ себестоимость', valueFmt:(v)=>v==null?'—':(Math.round(v*10)/10)+'%' }); }catch(e){}
-      try{ if(cTime) dial(cTime, timePct, { title:'Δ срок', valueFmt:(v)=>v==null?'—':(Math.round(v*10)/10)+'%' }); }catch(e){}
+      try{ if(cCost) dial(cCost, costPct, { title:'Δ себестоимость', valueFmt:(v)=>{if(v==null)return '—'; const r=Math.round(Math.abs(v)*10)/10; return v<0?r+'%':'+'+ r+'%';}, subFmt:(v)=>v==null?'':'факт '+(v<=0?'лучше':'хуже')+' плана' }); }catch(e){}
+      try{ if(cTime) dial(cTime, timePct, { title:'Δ срок', valueFmt:(v)=>{if(v==null)return '—'; const r=Math.round(Math.abs(v)*10)/10; return v<0?r+'%':'+'+r+'%';}, subFmt:(v)=>v==null?'':'факт '+(v<=0?'лучше':'хуже')+' плана' }); }catch(e){}
     }
 
 
