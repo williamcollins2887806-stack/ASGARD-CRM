@@ -1001,7 +1001,7 @@ window.AsgardFieldTab = (function () {
       headerHtml += `<th style="${thStyle};text-align:center">${label}</th>`;
     });
     headerHtml += `<th style="${thStyle};text-align:center">Дней</th>`;
-    headerHtml += `<th style="${thStyle};text-align:right">Часов</th>`;
+    headerHtml += `<th style="${thStyle};text-align:right">Баллов</th>`;
     headerHtml += `<th style="${thStyle};text-align:right">Зараб.</th>`;
     headerHtml += `<th style="${thStyle};text-align:right">Суточные</th>`;
     headerHtml += `<th style="${thStyle};text-align:right;color:var(--gold)">Итого</th>`;
@@ -1054,12 +1054,12 @@ window.AsgardFieldTab = (function () {
             td.addEventListener('click', () => addCheckinCell(td, emp, d, work));
           }
         } else {
-          // View mode — show hours
+          // View mode — show points (баллы = day_rate / 500)
           if (day) {
-            const h = parseFloat(day.hours_paid || day.hours_worked || 0);
-            td.textContent = h.toFixed(1);
-            td.style.color = h >= 10 ? '#D4A843' : h >= 8 ? '#10b981' : '#3b82f6';
-            td.title = `${d}: ${h.toFixed(1)}ч, ${money(Math.round(day.amount || 0))}₽`;
+            const pts = Math.round(parseFloat(day.day_rate || 0) / 500) || 0;
+            td.textContent = pts;
+            td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : pts >= 6 ? '#3b82f6' : 'var(--t2)';
+            td.title = `${d}: ${pts} бал. = ${money(pts * 500)} ₽`;
           } else {
             td.textContent = '—';
             td.style.color = 'var(--t2, #4b5563)';
@@ -1070,19 +1070,19 @@ window.AsgardFieldTab = (function () {
 
       // Summary cells
       const daysCount = emp.days_count || 0;
-      const hours = emp.total_paid_hours || emp.total_hours || 0;
       const earned = emp.total_earned || 0;
+      const totalPoints = Math.round(earned / 500) || 0;
       const pd = emp.per_diem_total || 0;
       const total = emp.grand_total || 0;
 
-      grandHours += hours;
+      grandHours += totalPoints;
       grandEarned += earned;
       grandPerDiem += pd;
       grandTotal += total;
 
       [
         { v: daysCount, align: 'center' },
-        { v: hours.toFixed(1), align: 'right' },
+        { v: totalPoints, align: 'right' },
         { v: money(Math.round(earned)) + ' ₽', align: 'right' },
         { v: money(Math.round(pd)) + ' ₽', align: 'right' },
         { v: money(Math.round(total)) + ' ₽', align: 'right', gold: true },
@@ -1113,7 +1113,7 @@ window.AsgardFieldTab = (function () {
     totalTr.appendChild(tdTotalLabel);
 
     [
-      { v: grandHours.toFixed(1) },
+      { v: grandHours },
       { v: money(Math.round(grandEarned)) + ' ₽' },
       { v: money(Math.round(grandPerDiem)) + ' ₽' },
       { v: money(Math.round(grandTotal)) + ' ₽', gold: true },
