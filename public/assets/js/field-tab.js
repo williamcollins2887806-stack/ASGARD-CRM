@@ -892,6 +892,14 @@ window.AsgardFieldTab = (function () {
   async function renderTimesheetTab(container, work) {
     container.innerHTML = '<div class="help">Загрузка табеля…</div>';
 
+    // Load point_value from project tariff (NOT hardcoded 500)
+    let pointValue = 500; // fallback
+    try {
+      const dash = await api('/projects/' + work.id + '/dashboard');
+      if (dash?.tariff?.point_value) pointValue = parseFloat(dash.tariff.point_value);
+      else if (dash?.crew?.[0]?.point_value) pointValue = parseFloat(dash.crew[0].point_value);
+    } catch (_) {}
+
     // Default: last 30 days
     const today = new Date();
     const monthAgo = new Date(today);
@@ -929,7 +937,7 @@ window.AsgardFieldTab = (function () {
 
       try {
         const data = await api(`/projects/${work.id}/timesheet?from=${from}&to=${to}`);
-        renderTimesheetTable(tableWrap, data, from, to, editMode, work);
+        renderTimesheetTable(tableWrap, data, from, to, editMode, work, pointValue);
       } catch (e) {
         tableWrap.innerHTML = '<div class="help" style="color:#ef4444">Ошибка загрузки табеля</div>';
       }
@@ -975,9 +983,10 @@ window.AsgardFieldTab = (function () {
     loadTimesheet();
   }
 
-  function renderTimesheetTable(wrap, data, from, to, editMode, work) {
+  function renderTimesheetTable(wrap, data, from, to, editMode, work, pv) {
     const timesheet = data.timesheet || [];
     const perDiem = data.per_diem_rate || 0;
+    pv = pv || 500; // point_value из тарифа, fallback 500
 
     if (!timesheet.length && !editMode) {
       wrap.innerHTML = '<div class="help" style="text-align:center;padding:40px;color:var(--t2)">Нет данных за выбранный период</div>';
@@ -1041,25 +1050,25 @@ window.AsgardFieldTab = (function () {
           td.style.border = '1px dashed var(--brd, rgba(255,255,255,0.15))';
           td.style.borderRadius = '4px';
           if (day) {
-            const pts = Math.round(parseFloat(day.day_rate || 0) / 500) || 0;
+            const pts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
             td.textContent = pts;
             td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
-            td.title = `${pts} баллов = ${money(pts * 500)} ₽. Клик для редактирования`;
-            td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work));
+            td.title = `${pts} баллов = ${money(pts * pv)} ₽. Клик для редактирования`;
+            td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work, pv));
           } else {
             td.textContent = '+';
             td.style.color = 'var(--t2, #4b5563)';
             td.style.opacity = '0.5';
             td.title = 'Добавить смену';
-            td.addEventListener('click', () => addCheckinCell(td, emp, d, work));
+            td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
           }
         } else {
           // View mode — show points (баллы = day_rate / 500)
           if (day) {
-            const pts = Math.round(parseFloat(day.day_rate || 0) / 500) || 0;
+            const pts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
             td.textContent = pts;
             td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : pts >= 6 ? '#3b82f6' : 'var(--t2)';
-            td.title = `${d}: ${pts} бал. = ${money(pts * 500)} ₽`;
+            td.title = `${d}: ${pts} бал. = ${money(pts * pv)} ₽`;
           } else {
             td.textContent = '—';
             td.style.color = 'var(--t2, #4b5563)';
@@ -1071,7 +1080,7 @@ window.AsgardFieldTab = (function () {
       // Summary cells
       const daysCount = emp.days_count || 0;
       const earned = emp.total_earned || 0;
-      const totalPoints = Math.round(earned / 500) || 0;
+      const totalPoints = Math.round(earned / pv) || 0;
       const pd = emp.per_diem_total || 0;
       const total = emp.grand_total || 0;
 
@@ -1148,8 +1157,9 @@ window.AsgardFieldTab = (function () {
   }
 
   // ── Inline edit checkin cell ──
-  function editCheckinCell(td, day, emp, date, work) {
-    const pts = Math.round(parseFloat(day.day_rate || 0) / 500) || 0;
+  function editCheckinCell(td, day, emp, date, work, pv) {
+    pv = pv || 500;
+    const pts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
     const input = document.createElement('input');
     input.type = 'number';
     input.value = pts;
@@ -1168,7 +1178,7 @@ window.AsgardFieldTab = (function () {
         td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
         return;
       }
-      const newRate = newPts * 500;
+      const newRate = newPts * pv;
       try {
         await api(`/projects/${work.id}/checkin/${day.id}`, {
           method: 'PUT',
@@ -1193,7 +1203,8 @@ window.AsgardFieldTab = (function () {
   }
 
   // ── Add new checkin cell ──
-  function addCheckinCell(td, emp, date, work) {
+  function addCheckinCell(td, emp, date, work, pv) {
+    pv = pv || 500;
     const input = document.createElement('input');
     input.type = 'number';
     input.value = '12';
@@ -1208,7 +1219,7 @@ window.AsgardFieldTab = (function () {
     async function save() {
       const pts = parseInt(input.value) || 0;
       if (pts === 0) { td.textContent = '+'; td.style.color = 'var(--t2)'; td.style.opacity = '0.5'; return; }
-      const rate = pts * 500;
+      const rate = pts * pv;
       try {
         await api(`/projects/${work.id}/checkin`, {
           method: 'POST',

@@ -34,6 +34,14 @@ async function routes(fastify, options) {
   const fieldAuth = { preHandler: [fastify.fieldAuthenticate] };
   const dirAuth = { preHandler: [fastify.requireRoles(DIRECTOR_ROLES)] };
 
+  // Загрузка налоговых ставок из settings (НЕ хардкод)
+  async function getPayrollTaxRate() {
+    try {
+      const { rows } = await db.query("SELECT value_json FROM settings WHERE key = 'payroll_tax_rate' LIMIT 1");
+      return rows[0] ? parseFloat(JSON.parse(rows[0].value_json)) / 100 : 0.55;
+    } catch (_) { return 0.55; }
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // CRM ENDPOINTS
   // ═══════════════════════════════════════════════════════════════════
@@ -592,7 +600,7 @@ async function routes(fastify, options) {
           bonus: totalBonus,
           penalty: totalPenalty,
           fot: totalSalary + totalBonus - totalPenalty,
-          tax: Math.round((totalSalary + totalBonus - totalPenalty) * 0.55),
+          tax: Math.round((totalSalary + totalBonus - totalPenalty) * (await getPayrollTaxRate())),
           grand_total: totalSalary + totalPerDiem + totalBonus - totalPenalty
         }
       };
@@ -647,10 +655,11 @@ async function routes(fastify, options) {
       `, [year, month]);
 
       // Add tax and totals
+      const taxRateLC = await getPayrollTaxRate();
       for (const r of rows) {
         const fot = parseFloat(r.salary) + parseFloat(r.bonus) - parseFloat(r.penalty);
         r.fot = fot;
-        r.tax = Math.round(fot * 0.55);
+        r.tax = Math.round(fot * taxRateLC);
         r.full_cost = fot + r.tax + parseFloat(r.per_diem);
       }
 
@@ -781,6 +790,9 @@ async function routes(fastify, options) {
         GROUP BY wp.work_id, w.work_title, w.work_number ORDER BY w.work_title
       `, [year, month]);
 
+      const taxRateExcel = await getPayrollTaxRate();
+      const taxPctLabel = Math.round(taxRateExcel * 100);
+
       const wb = new ExcelJS.Workbook();
       wb.creator = '\u0410\u0421\u0413\u0410\u0420\u0414 CRM';
       wb.created = new Date();
@@ -817,7 +829,7 @@ async function routes(fastify, options) {
       ws2.getCell('A1').value = `\u0424\u041E\u041D\u0414 \u041E\u041F\u041B\u0410\u0422\u042B \u0422\u0420\u0423\u0414\u0410 \u2014 ${mName} ${year}`;
       ws2.getCell('A1').font = { bold: true, size: 14 };
       ws2.addRow([]);
-      const h2 = ws2.addRow(['\u0424\u0418\u041E', '\u0417\u041F', '\u041F\u0440\u0435\u043C\u0438\u0438', '\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F', '\u0424\u041E\u0422', '\u041D\u0430\u043B\u043E\u0433\u0438 55%']);
+      const h2 = ws2.addRow(['\u0424\u0418\u041E', '\u0417\u041F', '\u041F\u0440\u0435\u043C\u0438\u0438', '\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F', '\u0424\u041E\u0422', `\u041D\u0430\u043B\u043E\u0433\u0438 ${taxPctLabel}%`]);
       h2.font = boldFont; h2.eachCell(c => { c.fill = headerFill; });
       ws2.getColumn(1).width = 28; ws2.getColumn(2).width = 14; ws2.getColumn(3).width = 14;
       ws2.getColumn(4).width = 14; ws2.getColumn(5).width = 14; ws2.getColumn(6).width = 14;
@@ -833,13 +845,13 @@ async function routes(fastify, options) {
       let t2s=0, t2b=0, t2p=0;
       for (const e of Object.values(byEmp)) {
         const fot = e.salary + e.bonus - e.penalty;
-        const tax = Math.round(fot * 0.55);
+        const tax = Math.round(fot * taxRateExcel);
         const row = ws2.addRow([e.fio, e.salary, e.bonus, e.penalty, fot, tax]);
         [2,3,4,5,6].forEach(c => { row.getCell(c).numFmt = numFmt; });
         t2s += e.salary; t2b += e.bonus; t2p += e.penalty;
       }
       const fotTotal = t2s + t2b - t2p;
-      const tot2 = ws2.addRow(['\u0418\u0422\u041E\u0413\u041E', t2s, t2b, t2p, fotTotal, Math.round(fotTotal * 0.55)]);
+      const tot2 = ws2.addRow(['\u0418\u0422\u041E\u0413\u041E', t2s, t2b, t2p, fotTotal, Math.round(fotTotal * taxRateExcel)]);
       tot2.font = boldFont; tot2.eachCell(c => { c.fill = totalFill; });
       [2,3,4,5,6].forEach(c => { tot2.getCell(c).numFmt = numFmt; });
 
@@ -898,7 +910,7 @@ async function routes(fastify, options) {
       let t5f=0, t5t=0, t5pd=0, t5fc=0, t5w=0;
       for (const r of laborCosts) {
         const fot = parseFloat(r.salary)+parseFloat(r.bonus)-parseFloat(r.penalty);
-        const tax = Math.round(fot * 0.55);
+        const tax = Math.round(fot * taxRateExcel);
         const pd = parseFloat(r.per_diem);
         const full = fot + tax + pd;
         const row = ws5.addRow([r.work_title||'\u0411\u0435\u0437 \u043E\u0431\u044A\u0435\u043A\u0442\u0430', parseInt(r.workers), fot, tax, pd, full]);

@@ -559,7 +559,7 @@ window.AsgardWorkReport = (function () {
         </div>
         <div class="wr-crew-stats">
           <span>${c.shifts || 0} см</span>
-          <span>${Math.round(c.hours || 0)} ч</span>
+          <span>${Math.round(parseFloat(c.earned || 0) / parseFloat(c.point_value || 500))} бал</span>
           <span class="wr-crew-earned">${m(c.earned)} \u20BD</span>
         </div>
       </div>`;
@@ -876,7 +876,7 @@ window.AsgardWorkReport = (function () {
       ['ФИО', 'Должность', 'Смены', 'Часы', 'Заработок'],
     ];
     for (const c of crew) {
-      s9.push([c.full_name || '', c.position || '', parseInt(c.shifts) || 0, Math.round(parseFloat(c.hours) || 0), parseFloat(c.earned) || 0]);
+      s9.push([c.full_name || '', c.position || '', parseInt(c.shifts) || 0, Math.round(parseFloat(c.earned || 0) / parseFloat(c.point_value || 500)), parseFloat(c.earned) || 0]);
     }
     const ws9 = XLSX.utils.aoa_to_sheet(s9);
     ws9['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 8 }, { wch: 8 }, { wch: 14 }];

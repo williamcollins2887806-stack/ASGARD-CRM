@@ -520,12 +520,14 @@ async function routes(fastify, options) {
           SELECT e.id, e.full_name, e.position,
                  COUNT(DISTINCT fc.date) as shifts,
                  COALESCE(SUM(fc.hours_paid), 0) as hours,
-                 COALESCE(SUM(fc.amount_earned), 0) as earned
+                 COALESCE(SUM(fc.amount_earned), 0) as earned,
+                 ftg.point_value
           FROM employee_assignments ea
           JOIN employees e ON e.id = ea.employee_id
+          LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
           LEFT JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = $1
           WHERE ea.work_id = $1
-          GROUP BY e.id, e.full_name, e.position
+          GROUP BY e.id, e.full_name, e.position, ftg.point_value
           ORDER BY earned DESC
         `, [workId]);
         crew = crewRes.rows;

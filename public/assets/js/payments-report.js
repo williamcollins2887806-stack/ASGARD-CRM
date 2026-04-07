@@ -139,7 +139,7 @@ window.AsgardPaymentsReportPage = (function(){
           </div>
           <div class="wpr-kpi">
             <div class="k"><div class="t">\u0424\u041E\u0422</div><div class="v">${money(tot.fot||0)}</div></div>
-            <div class="k"><div class="t">\u041D\u0430\u043B\u043E\u0433\u0438 55%</div><div class="v red">${money(tot.tax||0)}</div></div>
+            <div class="k"><div class="t">\u041D\u0430\u043B\u043E\u0433\u0438</div><div class="v red">${money(tot.tax||0)}</div></div>
             <div class="k"><div class="t">\u041F\u043E\u043B\u043D\u044B\u0439 \u0424\u041E\u0422</div><div class="v blue">${money((tot.fot||0)+(tot.tax||0))}</div></div>
             <div class="k"><div class="t">\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435</div><div class="v">${money(tot.per_diem||0)}</div></div>
           </div>
