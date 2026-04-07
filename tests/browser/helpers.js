@@ -11,6 +11,7 @@ const ACCOUNTS = {
   HEAD_PM:        { login: 'test_head_pm',       password: 'Test123!',    pin: '0000' },
   HEAD_TO:        { login: 'test_head_to',       password: 'Test123!',    pin: '0000' },
   PM:             { login: 'test_pm',            password: 'Test123!',    pin: '0000' },
+  PM_ANDROSOV:    { login: 'n.androsov',         password: 'Test123!',    pin: '0000' },
   TO:             { login: 'test_to',            password: 'Test123!',    pin: '0000' },
   HR:             { login: 'test_hr',            password: 'Test123!',    pin: '0000' },
   BUH:            { login: 'test_buh',           password: 'Test123!',    pin: '0000' },
