@@ -907,8 +907,8 @@ window.AsgardChatGroups = (function(){
             ${infoParts.length ? `<div class="ec-pinned-card__info">${esc(infoParts.join(' \u2022 '))}</div>` : ''}
             ${detailParts.length ? `<div class="ec-pinned-card__details">${detailParts.join(' \u00B7 ')}</div>` : ''}
             <div class="ec-pinned-card__metrics">
-              <div class="ec-metric"><span class="ec-metric__label">Себестоимость</span><span class="ec-metric__value">${fmt(meta.total_cost)}</span></div>
-              <div class="ec-metric"><span class="ec-metric__label">Клиенту</span><span class="ec-metric__value">${fmt(meta.total_with_margin)}</span></div>
+              <div class="ec-metric"><span class="ec-metric__label">Контракт</span><span class="ec-metric__value">${fmt(meta.total_with_margin)}</span></div>
+              <div class="ec-metric"><span class="ec-metric__label">Прибыль</span><span class="ec-metric__value" style="color:#10b981">${meta.net_profit != null ? fmt(meta.net_profit) : (meta.total_with_margin && meta.total_cost ? fmt(Math.round(meta.total_with_margin - meta.total_cost)) : '—')}</span></div>
               <div class="ec-metric"><span class="ec-metric__label">Маржа</span><span class="ec-metric__value">${meta.margin_pct != null ? meta.margin_pct + '%' : '—'}</span></div>
             </div>
             <a class="ec-pinned-card__link" href="#/estimate-report?id=${meta.estimate_id || ''}">Открыть полный отчёт \u2192</a>

@@ -71,6 +71,34 @@ async function createEstimateChat(db, estimateId, actor) {
     calcData = calcResult.rows[0] || null;
   } catch (e) { /* ok */ }
 
+  // 6a. Fallback: если calcData нет — рассчитать из работы (если есть)
+  if (!calcData || !calcData.total_cost) {
+    try {
+      const workRes = await db.query(
+        'SELECT id, contract_value, vat_pct FROM works WHERE estimate_id = $1 LIMIT 1',
+        [estimateId]
+      );
+      const work = workRes.rows[0];
+      if (work) {
+        const expRes = await db.query(
+          'SELECT COALESCE(SUM(amount), 0) as total FROM work_expenses WHERE work_id = $1',
+          [work.id]
+        );
+        const totalExpenses = parseFloat(expRes.rows[0]?.total || 0);
+        const contractValue = parseFloat(work.contract_value || 0);
+        const vatPct = parseFloat(work.vat_pct || 22);
+        const revenueExVat = contractValue / (1 + vatPct / 100);
+        const marginPct = revenueExVat > 0 ? Math.round((1 - totalExpenses / revenueExVat) * 1000) / 10 : 0;
+        calcData = {
+          total_cost: totalExpenses,
+          total_with_margin: contractValue,
+          margin_pct: marginPct,
+          version_no: 1
+        };
+      }
+    } catch (e) { /* ok */ }
+  }
+
   // 6b. Получить tender_title и pm_name для карточки
   let tenderTitle = null;
   if (estimate.tender_id) {

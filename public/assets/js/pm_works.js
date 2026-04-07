@@ -853,17 +853,21 @@ window.AsgardPmWorksPage=(function(){
     }
 
     async function openWork(id){
-      const w = await AsgardDB.get("works", id);
+      const [w, finData] = await Promise.all([
+        AsgardDB.get("works", id),
+        fetch('/api/works/' + id + '/financial-summary', {headers: hdr()}).then(r => r.ok ? r.json() : null).catch(() => null)
+      ]);
       const triggerStatus = String((settings&&settings.work_close_trigger_status)||"Подписание акта");
       const t = await AsgardDB.get("tenders", w.tender_id);
       const got = (Number(w.advance_received||0)+Number(w.balance_received||0))||0;
       const left = (w.contract_value||0) ? Math.max(0, Number(w.contract_value||0)-got) : 0;
-      const cost = (w.cost_fact!=null?Number(w.cost_fact): (w.cost_plan!=null?Number(w.cost_plan):null));
-      const profit = (w.contract_value!=null && cost!=null) ? (Number(w.contract_value)-cost) : null;
+      // Чистая прибыль из financial-summary (единый источник), fallback на валовую
+      const profit = finData?.profit?.net != null ? Math.round(finData.profit.net) : ((w.contract_value!=null && w.cost_fact!=null) ? (Number(w.contract_value)-Number(w.cost_fact)) : null);
+      const margin = finData?.profit?.margin;
       const start = w.start_in_work_date || t?.work_start_plan;
       const end = w.end_fact || w.end_plan || t?.work_end_plan || start;
       const duration = (start && end) ? daysBetween(start,end) : null;
-      const crew = Number(w.crew_size||0)||0;
+      const crew = (finData?.crew?.length) || Number(w.crew_size||0) || 0;
       const profitPerDay = (profit!=null && duration) ? profit/Math.max(1,duration) : null;
       const profitPerManDay = (profit!=null && duration) ? profit/Math.max(1,(crew||1)*duration) : null;
 
@@ -942,9 +946,9 @@ window.AsgardPmWorksPage=(function(){
         <div class="kpi" style="grid-template-columns:repeat(5,minmax(140px,1fr))">
           <div class="k"><div class="t">Получено</div><div class="v">${money(got)} ₽</div><div class="s">Аванс + остаток</div></div>
           <div class="k"><div class="t">Должны</div><div class="v">${money(left)} ₽</div><div class="s">Остаток к оплате</div></div>
-          <div class="k"><div class="t">Прибыль</div><div class="v" id="kpiProfit">${profit==null?"—":money(Math.round(profit))+" ₽"}</div><div class="s" id="kpiProfitSub">валовая (загрузка...)</div></div>
-          <div class="k"><div class="t">Прибыль/день</div><div class="v" id="kpiProfitDay">${profitPerDay==null?"—":money(Math.round(profitPerDay))+" ₽"}</div><div class="s">по длительности</div></div>
-          <div class="k"><div class="t">Прибыль/чел‑день</div><div class="v" id="kpiProfitManDay">${profitPerManDay==null?"—":money(Math.round(profitPerManDay))+" ₽"}</div><div class="s">по людям×дни</div></div>
+          <div class="k"><div class="t">Прибыль</div><div class="v" style="color:${profit!=null?(profit>=0?'#10b981':'#ef4444'):''}">${profit==null?"—":money(Math.round(profit))+" ₽"}</div><div class="s">${margin!=null?'чистая · маржа '+margin+'%':'чистая прибыль'}</div></div>
+          <div class="k"><div class="t">Прибыль/день</div><div class="v">${profitPerDay==null?"—":money(Math.round(profitPerDay))+" ₽"}</div><div class="s">по длительности</div></div>
+          <div class="k"><div class="t">Прибыль/чел‑день</div><div class="v">${profitPerManDay==null?"—":money(Math.round(profitPerManDay))+" ₽"}</div><div class="s">по людям×дни</div></div>
         </div>
 
         <hr class="hr"/>
@@ -956,29 +960,6 @@ window.AsgardPmWorksPage=(function(){
       `;
 
       showModal(`Работа #${w.id}`, html);
-
-      // Fetch NET profit from financial-summary API
-      (async function(){
-        try {
-          const resp = await fetch('/api/works/' + w.id + '/financial-summary', {headers: hdr()});
-          if(!resp.ok) return;
-          const fs = await resp.json();
-          const el = document.getElementById('kpiProfit');
-          const elDay = document.getElementById('kpiProfitDay');
-          const elManDay = document.getElementById('kpiProfitManDay');
-          const elSub = document.getElementById('kpiProfitSub');
-          if(el && fs.profit) {
-            const net = Math.round(fs.profit.net || 0);
-            el.textContent = money(net) + ' ₽';
-            el.style.color = net >= 0 ? '#10b981' : '#ef4444';
-            if(elSub) elSub.textContent = 'чистая · маржа ' + (fs.profit.margin||0) + '%';
-            const dur = fs.timeline ? daysBetween(fs.timeline.start_fact||fs.timeline.start_plan, fs.timeline.end_fact||fs.timeline.end_plan) : null;
-            const crewN = (fs.crew && fs.crew.length) || Number(w.crew_size||0) || 1;
-            if(elDay && dur > 0) elDay.textContent = money(Math.round(net/dur)) + ' ₽';
-            if(elManDay && dur > 0 && crewN > 0) elManDay.textContent = money(Math.round(net/(crewN*dur))) + ' ₽';
-          }
-        } catch(_){}
-      })();
       const _curWorkStatus = w.work_status || '';
       const _isAdminOrDir = user.role === 'ADMIN' || user.role === 'DIRECTOR_GEN';
       const _workStatusOpts = _isAdminOrDir ? (refs.work_statuses||[]) : [...new Set((WORK_STATUS_TRANSITIONS[_curWorkStatus] || []).concat([_curWorkStatus]))];
