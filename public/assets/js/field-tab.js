@@ -2243,106 +2243,109 @@ window.AsgardFieldTab = (function () {
     });
   }
 
-  // ─── Modal: одиночная выплата (аванс/премия/удержание) ─────────
-  function openSinglePaymentModal(work, parentContainer, user, type) {
+  // ─── Inline form: одиночная выплата (аванс/премия/удержание) ─────────
+  async function openSinglePaymentModal(work, parentContainer, user, type) {
     const typeLabel = { advance: 'Аванс', bonus: 'Премия', penalty: 'Удержание' }[type] || type;
     const typeIcon = { advance: '💸', bonus: '🎁', penalty: '⚠️' }[type] || '💳';
 
-    AsgardUI.showModal({
-      title: typeIcon + ' ' + typeLabel,
-      html: `
-        <div style="display:flex;flex-direction:column;gap:12px;max-width:480px">
-          <label>Сотрудник<div id="spEmpWrap" style="width:100%"></div></label>
-          <label>Сумма, ₽<input id="spAmount" type="number" step="0.01" class="inp" style="width:100%" placeholder="10000"></label>
-          <label>Комментарий<input id="spComment" type="text" class="inp" style="width:100%" placeholder="Причина..."></label>
-          <button id="spSubmit" class="btn gold" style="margin-top:8px">Создать</button>
-        </div>
-      `,
-      onMount: async () => {
-        // Load crew options
-        const _spOpts = [];
-        try {
-          const dash = await api('/projects/' + work.id + '/dashboard');
-          if (dash?.crew) {
-            for (const c of dash.crew) {
-              _spOpts.push({ value: String(c.employee_id), label: c.fio || c.employee_name || 'ID ' + c.employee_id });
-            }
-          }
-        } catch (_) {}
-        const wrap = document.getElementById('spEmpWrap');
-        if (wrap && window.CRSelect) {
-          wrap.appendChild(CRSelect.create({
-            id: 'spEmp', options: _spOpts, placeholder: '— Выберите сотрудника —', fullWidth: true
-          }));
-        }
+    parentContainer.querySelector('.sp-inline-form')?.remove();
 
-        document.getElementById('spSubmit').addEventListener('click', async () => {
-          const empId = window.CRSelect ? CRSelect.getValue('spEmp') : '';
-          const amount = parseFloat(document.getElementById('spAmount').value);
-          const comment = document.getElementById('spComment').value.trim();
+    let crewOpts = [];
+    try {
+      const dash = await api('/projects/' + work.id + '/dashboard');
+      if (dash?.crew) crewOpts = dash.crew.map(c => ({ value: String(c.employee_id), label: c.fio || c.employee_name || 'ID ' + c.employee_id }));
+    } catch (_) {}
 
-          if (!empId) { toast('Выберите сотрудника'); return; }
-          if (!amount || amount <= 0) { toast('Укажите сумму'); return; }
+    const formDiv = document.createElement('div');
+    formDiv.className = 'sp-inline-form';
+    formDiv.style.cssText = 'background:var(--bg2,#151922);border:1px solid var(--brd);border-radius:10px;padding:16px;margin:12px 0;';
+    formDiv.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:600;font-size:14px">${typeIcon} ${esc(typeLabel)}</div>
+        <button class="sp-close" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:18px">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <label style="font-size:12px">Сотрудник<div id="spEmpWrap" style="width:100%"></div></label>
+        <label style="font-size:12px">Сумма, ₽<input id="spAmount" type="number" step="0.01" class="inp" style="width:100%" placeholder="10000"></label>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="spComment" type="text" class="inp" style="flex:1" placeholder="Комментарий...">
+        <button id="spSubmit" class="btn" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:600;white-space:nowrap">Создать</button>
+      </div>
+    `;
 
-          try {
-            const result = await apiPayments('/', {
-              method: 'POST',
-              body: JSON.stringify({
-                employee_id: parseInt(empId), work_id: work.id,
-                type, amount, comment: comment || null
-              })
-            });
-            if (result.error) { toast('Ошибка: ' + result.error); return; }
-            toast(typeLabel + ' создан(а)!');
-            try { CRSelect.destroy('spEmp'); } catch (_) {}
-            document.querySelector('.modal-overlay')?.remove();
-            renderPaymentsTab(parentContainer, work, user);
-          } catch (err) { toast('Ошибка: ' + err.message); }
-        });
-      }
+    const firstChild = parentContainer.querySelector('.fk-table, .help');
+    if (firstChild) parentContainer.insertBefore(formDiv, firstChild);
+    else parentContainer.appendChild(formDiv);
+
+    // Employee selector
+    const wrap = formDiv.querySelector('#spEmpWrap');
+    if (wrap && window.CRSelect) {
+      wrap.appendChild(CRSelect.create({ id: 'spEmp', options: crewOpts, placeholder: '— Выберите —', fullWidth: true }));
+    }
+
+    formDiv.querySelector('.sp-close').addEventListener('click', () => { try { CRSelect.destroy('spEmp'); } catch(_){} formDiv.remove(); });
+
+    formDiv.querySelector('#spSubmit').addEventListener('click', async () => {
+      const empId = window.CRSelect ? CRSelect.getValue('spEmp') : '';
+      const amount = parseFloat(formDiv.querySelector('#spAmount').value);
+      const comment = formDiv.querySelector('#spComment').value.trim();
+      if (!empId) { toast('Выберите сотрудника'); return; }
+      if (!amount || amount <= 0) { toast('Укажите сумму'); return; }
+      try {
+        const result = await apiPayments('/', { method: 'POST', body: JSON.stringify({ employee_id: parseInt(empId), work_id: work.id, type, amount, comment: comment || null }) });
+        if (result.error) { toast('Ошибка', result.error, 'err'); return; }
+        toast(typeLabel, 'Создано!', 'ok');
+        try { CRSelect.destroy('spEmp'); } catch(_){}
+        formDiv.remove();
+        renderPaymentsTab(parentContainer, work, user);
+      } catch (err) { toast('Ошибка', err.message, 'err'); }
     });
   }
 
-  // ─── Modal: генерация ведомости ЗП ─────────────────────────────
+  // ─── Inline form: генерация ведомости ЗП ─────────────────────────────
   function openGenerateSalaryModal(work, parentContainer, user) {
     const now = new Date();
     const curMonth = now.getMonth() + 1;
     const curYear = now.getFullYear();
 
-    AsgardUI.showModal({
-      title: '📋 Сгенерировать ведомость ЗП',
-      html: `
-        <div style="display:flex;flex-direction:column;gap:12px;max-width:400px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <label>Месяц<input id="salMonth" type="number" min="1" max="12" class="inp" value="${curMonth}"></label>
-            <label>Год<input id="salYear" type="number" min="2024" max="2099" class="inp" value="${curYear}"></label>
-          </div>
-          <label>Стоимость балла, ₽<input id="salPointVal" type="number" class="inp" value="500" style="width:100%"></label>
-          <div class="help" style="font-size:11px">1 балл = 1 рабочая смена. Ведомость формируется из табеля (field_checkins).</div>
-          <button id="salSubmit" class="btn gold" style="margin-top:8px">Сгенерировать</button>
-        </div>
-      `,
-      onMount: () => {
-        document.getElementById('salSubmit').addEventListener('click', async () => {
-          const month = parseInt(document.getElementById('salMonth').value);
-          const year = parseInt(document.getElementById('salYear').value);
-          const pv = parseFloat(document.getElementById('salPointVal').value);
+    parentContainer.querySelector('.sal-inline-form')?.remove();
 
-          if (!month || month < 1 || month > 12) { toast('Некорректный месяц'); return; }
-          if (!year) { toast('Некорректный год'); return; }
+    const formDiv = document.createElement('div');
+    formDiv.className = 'sal-inline-form';
+    formDiv.style.cssText = 'background:var(--bg2,#151922);border:1px solid var(--brd);border-radius:10px;padding:16px;margin:12px 0;';
+    formDiv.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:600;font-size:14px">📋 Сгенерировать ведомость ЗП</div>
+        <button class="sal-close" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:18px">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <label style="font-size:12px">Месяц<input id="salMonth" type="number" min="1" max="12" class="inp" value="${curMonth}" style="width:100%"></label>
+        <label style="font-size:12px">Год<input id="salYear" type="number" min="2024" max="2099" class="inp" value="${curYear}" style="width:100%"></label>
+        <label style="font-size:12px">₽/балл<input id="salPointVal" type="number" class="inp" value="500" style="width:100%"></label>
+      </div>
+      <button id="salSubmit" class="btn" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:600">Сгенерировать</button>
+    `;
 
-          try {
-            const result = await apiPayments(`/generate-salary/${year}/${month}`, {
-              method: 'POST',
-              body: JSON.stringify({ point_value: pv, work_id: work.id })
-            });
-            if (result.error) { toast('Ошибка: ' + result.error); return; }
-            toast(`Ведомость: ${result.count} чел. по ${pv}₽/балл`);
-            document.querySelector('.modal-overlay')?.remove();
-            renderPaymentsTab(parentContainer, work, user);
-          } catch (err) { toast('Ошибка: ' + err.message); }
-        });
-      }
+    const firstChild = parentContainer.querySelector('.fk-table, .help');
+    if (firstChild) parentContainer.insertBefore(formDiv, firstChild);
+    else parentContainer.appendChild(formDiv);
+
+    formDiv.querySelector('.sal-close').addEventListener('click', () => formDiv.remove());
+
+    formDiv.querySelector('#salSubmit').addEventListener('click', async () => {
+      const month = parseInt(formDiv.querySelector('#salMonth').value);
+      const year = parseInt(formDiv.querySelector('#salYear').value);
+      const pv = parseFloat(formDiv.querySelector('#salPointVal').value);
+      if (!month || month < 1 || month > 12) { toast('Некорректный месяц'); return; }
+      if (!year) { toast('Некорректный год'); return; }
+      try {
+        const result = await apiPayments(`/generate-salary/${year}/${month}`, { method: 'POST', body: JSON.stringify({ point_value: pv, work_id: work.id }) });
+        if (result.error) { toast('Ошибка', result.error, 'err'); return; }
+        toast('Ведомость', `${result.count} чел. по ${pv}₽/балл`, 'ok');
+        formDiv.remove();
+        renderPaymentsTab(parentContainer, work, user);
+      } catch (err) { toast('Ошибка', err.message, 'err'); }
     });
   }
 
