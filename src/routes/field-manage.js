@@ -384,11 +384,18 @@ async function routes(fastify, options) {
         WHERE work_id = $1 AND date = CURRENT_DATE AND status != 'cancelled'
       `, [workId]);
 
-      // Total crew
-      const { rows: crewCount } = await db.query(
-        `SELECT COUNT(*) as total_crew FROM employee_assignments WHERE work_id = $1 AND is_active = true`,
-        [workId]
-      );
+      // Crew list + count
+      const { rows: crewList } = await db.query(`
+        SELECT ea.employee_id, e.fio AS employee_name, ea.field_role, ea.tariff_id,
+               ftg.position_name AS tariff_name, ftg.points, ftg.rate_per_shift, ftg.point_value,
+               ea.per_diem, ea.shift_type, ea.date_from, ea.date_to,
+               ea.combination_tariff_id, ea.is_active
+        FROM employee_assignments ea
+        JOIN employees e ON e.id = ea.employee_id
+        LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
+        WHERE ea.work_id = $1 AND ea.is_active = true
+        ORDER BY e.fio
+      `, [workId]);
 
       // Progress from reports
       const { rows: progressData } = await db.query(`
@@ -426,7 +433,8 @@ async function routes(fastify, options) {
       return {
         online_now: online,
         today_count: parseInt(todayStats[0].today_count),
-        total_crew: parseInt(crewCount[0].total_crew),
+        total_crew: crewList.length,
+        crew: crewList,
         today_hours: parseFloat(todayStats[0].today_hours),
         today_earned: parseFloat(todayStats[0].today_earned),
         progress,
