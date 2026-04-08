@@ -310,12 +310,14 @@ window.AsgardOfficeSchedulePage=(function(){
     });
 
     async function updateGrid(){
+      try {
       $("#schedPeriod").textContent = `${MONTHS_RU[viewMonth]} ${viewYear}`;
       const grid = await renderGrid();
       $("#schedDays").innerHTML = grid.days.join("");
       $("#schedBody").innerHTML = grid.bodyRows;
       planMap = grid.planMap;
       bindCellClicks();
+      } catch(e) { console.error('[office_schedule] updateGrid error:', e); }
     }
 
     function bindCellClicks(){

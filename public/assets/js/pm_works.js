@@ -907,7 +907,7 @@ window.AsgardPmWorksPage=(function(){
           <div><label>Отсрочка, раб.дни</label><input id="w_delay" value="${esc(w.delay_workdays!=null?String(w.delay_workdays):"5")}" placeholder="5"/></div>
 
           <div><label>План себестоимость</label><input id="w_cost_plan" value="${esc(w.cost_plan!=null?String(w.cost_plan):"")}" placeholder="руб."/></div>
-          <div><label>Факт себестоимость</label><input id="w_cost_fact" value="${esc(w.cost_fact!=null?String(w.cost_fact):"")}" placeholder="руб."/></div>
+          <div><label>Факт себестоимость</label><div style="display:flex;gap:4px"><input id="w_cost_fact" value="${esc(w.cost_fact!=null?String(w.cost_fact):"")}" placeholder="руб." style="flex:1"/><button type="button" class="btn ghost" id="btnAutoCalcCost" title="Авторасчёт: расходы + налоги" style="font-size:11px;padding:4px 8px;white-space:nowrap">⚡</button></div></div>
           <div><label>Численность (для чел-дней)</label><input id="w_crew" value="${esc(w.crew_size!=null?String(w.crew_size):"")}" placeholder="например: 10"/></div>
 
           <div style="grid-column:1/-1"><label>Комментарий</label><input id="w_comment" value="${esc(w.comment||"")}" placeholder="важные заметки"/></div>
@@ -964,6 +964,19 @@ window.AsgardPmWorksPage=(function(){
       const _isAdminOrDir = user.role === 'ADMIN' || user.role === 'DIRECTOR_GEN';
       const _workStatusOpts = _isAdminOrDir ? (refs.work_statuses||[]) : [...new Set((WORK_STATUS_TRANSITIONS[_curWorkStatus] || []).concat([_curWorkStatus]))];
       $('#w_status_w')?.appendChild(CRSelect.create({ id: 'w_status', options: _workStatusOpts.map(s=>({ value: s, label: s })), value: _curWorkStatus, dropdownClass: 'z-modal' }));
+
+      // Авторасчёт себестоимости из financial-summary
+      const _btnAutoCalc = document.getElementById('btnAutoCalcCost');
+      if (_btnAutoCalc && finData?.expenses) {
+        _btnAutoCalc.addEventListener('click', () => {
+          const val = Math.round(finData.expenses.total_with_tax);
+          document.getElementById('w_cost_fact').value = val;
+          toast('Себестоимость', 'Расходы ' + money(finData.expenses.total) + ' + налоги ' + money(finData.taxes.burden) + ' = ' + money(val) + ' ₽', 'ok');
+        });
+      } else if (_btnAutoCalc) {
+        _btnAutoCalc.disabled = true;
+        _btnAutoCalc.title = 'Нет данных расходов';
+      }
 
       // вахта (UI)
       try{

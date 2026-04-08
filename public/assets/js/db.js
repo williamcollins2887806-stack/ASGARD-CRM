@@ -35,6 +35,7 @@ window.AsgardDB = (function(){
     options = options || {};
     const isIdempotentRead = !options.method || options.method === 'GET' || (options.method === 'POST' && url.indexOf('/by-index') !== -1);
     const maxRetries = isIdempotentRead ? 2 : 0;
+    const requestToken = getToken(); // capture token at request start
     let lastError;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -44,9 +45,15 @@ window.AsgardDB = (function(){
           headers: Object.assign({}, headers(), options.headers || {}),
           body: options.body
         });
-      
-      // При 401 - сессия истекла, перенаправляем на вход
+
+      // При 401 - проверяем не устарел ли запрос (race condition при логине)
       if (resp.status === 401) {
+        const currentToken = getToken();
+        if (currentToken && currentToken !== requestToken) {
+          // Token changed since request started — stale 401, ignore
+          console.warn('[AsgardDB] Stale 401 (token refreshed), ignoring:', url);
+          return null;
+        }
         console.warn('[AsgardDB] Unauthorized:', url);
         localStorage.removeItem('asgard_token');
         localStorage.removeItem('asgard_user');

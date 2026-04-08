@@ -438,6 +438,7 @@
 .cr-emp-picker__list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--bg4) transparent;
@@ -448,6 +449,16 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  table-layout: fixed;
+}
+
+@media (max-width: 700px) {
+  .cr-emp-picker__table .cr-emp-picker__col-city,
+  .cr-emp-picker__table .cr-emp-picker__col-ph,
+  .cr-emp-picker__table th:nth-child(5),
+  .cr-emp-picker__table td:nth-child(5),
+  .cr-emp-picker__table th:nth-child(7),
+  .cr-emp-picker__table td:nth-child(7) { display: none; }
 }
 
 .cr-emp-picker__table thead {
