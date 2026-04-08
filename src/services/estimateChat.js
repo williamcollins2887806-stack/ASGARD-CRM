@@ -115,9 +115,17 @@ async function createEstimateChat(db, estimateId, actor) {
     } catch (e) { /* ok */ }
   }
 
+  // 6c. Find work_id linked to this estimate (for fin. report link)
+  let workId = null;
+  try {
+    const wRes = await db.query('SELECT id FROM works WHERE estimate_id = $1 LIMIT 1', [estimateId]);
+    workId = wRes.rows[0]?.id || null;
+  } catch (_) {}
+
   // 7. Pinned estimate_card
   const cardMetadata = {
     estimate_id: estimateId,
+    work_id: workId,
     status: 'sent',
     title: estimate.title || estimate.object_name || tenderTitle,
     tender_title: tenderTitle,

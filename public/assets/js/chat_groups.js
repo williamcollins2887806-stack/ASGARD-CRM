@@ -911,7 +911,10 @@ window.AsgardChatGroups = (function(){
               <div class="ec-metric"><span class="ec-metric__label">Прибыль</span><span class="ec-metric__value" style="color:#10b981">${meta.net_profit != null ? fmt(meta.net_profit) : (meta.total_with_margin && meta.total_cost ? fmt(Math.round(meta.total_with_margin - meta.total_cost)) : '—')}</span></div>
               <div class="ec-metric"><span class="ec-metric__label">Маржа</span><span class="ec-metric__value">${meta.margin_pct != null ? meta.margin_pct + '%' : '—'}</span></div>
             </div>
-            <a class="ec-pinned-card__link" href="#/estimate-report?id=${meta.estimate_id || ''}">Открыть полный отчёт \u2192</a>
+            <div class="ec-pinned-card__links" style="display:flex;gap:12px;margin-top:8px">
+              <a class="ec-pinned-card__link" href="#/estimate-report?id=${meta.estimate_id || ''}">Просчёт \u2192</a>
+              ${meta.work_id ? `<a class="ec-pinned-card__link" href="#/work-report?id=${meta.work_id}" style="color:#10b981">Фин. отчёт \u2192</a>` : ''}
+            </div>
           </div>`;
       }
     }

@@ -855,7 +855,7 @@ window.AsgardPmWorksPage=(function(){
     async function openWork(id){
       const [w, finData] = await Promise.all([
         AsgardDB.get("works", id),
-        fetch('/api/works/' + id + '/financial-summary', {headers: hdr()}).then(r => r.ok ? r.json() : null).catch(() => null)
+        fetch('/api/works/' + id + '/financial-summary', {headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || localStorage.getItem('auth_token'))}}).then(r => r.ok ? r.json() : null).catch(() => null)
       ]);
       const triggerStatus = String((settings&&settings.work_close_trigger_status)||"Подписание акта");
       const t = await AsgardDB.get("tenders", w.tender_id);
