@@ -365,7 +365,7 @@ window.AsgardWorkReport = (function () {
 
     // Gauge SVG
     const angle = Math.min(Math.max(d.profit.margin, 0), 50) / 50 * 180;
-    const R = 60, CX = 70, CY = 65;
+    const R = 55, CX = 80, CY = 60;
     const rad = (a) => (a - 180) * Math.PI / 180;
     const x1 = CX + R * Math.cos(rad(0));
     const y1 = CY + R * Math.sin(rad(0));
@@ -373,7 +373,7 @@ window.AsgardWorkReport = (function () {
     const y2 = CY + R * Math.sin(rad(angle));
     const large = angle > 180 ? 1 : 0;
 
-    const gaugeSvg = `<svg width="160" height="90" viewBox="0 0 160 90" class="wr-profit-gauge">
+    const gaugeSvg = `<svg width="160" height="80" viewBox="0 0 160 80" class="wr-profit-gauge">
       <path d="M ${CX-R} ${CY} A ${R} ${R} 0 0 1 ${CX+R} ${CY}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8" stroke-linecap="round"/>
       <path d="M ${x1} ${y1} A ${R} ${R} 0 ${large} 0 ${x2} ${y2}" fill="none" stroke="${marginColor}" stroke-width="8" stroke-linecap="round" class="wr-gauge-arc"/>
       <text x="${CX}" y="${CY - 4}" text-anchor="middle" fill="${marginColor}" font-size="22" font-weight="700">${d.profit.margin}%</text>
