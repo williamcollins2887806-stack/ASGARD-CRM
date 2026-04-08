@@ -67,10 +67,10 @@ const CREmployeePicker = (() => {
       return _employeeCache;
     }
     try {
-      const res = await fetch('/api/employees?active=true');
+      const res = await fetch('/api/staff/employees?limit=1000');
       if (res.ok) {
         const data = await res.json();
-        _employeeCache = (data.employees || data.rows || data || []).map(e => ({
+        _employeeCache = (data.employees || data.rows || data || []).filter(e => e.is_active !== false).map(e => ({
           id: e.id,
           name: e.full_name || e.fio || e.name || `${e.last_name || ''} ${e.first_name || ''}`.trim(),
           position: e.position || e.role_display || '',
