@@ -728,6 +728,7 @@ window.AsgardChatGroups = (function(){
           <div class="hg-chat-tabs" id="hg-chat-tabs">
             <button class="hg-chat-tab${_currentTab === 'all' ? ' active' : ''}" data-tab="all" onclick="AsgardChatGroups.filterByTab('all')">Все</button>
             <button class="hg-chat-tab${_currentTab === 'estimates' ? ' active' : ''}" data-tab="estimates" onclick="AsgardChatGroups.filterByTab('estimates')">Просчёты</button>
+            <button class="hg-chat-tab${_currentTab === 'fin_reports' ? ' active' : ''}" data-tab="fin_reports" onclick="AsgardChatGroups.filterByTab('fin_reports')">Фин. отчёты</button>
             <button class="hg-chat-tab${_currentTab === 'personal' ? ' active' : ''}" data-tab="personal" onclick="AsgardChatGroups.filterByTab('personal')">Личные</button>
             <div class="hg-tab-indicator" id="hg-tab-indicator"></div>
           </div>
@@ -773,6 +774,7 @@ window.AsgardChatGroups = (function(){
       // Tab filter
       let tabMatch = true;
       if (_currentTab === 'estimates') tabMatch = item.dataset.entityType === 'estimate';
+      else if (_currentTab === 'fin_reports') tabMatch = item.dataset.entityType === 'estimate';
       else if (_currentTab === 'personal') tabMatch = item.dataset.entityType !== 'estimate';
       // Search filter
       const name = item.querySelector('.chat-item-name');
@@ -796,7 +798,7 @@ window.AsgardChatGroups = (function(){
     const indicator = $('#hg-tab-indicator');
     const activeBtn = document.querySelector('#hg-chat-tabs .hg-chat-tab.active');
     if (!indicator || !activeBtn) return;
-    const tabColors = { all: '#fff', estimates: '#D4A843', personal: '#1F6FEB' };
+    const tabColors = { all: '#fff', estimates: '#D4A843', fin_reports: '#10b981', personal: '#1F6FEB' };
     indicator.style.left = activeBtn.offsetLeft + 'px';
     indicator.style.width = activeBtn.offsetWidth + 'px';
     indicator.style.background = tabColors[_currentTab] || '#fff';
@@ -898,22 +900,43 @@ window.AsgardChatGroups = (function(){
         if (meta.crew_count) detailParts.push(meta.crew_count + ' чел.');
         if (meta.work_days) detailParts.push(meta.work_days + ' дн.');
         if (meta.version_no && meta.version_no > 1) detailParts.push('v.' + meta.version_no);
+        const marginColor = meta.margin_pct >= 25 ? '#10b981' : meta.margin_pct >= 15 ? '#d4a843' : '#ef4444';
+        const marginGauge = meta.margin_pct != null ? `<div style="position:relative;width:48px;height:48px;margin:0 auto 4px">
+          <svg viewBox="0 0 48 48" style="transform:rotate(-90deg)">
+            <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+            <circle cx="24" cy="24" r="20" fill="none" stroke="${marginColor}" stroke-width="4" stroke-linecap="round"
+              stroke-dasharray="${Math.min(meta.margin_pct, 50) / 50 * 125.6} 125.6"/>
+          </svg>
+          <span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:${marginColor}">${meta.margin_pct}%</span>
+        </div>` : '';
+
         pinnedCardHtml = `
-          <div class="ec-pinned-card">
+          <div class="ec-pinned-card" style="background:linear-gradient(135deg, var(--bg3,#1e1e1e) 0%, rgba(212,168,67,0.08) 100%);border:1px solid rgba(212,168,67,0.2)">
             <div class="ec-pinned-card__header">
-              <span class="ec-pinned-card__title">${esc(cardTitle)}</span>
+              <div>
+                <div class="ec-pinned-card__title">${esc(cardTitle)}</div>
+                ${infoParts.length ? `<div class="ec-pinned-card__info" style="margin-top:2px">${esc(infoParts.join(' \u2022 '))}</div>` : ''}
+                ${detailParts.length ? `<div class="ec-pinned-card__details">${detailParts.join(' \u00B7 ')}</div>` : ''}
+              </div>
               <span class="ec-status-badge ec-status-badge--${status}">${statusLabels[status] || status}</span>
             </div>
-            ${infoParts.length ? `<div class="ec-pinned-card__info">${esc(infoParts.join(' \u2022 '))}</div>` : ''}
-            ${detailParts.length ? `<div class="ec-pinned-card__details">${detailParts.join(' \u00B7 ')}</div>` : ''}
-            <div class="ec-pinned-card__metrics">
-              <div class="ec-metric"><span class="ec-metric__label">Контракт</span><span class="ec-metric__value">${fmt(meta.total_with_margin)}</span></div>
-              <div class="ec-metric"><span class="ec-metric__label">Прибыль</span><span class="ec-metric__value" style="color:#10b981">${meta.net_profit != null ? fmt(meta.net_profit) : (meta.total_with_margin && meta.total_cost ? fmt(Math.round(meta.total_with_margin - meta.total_cost)) : '—')}</span></div>
-              <div class="ec-metric"><span class="ec-metric__label">Маржа</span><span class="ec-metric__value">${meta.margin_pct != null ? meta.margin_pct + '%' : '—'}</span></div>
+            <div class="ec-pinned-card__metrics" style="margin:12px 0;grid-template-columns:1fr 1fr 100px">
+              <div class="ec-metric">
+                <span class="ec-metric__label">\uD83D\uDCB0 Контракт</span>
+                <span class="ec-metric__value" style="font-size:18px">${fmt(meta.total_with_margin)}</span>
+              </div>
+              <div class="ec-metric">
+                <span class="ec-metric__label">\uD83D\uDCC8 Прибыль</span>
+                <span class="ec-metric__value" style="font-size:18px;color:#10b981">${meta.net_profit != null ? fmt(meta.net_profit) : (meta.total_with_margin && meta.total_cost ? fmt(Math.round(meta.total_with_margin - meta.total_cost)) : '\u2014')}</span>
+              </div>
+              <div class="ec-metric" style="text-align:center">
+                ${marginGauge}
+                <span class="ec-metric__label">Маржа</span>
+              </div>
             </div>
-            <div class="ec-pinned-card__links" style="display:flex;gap:12px;margin-top:8px">
-              <a class="ec-pinned-card__link" href="#/estimate-report?id=${meta.estimate_id || ''}">Просчёт \u2192</a>
-              ${meta.work_id ? `<a class="ec-pinned-card__link" href="#/work-report?id=${meta.work_id}" style="color:#10b981">Фин. отчёт \u2192</a>` : ''}
+            <div class="ec-pinned-card__links" style="display:flex;gap:12px">
+              <a class="ec-pinned-card__link" href="#/estimate-report?id=${meta.estimate_id || ''}" style="flex:1;text-align:center;padding:8px;border-radius:6px;background:rgba(255,255,255,0.04)">Просчёт \u2192</a>
+              ${meta.work_id ? `<a class="ec-pinned-card__link" href="#/work-report?id=${meta.work_id}" style="flex:1;text-align:center;padding:8px;border-radius:6px;background:rgba(16,185,129,0.1);color:#10b981">Фин. отчёт \u2192</a>` : ''}
             </div>
           </div>`;
       }

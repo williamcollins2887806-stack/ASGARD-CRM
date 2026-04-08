@@ -414,6 +414,34 @@ window.AsgardPmWorksPage=(function(){
               left:left,
             });
             await audit(pmUser.id, 'work', w.id, 'close', {work_status:w.work_status});
+
+            // Автоматический фин. отчёт в Huginn чат
+            try {
+              const finSummary = await fetch('/api/works/' + w.id + '/financial-summary', {
+                headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '')}
+              }).then(r => r.ok ? r.json() : null);
+              if (finSummary && w.estimate_id) {
+                // Find chat by estimate
+                const chatResp = await fetch('/api/chat-groups/by-entity?type=estimate&id=' + w.estimate_id, {
+                  headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '')}
+                }).then(r => r.ok ? r.json() : null);
+                const chatId = chatResp?.chat?.id;
+                if (chatId) {
+                  const profitEmoji = finSummary.profit.net >= 0 ? '\uD83D\uDCC8' : '\uD83D\uDCC9';
+                  const msg = `${profitEmoji} **Работы завершены — Финансовый итог**\n\n` +
+                    `Выручка: ${money(finSummary.revenue.ex_vat)} \u20BD\n` +
+                    `Расходы + налоги: ${money(finSummary.expenses.total_with_tax)} \u20BD\n` +
+                    `Чистая прибыль: **${money(finSummary.profit.net)} \u20BD** (маржа ${finSummary.profit.margin}%)\n\n` +
+                    `[Открыть полный отчёт](#/work-report?id=${w.id})`;
+                  await fetch('/api/chat-groups/' + chatId + '/messages', {
+                    method: 'POST',
+                    headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || ''), 'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: msg })
+                  });
+                }
+              }
+            } catch (_) { /* non-critical */ }
+
             toast('Закрытие','Контракт завершён');
             if(typeof onDone==='function') onDone();
           }catch(e){

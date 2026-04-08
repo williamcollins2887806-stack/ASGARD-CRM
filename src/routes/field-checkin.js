@@ -319,6 +319,56 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // PUT /correct/:id — master corrects an existing checkin
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.put('/correct/:id', auth, async (req, reply) => {
+    try {
+      const masterEmpId = req.fieldEmployee.id;
+      const checkinId = parseInt(req.params.id);
+      const { day_rate, amount_earned, hours_worked, hours_paid, note } = req.body || {};
+
+      // Get the checkin to find work_id
+      const { rows: checkins } = await db.query(
+        'SELECT id, work_id, employee_id FROM field_checkins WHERE id = $1',
+        [checkinId]
+      );
+      if (checkins.length === 0) {
+        return reply.code(404).send({ error: 'Чекин не найден' });
+      }
+      const checkin = checkins[0];
+
+      // Check master has master role on this project
+      const { rows: masterAssign } = await db.query(`
+        SELECT field_role FROM employee_assignments
+        WHERE employee_id = $1 AND work_id = $2 AND is_active = true
+          AND field_role IN ('shift_master', 'senior_master')
+        LIMIT 1
+      `, [masterEmpId, checkin.work_id]);
+
+      if (masterAssign.length === 0) {
+        return reply.code(403).send({ error: 'Только мастер может корректировать' });
+      }
+
+      const { rows: updated } = await db.query(`
+        UPDATE field_checkins SET
+          day_rate = COALESCE($2, day_rate),
+          amount_earned = COALESCE($3, amount_earned),
+          hours_worked = COALESCE($4, hours_worked),
+          hours_paid = COALESCE($5, hours_paid),
+          note = COALESCE($6, note),
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `, [checkinId, day_rate, amount_earned, hours_worked, hours_paid, note || null]);
+
+      return { ok: true, checkin: updated[0] };
+    } catch (err) {
+      fastify.log.error('[field-checkin] /correct error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // GET /today — today's checkins for a project (master/PM view)
   // ─────────────────────────────────────────────────────────────────────
   fastify.get('/today', auth, async (req, reply) => {
