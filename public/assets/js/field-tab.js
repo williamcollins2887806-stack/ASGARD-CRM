@@ -85,7 +85,7 @@ window.AsgardFieldTab = (function () {
     try {
       const r2 = await fetch(`/api/data/field_project_settings?work_id=${work.id}`, { headers: hdr() });
       const d2 = await r2.json();
-      settingsData = (d2.rows || d2.items || d2 || [])[0] || null;
+      settingsData = dataRows(d2)[0] || null;
     } catch (_) {}
 
     const isActive = !!settingsData?.is_active;
