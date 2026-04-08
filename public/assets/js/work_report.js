@@ -242,7 +242,8 @@ window.AsgardWorkReport = (function () {
       return `<div class="wr-donut-legend-item" data-idx="${i}">
         <span class="wr-donut-dot" style="background:${ci}"></span>
         <span class="wr-donut-legend-label">${esc(info.label)}</span>
-        <span class="wr-donut-legend-val">${m(c.sum)} \u20BD (${pct(c.sum, total)}%)</span>
+        <span class="wr-donut-legend-val">${m(c.sum)} \u20BD</span>
+        <span class="wr-donut-legend-pct" style="color:var(--t3);font-size:11px;min-width:32px;text-align:right">${pct(c.sum, total)}%</span>
       </div>`;
     });
 
@@ -372,11 +373,11 @@ window.AsgardWorkReport = (function () {
     const y2 = CY + R * Math.sin(rad(angle));
     const large = angle > 180 ? 1 : 0;
 
-    const gaugeSvg = `<svg width="140" height="80" viewBox="0 0 140 80" class="wr-profit-gauge">
+    const gaugeSvg = `<svg width="160" height="90" viewBox="0 0 160 90" class="wr-profit-gauge">
       <path d="M ${CX-R} ${CY} A ${R} ${R} 0 0 1 ${CX+R} ${CY}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8" stroke-linecap="round"/>
       <path d="M ${x1} ${y1} A ${R} ${R} 0 ${large} 0 ${x2} ${y2}" fill="none" stroke="${marginColor}" stroke-width="8" stroke-linecap="round" class="wr-gauge-arc"/>
-      <text x="${CX}" y="${CY - 6}" text-anchor="middle" fill="${marginColor}" font-size="20" font-weight="700">${d.profit.margin}%</text>
-      <text x="${CX}" y="${CY + 10}" text-anchor="middle" fill="var(--t2)" font-size="10">маржа</text>
+      <text x="${CX}" y="${CY - 4}" text-anchor="middle" fill="${marginColor}" font-size="22" font-weight="700">${d.profit.margin}%</text>
+      <text x="${CX}" y="${CY + 12}" text-anchor="middle" fill="var(--t2)" font-size="11">маржа</text>
     </svg>`;
 
     return `<div class="wr-card wr-profit-card">
@@ -400,6 +401,14 @@ window.AsgardWorkReport = (function () {
   // ════════════════════════════════════════
   //  8. WATERFALL CHART (path to profit)
   // ════════════════════════════════════════
+  // Compact number for charts: 1879697 → "1.88М", 276705 → "277К"
+  function mShort(v) {
+    const n = Math.abs(Math.round(v || 0));
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 10e6 ? 1 : 2) + 'М';
+    if (n >= 1e3) return Math.round(n / 1e3) + 'К';
+    return String(n);
+  }
+
   function renderWaterfall(d) {
     const items = [
       { label: 'Выручка', value: d.revenue.ex_vat, type: 'pos' },
@@ -411,7 +420,7 @@ window.AsgardWorkReport = (function () {
     ];
 
     const maxVal = Math.max(...items.map(i => Math.abs(i.value)), 1);
-    const W = 320, H = 200, PAD = 30, BAR_GAP = 8;
+    const W = 360, H = 220, PAD = 35, BAR_GAP = 8;
     const barCount = items.length;
     const barW = Math.floor((W - PAD * 2 - BAR_GAP * (barCount - 1)) / barCount);
     const chartH = H - PAD * 2;
@@ -440,7 +449,7 @@ window.AsgardWorkReport = (function () {
 
       // Label
       const labelY = y - 4;
-      const valLabel = m(Math.abs(item.value));
+      const valLabel = mShort(item.value);
 
       return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${color}" class="wr-wf-bar" style="--delay:${i * 100}ms"/>
         <text x="${x + barW/2}" y="${Math.max(labelY, 12)}" text-anchor="middle" class="wr-wf-val">${valLabel}</text>
