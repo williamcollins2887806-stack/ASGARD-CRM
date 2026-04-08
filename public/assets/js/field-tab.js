@@ -26,6 +26,17 @@ window.AsgardFieldTab = (function () {
     return r.json();
   }
 
+  // Extract rows from generic data API response: { tableName: [...] } → [...]
+  function dataRows(resp) {
+    if (!resp || typeof resp !== 'object') return [];
+    if (Array.isArray(resp)) return resp;
+    // data API returns { tableName: rows, total, limit, offset }
+    for (const key of Object.keys(resp)) {
+      if (Array.isArray(resp[key])) return resp[key];
+    }
+    return [];
+  }
+
   // ── Category labels ──────────────────────────────────────────────
   const CATEGORIES = [
     { value: 'offshore', label: 'МЛСП' },
@@ -157,8 +168,8 @@ window.AsgardFieldTab = (function () {
 
     const allTariffs = tariffsData.tariffs || [];
     const specials = tariffsData.specials || [];
-    const allEmployees = (empsData.rows || empsData.items || []).sort((a, b) => (a.fio || '').localeCompare(b.fio || ''));
-    const assignments = (assignData.rows || assignData.items || []).filter(a => a.is_active !== false);
+    const allEmployees = dataRows(empsData).sort((a, b) => (a.fio || '').localeCompare(b.fio || ''));
+    const assignments = dataRows(assignData).filter(a => a.is_active !== false);
     const category = settingsData?.site_category || 'ground';
 
     container.innerHTML = '';
@@ -573,7 +584,7 @@ window.AsgardFieldTab = (function () {
     ]);
 
     const items = logData.items || logData.logistics || (Array.isArray(logData) ? logData : []);
-    const assignments = (assignData.rows || assignData.items || []).filter(a => a.is_active !== false);
+    const assignments = dataRows(assignData).filter(a => a.is_active !== false);
 
     // Load employee names
     const empIds = [...new Set(assignments.map(a => a.employee_id))];
@@ -581,7 +592,7 @@ window.AsgardFieldTab = (function () {
     if (empIds.length) {
       try {
         const empsData = await fetch('/api/data/employees?limit=2000', { headers: hdr() }).then(r => r.json());
-        (empsData.rows || empsData.items || []).forEach(e => { empsMap[e.id] = e; });
+        dataRows(empsData).forEach(e => { empsMap[e.id] = e; });
       } catch (_) {}
     }
 
@@ -2151,7 +2162,7 @@ window.AsgardFieldTab = (function () {
     }
   }
 
-  // ─── Modal: массовые суточные ──────────────────────────────────
+  // ─── Inline form: массовые суточные (рендерится внутри вкладки, не в отдельной модалке) ──
   async function openBulkPerDiemModal(work, parentContainer, user) {
     // Load crew
     let crewOptions = [];
@@ -2168,51 +2179,67 @@ window.AsgardFieldTab = (function () {
       </label>`
     ).join('');
 
-    AsgardUI.showModal({
-      title: '🌙 Начислить суточные',
-      html: `
-        <div style="display:flex;flex-direction:column;gap:12px;max-width:520px">
-          <div style="font-weight:600;font-size:13px">Сотрудники:</div>
-          <div style="max-height:200px;overflow-y:auto;border:1px solid var(--brd,rgba(255,255,255,0.1));border-radius:8px;padding:8px">
-            ${checkboxesHtml || '<span class="help">Нет сотрудников в бригаде</span>'}
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <label>Период с<input id="pdFrom" type="date" class="inp" value="${today}"></label>
-            <label>Период по<input id="pdTo" type="date" class="inp" value="${today}"></label>
-          </div>
-          <label>Ставка, ₽/день<input id="pdRate" type="number" class="inp" value="1000" style="width:100%"></label>
-          <label>Комментарий<input id="pdComment" type="text" class="inp" style="width:100%" placeholder="Командировка..."></label>
-          <button id="pdSubmit" class="btn gold" style="margin-top:8px">Начислить</button>
-        </div>
-      `,
-      onMount: () => {
-        document.getElementById('pdSubmit').addEventListener('click', async () => {
-          const empIds = Array.from(document.querySelectorAll('.pd-emp-cb:checked')).map(cb => parseInt(cb.value));
-          const from = document.getElementById('pdFrom').value;
-          const to = document.getElementById('pdTo').value;
-          const rate = parseFloat(document.getElementById('pdRate').value);
-          const comment = document.getElementById('pdComment').value.trim();
+    // Remove previous inline form if exists
+    parentContainer.querySelector('.pd-inline-form')?.remove();
 
-          if (empIds.length === 0) { toast('Выберите сотрудников'); return; }
-          if (!from || !to) { toast('Укажите период'); return; }
-          if (!rate || rate <= 0) { toast('Укажите ставку'); return; }
+    // Insert form directly into payments tab container (no nested modal)
+    const formDiv = document.createElement('div');
+    formDiv.className = 'pd-inline-form';
+    formDiv.style.cssText = 'background:var(--bg2,#151922);border:1px solid var(--gold,#D4A843);border-radius:10px;padding:16px;margin:12px 0;';
+    formDiv.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:600;font-size:14px;color:var(--gold,#D4A843)">🌙 Начислить суточные</div>
+        <button class="pd-close" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:18px">✕</button>
+      </div>
+      <div style="font-size:13px;margin-bottom:8px">Сотрудники:</div>
+      <div style="max-height:160px;overflow-y:auto;border:1px solid var(--brd,rgba(255,255,255,0.1));border-radius:8px;padding:8px;margin-bottom:10px">
+        ${checkboxesHtml || '<span class="help">Нет сотрудников в бригаде</span>'}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <label style="font-size:12px">С<input id="pdFrom" type="date" class="inp" value="${today}" style="width:100%"></label>
+        <label style="font-size:12px">По<input id="pdTo" type="date" class="inp" value="${today}" style="width:100%"></label>
+        <label style="font-size:12px">₽/день<input id="pdRate" type="number" class="inp" value="1000" style="width:100%"></label>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="pdComment" type="text" class="inp" style="flex:1" placeholder="Комментарий...">
+        <button id="pdSubmit" class="btn" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:600;white-space:nowrap">Начислить</button>
+      </div>
+    `;
 
-          try {
-            const result = await apiPayments('/bulk-per-diem', {
-              method: 'POST',
-              body: JSON.stringify({
-                work_id: work.id, employee_ids: empIds,
-                period_from: from, period_to: to,
-                rate_per_day: rate, comment: comment || null
-              })
-            });
-            if (result.error) { toast('Ошибка: ' + result.error); return; }
-            toast(`Суточные начислены: ${result.count} чел.`);
-            document.querySelector('.modal-overlay')?.remove();
-            renderPaymentsTab(parentContainer, work, user);
-          } catch (err) { toast('Ошибка: ' + err.message); }
+    // Insert before the "Нет выплат" or table
+    const firstChild = parentContainer.querySelector('.fk-table, .help');
+    if (firstChild) parentContainer.insertBefore(formDiv, firstChild);
+    else parentContainer.appendChild(formDiv);
+
+    // Close button
+    formDiv.querySelector('.pd-close').addEventListener('click', () => formDiv.remove());
+
+    // Submit
+    formDiv.querySelector('#pdSubmit').addEventListener('click', async () => {
+      const empIds = Array.from(formDiv.querySelectorAll('.pd-emp-cb:checked')).map(cb => parseInt(cb.value));
+      const from = formDiv.querySelector('#pdFrom').value;
+      const to = formDiv.querySelector('#pdTo').value;
+      const rate = parseFloat(formDiv.querySelector('#pdRate').value);
+      const comment = formDiv.querySelector('#pdComment').value.trim();
+
+      if (empIds.length === 0) { toast('Выберите сотрудников'); return; }
+      if (!from || !to) { toast('Укажите период'); return; }
+      if (!rate || rate <= 0) { toast('Укажите ставку'); return; }
+
+      try {
+        const result = await apiPayments('/bulk-per-diem', {
+          method: 'POST',
+          body: JSON.stringify({
+            work_id: work.id, employee_ids: empIds,
+            period_from: from, period_to: to,
+            rate_per_day: rate, comment: comment || null
+          })
         });
-      }
+        if (result.error) { toast('Ошибка', result.error, 'err'); return; }
+        toast('Суточные', `Начислено: ${result.count} чел.`, 'ok');
+        formDiv.remove();
+        renderPaymentsTab(parentContainer, work, user);
+      } catch (err) { toast('Ошибка', err.message, 'err'); }
     });
   }
 
