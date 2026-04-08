@@ -546,8 +546,14 @@ async function dataRoutes(fastify, options) {
         if (data[key] === '') {
           if (dt === 'date' || dt.startsWith('timestamp') || dt === 'integer' || dt === 'bigint'
             || dt === 'smallint' || dt === 'numeric' || dt === 'real' || dt === 'double precision'
-            || dt === 'boolean') {
+            || dt === 'boolean' || dt === 'jsonb' || dt === 'json') {
             data[key] = null;
+          }
+        } else if (data[key] != null && (dt === 'jsonb' || dt === 'json')) {
+          if (typeof data[key] === 'object') {
+            data[key] = JSON.stringify(data[key]);
+          } else if (typeof data[key] === 'string') {
+            try { JSON.parse(data[key]); } catch (_) { data[key] = null; }
           }
         } else if (data[key] && (dt === 'date' || dt.startsWith('timestamp')) && typeof data[key] === 'string') {
           // DD.MM.YYYY → YYYY-MM-DD
@@ -688,8 +694,14 @@ async function dataRoutes(fastify, options) {
         if (data[key] === '') {
           if (dt === 'date' || dt.startsWith('timestamp') || dt === 'integer' || dt === 'bigint'
             || dt === 'smallint' || dt === 'numeric' || dt === 'real' || dt === 'double precision'
-            || dt === 'boolean') {
+            || dt === 'boolean' || dt === 'jsonb' || dt === 'json') {
             data[key] = null;
+          }
+        } else if (data[key] != null && (dt === 'jsonb' || dt === 'json')) {
+          if (typeof data[key] === 'object') {
+            data[key] = JSON.stringify(data[key]);
+          } else if (typeof data[key] === 'string') {
+            try { JSON.parse(data[key]); } catch (_) { data[key] = null; }
           }
         } else if (data[key] && (dt === 'date' || dt.startsWith('timestamp')) && typeof data[key] === 'string') {
           // DD.MM.YYYY → YYYY-MM-DD
