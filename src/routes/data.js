@@ -61,7 +61,7 @@ async function dataRoutes(fastify, options) {
     DIRECTOR_DEV: { tables: 'all', ops: ['read', 'create', 'update'] },
     PM: {
       tables: [
-        'users', 'employees', 'staff', 'staff_plan', 'user_call_status',
+        'users', 'employees', 'employee_reviews', 'staff', 'staff_plan', 'user_call_status',
         'tenders', 'estimates', 'works', 'work_expenses', 'work_assign_requests',
         'pm_consents', 'correspondence', 'travel_expenses', 'contracts',
         'calendar_events', 'customers', 'documents', 'chats', 'chat_messages',
