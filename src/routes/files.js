@@ -155,6 +155,7 @@ async function routes(fastify, options) {
 
     reply
       .header('Content-Type', doc.mime_type || 'application/octet-stream')
+      .header('Content-Length', buffer.length)
       .header('Content-Disposition', buildContentDisposition(doc.original_name || doc.filename))
       .send(buffer);
   });
