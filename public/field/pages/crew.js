@@ -140,11 +140,20 @@ function buildCrewCard(checkin, animDelay, workId, content, t) {
 
   card.appendChild(top);
 
-  // Earnings for completed
+  // Earnings for completed + correct button
   if (isCompleted && checkin.amount_earned) {
-    card.appendChild(el('div', {
-      style: { color: t.gold, fontSize: '0.8125rem', fontWeight: '600', marginTop: '8px', textAlign: 'right' },
-    }, Utils.formatMoney(checkin.amount_earned) + '\u20BD'));
+    const earnRow = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' } });
+    const pts = Math.round(parseFloat(checkin.day_rate || checkin.amount_earned || 0) / 500);
+    earnRow.appendChild(el('span', { style: { color: t.textSec, fontSize: '0.75rem' } }, pts + ' бал'));
+    const rightPart = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } });
+    rightPart.appendChild(el('span', { style: { color: t.gold, fontSize: '0.8125rem', fontWeight: '600' } }, Utils.formatMoney(checkin.amount_earned) + '\u20BD'));
+    const correctBtn = el('button', {
+      style: { padding: '2px 8px', borderRadius: '6px', border: '1px solid ' + t.border, background: 'transparent', color: t.textSec, fontSize: '0.625rem', cursor: 'pointer' },
+      onClick: () => showCorrectCheckin(checkin, workId, content),
+    }, '\u270F');
+    rightPart.appendChild(correctBtn);
+    earnRow.appendChild(rightPart);
+    card.appendChild(earnRow);
   }
 
   return card;
@@ -238,6 +247,62 @@ function showManualCheckin(employee, workId, content) {
 
   const sheet = F.BottomSheet({
     title: '\u270F\uFE0F \u0420\u0443\u0447\u043D\u0430\u044F \u043E\u0442\u043C\u0435\u0442\u043A\u0430',
+    content: form,
+  });
+}
+
+function showCorrectCheckin(checkin, workId, content) {
+  const t = DS.t;
+  const currentPts = Math.round(parseFloat(checkin.day_rate || checkin.amount_earned || 0) / 500);
+  const form = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } });
+
+  form.appendChild(el('div', { style: { color: t.text, fontSize: '0.9375rem' } },
+    '\u041A\u043E\u0440\u0440\u0435\u043A\u0442\u0438\u0440\u043E\u0432\u043A\u0430: ' + (checkin.fio || checkin.employee_name)));
+
+  // Points input
+  const ptsLabel = el('div', {});
+  ptsLabel.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.6875rem', marginBottom: '4px' } }, '\u0411\u0430\u043B\u043B\u044B (6=\u0434\u043E\u0440\u043E\u0433\u0430, 12=\u0440\u0430\u0431\u043E\u0442\u0430, 18=\u043F\u0435\u0440\u0435\u0440\u0430\u0431.)'));
+  const ptsInput = el('input', {
+    type: 'number', value: String(currentPts), min: '0', max: '30',
+    style: { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid ' + t.border, background: t.bg2, color: t.text, fontSize: '1.25rem', textAlign: 'center', boxSizing: 'border-box' },
+  });
+  ptsLabel.appendChild(ptsInput);
+  form.appendChild(ptsLabel);
+
+  // Note
+  const note = el('input', {
+    type: 'text', placeholder: '\u041F\u0440\u0438\u0447\u0438\u043D\u0430 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u0438\u0440\u043E\u0432\u043A\u0438...',
+    style: { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid ' + t.border, background: t.bg2, color: t.text, fontSize: '0.875rem', boxSizing: 'border-box' },
+  });
+  form.appendChild(note);
+
+  const btns = el('div', { style: { display: 'flex', gap: '12px' } });
+  btns.appendChild(el('button', {
+    style: { flex: '1', height: '48px', borderRadius: '14px', border: '1px solid ' + t.border, background: t.bg2, color: t.text, fontSize: '0.9375rem', fontWeight: '600', cursor: 'pointer' },
+    onClick: () => sheet.remove(),
+  }, '\u041E\u0442\u043C\u0435\u043D\u0430'));
+
+  btns.appendChild(el('button', {
+    style: { flex: '1', height: '48px', borderRadius: '14px', border: 'none', background: t.goldGrad, color: '#FFF', fontSize: '0.9375rem', fontWeight: '600', cursor: 'pointer' },
+    onClick: async () => {
+      const newPts = parseInt(ptsInput.value) || 0;
+      const newRate = newPts * 500;
+      const resp = await API.put('/checkin/correct/' + checkin.id, {
+        day_rate: newRate, amount_earned: newRate, note: note.value || null
+      });
+      if (resp && (resp.ok || resp._ok)) {
+        sheet.remove();
+        F.Toast({ message: '\u2705 \u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E: ' + newPts + ' \u0431\u0430\u043B = ' + Utils.formatMoney(newRate) + '\u20BD', type: 'success' });
+        loadCrew(content);
+      } else {
+        F.Toast({ message: '\u274C ' + (resp?.error || '\u041E\u0448\u0438\u0431\u043A\u0430'), type: 'error' });
+      }
+    },
+  }, '\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C'));
+  form.appendChild(btns);
+
+  const sheet = F.BottomSheet({
+    title: '\u270F\uFE0F \u041A\u043E\u0440\u0440\u0435\u043A\u0442\u0438\u0440\u043E\u0432\u043A\u0430',
     content: form,
   });
 }
