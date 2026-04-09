@@ -220,7 +220,8 @@ window.AsgardPayrollPage = (function(){
 
       // CRSelect — filter work
       const _fwOpts = [{value:'', label:'Все работы'}];
-      myWorks.forEach(w => _fwOpts.push({value:String(w.id), label:esc((w.customer_name||'')+' — '+(w.work_title||''))}));
+      const _bwList = user.role==='PM' ? works.filter(w=>w.pm_id==user.id||w.created_by==user.id) : works;
+      _bwList.forEach(w => _fwOpts.push({value:String(w.id), label:esc((w.customer_name||'')+' — '+(w.work_title||''))}));
       const _fwWrap = document.getElementById('crselect-filterWork');
       if(_fwWrap) _fwWrap.appendChild(CRSelect.create({
         id:'filterWork', options:_fwOpts, value:filterWorkId?String(filterWorkId):'',

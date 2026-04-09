@@ -12,7 +12,8 @@
  * 7. РП НЕ может вводить премии вручную (только через согласование)
  */
 window.AsgardBonusApproval = (function(){
-  
+  const { $, $$, esc, toast, money, formatDate } = AsgardUI;
+
   const BONUS_STATUSES = {
     draft: { name: 'Черновик', color: 'var(--text-muted)' },
     pending: { name: 'На согласовании', color: 'var(--amber)' },

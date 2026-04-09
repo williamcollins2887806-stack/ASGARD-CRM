@@ -607,7 +607,8 @@ window.AsgardPermitsPage = (function(){
         const { permits } = await api(url);
         renderPermitsList(permits, types, canWrite, canDelete);
       } catch(e) {
-        document.getElementById('permitsListContent').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`;
+        const _plc = document.getElementById('permitsListContent');
+        if (_plc) _plc.innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`;
       }
     };
 
