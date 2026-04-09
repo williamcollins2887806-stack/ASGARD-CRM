@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '18.7.0';
+const SHELL_VERSION = '18.8.0';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -10,28 +10,14 @@ const API_CACHE_NAME = 'asgard-crm-api-v2';
 // SHELL ASSETS — all files needed for offline shell
 // ═══════════════════════════════════════════════════════════════
 const SHELL_ASSETS = [
-  // index.html НЕ кэшируем при установке — сервер отдаёт разный HTML для mobile/desktop
-  // При навигации он кэшируется автоматически через networkFirstWithOffline
+  // index.html НЕ кэшируем — сервер отдаёт разный HTML для mobile/desktop
   './offline.html',
-  './manifest.json?v=17.0.1',
-  // ── CSS ──
-  './assets/css/design-tokens.css?v=17.0.1',
-  './assets/css/components.css?v=17.0.1',
-  './assets/css/layout.css?v=17.0.1',
-  './assets/css/app.css?v=17.0.1',
-  './assets/css/responsive.css?v=17.0.1',
-  // ── Core JS ──
-  './assets/js/ui.js?v=17.0.1',
-  './assets/js/sla.js?v=17.0.1',
-  './assets/js/funnel.js?v=17.0.1',
-  './assets/js/diag.js?v=17.0.1',
-  './assets/js/push-notifications.js?v=17.0.1',
-  './assets/js/webauthn.js?v=17.0.1',
   // ── Images ──
   './assets/img/logo.png',
   './assets/img/asgard_logo.png',
   './assets/img/asgard_emblem.png'
-  // Mobile v2+v3 removed — React app at /m/
+  // CSS и JS НЕ кэшируем в SW — управляются через ?v= в index.html
+  // При смене ?v= браузер загружает новый файл автоматически
 ];
 
 // ═══════════════════════════════════════════════════════════════
