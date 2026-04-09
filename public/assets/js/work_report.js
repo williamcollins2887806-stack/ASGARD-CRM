@@ -1010,7 +1010,7 @@ window.AsgardWorkReport = (function () {
 /* ── Profit card ── */
 .wr-profit-grid{display:flex;gap:20px;align-items:center}
 .wr-profit-formula{flex:1}
-.wr-profit-gauge-wrap{flex-shrink:0}
+.wr-profit-gauge-wrap{flex-shrink:0;width:160px;min-width:160px}
 .wr-gauge-arc{stroke-dasharray:0;animation:wrGaugeIn 1.2s ease forwards}
 @keyframes wrGaugeIn{from{opacity:0}to{opacity:1}}
 
