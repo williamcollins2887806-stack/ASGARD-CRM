@@ -435,7 +435,12 @@ console.log('[ASGARD] Global period functions loaded');
     const sidenav = document.querySelector('.sidenav');
     const savedScroll = sidenav ? sidenav.scrollTop : (window.__ASG_NAV_SCROLL__ || 0);
     
-    const auth=await AsgardAuth.requireUser();
+    let auth=await AsgardAuth.requireUser();
+    // Retry once if auth failed but token exists (race condition after login)
+    if (!auth && (localStorage.getItem('asgard_token') || localStorage.getItem('auth_token'))) {
+      await new Promise(r => setTimeout(r, 300));
+      auth = await AsgardAuth.requireUser();
+    }
     const user=auth?auth.user:null;
     const role=user?user.role:"GUEST";
     const cur=AsgardRouter.current();
