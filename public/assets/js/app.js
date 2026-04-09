@@ -474,17 +474,11 @@ try{
     const menuSettings = (window.AsgardAuth && AsgardAuth.getMenuSettings) ? AsgardAuth.getMenuSettings() : {};
     const hiddenRoutes = menuSettings.hidden_routes || [];
 
-    // Фильтруем NAV по правам
-    const hasCustomPerms = Object.keys(permissions).length > 0;
+    // Фильтруем NAV по ролям (permissions НЕ фильтруют меню — только API доступ)
     const filteredNav = (role==="GUEST") ? [] : NAV.filter(n => {
-      // 1. Старая проверка по ролям (обратная совместимость)
+      // 1. Проверка по ролям
       if (!roleAllowed(n.roles, role)) return false;
-      // 2. Новая проверка по пермишенам (если поле p задано)
-      //    Fallback: если user_permissions пуст — используем только роли
-      if (n.p && role !== 'ADMIN' && hasCustomPerms) {
-        if (!permissions[n.p] || !permissions[n.p].read) return false;
-      }
-      // 3. Скрытые пользователем вкладки
+      // 2. Скрытые пользователем вкладки
       if (hiddenRoutes.includes('#' + n.r)) return false;
       return true;
     });
