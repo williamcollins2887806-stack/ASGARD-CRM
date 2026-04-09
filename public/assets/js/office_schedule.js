@@ -92,7 +92,7 @@ window.AsgardOfficeSchedulePage=(function(){
 
     // Добавляем всех активных пользователей, которых нет в staff
     for(const u of users){
-      if(!u.is_active) continue;
+      if(!u.is_active || u.role === 'BOT' || String(u.login||'').startsWith('test_') || u.login === 'mimir_bot') continue;
       if(existingUserIds.has(u.id)) continue;
       await AsgardDB.add("staff", {
         user_id: u.id,
