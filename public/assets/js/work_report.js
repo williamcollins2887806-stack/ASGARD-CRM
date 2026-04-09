@@ -373,7 +373,7 @@ window.AsgardWorkReport = (function () {
     const y2 = CY + R * Math.sin(rad(angle));
     const large = angle > 180 ? 1 : 0;
 
-    const gaugeSvg = `<svg width="160" height="80" viewBox="0 0 160 80" class="wr-profit-gauge">
+    const gaugeSvg = `<svg viewBox="0 0 160 80" class="wr-profit-gauge" style="width:100%;max-width:180px;height:auto">
       <path d="M ${CX-R} ${CY} A ${R} ${R} 0 0 1 ${CX+R} ${CY}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8" stroke-linecap="round"/>
       <path d="M ${x1} ${y1} A ${R} ${R} 0 ${large} 0 ${x2} ${y2}" fill="none" stroke="${marginColor}" stroke-width="8" stroke-linecap="round" class="wr-gauge-arc"/>
       <text x="${CX}" y="${CY - 4}" text-anchor="middle" fill="${marginColor}" font-size="22" font-weight="700">${d.profit.margin}%</text>
@@ -1010,7 +1010,7 @@ window.AsgardWorkReport = (function () {
 /* ── Profit card ── */
 .wr-profit-grid{display:flex;gap:20px;align-items:center}
 .wr-profit-formula{flex:1}
-.wr-profit-gauge-wrap{flex-shrink:0;width:160px;min-width:160px}
+.wr-profit-gauge-wrap{flex-shrink:0;width:180px;min-width:180px}
 .wr-gauge-arc{stroke-dasharray:0;animation:wrGaugeIn 1.2s ease forwards}
 @keyframes wrGaugeIn{from{opacity:0}to{opacity:1}}
 
