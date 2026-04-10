@@ -3,6 +3,12 @@ window.AsgardGantt = (function(){
 
   function parseDate(d){
     if(!d) return null;
+    if(typeof d === 'string'){
+      // YYYY-MM-DD → парсим как ЛОКАЛЬНУЮ дату (иначе new Date('2026-03-28') = UTC midnight,
+      // и в браузере вне Moscow TZ getDate() возвращает предыдущий день)
+      const m = d.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+      if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+    }
     const x = new Date(d);
     return isNaN(x.getTime()) ? null : x;
   }
