@@ -2613,13 +2613,13 @@ html[data-theme="light"] .funnel-card-meta {
 
 /* Все инпуты */
 .inp,
-.modal input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.modal input:not([type="checkbox"]):not([type="radio"]),
 .modal select,
 .modal textarea,
-.modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.modal-content input:not([type="checkbox"]):not([type="radio"]),
 .modal-content select,
 .modal-content textarea,
-.formrow input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.formrow input:not([type="checkbox"]):not([type="radio"]),
 .formrow select,
 .formrow textarea {
   width: 100%;
@@ -2635,13 +2635,13 @@ html[data-theme="light"] .funnel-card-meta {
 }
 
 .inp:focus,
-.modal input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.modal input:not([type="checkbox"]):not([type="radio"]):focus,
 .modal select:focus,
 .modal textarea:focus,
-.modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.modal-content input:not([type="checkbox"]):not([type="radio"]):focus,
 .modal-content select:focus,
 .modal-content textarea:focus,
-.formrow input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.formrow input:not([type="checkbox"]):not([type="radio"]):focus,
 .formrow select:focus,
 .formrow textarea:focus {
   border-color: var(--blue);
@@ -5344,13 +5344,13 @@ html[data-theme="light"] .modal-footer {
 
 /* Form inputs */
 html[data-theme="light"] .inp,
-html[data-theme="light"] .modal input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+html[data-theme="light"] .modal input:not([type="checkbox"]):not([type="radio"]),
 html[data-theme="light"] .modal select,
 html[data-theme="light"] .modal textarea,
-html[data-theme="light"] .modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+html[data-theme="light"] .modal-content input:not([type="checkbox"]):not([type="radio"]),
 html[data-theme="light"] .modal-content select,
 html[data-theme="light"] .modal-content textarea,
-html[data-theme="light"] .formrow input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+html[data-theme="light"] .formrow input:not([type="checkbox"]):not([type="radio"]),
 html[data-theme="light"] .formrow select,
 html[data-theme="light"] .formrow textarea {
   background: var(--bg3);
@@ -5359,9 +5359,9 @@ html[data-theme="light"] .formrow textarea {
 }
 
 html[data-theme="light"] .inp:focus,
-html[data-theme="light"] .modal input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+html[data-theme="light"] .modal input:not([type="checkbox"]):not([type="radio"]):focus,
 html[data-theme="light"] .modal select:focus,
-html[data-theme="light"] .modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+html[data-theme="light"] .modal-content input:not([type="checkbox"]):not([type="radio"]):focus,
 html[data-theme="light"] .modal-content select:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
