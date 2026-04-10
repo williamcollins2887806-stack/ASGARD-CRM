@@ -101,10 +101,15 @@ window.AsgardGantt = (function(){
       const bEraw = parseDate(r.end) || bS;
       const bS0 = new Date(bS); bS0.setHours(0,0,0,0);
       const bE0 = new Date(bEraw); bE0.setHours(0,0,0,0);
-      // include end date as full day (>=1)
-      const startDays = Math.max(0, Math.floor((bS0-start)/msDay));
-      const endDays = Math.max(startDays, Math.floor((bE0-start)/msDay));
+      // Реальные дни от старта шкалы (могут быть отрицательными или > totalDays)
+      const rawStartDays = Math.floor((bS0-start)/msDay);
+      const rawEndDays = Math.max(rawStartDays, Math.floor((bE0-start)/msDay));
+      // Клампим на видимую область — бар, выходящий за края, обрезается
+      const startDays = Math.max(0, Math.min(totalDays-1, rawStartDays));
+      const endDays = Math.max(startDays, Math.min(totalDays-1, rawEndDays));
       const durDays = Math.max(1, (endDays - startDays) + 1);
+      const startsBefore = rawStartDays < 0;
+      const endsAfter = rawEndDays >= totalDays;
 
       const barLeft = (startDays/totalDays)*100;
       const barW = (durDays/totalDays)*100;
@@ -113,7 +118,10 @@ window.AsgardGantt = (function(){
       const sub = r.sub || "";
       const startIso = isoDate(bS0);
       const endIso = isoDate(bE0);
-      const tooltip = `${label}\n${startIso} — ${endIso}`;
+      const tooltip = `${label}\n${startIso} — ${endIso}${startsBefore?'\n← начало раньше видимой области':''}${endsAfter?'\nконец позже видимой области →':''}`;
+      const barClasses = ['gbar'];
+      if(startsBefore) barClasses.push('gbar--cut-left');
+      if(endsAfter) barClasses.push('gbar--cut-right');
       return `
         <div class="grow">
           <div class="gname">
@@ -123,7 +131,7 @@ window.AsgardGantt = (function(){
           <div class="gtrack">
             <div class="ggrid" style="grid-template-columns:${gridCols}">${Array.from({length: totalWeeks}).map(()=>"<div></div>").join("")}</div>
             <div class="gtoday" style="left:${todayLeft}%"></div>
-            <div class="gbar" data-gitem="${esc(String(r.id??idx))}" style="left:${barLeft}%; width:${barW}%; background:${color}; cursor:pointer" title="${esc(tooltip)}"><span class="gcap start"></span><span class="gcap end"></span></div>
+            <div class="${barClasses.join(' ')}" data-gitem="${esc(String(r.id??idx))}" style="left:${barLeft}%; width:${barW}%; background:${color}; cursor:pointer" title="${esc(tooltip)}"><span class="gcap start"></span><span class="gcap end"></span></div>
           </div>
         </div>
       `;
@@ -144,7 +152,9 @@ window.AsgardGantt = (function(){
         .ggrid{position:absolute; inset:0; display:grid}
         .ggrid div{border-right:1px solid rgba(255,255,255,.03)}
         .gbar{position:absolute; top:9px; height:26px; border-radius:999px; box-shadow:0 10px 20px rgba(0,0,0,.25);
-          display:flex; align-items:center; padding:0; overflow:hidden}
+          display:flex; align-items:center; padding:0; overflow:hidden; min-width:6px}
+        .gbar--cut-left{border-top-left-radius:0; border-bottom-left-radius:0; border-left:2px dashed rgba(255,255,255,.55)}
+        .gbar--cut-right{border-top-right-radius:0; border-bottom-right-radius:0; border-right:2px dashed rgba(255,255,255,.55)}
         .gcap{position:absolute; top:0; bottom:0; width:8px; opacity:.9}
         .gcap.start{left:0; background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0))}
         .gcap.end{right:0; background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0))}

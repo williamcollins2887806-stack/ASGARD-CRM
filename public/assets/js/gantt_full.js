@@ -40,7 +40,9 @@ window.AsgardGanttFullPage=(function(){
     if(!f||!t) return null;
     const ms = 7*24*60*60*1000;
     const f0=startOfWeek(f);
-    const t0=startOfWeek(addDays(t,1)); // include end date
+    // Включаем целиком ту неделю, в которой находится конец диапазона
+    // (startOfWeek(t) + 7 даёт понедельник следующей недели)
+    const t0=addDays(startOfWeek(t), 7);
     return Math.ceil((t0-f0)/ms);
   }
 
