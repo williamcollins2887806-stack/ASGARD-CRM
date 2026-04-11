@@ -17,6 +17,7 @@ const { randomUUID } = require('crypto');
 const { sendToUser, isUserOnline } = require('./sse');
 const aiProvider = require('../services/ai-provider');
 const mimirData = require('../services/mimir-data');
+const estimateChat = require('../services/estimateChat');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
@@ -787,6 +788,34 @@ module.exports = async function(fastify) {
       chat_id: chatId,
       message: { ...message, user_name: senderName }
     });
+
+    // ── BF2b: Перехват @Мимир в чатах просчётов ──
+    // Если это чат просчёта (entity_type='estimate'), сообщение текстовое и
+    // содержит упоминание Мимира — асинхронно вызвать ответ Мимира.
+    if (text && (message_type || 'text') === 'text' && estimateChat.detectMimirMention(text)) {
+      try {
+        const { rows: [chatMeta] } = await db.query(
+          "SELECT entity_type, entity_id FROM chats WHERE id = $1 AND entity_type = 'estimate'",
+          [chatId]
+        );
+        if (chatMeta?.entity_id) {
+          const estimateId = chatMeta.entity_id;
+          const askerName = senderName;
+          const askerId = userId;
+          const question = text.trim();
+          // Fire-and-forget — клиент не ждёт ответ Мимира
+          setImmediate(() => {
+            estimateChat.mimirRespondToQuestion(db, {
+              chatId, estimateId, question, askerName, askerId
+            }).catch(err => {
+              console.error('[BF2b] mimir mention handler error:', err.message);
+            });
+          });
+        }
+      } catch (err) {
+        console.error('[BF2b] mimir mention detect error:', err.message);
+      }
+    }
 
     return { message };
   });

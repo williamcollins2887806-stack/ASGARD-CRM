@@ -1,13 +1,33 @@
 'use strict';
 
 /**
- * ASGARD CRM — Сервис интеграции просчётов с Хугинн (H1+H2)
+ * ASGARD CRM — Сервис интеграции просчётов с Хугинн (H1+H2+BF2b)
  *
- * H1: Создание чата при send, обновление карточки при resubmit.
- * H2: Дублирование комментариев директора в чат, вызов Мимир-автоответчика.
+ * H1:  Создание чата при send, обновление карточки при resubmit.
+ * H2:  Дублирование комментариев директора в чат, вызов Мимир-автоответчика
+ *      на approval-action (rework/question/reject).
+ * BF2b: Мимир отвечает на @упоминания в чатах просчётов, читает приложенные
+ *      документы (PDF/DOCX/Excel/txt), знает полный контекст просчёта.
  */
 
+const path = require('path');
+const fs = require('fs');
 const { sendToUser } = require('../routes/sse');
+
+// Базовая директория хранения документов (та же что в src/routes/files.js)
+const UPLOAD_BASE_DIR = path.resolve(process.env.UPLOAD_DIR || './uploads');
+
+// Регулярка детекции упоминания Мимира в тексте сообщения
+const MIMIR_MENTION_RE = /(^|[\s,!?(])(@мимир|@mimir|мимир[,:!?\s])/i;
+
+/**
+ * Проверяет, упомянут ли Мимир в тексте сообщения чата.
+ * Используется в chat_groups.js для решения о вызове mimirRespondToQuestion.
+ */
+function detectMimirMention(text) {
+  if (!text || typeof text !== 'string') return false;
+  return MIMIR_MENTION_RE.test(text);
+}
 
 /**
  * Создать чат для просчёта (вызывается при send).
@@ -517,9 +537,410 @@ ${analogsSummary}
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BF2b: МИМИР В ЧАТАХ ПРОСЧЁТОВ — упоминания + чтение документов
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Знание о тарифах/формулах — продублировано из mimir-data.buildSystemPrompt(),
+// но в сжатой форме для специализированного контекста чата просчёта.
+const TARIFF_KNOWLEDGE = `ТАРИФНАЯ СЕТКА ООО «Асгард Сервис» (1 балл = 500₽, утв. 01.10.2025):
+- МЛСП: рабочий 14-21 балл (7 000-10 500₽), мастер 16-23 балла (8 000-11 500₽)
+- Земля обычные: рабочий 11-14 (5 500-7 000₽), мастер 14-16 (7 000-8 000₽)
+- Земля тяжёлые: рабочий 13-16 (6 500-8 000₽), мастер 16-18 (8 000-9 000₽)
+- Склад: рабочий 10-12 (5 000-6 000₽), мастер 12-14 (6 000-7 000₽)
+- ИТР: 10 000₽/смена ФИКСИРОВАННАЯ (не из сетки). Дни дороги: 3 000₽/чел/день.
+- Совмещение: +1 балл к ставке.
+
+ФОРМУЛЫ СЕБЕСТОИМОСТИ:
+- Налог на ФОТ: 55%. Накладные: 15%. Расходные: 3%. Непредвиденные: 5%.
+- Пропуска и инструктаж: 3 000₽/чел. Суточные/пайковые: по 1 000₽/чел/день.
+- СИЗ рабочий 5 000₽, СИЗ ИТР 7 000₽. Страхование 2 000₽/чел.
+- Гостиница (Москва): 3 500₽/чел/день. Билет Саратов-Москва: 12 000₽/чел.
+- Маршрут: Саратов → Москва (склад) → объект.`;
+
+// Максимум символов содержимого одного документа (защита от OOM)
+const DOC_CONTENT_LIMIT = 8000;
+// Максимум документов, которые парсятся за один вызов
+const MAX_DOCS_TO_PARSE = 6;
+
+/**
+ * Прочитать содержимое документа: PDF / DOCX / XLSX / TXT / CSV.
+ * Возвращает строку с содержимым (≤ DOC_CONTENT_LIMIT символов) или null.
+ */
+async function parseDocumentContent(doc) {
+  if (!doc || !doc.filename) return null;
+
+  // Безопасный resolve пути в пределах UPLOAD_BASE_DIR
+  const trimmed = String(doc.filename).trim();
+  if (!trimmed || trimmed.includes('\0')) return null;
+  const normalized = path.normalize(trimmed);
+  const resolved = path.resolve(
+    path.isAbsolute(normalized) ? normalized : path.join(UPLOAD_BASE_DIR, normalized)
+  );
+  const relative = path.relative(UPLOAD_BASE_DIR, resolved);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+
+  if (!fs.existsSync(resolved)) return null;
+
+  const ext = path.extname(doc.original_name || doc.filename || '').toLowerCase();
+  // Не пытаемся парсить картинки/архивы/бинарные форматы
+  const SUPPORTED = ['.pdf', '.docx', '.xls', '.xlsx', '.txt', '.csv', '.rtf'];
+  if (!SUPPORTED.includes(ext)) return null;
+
+  const buffer = fs.readFileSync(resolved);
+
+  try {
+    if (ext === '.pdf') {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(buffer);
+      return (data.text || '').substring(0, DOC_CONTENT_LIMIT);
+    }
+    if (ext === '.docx') {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ buffer });
+      return (result.value || '').substring(0, DOC_CONTENT_LIMIT);
+    }
+    if (ext === '.xlsx' || ext === '.xls') {
+      const ExcelJS = require('exceljs');
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer);
+      let text = '';
+      wb.eachSheet((sheet) => {
+        if (text.length >= DOC_CONTENT_LIMIT) return;
+        text += `\n=== Лист: ${sheet.name} ===\n`;
+        sheet.eachRow((row) => {
+          if (text.length >= DOC_CONTENT_LIMIT) return;
+          const vals = [];
+          row.eachCell({ includeEmpty: false }, (cell) => {
+            const v = cell.value;
+            if (v == null) { vals.push(''); return; }
+            if (typeof v === 'object' && v.text) { vals.push(String(v.text)); return; }
+            if (typeof v === 'object' && v.result != null) { vals.push(String(v.result)); return; }
+            vals.push(String(v));
+          });
+          text += vals.join(' | ') + '\n';
+        });
+      });
+      return text.substring(0, DOC_CONTENT_LIMIT);
+    }
+    if (ext === '.txt' || ext === '.csv' || ext === '.rtf') {
+      return buffer.toString('utf-8').substring(0, DOC_CONTENT_LIMIT);
+    }
+  } catch (err) {
+    console.warn(`[BF2b] parseDocumentContent failed for ${doc.original_name}: ${err.message}`);
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * Собрать ПОЛНЫЙ контекст просчёта для Мимира:
+ *   - estimate (поля карточки)
+ *   - calculation (json блоки расчёта последней версии)
+ *   - tender (если связан)
+ *   - approval-комментарии всех участников
+ *   - документы (с распарсенным содержимым) — из tender и estimate
+ *
+ * Возвращает объект с готовыми текстовыми блоками для подстановки в system prompt.
+ */
+async function buildEstimateContext(db, estimateId) {
+  // Estimate
+  const estResult = await db.query('SELECT * FROM estimates WHERE id = $1', [estimateId]);
+  const est = estResult.rows[0];
+
+  // Calculation (последняя версия)
+  let calc = null;
+  try {
+    const calcResult = await db.query(
+      'SELECT * FROM estimate_calculation_data WHERE estimate_id = $1 ORDER BY version_no DESC LIMIT 1',
+      [estimateId]
+    );
+    calc = calcResult.rows[0] || null;
+  } catch (e) { /* ok */ }
+
+  // Tender
+  let tender = null;
+  if (est?.tender_id) {
+    try {
+      const tRes = await db.query('SELECT * FROM tenders WHERE id = $1', [est.tender_id]);
+      tender = tRes.rows[0] || null;
+    } catch (e) { /* ok */ }
+  }
+
+  // Approval comments
+  let comments = [];
+  try {
+    const cRes = await db.query(
+      `SELECT ac.action, ac.comment, ac.created_at, u.name, u.role
+         FROM approval_comments ac JOIN users u ON ac.user_id = u.id
+        WHERE ac.entity_type = 'estimates' AND ac.entity_id = $1
+        ORDER BY ac.created_at ASC`,
+      [estimateId]
+    );
+    comments = cRes.rows;
+  } catch (e) { /* ok */ }
+
+  // Documents (estimate + связанный tender)
+  let documents = [];
+  try {
+    if (est?.tender_id) {
+      const dRes = await db.query(
+        'SELECT id, original_name, mime_type, size, filename, type, tender_id, estimate_id FROM documents WHERE tender_id = $1 OR estimate_id = $2 ORDER BY created_at DESC LIMIT $3',
+        [est.tender_id, estimateId, MAX_DOCS_TO_PARSE]
+      );
+      documents = dRes.rows;
+    } else {
+      const dRes = await db.query(
+        'SELECT id, original_name, mime_type, size, filename, type FROM documents WHERE estimate_id = $1 ORDER BY created_at DESC LIMIT $2',
+        [estimateId, MAX_DOCS_TO_PARSE]
+      );
+      documents = dRes.rows;
+    }
+  } catch (e) { /* ok */ }
+
+  // Парсинг документов (последовательно — сильно много не будет)
+  let documentsInfo = 'Вложенные документы: нет';
+  if (documents.length > 0) {
+    const blocks = [`Вложенные документы (${documents.length}):`];
+    for (const doc of documents) {
+      const sizeKb = Math.round((doc.size || 0) / 1024);
+      blocks.push(`- ${doc.original_name || doc.filename} (${doc.mime_type || '?'}, ${sizeKb}KB)`);
+      const content = await parseDocumentContent(doc);
+      if (content && content.trim()) {
+        // Очистим многократные пустые строки
+        const cleaned = content.replace(/\n{3,}/g, '\n\n').trim();
+        blocks.push(`  Содержимое:\n${cleaned}`);
+      }
+    }
+    documentsInfo = blocks.join('\n');
+  }
+
+  // Форматирование блоков
+  const fmt = (v) => (v == null || v === '' ? '—' : v);
+  const fmtMoney = (v) => (v == null || v === '' ? '—' : `${Number(v).toLocaleString('ru-RU')} ₽`);
+
+  const estimateInfo = est
+    ? `ПРОСЧЁТ #${est.id}:
+Название: ${fmt(est.title || est.object_name)}
+Статус согласования: ${fmt(est.approval_status)}
+Заказчик: ${fmt(est.customer)}
+Объект: ${fmt(est.object_city)}, ${fmt(est.object_distance_km)} км
+Тип работ: ${fmt(est.work_type)}
+Бригада: ${fmt(est.crew_count)} чел, ${fmt(est.work_days)} раб. дней, ${fmt(est.road_days || 2)} дн. дороги
+Наценка: ×${fmt(est.markup_multiplier)}
+Версия: v${fmt(est.current_version_no || 1)}`
+    : 'Просчёт не найден';
+
+  const personnelStr = calc?.personnel_json
+    ? JSON.stringify(calc.personnel_json).substring(0, 2500)
+    : '—';
+  const currentStr = calc?.current_costs_json
+    ? JSON.stringify(calc.current_costs_json).substring(0, 1500)
+    : '—';
+  const travelStr = calc?.travel_json
+    ? JSON.stringify(calc.travel_json).substring(0, 1500)
+    : '—';
+  const transportStr = calc?.transport_json
+    ? JSON.stringify(calc.transport_json).substring(0, 800)
+    : '—';
+  const chemistryStr = calc?.chemistry_json
+    ? JSON.stringify(calc.chemistry_json).substring(0, 1500)
+    : '—';
+
+  const calculationInfo = calc
+    ? `РАСЧЁТ (v${calc.version_no}):
+Себестоимость: ${fmtMoney(calc.total_cost)}
+Клиенту: ${fmtMoney(calc.total_with_margin)}
+Маржа: ${fmt(calc.margin_pct)}%
+Непредвиденные: ${fmt(calc.contingency_pct)}%
+Персонал: ${personnelStr}
+Текущие: ${currentStr}
+Командировочные: ${travelStr}
+Транспорт: ${transportStr}
+Химия/материалы: ${chemistryStr}`
+    : 'Расчёт пока не создан';
+
+  const tenderInfo = tender
+    ? `ТЕНДЕР #${tender.id}:
+Название: ${fmt(tender.tender_title)}
+Заказчик: ${fmt(tender.customer_name)}
+Объект: ${fmt(tender.object_name)}
+Сумма: ${fmtMoney(tender.amount)}
+Статус: ${fmt(tender.tender_status)}
+Дедлайн: ${fmt(tender.deadline)}`
+    : '';
+
+  const commentsInfo = comments.length > 0
+    ? `КОММЕНТАРИИ СОГЛАСОВАНИЯ (${comments.length}):\n` +
+      comments.map(c => `- ${c.name} (${c.role}, ${c.action}): ${c.comment}`).join('\n')
+    : '';
+
+  return { estimate: est, calc, tender, estimateInfo, calculationInfo, tenderInfo, documentsInfo, commentsInfo };
+}
+
+/**
+ * Мимир отвечает на упоминание (@Мимир) в чате просчёта.
+ *
+ * Pipeline:
+ *   1. Найти mimir_bot user
+ *   2. Послать typing-индикатор всем участникам
+ *   3. Собрать полный контекст просчёта (estimate + calc + tender + комментарии + документы)
+ *   4. Загрузить ВСЮ историю чата (271К контекста позволяет)
+ *   5. Сформировать system prompt с тарифами и правилами
+ *   6. Вызвать AI (completeAnalytics → YandexGPT Pro)
+ *   7. Сохранить ответ в chat_messages с типом 'mimir_response'
+ *   8. Разослать SSE chat:new_message всем участникам
+ *   9. Залогировать в mimir_auto_log (scenario='chat_response')
+ *
+ * Вызывается fire-and-forget из POST /:id/messages.
+ */
+async function mimirRespondToQuestion(db, { chatId, estimateId, question, askerName, askerId }) {
+  try {
+    const aiProvider = require('./ai-provider');
+
+    // 1. mimir_bot user
+    const botResult = await db.query("SELECT id FROM users WHERE login = 'mimir_bot' LIMIT 1");
+    const botUserId = botResult.rows[0]?.id;
+    if (!botUserId) {
+      console.warn('[BF2b] mimir_bot user not found');
+      return null;
+    }
+
+    // 2. Список участников чата (для typing и SSE)
+    const membersResult = await db.query(
+      'SELECT user_id FROM chat_group_members WHERE chat_id = $1', [chatId]
+    );
+    const members = membersResult.rows;
+
+    // 2a. Typing indicator от Мимира
+    for (const m of members) {
+      sendToUser(m.user_id, 'chat:typing', {
+        chat_id: chatId,
+        user_id: botUserId,
+        user_name: 'Мимир'
+      });
+    }
+
+    // 3. Полный контекст просчёта
+    const ctx = await buildEstimateContext(db, estimateId);
+
+    // 4. Вся история чата (исключая pinned-карточку и системные)
+    const historyResult = await db.query(
+      `SELECT cm.id, cm.user_id, cm.message, cm.message_type, cm.created_at,
+              u.name AS user_name, u.role AS user_role
+         FROM chat_messages cm
+         JOIN users u ON cm.user_id = u.id
+        WHERE cm.chat_id = $1
+          AND cm.deleted_at IS NULL
+          AND cm.message_type NOT IN ('estimate_card','estimate_update')
+        ORDER BY cm.created_at ASC`,
+      [chatId]
+    );
+    const history = historyResult.rows;
+    const historyText = history.length > 0
+      ? history.map(m => `${m.user_name} (${m.user_role}): ${m.message}`).join('\n')
+      : '(пусто)';
+
+    // 5. System prompt
+    const systemPrompt = `Ты Мимир — ИИ-ассистент в чате обсуждения просчёта ООО «Асгард Сервис».
+Тебя упомянул ${askerName}. Ответ увидят все участники чата (РП, директоры, ТО).
+
+${ctx.estimateInfo}
+
+${ctx.calculationInfo}
+
+${ctx.tenderInfo}
+
+${ctx.commentsInfo}
+
+${ctx.documentsInfo}
+
+${TARIFF_KNOWLEDGE}
+
+ИСТОРИЯ ЧАТА:
+${historyText}
+
+ПРАВИЛА:
+- Отвечай на вопрос ${askerName} по существу, опираясь на данные просчёта, тендера и документы выше
+- Если вопрос про цифры — считай по формулам (ФОТ × 1.55, накладные 15%, расходные 3%)
+- На простой вопрос — 2-4 предложения. На сложный (расчёт/анализ) — подробно с цифрами
+- Если данных недостаточно — прямо скажи каких именно
+- Не выдумывай данные. Если в документах нет — так и скажи
+- Числа форматируй с разделителями: 1 234 567 ₽
+- Markdown: **жирный** для ключевых цифр, списки (-), без ### заголовков
+- НЕ пиши "Что повелеваешь?", "Что ещё могу сделать?", "Обращайтесь!" — просто ответь и остановись
+- Будь профессионален — твой ответ видят директоры`;
+
+    // 6. AI call (completeAnalytics → YandexGPT Pro, не зависит от баланса routerai.ru)
+    const startTime = Date.now();
+    const aiResult = await aiProvider.completeAnalytics({
+      system: systemPrompt,
+      messages: [{ role: 'user', content: question }],
+      maxTokens: 2000,
+      temperature: 0.3
+    });
+    const responseText = aiResult.text || 'Не удалось сформировать ответ. Попробуй позже.';
+    const durationMs = Date.now() - startTime;
+
+    // 7. Сохранить ответ
+    const msgMetadata = {
+      trigger: 'mention',
+      asker_id: askerId,
+      asker: askerName,
+      question: question.substring(0, 500),
+      tokens_input: aiResult.usage?.inputTokens || 0,
+      tokens_output: aiResult.usage?.outputTokens || 0,
+      duration_ms: durationMs
+    };
+    const { rows: [mimirMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, metadata, is_system, created_at)
+      VALUES ($1, $2, $3, 'mimir_response', $4, false, NOW()) RETURNING *
+    `, [chatId, botUserId, responseText, JSON.stringify(msgMetadata)]);
+
+    await db.query(
+      'UPDATE chats SET message_count = COALESCE(message_count,0)+1, last_message_at = NOW(), updated_at = NOW() WHERE id = $1',
+      [chatId]
+    );
+
+    // 8. SSE рассылка
+    for (const m of members) {
+      sendToUser(m.user_id, 'chat:new_message', {
+        chat_id: chatId,
+        message: { ...mimirMsg, user_name: 'Мимир', is_mimir_bot: true }
+      });
+    }
+
+    // 9. Лог в mimir_auto_log
+    try {
+      await db.query(`
+        INSERT INTO mimir_auto_log (chat_id, estimate_id, trigger_action, trigger_comment, response,
+                                    tokens_input, tokens_output, duration_ms, scenario)
+        VALUES ($1, $2, 'mention', $3, $4, $5, $6, $7, 'chat_response')
+      `, [
+        chatId, estimateId, question.substring(0, 1000), responseText,
+        aiResult.usage?.inputTokens || 0, aiResult.usage?.outputTokens || 0, durationMs
+      ]);
+    } catch (e) { /* лог не критичен */ }
+
+    console.log(`[BF2b] Mimir responded to mention: chat_id=${chatId}, estimate_id=${estimateId}, ${durationMs}ms`);
+    return { messageId: mimirMsg.id, durationMs };
+
+  } catch (err) {
+    console.error('[BF2b] mimirRespondToQuestion error:', err.message);
+    console.error(err.stack);
+    return null;
+  }
+}
+
 module.exports = {
   createEstimateChat,
   updateEstimateCard,
   syncCommentToChat,
-  triggerMimirAutoRespond
+  triggerMimirAutoRespond,
+  // BF2b
+  detectMimirMention,
+  parseDocumentContent,
+  buildEstimateContext,
+  mimirRespondToQuestion
 };
