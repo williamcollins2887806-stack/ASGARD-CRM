@@ -99,8 +99,8 @@ window.AsgardPassRequestsPage = (function() {
         <div><label>Объект</label><input id="prObj" value="${esc(item.object_name || '')}" placeholder="Название объекта" /></div>
       </div>
       <div class="formrow">
-        <div><label>Дата с</label><input id="prFrom" type="date" value="${item.pass_date_from || ''}" /></div>
-        <div><label>Дата по</label><input id="prTo" type="date" value="${item.pass_date_to || ''}" /></div>
+        <div><label>Дата с</label><input id="prFrom" type="date" value="${(item.pass_date_from || '').slice(0,10)}" /></div>
+        <div><label>Дата по</label><input id="prTo" type="date" value="${(item.pass_date_to || '').slice(0,10)}" /></div>
       </div>
       <div class="formrow">
         <div><label>Контактное лицо</label><input id="prContact" value="${esc(item.contact_person || '')}" /></div>

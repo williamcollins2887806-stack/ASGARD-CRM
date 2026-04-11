@@ -357,7 +357,7 @@ window.AsgardReminders = (function(){
         <div class="formrow">
           <div>
             <label>Дата напоминания</label>
-            <input class="inp" id="rem_date" type="date" value="${options.due_date || ''}"/>
+            <input class="inp" id="rem_date" type="date" value="${(options.due_date || '').slice(0,10)}"/>
           </div>
           <div>
             <label>Время</label>

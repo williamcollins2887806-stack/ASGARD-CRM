@@ -96,7 +96,7 @@ window.AsgardCalendarPage = (function(){
           <div class="formrow" style="grid-template-columns:1fr 1fr">
             <div class="field">
               <label for="ev_date">Дата</label>
-              <input id="ev_date" type="date" class="inp" value="${esc(ev.date || date)}"/>
+              <input id="ev_date" type="date" class="inp" value="${esc((ev.date || date || '').slice(0,10))}"/>
             </div>
             <div class="field">
               <label for="ev_time">Время</label>

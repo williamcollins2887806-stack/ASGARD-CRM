@@ -83,7 +83,7 @@ window.AsgardSiteInspection = (function () {
     function renderDates() {
       return dates.map((d, i) => `
         <div class="formrow" style="grid-template-columns:1fr 1fr 1fr auto; align-items:end">
-          <div><label>Дата ${i + 1}</label><input class="si-date" data-i="${i}" type="date" value="${esc(d.date || '')}"/></div>
+          <div><label>Дата ${i + 1}</label><input class="si-date" data-i="${i}" type="date" value="${esc(String(d.date || '').slice(0,10))}"/></div>
           <div><label>С</label><input class="si-tf" data-i="${i}" type="time" value="${esc(d.time_from || '09:00')}"/></div>
           <div><label>До</label><input class="si-tt" data-i="${i}" type="time" value="${esc(d.time_to || '18:00')}"/></div>
           <div><button class="btn ghost" data-del-date="${i}" style="padding:8px" title="Удалить">✕</button></div>

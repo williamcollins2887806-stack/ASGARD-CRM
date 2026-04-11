@@ -920,18 +920,18 @@ window.AsgardPmWorksPage=(function(){
           <div><label>Статус работ</label>
             <div id="w_status_w"></div>
           </div>
-          <div><label>Начало работ (факт/старт)</label><input type="date" id="w_start" value="${esc(w.start_in_work_date||t?.work_start_plan||"")}"/></div>
-          <div><label>Окончание план</label><input type="date" id="w_end_plan" value="${esc(w.end_plan||t?.work_end_plan||"")}"/></div>
-          <div><label>Окончание факт</label><input type="date" id="w_end_fact" value="${esc(w.end_fact||"")}"/></div>
+          <div><label>Начало работ (факт/старт)</label><input type="date" id="w_start" value="${esc(String(w.start_in_work_date||t?.work_start_plan||"").slice(0,10))}"/></div>
+          <div><label>Окончание план</label><input type="date" id="w_end_plan" value="${esc(String(w.end_plan||t?.work_end_plan||"").slice(0,10))}"/></div>
+          <div><label>Окончание факт</label><input type="date" id="w_end_fact" value="${esc(String(w.end_fact||"").slice(0,10))}"/></div>
 
           <div><label>Стоимость договора</label><input id="w_value" value="${esc(w.contract_value!=null?String(w.contract_value):"")}" placeholder="руб."/></div>
           <div><label>Аванс %</label><input id="w_adv_pct" value="${esc(w.advance_pct!=null?String(w.advance_pct):"30")}" placeholder="30"/></div>
           <div><label>Аванс получено</label><input id="w_adv_got" value="${esc(w.advance_received!=null?String(w.advance_received):"0")}" placeholder="руб."/></div>
-          <div><label>Дата аванса факт</label><input type="date" id="w_adv_date" value="${esc(w.advance_date_fact||"")}"/></div>
+          <div><label>Дата аванса факт</label><input type="date" id="w_adv_date" value="${esc(String(w.advance_date_fact||"").slice(0,10))}"/></div>
 
           <div><label>Остаток получено</label><input id="w_bal_got" value="${esc(w.balance_received!=null?String(w.balance_received):"0")}" placeholder="руб."/></div>
-          <div><label>Дата оплаты остатка факт</label><input type="date" id="w_pay_date" value="${esc(w.payment_date_fact||"")}"/></div>
-          <div><label>Дата акта факт</label><input type="date" id="w_act_date" value="${esc(w.act_signed_date_fact||"")}"/></div>
+          <div><label>Дата оплаты остатка факт</label><input type="date" id="w_pay_date" value="${esc(String(w.payment_date_fact||"").slice(0,10))}"/></div>
+          <div><label>Дата акта факт</label><input type="date" id="w_act_date" value="${esc(String(w.act_signed_date_fact||"").slice(0,10))}"/></div>
           <div><label>Отсрочка, раб.дни</label><input id="w_delay" value="${esc(w.delay_workdays!=null?String(w.delay_workdays):"5")}" placeholder="5"/></div>
 
           <div><label>План себестоимость</label><input id="w_cost_plan" value="${esc(w.cost_plan!=null?String(w.cost_plan):"")}" placeholder="руб."/></div>

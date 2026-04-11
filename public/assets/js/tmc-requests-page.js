@@ -119,7 +119,7 @@ window.AsgardTmcRequestsPage = (function() {
         <div><label>Приоритет</label>
           <div id="crw_tmcPriority"></div>
         </div>
-        <div><label>Нужно к дате</label><input id="tmcNeeded" type="date" value="${item.needed_by || ''}" /></div>
+        <div><label>Нужно к дате</label><input id="tmcNeeded" type="date" value="${(item.needed_by || '').slice(0,10)}" /></div>
       </div>
       <div class="formrow">
         <div><label>Поставщик</label><input id="tmcSupplier" value="${esc(item.supplier || '')}" /></div>

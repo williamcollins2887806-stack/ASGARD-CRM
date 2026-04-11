@@ -502,7 +502,7 @@ window.AsgardOfficeExpensesPage = (function(){
     function openEditModal(expense){
       const html = `
         <div class="formrow">
-          <div><label>Дата</label><input id="exp_date" type="date" value="${expense.date || ''}"/></div>
+          <div><label>Дата</label><input id="exp_date" type="date" value="${(expense.date || '').slice(0,10)}"/></div>
           <div><label>Категория</label>
             <div id="exp_category_w"></div>
           </div>

@@ -402,8 +402,8 @@ window.AsgardWorkExpenses = (function(){
         <div><label>Оклад/тариф</label><input id="exp_base" type="number" value="${expense.fot_base_pay || 0}"/></div>
         <div><label>Суточные</label><input id="exp_per_diem" type="number" value="${expense.fot_per_diem || 0}"/></div>
         <div><label>Премия</label><input id="exp_bonus" type="number" value="${expense.fot_bonus || 0}"/></div>
-        <div><label>Период с</label><input id="exp_date_from" type="date" value="${expense.fot_date_from || ''}"/></div>
-        <div><label>Период по</label><input id="exp_date_to" type="date" value="${expense.fot_date_to || ''}"/></div>
+        <div><label>Период с</label><input id="exp_date_from" type="date" value="${(expense.fot_date_from || '').slice(0,10)}"/></div>
+        <div><label>Период по</label><input id="exp_date_to" type="date" value="${(expense.fot_date_to || '').slice(0,10)}"/></div>
         <div style="grid-column:1/-1"><label>Комментарий</label><input id="exp_comment" value="${esc(expense.comment || '')}"/></div>
       </div>
       <div style="margin-top:12px"><button class="btn" id="btnSaveExp">Сохранить</button></div>
@@ -411,7 +411,7 @@ window.AsgardWorkExpenses = (function(){
       <div class="help">${cat.icon} ${cat.label}: редактирование</div>
       <hr class="hr"/>
       <div class="formrow">
-        <div><label>Дата</label><input id="exp_date" type="date" value="${expense.date || ''}"/></div>
+        <div><label>Дата</label><input id="exp_date" type="date" value="${(expense.date || '').slice(0,10)}"/></div>
         <div><label>Сумма, ₽</label><input id="exp_amount" type="number" value="${expense.amount || 0}"/></div>
         <div><label>Поставщик</label><input id="exp_supplier" value="${esc(expense.supplier || '')}"/></div>
         <div><label>№ документа</label><input id="exp_doc" value="${esc(expense.doc_number || '')}"/></div>

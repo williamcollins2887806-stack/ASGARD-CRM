@@ -448,7 +448,7 @@ window.AsgardContractsPage = (function(){
                   <div class="cm-grid2">
                     <div>
                       <div class="cm-label">Дата заключения</div>
-                      <input type="date" name="start_date" class="cm-inp" value="${contract?.start_date || ''}"/>
+                      <input type="date" name="start_date" class="cm-inp" value="${(contract?.start_date || '').slice(0,10)}"/>
                     </div>
                     <div>
                       <div class="cm-label">Сумма</div>
@@ -461,7 +461,7 @@ window.AsgardContractsPage = (function(){
                   <div class="cm-mt" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
                     <div>
                       <div class="cm-label">Срок действия до</div>
-                      <input type="date" name="end_date" class="cm-inp" id="cmEndDate" value="${contract?.end_date || ''}" ${isPerpetual ? 'disabled' : ''}/>
+                      <input type="date" name="end_date" class="cm-inp" id="cmEndDate" value="${(contract?.end_date || '').slice(0,10)}" ${isPerpetual ? 'disabled' : ''}/>
                     </div>
                     <div id="cmPerpetualToggle" class="cm-toggle${isPerpetual ? ' active' : ''}">
                       <div class="cm-toggle-track"><div class="cm-toggle-thumb"></div></div>

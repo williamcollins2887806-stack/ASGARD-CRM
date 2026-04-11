@@ -6,10 +6,16 @@
 
 const { Pool, types } = require('pg');
 
-// FIX: Prevent timezone drift — return DATE as raw "YYYY-MM-DD" string, not JS Date object.
-// Without this, pg parses DATE "2026-04-30" → new Date(2026,3,30) local midnight
-// → JSON.stringify → "2026-04-29T21:00:00.000Z" (UTC) → frontend extracts "2026-04-29" = -1 day.
-types.setTypeParser(1082, val => val); // OID 1082 = DATE
+// FIX: Prevent timezone drift for DATE columns (OID 1082).
+// Problem: pg parses DATE "2026-04-30" → new Date(2026,3,30) local midnight
+// → JSON.stringify → "2026-04-29T21:00:00.000Z" → frontend extracts "2026-04-29" = -1 day.
+// Solution: return as ISO string anchored at NOON UTC. This way:
+//   - new Date("2026-03-28T12:00:00.000Z").getDate() === 28 in any TZ UTC-11..+11
+//   - toLocaleDateString() shows correct day everywhere
+//   - String comparisons still work (ISO format)
+//   - .slice(0,10) still extracts the literal date "2026-03-28"
+//   - <input type="date"> needs .slice(0,10) to populate correctly (HTML spec)
+types.setTypeParser(1082, val => val ? val + 'T12:00:00.000Z' : val); // OID 1082 = DATE
 
 // SECURITY: Проверка обязательных переменных окружения (CRIT-5)
 if (!process.env.DB_PASSWORD) {
