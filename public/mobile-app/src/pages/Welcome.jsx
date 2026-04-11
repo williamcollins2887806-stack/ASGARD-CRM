@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const ELDER_FUTHARK = [
-  'ᚠ','ᚢ','ᚦ','ᚨ','ᚱ','ᚲ','ᚷ','ᚹ','ᚺ','ᚾ','ᛁ','ᛃ',
-  'ᛇ','ᛈ','ᛉ','ᛊ','ᛏ','ᛒ','ᛖ','ᛗ','ᛚ','ᛜ','ᛞ','ᛟ',
-];
+// Декоративные символы фона (раньше — Старший Футарк, но руны не поддерживаются
+// шрифтами на iOS/Android и появлялись битыми квадратами). Используем геометрические
+// глифы — они работают везде и сохраняют скандинавскую стилистику минимализма.
+const SPARKS = ['◆','◇','✦','✧','⊹','⋄','✺','✦','◈','⬩','⬥','✶'];
 
-const RUNES = Array.from({ length: 24 }, (_, i) => ({
-  char: ELDER_FUTHARK[i],
+const PARTICLES = Array.from({ length: 24 }, (_, i) => ({
+  char: SPARKS[i % SPARKS.length],
   x: Math.random() * 94 + 3,
   delay: Math.random() * 10,
   dur: 6 + Math.random() * 14,
@@ -42,9 +42,9 @@ export default function Welcome() {
         <div className="welcome-orb welcome-orb-gold" />
       </div>
 
-      {/* 24 floating runes */}
+      {/* 24 floating glyphs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
-        {RUNES.map((r, i) => (
+        {PARTICLES.map((r, i) => (
           <span
             key={i}
             className="absolute c-gold"
@@ -99,6 +99,13 @@ export default function Welcome() {
               alt="ASGARD"
               draggable={false}
               style={{ width: 120, height: 'auto', userSelect: 'none' }}
+              onError={(e) => {
+                // Fallback на emblem (меньше) если основной логотип не загрузился
+                if (!e.currentTarget.dataset.fallback) {
+                  e.currentTarget.dataset.fallback = '1';
+                  e.currentTarget.src = import.meta.env.BASE_URL + 'asgard-emblem.png';
+                }
+              }}
             />
             {/* Shimmer sweep */}
             <div
