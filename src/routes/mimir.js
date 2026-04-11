@@ -1937,6 +1937,148 @@ ${analogsSummary}
       return reply.code(500).send({ error: 'Ошибка автоответа Мимира: ' + error.message });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AP1: POST /api/mimir/auto-estimate — Авто-просчёт работы (SSE прогресс)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Принимает { work_id }, открывает SSE, эмитит progress events для каждого
+  // шага сбора контекста (documents, analogs, customer_history, warehouse,
+  // workers, tariffs). В AP1 — без AI вызова, отдаёт мок result в конце с
+  // полным собранным контекстом для проверки.
+  //
+  // AP2 добавит: вызов Claude Sonnet 4.6 → парсинг JSON → создание estimate
+  // → диалог с Мимиром (через отдельные эндпоинты или extension этого).
+  //
+  // Клиент: fetch streaming (POST с body, читает чанки как SSE).
+  fastify.post('/auto-estimate', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id } = request.body || {};
+    const user = request.user;
+
+    if (!work_id || isNaN(parseInt(work_id))) {
+      return reply.code(400).send({ success: false, message: 'work_id обязателен' });
+    }
+    const workId = parseInt(work_id);
+
+    // SSE headers
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+
+    const sendEvent = (data) => {
+      try {
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (e) { /* client disconnected */ }
+    };
+
+    const startTime = Date.now();
+
+    try {
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+
+      sendEvent({ type: 'start', work_id: workId, message: '🚀 Мимир приступает к просчёту' });
+
+      // Callback для прогресса — пересылается в SSE
+      const onProgress = (event) => sendEvent(event);
+
+      // Собрать весь контекст
+      const context = await mimirAutoEstimate.buildAutoEstimateContext(
+        db, workId, user, onProgress
+      );
+
+      // AP1: без AI — отдаём только summary с метриками контекста
+      // AP2 здесь будет вызов Claude Sonnet 4.6 + создание estimate
+      sendEvent({
+        type: 'ai_pending',
+        message: '🧮 AP1 завершён. В AP2 здесь будет вызов Claude Sonnet 4.6 и создание просчёта.'
+      });
+
+      sendEvent({
+        type: 'result',
+        success: true,
+        ap_phase: 'AP1',
+        summary: context.summary,
+        // Полный контекст НЕ возвращаем в SSE (слишком большой) — отдадим только метрики
+        context_keys: {
+          work: !!context.work,
+          tender: !!context.tender,
+          documents: context.documents.length,
+          analogs: context.analogs.length,
+          customer_history: context.customer_history.length,
+          warehouse: context.warehouse.length,
+          workers_available: context.workers.available?.length || 0,
+          tariff_categories: Object.keys(context.tariffs.grouped || {}),
+          settings: context.settings
+        },
+        elapsed_ms: Date.now() - startTime
+      });
+
+      sendEvent({ type: 'done' });
+
+    } catch (error) {
+      fastify.log.error('[Mimir auto-estimate]:', error.message, error.stack);
+      sendEvent({
+        type: 'error',
+        message: error.message || 'Неизвестная ошибка',
+        elapsed_ms: Date.now() - startTime
+      });
+    }
+
+    reply.raw.end();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AP1: POST /api/mimir/auto-estimate-context — JSON версия (без SSE)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Тот же сбор контекста но без стриминга — для быстрой отладки и тестов.
+  // Возвращает только summary + ключевые метрики (без сырых данных).
+  fastify.post('/auto-estimate-context', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id } = request.body || {};
+    if (!work_id || isNaN(parseInt(work_id))) {
+      return reply.code(400).send({ success: false, message: 'work_id обязателен' });
+    }
+    try {
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+      const context = await mimirAutoEstimate.buildAutoEstimateContext(
+        db, parseInt(work_id), request.user, null
+      );
+      return reply.send({
+        success: true,
+        summary: context.summary,
+        documents_preview: context.documents.map(d => ({
+          name: d.original_name,
+          size_kb: d.size_kb,
+          content_chars: d.content_chars,
+          content_head: (d.content || '').substring(0, 200)
+        })),
+        analogs_preview: context.analogs.map(a => ({
+          id: a.id, title: a.title,
+          total_cost: a.total_cost, total_with_margin: a.total_with_margin,
+          markup_multiplier: a.markup_multiplier,
+          approval_status: a.approval_status
+        })),
+        customer_history_preview: context.customer_history.map(t => ({
+          id: t.id, title: t.tender_title,
+          status: t.status || t.tender_status,
+          markup: t.markup_multiplier
+        })),
+        warehouse_categories: [...new Set(context.warehouse.map(w => w.category_name))],
+        warehouse_count: context.warehouse.length,
+        workers_available: context.workers.available?.length || 0,
+        tariff_categories: Object.keys(context.tariffs.grouped || {}),
+        settings: context.settings
+      });
+    } catch (error) {
+      fastify.log.error('[Mimir auto-estimate-context]:', error.message);
+      return reply.code(500).send({ success: false, message: error.message });
+    }
+  });
 }
 
 module.exports = mimirRoutes;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
@@ -9,7 +10,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import {
   Wrench, Search, Plus, ChevronRight, X,
-  DollarSign, User, Briefcase, TrendingUp, CheckCircle2,
+  DollarSign, User, Briefcase, TrendingUp, CheckCircle2, Sparkles,
 } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/utils';
 import AsgardSelect from '@/components/ui/AsgardSelect';
@@ -290,6 +291,8 @@ function StatCard({ icon: Icon, label, value, color, small }) {
 function WorkDetailSheet({ work, onClose }) {
   const [detail, setDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const navigate = useNavigate();
+  const haptic = useHaptic();
 
   useEffect(() => {
     if (!work) { setDetail(null); return; }
@@ -331,6 +334,25 @@ function WorkDetailSheet({ work, onClose }) {
   return (
     <BottomSheet open={!!work} onClose={onClose} title={w.customer_name || w.work_title || `Работа #${w.id}`}>
       <div className="flex flex-col gap-3 pb-4">
+        {/* AP1: Кнопка авто-просчёта Мимиром */}
+        <button
+          onClick={() => {
+            haptic.medium();
+            onClose();
+            navigate(`/mimir-estimate/${w.id}`);
+          }}
+          className="w-full flex items-center justify-center gap-2 rounded-2xl px-4 py-3 spring-tap"
+          style={{
+            background: 'linear-gradient(135deg, #C8293B 0%, #1E4D8C 50%, #D4A843 100%)',
+            color: '#fff',
+            border: 'none',
+            boxShadow: '0 4px 18px rgba(212,168,67,0.25), 0 0 30px rgba(200,41,59,0.12)',
+          }}
+        >
+          <Sparkles size={18} />
+          <span className="text-[14px] font-bold tracking-wide">Просчитать Мимиром</span>
+        </button>
+
         {progress > 0 && (
           <div
             className="rounded-xl px-4 py-3"
