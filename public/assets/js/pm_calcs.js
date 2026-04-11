@@ -441,7 +441,7 @@ window.AsgardPmCalcsPage = (function(){
     let tenders = tendersAll.filter(t=>t.handoff_at);
     if(user.role==="PM") tenders = tenders.filter(t=>t.responsible_pm_id===user.id);
 
-    const pms = users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
+    const pms = users.filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
 
     const body = `
       ${window.__ASG_SHARED_TABLE_CSS__||""}

@@ -93,7 +93,7 @@ window.AsgardGanttFullPage=(function(){
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
-    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
+    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
 
     // Load tenders visible
     let tenders = (await AsgardDB.all("tenders")).filter(t => t.handoff_at);
@@ -324,7 +324,7 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
-    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
+    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
 
     let works = await AsgardDB.all("works");
     if(!isDir){ works = works.filter(w=>w.pm_id===user.id); }
@@ -558,7 +558,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
-    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
+    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
 
     // Загружаем ОБА типа данных
     let tenders = (await AsgardDB.all("tenders")).filter(t => t.handoff_at);

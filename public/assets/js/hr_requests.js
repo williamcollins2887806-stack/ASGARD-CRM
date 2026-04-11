@@ -96,7 +96,7 @@ window.AsgardHrRequestsPage=(function(){
     } catch(e) {}
   }
 
-  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim()); }
+  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim() && u.role !== 'BOT' && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot'); }
   // HR works with "employees" (рабочие), not office "staff"
   async function getStaff(){
     const all = await AsgardDB.all("employees");

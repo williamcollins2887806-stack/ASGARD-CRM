@@ -378,7 +378,13 @@ window.AsgardTendersPage = (function(){
 
   async function getUsers(){
     const users = await AsgardDB.all("users");
-    return users.filter(u=>u.is_active && u.name && u.name.trim());
+    return users.filter(u =>
+      u.is_active &&
+      u.name && u.name.trim() &&
+      u.role !== 'BOT' &&
+      !String(u.login||'').startsWith('test_') &&
+      u.login !== 'mimir_bot'
+    );
   }
 
   function canEditTender(user, tender){

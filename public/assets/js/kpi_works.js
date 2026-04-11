@@ -45,7 +45,7 @@ window.AsgardKpiWorksPage=(function(){
     return true;
   }
 
-  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim()); }
+  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim() && u.role !== 'BOT' && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot'); }
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
     return refs ? JSON.parse(refs.value_json||"{}") : { work_statuses:[] };
