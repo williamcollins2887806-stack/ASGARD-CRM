@@ -275,12 +275,12 @@ ${BASE_CSS}
 .cond-list li::before { content: '•'; position: absolute; left: 0; color: #1E4D8C; font-weight: 700; }
 
 /* ── Signature ── */
-.sign-block { margin-top: 14px; border-top: 1px solid #E5E7EB; padding-top: 14px; position: relative; }
+.sign-block { margin-top: 8px; border-top: 1px solid #E5E7EB; padding-top: 8px; position: relative; }
 .sign-row { display: flex; align-items: flex-end; gap: 20px; }
 .sign-pos { font-size: 10pt; font-weight: 600; width: 180px; }
 .sign-line { flex: 1; border-bottom: 1px solid #000; height: 1px; margin-bottom: 4px; position: relative; }
 .sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; }
-.sign-images { position: relative; height: 160px; overflow: hidden; margin: -60px 0 0; }
+.sign-images { position: relative; height: 120px; overflow: hidden; margin: -50px 0 0; }
 .sign-signature { position: absolute; left: 180px; top: 0; height: 140px; }
 .sign-stamp { position: absolute; left: 136px; top: 0; height: 176px; opacity: 0.85; }
 
@@ -290,10 +290,14 @@ ${BASE_CSS}
 /* ── Footer ── */
 .footer { margin-top: 10px; text-align: center; font-size: 7.5pt; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 4px; }
 
-/* ── Print ── */
+/* ── Print / page control ── */
 html, body { height: auto !important; }
 tr { page-break-inside: avoid; }
 .card { page-break-inside: avoid; }
+.sign-block { page-break-inside: avoid; }
+.footer { page-break-inside: avoid; page-break-before: avoid; margin-top: 4px; }
+/* Предотвращаем пустые страницы от overflow */
+body { overflow: hidden; }
 </style>
 </head>
 <body>
@@ -402,7 +406,7 @@ ${(signatureImg || stampImg) ? `  <div class="sign-images">
   const pdfBuffer = await page.pdf({
     format: 'A4',
     printBackground: true,
-    margin: { top: '14mm', bottom: '18mm', left: '18mm', right: '18mm' },
+    margin: { top: '10mm', bottom: '10mm', left: '18mm', right: '18mm' },
     displayHeaderFooter: false
   });
   await page.close();
