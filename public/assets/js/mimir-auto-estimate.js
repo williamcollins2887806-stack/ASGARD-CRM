@@ -262,29 +262,121 @@
     _stepTimer = setTimeout(drainStepQueue, 2500);
   }
 
+  // ID для "thinking" анимации — чтобы удалить когда придёт следующий шаг
+  var _thinkingEl = null;
+
   function appendStepNow(stepsBox, event) {
+    // Убрать предыдущую "thinking" анимацию если была
+    if (_thinkingEl) {
+      if (_thinkingEl._timerInterval) clearInterval(_thinkingEl._timerInterval);
+      _thinkingEl.remove();
+      _thinkingEl = null;
+    }
+
     const icon = STEP_ICONS[event.step] || '•';
+    const isThinking = event.step === 'ai_thinking';
+
     const row = el('div', {
       style: {
-        display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '8px',
+        display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: isThinking ? '16px' : '8px',
         animation: 'mimirAeStepIn 0.32s ease both',
       },
     });
     const iconBox = el('div', {
       style: {
         width: '28px', height: '28px', borderRadius: '50%', flexShrink: '0',
-        background: 'rgba(212,168,67,0.12)',
-        border: '0.5px solid rgba(212,168,67,0.3)',
+        background: isThinking ? 'linear-gradient(135deg, #D4A843, #8B6F2A)' : 'rgba(212,168,67,0.12)',
+        border: isThinking ? 'none' : '0.5px solid rgba(212,168,67,0.3)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: '14px',
+        animation: isThinking ? 'mimirThinkPulse 1.5s ease-in-out infinite' : 'none',
       },
     }, icon);
     const text = el('div', {
-      style: { fontSize: '13px', color: 'rgba(255,255,255,0.85)', paddingTop: '4px' },
+      style: {
+        fontSize: '13px',
+        color: isThinking ? '#D4A843' : 'rgba(255,255,255,0.85)',
+        paddingTop: '4px',
+        fontWeight: isThinking ? '600' : 'normal',
+      },
     }, event.message || event.step);
     row.appendChild(iconBox);
     row.appendChild(text);
-    stepsBox.appendChild(row);
+
+    // Для ai_thinking — добавляем animated thinking widget
+    if (isThinking) {
+      const thinkBox = el('div', {
+        style: {
+          marginTop: '12px', padding: '16px 18px', borderRadius: '14px',
+          background: 'linear-gradient(135deg, rgba(212,168,67,0.06), rgba(30,77,140,0.04))',
+          border: '0.5px solid rgba(212,168,67,0.2)',
+          display: 'flex', alignItems: 'center', gap: '14px',
+          animation: 'mimirAeStepIn 0.5s ease both',
+        },
+      });
+
+      // Animated Mimir avatar
+      const avatar = el('div', {
+        style: {
+          width: '48px', height: '48px', borderRadius: '50%', flexShrink: '0',
+          background: 'linear-gradient(135deg, #D4A843 0%, #8B6F2A 50%, #D4A843 100%)',
+          backgroundSize: '200% 200%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '22px',
+          animation: 'mimirAvatarShimmer 2s ease-in-out infinite, mimirThinkBob 2s ease-in-out infinite',
+          boxShadow: '0 0 20px rgba(212,168,67,0.3), 0 0 40px rgba(212,168,67,0.1)',
+        },
+      }, '⚡');
+
+      // Right side: text + dots animation
+      const rightSide = el('div', { style: { flex: '1' } });
+      rightSide.appendChild(el('div', {
+        style: { fontSize: '14px', fontWeight: '700', color: '#D4A843', marginBottom: '4px' },
+      }, 'Мимир анализирует данные'));
+
+      // Progress dots
+      const dotsRow = el('div', {
+        style: { display: 'flex', gap: '4px', alignItems: 'center' },
+      });
+      for (var di = 0; di < 3; di++) {
+        dotsRow.appendChild(el('span', {
+          style: {
+            width: '6px', height: '6px', borderRadius: '50%',
+            background: '#D4A843',
+            animation: 'mimirDotBounce 1.2s ease-in-out ' + (di * 0.2) + 's infinite',
+            opacity: '0.4',
+          },
+        }));
+      }
+      rightSide.appendChild(dotsRow);
+
+      // Timer
+      var seconds = 0;
+      var timerEl = el('div', {
+        style: { fontSize: '11px', color: 'rgba(212,168,67,0.5)', marginTop: '4px' },
+      }, '0 сек...');
+      var timerInterval = setInterval(function() {
+        seconds++;
+        timerEl.textContent = seconds + ' сек...';
+        if (seconds > 120) clearInterval(timerInterval);
+      }, 1000);
+      rightSide.appendChild(timerEl);
+
+      thinkBox.appendChild(avatar);
+      thinkBox.appendChild(rightSide);
+
+      // Wrap row + thinkBox
+      var wrapper = el('div');
+      wrapper.appendChild(row);
+      wrapper.appendChild(thinkBox);
+      stepsBox.appendChild(wrapper);
+      _thinkingEl = wrapper;
+      // Сохраним interval чтобы очистить
+      wrapper._timerInterval = timerInterval;
+    } else {
+      stepsBox.appendChild(row);
+    }
+
     stepsBox.scrollIntoView({ block: 'end', behavior: 'smooth' });
   }
 
@@ -763,6 +855,23 @@
       @keyframes mimirAeFadeIn { from { opacity: 0 } to { opacity: 1 } }
       @keyframes mimirAeFadeOut { from { opacity: 1 } to { opacity: 0 } }
       @keyframes mimirAeStepIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes mimirThinkPulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 8px rgba(212,168,67,0.3); }
+        50% { transform: scale(1.1); box-shadow: 0 0 20px rgba(212,168,67,0.5); }
+      }
+      @keyframes mimirThinkBob {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-3px); }
+      }
+      @keyframes mimirAvatarShimmer {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+      @keyframes mimirDotBounce {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+        30% { transform: translateY(-5px); opacity: 1; }
+      }
       @keyframes mimirAeFlash {
         0%   { box-shadow: 0 6px 28px rgba(212,168,67,0.15), 0 0 0 0 rgba(212,168,67,0.6); }
         50%  { box-shadow: 0 6px 28px rgba(212,168,67,0.15), 0 0 30px 8px rgba(212,168,67,0.4); }
