@@ -1389,6 +1389,28 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
   const totalWithMargin = r2(totalCost * markup);
   const marginPct = totalCost > 0 ? r2(((totalWithMargin - totalCost) / totalCost) * 100) : 0;
 
+  // AP4: Серверный enforcement — если цена с НДС > estimated_sum тендера, обрезать markup
+  let markupOverflowFix = null;
+  const estimatedSum = Number(ctx?.tender?.estimated_sum || ctx?.tender?.tender_price || 0);
+  if (estimatedSum > 0) {
+    const totalWithVat = r2(totalWithMargin * (1 + Number(settings.vat_pct) / 100));
+    if (totalWithVat > estimatedSum) {
+      // Пересчитать markup чтобы вписаться в бюджет (с запасом 2% для торга)
+      const maxMarkup = r2(estimatedSum * 0.98 / (1 + Number(settings.vat_pct) / 100) / totalCost);
+      markupOverflowFix = {
+        ai_markup: markup,
+        ai_total_with_vat: totalWithVat,
+        estimated_sum: estimatedSum,
+        fixed_markup: Math.max(1.1, maxMarkup) // не меньше ×1.1
+      };
+      // Применяем фикс
+      markup = markupOverflowFix.fixed_markup;
+      est.markup_multiplier = markup;
+      totalWithMargin = r2(totalCost * markup);
+      marginPct = totalCost > 0 ? r2(((totalWithMargin - totalCost) / totalCost) * 100) : 0;
+    }
+  }
+
   // НДС
   const totalWithVat = r2(totalWithMargin * (1 + Number(settings.vat_pct) / 100));
 
@@ -1420,7 +1442,7 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
     drift = r2(Math.abs(aiCost - totalCost) / aiCost * 100);
   }
 
-  return { calculation: calc, totals, drift, settings, timeOverflowFix };
+  return { calculation: calc, totals, drift, settings, timeOverflowFix, markupOverflowFix };
 }
 
 /**
