@@ -207,7 +207,7 @@ async function callAnthropic({ system, messages, maxTokens, temperature, stream 
 /**
  * Вызов OpenAI API
  */
-async function callOpenAI({ system, messages, maxTokens, temperature, stream = false, model = null }) {
+async function callOpenAI({ system, messages, maxTokens, temperature, stream = false, model = null, tools = null }) {
   if (!OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY not configured');
   }
@@ -229,6 +229,8 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
     messages: openaiMessages,
     stream: stream
   };
+  // AP5: tool-calling support
+  if (tools && tools.length > 0) body.tools = tools;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), stream ? AI_TIMEOUT_MS * 3 : AI_TIMEOUT_MS);
@@ -265,14 +267,17 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
 
   const data = await response.json();
 
+  const choice = data.choices?.[0] || {};
   return {
-    text: data.choices?.[0]?.message?.content || '',
+    text: choice.message?.content || '',
+    tool_calls: choice.message?.tool_calls || null, // AP5: tool-calling
     usage: {
       inputTokens: data.usage?.prompt_tokens || 0,
       outputTokens: data.usage?.completion_tokens || 0
     },
     model: data.model,
-    stopReason: data.choices?.[0]?.finish_reason
+    stopReason: choice.finish_reason,
+    _rawMessage: choice.message // AP5: full message for agent loop
   };
 }
 
@@ -286,7 +291,7 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
  * @param {number} options.temperature - Температура (0-1)
  * @returns {Promise<{text: string, usage: {inputTokens: number, outputTokens: number}, model: string}>}
  */
-async function complete({ system, messages, maxTokens, temperature }) {
+async function complete({ system, messages, maxTokens, temperature, tools }) {
   await _loadKeysFromDB();
   let provider = AI_PROVIDER;
   const startTime = Date.now();
@@ -321,7 +326,7 @@ async function complete({ system, messages, maxTokens, temperature }) {
       result.durationMs = Date.now() - startTime;
       return result;
     } else if (provider === 'openai') {
-      const result = await callOpenAI({ system, messages, maxTokens, temperature });
+      const result = await callOpenAI({ system, messages, maxTokens, temperature, tools });
       result.provider = 'openai';
       result.durationMs = Date.now() - startTime;
       return result;

@@ -463,50 +463,25 @@ async function runAgent(db, workId, user, onEvent, onAskUser) {
 
   onEvent({ type: 'progress', step: 'agent_start', message: '🧠 Мимир начинает анализ...' });
 
+  const aiProvider = require('./ai-provider');
+
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    // Вызов Claude с tools
-    const body = {
-      model: null, // будет подставлен из config
-      max_tokens: 8000,
+    // Вызов Claude через ai-provider.complete() с tools
+    const aiResult = await aiProvider.complete({
+      system: getAgentSystemPrompt(),
+      messages,
+      maxTokens: 8000,
       temperature: 0.2,
-      messages: [{ role: 'system', content: getAgentSystemPrompt() }, ...messages],
       tools: TOOLS
-    };
-
-    // Прямой вызов OpenAI API с tools (не через ai-provider.complete — он не поддерживает tools)
-    const aiProvider = require('./ai-provider');
-    await aiProvider._loadKeysFromDB ? aiProvider._loadKeysFromDB() : null;
-    const config = aiProvider.getConfig();
-
-    const response = await fetch(config.openaiUrl || 'https://routerai.ru/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + config.openaiKey
-      },
-      body: JSON.stringify({
-        model: config.model || 'anthropic/claude-sonnet-4.6',
-        max_tokens: body.max_tokens,
-        temperature: body.temperature,
-        messages: body.messages,
-        tools: body.tools
-      })
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`AI error ${response.status}: ${errText.substring(0, 300)}`);
-    }
+    const msg = aiResult._rawMessage;
+    if (!msg) throw new Error('AI вернул пустой ответ');
 
-    const data = await response.json();
-    const choice = data.choices?.[0];
-    if (!choice) throw new Error('AI вернул пустой ответ');
-
-    const msg = choice.message;
     messages.push(msg); // Добавляем ответ AI в историю
 
     // Если AI вернул текст (без tools) — это финальный ответ
-    if (choice.finish_reason === 'stop' && !msg.tool_calls) {
+    if (aiResult.stopReason === 'stop' && !aiResult.tool_calls) {
       onEvent({ type: 'progress', step: 'agent_thinking', message: '💭 Мимир размышляет...' });
       // AI решил ответить текстом вместо submit_estimate — парсим как JSON
       try {
@@ -523,8 +498,8 @@ async function runAgent(db, workId, user, onEvent, onAskUser) {
     }
 
     // Обработка tool calls
-    if (msg.tool_calls && msg.tool_calls.length > 0) {
-      for (const tc of msg.tool_calls) {
+    if (aiResult.tool_calls && aiResult.tool_calls.length > 0) {
+      for (const tc of aiResult.tool_calls) {
         const fn = tc.function.name;
         let args = {};
         try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
@@ -562,7 +537,7 @@ async function runAgent(db, workId, user, onEvent, onAskUser) {
 
           const jsonStr = args.estimate_json || '{}';
           const ai = parseAIResponse(jsonStr);
-          ai._meta = { model: data.model, provider: 'openai' };
+          ai._meta = { model: aiResult.model, provider: aiResult.provider || 'openai' };
 
           // Получаем work + tender для контекста
           const wRes = await db.query('SELECT * FROM works WHERE id=$1', [workId]);
@@ -584,8 +559,8 @@ async function runAgent(db, workId, user, onEvent, onAskUser) {
             recomputed,
             created,
             text: msg.content,
-            tokens: { inputTokens: data.usage?.prompt_tokens, outputTokens: data.usage?.completion_tokens },
-            model: data.model,
+            tokens: aiResult.usage,
+            model: aiResult.model,
             iterations: iter + 1
           };
         }
