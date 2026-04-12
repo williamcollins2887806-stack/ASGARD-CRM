@@ -491,6 +491,8 @@ async function runAgent(db, workId, user, onEvent, onAskUser) {
     const msg = aiResult._rawMessage;
     if (!msg) throw new Error('AI вернул пустой ответ');
 
+    console.log(`[Agent] iter=${iter} stopReason=${aiResult.stopReason} tool_calls=${aiResult.tool_calls?.length || 0} text=${(aiResult.text || '').substring(0, 100)}`);
+
     messages.push(msg); // Добавляем ответ AI в историю
 
     // Если AI вернул текст (без tools) — это финальный ответ
