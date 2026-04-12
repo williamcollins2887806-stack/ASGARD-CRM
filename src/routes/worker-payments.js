@@ -23,6 +23,11 @@
  *   GET    /reports/labor-costs/:year/:month      — ФОТ по объектам
  *   GET    /reports/worker/:employee_id/year/:year — годовая карточка
  *   GET    /reports/debts                         — задолженности
+ *
+ * Payroll Grid (PM/CRM):
+ *   GET    /reports/payroll-grid/:year/:month         — grid-данные (сетка баллов)
+ *   PUT    /reports/payroll-grid/:year/:month/save    — сохранить баллы
+ *   GET    /reports/payroll-grid/:year/:month/export  — Excel экспорт сетки
  */
 
 const MANAGE_ROLES = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
@@ -929,6 +934,476 @@ async function routes(fastify, options) {
     } catch (err) {
       fastify.log.error('[worker-payments] Excel export error:', err);
       return reply.code(500).send({ error: '\u041E\u0448\u0438\u0431\u043A\u0430 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0430' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PAYROLL GRID — Ведомость-сетка (PM / Director / Admin)
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ─── GET /reports/payroll-grid/:year/:month — grid-данные ──────────
+  fastify.get('/reports/payroll-grid/:year/:month', crmAuth, async (req, reply) => {
+    try {
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+      if (!year || !month || month < 1 || month > 12) {
+        return reply.code(400).send({ error: 'Некорректный год/месяц' });
+      }
+
+      const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'].includes(req.user.role);
+
+      // Point value from settings
+      const pvRes = await db.query("SELECT key, value_json FROM settings WHERE key = 'point_value'");
+      const pointValue = pvRes.rows[0] ? parseFloat(JSON.parse(pvRes.rows[0].value_json)) : 500;
+
+      // Period bounds
+      const periodFrom = `${year}-${String(month).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const periodTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+      // Fetch checkins
+      const worksFilter = isDir
+        ? ''
+        : 'AND fc.work_id IN (SELECT id FROM works WHERE pm_id = $4)';
+      const checkinParams = isDir ? [year, month, ['completed', 'closed', 'confirmed']] : [year, month, ['completed', 'closed', 'confirmed'], req.user.id];
+
+      const { rows: checkins } = await db.query(`
+        SELECT fc.employee_id, e.fio, e.full_name, e.position,
+               fc.date, fc.amount_earned, fc.day_rate, fc.work_id, w.work_title,
+               COALESCE(ftg.point_value, ${pointValue}) as row_point_value
+        FROM field_checkins fc
+        JOIN employees e ON e.id = fc.employee_id
+        JOIN works w ON w.id = fc.work_id
+        LEFT JOIN employee_assignments ea ON ea.employee_id = fc.employee_id AND ea.work_id = fc.work_id
+        LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
+        WHERE EXTRACT(YEAR FROM fc.date) = $1
+          AND EXTRACT(MONTH FROM fc.date) = $2
+          AND fc.status = ANY($3)
+          ${worksFilter}
+        ORDER BY e.fio, fc.date
+      `, checkinParams);
+
+      // Fetch per-diem
+      const pdWorksFilter = isDir
+        ? ''
+        : 'AND wp.work_id IN (SELECT id FROM works WHERE pm_id = $4)';
+      const pdParams = isDir ? [periodFrom, periodTo, ['per_diem']] : [periodFrom, periodTo, ['per_diem'], req.user.id];
+
+      const { rows: perDiemRows } = await db.query(`
+        SELECT wp.employee_id, SUM(wp.amount) as per_diem_total, SUM(wp.days) as per_diem_days
+        FROM worker_payments wp
+        WHERE wp.type = ANY($3) AND wp.status != 'cancelled'
+          AND ((wp.period_from >= $1::date AND wp.period_from <= $2::date) OR (wp.period_to >= $1::date AND wp.period_to <= $2::date))
+          ${pdWorksFilter}
+        GROUP BY wp.employee_id
+      `, pdParams);
+
+      const perDiemMap = {};
+      for (const pd of perDiemRows) {
+        perDiemMap[pd.employee_id] = {
+          per_diem_total: parseFloat(pd.per_diem_total) || 0,
+          per_diem_days: parseInt(pd.per_diem_days) || 0
+        };
+      }
+
+      // Group by employee
+      const empMap = {};
+      const worksSet = {};
+      for (const c of checkins) {
+        if (!empMap[c.employee_id]) {
+          empMap[c.employee_id] = {
+            employee_id: c.employee_id,
+            fio: c.fio,
+            full_name: c.full_name,
+            position: c.position,
+            days: [],
+            total_points: 0,
+            total_amount: 0,
+            days_count: 0
+          };
+        }
+        const emp = empMap[c.employee_id];
+        const pv = parseFloat(c.row_point_value) || pointValue;
+        const amount = parseFloat(c.amount_earned) || 0;
+        const points = pv > 0 ? Math.round((amount / pv) * 100) / 100 : 0;
+
+        emp.days.push({
+          date: c.date,
+          points,
+          amount,
+          work_id: c.work_id,
+          work_title: c.work_title
+        });
+        emp.total_points += points;
+        emp.total_amount += amount;
+        emp.days_count += 1;
+
+        if (!worksSet[c.work_id]) {
+          worksSet[c.work_id] = { id: c.work_id, title: c.work_title };
+        }
+      }
+
+      // Attach per-diem and round
+      const employees = Object.values(empMap).map(emp => {
+        const pd = perDiemMap[emp.employee_id] || { per_diem_total: 0, per_diem_days: 0 };
+        emp.total_points = Math.round(emp.total_points * 100) / 100;
+        emp.total_amount = Math.round(emp.total_amount * 100) / 100;
+        emp.per_diem_total = pd.per_diem_total;
+        emp.per_diem_days = pd.per_diem_days;
+        return emp;
+      });
+
+      return {
+        employees,
+        month_days: lastDay,
+        point_value: pointValue,
+        year,
+        month,
+        works: Object.values(worksSet)
+      };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /reports/payroll-grid error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── PUT /reports/payroll-grid/:year/:month/save — сохранение баллов
+  fastify.put('/reports/payroll-grid/:year/:month/save', crmAuth, async (req, reply) => {
+    try {
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+      if (!year || !month || month < 1 || month > 12) {
+        return reply.code(400).send({ error: 'Некорректный год/месяц' });
+      }
+
+      const { rows: rowsBody } = req.body || {};
+      if (!rowsBody || !Array.isArray(rowsBody) || rowsBody.length === 0) {
+        return reply.code(400).send({ error: 'Укажите rows: [{employee_id, days: [{date, points, work_id?}]}]' });
+      }
+
+      const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'].includes(req.user.role);
+
+      // Point value from settings
+      const pvRes = await db.query("SELECT key, value_json FROM settings WHERE key = 'point_value'");
+      const pointValue = pvRes.rows[0] ? parseFloat(JSON.parse(pvRes.rows[0].value_json)) : 500;
+
+      let updated = 0;
+
+      for (const row of rowsBody) {
+        const empId = parseInt(row.employee_id);
+        if (!empId || !Array.isArray(row.days)) continue;
+
+        for (const day of row.days) {
+          if (!day.date || day.points === undefined || day.points === null) continue;
+          const points = parseFloat(day.points);
+          const amount = points * pointValue;
+          const dayDate = day.date;
+
+          // Get point_value from tariff if available
+          let pv = pointValue;
+          if (day.work_id) {
+            const pvRow = await db.query(`
+              SELECT COALESCE(ftg.point_value, $1) as pv
+              FROM employee_assignments ea
+              LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
+              WHERE ea.employee_id = $2 AND ea.work_id = $3
+              LIMIT 1
+            `, [pointValue, empId, parseInt(day.work_id)]);
+            if (pvRow.rows.length > 0) pv = parseFloat(pvRow.rows[0].pv);
+          }
+
+          const dayAmount = points * pv;
+
+          // Build works filter
+          const worksSubquery = isDir
+            ? ''
+            : `AND work_id IN (SELECT id FROM works WHERE pm_id = ${parseInt(req.user.id)})`;
+
+          // Try UPDATE existing checkin
+          const result = await db.query(`
+            UPDATE field_checkins
+            SET day_rate = $1, amount_earned = $2, updated_at = NOW()
+            WHERE employee_id = $3 AND date = $4::date
+              ${worksSubquery}
+              ${day.work_id ? 'AND work_id = ' + parseInt(day.work_id) : ''}
+          `, [dayAmount, dayAmount, empId, dayDate]);
+
+          if (result.rowCount > 0) {
+            updated += result.rowCount;
+          } else if (day.work_id) {
+            // INSERT new checkin if work_id is provided and no existing record
+            await db.query(`
+              INSERT INTO field_checkins (employee_id, work_id, date, day_rate, amount_earned, status, created_at, updated_at)
+              VALUES ($1, $2, $3::date, $4, $5, 'completed', NOW(), NOW())
+              ON CONFLICT DO NOTHING
+            `, [empId, parseInt(day.work_id), dayDate, dayAmount, dayAmount]);
+            updated += 1;
+          }
+        }
+      }
+
+      return { ok: true, updated };
+    } catch (err) {
+      fastify.log.error('[worker-payments] PUT /reports/payroll-grid/save error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /reports/payroll-grid/:year/:month/export — Excel ведомость-сетка
+  fastify.get('/reports/payroll-grid/:year/:month/export', crmAuth, async (req, reply) => {
+    try {
+      const ExcelJS = require('exceljs');
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+      if (!year || !month || month < 1 || month > 12) {
+        return reply.code(400).send({ error: 'Некорректный год/месяц' });
+      }
+
+      const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+      const mName = monthNames[month - 1] || '';
+      const lastDay = new Date(year, month, 0).getDate();
+
+      const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'].includes(req.user.role);
+
+      // Point value from settings
+      const pvRes = await db.query("SELECT key, value_json FROM settings WHERE key = 'point_value'");
+      const pointValue = pvRes.rows[0] ? parseFloat(JSON.parse(pvRes.rows[0].value_json)) : 500;
+
+      const periodFrom = `${year}-${String(month).padStart(2, '0')}-01`;
+      const periodTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+      // Fetch checkins (same logic as GET grid)
+      const worksFilter = isDir
+        ? ''
+        : 'AND fc.work_id IN (SELECT id FROM works WHERE pm_id = $4)';
+      const checkinParams = isDir ? [year, month, ['completed', 'closed', 'confirmed']] : [year, month, ['completed', 'closed', 'confirmed'], req.user.id];
+
+      const { rows: checkins } = await db.query(`
+        SELECT fc.employee_id, e.fio, e.full_name,
+               fc.date, fc.amount_earned, fc.work_id, w.work_title,
+               COALESCE(ftg.point_value, ${pointValue}) as row_point_value
+        FROM field_checkins fc
+        JOIN employees e ON e.id = fc.employee_id
+        JOIN works w ON w.id = fc.work_id
+        LEFT JOIN employee_assignments ea ON ea.employee_id = fc.employee_id AND ea.work_id = fc.work_id
+        LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
+        WHERE EXTRACT(YEAR FROM fc.date) = $1
+          AND EXTRACT(MONTH FROM fc.date) = $2
+          AND fc.status = ANY($3)
+          ${worksFilter}
+        ORDER BY e.fio, fc.date
+      `, checkinParams);
+
+      // Fetch per-diem
+      const pdWorksFilter = isDir
+        ? ''
+        : 'AND wp.work_id IN (SELECT id FROM works WHERE pm_id = $4)';
+      const pdParams = isDir ? [periodFrom, periodTo, ['per_diem']] : [periodFrom, periodTo, ['per_diem'], req.user.id];
+
+      const { rows: perDiemRows } = await db.query(`
+        SELECT wp.employee_id, SUM(wp.amount) as per_diem_total
+        FROM worker_payments wp
+        WHERE wp.type = ANY($3) AND wp.status != 'cancelled'
+          AND ((wp.period_from >= $1::date AND wp.period_from <= $2::date) OR (wp.period_to >= $1::date AND wp.period_to <= $2::date))
+          ${pdWorksFilter}
+        GROUP BY wp.employee_id
+      `, pdParams);
+
+      const perDiemMap = {};
+      for (const pd of perDiemRows) {
+        perDiemMap[pd.employee_id] = parseFloat(pd.per_diem_total) || 0;
+      }
+
+      // Get PM name for header
+      const { rows: pmRows } = await db.query('SELECT fio FROM employees WHERE user_id = $1', [req.user.id]);
+      const pmName = pmRows.length > 0 ? pmRows[0].fio : '';
+
+      // Group by employee
+      const empMap = {};
+      for (const c of checkins) {
+        if (!empMap[c.employee_id]) {
+          empMap[c.employee_id] = {
+            fio: c.fio || c.full_name,
+            dayMap: {},     // day_number -> points
+            total_points: 0,
+            total_amount: 0,
+            days_count: 0
+          };
+        }
+        const emp = empMap[c.employee_id];
+        const pv = parseFloat(c.row_point_value) || pointValue;
+        const amount = parseFloat(c.amount_earned) || 0;
+        const points = pv > 0 ? Math.round((amount / pv) * 100) / 100 : 0;
+        const dayNum = new Date(c.date).getDate();
+
+        // If multiple checkins on same day — sum points
+        if (emp.dayMap[dayNum]) {
+          emp.dayMap[dayNum] += points;
+        } else {
+          emp.dayMap[dayNum] = points;
+          emp.days_count += 1;
+        }
+        emp.total_points += points;
+        emp.total_amount += amount;
+      }
+
+      // Color fills for point values
+      const blueFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB3D9FF' } };   // 6 points
+      const greenFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };   // 10 points
+      const brightGreenFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00D26A' } }; // 12 points
+      const goldFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD700' } };    // 18 points
+      const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5E8F0' } };
+      const totalFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+      const thinBorder = {
+        top: { style: 'thin' }, bottom: { style: 'thin' },
+        left: { style: 'thin' }, right: { style: 'thin' }
+      };
+
+      function getPointFill(pts) {
+        if (pts >= 18) return goldFill;
+        if (pts >= 12) return brightGreenFill;
+        if (pts >= 10) return greenFill;
+        if (pts >= 6) return blueFill;
+        return null;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'АСГАРД CRM';
+      workbook.created = new Date();
+      const ws = workbook.addWorksheet('Ведомость');
+
+      // Column count: ФИО + days 1..N + Дней + Баллов + Заработок + Суточные + Итого
+      const totalCols = 1 + lastDay + 5;
+
+      // Header row 1: title
+      ws.mergeCells(1, 1, 1, totalCols);
+      const titleCell = ws.getCell(1, 1);
+      titleCell.value = `Ведомость — ${mName} ${year}`;
+      titleCell.font = { bold: true, size: 14 };
+
+      // Header row 2: PM + company
+      ws.mergeCells(2, 1, 2, Math.floor(totalCols / 2));
+      ws.getCell(2, 1).value = `РП: ${pmName}`;
+      ws.getCell(2, 1).font = { size: 11 };
+      ws.mergeCells(2, Math.floor(totalCols / 2) + 1, 2, totalCols);
+      ws.getCell(2, Math.floor(totalCols / 2) + 1).value = 'ООО Асгард Сервис';
+      ws.getCell(2, Math.floor(totalCols / 2) + 1).font = { size: 11 };
+
+      // Header row 3: blank
+      ws.addRow([]);
+
+      // Header row 4: column titles
+      const headerRow = ws.getRow(4);
+      headerRow.getCell(1).value = 'ФИО';
+      for (let d = 1; d <= lastDay; d++) {
+        headerRow.getCell(1 + d).value = d;
+      }
+      headerRow.getCell(1 + lastDay + 1).value = 'Дней';
+      headerRow.getCell(1 + lastDay + 2).value = 'Баллов';
+      headerRow.getCell(1 + lastDay + 3).value = 'Заработок';
+      headerRow.getCell(1 + lastDay + 4).value = 'Суточные';
+      headerRow.getCell(1 + lastDay + 5).value = 'Итого';
+      headerRow.font = { bold: true, size: 10 };
+      headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+      for (let c = 1; c <= totalCols; c++) {
+        headerRow.getCell(c).fill = headerFill;
+        headerRow.getCell(c).border = thinBorder;
+      }
+
+      // Column widths
+      ws.getColumn(1).width = 25;
+      for (let d = 1; d <= lastDay; d++) {
+        ws.getColumn(1 + d).width = 6;
+      }
+      ws.getColumn(1 + lastDay + 1).width = 8;
+      ws.getColumn(1 + lastDay + 2).width = 10;
+      ws.getColumn(1 + lastDay + 3).width = 12;
+      ws.getColumn(1 + lastDay + 4).width = 12;
+      ws.getColumn(1 + lastDay + 5).width = 12;
+
+      // Data rows
+      const daySums = new Array(lastDay).fill(0);
+      let sumDays = 0, sumPoints = 0, sumEarned = 0, sumPerDiem = 0, sumTotal = 0;
+      let rowIdx = 5;
+
+      const employees = Object.entries(empMap).sort((a, b) => (a[1].fio || '').localeCompare(b[1].fio || ''));
+
+      for (const [empId, emp] of employees) {
+        const dataRow = ws.getRow(rowIdx);
+        dataRow.getCell(1).value = emp.fio;
+        dataRow.getCell(1).border = thinBorder;
+
+        for (let d = 1; d <= lastDay; d++) {
+          const cell = dataRow.getCell(1 + d);
+          const pts = emp.dayMap[d] || null;
+          if (pts !== null) {
+            cell.value = pts;
+            const fill = getPointFill(pts);
+            if (fill) cell.fill = fill;
+            daySums[d - 1] += pts;
+          }
+          cell.border = thinBorder;
+          cell.alignment = { horizontal: 'center' };
+        }
+
+        const empPerDiem = perDiemMap[parseInt(empId)] || 0;
+        const empTotal = emp.total_amount + empPerDiem;
+
+        dataRow.getCell(1 + lastDay + 1).value = emp.days_count;
+        dataRow.getCell(1 + lastDay + 2).value = Math.round(emp.total_points * 100) / 100;
+        dataRow.getCell(1 + lastDay + 3).value = Math.round(emp.total_amount * 100) / 100;
+        dataRow.getCell(1 + lastDay + 3).numFmt = '#,##0.00';
+        dataRow.getCell(1 + lastDay + 4).value = empPerDiem;
+        dataRow.getCell(1 + lastDay + 4).numFmt = '#,##0.00';
+        dataRow.getCell(1 + lastDay + 5).value = Math.round(empTotal * 100) / 100;
+        dataRow.getCell(1 + lastDay + 5).numFmt = '#,##0.00';
+
+        for (let c = 1 + lastDay + 1; c <= totalCols; c++) {
+          dataRow.getCell(c).border = thinBorder;
+          dataRow.getCell(c).alignment = { horizontal: 'center' };
+        }
+
+        sumDays += emp.days_count;
+        sumPoints += emp.total_points;
+        sumEarned += emp.total_amount;
+        sumPerDiem += empPerDiem;
+        sumTotal += empTotal;
+        rowIdx++;
+      }
+
+      // Totals row
+      const totRow = ws.getRow(rowIdx);
+      totRow.getCell(1).value = 'ИТОГО';
+      totRow.font = { bold: true, size: 10 };
+
+      for (let d = 1; d <= lastDay; d++) {
+        const cell = totRow.getCell(1 + d);
+        cell.value = daySums[d - 1] > 0 ? Math.round(daySums[d - 1] * 100) / 100 : null;
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: 'center' };
+      }
+      totRow.getCell(1 + lastDay + 1).value = sumDays;
+      totRow.getCell(1 + lastDay + 2).value = Math.round(sumPoints * 100) / 100;
+      totRow.getCell(1 + lastDay + 3).value = Math.round(sumEarned * 100) / 100;
+      totRow.getCell(1 + lastDay + 3).numFmt = '#,##0.00';
+      totRow.getCell(1 + lastDay + 4).value = Math.round(sumPerDiem * 100) / 100;
+      totRow.getCell(1 + lastDay + 4).numFmt = '#,##0.00';
+      totRow.getCell(1 + lastDay + 5).value = Math.round(sumTotal * 100) / 100;
+      totRow.getCell(1 + lastDay + 5).numFmt = '#,##0.00';
+
+      for (let c = 1; c <= totalCols; c++) {
+        totRow.getCell(c).fill = totalFill;
+        totRow.getCell(c).border = thinBorder;
+      }
+
+      // Send
+      const buf = await workbook.xlsx.writeBuffer();
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      reply.header('Content-Disposition', `attachment; filename="payroll_${year}_${month}.xlsx"`);
+      return reply.send(Buffer.from(buf));
+    } catch (err) {
+      fastify.log.error('[worker-payments] payroll-grid export error:', err);
+      return reply.code(500).send({ error: 'Ошибка экспорта' });
     }
   });
 }
