@@ -750,9 +750,10 @@ async function generateTkpPdfKit(tkp, db, opts) {
   }
 
   // ─── ПОДПИСЬ ───
-  ensureSpace(50);
+  const signNeed = (opts.stamp || opts.signature) ? 100 : 40;
+  ensureSpace(signNeed);
   doc.x = mL;
-  doc.moveDown(1);
+  doc.moveDown(0.5);
   doc.moveTo(mL, doc.y).lineTo(mL + contentW, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
   doc.moveDown(0.6);
 
@@ -773,31 +774,35 @@ async function generateTkpPdfKit(tkp, db, opts) {
   const stampPath = path.join(imgDir, 'stamp.png');
 
   if (opts.signature && fs.existsSync(sigPath)) {
-    doc.image(sigPath, mL + 180, signY - 40, { height: 100 });
+    doc.image(sigPath, mL + 180, signY - 30, { height: 80 });
   }
   if (opts.stamp && fs.existsSync(stampPath)) {
-    doc.image(stampPath, mL + 117, signY - 20, { height: 128 });
+    doc.image(stampPath, mL + 130, signY - 15, { height: 90 });
   }
 
   doc.x = mL;
-  doc.y = signY + (opts.stamp || opts.signature ? 80 : 18);
+  doc.y = signY + (opts.stamp || opts.signature ? 55 : 14);
   if (!opts.stamp && !opts.signature) {
     doc.font(F).fontSize(7.5).fillColor('#9CA3AF')
        .text('М.П.', mL, doc.y, { width: contentW, align: 'center' });
   }
 
-  // ─── ФУТЕР (на всех страницах) ───
+  // ─── ФУТЕР (безопасный — не создаёт новые страницы) ───
   const footerY = pageH - mB;
   const pages = doc.bufferedPageRange();
   const totalPages = pages.count;
+  const footerText = `${company.name || 'ООО «Асгард-Сервис»'} — ${company.phone || ''} — ${company.email || ''}`;
   for (let i = pages.start; i < pages.start + totalPages; i++) {
     doc.switchToPage(i);
+    // Рисуем линию и текст БЕЗ text() чтобы не вызвать page overflow.
+    // Используем _fragment напрямую или просто линию + текст с lineBreak:false
+    doc.save();
     doc.moveTo(mL, footerY).lineTo(mL + contentW, footerY).strokeColor('#E5E7EB').lineWidth(0.3).stroke();
-    doc.font(F).fontSize(6.5).fillColor('#9CA3AF')
-       .text(`${company.name || 'ООО «Асгард-Сервис»'} — ${company.phone || ''} — ${company.email || ''}`,
-             mL, footerY + 4, { width: contentW - 60, lineBreak: false });
-    doc.font(F).fontSize(6.5).fillColor('#9CA3AF')
-       .text(`${i + 1} / ${totalPages}`, mL + contentW - 55, footerY + 4, { width: 55, align: 'right' });
+    // Текст рисуем через низкоуровневый метод чтобы избежать addPage
+    doc.font(F).fontSize(6.5).fillColor('#9CA3AF');
+    doc.text(footerText, mL, footerY + 4, { width: contentW - 60, lineBreak: false, height: 10 });
+    doc.text(`${i + 1} / ${totalPages}`, mL + contentW - 55, footerY + 4, { width: 55, align: 'right', lineBreak: false, height: 10 });
+    doc.restore();
   }
 
   // ─── ЗАКРЫТИЕ ───
