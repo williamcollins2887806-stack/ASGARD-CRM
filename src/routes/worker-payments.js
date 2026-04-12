@@ -1043,13 +1043,25 @@ async function routes(fastify, options) {
         }
       }
 
-      // Attach per-diem and round
+      // Attach per-diem, convert days array → object {dayNum: points}, round
       const employees = Object.values(empMap).map(emp => {
         const pd = perDiemMap[emp.employee_id] || { per_diem_total: 0, per_diem_days: 0 };
         emp.total_points = Math.round(emp.total_points * 100) / 100;
         emp.total_amount = Math.round(emp.total_amount * 100) / 100;
         emp.per_diem_total = pd.per_diem_total;
         emp.per_diem_days = pd.per_diem_days;
+        // Convert days array to object keyed by day number for frontend grid
+        const daysObj = {};
+        const daysDetailed = [];
+        for (const d of emp.days) {
+          const dateObj = new Date(d.date);
+          const dayNum = dateObj.getDate();
+          daysObj[dayNum] = d.points;
+          daysDetailed.push({ ...d, day: dayNum });
+        }
+        emp.days = daysObj;
+        emp.days_detailed = daysDetailed;
+        emp.id = emp.employee_id; // alias for frontend
         return emp;
       });
 
