@@ -283,7 +283,7 @@ window.AsgardEstimateReportPage = (function () {
       <div class="er-header-right">
         ${canEdit ? '<button class="er-btn er-btn--mimir" id="erAutoCalcBtn">🧙 Авторасчёт</button>' : ''}
         <button class="er-btn er-btn--secondary" id="erExcelBtn">Excel</button>
-        <a href="#/all-estimates" class="er-btn er-btn--secondary">← К списку</a>
+        <a href="${_getBackUrl()}" class="er-btn er-btn--secondary">← Назад</a>
       </div>
     </div>`;
   }
@@ -886,6 +886,14 @@ window.AsgardEstimateReportPage = (function () {
 
     html += '</div>';
     return html;
+  }
+
+  function _getBackUrl() {
+    // РП и HEAD_PM → к своим работам, ТО → к тендерам, остальные → к списку просчётов
+    var role = (window.AsgardAuth && AsgardAuth.user && AsgardAuth.user.role) || '';
+    if (role === 'PM' || role === 'HEAD_PM') return '#/pm-works';
+    if (role === 'TO' || role === 'HEAD_TO') return '#/tenders';
+    return '#/all-estimates';
   }
 
   function _getMimirSuggestions(calcData) {
