@@ -443,7 +443,7 @@ function getAgentSystemPrompt() {
 // AGENT LOOP
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MAX_ITERATIONS = 20; // макс кол-во tool-call циклов (защита от бесконечности)
+const MAX_ITERATIONS = 40; // макс кол-во tool-call циклов (с учётом nudging при пустых tool_calls)
 
 /**
  * Запустить agent loop для auto-estimate.
