@@ -1996,7 +1996,7 @@ ${analogsSummary}
       const aiResult = await aiProvider.complete({
         system: systemPrompt,
         messages: [{ role: 'user', content: `Составь просчёт для работы #${workId}.\n\n${dataText}` }],
-        maxTokens: 8000,
+        maxTokens: 16000,
         temperature: 0.2
       });
 
