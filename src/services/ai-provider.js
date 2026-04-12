@@ -217,10 +217,15 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
   if (system) {
     openaiMessages.push({ role: 'system', content: system });
   }
-  openaiMessages.push(...messages.map(m => ({
-    role: m.role,
-    content: typeof m.content === 'string' ? m.content : _convertContentForOpenAI(m.content)
-  })));
+  openaiMessages.push(...messages.map(m => {
+    // AP5: assistant messages с tool_calls и tool results проходят as-is
+    if (m.role === 'tool') return { role: 'tool', tool_call_id: m.tool_call_id, content: m.content || '' };
+    if (m.role === 'assistant' && m.tool_calls) return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls };
+    return {
+      role: m.role,
+      content: typeof m.content === 'string' ? m.content : _convertContentForOpenAI(m.content)
+    };
+  }));
 
   const body = {
     model: model || OPENAI_MODEL,
