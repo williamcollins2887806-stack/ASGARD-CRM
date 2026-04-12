@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '18.11.0';
+const SHELL_VERSION = '19.0.0';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -50,20 +50,21 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activating', CACHE_NAME);
   event.waitUntil(
+    // АГРЕССИВНАЯ ОЧИСТКА: удаляем ВСЕ кеши при каждом обновлении SW.
+    // Это гарантирует что после деплоя пользователь получит свежие JS/CSS
+    // без необходимости ручного Ctrl+Shift+R. Первая загрузка после деплоя
+    // чуть медленнее (всё качается заново), зато 100% свежий контент.
     caches.keys()
       .then((names) => Promise.all(
-        names
-          .filter((name) => {
-            if (name.startsWith('asgard-crm-shell-') && name !== CACHE_NAME) return true;
-            if (name.startsWith('asgard-crm-api-') && name !== API_CACHE_NAME) return true;
-            return false;
-          })
-          .map((name) => {
-            console.log('[SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
+        names.map((name) => {
+          console.log('[SW] Clearing cache:', name);
+          return caches.delete(name);
+        })
       ))
-      .then(() => self.clients.claim())
+      .then(() => {
+        console.log('[SW] All caches cleared, claiming clients');
+        return self.clients.claim();
+      })
   );
 });
 
@@ -116,6 +117,13 @@ self.addEventListener('fetch', (event) => {
   var isNavigation = request.mode === 'navigate';
 
   if (isNavigation || acceptHeader.includes('text/html') || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    event.respondWith(networkFirstWithOffline(request));
+    return;
+  }
+
+  // JS/CSS с ?v= параметром: network-first (гарантирует свежесть после деплоя).
+  // Остальное (картинки, шрифты): stale-while-revalidate (быстро).
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
     event.respondWith(networkFirstWithOffline(request));
     return;
   }
