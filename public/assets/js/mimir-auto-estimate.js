@@ -246,20 +246,9 @@
     setTimeout(() => overlay.remove(), 200);
   }
 
-  // Очередь шагов — показываем с интервалом 400мс чтобы пользователь видел прогресс
-  var _stepQueue = [];
-  var _stepTimer = null;
-
+  // AP5: естественный темп — шаги показываются сразу при получении SSE event
   function enqueueStep(stepsBox, event) {
-    _stepQueue.push({ stepsBox, event });
-    if (!_stepTimer) drainStepQueue();
-  }
-
-  function drainStepQueue() {
-    if (_stepQueue.length === 0) { _stepTimer = null; return; }
-    var item = _stepQueue.shift();
-    appendStepNow(item.stepsBox, item.event);
-    _stepTimer = setTimeout(drainStepQueue, 2500);
+    appendStepNow(stepsBox, event);
   }
 
   // ID для "thinking" анимации — чтобы удалить когда придёт следующий шаг
@@ -787,9 +776,6 @@
   async function runStream(workId, state, stepsBox, resultBox, retryBtn, composerWrap) {
     const token = getToken();
     if (!token) { showError(stepsBox, 'Не авторизован'); return; }
-    // Сбросить очередь шагов от предыдущего запуска
-    _stepQueue = [];
-    if (_stepTimer) { clearTimeout(_stepTimer); _stepTimer = null; }
     retryBtn.disabled = true;
     retryBtn.style.opacity = '0.6';
 
