@@ -236,110 +236,50 @@ window.AsgardWorkReport = (function () {
     const total = d.expenses.total || 1;
     const R = 75, CX = 100, CY = 100, SW = 35;
     const CIRC = 2 * Math.PI * R;
-    const GAP = 2; // gap in px between segments
-    const gapAngle = GAP / R; // gap as radians
-    const gapFrac = gapAngle / (2 * Math.PI); // gap as fraction of circumference
-    const totalGap = gapFrac * cats.length;
-    const usableFrac = Math.max(1 - totalGap, 0.5);
-    const uid = 'dnt' + Date.now();
+    // Отступ между сегментами = 4px длины дуги
+    const GAP_PX = 4;
+    const totalGapLen = GAP_PX * cats.length;
+    const usableLen = CIRC - totalGapLen;
 
-    let offset = 0;
+    // SVG circle рисуется ОТ 3 часов по часовой стрелке.
+    // stroke-dashoffset сдвигает НАЗАД. Начнём с 12 часов (сдвиг на четверть).
+    const startOffset = CIRC / 4;
+    let accumulated = 0;
+
     const segments = cats.map((c, i) => {
-      const frac = (c.sum / total) * usableFrac;
-      const dashLen = frac * CIRC;
-      const gapLen = gapFrac * CIRC;
-      const dashOff = -offset;
-      offset += dashLen + gapLen;
+      const frac = c.sum / total;
+      const segLen = frac * usableLen;
+      const dashOffset = startOffset - accumulated;
+      accumulated += segLen + GAP_PX;
       const ci = CHART_COLORS[i % CHART_COLORS.length];
-      return `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${ci}" stroke-width="${SW}"
-        stroke-dasharray="${dashLen} ${CIRC - dashLen}" stroke-dashoffset="${dashOff}"
-        class="wr-donut-seg" data-idx="${i}" style="transform-origin:${CX}px ${CY}px;stroke-dashoffset:${CIRC};animation:wrDonutIn .8s ease ${i * 80}ms forwards"
-        data-final-offset="${dashOff}" data-final-dash="${dashLen} ${CIRC - dashLen}"/>`;
+      return '<circle cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke="' + ci + '" stroke-width="' + SW + '"' +
+        ' stroke-dasharray="' + segLen + ' ' + (CIRC - segLen) + '"' +
+        ' stroke-dashoffset="' + dashOffset + '"' +
+        ' style="cursor:pointer;transition:opacity .2s" data-idx="' + i + '"/>';
     });
 
     const legend = cats.map((c, i) => {
       const info = CAT_LABELS[c.category] || { label: c.category, icon: '\uD83D\uDCCB' };
       const ci = CHART_COLORS[i % CHART_COLORS.length];
-      return `<div class="wr-donut-legend-item" data-idx="${i}" data-uid="${uid}">
-        <span class="wr-donut-dot" style="background:${ci}"></span>
-        <span class="wr-donut-legend-label">${esc(info.label)}</span>
-        <span class="wr-donut-legend-val">${m(c.sum)} \u20BD</span>
-        <span class="wr-donut-legend-pct" style="color:var(--t2);font-size:11px;min-width:36px;text-align:right">${pct(c.sum, total)}%</span>
-      </div>`;
+      return '<div class="wr-donut-legend-item" data-idx="' + i + '">' +
+        '<span class="wr-donut-dot" style="background:' + ci + '"></span>' +
+        '<span class="wr-donut-legend-label">' + esc(info.label) + '</span>' +
+        '<span class="wr-donut-legend-val">' + m(c.sum) + ' \u20BD</span>' +
+        '<span style="color:var(--t3);font-size:11px;min-width:36px;text-align:right">' + pct(c.sum, total) + '%</span>' +
+        '</div>';
     });
 
-    // Tooltip div (absolute, hidden by default)
-    const tooltip = `<div class="wr-donut-tooltip" id="${uid}-tip" style="display:none"></div>`;
-
-    const style = `<style>
-@keyframes wrDonutIn{to{stroke-dashoffset:var(--final-off)}}
-.wr-donut-seg{transition:transform .3s,opacity .2s;cursor:pointer;transform-origin:${CX}px ${CY}px}
-.wr-donut-seg:hover,.wr-donut-seg.active{transform:scale(1.06)}
-.wr-donut-seg.dimmed{opacity:0.3}
-.wr-donut-tooltip{position:absolute;background:rgba(20,20,30,.92);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:8px 12px;font-size:12px;color:#fff;pointer-events:none;white-space:nowrap;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.4)}
-.wr-donut-legend-item{transition:opacity .2s}
-.wr-donut-legend-item.dimmed{opacity:0.35}
-</style>`;
-
-    // Script for interactivity
-    const script = `<script>
-(function(){
-  var wrap = document.getElementById('${uid}');
-  if(!wrap) return;
-  var segs = wrap.querySelectorAll('.wr-donut-seg');
-  var legItems = document.querySelectorAll('.wr-donut-legend-item[data-uid="${uid}"]');
-  var tip = document.getElementById('${uid}-tip');
-  var cats = ${JSON.stringify(cats.map((c,i)=>({label:(CAT_LABELS[c.category]||{label:c.category}).label, sum:c.sum, count:c.count, pct:pct(c.sum,total)})))};
-
-  // Apply final animation values via CSS custom property
-  segs.forEach(function(s){
-    s.style.setProperty('--final-off', s.dataset.finalOffset + 'px');
-    s.style.strokeDasharray = s.dataset.finalDash;
-  });
-
-  function highlight(idx){
-    segs.forEach(function(s,i){ s.classList.toggle('active',i===idx); s.classList.toggle('dimmed',idx!==-1&&i!==idx); });
-    legItems.forEach(function(l,i){ l.classList.toggle('dimmed',idx!==-1&&i!==idx); });
-  }
-  function showTip(idx,e){
-    if(!tip||idx<0||idx>=cats.length)return;
-    var c=cats[idx];
-    tip.innerHTML='<strong>'+c.label+'</strong><br>'+c.sum.toLocaleString('ru-RU')+' \\u20BD ('+c.pct+'%)<br>'+c.count+' операц.';
-    tip.style.display='block';
-    var r=wrap.getBoundingClientRect();
-    tip.style.left=(e.clientX-r.left+12)+'px';
-    tip.style.top=(e.clientY-r.top-10)+'px';
-  }
-  function hideTip(){ if(tip) tip.style.display='none'; }
-
-  segs.forEach(function(s,i){
-    s.addEventListener('mouseenter',function(e){highlight(i);showTip(i,e);});
-    s.addEventListener('mousemove',function(e){showTip(i,e);});
-    s.addEventListener('mouseleave',function(){highlight(-1);hideTip();});
-  });
-  legItems.forEach(function(l,i){
-    l.addEventListener('mouseenter',function(){highlight(i);});
-    l.addEventListener('mouseleave',function(){highlight(-1);});
-  });
-})();
-<\/script>`;
-
-    return `<div class="wr-card">
-      <div class="wr-card-title">Структура расходов</div>
-      ${style}
-      <div class="wr-donut-wrap" id="${uid}" style="position:relative">
-        ${tooltip}
-        <svg viewBox="0 0 200 200" class="wr-donut-svg">
-          ${segments.join('')}
-          <text x="${CX}" y="${CY - 16}" text-anchor="middle" fill="var(--t2)" font-size="18">\u20BD</text>
-          <text x="${CX}" y="${CY + 2}" text-anchor="middle" class="wr-donut-total-label">Итого</text>
-          <text x="${CX}" y="${CY + 18}" text-anchor="middle" class="wr-donut-total-val">${m(total)} \u20BD</text>
-          <text x="${CX}" y="${CY + 32}" text-anchor="middle" fill="var(--t2)" font-size="10">${cats.length} категори${cats.length === 1 ? 'я' : cats.length < 5 ? 'и' : 'й'}</text>
-        </svg>
-        <div class="wr-donut-legend">${legend.join('')}</div>
-      </div>
-      ${script}
-    </div>`;
+    return '<div class="wr-card">' +
+      '<div class="wr-card-title">Структура расходов</div>' +
+      '<div class="wr-donut-wrap">' +
+        '<svg viewBox="0 0 200 200" class="wr-donut-svg">' +
+          segments.join('') +
+          '<text x="' + CX + '" y="' + (CY - 8) + '" text-anchor="middle" class="wr-donut-total-label">Итого</text>' +
+          '<text x="' + CX + '" y="' + (CY + 14) + '" text-anchor="middle" class="wr-donut-total-val">' + m(total) + ' \u20BD</text>' +
+        '</svg>' +
+        '<div class="wr-donut-legend">' + legend.join('') + '</div>' +
+      '</div>' +
+    '</div>';
   }
 
   // ════════════════════════════════════════
