@@ -1181,17 +1181,16 @@ ${tariffsToPrompt(ctx.tariffs)}
 6) Определи нужные химию/материалы из контекста ТЗ (если есть)
 
 7) Выбери НАЦЕНКУ (markup_multiplier) ОБОСНОВАННО:
-   ⚡ ГЛАВНОЕ ПРАВИЛО: Итоговая цена С НДС НЕ ДОЛЖНА ПРЕВЫШАТЬ estimated_sum тендера
-   (это бюджет заказчика, выше — не рассмотрят).
-   Формула для максимальной наценки:
-     max_markup = estimated_sum / (1 + НДС/100) / total_cost
-   Если при ×2.5 итог > estimated_sum → снижай наценку до max_markup или чуть ниже.
+   Сервер автоматически подстроит наценку под бюджет тендера (estimated_sum),
+   поэтому НЕ ПЫТАЙСЯ считать max_markup сам — ставь markup по аналогам
+   и истории заказчика, а сервер скорректирует при необходимости.
 
-   Дополнительно анализируй аналоги и историю заказчика:
-   - Если выигрывали с ×2.0-2.5 у этого клиента → безопасный диапазон
+   Рекомендации:
+   - Если выигрывали с ×2.0-2.5 у этого клиента → ставь в этом диапазоне
    - Если проигрывали с ×3.0 → НЕ ставь ×3.0
-   - Для нового клиента → ниже среднего (чтобы зайти)
-   - Для постоянного → можно выше (но всё равно ≤ estimated_sum)
+   - Для нового клиента → ×2.0-2.3 (чтобы зайти)
+   - Для постоянного → ×2.3-2.8
+   - По умолчанию (нет данных) → ×2.2
 
 8) Проверь СКЛАД: чего не хватает — добавь в purchases_needed с ценой
 
@@ -1410,21 +1409,28 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
   let totalWithMargin = r2(totalCost * markup);
   let marginPct = totalCost > 0 ? r2(((totalWithMargin - totalCost) / totalCost) * 100) : 0;
 
-  // AP4: Серверный enforcement — если цена с НДС > estimated_sum тендера, обрезать markup
+  // AP4: Серверный двусторонний enforcement по estimated_sum тендера
+  // Цена с НДС должна быть в диапазоне [90%..98%] от estimated_sum
   let markupOverflowFix = null;
   const estimatedSum = Number(ctx?.tender?.estimated_sum || ctx?.tender?.tender_price || 0);
-  if (estimatedSum > 0) {
-    const totalWithVat = r2(totalWithMargin * (1 + Number(settings.vat_pct) / 100));
-    if (totalWithVat > estimatedSum) {
-      // Пересчитать markup чтобы вписаться в бюджет (с запасом 2% для торга)
-      const maxMarkup = r2(estimatedSum * 0.98 / (1 + Number(settings.vat_pct) / 100) / totalCost);
+  if (estimatedSum > 0 && totalCost > 0) {
+    const vatMul = 1 + Number(settings.vat_pct) / 100;
+    const checkVat = r2(totalWithMargin * vatMul);
+
+    // Целевой диапазон: [90%..98%] от estimated_sum
+    const upperLimit = estimatedSum * 0.98;
+    const lowerLimit = estimatedSum * 0.90;
+    // Целевой markup чтобы попасть в ~95% estimated_sum (золотая середина)
+    const targetMarkup = r2(estimatedSum * 0.95 / vatMul / totalCost);
+
+    if (checkVat > upperLimit || checkVat < lowerLimit) {
       markupOverflowFix = {
         ai_markup: markup,
-        ai_total_with_vat: totalWithVat,
+        ai_total_with_vat: checkVat,
         estimated_sum: estimatedSum,
-        fixed_markup: Math.max(1.1, maxMarkup) // не меньше ×1.1
+        target_range: `${Math.round(lowerLimit)}–${Math.round(upperLimit)}`,
+        fixed_markup: Math.max(1.1, Math.min(targetMarkup, r2(upperLimit / vatMul / totalCost)))
       };
-      // Применяем фикс
       markup = markupOverflowFix.fixed_markup;
       est.markup_multiplier = markup;
       totalWithMargin = r2(totalCost * markup);
