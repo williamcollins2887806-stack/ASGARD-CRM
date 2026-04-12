@@ -2061,11 +2061,12 @@ ${analogsSummary}
         analysis: {
           markup_reasoning: ai.analysis?.markup_reasoning || null,
           warnings: ai.analysis?.warnings || [],
-          warehouse_status: ai.analysis?.warehouse_status || null,
-          workers_status: ai.analysis?.workers_status || null,
           purchases_needed: ai.analysis?.purchases_needed || [],
           time_overflow_fix: aiBundle.recomputed.timeOverflowFix
         },
+        equipment_status: ai.equipment_status || null,
+        permits_status: ai.permits_status || null,
+        route_plan: ai.route_plan || null,
         comment: ai.estimate?.comment || null,
         summary: context.summary,
         ai_meta: {

@@ -1154,6 +1154,32 @@
   flex-shrink: 0;
 }
 
+/* ── AP4.5: Mimir Extended Blocks (Equipment, Permits, Route) ── */
+.er-mimir-blocks { margin-top: 20px; }
+.er-mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--t1, #e8eaed);
+}
+.er-mini-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t3, #8b8fa3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.er-mini-table td {
+  padding: 5px 8px;
+  border-bottom: 0.5px solid rgba(255,255,255,0.04);
+  vertical-align: top;
+}
+.er-mini-table tr:last-child td { border-bottom: none; }
+.er-mini-table tr:hover td { background: rgba(255,255,255,0.02); }
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .er-page { padding: 0 16px var(--sp-6); }

@@ -163,6 +163,7 @@ window.AsgardEstimateReportPage = (function () {
       ${renderCostBar(calcData)}
       ${renderObjectInfo(est)}
       ${canEdit ? renderEditableTable(calcData, est) : renderConsolidatedTable(calcData)}
+      ${renderMimirBlocks(calcData, est)}
       ${canEdit ? renderMimirChat() : ''}
       ${renderAnalogs(analogs)}
       ${renderComments(comments)}
@@ -228,6 +229,7 @@ window.AsgardEstimateReportPage = (function () {
 
       return {
         blocks,
+        _rawCalc: calc, // AP4.5: пробрасываем для renderMimirBlocks (equipment, permits, route)
         summary: {
           cost_no_vat: totalCost,
           markup: markup,
@@ -777,6 +779,124 @@ window.AsgardEstimateReportPage = (function () {
         <span class="er-editable__total" id="erTotalCost">${fmtMoney(total)}</span>
       </div>
     </div>`;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // COMPONENT: Mimir Extended Blocks (AP4.5: оборудование, допуска, маршрут)
+  // ──────────────────────────────────────────────────────────────
+  function renderMimirBlocks(calcData, est) {
+    // Читаем mimir_suggestions из calc_data (загружается при GET /estimates/:id/calculation)
+    const ms = _getMimirSuggestions(calcData);
+    if (!ms) return '';
+
+    const equipment = ms.equipment_status;
+    const permits = ms.permits_status;
+    const route = ms.route_plan;
+
+    let html = '<div class="er-mimir-blocks" style="margin-top:24px">';
+
+    // ── Оборудование ──
+    html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px">';
+    html += '<div class="er-eblock__head" style="background:rgba(30,77,140,0.08);border-left:3px solid #1E4D8C;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
+    html += '<b style="color:#4D90E0">🔧 Оборудование</b></div>';
+    html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg-2,#1a1d24);border-radius:0 0 8px 8px;border:0.5px solid rgba(255,255,255,0.06)">';
+    if (equipment) {
+      if (equipment.from_warehouse && equipment.from_warehouse.length > 0) {
+        html += '<p style="font-size:12px;font-weight:700;color:var(--ok-t,#4CAF50);margin-bottom:6px">✅ Со склада:</p>';
+        html += '<table class="er-mini-table"><tbody>';
+        equipment.from_warehouse.forEach(function(r) {
+          html += '<tr><td>' + esc(r.item || '—') + '</td><td style="text-align:right">' + (r.quantity || 1) + ' шт</td><td style="color:var(--t3)">' + esc(r.condition || '') + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      }
+      if (equipment.to_purchase && equipment.to_purchase.length > 0) {
+        html += '<p style="font-size:12px;font-weight:700;color:#D4A843;margin:10px 0 6px">🛒 Нужно купить:</p>';
+        html += '<table class="er-mini-table"><tbody>';
+        equipment.to_purchase.forEach(function(r) {
+          html += '<tr><td>' + esc(r.item || '—') + '</td><td style="text-align:right">' + (r.quantity || 1) + ' шт</td>';
+          html += '<td style="text-align:right;font-weight:600">' + fmtMoney(r.total || r.price_estimate || 0) + '</td>';
+          html += '<td style="color:var(--t3);font-size:11px">' + esc(r.supplier_hint || '') + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      }
+      if (equipment.summary) html += '<p style="font-size:12px;color:var(--t2);margin-top:8px">' + esc(equipment.summary) + '</p>';
+    } else {
+      html += '<p style="font-size:12px;color:var(--t3)">Информация об оборудовании не заполнена</p>';
+    }
+    html += '</div></div>';
+
+    // ── Допуска и персонал ──
+    html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px">';
+    html += '<div class="er-eblock__head" style="background:rgba(76,175,80,0.08);border-left:3px solid #4CAF50;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
+    html += '<b style="color:#66BB6A">🛡 Допуска и персонал</b></div>';
+    html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg-2,#1a1d24);border-radius:0 0 8px 8px;border:0.5px solid rgba(255,255,255,0.06)">';
+    if (permits) {
+      if (permits.available_crew && permits.available_crew.length > 0) {
+        html += '<table class="er-mini-table"><thead><tr><th>Допуск</th><th>Нужно</th><th>Свободных</th><th>Статус</th></tr></thead><tbody>';
+        permits.available_crew.forEach(function(r) {
+          var statusColor = r.enough ? 'var(--ok-t,#4CAF50)' : '#E67381';
+          var statusText = r.enough ? '✅ Хватает' : '⚠️ Не хватает';
+          html += '<tr><td>' + esc(r.permit || '—') + '</td><td style="text-align:center">' + (r.needed || '?') + '</td>';
+          html += '<td style="text-align:center">' + (r.available || '?') + '</td>';
+          html += '<td style="color:' + statusColor + ';font-weight:600">' + statusText + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      }
+      if (permits.training_needed && permits.training_needed.length > 0) {
+        html += '<p style="font-size:12px;font-weight:700;color:#D4A843;margin:10px 0 6px">📚 Нужно обучить:</p>';
+        permits.training_needed.forEach(function(t) {
+          html += '<p style="font-size:12px;color:var(--t2);padding:2px 0">• ' + esc(t.permit || '?') + ': ' + (t.people_count || 0) + ' чел × ' + fmtMoney(t.cost_per_person || 0) + ' = <b>' + fmtMoney(t.total || 0) + '</b></p>';
+        });
+      }
+      if (permits.summary) html += '<p style="font-size:12px;color:var(--t2);margin-top:8px">' + esc(permits.summary) + '</p>';
+    } else {
+      html += '<p style="font-size:12px;color:var(--t3)">Информация о допусках не заполнена</p>';
+    }
+    html += '</div></div>';
+
+    // ── Маршрут ──
+    html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px">';
+    html += '<div class="er-eblock__head" style="background:rgba(212,168,67,0.08);border-left:3px solid #D4A843;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
+    html += '<b style="color:#D4A843">🗺 Маршрут и логистика</b></div>';
+    html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg-2,#1a1d24);border-radius:0 0 8px 8px;border:0.5px solid rgba(255,255,255,0.06)">';
+    if (route) {
+      if (route.legs && route.legs.length > 0) {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">';
+        route.legs.forEach(function(leg, i) {
+          html += '<div style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;border:0.5px solid rgba(255,255,255,0.08)">';
+          html += '<p style="font-size:11px;color:var(--t3)">Этап ' + (i + 1) + '</p>';
+          html += '<p style="font-size:13px;font-weight:600;color:var(--t1)">' + esc(leg.from || '?') + ' → ' + esc(leg.to || '?') + '</p>';
+          html += '<p style="font-size:11px;color:var(--t2)">' + esc(leg.transport || '?') + ' • ' + (leg.duration_days || '?') + ' дн' + (leg.cost_per_person ? ' • ' + fmtMoney(leg.cost_per_person) + '/чел' : '') + '</p>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+      if (route.warehouse_stop) {
+        var ws = route.warehouse_stop;
+        html += '<div style="padding:8px 12px;background:rgba(212,168,67,0.06);border-radius:8px;border:0.5px solid rgba(212,168,67,0.2);margin-bottom:8px">';
+        html += '<p style="font-size:12px;font-weight:700;color:#D4A843">📦 Остановка на складе: ' + esc(ws.location || 'Москва') + ' — ' + (ws.days || 2) + ' дн</p>';
+        html += '<p style="font-size:12px;color:var(--t2);margin-top:3px">' + esc(ws.activities || 'Комплектация, погрузка, проверка СИЗ') + '</p>';
+        html += '</div>';
+      }
+      if (route.summary) html += '<p style="font-size:12px;color:var(--t2)">' + esc(route.summary) + '</p>';
+    } else {
+      html += '<p style="font-size:12px;color:var(--t3)">Маршрут не заполнен</p>';
+    }
+    html += '</div></div>';
+
+    html += '</div>';
+    return html;
+  }
+
+  function _getMimirSuggestions(calcData) {
+    if (!calcData) return null;
+    // calcData может быть в формате {blocks, summary} — тогда ищем в raw calc
+    var raw = calcData._rawCalc || calcData._calc || null;
+    if (raw && raw.mimir_suggestions) {
+      var ms = raw.mimir_suggestions;
+      return typeof ms === 'string' ? JSON.parse(ms) : ms;
+    }
+    return null;
   }
 
   // ──────────────────────────────────────────────────────────────

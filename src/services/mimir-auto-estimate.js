@@ -1273,18 +1273,66 @@ ${tariffsToPrompt(ctx.tariffs)}
       {"name": "<если нужно>", "volume_liters": <N>, "price_per_liter": <цена>, "total": <итого>}
     ]
   },
+  "equipment_status": {
+    "from_warehouse": [
+      {"item": "<что берём со склада>", "quantity": <N>, "condition": "рабочее/требует ТО"}
+    ],
+    "to_purchase": [
+      {"item": "<что покупать>", "quantity": <N>, "price_estimate": <ориент. цена за ед.>, "total": <итого>, "supplier_hint": "где искать"}
+    ],
+    "summary": "Краткое резюме: X позиций со склада, Y нужно купить на Z₽"
+  },
+  "permits_status": {
+    "required_permits": ["ОТЗП", "Работы на высоте", "...список нужных допусков"],
+    "available_crew": [
+      {"permit": "ОТЗП", "needed": <сколько нужно>, "available": <сколько свободных с этим допуском>, "enough": true/false}
+    ],
+    "training_needed": [
+      {"permit": "<какой допуск>", "people_count": <сколько обучить>, "cost_per_person": <стоимость курса>, "total": <итого>}
+    ],
+    "summary": "Краткое: X чел свободны с нужными допусками / Y нужно обучить"
+  },
+  "route_plan": {
+    "legs": [
+      {"from": "Саратов (офис)", "to": "Москва (склад)", "transport": "ж/д", "duration_days": <N>, "cost_per_person": <₽>},
+      {"from": "Москва (склад)", "to": "<город объекта>", "transport": "ж/д/авто", "duration_days": <N>, "cost_per_person": <₽>}
+    ],
+    "warehouse_stop": {
+      "location": "Москва, склад Асгард",
+      "days": <2-3>,
+      "activities": "Комплектация оборудования, погрузка, проверка СИЗ, инструктаж"
+    },
+    "total_road_days": <суммарно дней дороги в одну сторону>,
+    "summary": "Маршрут: Саратов → Москва (склад, X дн) → Город (ж/д, Y дн). Обратно аналогично."
+  },
   "analysis": {
     "markup_reasoning": "Почему именно эта наценка — со ссылками на аналоги",
     "warnings": [
       {"level": "warning", "title": "Краткий заголовок", "text": "Что именно за риск/предупреждение"}
     ],
-    "warehouse_status": "Что есть на складе / чего не хватает (1-2 предложения)",
-    "workers_status": "Хватает ли рабочих (1 предложение)",
     "purchases_needed": [
       {"item": "<позиция>", "quantity": <N>, "price": <за единицу>, "total": <итого>, "reason": "нет на складе"}
     ]
   }
 }
+
+11) Заполни блок EQUIPMENT_STATUS:
+    - from_warehouse: что КОНКРЕТНО берём со склада (проверь по данным выше)
+    - to_purchase: что КОНКРЕТНО покупать (если на складе нет нужного)
+    - КАЖДАЯ позиция с количеством и ценой. Не пиши "оборудование" абстрактно.
+
+12) Заполни блок PERMITS_STATUS:
+    - required_permits: какие допуска НУЖНЫ для этой работы (определи из ТЗ)
+    - available_crew: по каждому допуску — сколько нужно vs сколько доступно
+    - training_needed: если людей с допуском НЕ ХВАТАЕТ — сколько обучить и за сколько
+    - Если всех хватает → training_needed = [], summary = "Все X чел имеют допуска"
+
+13) Заполни блок ROUTE_PLAN:
+    - legs: каждый этап маршрута (Саратов→Москва, Москва→объект)
+    - warehouse_stop: ОБЯЗАТЕЛЬНО есть (все бригады проходят через склад Москва)
+      - days: 2-3 дня (комплектация, погрузка, проверка СИЗ, инструктаж)
+      - activities: что конкретно делают на складе
+    - Маршрут ВСЕГДА: Саратов → Москва (склад) → город объекта
 
 ВАЖНО:
 - Возвращай ТОЛЬКО валидный JSON, без \`\`\`json блока, без текста до/после
@@ -1589,13 +1637,14 @@ async function createDraftEstimate(db, ctx, ai, recomputed, user) {
   // 2. INSERT в estimate_calculation_data
   const calc = recomputed.calculation;
 
-  // mimir_suggestions = analysis блок (warnings + reasoning + chat_history)
+  // mimir_suggestions = все блоки анализа + новые AP4.5 блоки
   const mimirSuggestions = {
     markup_reasoning: ai.analysis?.markup_reasoning || null,
     warnings: ai.analysis?.warnings || [],
     purchases_needed: ai.analysis?.purchases_needed || [],
-    workers_status: ai.analysis?.workers_status || null,
-    warehouse_status: ai.analysis?.warehouse_status || null,
+    equipment_status: ai.equipment_status || null,
+    permits_status: ai.permits_status || null,
+    route_plan: ai.route_plan || null,
     chat_history: [],
     generated_at: new Date().toISOString(),
     ai_model: ai._meta?.model || null,
