@@ -281,12 +281,21 @@
         banner.classList[visible ? 'add' : 'remove']('visible');
       }
 
+      function autoActivate(worker) {
+        if (!worker) return;
+        console.log('[PWA] Auto-activating new SW...');
+        if ('caches' in window) {
+          caches.keys().then(function(n){ return Promise.all(n.map(function(c){ return caches.delete(c); })); })
+            .then(function(){ worker.postMessage('skipWaiting'); });
+        } else { worker.postMessage('skipWaiting'); }
+      }
+
       function trackInstalling(worker) {
         if (!worker) return;
         _newWorker = worker;
         worker.addEventListener('statechange', function() {
           if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-            setBannerVisible(true);
+            autoActivate(worker);
           }
         });
       }
@@ -297,23 +306,20 @@
             _registration = reg;
             console.log('[PWA] SW registered:', reg.scope, SHELL_VERSION);
 
-            if (reg.waiting) {
-              _newWorker = reg.waiting;
-              setBannerVisible(true);
-            }
-            if (reg.installing) {
-              trackInstalling(reg.installing);
-            }
+            if (reg.waiting) { autoActivate(reg.waiting); }
+            if (reg.installing) { trackInstalling(reg.installing); }
 
             reg.addEventListener('updatefound', function() {
               trackInstalling(reg.installing);
             });
 
             setInterval(function() {
-              reg.update().catch(function(err) {
-                console.log('[PWA] SW update check failed:', err);
-              });
-            }, 30 * 60 * 1000);
+              reg.update().catch(function(err) { console.log('[PWA] SW update check failed:', err); });
+            }, 5 * 60 * 1000);
+
+            document.addEventListener('visibilitychange', function() {
+              if (document.visibilityState === 'visible' && reg) { reg.update().catch(function(){}); }
+            });
           })
           .catch(function(err){ console.log('[PWA] SW registration failed:', err); });
 
