@@ -361,7 +361,7 @@ window.AsgardTendersPage = (function(){
   const TENDER_STATUS_COLORS = {
     'Черновик': '#6c757d', 'Новый': '#5b8def', 'Отправлено на просчёт': '#f39c12',
     'Согласование ТКП': '#e67e22', 'ТКП согласовано': '#27ae60', 'КП отправлено': '#17a2b8',
-    'Выиграли': '#2ecc71', 'Проиграли': '#e74c3c'
+    'Выиграли': '#2ecc71', 'Проиграли': '#e74c3c', 'Не подходит': '#95a5a6'
   };
 
   function tenderStatusBadge(status) {
@@ -437,6 +437,7 @@ window.AsgardTendersPage = (function(){
     const de = fmtDate(t.work_end_plan);
     const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Ссылка</a>` : "—";
     const ddl = fmtDate(t.docs_deadline);
+    const archiveInfo = t.tender_status === 'Не подходит' ? `<div class="help" style="color:var(--t3);margin-top:4px">📁 ${esc(t.archive_reason||'—')} · ${esc((t.archive_comment||'').substring(0,60))}${(t.archive_comment||'').length>60?'...':''}</div>` : '';
     return `<tr data-id="${t.id}">
       <td><input type="checkbox" class="tender-check" value="${t.id}" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>
       <td>${fmtPeriod(t.period)}</td>
@@ -444,6 +445,7 @@ window.AsgardTendersPage = (function(){
         <b>${esc(t.customer_name||"")}</b>
         <div class="help">${esc(t.customer_inn||"")}</div>
         <div class="help">${esc(t.tender_title||"")}</div>
+        ${archiveInfo}
       </td>
       <td>${esc(pmName||"—")}</td>
       <td>${esc(t.tender_type||"—")}</td>
@@ -470,8 +472,12 @@ window.AsgardTendersPage = (function(){
     const st = t.tender_status || '';
     if (st === 'Выиграли') statusCls = 'ok';
     else if (st === 'Проиграли') statusCls = 'err';
-    else if (st === 'Черновик') statusCls = 'draft';
+    else if (st === 'Черновик' || st === 'Не подходит') statusCls = 'draft';
     else statusCls = 'info';
+
+    const archiveInfo = t.tender_status === 'Не подходит'
+      ? '<div style="font-size:12px;color:var(--t3);margin-top:6px;padding:6px 8px;background:rgba(149,165,166,.1);border-radius:6px">📁 ' + esc(t.archive_reason||'—') + ' · ' + esc((t.archive_comment||'').substring(0,50)) + ((t.archive_comment||'').length>50?'...':'') + '</div>'
+      : '';
 
     return '<div class="m-tender-card" data-id="' + t.id + '">' +
       '<div class="m-tc-header">' +
@@ -479,6 +485,7 @@ window.AsgardTendersPage = (function(){
         '<span class="m-tc-badge m-tc-' + statusCls + '">' + esc(st || '—') + '</span>' +
       '</div>' +
       '<div class="m-tc-title">' + esc(t.tender_title || '') + '</div>' +
+      archiveInfo +
       '<div class="m-tc-meta">' +
         '<div class="m-tc-field"><span class="m-tc-label">РП</span><span>' + esc(pmName || '—') + '</span></div>' +
         '<div class="m-tc-field"><span class="m-tc-label">Тип</span><span>' + esc(t.tender_type || '—') + '</span></div>' +
@@ -548,14 +555,29 @@ window.AsgardTendersPage = (function(){
 
     let sortKey="id", sortDir=-1;
 
+    let archiveMode = false; // true = показываем архив (Не подходит)
+
     const body = `
       ${tableCSS()}
+      <style>
+        .tender-tabs { display:flex; gap:0; border-bottom:2px solid var(--brd); margin-bottom:16px; }
+        .tender-tab { padding:10px 20px; cursor:pointer; font-weight:600; font-size:14px; border-bottom:3px solid transparent; margin-bottom:-2px; color:var(--t3); transition:all .2s; user-select:none; }
+        .tender-tab:hover { color:var(--t1); }
+        .tender-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+        .tender-tab .tab-badge { display:inline-block; background:var(--err-t); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:99px; margin-left:6px; vertical-align:middle; }
+        .archive-info-row { display:flex; gap:16px; align-items:center; padding:10px 14px; background:rgba(149,165,166,.1); border-radius:8px; margin-bottom:8px; font-size:13px; color:var(--t2); }
+        .archive-info-row b { color:var(--t1); }
+      </style>
       <div class="panel">
         <div class="help">
           Реестр тендеров и передача в просчёт. После передачи ТО ограничен: документы/ссылка/тег/комментарий ТО.
           Переназначение РП — только директор/админ, с причиной и записью в журнал.
         </div>
         <hr class="hr"/>
+        <div class="tender-tabs">
+          <div class="tender-tab active" id="tabActive">Активные</div>
+          <div class="tender-tab" id="tabArchive">📁 Архив <span class="tab-badge" id="archiveBadge" style="display:none">0</span></div>
+        </div>
         <div class="tools m-tender-tools">
           <div class="field">
             <label>Период</label>
@@ -963,6 +985,13 @@ window.AsgardTendersPage = (function(){
       const pm = CRSelect.getValue('f_pm')||"";
 
       let list = tenders.filter(t=>{
+        // Режим архива: только "Не подходит"
+        if(archiveMode) {
+          if(t.tender_status !== 'Не подходит') return false;
+        } else {
+          // Активные: исключаем "Не подходит"
+          if(t.tender_status === 'Не подходит') return false;
+        }
         // Фильтр по периоду
         if(periodVal) {
           if(periodVal.startsWith("year:")) {
@@ -975,10 +1004,10 @@ window.AsgardTendersPage = (function(){
           }
         }
         if(tp && String(t.tender_type||"")!==String(tp)) return false;
-        if(st && t.tender_status!==st) return false;
+        if(!archiveMode && st && t.tender_status!==st) return false;
         if(pm && String(t.responsible_pm_id||"")!==String(pm)) return false;
         if(q){
-          const hay = `${t.customer_inn||""} ${t.customer_name||""} ${t.tender_title||""} ${t.purchase_url||""} ${t.group_tag||""} ${t.tender_type||""}`.toLowerCase();
+          const hay = `${t.customer_inn||""} ${t.customer_name||""} ${t.tender_title||""} ${t.purchase_url||""} ${t.group_tag||""} ${t.tender_type||""} ${t.archive_reason||""} ${t.archive_comment||""}`.toLowerCase();
           if(!hay.includes(q)) return false;
         }
         return true;
@@ -1029,9 +1058,34 @@ window.AsgardTendersPage = (function(){
         );
       }
       cnt.textContent = `Показано: ${list.length} из ${tenders.length}.`;
+      // Обновляем бейдж архива
+      const archiveCount = tenders.filter(t => t.tender_status === 'Не подходит').length;
+      const archiveBadge = document.getElementById('archiveBadge');
+      if(archiveBadge) {
+        archiveBadge.textContent = archiveCount;
+        archiveBadge.style.display = archiveCount > 0 ? '' : 'none';
+      }
     }
 
     applyAndRender();
+
+    // Табы "Активные" / "Архив"
+    const tabActive = document.getElementById('tabActive');
+    const tabArchive = document.getElementById('tabArchive');
+    if(tabActive) tabActive.addEventListener('click', () => {
+      archiveMode = false;
+      tabActive.classList.add('active');
+      tabArchive.classList.remove('active');
+      currentPage = 1;
+      applyAndRender();
+    });
+    if(tabArchive) tabArchive.addEventListener('click', () => {
+      archiveMode = true;
+      tabArchive.classList.add('active');
+      tabActive.classList.remove('active');
+      currentPage = 1;
+      applyAndRender();
+    });
 
     // Мобильные карточки
     if (window.AsgardUI?.makeResponsiveTable) {
@@ -1279,6 +1333,7 @@ window.AsgardTendersPage = (function(){
 
       const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>🔒</b> Передано в просчёт: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
       const canReassign = (isDirRole(user.role) || user.role==="ADMIN");
+      const canArchive = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_TO'].includes(user.role);
 
       const full = rights.full || isNew;
       const limited = rights.limited;
@@ -1385,6 +1440,15 @@ ${docsHtml}</div>
 
 
         <hr class="hr"/>
+        ${(t && t.tender_status === 'Не подходит') ? `
+        <div class="archive-info-row">
+          <b>📁 Архив</b>
+          <span>Причина: <b>${esc(t.archive_reason||'—')}</b></span>
+          <span>Комментарий: ${esc(t.archive_comment||'—')}</span>
+          <span>Кто: ${esc((byId.get(t.archived_by_user_id)||{}).name||'—')}</span>
+          <span>Когда: ${esc(formatDateTime(t.archived_at))}</span>
+        </div>` : ''}
+
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
           <button class="btn" id="btnSave">${isNew?"Создать":"Сохранить"}</button>
           ${!isNew ? '<button class="btn ghost" id="btnTenderActions">⚡ Действия</button>' : ''}
@@ -1392,6 +1456,8 @@ ${docsHtml}</div>
           ${(t && !t.handoff_at && !t.distribution_requested_at && user.role==="TO") ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
           ${(t && !t.handoff_at && (user.role==="ADMIN"||isDirRole(user.role))) ? `<button class="btn red" id="btnHandoff">Передать в просчёт</button>` : ``}
           ${(t && t.tender_status==='ТКП согласовано') ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено клиенту</button>` : ``}
+          ${(t && t.tender_status !== 'Не подходит' && canArchive) ? `<button class="btn ghost" id="btnArchiveTender" style="color:var(--err-t)">🗑 Отсеять</button>` : ``}
+          ${(t && t.tender_status === 'Не подходит' && canArchive) ? `<button class="btn ghost" id="btnUnarchiveTender" style="color:var(--ok-t)">♻️ Вернуть</button>` : ``}
         </div>
       `;
 
@@ -2081,8 +2147,34 @@ ${docsHtml}</div>
           });
 
           // ─── Управление ───
-          if(isDirRole(user.role) || user.role === "ADMIN"){
+          if(isDirRole(user.role) || user.role === "ADMIN" || user.role === "HEAD_TO"){
             actions.push({ section: 'Управление' });
+
+            // Отсеять (только если не архив)
+            if(t.tender_status !== 'Не подходит'){
+              actions.push({
+                icon: '🗑', label: 'Отсеять',
+                desc: 'Перевести тендер в архив с указанием причины',
+                onClick: () => openArchiveModal(tenderId)
+              });
+            }
+
+            // Вернуть из архива
+            if(t.tender_status === 'Не подходит'){
+              actions.push({
+                icon: '♻️', label: 'Вернуть из архива',
+                desc: 'Вернуть тендер в статус «Новый»',
+                onClick: () => openUnarchiveModal(tenderId)
+              });
+            }
+
+            // Сменить автора
+            actions.push({
+              icon: '👤', label: 'Сменить автора',
+              desc: 'Сменить автора (создателя) тендера',
+              onClick: () => openChangeAuthorModal(tenderId)
+            });
+
             actions.push({
               icon: '📋', label: 'История',
               desc: 'Аудит-лог изменений по тендеру',
@@ -2462,6 +2554,234 @@ ${docsHtml}</div>
           openTenderEditor(id);
         });
       }
+
+      // Кнопка "Отсеять" в карточке
+      if(document.getElementById("btnArchiveTender")){
+        document.getElementById("btnArchiveTender").addEventListener("click", () => openArchiveModal(tenderId));
+      }
+
+      // Кнопка "Вернуть" из архива в карточке
+      if(document.getElementById("btnUnarchiveTender")){
+        document.getElementById("btnUnarchiveTender").addEventListener("click", () => openUnarchiveModal(tenderId));
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Модалка "Отсеять тендер" (архивация)
+    // ═══════════════════════════════════════════════════════════════
+    async function openArchiveModal(tid){
+      let archiveReasons = [];
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/tenders/archive-reasons', { headers: { 'Authorization': 'Bearer ' + token } });
+        if(resp.ok){
+          const data = await resp.json();
+          archiveReasons = data.reasons || data || [];
+        }
+      } catch(e){}
+      // Fallback reasons if API not available
+      if(!archiveReasons.length){
+        archiveReasons = [
+          'Не наш профиль','Слишком маленький объём','Слишком большой объём',
+          'Невыгодные условия','Далеко от базы','Короткие сроки',
+          'Нет ресурсов','Сложный доступ','Плохая репутация заказчика',
+          'Конкурент уже выиграл','Торги отменены','Дубликат',
+          'Тестовая закупка','Ошибочно внесён','Другое'
+        ];
+      }
+      const reasonOpts = archiveReasons.map(r => {
+        const val = typeof r === 'object' ? (r.value || r.name || r.label) : r;
+        const lbl = typeof r === 'object' ? (r.label || r.name || r.value) : r;
+        return { value: val, label: lbl };
+      });
+
+      const html = `
+        <div class="help" style="margin-bottom:12px">Тендер будет переведён в статус «Не подходит» и перемещён в архив.</div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label class="cr-required">Причина</label>
+            <div id="archive_reason_w"></div>
+          </div>
+        </div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label class="cr-required">Комментарий</label>
+            <textarea id="archive_comment" rows="3" placeholder="Опишите причину отсева..."></textarea>
+          </div>
+        </div>
+        <hr class="hr"/>
+        <div style="display:flex;gap:10px">
+          <button class="btn red" id="archive_confirm">Подтвердить</button>
+          <button class="btn ghost" id="archive_cancel">Отмена</button>
+        </div>
+      `;
+      showModal('Отсеять тендер', html);
+      $('#archive_reason_w')?.appendChild(CRSelect.create({ id: 'archive_reason', placeholder: '— выберите причину —', options: reasonOpts, dropdownClass: 'z-modal' }));
+
+      $('#archive_cancel')?.addEventListener('click', () => hideModal());
+      $('#archive_confirm')?.addEventListener('click', async () => {
+        const reason = CRSelect.getValue('archive_reason') || '';
+        const comment = ($('#archive_comment')?.value || '').trim();
+        if(!reason){ toast('Отсев','Выберите причину','err'); return; }
+        if(!comment){ toast('Отсев','Укажите комментарий','err'); return; }
+
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/tenders/' + tid + '/archive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ reason, comment })
+          });
+          if(resp.ok){
+            toast('Архив','Тендер отсеян','ok');
+            hideModal();
+            await render({layout, title});
+          } else {
+            const err = await resp.json().catch(()=>({}));
+            toast('Ошибка', err.error || 'Не удалось отсеять','err');
+          }
+        } catch(e){
+          toast('Ошибка', e.message || 'Сеть недоступна','err');
+        }
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Модалка "Вернуть из архива"
+    // ═══════════════════════════════════════════════════════════════
+    async function openUnarchiveModal(tid){
+      const html = `
+        <div class="help" style="margin-bottom:12px">Тендер будет возвращён в статус «Новый».</div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label>Комментарий</label>
+            <textarea id="unarchive_comment" rows="3" placeholder="Причина возврата (необязательно)"></textarea>
+          </div>
+        </div>
+        <hr class="hr"/>
+        <div style="display:flex;gap:10px">
+          <button class="btn" id="unarchive_confirm" style="background:var(--ok);color:#fff">Вернуть</button>
+          <button class="btn ghost" id="unarchive_cancel">Отмена</button>
+        </div>
+      `;
+      showModal('Вернуть из архива', html);
+
+      $('#unarchive_cancel')?.addEventListener('click', () => hideModal());
+      $('#unarchive_confirm')?.addEventListener('click', async () => {
+        const comment = ($('#unarchive_comment')?.value || '').trim();
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/tenders/' + tid + '/unarchive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ comment })
+          });
+          if(resp.ok){
+            toast('Архив','Тендер возвращён','ok');
+            hideModal();
+            await render({layout, title});
+          } else {
+            const err = await resp.json().catch(()=>({}));
+            toast('Ошибка', err.error || 'Не удалось вернуть','err');
+          }
+        } catch(e){
+          toast('Ошибка', e.message || 'Сеть недоступна','err');
+        }
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Модалка "Сменить автора тендера"
+    // ═══════════════════════════════════════════════════════════════
+    async function openChangeAuthorModal(tid){
+      const toUsers = users.filter(u => u.role === 'TO' || u.role === 'HEAD_TO');
+      const toOpts = toUsers.map(u => ({ value: String(u.id), label: u.name + ' (' + u.role + ')' }));
+
+      const html = `
+        <div class="help" style="margin-bottom:12px">Сменить автора (создателя) тендера. Изменение фиксируется в журнале.</div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label class="cr-required">Новый автор</label>
+            <div id="change_author_w"></div>
+          </div>
+        </div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label>Комментарий</label>
+            <textarea id="change_author_comment" rows="2" placeholder="Причина смены (необязательно)"></textarea>
+          </div>
+        </div>
+        <hr class="hr"/>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" id="change_author_confirm">Сменить</button>
+          <button class="btn ghost" id="change_author_history">История</button>
+          <button class="btn ghost" id="change_author_cancel">Отмена</button>
+        </div>
+        <div id="change_author_history_box" style="margin-top:12px;display:none"></div>
+      `;
+      showModal('Сменить автора тендера', html);
+      $('#change_author_w')?.appendChild(CRSelect.create({ id: 'change_author', placeholder: '— выберите —', options: toOpts, searchable: true, dropdownClass: 'z-modal' }));
+
+      $('#change_author_cancel')?.addEventListener('click', () => hideModal());
+
+      // История авторов
+      $('#change_author_history')?.addEventListener('click', async () => {
+        const box = $('#change_author_history_box');
+        if(!box) return;
+        box.style.display = 'block';
+        box.innerHTML = '<div class="help">Загрузка...</div>';
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/tenders/' + tid + '/author-history', { headers: { 'Authorization': 'Bearer ' + token } });
+          if(resp.ok){
+            const data = await resp.json();
+            const history = data.history || [];
+            if(!history.length){
+              box.innerHTML = '<div class="help">Автор не менялся.</div>';
+            } else {
+              box.innerHTML = '<table class="t" style="font-size:13px"><thead><tr><th>Дата</th><th>Старый автор</th><th>Новый автор</th><th>Кто сменил</th><th>Комментарий</th></tr></thead><tbody>' +
+                history.map(h => '<tr>' +
+                  '<td>' + esc(formatDateTime(h.changed_at)) + '</td>' +
+                  '<td>' + esc(h.old_author_name||'—') + '</td>' +
+                  '<td>' + esc(h.new_author_name||'—') + '</td>' +
+                  '<td>' + esc(h.changed_by_name||'—') + '</td>' +
+                  '<td>' + esc(h.comment||'—') + '</td>' +
+                '</tr>').join('') +
+              '</tbody></table>';
+            }
+          } else {
+            box.innerHTML = '<div class="help">Не удалось загрузить.</div>';
+          }
+        } catch(e){
+          box.innerHTML = '<div class="help">Ошибка: ' + esc(e.message) + '</div>';
+        }
+      });
+
+      // Подтверждение смены автора
+      $('#change_author_confirm')?.addEventListener('click', async () => {
+        const newAuthorId = Number(CRSelect.getValue('change_author') || 0);
+        const comment = ($('#change_author_comment')?.value || '').trim();
+        if(!newAuthorId){ toast('Смена автора','Выберите нового автора','err'); return; }
+
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/tenders/' + tid + '/change-author', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ new_author_id: newAuthorId, comment })
+          });
+          if(resp.ok){
+            toast('Автор','Автор тендера сменён','ok');
+            hideModal();
+            await render({layout, title});
+          } else {
+            const err = await resp.json().catch(()=>({}));
+            toast('Ошибка', err.error || 'Не удалось сменить автора','err');
+          }
+        } catch(e){
+          toast('Ошибка', e.message || 'Сеть недоступна','err');
+        }
+      });
     }
   }
 

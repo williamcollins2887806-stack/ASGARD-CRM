@@ -3,28 +3,59 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-// State machine тендеров — допустимые переходы
+// State machine тендеров — допустимые переходы для обычных ролей
 const TENDER_TRANSITIONS = {
-  'Черновик':              ['Новый'],
-  'Новый':                 ['Отправлено на просчёт', 'Проиграли'],
-  'Отправлено на просчёт': ['Согласование ТКП', 'Проиграли'],
-  'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли'],
-  'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли'],
-  'КП отправлено':         ['Выиграли', 'Проиграли'],
+  'Черновик':              ['Новый', 'Не подходит'],
+  'Новый':                 ['Отправлено на просчёт', 'Проиграли', 'Не подходит'],
+  'Отправлено на просчёт': ['Согласование ТКП', 'Проиграли', 'Не подходит', 'Новый'],
+  'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли', 'Не подходит'],
+  'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли', 'Не подходит'],
+  'КП отправлено':         ['Выиграли', 'Проиграли', 'Не подходит'],
   'Выиграли':              [],
-  'Проиграли':             ['Новый']
+  'Проиграли':             ['Новый'],
+  'Не подходит':           ['Новый']
 };
 
-const VALID_TENDER_STATUSES = Object.keys(TENDER_TRANSITIONS);
+// Расширенные переходы для HEAD_TO (рук. тендерного отдела)
+// HEAD_TO может двигать в воронке, но НЕ может делать handoff (Новый→На просчёте = директор)
+const HEAD_TO_TRANSITIONS = {
+  'Черновик':              ['Новый', 'Не подходит', 'Проиграли'],
+  'Новый':                 ['Проиграли', 'Не подходит'],
+  'Отправлено на просчёт': ['Новый', 'Проиграли', 'Не подходит'],
+  'Согласование ТКП':      ['Отправлено на просчёт', 'Проиграли', 'Не подходит'],
+  'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли', 'Не подходит'],
+  'КП отправлено':         ['Выиграли', 'Проиграли', 'Не подходит'],
+  'Выиграли':              [],
+  'Проиграли':             ['Новый'],
+  'Не подходит':           ['Новый']
+};
+
+const VALID_TENDER_STATUSES = [...Object.keys(TENDER_TRANSITIONS)];
+
+// Роли которые могут двигать статусы в воронке
+const FUNNEL_MOVE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
 
 function isValidTenderTransition(fromStatus, toStatus, userRole) {
   if (userRole === 'ADMIN') return true;
-  if (toStatus === 'Новый' && fromStatus === 'Проиграли' && userRole !== 'ADMIN') return false;
+  if (['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(userRole)) return true;
   if (!fromStatus) return true;
+  // HEAD_TO использует расширенную матрицу
+  if (userRole === 'HEAD_TO') {
+    const allowed = HEAD_TO_TRANSITIONS[fromStatus];
+    return allowed ? allowed.includes(toStatus) : false;
+  }
   const allowed = TENDER_TRANSITIONS[fromStatus];
   if (!allowed) return true;
   return allowed.includes(toStatus);
 }
+
+// Категории отсева (для статуса "Не подходит")
+const ARCHIVE_REASONS = [
+  'Не наш профиль', 'Нет ресурсов', 'Срок истёк', 'Нерентабельно', 'Далеко',
+  'Мало информации', 'Заказчик ненадёжный', 'Высокая конкуренция', 'Не прошли квалификацию',
+  'Заказчик отменил', 'Дублирует другой тендер', 'Слишком малый объём',
+  'Требуются допуски', 'Невыгодные условия', 'Другое'
+];
 
 async function routes(fastify, options) {
   const db = fastify.db;
@@ -851,9 +882,143 @@ async function routes(fastify, options) {
     await db.query('DELETE FROM tender_comments WHERE id = $1', [commentId]);
     return { success: true };
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // АРХИВ: POST /:id/archive — отсеять тендер (статус "Не подходит")
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ARCHIVE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
+
+  fastify.post('/:id/archive', {
+    preHandler: [fastify.requireRoles(ARCHIVE_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { reason, comment } = request.body || {};
+
+    if (!reason) return reply.code(400).send({ error: 'Укажите категорию отсева' });
+    if (!comment || !comment.trim()) return reply.code(400).send({ error: 'Комментарий обязателен' });
+    if (!ARCHIVE_REASONS.includes(reason)) return reply.code(400).send({ error: 'Недопустимая категория' });
+
+    const { rows } = await db.query('SELECT id, tender_status FROM tenders WHERE id = $1', [id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (rows[0].tender_status === 'Выиграли') return reply.code(400).send({ error: 'Нельзя отсеять выигранный тендер' });
+
+    const oldStatus = rows[0].tender_status;
+    await db.query(`
+      UPDATE tenders SET
+        tender_status = 'Не подходит', archived_at = NOW(), archived_by = $1,
+        archive_reason = $2, archive_comment = $3, updated_at = NOW()
+      WHERE id = $4
+    `, [user.id, reason, comment.trim(), id]);
+
+    await db.query(`
+      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+      VALUES ($1, 'tender', $2, 'archive', $3, NOW())
+    `, [user.id, id, JSON.stringify({ from_status: oldStatus, to_status: 'Не подходит', reason, comment: comment.trim() })]);
+
+    broadcast('tender:archived', { id, reason });
+    return { success: true, status: 'Не подходит' };
+  });
+
+  // POST /:id/unarchive — вернуть из архива (Не подходит → Новый)
+  fastify.post('/:id/unarchive', {
+    preHandler: [fastify.requireRoles(ARCHIVE_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { comment } = request.body || {};
+
+    if (!comment || !comment.trim()) return reply.code(400).send({ error: 'Укажите причину возврата' });
+
+    const { rows } = await db.query('SELECT id, tender_status FROM tenders WHERE id = $1', [id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (rows[0].tender_status !== 'Не подходит') return reply.code(400).send({ error: 'Тендер не в архиве' });
+
+    await db.query(`
+      UPDATE tenders SET tender_status = 'Новый', archived_at = NULL, archived_by = NULL,
+        archive_reason = NULL, archive_comment = NULL, updated_at = NOW()
+      WHERE id = $1
+    `, [id]);
+
+    await db.query(`
+      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+      VALUES ($1, 'tender', $2, 'unarchive', $3, NOW())
+    `, [user.id, id, JSON.stringify({ comment: comment.trim() })]);
+
+    broadcast('tender:unarchived', { id });
+    return { success: true, status: 'Новый' };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // СМЕНА АВТОРА: PUT /:id/change-author
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.put('/:id/change-author', {
+    preHandler: [fastify.requireRoles(ARCHIVE_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { new_author_id, comment } = request.body || {};
+
+    if (!new_author_id) return reply.code(400).send({ error: 'Укажите нового автора' });
+
+    const { rows: [tender] } = await db.query('SELECT id, created_by_user_id, created_by FROM tenders WHERE id = $1', [id]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+
+    const { rows: [newAuthor] } = await db.query('SELECT id, name, role FROM users WHERE id = $1', [new_author_id]);
+    if (!newAuthor) return reply.code(400).send({ error: 'Пользователь не найден' });
+
+    const oldAuthorId = tender.created_by_user_id || tender.created_by;
+
+    await db.query(`UPDATE tenders SET created_by_user_id = $1, created_by = $1, updated_at = NOW() WHERE id = $2`, [new_author_id, id]);
+
+    // История смены автора
+    await db.query(`
+      INSERT INTO tender_author_history (tender_id, old_author_id, new_author_id, changed_by, comment, created_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+    `, [id, oldAuthorId, new_author_id, user.id, comment || null]);
+
+    await db.query(`
+      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+      VALUES ($1, 'tender', $2, 'change_author', $3, NOW())
+    `, [user.id, id, JSON.stringify({ old_author_id: oldAuthorId, new_author_id, new_author_name: newAuthor.name, comment })]);
+
+    return { success: true, new_author: newAuthor.name };
+  });
+
+  // GET /:id/author-history — история смены авторов
+  fastify.get('/:id/author-history', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { rows } = await db.query(`
+      SELECT h.*,
+        ou.name as old_author_name, ou.login as old_author_login,
+        nu.name as new_author_name, nu.login as new_author_login,
+        cu.name as changed_by_name
+      FROM tender_author_history h
+      LEFT JOIN users ou ON ou.id = h.old_author_id
+      LEFT JOIN users nu ON nu.id = h.new_author_id
+      LEFT JOIN users cu ON cu.id = h.changed_by
+      WHERE h.tender_id = $1 ORDER BY h.created_at DESC
+    `, [request.params.id]);
+    return { history: rows };
+  });
+
+  // GET /archive-reasons — список категорий для фронтенда
+  fastify.get('/archive-reasons', { preHandler: [fastify.authenticate] }, async () => {
+    return { reasons: ARCHIVE_REASONS };
+  });
+
+  // GET /transition-map — разрешённые переходы для роли пользователя
+  fastify.get('/transition-map', { preHandler: [fastify.authenticate] }, async (request) => {
+    const role = request.user.role;
+    if (role === 'ADMIN' || ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role)) {
+      return { transitions: TENDER_TRANSITIONS, can_move: true };
+    }
+    if (role === 'HEAD_TO') {
+      return { transitions: HEAD_TO_TRANSITIONS, can_move: true };
+    }
+    return { transitions: {}, can_move: false };
+  });
 }
 
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  
 module.exports = routes;

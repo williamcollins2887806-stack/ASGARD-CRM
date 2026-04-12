@@ -1,7 +1,7 @@
 window.AsgardFunnelPage = (function(){
   const {$, $$, esc, toast, showModal, closeModal, formatDate} = AsgardUI;
 
-  // 8 стадий воронки — 1:1 со статусами тендеров
+  // 9 стадий воронки — 1:1 со статусами тендеров
   const STAGES = [
     {id: 'draft',    label: 'Черновики',           color: '#6c757d', statuses: ['Черновик']},
     {id: 'new',      label: 'Новые',               color: '#5b8def', statuses: ['Новый']},
@@ -10,20 +10,46 @@ window.AsgardFunnelPage = (function(){
     {id: 'approved', label: 'Согласовано',          color: '#27ae60', statuses: ['ТКП согласовано']},
     {id: 'sent',     label: 'КП отправлено',       color: '#17a2b8', statuses: ['КП отправлено']},
     {id: 'won',      label: 'Выиграли',            color: '#2ecc71', statuses: ['Выиграли']},
-    {id: 'lost',     label: 'Проиграли',           color: '#e74c3c', statuses: ['Проиграли']}
+    {id: 'lost',     label: 'Проиграли',           color: '#e74c3c', statuses: ['Проиграли']},
+    {id: 'rejected', label: 'Не подходит',          color: '#95a5a6', statuses: ['Не подходит']}
   ];
 
-  // State machine — допустимые переходы (зеркало бэкенда)
-  const TENDER_TRANSITIONS = {
-    'Черновик':              ['Новый'],
-    'Новый':                 ['Отправлено на просчёт', 'Проиграли'],
-    'Отправлено на просчёт': ['Согласование ТКП', 'Проиграли'],
-    'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли'],
-    'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли'],
-    'КП отправлено':         ['Выиграли', 'Проиграли'],
-    'Выиграли':              [],
-    'Проиграли':             ['Новый']
-  };
+  // Transition map — загружается с сервера при инициализации
+  let _transitionMap = null; // { transitions: {...}, can_move: bool }
+  let _archiveReasons = null; // string[]
+
+  async function _authHeaders() {
+    const token = localStorage.getItem('asgard_token') || '';
+    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+  }
+
+  async function loadTransitionMap() {
+    if (_transitionMap) return _transitionMap;
+    try {
+      const h = await _authHeaders();
+      const r = await fetch('/api/tenders/transition-map', { headers: h });
+      if (r.ok) _transitionMap = await r.json();
+      else _transitionMap = { transitions: {}, can_move: false };
+    } catch(e) {
+      console.warn('Funnel: failed to load transition-map', e);
+      _transitionMap = { transitions: {}, can_move: false };
+    }
+    return _transitionMap;
+  }
+
+  async function loadArchiveReasons() {
+    if (_archiveReasons) return _archiveReasons;
+    try {
+      const h = await _authHeaders();
+      const r = await fetch('/api/tenders/archive-reasons', { headers: h });
+      if (r.ok) { const d = await r.json(); _archiveReasons = d.reasons || []; }
+      else _archiveReasons = [];
+    } catch(e) {
+      console.warn('Funnel: failed to load archive-reasons', e);
+      _archiveReasons = [];
+    }
+    return _archiveReasons;
+  }
 
   function getStageForStatus(status) {
     if (!status) return 'new';
@@ -35,11 +61,154 @@ window.AsgardFunnelPage = (function(){
 
   function money(x) { return AsgardUI.money(x) + ' ₽'; }
 
+  // ── Модалка перехода статуса ──────────────────────────────────────────────
+  async function showTransitionModal(tenderId, currentStatus, newStatus) {
+    return new Promise(async (resolve) => {
+      let html = '';
+      const modalId = 'funnelTransitionModal';
+
+      if (newStatus === 'Не подходит') {
+        const reasons = await loadArchiveReasons();
+        html = `
+          <div id="${modalId}">
+            <div class="form-group" style="margin-bottom:12px">
+              <label class="label">Категория отсева <span style="color:#e74c3c">*</span></label>
+              <div id="crw_archiveReason"></div>
+            </div>
+            <div class="form-group" style="margin-bottom:16px">
+              <label class="label">Комментарий <span style="color:#e74c3c">*</span></label>
+              <textarea id="funnelComment" class="input" rows="3" placeholder="Почему тендер не подходит?"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn ghost" id="funnelCancel">Отмена</button>
+              <button class="btn primary" id="funnelConfirm">Подтвердить</button>
+            </div>
+          </div>`;
+        showModal('Отсеять тендер', html);
+        // mount CRSelect for reasons
+        const wrap = $('#crw_archiveReason');
+        if (wrap && typeof CRSelect !== 'undefined') {
+          wrap.appendChild(CRSelect.create({
+            id: 'archiveReason', fullWidth: true, placeholder: '— Выберите категорию —',
+            options: reasons.map(r => ({ value: r, label: r })),
+            searchable: true, dropdownClass: 'z-modal'
+          }));
+        }
+      } else if (newStatus === 'Проиграли') {
+        html = `
+          <div id="${modalId}">
+            <div class="form-group" style="margin-bottom:12px">
+              <label class="label">Причина отказа <span style="color:#e74c3c">*</span></label>
+              <textarea id="funnelRejectReason" class="input" rows="3" placeholder="Почему проиграли тендер?"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:16px">
+              <label class="label">Кто победил</label>
+              <input type="text" id="funnelWinner" class="input" placeholder="Название компании-победителя">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn ghost" id="funnelCancel">Отмена</button>
+              <button class="btn primary" id="funnelConfirm">Подтвердить</button>
+            </div>
+          </div>`;
+        showModal('Проиграли тендер', html);
+      } else if (newStatus === 'Выиграли') {
+        html = `
+          <div id="${modalId}">
+            <div class="form-group" style="margin-bottom:16px">
+              <label class="label">Сумма контракта <span style="color:#e74c3c">*</span></label>
+              <input type="number" id="funnelContractSum" class="input" placeholder="0" min="0" step="0.01">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn ghost" id="funnelCancel">Отмена</button>
+              <button class="btn primary" id="funnelConfirm">Подтвердить</button>
+            </div>
+          </div>`;
+        showModal('Выиграли тендер', html);
+      } else if (newStatus === 'Новый' && (currentStatus === 'Проиграли' || currentStatus === 'Не подходит')) {
+        html = `
+          <div id="${modalId}">
+            <div class="form-group" style="margin-bottom:16px">
+              <label class="label">Причина перезапуска</label>
+              <textarea id="funnelRestartReason" class="input" rows="3" placeholder="Почему возвращаем тендер?"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn ghost" id="funnelCancel">Отмена</button>
+              <button class="btn primary" id="funnelConfirm">Подтвердить</button>
+            </div>
+          </div>`;
+        showModal(currentStatus === 'Не подходит' ? 'Вернуть из архива' : 'Перезапустить тендер', html);
+      } else {
+        // Возврат на предыдущий шаг — комментарий
+        const stageIdx = s => STAGES.findIndex(st => st.statuses.includes(s));
+        const isBackward = stageIdx(newStatus) < stageIdx(currentStatus);
+        if (isBackward) {
+          html = `
+            <div id="${modalId}">
+              <div class="form-group" style="margin-bottom:16px">
+                <label class="label">Комментарий</label>
+                <textarea id="funnelBackComment" class="input" rows="3" placeholder="Причина возврата"></textarea>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn ghost" id="funnelCancel">Отмена</button>
+                <button class="btn primary" id="funnelConfirm">Подтвердить</button>
+              </div>
+            </div>`;
+          showModal('Вернуть на предыдущий этап', html);
+        } else {
+          // Прямой переход вперёд — без модалки
+          resolve({ confirmed: true, data: {} });
+          return;
+        }
+      }
+
+      // Bind cancel/confirm
+      const cancel = $('#funnelCancel');
+      const confirm = $('#funnelConfirm');
+      if (cancel) cancel.addEventListener('click', () => { closeModal(); resolve({ confirmed: false }); });
+      if (confirm) confirm.addEventListener('click', () => {
+        // Validate and collect data
+        if (newStatus === 'Не подходит') {
+          const reason = typeof CRSelect !== 'undefined' ? CRSelect.getValue('archiveReason') : '';
+          const comment = ($('#funnelComment')?.value || '').trim();
+          if (!reason) { toast('Ошибка', 'Выберите категорию отсева', 'err'); return; }
+          if (!comment) { toast('Ошибка', 'Комментарий обязателен', 'err'); return; }
+          closeModal();
+          resolve({ confirmed: true, data: { reason, comment } });
+        } else if (newStatus === 'Проиграли') {
+          const reject_reason = ($('#funnelRejectReason')?.value || '').trim();
+          const winner = ($('#funnelWinner')?.value || '').trim();
+          if (!reject_reason) { toast('Ошибка', 'Укажите причину отказа', 'err'); return; }
+          closeModal();
+          resolve({ confirmed: true, data: { reject_reason, winner } });
+        } else if (newStatus === 'Выиграли') {
+          const contract_sum = parseFloat($('#funnelContractSum')?.value || '0');
+          if (!contract_sum || contract_sum <= 0) { toast('Ошибка', 'Укажите сумму контракта', 'err'); return; }
+          closeModal();
+          resolve({ confirmed: true, data: { contract_sum } });
+        } else if (newStatus === 'Новый' && (currentStatus === 'Проиграли' || currentStatus === 'Не подходит')) {
+          const comment = ($('#funnelRestartReason')?.value || '').trim();
+          closeModal();
+          resolve({ confirmed: true, data: { comment } });
+        } else {
+          // backward step
+          const comment = ($('#funnelBackComment')?.value || '').trim();
+          closeModal();
+          resolve({ confirmed: true, data: { comment } });
+        }
+      });
+    });
+  }
+
   async function render({layout, title}) {
     const auth = await AsgardAuth.requireUser();
     if (!auth) { location.hash = '#/login'; return; }
     const user = auth.user;
-    const isAdmin = user.role === 'ADMIN';
+    const role = user.role;
+
+    // Загружаем transition map с сервера (роль-зависимый)
+    const tmap = await loadTransitionMap();
+    const canMove = tmap.can_move;
+    const transitions = tmap.transitions || {};
 
     const tenders = await AsgardDB.all('tenders') || [];
     const estimates = await AsgardDB.all('estimates') || [];
@@ -79,7 +248,7 @@ window.AsgardFunnelPage = (function(){
       const stat = stats.find(s => s.id === stage.id);
 
       const cardsHtml = items.slice(0, 20).map(t => `
-        <div class="funnel-card" data-id="${t.id}" data-status="${esc(t.tender_status || '')}" draggable="true">
+        <div class="funnel-card" data-id="${t.id}" data-status="${esc(t.tender_status || '')}" draggable="${canMove}">
           <div class="funnel-card-header">
             <span class="funnel-card-customer">${esc(t.customer_name || t.customer_display || t.customer || 'Без заказчика')}</span>
             <span class="funnel-card-sum">${money(t._sum)}</span>
@@ -154,6 +323,7 @@ window.AsgardFunnelPage = (function(){
 
     $$('.funnel-card').forEach(card => {
       card.addEventListener('dragstart', (e) => {
+        if (!canMove) { e.preventDefault(); return; }
         draggedCard = card;
         card.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
@@ -185,7 +355,7 @@ window.AsgardFunnelPage = (function(){
         e.preventDefault();
         col.classList.remove('drag-over');
 
-        if (!draggedCard) return;
+        if (!draggedCard || !canMove) return;
 
         const tenderId = Number(draggedCard.dataset.id);
         const currentStatus = draggedCard.dataset.status;
@@ -197,34 +367,72 @@ window.AsgardFunnelPage = (function(){
         const newStatus = stageInfo.statuses[0];
         if (newStatus === currentStatus) return;
 
-        // Проверяем допустимость перехода
-        if (!isAdmin) {
-          const allowed = TENDER_TRANSITIONS[currentStatus] || [];
-          if (!allowed.includes(newStatus)) {
-            toast('Ошибка', `Нельзя перевести из «${currentStatus}» в «${newStatus}»`, 'err');
-            return;
-          }
+        // Проверяем допустимость перехода по серверной карте
+        const allowed = transitions[currentStatus] || [];
+        if (!allowed.includes(newStatus)) {
+          toast('Ошибка', `Переход «${currentStatus}» → «${newStatus}» недоступен для вашей роли`, 'err');
+          return;
         }
 
-        // Обновляем статус тендера
-        const tender = await AsgardDB.get('tenders', tenderId);
-        if (!tender) return;
+        // Показываем модалку (если нужна для данного перехода)
+        const modal = await showTransitionModal(tenderId, currentStatus, newStatus);
+        if (!modal.confirmed) return;
 
-        tender.tender_status = newStatus;
-        tender.updated_at = new Date().toISOString();
+        const headers = await _authHeaders();
 
-        await AsgardDB.put('tenders', tender);
+        // Выбираем правильный API endpoint
         try {
-          const token = localStorage.getItem('asgard_token') || '';
-          await fetch('/api/data/tenders/' + tender.id, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ tender_status: newStatus })
-          });
-        } catch(e) { console.warn('Funnel: server save failed', e); }
-        toast('Готово', `Статус изменён: ${newStatus}`, 'ok');
+          if (newStatus === 'Не подходит') {
+            // Архивировать: POST /api/tenders/:id/archive
+            const r = await fetch(`/api/tenders/${tenderId}/archive`, {
+              method: 'POST', headers,
+              body: JSON.stringify({ reason: modal.data.reason, comment: modal.data.comment })
+            });
+            if (!r.ok) { const err = await r.json().catch(() => ({})); toast('Ошибка', err.error || 'Не удалось отсеять тендер', 'err'); return; }
+          } else if (newStatus === 'Новый' && currentStatus === 'Не подходит') {
+            // Вернуть из архива: POST /api/tenders/:id/unarchive
+            const comment = modal.data.comment || 'Возврат из архива';
+            const r = await fetch(`/api/tenders/${tenderId}/unarchive`, {
+              method: 'POST', headers,
+              body: JSON.stringify({ comment })
+            });
+            if (!r.ok) { const err = await r.json().catch(() => ({})); toast('Ошибка', err.error || 'Не удалось вернуть из архива', 'err'); return; }
+          } else {
+            // Все остальные переходы: PUT /api/tenders/:id
+            const body = { tender_status: newStatus };
+            if (modal.data.reject_reason) body.reject_reason = modal.data.reject_reason;
+            if (modal.data.winner) body.winner_name = modal.data.winner;
+            if (modal.data.contract_sum) body.contract_sum = modal.data.contract_sum;
+            if (modal.data.comment) body.status_comment = modal.data.comment;
+            const r = await fetch(`/api/tenders/${tenderId}`, {
+              method: 'PUT', headers,
+              body: JSON.stringify(body)
+            });
+            if (!r.ok) { const err = await r.json().catch(() => ({})); toast('Ошибка', err.error || 'Не удалось изменить статус', 'err'); return; }
+          }
 
-        location.hash = '#/funnel';
+          // Обновляем локальный кэш
+          const tender = await AsgardDB.get('tenders', tenderId);
+          if (tender) {
+            tender.tender_status = newStatus;
+            tender.updated_at = new Date().toISOString();
+            await AsgardDB.put('tenders', tender);
+          }
+
+          toast('Готово', `Статус изменён: ${newStatus}`, 'ok');
+
+          // Перерисовываем карточку в воронке (перемещаем из старой колонки в новую)
+          const targetCards = col;
+          if (draggedCard && targetCards) {
+            draggedCard.dataset.status = newStatus;
+            targetCards.appendChild(draggedCard);
+          }
+          // Пересчитываем счётчики — проще перерисовать страницу
+          location.hash = '#/funnel';
+        } catch(err) {
+          console.warn('Funnel: server save failed', err);
+          toast('Ошибка', 'Не удалось сохранить изменения', 'err');
+        }
       });
     });
   }
