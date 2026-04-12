@@ -1985,34 +1985,92 @@ ${analogsSummary}
       // Callback для прогресса — пересылается в SSE
       const onProgress = (event) => sendEvent(event);
 
-      // Собрать весь контекст
+      // Шаг 1: собрать весь контекст
       const context = await mimirAutoEstimate.buildAutoEstimateContext(
         db, workId, user, onProgress
       );
 
-      // AP1: без AI — отдаём только summary с метриками контекста
-      // AP2 здесь будет вызов Claude Sonnet 4.6 + создание estimate
-      sendEvent({
-        type: 'ai_pending',
-        message: '🧮 AP1 завершён. В AP2 здесь будет вызов Claude Sonnet 4.6 и создание просчёта.'
-      });
+      // Шаг 2: вызов AI (Claude Sonnet 4.6 через aiProvider.complete)
+      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧮 Считаю себестоимость и наценку...' });
+
+      let aiBundle;
+      try {
+        aiBundle = await mimirAutoEstimate.callMimirForEstimate(aiProvider, context);
+      } catch (aiErr) {
+        fastify.log.error('[Mimir auto-estimate AI]:', aiErr.message);
+        sendEvent({
+          type: 'error',
+          message: 'Ошибка AI: ' + aiErr.message,
+          phase: 'ai_call',
+          elapsed_ms: Date.now() - startTime
+        });
+        reply.raw.end();
+        return;
+      }
+
+      // Шаг 3: создать estimate (draft) + estimate_calculation_data
+      sendEvent({ type: 'progress', step: 'creating_estimate', message: '📝 Создаю просчёт в системе...' });
+
+      let created;
+      try {
+        created = await mimirAutoEstimate.createDraftEstimate(db, context, aiBundle.ai, aiBundle.recomputed, user);
+      } catch (dbErr) {
+        fastify.log.error('[Mimir auto-estimate DB]:', dbErr.message, dbErr.stack);
+        sendEvent({
+          type: 'error',
+          message: 'Ошибка создания просчёта: ' + dbErr.message,
+          phase: 'create_estimate',
+          elapsed_ms: Date.now() - startTime
+        });
+        reply.raw.end();
+        return;
+      }
+
+      // Шаг 4: financial summary для UI карточки
+      const totals = aiBundle.recomputed.totals;
+      const ai = aiBundle.ai;
 
       sendEvent({
         type: 'result',
         success: true,
-        ap_phase: 'AP1',
+        ap_phase: 'AP2',
+        estimate_id: created.estimate_id,
+        version_no: created.version_no,
+        // Краткая сводка для итоговой карточки в UI
+        card: {
+          title: ai.estimate?.title || context.work.work_title,
+          customer: context.work.customer_name || context.tender?.customer_name,
+          object: context.work.object_name,
+          city: ai.estimate?.object_city || context.work.city,
+          crew_count: ai.estimate?.crew_count,
+          work_days: ai.estimate?.work_days,
+          road_days: ai.estimate?.road_days,
+          markup_multiplier: totals.markup_multiplier,
+          total_cost: totals.total_cost,
+          total_with_margin: totals.total_with_margin,
+          total_with_vat: totals.total_with_vat,
+          margin_pct: totals.margin_pct,
+          fot_subtotal: totals.personnel_with_tax,
+          travel_subtotal: totals.travel_subtotal,
+          transport_subtotal: totals.transport_subtotal,
+          chemistry_subtotal: totals.chemistry_subtotal,
+          current_subtotal: totals.current_subtotal,
+          drift_pct: aiBundle.recomputed.drift
+        },
+        analysis: {
+          markup_reasoning: ai.analysis?.markup_reasoning || null,
+          warnings: ai.analysis?.warnings || [],
+          warehouse_status: ai.analysis?.warehouse_status || null,
+          workers_status: ai.analysis?.workers_status || null,
+          purchases_needed: ai.analysis?.purchases_needed || []
+        },
+        comment: ai.estimate?.comment || null,
         summary: context.summary,
-        // Полный контекст НЕ возвращаем в SSE (слишком большой) — отдадим только метрики
-        context_keys: {
-          work: !!context.work,
-          tender: !!context.tender,
-          documents: context.documents.length,
-          analogs: context.analogs.length,
-          customer_history: context.customer_history.length,
-          warehouse: context.warehouse.length,
-          workers_available: context.workers.available?.length || 0,
-          tariff_categories: Object.keys(context.tariffs.grouped || {}),
-          settings: context.settings
+        ai_meta: {
+          model: aiBundle.model,
+          provider: aiBundle.provider,
+          tokens: aiBundle.tokens,
+          duration_ms: aiBundle.duration_ms
         },
         elapsed_ms: Date.now() - startTime
       });
@@ -2029,6 +2087,94 @@ ${analogsSummary}
     }
 
     reply.raw.end();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AP2: POST /api/mimir/auto-estimate-chat — диалог с пересчётом
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Body: { work_id, estimate_id, message, history? }
+  // Возвращает JSON: { success, response (текст ответа Мимира),
+  //                    updated_card?, updated_analysis?, recomputed? }
+  //
+  // Логика:
+  //   1. Загружаем контекст работы (тот же что использовался для создания)
+  //   2. Вызываем Claude с сообщением РП → AI возвращает обновлённый JSON расчёта
+  //   3. Пересчитываем математику на сервере
+  //   4. UPDATE estimate_calculation_data
+  //   5. Возвращаем новые цифры + текстовый ответ
+  fastify.post('/auto-estimate-chat', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id, estimate_id, message, history } = request.body || {};
+    const user = request.user;
+
+    if (!work_id || !estimate_id || !message?.trim()) {
+      return reply.code(400).send({ success: false, message: 'work_id, estimate_id и message обязательны' });
+    }
+    const workId = parseInt(work_id);
+    const estimateId = parseInt(estimate_id);
+
+    try {
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+
+      // 1. Контекст
+      const context = await mimirAutoEstimate.buildAutoEstimateContext(db, workId, user, null);
+
+      // 2. AI вызов с сообщением РП
+      // Расширяем prompt: добавляем краткую инструкцию что это чат-апдейт
+      const userTurn = `РУКОВОДИТЕЛЬ ПРОЕКТА (${user.name || user.login}) ПИШЕТ:
+"${message.trim()}"
+
+${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history.slice(-6).map(h => `${h.role === 'user' ? 'РП' : 'Мимир'}: ${h.text}`).join('\n')}` : ''}
+
+ЗАДАЧА: Учти просьбу РП и верни ОБНОВЛЁННЫЙ JSON с пересчитанным просчётом.
+Пиши в estimate.comment объяснение что изменилось (1-2 предложения).
+В analysis.markup_reasoning — обновлённое обоснование.
+ВЕРНИ ТОЛЬКО JSON, без пояснений.`;
+
+      const aiBundle = await mimirAutoEstimate.callMimirForEstimate(aiProvider, context, userTurn);
+
+      // 3. UPDATE в БД
+      await mimirAutoEstimate.updateDraftEstimate(db, estimateId, aiBundle.ai, aiBundle.recomputed, user);
+
+      const totals = aiBundle.recomputed.totals;
+      const ai = aiBundle.ai;
+
+      return reply.send({
+        success: true,
+        response: ai.estimate?.comment || ai.analysis?.markup_reasoning || 'Готово, пересчитал.',
+        updated_card: {
+          crew_count: ai.estimate?.crew_count,
+          work_days: ai.estimate?.work_days,
+          markup_multiplier: totals.markup_multiplier,
+          total_cost: totals.total_cost,
+          total_with_margin: totals.total_with_margin,
+          total_with_vat: totals.total_with_vat,
+          margin_pct: totals.margin_pct,
+          fot_subtotal: totals.personnel_with_tax,
+          travel_subtotal: totals.travel_subtotal,
+          transport_subtotal: totals.transport_subtotal,
+          chemistry_subtotal: totals.chemistry_subtotal,
+          current_subtotal: totals.current_subtotal
+        },
+        updated_analysis: {
+          markup_reasoning: ai.analysis?.markup_reasoning || null,
+          warnings: ai.analysis?.warnings || [],
+          warehouse_status: ai.analysis?.warehouse_status || null,
+          workers_status: ai.analysis?.workers_status || null,
+          purchases_needed: ai.analysis?.purchases_needed || []
+        },
+        ai_meta: {
+          model: aiBundle.model,
+          provider: aiBundle.provider,
+          tokens: aiBundle.tokens,
+          duration_ms: aiBundle.duration_ms
+        }
+      });
+    } catch (err) {
+      fastify.log.error('[Mimir auto-estimate-chat]:', err.message, err.stack);
+      return reply.code(500).send({ success: false, message: err.message });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

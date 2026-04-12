@@ -1,17 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Sparkles, CheckCircle2, FileText, Briefcase, Package, Users, Calculator, Loader2 } from 'lucide-react';
+import {
+  ChevronLeft, Sparkles, Send, CheckCircle2, FileText, Briefcase, Package,
+  Users, Calculator, Loader2, AlertTriangle, Info, AlertOctagon, ArrowRight,
+} from 'lucide-react';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
+import { MarkdownText } from '@/components/chat/MarkdownText';
 
 /**
- * MimirAutoEstimate (AP1)
+ * MimirAutoEstimate (AP2)
  *
- * Fullscreen чат с Мимиром для авто-просчёта работы.
- * - Запускает POST /api/mimir/auto-estimate {work_id} как fetch streaming
- * - Парсит SSE chunks и показывает прогресс шагов с иконками
- * - В AP1 — без AI и диалога, только показывает что собрано
- * - В AP2 — добавится поле ввода + диалог + создание просчёта
+ * Полный pipeline:
+ *   1. SSE stream POST /mimir/auto-estimate {work_id}
+ *      → progress events → AI thinking → result event с card+analysis+estimate_id
+ *   2. Итоговая карточка с метриками (Telegram-style grid)
+ *   3. Warnings блок (amber bg)
+ *   4. Кнопка "Открыть просчёт →" (gold gradient)
+ *   5. Композер для диалога — РП спрашивает → POST /mimir/auto-estimate-chat
+ *      → обновляем card в стейте
  */
 
 const STEP_ICONS = {
@@ -23,33 +30,51 @@ const STEP_ICONS = {
   workers: Users,
   tariffs: Calculator,
   collected: CheckCircle2,
+  ai_thinking: Sparkles,
+  creating_estimate: FileText,
 };
 
-const STEP_ORDER = ['documents', 'analogs', 'customer_history', 'warehouse', 'workers', 'tariffs'];
+const fmtMoney = (n) => {
+  if (n == null) return '—';
+  return Math.round(Number(n)).toLocaleString('ru-RU') + ' ₽';
+};
+
+const fmtMln = (n) => {
+  if (n == null || n === 0) return '—';
+  const v = Number(n);
+  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(2).replace(/\.?0+$/, '') + ' М₽';
+  if (Math.abs(v) >= 1e3) return Math.round(v / 1e3) + ' тыс₽';
+  return Math.round(v) + ' ₽';
+};
 
 export default function MimirAutoEstimate() {
   const { workId } = useParams();
   const navigate = useNavigate();
   const haptic = useHaptic();
-  const [steps, setSteps] = useState([]);              // [{ key, message, status, ts }]
+
+  const [steps, setSteps] = useState([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
-  const [aiPending, setAiPending] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]); // [{role, text, ts}]
+  const [composerText, setComposerText] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+
   const bottomRef = useRef(null);
   const abortRef = useRef(null);
+  const composerRef = useRef(null);
 
-  // Авто-скролл вниз при новых событиях
+  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [steps.length, result, error]);
+  }, [steps.length, result, error, chatMessages.length]);
 
-  const start = useCallback(async () => {
+  const startStream = useCallback(async () => {
     setSteps([]);
     setResult(null);
     setError(null);
+    setChatMessages([]);
     setRunning(true);
-    setAiPending(false);
     haptic.medium();
 
     const token = api.getToken();
@@ -83,8 +108,6 @@ export default function MimirAutoEstimate() {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
-        // Парсим SSE chunks: каждый event разделён \n\n, начинается с "data: "
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
 
@@ -93,10 +116,8 @@ export default function MimirAutoEstimate() {
           if (!line.startsWith('data:')) continue;
           const json = line.slice(5).trim();
           if (!json) continue;
-
           let event;
           try { event = JSON.parse(json); } catch { continue; }
-
           handleEvent(event);
         }
       }
@@ -110,17 +131,13 @@ export default function MimirAutoEstimate() {
   }, [workId, haptic]);
 
   function handleEvent(event) {
-    if (event.type === 'start') {
-      setSteps((prev) => [...prev, { key: 'start', message: event.message || '🚀 Начинаю...', status: 'done', ts: Date.now() }]);
-      return;
-    }
-    if (event.type === 'progress') {
-      setSteps((prev) => [...prev, { key: event.step, message: event.message, status: 'done', ts: Date.now() }]);
-      return;
-    }
-    if (event.type === 'ai_pending') {
-      setAiPending(true);
-      setSteps((prev) => [...prev, { key: 'ai_pending', message: event.message, status: 'pending', ts: Date.now() }]);
+    if (event.type === 'start' || event.type === 'progress') {
+      setSteps((prev) => [...prev, {
+        key: event.step || 'start',
+        message: event.message || event.step,
+        status: 'done',
+        ts: Date.now(),
+      }]);
       return;
     }
     if (event.type === 'result') {
@@ -133,20 +150,65 @@ export default function MimirAutoEstimate() {
       haptic.error?.();
       return;
     }
-    if (event.type === 'done') {
-      setRunning(false);
-      return;
+  }
+
+  async function sendChatMessage() {
+    const text = composerText.trim();
+    if (!text || !result?.estimate_id || chatLoading) return;
+    haptic.light();
+
+    const userMsg = { role: 'user', text, ts: Date.now() };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setComposerText('');
+    if (composerRef.current) composerRef.current.style.height = 'auto';
+    setChatLoading(true);
+
+    try {
+      const res = await api.post('/mimir/auto-estimate-chat', {
+        work_id: parseInt(workId),
+        estimate_id: result.estimate_id,
+        message: text,
+        history: chatMessages,
+      });
+
+      if (res.success) {
+        // Обновляем карточку
+        setResult((prev) => ({
+          ...prev,
+          card: { ...prev.card, ...res.updated_card },
+          analysis: { ...prev.analysis, ...res.updated_analysis },
+        }));
+        setChatMessages((prev) => [...prev, {
+          role: 'mimir',
+          text: res.response || 'Готово.',
+          ts: Date.now(),
+        }]);
+        haptic.success();
+      } else {
+        throw new Error(res.message || 'Ошибка');
+      }
+    } catch (err) {
+      setChatMessages((prev) => [...prev, {
+        role: 'mimir',
+        text: 'Ошибка: ' + (err.message || 'неизвестная'),
+        ts: Date.now(),
+        error: true,
+      }]);
+    } finally {
+      setChatLoading(false);
     }
   }
 
-  // Авто-старт при заходе на страницу
+  // Auto-start
   useEffect(() => {
-    start();
-    return () => {
-      if (abortRef.current) abortRef.current.abort();
-    };
+    startStream();
+    return () => { if (abortRef.current) abortRef.current.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workId]);
+
+  const card = result?.card;
+  const analysis = result?.analysis;
+  const hasResult = !!card;
 
   return (
     <div className="flex flex-col h-full bg-primary">
@@ -181,11 +243,12 @@ export default function MimirAutoEstimate() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto scroll-container px-3 py-4">
-        {/* Greeting bubble */}
+        {/* Greeting */}
         <MimirBubble>
           <p className="text-[14px] leading-[1.45]">
             Сейчас соберу всё что нужно для просчёта: документы тендера, аналогичные работы, историю
-            заказчика, остатки склада, свободных рабочих и тарифы. Это займёт несколько секунд.
+            заказчика, остатки склада, свободных рабочих и тарифы. Затем посчитаю себестоимость
+            и наценку.
           </p>
         </MimirBubble>
 
@@ -198,13 +261,11 @@ export default function MimirAutoEstimate() {
                 className="shrink-0 flex items-center justify-center rounded-full mt-0.5"
                 style={{
                   width: 28, height: 28,
-                  background: s.status === 'pending' ? 'var(--bg-elevated)' : 'color-mix(in srgb, var(--gold) 14%, var(--bg-surface-alt))',
+                  background: 'color-mix(in srgb, var(--gold) 14%, var(--bg-surface-alt))',
                   border: '0.5px solid color-mix(in srgb, var(--gold) 30%, var(--border-norse))',
                 }}
               >
-                {s.status === 'pending'
-                  ? <Loader2 size={14} className="animate-spin" style={{ color: 'var(--gold)' }} />
-                  : <Icon size={14} style={{ color: 'var(--gold)' }} />}
+                <Icon size={14} style={{ color: 'var(--gold)' }} />
               </div>
               <div className="flex-1 min-w-0 pt-1">
                 <p className="text-[13px] c-primary">{s.message}</p>
@@ -213,39 +274,151 @@ export default function MimirAutoEstimate() {
           );
         })}
 
-        {/* Result summary card */}
-        {result && (
-          <div
-            className="mt-3 rounded-2xl p-4"
-            style={{
-              background: 'color-mix(in srgb, var(--gold) 6%, var(--bg-surface-alt))',
-              border: '0.5px solid color-mix(in srgb, var(--gold) 35%, var(--border-norse))',
-              boxShadow: '0 4px 24px rgba(212,168,67,0.08)',
-            }}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <CheckCircle2 size={18} style={{ color: 'var(--gold)' }} />
-              <p className="text-[14px] font-bold c-gold">Контекст собран</p>
+        {/* AI thinking spinner */}
+        {running && steps.length > 0 && !hasResult && !error && (
+          <div className="flex items-center gap-2 mb-2 mt-1">
+            <div
+              className="shrink-0 flex items-center justify-center rounded-full"
+              style={{
+                width: 28, height: 28,
+                background: 'color-mix(in srgb, var(--gold) 14%, var(--bg-surface-alt))',
+                border: '0.5px solid color-mix(in srgb, var(--gold) 30%, var(--border-norse))',
+              }}
+            >
+              <Loader2 size={14} className="animate-spin" style={{ color: 'var(--gold)' }} />
             </div>
-            <SummaryRow label="Документы прочитано" value={`${result.summary?.documents_parsed || 0} / ${result.summary?.documents_count || 0}`} />
-            <SummaryRow label="Аналогов найдено" value={result.summary?.analogs_count || 0} />
-            <SummaryRow label="История заказчика" value={`${result.summary?.customer_history_count || 0} тендеров`} />
-            <SummaryRow label="Склад" value={`${result.summary?.warehouse_items || 0} позиций`} />
-            <SummaryRow label="Свободных рабочих" value={result.summary?.available_workers || 0} />
-            <SummaryRow label="Тариф. категорий" value={result.summary?.tariff_categories || 0} />
-            <SummaryRow label="Время сбора" value={`${result.summary?.elapsed_ms || 0} мс`} />
+            <p className="text-[12px] c-tertiary">Мимир думает...</p>
           </div>
         )}
 
-        {/* AP1 заглушка */}
-        {aiPending && result && (
+        {/* RESULT CARD */}
+        {hasResult && <ResultCard card={card} />}
+
+        {/* Comment from Mimir */}
+        {hasResult && result?.comment && (
           <MimirBubble>
-            <p className="text-[14px] leading-[1.45]">
-              <strong>AP1 завершён.</strong> Все данные собраны. На следующем этапе (AP2) я отправлю
-              этот контекст в Claude Sonnet 4.6 и вернусь с готовым просчётом, аналитикой
-              и предупреждениями.
-            </p>
+            <div className="text-[14px] leading-[1.5] c-primary">
+              <MarkdownText text={result.comment} />
+            </div>
           </MimirBubble>
+        )}
+
+        {/* Markup reasoning */}
+        {hasResult && analysis?.markup_reasoning && (
+          <MimirBubble>
+            <p className="text-[11px] font-semibold mb-1.5 c-gold">💰 Обоснование наценки</p>
+            <div className="text-[13px] leading-[1.5] c-primary">
+              <MarkdownText text={analysis.markup_reasoning} />
+            </div>
+          </MimirBubble>
+        )}
+
+        {/* Warnings */}
+        {hasResult && analysis?.warnings?.length > 0 && (
+          <div className="mb-3">
+            {analysis.warnings.map((w, i) => <WarningCard key={i} warning={w} />)}
+          </div>
+        )}
+
+        {/* Workers / warehouse status */}
+        {hasResult && (analysis?.workers_status || analysis?.warehouse_status) && (
+          <MimirBubble>
+            {analysis.workers_status && (
+              <p className="text-[13px] mb-1.5 c-primary">
+                <span className="c-gold font-semibold">👷 Рабочие: </span>
+                {analysis.workers_status}
+              </p>
+            )}
+            {analysis.warehouse_status && (
+              <p className="text-[13px] c-primary">
+                <span className="c-gold font-semibold">🏭 Склад: </span>
+                {analysis.warehouse_status}
+              </p>
+            )}
+          </MimirBubble>
+        )}
+
+        {/* Purchases needed */}
+        {hasResult && analysis?.purchases_needed?.length > 0 && (
+          <div
+            className="mb-3 rounded-2xl p-4"
+            style={{
+              background: 'color-mix(in srgb, var(--blue) 6%, var(--bg-surface-alt))',
+              border: '0.5px solid color-mix(in srgb, var(--blue) 30%, var(--border-norse))',
+            }}
+          >
+            <p className="text-[12px] font-bold mb-2 c-blue">🛒 Нужно докупить</p>
+            {analysis.purchases_needed.map((p, i) => (
+              <div key={i} className="flex items-center justify-between py-1">
+                <p className="text-[13px] c-primary flex-1 truncate">{p.item} × {p.quantity}</p>
+                <p className="text-[13px] font-semibold c-primary ml-2 shrink-0">{fmtMoney(p.total || (p.price * p.quantity))}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* "Открыть просчёт" CTA */}
+        {hasResult && result?.estimate_id && (
+          <button
+            onClick={() => { haptic.medium(); navigate(`/estimate-report/${result.estimate_id}`); }}
+            className="w-full flex items-center justify-center gap-2 rounded-2xl px-4 py-3.5 mb-3 spring-tap"
+            style={{
+              background: 'linear-gradient(135deg, #D4A843 0%, #B88B2E 100%)',
+              color: '#fff',
+              border: 'none',
+              boxShadow: '0 6px 24px rgba(212,168,67,0.35), 0 0 50px rgba(212,168,67,0.18)',
+            }}
+          >
+            <span className="text-[14px] font-bold tracking-wide">Открыть просчёт</span>
+            <ArrowRight size={18} />
+          </button>
+        )}
+
+        {/* Chat dialog (после результата) */}
+        {hasResult && chatMessages.map((msg, i) => (
+          <div key={i} className={`flex mb-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {msg.role === 'mimir' && (
+              <div
+                className="shrink-0 flex items-center justify-center rounded-full mr-2 mt-1"
+                style={{ width: 28, height: 28, background: 'var(--gold-gradient)' }}
+              >
+                <Sparkles size={14} color="#fff" />
+              </div>
+            )}
+            <div
+              className="rounded-2xl px-3.5 py-2.5"
+              style={{
+                maxWidth: '85%',
+                background: msg.role === 'user'
+                  ? 'linear-gradient(135deg, var(--bubble-own-start), var(--bubble-own-end))'
+                  : 'var(--bg-surface-alt)',
+                border: msg.role === 'user' ? 'none' : '0.5px solid color-mix(in srgb, var(--gold) 15%, var(--border-norse))',
+              }}
+            >
+              {msg.role === 'mimir' && (
+                <p className="text-[11px] font-semibold mb-1 c-gold">Мимир</p>
+              )}
+              <div
+                className="text-[14px] leading-[1.45]"
+                style={{ color: msg.role === 'user' ? '#fff' : 'var(--text-primary)' }}
+              >
+                {msg.role === 'user' ? msg.text : <MarkdownText text={msg.text} />}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Chat loading */}
+        {chatLoading && (
+          <div className="flex items-center gap-2 mb-2 mt-1">
+            <div
+              className="shrink-0 flex items-center justify-center rounded-full"
+              style={{ width: 28, height: 28, background: 'var(--gold-gradient)' }}
+            >
+              <Loader2 size={14} className="animate-spin" color="#fff" />
+            </div>
+            <p className="text-[12px] c-tertiary">Мимир пересчитывает...</p>
+          </div>
         )}
 
         {/* Error */}
@@ -265,50 +438,112 @@ export default function MimirAutoEstimate() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Footer */}
-      <div
-        className="shrink-0 flex items-center gap-2 px-3 py-3"
-        style={{
-          borderTop: '0.5px solid var(--border-norse)',
-          background: 'var(--bg-surface)',
-          paddingBottom: 'calc(12px + var(--safe-bottom))',
-        }}
-      >
-        <button
-          onClick={() => { haptic.light(); navigate(-1); }}
-          className="flex-1 rounded-2xl px-4 py-3 text-[14px] font-semibold c-secondary"
+      {/* Composer (показываем после результата) */}
+      {hasResult ? (
+        <div
+          className="shrink-0 flex items-end gap-2 px-3 py-2"
           style={{
-            background: 'var(--bg-surface-alt)',
-            border: '0.5px solid var(--border-norse)',
+            borderTop: '0.5px solid var(--border-norse)',
+            background: 'var(--bg-surface)',
+            paddingBottom: 'calc(8px + var(--safe-bottom))',
           }}
         >
-          Закрыть
-        </button>
-        <button
-          onClick={() => { if (!running) start(); }}
-          disabled={running}
-          className="flex-1 rounded-2xl px-4 py-3 text-[14px] font-bold spring-tap"
+          <div
+            className="flex-1 rounded-2xl overflow-hidden"
+            style={{
+              background: 'var(--bg-surface-alt)',
+              border: '0.5px solid var(--border-norse)',
+            }}
+          >
+            <textarea
+              ref={composerRef}
+              value={composerText}
+              onChange={(e) => {
+                setComposerText(e.target.value);
+                if (composerRef.current) {
+                  composerRef.current.style.height = 'auto';
+                  composerRef.current.style.height = Math.min(composerRef.current.scrollHeight, 120) + 'px';
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendChatMessage();
+                }
+              }}
+              placeholder="Спросите или попросите изменить..."
+              rows={1}
+              disabled={chatLoading}
+              className="w-full px-3 py-2 resize-none outline-none text-[15px] leading-[1.35] c-primary"
+              style={{
+                background: 'transparent',
+                caretColor: 'var(--gold)',
+                maxHeight: 120,
+              }}
+            />
+          </div>
+          <button
+            onClick={sendChatMessage}
+            disabled={!composerText.trim() || chatLoading}
+            className="shrink-0 flex items-center justify-center rounded-full spring-tap"
+            style={{
+              width: 36, height: 36,
+              background: composerText.trim()
+                ? 'var(--gold-gradient)'
+                : 'var(--bg-elevated)',
+              color: '#fff',
+              opacity: chatLoading ? 0.5 : 1,
+            }}
+          >
+            <Send size={18} className="ml-0.5" />
+          </button>
+        </div>
+      ) : (
+        <div
+          className="shrink-0 flex items-center gap-2 px-3 py-3"
           style={{
-            background: running
-              ? 'var(--bg-elevated)'
-              : 'linear-gradient(135deg, #C8293B 0%, #1E4D8C 100%)',
-            color: '#fff',
-            border: 'none',
-            opacity: running ? 0.6 : 1,
+            borderTop: '0.5px solid var(--border-norse)',
+            background: 'var(--bg-surface)',
+            paddingBottom: 'calc(12px + var(--safe-bottom))',
           }}
         >
-          {running ? 'Считаю...' : 'Пересчитать'}
-        </button>
-      </div>
+          <button
+            onClick={() => { haptic.light(); navigate(-1); }}
+            className="flex-1 rounded-2xl px-4 py-3 text-[14px] font-semibold c-secondary"
+            style={{
+              background: 'var(--bg-surface-alt)',
+              border: '0.5px solid var(--border-norse)',
+            }}
+          >
+            Закрыть
+          </button>
+          <button
+            onClick={() => { if (!running) startStream(); }}
+            disabled={running}
+            className="flex-1 rounded-2xl px-4 py-3 text-[14px] font-bold spring-tap"
+            style={{
+              background: running ? 'var(--bg-elevated)' : 'linear-gradient(135deg, #C8293B 0%, #1E4D8C 100%)',
+              color: '#fff',
+              border: 'none',
+              opacity: running ? 0.6 : 1,
+            }}
+          >
+            {running ? 'Считаю...' : 'Пересчитать'}
+          </button>
+        </div>
+      )}
 
       <style>{`
         @keyframes stepIn {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .animate-stepIn {
-          animation: stepIn 0.32s ease both;
+        .animate-stepIn { animation: stepIn 0.32s ease both; }
+        @keyframes resultIn {
+          from { opacity: 0; transform: translateY(10px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
+        .animate-resultIn { animation: resultIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
       `}</style>
     </div>
   );
@@ -338,11 +573,175 @@ function MimirBubble({ children }) {
   );
 }
 
-function SummaryRow({ label, value }) {
+function ResultCard({ card }) {
   return (
-    <div className="flex items-center justify-between py-1">
+    <div
+      className="mb-3 rounded-2xl overflow-hidden animate-resultIn"
+      style={{
+        background: 'linear-gradient(180deg, color-mix(in srgb, var(--gold) 10%, var(--bg-surface-alt)) 0%, var(--bg-surface-alt) 100%)',
+        border: '0.5px solid color-mix(in srgb, var(--gold) 40%, var(--border-norse))',
+        boxShadow: '0 6px 28px rgba(212,168,67,0.12)',
+      }}
+    >
+      {/* Header strip */}
+      <div
+        className="flex items-center gap-2 px-4 py-2.5"
+        style={{
+          background: 'linear-gradient(90deg, rgba(212,168,67,0.18), rgba(212,168,67,0.04))',
+          borderBottom: '0.5px solid color-mix(in srgb, var(--gold) 25%, var(--border-norse))',
+        }}
+      >
+        <CheckCircle2 size={16} style={{ color: 'var(--gold)' }} />
+        <p className="text-[12px] font-bold c-gold tracking-wide uppercase">Просчёт готов</p>
+      </div>
+
+      {/* Title */}
+      <div className="px-4 pt-3">
+        <p className="text-[15px] font-bold c-primary leading-snug">{card.title || '—'}</p>
+        {card.customer && (
+          <p className="text-[12px] c-tertiary mt-0.5">{card.customer}</p>
+        )}
+      </div>
+
+      {/* Big numbers row */}
+      <div className="px-4 pt-3 pb-1">
+        <div className="grid grid-cols-2 gap-2">
+          <BigMetric
+            label="Себестоимость"
+            value={fmtMln(card.total_cost)}
+            color="var(--text-primary)"
+          />
+          <BigMetric
+            label="Клиенту"
+            value={fmtMln(card.total_with_margin)}
+            color="var(--gold)"
+            highlight
+          />
+        </div>
+      </div>
+
+      {/* Margin + markup */}
+      <div className="px-4 pt-2 pb-3">
+        <div className="grid grid-cols-3 gap-2">
+          <SmallMetric label="Маржа" value={card.margin_pct ? `${card.margin_pct}%` : '—'} />
+          <SmallMetric label="Наценка" value={card.markup_multiplier ? `×${card.markup_multiplier}` : '—'} />
+          <SmallMetric label="С НДС" value={fmtMln(card.total_with_vat)} />
+        </div>
+      </div>
+
+      {/* Details */}
+      <div
+        className="px-4 py-3"
+        style={{
+          background: 'color-mix(in srgb, #000 12%, transparent)',
+          borderTop: '0.5px solid color-mix(in srgb, var(--gold) 15%, var(--border-norse))',
+        }}
+      >
+        <DetailRow label="Бригада" value={card.crew_count ? `${card.crew_count} чел` : '—'} />
+        <DetailRow label="Дней работы" value={card.work_days ? `${card.work_days} дн` : '—'} />
+        <DetailRow label="Дороги" value={card.road_days ? `${card.road_days} дн` : '—'} />
+        <DetailRow label="Город" value={card.city || '—'} />
+      </div>
+
+      {/* Cost breakdown */}
+      <div
+        className="px-4 py-3"
+        style={{
+          background: 'color-mix(in srgb, #000 18%, transparent)',
+          borderTop: '0.5px solid color-mix(in srgb, var(--gold) 12%, var(--border-norse))',
+        }}
+      >
+        <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 c-tertiary">Структура себестоимости</p>
+        <BreakdownRow label="ФОТ + налог" value={card.fot_subtotal} />
+        <BreakdownRow label="Командировочные" value={card.travel_subtotal} />
+        <BreakdownRow label="Транспорт" value={card.transport_subtotal} />
+        <BreakdownRow label="Химия / материалы" value={card.chemistry_subtotal} />
+        <BreakdownRow label="Текущие" value={card.current_subtotal} />
+      </div>
+
+      {card.drift_pct != null && card.drift_pct > 1 && (
+        <div className="px-4 py-2 text-[10px] c-tertiary border-t" style={{ borderColor: 'var(--border-norse)' }}>
+          ⓘ Сервер пересчитал — отклонение AI от формул: {card.drift_pct}%
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BigMetric({ label, value, color, highlight }) {
+  return (
+    <div
+      className="rounded-xl px-3 py-2.5"
+      style={{
+        background: highlight
+          ? 'color-mix(in srgb, var(--gold) 10%, transparent)'
+          : 'color-mix(in srgb, #000 15%, transparent)',
+        border: highlight
+          ? '0.5px solid color-mix(in srgb, var(--gold) 35%, transparent)'
+          : '0.5px solid var(--border-norse)',
+      }}
+    >
+      <p className="text-[10px] uppercase tracking-wider c-tertiary mb-0.5">{label}</p>
+      <p className="text-[18px] font-bold leading-none" style={{ color }}>{value}</p>
+    </div>
+  );
+}
+
+function SmallMetric({ label, value }) {
+  return (
+    <div
+      className="rounded-lg px-2 py-1.5 text-center"
+      style={{ background: 'color-mix(in srgb, #000 10%, transparent)' }}
+    >
+      <p className="text-[9px] uppercase tracking-wider c-tertiary">{label}</p>
+      <p className="text-[13px] font-bold c-primary">{value}</p>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between py-0.5">
       <p className="text-[12px] c-tertiary">{label}</p>
       <p className="text-[13px] font-semibold c-primary">{value}</p>
+    </div>
+  );
+}
+
+function BreakdownRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between py-0.5">
+      <p className="text-[12px] c-tertiary">{label}</p>
+      <p className="text-[12px] font-semibold c-primary">{fmtMoney(value)}</p>
+    </div>
+  );
+}
+
+function WarningCard({ warning }) {
+  const level = warning.level || 'warning';
+  const Icon = level === 'critical' ? AlertOctagon : level === 'info' ? Info : AlertTriangle;
+  const colors = {
+    critical: { bg: 'rgba(200,41,59,0.10)', border: 'rgba(200,41,59,0.45)', icon: '#E67381', text: '#E67381' },
+    warning:  { bg: 'rgba(212,168,67,0.10)', border: 'rgba(212,168,67,0.45)', icon: '#D4A843', text: '#D4A843' },
+    info:     { bg: 'rgba(30,77,140,0.10)', border: 'rgba(30,77,140,0.45)', icon: '#4D90E0', text: '#4D90E0' },
+  };
+  const c = colors[level] || colors.warning;
+
+  return (
+    <div
+      className="rounded-2xl p-3 mb-2 flex gap-2.5 animate-stepIn"
+      style={{
+        background: c.bg,
+        border: '0.5px solid ' + c.border,
+      }}
+    >
+      <Icon size={18} style={{ color: c.icon, flexShrink: 0, marginTop: 1 }} />
+      <div className="flex-1 min-w-0">
+        {warning.title && (
+          <p className="text-[12px] font-bold mb-0.5" style={{ color: c.text }}>{warning.title}</p>
+        )}
+        <p className="text-[12px] leading-[1.4] c-primary">{warning.text || warning.message || ''}</p>
+      </div>
     </div>
   );
 }

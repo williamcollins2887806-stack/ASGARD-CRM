@@ -20,7 +20,20 @@
     workers: '👷',
     tariffs: '💰',
     collected: '✅',
-    ai_pending: '🧮',
+    ai_thinking: '🧮',
+    creating_estimate: '📝',
+  };
+
+  const fmtMoney = (n) => {
+    if (n == null) return '—';
+    return Math.round(Number(n)).toLocaleString('ru-RU') + ' ₽';
+  };
+  const fmtMln = (n) => {
+    if (n == null || n === 0) return '—';
+    const v = Number(n);
+    if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(2).replace(/\.?0+$/, '') + ' М₽';
+    if (Math.abs(v) >= 1e3) return Math.round(v / 1e3) + ' тыс₽';
+    return Math.round(v) + ' ₽';
   };
 
   function el(tag, props, children) {
@@ -166,18 +179,66 @@
         background: 'linear-gradient(135deg, #C8293B 0%, #1E4D8C 100%)',
         color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '700',
       },
-      onclick: () => { stepsBox.innerHTML = ''; resultBox.innerHTML = ''; runStream(workId, stepsBox, resultBox, retryFt); },
+      onclick: () => { stepsBox.innerHTML = ''; resultBox.innerHTML = ''; state.estimateId = null; state.composerVisible = false; renderComposer(); runStream(workId, state, stepsBox, resultBox, retryFt, composerWrap); },
     }, 'Пересчитать');
     footer.appendChild(closeFt);
     footer.appendChild(retryFt);
 
+    // Composer (скрыт пока нет результата)
+    const composerWrap = el('div', {
+      style: {
+        display: 'none',
+        gap: '8px', padding: '10px 14px',
+        borderTop: '0.5px solid rgba(255,255,255,0.08)',
+        background: 'rgba(0,0,0,0.18)',
+        alignItems: 'flex-end',
+      },
+    });
+    const textarea = el('textarea', {
+      placeholder: 'Спросите или попросите изменить расчёт...',
+      rows: '1',
+      style: {
+        flex: '1', padding: '10px 12px', borderRadius: '10px',
+        background: 'rgba(255,255,255,0.04)', color: '#fff',
+        border: '0.5px solid rgba(255,255,255,0.12)',
+        fontSize: '13px', fontFamily: 'inherit', resize: 'none',
+        outline: 'none', maxHeight: '120px', minHeight: '38px',
+      },
+    });
+    textarea.addEventListener('input', () => {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    });
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendBtn.click();
+      }
+    });
+    const sendBtn = el('button', {
+      style: {
+        width: '38px', height: '38px', borderRadius: '50%', border: 'none',
+        background: 'linear-gradient(135deg, #D4A843, #B88B2E)',
+        color: '#fff', cursor: 'pointer', fontSize: '16px', fontWeight: '700',
+        flexShrink: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      },
+      onclick: () => sendChatMessage(state, workId, textarea, resultBox),
+    }, '➤');
+    composerWrap.appendChild(textarea);
+    composerWrap.appendChild(sendBtn);
+
+    function renderComposer() {
+      composerWrap.style.display = state.composerVisible ? 'flex' : 'none';
+    }
+
     card.appendChild(header);
     card.appendChild(body);
+    card.appendChild(composerWrap);
     card.appendChild(footer);
     overlay.appendChild(card);
 
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(overlay); });
-    return { overlay, stepsBox, resultBox, retryFt };
+    return { overlay, stepsBox, resultBox, retryFt, composerWrap, textarea };
   }
 
   function closeModal(overlay) {
@@ -211,67 +272,388 @@
     stepsBox.scrollIntoView({ block: 'end', behavior: 'smooth' });
   }
 
-  function showResult(resultBox, event) {
-    const summary = event.summary || {};
-    const card = el('div', {
-      style: {
-        marginTop: '8px', padding: '14px 16px', borderRadius: '12px',
-        background: 'rgba(212,168,67,0.06)',
-        border: '0.5px solid rgba(212,168,67,0.35)',
-        boxShadow: '0 4px 24px rgba(212,168,67,0.08)',
-      },
-    });
-    card.appendChild(el('div', {
-      style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' },
-    }, [
-      el('span', { style: { fontSize: '16px' } }, '✅'),
-      el('span', { style: { fontSize: '13px', fontWeight: '700', color: '#D4A843' } }, 'Контекст собран'),
-    ]));
-    const rows = [
-      ['Документы прочитано', `${summary.documents_parsed || 0} / ${summary.documents_count || 0}`],
-      ['Аналогов найдено', summary.analogs_count || 0],
-      ['История заказчика', `${summary.customer_history_count || 0} тендеров`],
-      ['Склад', `${summary.warehouse_items || 0} позиций`],
-      ['Свободных рабочих', summary.available_workers || 0],
-      ['Тариф. категорий', summary.tariff_categories || 0],
-      ['Время сбора', `${summary.elapsed_ms || 0} мс`],
-    ];
-    rows.forEach(([k, v]) => {
-      const row = el('div', {
-        style: { display: 'flex', justifyContent: 'space-between', padding: '4px 0' },
-      });
-      row.appendChild(el('span', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.5)' } }, k));
-      row.appendChild(el('span', { style: { fontSize: '13px', fontWeight: '600', color: 'rgba(255,255,255,0.92)' } }, String(v)));
-      card.appendChild(row);
-    });
-    resultBox.appendChild(card);
-
-    // AP1 stub bubble
-    const stub = el('div', { style: { display: 'flex', gap: '10px', marginTop: '12px' } });
-    stub.appendChild(el('div', {
+  // ── Bubble helper (для текстовых сообщений Мимира в чате) ──
+  function mimirBubble(text, label) {
+    const wrap = el('div', { style: { display: 'flex', gap: '10px', marginTop: '10px', marginBottom: '10px' } });
+    wrap.appendChild(el('div', {
       style: {
         width: '28px', height: '28px', borderRadius: '50%', flexShrink: '0',
         background: 'linear-gradient(135deg, #D4A843, #8B6F2A)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px',
       },
     }, '⚡'));
-    const sb = el('div', {
+    const bubble = el('div', {
       style: {
         background: 'rgba(255,255,255,0.04)',
         border: '0.5px solid rgba(212,168,67,0.18)',
         borderRadius: '12px', padding: '10px 14px', maxWidth: '85%',
       },
     });
-    sb.appendChild(el('div', {
+    bubble.appendChild(el('div', {
       style: { fontSize: '11px', fontWeight: '700', color: '#D4A843', marginBottom: '4px' },
-    }, 'Мимир'));
+    }, label || 'Мимир'));
     const t = el('div', {
-      style: { fontSize: '13px', color: 'rgba(255,255,255,0.85)', lineHeight: '1.45' },
+      style: { fontSize: '13px', color: 'rgba(255,255,255,0.88)', lineHeight: '1.5', whiteSpace: 'pre-wrap' },
     });
-    t.innerHTML = '<strong>AP1 завершён.</strong> Все данные собраны. На следующем этапе (AP2) я отправлю этот контекст в Claude Sonnet 4.6 и вернусь с готовым просчётом, аналитикой и предупреждениями.';
-    sb.appendChild(t);
-    stub.appendChild(sb);
-    resultBox.appendChild(stub);
+    t.textContent = text;
+    bubble.appendChild(t);
+    wrap.appendChild(bubble);
+    return wrap;
+  }
+
+  function userBubble(text) {
+    const wrap = el('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: '10px', marginBottom: '10px' } });
+    const bubble = el('div', {
+      style: {
+        background: 'linear-gradient(135deg, rgba(30,77,140,0.85), rgba(30,77,140,0.6))',
+        borderRadius: '12px', padding: '10px 14px', maxWidth: '85%',
+        color: '#fff', fontSize: '13px', lineHeight: '1.45',
+      },
+    }, text);
+    wrap.appendChild(bubble);
+    return wrap;
+  }
+
+  // ── Главная итоговая карточка ──
+  function buildResultCard(card) {
+    const root = el('div', {
+      style: {
+        marginTop: '8px', borderRadius: '14px', overflow: 'hidden',
+        background: 'linear-gradient(180deg, rgba(212,168,67,0.10), rgba(255,255,255,0.02))',
+        border: '0.5px solid rgba(212,168,67,0.4)',
+        boxShadow: '0 6px 28px rgba(212,168,67,0.15)',
+        animation: 'mimirAeStepIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both',
+      },
+    });
+
+    // Header strip
+    const head = el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '10px 16px',
+        background: 'linear-gradient(90deg, rgba(212,168,67,0.18), rgba(212,168,67,0.04))',
+        borderBottom: '0.5px solid rgba(212,168,67,0.25)',
+      },
+    });
+    head.appendChild(el('span', { style: { fontSize: '14px' } }, '✅'));
+    head.appendChild(el('span', {
+      style: { fontSize: '11px', fontWeight: '800', color: '#D4A843', textTransform: 'uppercase', letterSpacing: '0.5px' },
+    }, 'Просчёт готов'));
+    root.appendChild(head);
+
+    // Title block
+    if (card.title) {
+      const titleBox = el('div', { style: { padding: '12px 16px 4px' } });
+      titleBox.appendChild(el('div', {
+        style: { fontSize: '15px', fontWeight: '700', color: '#fff', lineHeight: '1.3' },
+      }, card.title));
+      if (card.customer) {
+        titleBox.appendChild(el('div', {
+          style: { fontSize: '12px', color: 'rgba(255,255,255,0.55)', marginTop: '3px' },
+        }, card.customer));
+      }
+      root.appendChild(titleBox);
+    }
+
+    // Big metrics grid (2 cols)
+    const bigGrid = el('div', {
+      style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '10px 16px 4px' },
+    });
+    bigGrid.appendChild(buildBigMetric('Себестоимость', fmtMln(card.total_cost), false));
+    bigGrid.appendChild(buildBigMetric('Клиенту', fmtMln(card.total_with_margin), true));
+    root.appendChild(bigGrid);
+
+    // 3-col small metrics
+    const smallGrid = el('div', {
+      style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', padding: '4px 16px 12px' },
+    });
+    smallGrid.appendChild(buildSmallMetric('Маржа', card.margin_pct ? card.margin_pct + '%' : '—'));
+    smallGrid.appendChild(buildSmallMetric('Наценка', card.markup_multiplier ? '×' + card.markup_multiplier : '—'));
+    smallGrid.appendChild(buildSmallMetric('С НДС', fmtMln(card.total_with_vat)));
+    root.appendChild(smallGrid);
+
+    // Details panel
+    const detailsBox = el('div', {
+      style: {
+        padding: '12px 16px', background: 'rgba(0,0,0,0.18)',
+        borderTop: '0.5px solid rgba(212,168,67,0.15)',
+      },
+    });
+    detailsBox.appendChild(buildDetailRow('Бригада', card.crew_count ? card.crew_count + ' чел' : '—'));
+    detailsBox.appendChild(buildDetailRow('Дней работы', card.work_days ? card.work_days + ' дн' : '—'));
+    detailsBox.appendChild(buildDetailRow('Дороги', card.road_days ? card.road_days + ' дн' : '—'));
+    detailsBox.appendChild(buildDetailRow('Город', card.city || '—'));
+    root.appendChild(detailsBox);
+
+    // Cost breakdown
+    const breakBox = el('div', {
+      style: {
+        padding: '12px 16px', background: 'rgba(0,0,0,0.28)',
+        borderTop: '0.5px solid rgba(212,168,67,0.12)',
+      },
+    });
+    breakBox.appendChild(el('div', {
+      style: {
+        fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px',
+        fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginBottom: '6px',
+      },
+    }, 'Структура себестоимости'));
+    breakBox.appendChild(buildBreakRow('ФОТ + налог', card.fot_subtotal));
+    breakBox.appendChild(buildBreakRow('Командировочные', card.travel_subtotal));
+    breakBox.appendChild(buildBreakRow('Транспорт', card.transport_subtotal));
+    breakBox.appendChild(buildBreakRow('Химия / материалы', card.chemistry_subtotal));
+    breakBox.appendChild(buildBreakRow('Текущие', card.current_subtotal));
+    root.appendChild(breakBox);
+
+    if (card.drift_pct != null && card.drift_pct > 1) {
+      root.appendChild(el('div', {
+        style: {
+          padding: '6px 16px', fontSize: '10px',
+          color: 'rgba(255,255,255,0.45)',
+          borderTop: '0.5px solid rgba(255,255,255,0.06)',
+        },
+      }, 'ⓘ Сервер пересчитал — отклонение AI от формул: ' + card.drift_pct + '%'));
+    }
+
+    return root;
+  }
+
+  function buildBigMetric(label, value, highlight) {
+    const box = el('div', {
+      style: {
+        padding: '10px 12px', borderRadius: '10px',
+        background: highlight ? 'rgba(212,168,67,0.10)' : 'rgba(0,0,0,0.18)',
+        border: '0.5px solid ' + (highlight ? 'rgba(212,168,67,0.35)' : 'rgba(255,255,255,0.06)'),
+      },
+    });
+    box.appendChild(el('div', {
+      style: {
+        fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px',
+        color: 'rgba(255,255,255,0.5)', marginBottom: '3px',
+      },
+    }, label));
+    box.appendChild(el('div', {
+      style: {
+        fontSize: '18px', fontWeight: '800',
+        color: highlight ? '#D4A843' : 'rgba(255,255,255,0.95)',
+        lineHeight: '1',
+      },
+    }, value));
+    return box;
+  }
+  function buildSmallMetric(label, value) {
+    const box = el('div', {
+      style: {
+        padding: '6px 8px', borderRadius: '8px', textAlign: 'center',
+        background: 'rgba(0,0,0,0.16)',
+      },
+    });
+    box.appendChild(el('div', {
+      style: { fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(255,255,255,0.5)' },
+    }, label));
+    box.appendChild(el('div', {
+      style: { fontSize: '13px', fontWeight: '800', color: 'rgba(255,255,255,0.95)' },
+    }, value));
+    return box;
+  }
+  function buildDetailRow(label, value) {
+    const row = el('div', {
+      style: { display: 'flex', justifyContent: 'space-between', padding: '2px 0' },
+    });
+    row.appendChild(el('span', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.5)' } }, label));
+    row.appendChild(el('span', { style: { fontSize: '13px', fontWeight: '600', color: 'rgba(255,255,255,0.92)' } }, value));
+    return row;
+  }
+  function buildBreakRow(label, value) {
+    const row = el('div', {
+      style: { display: 'flex', justifyContent: 'space-between', padding: '2px 0' },
+    });
+    row.appendChild(el('span', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.5)' } }, label));
+    row.appendChild(el('span', { style: { fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.85)' } }, fmtMoney(value)));
+    return row;
+  }
+
+  function buildWarning(w) {
+    const level = w.level || 'warning';
+    const colors = {
+      critical: { bg: 'rgba(200,41,59,0.10)', border: 'rgba(200,41,59,0.45)', text: '#E67381', icon: '🛑' },
+      warning:  { bg: 'rgba(212,168,67,0.10)', border: 'rgba(212,168,67,0.45)', text: '#D4A843', icon: '⚠️' },
+      info:     { bg: 'rgba(30,77,140,0.10)', border: 'rgba(30,77,140,0.45)', text: '#4D90E0', icon: 'ℹ️' },
+    };
+    const c = colors[level] || colors.warning;
+    const box = el('div', {
+      style: {
+        marginTop: '8px', padding: '10px 14px', borderRadius: '12px',
+        background: c.bg, border: '0.5px solid ' + c.border,
+        display: 'flex', gap: '10px',
+        animation: 'mimirAeStepIn 0.32s ease both',
+      },
+    });
+    box.appendChild(el('span', { style: { fontSize: '16px', flexShrink: '0' } }, c.icon));
+    const inner = el('div', { style: { flex: '1', minWidth: '0' } });
+    if (w.title) {
+      inner.appendChild(el('div', {
+        style: { fontSize: '12px', fontWeight: '800', color: c.text, marginBottom: '2px' },
+      }, w.title));
+    }
+    inner.appendChild(el('div', {
+      style: { fontSize: '12px', color: 'rgba(255,255,255,0.85)', lineHeight: '1.4' },
+    }, w.text || w.message || ''));
+    box.appendChild(inner);
+    return box;
+  }
+
+  function buildOpenEstimateBtn(estimateId) {
+    const btn = el('button', {
+      style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+        width: '100%', marginTop: '12px', padding: '13px 16px', borderRadius: '12px',
+        border: 'none',
+        background: 'linear-gradient(135deg, #D4A843 0%, #B88B2E 100%)',
+        color: '#fff', fontSize: '14px', fontWeight: '800',
+        cursor: 'pointer', letterSpacing: '0.3px',
+        boxShadow: '0 6px 24px rgba(212,168,67,0.35), 0 0 50px rgba(212,168,67,0.18)',
+      },
+      onclick: () => {
+        location.hash = '#/estimate-report?id=' + estimateId;
+      },
+    });
+    btn.appendChild(el('span', null, 'Открыть просчёт'));
+    btn.appendChild(el('span', { style: { fontSize: '16px' } }, '→'));
+    return btn;
+  }
+
+  // ── Главный рендер результата ──
+  function showResult(resultBox, event, state, composerWrap) {
+    state.estimateId = event.estimate_id;
+    state.lastCard = event.card;
+    state.lastAnalysis = event.analysis;
+
+    // 1. Карточка с метриками
+    if (event.card) {
+      resultBox.appendChild(buildResultCard(event.card));
+    }
+
+    // 2. Comment (вступление от Мимира)
+    if (event.comment) {
+      resultBox.appendChild(mimirBubble(event.comment));
+    }
+
+    // 3. Markup reasoning
+    if (event.analysis?.markup_reasoning) {
+      resultBox.appendChild(mimirBubble(event.analysis.markup_reasoning, '💰 Обоснование наценки'));
+    }
+
+    // 4. Warnings
+    if (event.analysis?.warnings?.length > 0) {
+      const warningsBox = el('div', { style: { marginTop: '6px' } });
+      event.analysis.warnings.forEach(w => warningsBox.appendChild(buildWarning(w)));
+      resultBox.appendChild(warningsBox);
+    }
+
+    // 5. Workers + warehouse status
+    if (event.analysis?.workers_status || event.analysis?.warehouse_status) {
+      let txt = '';
+      if (event.analysis.workers_status) txt += '👷 Рабочие: ' + event.analysis.workers_status;
+      if (event.analysis.warehouse_status) txt += (txt ? '\n' : '') + '🏭 Склад: ' + event.analysis.warehouse_status;
+      resultBox.appendChild(mimirBubble(txt));
+    }
+
+    // 6. Open estimate CTA
+    if (event.estimate_id) {
+      resultBox.appendChild(buildOpenEstimateBtn(event.estimate_id));
+    }
+
+    // 7. Show composer
+    state.composerVisible = true;
+    if (composerWrap) composerWrap.style.display = 'flex';
+  }
+
+  // ── Обновить карточку при пересчёте через диалог ──
+  function updateResultCard(resultBox, updatedCard, updatedAnalysis, state) {
+    state.lastCard = { ...state.lastCard, ...updatedCard };
+    state.lastAnalysis = { ...state.lastAnalysis, ...updatedAnalysis };
+    // Самый простой вариант: вставить новую карточку (с golden flash) в начало
+    const newCard = buildResultCard(state.lastCard);
+    newCard.style.animation = 'mimirAeStepIn 0.5s ease both, mimirAeFlash 1s ease 0.2s';
+    resultBox.insertBefore(newCard, resultBox.firstChild);
+  }
+
+  // ── Отправка сообщения в диалог ──
+  async function sendChatMessage(state, workId, textarea, resultBox) {
+    const text = textarea.value.trim();
+    if (!text || !state.estimateId || state.chatLoading) return;
+
+    state.chatLoading = true;
+    textarea.disabled = true;
+
+    // Покажем user bubble
+    resultBox.appendChild(userBubble(text));
+    textarea.value = '';
+    textarea.style.height = 'auto';
+
+    // Loading indicator
+    const loader = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', marginBottom: '10px' } });
+    loader.appendChild(el('div', {
+      style: {
+        width: '28px', height: '28px', borderRadius: '50%',
+        background: 'linear-gradient(135deg, #D4A843, #8B6F2A)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '14px',
+      },
+    }, '⚡'));
+    loader.appendChild(el('span', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.6)' } }, 'Мимир пересчитывает...'));
+    resultBox.appendChild(loader);
+    resultBox.scrollIntoView({ block: 'end', behavior: 'smooth' });
+
+    try {
+      const token = getToken();
+      const response = await fetch('/api/mimir/auto-estimate-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+        },
+        body: JSON.stringify({
+          work_id: workId,
+          estimate_id: state.estimateId,
+          message: text,
+          history: state.chatHistory || [],
+        }),
+      });
+
+      loader.remove();
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status}: ${errBody.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        // Обновим карточку и историю
+        updateResultCard(resultBox, data.updated_card || {}, data.updated_analysis || {}, state);
+        if (data.updated_analysis?.warnings?.length > 0) {
+          const wb = el('div', { style: { marginTop: '4px' } });
+          data.updated_analysis.warnings.forEach(w => wb.appendChild(buildWarning(w)));
+          resultBox.appendChild(wb);
+        }
+        resultBox.appendChild(mimirBubble(data.response || 'Готово, пересчитал.'));
+
+        state.chatHistory = state.chatHistory || [];
+        state.chatHistory.push({ role: 'user', text });
+        state.chatHistory.push({ role: 'mimir', text: data.response || '' });
+      } else {
+        throw new Error(data.message || 'Ошибка');
+      }
+    } catch (err) {
+      loader.remove();
+      resultBox.appendChild(mimirBubble('Ошибка: ' + err.message));
+    } finally {
+      state.chatLoading = false;
+      textarea.disabled = false;
+      textarea.focus();
+    }
   }
 
   function showError(stepsBox, message) {
@@ -291,7 +673,7 @@
     stepsBox.appendChild(card);
   }
 
-  async function runStream(workId, stepsBox, resultBox, retryBtn) {
+  async function runStream(workId, state, stepsBox, resultBox, retryBtn, composerWrap) {
     const token = getToken();
     if (!token) { showError(stepsBox, 'Не авторизован'); return; }
     retryBtn.disabled = true;
@@ -332,12 +714,12 @@
           let event;
           try { event = JSON.parse(json); } catch { continue; }
 
-          if (event.type === 'start' || event.type === 'progress' || event.type === 'ai_pending') {
+          if (event.type === 'start' || event.type === 'progress') {
             appendStep(stepsBox, event);
           } else if (event.type === 'result') {
-            showResult(resultBox, event);
+            showResult(resultBox, event, state, composerWrap);
           } else if (event.type === 'error') {
-            showError(stepsBox, event.message);
+            showError(stepsBox, event.message + (event.phase ? ' (' + event.phase + ')' : ''));
           }
         }
       }
@@ -359,6 +741,11 @@
       @keyframes mimirAeFadeIn { from { opacity: 0 } to { opacity: 1 } }
       @keyframes mimirAeFadeOut { from { opacity: 1 } to { opacity: 0 } }
       @keyframes mimirAeStepIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes mimirAeFlash {
+        0%   { box-shadow: 0 6px 28px rgba(212,168,67,0.15), 0 0 0 0 rgba(212,168,67,0.6); }
+        50%  { box-shadow: 0 6px 28px rgba(212,168,67,0.15), 0 0 30px 8px rgba(212,168,67,0.4); }
+        100% { box-shadow: 0 6px 28px rgba(212,168,67,0.15), 0 0 0 0 rgba(212,168,67,0); }
+      }
     `;
     document.head.appendChild(style);
   }
@@ -366,8 +753,16 @@
   window.openMimirAutoEstimate = function (workId) {
     if (!workId) return;
     injectStyles();
-    const { overlay, stepsBox, resultBox, retryFt } = buildModal(workId);
+    const state = {
+      estimateId: null,
+      lastCard: null,
+      lastAnalysis: null,
+      composerVisible: false,
+      chatLoading: false,
+      chatHistory: [],
+    };
+    const { overlay, stepsBox, resultBox, retryFt, composerWrap } = buildModal(workId);
     document.body.appendChild(overlay);
-    runStream(workId, stepsBox, resultBox, retryFt);
+    runStream(workId, state, stepsBox, resultBox, retryFt, composerWrap);
   };
 })();
