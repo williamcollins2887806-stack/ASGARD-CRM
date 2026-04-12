@@ -113,7 +113,7 @@ window.AsgardPayrollPage = (function(){
     if(!auth){ location.hash="#/login"; return; }
     const user = auth.user;
 
-    let currentTab = 'grid';
+    let currentTab = 'all';
     let filterWorkId = '';
     let sheets = [];
     let works = [];
@@ -295,15 +295,15 @@ window.AsgardPayrollPage = (function(){
       return `${CSS}
         <div class="payroll-header">
           <h2 style="margin:0;font-size:22px">\uD83D\uDCB0 ${esc(title||'')}</h2>
-          ${canCreate?`<button class="btn primary" id="btnNewSheet">+ Новая ведомость</button>`:''}
+          ${currentTab !== 'grid' && canCreate?`<button class="btn primary" id="btnNewSheet">+ Новая ведомость</button>`:''}
         </div>
 
-        <div class="payroll-kpi">
+        ${currentTab !== 'grid' ? `<div class="payroll-kpi">
           <div class="k"><div class="t">Всего ведомостей</div><div class="v">${sheets.length}</div></div>
           <div class="k"><div class="t">Ожидают согл.</div><div class="v" style="color:var(--amber)">${pendingCount}</div></div>
           <div class="k"><div class="t">К выплате</div><div class="v">${moneyShort(totalPayout)} \u20BD</div></div>
           <div class="k"><div class="t">Выплачено</div><div class="v" style="color:var(--ok-t)">${moneyShort(paidTotal)} \u20BD</div></div>
-        </div>
+        </div>` : ''}
 
         <div class="payroll-tabs" id="payrollTabs">
           ${tabs.map(t=>`<button class="payroll-tab${currentTab===t.key?' active':''}" data-tab="${t.key}">${esc(t.label)}${t.count!==undefined?`<span class="count">${t.count}</span>`:''}</button>`).join('')}
@@ -341,14 +341,6 @@ window.AsgardPayrollPage = (function(){
     }
 
     await load();
-    if (currentTab === 'grid') {
-      // Автозагрузка grid для предыдущего месяца (ведомость обычно за прошлый месяц)
-      const prevDate = new Date();
-      prevDate.setMonth(prevDate.getMonth() - 1);
-      gridMonth = prevDate.getMonth();
-      gridYear = prevDate.getFullYear();
-      await loadGridData();
-    }
     await layout(renderContent(), {title: title||'Расчёты с рабочими'});
 
     bindHandlers();
@@ -366,6 +358,14 @@ window.AsgardPayrollPage = (function(){
         currentTab = tab.dataset.tab;
         gridEditMode = false;
         gridPendingEdits = {};
+        if (currentTab === 'grid' && !gridData) {
+          // Первое открытие grid таба — загрузить данные за предыдущий месяц
+          const prevDate = new Date();
+          prevDate.setMonth(prevDate.getMonth() - 1);
+          gridMonth = prevDate.getMonth();
+          gridYear = prevDate.getFullYear();
+          await loadGridData();
+        }
         await refreshPage();
       });
 
@@ -402,8 +402,22 @@ window.AsgardPayrollPage = (function(){
           await refreshPage();
         } catch(e) { toast('Ошибка', e.message, 'error'); }
       });
-      document.getElementById('btnGridExcel')?.addEventListener('click', ()=>{
-        window.open('/api/worker-payments/reports/payroll-grid/' + gridYear + '/' + (gridMonth+1) + '/export');
+      document.getElementById('btnGridExcel')?.addEventListener('click', async ()=>{
+        try {
+          const authE = await AsgardAuth.getAuth();
+          const r = await fetch('/api/worker-payments/reports/payroll-grid/' + gridYear + '/' + (gridMonth+1) + '/export', {
+            headers: {'Authorization': 'Bearer ' + authE.token}
+          });
+          if (!r.ok) throw new Error('Ошибка скачивания');
+          const blob = await r.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'Ведомость_' + MONTHS_RU_INLINE[gridMonth] + '_' + gridYear + '.xlsx';
+          a.click();
+          URL.revokeObjectURL(url);
+          toast('Готово', 'Файл скачан', 'ok');
+        } catch(e) { toast('Ошибка', e.message, 'error'); }
       });
       // Input change tracking
       document.querySelectorAll('.pgrid-inp').forEach(inp => {
