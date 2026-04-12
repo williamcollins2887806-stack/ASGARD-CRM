@@ -1389,43 +1389,9 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
   const calc = JSON.parse(JSON.stringify(ai.calculation || {}));
   const est = ai.estimate || {};
 
-  // AP3.5b: ЖЁСТКАЯ серверная проверка work_days по окну дат
-  // Если AI вернул больше — обрезаем и расширяем бригаду компенсирующе
+  // AP5: Серверная обрезка work_days ОТКЛЮЧЕНА — Claude Sonnet сам соблюдает сроки.
+  // Сроки есть в данных (work.start_plan→end_plan), Claude видит их и укладывается.
   let timeOverflowFix = null;
-  if (ctx) {
-    const startDate = ctx.work?.start_plan || ctx.work?.start_in_work_date || ctx.tender?.work_start_plan;
-    const endDate = ctx.work?.end_plan || ctx.work?.end_fact || ctx.tender?.work_end_plan;
-    if (startDate && endDate) {
-      const dateWindow = Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1;
-      const roadDays = Number(est.road_days) || 2;
-      const mobDays = 4; // 2 моб + 2 демоб
-      const maxWorkDays = Math.max(1, dateWindow - roadDays * 2 - mobDays);
-      const aiWorkDays = Number(est.work_days) || 0;
-      if (aiWorkDays > maxWorkDays) {
-        // Расширяем бригаду пропорционально — сохраняем человеко-смены
-        const aiCrew = Number(est.crew_count) || 1;
-        const totalManDays = aiCrew * aiWorkDays;
-        const newCrew = Math.ceil(totalManDays / maxWorkDays);
-        timeOverflowFix = {
-          ai_work_days: aiWorkDays,
-          ai_crew: aiCrew,
-          fixed_work_days: maxWorkDays,
-          fixed_crew: newCrew,
-          window: dateWindow,
-          road_days: roadDays
-        };
-        // Применяем фикс к estimate (сохранится в БД)
-        est.work_days = maxWorkDays;
-        est.crew_count = newCrew;
-        // Пересчитываем personnel: меняем days на maxWorkDays и count пропорционально
-        const ratio = newCrew / aiCrew;
-        (calc.personnel || []).forEach(p => {
-          p.days = maxWorkDays;
-          p.count = Math.ceil((Number(p.count) || 0) * ratio);
-        });
-      }
-    }
-  }
 
   // 1. Пересчёт total в строках
   (calc.personnel || []).forEach(p => {
@@ -1482,34 +1448,8 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
   let totalWithMargin = r2(totalCost * markup);
   let marginPct = totalCost > 0 ? r2(((totalWithMargin - totalCost) / totalCost) * 100) : 0;
 
-  // AP4: Серверный двусторонний enforcement по estimated_sum тендера
-  // Цена с НДС должна быть в диапазоне [90%..98%] от estimated_sum
+  // AP5: Markup enforcement ОТКЛЮЧЁН — Claude Sonnet сам вписывается в estimated_sum.
   let markupOverflowFix = null;
-  const estimatedSum = Number(ctx?.tender?.estimated_sum || ctx?.tender?.tender_price || 0);
-  if (estimatedSum > 0 && totalCost > 0) {
-    const vatMul = 1 + Number(settings.vat_pct) / 100;
-    const checkVat = r2(totalWithMargin * vatMul);
-
-    // Целевой диапазон: [90%..98%] от estimated_sum
-    const upperLimit = estimatedSum * 0.98;
-    const lowerLimit = estimatedSum * 0.90;
-    // Целевой markup чтобы попасть в ~95% estimated_sum (золотая середина)
-    const targetMarkup = r2(estimatedSum * 0.95 / vatMul / totalCost);
-
-    if (checkVat > upperLimit || checkVat < lowerLimit) {
-      markupOverflowFix = {
-        ai_markup: markup,
-        ai_total_with_vat: checkVat,
-        estimated_sum: estimatedSum,
-        target_range: `${Math.round(lowerLimit)}–${Math.round(upperLimit)}`,
-        fixed_markup: Math.max(1.1, Math.min(targetMarkup, r2(upperLimit / vatMul / totalCost)))
-      };
-      markup = markupOverflowFix.fixed_markup;
-      est.markup_multiplier = markup;
-      totalWithMargin = r2(totalCost * markup);
-      marginPct = totalCost > 0 ? r2(((totalWithMargin - totalCost) / totalCost) * 100) : 0;
-    }
-  }
 
   // НДС
   const totalWithVat = r2(totalWithMargin * (1 + Number(settings.vat_pct) / 100));
