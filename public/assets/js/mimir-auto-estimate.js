@@ -246,7 +246,23 @@
     setTimeout(() => overlay.remove(), 200);
   }
 
-  function appendStep(stepsBox, event) {
+  // Очередь шагов — показываем с интервалом 400мс чтобы пользователь видел прогресс
+  var _stepQueue = [];
+  var _stepTimer = null;
+
+  function enqueueStep(stepsBox, event) {
+    _stepQueue.push({ stepsBox, event });
+    if (!_stepTimer) drainStepQueue();
+  }
+
+  function drainStepQueue() {
+    if (_stepQueue.length === 0) { _stepTimer = null; return; }
+    var item = _stepQueue.shift();
+    appendStepNow(item.stepsBox, item.event);
+    _stepTimer = setTimeout(drainStepQueue, 400);
+  }
+
+  function appendStepNow(stepsBox, event) {
     const icon = STEP_ICONS[event.step] || '•';
     const row = el('div', {
       style: {
@@ -679,6 +695,9 @@
   async function runStream(workId, state, stepsBox, resultBox, retryBtn, composerWrap) {
     const token = getToken();
     if (!token) { showError(stepsBox, 'Не авторизован'); return; }
+    // Сбросить очередь шагов от предыдущего запуска
+    _stepQueue = [];
+    if (_stepTimer) { clearTimeout(_stepTimer); _stepTimer = null; }
     retryBtn.disabled = true;
     retryBtn.style.opacity = '0.6';
 
@@ -718,7 +737,7 @@
           try { event = JSON.parse(json); } catch { continue; }
 
           if (event.type === 'start' || event.type === 'progress') {
-            appendStep(stepsBox, event);
+            enqueueStep(stepsBox, event);
           } else if (event.type === 'result') {
             showResult(resultBox, event, state, composerWrap, document.querySelector('.mimir-ae-overlay'));
           } else if (event.type === 'error') {

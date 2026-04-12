@@ -133,14 +133,30 @@ export default function MimirAutoEstimate() {
     }
   }, [workId, haptic]);
 
+  // Stagger queue для прогресс-шагов (400мс между шагами)
+  const staggerQueue = useRef([]);
+  const staggerTimer = useRef(null);
+
+  function enqueueStepEvent(evt) {
+    staggerQueue.current.push(evt);
+    if (!staggerTimer.current) drainQueue();
+  }
+
+  function drainQueue() {
+    if (staggerQueue.current.length === 0) { staggerTimer.current = null; return; }
+    const evt = staggerQueue.current.shift();
+    setSteps((prev) => [...prev, {
+      key: evt.step || 'start',
+      message: evt.message || evt.step,
+      status: 'done',
+      ts: Date.now(),
+    }]);
+    staggerTimer.current = setTimeout(drainQueue, 400);
+  }
+
   function handleEvent(event) {
     if (event.type === 'start' || event.type === 'progress') {
-      setSteps((prev) => [...prev, {
-        key: event.step || 'start',
-        message: event.message || event.step,
-        status: 'done',
-        ts: Date.now(),
-      }]);
+      enqueueStepEvent(event);
       return;
     }
     if (event.type === 'result') {
