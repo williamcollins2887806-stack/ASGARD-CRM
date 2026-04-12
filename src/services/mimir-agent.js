@@ -214,12 +214,7 @@ async function executeTool(db, toolName, args, ctx) {
   switch (toolName) {
     case 'get_work_and_tender': {
       const workId = args.work_id || ctx.workId;
-      const wRes = await db.query(
-        `SELECT id, tender_id, pm_id, work_number, work_status, work_title,
-                customer_name, customer_inn, object_name, city, address, object_address,
-                contract_value, vat_pct, start_plan, end_plan, start_fact, end_fact,
-                crew_size, description, notes, staff_ids_json
-         FROM works WHERE id = $1`, [workId]);
+      const wRes = await db.query('SELECT * FROM works WHERE id = $1', [workId]);
       const work = wRes.rows[0];
       if (!work) return JSON.stringify({ error: 'Работа не найдена' });
       ctx.tenderId = work.tender_id;
@@ -227,12 +222,7 @@ async function executeTool(db, toolName, args, ctx) {
       ctx.endDate = work.end_plan || work.end_fact;
       let tender = null;
       if (work.tender_id) {
-        const tRes = await db.query(
-          `SELECT id, tender_title, customer_name, customer_inn, tender_status, status,
-                  estimated_sum, tender_price, deadline, tender_description, tender_region,
-                  tender_contact, tender_phone, tender_email, tender_comment_to, comment_to,
-                  work_start_plan, work_end_plan, group_tag, tender_type
-           FROM tenders WHERE id = $1`, [work.tender_id]);
+        const tRes = await db.query('SELECT * FROM tenders WHERE id = $1', [work.tender_id]);
         tender = tRes.rows[0] || null;
       }
       return JSON.stringify({ work, tender });
@@ -388,6 +378,8 @@ function getAgentSystemPrompt() {
 ТВОЯ ЗАДАЧА: Составить полноценный просчёт для работы. Ты имеешь доступ к БД компании
 через tools — вызывай их чтобы получить ВСЕ нужные данные. НЕ ВЫДУМЫВАЙ данные.
 
+ВАЖНО: Вызывай tools ПО ОДНОМУ, не параллельно. После каждого вызова — дождись результата.
+
 ═══ АЛГОРИТМ РАБОТЫ ═══
 1. Вызови get_work_and_tender чтобы понять что за работа
 2. Вызови get_documents чтобы прочитать ТЗ/договор — там ключевая информация об объёме
@@ -510,6 +502,17 @@ async function runAgent(db, workId, user, onEvent, onAskUser) {
         // Не JSON — просто текстовый ответ (вопрос?)
         return { text: msg.content, isText: true };
       }
+    }
+
+    // Если finish_reason=tool_calls но tool_calls пустой — routerai.ru баг.
+    // Переспросим Claude вызвать один конкретный tool.
+    if (aiResult.stopReason === 'tool_calls' && (!aiResult.tool_calls || aiResult.tool_calls.length === 0)) {
+      console.log(`[Agent] iter=${iter}: empty tool_calls with finish_reason=tool_calls, nudging`);
+      messages.push({
+        role: 'user',
+        content: 'Вызови ОДИН следующий tool. Не пытайся вызвать несколько одновременно.'
+      });
+      continue;
     }
 
     // Обработка tool calls
