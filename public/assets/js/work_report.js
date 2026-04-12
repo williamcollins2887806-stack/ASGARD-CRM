@@ -187,33 +187,23 @@ window.AsgardWorkReport = (function () {
 
   // mini gauge SVG for margin (44x28, semicircle with 3 color zones + needle)
   function renderGaugeMini(margin) {
-    const cx = 22, cy = 24, r = 18;
-    const clamp = Math.min(Math.max(margin, 0), 50);
-    const needleAngle = clamp / 50 * 180; // 0%=0deg (left), 50%=180deg (right)
-    const rad = (deg) => (deg - 180) * Math.PI / 180;
-
-    // Background arcs: red 0-15% (0-54deg), yellow 15-25% (54-90deg), green 25-50% (90-180deg)
-    function arc(startDeg, endDeg, color) {
-      const s = rad(startDeg), e = rad(endDeg);
-      const x1 = cx + r * Math.cos(s), y1 = cy + r * Math.sin(s);
-      const x2 = cx + r * Math.cos(e), y2 = cy + r * Math.sin(e);
-      const large = (endDeg - startDeg) > 180 ? 1 : 0;
-      return `<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 0 ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="butt" opacity="0.5"/>`;
-    }
-
-    // Needle
-    const nRad = rad(needleAngle);
-    const nx = cx + (r - 2) * Math.cos(nRad);
-    const ny = cy + (r - 2) * Math.sin(nRad);
-    const needleColor = clamp >= 25 ? '#10b981' : clamp >= 15 ? '#d4a843' : '#ef4444';
-
-    return `<svg width="44" height="28" viewBox="0 0 44 28">
-      ${arc(0, 54, '#ef4444')}
-      ${arc(54, 90, '#f59e0b')}
-      ${arc(90, 180, '#10b981')}
-      <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${needleColor}" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="${cx}" cy="${cy}" r="2" fill="${needleColor}"/>
-    </svg>`;
+    var cx = 22, cy = 24, r = 16;
+    var clamp = Math.min(Math.max(margin, 0), 50);
+    var halfC = Math.PI * r;
+    var arcP = 'M ' + (cx - r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 0 1 ' + (cx + r) + ' ' + cy;
+    // Needle: angle from π (left) to 0 (right)
+    var angle = Math.PI - (clamp / 50) * Math.PI;
+    var nx = cx + (r + 3) * Math.cos(angle);
+    var ny = cy - (r + 3) * Math.sin(angle);
+    var nc = clamp >= 25 ? '#10b981' : clamp >= 15 ? '#d4a843' : '#ef4444';
+    return '<svg width="44" height="28" viewBox="0 0 44 28">' +
+      '<path d="' + arcP + '" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="4"/>' +
+      '<path d="' + arcP + '" fill="none" stroke="#ef4444" stroke-width="4" stroke-dasharray="' + (0.3*halfC) + ' ' + (0.7*halfC) + '" opacity="0.4"/>' +
+      '<path d="' + arcP + '" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="' + (0.2*halfC) + ' ' + (0.8*halfC) + '" stroke-dashoffset="-' + (0.3*halfC) + '" opacity="0.4"/>' +
+      '<path d="' + arcP + '" fill="none" stroke="#10b981" stroke-width="4" stroke-dasharray="' + (0.5*halfC) + ' ' + (0.5*halfC) + '" stroke-dashoffset="-' + (0.5*halfC) + '" opacity="0.4"/>' +
+      '<line x1="' + cx + '" y1="' + cy + '" x2="' + nx.toFixed(1) + '" y2="' + ny.toFixed(1) + '" stroke="' + nc + '" stroke-width="2" stroke-linecap="round"/>' +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="2" fill="' + nc + '"/>' +
+      '</svg>';
   }
 
   function svgRevenue() {
@@ -223,7 +213,8 @@ window.AsgardWorkReport = (function () {
     return '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>';
   }
   function svgProfit() {
-    return '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>';
+    // Знак рубля ₽ вместо доллара $
+    return '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M6 12h8a5 5 0 0 0 0-10H8v20"/><line x1="5" y1="12" x2="16" y2="12"/><line x1="5" y1="16" x2="12" y2="16"/></svg>';
   }
 
   // ════════════════════════════════════════
@@ -385,52 +376,39 @@ window.AsgardWorkReport = (function () {
     const profitColor = d.profit.net >= 0 ? '#10b981' : '#ef4444';
     const marginColor = d.profit.margin >= 25 ? '#10b981' : d.profit.margin >= 15 ? '#d4a843' : '#ef4444';
 
-    // Gauge SVG 200x110 with 3 color zone arcs + needle triangle
-    const R = 70, CX = 100, CY = 90, SW = 12;
-    const rad = (deg) => (deg - 180) * Math.PI / 180;
+    // Простой gauge через полукруг (path) + stroke-dasharray
+    // Полукруг от левого к правому через верх, R=60, центр (100, 75)
+    const R = 60, CX = 100, CY = 75, SW = 10;
+    const halfCirc = Math.PI * R; // длина полукруга
+    // Зоны: 0-15% красная, 15-25% жёлтая, 25-50% зелёная
+    // В единицах полукруга: 15/50=30%, 10/50=20%, 25/50=50%
+    const zoneRed = 0.3 * halfCirc;
+    const zoneYel = 0.2 * halfCirc;
+    const zoneGrn = 0.5 * halfCirc;
+    // Путь полукруга: от (CX-R, CY) через верх к (CX+R, CY)
+    const arcPath = 'M ' + (CX - R) + ' ' + CY + ' A ' + R + ' ' + R + ' 0 0 1 ' + (CX + R) + ' ' + CY;
 
-    // Zone arcs: red 0-54deg (0-15%), yellow 54-90deg (15-25%), green 90-180deg (25-50%)
-    function zoneArc(startDeg, endDeg, color) {
-      const s = rad(startDeg), e = rad(endDeg);
-      const x1 = CX + R * Math.cos(s), y1 = CY + R * Math.sin(s);
-      const x2 = CX + R * Math.cos(e), y2 = CY + R * Math.sin(e);
-      const large = (endDeg - startDeg) > 180 ? 1 : 0;
-      return `<path d="M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${R} ${R} 0 ${large} 0 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${SW}" stroke-linecap="butt" opacity="0.35"/>`;
-    }
-
-    // Needle (triangle pointing at current margin)
+    // Стрелка: линия от центра к позиции margin на дуге
     const clamp = Math.min(Math.max(d.profit.margin, 0), 50);
-    const needleDeg = clamp / 50 * 180;
-    const nRad = rad(needleDeg);
-    const tipR = R + SW / 2 + 4; // tip just outside the arc
-    const baseR = R - SW / 2 - 2; // base inside the arc
-    const tipX = CX + tipR * Math.cos(nRad);
-    const tipY = CY + tipR * Math.sin(nRad);
-    // Base perpendicular to needle direction
-    const perpAngle = nRad + Math.PI / 2;
-    const bw = 5; // half-width of base
-    const b1x = CX + baseR * Math.cos(nRad) + bw * Math.cos(perpAngle);
-    const b1y = CY + baseR * Math.sin(nRad) + bw * Math.sin(perpAngle);
-    const b2x = CX + baseR * Math.cos(nRad) - bw * Math.cos(perpAngle);
-    const b2y = CY + baseR * Math.sin(nRad) - bw * Math.sin(perpAngle);
+    const angle = Math.PI - (clamp / 50) * Math.PI; // π..0 (лево→право)
+    const nx = CX + (R + 8) * Math.cos(angle);
+    const ny = CY - (R + 8) * Math.sin(angle);
+    const nbx = CX + 12 * Math.cos(angle);
+    const nby = CY - 12 * Math.sin(angle);
 
-    // Zone labels positions (below arc)
-    const labelR = R + SW / 2 + 16;
-    const lbX = (deg) => CX + labelR * Math.cos(rad(deg));
-    const lbY = (deg) => CY + labelR * Math.sin(rad(deg));
-
-    const gaugeSvg = `<svg viewBox="0 0 200 110" class="wr-profit-gauge" style="width:100%;max-width:200px;height:auto">
-      ${zoneArc(0, 54, '#ef4444')}
-      ${zoneArc(54, 90, '#f59e0b')}
-      ${zoneArc(90, 180, '#10b981')}
-      <polygon points="${tipX.toFixed(1)},${tipY.toFixed(1)} ${b1x.toFixed(1)},${b1y.toFixed(1)} ${b2x.toFixed(1)},${b2y.toFixed(1)}" fill="${marginColor}"/>
-      <circle cx="${CX}" cy="${CY}" r="4" fill="${marginColor}"/>
-      <text x="${CX}" y="${CY - 14}" text-anchor="middle" fill="${marginColor}" font-size="24" font-weight="700">${d.profit.margin}%</text>
-      <text x="${CX}" y="${CY - 0}" text-anchor="middle" fill="var(--t2)" font-size="11">маржа</text>
-      <text x="${lbX(27).toFixed(1)}" y="${lbY(27).toFixed(1)}" text-anchor="middle" fill="#ef4444" font-size="8" opacity="0.7">Плохо</text>
-      <text x="${lbX(72).toFixed(1)}" y="${lbY(72).toFixed(1)}" text-anchor="middle" fill="#f59e0b" font-size="8" opacity="0.7">Средне</text>
-      <text x="${lbX(135).toFixed(1)}" y="${lbY(135).toFixed(1)}" text-anchor="middle" fill="#10b981" font-size="8" opacity="0.7">Хорошо</text>
-    </svg>`;
+    const gaugeSvg = '<svg viewBox="0 0 200 100" style="width:100%;max-width:200px;height:auto">' +
+      '<path d="' + arcPath + '" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="' + SW + '" stroke-linecap="round"/>' +
+      '<path d="' + arcPath + '" fill="none" stroke="#ef4444" stroke-width="' + SW + '" stroke-dasharray="' + zoneRed + ' ' + (halfCirc - zoneRed) + '" stroke-dashoffset="0" opacity="0.4" stroke-linecap="butt"/>' +
+      '<path d="' + arcPath + '" fill="none" stroke="#f59e0b" stroke-width="' + SW + '" stroke-dasharray="' + zoneYel + ' ' + (halfCirc - zoneYel) + '" stroke-dashoffset="-' + zoneRed + '" opacity="0.4" stroke-linecap="butt"/>' +
+      '<path d="' + arcPath + '" fill="none" stroke="#10b981" stroke-width="' + SW + '" stroke-dasharray="' + zoneGrn + ' ' + (halfCirc - zoneGrn) + '" stroke-dashoffset="-' + (zoneRed + zoneYel) + '" opacity="0.4" stroke-linecap="butt"/>' +
+      '<line x1="' + nbx.toFixed(1) + '" y1="' + nby.toFixed(1) + '" x2="' + nx.toFixed(1) + '" y2="' + ny.toFixed(1) + '" stroke="' + marginColor + '" stroke-width="3" stroke-linecap="round"/>' +
+      '<circle cx="' + CX + '" cy="' + CY + '" r="5" fill="' + marginColor + '"/>' +
+      '<text x="' + CX + '" y="' + (CY - 18) + '" text-anchor="middle" fill="' + marginColor + '" font-size="22" font-weight="700">' + d.profit.margin + '%</text>' +
+      '<text x="' + CX + '" y="' + (CY - 4) + '" text-anchor="middle" fill="rgba(184,196,231,.7)" font-size="10">маржа</text>' +
+      '<text x="' + (CX - R + 5) + '" y="' + (CY + 14) + '" text-anchor="start" fill="#ef4444" font-size="8" opacity="0.6">Плохо</text>' +
+      '<text x="' + CX + '" y="' + (CY + 14) + '" text-anchor="middle" fill="#f59e0b" font-size="8" opacity="0.6">Средне</text>' +
+      '<text x="' + (CX + R - 5) + '" y="' + (CY + 14) + '" text-anchor="end" fill="#10b981" font-size="8" opacity="0.6">Хорошо</text>' +
+      '</svg>';
 
     return `<div class="wr-card wr-profit-card">
       <div class="wr-card-title">Итого: Прибыль</div>
