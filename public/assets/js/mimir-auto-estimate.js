@@ -342,6 +342,7 @@
       // Timer
       var seconds = 0;
       var timerEl = el('div', {
+        class: 'mimir-ae-think-timer',
         style: { fontSize: '11px', color: 'rgba(212,168,67,0.5)', marginTop: '4px' },
       }, '0 сек...');
       var timerInterval = setInterval(function() {
@@ -623,6 +624,89 @@
     return btn;
   }
 
+  // ── Вопросы от Claude перед расчётом ──
+  function showQuestions(stepsBox, resultBox, event, state, workId, composerWrap) {
+    var sessionId = event.session_id;
+    var questions = event.questions || [];
+
+    // Bubble Мимира с вопросами
+    var bubble = mimirBubble('У меня есть вопросы перед расчётом:', '❓ Мимир спрашивает');
+    stepsBox.appendChild(bubble);
+
+    var form = el('div', {
+      style: { marginTop: '10px', padding: '14px', borderRadius: '12px', background: 'rgba(212,168,67,0.06)', border: '0.5px solid rgba(212,168,67,0.2)' }
+    });
+
+    var inputs = [];
+    questions.forEach(function(q, i) {
+      var label = el('div', { style: { fontSize: '13px', color: '#D4A843', fontWeight: '600', marginBottom: '4px', marginTop: i > 0 ? '12px' : '0' } }, (i + 1) + '. ' + q);
+      var input = el('textarea', {
+        rows: '2',
+        placeholder: 'Ваш ответ...',
+        style: {
+          width: '100%', padding: '8px 10px', borderRadius: '8px', fontSize: '13px',
+          background: 'rgba(255,255,255,0.04)', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)',
+          fontFamily: 'inherit', resize: 'vertical', outline: 'none', minHeight: '36px'
+        }
+      });
+      inputs.push(input);
+      form.appendChild(label);
+      form.appendChild(input);
+    });
+
+    var submitBtn = el('button', {
+      style: {
+        marginTop: '14px', width: '100%', padding: '12px', borderRadius: '10px', border: 'none',
+        background: 'linear-gradient(135deg, #D4A843 0%, #B88B2E 100%)',
+        color: '#fff', fontSize: '14px', fontWeight: '700', cursor: 'pointer'
+      },
+      onclick: function() {
+        var answers = inputs.map(function(inp) { return inp.value.trim() || 'Без ответа'; });
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Отправляю...';
+        submitBtn.style.opacity = '0.6';
+
+        // SSE запрос к /auto-estimate-answer
+        var token = getToken();
+        fetch('/api/mimir/auto-estimate-answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token, 'Accept': 'text/event-stream' },
+          body: JSON.stringify({ session_id: sessionId, answers: answers })
+        }).then(function(r) { return r.body.getReader(); }).then(function(reader) {
+          var decoder = new TextDecoder();
+          var buffer = '';
+          function read() {
+            reader.read().then(function(res) {
+              if (res.done) return;
+              buffer += decoder.decode(res.value, { stream: true });
+              var parts = buffer.split('\n\n');
+              buffer = parts.pop() || '';
+              parts.forEach(function(part) {
+                var line = part.trim();
+                if (!line.startsWith('data:')) return;
+                try {
+                  var evt = JSON.parse(line.slice(5));
+                  if (evt.type === 'progress') enqueueStep(stepsBox, evt);
+                  else if (evt.type === 'heartbeat') {
+                    var t = document.querySelector('.mimir-ae-think-timer');
+                    if (t) t.textContent = evt.seconds + ' сек...';
+                  }
+                  else if (evt.type === 'result') showResult(resultBox, evt, state, composerWrap, document.querySelector('.mimir-ae-overlay'));
+                  else if (evt.type === 'error') showError(stepsBox, evt.message);
+                } catch(e) {}
+              });
+              read();
+            });
+          }
+          read();
+        }).catch(function(e) { showError(stepsBox, e.message); });
+      }
+    }, 'Отправить ответы →');
+
+    form.appendChild(submitBtn);
+    stepsBox.appendChild(form);
+  }
+
   // ── Главный рендер результата ──
   function showResult(resultBox, event, state, composerWrap, overlay) {
     state.estimateId = event.estimate_id;
@@ -816,6 +900,12 @@
 
           if (event.type === 'start' || event.type === 'progress') {
             enqueueStep(stepsBox, event);
+          } else if (event.type === 'heartbeat') {
+            // Обновляем thinking animation таймер
+            var thinkTimer = document.querySelector('.mimir-ae-think-timer');
+            if (thinkTimer) thinkTimer.textContent = event.seconds + ' сек...';
+          } else if (event.type === 'questions') {
+            showQuestions(stepsBox, resultBox, event, state, workId, composerWrap);
           } else if (event.type === 'result') {
             showResult(resultBox, event, state, composerWrap, document.querySelector('.mimir-ae-overlay'));
           } else if (event.type === 'error') {

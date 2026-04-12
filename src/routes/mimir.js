@@ -1993,12 +1993,26 @@ ${analogsSummary}
       const dataText = serializeContext(ctx);
       const systemPrompt = getSystemPrompt();
 
-      const aiResult = await aiProvider.complete({
-        system: systemPrompt,
-        messages: [{ role: 'user', content: `Составь просчёт для работы #${workId}.\n\n${dataText}` }],
-        maxTokens: 16000,
-        temperature: 0.2
-      });
+      // Heartbeat каждые 5 сек пока Claude думает
+      let thinkingSec = 0;
+      const heartbeat = setInterval(() => {
+        thinkingSec += 5;
+        try {
+          sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: `🧮 Мимир анализируе��... ${thinkingSec} сек` });
+        } catch {}
+      }, 5000);
+
+      let aiResult;
+      try {
+        aiResult = await aiProvider.complete({
+          system: systemPrompt,
+          messages: [{ role: 'user', content: `Составь просчёт для работы #${workId}.\n\n${dataText}` }],
+          maxTokens: 16000,
+          temperature: 0.2
+        });
+      } finally {
+        clearInterval(heartbeat);
+      }
 
       if (!aiResult || !aiResult.text) {
         throw new Error('AI не вернул ответ');
@@ -2018,10 +2032,24 @@ ${analogsSummary}
         return;
       }
 
-      // Фаза вопросов
+      // Фаза вопросов — сохраняем контекст для /auto-estimate-answer
       if (parsed.phase === 'questions' && parsed.questions) {
+        // Кэшируем контекст (5 мин TTL)
+        const sessionId = `ae_${workId}_${Date.now()}`;
+        if (!fastify._aeQuestionCache) fastify._aeQuestionCache = new Map();
+        fastify._aeQuestionCache.set(sessionId, {
+          workId, dataText, systemPrompt, ctx, user,
+          questions: parsed.questions,
+          expires: Date.now() + 300000
+        });
+        // Чистим старые
+        for (const [k, v] of fastify._aeQuestionCache) {
+          if (v.expires < Date.now()) fastify._aeQuestionCache.delete(k);
+        }
+
         sendEvent({
           type: 'questions',
+          session_id: sessionId,
           questions: parsed.questions,
           model: aiResult.model,
           elapsed_ms: Date.now() - startTime
@@ -2111,6 +2139,127 @@ ${analogsSummary}
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AP5.1: POST /api/mimir/auto-estimate-answer — ответ на вопросы Claude
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Body: { session_id, answers: ["ответ1","ответ2",...] }
+  // Загружает кэшированный контекст, отправляет Claude с ответами → возвращает result
+  fastify.post('/auto-estimate-answer', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { session_id, answers } = request.body || {};
+    const user = request.user;
+
+    if (!session_id || !answers) {
+      return reply.code(400).send({ success: false, message: 'session_id и answers обязательны' });
+    }
+
+    const cache = fastify._aeQuestionCache?.get(session_id);
+    if (!cache) {
+      return reply.code(404).send({ success: false, message: 'Сессия не найдена или истекла (5 мин)' });
+    }
+
+    // SSE ответ
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+    const sendEvent = (data) => {
+      try { reply.raw.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+    };
+
+    const startTime = Date.now();
+
+    try {
+      const collector = require('../services/mimir-collector');
+      const { getSystemPrompt, serializeContext } = require('../services/mimir-prompt');
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+
+      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧮 Claude считает с учётом ваших ответов...' });
+
+      // Формируем ответы как текст
+      const answersText = cache.questions.map((q, i) =>
+        `Вопрос: ${q}\nОтвет: ${answers[i] || 'Без ответа'}`
+      ).join('\n\n');
+
+      let thinkingSec = 0;
+      const heartbeat = setInterval(() => {
+        thinkingSec += 5;
+        try { sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: `🧮 Мимир считает... ${thinkingSec} сек` }); } catch {}
+      }, 5000);
+
+      let aiResult;
+      try {
+        aiResult = await aiProvider.complete({
+          system: cache.systemPrompt,
+          messages: [
+            { role: 'user', content: `Составь просчёт для работы #${cache.workId}.\n\n${cache.dataText}` },
+            { role: 'assistant', content: JSON.stringify({ phase: 'questions', questions: cache.questions }) },
+            { role: 'user', content: `Вот ответы на твои вопросы:\n\n${answersText}\n\nТеперь составь полный просчёт. Верни ТОЛЬКО JSON.` }
+          ],
+          maxTokens: 16000,
+          temperature: 0.2
+        });
+      } finally {
+        clearInterval(heartbeat);
+      }
+
+      // Удаляем сессию
+      fastify._aeQuestionCache.delete(session_id);
+
+      if (!aiResult?.text) throw new Error('AI не вернул ответ');
+
+      console.log(`[AP5-answer] Claude: ${aiResult.text.length} chars, ${aiResult.durationMs}ms`);
+
+      const parsed = mimirAutoEstimate.parseAIResponse(aiResult.text);
+
+      sendEvent({ type: 'progress', step: 'creating_estimate', message: '📝 Создаю просчёт...' });
+
+      const ai = parsed;
+      ai._meta = { model: aiResult.model, provider: aiResult.provider };
+      const ctx = cache.ctx;
+      const recomputed = mimirAutoEstimate.validateAndRecomputeMath(ai, ctx.settings,
+        { work: ctx.work, tender: ctx.tender, warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+      mimirAutoEstimate.normalizeCalcRows(recomputed.calculation);
+      mimirAutoEstimate.resolveEquipmentFromWarehouse(ai, { warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+      const created = await mimirAutoEstimate.createDraftEstimate(db, ctx, ai, recomputed, user);
+
+      const totals = recomputed.totals || {};
+      sendEvent({
+        type: 'result',
+        success: true,
+        estimate_id: created.estimate_id,
+        card: {
+          title: ai.estimate?.title || ctx.work.work_title,
+          customer: ctx.work.customer_name,
+          crew_count: ai.estimate?.crew_count,
+          work_days: ai.estimate?.work_days,
+          road_days: ai.estimate?.road_days,
+          markup_multiplier: totals.markup_multiplier,
+          total_cost: totals.total_cost,
+          total_with_margin: totals.total_with_margin,
+          total_with_vat: totals.total_with_vat,
+          margin_pct: totals.margin_pct
+        },
+        analysis: ai.analysis || {},
+        equipment_status: ai.equipment_status || null,
+        permits_status: ai.permits_status || null,
+        route_plan: ai.route_plan || null,
+        recommended_crew: ai.recommended_crew || null,
+        comment: ai.estimate?.comment || null,
+        ai_meta: { model: aiResult.model, tokens: aiResult.usage, duration_ms: aiResult.durationMs },
+        elapsed_ms: Date.now() - startTime
+      });
+      sendEvent({ type: 'done' });
+    } catch (err) {
+      console.error('[auto-estimate-answer ERROR]:', err.message, err.stack);
+      sendEvent({ type: 'error', message: err.message, elapsed_ms: Date.now() - startTime });
+    }
+    reply.raw.end();
+  });
+
   // AP2: POST /api/mimir/auto-estimate-chat — диалог с пересчётом
   // ═══════════════════════════════════════════════════════════════════════════
   // Body: { work_id, estimate_id, message, history? }
@@ -2137,13 +2286,15 @@ ${analogsSummary}
 
     try {
       const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+      const collector = require('../services/mimir-collector');
+      const { getSystemPrompt, serializeContext } = require('../services/mimir-prompt');
 
-      // 1. Контекст
-      const context = await mimirAutoEstimate.buildAutoEstimateContext(db, workId, user, null);
+      // 1. Полный контекст (15 типов данных, realtime)
+      const ctx = await collector.collectAll(db, workId, null);
+      const dataText = serializeContext(ctx);
 
-      // 2. AI вызов с сообщением РП
-      // Расширяем prompt: добавляем краткую инструкцию что это чат-апдейт
-      const userTurn = `РУКОВОДИТЕЛЬ ПРОЕКТА (${user.name || user.login}) ПИШЕТ:
+      // 2. AI вызов через Claude с по��ным контекстом + сообщение РП
+      const userTurn = `Данные просчёта:\n${dataText}\n\n---\nРУКОВОДИТЕЛЬ ПРОЕКТА (${user.name || user.login}) ПИШЕТ:
 "${message.trim()}"
 
 ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history.slice(-6).map(h => `${h.role === 'user' ? 'РП' : 'Мимир'}: ${h.text}`).join('\n')}` : ''}
@@ -2153,16 +2304,28 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
 В analysis.markup_reasoning — обновлённое обоснование.
 ВЕРНИ ТОЛЬКО JSON, без пояснений.`;
 
-      const aiBundle = await mimirAutoEstimate.callMimirForEstimate(aiProvider, context, userTurn);
-
-      // 3. UPDATE в БД (с сохранением chat turn в history)
-      await mimirAutoEstimate.updateDraftEstimate(db, estimateId, aiBundle.ai, aiBundle.recomputed, user, {
-        user_message: message.trim(),
-        mimir_response: aiBundle.ai.estimate?.comment || aiBundle.ai.analysis?.markup_reasoning || ''
+      const aiResult = await aiProvider.complete({
+        system: getSystemPrompt(),
+        messages: [{ role: 'user', content: userTurn }],
+        maxTokens: 16000,
+        temperature: 0.2
       });
 
-      const totals = aiBundle.recomputed.totals;
-      const ai = aiBundle.ai;
+      if (!aiResult?.text) throw new Error('AI не ответил');
+      const ai = mimirAutoEstimate.parseAIResponse(aiResult.text);
+      ai._meta = { model: aiResult.model, provider: aiResult.provider };
+      const recomputed = mimirAutoEstimate.validateAndRecomputeMath(ai, ctx.settings,
+        { work: ctx.work, tender: ctx.tender, warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+      mimirAutoEstimate.normalizeCalcRows(recomputed.calculation);
+      mimirAutoEstimate.resolveEquipmentFromWarehouse(ai, { warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+
+      // 3. UPDATE в БД
+      await mimirAutoEstimate.updateDraftEstimate(db, estimateId, ai, recomputed, user, {
+        user_message: message.trim(),
+        mimir_response: ai.estimate?.comment || ai.analysis?.markup_reasoning || ''
+      });
+
+      const totals = recomputed.totals;
 
       return reply.send({
         success: true,
