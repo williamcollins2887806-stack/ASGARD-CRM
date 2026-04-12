@@ -1055,12 +1055,16 @@ ${tariffsToPrompt(ctx.tariffs)}
   - Пайковые: 1 000₽/чел/день × total_days (work_days + road_days*2 + моб/демоб).
     ⚠️ В Асгарде НЕТ СУТОЧНЫХ — только пайковые. НЕ добавляй строку "Суточные"!
   - Проживание: 1 500₽/чел/ночь МАКСИМУМ (арендуем квартиры, не гостиницы). На все ночи.
-  - Билеты:
-    МАРШРУТ ВСЕГДА: Саратов → Москва (склад, подготовка) → город объекта → обратно.
-    Саратов–Москва ж/д: 6 000₽/чел (одно направление)
-    Москва–город объекта: ж/д или авиа по расстоянию.
-    ⚠️ Авиарейсов из Саратова почти нет! Считай ж/д.
-    Итого: (билет Саратов-Мск + билет Мск-город) × 2 (туда-обратно) × кол-во людей
+  - Билеты — расписывай КАЖДЫЙ СЕГМЕНТ ОТДЕЛЬНО:
+    Маршрут: Саратов → Москва → город объекта (туда), обратно аналогично.
+    Каждый сегмент — отдельная строка в JSON travel:
+      1) Саратов → Москва (поезд, ~12-16 часов)
+      2) Москва → город объекта (поезд или самолёт — в зависимости от расстояния)
+      3) Обратно: город → Москва
+      4) Обратно: Москва → Саратов
+    ⚠️ Авиарейсов из Саратова почти нет. Считай ПОЕЗД для Саратов↔Москва.
+    ⚠️ НЕ ХАРДКОДЬ цены — ставь ориентировочные, пиши вид транспорта (поезд/самолёт).
+    Примерные ориентиры: плацкарт ~3000₽, купе ~5000-8000₽, СВ ~10000₽, самолёт ~8000-15000₽.
 
 📌 Блок "transport" — логистика оборудования:
   - Доставка оборудования со склада на объект:
@@ -1177,6 +1181,9 @@ ${tariffsToPrompt(ctx.tariffs)}
    - Определи сколько исполнителей в смене исходя из объёма и производительности
    - Смена 12 часов. Каждый слесарь-универсал может быть и исполнителем и наблюдающим.
    - НЕ ЗАНИЖАЙ бригаду. Лучше 15 чем 8 — переплата за людей минимальна, а срыв = катастрофа.
+   ⚠️ ОБЪЁМ РАБОТ: Считай ПОЛНЫЙ объём — если в ТЗ написано "2 аппарата по 1718 труб"
+   значит ОБЩИЙ объём = 3436 труб (а не 1718!). Если "3 теплообменника" — считай ВСЕ 3.
+   Всегда умножай на количество единиц оборудования!
 
 2) Определи WORK_DAYS — это ЧИСТЫЕ РАБОЧИЕ СМЕНЫ на объекте, БЕЗ дороги и БЕЗ моб./демоб.
    КРИТИЧНО — три источника верхней границы (бери САМУЮ ЖЁСТКУЮ):
@@ -1263,7 +1270,10 @@ ${tariffsToPrompt(ctx.tariffs)}
     "travel": [
       {"description": "Пайковые (1000₽/чел/день × все дни)", "count": <crew>, "price": <total_days × 1000>, "total": <итого>},
       {"description": "Проживание (1500₽/чел/ночь, аренда квартиры)", "count": <crew>, "price": <nights × 1500>, "total": <итого>},
-      {"description": "Ж/д билеты Саратов-Москва-объект (туда-обратно)", "count": <crew>, "price": <цена за 1 чел туда-обратно>, "total": <итого>}
+      {"description": "Билет Саратов → Москва (поезд)", "count": <crew>, "price": <ориент. цена за 1 чел>, "total": <итого>},
+      {"description": "Билет Москва → <город объекта> (поезд/самолёт)", "count": <crew>, "price": <ориент. цена за 1 чел>, "total": <итого>},
+      {"description": "Билет <город объекта> → Москва (обратно)", "count": <crew>, "price": <ориент. цена>, "total": <итого>},
+      {"description": "Билет Москва → Саратов (обратно, поезд)", "count": <crew>, "price": <ориент. цена>, "total": <итого>}
     ],
     "transport": [
       {"description": "Доставка оборудования (КамАЗ/Газель туда-обратно, ~20-30₽/км)", "count": 1, "price": <цена туда-обратно>, "total": <итого>},
@@ -1273,15 +1283,9 @@ ${tariffsToPrompt(ctx.tariffs)}
       {"name": "<если нужно>", "volume_liters": <N>, "price_per_liter": <цена>, "total": <итого>}
     ]
   },
-  "equipment_status": {
-    "from_warehouse": [
-      {"item": "<что берём со склада>", "quantity": <N>, "condition": "рабочее/требует ТО"}
-    ],
-    "to_purchase": [
-      {"item": "<что покупать>", "quantity": <N>, "price_estimate": <ориент. цена за ед.>, "total": <итого>, "supplier_hint": "где искать"}
-    ],
-    "summary": "Краткое резюме: X позиций со склада, Y нужно купить на Z₽"
-  },
+  "equipment_needed": [
+    {"item": "<что нужно для этой работы>", "quantity": <N>, "purpose": "зачем нужно"}
+  ],
   "permits_status": {
     "required_permits": ["ОТЗП", "Работы на высоте", "...список нужных допусков"],
     "available_crew": [
@@ -1316,10 +1320,12 @@ ${tariffsToPrompt(ctx.tariffs)}
   }
 }
 
-11) Заполни блок EQUIPMENT_STATUS:
-    - from_warehouse: что КОНКРЕТНО берём со склада (проверь по данным выше)
-    - to_purchase: что КОНКРЕТНО покупать (если на складе нет нужного)
-    - КАЖДАЯ позиция с количеством и ценой. Не пиши "оборудование" абстрактно.
+11) Заполни блок EQUIPMENT_NEEDED — список ВСЕГО оборудования что НУЖНО для работы:
+    - Каждая позиция: item (название), quantity (количество), purpose (зачем).
+    - НЕ РЕШАЙ сам что есть на складе и что нет — это сделает СЕРВЕР.
+    - Просто перечисли ВСЁ что потребуется: установки, шланги, насадки, драгеры, рации, прожекторы.
+    - Количество — АДЕКВАТНОЕ объёму. Если 2 аппарата → нужно минимум 2 установки (+ запас).
+    - НЕ ВЫДУМЫВАЙ наличие на складе. Пиши ТОЛЬКО что нужно.
 
 12) Заполни блок PERMITS_STATUS:
     - required_permits: какие допуска НУЖНЫ для этой работы (определи из ТЗ)
@@ -1892,9 +1898,9 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
   // Пересчитываем математику
   const recomputed = validateAndRecomputeMath(ai, ctx.settings, ctx);
 
-  // Серверный fallback: если AI не добавил оборудование в purchases_needed,
-  // а на складе нужного оборудования нет — добавить предупреждение
-  ensureEquipmentInPurchases(ai, ctx);
+  // Серверный пост-процессинг: AI пишет equipment_needed (что нужно),
+  // сервер сверяет с реальным складом и разделяет на from_warehouse / to_purchase
+  resolveEquipmentFromWarehouse(ai, ctx);
 
   return {
     ai,
@@ -1908,64 +1914,92 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
 }
 
 /**
- * Серверный fallback: проверяет что AI добавил оборудование в purchases_needed.
- * Если не добавил и на складе нет основного оборудования → добавляет автоматически.
+ * Серверный пост-процессинг оборудования:
+ * AI возвращает equipment_needed (список всего что нужно).
+ * Сервер проверяет каждую позицию по РЕАЛЬНЫМ данным склада
+ * и разделяет на from_warehouse (есть) / to_purchase (нет).
+ *
+ * Это решает проблему галлюцинаций AI: он НЕ решает что есть на складе,
+ * а только говорит что нужно.
  */
-function ensureEquipmentInPurchases(ai, ctx) {
+function resolveEquipmentFromWarehouse(ai, ctx) {
   if (!ai.analysis) ai.analysis = {};
-  if (!ai.analysis.purchases_needed) ai.analysis.purchases_needed = [];
   if (!ai.analysis.warnings) ai.analysis.warnings = [];
 
-  const workType = ctx.workType || '';
-  const purchases = ai.analysis.purchases_needed;
+  const needed = ai.equipment_needed || [];
+  const warehouseItems = ctx.warehouse || [];
 
-  // Проверяем есть ли на складе оборудование нужного типа (по ключевым словам)
-  const warehouseNames = (ctx.warehouse || []).map(w => (w.name || '').toLowerCase()).join(' ');
+  // Индекс склада: name (lowercase) → item
+  const whIndex = {};
+  for (const w of warehouseItems) {
+    const key = (w.name || '').toLowerCase();
+    if (key) whIndex[key] = w;
+  }
 
-  const EQUIPMENT_MAP = {
-    HYDRO_MECH: {
-      keywords: ['гидромех', 'тайфун', 'вулкан', 'посейдон', 'установка очистки'],
-      name: 'Установка гидромеханической очистки (Тайфун/Вулкан)',
-      note: 'Уточнить стоимость у российских производителей (ООО Тайфун, ООО Практик)'
-    },
-    HYDRO_DYN: {
-      keywords: ['авд', 'высокого давления', 'karcher', 'керхер'],
-      name: 'Установка АВД (аппарат высокого давления)',
-      note: 'Уточнить стоимость'
-    },
-    CHEM: {
-      keywords: ['насос перекачки', 'ёмкость', 'ph-метр', 'кислотоуп'],
-      name: 'Комплект для химической чистки (насосы, ёмкости, фитинги, КИП)',
-      note: 'Уточнить стоимость'
+  const fromWarehouse = [];
+  const toPurchase = [];
+
+  for (const item of needed) {
+    const name = (item.item || '').toLowerCase();
+    // Ищем совпадение по подстроке в складских позициях
+    let found = null;
+    for (const wKey of Object.keys(whIndex)) {
+      // Проверяем пересечение ключевых слов (3+ букв)
+      const words = name.split(/[\s,/()]+/).filter(w => w.length >= 3);
+      const match = words.some(w => wKey.includes(w));
+      if (match) { found = whIndex[wKey]; break; }
     }
+
+    if (found) {
+      fromWarehouse.push({
+        item: item.item,
+        quantity: item.quantity || 1,
+        condition: found.status || 'на складе',
+        warehouse_item_id: found.id,
+        warehouse_name: found.name
+      });
+    } else {
+      toPurchase.push({
+        item: item.item,
+        quantity: item.quantity || 1,
+        price_estimate: 0,
+        total: 0,
+        supplier_hint: 'Уточнить стоимость у поставщика',
+        purpose: item.purpose || ''
+      });
+    }
+  }
+
+  // Формируем equipment_status из серверной проверки
+  ai.equipment_status = {
+    from_warehouse: fromWarehouse,
+    to_purchase: toPurchase,
+    summary: `${fromWarehouse.length} позиций со склада, ${toPurchase.length} нужно купить`
   };
 
-  const needed = EQUIPMENT_MAP[workType];
-  if (!needed) return;
+  // Если нужно покупать — добавить warning
+  if (toPurchase.length > 0) {
+    const items = toPurchase.map(p => p.item).join(', ');
+    ai.analysis.warnings.push({
+      level: 'warning',
+      title: 'Требуется закупка оборудования',
+      text: `На складе нет: ${items}. Необходимо приобрести перед выездом.`
+    });
+  }
 
-  // Есть ли на складе?
-  const foundOnWarehouse = needed.keywords.some(kw => warehouseNames.includes(kw));
-  if (foundOnWarehouse) return;
-
-  // AI уже добавил в purchases?
-  const purchaseNames = purchases.map(p => (p.item || '').toLowerCase()).join(' ');
-  const alreadyInPurchases = needed.keywords.some(kw => purchaseNames.includes(kw));
-  if (alreadyInPurchases) return;
-
-  // Не на складе и не в purchases → добавляем
-  purchases.push({
-    item: needed.name,
-    quantity: 1,
-    price: 0,
-    total: 0,
-    reason: 'нет на складе — ' + needed.note
-  });
-
-  ai.analysis.warnings.push({
-    level: 'warning',
-    title: 'Требуется закупка оборудования',
-    text: `На складе нет ${needed.name}. Добавлено в список закупок. ${needed.note}.`
-  });
+  // Если AI вообще не указал equipment_needed — предупредить
+  if (needed.length === 0) {
+    ai.equipment_status = {
+      from_warehouse: [],
+      to_purchase: [],
+      summary: 'AI не указал необходимое оборудование'
+    };
+    ai.analysis.warnings.push({
+      level: 'info',
+      title: 'Оборудование не указано',
+      text: 'Мимир не перечислил необходимое оборудование. Уточните у РП.'
+    });
+  }
 }
 
 module.exports = {
