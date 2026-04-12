@@ -259,7 +259,7 @@
     if (_stepQueue.length === 0) { _stepTimer = null; return; }
     var item = _stepQueue.shift();
     appendStepNow(item.stepsBox, item.event);
-    _stepTimer = setTimeout(drainStepQueue, 400);
+    _stepTimer = setTimeout(drainStepQueue, 2500);
   }
 
   function appendStepNow(stepsBox, event) {

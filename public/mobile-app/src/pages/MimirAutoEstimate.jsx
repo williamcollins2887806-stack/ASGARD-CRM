@@ -151,7 +151,7 @@ export default function MimirAutoEstimate() {
       status: 'done',
       ts: Date.now(),
     }]);
-    staggerTimer.current = setTimeout(drainQueue, 400);
+    staggerTimer.current = setTimeout(drainQueue, 2500);
   }
 
   function handleEvent(event) {
