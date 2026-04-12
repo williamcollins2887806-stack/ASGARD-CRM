@@ -59,6 +59,9 @@ export default function MimirAutoEstimate() {
   const [chatMessages, setChatMessages] = useState([]); // [{role, text, ts}]
   const [composerText, setComposerText] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  // AP3: проверка существующего draft
+  const [checkingExisting, setCheckingExisting] = useState(true);
+  const [existingDraft, setExistingDraft] = useState(null);
 
   const bottomRef = useRef(null);
   const abortRef = useRef(null);
@@ -199,10 +202,31 @@ export default function MimirAutoEstimate() {
     }
   }
 
-  // Auto-start
+  // AP3: При маунте проверяем нет ли уже draft. Если есть — показываем выбор.
   useEffect(() => {
-    startStream();
-    return () => { if (abortRef.current) abortRef.current.abort(); };
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get(`/mimir/auto-estimate/check?work_id=${workId}`);
+        if (cancelled) return;
+        if (res.exists) {
+          setExistingDraft(res);
+          setChatMessages(res.chat_history || []);
+          setCheckingExisting(false);
+        } else {
+          setCheckingExisting(false);
+          startStream();
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setCheckingExisting(false);
+        startStream();
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (abortRef.current) abortRef.current.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workId]);
 
@@ -243,14 +267,81 @@ export default function MimirAutoEstimate() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto scroll-container px-3 py-4">
-        {/* Greeting */}
-        <MimirBubble>
-          <p className="text-[14px] leading-[1.45]">
-            Сейчас соберу всё что нужно для просчёта: документы тендера, аналогичные работы, историю
-            заказчика, остатки склада, свободных рабочих и тарифы. Затем посчитаю себестоимость
-            и наценку.
-          </p>
-        </MimirBubble>
+        {/* AP3: Spinner проверки существующего */}
+        {checkingExisting && (
+          <div className="flex flex-col items-center justify-center py-10">
+            <Loader2 size={28} className="animate-spin mb-3" style={{ color: 'var(--gold)' }} />
+            <p className="text-[13px] c-tertiary">Проверяю предыдущие просчёты...</p>
+          </div>
+        )}
+
+        {/* AP3: Выбор — открыть существующий или пересчитать */}
+        {!checkingExisting && existingDraft && !running && !result && (
+          <div>
+            <MimirBubble>
+              <p className="text-[14px] leading-[1.5]">
+                По этой работе уже есть просчёт <strong>#{existingDraft.estimate.id}</strong>.
+                Можешь открыть его или попросить меня пересчитать заново.
+              </p>
+            </MimirBubble>
+            <div
+              className="rounded-2xl p-4 mb-3 mt-2"
+              style={{
+                background: 'color-mix(in srgb, var(--gold) 6%, var(--bg-surface-alt))',
+                border: '0.5px solid color-mix(in srgb, var(--gold) 30%, var(--border-norse))',
+              }}
+            >
+              <p className="text-[13px] font-bold c-primary mb-2">{existingDraft.estimate.title || `Просчёт #${existingDraft.estimate.id}`}</p>
+              <SummaryRow label="Себестоимость" value={fmtMoney(existingDraft.estimate.cost_plan)} />
+              <SummaryRow label="Клиенту" value={fmtMoney(existingDraft.estimate.price_tkp)} />
+              <SummaryRow label="Маржа" value={existingDraft.estimate.margin_pct ? `${existingDraft.estimate.margin_pct}%` : '—'} />
+              <SummaryRow label="Бригада" value={existingDraft.estimate.crew_count ? `${existingDraft.estimate.crew_count} × ${existingDraft.estimate.work_days || '?'} дн` : '—'} />
+              <SummaryRow label="Диалог" value={`${existingDraft.chat_history?.length || 0} сообщ.`} />
+            </div>
+
+            <button
+              onClick={() => {
+                haptic.medium();
+                navigate(`/estimate-report/${existingDraft.estimate.id}`);
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-2xl px-4 py-3.5 mb-2 spring-tap"
+              style={{
+                background: 'linear-gradient(135deg, #D4A843 0%, #B88B2E 100%)',
+                color: '#fff', border: 'none',
+                boxShadow: '0 6px 24px rgba(212,168,67,0.35), 0 0 50px rgba(212,168,67,0.18)',
+              }}
+            >
+              <span className="text-[14px] font-bold">Открыть просчёт #{existingDraft.estimate.id}</span>
+              <ArrowRight size={18} />
+            </button>
+
+            <button
+              onClick={() => {
+                haptic.light();
+                setExistingDraft(null);
+                startStream();
+              }}
+              className="w-full rounded-2xl px-4 py-3 text-[14px] font-semibold c-secondary spring-tap"
+              style={{
+                background: 'var(--bg-surface-alt)',
+                border: '0.5px solid var(--border-norse)',
+              }}
+            >
+              Пересчитать заново
+            </button>
+          </div>
+        )}
+
+        {/* Greeting (только когда запущен новый сбор) */}
+        {!checkingExisting && !existingDraft && (
+          <MimirBubble>
+            <p className="text-[14px] leading-[1.45]">
+              Сейчас соберу всё что нужно для просчёта: документы тендера, аналогичные работы, историю
+              заказчика, остатки склада, свободных рабочих и тарифы. Затем посчитаю себестоимость
+              и наценку.
+            </p>
+          </MimirBubble>
+        )}
 
         {/* Progress steps */}
         {steps.map((s, i) => {
@@ -713,6 +804,15 @@ function BreakdownRow({ label, value }) {
     <div className="flex items-center justify-between py-0.5">
       <p className="text-[12px] c-tertiary">{label}</p>
       <p className="text-[12px] font-semibold c-primary">{fmtMoney(value)}</p>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <p className="text-[12px] c-tertiary">{label}</p>
+      <p className="text-[13px] font-semibold c-primary">{value}</p>
     </div>
   );
 }

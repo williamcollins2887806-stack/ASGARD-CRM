@@ -2134,8 +2134,11 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
 
       const aiBundle = await mimirAutoEstimate.callMimirForEstimate(aiProvider, context, userTurn);
 
-      // 3. UPDATE в БД
-      await mimirAutoEstimate.updateDraftEstimate(db, estimateId, aiBundle.ai, aiBundle.recomputed, user);
+      // 3. UPDATE в БД (с сохранением chat turn в history)
+      await mimirAutoEstimate.updateDraftEstimate(db, estimateId, aiBundle.ai, aiBundle.recomputed, user, {
+        user_message: message.trim(),
+        mimir_response: aiBundle.ai.estimate?.comment || aiBundle.ai.analysis?.markup_reasoning || ''
+      });
 
       const totals = aiBundle.recomputed.totals;
       const ai = aiBundle.ai;
@@ -2216,13 +2219,70 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
         })),
         warehouse_categories: [...new Set(context.warehouse.map(w => w.category_name))],
         warehouse_count: context.warehouse.length,
-        workers_available: context.workers.available?.length || 0,
+        workers_available: (context.workers.itr_available?.length || 0) + (context.workers.field_available?.length || 0),
+        itr_available: context.workers.itr_available?.length || 0,
+        field_available: context.workers.field_available?.length || 0,
+        permits_total: context.permits?.total_active || 0,
         tariff_categories: Object.keys(context.tariffs.grouped || {}),
         settings: context.settings
       });
     } catch (error) {
       fastify.log.error('[Mimir auto-estimate-context]:', error.message);
       return reply.code(500).send({ success: false, message: error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AP3: GET /api/mimir/auto-estimate/check?work_id=N
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Проверяет существует ли уже draft estimate для work. Используется
+  // фронтом перед запуском SSE pipeline чтобы предложить пользователю выбор:
+  // "У вас уже есть просчёт #N — открыть или пересчитать новый?"
+  fastify.get('/auto-estimate/check', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const workId = parseInt(request.query.work_id);
+    if (!workId) return reply.code(400).send({ success: false, message: 'work_id обязателен' });
+    try {
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+      const existing = await mimirAutoEstimate.loadExistingDraftForWork(db, workId);
+      if (!existing) return reply.send({ exists: false });
+
+      // Парсим mimir_suggestions для UI
+      let suggestions = null;
+      if (existing.calc?.mimir_suggestions) {
+        try {
+          suggestions = typeof existing.calc.mimir_suggestions === 'string'
+            ? JSON.parse(existing.calc.mimir_suggestions)
+            : existing.calc.mimir_suggestions;
+        } catch (e) { /* ok */ }
+      }
+
+      return reply.send({
+        exists: true,
+        estimate: {
+          id: existing.estimate.id,
+          title: existing.estimate.title,
+          crew_count: existing.estimate.crew_count,
+          work_days: existing.estimate.work_days,
+          markup_multiplier: existing.estimate.markup_multiplier,
+          cost_plan: existing.estimate.cost_plan,
+          price_tkp: existing.estimate.price_tkp,
+          margin_pct: existing.estimate.margin_pct,
+          created_at: existing.estimate.created_at,
+          updated_at: existing.estimate.updated_at
+        },
+        calc: existing.calc ? {
+          total_cost: existing.calc.total_cost,
+          total_with_margin: existing.calc.total_with_margin,
+          margin_pct: existing.calc.margin_pct
+        } : null,
+        chat_history: existing.chat_history || [],
+        suggestions
+      });
+    } catch (err) {
+      fastify.log.error('[Mimir auto-estimate/check]:', err.message);
+      return reply.code(500).send({ success: false, message: err.message });
     }
   });
 }

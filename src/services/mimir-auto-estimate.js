@@ -293,83 +293,219 @@ async function getWarehouseStock(db, onProgress) {
 }
 
 /**
- * 7. Свободные рабочие на период работ.
+ * 7. Свободные люди на период работ — раздельно ИТР (users) и полевые (employees).
  *
- * Так как нет таблицы work_assignments для людей, используем
- * упрощённую логику: исключаем рабочих, у которых уже есть
- * назначение на любую активную работу с пересекающимися датами
- * (через works.staff_ids_json или approved_staff_ids_a/b_json).
+ * Архитектура:
+ *   - ИТР (РП, главный инженер, начальник отдела РП) → таблица USERS, роли:
+ *     PM, HEAD_PM, CHIEF_ENGINEER, FIELD_ENGINEER. Это тот кто отвечает за объект.
+ *   - Полевые рабочие/мастера/жестянщики/монтажники → таблица EMPLOYEES (521 запись).
+ *   - works.staff_ids_json содержит EMPLOYEES.id (не users.id!)
  *
- * Источник людей — таблица users с ролями WORKER, MASTER, FOREMAN, FIELD_ENGINEER.
+ * Логика занятости:
+ *   - Полевой занят, если его employees.id есть в staff_ids_json /
+ *     approved_staff_ids_a/b_json у активной работы с пересекающимся периодом.
+ *   - ИТР занят, если он pm_id у активной работы с пересекающимся периодом
+ *     ИЛИ его user_id у employees есть в занятых.
+ *
+ * Возвращает:
+ *   {
+ *     itr_available:    [{id, name, role, login}],   // ИТР из users
+ *     field_available:  [{id, full_name, position, employees_id}], // полевые из employees
+ *     itr_busy_count, field_busy_count,
+ *     period: {start, end}
+ *   }
  */
 async function getAvailableWorkers(db, startDate, endDate, onProgress) {
   safeProgress(onProgress, 'workers', '👷 Проверяю свободных рабочих на период...');
 
+  const ITR_ROLES = "('PM','HEAD_PM','CHIEF_ENGINEER','FIELD_ENGINEER','FOREMAN','MASTER')";
+
+  // Без дат — просто покажем всех активных
   if (!startDate || !endDate) {
-    // Без дат — просто список всех активных полевых рабочих
     try {
-      const result = await db.query(
-        `SELECT id, name, role, login
-           FROM users
-          WHERE is_active = true
-            AND role IN ('WORKER','MASTER','FOREMAN','FIELD_ENGINEER','CHIEF_ENGINEER')
-          ORDER BY role, name
+      const itrRes = await db.query(
+        `SELECT id, name, role, login FROM users
+          WHERE is_active = true AND role IN ${ITR_ROLES}
+          ORDER BY role, name LIMIT $1`,
+        [MAX_AVAILABLE_WORKERS]
+      );
+      const fieldRes = await db.query(
+        `SELECT id, COALESCE(full_name, fio) AS full_name, position, role_tag, grade
+           FROM employees
+          WHERE COALESCE(is_active, true) = true
+            AND dismissal_date IS NULL
+          ORDER BY position NULLS LAST, full_name
           LIMIT $1`,
         [MAX_AVAILABLE_WORKERS]
       );
-      return { available: result.rows, busy: [], note: 'Даты работы не указаны — показан полный список.' };
+      return {
+        itr_available: itrRes.rows,
+        field_available: fieldRes.rows,
+        itr_busy_count: 0,
+        field_busy_count: 0,
+        note: 'Даты работы не указаны — показан полный список.'
+      };
     } catch (e) {
-      return { available: [], busy: [], note: e.message };
+      console.warn('[AP3] getAvailableWorkers (no dates):', e.message);
+      return { itr_available: [], field_available: [], itr_busy_count: 0, field_busy_count: 0, error: e.message };
     }
   }
 
   try {
-    // Собрать ID занятых рабочих из works с пересекающимся периодом
-    const busyRes = await db.query(
+    // 1. Собрать employee_ids которые заняты на пересекающихся работах
+    const busyEmployeesRes = await db.query(
       `SELECT DISTINCT
               jsonb_array_elements_text(
                 COALESCE(staff_ids_json, '[]'::jsonb) ||
                 COALESCE(approved_staff_ids_a_json, '[]'::jsonb) ||
                 COALESCE(approved_staff_ids_b_json, '[]'::jsonb)
-              )::int AS user_id
+              )::int AS emp_id
          FROM works
-        WHERE work_status IN ('in_progress','planned','approved')
+        WHERE work_status NOT IN ('Завершена','Отменена','archived')
           AND deleted_at IS NULL
           AND COALESCE(start_plan, start_in_work_date) <= $2::date
-          AND COALESCE(end_plan, end_fact) >= $1::date`,
+          AND COALESCE(end_plan, end_fact, start_plan + INTERVAL '30 days') >= $1::date`,
       [startDate, endDate]
     );
-    const busyIds = busyRes.rows.map(r => r.user_id).filter(id => id != null);
+    const busyEmpIds = busyEmployeesRes.rows.map(r => r.emp_id).filter(id => id != null);
 
-    // Свободные = роль WORKER/MASTER/FOREMAN, активные, НЕ в busyIds
-    const params = [];
-    let busyClause = '';
-    if (busyIds.length > 0) {
-      params.push(busyIds);
-      busyClause = ' AND id != ALL($1::int[])';
+    // 2. Собрать pm_id занятых ИТР
+    const busyItrRes = await db.query(
+      `SELECT DISTINCT pm_id FROM works
+        WHERE work_status NOT IN ('Завершена','Отменена','archived')
+          AND deleted_at IS NULL
+          AND pm_id IS NOT NULL
+          AND COALESCE(start_plan, start_in_work_date) <= $2::date
+          AND COALESCE(end_plan, end_fact, start_plan + INTERVAL '30 days') >= $1::date`,
+      [startDate, endDate]
+    );
+    const busyItrIds = busyItrRes.rows.map(r => r.pm_id).filter(id => id != null);
+
+    // 3. Свободные ИТР (users)
+    const itrParams = [];
+    let itrBusyClause = '';
+    if (busyItrIds.length > 0) {
+      itrParams.push(busyItrIds);
+      itrBusyClause = ` AND id != ALL($${itrParams.length}::int[])`;
     }
-    params.push(MAX_AVAILABLE_WORKERS);
-    const limitIdx = params.length;
+    itrParams.push(MAX_AVAILABLE_WORKERS);
+    const itrLimitIdx = itrParams.length;
+    const itrRes = await db.query(
+      `SELECT id, name, role, login FROM users
+        WHERE is_active = true AND role IN ${ITR_ROLES}${itrBusyClause}
+        ORDER BY role, name LIMIT $${itrLimitIdx}`,
+      itrParams
+    );
 
-    const availRes = await db.query(
-      `SELECT id, name, role, login
-         FROM users
-        WHERE is_active = true
-          AND role IN ('WORKER','MASTER','FOREMAN','FIELD_ENGINEER','CHIEF_ENGINEER')
-          ${busyClause}
-        ORDER BY role, name
-        LIMIT $${limitIdx}`,
-      params
+    // 4. Свободные полевые (employees)
+    const fieldParams = [];
+    let fieldBusyClause = '';
+    if (busyEmpIds.length > 0) {
+      fieldParams.push(busyEmpIds);
+      fieldBusyClause = ` AND id != ALL($${fieldParams.length}::int[])`;
+    }
+    fieldParams.push(MAX_AVAILABLE_WORKERS);
+    const fieldLimitIdx = fieldParams.length;
+    const fieldRes = await db.query(
+      `SELECT id, COALESCE(full_name, fio) AS full_name, position, role_tag, grade
+         FROM employees
+        WHERE COALESCE(is_active, true) = true
+          AND dismissal_date IS NULL${fieldBusyClause}
+        ORDER BY position NULLS LAST, full_name
+        LIMIT $${fieldLimitIdx}`,
+      fieldParams
     );
 
     return {
-      available: availRes.rows,
-      busy_count: busyIds.length,
+      itr_available: itrRes.rows,
+      field_available: fieldRes.rows,
+      itr_busy_count: busyItrIds.length,
+      field_busy_count: busyEmpIds.length,
       period: { start: startDate, end: endDate }
     };
   } catch (e) {
-    console.warn('[AP1] getAvailableWorkers:', e.message);
-    return { available: [], busy_count: 0, error: e.message };
+    console.warn('[AP3] getAvailableWorkers:', e.message);
+    return { itr_available: [], field_available: [], itr_busy_count: 0, field_busy_count: 0, error: e.message };
+  }
+}
+
+/**
+ * 7b. Сводка допусков для списка employees.
+ *
+ * Возвращает:
+ *   {
+ *     by_type:    { 'НАКС': 23, 'ОТЗП (1 группа)': 11, ... },
+ *     by_employee: { 567: ['НАКС','Высота 2'], ... },     // top-N
+ *     total_active: <число допусков>,
+ *     expiring_soon: [{employee_id, full_name, type, expiry_date}, ... ]  // < 30 дней
+ *   }
+ *
+ * Используется для:
+ *   - передачи в AI prompt сводки "у нас X с допуском НАКС, Y с ОТЗП"
+ *   - предупреждения о допусках которые скоро истекают
+ */
+async function getEmployeePermitsSummary(db, employeeIds, onProgress) {
+  safeProgress(onProgress, 'permits', '🛡 Проверяю допуска свободных сотрудников...');
+
+  if (!employeeIds || employeeIds.length === 0) {
+    return { by_type: {}, by_employee: {}, total_active: 0, expiring_soon: [] };
+  }
+
+  try {
+    const result = await db.query(
+      `SELECT
+          ep.employee_id, ep.permit_type, ep.expiry_date, ep.status,
+          pt.name AS type_name,
+          e.full_name, e.fio, e.position
+       FROM employee_permits ep
+       LEFT JOIN permit_types pt ON pt.id = ep.type_id
+       LEFT JOIN employees e ON e.id = ep.employee_id
+       WHERE ep.employee_id = ANY($1::int[])
+         AND COALESCE(ep.is_active, true) = true
+         AND (ep.expiry_date IS NULL OR ep.expiry_date >= CURRENT_DATE)
+         AND COALESCE(ep.status, 'active') = 'active'`,
+      [employeeIds]
+    );
+
+    const by_type = {};
+    const by_employee = {};
+    const expiring_soon = [];
+    const SOON_DAYS = 30;
+    const now = Date.now();
+
+    for (const row of result.rows) {
+      const typeName = row.type_name || row.permit_type || 'Прочее';
+      by_type[typeName] = (by_type[typeName] || 0) + 1;
+
+      if (!by_employee[row.employee_id]) by_employee[row.employee_id] = [];
+      by_employee[row.employee_id].push(typeName);
+
+      if (row.expiry_date) {
+        const exp = new Date(row.expiry_date).getTime();
+        const daysLeft = Math.round((exp - now) / 86400000);
+        if (daysLeft <= SOON_DAYS && daysLeft >= 0) {
+          expiring_soon.push({
+            employee_id: row.employee_id,
+            full_name: row.full_name || row.fio || `#${row.employee_id}`,
+            position: row.position || null,
+            type: typeName,
+            expiry_date: row.expiry_date,
+            days_left: daysLeft
+          });
+        }
+      }
+    }
+
+    return {
+      by_type,
+      by_employee,
+      total_active: result.rows.length,
+      employees_with_permits: Object.keys(by_employee).length,
+      expiring_soon: expiring_soon.sort((a, b) => a.days_left - b.days_left).slice(0, 20)
+    };
+  } catch (e) {
+    console.warn('[AP3] getEmployeePermitsSummary:', e.message);
+    return { by_type: {}, by_employee: {}, total_active: 0, expiring_soon: [], error: e.message };
   }
 }
 
@@ -463,6 +599,11 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
     getCalcSettings(db)
   ]);
 
+  // Шаг 7b: Допуска для свободных полевых сотрудников
+  // (запускается ПОСЛЕ workers — нужны их id'шники)
+  const fieldEmpIds = (workers.field_available || []).map(e => e.id);
+  const permits = await getEmployeePermitsSummary(db, fieldEmpIds, onProgress);
+
   const elapsedMs = Date.now() - t0;
 
   const summary = {
@@ -477,11 +618,24 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
     analogs_count: analogs.length,
     customer_history_count: customerHistory.length,
     warehouse_items: warehouse.length,
-    available_workers: workers.available?.length || 0,
+    itr_available: workers.itr_available?.length || 0,
+    field_available: workers.field_available?.length || 0,
+    permits_total: permits.total_active,
+    permits_employees: permits.employees_with_permits,
     tariff_categories: Object.keys(tariffs.grouped || {}).length,
     work_type: workType,
     period: { start: startDate, end: endDate },
-    elapsed_ms: elapsedMs
+    elapsed_ms: elapsedMs,
+    // Edge-case флаги для UI
+    flags: {
+      no_tender: !tender,
+      no_documents: documents.length === 0,
+      no_parsed_documents: documents.filter(d => d.content_chars > 0).length === 0,
+      no_field_workers: (workers.field_available?.length || 0) === 0,
+      no_itr: (workers.itr_available?.length || 0) === 0,
+      no_analogs: analogs.length === 0,
+      expired_permits_soon: permits.expiring_soon.length > 0
+    }
   };
 
   safeProgress(onProgress, 'collected', '✅ Все данные собраны', summary);
@@ -496,6 +650,7 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
     customer_history: customerHistory,
     warehouse,
     workers,
+    permits,
     tariffs,
     settings,
     summary
@@ -577,6 +732,29 @@ function warehouseToPrompt(items) {
 }
 
 /**
+ * Сериализатор допусков для prompt.
+ */
+function permitsToPrompt(permits) {
+  if (!permits || !permits.by_type || Object.keys(permits.by_type).length === 0) {
+    return '(допуска не загружены или их нет)';
+  }
+  const lines = ['Сводка по типам допусков (сколько свободных сотрудников имеют):'];
+  // Сортируем по убыванию количества
+  const sorted = Object.entries(permits.by_type).sort((a, b) => b[1] - a[1]);
+  for (const [type, count] of sorted) {
+    lines.push(`  - ${type}: ${count} чел`);
+  }
+  if (permits.expiring_soon && permits.expiring_soon.length > 0) {
+    lines.push('');
+    lines.push(`⚠️ Истекают в течение 30 дней (${permits.expiring_soon.length}):`);
+    for (const ex of permits.expiring_soon.slice(0, 10)) {
+      lines.push(`  - ${ex.full_name} / ${ex.type} → ${ex.expiry_date} (${ex.days_left} дн)`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
  * Сериализатор документов.
  */
 function documentsToPrompt(docs) {
@@ -600,8 +778,17 @@ function buildAutoEstimatePrompt(ctx) {
   const startDate = work.start_plan || work.start_in_work_date || tender?.work_start_plan;
   const endDate = work.end_plan || work.end_fact || tender?.work_end_plan;
 
+  // Edge flags для AI — что отсутствует в данных
+  const flagWarnings = [];
+  if (!tender) flagWarnings.push('⚠️ РАБОТА БЕЗ ТЕНДЕРА — описание объекта неполное, делай предположения консервативно');
+  if (ctx.documents.length === 0) flagWarnings.push('⚠️ НЕТ ПРИЛОЖЕННЫХ ДОКУМЕНТОВ — ТЗ недоступно, расчёт по шаблону');
+  if ((ctx.workers.field_available?.length || 0) === 0) flagWarnings.push('⚠️ НЕТ СВОБОДНЫХ ПОЛЕВЫХ — все заняты, нужно привлечение со стороны (+доплата 30%)');
+  if ((ctx.workers.itr_available?.length || 0) === 0) flagWarnings.push('⚠️ НЕТ СВОБОДНОГО ИТР — потребуется внештатный РП или совмещение');
+  if (ctx.analogs.length === 0) flagWarnings.push('ℹ️ Аналогов нет — наценку выбирай консервативно (×2.0-2.3)');
+
   return `Ты Мимир — ИИ-ассистент ООО «Асгард Сервис». Задача: заполнить просчёт для работы.
 
+${flagWarnings.length > 0 ? '═══ EDGE-ФЛАГИ ═══\n' + flagWarnings.join('\n') + '\n' : ''}
 ═══ ДАННЫЕ РАБОТЫ ═══
 ID работы: ${work.id}
 Название: ${work.work_title || '—'}
@@ -637,8 +824,15 @@ ${customerHistoryToPrompt(ctx.customer_history)}
 ═══ СКЛАД (${ctx.warehouse.length} позиций) ═══
 ${warehouseToPrompt(ctx.warehouse)}
 
-═══ СВОБОДНЫЕ РАБОЧИЕ НА ПЕРИОД (${ctx.workers.available?.length || 0}) ═══
-${(ctx.workers.available || []).slice(0, 30).map(w => `  - #${w.id} ${w.name} (${w.role})`).join('\n') || '(нет свободных)'}
+═══ СВОБОДНЫЕ ИТР (${ctx.workers.itr_available?.length || 0}) ═══
+${(ctx.workers.itr_available || []).slice(0, 30).map(w => `  - #${w.id} ${w.name} (${w.role})`).join('\n') || '(нет свободных ИТР)'}
+
+═══ СВОБОДНЫЕ ПОЛЕВЫЕ СОТРУДНИКИ (${ctx.workers.field_available?.length || 0} из 521) ═══
+Занято на других работах: ${ctx.workers.field_busy_count || 0}
+${(ctx.workers.field_available || []).slice(0, 50).map(e => `  - #${e.id} ${e.full_name}${e.position ? ' / ' + e.position : ''}`).join('\n') || '(нет свободных)'}
+
+═══ ДОПУСКА СВОБОДНЫХ СОТРУДНИКОВ (${ctx.permits?.total_active || 0} активных, у ${ctx.permits?.employees_with_permits || 0} человек) ═══
+${permitsToPrompt(ctx.permits)}
 
 ═══ ТАРИФНАЯ СЕТКА ═══
 ${tariffsToPrompt(ctx.tariffs)}
@@ -653,8 +847,12 @@ ${tariffsToPrompt(ctx.tariffs)}
 - Суточные/Пайковые: по ${settings.per_diem_per_day}₽/чел/день
 
 ═══ ТВОЯ ЗАДАЧА ═══
-1) Определи бригаду (количество рабочих, мастеров, ИТР) и количество дней работы
-2) Выбери ставки из тарифной сетки (категория зависит от типа работ: МЛСП → mlsp, обычные → ground, тяжёлые → ground_hard)
+1) Определи бригаду (количество рабочих, мастеров, ИТР) и количество дней работы.
+   ВАЖНО: размер бригады должен быть АДЕКВАТЕН объёму работ из ТЗ. Если в тендере
+   указана сумма ${tender?.estimated_sum ? Math.round(Number(tender.estimated_sum)).toLocaleString('ru-RU') + '₽' : 'крупная'} — это
+   ориентир МАСШТАБА работы. Не занижай бригаду на больших проектах.
+2) Выбери ставки из тарифной сетки (категория зависит от типа работ: МЛСП → mlsp,
+   обычные → ground, тяжёлые → ground_hard, склад → warehouse)
 3) Посчитай командировочные (билеты, суточные, пайковые, гостиница)
 4) Определи нужные химию/материалы из контекста ТЗ (если есть)
 5) Выбери наценку (markup_multiplier) ОБОСНОВАННО — анализируй аналоги и историю заказчика:
@@ -662,8 +860,16 @@ ${tariffsToPrompt(ctx.tariffs)}
    - Если проигрывали с ×3.0 → НЕ ставь ×3.0
    - Для нового клиента → ниже среднего (чтобы зайти)
    - Для постоянного → можно выше
-6) Проверь склад: чего не хватает — добавь в purchases_needed с ценой
-7) Проверь рабочих: если свободных мало → предупреждение
+6) Проверь СКЛАД: чего не хватает — добавь в purchases_needed с ценой
+7) Проверь СВОБОДНЫХ ИТР и ПОЛЕВЫХ: если их мало или нет нужных позиций (Жестянщик,
+   Монтажник, Сварщик НАКС и т.д.) → warning
+8) ПРОВЕРЬ ДОПУСКА (КРИТИЧНО):
+   - Проанализируй текст ТЗ/тендера/договора — какие допуска НУЖНЫ для этой работы?
+     (Газоопасные → ОТЗП, Высота → Работы на высоте 1-3, Сварка → НАКС, МЛСП → ВИК+БМПВО,
+      Электрика → ЭБ II-V, замкнутые пространства → ОТЗП)
+   - Сверь со списком допусков выше: достаточно ли свободных сотрудников с нужным допуском?
+   - Если нет или мало → warning level="critical" с указанием какого допуска не хватает
+   - Если у нужных людей допуск ИСТЕКАЕТ в течение 30 дней → warning level="warning"
 
 ВЕРНИ СТРОГО JSON в формате (без markdown-обёртки, без пояснений вокруг):
 
@@ -905,13 +1111,14 @@ async function createDraftEstimate(db, ctx, ai, recomputed, user) {
   // 2. INSERT в estimate_calculation_data
   const calc = recomputed.calculation;
 
-  // mimir_suggestions = analysis блок (warnings + reasoning)
+  // mimir_suggestions = analysis блок (warnings + reasoning + chat_history)
   const mimirSuggestions = {
     markup_reasoning: ai.analysis?.markup_reasoning || null,
     warnings: ai.analysis?.warnings || [],
     purchases_needed: ai.analysis?.purchases_needed || [],
     workers_status: ai.analysis?.workers_status || null,
     warehouse_status: ai.analysis?.warehouse_status || null,
+    chat_history: [],
     generated_at: new Date().toISOString(),
     ai_model: ai._meta?.model || null,
     ai_provider: ai._meta?.provider || null
@@ -968,12 +1175,56 @@ async function createDraftEstimate(db, ctx, ai, recomputed, user) {
 }
 
 /**
+ * Загрузить существующий draft (если есть) для work_id.
+ * Возвращает { estimate, calc, chat_history } или null.
+ * Используется при повторном открытии MimirAutoEstimate чтобы предложить
+ * "Открыть #N или Пересчитать новый".
+ */
+async function loadExistingDraftForWork(db, workId) {
+  try {
+    const eRes = await db.query(
+      `SELECT * FROM estimates
+        WHERE work_id = $1 AND approval_status = 'draft'
+        ORDER BY created_at DESC LIMIT 1`,
+      [workId]
+    );
+    const estimate = eRes.rows[0];
+    if (!estimate) return null;
+
+    const cRes = await db.query(
+      `SELECT * FROM estimate_calculation_data
+        WHERE estimate_id = $1
+        ORDER BY version_no DESC LIMIT 1`,
+      [estimate.id]
+    );
+    const calc = cRes.rows[0] || null;
+
+    let chat_history = [];
+    if (calc?.mimir_suggestions) {
+      try {
+        const ms = typeof calc.mimir_suggestions === 'string'
+          ? JSON.parse(calc.mimir_suggestions)
+          : calc.mimir_suggestions;
+        chat_history = ms.chat_history || [];
+      } catch (e) { /* ok */ }
+    }
+
+    return { estimate, calc, chat_history };
+  } catch (e) {
+    console.warn('[AP3] loadExistingDraftForWork:', e.message);
+    return null;
+  }
+}
+
+/**
  * Обновить существующий draft estimate (для диалога-пересчёта).
  *
  * Перезаписывает estimate_calculation_data v1 (UPDATE), обновляет markup
  * в estimates. Не плодит новые версии — это всё ещё draft перед отправкой.
+ *
+ * AP3: добавляет user message + mimir response в mimir_suggestions.chat_history
  */
-async function updateDraftEstimate(db, estimateId, ai, recomputed, user) {
+async function updateDraftEstimate(db, estimateId, ai, recomputed, user, chatTurn = null) {
   const est = ai.estimate || {};
   const totals = recomputed.totals;
   const calc = recomputed.calculation;
@@ -1004,13 +1255,49 @@ async function updateDraftEstimate(db, estimateId, ai, recomputed, user) {
     ]
   );
 
-  // 2. UPDATE estimate_calculation_data v1
+  // 2. Загрузить старый mimir_suggestions чтобы сохранить chat_history
+  let prevHistory = [];
+  try {
+    const prev = await db.query(
+      `SELECT mimir_suggestions FROM estimate_calculation_data WHERE estimate_id = $1 AND version_no = 1`,
+      [estimateId]
+    );
+    const prevMs = prev.rows[0]?.mimir_suggestions;
+    if (prevMs) {
+      const parsed = typeof prevMs === 'string' ? JSON.parse(prevMs) : prevMs;
+      prevHistory = parsed.chat_history || [];
+    }
+  } catch (e) { /* ok */ }
+
+  // Добавляем новый turn (user + mimir response)
+  if (chatTurn && chatTurn.user_message) {
+    prevHistory.push({
+      role: 'user',
+      text: chatTurn.user_message,
+      ts: new Date().toISOString(),
+      user_name: user.name || user.login
+    });
+  }
+  if (chatTurn && chatTurn.mimir_response) {
+    prevHistory.push({
+      role: 'mimir',
+      text: chatTurn.mimir_response,
+      ts: new Date().toISOString(),
+      ai_model: ai._meta?.model || null
+    });
+  }
+  // Лимит истории — последние 50 turns
+  if (prevHistory.length > 50) {
+    prevHistory = prevHistory.slice(-50);
+  }
+
   const mimirSuggestions = {
     markup_reasoning: ai.analysis?.markup_reasoning || null,
     warnings: ai.analysis?.warnings || [],
     purchases_needed: ai.analysis?.purchases_needed || [],
     workers_status: ai.analysis?.workers_status || null,
     warehouse_status: ai.analysis?.warehouse_status || null,
+    chat_history: prevHistory,
     updated_at: new Date().toISOString(),
     ai_model: ai._meta?.model || null
   };
@@ -1107,5 +1394,8 @@ module.exports = {
   validateAndRecomputeMath,
   createDraftEstimate,
   updateDraftEstimate,
-  callMimirForEstimate
+  callMimirForEstimate,
+  // AP3
+  getEmployeePermitsSummary,
+  loadExistingDraftForWork
 };
