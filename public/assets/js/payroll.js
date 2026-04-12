@@ -124,10 +124,18 @@ window.AsgardPayrollPage = (function(){
     let gridPendingEdits = {};
 
     const MONTHS_RU_INLINE = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-    function ptsColor(pts) {
-      if (pts >= 18) return '#D4A843';
-      if (pts >= 12) return '#10b981';
-      if (pts >= 6) return '#3b82f6';
+    // Цвета фона ячеек (как в Excel)
+    function ptsBg(pts) {
+      if (pts >= 18) return '#FFD700';   // золотой
+      if (pts >= 12) return '#00D26A';   // зелёный
+      if (pts >= 10) return '#90EE90';   // салатовый
+      if (pts >= 6)  return '#B3D9FF';   // голубой
+      return '';
+    }
+    function ptsFg(pts) {
+      if (pts >= 18) return '#1a1200';
+      if (pts >= 10) return '#003300';
+      if (pts >= 6) return '#002255';
       return 'var(--t2)';
     }
 
@@ -180,28 +188,33 @@ window.AsgardPayrollPage = (function(){
         <div class="k"><div class="t">Суточные</div><div class="v">${moneyShort(totalPerDiem)} \u20BD</div></div>
       </div>`;
 
-      // Grid table
-      const thSt = 'padding:4px 2px;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:11px;text-align:center;white-space:nowrap';
+      // === GRID TABLE (Excel-стиль) ===
+      const hBg = 'background:#1e3a5f;color:#d5e8f0'; // шапка — тёмно-синяя
+      const hS = 'padding:6px 4px;font-weight:700;font-size:11px;text-align:center;white-space:nowrap;border:1px solid rgba(255,255,255,.1);' + hBg;
+
       let dayHeaders = '';
       for (let d = 1; d <= daysInMonth; d++) {
-        dayHeaders += '<th style="' + thSt + ';min-width:30px">' + d + '</th>';
+        dayHeaders += '<th style="' + hS + ';min-width:32px">' + d + '</th>';
       }
 
-      let thead = '<thead><tr><th style="' + thSt + ';text-align:left;min-width:150px;position:sticky;left:0;background:var(--bg2);z-index:2">ФИО</th>' +
+      let thead = '<thead><tr>' +
+        '<th style="' + hS + ';text-align:left;min-width:180px;position:sticky;left:0;z-index:3;background:#1e3a5f">ФИО</th>' +
         dayHeaders +
-        '<th style="' + thSt + '">Дней</th>' +
-        '<th style="' + thSt + '">Бал.</th>' +
-        '<th style="' + thSt + ';text-align:right">Зараб.</th>' +
-        '<th style="' + thSt + ';text-align:right">Сут.</th>' +
-        '<th style="' + thSt + ';text-align:right;color:var(--gold)">ИТОГО</th>' +
+        '<th style="' + hS + '">Дней</th>' +
+        '<th style="' + hS + '">Баллов</th>' +
+        '<th style="' + hS + '">Заработок</th>' +
+        '<th style="' + hS + '">Суточные</th>' +
+        '<th style="' + hS + ';background:#2d4a1f;color:#c8e6a0">ИТОГО</th>' +
         '</tr></thead>';
 
       let tbody = '<tbody>';
       let colTotals = new Array(daysInMonth).fill(0);
       let grandPts = 0, grandAmt = 0, grandPd = 0;
+      const cellBorder = 'border:1px solid rgba(255,255,255,.06)';
 
-      employees.forEach(emp => {
+      employees.forEach((emp, idx) => {
         const days = emp.days || {};
+        const rowBg = idx % 2 === 0 ? 'background:rgba(13,20,40,.3)' : 'background:rgba(13,20,40,.5)';
         let cells = '';
         for (let d = 1; d <= daysInMonth; d++) {
           const pts = Number(days[d] || 0);
@@ -209,12 +222,17 @@ window.AsgardPayrollPage = (function(){
           const editKey = emp.employee_id + '_' + d;
           if (gridEditMode) {
             const val = gridPendingEdits[editKey] !== undefined ? gridPendingEdits[editKey] : (pts || '');
-            cells += '<td style="padding:1px;text-align:center;border-bottom:1px solid rgba(255,255,255,.04)">' +
+            cells += '<td style="padding:2px;text-align:center;' + cellBorder + ';' + rowBg + '">' +
               '<input type="number" class="pgrid-inp" data-emp="' + emp.employee_id + '" data-day="' + d + '"' +
               ' value="' + val + '" min="0" max="24"' +
-              ' style="width:30px;padding:1px;text-align:center;background:rgba(13,20,40,.3);border:1px dashed var(--border-input);border-radius:3px;color:' + (pts ? ptsColor(pts) : 'var(--t2)') + ';font-size:11px;font-weight:700"/></td>';
+              ' style="width:32px;padding:3px 0;text-align:center;background:transparent;border:1px dashed rgba(242,208,138,.4);border-radius:4px;color:#fff;font-size:12px;font-weight:700"/></td>';
           } else {
-            cells += '<td style="padding:3px 1px;text-align:center;border-bottom:1px solid rgba(255,255,255,.04);color:' + (pts ? ptsColor(pts) : 'transparent') + ';font-weight:' + (pts ? 700 : 400) + ';font-size:12px">' + (pts || '') + '</td>';
+            const bg = pts ? ptsBg(pts) : '';
+            const fg = pts ? ptsFg(pts) : '';
+            const cellStyle = bg
+              ? 'padding:4px 2px;text-align:center;' + cellBorder + ';background:' + bg + ';color:' + fg + ';font-weight:800;font-size:13px;border-radius:0'
+              : 'padding:4px 2px;text-align:center;' + cellBorder + ';' + rowBg + ';color:rgba(255,255,255,.15);font-size:11px';
+            cells += '<td style="' + cellStyle + '">' + (pts || '·') + '</td>';
           }
         }
         const tPts = Number(emp.total_points || 0);
@@ -222,34 +240,47 @@ window.AsgardPayrollPage = (function(){
         const tPd = Number(emp.per_diem_total || 0);
         grandPts += tPts; grandAmt += tAmt; grandPd += tPd;
 
-        tbody += '<tr style="border-bottom:1px solid rgba(255,255,255,.04)">' +
-          '<td style="padding:4px 6px;font-weight:500;white-space:nowrap;font-size:12px;position:sticky;left:0;background:var(--bg2);z-index:1">' + esc(emp.fio || '—') + '</td>' +
+        const sumS = 'padding:6px 4px;text-align:center;font-size:12px;font-weight:600;' + cellBorder + ';' + rowBg;
+
+        tbody += '<tr>' +
+          '<td style="padding:6px 8px;font-weight:600;white-space:nowrap;font-size:13px;position:sticky;left:0;z-index:1;' + cellBorder + ';' + rowBg + '">' + esc(emp.fio || '—') + '</td>' +
           cells +
-          '<td style="padding:4px;text-align:center;font-size:12px">' + (emp.days_count || 0) + '</td>' +
-          '<td style="padding:4px;text-align:center;font-size:12px;font-weight:600">' + tPts + '</td>' +
-          '<td style="padding:4px;text-align:right;font-size:12px">' + money(Math.round(tAmt)) + '</td>' +
-          '<td style="padding:4px;text-align:right;font-size:12px">' + money(Math.round(tPd)) + '</td>' +
-          '<td style="padding:4px;text-align:right;font-size:12px;font-weight:700;color:var(--gold)">' + money(Math.round(tAmt + tPd)) + '</td>' +
+          '<td style="' + sumS + '">' + (emp.days_count || 0) + '</td>' +
+          '<td style="' + sumS + ';font-weight:800;color:#60a5fa">' + tPts + '</td>' +
+          '<td style="' + sumS + ';text-align:right;color:#10b981">' + money(Math.round(tAmt)) + ' \u20BD</td>' +
+          '<td style="' + sumS + ';text-align:right;color:#818cf8">' + money(Math.round(tPd)) + ' \u20BD</td>' +
+          '<td style="' + sumS + ';text-align:right;font-weight:800;color:#D4A843;background:rgba(212,168,67,.1)">' + money(Math.round(tAmt + tPd)) + ' \u20BD</td>' +
           '</tr>';
       });
       tbody += '</tbody>';
 
-      // Footer totals
+      // Footer ИТОГО (жёлтый фон как в Excel)
+      const ftBg = 'background:rgba(255,243,205,.12);color:#D4A843;font-weight:800;' + cellBorder;
       let footCells = '';
       for (let d = 0; d < daysInMonth; d++) {
-        footCells += '<td style="padding:4px;text-align:center;font-weight:700;color:var(--gold);font-size:11px">' + (colTotals[d] || '') + '</td>';
+        footCells += '<td style="padding:5px 2px;text-align:center;font-size:11px;' + ftBg + '">' + (colTotals[d] || '') + '</td>';
       }
-      let tfoot = '<tfoot><tr style="border-top:2px solid rgba(242,208,138,.4)">' +
-        '<td style="padding:4px 6px;font-weight:800;position:sticky;left:0;background:var(--bg2)">ИТОГО</td>' +
+      let tfoot = '<tfoot><tr>' +
+        '<td style="padding:6px 8px;font-size:13px;position:sticky;left:0;z-index:1;' + ftBg + '">ИТОГО</td>' +
         footCells +
-        '<td style="padding:4px;text-align:center;font-weight:700">' + totalShifts + '</td>' +
-        '<td style="padding:4px;text-align:center;font-weight:700;color:var(--gold)">' + grandPts + '</td>' +
-        '<td style="padding:4px;text-align:right;font-weight:700">' + money(Math.round(grandAmt)) + '</td>' +
-        '<td style="padding:4px;text-align:right;font-weight:700">' + money(Math.round(grandPd)) + '</td>' +
-        '<td style="padding:4px;text-align:right;font-weight:800;color:var(--gold)">' + money(Math.round(grandAmt + grandPd)) + '</td>' +
+        '<td style="padding:5px 4px;text-align:center;font-size:12px;' + ftBg + '">' + totalShifts + '</td>' +
+        '<td style="padding:5px 4px;text-align:center;font-size:12px;' + ftBg + '">' + grandPts + '</td>' +
+        '<td style="padding:5px 4px;text-align:right;font-size:12px;' + ftBg + '">' + money(Math.round(grandAmt)) + ' \u20BD</td>' +
+        '<td style="padding:5px 4px;text-align:right;font-size:12px;' + ftBg + '">' + money(Math.round(grandPd)) + ' \u20BD</td>' +
+        '<td style="padding:5px 4px;text-align:right;font-size:13px;' + ftBg + ';color:#F5C542">' + money(Math.round(grandAmt + grandPd)) + ' \u20BD</td>' +
         '</tr></tfoot>';
 
-      let table = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' + thead + tbody + tfoot + '</table></div>';
+      // Легенда цветов
+      let legend = '<div style="display:flex;gap:12px;margin-top:10px;font-size:11px;color:var(--t2);flex-wrap:wrap">' +
+        '<span>Обозначения:</span>' +
+        '<span style="display:inline-flex;align-items:center;gap:3px"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:#B3D9FF"></span> 6 бал. (дорога)</span>' +
+        '<span style="display:inline-flex;align-items:center;gap:3px"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:#90EE90"></span> 10 бал. (склад)</span>' +
+        '<span style="display:inline-flex;align-items:center;gap:3px"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:#00D26A"></span> 12 бал. (смена)</span>' +
+        '<span style="display:inline-flex;align-items:center;gap:3px"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:#FFD700"></span> 18 бал. (переработка)</span>' +
+        '</div>';
+
+      let table = '<div style="overflow-x:auto;border-radius:8px;border:1px solid rgba(255,255,255,.08)">' +
+        '<table style="width:100%;border-collapse:collapse">' + thead + tbody + tfoot + '</table></div>' + legend;
       return selectorBar + kpi + table;
     }
 
