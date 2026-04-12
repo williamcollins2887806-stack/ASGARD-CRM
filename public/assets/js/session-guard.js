@@ -537,7 +537,7 @@
           '<div class="sg-key" data-digit="8">8</div>' +
           '<div class="sg-key" data-digit="9">9</div>' +
           '<div class="sg-key action" data-action="delete" aria-label="Удалить">' +
-            '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 18l6-6m-6 0l6 6M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' +
+            '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>' +
           '</div>' +
           '<div class="sg-key" data-digit="0">0</div>' +
           bioBtn +
@@ -1060,7 +1060,7 @@
         '<div class="sg-key" data-digit="8">8</div>' +
         '<div class="sg-key" data-digit="9">9</div>' +
         '<div class="sg-key action" data-action="delete">' +
-          '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 18l6-6m-6 0l6 6M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' +
+          '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>' +
         '</div>' +
         '<div class="sg-key" data-digit="0">0</div>' +
         bioBtn +
