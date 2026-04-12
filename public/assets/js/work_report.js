@@ -185,22 +185,34 @@ window.AsgardWorkReport = (function () {
     `).join('') + '</div>';
   }
 
-  // mini gauge SVG for margin
+  // mini gauge SVG for margin (44x28, semicircle with 3 color zones + needle)
   function renderGaugeMini(margin) {
-    const angle = Math.min(margin, 50) / 50 * 180;
-    const color = margin >= 25 ? '#10b981' : margin >= 15 ? '#d4a843' : '#ef4444';
-    const rad = (a) => (a - 180) * Math.PI / 180;
-    const r = 18;
-    const cx = 22, cy = 22;
-    const x1 = cx + r * Math.cos(rad(0));
-    const y1 = cy + r * Math.sin(rad(0));
-    const x2 = cx + r * Math.cos(rad(angle));
-    const y2 = cy + r * Math.sin(rad(angle));
-    const large = angle > 180 ? 1 : 0;
+    const cx = 22, cy = 24, r = 18;
+    const clamp = Math.min(Math.max(margin, 0), 50);
+    const needleAngle = clamp / 50 * 180; // 0%=0deg (left), 50%=180deg (right)
+    const rad = (deg) => (deg - 180) * Math.PI / 180;
+
+    // Background arcs: red 0-15% (0-54deg), yellow 15-25% (54-90deg), green 25-50% (90-180deg)
+    function arc(startDeg, endDeg, color) {
+      const s = rad(startDeg), e = rad(endDeg);
+      const x1 = cx + r * Math.cos(s), y1 = cy + r * Math.sin(s);
+      const x2 = cx + r * Math.cos(e), y2 = cy + r * Math.sin(e);
+      const large = (endDeg - startDeg) > 180 ? 1 : 0;
+      return `<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 0 ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="butt" opacity="0.5"/>`;
+    }
+
+    // Needle
+    const nRad = rad(needleAngle);
+    const nx = cx + (r - 2) * Math.cos(nRad);
+    const ny = cy + (r - 2) * Math.sin(nRad);
+    const needleColor = clamp >= 25 ? '#10b981' : clamp >= 15 ? '#d4a843' : '#ef4444';
 
     return `<svg width="44" height="28" viewBox="0 0 44 28">
-      <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4" stroke-linecap="round"/>
-      <path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 0 ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"/>
+      ${arc(0, 54, '#ef4444')}
+      ${arc(54, 90, '#f59e0b')}
+      ${arc(90, 180, '#10b981')}
+      <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${needleColor}" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${cy}" r="2" fill="${needleColor}"/>
     </svg>`;
   }
 
@@ -222,41 +234,111 @@ window.AsgardWorkReport = (function () {
     if (cats.length === 0) return '<div class="wr-card"><div class="wr-card-title">Структура расходов</div><div class="wr-empty">Нет расходов</div></div>';
 
     const total = d.expenses.total || 1;
-    const R = 80, CX = 100, CY = 100, CIRC = 2 * Math.PI * R;
-    let offset = 0;
+    const R = 75, CX = 100, CY = 100, SW = 35;
+    const CIRC = 2 * Math.PI * R;
+    const GAP = 2; // gap in px between segments
+    const gapAngle = GAP / R; // gap as radians
+    const gapFrac = gapAngle / (2 * Math.PI); // gap as fraction of circumference
+    const totalGap = gapFrac * cats.length;
+    const usableFrac = Math.max(1 - totalGap, 0.5);
+    const uid = 'dnt' + Date.now();
 
-    const circles = cats.map((c, i) => {
-      const frac = c.sum / total;
+    let offset = 0;
+    const segments = cats.map((c, i) => {
+      const frac = (c.sum / total) * usableFrac;
       const dashLen = frac * CIRC;
+      const gapLen = gapFrac * CIRC;
       const dashOff = -offset;
-      offset += dashLen;
+      offset += dashLen + gapLen;
       const ci = CHART_COLORS[i % CHART_COLORS.length];
-      return `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${ci}" stroke-width="32"
+      return `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${ci}" stroke-width="${SW}"
         stroke-dasharray="${dashLen} ${CIRC - dashLen}" stroke-dashoffset="${dashOff}"
-        class="wr-donut-seg" data-idx="${i}" style="transform-origin:${CX}px ${CY}px"/>`;
+        class="wr-donut-seg" data-idx="${i}" style="transform-origin:${CX}px ${CY}px;stroke-dashoffset:${CIRC};animation:wrDonutIn .8s ease ${i * 80}ms forwards"
+        data-final-offset="${dashOff}" data-final-dash="${dashLen} ${CIRC - dashLen}"/>`;
     });
 
     const legend = cats.map((c, i) => {
       const info = CAT_LABELS[c.category] || { label: c.category, icon: '\uD83D\uDCCB' };
       const ci = CHART_COLORS[i % CHART_COLORS.length];
-      return `<div class="wr-donut-legend-item" data-idx="${i}">
+      return `<div class="wr-donut-legend-item" data-idx="${i}" data-uid="${uid}">
         <span class="wr-donut-dot" style="background:${ci}"></span>
         <span class="wr-donut-legend-label">${esc(info.label)}</span>
         <span class="wr-donut-legend-val">${m(c.sum)} \u20BD</span>
-        <span class="wr-donut-legend-pct" style="color:var(--t3);font-size:11px;min-width:32px;text-align:right">${pct(c.sum, total)}%</span>
+        <span class="wr-donut-legend-pct" style="color:var(--t2);font-size:11px;min-width:36px;text-align:right">${pct(c.sum, total)}%</span>
       </div>`;
     });
 
+    // Tooltip div (absolute, hidden by default)
+    const tooltip = `<div class="wr-donut-tooltip" id="${uid}-tip" style="display:none"></div>`;
+
+    const style = `<style>
+@keyframes wrDonutIn{to{stroke-dashoffset:var(--final-off)}}
+.wr-donut-seg{transition:transform .3s,opacity .2s;cursor:pointer;transform-origin:${CX}px ${CY}px}
+.wr-donut-seg:hover,.wr-donut-seg.active{transform:scale(1.06)}
+.wr-donut-seg.dimmed{opacity:0.3}
+.wr-donut-tooltip{position:absolute;background:rgba(20,20,30,.92);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:8px 12px;font-size:12px;color:#fff;pointer-events:none;white-space:nowrap;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+.wr-donut-legend-item{transition:opacity .2s}
+.wr-donut-legend-item.dimmed{opacity:0.35}
+</style>`;
+
+    // Script for interactivity
+    const script = `<script>
+(function(){
+  var wrap = document.getElementById('${uid}');
+  if(!wrap) return;
+  var segs = wrap.querySelectorAll('.wr-donut-seg');
+  var legItems = document.querySelectorAll('.wr-donut-legend-item[data-uid="${uid}"]');
+  var tip = document.getElementById('${uid}-tip');
+  var cats = ${JSON.stringify(cats.map((c,i)=>({label:(CAT_LABELS[c.category]||{label:c.category}).label, sum:c.sum, count:c.count, pct:pct(c.sum,total)})))};
+
+  // Apply final animation values via CSS custom property
+  segs.forEach(function(s){
+    s.style.setProperty('--final-off', s.dataset.finalOffset + 'px');
+    s.style.strokeDasharray = s.dataset.finalDash;
+  });
+
+  function highlight(idx){
+    segs.forEach(function(s,i){ s.classList.toggle('active',i===idx); s.classList.toggle('dimmed',idx!==-1&&i!==idx); });
+    legItems.forEach(function(l,i){ l.classList.toggle('dimmed',idx!==-1&&i!==idx); });
+  }
+  function showTip(idx,e){
+    if(!tip||idx<0||idx>=cats.length)return;
+    var c=cats[idx];
+    tip.innerHTML='<strong>'+c.label+'</strong><br>'+c.sum.toLocaleString('ru-RU')+' \\u20BD ('+c.pct+'%)<br>'+c.count+' операц.';
+    tip.style.display='block';
+    var r=wrap.getBoundingClientRect();
+    tip.style.left=(e.clientX-r.left+12)+'px';
+    tip.style.top=(e.clientY-r.top-10)+'px';
+  }
+  function hideTip(){ if(tip) tip.style.display='none'; }
+
+  segs.forEach(function(s,i){
+    s.addEventListener('mouseenter',function(e){highlight(i);showTip(i,e);});
+    s.addEventListener('mousemove',function(e){showTip(i,e);});
+    s.addEventListener('mouseleave',function(){highlight(-1);hideTip();});
+  });
+  legItems.forEach(function(l,i){
+    l.addEventListener('mouseenter',function(){highlight(i);});
+    l.addEventListener('mouseleave',function(){highlight(-1);});
+  });
+})();
+<\/script>`;
+
     return `<div class="wr-card">
       <div class="wr-card-title">Структура расходов</div>
-      <div class="wr-donut-wrap">
+      ${style}
+      <div class="wr-donut-wrap" id="${uid}" style="position:relative">
+        ${tooltip}
         <svg viewBox="0 0 200 200" class="wr-donut-svg">
-          ${circles.join('')}
-          <text x="${CX}" y="${CY - 8}" text-anchor="middle" class="wr-donut-total-label">Итого</text>
-          <text x="${CX}" y="${CY + 14}" text-anchor="middle" class="wr-donut-total-val">${m(total)} \u20BD</text>
+          ${segments.join('')}
+          <text x="${CX}" y="${CY - 16}" text-anchor="middle" fill="var(--t2)" font-size="18">\u20BD</text>
+          <text x="${CX}" y="${CY + 2}" text-anchor="middle" class="wr-donut-total-label">Итого</text>
+          <text x="${CX}" y="${CY + 18}" text-anchor="middle" class="wr-donut-total-val">${m(total)} \u20BD</text>
+          <text x="${CX}" y="${CY + 32}" text-anchor="middle" fill="var(--t2)" font-size="10">${cats.length} категори${cats.length === 1 ? 'я' : cats.length < 5 ? 'и' : 'й'}</text>
         </svg>
         <div class="wr-donut-legend">${legend.join('')}</div>
       </div>
+      ${script}
     </div>`;
   }
 
@@ -363,21 +445,51 @@ window.AsgardWorkReport = (function () {
     const profitColor = d.profit.net >= 0 ? '#10b981' : '#ef4444';
     const marginColor = d.profit.margin >= 25 ? '#10b981' : d.profit.margin >= 15 ? '#d4a843' : '#ef4444';
 
-    // Gauge SVG
-    const angle = Math.min(Math.max(d.profit.margin, 0), 50) / 50 * 180;
-    const R = 55, CX = 80, CY = 60;
-    const rad = (a) => (a - 180) * Math.PI / 180;
-    const x1 = CX + R * Math.cos(rad(0));
-    const y1 = CY + R * Math.sin(rad(0));
-    const x2 = CX + R * Math.cos(rad(angle));
-    const y2 = CY + R * Math.sin(rad(angle));
-    const large = angle > 180 ? 1 : 0;
+    // Gauge SVG 200x110 with 3 color zone arcs + needle triangle
+    const R = 70, CX = 100, CY = 90, SW = 12;
+    const rad = (deg) => (deg - 180) * Math.PI / 180;
 
-    const gaugeSvg = `<svg viewBox="0 0 160 80" class="wr-profit-gauge" style="width:100%;max-width:180px;height:auto">
-      <path d="M ${CX-R} ${CY} A ${R} ${R} 0 0 1 ${CX+R} ${CY}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8" stroke-linecap="round"/>
-      <path d="M ${x1} ${y1} A ${R} ${R} 0 ${large} 0 ${x2} ${y2}" fill="none" stroke="${marginColor}" stroke-width="8" stroke-linecap="round" class="wr-gauge-arc"/>
-      <text x="${CX}" y="${CY - 4}" text-anchor="middle" fill="${marginColor}" font-size="22" font-weight="700">${d.profit.margin}%</text>
-      <text x="${CX}" y="${CY + 12}" text-anchor="middle" fill="var(--t2)" font-size="11">маржа</text>
+    // Zone arcs: red 0-54deg (0-15%), yellow 54-90deg (15-25%), green 90-180deg (25-50%)
+    function zoneArc(startDeg, endDeg, color) {
+      const s = rad(startDeg), e = rad(endDeg);
+      const x1 = CX + R * Math.cos(s), y1 = CY + R * Math.sin(s);
+      const x2 = CX + R * Math.cos(e), y2 = CY + R * Math.sin(e);
+      const large = (endDeg - startDeg) > 180 ? 1 : 0;
+      return `<path d="M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${R} ${R} 0 ${large} 0 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${SW}" stroke-linecap="butt" opacity="0.35"/>`;
+    }
+
+    // Needle (triangle pointing at current margin)
+    const clamp = Math.min(Math.max(d.profit.margin, 0), 50);
+    const needleDeg = clamp / 50 * 180;
+    const nRad = rad(needleDeg);
+    const tipR = R + SW / 2 + 4; // tip just outside the arc
+    const baseR = R - SW / 2 - 2; // base inside the arc
+    const tipX = CX + tipR * Math.cos(nRad);
+    const tipY = CY + tipR * Math.sin(nRad);
+    // Base perpendicular to needle direction
+    const perpAngle = nRad + Math.PI / 2;
+    const bw = 5; // half-width of base
+    const b1x = CX + baseR * Math.cos(nRad) + bw * Math.cos(perpAngle);
+    const b1y = CY + baseR * Math.sin(nRad) + bw * Math.sin(perpAngle);
+    const b2x = CX + baseR * Math.cos(nRad) - bw * Math.cos(perpAngle);
+    const b2y = CY + baseR * Math.sin(nRad) - bw * Math.sin(perpAngle);
+
+    // Zone labels positions (below arc)
+    const labelR = R + SW / 2 + 16;
+    const lbX = (deg) => CX + labelR * Math.cos(rad(deg));
+    const lbY = (deg) => CY + labelR * Math.sin(rad(deg));
+
+    const gaugeSvg = `<svg viewBox="0 0 200 110" class="wr-profit-gauge" style="width:100%;max-width:200px;height:auto">
+      ${zoneArc(0, 54, '#ef4444')}
+      ${zoneArc(54, 90, '#f59e0b')}
+      ${zoneArc(90, 180, '#10b981')}
+      <polygon points="${tipX.toFixed(1)},${tipY.toFixed(1)} ${b1x.toFixed(1)},${b1y.toFixed(1)} ${b2x.toFixed(1)},${b2y.toFixed(1)}" fill="${marginColor}"/>
+      <circle cx="${CX}" cy="${CY}" r="4" fill="${marginColor}"/>
+      <text x="${CX}" y="${CY - 14}" text-anchor="middle" fill="${marginColor}" font-size="24" font-weight="700">${d.profit.margin}%</text>
+      <text x="${CX}" y="${CY - 0}" text-anchor="middle" fill="var(--t2)" font-size="11">маржа</text>
+      <text x="${lbX(27).toFixed(1)}" y="${lbY(27).toFixed(1)}" text-anchor="middle" fill="#ef4444" font-size="8" opacity="0.7">Плохо</text>
+      <text x="${lbX(72).toFixed(1)}" y="${lbY(72).toFixed(1)}" text-anchor="middle" fill="#f59e0b" font-size="8" opacity="0.7">Средне</text>
+      <text x="${lbX(135).toFixed(1)}" y="${lbY(135).toFixed(1)}" text-anchor="middle" fill="#10b981" font-size="8" opacity="0.7">Хорошо</text>
     </svg>`;
 
     return `<div class="wr-card wr-profit-card">
@@ -419,46 +531,101 @@ window.AsgardWorkReport = (function () {
       { label: 'Прибыль', value: d.profit.net, type: 'total' },
     ];
 
-    const maxVal = Math.max(...items.map(i => Math.abs(i.value)), 1);
-    const W = 360, H = 220, PAD = 35, BAR_GAP = 8;
+    const W = 400, H = 240;
+    const padTop = 30, padBot = 28, padLeft = 10, padRight = 10;
+    const chartH = H - padTop - padBot;
     const barCount = items.length;
-    const barW = Math.floor((W - PAD * 2 - BAR_GAP * (barCount - 1)) / barCount);
-    const chartH = H - PAD * 2;
+    const barGap = 12;
+    const chartW = W - padLeft - padRight;
+    const barW = Math.floor((chartW - barGap * (barCount - 1)) / barCount);
 
+    // Compute running totals to find min/max of the waterfall
     let running = 0;
-    const bars = items.map((item, i) => {
-      const x = PAD + i * (barW + BAR_GAP);
-      let barH, y;
+    const runningVals = [0]; // start at 0
+    items.forEach(item => {
+      if (item.type === 'total') {
+        runningVals.push(item.value);
+        runningVals.push(0);
+      } else if (item.type === 'pos') {
+        runningVals.push(running);
+        running += item.value;
+        runningVals.push(running);
+      } else {
+        runningVals.push(running);
+        running -= item.value;
+        runningVals.push(running);
+      }
+    });
+    const minVal = Math.min(...runningVals, 0);
+    const maxVal = Math.max(...runningVals, 1);
+    const range = maxVal - minVal || 1;
+    const scale = chartH / range;
+
+    // Y coordinate from value (higher value = lower Y)
+    const yOf = (v) => padTop + (maxVal - v) * scale;
+    const zeroY = yOf(0);
+
+    running = 0;
+    let prevRunning = 0;
+    const svgParts = [];
+
+    // Dashed zero baseline
+    svgParts.push(`<line x1="${padLeft}" y1="${zeroY}" x2="${W - padRight}" y2="${zeroY}" stroke="rgba(255,255,255,0.12)" stroke-dasharray="4 3" stroke-width="1"/>`);
+
+    items.forEach((item, i) => {
+      const x = padLeft + i * (barW + barGap);
       const colors = { pos: '#10b981', neg: '#ef4444', total: item.value >= 0 ? '#3b82f6' : '#ef4444' };
       const color = colors[item.type];
+      let barTop, barBottom;
+
+      prevRunning = running;
 
       if (item.type === 'total') {
-        barH = Math.abs(item.value) / maxVal * chartH;
-        y = item.value >= 0 ? (PAD + chartH - barH) : (PAD + chartH);
+        // Bar from 0 to item.value
+        if (item.value >= 0) {
+          barTop = yOf(item.value);
+          barBottom = zeroY;
+        } else {
+          barTop = zeroY;
+          barBottom = yOf(item.value);
+        }
       } else if (item.type === 'pos') {
-        barH = item.value / maxVal * chartH;
-        y = PAD + chartH - (running + item.value) / maxVal * chartH;
+        // Bar grows up from running
+        barTop = yOf(running + item.value);
+        barBottom = yOf(running);
         running += item.value;
-      } else {
-        barH = item.value / maxVal * chartH;
-        y = PAD + chartH - running / maxVal * chartH;
+      } else { // neg
+        // Bar grows down from running
+        barTop = yOf(running);
+        barBottom = yOf(running - item.value);
         running -= item.value;
       }
 
-      barH = Math.max(barH, 2);
+      let barH = Math.max(barBottom - barTop, 2);
 
-      // Label
-      const labelY = y - 4;
-      const valLabel = mShort(item.value);
+      // Connector: dashed line from previous bar's running total to this bar's starting level
+      if (i > 0 && item.type !== 'total') {
+        const connY = yOf(prevRunning);
+        const prevX = padLeft + (i - 1) * (barW + barGap) + barW;
+        svgParts.push(`<line x1="${prevX}" y1="${connY}" x2="${x}" y2="${connY}" stroke="rgba(255,255,255,0.15)" stroke-dasharray="3 2" stroke-width="1"/>`);
+      }
 
-      return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${color}" class="wr-wf-bar" style="--delay:${i * 100}ms"/>
-        <text x="${x + barW/2}" y="${Math.max(labelY, 12)}" text-anchor="middle" class="wr-wf-val">${valLabel}</text>
-        <text x="${x + barW/2}" y="${H - 4}" text-anchor="middle" class="wr-wf-label">${item.label}</text>`;
+      // Bar with rounded top
+      svgParts.push(`<rect x="${x}" y="${barTop}" width="${barW}" height="${barH}" rx="3" fill="${color}" class="wr-wf-bar" style="--delay:${i * 100}ms"/>`);
+
+      // Value label above/below bar
+      const valLabel = (item.type === 'neg' ? '\u2212' : '') + mShort(item.value);
+      const labelAbove = item.type !== 'neg';
+      const valY = labelAbove ? Math.max(barTop - 6, 10) : Math.min(barBottom + 14, H - padBot - 2);
+      svgParts.push(`<text x="${x + barW / 2}" y="${valY}" text-anchor="middle" class="wr-wf-val">${valLabel}</text>`);
+
+      // Bottom label
+      svgParts.push(`<text x="${x + barW / 2}" y="${H - 6}" text-anchor="middle" class="wr-wf-label" style="font-size:10px">${item.label}</text>`);
     });
 
     return `<div class="wr-card">
       <div class="wr-card-title">Путь к прибыли</div>
-      <svg viewBox="0 0 ${W} ${H}" class="wr-wf-svg">${bars.join('')}</svg>
+      <svg viewBox="0 0 ${W} ${H}" class="wr-wf-svg">${svgParts.join('')}</svg>
     </div>`;
   }
 
@@ -1010,9 +1177,7 @@ window.AsgardWorkReport = (function () {
 /* ── Profit card ── */
 .wr-profit-grid{display:flex;gap:20px;align-items:center}
 .wr-profit-formula{flex:1}
-.wr-profit-gauge-wrap{flex-shrink:0;width:180px;min-width:180px}
-.wr-gauge-arc{stroke-dasharray:0;animation:wrGaugeIn 1.2s ease forwards}
-@keyframes wrGaugeIn{from{opacity:0}to{opacity:1}}
+.wr-profit-gauge-wrap{flex-shrink:0;width:200px;min-width:180px}
 
 /* ── Waterfall ── */
 .wr-wf-svg{width:100%;height:auto}
