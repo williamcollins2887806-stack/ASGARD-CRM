@@ -1978,107 +1978,78 @@ ${analogsSummary}
     const startTime = Date.now();
 
     try {
-      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+      const mimirAgent = require('../services/mimir-agent');
 
-      sendEvent({ type: 'start', work_id: workId, message: '🚀 Мимир приступает к просчёту' });
+      sendEvent({ type: 'start', work_id: workId, message: '🧠 Мимир приступает к анализу' });
 
-      // Callback для прогресса — пересылается в SSE
-      const onProgress = (event) => sendEvent(event);
-
-      // Шаг 1: собрать весь контекст
-      const context = await mimirAutoEstimate.buildAutoEstimateContext(
-        db, workId, user, onProgress
+      // AP5: Agent mode — Claude сам вызывает tools
+      const result = await mimirAgent.runAgent(db, workId, user,
+        // onEvent — каждый tool-call → SSE прогресс
+        (event) => sendEvent(event),
+        // onAskUser — когда Claude задаёт вопрос (пока auto-ответ)
+        // TODO: в будущем — SSE pause + POST /agent-respond
+        async (question) => {
+          sendEvent({ type: 'ask_user', question });
+          // Пока автоответ — пользователь ответит через чат позже
+          return 'Считай по имеющимся данным, я уточню потом в чате.';
+        }
       );
 
-      // Шаг 2: вызов AI (Claude Sonnet 4.6 через aiProvider.complete)
-      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧮 Считаю себестоимость и наценку...' });
+      if (result.isText) {
+        // AI вернул текст вместо JSON — показываем как сообщение
+        sendEvent({ type: 'text_response', text: result.text });
+        sendEvent({ type: 'done' });
+      } else {
+        // Полный результат с estimate
+        const totals = result.recomputed?.totals || {};
+        const ai = result.ai || {};
 
-      let aiBundle;
-      try {
-        aiBundle = await mimirAutoEstimate.callMimirForEstimate(aiProvider, context);
-      } catch (aiErr) {
-        fastify.log.error('[Mimir auto-estimate AI]:', aiErr.message);
         sendEvent({
-          type: 'error',
-          message: 'Ошибка AI: ' + aiErr.message,
-          phase: 'ai_call',
+          type: 'result',
+          success: true,
+          ap_phase: 'AP5',
+          estimate_id: result.created?.estimate_id,
+          version_no: result.created?.version_no,
+          card: {
+            title: ai.estimate?.title || '',
+            customer: ai.estimate?.customer || '',
+            object: ai.estimate?.object_name || '',
+            city: ai.estimate?.object_city || '',
+            crew_count: ai.estimate?.crew_count,
+            work_days: ai.estimate?.work_days,
+            road_days: ai.estimate?.road_days,
+            markup_multiplier: totals.markup_multiplier,
+            total_cost: totals.total_cost,
+            total_with_margin: totals.total_with_margin,
+            total_with_vat: totals.total_with_vat,
+            margin_pct: totals.margin_pct,
+            fot_subtotal: totals.personnel_with_tax,
+            travel_subtotal: totals.travel_subtotal,
+            transport_subtotal: totals.transport_subtotal,
+            chemistry_subtotal: totals.chemistry_subtotal,
+            current_subtotal: totals.current_subtotal,
+            drift_pct: result.recomputed?.drift,
+            time_overflow_fix: result.recomputed?.timeOverflowFix
+          },
+          analysis: {
+            markup_reasoning: ai.analysis?.markup_reasoning || null,
+            warnings: ai.analysis?.warnings || [],
+            purchases_needed: ai.analysis?.purchases_needed || []
+          },
+          equipment_status: ai.equipment_status || null,
+          permits_status: ai.permits_status || null,
+          route_plan: ai.route_plan || null,
+          comment: ai.estimate?.comment || null,
+          ai_meta: {
+            model: result.model,
+            iterations: result.iterations,
+            tokens: result.tokens
+          },
           elapsed_ms: Date.now() - startTime
         });
-        reply.raw.end();
-        return;
+
+        sendEvent({ type: 'done' });
       }
-
-      // Шаг 3: создать estimate (draft) + estimate_calculation_data
-      sendEvent({ type: 'progress', step: 'creating_estimate', message: '📝 Создаю просчёт в системе...' });
-
-      let created;
-      try {
-        created = await mimirAutoEstimate.createDraftEstimate(db, context, aiBundle.ai, aiBundle.recomputed, user);
-      } catch (dbErr) {
-        fastify.log.error('[Mimir auto-estimate DB]:', dbErr.message, dbErr.stack);
-        sendEvent({
-          type: 'error',
-          message: 'Ошибка создания просчёта: ' + dbErr.message,
-          phase: 'create_estimate',
-          elapsed_ms: Date.now() - startTime
-        });
-        reply.raw.end();
-        return;
-      }
-
-      // Шаг 4: financial summary для UI карточки
-      const totals = aiBundle.recomputed.totals;
-      const ai = aiBundle.ai;
-
-      sendEvent({
-        type: 'result',
-        success: true,
-        ap_phase: 'AP2',
-        estimate_id: created.estimate_id,
-        version_no: created.version_no,
-        // Краткая сводка для итоговой карточки в UI
-        card: {
-          title: ai.estimate?.title || context.work.work_title,
-          customer: context.work.customer_name || context.tender?.customer_name,
-          object: context.work.object_name,
-          city: ai.estimate?.object_city || context.work.city,
-          crew_count: ai.estimate?.crew_count,
-          work_days: ai.estimate?.work_days,
-          road_days: ai.estimate?.road_days,
-          markup_multiplier: totals.markup_multiplier,
-          total_cost: totals.total_cost,
-          total_with_margin: totals.total_with_margin,
-          total_with_vat: totals.total_with_vat,
-          margin_pct: totals.margin_pct,
-          fot_subtotal: totals.personnel_with_tax,
-          travel_subtotal: totals.travel_subtotal,
-          transport_subtotal: totals.transport_subtotal,
-          chemistry_subtotal: totals.chemistry_subtotal,
-          current_subtotal: totals.current_subtotal,
-          drift_pct: aiBundle.recomputed.drift,
-          time_overflow_fix: aiBundle.recomputed.timeOverflowFix
-        },
-        analysis: {
-          markup_reasoning: ai.analysis?.markup_reasoning || null,
-          warnings: ai.analysis?.warnings || [],
-          purchases_needed: ai.analysis?.purchases_needed || [],
-          time_overflow_fix: aiBundle.recomputed.timeOverflowFix
-        },
-        equipment_status: ai.equipment_status || null,
-        permits_status: ai.permits_status || null,
-        route_plan: ai.route_plan || null,
-        comment: ai.estimate?.comment || null,
-        summary: context.summary,
-        ai_meta: {
-          model: aiBundle.model,
-          provider: aiBundle.provider,
-          tokens: aiBundle.tokens,
-          duration_ms: aiBundle.duration_ms
-        },
-        elapsed_ms: Date.now() - startTime
-      });
-
-      sendEvent({ type: 'done' });
 
     } catch (error) {
       fastify.log.error('[Mimir auto-estimate]:', error.message, error.stack);

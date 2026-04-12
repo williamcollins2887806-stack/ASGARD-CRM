@@ -112,7 +112,10 @@ function getConfig() {
     temperature: AI_TEMPERATURE,
     hasAnthropicKey: !!ANTHROPIC_API_KEY,
     hasOpenAIKey: !!OPENAI_API_KEY,
-    hasYandexKey: !!(YANDEX_GPT_API_KEY && YANDEX_FOLDER_ID)
+    hasYandexKey: !!(YANDEX_GPT_API_KEY && YANDEX_FOLDER_ID),
+    // AP5: для agent tool-calling (прямой доступ к URL и ключу)
+    openaiUrl: OPENAI_URL,
+    openaiKey: OPENAI_API_KEY
   };
 }
 
@@ -791,5 +794,6 @@ module.exports = {
   parseAnthropicStream,
   parseOpenAIStream,
   getConfig,
-  getProvider
+  getProvider,
+  _loadKeysFromDB // AP5: agent needs to ensure keys are loaded
 };

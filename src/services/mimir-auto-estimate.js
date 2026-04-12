@@ -2023,5 +2023,8 @@ module.exports = {
   callMimirForEstimate,
   // AP3
   getEmployeePermitsSummary,
-  loadExistingDraftForWork
+  loadExistingDraftForWork,
+  // AP5
+  normalizeCalcRows,
+  resolveEquipmentFromWarehouse
 };
