@@ -2004,6 +2004,9 @@ ${analogsSummary}
         throw new Error('AI не вернул ответ');
       }
 
+      console.log(`[AP5] Claude responded: ${aiResult.text.length} chars, model=${aiResult.model}, ${aiResult.durationMs}ms`);
+      console.log(`[AP5] First 200 chars: ${aiResult.text.substring(0, 200)}`);
+
       // ── Парсим ответ (может быть questions или estimate) ──
       let parsed;
       try { parsed = mimirAutoEstimate.parseAIResponse(aiResult.text); }
@@ -2095,10 +2098,11 @@ ${analogsSummary}
       sendEvent({ type: 'done' });
 
     } catch (error) {
-      fastify.log.error('[Mimir auto-estimate]:', error.message, error.stack);
+      console.error('[Mimir auto-estimate ERROR]:', error.message);
+      console.error(error.stack);
       sendEvent({
         type: 'error',
-        message: error.message || 'Неизвестная ошибка',
+        message: String(error.message || 'Неизвестная ошибка').substring(0, 500),
         elapsed_ms: Date.now() - startTime
       });
     }
