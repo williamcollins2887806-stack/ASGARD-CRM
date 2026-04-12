@@ -1978,78 +1978,121 @@ ${analogsSummary}
     const startTime = Date.now();
 
     try {
-      const mimirAgent = require('../services/mimir-agent');
+      const collector = require('../services/mimir-collector');
+      const { getSystemPrompt, serializeContext } = require('../services/mimir-prompt');
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
 
       sendEvent({ type: 'start', work_id: workId, message: '🧠 Мимир приступает к анализу' });
 
-      // AP5: Agent mode — Claude сам вызывает tools
-      const result = await mimirAgent.runAgent(db, workId, user,
-        // onEvent — каждый tool-call → SSE прогресс
-        (event) => sendEvent(event),
-        // onAskUser — когда Claude задаёт вопрос (пока auto-ответ)
-        // TODO: в будущем — SSE pause + POST /agent-respond
-        async (question) => {
-          sendEvent({ type: 'ask_user', question });
-          // Пока автоответ — пользователь ответит через чат позже
-          return 'Считай по имеющимся данным, я уточню потом в чате.';
-        }
-      );
+      // ── Фаза 1: Сервер собирает ВСЕ данные (15 типов, ~200мс) ──
+      const ctx = await collector.collectAll(db, workId, (event) => sendEvent(event));
 
-      if (result.isText) {
-        // AI вернул текст вместо JSON — показываем как сообщение
-        sendEvent({ type: 'text_response', text: result.text });
+      // ── Фаза 2: Claude анализирует и считает ──
+      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧮 Claude Sonnet анализирует данные...' });
+
+      const dataText = serializeContext(ctx);
+      const systemPrompt = getSystemPrompt();
+
+      const aiResult = await aiProvider.complete({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `Составь просчёт для работы #${workId}.\n\n${dataText}` }],
+        maxTokens: 8000,
+        temperature: 0.2
+      });
+
+      if (!aiResult || !aiResult.text) {
+        throw new Error('AI не вернул ответ');
+      }
+
+      // ── Парсим ответ (может быть questions или estimate) ──
+      let parsed;
+      try { parsed = mimirAutoEstimate.parseAIResponse(aiResult.text); }
+      catch (e) {
+        // Не JSON — текстовый ответ
+        sendEvent({ type: 'text_response', text: aiResult.text, model: aiResult.model });
         sendEvent({ type: 'done' });
-      } else {
-        // Полный результат с estimate
-        const totals = result.recomputed?.totals || {};
-        const ai = result.ai || {};
+        reply.raw.end();
+        return;
+      }
 
+      // Фаза вопросов
+      if (parsed.phase === 'questions' && parsed.questions) {
         sendEvent({
-          type: 'result',
-          success: true,
-          ap_phase: 'AP5',
-          estimate_id: result.created?.estimate_id,
-          version_no: result.created?.version_no,
-          card: {
-            title: ai.estimate?.title || '',
-            customer: ai.estimate?.customer || '',
-            object: ai.estimate?.object_name || '',
-            city: ai.estimate?.object_city || '',
-            crew_count: ai.estimate?.crew_count,
-            work_days: ai.estimate?.work_days,
-            road_days: ai.estimate?.road_days,
-            markup_multiplier: totals.markup_multiplier,
-            total_cost: totals.total_cost,
-            total_with_margin: totals.total_with_margin,
-            total_with_vat: totals.total_with_vat,
-            margin_pct: totals.margin_pct,
-            fot_subtotal: totals.personnel_with_tax,
-            travel_subtotal: totals.travel_subtotal,
-            transport_subtotal: totals.transport_subtotal,
-            chemistry_subtotal: totals.chemistry_subtotal,
-            current_subtotal: totals.current_subtotal,
-            drift_pct: result.recomputed?.drift,
-            time_overflow_fix: result.recomputed?.timeOverflowFix
-          },
-          analysis: {
-            markup_reasoning: ai.analysis?.markup_reasoning || null,
-            warnings: ai.analysis?.warnings || [],
-            purchases_needed: ai.analysis?.purchases_needed || []
-          },
-          equipment_status: ai.equipment_status || null,
-          permits_status: ai.permits_status || null,
-          route_plan: ai.route_plan || null,
-          comment: ai.estimate?.comment || null,
-          ai_meta: {
-            model: result.model,
-            iterations: result.iterations,
-            tokens: result.tokens
-          },
+          type: 'questions',
+          questions: parsed.questions,
+          model: aiResult.model,
           elapsed_ms: Date.now() - startTime
         });
-
         sendEvent({ type: 'done' });
+        reply.raw.end();
+        return;
       }
+
+      // Фаза расчёта
+      sendEvent({ type: 'progress', step: 'creating_estimate', message: '📝 Создаю просчёт в системе...' });
+
+      const ai = parsed;
+      ai._meta = { model: aiResult.model, provider: aiResult.provider };
+
+      // Серверная валидация математики
+      const settings = ctx.settings;
+      const recomputed = mimirAutoEstimate.validateAndRecomputeMath(ai, settings,
+        { work: ctx.work, tender: ctx.tender, warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+      mimirAutoEstimate.normalizeCalcRows(recomputed.calculation);
+      mimirAutoEstimate.resolveEquipmentFromWarehouse(ai, { warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+
+      // Создание estimate в БД
+      const created = await mimirAutoEstimate.createDraftEstimate(db, ctx, ai, recomputed, user);
+
+      const totals = recomputed.totals || {};
+
+      sendEvent({
+        type: 'result',
+        success: true,
+        ap_phase: 'AP5',
+        estimate_id: created.estimate_id,
+        version_no: created.version_no,
+        card: {
+          title: ai.estimate?.title || ctx.work.work_title,
+          customer: ctx.work.customer_name || ctx.tender?.customer_name,
+          object: ctx.work.object_name,
+          city: ai.estimate?.object_city || ctx.work.city,
+          crew_count: ai.estimate?.crew_count,
+          work_days: ai.estimate?.work_days,
+          road_days: ai.estimate?.road_days,
+          markup_multiplier: totals.markup_multiplier,
+          total_cost: totals.total_cost,
+          total_with_margin: totals.total_with_margin,
+          total_with_vat: totals.total_with_vat,
+          margin_pct: totals.margin_pct,
+          fot_subtotal: totals.personnel_with_tax,
+          travel_subtotal: totals.travel_subtotal,
+          transport_subtotal: totals.transport_subtotal,
+          chemistry_subtotal: totals.chemistry_subtotal,
+          current_subtotal: totals.current_subtotal,
+          drift_pct: recomputed.drift,
+          time_overflow_fix: recomputed.timeOverflowFix
+        },
+        analysis: {
+          markup_reasoning: ai.analysis?.markup_reasoning || null,
+          warnings: ai.analysis?.warnings || [],
+          purchases_needed: ai.analysis?.purchases_needed || []
+        },
+        equipment_status: ai.equipment_status || null,
+        permits_status: ai.permits_status || null,
+        route_plan: ai.route_plan || null,
+        recommended_crew: ai.recommended_crew || null,
+        comment: ai.estimate?.comment || null,
+        ai_meta: {
+          model: aiResult.model,
+          provider: aiResult.provider,
+          tokens: aiResult.usage,
+          duration_ms: aiResult.durationMs
+        },
+        elapsed_ms: Date.now() - startTime
+      });
+
+      sendEvent({ type: 'done' });
 
     } catch (error) {
       fastify.log.error('[Mimir auto-estimate]:', error.message, error.stack);
