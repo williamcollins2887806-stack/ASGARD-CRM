@@ -40,7 +40,10 @@ const MAX_DOCUMENTS_PARSED = 8;
 const MAX_ANALOGS = 10;
 const MAX_CUSTOMER_HISTORY = 15;
 const MAX_WAREHOUSE_ITEMS = 200;
-const MAX_AVAILABLE_WORKERS = 50;
+// AP3.5: Снят лимит для полевых — выгружаем ВСЕХ. В prompt передаём агрегаты,
+// не поимённый список (агрегация по role_tag + позициям).
+const MAX_FIELD_EMPLOYEES = 2000;
+const MAX_ITR_USERS = 50;
 
 /**
  * Безопасный wrapper для onProgress callback —
@@ -320,39 +323,66 @@ async function getAvailableWorkers(db, startDate, endDate, onProgress) {
 
   const ITR_ROLES = "('PM','HEAD_PM','CHIEF_ENGINEER','FIELD_ENGINEER','FOREMAN','MASTER')";
 
-  // Без дат — просто покажем всех активных
+  async function fetchItr(busyItrIds = []) {
+    const itrParams = [];
+    let itrBusyClause = '';
+    if (busyItrIds.length > 0) {
+      itrParams.push(busyItrIds);
+      itrBusyClause = ` AND id != ALL($${itrParams.length}::int[])`;
+    }
+    itrParams.push(MAX_ITR_USERS);
+    const limitIdx = itrParams.length;
+    const res = await db.query(
+      `SELECT id, name, role, login FROM users
+        WHERE is_active = true AND role IN ${ITR_ROLES}${itrBusyClause}
+        ORDER BY role, name LIMIT $${limitIdx}`,
+      itrParams
+    );
+    return res.rows;
+  }
+
+  async function fetchField(busyEmpIds = []) {
+    const fieldParams = [];
+    let fieldBusyClause = '';
+    if (busyEmpIds.length > 0) {
+      fieldParams.push(busyEmpIds);
+      fieldBusyClause = ` AND id != ALL($${fieldParams.length}::int[])`;
+    }
+    fieldParams.push(MAX_FIELD_EMPLOYEES);
+    const limitIdx = fieldParams.length;
+    // ВАЖНО: тянем role_tag (это правильное поле — Слесарь/Сварщик/РП), а не position (мусорное)
+    const res = await db.query(
+      `SELECT id, COALESCE(full_name, fio) AS full_name, position, role_tag, grade
+         FROM employees
+        WHERE COALESCE(is_active, true) = true
+          AND dismissal_date IS NULL${fieldBusyClause}
+        ORDER BY role_tag NULLS LAST, full_name
+        LIMIT $${limitIdx}`,
+      fieldParams
+    );
+    return res.rows;
+  }
+
+  // Без дат — все активные
   if (!startDate || !endDate) {
     try {
-      const itrRes = await db.query(
-        `SELECT id, name, role, login FROM users
-          WHERE is_active = true AND role IN ${ITR_ROLES}
-          ORDER BY role, name LIMIT $1`,
-        [MAX_AVAILABLE_WORKERS]
-      );
-      const fieldRes = await db.query(
-        `SELECT id, COALESCE(full_name, fio) AS full_name, position, role_tag, grade
-           FROM employees
-          WHERE COALESCE(is_active, true) = true
-            AND dismissal_date IS NULL
-          ORDER BY position NULLS LAST, full_name
-          LIMIT $1`,
-        [MAX_AVAILABLE_WORKERS]
-      );
+      const [itr, field] = await Promise.all([fetchItr([]), fetchField([])]);
       return {
-        itr_available: itrRes.rows,
-        field_available: fieldRes.rows,
+        itr_available: itr,
+        field_available: field,
         itr_busy_count: 0,
         field_busy_count: 0,
+        buckets: bucketEmployees(field),
         note: 'Даты работы не указаны — показан полный список.'
       };
     } catch (e) {
-      console.warn('[AP3] getAvailableWorkers (no dates):', e.message);
-      return { itr_available: [], field_available: [], itr_busy_count: 0, field_busy_count: 0, error: e.message };
+      console.warn('[AP3.5] getAvailableWorkers (no dates):', e.message);
+      return { itr_available: [], field_available: [], itr_busy_count: 0, field_busy_count: 0, buckets: emptyBuckets(), error: e.message };
     }
   }
 
   try {
-    // 1. Собрать employee_ids которые заняты на пересекающихся работах
+    // 1. employee_ids которые заняты на пересекающихся работах
     const busyEmployeesRes = await db.query(
       `SELECT DISTINCT
               jsonb_array_elements_text(
@@ -369,7 +399,7 @@ async function getAvailableWorkers(db, startDate, endDate, onProgress) {
     );
     const busyEmpIds = busyEmployeesRes.rows.map(r => r.emp_id).filter(id => id != null);
 
-    // 2. Собрать pm_id занятых ИТР
+    // 2. pm_id занятых ИТР
     const busyItrRes = await db.query(
       `SELECT DISTINCT pm_id FROM works
         WHERE work_status NOT IN ('Завершена','Отменена','archived')
@@ -381,52 +411,82 @@ async function getAvailableWorkers(db, startDate, endDate, onProgress) {
     );
     const busyItrIds = busyItrRes.rows.map(r => r.pm_id).filter(id => id != null);
 
-    // 3. Свободные ИТР (users)
-    const itrParams = [];
-    let itrBusyClause = '';
-    if (busyItrIds.length > 0) {
-      itrParams.push(busyItrIds);
-      itrBusyClause = ` AND id != ALL($${itrParams.length}::int[])`;
-    }
-    itrParams.push(MAX_AVAILABLE_WORKERS);
-    const itrLimitIdx = itrParams.length;
-    const itrRes = await db.query(
-      `SELECT id, name, role, login FROM users
-        WHERE is_active = true AND role IN ${ITR_ROLES}${itrBusyClause}
-        ORDER BY role, name LIMIT $${itrLimitIdx}`,
-      itrParams
-    );
-
-    // 4. Свободные полевые (employees)
-    const fieldParams = [];
-    let fieldBusyClause = '';
-    if (busyEmpIds.length > 0) {
-      fieldParams.push(busyEmpIds);
-      fieldBusyClause = ` AND id != ALL($${fieldParams.length}::int[])`;
-    }
-    fieldParams.push(MAX_AVAILABLE_WORKERS);
-    const fieldLimitIdx = fieldParams.length;
-    const fieldRes = await db.query(
-      `SELECT id, COALESCE(full_name, fio) AS full_name, position, role_tag, grade
-         FROM employees
-        WHERE COALESCE(is_active, true) = true
-          AND dismissal_date IS NULL${fieldBusyClause}
-        ORDER BY position NULLS LAST, full_name
-        LIMIT $${fieldLimitIdx}`,
-      fieldParams
-    );
+    // 3. Параллельно тянем ИТР и полевых
+    const [itr, field] = await Promise.all([fetchItr(busyItrIds), fetchField(busyEmpIds)]);
 
     return {
-      itr_available: itrRes.rows,
-      field_available: fieldRes.rows,
+      itr_available: itr,
+      field_available: field,
       itr_busy_count: busyItrIds.length,
       field_busy_count: busyEmpIds.length,
+      buckets: bucketEmployees(field),
       period: { start: startDate, end: endDate }
     };
   } catch (e) {
-    console.warn('[AP3] getAvailableWorkers:', e.message);
-    return { itr_available: [], field_available: [], itr_busy_count: 0, field_busy_count: 0, error: e.message };
+    console.warn('[AP3.5] getAvailableWorkers:', e.message);
+    return { itr_available: [], field_available: [], itr_busy_count: 0, field_busy_count: 0, buckets: emptyBuckets(), error: e.message };
   }
+}
+
+/**
+ * Распределить employees по bucket-категориям для prompt-агрегации.
+ *
+ * Логика: основная классификация по role_tag (правильное поле в БД),
+ * с уточнением через position (Бригадир, Изолировщик, Жестянщик и т.д.).
+ * Position — носитель ДОПОЛНИТЕЛЬНОЙ специализации, НЕ ограничения!
+ * Слесарь-монтажник + изолировщик может работать и слесарем, и изолировщиком.
+ */
+function bucketEmployees(employees) {
+  const buckets = emptyBuckets();
+  if (!employees || employees.length === 0) return buckets;
+
+  for (const e of employees) {
+    const tag = String(e.role_tag || '').toLowerCase().trim();
+    const pos = String(e.position || '').toLowerCase();
+    buckets.total++;
+
+    // Главная классификация по role_tag
+    if (tag === 'сварщик' || /\bсварщик\b/.test(pos)) {
+      buckets.welders++;
+      // Бригадиры
+      if (/бригадир/.test(pos)) buckets.foremen++;
+    } else if (tag === 'слесарь' || tag === '' || tag === null || tag === 'без тега') {
+      // role_tag "Слесарь" = универсал. Также NULL/пустой → считаем универсалом.
+      buckets.universals++;
+      if (/бригадир/.test(pos)) buckets.foremen++;
+    } else if (tag === 'рп') {
+      // РП-сотрудники в employees — это руководители проектов/бригадиры,
+      // НЕ ИТР из users. Считаем как foremen.
+      buckets.foremen++;
+    } else {
+      buckets.other++;
+    }
+
+    // Уточнения по position (могут пересекаться с основной категорией)
+    if (/изолировщик/.test(pos)) buckets.insulators++;
+    if (/жестянщик/.test(pos)) buckets.tinsmiths++;
+    if (/монтажник/.test(pos)) buckets.assemblers++;
+    if (/мастер/.test(pos) && !/менеджер|тендер|закупок|бухгалтер|директор/.test(pos)) buckets.masters++;
+    if (/водитель/.test(pos)) buckets.drivers++;
+    if (/химик/.test(pos)) buckets.chemists++;
+  }
+  return buckets;
+}
+
+function emptyBuckets() {
+  return {
+    total: 0,
+    universals: 0,    // Слесари-универсалы (role_tag=Слесарь)
+    welders: 0,       // Сварщики (role_tag=Сварщик) — требуют НАКС
+    foremen: 0,       // Бригадиры
+    insulators: 0,    // Изолировщики
+    tinsmiths: 0,     // Жестянщики
+    assemblers: 0,    // Монтажники
+    masters: 0,       // Мастера (полевые, не менеджеры)
+    drivers: 0,       // Водители
+    chemists: 0,      // Химики
+    other: 0
+  };
 }
 
 /**
@@ -620,6 +680,8 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
     warehouse_items: warehouse.length,
     itr_available: workers.itr_available?.length || 0,
     field_available: workers.field_available?.length || 0,
+    field_universals: workers.buckets?.universals || 0,
+    field_welders: workers.buckets?.welders || 0,
     permits_total: permits.total_active,
     permits_employees: permits.employees_with_permits,
     tariff_categories: Object.keys(tariffs.grouped || {}).length,
@@ -732,18 +794,60 @@ function warehouseToPrompt(items) {
 }
 
 /**
- * Сериализатор допусков для prompt.
+ * Сериализатор допусков для prompt с группировкой по СЕМЕЙСТВАМ:
+ *  ОТЗП (1+2+3+замкнутые) → одна строка-итого + детализация
+ *  Работы на высоте (1+2+3) → одна строка-итого + детализация
+ *  Электробезопасность (II-V) → одна строка-итого + детализация
+ *  Мед.осмотры всех видов → одна строка-итого
+ *  Остальное — как есть
  */
 function permitsToPrompt(permits) {
   if (!permits || !permits.by_type || Object.keys(permits.by_type).length === 0) {
     return '(допуска не загружены или их нет)';
   }
+
+  // Группируем по семействам
+  const FAMILIES = {
+    otzp: { label: 'ОТЗП (любая группа)', match: /отзп|замкнут/i, types: [] },
+    height: { label: 'Работы на высоте (любая группа)', match: /высот/i, types: [] },
+    elec: { label: 'Электробезопасность (II-V)', match: /электробезоп/i, types: [] },
+    med: { label: 'Мед.осмотры', match: /мед\.?осмотр|медицинский/i, types: [] }
+  };
+  const others = [];
+
+  for (const [type, count] of Object.entries(permits.by_type)) {
+    let matched = false;
+    for (const fam of Object.values(FAMILIES)) {
+      if (fam.match.test(type)) {
+        fam.types.push({ type, count });
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) others.push({ type, count });
+  }
+
   const lines = ['Сводка по типам допусков (сколько свободных сотрудников имеют):'];
-  // Сортируем по убыванию количества
-  const sorted = Object.entries(permits.by_type).sort((a, b) => b[1] - a[1]);
-  for (const [type, count] of sorted) {
+
+  // Семьи (с агрегатом + детализацией)
+  for (const fam of Object.values(FAMILIES)) {
+    if (fam.types.length === 0) continue;
+    const total = fam.types.reduce((s, t) => s + t.count, 0);
+    // Детализация: вытаскиваем "1 группа", "II группа" и т.п. — обычно в скобках
+    const detail = fam.types.map(t => {
+      const m = t.type.match(/\(([^)]+)\)/);
+      const sub = m ? m[1] : t.type;
+      return `${sub}: ${t.count}`;
+    }).join(', ');
+    lines.push(`  - ${fam.label}: ${total} чел  [${detail}]`);
+  }
+
+  // Остальные допуски — отсортированы по убыванию
+  others.sort((a, b) => b.count - a.count);
+  for (const { type, count } of others) {
     lines.push(`  - ${type}: ${count} чел`);
   }
+
   if (permits.expiring_soon && permits.expiring_soon.length > 0) {
     lines.push('');
     lines.push(`⚠️ Истекают в течение 30 дней (${permits.expiring_soon.length}):`);
@@ -751,6 +855,30 @@ function permitsToPrompt(permits) {
       lines.push(`  - ${ex.full_name} / ${ex.type} → ${ex.expiry_date} (${ex.days_left} дн)`);
     }
   }
+  return lines.join('\n');
+}
+
+/**
+ * Сериализатор bucket'ов сотрудников для prompt.
+ */
+function workersBucketsToPrompt(workers) {
+  const b = workers.buckets || {};
+  const lines = [];
+  lines.push(`ИТОГО свободных полевых: ${b.total || 0}`);
+  lines.push(`Из них:`);
+  lines.push(`  - Слесари-универсалы (role_tag=Слесарь): ${b.universals || 0}`);
+  lines.push(`    ↳ выполняют ЛЮБЫЕ полевые работы: монтаж, демонтаж, чистка, изоляция, промывка, такелаж`);
+  lines.push(`  - Сварщики (role_tag=Сварщик, требуют НАКС): ${b.welders || 0}`);
+  lines.push(`    ↳ привлекаются ТОЛЬКО для сварочных работ`);
+  if (b.foremen) lines.push(`  - Бригадиры (среди слесарей/сварщиков): ${b.foremen}`);
+  if (b.masters) lines.push(`  - Мастера (полевые): ${b.masters}`);
+  lines.push('');
+  lines.push(`Дополнительные специализации (могут совмещать с основной ролью):`);
+  if (b.insulators) lines.push(`  - Изолировщики: ${b.insulators}`);
+  if (b.tinsmiths) lines.push(`  - Жестянщики: ${b.tinsmiths}`);
+  if (b.assemblers) lines.push(`  - Монтажники ТТ (трубопроводов): ${b.assemblers}`);
+  if (b.drivers) lines.push(`  - Водители: ${b.drivers}`);
+  if (b.chemists) lines.push(`  - Химики: ${b.chemists}`);
   return lines.join('\n');
 }
 
@@ -824,12 +952,23 @@ ${customerHistoryToPrompt(ctx.customer_history)}
 ═══ СКЛАД (${ctx.warehouse.length} позиций) ═══
 ${warehouseToPrompt(ctx.warehouse)}
 
-═══ СВОБОДНЫЕ ИТР (${ctx.workers.itr_available?.length || 0}) ═══
+═══ СВОБОДНЫЕ ИТР / РП (${ctx.workers.itr_available?.length || 0}) ═══
+Занято на других работах: ${ctx.workers.itr_busy_count || 0}
 ${(ctx.workers.itr_available || []).slice(0, 30).map(w => `  - #${w.id} ${w.name} (${w.role})`).join('\n') || '(нет свободных ИТР)'}
 
-═══ СВОБОДНЫЕ ПОЛЕВЫЕ СОТРУДНИКИ (${ctx.workers.field_available?.length || 0} из 521) ═══
+═══ СВОБОДНЫЕ ПОЛЕВЫЕ — АГРЕГАТЫ ═══
 Занято на других работах: ${ctx.workers.field_busy_count || 0}
-${(ctx.workers.field_available || []).slice(0, 50).map(e => `  - #${e.id} ${e.full_name}${e.position ? ' / ' + e.position : ''}`).join('\n') || '(нет свободных)'}
+${workersBucketsToPrompt(ctx.workers)}
+
+ВАЖНО О СПЕЦИАЛИЗАЦИИ:
+- В компании ~500 полевых сотрудников, из них ~90% — слесари-универсалы.
+- "Слесарь-универсал" в Асгард = монтажник + слесарь + промывщик + такелажник
+  + демонтажник одновременно. ОДИН сотрудник делает любую работу: чистка,
+  монтаж, демонтаж, изоляция, промывка, обслуживание. НЕ нужно искать
+  "промывщика" или "монтажника" отдельно — это всё универсалы.
+- ТОЛЬКО сварочные работы требуют отдельного сварщика с допуском НАКС.
+- Изолировщик/жестянщик/химик — это уточнение специализации, такие сотрудники
+  МОГУТ ДЕЛАТЬ И ОБЩИЕ работы (они тоже слесари-универсалы внутри роли).
 
 ═══ ДОПУСКА СВОБОДНЫХ СОТРУДНИКОВ (${ctx.permits?.total_active || 0} активных, у ${ctx.permits?.employees_with_permits || 0} человек) ═══
 ${permitsToPrompt(ctx.permits)}
@@ -847,29 +986,53 @@ ${tariffsToPrompt(ctx.tariffs)}
 - Суточные/Пайковые: по ${settings.per_diem_per_day}₽/чел/день
 
 ═══ ТВОЯ ЗАДАЧА ═══
-1) Определи бригаду (количество рабочих, мастеров, ИТР) и количество дней работы.
-   ВАЖНО: размер бригады должен быть АДЕКВАТЕН объёму работ из ТЗ. Если в тендере
-   указана сумма ${tender?.estimated_sum ? Math.round(Number(tender.estimated_sum)).toLocaleString('ru-RU') + '₽' : 'крупная'} — это
-   ориентир МАСШТАБА работы. Не занижай бригаду на больших проектах.
-2) Выбери ставки из тарифной сетки (категория зависит от типа работ: МЛСП → mlsp,
-   обычные → ground, тяжёлые → ground_hard, склад → warehouse)
-3) Посчитай командировочные (билеты, суточные, пайковые, гостиница)
-4) Определи нужные химию/материалы из контекста ТЗ (если есть)
-5) Выбери наценку (markup_multiplier) ОБОСНОВАННО — анализируй аналоги и историю заказчика:
+1) Определи БРИГАДУ — должна быть АДЕКВАТНА объёму работ из ТЗ. Изучи описание объекта:
+   количество единиц оборудования, диаметры/длины труб, площади, тоннаж, особые требования
+   (24/7, газоопасные, замкнутые пространства). Большой объём = большая бригада.
+   Не занижай на крупных проектах. Каждый слесарь-универсал работает 12-часовую смену.
+
+2) Определи WORK_DAYS — это ЧИСТЫЕ РАБОЧИЕ ДНИ НА ОБЪЕКТЕ, БЕЗ дороги.
+   КРИТИЧНО: если в ТЗ/тендере указан срок выполнения работ X дней —
+   work_days НЕ ДОЛЖНО ПРЕВЫШАТЬ X. Ищи в тексте формулировки:
+   "срок X дней", "выполнить за X дней", "до DD.MM.YYYY", "период X-Y дней",
+   "исполнения X календарных дней". Это ВЕРХНЯЯ граница.
+
+3) Определи ROAD_DAYS — дни ДОРОГИ (отдельно от work_days). Считается по
+   расстоянию: 1 день в одну сторону на ~1500 км. Для большинства работ
+   road_days = 2-4 (туда-обратно). НЕ ВКЛЮЧАЙ дорогу в work_days.
+
+4) Выбери ставки из тарифной сетки (категория зависит от типа работ:
+   МЛСП → mlsp, обычные → ground, тяжёлые → ground_hard, склад → warehouse)
+
+5) Посчитай командировочные (билеты, суточные, пайковые, гостиница)
+
+6) Определи нужные химию/материалы из контекста ТЗ (если есть)
+
+7) Выбери НАЦЕНКУ (markup_multiplier) ОБОСНОВАННО — анализируй аналоги и историю заказчика:
    - Если выигрывали с ×2.0-2.5 у этого клиента → ставь в этом диапазоне
    - Если проигрывали с ×3.0 → НЕ ставь ×3.0
    - Для нового клиента → ниже среднего (чтобы зайти)
    - Для постоянного → можно выше
-6) Проверь СКЛАД: чего не хватает — добавь в purchases_needed с ценой
-7) Проверь СВОБОДНЫХ ИТР и ПОЛЕВЫХ: если их мало или нет нужных позиций (Жестянщик,
-   Монтажник, Сварщик НАКС и т.д.) → warning
-8) ПРОВЕРЬ ДОПУСКА (КРИТИЧНО):
-   - Проанализируй текст ТЗ/тендера/договора — какие допуска НУЖНЫ для этой работы?
-     (Газоопасные → ОТЗП, Высота → Работы на высоте 1-3, Сварка → НАКС, МЛСП → ВИК+БМПВО,
-      Электрика → ЭБ II-V, замкнутые пространства → ОТЗП)
-   - Сверь со списком допусков выше: достаточно ли свободных сотрудников с нужным допуском?
-   - Если нет или мало → warning level="critical" с указанием какого допуска не хватает
-   - Если у нужных людей допуск ИСТЕКАЕТ в течение 30 дней → warning level="warning"
+
+8) Проверь СКЛАД: чего не хватает — добавь в purchases_needed с ценой
+
+9) Проверь свободных рабочих:
+   - Помни: ~90% всех полевых = слесари-универсалы. ОДИН слесарь делает
+     ВСЁ кроме сварки. НЕ проси отдельных монтажников/промывщиков/такелажников —
+     это всё та же роль "Слесарь-универсал".
+   - Сварщики (с НАКС) нужны ТОЛЬКО для сварочных работ.
+   - Если работа НЕ требует сварки — можешь использовать только слесарей.
+   - Если универсалов меньше чем нужно → warning, иначе всё ОК.
+
+10) ПРОВЕРЬ ДОПУСКА (КРИТИЧНО):
+    - Проанализируй текст ТЗ/тендера/договора — какие допуска НУЖНЫ для этой работы?
+      (Газоопасные → ОТЗП, Высота → Работы на высоте 1-3, Сварка → НАКС, МЛСП → ВИК+БМПВО,
+       Электрика → ЭБ II-V, замкнутые пространства → ОТЗП)
+    - Допуска агрегированы по семействам: "ОТЗП (любая группа)" — суммарное число
+      сотрудников с любым из 3 уровней ОТЗП. Используй именно эту суммарную цифру.
+    - Сверь требования с доступными: нужно X с ОТЗП, доступно Y. Если Y >= X — OK,
+      если Y < X — warning level="critical" с числами.
+    - Если у нужных людей допуск ИСТЕКАЕТ в течение 30 дней → warning level="warning"
 
 ВЕРНИ СТРОГО JSON в формате (без markdown-обёртки, без пояснений вокруг):
 
