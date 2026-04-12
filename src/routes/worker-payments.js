@@ -1065,13 +1065,32 @@ async function routes(fastify, options) {
         return emp;
       });
 
+      // Load tariff grid for color categories
+      let tariffCategories = [];
+      try {
+        const { rows: tariffs } = await db.query(
+          'SELECT id, category, position_name, points, is_active FROM field_tariff_grid WHERE is_active = true ORDER BY points, category'
+        );
+        // Build color map: group by points → category label
+        const catMap = {};
+        for (const t of tariffs) {
+          const pts = t.points;
+          if (!pts || pts === 0) continue;
+          if (!catMap[pts]) catMap[pts] = { points: pts, labels: [], category: t.category };
+          catMap[pts].labels.push(t.position_name);
+          catMap[pts].category = t.category;
+        }
+        tariffCategories = Object.values(catMap);
+      } catch (_) {}
+
       return {
         employees,
         month_days: lastDay,
         point_value: pointValue,
         year,
         month,
-        works: Object.values(worksSet)
+        works: Object.values(worksSet),
+        tariff_categories: tariffCategories
       };
     } catch (err) {
       fastify.log.error('[worker-payments] GET /reports/payroll-grid error:', err);

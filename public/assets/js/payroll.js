@@ -124,19 +124,59 @@ window.AsgardPayrollPage = (function(){
     let gridPendingEdits = {};
 
     const MONTHS_RU_INLINE = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-    // Цвета фона ячеек (как в Excel)
+    // Цвета из категорий тарифной сетки (dynamic)
+    // Цветовая схема по типу дня:
+    const CATEGORY_COLORS = {
+      'medical':   { bg: '#E8D5F5', fg: '#3D1560', label: 'Медосмотр / обучение' },
+      'road':      { bg: '#B3D9FF', fg: '#002255', label: 'Дорога / ожидание' },
+      'warehouse': { bg: '#FFE0B2', fg: '#5D3100', label: 'Склад' },
+      'work':      { bg: '#00D26A', fg: '#003300', label: 'Работа (смена)' },
+      'work_hard': { bg: '#00A854', fg: '#002200', label: 'Работа (сложная)' },
+      'senior':    { bg: '#2196F3', fg: '#FFFFFF', label: 'Мастер / ИТР' },
+      'overtime':  { bg: '#FFD700', fg: '#1a1200', label: 'Переработка / высокая' },
+      'combo':     { bg: '#CE93D8', fg: '#2A003D', label: 'Совмещение (+1)' }
+    };
+
+    // Маппинг баллов → тип (строится из тарифной сетки)
+    let pointsCategoryMap = {}; // будет заполнен из gridData.tariff_categories
+
+    function buildPointsMap(tariffCats) {
+      pointsCategoryMap = {};
+      if (!tariffCats || !tariffCats.length) return;
+      for (const tc of tariffCats) {
+        const pts = tc.points;
+        const cat = tc.category;
+        const labels = (tc.labels || []).join(', ').toLowerCase();
+        let type = 'work';
+        if (pts === 1) type = 'combo';
+        else if (labels.includes('медосмотр') || labels.includes('обучение')) type = 'medical';
+        else if (labels.includes('дорог') || labels.includes('ожидание') || labels.includes('выходной') || labels.includes('карантин')) type = 'road';
+        else if (cat === 'warehouse') type = 'warehouse';
+        else if (cat === 'ground_hard') type = 'work_hard';
+        else if (labels.includes('мастер') || labels.includes('итр') || pts >= 19) type = 'senior';
+        else if (labels.includes('переработк') || labels.includes('высокая') || pts >= 18) type = 'overtime';
+        else if (cat === 'special' && pts >= 6 && pts <= 7) type = labels.includes('медосмотр') ? 'medical' : 'road';
+        pointsCategoryMap[pts] = type;
+      }
+    }
+
     function ptsBg(pts) {
-      if (pts >= 18) return '#FFD700';   // золотой
-      if (pts >= 12) return '#00D26A';   // зелёный
-      if (pts >= 10) return '#90EE90';   // салатовый
-      if (pts >= 6)  return '#B3D9FF';   // голубой
-      return '';
+      const type = pointsCategoryMap[pts] || guessType(pts);
+      return (CATEGORY_COLORS[type] || {}).bg || '';
     }
     function ptsFg(pts) {
-      if (pts >= 18) return '#1a1200';
-      if (pts >= 10) return '#003300';
-      if (pts >= 6) return '#002255';
-      return 'var(--t2)';
+      const type = pointsCategoryMap[pts] || guessType(pts);
+      return (CATEGORY_COLORS[type] || {}).fg || 'var(--t2)';
+    }
+    // Fallback если тарифная сетка не загрузилась
+    function guessType(pts) {
+      if (pts <= 0) return '';
+      if (pts === 1) return 'combo';
+      if (pts <= 7) return 'road';
+      if (pts <= 10) return 'warehouse';
+      if (pts <= 14) return 'work';
+      if (pts <= 17) return 'work_hard';
+      return 'overtime';
     }
 
     async function loadGridData() {
@@ -145,6 +185,7 @@ window.AsgardPayrollPage = (function(){
         const r = await fetch('/api/worker-payments/reports/payroll-grid/' + gridYear + '/' + (gridMonth + 1), {headers:{'Authorization':'Bearer '+authG.token}});
         if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || 'Ошибка');
         gridData = await r.json();
+        buildPointsMap(gridData.tariff_categories || []);
       } catch (e) {
         toast('Ошибка', e.message, 'error');
         gridData = null;
@@ -270,14 +311,23 @@ window.AsgardPayrollPage = (function(){
         '<td style="padding:5px 4px;text-align:right;font-size:13px;' + ftBg + ';color:#F5C542">' + money(Math.round(grandAmt + grandPd)) + ' \u20BD</td>' +
         '</tr></tfoot>';
 
-      // Легенда цветов
-      let legend = '<div style="display:flex;gap:12px;margin-top:10px;font-size:11px;color:var(--t2);flex-wrap:wrap">' +
-        '<span>Обозначения:</span>' +
-        '<span style="display:inline-flex;align-items:center;gap:3px"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:#B3D9FF"></span> 6 бал. (дорога)</span>' +
-        '<span style="display:inline-flex;align-items:center;gap:3px"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:#90EE90"></span> 10 бал. (склад)</span>' +
-        '<span style="display:inline-flex;align-items:center;gap:3px"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:#00D26A"></span> 12 бал. (смена)</span>' +
-        '<span style="display:inline-flex;align-items:center;gap:3px"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:#FFD700"></span> 18 бал. (переработка)</span>' +
-        '</div>';
+      // Легенда цветов — динамическая из тарифной сетки
+      const usedTypes = new Set();
+      employees.forEach(emp => {
+        const days = emp.days || {};
+        for (const d in days) { if (days[d]) usedTypes.add(pointsCategoryMap[days[d]] || guessType(days[d])); }
+      });
+      let legendItems = '';
+      for (const [type, cfg] of Object.entries(CATEGORY_COLORS)) {
+        if (!usedTypes.has(type) && usedTypes.size > 0) continue; // показываем только используемые
+        const ptsRange = Object.entries(pointsCategoryMap).filter(([_, t]) => t === type).map(([p]) => p);
+        const ptsLabel = ptsRange.length ? ' (' + ptsRange.join('/') + ' бал.)' : '';
+        legendItems += '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.04)">' +
+          '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:' + cfg.bg + '"></span> ' +
+          cfg.label + ptsLabel + '</span>';
+      }
+      let legend = '<div style="display:flex;gap:8px;margin-top:12px;font-size:11px;color:var(--t2);flex-wrap:wrap;padding:8px;border-radius:6px;background:rgba(13,20,40,.3)">' +
+        '<span style="font-weight:600;color:var(--t1)">Обозначения:</span>' + legendItems + '</div>';
 
       let table = '<div style="overflow-x:auto;border-radius:8px;border:1px solid rgba(255,255,255,.08)">' +
         '<table style="width:100%;border-collapse:collapse">' + thead + tbody + tfoot + '</table></div>' + legend;
