@@ -843,7 +843,8 @@ window.AsgardPmWorksPage=(function(){
     $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...(refs.work_statuses||[]).map(s=>({ value: s, label: s }))], onChange: apply }));
 
     apply();
-    $("#f_q").addEventListener("input", apply);
+    let _fqTimer = null;
+    $("#f_q").addEventListener("input", () => { clearTimeout(_fqTimer); _fqTimer = setTimeout(apply, 250); });
 
     $$("[data-sort]").forEach(b=>{
       b.addEventListener("click", ()=>{
@@ -889,12 +890,13 @@ window.AsgardPmWorksPage=(function(){
     }
 
     async function openWork(id){
-      const [w, finData] = await Promise.all([
+      const [w, finData, tRaw] = await Promise.all([
         AsgardDB.get("works", id),
-        fetch('/api/works/' + id + '/financial-summary', {headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || localStorage.getItem('auth_token'))}}).then(r => r.ok ? r.json() : null).catch(() => null)
+        fetch('/api/works/' + id + '/financial-summary', {headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || localStorage.getItem('auth_token'))}}).then(r => r.ok ? r.json() : null).catch(() => null),
+        AsgardDB.get("tenders", null).then(() => null).catch(() => null) // prefetch cache
       ]);
       const triggerStatus = String((settings&&settings.work_close_trigger_status)||"Подписание акта");
-      const t = await AsgardDB.get("tenders", w.tender_id);
+      const t = w.tender_id ? (await AsgardDB.get("tenders", w.tender_id)) : null;
       const got = (Number(w.advance_received||0)+Number(w.balance_received||0))||0;
       const left = (w.contract_value||0) ? Math.max(0, Number(w.contract_value||0)-got) : 0;
       // Чистая прибыль из financial-summary (единый источник), fallback на валовую

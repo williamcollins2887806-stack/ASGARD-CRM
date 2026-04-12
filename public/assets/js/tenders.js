@@ -1821,19 +1821,33 @@ ${docsHtml}</div>
           }
 
           try {
+            if (file.size > 50 * 1024 * 1024) { toast("Ошибка", "Файл больше 50 МБ", "err"); return; }
             const formData = new FormData();
             formData.append('file', file);
             formData.append('tender_id', uploadId);
             formData.append('type', document.getElementById("d_type").value.trim() || "Документ");
-
             const auth = await AsgardAuth.getAuth();
-            const response = await fetch('/api/files/upload', {
-              method: 'POST',
-              headers: { 'Authorization': 'Bearer ' + auth.token },
-              body: formData
+
+            // XHR с progress bar
+            const btn = document.getElementById('btnUploadFile');
+            const origText = btn ? btn.textContent : '';
+            await new Promise((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.open('POST', '/api/files/upload');
+              xhr.setRequestHeader('Authorization', 'Bearer ' + auth.token);
+              xhr.timeout = 60000;
+              xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable && btn) {
+                  const pct = Math.round(e.loaded / e.total * 100);
+                  btn.textContent = pct + '%';
+                }
+              };
+              xhr.onload = () => { if (btn) btn.textContent = origText; xhr.status < 300 ? resolve() : reject(new Error('Ошибка ' + xhr.status)); };
+              xhr.onerror = () => { if (btn) btn.textContent = origText; reject(new Error('Сеть недоступна')); };
+              xhr.ontimeout = () => { if (btn) btn.textContent = origText; reject(new Error('Таймаут (60 сек)')); };
+              xhr.send(formData);
             });
 
-            if (!response.ok) throw new Error('Ошибка загрузки');
             toast("Документ","Файл загружен");
             hideModal();
             openTenderEditor(uploadId);
@@ -1867,23 +1881,32 @@ ${docsHtml}</div>
           }
 
           const auth = await AsgardAuth.getAuth();
+          let uploaded = 0;
           for (const file of files) {
+            if (file.size > 50 * 1024 * 1024) { toast("Ошибка", file.name + " > 50 МБ", "err"); continue; }
             try {
               const formData = new FormData();
               formData.append('file', file);
               formData.append('tender_id', uploadId);
               formData.append('type', 'Документ');
-              const response = await fetch('/api/files/upload', {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + auth.token },
-                body: formData
+              docsBox.textContent = 'Загрузка ' + file.name + '...';
+              await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/files/upload');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + auth.token);
+                xhr.timeout = 60000;
+                xhr.upload.onprogress = (e) => { if (e.lengthComputable) docsBox.textContent = file.name + ' ' + Math.round(e.loaded/e.total*100) + '%'; };
+                xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Ошибка ' + xhr.status));
+                xhr.onerror = () => reject(new Error('Сеть'));
+                xhr.ontimeout = () => reject(new Error('Таймаут'));
+                xhr.send(formData);
               });
-              if (!response.ok) throw new Error('Ошибка загрузки');
-              toast("Документ", `${file.name} загружен`);
+              uploaded++;
             } catch (err) {
-              toast("Ошибка", `${file.name}: ${err.message}`, "err");
+              toast("Ошибка", file.name + ": " + err.message, "err");
             }
           }
+          if (uploaded) toast("Документы", uploaded + " файл(ов) загружено");
           openTenderEditor(uploadId);
         });
       }

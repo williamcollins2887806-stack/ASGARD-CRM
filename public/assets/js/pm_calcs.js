@@ -594,7 +594,8 @@ window.AsgardPmCalcsPage = (function(){
 
     apply();
 
-    $("#f_q").addEventListener("input", apply);
+    let _fqTimer2 = null;
+    $("#f_q").addEventListener("input", () => { clearTimeout(_fqTimer2); _fqTimer2 = setTimeout(apply, 250); });
     $("#f_refused").addEventListener("change", apply);
     $("#f_allperiod").addEventListener("change", apply);
     $("#f_won").addEventListener("change", apply);
