@@ -720,7 +720,10 @@ window.AsgardPmWorksPage=(function(){
           <div><b>${money(w.contract_value)}</b> ₽</div>
           <div class="help">получено: ${money(got)} ₽ • должны: ${money(left)} ₽</div>
         </td>
-        <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn" style="padding:6px 10px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px" data-act="auto_estimate" title="Авто-просчёт Мимиром">⚡ Просчитать</button>
+          <button class="btn" style="padding:6px 10px" data-act="open">Открыть</button>
+        </td>
       </tr>`;
     }
 
@@ -764,7 +767,8 @@ window.AsgardPmWorksPage=(function(){
         '</div>' +
         '<div class="m-wc-footer">' +
           '<span class="m-wc-left">Осталось: ' + money(left) + ' ₽</span>' +
-          '<button class="btn mini" data-act="open">Открыть</button>' +
+          '<button class="btn mini" data-act="auto_estimate" style="border-radius:8px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px">⚡ Просчитать</button>' +
+        '<button class="btn mini" data-act="open">Открыть</button>' +
         '</div>' +
       '</div>';
     }
@@ -807,6 +811,8 @@ window.AsgardPmWorksPage=(function(){
             });
             var _ob = card.querySelector('[data-act="open"]');
             if (_ob) _ob.addEventListener('click', () => openWork(card.dataset.id));
+            var _ae = card.querySelector('[data-act="auto_estimate"]');
+            if (_ae) _ae.addEventListener('click', (ev) => { ev.stopPropagation(); window.openMimirAutoEstimate(Number(card.dataset.id)); });
           });
         }
       } else {
@@ -850,7 +856,9 @@ window.AsgardPmWorksPage=(function(){
     tb.addEventListener("click",(e)=>{
       const tr=e.target.closest("tr[data-id]");
       if(!tr) return;
-      if(e.target.getAttribute("data-act")==="open") openWork(Number(tr.getAttribute("data-id")));
+      const act = e.target.getAttribute("data-act");
+      if(act==="open") openWork(Number(tr.getAttribute("data-id")));
+      if(act==="auto_estimate") window.openMimirAutoEstimate(Number(tr.getAttribute("data-id")));
     });
 
     $("#btnGantt").addEventListener("click", ()=>openGantt());

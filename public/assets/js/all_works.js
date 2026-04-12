@@ -115,10 +115,7 @@ window.AsgardAllWorksPage=(function(){
         <td><span class="pill" style="border-color:${esc(color)}">${esc(st)}</span></td>
         <td>${start} \u2192 ${end}</td>
         <td><div><b>${money(w.contract_value)}</b> \u20bd</div><div class="help">получено: ${money(got)} \u20bd \u2022 должны: ${money(left)} \u20bd</div></td>
-        <td style="white-space:nowrap">
-          <button class="btn ghost" style="padding:6px 10px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px" data-act="auto_estimate" title="Авто-просчёт Мимиром">⚡ Просчитать</button>
-          <button class="btn ghost" style="padding:6px 10px" data-act="create_tkp" title="Создать ТКП по этой работе">Создать ТКП</button>
-        </td>
+        <td><button class="btn ghost" style="padding:6px 10px" data-act="create_tkp" title="Создать ТКП по этой работе">Создать ТКП</button></td>
       </tr>`;
     }
 
@@ -161,8 +158,7 @@ window.AsgardAllWorksPage=(function(){
           '</div>' +
         '</div>' +
         '<div class="m-wc-footer">' +
-          '<button class="btn mini" data-act="auto_estimate" style="border-radius:8px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none">⚡ Просчитать</button>' +
-          '<button class="btn mini ghost" data-act="create_tkp" style="border-radius:8px">ТКП</button>' +
+          '<button class="btn mini ghost" data-act="create_tkp" style="border-radius:8px">Создать ТКП</button>' +
           '<button class="btn mini" data-act="open" style="border-radius:8px">Открыть</button>' +
         '</div>' +
       '</div>';
