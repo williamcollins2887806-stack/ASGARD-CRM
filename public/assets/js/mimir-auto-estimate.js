@@ -503,7 +503,7 @@
     return box;
   }
 
-  function buildOpenEstimateBtn(estimateId) {
+  function buildOpenEstimateBtn(estimateId, overlay) {
     const btn = el('button', {
       style: {
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
@@ -515,6 +515,9 @@
         boxShadow: '0 6px 24px rgba(212,168,67,0.35), 0 0 50px rgba(212,168,67,0.18)',
       },
       onclick: () => {
+        // Сначала закрыть модалку, потом перейти
+        var ov = overlay || document.querySelector('.mimir-ae-overlay');
+        if (ov) ov.remove();
         location.hash = '#/estimate-report?id=' + estimateId;
       },
     });
@@ -524,7 +527,7 @@
   }
 
   // ── Главный рендер результата ──
-  function showResult(resultBox, event, state, composerWrap) {
+  function showResult(resultBox, event, state, composerWrap, overlay) {
     state.estimateId = event.estimate_id;
     state.lastCard = event.card;
     state.lastAnalysis = event.analysis;
@@ -561,7 +564,7 @@
 
     // 6. Open estimate CTA
     if (event.estimate_id) {
-      resultBox.appendChild(buildOpenEstimateBtn(event.estimate_id));
+      resultBox.appendChild(buildOpenEstimateBtn(event.estimate_id, overlay));
     }
 
     // 7. Show composer
@@ -717,7 +720,7 @@
           if (event.type === 'start' || event.type === 'progress') {
             appendStep(stepsBox, event);
           } else if (event.type === 'result') {
-            showResult(resultBox, event, state, composerWrap);
+            showResult(resultBox, event, state, composerWrap, document.querySelector('.mimir-ae-overlay'));
           } else if (event.type === 'error') {
             showError(stepsBox, event.message + (event.phase ? ' (' + event.phase + ')' : ''));
           }

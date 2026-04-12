@@ -1488,7 +1488,48 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
     drift = r2(Math.abs(aiCost - totalCost) / aiCost * 100);
   }
 
+  // Нормализация формата строк для совместимости с estimate_report.js
+  // estimate_report ожидает: { item, qty, rate, days, total }
+  // AI генерирует: { role, count, rate_per_day, description, amount, price }
+  normalizeCalcRows(calc);
+
   return { calculation: calc, totals, drift, settings, timeOverflowFix, markupOverflowFix };
+}
+
+/**
+ * Нормализовать строки расчёта в формат, понятный estimate_report.js:
+ *   item — название строки (из role/description/name)
+ *   qty  — количество (из count)
+ *   rate — ставка (из rate_per_day/price/price_per_liter)
+ *   days — дни (если есть)
+ *   total — итого
+ */
+function normalizeCalcRows(calc) {
+  (calc.personnel || []).forEach(r => {
+    r.item = r.item || r.role || r.description || '—';
+    r.qty = r.qty ?? r.count ?? null;
+    r.rate = r.rate ?? r.rate_per_day ?? null;
+    // days остаётся
+  });
+  (calc.current_costs || []).forEach(r => {
+    r.item = r.item || r.description || '—';
+    r.total = r.total ?? r.amount ?? 0;
+  });
+  (calc.travel || []).forEach(r => {
+    r.item = r.item || r.description || '—';
+    r.qty = r.qty ?? r.count ?? null;
+    r.rate = r.rate ?? r.price ?? null;
+  });
+  (calc.transport || []).forEach(r => {
+    r.item = r.item || r.description || '—';
+    r.qty = r.qty ?? r.count ?? null;
+    r.rate = r.rate ?? r.price ?? null;
+  });
+  (calc.chemistry || []).forEach(r => {
+    r.item = r.item || r.name || r.description || '—';
+    r.volume_m3 = r.volume_m3 ?? r.volume_liters ?? null;
+    r.rate = r.rate ?? r.rate_m3 ?? r.price_per_liter ?? null;
+  });
 }
 
 /**
