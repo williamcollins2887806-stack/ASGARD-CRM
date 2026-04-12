@@ -936,14 +936,30 @@ ID работы: ${work.id}
 Бригада в работе: ${work.crew_size || '—'}
 Тип работ (определён эвристикой): ${ctx.workType || '—'}
 
-⛔ ОГРАНИЧЕНИЕ ПО СРОКАМ:
+⛔⛔⛔ АБСОЛЮТНОЕ ОГРАНИЧЕНИЕ ПО СРОКАМ ⛔⛔⛔
 ${dateWindowDays
-  ? `Окно работ = ${dateWindowDays} календарных дней (${startDate} → ${endDate}). ЖЁСТКОЕ ПРАВИЛО.
-   В это окно ВХОДИТ ВСЁ: дорога туда + мобилизация на объекте + чистые рабочие смены
-   + демобилизация + дорога обратно. Поэтому:
-   work_days + road_days*2 + 2 (моб./демоб.) ≤ ${dateWindowDays}
-   Пример: при road_days=2 и моб./демоб. = 2 → work_days ≤ ${Math.max(1, dateWindowDays - 6)}.
-   НЕ выходи за окно. Если объём не помещается — увеличивай бригаду, а не дни.`
+  ? `Окно работ = ${dateWindowDays} календарных дней (${startDate} → ${endDate}).
+   ЭТО ЖЁСТКАЯ ГРАНИЦА — ЗАКАЗЧИК НЕ ДАСТ БОЛЬШЕ ВРЕМЕНИ. Не приходи к выводу
+   "в окно не помещается" — заказчик уже подписал договор на эти даты.
+
+   В окно ${dateWindowDays} дней ОБЯЗАТЕЛЬНО ВХОДИТ:
+   - дорога туда (road_days)
+   - 1-2 дня мобилизации на объекте
+   - work_days (чистые рабочие смены)
+   - 1-2 дня демобилизации
+   - дорога обратно (road_days)
+
+   ФОРМУЛА: work_days = ${dateWindowDays} − road_days*2 − 4 (моб+демоб)
+   Например: при road_days=2 → work_days = ${Math.max(1, dateWindowDays - 8)}.
+   При road_days=3 → work_days = ${Math.max(1, dateWindowDays - 10)}.
+
+   ЕСЛИ ОБЪЁМ НЕ ПОМЕЩАЕТСЯ В work_days — УВЕЛИЧИВАЙ БРИГАДУ, А НЕ ДНИ.
+   Например, если 1 бригада 8 чел сделает за 30 дней — поставь 2 бригады
+   12 чел и сделай за 15 дней. Заказчик платит за объём, а не за время.
+
+   КАТЕГОРИЧЕСКИ: work_days + road_days*2 + 4 ≤ ${dateWindowDays} ВСЕГДА.
+   Если ты вернёшь work_days больше этой формулы — ответ будет ОТБРОШЕН
+   и пересчитан вручную.`
   : 'Срок не задан в работе. Считай по объёму работ × производительность бригады.'}
 
 ═══ ТЕНДЕР ═══
@@ -1145,9 +1161,47 @@ function parseAIResponse(text) {
  *
  * Возвращает { calculation, totals, drift } где drift — отклонение от того что прислал AI.
  */
-function validateAndRecomputeMath(ai, settings) {
+function validateAndRecomputeMath(ai, settings, ctx = null) {
   const calc = JSON.parse(JSON.stringify(ai.calculation || {}));
   const est = ai.estimate || {};
+
+  // AP3.5b: ЖЁСТКАЯ серверная проверка work_days по окну дат
+  // Если AI вернул больше — обрезаем и расширяем бригаду компенсирующе
+  let timeOverflowFix = null;
+  if (ctx) {
+    const startDate = ctx.work?.start_plan || ctx.work?.start_in_work_date || ctx.tender?.work_start_plan;
+    const endDate = ctx.work?.end_plan || ctx.work?.end_fact || ctx.tender?.work_end_plan;
+    if (startDate && endDate) {
+      const dateWindow = Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1;
+      const roadDays = Number(est.road_days) || 2;
+      const mobDays = 4; // 2 моб + 2 демоб
+      const maxWorkDays = Math.max(1, dateWindow - roadDays * 2 - mobDays);
+      const aiWorkDays = Number(est.work_days) || 0;
+      if (aiWorkDays > maxWorkDays) {
+        // Расширяем бригаду пропорционально — сохраняем человеко-смены
+        const aiCrew = Number(est.crew_count) || 1;
+        const totalManDays = aiCrew * aiWorkDays;
+        const newCrew = Math.ceil(totalManDays / maxWorkDays);
+        timeOverflowFix = {
+          ai_work_days: aiWorkDays,
+          ai_crew: aiCrew,
+          fixed_work_days: maxWorkDays,
+          fixed_crew: newCrew,
+          window: dateWindow,
+          road_days: roadDays
+        };
+        // Применяем фикс к estimate (сохранится в БД)
+        est.work_days = maxWorkDays;
+        est.crew_count = newCrew;
+        // Пересчитываем personnel: меняем days на maxWorkDays и count пропорционально
+        const ratio = newCrew / aiCrew;
+        (calc.personnel || []).forEach(p => {
+          p.days = maxWorkDays;
+          p.count = Math.ceil((Number(p.count) || 0) * ratio);
+        });
+      }
+    }
+  }
 
   // 1. Пересчёт total в строках
   (calc.personnel || []).forEach(p => {
@@ -1235,7 +1289,7 @@ function validateAndRecomputeMath(ai, settings) {
     drift = r2(Math.abs(aiCost - totalCost) / aiCost * 100);
   }
 
-  return { calculation: calc, totals, drift, settings };
+  return { calculation: calc, totals, drift, settings, timeOverflowFix };
 }
 
 /**
@@ -1547,7 +1601,7 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
   ai._meta = { model: aiResult.model, provider: aiResult.provider };
 
   // Пересчитываем математику
-  const recomputed = validateAndRecomputeMath(ai, ctx.settings);
+  const recomputed = validateAndRecomputeMath(ai, ctx.settings, ctx);
 
   return {
     ai,

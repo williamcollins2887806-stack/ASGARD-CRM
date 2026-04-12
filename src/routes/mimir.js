@@ -2055,14 +2055,16 @@ ${analogsSummary}
           transport_subtotal: totals.transport_subtotal,
           chemistry_subtotal: totals.chemistry_subtotal,
           current_subtotal: totals.current_subtotal,
-          drift_pct: aiBundle.recomputed.drift
+          drift_pct: aiBundle.recomputed.drift,
+          time_overflow_fix: aiBundle.recomputed.timeOverflowFix
         },
         analysis: {
           markup_reasoning: ai.analysis?.markup_reasoning || null,
           warnings: ai.analysis?.warnings || [],
           warehouse_status: ai.analysis?.warehouse_status || null,
           workers_status: ai.analysis?.workers_status || null,
-          purchases_needed: ai.analysis?.purchases_needed || []
+          purchases_needed: ai.analysis?.purchases_needed || [],
+          time_overflow_fix: aiBundle.recomputed.timeOverflowFix
         },
         comment: ai.estimate?.comment || null,
         summary: context.summary,
