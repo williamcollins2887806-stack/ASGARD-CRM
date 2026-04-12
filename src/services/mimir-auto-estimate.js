@@ -1384,10 +1384,10 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
   const contingencyAmount = subtotalWithOverhead * (Number(settings.contingency_pct) / 100);
   const totalCost = r2(subtotalWithOverhead + contingencyAmount);
 
-  // Наценка → клиенту
-  const markup = Number(est.markup_multiplier) || 2.0;
-  const totalWithMargin = r2(totalCost * markup);
-  const marginPct = totalCost > 0 ? r2(((totalWithMargin - totalCost) / totalCost) * 100) : 0;
+  // Наценка → клиенту (let — может быть скорректирована серверным enforcement)
+  let markup = Number(est.markup_multiplier) || 2.0;
+  let totalWithMargin = r2(totalCost * markup);
+  let marginPct = totalCost > 0 ? r2(((totalWithMargin - totalCost) / totalCost) * 100) : 0;
 
   // AP4: Серверный enforcement — если цена с НДС > estimated_sum тендера, обрезать markup
   let markupOverflowFix = null;
