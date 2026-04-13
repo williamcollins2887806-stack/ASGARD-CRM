@@ -246,9 +246,29 @@
     setTimeout(() => overlay.remove(), 200);
   }
 
-  // AP5: естественный темп — шаги показываются сразу при получении SSE event
+  // Очередь шагов — 1.5с задержка для сбора данных, но heartbeat/result сразу
+  var _stepQueue = [];
+  var _stepTimer = null;
+
   function enqueueStep(stepsBox, event) {
-    appendStepNow(stepsBox, event);
+    // ai_thinking и после — показываем сразу (Claude думает в реальном времени)
+    if (event.step === 'ai_thinking' || event.step === 'creating_estimate') {
+      // Сначала flush всю очередь мгновенно
+      while (_stepQueue.length > 0) { appendStepNow(_stepQueue.shift().stepsBox, _stepQueue.length >= 0 ? _stepQueue.shift()?.event : null); }
+      if (_stepTimer) { clearTimeout(_stepTimer); _stepTimer = null; }
+      _stepQueue = [];
+      appendStepNow(stepsBox, event);
+      return;
+    }
+    _stepQueue.push({ stepsBox, event });
+    if (!_stepTimer) drainStepQueue();
+  }
+
+  function drainStepQueue() {
+    if (_stepQueue.length === 0) { _stepTimer = null; return; }
+    var item = _stepQueue.shift();
+    if (item && item.event) appendStepNow(item.stepsBox, item.event);
+    _stepTimer = setTimeout(drainStepQueue, 1500);
   }
 
   // ID для "thinking" анимации — чтобы удалить когда придёт следующий шаг
