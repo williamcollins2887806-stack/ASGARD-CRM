@@ -303,7 +303,7 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
     // CRSelect onChange handlers already set above
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт • Просчёты (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
-      document.querySelector(".modal")?.classList.add("fullscreen");
+      { const _m = document.querySelector(".cr-m"); if(_m){ _m.classList.add("fullscreen","cr-m--fullscreen"); } }
       setTimeout(()=>{
         document.querySelectorAll("#gfs [data-gitem]").forEach(el=>{
           el.addEventListener("click", ()=>{
@@ -534,7 +534,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
 
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт • Работы (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
-      document.querySelector(".modal")?.classList.add("fullscreen");
+      { const _m = document.querySelector(".cr-m"); if(_m){ _m.classList.add("fullscreen","cr-m--fullscreen"); } }
       setTimeout(()=>{
         document.querySelectorAll("#gfs [data-gitem]").forEach(el=>{
           el.addEventListener("click", ()=>{
@@ -855,7 +855,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
     fromInp.addEventListener("change", ()=>{ CRSelect.setValue('g-per','custom'); apply(); });
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт — Единая шкала (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
-      document.querySelector(".modal")?.classList.add("fullscreen");
+      { const _m = document.querySelector(".cr-m"); if(_m){ _m.classList.add("fullscreen","cr-m--fullscreen"); } }
       setTimeout(()=>{
         document.querySelectorAll("#gfs [data-gitem]").forEach(el=>{
           el.addEventListener("click", ()=>{

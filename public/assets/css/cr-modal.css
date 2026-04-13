@@ -629,8 +629,9 @@
 .cr-m__body input:focus,
 .cr-m__body textarea:focus,
 .cr-m__body select:focus {
-  border-color: var(--gold-border);
-  box-shadow: 0 0 0 3px rgba(212,168,67,0.07);
+  border-color: var(--blue) !important;
+  box-shadow: 0 0 0 3px rgba(30,77,140,0.15) !important;
+  outline: none;
 }
 
 .cr-m__body input::placeholder,

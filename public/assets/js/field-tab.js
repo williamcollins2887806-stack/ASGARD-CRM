@@ -1437,7 +1437,7 @@ window.AsgardFieldTab = (function () {
             });
             if (result.error) { toast('Ошибка: ' + result.error); return; }
             toast('Средства выданы!');
-            document.querySelector('.modal-overlay')?.remove();
+            AsgardUI.hideModal();
             renderFundsTab(parentContainer, work, user);
           } catch (err) { toast('Ошибка: ' + err.message); }
         });
@@ -1646,7 +1646,7 @@ window.AsgardFieldTab = (function () {
             });
             if (result.error) { toast('Ошибка: ' + result.error); return; }
             toast('Лист сборки создан!');
-            document.querySelector('.modal-overlay')?.remove();
+            AsgardUI.hideModal();
             renderPackingTab(parentContainer, work, user);
           } catch (err) { toast('Ошибка: ' + err.message); }
         });
@@ -1737,7 +1737,7 @@ window.AsgardFieldTab = (function () {
             });
             if (result.error) { toast('Ошибка: ' + result.error); return; }
             toast('Сборщик назначен!' + (result.sms_sent ? ' SMS отправлен' : ''));
-            document.querySelector('.modal-overlay')?.remove();
+            AsgardUI.hideModal();
             renderPackingTab(parentContainer, work, user);
           } catch (err) { toast('Ошибка: ' + err.message); }
         });
@@ -1946,7 +1946,7 @@ window.AsgardFieldTab = (function () {
           });
           if (result.error) { toast('Ошибка: ' + result.error); return; }
           toast('Этап создан');
-          document.querySelector('.modal-overlay')?.remove();
+          AsgardUI.hideModal();
           renderStagesTab(parentContainer, work, user);
         });
       }
@@ -2005,7 +2005,7 @@ window.AsgardFieldTab = (function () {
           if (result.error) { toast('Ошибка: ' + result.error); return; }
           toast(`Создано ${result.created_count} этапов`);
           CRSelect.destroy('bulkType');
-          document.querySelector('.modal-overlay')?.remove();
+          AsgardUI.hideModal();
           renderStagesTab(parentContainer, work, user);
         });
       }

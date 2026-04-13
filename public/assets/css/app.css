@@ -4728,51 +4728,10 @@ table.asg tr:hover td:first-child {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   MODERN MODAL STYLING (modalback handled by components.css)
+   MODERN MODAL STYLING — moved to cr-modal.css (v1.0)
+   Legacy .modal class kept on cr-m element for backward compat.
+   Animation and shadow now handled by .cr-m in cr-modal.css.
    ───────────────────────────────────────────────────────────────────────────── */
-
-.modal {
-  background: var(--bg2);
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
-  border: 1px solid var(--brd);
-  border-radius: var(--r-xl);
-  box-shadow:
-    0 25px 80px rgba(0, 0, 0, 0.5),
-    var(--blue-glow),
-    0 1px 0 rgba(255, 255, 255, 0.05) inset;
-  animation: modalEnter var(--base);
-}
-
-@keyframes modalEnter {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.modal .mh {
-  background: linear-gradient(
-    90deg,
-    rgba(220, 38, 38, 0.05) 0%,
-    rgba(37, 99, 235, 0.05) 100%
-  );
-  border-bottom: none;
-  padding: 20px 24px;
-}
-
-.modal .mh .h {
-  font-size: 18px;
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--t1), var(--gold-l));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    KPI CARDS ENHANCEMENT
@@ -5268,30 +5227,16 @@ td, th { word-break: break-word; }
    BUG-8: Mobile modal adaptation
    ───────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .modalback, .modal-overlay { padding: 0; align-items: flex-end; }
-  .modal, .modal-content {
+  /* cr-m mobile styles handled by cr-modal.css */
+  /* modal-content (non-AsgardUI modals) keeps bottom-sheet behavior */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal-content {
     width: 100% !important; max-width: 100% !important;
     max-height: 92vh !important;
-    border-radius: 20px 20px 0 0 !important;
+    border-radius: var(--r-xl) var(--r-xl) 0 0 !important;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     margin: 0 !important;
-    animation: m-slide-up 0.3s ease-out !important;
-  }
-  @keyframes m-slide-up {
-    from { transform: translateY(100%); opacity: 0.5; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-  .modal::before, .modal-content::before {
-    content: '' !important;
-    display: block !important;
-    width: 40px !important;
-    height: 4px !important;
-    background: rgba(255,255,255,0.2) !important;
-    border-radius: 2px !important;
-    margin: 10px auto 6px !important;
-    position: static !important;
-    flex-shrink: 0;
   }
   .tasks-page { grid-template-columns: 1fr !important; }
 }
@@ -7754,35 +7699,31 @@ table.asg tbody tr:hover td {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   11. МОДАЛКИ — Viking modal style
+   11. МОДАЛКИ — cr-modal.css handles .cr-m styling
+   Legacy .modal-content for non-AsgardUI modals
    ───────────────────────────────────────────────────────────────────────────── */
-.modal,
 .modal-content {
-  border: 1px solid rgba(212, 168, 67, 0.15) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
   border-radius: var(--r-xl) !important;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(30, 77, 140, 0.1) !important;
+  box-shadow: var(--shadow-xl) !important;
   overflow: hidden !important;
 }
 
-.modal::before,
 .modal-content::before {
   content: '' !important;
   position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: 3px !important;
-  background: var(--grad-corp) !important;
-  z-index: 10 !important;
+  top: 0 !important; left: 0 !important; right: 0 !important;
+  height: 2px !important;
+  background: linear-gradient(90deg, var(--red), var(--gold) 50%, var(--blue)) !important;
+  z-index: 2 !important;
+  border-radius: var(--r-xl) var(--r-xl) 0 0 !important;
 }
 
-.mh,
 .modal-header {
-  background: transparent !important;
-  border-bottom: 1px solid rgba(212, 168, 67, 0.12) !important;
+  background: var(--bg2) !important;
+  border-bottom: 1px solid var(--brd) !important;
 }
 
-.mh .ttl,
 .modal-header h2,
 .modal-header .title {
   font-family: var(--ff-head) !important;
@@ -8668,55 +8609,41 @@ table.asg tbody tr:hover td:first-child,
 
 
 /* ══════════════════════════════════════
-   10. MODALS — premium glass, above sidebar
+   10. MODALS — now styled by cr-modal.css (v1.0)
+   Legacy .modal-content keeps separate styles for non-AsgardUI modals
    ══════════════════════════════════════ */
 
-.modalback,
-.modal-overlay {
-  z-index: 1000 !important;
-  background: rgba(6,8,16,0.8) !important;
-  backdrop-filter: blur(6px) !important;
-}
-
-.modal,
 .modal-content {
-  z-index: 1001 !important;
-  background: #131929 !important;
-  border: 1px solid rgba(30,77,140,0.25) !important;
-  border-radius: 16px !important;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.4) !important;
+  background: var(--bg2) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  border-radius: var(--r-xl) !important;
+  box-shadow: var(--shadow-xl) !important;
 }
 
-.modal::before,
 .modal-content::before {
   content: '' !important;
   position: absolute !important;
   top: 0 !important; left: 0 !important; right: 0 !important;
-  height: 3px !important;
-  background: linear-gradient(90deg, var(--red, #C8293B), var(--gold, #D4A843) 50%, var(--blue, #1E4D8C)) !important;
-  z-index: 1 !important;
-  border-radius: 16px 16px 0 0 !important;
+  height: 2px !important;
+  background: linear-gradient(90deg, var(--red), var(--gold) 50%, var(--blue)) !important;
+  z-index: 2 !important;
+  border-radius: var(--r-xl) var(--r-xl) 0 0 !important;
 }
 
-.mh,
 .modal-header {
-  background: rgba(30,77,140,0.05) !important;
-  border-bottom: 1px solid rgba(30,77,140,0.1) !important;
+  background: var(--bg2) !important;
+  border-bottom: 1px solid var(--brd) !important;
 }
 
-.mh .ttl,
 .modal-header h2,
 .modal-header .title {
-  color: rgba(255,255,255,0.95) !important;
+  color: var(--t1) !important;
   font-weight: 700 !important;
-  letter-spacing: 0.03em !important;
-  text-transform: uppercase !important;
 }
 
-.mf,
 .modal-footer {
-  background: rgba(30,77,140,0.03) !important;
-  border-top: 1px solid rgba(30,77,140,0.08) !important;
+  background: var(--bg2) !important;
+  border-top: 1px solid var(--brd) !important;
 }
 
 
@@ -9153,14 +9080,8 @@ label {
 
 
 /* ══════════════════════════════════════
-   24. SEARCH / COMMAND PALETTE
+   24. SEARCH / COMMAND PALETTE — styled in main block above
    ══════════════════════════════════════ */
-
-.search-modal {
-  background: #131929 !important;
-  border: 1px solid rgba(30,77,140,0.25) !important;
-  border-radius: 12px !important;
-}
 
 
 /* ══════════════════════════════════════
