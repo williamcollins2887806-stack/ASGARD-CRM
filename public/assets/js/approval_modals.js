@@ -77,32 +77,33 @@ window.AsgardApprovalModals = (function() {
     const style = document.createElement('style');
     style.id = 'asg-approval-styles';
     style.textContent = `
-      .asg-pay-card { padding:16px; border-radius:12px; background:var(--bg2); border:2px solid var(--brd);
-        cursor:pointer; transition:all .2s ease; margin-bottom:12px; }
-      .asg-pay-card:hover { border-color:var(--blue); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.08); }
-      .asg-pay-card.selected { border-color:var(--blue); background:rgba(59,130,246,.06); }
-      .asg-pay-card.selected-amber { border-color:var(--amber); background:rgba(245,158,11,.06); }
+      .asg-pay-card { padding:16px; border-radius:var(--r-lg); background:var(--bg3); border:2px solid var(--brd);
+        cursor:pointer; transition:all .25s cubic-bezier(0.16,1,0.3,1); margin-bottom:12px; }
+      .asg-pay-card:hover { border-color:var(--blue-l); transform:translateY(-2px); box-shadow:var(--shadow-md); }
+      .asg-pay-card.selected { border-color:var(--blue-l); background:var(--blue-bg); }
+      .asg-pay-card.selected-amber { border-color:var(--gold); background:var(--gold-bg); }
       .asg-pay-card .card-header { display:flex; align-items:center; gap:12px; }
-      .asg-pay-card .card-icon { font-size:28px; width:44px; height:44px; display:flex; align-items:center; justify-content:center;
-        border-radius:10px; background:var(--bg3); }
-      .asg-pay-card .card-title { font-weight:700; font-size:14px; }
+      .asg-pay-card .card-icon { font-size:24px; width:44px; height:44px; display:flex; align-items:center; justify-content:center;
+        border-radius:var(--r-md); background:var(--bg4); border:1px solid var(--brd); }
+      .asg-pay-card .card-title { font-weight:700; font-size:14px; color:var(--t1); }
       .asg-pay-card .card-subtitle { font-size:12px; color:var(--t3); margin-top:2px; }
       .asg-pay-card .card-form { display:none; margin-top:14px; padding-top:14px; border-top:1px solid var(--brd); }
       .asg-pay-card.selected .card-form,
       .asg-pay-card.selected-amber .card-form { display:block; }
-      .asg-balance-badge { padding:12px; border-radius:10px; background:rgba(59,130,246,.06); border:1px solid rgba(59,130,246,.15);
+      .asg-balance-badge { padding:14px; border-radius:var(--r-lg); background:var(--blue-bg); border:1px solid rgba(30,77,140,.2);
         text-align:center; margin-bottom:14px; }
-      .asg-balance-badge .value { font-size:26px; font-weight:800; color:var(--blue); }
-      .asg-balance-badge .label { font-size:11px; color:var(--t3); margin-top:2px; }
-      .asg-btn-full { width:100%; padding:10px; font-size:14px; font-weight:600; border-radius:8px; cursor:pointer;
-        border:none; transition:all .15s; }
-      .asg-btn-full:hover { opacity:.9; transform:translateY(-1px); }
-      .asg-btn-full:disabled { opacity:.5; cursor:not-allowed; transform:none; }
-      .asg-btn-green { background:#22c55e; color:#fff; }
-      .asg-btn-amber { background:#f59e0b; color:#fff; }
-      .asg-btn-blue { background:#3b82f6; color:#fff; }
-      .asg-confirm-icon { font-size:56px; margin-bottom:16px; animation:asg-bounce .5s ease; }
-      @keyframes asg-bounce { 0%{transform:scale(.8)} 50%{transform:scale(1.1)} 100%{transform:scale(1)} }
+      .asg-balance-badge .value { font-size:26px; font-weight:800; color:var(--blue-l); }
+      .asg-balance-badge .label { font-size:11px; color:var(--t3); margin-top:2px; text-transform:uppercase; letter-spacing:0.3px; }
+      .asg-btn-full { width:100%; padding:11px; font-size:14px; font-weight:600; border-radius:var(--r-md); cursor:pointer;
+        border:none; transition:all .2s cubic-bezier(0.16,1,0.3,1); letter-spacing:0.2px; }
+      .asg-btn-full:hover { transform:translateY(-1px); box-shadow:var(--shadow-md); filter:brightness(1.1); }
+      .asg-btn-full:active { transform:translateY(0); }
+      .asg-btn-full:disabled { opacity:.5; cursor:not-allowed; transform:none; filter:none; box-shadow:none; }
+      .asg-btn-green { background:var(--ok); color:#fff; }
+      .asg-btn-amber { background:var(--gold); color:var(--bg1); }
+      .asg-btn-blue { background:var(--blue); color:#fff; }
+      .asg-confirm-icon { font-size:52px; margin-bottom:16px; animation:asg-bounce .5s cubic-bezier(0.16,1,0.3,1); }
+      @keyframes asg-bounce { 0%{transform:scale(.6);opacity:0} 60%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
     `;
     document.head.appendChild(style);
   }
