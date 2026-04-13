@@ -1393,6 +1393,25 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
   // Сроки есть в данных (work.start_plan→end_plan), Claude видит их и укладывается.
   let timeOverflowFix = null;
 
+  // 0. Нормализация полей ПЕРЕД пересчётом (Claude пишет qty/rate, сервер ожидает count/rate_per_day)
+  (calc.personnel || []).forEach(p => {
+    if (p.qty != null && p.count == null) p.count = p.qty;
+    if (p.rate != null && p.rate_per_day == null) p.rate_per_day = p.rate;
+  });
+  (calc.travel || []).forEach(r => {
+    if (r.qty != null && r.count == null) r.count = r.qty;
+    if (r.rate != null && r.price == null) r.price = r.rate;
+  });
+  (calc.transport || []).forEach(r => {
+    if (r.qty != null && r.count == null) r.count = r.qty;
+    if (r.rate != null && r.price == null) r.price = r.rate;
+  });
+  (calc.chemistry || []).forEach(r => {
+    if (r.volume_m3 != null && r.volume_liters == null) r.volume_liters = r.volume_m3;
+    if (r.rate_m3 != null && r.price_per_liter == null) r.price_per_liter = r.rate_m3;
+    if (r.rate != null && r.price_per_liter == null) r.price_per_liter = r.rate;
+  });
+
   // 1. Пересчёт total в строках
   (calc.personnel || []).forEach(p => {
     p.count = Number(p.count) || 0;
@@ -1400,7 +1419,10 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
     p.days = Number(p.days) || 0;
     p.total = r2(p.count * p.rate_per_day * p.days);
   });
-  (calc.current_costs || []).forEach(r => { r.amount = r2(r.amount); r.total = r.amount; });
+  (calc.current_costs || []).forEach(r => {
+    r.total = Number(r.total) || Number(r.amount) || 0;
+    r.amount = r.total;
+  });
   (calc.travel || []).forEach(r => {
     r.count = Number(r.count) || 1;
     r.price = Number(r.price) || 0;
@@ -1867,73 +1889,23 @@ function resolveEquipmentFromWarehouse(ai, ctx) {
   if (!ai.analysis.warnings) ai.analysis.warnings = [];
 
   const needed = ai.equipment_needed || [];
-  const warehouseItems = ctx.warehouse || [];
 
-  // Индекс склада: name (lowercase) → item
-  const whIndex = {};
-  for (const w of warehouseItems) {
-    const key = (w.name || '').toLowerCase();
-    if (key) whIndex[key] = w;
-  }
+  // AP5: Автоматический matching склада ОТКЛЮЧЁН — давал ложные совпадения.
+  // Всё оборудование идёт в to_purchase. РП сам решает что взять со склада.
+  const toPurchase = needed.map(item => ({
+    item: item.item,
+    quantity: item.quantity || 1,
+    purpose: item.purpose || ''
+  }));
 
-  const fromWarehouse = [];
-  const toPurchase = [];
-
-  for (const item of needed) {
-    const name = (item.item || '').toLowerCase();
-    // Ищем совпадение по подстроке в складских позициях
-    let found = null;
-    for (const wKey of Object.keys(whIndex)) {
-      // Проверяем пересечение ключевых слов (3+ букв)
-      const words = name.split(/[\s,/()]+/).filter(w => w.length >= 3);
-      const match = words.some(w => wKey.includes(w));
-      if (match) { found = whIndex[wKey]; break; }
-    }
-
-    if (found) {
-      fromWarehouse.push({
-        item: item.item,
-        quantity: item.quantity || 1,
-        condition: found.status || 'на складе',
-        warehouse_item_id: found.id,
-        warehouse_name: found.name
-      });
-    } else {
-      toPurchase.push({
-        item: item.item,
-        quantity: item.quantity || 1,
-        price_estimate: 0,
-        total: 0,
-        supplier_hint: 'Уточнить стоимость у поставщика',
-        purpose: item.purpose || ''
-      });
-    }
-  }
-
-  // Формируем equipment_status из серверной проверки
   ai.equipment_status = {
-    from_warehouse: fromWarehouse,
+    from_warehouse: [],
     to_purchase: toPurchase,
-    summary: `${fromWarehouse.length} позиций со склада, ${toPurchase.length} нужно купить`
+    summary: `${toPurchase.length} позиций — проверьте наличие на складе`
   };
 
-  // Если нужно покупать — добавить warning
-  if (toPurchase.length > 0) {
-    const items = toPurchase.map(p => p.item).join(', ');
-    ai.analysis.warnings.push({
-      level: 'warning',
-      title: 'Требуется закупка оборудования',
-      text: `На складе нет: ${items}. Необходимо приобрести перед выездом.`
-    });
-  }
-
-  // Если AI вообще не указал equipment_needed — предупредить
   if (needed.length === 0) {
-    ai.equipment_status = {
-      from_warehouse: [],
-      to_purchase: [],
-      summary: 'AI не указал необходимое оборудование'
-    };
+    ai.equipment_status.summary = 'Мимир не указал необходимое оборудование';
     ai.analysis.warnings.push({
       level: 'info',
       title: 'Оборудование не указано',
