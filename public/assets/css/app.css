@@ -5386,17 +5386,21 @@ html[data-theme="light"] .badge[style*="background"] {
 /* ═══════════════════════════════════════════════════════════════════════════════
    COMMAND PALETTE (Ctrl+K) — Spotlight-style search
    ═══════════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════════
+   COMMAND PALETTE (Ctrl+K) — cr-modal v1.0 design
+   ═══════════════════════════════════════════════════════════════════════════════ */
 .search-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: var(--z-modal);
+  background: var(--overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: var(--z-palette);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 15vh;
-  animation: cp-fade-in 150ms ease;
+  padding-top: 12vh;
+  animation: cp-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes cp-fade-in {
@@ -5405,17 +5409,29 @@ html[data-theme="light"] .badge[style*="background"] {
 }
 
 .search-modal {
-  width: min(600px, 90vw);
+  position: relative;
+  width: min(620px, 92vw);
   background: var(--bg2);
-  border: 1px solid var(--brd);
-  border-radius: 6px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-xl), 0 0 80px rgba(0,0,0,0.3);
   overflow: hidden;
-  animation: search-slide-in 200ms ease;
+  animation: search-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Gold top accent line */
+.search-modal::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--grad-gold);
+  z-index: 2;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
 }
 
 @keyframes search-slide-in {
-  from { opacity: 0; transform: translateY(-20px) scale(0.97); }
+  from { opacity: 0; transform: translateY(-16px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
@@ -5423,7 +5439,8 @@ html[data-theme="light"] .badge[style*="background"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 14px 16px;
+  padding-top: 16px; /* space for topline */
   border-bottom: 1px solid var(--brd);
 }
 
@@ -5431,13 +5448,14 @@ html[data-theme="light"] .badge[style*="background"] {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .search-icon {
   font-size: 18px;
-  color: var(--t3);
+  color: var(--gold);
   flex-shrink: 0;
+  opacity: 0.8;
 }
 
 .search-input {
@@ -5457,7 +5475,7 @@ html[data-theme="light"] .badge[style*="background"] {
 
 .search-type {
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--brd);
   background: var(--bg3);
   color: var(--t2);
@@ -5469,6 +5487,8 @@ html[data-theme="light"] .badge[style*="background"] {
   max-height: 50vh;
   overflow-y: auto;
   padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--brd) transparent;
 }
 
 .search-section {
@@ -5491,22 +5511,29 @@ html[data-theme="light"] .badge[style*="background"] {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 9px 12px;
+  border-radius: var(--r-md);
   cursor: pointer;
-  transition: background var(--fast);
+  transition: all 0.15s ease;
 }
 
 .search-result-item:hover,
 .search-result-item.selected {
-  background: var(--gold-glow);
+  background: var(--gold-bg);
+  transform: translateX(2px);
 }
 
 .search-result-icon {
   font-size: 16px;
   flex-shrink: 0;
-  width: 24px;
-  text-align: center;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd);
 }
 
 .search-result-content { flex: 1; min-width: 0; }
@@ -5521,10 +5548,10 @@ html[data-theme="light"] .badge[style*="background"] {
 }
 
 .search-result-title mark {
-  background: var(--gold-glow);
+  background: var(--gold-bg);
   color: var(--gold);
-  border-radius: 2px;
-  padding: 0 2px;
+  border-radius: 3px;
+  padding: 1px 3px;
 }
 
 .search-result-subtitle {
@@ -5538,7 +5565,7 @@ html[data-theme="light"] .badge[style*="background"] {
 
 .search-empty {
   text-align: center;
-  padding: 32px 16px;
+  padding: 40px 16px;
   color: var(--t3);
   font-size: 13px;
 }
@@ -5547,39 +5574,49 @@ html[data-theme="light"] .badge[style*="background"] {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 8px 16px;
+  padding: 10px 16px;
   border-top: 1px solid var(--brd);
   font-size: 11px;
   color: var(--t3);
+  background: var(--bg2);
 }
 
 .search-footer kbd {
   display: inline-block;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   border: 1px solid var(--brd);
   background: var(--bg3);
   font-size: 10px;
   font-family: var(--ff-mono);
   color: var(--t2);
+  min-width: 20px;
+  text-align: center;
 }
 
 .search-more {
   text-align: center;
-  padding: 4px;
+  padding: 6px;
   font-size: 11px;
   color: var(--gold);
   cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: background 0.15s ease;
+}
+
+.search-more:hover {
+  background: var(--gold-bg);
 }
 
 /* Light theme — Command Palette */
 html[data-theme="light"] .search-overlay {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.35);
 }
 
 html[data-theme="light"] .search-modal {
   background: var(--bg2);
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
+  border-color: var(--brd);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.18);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

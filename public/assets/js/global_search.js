@@ -339,12 +339,20 @@ window.AsgardSearch = (function(){
     input.focus();
   }
   
-  // Закрыть модалку
+  // Закрыть модалку с анимацией
   function closeSearchModal() {
     CRSelect.destroy('searchType');
     const overlay = $('#searchOverlay');
     if (overlay) {
-      overlay.remove();
+      overlay.style.transition = 'opacity 0.25s ease';
+      overlay.style.opacity = '0';
+      const modal = $('.search-modal', overlay);
+      if (modal) {
+        modal.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
+        modal.style.transform = 'translateY(-12px) scale(0.97)';
+        modal.style.opacity = '0';
+      }
+      setTimeout(() => overlay.remove(), 260);
     }
     isOpen = false;
   }
