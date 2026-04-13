@@ -2031,11 +2031,6 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/work-report", ({query})=>AsgardWorkReport.render({layout, title:"Финансовый отчёт", query}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/finances", ()=>AsgardFinancesPage.render({layout, title:"Деньги • Аналитика"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/buh-registry", () => {
-      if (!AsgardAuth.hasPermission('buh_registry', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       AsgardBuhRegistryPage.render({layout, title:"Реестр расходов • BUH"});
     }, {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/office-expenses", ()=>AsgardOfficeExpensesPage.render({layout, title:"Офисные расходы"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
@@ -2047,19 +2042,9 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/user-requests", ()=>AsgardUserRequestsPage.render({layout, title:"Заявки на регистрацию"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/analytics", ()=>{ location.hash = "#/kpi-works"; }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/kpi-works", () => {
-      if (!AsgardAuth.hasPermission('analytics', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       AsgardKpiWorksPage.render({layout, title:"Аналитика Ярла • Работы"});
     }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/kpi-money", () => {
-      if (!AsgardAuth.hasPermission('analytics', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       AsgardKpiMoneyPage.render({layout, title:"Аналитика Ярла • Деньги"});
     }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/field-tariffs", ()=>AsgardFieldTariffsPage.render({layout, title:"Тарифная сетка • Поле"}), {auth:true, roles:["ADMIN"]});
@@ -2076,29 +2061,14 @@ var _setupPinKeypad = null;
   AsgardRouter.add("/diag", ()=>AsgardDiagPage.render({layout, title:"Диагностика"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/alerts", ()=>AsgardAlertsPage.render({layout, title:"Уведомления"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/personnel", () => {
-      if (!AsgardAuth.hasPermission('personnel', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       AsgardPersonnelPage.render({layout, title:"Дружина • Персонал"});
     }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/hr-rating", ()=>AsgardHrRatingPage.render({layout, title:"Рейтинг Дружины"}), {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/employee", () => {
-      if (!AsgardAuth.hasPermission('personnel', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       AsgardEmployeePage.render({layout, title:"Личное дело"});
     }, {auth:true, roles:["ADMIN","HR","PM","TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/collections", () => { AsgardEmployeeCollections.render({layout, title:"Подборки Дружины"}); }, {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/hr-requests", () => {
-      if (!AsgardAuth.hasPermission('hr_requests', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       AsgardHrRequestsPage.render({layout, title:"Заявки персонала"});
     }, {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","PROC","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
@@ -2120,20 +2090,10 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
 
     // Касса (M2)
     AsgardRouter.add("/cash", async ()=>{
-      if (!AsgardAuth.hasPermission('cash', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       await layout('<div id="cash-page"></div>', {title:"Касса"});
       AsgardCashPage.render(document.getElementById('cash-page'));
     }, {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/cash-admin", async ()=>{
-      if (!AsgardAuth.hasPermission('cash_admin', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       await layout('<div id="cash-admin-page"></div>', {title:"Касса (управление)"});
       AsgardCashAdminPage.render(document.getElementById('cash-admin-page'));
     }, {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
@@ -2152,31 +2112,16 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
 
     // Задачи (M3)
     AsgardRouter.add("/tasks", async ()=>{
-      if (!AsgardAuth.hasPermission('tasks', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       await layout('<div id="tasks-page"></div>', {title:"Мои задачи"});
       AsgardTasksPage.render(document.getElementById('tasks-page'));
     }, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/tasks-admin", async ()=>{
-      if (!AsgardAuth.hasPermission('tasks_admin', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       await layout('<div id="tasks-admin-page"></div>', {title:"Управление задачами"});
       AsgardTasksAdminPage.render(document.getElementById('tasks-admin-page'));
     }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
 
     // ── Phase 2: Kanban, Chat Groups, Meetings ──
     AsgardRouter.add("/kanban", async ()=>{
-      if (!AsgardAuth.hasPermission('kanban', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       await AsgardKanban.render({layout});
     }, {auth:true, roles:ALL_ROLES});
 
@@ -2193,11 +2138,6 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     }, {auth:true, roles:ALL_ROLES});
 
     AsgardRouter.add("/meetings", async ()=>{
-      if (!AsgardAuth.hasPermission('meetings', 'read')) {
-        AsgardUI.toast('Нет доступа', 'Недостаточно прав', 'error');
-        location.hash = '#/home';
-        return;
-      }
       await AsgardMeetings.render({layout});
     }, {auth:true, roles:ALL_ROLES});
 
