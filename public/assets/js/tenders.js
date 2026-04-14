@@ -103,6 +103,7 @@ window.AsgardTendersPage = (function(){
   }
 
   const TENDER_TYPES = ["Тендер","Запрос предложений","Оценка рынка","Прямой запрос","Доп. объём"];
+  let _typeChipsEl = null; // CrField.chips element for tender type (set in openTenderEditor)
 
   // === ЧЕРНОВИКИ ТЕНДЕРОВ ===
   const DRAFT_KEY = 'asgard_tender_draft';
@@ -149,7 +150,7 @@ window.AsgardTendersPage = (function(){
       customer_inn: CRAutocomplete.getValue("e_inn") || '',
       customer_name: CRAutocomplete.getValue("e_customer") || '',
       tender_title: document.getElementById("e_title")?.value || '',
-      tender_type: CRSelect.getValue('e_type') || '',
+      tender_type: (typeof _typeChipsEl !== 'undefined' && _typeChipsEl && _typeChipsEl._crGetValue) ? (_typeChipsEl._crGetValue() || '') : (CRSelect.getValue('e_type') || ''),
       tender_price: document.getElementById("e_price")?.value || '',
       tag_id: (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_tag')) || '',
       work_start_plan: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_ws')) || '',
@@ -182,7 +183,10 @@ window.AsgardTendersPage = (function(){
     if (draft.docs_deadline && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_docs_deadline', draft.docs_deadline);
     if (draft.customer_inn) CRAutocomplete.setValue('e_inn', draft.customer_inn);
     if (draft.customer_name) CRAutocomplete.setValue('e_customer', draft.customer_name);
-    if (draft.tender_type) CRSelect.setValue('e_type', draft.tender_type);
+    if (draft.tender_type) {
+      if (_typeChipsEl && _typeChipsEl._crSetValue) _typeChipsEl._crSetValue(draft.tender_type);
+      else CRSelect.setValue('e_type', draft.tender_type);
+    }
     if (draft.tag_id) CRSelect.setValue('e_tag', draft.tag_id);
   }
 
@@ -1425,7 +1429,7 @@ window.AsgardTendersPage = (function(){
         </div>
 
         <hr class="hr"/>
-        <div class="help"><b>Документы</b></div>
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span>Документы</span></div>
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0">
           <button class="btn ghost" id="btnAddDoc">📎 Загрузить файл</button>
           <button class="btn ghost" id="btnAddLink">🔗 Добавить ссылку</button>
@@ -1461,13 +1465,20 @@ ${docsHtml}</div>
         </div>
       `;
 
-      showModal(isNew ? "Новый тендер" : `Тендер #${t.id}`, html);
+      showModal({ title: isNew ? "Новый тендер" : `Тендер #${t.id}`, html, icon: '📋', subtitle: isNew ? 'Создание тендерной заявки' : `${esc((t&&t.customer_name)||'')} · ${esc((t&&t.tender_type)||'')}` });
 
       /* Mount CRSelect for editor fields */
       const _eTypeDis = !full;
       const _ePmDis = (user.role==="TO") || !full;
       const _eStatusDis = !full || isNew;
-      $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal', onChange: (v) => applyTypeRules(v) }));
+      // Tender type as CrField.chips (WOW visual) instead of CRSelect
+      _typeChipsEl = null;
+      if (typeof CrField !== 'undefined' && !_eTypeDis) {
+        _typeChipsEl = CrField.chips({ options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), selected: (t&&t.tender_type)||(isNew?'Тендер':''), onChange: (v) => applyTypeRules(v) });
+        $('#e_type_w')?.appendChild(_typeChipsEl);
+      } else {
+        $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal', onChange: (v) => applyTypeRules(v) }));
+      }
       $('#e_pm_w')?.appendChild(CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal' }));
       const _curStatus = (t&&t.tender_status)||(isNew?'Черновик':'');
       const _isAdmin = user.role === 'ADMIN';
@@ -2244,7 +2255,7 @@ ${docsHtml}</div>
         const customer_inn = String(innRaw).replace(/\D/g, "");
         let customer=(CRAutocomplete.getValue("e_customer") || "").trim();
         const title=document.getElementById("e_title").value.trim();
-        const tenderType = (CRSelect.getValue('e_type') || "Тендер").trim();
+        const tenderType = ((_typeChipsEl && _typeChipsEl._crGetValue) ? (_typeChipsEl._crGetValue() || 'Тендер') : (CRSelect.getValue('e_type') || "Тендер")).trim();
         const pmId = Number(CRSelect.getValue('e_pm')||0) || null;
         const status = CRSelect.getValue('e_status') || '';
         const priceRaw=document.getElementById("e_price").value.trim();
