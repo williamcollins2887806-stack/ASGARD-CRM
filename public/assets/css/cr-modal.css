@@ -763,9 +763,593 @@ html[data-theme="light"] .oops-bubble {
   }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   HIDE OLD MODAL STYLES — override for backward compatibility
-   Old classes (.modalback, .modal, .mh, .mc, .mf) are now rendered
-   via new cr-m structure, but we keep selectors working for any
-   JS that references them.
-   ───────────────────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════════
+   CR-FIELD COMPONENTS v1.0
+   Внутренние WOW-компоненты для модалок
+   Prefix: cr-f-
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. PERSON PICKER ────────────────────────────────────────── */
+.cr-f-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.cr-f-person:hover {
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cr-f-person__av {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--gold), var(--gold-h));
+  color: var(--bg1);
+}
+
+.cr-f-person__av-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.cr-f-person__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cr-f-person__name {
+  font-size: 13px;
+  color: var(--t1);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cr-f-person__role {
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.cr-f-person__change {
+  font-size: 11px;
+  color: var(--gold);
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.cr-f-person:hover .cr-f-person__change {
+  opacity: 1;
+}
+
+/* ─── 2. CHIPS ─────────────────────────────────────────────────── */
+.cr-f-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cr-f-chip {
+  padding: 6px 14px;
+  border-radius: 18px;
+  font-size: 12px;
+  color: var(--t2);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--brd);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.cr-f-chip:hover {
+  border-color: rgba(212,168,67,0.2);
+  color: var(--gold);
+}
+
+.cr-f-chip--active {
+  background: rgba(212,168,67,0.10);
+  border-color: rgba(212,168,67,0.25);
+  color: var(--gold);
+  font-weight: 500;
+}
+
+/* ─── 3. TOGGLE GROUP ──────────────────────────────────────────── */
+.cr-f-toggle {
+  display: flex;
+  background: var(--bg3);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid var(--brd);
+  overflow: hidden;
+}
+
+.cr-f-toggle__btn {
+  all: unset;
+  flex: 1;
+  padding: 8px 0;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--t3);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  text-align: center;
+  display: block;
+  box-sizing: border-box;
+}
+
+.cr-f-toggle__btn--active {
+  background: rgba(74,190,123,0.12);
+  color: #4abe7b;
+}
+
+.cr-f-toggle__btn:hover:not(.cr-f-toggle__btn--active) {
+  color: var(--t2);
+}
+
+/* Color variants */
+.cr-f-toggle[data-color="gold"] .cr-f-toggle__btn--active { background: var(--gold-bg); color: var(--gold); }
+.cr-f-toggle[data-color="blue"] .cr-f-toggle__btn--active { background: var(--blue-bg); color: var(--blue-l); }
+.cr-f-toggle[data-color="red"] .cr-f-toggle__btn--active { background: var(--red-bg); color: var(--red-l); }
+.cr-f-toggle[data-color="orange"] .cr-f-toggle__btn--active { background: var(--orange-bg); color: var(--orange-l); }
+
+/* ─── 4. SEARCH INPUT ──────────────────────────────────────────── */
+.cr-f-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  overflow: visible;
+}
+
+.cr-f-search:hover {
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cr-f-search:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(30,77,140,0.15);
+}
+
+.cr-f-search__icon {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  color: var(--t3);
+  flex-shrink: 0;
+}
+
+.cr-f-search__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--t1);
+  min-width: 0;
+}
+
+.cr-f-search__input::placeholder {
+  color: var(--t3);
+}
+
+.cr-f-search__hint {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  font-size: 10px;
+  color: var(--t3);
+  margin-right: 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Dropdown */
+.cr-f-search__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 1200;
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  max-height: 260px;
+  overflow-y: auto;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+  padding: 4px;
+}
+
+.cr-f-search__dropdown--open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.cr-f-search__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.cr-f-search__item:hover {
+  background: var(--gold-bg);
+}
+
+.cr-f-search__item-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.cr-f-search__item-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 7px;
+}
+
+.cr-f-search__item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.cr-f-search__item-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cr-f-search__item-label mark {
+  background: var(--gold-bg);
+  color: var(--gold);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.cr-f-search__item-sub {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 1px;
+}
+
+.cr-f-search__empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--t3);
+  font-size: 13px;
+}
+
+/* ─── 5. STEPPER ───────────────────────────────────────────────── */
+.cr-f-stepper {
+  margin-bottom: var(--sp-4);
+}
+
+.cr-f-stepper__bar {
+  height: 2px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 1px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.cr-f-stepper__fill {
+  height: 100%;
+  border-radius: 0 1px 1px 0;
+  transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  background: var(--grad-gold);
+}
+
+.cr-f-stepper__dots {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cr-f-stepper__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  flex: 1;
+}
+
+.cr-f-stepper__step:hover {
+  opacity: 0.8;
+}
+
+.cr-f-stepper__circle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  color: var(--t3);
+  transition: all 0.3s ease;
+}
+
+.cr-f-stepper__step--active .cr-f-stepper__circle {
+  background: var(--gold-bg);
+  border-color: var(--gold-border);
+  color: var(--gold);
+}
+
+.cr-f-stepper__step--done .cr-f-stepper__circle {
+  background: var(--ok-bg);
+  border-color: rgba(45,134,89,0.25);
+  color: var(--ok-t);
+}
+
+.cr-f-stepper__label {
+  font-size: 12px;
+  color: var(--t3);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cr-f-stepper__step--active .cr-f-stepper__label {
+  color: var(--gold);
+}
+
+.cr-f-stepper__step--done .cr-f-stepper__label {
+  color: var(--t2);
+}
+
+/* ─── 6. DROP ZONE ─────────────────────────────────────────────── */
+.cr-f-dropzone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1.5px dashed var(--brd);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--t3);
+}
+
+.cr-f-dropzone:hover {
+  border-color: rgba(212,168,67,0.2);
+  color: var(--gold);
+}
+
+.cr-f-dropzone--dragover {
+  border-color: var(--gold);
+  background: var(--gold-bg);
+  color: var(--gold);
+}
+
+.cr-f-dropzone__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.cr-f-dropzone__text {
+  font-size: 13px;
+}
+
+.cr-f-dropzone__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.cr-f-dropzone__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.cr-f-dropzone__file:hover {
+  background: var(--bg4);
+}
+
+.cr-f-dropzone__file-icon {
+  width: 32px;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--blue-bg);
+  color: var(--blue-l);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
+
+.cr-f-dropzone__file-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.cr-f-dropzone__file-size {
+  font-size: 11px;
+  color: var(--t3);
+  flex-shrink: 0;
+}
+
+.cr-f-dropzone__file-del {
+  all: unset;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--t3);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.cr-f-dropzone__file-del:hover {
+  background: var(--red-bg);
+  color: var(--red-l);
+}
+
+/* ─── 7. SECTION LABEL ─────────────────────────────────────────── */
+.cr-f-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.cr-f-section__icon {
+  display: flex;
+  align-items: center;
+}
+
+/* ─── 8. LABEL ─────────────────────────────────────────────────── */
+.cr-f-label {
+  font-size: 11px;
+  color: var(--t2);
+  margin-bottom: 6px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.cr-f-label__req {
+  color: var(--gold);
+}
+
+/* ─── 9. ROW & FIELD ──────────────────────────────────────────── */
+.cr-f-row {
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.cr-f-row--2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.cr-f-field {
+  margin-bottom: 14px;
+}
+
+.cr-f-help {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* ─── ENHANCED INPUT STYLE (inside cr-f context) ──────────────── */
+.cr-f-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.cr-f-field textarea,
+.cr-f-field select {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  color: var(--t1);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.cr-f-field input:hover,
+.cr-f-field textarea:hover,
+.cr-f-field select:hover {
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cr-f-field input:focus,
+.cr-f-field textarea:focus,
+.cr-f-field select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(30,77,140,0.15);
+}
+
+.cr-f-field input::placeholder,
+.cr-f-field textarea::placeholder {
+  color: var(--t3);
+}
+
+/* Monospace numbers */
+.cr-f-field input.cr-f-mono {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
