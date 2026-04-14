@@ -2630,7 +2630,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
     const user = request.user;
     const isAdmin = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM'].includes(user.role);
 
-    let sql = `SELECT id, work_title, work_number, contract_value, cost_fact, cost_plan, status, customer_name, city
+    let sql = `SELECT id, work_title, work_number, contract_value, cost_fact, cost_plan, work_status, customer_name, city
                FROM works WHERE deleted_at IS NULL`;
     const params = [];
 
@@ -2639,7 +2639,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
       params.push(user.id);
     }
     sql += ` ORDER BY
-      CASE WHEN status IN ('в работе', 'мобилизация') THEN 0 ELSE 1 END,
+      CASE WHEN work_status IN ('в работе', 'мобилизация') THEN 0 ELSE 1 END,
       updated_at DESC NULLS LAST
       LIMIT 50`;
 

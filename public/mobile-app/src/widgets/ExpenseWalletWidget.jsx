@@ -30,7 +30,7 @@ export default function ExpenseWalletWidget() {
   }, []);
 
   const activeWorks = works.filter(w =>
-    w.status && !['закрыт', 'завершен', 'отменено'].some(s => w.status.toLowerCase().includes(s))
+    w.work_status && !['закрыт', 'завершен', 'отменено'].some(s => w.work_status.toLowerCase().includes(s))
   );
   const totalCost = activeWorks.reduce((s, w) => s + (w.cost_fact || 0), 0);
   const totalContract = activeWorks.reduce((s, w) => s + (w.contract_value || 0), 0);
