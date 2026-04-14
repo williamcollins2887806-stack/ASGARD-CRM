@@ -270,26 +270,85 @@ function buildPreviewCard(recognized, work) {
  */
 async function getWorkFinancials(db, workId) {
   const wRes = await db.query(
-    'SELECT id, work_title, work_number, contract_value, cost_fact, cost_plan FROM works WHERE id = $1',
+    'SELECT id, work_title, work_number, contract_value, cost_fact, cost_plan, vat_pct FROM works WHERE id = $1',
     [workId]
   );
   const work = wRes.rows[0];
   if (!work) return null;
 
+  // Налоговые ставки из settings (как в works.js financial-summary)
+  let taxRate = 55;       // страховые взносы + НДФЛ на ФОТ/наличные
+  let incomeTaxRate = 25; // налог на прибыль
+  let defaultVatPct = 22;
+  try {
+    const { rows: sRows } = await db.query(
+      "SELECT key, value_json FROM settings WHERE key IN ('payroll_tax_rate', 'income_tax_rate', 'vat_default_pct')"
+    );
+    for (const s of sRows) {
+      const v = parseFloat(JSON.parse(s.value_json));
+      if (!v) continue;
+      if (s.key === 'payroll_tax_rate') taxRate = v;
+      if (s.key === 'income_tax_rate') incomeTaxRate = v;
+      if (s.key === 'vat_default_pct') defaultVatPct = v;
+    }
+  } catch (_) {}
+
+  const vatPct = parseFloat(work.vat_pct) || defaultVatPct;
+  const contractValue = parseFloat(work.contract_value) || 0;
   const costFact = Number(work.cost_fact) || 0;
-  const contractValue = Number(work.contract_value) || 0;
-  const profit = contractValue - costFact;
-  const marginPct = contractValue > 0 ? ((profit / contractValue) * 100) : 0;
+
+  // Выручка без НДС
+  const vatCharged = Math.round(contractValue * vatPct / (100 + vatPct) * 100) / 100;
+  const revenueExVat = Math.round((contractValue - vatCharged) * 100) / 100;
+
+  // Расходы по категориям → налоговая нагрузка + входной НДС
+  const TAX_CATEGORIES = ['payroll', 'fot', 'cash', 'per_diem', 'subcontract'];
+  const VAT_CATEGORIES = ['materials', 'chemicals', 'equipment', 'tickets', 'logistics', 'accommodation', 'transfer', 'other'];
+
+  const { rows: expenses } = await db.query(
+    'SELECT category, SUM(amount) as total FROM work_expenses WHERE work_id = $1 GROUP BY category',
+    [workId]
+  );
+
+  let totalExpenses = 0;
+  let totalTaxBurden = 0;
+  let totalVatDeductible = 0;
+
+  for (const row of expenses) {
+    const cat = row.category || 'other';
+    const amount = parseFloat(row.total) || 0;
+    totalExpenses += amount;
+
+    if (TAX_CATEGORIES.includes(cat)) {
+      totalTaxBurden += Math.round(amount * taxRate / 100 * 100) / 100;
+    }
+    if (VAT_CATEGORIES.includes(cat)) {
+      totalVatDeductible += Math.round(amount * vatPct / (100 + vatPct) * 100) / 100;
+    }
+  }
+
+  // Итого расходы с налогами
+  const totalExpensesWithTax = Math.round((totalExpenses + totalTaxBurden) * 100) / 100;
+
+  // Прибыль и маржа (как в work_report)
+  const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax + totalVatDeductible) * 100) / 100;
+  const incomeTax = Math.round(profitBeforeTax * incomeTaxRate / 100 * 100) / 100;
+  const netProfit = Math.round((profitBeforeTax - incomeTax) * 100) / 100;
+  const marginPct = revenueExVat > 0 ? Math.round(netProfit / revenueExVat * 1000) / 10 : 0;
 
   return {
     work_id: work.id,
     work_title: work.work_title,
     work_number: work.work_number,
     contract_value: contractValue,
+    revenue_ex_vat: revenueExVat,
     cost_fact: costFact,
+    cost_with_tax: totalExpensesWithTax,
     cost_plan: Number(work.cost_plan) || 0,
-    profit: Math.round(profit),
-    margin_pct: Math.round(marginPct * 10) / 10
+    tax_burden: Math.round(totalTaxBurden),
+    vat_deductible: Math.round(totalVatDeductible),
+    profit: netProfit,
+    margin_pct: marginPct
   };
 }
 
