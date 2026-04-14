@@ -1342,130 +1342,228 @@ window.AsgardTendersPage = (function(){
       const full = rights.full || isNew;
       const limited = rights.limited;
 
+      // ═══════════════════════════════════════════════════════════════
+      // WIZARD HTML — 3 steps: Основное / Условия / Документы
+      // ═══════════════════════════════════════════════════════════════
+      const _stepperHtml = isNew ? `<div id="e_stepper"></div>` : '';
+
       const html = `
-        <div class="help">
-          ${lockedMsg}
-          ${t && t.handoff_at ? `После передачи ТО меняет только: «Ссылка», «Тег», «Комментарий ТО», «Документы».` : `До передачи запись редактируется свободно.`}
-        </div>
-        <hr class="hr"/>
-        <div class="formrow">
-          <div>
-            <label>Период</label>
-            <div class="cr-period-row" id="e_period_w"></div>
-          </div>
-          <div>
-            <label>ИНН заказчика</label>
-            <div id="cr-inn-wrap"></div>
-            <div class="help">Вводите ИНН — название подставится из справочника (Настройки → Справочник заказчиков).</div>
-          </div>
-          <div>
-            <label>Заказчик</label>
+        ${lockedMsg ? `<div class="help" style="margin-bottom:8px">${lockedMsg} ${t && t.handoff_at ? 'После передачи ТО меняет только: «Ссылка», «Тег», «Комментарий ТО», «Документы».' : ''}</div>` : ''}
+        ${_stepperHtml}
+
+        <!-- ═══ STEP 1: Основное ═══ -->
+        <div data-step="0">
+          <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2"/></svg></span><span>Заказчик и предмет</span></div>
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Заказчик <span class="cr-f-label__req">*</span></div>
             <div id="cr-customer-wrap"></div>
-            <div class="help">Начните вводить название или ИНН — выбирайте из списка. Если ИНН нет в базе, создайте карточку в «Карта Контрагентов».</div>
-            <div class="help" id="innWarn" style="display:none; margin-top:6px; color:var(--err-t)">ИНН не найден в базе. Создайте карточку контрагента.</div>
-            <div class="row" id="innCreateRow" style="display:none; justify-content:flex-start; gap:8px; margin-top:8px">
-              <a class="btn ghost" id="btnCreateCustomer" href="#/customers" style="padding:6px 10px">Создать карточку</a>
+            <div class="cr-f-help">Начните вводить название или ИНН — выбирайте из списка.</div>
+            <div class="cr-f-help" id="innWarn" style="display:none; color:var(--err-t)">ИНН не найден в базе. Создайте карточку контрагента.</div>
+            <div id="innCreateRow" style="display:none; margin-top:6px"><a class="btn ghost mini" id="btnCreateCustomer" href="#/customers">Создать карточку</a></div>
+            <div id="customerScoreBlock" style="margin-top:8px;display:none"></div>
+          </div>
+
+          <div class="cr-f-row--2">
+            <div class="cr-f-field">
+              <div class="cr-f-label">ИНН <span class="cr-f-label__req">*</span></div>
+              <div id="cr-inn-wrap"></div>
             </div>
-            <!-- Светофор клиента -->
-            <div id="customerScoreBlock" style="margin-top:10px;display:none"></div>
+            <div class="cr-f-field">
+              <div class="cr-f-label">Период</div>
+              <div class="cr-period-row" id="e_period_w"></div>
+            </div>
           </div>
-          <div style="grid-column: 1 / -1">
-            <label>Наименование работ</label>
-            <input id="e_title" value="${esc((t&&t.tender_title)||"")}" ${full?"":"disabled"} />
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Наименование работ <span class="cr-f-label__req">*</span></div>
+            <input id="e_title" value="${esc((t&&t.tender_title)||"")}" ${full?"":"disabled"} placeholder="Что нужно сделать?"/>
           </div>
-          <div>
-            <label>Тип заявки</label>
-            <div id="e_type_w"></div>
+
+          <div class="cr-f-row--2">
+            <div class="cr-f-field">
+              <div class="cr-f-label">Сумма, ₽</div>
+              <input id="e_price" class="cr-f-mono" value="${esc((t&&t.tender_price)!=null?String(t.tender_price):"")}" ${full?"":"disabled"} placeholder="0"/>
+            </div>
+            <div class="cr-f-field">
+              <div class="cr-f-label">Тип заявки</div>
+              <div id="e_type_w"></div>
+            </div>
           </div>
-          <div>
-            <label>Ответственный РП</label>
-            <div id="e_pm_w"></div>
-            ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="help">Назначение РП выполняет директор после кнопки «На распределение».</div>` : ``}
-            ${(t && t.distribution_requested_at && !t.handoff_at) ? `<div class="help"><b>На распределении.</b> Ожидает назначения директором.</div>` : ``}
-            ${(t && t.handoff_at && !canReassign) ? `<div class="help">Переназначение — только директор.</div>` : ``}
-            ${(t && t.handoff_at && canReassign) ? `<button class="btn ghost" style="margin-top:8px" id="btnReassign">Переназначить (директор)</button>` : ``}
+
+          <div class="cr-f-row--2">
+            <div class="cr-f-field">
+              <div class="cr-f-label">Ответственный РП <span class="cr-f-label__req">*</span></div>
+              <div id="e_pm_w"></div>
+              ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="cr-f-help">Назначение РП — директор после «На распределение».</div>` : ``}
+              ${(t && t.distribution_requested_at && !t.handoff_at) ? `<div class="cr-f-help" style="color:var(--gold)"><b>На распределении.</b> Ожидает назначения.</div>` : ``}
+              ${(t && t.handoff_at && canReassign) ? `<button class="btn ghost mini" style="margin-top:6px" id="btnReassign">Переназначить</button>` : ``}
+            </div>
+            <div class="cr-f-field">
+              <div class="cr-f-label">Статус</div>
+              <div id="e_status_w"></div>
+            </div>
           </div>
-          <div>
-            <label>Статус</label>
-            <div id="e_status_w"></div>
-          </div>
-          <div>
-            <label>Сумма (если есть)</label>
-            <input id="e_price" value="${esc((t&&t.tender_price)!=null?String(t.tender_price):"")}" ${full?"":"disabled"} placeholder="например: 268400"/>
-          </div>
-          <div>
-            <label>Тег/группа</label>
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Тег/группа</div>
             <div id="e_tag_w"></div>
           </div>
-          <div>
-            <label>План: начало работ</label>
-            <div id="e_ws_w"></div>
-          </div>
-          <div>
-            <label>План: окончание работ</label>
-            <div id="e_we_w"></div>
-          </div>
-          <div style="grid-column: 1 / -1">
-            <label>Ссылка на комплект документов (Я.Диск/площадка)</label>
+        </div>
+
+        <!-- ═══ STEP 2: Условия ═══ -->
+        <div data-step="1" style="display:none">
+          <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><span>Сроки и условия</span></div>
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Ссылка на документы (Я.Диск / площадка)</div>
             <input id="e_url" value="${esc((t&&t.purchase_url)||"")}" ${(full||limited)?"":"disabled"} placeholder="https://..."/>
           </div>
-          <div id="e_deadline_row">
-            <label>Дедлайн (окончание приема заявок)</label>
+
+          <div class="cr-f-row--2">
+            <div class="cr-f-field">
+              <div class="cr-f-label">План: начало работ</div>
+              <div id="e_ws_w"></div>
+            </div>
+            <div class="cr-f-field">
+              <div class="cr-f-label">План: окончание работ</div>
+              <div id="e_we_w"></div>
+            </div>
+          </div>
+
+          <div class="cr-f-field" id="e_deadline_row">
+            <div class="cr-f-label">Дедлайн (окончание приёма заявок)</div>
             <div id="e_deadline_w"></div>
           </div>
-          <div class="cr-field-full">
-            <label>Комментарии</label>
+
+          ${(t && t.reject_reason) ? `
+          <div class="cr-f-field">
+            <div class="cr-f-label">Причина отказа</div>
+            <input autocomplete="off" value="${esc(t.reject_reason)}" disabled />
+          </div>` : ``}
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Комментарии</div>
             <div id="tc_feed" class="tc-feed"><div class="tc-empty">Загрузка...</div></div>
             ${(full||limited) ? `<div class="tc-input-row">
               <textarea id="tc_input" rows="1" placeholder="Комментарий..."></textarea>
               <button class="btn mini" id="tc_send">Отправить</button>
             </div>` : ''}
           </div>
-          ${(t && t.reject_reason) ? `
-          <div style="grid-column: 1 / -1">
-            <label>Причина отказа</label>
-            <input autocomplete="off" value="${esc(t.reject_reason)}" disabled />
-          </div>` : ``}
         </div>
 
-        <hr class="hr"/>
-        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span>Документы</span></div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0">
-          <button class="btn ghost" id="btnAddDoc">📎 Загрузить файл</button>
-          <button class="btn ghost" id="btnAddLink">🔗 Добавить ссылку</button>
-          ${(t && (isDirRole(user.role)||user.role==="ADMIN")) ? `<button class="btn ghost" id="btnHistory">История</button>` : ``}
+        <!-- ═══ STEP 3: Документы ═══ -->
+        <div data-step="2" style="display:none">
+          <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span>Документы</span></div>
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Загрузить файл</div>
+            <div id="e_dropzone_w"></div>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin:12px 0">
+            <button class="btn ghost mini" id="btnAddDoc">📎 Файл</button>
+            <button class="btn ghost mini" id="btnAddLink">🔗 Ссылку</button>
+            ${(t && (isDirRole(user.role)||user.role==="ADMIN")) ? `<button class="btn ghost mini" id="btnHistory">📜 История</button>` : ``}
+          </div>
+          <div id="docsBox" style="display:flex; flex-direction:column; gap:8px">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px">
+              <button class="btn primary mini" id="downloadAllDocs">📥 Скачать все</button>
+              <button class="btn ghost mini" id="copyAllDocs">📋 Копировать ссылки</button>
+            </div>
+            ${docsHtml}
+          </div>
+
+          ${(t && t.tender_status === 'Не подходит') ? `
+          <div class="archive-info-row" style="margin-top:16px">
+            <b>📁 Архив</b>
+            <span>Причина: <b>${esc(t.archive_reason||'—')}</b></span>
+            <span>Комментарий: ${esc(t.archive_comment||'—')}</span>
+            <span>Кто: ${esc((byId.get(t.archived_by_user_id)||{}).name||'—')}</span>
+            <span>Когда: ${esc(formatDateTime(t.archived_at))}</span>
+          </div>` : ''}
         </div>
-        <div id="docsBox" style="display:flex; flex-direction:column; gap:10px"><div class="row" style="gap:8px; flex-wrap:wrap; margin:8px 0 10px 0">
-  <button class="btn primary" id="downloadAllDocs">📥 Скачать все</button>
-  <button class="btn" id="copyAllDocs">📋 Копировать ссылки</button>
-</div>
-${docsHtml}</div>
 
-
-
-        <hr class="hr"/>
-        ${(t && t.tender_status === 'Не подходит') ? `
-        <div class="archive-info-row">
-          <b>📁 Архив</b>
-          <span>Причина: <b>${esc(t.archive_reason||'—')}</b></span>
-          <span>Комментарий: ${esc(t.archive_comment||'—')}</span>
-          <span>Кто: ${esc((byId.get(t.archived_by_user_id)||{}).name||'—')}</span>
-          <span>Когда: ${esc(formatDateTime(t.archived_at))}</span>
-        </div>` : ''}
-
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-          <button class="btn" id="btnSave">${isNew?"Создать":"Сохранить"}</button>
-          ${!isNew ? '<button class="btn ghost" id="btnTenderActions">⚡ Действия</button>' : ''}
+        <!-- ═══ FOOTER: actions ═══ -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid var(--brd)">
           ${isNew ? `<button class="btn ghost" id="btnSaveDraft">💾 Черновик</button>` : ``}
+          <div style="flex:1"></div>
+          ${isNew ? `<button class="btn ghost" id="btnStepPrev" style="display:none">← Назад</button>` : ''}
+          <button class="btn primary" id="btnSave">${isNew?"Создать тендер":"Сохранить"}</button>
+          ${isNew ? `<button class="btn gold" id="btnStepNext">Далее →</button>` : ''}
+          ${!isNew ? '<button class="btn ghost" id="btnTenderActions">⚡ Действия</button>' : ''}
           ${(t && !t.handoff_at && !t.distribution_requested_at && user.role==="TO") ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
           ${(t && !t.handoff_at && (user.role==="ADMIN"||isDirRole(user.role))) ? `<button class="btn red" id="btnHandoff">Передать в просчёт</button>` : ``}
-          ${(t && t.tender_status==='ТКП согласовано') ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено клиенту</button>` : ``}
-          ${(t && t.tender_status !== 'Не подходит' && canArchive) ? `<button class="btn ghost" id="btnArchiveTender" style="color:var(--err-t)">🗑 Отсеять</button>` : ``}
-          ${(t && t.tender_status === 'Не подходит' && canArchive) ? `<button class="btn ghost" id="btnUnarchiveTender" style="color:var(--ok-t)">♻️ Вернуть</button>` : ``}
+          ${(t && t.tender_status==='ТКП согласовано') ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено</button>` : ``}
+          ${(t && t.tender_status !== 'Не подходит' && canArchive) ? `<button class="btn ghost mini" id="btnArchiveTender" style="color:var(--err-t)">🗑 Отсеять</button>` : ``}
+          ${(t && t.tender_status === 'Не подходит' && canArchive) ? `<button class="btn ghost mini" id="btnUnarchiveTender" style="color:var(--ok-t)">♻️ Вернуть</button>` : ``}
         </div>
       `;
 
-      showModal({ title: isNew ? "Новый тендер" : `Тендер #${t.id}`, html, icon: '📋', subtitle: isNew ? 'Создание тендерной заявки' : `${esc((t&&t.customer_name)||'')} · ${esc((t&&t.tender_type)||'')}` });
+      showModal({ title: isNew ? "Новый тендер" : `Тендер #${t.id}`, html, icon: '📋', subtitle: isNew ? 'Шаг 1 из 3 · Основная информация' : `${esc((t&&t.customer_name)||'')} · ${esc((t&&t.tender_type)||'')}` });
+
+      // ═══ STEPPER + STEP NAVIGATION ═══
+      let _currentStep = 0;
+      const _stepPanels = $$('[data-step]');
+
+      function _showStep(n) {
+        _currentStep = n;
+        _stepPanels.forEach(p => { p.style.display = (Number(p.dataset.step) === n) ? '' : 'none'; });
+        // Update stepper
+        if (_stepperEl) _stepperEl._crSetStep(n);
+        // Update subtitle
+        const subtitleEl = document.getElementById('modalSubtitle');
+        const stepNames = ['Основная информация', 'Сроки и условия', 'Документы'];
+        if (subtitleEl && isNew) subtitleEl.textContent = `Шаг ${n+1} из 3 · ${stepNames[n]}`;
+        // Nav buttons
+        const prevBtn = document.getElementById('btnStepPrev');
+        const nextBtn = document.getElementById('btnStepNext');
+        const saveBtn = document.getElementById('btnSave');
+        if (prevBtn) prevBtn.style.display = n > 0 ? '' : 'none';
+        if (nextBtn) nextBtn.style.display = n < 2 ? '' : 'none';
+        if (saveBtn && isNew) saveBtn.style.display = n === 2 ? '' : 'none';
+      }
+
+      // Mount stepper (new tenders only)
+      let _stepperEl = null;
+      const stepperW = document.getElementById('e_stepper');
+      if (stepperW && typeof CrField !== 'undefined') {
+        _stepperEl = CrField.stepper({
+          steps: [{ label: 'Основное', id: 'main' }, { label: 'Условия', id: 'conditions' }, { label: 'Документы', id: 'docs' }],
+          current: 0,
+          onChange: (n) => _showStep(n)
+        });
+        stepperW.appendChild(_stepperEl);
+        // Hide Save on step 1 for new tenders, show Next
+        const saveBtn = document.getElementById('btnSave');
+        if (saveBtn && isNew) saveBtn.style.display = 'none';
+      }
+
+      // Step navigation buttons
+      const _btnNext = document.getElementById('btnStepNext');
+      const _btnPrev = document.getElementById('btnStepPrev');
+      if (_btnNext) _btnNext.addEventListener('click', () => { if (_currentStep < 2) _showStep(_currentStep + 1); });
+      if (_btnPrev) _btnPrev.addEventListener('click', () => { if (_currentStep > 0) _showStep(_currentStep - 1); });
+
+      // For existing tenders: show all steps at once (no wizard)
+      if (!isNew) {
+        _stepPanels.forEach(p => { p.style.display = ''; });
+      }
+
+      // Mount CrField.dropZone for file upload
+      const dzW = document.getElementById('e_dropzone_w');
+      if (dzW && typeof CrField !== 'undefined') {
+        const dz = CrField.dropZone({
+          accept: '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar',
+          text: 'Перетащите файл или нажмите для выбора',
+          onUpload: (files) => {
+            // files collected — actual upload happens on save or via btnAddDoc
+          }
+        });
+        dzW.appendChild(dz);
+        // Ensure the file list is in the right place
+        if (dz._crList && !dz._crList.parentElement) dzW.appendChild(dz._crList);
+      }
 
       /* Mount CRSelect for editor fields */
       const _eTypeDis = !full;
@@ -1479,7 +1577,50 @@ ${docsHtml}</div>
       } else {
         $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal', onChange: (v) => applyTypeRules(v) }));
       }
-      $('#e_pm_w')?.appendChild(CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal' }));
+      // PM: PersonPicker card with CRSelect dropdown behind it
+      const _pmWrap = $('#e_pm_w');
+      if (_pmWrap) {
+        const _selPm = pms.find(p => t && p.id === t.responsible_pm_id);
+        // Always mount CRSelect (hidden if personPicker is shown)
+        const _pmSelectEl = CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal' });
+
+        if (typeof CrField !== 'undefined' && _selPm && !_ePmDis) {
+          // Show PersonPicker card, CRSelect hidden but functional
+          const _pmPicker = CrField.personPicker({
+            name: _selPm.name,
+            role: 'Руководитель проекта',
+            color: 'linear-gradient(135deg, var(--gold), var(--gold-h))',
+            onChange: () => {
+              // Show CRSelect dropdown on click
+              _pmSelectEl.style.display = '';
+              _pmPicker.style.display = 'none';
+              // When CRSelect changes, update PersonPicker
+            }
+          });
+          _pmWrap.appendChild(_pmPicker);
+          _pmSelectEl.style.display = 'none';
+          _pmWrap.appendChild(_pmSelectEl);
+
+          // Listen for CRSelect change to update PersonPicker
+          const _origOnChange = null;
+          // Use a MutationObserver or periodic check — simplest: override
+          const _checkPmInterval = setInterval(() => {
+            const val = CRSelect.getValue('e_pm');
+            const pm = pms.find(p => String(p.id) === val);
+            if (pm && pm.name !== _pmPicker.querySelector('.cr-f-person__name')?.textContent) {
+              _pmPicker._crUpdate({ name: pm.name, role: 'Руководитель проекта' });
+              _pmPicker.style.display = '';
+              _pmSelectEl.style.display = 'none';
+            }
+          }, 500);
+          // Cleanup on modal close (will be GCd anyway)
+          setTimeout(() => {
+            if (!document.getElementById('e_pm_w')) clearInterval(_checkPmInterval);
+          }, 60000);
+        } else {
+          _pmWrap.appendChild(_pmSelectEl);
+        }
+      }
       const _curStatus = (t&&t.tender_status)||(isNew?'Черновик':'');
       const _isAdmin = user.role === 'ADMIN';
       const _statusOpts = _isAdmin ? refs.tender_statuses : (TENDER_TRANSITIONS[_curStatus] || []).concat([_curStatus]);
@@ -1512,8 +1653,8 @@ ${docsHtml}</div>
       /* ── 3.2: Dynamic required fields by procedure type ── */
       function applyTypeRules(tType) {
         const deadlineRow = document.getElementById('e_deadline_row');
-        const urlLabel = document.querySelector('label[for="e_url"]') || document.getElementById('e_url')?.closest('div')?.querySelector('label');
-        const deadlineLabel = deadlineRow?.querySelector('label');
+        const urlLabel = document.getElementById('e_url')?.closest('.cr-f-field')?.querySelector('.cr-f-label') || document.querySelector('label[for="e_url"]') || document.getElementById('e_url')?.closest('div')?.querySelector('label');
+        const deadlineLabel = deadlineRow?.querySelector('.cr-f-label') || deadlineRow?.querySelector('label');
         // Reset required markers
         if(urlLabel) urlLabel.classList.remove('cr-required');
         if(deadlineLabel) deadlineLabel.classList.remove('cr-required');
