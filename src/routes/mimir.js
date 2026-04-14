@@ -2482,8 +2482,10 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
    *
    * Ответ: { success, preview: { amount, date, category, supplier, ... }, financials }
    */
+  const EXPENSE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'HEAD_PM'];
+
   fastify.post('/expense-recognize', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
   }, async (request, reply) => {
     const { work_id, type, data, mime_type } = request.body || {};
 
@@ -2557,7 +2559,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
    * Вносит расход → триггер пересчитывает cost_fact → возвращает новую сводку.
    */
   fastify.post('/expense-confirm', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
   }, async (request, reply) => {
     const { work_id, amount, date, category, supplier, description, notes, document_id } = request.body || {};
     const user = request.user;
@@ -2625,7 +2627,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
    * Возвращает работы с финансовой сводкой.
    */
   fastify.get('/expense-works', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
   }, async (request, reply) => {
     const user = request.user;
     const isAdmin = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM'].includes(user.role);
@@ -2665,7 +2667,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
    * GET /api/mimir/expense-history?work_id=N — последние расходы работы
    */
   fastify.get('/expense-history', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
   }, async (request, reply) => {
     const { work_id, limit = 20 } = request.query;
     if (!work_id) return reply.code(400).send({ error: 'work_id обязателен' });
