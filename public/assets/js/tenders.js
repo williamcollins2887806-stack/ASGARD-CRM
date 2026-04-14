@@ -1412,7 +1412,7 @@ window.AsgardTendersPage = (function(){
         </div>
 
         <!-- ═══ STEP 2: Условия ═══ -->
-        <div data-step="1" style="display:none">
+        <div data-step="1">
           <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><span>Сроки и условия</span></div>
 
           <div class="cr-f-field">
@@ -1453,7 +1453,7 @@ window.AsgardTendersPage = (function(){
         </div>
 
         <!-- ═══ STEP 3: Документы ═══ -->
-        <div data-step="2" style="display:none">
+        <div data-step="2">
           <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span>Документы</span></div>
 
           <div class="cr-f-field">
@@ -1489,7 +1489,7 @@ window.AsgardTendersPage = (function(){
           ${isNew ? `<button class="btn ghost" id="btnSaveDraft">💾 Черновик</button>` : ``}
           <div style="flex:1"></div>
           ${isNew ? `<button class="btn ghost" id="btnStepPrev" style="display:none">← Назад</button>` : ''}
-          <button class="btn primary" id="btnSave">${isNew?"Создать тендер":"Сохранить"}</button>
+          <button class="${isNew?'btn ghost':'btn primary'}" id="btnSave">${isNew?"Создать тендер":"Сохранить"}</button>
           ${isNew ? `<button class="btn gold" id="btnStepNext">Далее →</button>` : ''}
           ${!isNew ? '<button class="btn ghost" id="btnTenderActions">⚡ Действия</button>' : ''}
           ${(t && !t.handoff_at && !t.distribution_requested_at && user.role==="TO") ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
@@ -1503,28 +1503,34 @@ window.AsgardTendersPage = (function(){
       showModal({ title: isNew ? "Новый тендер" : `Тендер #${t.id}`, html, icon: '📋', subtitle: isNew ? 'Шаг 1 из 3 · Основная информация' : `${esc((t&&t.customer_name)||'')} · ${esc((t&&t.tender_type)||'')}` });
 
       // ═══ STEPPER + STEP NAVIGATION ═══
+      // BUG2 FIX: scope to modal body, not entire document
+      const _modalBody = document.getElementById('modalBody');
       let _currentStep = 0;
-      const _stepPanels = $$('[data-step]');
+      const _stepPanels = _modalBody ? Array.from(_modalBody.querySelectorAll('[data-step]')) : [];
+
+      // BUG5 FIX: all steps start visible so CRSelect/CRDatePicker mount correctly.
+      // We hide steps AFTER all mounts are done (see _initSteps() call below).
 
       function _showStep(n) {
         _currentStep = n;
         _stepPanels.forEach(p => { p.style.display = (Number(p.dataset.step) === n) ? '' : 'none'; });
-        // Update stepper
         if (_stepperEl) _stepperEl._crSetStep(n);
-        // Update subtitle
         const subtitleEl = document.getElementById('modalSubtitle');
         const stepNames = ['Основная информация', 'Сроки и условия', 'Документы'];
         if (subtitleEl && isNew) subtitleEl.textContent = `Шаг ${n+1} из 3 · ${stepNames[n]}`;
         // Nav buttons
         const prevBtn = document.getElementById('btnStepPrev');
         const nextBtn = document.getElementById('btnStepNext');
-        const saveBtn = document.getElementById('btnSave');
         if (prevBtn) prevBtn.style.display = n > 0 ? '' : 'none';
         if (nextBtn) nextBtn.style.display = n < 2 ? '' : 'none';
-        if (saveBtn && isNew) saveBtn.style.display = n === 2 ? '' : 'none';
+        // BUG4 FIX: Save always visible. On step 3 it becomes primary, on 1-2 secondary.
+        const saveBtn = document.getElementById('btnSave');
+        if (saveBtn && isNew) {
+          saveBtn.className = n === 2 ? 'btn primary' : 'btn ghost';
+        }
       }
 
-      // Mount stepper (new tenders only)
+      // Mount stepper (new tenders only) — but DON'T hide steps yet
       let _stepperEl = null;
       const stepperW = document.getElementById('e_stepper');
       if (stepperW && typeof CrField !== 'undefined') {
@@ -1534,9 +1540,6 @@ window.AsgardTendersPage = (function(){
           onChange: (n) => _showStep(n)
         });
         stepperW.appendChild(_stepperEl);
-        // Hide Save on step 1 for new tenders, show Next
-        const saveBtn = document.getElementById('btnSave');
-        if (saveBtn && isNew) saveBtn.style.display = 'none';
       }
 
       // Step navigation buttons
@@ -1545,23 +1548,45 @@ window.AsgardTendersPage = (function(){
       if (_btnNext) _btnNext.addEventListener('click', () => { if (_currentStep < 2) _showStep(_currentStep + 1); });
       if (_btnPrev) _btnPrev.addEventListener('click', () => { if (_currentStep > 0) _showStep(_currentStep - 1); });
 
-      // For existing tenders: show all steps at once (no wizard)
-      if (!isNew) {
-        _stepPanels.forEach(p => { p.style.display = ''; });
-      }
-
-      // Mount CrField.dropZone for file upload
+      // BUG1 FIX: DropZone uploads files immediately via the same API as btnAddDoc
       const dzW = document.getElementById('e_dropzone_w');
       if (dzW && typeof CrField !== 'undefined') {
         const dz = CrField.dropZone({
           accept: '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar',
           text: 'Перетащите файл или нажмите для выбора',
-          onUpload: (files) => {
-            // files collected — actual upload happens on save or via btnAddDoc
+          onUpload: async (files) => {
+            // Upload the last added file immediately
+            const file = files[files.length - 1];
+            if (!file) return;
+            let uploadId = tenderId;
+            if (!uploadId) {
+              uploadId = await saveTender(true);
+              if (!uploadId) return;
+            }
+            if (file.size > 50 * 1024 * 1024) { toast("Ошибка", file.name + " > 50 МБ", "err"); return; }
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+              formData.append('tender_id', uploadId);
+              formData.append('type', 'Документ');
+              const _auth = await AsgardAuth.getAuth();
+              await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/files/upload');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + _auth.token);
+                xhr.timeout = 60000;
+                xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Ошибка ' + xhr.status));
+                xhr.onerror = () => reject(new Error('Сеть'));
+                xhr.ontimeout = () => reject(new Error('Таймаут'));
+                xhr.send(formData);
+              });
+              toast("Документ", file.name + " загружен", "ok");
+            } catch (err) {
+              toast("Ошибка", file.name + ": " + err.message, "err");
+            }
           }
         });
         dzW.appendChild(dz);
-        // Ensure the file list is in the right place
         if (dz._crList && !dz._crList.parentElement) dzW.appendChild(dz._crList);
       }
 
@@ -1578,47 +1603,39 @@ window.AsgardTendersPage = (function(){
         $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal', onChange: (v) => applyTypeRules(v) }));
       }
       // PM: PersonPicker card with CRSelect dropdown behind it
+      // BUG3+6 FIX: use CRSelect onChange callback instead of setInterval
       const _pmWrap = $('#e_pm_w');
+      let _pmPicker = null;
       if (_pmWrap) {
         const _selPm = pms.find(p => t && p.id === t.responsible_pm_id);
-        // Always mount CRSelect (hidden if personPicker is shown)
-        const _pmSelectEl = CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal' });
+
+        // onChange handler: update PersonPicker when CRSelect value changes
+        const _onPmChange = (val) => {
+          const pm = pms.find(p => String(p.id) === val);
+          if (pm && _pmPicker) {
+            _pmPicker._crUpdate({ name: pm.name, role: 'Руководитель проекта' });
+            _pmPicker.style.display = '';
+            _pmSelectWrap.style.display = 'none';
+          }
+        };
+
+        const _pmSelectWrap = CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal', onChange: _onPmChange });
 
         if (typeof CrField !== 'undefined' && _selPm && !_ePmDis) {
-          // Show PersonPicker card, CRSelect hidden but functional
-          const _pmPicker = CrField.personPicker({
+          _pmPicker = CrField.personPicker({
             name: _selPm.name,
             role: 'Руководитель проекта',
             color: 'linear-gradient(135deg, var(--gold), var(--gold-h))',
             onChange: () => {
-              // Show CRSelect dropdown on click
-              _pmSelectEl.style.display = '';
+              _pmSelectWrap.style.display = '';
               _pmPicker.style.display = 'none';
-              // When CRSelect changes, update PersonPicker
             }
           });
           _pmWrap.appendChild(_pmPicker);
-          _pmSelectEl.style.display = 'none';
-          _pmWrap.appendChild(_pmSelectEl);
-
-          // Listen for CRSelect change to update PersonPicker
-          const _origOnChange = null;
-          // Use a MutationObserver or periodic check — simplest: override
-          const _checkPmInterval = setInterval(() => {
-            const val = CRSelect.getValue('e_pm');
-            const pm = pms.find(p => String(p.id) === val);
-            if (pm && pm.name !== _pmPicker.querySelector('.cr-f-person__name')?.textContent) {
-              _pmPicker._crUpdate({ name: pm.name, role: 'Руководитель проекта' });
-              _pmPicker.style.display = '';
-              _pmSelectEl.style.display = 'none';
-            }
-          }, 500);
-          // Cleanup on modal close (will be GCd anyway)
-          setTimeout(() => {
-            if (!document.getElementById('e_pm_w')) clearInterval(_checkPmInterval);
-          }, 60000);
+          _pmSelectWrap.style.display = 'none';
+          _pmWrap.appendChild(_pmSelectWrap);
         } else {
-          _pmWrap.appendChild(_pmSelectEl);
+          _pmWrap.appendChild(_pmSelectWrap);
         }
       }
       const _curStatus = (t&&t.tender_status)||(isNew?'Черновик':'');
@@ -1649,6 +1666,14 @@ window.AsgardTendersPage = (function(){
       $('#e_ws_w')?.appendChild(CRDatePicker.create({ id:'e_ws', value:(t&&t.work_start_plan)||'', placeholder:'Выберите дату', disabled:!full, clearable:true, dropdownClass:'z-modal' }));
       $('#e_we_w')?.appendChild(CRDatePicker.create({ id:'e_we', value:(t&&t.work_end_plan)||'', placeholder:'Выберите дату', disabled:!full, clearable:true, dropdownClass:'z-modal' }));
       $('#e_deadline_w')?.appendChild(CRDatePicker.create({ id:'e_docs_deadline', value:(t&&t.docs_deadline)||'', placeholder:'Выберите дату', disabled:!(full||limited), clearable:true, dropdownClass:'z-modal' }));
+
+      // BUG5 FIX: ALL mounts done. Now hide steps for wizard mode.
+      // Components mounted while visible → no layout bugs.
+      if (isNew) {
+        _showStep(0);
+      } else {
+        _stepPanels.forEach(p => { p.style.display = ''; });
+      }
 
       /* ── 3.2: Dynamic required fields by procedure type ── */
       function applyTypeRules(tType) {
