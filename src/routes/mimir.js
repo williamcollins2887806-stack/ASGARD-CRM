@@ -2469,6 +2469,239 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
       return reply.code(500).send({ success: false, message: err.message });
     }
   });
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXPENSE WALLET: Мимир распознаёт расходы (QR/фото/файл/текст)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * POST /api/mimir/expense-recognize
+   * Body: { work_id, type: "qr"|"image"|"text", data: "..." }
+   *   - qr: data = содержимое QR-кода
+   *   - image: data = base64, mime_type = "image/jpeg"
+   *   - text: data = "заплатил за такси 3500"
+   *
+   * Ответ: { success, preview: { amount, date, category, supplier, ... }, financials }
+   */
+  fastify.post('/expense-recognize', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id, type, data, mime_type } = request.body || {};
+
+    if (!work_id) return reply.code(400).send({ error: 'work_id обязателен' });
+    if (!type || !data) return reply.code(400).send({ error: 'type и data обязательны' });
+
+    const expRecognize = require('../services/expense-recognize');
+    const startTime = Date.now();
+
+    try {
+      // Данные работы
+      const wRes = await db.query('SELECT * FROM works WHERE id = $1', [work_id]);
+      const work = wRes.rows[0];
+      if (!work) return reply.code(404).send({ error: 'Работа не найдена' });
+
+      let recognized;
+
+      if (type === 'qr') {
+        // QR фискального чека → ФНС API
+        const fiscal = expRecognize.parseFiscalQR(data);
+        if (!fiscal) {
+          return reply.send({
+            success: false,
+            error: 'Не удалось распознать QR-код фискального чека. Формат: t=...&s=...&fn=...&i=...&fp=...'
+          });
+        }
+        recognized = await expRecognize.fetchFromFNS(fiscal);
+        // Автоопределение категории по позициям
+        if (recognized.items && recognized.items.length > 0 && !recognized.category) {
+          recognized.category = guessCategory(recognized);
+        }
+        if (!recognized.description && recognized.items && recognized.items.length > 0) {
+          recognized.description = recognized.items.slice(0, 3).map(i => i.name).join(', ');
+          if (recognized.items.length > 3) recognized.description += ` и ещё ${recognized.items.length - 3}`;
+        }
+      } else if (type === 'image') {
+        // Фото → Claude Vision
+        recognized = await expRecognize.recognizeImage(aiProvider, data, mime_type || 'image/jpeg');
+      } else if (type === 'text') {
+        // Текст → Claude
+        recognized = await expRecognize.recognizeText(aiProvider, data);
+      } else {
+        return reply.code(400).send({ error: 'Неизвестный type. Допустимо: qr, image, text' });
+      }
+
+      if (recognized.error) {
+        return reply.send({ success: false, error: recognized.error });
+      }
+
+      // Строим карточку-превью
+      const preview = expRecognize.buildPreviewCard(recognized, work);
+      // Текущая финансовая сводка
+      const financials = await expRecognize.getWorkFinancials(db, work_id);
+
+      return reply.send({
+        success: true,
+        preview,
+        financials,
+        elapsed_ms: Date.now() - startTime
+      });
+    } catch (err) {
+      console.error('[expense-recognize ERROR]:', err.message, err.stack);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  /**
+   * POST /api/mimir/expense-confirm
+   * Body: { work_id, amount, date, category, supplier, description, document_id? }
+   *
+   * Вносит расход → триггер пересчитывает cost_fact → возвращает новую сводку.
+   */
+  fastify.post('/expense-confirm', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id, amount, date, category, supplier, description, notes, document_id } = request.body || {};
+    const user = request.user;
+
+    if (!work_id || !amount) {
+      return reply.code(400).send({ error: 'work_id и amount обязательны' });
+    }
+
+    const expRecognize = require('../services/expense-recognize');
+
+    try {
+      // Сводка ДО
+      const before = await expRecognize.getWorkFinancials(db, work_id);
+      if (!before) return reply.code(404).send({ error: 'Работа не найдена' });
+
+      // INSERT в work_expenses
+      const today = new Date().toISOString().slice(0, 10);
+      const result = await db.query(
+        `INSERT INTO work_expenses (work_id, category, description, amount, date, supplier, notes, status, source_table, created_by, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed', 'mimir_expense', $8, NOW())
+         RETURNING *`,
+        [
+          work_id,
+          category || 'other',
+          String(description || '').substring(0, 500),
+          Number(amount),
+          date || today,
+          String(supplier || '').substring(0, 500),
+          String(notes || '').substring(0, 1000),
+          user.id
+        ]
+      );
+      const expense = result.rows[0];
+
+      // Привязка документа (если загружен)
+      if (document_id) {
+        await db.query(
+          'UPDATE documents SET work_id = $1 WHERE id = $2',
+          [work_id, document_id]
+        ).catch(() => {});
+      }
+
+      // Сводка ПОСЛЕ (триггер уже обновил cost_fact)
+      const after = await expRecognize.getWorkFinancials(db, work_id);
+
+      return reply.send({
+        success: true,
+        expense,
+        before,
+        after,
+        delta: {
+          cost_fact: after.cost_fact - before.cost_fact,
+          profit: after.profit - before.profit,
+          margin_pct: Math.round((after.margin_pct - before.margin_pct) * 10) / 10
+        }
+      });
+    } catch (err) {
+      console.error('[expense-confirm ERROR]:', err.message, err.stack);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  /**
+   * GET /api/mimir/expense-works — список работ РП для выбора в Кошельке
+   * Возвращает работы с финансовой сводкой.
+   */
+  fastify.get('/expense-works', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const user = request.user;
+    const isAdmin = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM'].includes(user.role);
+
+    let sql = `SELECT id, work_title, work_number, contract_value, cost_fact, cost_plan, status, customer_name, city
+               FROM works WHERE deleted_at IS NULL`;
+    const params = [];
+
+    if (!isAdmin) {
+      sql += ' AND pm_id = $1';
+      params.push(user.id);
+    }
+    sql += ` ORDER BY
+      CASE WHEN status IN ('в работе', 'мобилизация') THEN 0 ELSE 1 END,
+      updated_at DESC NULLS LAST
+      LIMIT 50`;
+
+    const result = await db.query(sql, params);
+
+    const works = result.rows.map(w => {
+      const costFact = Number(w.cost_fact) || 0;
+      const contractValue = Number(w.contract_value) || 0;
+      const profit = contractValue - costFact;
+      return {
+        ...w,
+        cost_fact: costFact,
+        contract_value: contractValue,
+        profit: Math.round(profit),
+        margin_pct: contractValue > 0 ? Math.round(((profit / contractValue) * 100) * 10) / 10 : 0
+      };
+    });
+
+    return { works };
+  });
+
+  /**
+   * GET /api/mimir/expense-history?work_id=N — последние расходы работы
+   */
+  fastify.get('/expense-history', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id, limit = 20 } = request.query;
+    if (!work_id) return reply.code(400).send({ error: 'work_id обязателен' });
+
+    const result = await db.query(
+      `SELECT e.*, u.name as created_by_name
+       FROM work_expenses e
+       LEFT JOIN users u ON e.created_by = u.id
+       WHERE e.work_id = $1
+       ORDER BY e.created_at DESC
+       LIMIT $2`,
+      [work_id, limit]
+    );
+
+    const expRecognize = require('../services/expense-recognize');
+    const financials = await expRecognize.getWorkFinancials(db, work_id);
+
+    return { expenses: result.rows, financials };
+  });
+}
+
+/**
+ * Автоопределение категории по позициям чека.
+ */
+function guessCategory(recognized) {
+  const text = (recognized.items || []).map(i => (i.name || '').toLowerCase()).join(' ')
+    + ' ' + ((recognized.seller || '') + ' ' + (recognized.address || '')).toLowerCase();
+
+  if (/такси|uber|яндекс.такси|ситимобил/i.test(text)) return 'tickets';
+  if (/отел|гостиниц|booking|hostel|квартир|аренда жил/i.test(text)) return 'accommodation';
+  if (/кафе|ресторан|столов|буфет|обед|ужин|завтрак|продукт|магнит|пятёрочк|перекрёсто/i.test(text)) return 'per_diem';
+  if (/билет|ржд|аэрофлот|s7|победа|авиа|жд|поезд|электричк/i.test(text)) return 'tickets';
+  if (/леруа|строй|крепёж|гермети|инструмент|болт|гайк|труб|кабел|провод/i.test(text)) return 'materials';
+  if (/бензин|азс|топлив|лукойл|газпром|роснефт|shell/i.test(text)) return 'other';
+
+  return 'other';
 }
 
 module.exports = mimirRoutes;

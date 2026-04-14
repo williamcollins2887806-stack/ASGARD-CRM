@@ -26,6 +26,7 @@ import TelephonyWidget from './TelephonyWidget';
 import TenderDynamicsWidget from './TenderDynamicsWidget';
 import TendersFunnelWidget from './TendersFunnelWidget';
 import CallAnalyticsWidget from './CallAnalyticsWidget';
+import ExpenseWalletWidget from './ExpenseWalletWidget';
 
 /** Реестр: id → { component, name, icon, size, roles, hero? } */
 export const WIDGET_REGISTRY = {
@@ -57,12 +58,13 @@ export const WIDGET_REGISTRY = {
   tender_dynamics:  { component: TenderDynamicsWidget,   name: 'Динамика тендеров',     icon: '📈', size: 'wide',   roles: ['ADMIN','TO','HEAD_TO','DIRECTOR_*'] },
   tenders_funnel:   { component: TendersFunnelWidget,    name: 'Воронка',               icon: '📊', size: 'normal', roles: ['ADMIN','TO','HEAD_TO','PM','DIRECTOR_*'] },
   call_analytics:   { component: CallAnalyticsWidget,   name: 'Аналитика звонков',     icon: '📊', size: 'normal', roles: ['ADMIN','DIRECTOR_*'] },
+  expense_wallet:   { component: ExpenseWalletWidget,   name: 'Кошелёк проекта',       icon: '💰', size: 'normal', roles: ['PM','HEAD_PM','ADMIN','DIRECTOR_*'] },
 };
 
 /** Дефолтный набор виджетов по роли */
 export const DEFAULT_LAYOUTS = {
   ADMIN:          ['welcome','kpi_summary','call_analytics','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
-  PM:             ['welcome','quick_actions','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
+  PM:             ['welcome','quick_actions','my_works','expense_wallet','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
   TO:             ['welcome','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
   HEAD_TO:        ['welcome','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
   HEAD_PM:        ['welcome','team_workload','overdue_works','gantt_mini','my_mail','notifications'],

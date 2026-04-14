@@ -56,6 +56,7 @@ import CallAnalytics from '@/pages/CallAnalytics';
 import EstimateReport from '@/pages/EstimateReport';
 import MimirAutoEstimate from '@/pages/MimirAutoEstimate';
 import HuginnEstimateChat from '@/pages/HuginnEstimateChat';
+import ExpenseChat from '@/pages/ExpenseChat';
 
 function PinRoute() {
   const pinStatus = useAuthStore((s) => s.pinStatus);
@@ -144,6 +145,7 @@ function AppLayout() {
           <Route path="/estimate-report/:id" element={<ProtectedRoute section="tenders"><PinGuard><EstimateReport /></PinGuard></ProtectedRoute>} />
           <Route path="/mimir-estimate/:workId" element={<ProtectedRoute section="works"><PinGuard><MimirAutoEstimate /></PinGuard></ProtectedRoute>} />
           <Route path="/huginn-chat/:chatId" element={<ProtectedRoute section="chat"><PinGuard><HuginnEstimateChat /></PinGuard></ProtectedRoute>} />
+          <Route path="/expense-chat/:workId" element={<ProtectedRoute section="finances"><PinGuard><ExpenseChat /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
