@@ -231,7 +231,7 @@ export default function ExpenseChat() {
           </div>
           {financials && (
             <div className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-              Расходы: {formatMoney(financials.cost_fact)} / Контракт: {formatMoney(financials.contract_value)}
+              Расходы: {formatMoney(financials.cost_with_tax || financials.cost_fact)} / Контракт: {formatMoney(financials.contract_value)}
             </div>
           )}
         </div>
@@ -504,18 +504,34 @@ function MessageBubble({ msg, onConfirm, onReject }) {
               Внесено: {formatMoney(d.amount)}
             </span>
           </div>
-          <div className="flex justify-between text-xs">
-            <div>
-              <div style={{ color: 'var(--text-tertiary)' }}>Себестоимость</div>
-              <div style={{ color: 'var(--text-primary)' }}>
-                {formatMoney(d.before.cost_fact)} → <b>{formatMoney(d.after.cost_fact)}</b>
+          <div className="flex flex-col gap-2 text-xs">
+            <div className="flex justify-between">
+              <div>
+                <div style={{ color: 'var(--text-tertiary)' }}>Себестоимость (с налогами)</div>
+                <div style={{ color: 'var(--text-primary)' }}>
+                  {formatMoney(d.before.cost_with_tax)} → <b>{formatMoney(d.after.cost_with_tax)}</b>
+                </div>
+              </div>
+              <div className="text-right">
+                <div style={{ color: 'var(--text-tertiary)' }}>Маржа</div>
+                <div style={{ color: d.delta.margin_pct < 0 ? 'var(--red-soft)' : 'var(--green)' }}>
+                  {d.before.margin_pct}% → <b>{d.after.margin_pct}%</b>
+                  <span className="ml-1">({d.delta.margin_pct > 0 ? '+' : ''}{d.delta.margin_pct}%)</span>
+                </div>
               </div>
             </div>
-            <div className="text-right">
-              <div style={{ color: 'var(--text-tertiary)' }}>Маржа</div>
-              <div style={{ color: d.delta.margin_pct < 0 ? 'var(--red-soft)' : 'var(--green)' }}>
-                {d.before.margin_pct}% → <b>{d.after.margin_pct}%</b>
-                <span className="ml-1">({d.delta.margin_pct > 0 ? '+' : ''}{d.delta.margin_pct}%)</span>
+            <div className="flex justify-between">
+              <div>
+                <div style={{ color: 'var(--text-tertiary)' }}>Чистая прибыль</div>
+                <div style={{ color: d.after.profit >= 0 ? 'var(--green)' : 'var(--red-soft)', fontWeight: 700 }}>
+                  {formatMoney(d.before.profit)} → <b>{formatMoney(d.after.profit)}</b>
+                </div>
+              </div>
+              <div className="text-right">
+                <div style={{ color: 'var(--text-tertiary)' }}>Налог. нагрузка</div>
+                <div style={{ color: 'var(--text-secondary)' }}>
+                  {formatMoney(d.after.tax_burden)}
+                </div>
               </div>
             </div>
           </div>

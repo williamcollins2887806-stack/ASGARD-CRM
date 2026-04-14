@@ -230,18 +230,28 @@
       const div = document.createElement('div');
       div.style.cssText = 'border-radius:14px;padding:14px;background:rgba(63,185,80,0.06);border:0.5px solid rgba(63,185,80,0.2);animation:goldenFlash .5s ease-out';
       div.innerHTML = `
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
           <span style="color:#3FB950;font-size:16px">✓</span>
           <span style="color:#3FB950;font-size:14px;font-weight:700">Внесено: ${money(res.delta.cost_fact)}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px">
           <div>
-            <div style="color:rgba(255,255,255,0.4)">Себестоимость</div>
-            <div style="color:#fff">${money(res.before.cost_fact)} → <b>${money(res.after.cost_fact)}</b></div>
+            <div style="color:rgba(255,255,255,0.4)">Себестоимость (с налогами)</div>
+            <div style="color:#fff">${money(res.before.cost_with_tax)} → <b>${money(res.after.cost_with_tax)}</b></div>
           </div>
           <div style="text-align:right">
             <div style="color:rgba(255,255,255,0.4)">Маржа</div>
             <div style="color:${res.delta.margin_pct < 0 ? '#F85149' : '#3FB950'}">${res.before.margin_pct}% → <b>${res.after.margin_pct}%</b> (${res.delta.margin_pct > 0 ? '+' : ''}${res.delta.margin_pct}%)</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px">
+          <div>
+            <div style="color:rgba(255,255,255,0.4)">Чистая прибыль</div>
+            <div style="color:${res.after.profit >= 0 ? '#3FB950' : '#F85149'};font-weight:700">${money(res.before.profit)} → <b>${money(res.after.profit)}</b></div>
+          </div>
+          <div style="text-align:right">
+            <div style="color:rgba(255,255,255,0.4)">Налог. нагрузка</div>
+            <div style="color:rgba(255,255,255,0.6)">${money(res.after.tax_burden)}</div>
           </div>
         </div>
       `;
