@@ -58,7 +58,7 @@ export const WIDGET_REGISTRY = {
   tender_dynamics:  { component: TenderDynamicsWidget,   name: 'Динамика тендеров',     icon: '📈', size: 'wide',   roles: ['ADMIN','TO','HEAD_TO','DIRECTOR_*'] },
   tenders_funnel:   { component: TendersFunnelWidget,    name: 'Воронка',               icon: '📊', size: 'normal', roles: ['ADMIN','TO','HEAD_TO','PM','DIRECTOR_*'] },
   call_analytics:   { component: CallAnalyticsWidget,   name: 'Аналитика звонков',     icon: '📊', size: 'normal', roles: ['ADMIN','DIRECTOR_*'] },
-  expense_wallet:   { component: ExpenseWalletWidget,   name: 'Кошелёк проекта',       icon: '💰', size: 'normal', roles: ['PM','HEAD_PM','ADMIN','DIRECTOR_*'] },
+  expense_wallet:   { component: ExpenseWalletWidget,   name: 'Кошелёк проекта',       icon: '💰', size: 'normal', roles: ['PM','HEAD_PM'] },
 };
 
 /** Дефолтный набор виджетов по роли */

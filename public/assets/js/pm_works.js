@@ -1073,7 +1073,7 @@ window.AsgardPmWorksPage=(function(){
               }
             }
           });
-          if (window.openExpenseChat) {
+          if (window.openExpenseChat && (user.role === 'PM' || user.role === 'HEAD_PM')) {
             actions.push({
               icon: '🧾', label: 'Кошелёк проекта',
               desc: 'Чеки, фото, AI-распознавание → расходы',

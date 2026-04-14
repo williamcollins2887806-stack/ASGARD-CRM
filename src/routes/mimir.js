@@ -2482,7 +2482,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
    *
    * Ответ: { success, preview: { amount, date, category, supplier, ... }, financials }
    */
-  const EXPENSE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'HEAD_PM'];
+  const EXPENSE_ROLES = ['PM', 'HEAD_PM'];
 
   fastify.post('/expense-recognize', {
     preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
