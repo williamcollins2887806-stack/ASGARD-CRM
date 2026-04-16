@@ -1077,7 +1077,7 @@ window.AsgardPmWorksPage=(function(){
             actions.push({
               icon: '🧾', label: 'Кошелёк проекта',
               desc: 'Чеки, фото, AI-распознавание → расходы',
-              onClick: () => { hideModal(); window.openExpenseChat(w.id); }
+              onClick: () => { AsgardUI.hideModal(); window.openExpenseChat(w.id); }
             });
           }
           actions.push({
