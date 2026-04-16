@@ -446,6 +446,29 @@ window.AsgardFieldTab = (function () {
       placeholder: '— сотрудник —',
       showChips: true,
       title: 'Выбор сотрудника',
+      onChange: (ids) => {
+        // Предупреждение если выбрали занятого рабочего
+        if (!ids || !ids.length) return;
+        const empId = ids[0];
+        const emp = allEmployees.find(x => x.id === empId);
+        if (emp && emp.is_busy && emp.busy_with && emp.busy_with.length) {
+          const w = emp.busy_with[0];
+          const endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '';
+          const startStr = w.start_date ? new Date(w.start_date).toLocaleDateString('ru-RU') : '';
+          const ok = confirm(
+            '⚠️ ВНИМАНИЕ — конфликт занятости\n\n' +
+            (emp.fio || 'Сотрудник') + ' уже назначен на работу:\n' +
+            '«' + (w.work_title || '?') + '»\n' +
+            'с ' + startStr + ' по ' + endStr + '\n' +
+            '(статус: ' + (w.status || '—') + ')\n\n' +
+            'Назначить всё равно?'
+          );
+          if (!ok) {
+            // Откатываем выбор
+            CREmployeePicker.setSelected(pickerId, employee ? [employee.id] : []);
+          }
+        }
+      },
     });
     pickerEl.dataset.field = 'employee';
     pickerEl.dataset.pickerId = pickerId;
