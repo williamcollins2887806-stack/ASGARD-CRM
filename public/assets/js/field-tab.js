@@ -159,15 +159,19 @@ window.AsgardFieldTab = (function () {
     _ftTariffIds.length = 0;
     container.innerHTML = '<div class="help">Загрузка бригады…</div>';
 
-    // Load tariffs and employees
+    // Load tariffs and employees (с проверкой занятости по датам этой работы)
     const [tariffsData, empsData, assignData] = await Promise.all([
       api('/tariffs?category=all'),
-      fetch('/api/data/employees?limit=2000', { headers: hdr() }).then(r => r.json()),
+      fetch(`/api/staff/employees/available?work_id=${work.id}`, { headers: hdr() }).then(r => r.json()).catch(() =>
+        // fallback на старый endpoint если новый не доступен
+        fetch('/api/data/employees?limit=2000', { headers: hdr() }).then(r => r.json())
+      ),
       fetch(`/api/data/employee_assignments?work_id=${work.id}&limit=500`, { headers: hdr() }).then(r => r.json()),
     ]);
 
     const allTariffs = tariffsData.tariffs || [];
     const specials = tariffsData.specials || [];
+    // Endpoint /available возвращает employees с полями is_busy, busy_with[]
     const allEmployees = dataRows(empsData).sort((a, b) => (a.fio || '').localeCompare(b.fio || ''));
     const assignments = dataRows(assignData).filter(a => a.is_active !== false);
     const category = settingsData?.site_category || 'ground';
@@ -418,12 +422,25 @@ window.AsgardFieldTab = (function () {
     CREmployeePicker.destroy(pickerId);
     const pickerEl = CREmployeePicker.create({
       id: pickerId,
-      employees: allEmployees.map(e => ({
-        id: e.id,
-        name: e.fio || e.full_name || `${e.last_name || ''} ${e.first_name || ''}`.trim() || '',
-        position: e.position || e.role_display || e.role || '',
-        role: e.role || '',
-      })),
+      employees: allEmployees.map(e => {
+        const baseName = e.fio || e.full_name || `${e.last_name || ''} ${e.first_name || ''}`.trim() || '';
+        // Если рабочий занят на другой работе — добавляем индикатор
+        let suffix = '';
+        if (e.is_busy && e.busy_with && e.busy_with.length) {
+          const w = e.busy_with[0];
+          const endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '';
+          suffix = ` 🔴 занят (${(w.work_title || '').slice(0, 30)} до ${endStr})`;
+        } else if (e.busy_with !== undefined) {
+          // Свободен — endpoint /available вернул данные
+          suffix = ' ✅';
+        }
+        return {
+          id: e.id,
+          name: baseName + suffix,
+          position: e.position || e.role_display || e.role || '',
+          role: e.role || '',
+        };
+      }),
       selected: employee ? [employee.id] : [],
       maxSelect: 1,
       placeholder: '— сотрудник —',
