@@ -207,7 +207,7 @@ class ReportScheduler {
               });
               this.log.info(`[ReportScheduler] Email sent to ${user.email}`);
             } catch (emailErr) {
-              this.log.error(`[ReportScheduler] Email to ${user.email}:`, emailErr.message);
+              this.log.error(`[ReportScheduler] Email to ${user.email}: ${emailErr.message}\n${emailErr.stack || ''}`);
             }
           }
 
@@ -235,23 +235,26 @@ class ReportScheduler {
       }
       const mimirId = mimirRes.rows[0].id;
 
-      // Direct чат с директором
+      // Direct чат с директором (таблица chats, not chat_groups)
       let chatRes = await db.query(`
-        SELECT cg.id FROM chat_groups cg
-        JOIN chat_group_members cm1 ON cm1.chat_id = cg.id AND cm1.user_id = $1
-        JOIN chat_group_members cm2 ON cm2.chat_id = cg.id AND cm2.user_id = $2
-        WHERE cg.is_direct = true LIMIT 1
+        SELECT c.id FROM chats c
+        JOIN chat_group_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
+        JOIN chat_group_members m2 ON m2.chat_id = c.id AND m2.user_id = $2
+        WHERE c.is_group = false AND c.type = 'direct'
+        LIMIT 1
       `, [mimirId, directorId]);
 
       let chatId;
       if (!chatRes.rows.length) {
+        const dirUser = await db.query('SELECT name FROM users WHERE id = $1', [directorId]);
+        const chatName = `Мимир — ${dirUser.rows[0]?.name || 'Директор'}`;
         const nc = await db.query(
-          "INSERT INTO chat_groups (name, is_direct, created_by, created_at) VALUES ('Мимир', true, $1, NOW()) RETURNING id",
-          [mimirId]
+          "INSERT INTO chats (name, type, is_group, created_at, last_message_at) VALUES ($1, 'direct', false, NOW(), NOW()) RETURNING id",
+          [chatName]
         );
         chatId = nc.rows[0].id;
         await db.query(
-          "INSERT INTO chat_group_members (chat_id, user_id, joined_at) VALUES ($1, $2, NOW()), ($1, $3, NOW())",
+          "INSERT INTO chat_group_members (chat_id, user_id, role, joined_at) VALUES ($1, $2, 'owner', NOW()), ($1, $3, 'member', NOW())",
           [chatId, mimirId, directorId]
         );
       } else {
@@ -268,10 +271,17 @@ class ReportScheduler {
       msg += `\n${(report.summary_text || '').slice(0, 300)}`;
       msg += `\n\n[Открыть полный отчёт](#/telephony?tab=analytics&report=${report.id})`;
 
+      // chat_messages.text (колонка text, не message)
       const result = await db.query(
-        "INSERT INTO chat_messages (chat_id, user_id, message, created_at) VALUES ($1, $2, $3, NOW()) RETURNING *",
+        "INSERT INTO chat_messages (chat_id, user_id, user_name, text, created_at) VALUES ($1, $2, 'Мимир', $3, NOW()) RETURNING *",
         [chatId, mimirId, msg]
       );
+
+      // Обновим last_message_at в чате
+      await db.query(
+        "UPDATE chats SET last_message_at = NOW() WHERE id = $1",
+        [chatId]
+      ).catch(() => {});
 
       // SSE
       try {
@@ -281,7 +291,6 @@ class ReportScheduler {
           message: {
             id: result.rows[0].id,
             text: msg,
-            message: msg,
             user_id: mimirId,
             user_name: 'Мимир',
             created_at: result.rows[0].created_at
@@ -290,7 +299,7 @@ class ReportScheduler {
       } catch (_) {}
 
     } catch (e) {
-      this.log.error('[ReportScheduler] MimirDigest:', e.message);
+      this.log.error(`[ReportScheduler] MimirDigest for user ${directorId}: ${e.message}\n${e.stack}`);
     }
   }
 
