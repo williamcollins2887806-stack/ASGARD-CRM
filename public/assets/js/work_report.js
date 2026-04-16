@@ -529,7 +529,7 @@ window.AsgardWorkReport = (function () {
       }
 
       // Bar with rounded top
-      svgParts.push(`<rect x="${x}" y="${barTop}" width="${barW}" height="${barH}" rx="3" fill="${color}" class="wr-wf-bar" style="--delay:${i * 100}ms"/>`);
+      svgParts.push(`<rect x="${x}" y="${barTop}" width="${barW}" height="${barH}" rx="3" fill="${color}" class="wr-wf-bar"/>`);
 
       // Value label above/below bar
       const valLabel = (item.type === 'neg' ? '\u2212' : '') + mShort(item.value);
@@ -1028,7 +1028,7 @@ window.AsgardWorkReport = (function () {
 
 /* ── KPI Strip ── */
 .wr-kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
-.wr-kpi-card{background:var(--bg2,#151922);border:1px solid var(--brd);border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:14px;backdrop-filter:blur(12px);transition:transform .2s,box-shadow .2s}
+.wr-kpi-card{background:var(--bg2,#151922);border:1px solid var(--brd);border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:14px;transition:transform .2s,box-shadow .2s;contain:layout style paint}
 .wr-kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
 .wr-kpi-icon{flex-shrink:0;opacity:.85}
 .wr-kpi-body{flex:1;min-width:0}
@@ -1099,8 +1099,9 @@ window.AsgardWorkReport = (function () {
 
 /* ── Waterfall ── */
 .wr-wf-svg{width:100%;height:auto}
-.wr-wf-bar{animation:wrDropDown .6s ease both;animation-delay:var(--delay)}
-@keyframes wrDropDown{from{transform:scaleY(0);transform-origin:bottom}to{transform:scaleY(1);transform-origin:bottom}}
+/* Анимации убраны: каскадные transform на SVG барах блокировали main thread
+   во время скролла (10 баров × 600мс с разными delay) */
+.wr-wf-bar{transform-origin:bottom}
 .wr-wf-val{fill:var(--t1,#fff);font-size:10px;font-weight:600}
 .wr-wf-label{fill:var(--t2,#888);font-size:8px}
 

@@ -14,9 +14,10 @@
   align-items: flex-start;
   justify-content: center;
   padding: 40px 20px;
-  background: var(--overlay);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  /* СНЯТ backdrop-filter blur — он создаёт новый stacking context на overflow:auto
+     контейнере и заставляет браузер пересчитывать композицию слоёв на каждом
+     кадре скролла (forced synchronous layout). Используем плотную заливку. */
+  background: rgba(0, 0, 0, 0.65);
   overflow-y: auto;
   z-index: var(--z-modal);
   opacity: 0;
