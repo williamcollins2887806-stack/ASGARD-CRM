@@ -77,6 +77,66 @@ async function loadProfile(content) {
   }
   content.appendChild(header);
 
+  // My Work
+  const workData = await API.fetch('/worker/my-work').catch(() => null);
+  const workCard = el('div', {
+    style: { background: t.surface, borderRadius: '16px', padding: '16px', border: '1px solid ' + t.border, animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both' },
+  });
+  workCard.appendChild(el('div', {
+    style: { color: t.textTer, fontSize: '0.6875rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' },
+  }, '\uD83D\uDCCB \u041C\u041E\u042F \u0420\u0410\u0411\u041E\u0422\u0410'));
+
+  if (workData && !workData.error && workData.customer_name) {
+    // Object + period
+    const infoBlock = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' } });
+    infoBlock.appendChild(el('div', { style: { color: t.text, fontSize: '0.9375rem', fontWeight: '600' } }, workData.customer_name + (workData.work_title ? ' \u2014 ' + workData.work_title : '')));
+
+    if (workData.start_date || workData.end_date) {
+      const startFmt = workData.start_date ? Utils.formatDate(workData.start_date) : '';
+      const endFmt = workData.end_date ? Utils.formatDate(workData.end_date) : '';
+      const periodText = startFmt && endFmt ? startFmt + ' \u2014 ' + endFmt : startFmt || endFmt;
+      infoBlock.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.8125rem' } }, '\uD83D\uDCC5 ' + periodText));
+    }
+
+    if (workData.shift_type) {
+      const shiftIcon = workData.shift_type === 'night' ? '\uD83C\uDF19' : '\u2600\uFE0F';
+      const shiftLabel = workData.shift_type === 'night' ? '\u041D\u043E\u0447\u043D\u0430\u044F' : '\u0414\u043D\u0435\u0432\u043D\u0430\u044F';
+      infoBlock.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.8125rem' } }, shiftIcon + ' \u0421\u043C\u0435\u043D\u0430: ' + shiftLabel));
+    }
+    workCard.appendChild(infoBlock);
+
+    // Master
+    if (workData.master_name) {
+      const masterBlock = el('div', { style: { borderTop: '1px solid ' + t.border, paddingTop: '10px', marginBottom: '10px' } });
+      masterBlock.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.6875rem', fontWeight: '600', marginBottom: '4px' } }, '\uD83D\uDC77 \u041C\u0430\u0441\u0442\u0435\u0440'));
+      masterBlock.appendChild(el('div', { style: { color: t.text, fontSize: '0.875rem', fontWeight: '500', marginBottom: '8px' } }, workData.master_name));
+      if (workData.master_phone) {
+        masterBlock.appendChild(el('a', {
+          href: 'tel:' + workData.master_phone.replace(/[\s\-()]/g, ''),
+          style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: t.goldGrad, borderRadius: '12px', color: '#fff', fontWeight: '600', fontSize: '0.875rem', textDecoration: 'none', justifyContent: 'center' },
+        }, '\uD83D\uDCDE \u041F\u043E\u0437\u0432\u043E\u043D\u0438\u0442\u044C \u043C\u0430\u0441\u0442\u0435\u0440\u0443'));
+      }
+      workCard.appendChild(masterBlock);
+    }
+
+    // PM
+    if (workData.pm_name) {
+      const pmBlock = el('div', { style: { borderTop: '1px solid ' + t.border, paddingTop: '10px' } });
+      pmBlock.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.6875rem', fontWeight: '600', marginBottom: '4px' } }, '\uD83D\uDC54 \u0420\u041F'));
+      pmBlock.appendChild(el('div', { style: { color: t.text, fontSize: '0.875rem', fontWeight: '500', marginBottom: '8px' } }, workData.pm_name));
+      if (workData.pm_phone) {
+        pmBlock.appendChild(el('a', {
+          href: 'tel:' + workData.pm_phone.replace(/[\s\-()]/g, ''),
+          style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: t.goldGrad, borderRadius: '12px', color: '#fff', fontWeight: '600', fontSize: '0.875rem', textDecoration: 'none', justifyContent: 'center' },
+        }, '\uD83D\uDCDE \u041F\u043E\u0437\u0432\u043E\u043D\u0438\u0442\u044C \u0420\u041F'));
+      }
+      workCard.appendChild(pmBlock);
+    }
+  } else {
+    workCard.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.875rem', textAlign: 'center', padding: '12px 0' } }, '\u041D\u0435\u0442 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0439 \u0440\u0430\u0431\u043E\u0442\u044B'));
+  }
+  content.appendChild(workCard);
+
   // Permits / Certifications
   const permitsCard = el('div', {
     style: { background: t.surface, borderRadius: '16px', padding: '16px', border: '1px solid ' + t.border, animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both' },

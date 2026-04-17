@@ -424,6 +424,75 @@ async function routes(fastify, options) {
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /worker/my-work — current active work for the worker
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.get('/worker/my-work', auth, async (req, reply) => {
+    try {
+      const empId = req.fieldEmployee.id;
+
+      // 1. Find active assignment → active work
+      const { rows: workRows } = await db.query(`
+        SELECT w.id AS work_id,
+               w.title AS work_title,
+               w.start_in_work_date AS start_date,
+               w.end_in_work_date AS end_date,
+               w.pm_id,
+               c.short_name AS customer_name,
+               ea.shift_type
+        FROM employee_assignments ea
+        JOIN works w ON w.id = ea.work_id
+        LEFT JOIN customers c ON c.id = w.customer_id
+        WHERE ea.employee_id = $1
+          AND ea.is_active = TRUE
+          AND w.work_status NOT IN ('Завершена', 'Закрыт')
+        ORDER BY w.start_in_work_date DESC
+        LIMIT 1
+      `, [empId]);
+
+      if (workRows.length === 0) {
+        return { active: false };
+      }
+
+      const work = workRows[0];
+
+      // 2. Find masters (shift_master / senior_master) on this work
+      const { rows: masters } = await db.query(`
+        SELECT e.fio AS name, e.phone, ea.field_role AS role
+        FROM employee_assignments ea
+        JOIN employees e ON e.id = ea.employee_id
+        WHERE ea.work_id = $1
+          AND ea.field_role IN ('shift_master', 'senior_master')
+          AND ea.is_active = TRUE
+      `, [work.work_id]);
+
+      // 3. Find PM
+      let pm = null;
+      if (work.pm_id) {
+        const { rows: pmRows } = await db.query(`
+          SELECT name, phone, email FROM users WHERE id = $1
+        `, [work.pm_id]);
+        if (pmRows.length > 0) {
+          pm = { name: pmRows[0].name, phone: pmRows[0].phone || null, email: pmRows[0].email || null };
+        }
+      }
+
+      return {
+        work_id: work.work_id,
+        work_title: work.work_title,
+        customer_name: work.customer_name || null,
+        start_date: work.start_date,
+        end_date: work.end_date,
+        shift_type: work.shift_type || null,
+        masters,
+        pm,
+      };
+    } catch (err) {
+      fastify.log.error('[field-checkin] /worker/my-work error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
 }
 
 module.exports = routes;
