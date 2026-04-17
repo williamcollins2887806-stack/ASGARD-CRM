@@ -1060,7 +1060,10 @@ window.AsgardFieldTab = (function () {
     const thStyle = 'padding:6px 8px;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:11px;white-space:nowrap;position:sticky;top:0;background:var(--bg2, #151922)';
     let headerHtml = `<tr><th style="${thStyle};text-align:left;min-width:150px">ФИО</th>`;
     dates.forEach(d => {
-      const day = new Date(d + 'T00:00:00');
+      // d может быть 'YYYY-MM-DD' или 'YYYY-MM-DDT12:00:00.000Z' (после TZ-фикса)
+      // Извлекаем ровно YYYY-MM-DD и парсим как локальную дату
+      const ymd = String(d).slice(0, 10).split('-');
+      const day = new Date(Number(ymd[0]), Number(ymd[1]) - 1, Number(ymd[2]));
       const label = String(day.getDate()).padStart(2, '0') + '.' + String(day.getMonth() + 1).padStart(2, '0');
       headerHtml += `<th style="${thStyle};text-align:center">${label}</th>`;
     });
