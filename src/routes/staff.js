@@ -95,7 +95,8 @@ async function routes(fastify, options) {
     let idx = 1;
     if (role_tag) { sql += ` AND role_tag = $${idx}`; params.push(role_tag); idx++; }
     if (search) { sql += ` AND LOWER(fio) LIKE $${idx}`; params.push('%' + search.toLowerCase() + '%'); idx++; }
-    sql += ' ORDER BY fio ASC LIMIT 500';
+    // Без LIMIT: иначе фамилии на Щ/Э/Ю/Я отсекаются (всего 500-1000 employees)
+    sql += ' ORDER BY fio ASC';
     const { rows: employees } = await db.query(sql, params);
 
     if (!employees.length) return { employees: [], target_work: targetWork };
