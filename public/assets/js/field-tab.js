@@ -166,14 +166,16 @@ window.AsgardFieldTab = (function () {
         // fallback на старый endpoint если новый не доступен
         fetch('/api/data/employees?limit=2000', { headers: hdr() }).then(r => r.json())
       ),
-      fetch(`/api/data/employee_assignments?work_id=${work.id}&limit=500`, { headers: hdr() }).then(r => r.json()),
+      // Используем where-clause (data API игнорирует прямые поля как work_id=X)
+      fetch(`/api/data/employee_assignments?where=${encodeURIComponent(JSON.stringify({work_id: work.id}))}&limit=500`, { headers: hdr() }).then(r => r.json()),
     ]);
 
     const allTariffs = tariffsData.tariffs || [];
     const specials = tariffsData.specials || [];
     // Endpoint /available возвращает employees с полями is_busy, busy_with[]
     const allEmployees = dataRows(empsData).sort((a, b) => (a.fio || '').localeCompare(b.fio || ''));
-    const assignments = dataRows(assignData).filter(a => a.is_active !== false);
+    // Защитный фильтр по work_id на клиенте (на случай если API проигнорирует where)
+    const assignments = dataRows(assignData).filter(a => a.is_active !== false && Number(a.work_id) === Number(work.id));
     const category = settingsData?.site_category || 'ground';
 
     container.innerHTML = '';
@@ -620,11 +622,13 @@ window.AsgardFieldTab = (function () {
 
     const [logData, assignData] = await Promise.all([
       apiField(`/logistics?work_id=${work.id}`),
-      fetch(`/api/data/employee_assignments?work_id=${work.id}&limit=500`, { headers: hdr() }).then(r => r.json()),
+      // Используем where-clause (data API игнорирует прямые поля как work_id=X)
+      fetch(`/api/data/employee_assignments?where=${encodeURIComponent(JSON.stringify({work_id: work.id}))}&limit=500`, { headers: hdr() }).then(r => r.json()),
     ]);
 
     const items = logData.items || logData.logistics || (Array.isArray(logData) ? logData : []);
-    const assignments = dataRows(assignData).filter(a => a.is_active !== false);
+    // Защитный фильтр по work_id на клиенте (на случай если API проигнорирует where)
+    const assignments = dataRows(assignData).filter(a => a.is_active !== false && Number(a.work_id) === Number(work.id));
 
     // Load employee names
     const empIds = [...new Set(assignments.map(a => a.employee_id))];
