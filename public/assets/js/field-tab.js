@@ -955,12 +955,25 @@ window.AsgardFieldTab = (function () {
       else if (dash?.crew?.[0]?.point_value) pointValue = parseFloat(dash.crew[0].point_value);
     } catch (_) {}
 
-    // Default: last 30 days
+    // Default: start_plan - 7 дней → end_plan + 7 дней (или last 30 days fallback)
     const today = new Date();
-    const monthAgo = new Date(today);
-    monthAgo.setDate(monthAgo.getDate() - 30);
-    const dfFrom = monthAgo.toISOString().slice(0, 10);
-    const dfTo = today.toISOString().slice(0, 10);
+    const workStart = work.start_in_work_date || work.start_plan || work.start_fact;
+    const workEnd = work.end_plan || work.end_fact;
+    let dfFromDate, dfToDate;
+    if (workStart) {
+      dfFromDate = new Date(String(workStart).slice(0,10) + 'T12:00:00Z');
+      dfFromDate.setDate(dfFromDate.getDate() - 7);
+    } else {
+      dfFromDate = new Date(today); dfFromDate.setDate(dfFromDate.getDate() - 30);
+    }
+    if (workEnd) {
+      dfToDate = new Date(String(workEnd).slice(0,10) + 'T12:00:00Z');
+      dfToDate.setDate(dfToDate.getDate() + 7);
+    } else {
+      dfToDate = new Date(today);
+    }
+    const dfFrom = dfFromDate.toISOString().slice(0, 10);
+    const dfTo = dfToDate.toISOString().slice(0, 10);
 
     container.innerHTML = '';
 
@@ -968,10 +981,12 @@ window.AsgardFieldTab = (function () {
     const filters = document.createElement('div');
     filters.style.cssText = 'display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap';
     filters.innerHTML = `
+      <button class="btn ghost" id="tsDayLeft" style="font-size:13px;padding:6px 10px" title="Добавить день слева">← День</button>
       <label style="font-size:13px;color:var(--t2)">С:</label>
       <input id="tsFrom" type="date" value="${dfFrom}" style="padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px" />
       <label style="font-size:13px;color:var(--t2)">По:</label>
       <input id="tsTo" type="date" value="${dfTo}" style="padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px" />
+      <button class="btn ghost" id="tsDayRight" style="font-size:13px;padding:6px 10px" title="Добавить день справа">День →</button>
       <button class="btn ghost" id="tsLoad" style="font-size:13px">Загрузить</button>
       <button class="btn" id="tsEdit" style="font-size:13px;background:linear-gradient(135deg,#D4A843,#b8922e);color:#fff">Редактировать</button>
       <button class="btn" id="tsExport" style="font-size:13px;margin-left:auto;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff">📥 Выгрузить Excel</button>
@@ -997,6 +1012,24 @@ window.AsgardFieldTab = (function () {
         tableWrap.innerHTML = '<div class="help" style="color:#ef4444">Ошибка загрузки табеля</div>';
       }
     }
+
+    // Кнопки «← День» / «День →»
+    document.getElementById('tsDayLeft')?.addEventListener('click', () => {
+      const inp = document.getElementById('tsFrom');
+      if (!inp) return;
+      const d = new Date(inp.value + 'T12:00:00Z');
+      d.setDate(d.getDate() - 1);
+      inp.value = d.toISOString().slice(0, 10);
+      loadTimesheet();
+    });
+    document.getElementById('tsDayRight')?.addEventListener('click', () => {
+      const inp = document.getElementById('tsTo');
+      if (!inp) return;
+      const d = new Date(inp.value + 'T12:00:00Z');
+      d.setDate(d.getDate() + 1);
+      inp.value = d.toISOString().slice(0, 10);
+      loadTimesheet();
+    });
 
     document.getElementById('tsEdit')?.addEventListener('click', () => {
       editMode = !editMode;
@@ -1048,10 +1081,25 @@ window.AsgardFieldTab = (function () {
       return;
     }
 
-    // Collect all unique dates
-    const allDates = new Set();
-    timesheet.forEach(emp => (emp.days || []).forEach(d => allDates.add(d.date)));
-    const dates = [...allDates].sort();
+    // Генерируем ВСЕ дни от from до to (не только с checkin'ами)
+    const dates = [];
+    if (from && to) {
+      const ymdF = String(from).slice(0,10).split('-');
+      const ymdT = String(to).slice(0,10).split('-');
+      const dCur = new Date(Number(ymdF[0]), Number(ymdF[1])-1, Number(ymdF[2]));
+      const dEnd = new Date(Number(ymdT[0]), Number(ymdT[1])-1, Number(ymdT[2]));
+      while (dCur <= dEnd) {
+        const iso = dCur.getFullYear() + '-' + String(dCur.getMonth()+1).padStart(2,'0') + '-' + String(dCur.getDate()).padStart(2,'0');
+        dates.push(iso);
+        dCur.setDate(dCur.getDate() + 1);
+      }
+    }
+    // Fallback: если from/to не указаны, берём даты из checkin'ов
+    if (!dates.length) {
+      const allDates = new Set();
+      timesheet.forEach(emp => (emp.days || []).forEach(d => allDates.add(String(d.date).slice(0,10))));
+      dates.push(...[...allDates].sort());
+    }
 
     const table = document.createElement('table');
     table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
@@ -1093,9 +1141,9 @@ window.AsgardFieldTab = (function () {
       tdName.textContent = emp.fio || '—';
       tr.appendChild(tdName);
 
-      // Day cells
+      // Day cells — нормализуем ключи к YYYY-MM-DD (checkin.date может быть ISO timestamp)
       const dayMap = {};
-      (emp.days || []).forEach(d => { dayMap[d.date] = d; });
+      (emp.days || []).forEach(d => { dayMap[String(d.date).slice(0,10)] = d; });
 
       dates.forEach(d => {
         const td = document.createElement('td');
