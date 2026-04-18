@@ -555,6 +555,20 @@ try {
   fastify.log.warn('[MimirCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Per-Diem Cron: daily check unpaid per-diem ──
+try {
+  const perDiemCron = require('./services/per-diem-cron');
+  fastify.addHook('onReady', async () => {
+    perDiemCron.start(fastify.db, fastify.log);
+    fastify.log.info('[PerDiemCron] Daily per-diem check started (09:30 MSK)');
+  });
+  fastify.addHook('onClose', async () => {
+    perDiemCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[PerDiemCron] Init skipped: ' + cronErr.message);
+}
+
 // ── Call Report Scheduler ──
 try {
   const ReportScheduler = require('./services/report-scheduler');
