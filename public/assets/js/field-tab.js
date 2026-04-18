@@ -1151,15 +1151,17 @@ window.AsgardFieldTab = (function () {
         const day = dayMap[d];
 
         if (editMode) {
-          // Editable mode — show points (day_rate / 500)
+          // Editable mode — show points + shift icon
           td.style.cursor = 'pointer';
           td.style.border = '1px dashed var(--brd, rgba(255,255,255,0.15))';
           td.style.borderRadius = '4px';
           if (day) {
             const pts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
-            td.textContent = pts;
+            const si = _shiftIcon(day.shift);
+            td.innerHTML = si.icon + pts;
             td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
-            td.title = `${pts} баллов = ${money(pts * pv)} ₽. Клик для редактирования`;
+            if (si.bg) td.style.background = si.bg;
+            td.title = `${si.label} ${pts} бал. = ${money(pts * pv)} ₽. Клик для редактирования`;
             td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work, pv));
           } else {
             td.textContent = '+';
@@ -1169,12 +1171,14 @@ window.AsgardFieldTab = (function () {
             td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
           }
         } else {
-          // View mode — show points (баллы = day_rate / 500)
+          // View mode — show points + shift icon
           if (day) {
             const pts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
-            td.textContent = pts;
+            const si = _shiftIcon(day.shift);
+            td.innerHTML = si.icon + pts;
             td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : pts >= 6 ? '#3b82f6' : 'var(--t2)';
-            td.title = `${d}: ${pts} бал. = ${money(pts * pv)} ₽`;
+            if (si.bg) td.style.background = si.bg;
+            td.title = `${d}: ${si.label} ${pts} бал. = ${money(pts * pv)} ₽`;
           } else {
             td.textContent = '—';
             td.style.color = 'var(--t2, #4b5563)';
@@ -1263,102 +1267,155 @@ window.AsgardFieldTab = (function () {
   }
 
   // ── Inline edit checkin cell ──
-  function editCheckinCell(td, day, emp, date, work, pv) {
-    pv = pv || 500;
-    const pts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
+  // ── Shift type helpers ──
+  const SHIFT_TYPES = [
+    { value: 'day',     icon: '☀',  label: 'День',       bg: '', hours: 11, defaultPts: 13 },
+    { value: 'night',   icon: '🌙', label: 'Ночь',       bg: 'rgba(59,130,246,0.12)', hours: 11, defaultPts: 13 },
+    { value: 'half',    icon: '½',  label: 'Полдня',     bg: 'rgba(107,114,128,0.1)', hours: 6, defaultPts: 6 },
+    { value: 'road',    icon: '🚗', label: 'Дорога',     bg: 'rgba(96,165,250,0.1)', hours: 0, defaultPts: 6 },
+    { value: 'standby', icon: '⏳', label: 'Ожидание',   bg: 'rgba(245,158,11,0.1)', hours: 0, defaultPts: 6 },
+  ];
+  function _shiftIcon(shift) {
+    return SHIFT_TYPES.find(s => s.value === shift) || SHIFT_TYPES[0];
+  }
+
+  // ── Inline shift+points editor (replaces cell content) ──
+  function _shiftEditor(td, currentShift, currentPts, pv, onSave, onCancel) {
+    td.innerHTML = '';
+    td.style.padding = '2px';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;align-items:center;min-width:62px';
+
+    // Shift type buttons row
+    const btnsRow = document.createElement('div');
+    btnsRow.style.cssText = 'display:flex;gap:1px;flex-wrap:wrap;justify-content:center';
+    let selectedShift = currentShift || 'day';
+
+    SHIFT_TYPES.forEach(st => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = st.icon;
+      btn.title = st.label;
+      btn.style.cssText = 'width:22px;height:22px;border:1px solid var(--brd);border-radius:4px;font-size:11px;cursor:pointer;padding:0;line-height:1;background:' + (st.value === selectedShift ? 'var(--gold,#D4A843)' : 'var(--bg1)');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedShift = st.value;
+        // Highlight selected
+        btnsRow.querySelectorAll('button').forEach(b => { b.style.background = 'var(--bg1)'; });
+        btn.style.background = 'var(--gold,#D4A843)';
+        // Auto-fill default points for this shift type
+        if (!input.dataset.userEdited) input.value = st.defaultPts;
+      });
+      btnsRow.appendChild(btn);
+    });
+    wrap.appendChild(btnsRow);
+
+    // Points input
     const input = document.createElement('input');
     input.type = 'number';
-    input.value = pts;
+    input.value = currentPts;
     input.min = 0;
     input.max = 30;
-    input.style.cssText = 'width:48px;padding:2px 4px;font-size:12px;text-align:center;border:1px solid var(--gold);border-radius:4px;background:var(--bg1);color:var(--t1);outline:none';
-    td.innerHTML = '';
-    td.appendChild(input);
+    input.style.cssText = 'width:44px;padding:2px;font-size:12px;text-align:center;border:1px solid var(--gold);border-radius:4px;background:var(--bg1);color:var(--t1);outline:none';
+    input.addEventListener('input', () => { input.dataset.userEdited = '1'; });
+    wrap.appendChild(input);
+    td.appendChild(wrap);
     input.focus();
     input.select();
 
-    async function save() {
-      const newPts = parseInt(input.value) || 0;
-      if (newPts === pts) {
-        td.textContent = pts;
-        td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
-        return;
-      }
-      const newRate = newPts * pv;
-      try {
-        await api(`/projects/${work.id}/checkin/${day.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({ day_rate: newRate, amount_earned: newRate }),
-        });
-        td.textContent = newPts;
-        td.style.color = newPts >= 18 ? '#D4A843' : newPts >= 12 ? '#10b981' : '#3b82f6';
-        td.style.transition = 'background 0.5s';
-        td.style.background = 'rgba(16,185,129,0.2)';
-        setTimeout(() => { td.style.background = ''; }, 800);
-      } catch (e) {
-        toast('Ошибка', 'Не удалось сохранить', 'err');
-        td.textContent = pts;
-      }
+    function doSave() {
+      const pts = parseInt(input.value) || 0;
+      const st = _shiftIcon(selectedShift);
+      onSave(pts, selectedShift, st);
+    }
+    input.addEventListener('blur', () => setTimeout(doSave, 150));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); doSave(); }
+      if (e.key === 'Escape') onCancel();
+    });
+  }
+
+  function editCheckinCell(td, day, emp, date, work, pv) {
+    pv = pv || 500;
+    const origPts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
+    const origShift = day.shift || 'day';
+
+    function restore() {
+      const si = _shiftIcon(origShift);
+      td.innerHTML = si.icon + origPts;
+      td.style.color = origPts >= 18 ? '#D4A843' : origPts >= 12 ? '#10b981' : '#3b82f6';
+      td.style.background = si.bg || '';
     }
 
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-      if (e.key === 'Escape') { td.textContent = pts; td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6'; }
-    });
+    _shiftEditor(td, origShift, origPts, pv,
+      async (newPts, newShift, si) => {
+        if (newPts === origPts && newShift === origShift) { restore(); return; }
+        const newRate = newPts * pv;
+        const shiftDef = SHIFT_TYPES.find(s => s.value === newShift) || SHIFT_TYPES[0];
+        try {
+          await api(`/projects/${work.id}/checkin/${day.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ day_rate: newRate, amount_earned: newRate, shift: newShift, hours_worked: shiftDef.hours, hours_paid: shiftDef.hours }),
+          });
+          td.innerHTML = si.icon + newPts;
+          td.style.color = newPts >= 18 ? '#D4A843' : newPts >= 12 ? '#10b981' : '#3b82f6';
+          td.style.background = si.bg || '';
+          td.style.transition = 'outline 0.5s';
+          td.style.outline = '2px solid rgba(16,185,129,0.5)';
+          setTimeout(() => { td.style.outline = ''; }, 800);
+        } catch (e) {
+          toast('Ошибка', 'Не удалось сохранить', 'err');
+          restore();
+        }
+      },
+      restore
+    );
   }
 
   // ── Add new checkin cell ──
   function addCheckinCell(td, emp, date, work, pv) {
     pv = pv || 500;
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.value = '12';
-    input.min = 0;
-    input.max = 30;
-    input.style.cssText = 'width:48px;padding:2px 4px;font-size:12px;text-align:center;border:1px solid var(--gold);border-radius:4px;background:var(--bg1);color:var(--t1);outline:none';
-    td.innerHTML = '';
-    td.appendChild(input);
-    input.focus();
-    input.select();
 
-    async function save() {
-      const pts = parseInt(input.value) || 0;
-      if (pts === 0) { td.textContent = '+'; td.style.color = 'var(--t2)'; td.style.opacity = '0.5'; return; }
-      const rate = pts * pv;
-      try {
-        await api(`/projects/${work.id}/checkin`, {
-          method: 'POST',
-          body: JSON.stringify({
-            employee_id: emp.employee_id,
-            date: date,
-            shift: 'day',
-            hours_worked: 11,
-            hours_paid: 11,
-            day_rate: rate,
-            amount_earned: rate,
-          }),
-        });
-        td.textContent = pts;
-        td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
-        td.style.opacity = '1';
-        td.style.transition = 'background 0.5s';
-        td.style.background = 'rgba(16,185,129,0.2)';
-        setTimeout(() => { td.style.background = ''; }, 800);
-        toast('Табель', `Смена ${date} добавлена`, 'ok');
-      } catch (e) {
-        toast('Ошибка', 'Не удалось создать запись', 'err');
-        td.textContent = '+';
-        td.style.color = 'var(--t2)';
-        td.style.opacity = '0.5';
-      }
+    function restore() {
+      td.textContent = '+';
+      td.style.color = 'var(--t2)';
+      td.style.opacity = '0.5';
+      td.style.background = '';
     }
 
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-      if (e.key === 'Escape') { td.textContent = '+'; td.style.color = 'var(--t2)'; td.style.opacity = '0.5'; }
-    });
+    _shiftEditor(td, 'day', 13, pv,
+      async (pts, shift, si) => {
+        if (pts === 0) { restore(); return; }
+        const rate = pts * pv;
+        const shiftDef = SHIFT_TYPES.find(s => s.value === shift) || SHIFT_TYPES[0];
+        try {
+          await api(`/projects/${work.id}/checkin`, {
+            method: 'POST',
+            body: JSON.stringify({
+              employee_id: emp.employee_id,
+              date: date,
+              shift: shift,
+              hours_worked: shiftDef.hours,
+              hours_paid: shiftDef.hours,
+              day_rate: rate,
+              amount_earned: rate,
+            }),
+          });
+          td.innerHTML = si.icon + pts;
+          td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
+          td.style.background = si.bg || '';
+          td.style.opacity = '1';
+          td.style.transition = 'outline 0.5s';
+          td.style.outline = '2px solid rgba(16,185,129,0.5)';
+          setTimeout(() => { td.style.outline = ''; }, 800);
+          toast('Табель', `${si.label} ${date} добавлена`, 'ok');
+        } catch (e) {
+          toast('Ошибка', 'Не удалось создать запись', 'err');
+          restore();
+        }
+      },
+      restore
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════
