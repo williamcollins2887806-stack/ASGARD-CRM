@@ -206,6 +206,12 @@
               category: preview.category,
               supplier: preview.supplier,
               description: preview.description,
+              inn: preview.inn || null,
+              doc_number: preview.doc_number || null,
+              vat_rate: preview.vat_rate || null,
+              vat_amount: preview.vat_amount || null,
+              amount_ex_vat: preview.amount_ex_vat || null,
+              items: preview.items || [],
             })
           });
           card.remove();
