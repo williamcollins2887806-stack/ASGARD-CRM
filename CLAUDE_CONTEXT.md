@@ -613,3 +613,37 @@ responsive.css   (120KB)  — Адаптив
 - **Pre-commit hook**: `.githooks/pre-commit` блокирует Unicode smart quotes (U+201C/U+201D) в .js/.css/.html/.json. Активируется через `git config core.hooksPath .githooks` (автоматически при `npm install` через postinstall скрипт).
 - **DIRECTOR_DEV и HEAD_TO** не покрыты в 99-console-audit.spec.js — добавить в следующей итерации аудита после Фазы 3.
 - **Правило ветки**: перед любой новой задачей в той же ветке — `git pull --rebase origin <branch>` first. Нарушение этого правила привело к amend чужого коммита (2026-04-19).
+
+## Console-audit cleanup session 2026-04-19 — ИТОГИ
+
+Коммиты:
+- f6668f4 — Фаза 1: pm_works.js smart quotes fix + pre-commit hook
+- a40476e — Фаза 1: shell cache bump + postinstall hook enforcement
+- 0786285 — Фаза 2: V082 admin password + OFFICE_MANAGER login sync
+- ea5c5c8 — Фаза 3: refactor todo/tasks_admin → tasks permission
+- 02e3368 — Фаза 3: V083 grant chat_groups/cash + cleanup dead todo
+- 293dc50 — Фаза 3+: V084 final missing permissions (BUH/DIR_COMM/TO/OM)
+- 945981e — Audit: add /cash-admin to PAGES list
+- (V085)  — BUH chat_groups fix (missed in V083/V084)
+
+Исходный аудит: 10/12 ролей с failed страницами (174+ ошибок)
+Финальный: 11/12 passed (🎉 0 ошибок), 1 failed (BUH /messenger — fixed V085)
+После V085: 12/12 ожидается clean
+
+Что устранено:
+- pm_works.js: 438 Unicode smart quotes → ASCII, страница работает
+- role_presets: V082 (admin pwd), V083 (+6 permissions, -2 dead todo), V084 (+6), V085 (+1 BUH chat_groups)
+- Dead module_key 'todo' удалён, 10 endpoints переведены с todo/tasks_admin на tasks
+- Скрытые дыры: BUH полностью не имел cash/cash_admin/chat_groups, /cash-admin не тестировался
+- Тест: ADMIN/OFFICE_MANAGER логины синхронизированы с БД, /cash-admin добавлен в PAGES
+
+Инфраструктурные улучшения:
+- Pre-commit hook блокирует Unicode smart quotes (U+201C/U+201D)
+- Postinstall скрипт автоматически активирует git hooks
+- PAGES в аудите: 67 → 68 страниц (+/cash-admin)
+
+Техдолг (не устранено в этой сессии):
+- DIRECTOR_DEV / HEAD_TO не покрыты в аудите → отдельная задача по расширению PAGES+ACCOUNTS
+- loginAs flaky в Playwright → ~1-3 ложных пропуска per full run
+- pm_works.js subtitle &quot; в именах заказчиков (XSS-защита корректна, нужен textContent рефактор)
+- Клик по строке таблицы /pm-works не срабатывает, работает только через «Открыть»
