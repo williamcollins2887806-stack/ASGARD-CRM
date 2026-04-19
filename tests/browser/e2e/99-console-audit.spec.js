@@ -22,7 +22,7 @@ const ACCOUNTS = {
   HEAD_PM:        { login: 'test_head_pm',       password: 'Test123!',  pin: '0000' },
   BUH:            { login: 'test_buh',           password: 'Test123!',  pin: '0000' },
   HR:             { login: 'test_hr',            password: 'Test123!',  pin: '0000' },
-  OFFICE_MANAGER: { login: 'test_om',            password: 'Test123!',  pin: '0000' },
+  OFFICE_MANAGER: { login: 'test_office_mgr',     password: 'Test123!',  pin: '0000' },
   WAREHOUSE:      { login: 'test_warehouse',     password: 'Test123!',  pin: '0000' },
   PROC:           { login: 'test_proc',          password: 'Test123!',  pin: '0000' },
   CHIEF_ENGINEER: { login: 'test_chief_eng',     password: 'Test123!',  pin: '0000' },

@@ -611,3 +611,5 @@ responsive.css   (120KB)  — Адаптив
 - **loginAs flaky в e2e-тестах** — Playwright loginAs() через UI нестабилен (SW update banner перехватывает, PIN keypad race, session timeout). Нужен retry + увеличенный timeout или API-based login fallback.
 - **Клик по строке таблицы /pm-works** — не открывает модалку, работает только через кнопку «Открыть». Причина не подтверждена, гипотезы: sticky header z-index / event delegation на tbody vs tr / отсутствующий onclick handler. Нужен отдельный debug-сеанс.
 - **Pre-commit hook**: `.githooks/pre-commit` блокирует Unicode smart quotes (U+201C/U+201D) в .js/.css/.html/.json. Активируется через `git config core.hooksPath .githooks` (автоматически при `npm install` через postinstall скрипт).
+- **DIRECTOR_DEV и HEAD_TO** не покрыты в 99-console-audit.spec.js — добавить в следующей итерации аудита после Фазы 3.
+- **Правило ветки**: перед любой новой задачей в той же ветке — `git pull --rebase origin <branch>` first. Нарушение этого правила привело к amend чужого коммита (2026-04-19).
