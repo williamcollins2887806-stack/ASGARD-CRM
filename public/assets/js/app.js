@@ -1897,7 +1897,7 @@ var _setupPinKeypad = null;
     }
 
     // Загружаем виджет todo
-    if (document.getElementById('todoWidgetContent') && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('todo', 'read')) {
+    if (document.getElementById('todoWidgetContent') && window.AsgardAuth && AsgardAuth.hasPermission && AsgardAuth.hasPermission('tasks', 'read')) {
       (async () => {
         try {
           const auth = AsgardAuth.getAuth();

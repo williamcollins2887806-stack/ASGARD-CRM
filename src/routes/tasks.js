@@ -112,7 +112,7 @@ module.exports = async function(fastify) {
   // GET /api/tasks/created — Задачи которые я создал (для директоров)
   // ───────────────────────────────────────────────────────────────
   fastify.get('/created', {
-    preHandler: [fastify.requirePermission('tasks_admin', 'read')]
+    preHandler: [fastify.requirePermission('tasks', 'read')]
   }, async (request) => {
     const { status, assignee_id, limit = 100, offset = 0 } = request.query;
     let sql = `
@@ -288,7 +288,7 @@ module.exports = async function(fastify) {
   // POST /api/tasks/:id/files — Загрузить файлы к задаче
   // ───────────────────────────────────────────────────────────────
   fastify.post('/:id/files', {
-    preHandler: [fastify.requirePermission('tasks_admin', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
@@ -534,7 +534,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/:id — Редактирование задачи (создателем)
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:id', {
-    preHandler: [fastify.requirePermission('tasks_admin', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
     if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
@@ -575,7 +575,7 @@ module.exports = async function(fastify) {
   // DELETE /api/tasks/:id — Удаление задачи (создателем или ADMIN)
   // ───────────────────────────────────────────────────────────────
   fastify.delete('/:id', {
-    preHandler: [fastify.requirePermission('tasks_admin', 'delete')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
@@ -641,7 +641,7 @@ module.exports = async function(fastify) {
   // GET /api/tasks/todo — Мой todo-список
   // ───────────────────────────────────────────────────────────────
   fastify.get('/todo', {
-    preHandler: [fastify.requirePermission('todo', 'read')]
+    preHandler: [fastify.requirePermission('tasks', 'read')]
   }, async (request) => {
     // Сначала удалить протухшие (done + время прошло)
     await db.query(`
@@ -662,7 +662,7 @@ module.exports = async function(fastify) {
   // POST /api/tasks/todo — Добавить пункт
   // ───────────────────────────────────────────────────────────────
   fastify.post('/todo', {
-    preHandler: [fastify.requirePermission('todo', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const { text } = request.body;
     if (!text || !text.trim()) return reply.code(400).send({ error: 'Текст обязателен' });
@@ -685,7 +685,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/todo/:id/toggle — Отметить выполненным / снять отметку
   // ───────────────────────────────────────────────────────────────
   fastify.put('/todo/:id/toggle', {
-    preHandler: [fastify.requirePermission('todo', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
@@ -707,7 +707,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/todo/:id — Редактировать текст
   // ───────────────────────────────────────────────────────────────
   fastify.put('/todo/:id', {
-    preHandler: [fastify.requirePermission('todo', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const { text } = request.body;
@@ -726,7 +726,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/todo/reorder — Пересортировать список
   // ───────────────────────────────────────────────────────────────
   fastify.put('/todo/reorder', {
-    preHandler: [fastify.requirePermission('todo', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const { order } = request.body; // [{id: 5, sort_order: 0}, ...]
     if (!Array.isArray(order)) return reply.code(400).send({ error: 'order array required' });
@@ -745,7 +745,7 @@ module.exports = async function(fastify) {
   // DELETE /api/tasks/todo/:id — Удалить пункт
   // ───────────────────────────────────────────────────────────────
   fastify.delete('/todo/:id', {
-    preHandler: [fastify.requirePermission('todo', 'delete')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const result = await db.query(
       'DELETE FROM todo_items WHERE id = $1 AND user_id = $2 RETURNING id',
