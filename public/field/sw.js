@@ -2,7 +2,7 @@
  * ASGARD Field — Service Worker v2.0.0
  * Shell caching + Background Sync + Push Notifications
  */
-const SHELL_VERSION = '3.2.0';
+const SHELL_VERSION = '3.3.0';
 const SHELL_CACHE = 'field-shell-' + SHELL_VERSION;
 const DATA_CACHE = 'field-data-v1';
 
@@ -82,16 +82,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Shell assets — stale-while-revalidate (показать кэш сразу, обновить в фоне)
+  // Shell assets — cache-first (кэш при install, обновление через SHELL_VERSION bump)
   if (url.pathname.startsWith('/field/') || url.pathname.startsWith('/assets/')) {
     event.respondWith(
-      caches.open(SHELL_CACHE).then(cache => {
-        return cache.match(event.request).then(cached => {
-          const fetchPromise = fetch(event.request, { cache: 'no-cache' }).then(resp => {
-            if (resp.ok) cache.put(event.request, resp.clone());
-            return resp;
-          }).catch(() => cached);
-          return cached || fetchPromise;
+      caches.match(event.request).then(cached => {
+        return cached || fetch(event.request).then(resp => {
+          if (resp.ok) {
+            const clone = resp.clone();
+            caches.open(SHELL_CACHE).then(cache => cache.put(event.request, clone));
+          }
+          return resp;
         });
       })
     );
