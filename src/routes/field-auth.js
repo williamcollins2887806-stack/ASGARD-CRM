@@ -311,6 +311,90 @@ async function routes(fastify, options) {
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /send-invite — отправить SMS-приглашение рабочему
+  // Только для PM/ADMIN (через CRM авторизацию)
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/send-invite', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN'])]
+  }, async (req, reply) => {
+    try {
+      const { employee_id, text } = req.body || {};
+      if (!employee_id) return reply.code(400).send({ error: 'employee_id обязателен' });
+
+      const { rows } = await db.query('SELECT id, fio, phone FROM employees WHERE id = $1', [employee_id]);
+      if (!rows.length) return reply.code(404).send({ error: 'Сотрудник не найден' });
+      const emp = rows[0];
+
+      if (!emp.phone) return reply.code(400).send({ error: 'У сотрудника нет телефона' });
+
+      const normalized = emp.phone.replace(/[\s\-\(\)\+]/g, '').replace(/^8/, '7');
+      if (normalized.length < 11) return reply.code(400).send({ error: 'Некорректный номер' });
+
+      const smsText = text || 'АСГАРД-СЕРВИС: Для вас создан личный кабинет. Зайдите: asgard-crm.ru/field и введите этот номер. Инструкция: asgard-crm.ru/field-help.html';
+
+      const mango = new MangoService();
+      const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
+
+      let smsResponse = null;
+      try {
+        smsResponse = await mango.sendSms(MANGO_SMS_FROM, normalized, smsText);
+      } catch (smsErr) {
+        fastify.log.error('[field-auth] invite SMS error:', smsErr.message);
+        return reply.code(500).send({ error: 'SMS не отправлено: ' + smsErr.message });
+      }
+
+      // Логируем
+      await db.query(`
+        INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, sent_by, created_at)
+        VALUES ($1, $2, 'invite', $3, 'sent', $4, $5, NOW())
+      `, [emp.id, normalized, smsText, JSON.stringify(smsResponse), req.user.id]).catch(() => {});
+
+      return { ok: true, employee: emp.fio, phone: normalized, response: smsResponse };
+    } catch (err) {
+      fastify.log.error('[field-auth] send-invite error:', err);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // POST /send-invite-bulk — массовая рассылка SMS бригаде
+  fastify.post('/send-invite-bulk', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN'])]
+  }, async (req, reply) => {
+    const { work_id, text } = req.body || {};
+    if (!work_id) return reply.code(400).send({ error: 'work_id обязателен' });
+
+    const { rows: employees } = await db.query(`
+      SELECT DISTINCT e.id, e.fio, e.phone
+      FROM employee_assignments ea
+      JOIN employees e ON e.id = ea.employee_id
+      WHERE ea.work_id = $1 AND ea.is_active = TRUE
+        AND e.phone IS NOT NULL AND TRIM(e.phone) != ''
+      ORDER BY e.fio
+    `, [work_id]);
+
+    const smsText = text || 'АСГАРД-СЕРВИС: Для вас создан личный кабинет. Зайдите: asgard-crm.ru/field и введите этот номер. Инструкция: asgard-crm.ru/field-help.html';
+    const mango = new MangoService();
+    const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
+
+    const results = [];
+    for (const emp of employees) {
+      const normalized = emp.phone.replace(/[\s\-\(\)\+]/g, '').replace(/^8/, '7');
+      try {
+        const resp = await mango.sendSms(MANGO_SMS_FROM, normalized, smsText);
+        results.push({ id: emp.id, fio: emp.fio, status: 'sent', response: resp });
+        await db.query(`
+          INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, sent_by, created_at)
+          VALUES ($1, $2, 'invite', $3, 'sent', $4, $5, NOW())
+        `, [emp.id, normalized, smsText, JSON.stringify(resp), req.user.id]).catch(() => {});
+      } catch (e) {
+        results.push({ id: emp.id, fio: emp.fio, status: 'failed', error: e.message });
+      }
+    }
+
+    return { ok: true, total: employees.length, sent: results.filter(r => r.status === 'sent').length, results };
+  });
 }
 
 module.exports = routes;

@@ -109,8 +109,8 @@ async function routes(fastify, options) {
     try {
       const empId = req.fieldEmployee.id;
 
-      // Find active assignment
-      const { rows: assignments } = await db.query(`
+      // Find active assignment (fallback to last completed if none active)
+      let { rows: assignments } = await db.query(`
         SELECT ea.id as assignment_id, ea.work_id, ea.field_role, ea.per_diem,
                ea.shift_type, ea.date_from, ea.date_to, ea.role,
                ea.tariff_id, ea.tariff_points, ea.combination_tariff_id,
@@ -126,6 +126,27 @@ async function routes(fastify, options) {
         ORDER BY ea.id DESC
         LIMIT 1
       `, [empId]);
+
+      // Fallback: if no active project, show last completed
+      if (assignments.length === 0) {
+        const fallback = await db.query(`
+          SELECT ea.id as assignment_id, ea.work_id, ea.field_role, ea.per_diem,
+                 ea.shift_type, ea.date_from, ea.date_to, ea.role,
+                 ea.tariff_id, ea.tariff_points, ea.combination_tariff_id,
+                 w.work_title, w.city, w.object_name, w.address, w.pm_id,
+                 w.contact_person, w.contact_phone,
+                 fps.shift_hours, fps.schedule_type, fps.site_category,
+                 fps.rounding_rule, fps.rounding_step, fps.per_diem as project_per_diem,
+                 fps.geo_required, fps.object_lat, fps.object_lng, fps.geo_radius_meters
+          FROM employee_assignments ea
+          JOIN works w ON w.id = ea.work_id
+          LEFT JOIN field_project_settings fps ON fps.work_id = ea.work_id
+          WHERE ea.employee_id = $1
+          ORDER BY ea.id DESC
+          LIMIT 1
+        `, [empId]);
+        assignments = fallback.rows;
+      }
 
       if (assignments.length === 0) {
         return { project: null };
@@ -269,7 +290,7 @@ async function routes(fastify, options) {
       const { rows } = await db.query(`
         SELECT ea.work_id, ea.field_role, ea.date_from, ea.date_to, ea.is_active,
                ea.tariff_id, ea.per_diem,
-               w.work_title, w.city, w.object_name,
+               w.work_title, w.city, w.object_name, w.work_status,
                (SELECT e2.fio FROM employees e2 WHERE e2.user_id = w.pm_id LIMIT 1) as pm_name,
                (SELECT COUNT(*) FROM field_checkins fc
                 WHERE fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id AND fc.status = 'completed') as shifts_count,
@@ -627,6 +648,154 @@ async function routes(fastify, options) {
       return { logistics: rows };
     } catch (err) {
       fastify.log.error('[field-worker] /logistics/history error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+  // ═══════════════════════════════════════════════════════════════════
+  // GET /permits — все допуски рабочего из employee_permits
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/permits', auth, async (req, reply) => {
+    try {
+      const empId = req.fieldEmployee.id;
+      const { rows } = await db.query(`
+        SELECT ep.id, ep.category, ep.doc_number, ep.issuer,
+               ep.issue_date, ep.expiry_date, ep.is_active, ep.notes,
+               ep.file_url, ep.scan_original_name,
+               pt.name AS permit_name, pt.code AS permit_code, pt.category AS permit_category,
+               CASE
+                 WHEN ep.expiry_date IS NULL THEN 'no_expiry'
+                 WHEN ep.expiry_date < CURRENT_DATE THEN 'expired'
+                 WHEN ep.expiry_date < CURRENT_DATE + INTERVAL '14 days' THEN 'expiring_14'
+                 WHEN ep.expiry_date < CURRENT_DATE + INTERVAL '30 days' THEN 'expiring_30'
+                 ELSE 'active'
+               END AS status
+        FROM employee_permits ep
+        LEFT JOIN permit_types pt ON pt.id = ep.type_id
+        WHERE ep.employee_id = $1 AND ep.is_active = TRUE
+        ORDER BY ep.expiry_date ASC NULLS LAST
+      `, [empId]);
+      return { permits: rows };
+    } catch (err) {
+      fastify.log.error('[field-worker] /permits error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // GET /personal — полные личные данные сотрудника
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/personal', auth, async (req, reply) => {
+    try {
+      const empId = req.fieldEmployee.id;
+      const { rows } = await db.query(`
+        SELECT id, fio, full_name, phone, email, position, role_tag,
+               city, address, birth_date, gender,
+               passport_data, passport_number, inn, snils,
+               clothing_size, shoe_size, grade,
+               is_self_employed, is_active,
+               employment_date, dismissal_date,
+               naks, naks_expiry, imt_number, imt_expires,
+               created_at
+        FROM employees WHERE id = $1
+      `, [empId]);
+      if (!rows.length) return reply.code(404).send({ error: 'Не найден' });
+      return { employee: rows[0] };
+    } catch (err) {
+      fastify.log.error('[field-worker] /personal error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PUT /personal — обновление личных данных (телефон, адрес, паспорт)
+  // Требует подтверждения через модалку на фронте
+  // ═══════════════════════════════════════════════════════════════════
+  const EDITABLE_FIELDS = new Set([
+    'phone', 'email', 'city', 'address',
+    'passport_data', 'passport_number', 'inn', 'snils',
+    'clothing_size', 'shoe_size',
+    'birth_date', 'gender'
+  ]);
+
+  fastify.put('/personal', auth, async (req, reply) => {
+    try {
+      const empId = req.fieldEmployee.id;
+      const updates = req.body || {};
+
+      // Фильтруем только разрешённые поля
+      const filtered = {};
+      for (const [key, val] of Object.entries(updates)) {
+        if (EDITABLE_FIELDS.has(key) && val !== undefined) {
+          filtered[key] = val;
+        }
+      }
+
+      if (Object.keys(filtered).length === 0) {
+        return reply.code(400).send({ error: 'Нет полей для обновления' });
+      }
+
+      // Строим UPDATE
+      const setClauses = [];
+      const params = [];
+      let idx = 1;
+      for (const [key, val] of Object.entries(filtered)) {
+        setClauses.push(`${key} = $${idx}`);
+        params.push(val === '' ? null : val);
+        idx++;
+      }
+      setClauses.push(`updated_at = NOW()`);
+      params.push(empId);
+
+      const sql = `UPDATE employees SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING id, fio, phone, email`;
+      const { rows } = await db.query(sql, params);
+
+      if (!rows.length) return reply.code(404).send({ error: 'Не найден' });
+
+      fastify.log.info(`[field-worker] Employee ${empId} updated personal data: ${Object.keys(filtered).join(', ')}`);
+      return { ok: true, employee: rows[0], updated_fields: Object.keys(filtered) };
+    } catch (err) {
+      fastify.log.error('[field-worker] PUT /personal error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // GET /timesheet/:work_id — табель по дням для рабочего
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/timesheet/:work_id', auth, async (req, reply) => {
+    try {
+      const empId = req.fieldEmployee.id;
+      const workId = parseInt(req.params.work_id);
+
+      const { rows: checkins } = await db.query(`
+        SELECT date, shift, hours_worked, hours_paid,
+               day_rate, amount_earned, status, note,
+               checkin_at, checkout_at
+        FROM field_checkins
+        WHERE employee_id = $1 AND work_id = $2
+        ORDER BY date ASC
+      `, [empId, workId]);
+
+      // Мастер и РП для этого проекта
+      const { rows: workInfo } = await db.query(`
+        SELECT w.work_title, w.work_status, ea.shift_type, ea.tariff_points, ea.per_diem
+        FROM employee_assignments ea
+        JOIN works w ON w.id = ea.work_id
+        WHERE ea.employee_id = $1 AND ea.work_id = $2
+        LIMIT 1
+      `, [empId, workId]);
+
+      return {
+        work: workInfo[0] || null,
+        days: checkins,
+        summary: {
+          total_days: checkins.length,
+          total_earned: checkins.reduce((s, c) => s + (parseFloat(c.amount_earned) || 0), 0),
+          total_hours: checkins.reduce((s, c) => s + (parseFloat(c.hours_worked) || 0), 0),
+        }
+      };
+    } catch (err) {
+      fastify.log.error('[field-worker] /timesheet error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
