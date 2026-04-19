@@ -46,6 +46,7 @@ async function routes(fastify, options) {
   const auth = { preHandler: [fastify.fieldAuthenticate] };
 
   // Helper: get day_rate from tariff grid
+  // Note: no is_active filter — inactive workers still have tariff data
   async function getDayRate(empId, workId) {
     const { rows } = await db.query(`
       SELECT ea.tariff_id, ea.combination_tariff_id,
@@ -54,7 +55,8 @@ async function routes(fastify, options) {
       FROM employee_assignments ea
       LEFT JOIN field_tariff_grid tg ON tg.id = ea.tariff_id
       LEFT JOIN field_tariff_grid ctg ON ctg.id = ea.combination_tariff_id
-      WHERE ea.employee_id = $1 AND ea.work_id = $2 AND ea.is_active = true
+      WHERE ea.employee_id = $1 AND ea.work_id = $2
+      ORDER BY ea.is_active DESC
       LIMIT 1
     `, [empId, workId]);
 
@@ -482,6 +484,15 @@ async function routes(fastify, options) {
         }
       }
 
+      // 4. Crew — коллеги той же смены (активные) с телефонами
+      const { rows: crew } = await db.query(`
+        SELECT e.fio, e.phone, ea.field_role, ea.shift_type
+        FROM employee_assignments ea
+        JOIN employees e ON e.id = ea.employee_id
+        WHERE ea.work_id = $1 AND ea.is_active = TRUE AND ea.employee_id != $2
+        ORDER BY ea.field_role DESC, e.fio
+      `, [work.work_id, empId]);
+
       return {
         work_id: work.work_id,
         work_title: work.work_title || work.title,
@@ -493,6 +504,7 @@ async function routes(fastify, options) {
         is_active: work.assignment_active !== false,
         masters,
         pm,
+        crew,
       };
     } catch (err) {
       fastify.log.error('[field-checkin] /worker/my-work error:', err);

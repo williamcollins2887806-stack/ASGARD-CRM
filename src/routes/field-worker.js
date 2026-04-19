@@ -109,10 +109,10 @@ async function routes(fastify, options) {
     try {
       const empId = req.fieldEmployee.id;
 
-      // Find active assignment (fallback to last completed if none active)
-      let { rows: assignments } = await db.query(`
+      // Find assignment: active first, fallback to last completed (is_active=false ≠ "no data")
+      const { rows: assignments } = await db.query(`
         SELECT ea.id as assignment_id, ea.work_id, ea.field_role, ea.per_diem,
-               ea.shift_type, ea.date_from, ea.date_to, ea.role,
+               ea.shift_type, ea.date_from, ea.date_to, ea.role, ea.is_active,
                ea.tariff_id, ea.tariff_points, ea.combination_tariff_id,
                w.work_title, w.city, w.object_name, w.address, w.pm_id,
                w.contact_person, w.contact_phone,
@@ -122,31 +122,10 @@ async function routes(fastify, options) {
         FROM employee_assignments ea
         JOIN works w ON w.id = ea.work_id
         LEFT JOIN field_project_settings fps ON fps.work_id = ea.work_id
-        WHERE ea.employee_id = $1 AND ea.is_active = true
-        ORDER BY ea.id DESC
+        WHERE ea.employee_id = $1
+        ORDER BY ea.is_active DESC, ea.id DESC
         LIMIT 1
       `, [empId]);
-
-      // Fallback: if no active project, show last completed
-      if (assignments.length === 0) {
-        const fallback = await db.query(`
-          SELECT ea.id as assignment_id, ea.work_id, ea.field_role, ea.per_diem,
-                 ea.shift_type, ea.date_from, ea.date_to, ea.role,
-                 ea.tariff_id, ea.tariff_points, ea.combination_tariff_id,
-                 w.work_title, w.city, w.object_name, w.address, w.pm_id,
-                 w.contact_person, w.contact_phone,
-                 fps.shift_hours, fps.schedule_type, fps.site_category,
-                 fps.rounding_rule, fps.rounding_step, fps.per_diem as project_per_diem,
-                 fps.geo_required, fps.object_lat, fps.object_lng, fps.geo_radius_meters
-          FROM employee_assignments ea
-          JOIN works w ON w.id = ea.work_id
-          LEFT JOIN field_project_settings fps ON fps.work_id = ea.work_id
-          WHERE ea.employee_id = $1
-          ORDER BY ea.id DESC
-          LIMIT 1
-        `, [empId]);
-        assignments = fallback.rows;
-      }
 
       if (assignments.length === 0) {
         return { project: null };
@@ -241,6 +220,7 @@ async function routes(fastify, options) {
           object_name: a.object_name,
           address: a.address,
           assignment_id: a.assignment_id,
+          is_active: a.is_active,
           field_role: a.field_role,
           shift_type: a.shift_type,
           date_from: a.date_from,
@@ -302,7 +282,15 @@ async function routes(fastify, options) {
         ORDER BY ea.is_active DESC, ea.date_from DESC NULLS LAST
       `, [empId]);
 
-      return { projects: rows };
+      // Add badge: completed > active > inactive (left but work continues)
+      const projects = rows.map(r => ({
+        ...r,
+        badge: r.work_status === 'Завершена' ? 'completed'
+             : r.is_active ? 'active'
+             : 'inactive',
+      }));
+
+      return { projects };
     } catch (err) {
       fastify.log.error('[field-worker] /projects error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
@@ -388,11 +376,17 @@ async function routes(fastify, options) {
         const perDiemRate = parseFloat(ap.per_diem || 0);
         const perDiemTotal = perDiemRate * parseInt(calDays[0]?.cal_days || 0);
 
-        // Advances
-        const { rows: advQ } = await db.query(
-          `SELECT COALESCE(SUM(advance_paid), 0) as advances FROM payroll_items WHERE employee_id = $1 AND work_id = $2`,
-          [empId, workId]
-        );
+        // Advances (payroll_items may be empty — safe fallback)
+        let advQ;
+        try {
+          const res = await db.query(
+            `SELECT COALESCE(SUM(advance_paid), 0) as advances FROM payroll_items WHERE employee_id = $1 AND work_id = $2`,
+            [empId, workId]
+          );
+          advQ = res.rows;
+        } catch (_) {
+          advQ = [{ advances: 0 }];
+        }
 
         const earned = parseFloat(earnQ[0]?.earned || 0);
         const advances = parseFloat(advQ[0]?.advances || 0);
@@ -400,6 +394,7 @@ async function routes(fastify, options) {
         currentProject = {
           work_id: workId,
           work_title: ap.work_title,
+          is_active: ap.is_active,
           earned_total: earned,
           per_diem_total: perDiemTotal,
           advances_paid: advances,
@@ -416,17 +411,25 @@ async function routes(fastify, options) {
       `, [empId]);
 
       // Only count ACTUAL payments from worker_payments (not payroll accruals)
-      const { rows: allPaid } = await db.query(
-        `SELECT COALESCE(SUM(CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
-                                   WHEN type IN ('advance') THEN -amount ELSE 0 END), 0) as total_paid
-         FROM worker_payments WHERE employee_id = $1 AND status = 'paid'`,
-        [empId]
-      );
+      let allPaid = [{ total_paid: 0 }];
+      try {
+        const res = await db.query(
+          `SELECT COALESCE(SUM(CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
+                                     WHEN type IN ('advance') THEN -amount ELSE 0 END), 0) as total_paid
+           FROM worker_payments WHERE employee_id = $1 AND status = 'paid'`,
+          [empId]
+        );
+        allPaid = res.rows;
+      } catch (_) {}
 
-      const { rows: allOTP } = await db.query(
-        `SELECT COALESCE(SUM(amount), 0) as total_otp FROM one_time_payments WHERE employee_id = $1 AND status = 'paid'`,
-        [empId]
-      );
+      let allOTP = [{ total_otp: 0 }];
+      try {
+        const res = await db.query(
+          `SELECT COALESCE(SUM(amount), 0) as total_otp FROM one_time_payments WHERE employee_id = $1 AND status = 'paid'`,
+          [empId]
+        );
+        allOTP = res.rows;
+      } catch (_) {}
 
       const totalEarned = parseFloat(allTime[0]?.total_earned || 0);
       const totalPaid = parseFloat(allPaid[0]?.total_paid || 0) + parseFloat(allOTP[0]?.total_otp || 0);
@@ -529,19 +532,27 @@ async function routes(fastify, options) {
       );
       const perDiemDays = parseInt(calDays[0]?.cnt || 0);
 
-      // Payroll items
-      const { rows: payrollItems } = await db.query(`
-        SELECT days_worked, day_rate, base_amount, bonus, overtime_amount,
-               penalty, advance_paid, deductions, accrued, payout, comment
-        FROM payroll_items WHERE employee_id = $1 AND work_id = $2
-        ORDER BY id DESC
-      `, [empId, workId]);
+      // Payroll items (table may be empty — safe fallback)
+      let payrollItems = [];
+      try {
+        const res = await db.query(`
+          SELECT days_worked, day_rate, base_amount, bonus, overtime_amount,
+                 penalty, advance_paid, deductions, accrued, payout, comment
+          FROM payroll_items WHERE employee_id = $1 AND work_id = $2
+          ORDER BY id DESC
+        `, [empId, workId]);
+        payrollItems = res.rows;
+      } catch (_) { /* table may not exist or be empty */ }
 
       // One-time payments
-      const { rows: otps } = await db.query(
-        `SELECT amount, reason, status, paid_at FROM one_time_payments WHERE employee_id = $1 AND work_id = $2 ORDER BY id DESC`,
-        [empId, workId]
-      );
+      let otps = [];
+      try {
+        const res = await db.query(
+          `SELECT amount, reason, status, paid_at FROM one_time_payments WHERE employee_id = $1 AND work_id = $2 ORDER BY id DESC`,
+          [empId, workId]
+        );
+        otps = res.rows;
+      } catch (_) { /* table may not exist */ }
 
       // Advances
       const totalAdvances = payrollItems.reduce((s, p) => s + parseFloat(p.advance_paid || 0), 0);
