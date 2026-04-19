@@ -225,9 +225,11 @@ window.AsgardFunnelPage = (function(){
       const est = estimates.find(e => e.tender_id === t.id);
       const work = works.find(w => w.tender_id === t.id);
 
-      // Сумма: tender_price — основной источник (заполняется при создании тендера)
-      // Fallback: contract_value работы → estimate total_sum → estimated_sum
-      t._sum = parseFloat(t.tender_price || work?.contract_value || est?.total_sum || t.estimated_sum || 0) || 0;
+      // SSoT суммы (V080 триггер синхронизирует tender_price ↔ contract_value):
+      // После выигрыша: work.contract_value — источник правды (подписанный контракт)
+      // До выигрыша: tender_price — источник правды
+      // Благодаря V080 они всегда равны, но на случай рассинхрона — приоритет contract_value
+      t._sum = parseFloat((work ? work.contract_value : null) || t.tender_price || est?.total_sum || t.estimated_sum || 0) || 0;
 
       // Если работа завершена (акт подписан) — показывать в колонке «Завершено»
       let stage;
