@@ -457,15 +457,17 @@ async function routes(fastify, options) {
 
       const work = workRows[0];
 
-      // 2. Find masters (shift_master / senior_master) on this work
+      // 2. Find masters — приоритет: мастер СВОЕЙ смены, fallback: любой мастер
+      const myShift = work.shift_type || 'day';
       const { rows: masters } = await db.query(`
-        SELECT e.fio AS name, e.phone, ea.field_role AS role
+        SELECT e.fio AS name, e.phone, ea.field_role AS role, ea.shift_type
         FROM employee_assignments ea
         JOIN employees e ON e.id = ea.employee_id
         WHERE ea.work_id = $1
           AND ea.field_role IN ('shift_master', 'senior_master')
           AND ea.is_active = TRUE
-      `, [work.work_id]);
+        ORDER BY CASE WHEN ea.shift_type = $2 THEN 0 ELSE 1 END, ea.field_role DESC
+      `, [work.work_id, myShift]);
 
       // 3. Find PM
       let pm = null;

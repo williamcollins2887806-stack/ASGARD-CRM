@@ -50,6 +50,10 @@ window.AsgardFieldTab = (function () {
     { value: 'shift_master', label: 'Мастер смены' },
     { value: 'senior_master', label: 'Ст. мастер' },
   ];
+  const SHIFTS = [
+    { value: 'day', label: '☀ День' },
+    { value: 'night', label: '🌙 Ночь' },
+  ];
 
   const LOG_TYPES = [
     { value: 'ticket_to', label: '✈️ Туда', short: 'Билет туда' },
@@ -338,12 +342,14 @@ window.AsgardFieldTab = (function () {
         const empId = empIds[0];
         const rid = row.dataset.crewRid;
         const role = rid != null ? CRSelect.getValue('ft-role-' + rid) : null;
+        const shiftType = rid != null ? CRSelect.getValue('ft-shift-' + rid) : null;
         const tariffId = rid != null ? CRSelect.getValue('ft-tariff-' + rid) : null;
         const comboId = rid != null ? CRSelect.getValue('ft-combo-' + rid) : null;
         if (empId) {
           employees.push({
             employee_id: empId,
             field_role: role || 'worker',
+            shift_type: shiftType || 'day',
             tariff_id: tariffId ? parseInt(tariffId) : null,
             combination_tariff_id: comboId ? parseInt(comboId) : null,
           });
@@ -491,6 +497,21 @@ window.AsgardFieldTab = (function () {
     });
     tdRole.appendChild(selRoleEl);
     tr.appendChild(tdRole);
+
+    // Shift type select (День/Ночь)
+    const tdShift = document.createElement('td');
+    tdShift.style.cssText = cellStyle;
+    const shiftId = 'ft-shift-' + rid;
+    CRSelect.destroy(shiftId);
+    const selShiftEl = CRSelect.create({
+      id: shiftId,
+      options: SHIFTS.map(s => ({ value: s.value, label: s.label })),
+      value: assignment?.shift_type || 'day',
+      searchable: false,
+      clearable: false,
+    });
+    tdShift.appendChild(selShiftEl);
+    tr.appendChild(tdShift);
 
     // Tariff select (CRSelect)
     const tdTariff = document.createElement('td');
