@@ -135,64 +135,101 @@ const HistoryDetailPage = {
 
 async function loadHistoryDetail(content, workId) {
   const t = DS.t;
-  const data = await API.fetch('/worker/projects/' + workId);
+  // Load both endpoints in parallel
+  const [projData, tsData] = await Promise.all([
+    API.fetch('/worker/projects/' + workId),
+    API.fetch('/worker/timesheet/' + workId),
+  ]);
 
   content.replaceChildren();
-  if (!data || data.error) {
-    content.appendChild(F.Empty({ text: data?.error || '\u041F\u0440\u043E\u0435\u043A\u0442 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D', icon: '\uD83D\uDCCB' }));
+  if ((!projData || projData.error) && (!tsData || tsData.error)) {
+    content.appendChild(F.Empty({ text: projData?.error || tsData?.error || '\u041F\u0440\u043E\u0435\u043A\u0442 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D', icon: '\uD83D\uDCCB' }));
     return;
   }
 
-  const project = data.project || data;
-  const checkins = data.checkins || data.days || [];
+  const work = tsData?.work || projData?.work || {};
+  const days = tsData?.days || projData?.timesheet || [];
+  const summary = tsData?.summary || {};
+
+  // Calculate period from actual checkins
+  let periodStart = null, periodEnd = null;
+  if (days.length > 0) {
+    const sortedDates = days.map(d => d.date).filter(Boolean).sort();
+    periodStart = sortedDates[0];
+    periodEnd = sortedDates[sortedDates.length - 1];
+  }
+
+  // Calculate rate from tariff_points or from actual day_rate in checkins
+  const tariffPoints = work.tariff_points || 0;
+  const rateFromTariff = tariffPoints * 500;
+  // Fallback: use average day_rate from checkins
+  const avgRate = days.length > 0 ? days.reduce((s, d) => s + (parseFloat(d.day_rate) || 0), 0) / days.length : 0;
+  const dayRate = rateFromTariff || Math.round(avgRate);
 
   // Project info
   content.appendChild(F.Card({
-    title: project.work_title || project.title,
-    subtitle: [project.city, project.object_name].filter(Boolean).join(' \u00B7 '),
+    title: work.work_title || '\u041F\u0440\u043E\u0435\u043A\u0442',
+    subtitle: [projData?.work?.city, projData?.work?.object_name].filter(Boolean).join(' \u00B7 '),
     fields: [
-      { label: '\u041F\u0435\u0440\u0438\u043E\u0434', value: Utils.formatDate(project.date_from) + ' \u2013 ' + Utils.formatDate(project.date_to || new Date()) },
-      { label: '\u0421\u0442\u0430\u0432\u043A\u0430', value: Utils.formatMoney(project.day_rate || 0) + '\u20BD' },
+      { label: '\u041F\u0435\u0440\u0438\u043E\u0434', value: (periodStart ? Utils.formatDate(periodStart) : '?') + ' \u2013 ' + (periodEnd ? Utils.formatDate(periodEnd) : '?') },
+      { label: '\u0421\u0442\u0430\u0432\u043A\u0430', value: dayRate ? (Utils.formatMoney(dayRate) + '\u20BD/\u0441\u043C') : '\u2014' },
+      { label: '\u0421\u043C\u0435\u043D\u0430', value: work.shift_type === 'night' ? '\u041D\u043E\u0447\u043D\u0430\u044F' : work.shift_type === 'day' ? '\u0414\u043D\u0435\u0432\u043D\u0430\u044F' : work.shift_type || '\u2014' },
     ],
     animDelay: 0.05,
   }));
 
   // Summary
-  const totalHours = checkins.reduce((s, c) => s + (c.hours_worked || 0), 0);
-  const totalEarned = checkins.reduce((s, c) => s + (c.amount_earned || 0), 0);
+  const totalEarned = summary.total_earned || days.reduce((s, c) => s + (parseFloat(c.amount_earned) || 0), 0);
+  const totalHours = summary.total_hours || days.reduce((s, c) => s + (parseFloat(c.hours_worked) || 0), 0);
+  const totalDays = summary.total_days || days.length;
 
   content.appendChild(F.MoneyCard({
     amount: totalEarned,
     label: '\u0418\u0442\u043E\u0433\u043E \u0437\u0430\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E',
-    details: checkins.length + ' \u0441\u043C\u0435\u043D \u00B7 ' + Utils.formatHours(totalHours),
+    details: totalDays + ' \u0441\u043C\u0435\u043D \u00B7 ' + Utils.formatHours(totalHours),
     animDelay: 0.15,
   }));
 
-  // Timesheet — day by day
-  if (checkins.length) {
+  // Timesheet — day by day with shift icons
+  if (days.length) {
+    const SHIFT_ICONS = { day: '\u2600', night: '\uD83C\uDF19', road: '\uD83D\uDE97', half: '\u00BD', standby: '\u23F3' };
+
     const table = el('div', {
       style: { background: t.surface, borderRadius: '16px', padding: '14px', border: '1px solid ' + t.border, animation: 'fieldSlideUp 0.4s ease 0.25s both' },
     });
     table.appendChild(el('div', {
       style: { color: t.textTer, fontSize: '0.6875rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' },
-    }, '\u0422\u0410\u0411\u0415\u041B\u042C'));
+    }, '\uD83D\uDCCB \u0422\u0410\u0411\u0415\u041B\u042C'));
 
-    // Header
-    const hdr = el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 60px 60px 80px', gap: '4px', padding: '4px 0', borderBottom: '1px solid ' + t.border } });
-    hdr.appendChild(el('span', { style: { color: t.textTer, fontSize: '0.625rem', fontWeight: '600' } }, '\u0414\u0410\u0422\u0410'));
-    hdr.appendChild(el('span', { style: { color: t.textTer, fontSize: '0.625rem', fontWeight: '600', textAlign: 'center' } }, '\u041F\u0420\u0418\u0425\u041E\u0414'));
-    hdr.appendChild(el('span', { style: { color: t.textTer, fontSize: '0.625rem', fontWeight: '600', textAlign: 'center' } }, '\u0427\u0410\u0421\u042B'));
-    hdr.appendChild(el('span', { style: { color: t.textTer, fontSize: '0.625rem', fontWeight: '600', textAlign: 'right' } }, '\u0417\u0410\u0420\u0410\u0411\u041E\u0422\u041E\u041A'));
-    table.appendChild(hdr);
+    // Separator
+    table.appendChild(el('div', { style: { borderBottom: '1px dashed ' + t.border, marginBottom: '8px' } }));
 
-    for (const c of checkins) {
-      const row = el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 60px 60px 80px', gap: '4px', padding: '6px 0', borderBottom: '1px solid ' + t.borderLight } });
-      row.appendChild(el('span', { style: { color: t.text, fontSize: '0.8125rem' } }, Utils.formatDate(c.date)));
-      row.appendChild(el('span', { style: { color: t.textSec, fontSize: '0.8125rem', textAlign: 'center' } }, Utils.formatTime(c.checkin_at)));
-      row.appendChild(el('span', { style: { color: t.text, fontSize: '0.8125rem', textAlign: 'center', fontWeight: '500' } }, Utils.formatHours(c.hours_paid || c.hours_worked)));
-      row.appendChild(el('span', { style: { color: t.gold, fontSize: '0.8125rem', textAlign: 'right', fontWeight: '600' } }, Utils.formatMoney(c.amount_earned || 0) + '\u20BD'));
+    // Sort days ascending by date
+    const sortedDays = [...days].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    for (const c of sortedDays) {
+      const dateStr = c.date ? new Date(c.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '';
+      const shiftIcon = SHIFT_ICONS[c.shift] || '\u2600';
+      const shiftLabel = c.shift === 'night' ? '\u041D\u043E\u0447\u044C' : c.shift === 'road' ? '\u0414\u043E\u0440\u043E\u0433\u0430' : c.shift === 'half' ? '\u041F\u043E\u043B\u0441\u043C\u0435\u043D\u044B' : c.shift === 'standby' ? '\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435' : '\u0414\u0435\u043D\u044C';
+      const points = c.day_rate ? Math.round(parseFloat(c.day_rate) / 500) : 0;
+      const earned = parseFloat(c.amount_earned) || 0;
+
+      const row = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid ' + (t.borderLight || 'rgba(255,255,255,0.04)') } });
+      row.appendChild(el('span', { style: { color: t.textSec, fontSize: '0.8125rem', width: '42px', flexShrink: '0' } }, dateStr));
+      row.appendChild(el('span', { style: { fontSize: '0.875rem', width: '22px', textAlign: 'center', flexShrink: '0' } }, shiftIcon));
+      row.appendChild(el('span', { style: { color: t.text, fontSize: '0.8125rem', flex: '1' } }, shiftLabel));
+      if (points > 0) {
+        row.appendChild(el('span', { style: { color: t.textSec, fontSize: '0.75rem', flexShrink: '0' } }, points + '\u0431\u0430\u043B'));
+      }
+      row.appendChild(el('span', { style: { color: t.gold, fontSize: '0.8125rem', fontWeight: '600', flexShrink: '0', textAlign: 'right', minWidth: '60px' } }, Utils.formatMoney(earned) + '\u20BD'));
       table.appendChild(row);
     }
+
+    // Totals
+    table.appendChild(el('div', { style: { borderTop: '1px dashed ' + t.border, marginTop: '4px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between' } },
+      el('span', { style: { color: t.text, fontSize: '0.8125rem', fontWeight: '700' } }, '\u0418\u0422\u041E\u0413\u041E: ' + totalDays + ' \u0434\u043D\u0435\u0439'),
+      el('span', { style: { color: t.gold, fontSize: '0.8125rem', fontWeight: '700' } }, Utils.formatMoney(totalEarned) + '\u20BD')
+    ));
     content.appendChild(table);
   }
 

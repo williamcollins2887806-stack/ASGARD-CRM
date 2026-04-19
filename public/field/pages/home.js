@@ -114,12 +114,13 @@ async function loadData(content, me) {
   let delay = 0;
   const nextDelay = () => { delay += 0.08; return delay; };
 
-  // Project card
+  // Project card — badge по статусу
+  const isActiveAssignment = assignment.is_active !== false;
   const projectCard = F.Card({
     title: project.work_title || project.title,
     subtitle: [project.city, project.object_name].filter(Boolean).join(' \u00B7 '),
-    badge: '\u25B6 \u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0439',
-    badgeColor: t.green,
+    badge: isActiveAssignment ? '\u25B6 \u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0439' : '\u2714 \u0417\u0430\u0432\u0435\u0440\u0448\u0451\u043D',
+    badgeColor: isActiveAssignment ? t.green : t.textTer,
     animDelay: nextDelay(),
   });
 

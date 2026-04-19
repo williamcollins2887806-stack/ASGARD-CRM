@@ -66,22 +66,23 @@ async function loadMoney(content) {
 
   const amountEl = el('div', { style: { color: t.gold, fontWeight: '700', fontSize: '2.5rem', lineHeight: '1.1' } });
   heroContent.appendChild(amountEl);
-  setTimeout(() => Utils.countUp(amountEl, cur.earned || 0, 1000), 200);
+  setTimeout(() => Utils.countUp(amountEl, cur.earned_total || cur.earned || 0, 1000), 200);
   const suffix = el('span', { style: { fontSize: '1.5rem', fontWeight: '600', marginLeft: '4px' } }, ' \u20BD');
   amountEl.appendChild(suffix);
 
-  if (cur.shifts_count) {
+  const curShifts = cur.shifts_count || cur.days_worked || 0;
+  if (curShifts) {
     heroContent.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.8125rem', marginTop: '8px' } },
-      '\u041E\u0442\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E ' + cur.shifts_count + ' \u0441\u043C\u0435\u043D'));
+      '\u041E\u0442\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E ' + curShifts + ' \u0441\u043C\u0435\u043D'));
 
     // Progress bar
     const totalShifts = cur.total_shifts || 20;
-    const pct = Math.min(100, (cur.shifts_count / totalShifts) * 100);
+    const pct = Math.min(100, (curShifts / totalShifts) * 100);
     const bar = el('div', { style: { marginTop: '10px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', height: '6px', overflow: 'hidden' } });
     bar.appendChild(el('div', { style: { height: '100%', width: pct + '%', borderRadius: '4px', background: t.goldGrad, transition: 'width 0.8s ease' } }));
     heroContent.appendChild(bar);
     heroContent.appendChild(el('div', { style: { color: t.textTer, fontSize: '0.6875rem', marginTop: '4px' } },
-      cur.shifts_count + ' \u0438\u0437 ' + totalShifts + ' \u0441\u043C\u0435\u043D'));
+      curShifts + ' \u0438\u0437 ' + totalShifts + ' \u0441\u043C\u0435\u043D'));
   }
 
   heroCard.appendChild(heroContent);

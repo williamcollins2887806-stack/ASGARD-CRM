@@ -2,7 +2,7 @@
  * ASGARD Field — Service Worker v2.0.0
  * Shell caching + Background Sync + Push Notifications
  */
-const SHELL_VERSION = '3.1.0';
+const SHELL_VERSION = '3.2.0';
 const SHELL_CACHE = 'field-shell-' + SHELL_VERSION;
 const DATA_CACHE = 'field-data-v1';
 
@@ -27,6 +27,7 @@ const SHELL_URLS = [
   '/field/pages/funds.js',
   '/field/pages/packing.js',
   '/field/pages/stages.js',
+  '/field/pages/earnings.js',
   '/assets/img/logo.png',
 ];
 

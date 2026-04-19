@@ -507,19 +507,49 @@ async function routes(fastify, options) {
 
       const pd = perDiemRows[0];
 
+      // ФОТ из checkins (начислено по баллам) — не из worker_payments
+      const { rows: fotRows } = await db.query(`
+        SELECT COALESCE(SUM(amount_earned), 0) as fot_total
+        FROM field_checkins
+        WHERE employee_id = $1 AND status = 'completed'
+          AND EXTRACT(YEAR FROM date) = $2
+      `, [empId, year]);
+      const fotTotal = parseFloat(fotRows[0]?.fot_total) || 0;
+
+      // Суточные начислены (дни × ставка)
+      const { rows: perDiemDue } = await db.query(`
+        SELECT COALESCE(SUM(sub.days * sub.rate), 0) as pd_due
+        FROM (
+          SELECT ea.work_id, COUNT(DISTINCT fc.date) as days, COALESCE(ea.per_diem, 1000) as rate
+          FROM employee_assignments ea
+          JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id
+          WHERE ea.employee_id = $1 AND fc.status = 'completed' AND COALESCE(fc.amount_earned, 0) > 0
+            AND EXTRACT(YEAR FROM fc.date) = $2
+          GROUP BY ea.work_id, ea.per_diem
+        ) sub
+      `, [empId, year]);
+      const perDiemDueTotal = parseFloat(perDiemDue[0]?.pd_due) || 0;
+
+      // Начислено = ФОТ (checkins) + суточные (по дням)
+      const totalEarned = fotTotal + perDiemDueTotal;
+      // Выплачено = salary + per_diem + bonus + advance из worker_payments
+      const totalPaid = (parseFloat(b.salary_total) || 0) + (parseFloat(b.per_diem_total) || 0) +
+                        (parseFloat(b.bonus_total) || 0) + (parseFloat(b.advance_total) || 0);
+
       return {
         year,
-        salary: parseFloat(b.salary_total) || 0,
-        per_diem: parseFloat(b.per_diem_total) || 0,
+        fot: fotTotal,
+        salary_paid: parseFloat(b.salary_total) || 0,
+        per_diem: perDiemDueTotal,
+        per_diem_paid: parseFloat(pd.pd_paid) || 0,
+        per_diem_pending: parseFloat(pd.pd_pending) || 0,
+        per_diem_balance: parseFloat(pd.pd_total) || 0,
         advance: parseFloat(b.advance_total) || 0,
         bonus: parseFloat(b.bonus_total) || 0,
         penalty: parseFloat(b.penalty_total) || 0,
-        total_earned: (parseFloat(b.salary_total) || 0) + (parseFloat(b.per_diem_total) || 0) + (parseFloat(b.bonus_total) || 0) - (parseFloat(b.penalty_total) || 0),
-        total_paid: parseFloat(b.total_paid) || 0,
-        total_pending: parseFloat(b.total_pending) || 0,
-        per_diem_paid: parseFloat(pd.pd_paid) || 0,
-        per_diem_pending: parseFloat(pd.pd_pending) || 0,
-        per_diem_balance: parseFloat(pd.pd_total) || 0
+        total_earned: totalEarned,
+        total_paid: totalPaid,
+        total_pending: totalEarned - totalPaid,
       };
     } catch (err) {
       fastify.log.error('[worker-payments] GET /my/balance error:', err);
