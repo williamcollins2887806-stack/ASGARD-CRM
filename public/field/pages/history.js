@@ -48,8 +48,8 @@ async function loadHistory(content) {
   let delay = 0;
 
   // Total stats
-  const totalShifts = projects.reduce((s, p) => s + (p.shifts_count || 0), 0);
-  const totalEarned = projects.reduce((s, p) => s + (p.total_earned || 0), 0);
+  const totalShifts = projects.reduce((s, p) => s + (parseInt(p.shifts_count, 10) || 0), 0);
+  const totalEarned = projects.reduce((s, p) => s + (parseFloat(p.total_earned) || 0), 0);
 
   const statsRow = el('div', {
     style: {

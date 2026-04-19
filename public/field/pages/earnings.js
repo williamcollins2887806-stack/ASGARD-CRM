@@ -77,13 +77,15 @@ async function loadEarnings(content) {
   }, 'ASGARD'));
 
   const heroContent = el('div', { style: { position: 'relative', zIndex: '1' } });
+  const rootPending = data.total_pending || 0;
+  const isOverpaid = rootPending < 0;
   heroContent.appendChild(el('div', {
     style: { color: t.textSec, fontSize: '0.75rem', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '4px' },
-  }, '\u041A \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u044E'));
+  }, isOverpaid ? '\u041F\u0415\u0420\u0415\u041F\u041B\u0410\u0422\u0410' : '\u041A \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u044E'));
 
-  const amountEl = el('div', { style: { color: t.gold, fontWeight: '700', fontSize: '2.5rem', lineHeight: '1.1' } });
+  const amountEl = el('div', { style: { color: isOverpaid ? t.green : t.gold, fontWeight: '700', fontSize: '2.5rem', lineHeight: '1.1' } });
   heroContent.appendChild(amountEl);
-  setTimeout(() => Utils.countUp(amountEl, data.total_pending || 0, 1000), 200);
+  setTimeout(() => Utils.countUp(amountEl, Math.abs(rootPending), 1000), 200);
   amountEl.appendChild(el('span', { style: { fontSize: '1.5rem', fontWeight: '600', marginLeft: '4px' } }, ' \u20BD'));
 
   heroContent.appendChild(el('div', {
@@ -148,7 +150,9 @@ async function loadEarnings(content) {
     { label: '\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F', value: '\u2212' + Utils.formatMoney(data.penalty) + '\u20BD', color: t.red },
     { label: '\u0410\u0432\u0430\u043D\u0441\u044B', value: '\u2212' + Utils.formatMoney(data.advance_paid) + '\u20BD', color: t.red },
     { label: '\u0412\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E', value: Utils.formatMoney(data.total_paid) + '\u20BD', bold: true, color: t.green },
-    { label: '\u041A \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u044E', value: Utils.formatMoney(data.total_pending) + '\u20BD', bold: true, color: t.gold },
+    (data.total_pending || 0) < 0
+      ? { label: '\u041F\u0415\u0420\u0415\u041F\u041B\u0410\u0422\u0410', value: Utils.formatMoney(Math.abs(data.total_pending)) + '\u20BD', bold: true, color: t.green }
+      : { label: '\u041A \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u044E', value: Utils.formatMoney(data.total_pending) + '\u20BD', bold: true, color: t.gold },
   ];
 
   for (const row of yearRows) {

@@ -43,8 +43,12 @@ async function loadMoney(content) {
     return;
   }
 
-  // SSoT v1.2: activeWork из by_work[], all из корневых полей
-  const activeWork = (finances.by_work || []).find(w => w.is_active) || (finances.by_work || [])[0] || null;
+  // SSoT v1.2: activeWork из by_work[], отсортированных по активности и количеству смен
+  const sortedWorks = (finances.by_work || []).slice().sort((a, b) => {
+    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+    return (b.days_worked || 0) - (a.days_worked || 0);
+  });
+  const activeWork = sortedWorks[0] || null;
   const cur = activeWork || {};
   const all = finances;
   const proj = project?.project || project || {};
@@ -191,7 +195,12 @@ async function loadMoney(content) {
   if (cur.advance_paid) rows.push({ label: '\u0410\u0432\u0430\u043D\u0441\u044B', value: '\u2212' + Utils.formatMoney(cur.advance_paid) + '\u20BD', color: t.red });
 
   rows.push({ label: '\u0418\u0422\u041E\u0413\u041E \u043D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', value: Utils.formatMoney(cur.total_earned || 0) + '\u20BD', bold: true });
-  rows.push({ label: '\u041A \u0412\u042B\u041F\u041B\u0410\u0422\u0415', value: Utils.formatMoney(cur.total_pending || 0) + '\u20BD', bold: true, color: t.gold });
+  const pending = cur.total_pending || 0;
+  if (pending < 0) {
+    rows.push({ label: '\u041F\u0415\u0420\u0415\u041F\u041B\u0410\u0422\u0410', value: Utils.formatMoney(Math.abs(pending)) + '\u20BD', bold: true, color: t.green });
+  } else {
+    rows.push({ label: '\u041A \u0412\u042B\u041F\u041B\u0410\u0422\u0415', value: Utils.formatMoney(pending) + '\u20BD', bold: true, color: t.gold });
+  }
 
   for (const row of rows) {
     const r = el('div', {

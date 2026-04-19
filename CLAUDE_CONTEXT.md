@@ -686,3 +686,8 @@ responsive.css   (120KB)  — Адаптив
 7. **Косметика после смержа**: PR `fix/active-work-detection` —
    "Текущий проект" = АРХБУМ вместо КАО, "0518 смен" склейка, переплата
    суточных как negative pending.
+8. **Fix `/worker/my-work` endpoint** (`field-checkin.js:438`):
+   - JOIN customers сломан (нет customer_id в works, имя денормализовано)
+   - ORDER BY is_active DESC возвращает inactive если все inactive — нужно различать
+     "уехал с активной работы" (work_status != 'Завершена') vs "работа закрыта"
+   - profile.js покажет правильный текст после фикса endpoint'а
