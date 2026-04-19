@@ -2,7 +2,7 @@
  * ASGARD Field — Service Worker v2.0.0
  * Shell caching + Background Sync + Push Notifications
  */
-const SHELL_VERSION = '3.3.0';
+const SHELL_VERSION = '3.3.1';
 const SHELL_CACHE = 'field-shell-' + SHELL_VERSION;
 const DATA_CACHE = 'field-data-v1';
 
