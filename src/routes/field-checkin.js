@@ -432,22 +432,24 @@ async function routes(fastify, options) {
     try {
       const empId = req.fieldEmployee.id;
 
-      // 1. Find active assignment → active work
+      // 1. Find assignment → active work first, fallback to last completed
       const { rows: workRows } = await db.query(`
         SELECT w.id AS work_id,
                w.title AS work_title,
+               w.work_title,
                w.start_in_work_date AS start_date,
                w.end_in_work_date AS end_date,
+               w.end_plan,
+               w.work_status,
                w.pm_id,
                c.short_name AS customer_name,
-               ea.shift_type
+               ea.shift_type,
+               ea.is_active AS assignment_active
         FROM employee_assignments ea
         JOIN works w ON w.id = ea.work_id
         LEFT JOIN customers c ON c.id = w.customer_id
         WHERE ea.employee_id = $1
-          AND ea.is_active = TRUE
-          AND w.work_status NOT IN ('Завершена', 'Закрыт')
-        ORDER BY w.start_in_work_date DESC
+        ORDER BY ea.is_active DESC, w.start_in_work_date DESC
         LIMIT 1
       `, [empId]);
 
@@ -482,11 +484,13 @@ async function routes(fastify, options) {
 
       return {
         work_id: work.work_id,
-        work_title: work.work_title,
+        work_title: work.work_title || work.title,
         customer_name: work.customer_name || null,
         start_date: work.start_date,
-        end_date: work.end_date,
+        end_date: work.end_date || work.end_plan,
         shift_type: work.shift_type || null,
+        work_status: work.work_status || null,
+        is_active: work.assignment_active !== false,
         masters,
         pm,
       };

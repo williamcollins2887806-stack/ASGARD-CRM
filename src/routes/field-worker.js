@@ -334,14 +334,14 @@ async function routes(fastify, options) {
     try {
       const empId = req.fieldEmployee.id;
 
-      // Current active project finances
+      // Последний проект (активный или завершённый — рабочий должен видеть итоги)
       const { rows: activeAssignments } = await db.query(`
         SELECT ea.work_id, w.work_title, ea.per_diem,
-               ea.tariff_id, ea.combination_tariff_id
+               ea.tariff_id, ea.combination_tariff_id, ea.is_active
         FROM employee_assignments ea
         JOIN works w ON w.id = ea.work_id
-        WHERE ea.employee_id = $1 AND ea.is_active = true
-        ORDER BY ea.id DESC LIMIT 1
+        WHERE ea.employee_id = $1
+        ORDER BY ea.is_active DESC, ea.id DESC LIMIT 1
       `, [empId]);
 
       let currentProject = null;
