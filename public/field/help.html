@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0D0D0F">
+<title>ASGARD — Инструкция для рабочих</title>
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+  body {
+    background:#0D0D0F; color:#F4F4F5;
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    font-size:16px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    margin:0; padding:0;
+  }
+  a { color:#D4A843; text-decoration:none; }
+
+  /* ── Animations (exact from ds-field.js) ── */
+  @keyframes fieldSlideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes fieldPulse { 0%,100%{box-shadow:0 0 0 0 rgba(196,154,42,0.4)} 50%{box-shadow:0 0 0 12px rgba(196,154,42,0)} }
+  @keyframes fieldGlow { 0%,100%{filter:drop-shadow(0 0 8px rgba(196,154,42,0.3))} 50%{filter:drop-shadow(0 0 16px rgba(196,154,42,0.6))} }
+  @keyframes fieldGradShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+  @keyframes fieldFadeIn { from{opacity:0} to{opacity:1} }
+  @keyframes fieldSpin { to{transform:rotate(360deg)} }
+  @keyframes fieldCountUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+  /* ── Page container ── */
+  .page { max-width:420px; margin:0 auto; padding:0 0 64px; overflow-x:hidden; }
+
+  /* ── Hero header ── */
+  .hero {
+    background:linear-gradient(135deg,#1A1A2E 0%,#16213E 50%,#0F3460 100%);
+    background-size:200% 200%;
+    animation:fieldGradShift 12s ease infinite;
+    padding:48px 24px 36px; text-align:center;
+    position:relative; overflow:hidden;
+  }
+  .hero::before {
+    content:''; position:absolute; inset:0;
+    background-image:radial-gradient(circle at 25% 25%,rgba(255,255,255,0.03) 1px,transparent 1px);
+    background-size:48px 48px; pointer-events:none; opacity:0.02;
+  }
+  .hero-emblem {
+    width:80px; height:80px; border-radius:20px;
+    background:linear-gradient(135deg,#1E1E23,#27272B);
+    display:flex; align-items:center; justify-content:center;
+    margin:0 auto 16px; animation:fieldGlow 3s ease infinite;
+    font-size:2.5rem; font-weight:900; color:#D4A843;
+    box-shadow:0 4px 24px rgba(0,0,0,0.4);
+  }
+  .hero-title { color:#D4A843; font-weight:700; font-size:2rem; letter-spacing:4px; margin-bottom:4px; }
+  .hero-sub { color:#A1A1AA; font-size:0.6875rem; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:20px; }
+  .hero-divider { width:40px; height:2px; border-radius:1px; background:linear-gradient(90deg,#C49A2A,#E8C560); margin:0 auto 20px; opacity:0.4; }
+  .hero-desc { color:#F4F4F5; font-size:1.125rem; font-weight:600; line-height:1.4; }
+
+  /* ── Section ── */
+  .section { padding:32px 20px 0; }
+  .section-header { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+  .section-num {
+    flex-shrink:0; width:32px; height:32px; border-radius:50%;
+    background:linear-gradient(135deg,#C49A2A,#D4A843,#E8C560);
+    color:#0D0D0F; font-size:0.875rem; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 12px rgba(212,168,67,0.25);
+  }
+  .section-title { font-size:1.25rem; font-weight:700; color:#F4F4F5; }
+  .section-desc { color:#A1A1AA; font-size:0.875rem; line-height:1.55; margin-bottom:20px; }
+
+  /* ── Steps ── */
+  .steps { display:flex; flex-direction:column; gap:14px; margin-bottom:20px; }
+  .step { display:flex; gap:12px; align-items:flex-start; }
+  .step-num {
+    flex-shrink:0; width:28px; height:28px; border-radius:50%;
+    background:rgba(212,168,67,0.12); color:#D4A843;
+    font-size:0.8125rem; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .step-text { font-size:0.875rem; color:#A1A1AA; padding-top:3px; line-height:1.5; }
+  .step-text b { color:#F4F4F5; font-weight:600; }
+
+  /* ── Phone frame ── */
+  .phone-frame {
+    margin:20px auto 0; max-width:300px;
+    border:2px solid rgba(255,255,255,0.08); border-radius:24px;
+    background:#0D0D0F; overflow:hidden;
+    box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  }
+  .phone-notch {
+    width:100px; height:5px; background:rgba(255,255,255,0.06);
+    border-radius:0 0 10px 10px; margin:0 auto;
+  }
+  .phone-screen { padding:12px 16px 20px; }
+
+  /* ── Tip box ── */
+  .tip {
+    background:linear-gradient(135deg,rgba(196,154,42,0.08),rgba(212,168,67,0.04));
+    border:1px solid rgba(196,154,42,0.15);
+    border-radius:14px; padding:14px 16px;
+    margin-top:16px; display:flex; gap:10px; align-items:flex-start;
+  }
+  .tip-icon { font-size:1.2rem; flex-shrink:0; margin-top:1px; }
+  .tip-text { font-size:0.8125rem; color:#E8C560; line-height:1.5; }
+
+  /* ── Install blocks ── */
+  .install-block {
+    background:#1E1E23; border-radius:16px;
+    border:1px solid rgba(255,255,255,0.06);
+    padding:16px 18px; margin-bottom:14px;
+  }
+  .install-title {
+    font-size:0.9375rem; font-weight:600; color:#F4F4F5;
+    margin-bottom:12px; display:flex; align-items:center; gap:8px;
+  }
+  .install-steps { display:flex; flex-direction:column; gap:10px; }
+  .install-step { display:flex; align-items:center; gap:10px; font-size:0.875rem; color:#A1A1AA; line-height:1.45; }
+  .install-step-icon {
+    flex-shrink:0; width:28px; height:28px; border-radius:8px;
+    background:rgba(212,168,67,0.1); display:flex; align-items:center;
+    justify-content:center; font-size:0.9rem;
+  }
+
+  /* ── Footer ── */
+  .footer { text-align:center; padding:40px 24px 32px; color:#71717A; font-size:0.75rem; }
+  .footer-logo { font-size:1rem; font-weight:700; letter-spacing:3px; color:#D4A843; opacity:0.4; margin-bottom:6px; }
+
+  /* ── Scroll reveal ── */
+  .fade-in { opacity:0; transform:translateY(20px); transition:opacity 0.5s ease, transform 0.5s ease; }
+  .fade-in.visible { opacity:1; transform:translateY(0); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ════════════════════════════════════════════════
+       ШАПКА
+       ════════════════════════════════════════════════ -->
+  <div class="hero">
+    <div class="hero-emblem">A</div>
+    <div class="hero-title">ASGARD</div>
+    <div class="hero-sub">Полевой модуль</div>
+    <div class="hero-divider"></div>
+    <div class="hero-desc">Личный кабинет рабочего<br>Инструкция</div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       СЕКЦИЯ 1: КАК ВОЙТИ
+       ════════════════════════════════════════════════ -->
+  <div class="section fade-in">
+    <div class="section-header">
+      <div class="section-num">1</div>
+      <div class="section-title">Как войти</div>
+    </div>
+    <div class="section-desc">
+      Вход по номеру телефона. Никаких логинов и паролей — только ваш номер и код из SMS.
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">Откройте в браузере телефона:<br><b>asgard-crm.ru/field</b></div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">Введите свой <b>номер телефона</b> и нажмите <b>"Получить код"</b></div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">Введите <b>4 цифры</b> из SMS — и вы внутри</div>
+      </div>
+    </div>
+
+    <!-- Mock: Login screen — phone step -->
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-screen" style="text-align:center; background:linear-gradient(135deg,#1A1A2E,#16213E,#0F3460); background-size:200% 200%; animation:fieldGradShift 12s ease infinite; margin:-12px -16px -20px; padding:32px 20px 28px; position:relative;">
+        <!-- dot pattern -->
+        <div style="position:absolute;inset:0;opacity:0.02;background-image:radial-gradient(circle at 25% 25%,#fff 1px,transparent 1px);background-size:48px 48px;pointer-events:none;"></div>
+
+        <!-- logo -->
+        <div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#1E1E23,#27272B);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:1.75rem;font-weight:900;color:#D4A843;animation:fieldGlow 3s ease infinite;box-shadow:0 4px 20px rgba(0,0,0,0.4);position:relative;">A</div>
+
+        <div style="color:#D4A843;font-weight:700;font-size:1.75rem;letter-spacing:4px;margin-bottom:4px;position:relative;">ASGARD</div>
+        <div style="color:#A1A1AA;font-size:0.6875rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:20px;position:relative;">ПОЛЕВОЙ МОДУЛЬ</div>
+
+        <!-- gold divider -->
+        <div style="width:40px;height:2px;border-radius:1px;background:linear-gradient(90deg,#C49A2A,#E8C560);margin:0 auto 24px;opacity:0.4;position:relative;"></div>
+
+        <!-- phone input -->
+        <div style="width:100%;height:56px;background:rgba(255,255,255,0.06);border:2px solid rgba(255,255,255,0.08);border-radius:14px;display:flex;align-items:center;justify-content:center;color:#A1A1AA;font-size:1.25rem;font-weight:500;letter-spacing:0.5px;margin-bottom:14px;position:relative;">+7 (9__) ___-__-__</div>
+
+        <!-- get code button -->
+        <div style="width:100%;height:64px;border-radius:44px;background:linear-gradient(135deg,#C49A2A,#D4A843,#E8C560);display:flex;align-items:center;justify-content:center;font-size:1.125rem;font-weight:700;color:#0D0D0F;animation:fieldPulse 2.5s infinite;position:relative;">ПОЛУЧИТЬ КОД</div>
+
+        <!-- bottom quote -->
+        <div style="color:rgba(255,255,255,0.15);font-size:0.75rem;font-style:italic;margin-top:20px;position:relative;">Каждый день — поход за славой</div>
+      </div>
+    </div>
+
+    <!-- Mock: Login screen — code step -->
+    <div class="phone-frame" style="margin-top:14px;">
+      <div class="phone-notch"></div>
+      <div class="phone-screen" style="text-align:center; background:linear-gradient(135deg,#1A1A2E,#16213E,#0F3460); margin:-12px -16px -20px; padding:32px 20px 28px; position:relative;">
+        <div style="position:absolute;inset:0;opacity:0.02;background-image:radial-gradient(circle at 25% 25%,#fff 1px,transparent 1px);background-size:48px 48px;pointer-events:none;"></div>
+
+        <div style="color:#A1A1AA;font-size:0.875rem;margin-bottom:6px;position:relative;">Введите код из SMS</div>
+        <div style="color:#D4A843;font-size:0.8125rem;font-weight:500;margin-bottom:20px;position:relative;">+7 (912) 345-67-89</div>
+
+        <!-- 4 code boxes -->
+        <div style="display:flex;gap:12px;justify-content:center;position:relative;">
+          <div style="width:56px;height:64px;border-radius:14px;border:2px solid #D4A843;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#F4F4F5;box-shadow:0 0 8px rgba(212,168,67,0.2);">4</div>
+          <div style="width:56px;height:64px;border-radius:14px;border:2px solid #D4A843;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#F4F4F5;box-shadow:0 0 8px rgba(212,168,67,0.2);">7</div>
+          <div style="width:56px;height:64px;border-radius:14px;border:2px solid #D4A843;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#F4F4F5;box-shadow:0 0 8px rgba(212,168,67,0.2);">2</div>
+          <div style="width:56px;height:64px;border-radius:14px;border:2px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#71717A;">_</div>
+        </div>
+
+        <div style="color:#71717A;font-size:0.8125rem;margin-top:16px;position:relative;">Повторить через 0:48</div>
+      </div>
+    </div>
+
+    <div class="tip">
+      <span class="tip-icon">&#128161;</span>
+      <span class="tip-text">Если SMS не приходит больше минуты, проверьте, правильно ли введён номер, и попробуйте ещё раз.</span>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       СЕКЦИЯ 2: ГЛАВНЫЙ ЭКРАН
+       ════════════════════════════════════════════════ -->
+  <div class="section fade-in">
+    <div class="section-header">
+      <div class="section-num">2</div>
+      <div class="section-title">Главный экран</div>
+    </div>
+    <div class="section-desc">
+      После входа вы попадаете на главный экран. Отсюда — доступ ко всему: смена, деньги, фото, профиль.
+    </div>
+
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-screen" style="padding-top:0;">
+
+        <!-- Header (sticky) -->
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0 8px;border-bottom:1px solid rgba(255,255,255,0.08);margin:0 -16px;padding-left:16px;padding-right:16px;background:#18181B;">
+          <div style="width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#1E1E23,#27272B);display:flex;align-items:center;justify-content:center;font-size:0.875rem;font-weight:900;color:#D4A843;">A</div>
+          <div style="color:#F4F4F5;font-weight:600;font-size:1.125rem;">ASGARD</div>
+        </div>
+
+        <!-- Hero banner -->
+        <div style="background:linear-gradient(135deg,#1A1A2E,#16213E,#0F3460);background-size:200% 200%;border-radius:0 0 20px 20px;padding:16px;margin:0 -16px 12px;overflow:hidden;position:relative;">
+          <!-- watermark -->
+          <div style="position:absolute;right:-10px;top:50%;transform:translateY(-50%);font-size:3rem;font-weight:900;color:rgba(255,255,255,0.03);letter-spacing:4px;pointer-events:none;">ASGARD</div>
+
+          <div style="position:relative;z-index:1;">
+            <div style="color:#F4F4F5;font-weight:700;font-size:1.25rem;line-height:1.2;margin-bottom:4px;">Доброе утро, Иван!</div>
+            <div style="color:#A1A1AA;font-size:0.8125rem;margin-bottom:10px;">Пятница, 18 апреля</div>
+            <div style="color:#D4A843;font-style:italic;font-size:0.75rem;line-height:1.4;opacity:0;animation:fieldFadeIn 1s ease 0.5s both;">&laquo;Каждый день — поход за славой&raquo;</div>
+          </div>
+        </div>
+
+        <!-- Project card -->
+        <div style="background:#1E1E23;border-radius:16px;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div style="color:#F4F4F5;font-weight:600;font-size:0.9375rem;flex:1;">Гидромех. очистка</div>
+            <span style="font-size:0.6875rem;font-weight:600;padding:3px 8px;border-radius:9999px;background:rgba(52,199,89,0.1);color:#34C759;white-space:nowrap;">&#9654; Активный</span>
+          </div>
+          <div style="color:#A1A1AA;font-size:0.8125rem;margin-top:4px;">КАО &laquo;АЗОТ&raquo;</div>
+          <!-- Call buttons -->
+          <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
+            <div style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9999px;background:#1E1E23;border:1px solid rgba(255,255,255,0.08);color:#F4F4F5;font-size:0.8125rem;">&#128222; РП: Андросов Н.А.</div>
+            <div style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9999px;background:#1E1E23;border:1px solid rgba(255,255,255,0.08);color:#F4F4F5;font-size:0.8125rem;">&#128222; Мастер: Пономарев А.Е.</div>
+          </div>
+        </div>
+
+        <!-- Start shift button -->
+        <div style="width:100%;height:56px;border-radius:44px;background:linear-gradient(135deg,#C49A2A,#D4A843,#E8C560);display:flex;align-items:center;justify-content:center;gap:10px;font-size:1rem;font-weight:700;color:#0D0D0F;animation:fieldPulse 2.5s infinite;margin-bottom:10px;">
+          <span style="font-size:1.2rem;">&#9876;&#65039;</span> НАЧАТЬ СМЕНУ
+        </div>
+
+        <!-- Money card -->
+        <div style="background:linear-gradient(135deg,rgba(196,154,42,0.08),rgba(212,168,67,0.04));border-radius:16px;padding:16px;border:1px solid rgba(196,154,42,0.15);margin-bottom:10px;">
+          <div style="color:#A1A1AA;font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">СЕГОДНЯ ЗАРАБОТАНО</div>
+          <div style="color:#D4A843;font-weight:700;font-size:1.75rem;line-height:1.1;">6 500 <span style="font-size:1.125rem;color:#C49A2A;">&#8381;</span></div>
+          <div style="color:#71717A;font-size:0.6875rem;margin-top:6px;">6 500&#8381;/смена + пайковые 1 000&#8381;/сут</div>
+        </div>
+
+        <!-- Quick actions grid -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 4px;border-radius:14px;background:#1E1E23;border:1px solid rgba(255,255,255,0.08);">
+            <span style="font-size:1.5rem;">&#128176;</span>
+            <span style="font-size:0.6875rem;font-weight:500;color:#A1A1AA;">Деньги</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 4px;border-radius:14px;background:#1E1E23;border:1px solid rgba(255,255,255,0.08);">
+            <span style="font-size:1.5rem;">&#128506;&#65039;</span>
+            <span style="font-size:0.6875rem;font-weight:500;color:#A1A1AA;">Маршрут</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 4px;border-radius:14px;background:#1E1E23;border:1px solid rgba(255,255,255,0.08);">
+            <span style="font-size:1.5rem;">&#128247;</span>
+            <span style="font-size:0.6875rem;font-weight:500;color:#A1A1AA;">Фото</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 4px;border-radius:14px;background:#1E1E23;border:1px solid rgba(255,255,255,0.08);">
+            <span style="font-size:1.5rem;">&#128100;</span>
+            <span style="font-size:0.6875rem;font-weight:500;color:#A1A1AA;">Профиль</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="tip">
+      <span class="tip-icon">&#128161;</span>
+      <span class="tip-text">Кнопки внизу экрана — быстрый доступ к нужному разделу. Просто нажмите на иконку.</span>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       СЕКЦИЯ 3: КАК ОТМЕТИТЬ СМЕНУ
+       ════════════════════════════════════════════════ -->
+  <div class="section fade-in">
+    <div class="section-header">
+      <div class="section-num">3</div>
+      <div class="section-title">Как отметить смену</div>
+    </div>
+    <div class="section-desc">
+      Перед началом работы отмечайтесь в приложении. Это заменяет бумажный табель.
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">На главном экране нажмите золотую кнопку <b>"Начать смену"</b></div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">Телефон спросит <b>разрешение на геолокацию</b> — нажмите <b>"Разрешить"</b>. Это подтверждает, что вы на объекте</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">В конце рабочего дня нажмите красную кнопку <b>"Завершить смену"</b></div>
+      </div>
+    </div>
+
+    <!-- Mock: Active shift -->
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+
+        <!-- Status card (active) -->
+        <div style="background:rgba(52,199,89,0.12);border-radius:20px;padding:20px;text-align:center;border:1px solid rgba(52,199,89,0.2);margin-bottom:14px;">
+          <div style="color:#34C759;font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">&#9679; НА ОБЪЕКТЕ</div>
+          <div style="color:#A1A1AA;font-size:0.8125rem;margin-bottom:12px;">Начало смены: 08:00</div>
+          <!-- Big timer -->
+          <div style="color:#F4F4F5;font-size:3rem;font-weight:700;font-family:'Inter',monospace;letter-spacing:2px;line-height:1;animation:fieldCountUp 0.5s ease both;">06:42:18</div>
+          <!-- Progress bar -->
+          <div style="margin-top:14px;background:rgba(255,255,255,0.08);border-radius:4px;height:8px;overflow:hidden;">
+            <div style="height:100%;width:56%;border-radius:4px;background:linear-gradient(135deg,#1A9F4A,#34C759);"></div>
+          </div>
+          <div style="color:#71717A;font-size:0.6875rem;margin-top:6px;">6ч 42мин из 12ч</div>
+        </div>
+
+        <!-- Project info -->
+        <div style="background:#1E1E23;border-radius:16px;padding:14px;border:1px solid rgba(255,255,255,0.08);margin-bottom:14px;">
+          <div style="color:#F4F4F5;font-weight:600;font-size:0.9375rem;">Гидромех. очистка</div>
+          <div style="color:#A1A1AA;font-size:0.8125rem;margin-top:3px;">КАО &laquo;АЗОТ&raquo;</div>
+        </div>
+
+        <!-- End shift button -->
+        <div style="width:100%;height:56px;border-radius:44px;background:linear-gradient(135deg,#C62828,#E53935);display:flex;align-items:center;justify-content:center;gap:10px;font-size:1rem;font-weight:700;color:#FFF;">
+          <span style="font-size:1.2rem;">&#128737;&#65039;</span> ЗАВЕРШИТЬ СМЕНУ
+        </div>
+
+      </div>
+    </div>
+
+    <div class="tip">
+      <span class="tip-icon">&#9888;&#65039;</span>
+      <span class="tip-text">Не забывайте завершать смену! Если забудете — мастер закроет сам, но лучше делать это самому.</span>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       СЕКЦИЯ 4: ЗАРАБОТОК
+       ════════════════════════════════════════════════ -->
+  <div class="section fade-in">
+    <div class="section-header">
+      <div class="section-num">4</div>
+      <div class="section-title">Заработок</div>
+    </div>
+    <div class="section-desc">
+      Здесь вы видите, сколько заработали за проект, тарифную сетку и сколько к выплате.
+    </div>
+
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+
+        <!-- Hero card -->
+        <div style="background:linear-gradient(135deg,#1A1A2E,#16213E,#0F3460);background-size:200% 200%;border-radius:20px;padding:20px;position:relative;overflow:hidden;margin-bottom:12px;">
+          <div style="position:absolute;right:-10px;top:50%;transform:translateY(-50%);font-size:3rem;font-weight:900;color:rgba(255,255,255,0.03);letter-spacing:4px;pointer-events:none;">ASGARD</div>
+          <div style="position:relative;z-index:1;">
+            <div style="color:#A1A1AA;font-size:0.75rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;">Текущий проект: Гидромех. очистка</div>
+            <div style="color:#D4A843;font-weight:700;font-size:2.25rem;line-height:1.1;">91 000 <span style="font-size:1.25rem;">&#8381;</span></div>
+            <div style="color:#A1A1AA;font-size:0.8125rem;margin-top:8px;">Отработано 14 смен</div>
+            <!-- Progress bar gold -->
+            <div style="margin-top:8px;background:rgba(255,255,255,0.08);border-radius:4px;height:6px;overflow:hidden;">
+              <div style="height:100%;width:70%;border-radius:4px;background:linear-gradient(135deg,#C49A2A,#D4A843,#E8C560);"></div>
+            </div>
+            <div style="color:#71717A;font-size:0.6875rem;margin-top:4px;">14 из 20 смен</div>
+          </div>
+        </div>
+
+        <!-- Tariff card -->
+        <div style="background:linear-gradient(135deg,rgba(196,154,42,0.08),rgba(212,168,67,0.04));border-radius:16px;padding:14px 16px;border:1px solid rgba(196,154,42,0.12);margin-bottom:12px;">
+          <div style="color:#71717A;font-size:0.6875rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">ТАРИФНАЯ СЕТКА</div>
+          <!-- tariff rows -->
+          <div style="display:flex;justify-content:space-between;padding:5px 0;">
+            <span style="color:#A1A1AA;font-size:0.8125rem;">Изолировщик</span>
+            <span style="color:#F4F4F5;font-size:0.8125rem;font-weight:600;">13 балл. &times; 500&#8381; = 6 500&#8381;/см</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;">
+            <span style="color:#D4A843;font-size:0.8125rem;">+ Совмещение: строп.</span>
+            <span style="color:#F4F4F5;font-size:0.8125rem;font-weight:600;">+1 балл (+500&#8381;)</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;">
+            <span style="color:#A1A1AA;font-size:0.8125rem;">Пайковые</span>
+            <span style="color:#F4F4F5;font-size:0.8125rem;font-weight:600;">1 000&#8381;/сут</span>
+          </div>
+          <!-- note -->
+          <div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:6px;padding-top:6px;color:#71717A;font-size:0.6875rem;font-style:italic;">Тарифная сетка утверждена. 1 балл = 500&#8381;</div>
+        </div>
+
+        <!-- Breakdown card -->
+        <div style="background:#1E1E23;border-radius:16px;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);">
+          <div style="color:#71717A;font-size:0.6875rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">НА ОБЪЕКТЕ</div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;">
+            <span style="color:#A1A1AA;font-size:0.8125rem;">Ставка: 14 смен &times; 7 000&#8381;</span>
+            <span style="color:#F4F4F5;font-size:0.8125rem;font-weight:600;">98 000&#8381;</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;">
+            <span style="color:#A1A1AA;font-size:0.8125rem;">Пайковые: 14 дн. &times; 1 000&#8381;</span>
+            <span style="color:#F4F4F5;font-size:0.8125rem;font-weight:600;">14 000&#8381;</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;">
+            <span style="color:#34C759;font-size:0.8125rem;">Бонусы</span>
+            <span style="color:#34C759;font-size:0.8125rem;font-weight:600;">+3 000&#8381;</span>
+          </div>
+          <!-- total -->
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px;">
+            <span style="color:#F4F4F5;font-size:0.8125rem;font-weight:700;">ИТОГО начислено</span>
+            <span style="color:#F4F4F5;font-size:0.8125rem;font-weight:700;">115 000&#8381;</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;">
+            <span style="color:#E53935;font-size:0.8125rem;">Авансы</span>
+            <span style="color:#E53935;font-size:0.8125rem;font-weight:600;">&minus;24 000&#8381;</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px;">
+            <span style="color:#D4A843;font-size:0.8125rem;font-weight:700;">К ВЫПЛАТЕ</span>
+            <span style="color:#D4A843;font-size:0.8125rem;font-weight:700;">91 000&#8381;</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="tip">
+      <span class="tip-icon">&#128161;</span>
+      <span class="tip-text">Суммы обновляются после каждой закрытой смены. Если цифры не сходятся — спросите мастера.</span>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       СЕКЦИЯ 5: ПРОФИЛЬ — МОЯ РАБОТА
+       ════════════════════════════════════════════════ -->
+  <div class="section fade-in">
+    <div class="section-header">
+      <div class="section-num">5</div>
+      <div class="section-title">Профиль — Моя работа</div>
+    </div>
+    <div class="section-desc">
+      В профиле видно ваш объект, тип смены, контакты мастера и руководителя проекта. Можно сразу позвонить.
+    </div>
+
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+
+        <!-- Avatar -->
+        <div style="display:flex;flex-direction:column;align-items:center;padding:4px 0 14px;">
+          <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#C49A2A,#D4A843,#E8C560);display:flex;align-items:center;justify-content:center;font-size:1.75rem;font-weight:700;color:#FFF;box-shadow:0 4px 20px rgba(196,154,42,0.3);margin-bottom:10px;">ГИ</div>
+          <div style="color:#F4F4F5;font-weight:700;font-size:1.125rem;">Горшков Иван</div>
+          <div style="color:#A1A1AA;font-size:0.8125rem;margin-top:2px;">Изолировщик</div>
+        </div>
+
+        <!-- My work card -->
+        <div style="background:#1E1E23;border-radius:16px;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);margin-bottom:10px;">
+          <div style="color:#71717A;font-size:0.6875rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">&#128203; МОЯ РАБОТА</div>
+
+          <!-- customer + object -->
+          <div style="margin-bottom:10px;">
+            <div style="color:#F4F4F5;font-size:0.9375rem;font-weight:600;">КАО &laquo;АЗОТ&raquo; — Гидромех. очистка</div>
+            <div style="color:#A1A1AA;font-size:0.8125rem;margin-top:3px;">&#128197; 01.04.2026 — 30.04.2026</div>
+            <div style="color:#A1A1AA;font-size:0.8125rem;margin-top:2px;">&#127769; Смена: Ночная</div>
+          </div>
+
+          <!-- Master -->
+          <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;margin-bottom:10px;">
+            <div style="color:#A1A1AA;font-size:0.6875rem;font-weight:600;margin-bottom:4px;">&#128119; МАСТЕР</div>
+            <div style="color:#F4F4F5;font-size:0.875rem;font-weight:500;margin-bottom:8px;">Пономарев А.Е.</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;background:linear-gradient(135deg,#C49A2A,#D4A843,#E8C560);border-radius:12px;color:#0D0D0F;font-weight:600;font-size:0.875rem;">&#128222; Позвонить мастеру</div>
+          </div>
+
+          <!-- PM -->
+          <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;">
+            <div style="color:#A1A1AA;font-size:0.6875rem;font-weight:600;margin-bottom:4px;">&#128084; РП</div>
+            <div style="color:#F4F4F5;font-size:0.875rem;font-weight:500;margin-bottom:8px;">Андросов Н.А.</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;background:linear-gradient(135deg,#C49A2A,#D4A843,#E8C560);border-radius:12px;color:#0D0D0F;font-weight:600;font-size:0.875rem;">&#128222; Позвонить РП</div>
+          </div>
+        </div>
+
+        <!-- Permits -->
+        <div style="background:#1E1E23;border-radius:16px;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);margin-bottom:10px;">
+          <div style="color:#71717A;font-size:0.6875rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">ДОПУСКИ И УДОСТОВЕРЕНИЯ</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;">
+            <div>
+              <div style="color:#A1A1AA;font-size:0.6875rem;font-weight:600;">НАКС</div>
+              <div style="color:#F4F4F5;font-size:0.875rem;margin-top:1px;">РД 03-495-02</div>
+            </div>
+            <span style="font-size:0.6875rem;font-weight:600;padding:3px 10px;border-radius:9999px;background:rgba(52,199,89,0.1);color:#34C759;">12.09.2027</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;">
+            <div>
+              <div style="color:#A1A1AA;font-size:0.6875rem;font-weight:600;">ИМТ</div>
+              <div style="color:#F4F4F5;font-size:0.875rem;margin-top:1px;">ИМТ-82456</div>
+            </div>
+            <span style="font-size:0.6875rem;font-weight:600;padding:3px 10px;border-radius:9999px;background:rgba(245,158,11,0.1);color:#F59E0B;">Через 28 дн.</span>
+          </div>
+        </div>
+
+        <!-- Achievements -->
+        <div style="background:#1E1E23;border-radius:16px;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);">
+          <div style="color:#71717A;font-size:0.6875rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">ДОСТИЖЕНИЯ</div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">
+            <!-- earned -->
+            <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;background:linear-gradient(135deg,rgba(196,154,42,0.08),rgba(212,168,67,0.04));">
+              <span style="font-size:1.25rem;animation:fieldGlow 3s ease infinite;">&#128293;</span>
+              <span style="font-size:0.5rem;color:#D4A843;text-align:center;line-height:1.2;">Первая смена</span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;background:linear-gradient(135deg,rgba(196,154,42,0.08),rgba(212,168,67,0.04));">
+              <span style="font-size:1.25rem;animation:fieldGlow 3s ease infinite;">&#9889;</span>
+              <span style="font-size:0.5rem;color:#D4A843;text-align:center;line-height:1.2;">Жел. воин</span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;background:linear-gradient(135deg,rgba(196,154,42,0.08),rgba(212,168,67,0.04));">
+              <span style="font-size:1.25rem;animation:fieldGlow 3s ease infinite;">&#127942;</span>
+              <span style="font-size:0.5rem;color:#D4A843;text-align:center;line-height:1.2;">Ветеран</span>
+            </div>
+            <!-- not earned -->
+            <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;opacity:0.35;">
+              <span style="font-size:1.25rem;filter:grayscale(1);">&#128247;</span>
+              <span style="font-size:0.5rem;color:#71717A;text-align:center;line-height:1.2;">Летописец</span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;opacity:0.35;">
+              <span style="font-size:1.25rem;filter:grayscale(1);">&#9200;</span>
+              <span style="font-size:0.5rem;color:#71717A;text-align:center;line-height:1.2;">Точный</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="tip">
+      <span class="tip-icon">&#128222;</span>
+      <span class="tip-text">Нажмите золотую кнопку "Позвонить мастеру" или "Позвонить РП" — телефон позвонит сразу.</span>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       СЕКЦИЯ 6: ФОТООТЧЁТ
+       ════════════════════════════════════════════════ -->
+  <div class="section fade-in">
+    <div class="section-header">
+      <div class="section-num">6</div>
+      <div class="section-title">Фотоотчёт</div>
+    </div>
+    <div class="section-desc">
+      Фотографируйте выполненные работы. Мастер и руководитель видят их сразу в системе. Делайте фото "до" и "после".
+    </div>
+
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-screen" style="padding-top:0;">
+
+        <!-- Header with + Фото button -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0 8px;border-bottom:1px solid rgba(255,255,255,0.08);margin:0 -16px;padding-left:16px;padding-right:16px;background:#18181B;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="color:#A1A1AA;font-size:1.1rem;">&#8592;</div>
+            <div style="color:#F4F4F5;font-weight:600;font-size:1rem;">Фотоотчёты</div>
+          </div>
+          <div style="padding:6px 14px;border-radius:10px;background:linear-gradient(135deg,#C49A2A,#D4A843,#E8C560);color:#FFF;font-size:0.8125rem;font-weight:600;">+ Фото</div>
+        </div>
+
+        <!-- Date label -->
+        <div style="color:#71717A;font-size:0.75rem;font-weight:600;margin:12px 0 6px;">18 апреля 2026</div>
+
+        <!-- Photo grid -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;border-radius:12px;overflow:hidden;margin-bottom:10px;">
+          <div style="aspect-ratio:1;background:#27272B;display:flex;align-items:center;justify-content:center;font-size:1.75rem;">&#127959;&#65039;</div>
+          <div style="aspect-ratio:1;background:#27272B;display:flex;align-items:center;justify-content:center;font-size:1.75rem;">&#128295;</div>
+          <div style="aspect-ratio:1;background:#27272B;display:flex;align-items:center;justify-content:center;font-size:1.75rem;">&#128248;</div>
+        </div>
+
+        <div style="color:#71717A;font-size:0.75rem;font-weight:600;margin:8px 0 6px;">17 апреля 2026</div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;border-radius:12px;overflow:hidden;">
+          <div style="aspect-ratio:1;background:#27272B;display:flex;align-items:center;justify-content:center;font-size:1.75rem;">&#127912;</div>
+          <div style="aspect-ratio:1;background:#27272B;display:flex;align-items:center;justify-content:center;font-size:1.75rem;">&#128736;&#65039;</div>
+          <div style="aspect-ratio:1;background:#27272B;display:flex;align-items:center;justify-content:center;font-size:1.75rem;">&#9989;</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="tip">
+      <span class="tip-icon">&#128161;</span>
+      <span class="tip-text">Делайте фото "до" и "после" — это помогает при сдаче работ и защищает от споров.</span>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       СЕКЦИЯ 7: ДОБАВИТЬ НА ГЛАВНЫЙ ЭКРАН
+       ════════════════════════════════════════════════ -->
+  <div class="section fade-in">
+    <div class="section-header">
+      <div class="section-num">7</div>
+      <div class="section-title">Добавить на экран телефона</div>
+    </div>
+    <div class="section-desc">
+      Приложение можно поставить как обычную иконку на главный экран. Запускать будет быстрее — без строки браузера.
+    </div>
+
+    <!-- iPhone -->
+    <div class="install-block">
+      <div class="install-title">
+        <span style="font-size:1.3rem;">&#127822;</span> iPhone (Safari)
+      </div>
+      <div class="install-steps">
+        <div class="install-step">
+          <div class="install-step-icon">1</div>
+          <span>Откройте <b style="color:#F4F4F5;">asgard-crm.ru/field</b> в Safari</span>
+        </div>
+        <div class="install-step">
+          <div class="install-step-icon">&#11014;&#65039;</div>
+          <span>Нажмите кнопку <b style="color:#F4F4F5;">"Поделиться"</b> (квадрат со стрелкой вверх, внизу экрана)</span>
+        </div>
+        <div class="install-step">
+          <div class="install-step-icon">&#10133;</div>
+          <span>Выберите <b style="color:#F4F4F5;">"На экран Домой"</b></span>
+        </div>
+        <div class="install-step">
+          <div class="install-step-icon">&#10003;</div>
+          <span>Нажмите <b style="color:#F4F4F5;">"Добавить"</b> — готово!</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Android -->
+    <div class="install-block">
+      <div class="install-title">
+        <span style="font-size:1.3rem;">&#129302;</span> Android (Chrome)
+      </div>
+      <div class="install-steps">
+        <div class="install-step">
+          <div class="install-step-icon">1</div>
+          <span>Откройте <b style="color:#F4F4F5;">asgard-crm.ru/field</b> в Chrome</span>
+        </div>
+        <div class="install-step">
+          <div class="install-step-icon">&#8942;</div>
+          <span>Нажмите <b style="color:#F4F4F5;">три точки</b> (меню) в правом верхнем углу</span>
+        </div>
+        <div class="install-step">
+          <div class="install-step-icon">&#128242;</div>
+          <span>Выберите <b style="color:#F4F4F5;">"Добавить на главный экран"</b></span>
+        </div>
+        <div class="install-step">
+          <div class="install-step-icon">&#10003;</div>
+          <span>Подтвердите — иконка появится на экране</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip">
+      <span class="tip-icon">&#128161;</span>
+      <span class="tip-text">После добавления приложение открывается как обычная программа — без строки браузера, на весь экран.</span>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       СЕКЦИЯ 8: ПОМОЩЬ
+       ════════════════════════════════════════════════ -->
+  <div class="section fade-in">
+    <div class="section-header">
+      <div class="section-num">8</div>
+      <div class="section-title">Если что-то не работает</div>
+    </div>
+
+    <div class="install-block" style="border-color:rgba(212,168,67,0.15);">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="font-size:1.5rem;">&#128222;</div>
+          <div>
+            <div style="font-size:0.875rem;font-weight:500;color:#F4F4F5;">Позвоните мастеру</div>
+            <div style="font-size:0.75rem;color:#A1A1AA;">Кнопка звонка — в разделе "Профиль"</div>
+          </div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="font-size:1.5rem;">&#128260;</div>
+          <div>
+            <div style="font-size:0.875rem;font-weight:500;color:#F4F4F5;">Перезагрузите страницу</div>
+            <div style="font-size:0.75rem;color:#A1A1AA;">Потяните экран вниз или обновите в браузере</div>
+          </div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="font-size:1.5rem;">&#128246;</div>
+          <div>
+            <div style="font-size:0.875rem;font-weight:500;color:#F4F4F5;">Проверьте интернет</div>
+            <div style="font-size:0.75rem;color:#A1A1AA;">Нужен мобильный интернет или Wi-Fi</div>
+          </div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="font-size:1.5rem;">&#128274;</div>
+          <div>
+            <div style="font-size:0.875rem;font-weight:500;color:#F4F4F5;">Не приходит SMS</div>
+            <div style="font-size:0.75rem;color:#A1A1AA;">Подождите минуту. Если не пришла — попробуйте ещё раз</div>
+          </div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="font-size:1.5rem;">&#128205;</div>
+          <div>
+            <div style="font-size:0.875rem;font-weight:500;color:#F4F4F5;">Не определяет местоположение</div>
+            <div style="font-size:0.75rem;color:#A1A1AA;">Включите геолокацию в настройках телефона</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip">
+      <span class="tip-icon">&#128737;&#65039;</span>
+      <span class="tip-text">Если ничего не помогает — обратитесь к мастеру или руководителю проекта. Контакты всегда в разделе "Профиль".</span>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       FOOTER
+       ════════════════════════════════════════════════ -->
+  <div class="footer">
+    <div class="footer-logo">ASGARD</div>
+    <div>ASGARD Field &middot; Личный кабинет рабочего</div>
+  </div>
+
+</div>
+
+<!-- ── Scroll reveal ── -->
+<script>
+  (function() {
+    var els = document.querySelectorAll('.fade-in');
+    if (!('IntersectionObserver' in window)) {
+      for (var i = 0; i < els.length; i++) els[i].classList.add('visible');
+      return;
+    }
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(e) {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          obs.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    els.forEach(function(el) { obs.observe(el); });
+  })();
+</script>
+</body>
+</html>
