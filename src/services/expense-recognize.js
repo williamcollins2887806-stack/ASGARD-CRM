@@ -333,12 +333,11 @@ async function getWorkFinancials(db, workId) {
       totalTaxBurden += Math.round(amount * taxRate / 100 * 100) / 100;
     }
 
-    // НДС к вычету: из реального vat_amount (если заполнен), иначе формула для безнала
+    // НДС к вычету: ТОЛЬКО если vat_rate явно указан (не все безнал с НДС!)
+    // САТУРН (УСН), ИП Шакуров, гостиница ИП — безнал но БЕЗ НДС
     if (vatFromDb > 0) {
+      // Реальный НДС из счёта (vat_amount заполнен)
       totalVatDeductible += vatFromDb;
-    } else if (method === 'bank' && !vatFromDb) {
-      // Fallback: если vat_amount не заполнен но оплачен безналом — формула
-      totalVatDeductible += Math.round(amount * vatPct / (100 + vatPct) * 100) / 100;
     }
   }
 
