@@ -62,7 +62,7 @@ window.AsgardWorkExpenses = (function(){
   }
 
   // Добавить расход
-  async function addExpense({work_id, category, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, created_by}){
+  async function addExpense({work_id, category, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, vat_rate, vat_amount, amount_ex_vat, created_by}){
     const expense = {
       work_id: Number(work_id),
       category: String(category || 'other'),
@@ -73,6 +73,9 @@ window.AsgardWorkExpenses = (function(){
       doc_number: String(doc_number || ''),
       invoice_needed: !!invoice_needed,
       invoice_received: !!invoice_received,
+      vat_rate: vat_rate || null,
+      vat_amount: vat_amount || null,
+      amount_ex_vat: amount_ex_vat || null,
       created_by: Number(created_by || 0),
       created_at: isoNow(),
       updated_at: isoNow()
@@ -337,13 +340,60 @@ window.AsgardWorkExpenses = (function(){
         <div><label><input type="checkbox" id="exp_inv_need" style="width:auto"/> Нужна счёт-фактура</label></div>
         <div><label><input type="checkbox" id="exp_inv_got" style="width:auto"/> СФ получена</label></div>
       </div>
+      <div class="formrow" style="margin-top:8px">
+        <div><label>Ставка НДС</label>
+          <select id="exp_vat_rate" style="padding:8px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)">
+            <option value="">Без НДС</option>
+            <option value="20">20%</option>
+            <option value="22">22%</option>
+            <option value="10">10%</option>
+          </select>
+        </div>
+        <div><label>Сумма НДС ₽</label><input id="exp_vat_amount" type="number" placeholder="авто" /></div>
+      </div>
+      <div style="margin-top:8px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border:1px dashed var(--brd);border-radius:8px;font-size:13px;color:var(--t2)">
+          📎 <span id="exp_file_label">Прикрепить счёт (PDF/фото)</span>
+          <input type="file" id="exp_file" accept=".pdf,.png,.jpg,.jpeg" style="display:none"/>
+        </label>
+      </div>
+      <div id="exp_file_preview" style="margin-top:8px;display:none;border-radius:8px;overflow:hidden;border:1px solid var(--brd);max-height:200px"></div>
       <div style="margin-top:12px">
         <button class="btn" id="btnSaveExp">Сохранить</button>
-        <button class="btn ghost disabled" style="opacity:.5" title="Будет доступно позже">+ Документ</button>
       </div>
     `;
 
     showModal(`Добавить: ${cat.label}`, html);
+
+    // Авто-расчёт НДС при изменении суммы или ставки
+    let _expFile = null;
+    if (!isFot) {
+      const vatCalc = () => {
+        const amt = Number($('#exp_amount')?.value) || 0;
+        const rate = Number($('#exp_vat_rate')?.value) || 0;
+        if (rate > 0 && amt > 0) {
+          const vatAmt = Math.round(amt * rate / (100 + rate) * 100) / 100;
+          $('#exp_vat_amount').value = vatAmt;
+        }
+      };
+      $('#exp_amount')?.addEventListener('change', vatCalc);
+      $('#exp_vat_rate')?.addEventListener('change', vatCalc);
+
+      // Предпросмотр файла
+      $('#exp_file')?.addEventListener('change', (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        _expFile = f;
+        $('#exp_file_label').textContent = '📎 ' + f.name;
+        const preview = $('#exp_file_preview');
+        preview.style.display = 'block';
+        if (f.type === 'application/pdf') {
+          preview.innerHTML = '<iframe src="' + URL.createObjectURL(f) + '" style="width:100%;height:200px;border:none"></iframe>';
+        } else if (f.type.startsWith('image/')) {
+          preview.innerHTML = '<img src="' + URL.createObjectURL(f) + '" style="width:100%;max-height:200px;object-fit:contain"/>';
+        }
+      });
+    }
 
     $('#btnSaveExp').addEventListener('click', async () => {
       try {
@@ -368,7 +418,11 @@ window.AsgardWorkExpenses = (function(){
         } else {
           const amount = Number($('#exp_amount').value) || 0;
           if(amount <= 0){ toast('Расход', 'Укажите сумму', 'err'); return; }
-          await addExpense({
+          const vatRate = Number($('#exp_vat_rate')?.value) || null;
+          const vatAmount = Number($('#exp_vat_amount')?.value) || null;
+          const amountExVat = (vatRate && vatAmount) ? (amount - vatAmount) : null;
+
+          const expResult = await addExpense({
             work_id: work.id,
             category: category,
             amount: amount,
@@ -376,10 +430,28 @@ window.AsgardWorkExpenses = (function(){
             comment: $('#exp_comment').value,
             supplier: $('#exp_supplier').value,
             doc_number: $('#exp_doc').value,
-            invoice_needed: $('#exp_inv_need').checked,
-            invoice_received: $('#exp_inv_got').checked,
+            invoice_needed: $('#exp_inv_need')?.checked,
+            invoice_received: $('#exp_inv_got')?.checked,
+            vat_rate: vatRate,
+            vat_amount: vatAmount,
+            amount_ex_vat: amountExVat,
             created_by: user.id
           });
+
+          // Загрузить файл и привязать к расходу
+          if (_expFile && expResult?.id) {
+            try {
+              const fd = new FormData();
+              fd.append('file', _expFile);
+              const token = localStorage.getItem('asgard_token');
+              const upResp = await fetch(`/api/expenses/attach/${expResult.id}`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token },
+                body: fd
+              });
+              if (upResp.ok) toast('Файл', 'Счёт прикреплён', 'ok');
+            } catch(fe) { console.warn('File upload failed', fe); }
+          }
         }
         toast('Расход', 'Добавлено');
         openExpensesModal(work, user);

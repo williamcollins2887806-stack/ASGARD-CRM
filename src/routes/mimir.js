@@ -2554,14 +2554,18 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
 
   /**
    * POST /api/mimir/expense-confirm
-   * Body: { work_id, amount, date, category, supplier, description, document_id? }
+   * Body: { work_id, amount, date, category, supplier, description, document_id?,
+   *         doc_number?, vat_rate?, vat_amount?, amount_ex_vat?, inn?, items?[] }
    *
-   * Вносит расход → триггер пересчитывает cost_fact → возвращает новую сводку.
+   * Вносит расход + позиции items → триггер пересчитывает cost_fact → возвращает новую сводку.
    */
   fastify.post('/expense-confirm', {
     preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
   }, async (request, reply) => {
-    const { work_id, amount, date, category, supplier, description, notes, document_id } = request.body || {};
+    const {
+      work_id, amount, date, category, supplier, description, notes, document_id,
+      doc_number, vat_rate, vat_amount, amount_ex_vat, inn, items, receipt_url
+    } = request.body || {};
     const user = request.user;
 
     if (!work_id || !amount) {
@@ -2575,11 +2579,14 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
       const before = await expRecognize.getWorkFinancials(db, work_id);
       if (!before) return reply.code(404).send({ error: 'Работа не найдена' });
 
-      // INSERT в work_expenses
+      // INSERT в work_expenses (с НДС и doc_number)
       const today = new Date().toISOString().slice(0, 10);
       const result = await db.query(
-        `INSERT INTO work_expenses (work_id, category, description, amount, date, supplier, notes, status, source_table, created_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed', 'mimir_expense', $8, NOW())
+        `INSERT INTO work_expenses (work_id, category, description, amount, date, supplier, notes,
+         doc_number, vat_rate, vat_amount, amount_ex_vat, receipt_url,
+         status, source_table, created_by, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+         'confirmed', 'mimir_expense', $13, NOW())
          RETURNING *`,
         [
           work_id,
@@ -2589,10 +2596,37 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
           date || today,
           String(supplier || '').substring(0, 500),
           String(notes || '').substring(0, 1000),
+          doc_number || null,
+          vat_rate != null ? Number(vat_rate) : null,
+          vat_amount != null ? Number(vat_amount) : null,
+          amount_ex_vat != null ? Number(amount_ex_vat) : null,
+          receipt_url || null,
           user.id
         ]
       );
       const expense = result.rows[0];
+
+      // Сохранить позиции (items) в work_expense_items
+      if (Array.isArray(items) && items.length > 0) {
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          await db.query(
+            `INSERT INTO work_expense_items (expense_id, position, name, unit, quantity, price, amount, vat_rate, vat_amount, note)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [
+              expense.id, i + 1,
+              String(it.name || it.description || '').substring(0, 500),
+              it.unit || 'шт',
+              it.quantity || 1,
+              it.price != null ? Number(it.price) : null,
+              it.sum != null ? Number(it.sum) : (it.amount != null ? Number(it.amount) : null),
+              it.vat_rate != null ? Number(it.vat_rate) : null,
+              it.vat_amount != null ? Number(it.vat_amount) : null,
+              it.note || null
+            ]
+          );
+        }
+      }
 
       // Привязка документа (если загружен)
       if (document_id) {
@@ -2600,6 +2634,12 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
           'UPDATE documents SET work_id = $1 WHERE id = $2',
           [work_id, document_id]
         ).catch(() => {});
+        // Привязать preview к расходу
+        const { rows: [doc] } = await db.query('SELECT filename FROM documents WHERE id = $1', [document_id]).catch(() => ({ rows: [] }));
+        if (doc && !receipt_url) {
+          await db.query('UPDATE work_expenses SET receipt_url = $1 WHERE id = $2',
+            [`/api/files/preview/${doc.filename}`, expense.id]).catch(() => {});
+        }
       }
 
       // Сводка ПОСЛЕ (триггер уже обновил cost_fact)
@@ -2608,6 +2648,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
       return reply.send({
         success: true,
         expense,
+        items_count: Array.isArray(items) ? items.length : 0,
         before,
         after,
         delta: {
