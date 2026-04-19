@@ -127,6 +127,13 @@ fastify.addHook('onRequest', async (request, reply) => {
     return;
   }
 
+  // Field SW — всегда без кэша (иначе браузер не увидит обновления)
+  if (url === '/field/sw.js') {
+    reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    reply.header('Pragma', 'no-cache');
+    return;
+  }
+
   // Allow Field PWA paths (/field/ and its assets)
   if (url === '/field' || url === '/field/' || url.startsWith('/field/')) {
     return;

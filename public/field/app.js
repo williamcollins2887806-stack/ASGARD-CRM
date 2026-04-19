@@ -314,7 +314,22 @@ if (document.readyState === 'loading') {
 // Service Worker registration
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/field/sw.js').catch(err => {
+    navigator.serviceWorker.register('/field/sw.js', { updateViaCache: 'none' }).then(reg => {
+      // Принудительная проверка обновлений каждые 60 секунд
+      setInterval(() => reg.update(), 60000);
+      // При обнаружении нового SW — сразу активировать и перезагрузить
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        if (newSW) {
+          newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'activated') {
+              console.log('[SW] New version activated, reloading...');
+              window.location.reload();
+            }
+          });
+        }
+      });
+    }).catch(err => {
       console.log('[SW] Registration failed:', err);
     });
   });

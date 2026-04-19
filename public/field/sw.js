@@ -81,16 +81,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Shell assets — cache first
+  // Shell assets — stale-while-revalidate (показать кэш сразу, обновить в фоне)
   if (url.pathname.startsWith('/field/') || url.pathname.startsWith('/assets/')) {
     event.respondWith(
-      caches.match(event.request).then(cached => {
-        return cached || fetch(event.request).then(resp => {
-          if (resp.ok) {
-            const clone = resp.clone();
-            caches.open(SHELL_CACHE).then(cache => cache.put(event.request, clone));
-          }
-          return resp;
+      caches.open(SHELL_CACHE).then(cache => {
+        return cache.match(event.request).then(cached => {
+          const fetchPromise = fetch(event.request, { cache: 'no-cache' }).then(resp => {
+            if (resp.ok) cache.put(event.request, resp.clone());
+            return resp;
+          }).catch(() => cached);
+          return cached || fetchPromise;
         });
       })
     );
