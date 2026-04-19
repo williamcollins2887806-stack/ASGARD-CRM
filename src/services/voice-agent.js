@@ -37,6 +37,9 @@ class VoiceAgent {
     this._employeeCacheTime = 0;
     this.onEvent = null; // callback(type, data) — для live-мониторинга
     this.getPendingTransfer = null; // callback() — проверка CRM-команды на перевод
+    // Кэш часто используемых фраз — синтезируем при первом вызове
+    this._phraseCache = new Map();
+    this._cacheDir = '/var/lib/asterisk/sounds/asgard';
   }
 
   _emit(type, data) {
@@ -50,6 +53,24 @@ class VoiceAgent {
    */
   async handleIncoming(channel, callerNumber) {
     const context = await this._buildContext(callerNumber);
+
+    // Прогреваем кэш при первом звонке (не блокирует — async)
+    this.warmupCache().catch(e => console.warn('[VoiceAgent] Cache warmup error:', e.message));
+
+    // Звонит наш сотрудник — персональное приветствие в стиле Асгарда
+    if (context.isInternal) {
+      const firstName = this._extractFirstName(context.internalCaller.name);
+      this._emit('greeting', { text: `Внутренний звонок: ${context.internalCaller.name}`, internal: true });
+
+      const greetings = [
+        `Приветствую, воин Асга+рда ${firstName}! Чем могу помочь?`,
+        `Хе+й, ${firstName}! Рад слышать тебя, воин! Куда тебя направить?`,
+        `Славься, ${firstName}! Какой путь тебе указать сегодня?`,
+        `${firstName}, приветствую тебя в чертогах Асга+рда! Чем помочь?`,
+      ];
+      await this._speak(channel, greetings[Math.floor(Math.random() * greetings.length)]);
+      return this._runConversation(channel, context, []);
+    }
 
     // Приветствие
     if (context.clientName && context.responsibleManager && context.isFullWorkHours) {
@@ -175,6 +196,25 @@ class VoiceAgent {
       }
       lastIntent = response.intent || lastIntent;
 
+      // Сотрудник просит соединить с клиентом — ищем номер в CRM
+      if (context.isInternal && response.intent === 'internal_to_customer' && response.action === 'route') {
+        const query = (response.collected_data && (response.collected_data.company || response.collected_data.contact_person)) || '';
+        if (query && !response.route_to) {
+          const customers = await this._findCustomerPhone(query);
+          if (customers.length === 1) {
+            response.route_to = customers[0].phone.replace(/[^0-9]/g, '');
+            response.route_name = `${customers[0].contact_person || customers[0].name} (${customers[0].name})`;
+          } else if (customers.length > 1) {
+            const names = customers.map(c => `${c.name} — ${c.contact_person || 'нет контакта'}`).join(', ');
+            response.action = 'continue';
+            response.text = `Нашёл несколько: ${names}. Кого именно?`;
+          } else {
+            response.action = 'continue';
+            response.text = `Не нашёл клиента "${query}" в базе. Уточните название или имя контактного лица.`;
+          }
+        }
+      }
+
       // Произносим ответ
       await this._speak(channel, response.text);
       conversationHistory.push({ role: 'secretary', text: response.text });
@@ -279,14 +319,17 @@ class VoiceAgent {
   }
 
   /**
-   * Генерация ответа через Claude API
+   * Генерация ответа через Claude API (streaming для скорости)
+   * Стримит токены и парсит JSON сразу по завершении — быстрее чем complete()
    */
   async generateResponse(context) {
     try {
       const systemPrompt = VOICE_OPERATOR_SYSTEM(context);
       const userPrompt = VOICE_OPERATOR_USER(context);
 
-      const response = await this.aiProvider.complete({
+      // Голосовой агент: всегда быстрый YandexGPT (не Qwen3 — долго для живого диалога)
+      const completeFn = this.aiProvider.completeFast || this.aiProvider.complete;
+      const response = await completeFn({
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
         maxTokens: 400,
@@ -302,12 +345,82 @@ class VoiceAgent {
   }
 
   /**
+   * Streaming версия generateResponse
+   * AI отдаёт токены по мере генерации → собираем → парсим JSON сразу
+   * Выигрыш ~1-1.5с за счёт отсутствия HTTP buffering overhead
+   */
+  async _generateResponseStream(systemPrompt, userPrompt) {
+    const startTime = Date.now();
+
+    try {
+      const streamResponse = await this.aiProvider.stream({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        maxTokens: 400,
+        temperature: 0.3
+      });
+
+      const parser = this.aiProvider.parseStream(streamResponse);
+      let fullText = '';
+
+      for await (const event of parser) {
+        if (event.type === 'text') {
+          fullText += event.content;
+        }
+        if (event.type === 'error') {
+          console.error('[VoiceAgent] AI stream error:', event.message);
+          break;
+        }
+        if (event.type === 'done') {
+          break;
+        }
+      }
+
+      const elapsed = Date.now() - startTime;
+      console.log(`[VoiceAgent] AI stream response: ${fullText.length} chars, ${elapsed}ms`);
+
+      if (!fullText) return null;
+      return this._parseResponse(fullText);
+    } catch (err) {
+      console.error('[VoiceAgent] AI stream error:', err.message);
+
+      // Fallback на completeFast() при ошибке стриминга — быстрый YandexGPT
+      try {
+        const completeFn = this.aiProvider.completeFast || this.aiProvider.complete;
+        const response = await completeFn({
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }],
+          maxTokens: 400,
+          temperature: 0.3
+        });
+        const text = typeof response === 'string' ? response : (response.text || response.content || '');
+        return this._parseResponse(text);
+      } catch (fallbackErr) {
+        console.error('[VoiceAgent] AI fallback also failed:', fallbackErr.message);
+        return null;
+      }
+    }
+  }
+
+  /**
    * Построение контекста звонка
    */
   async _buildContext(callerNumber) {
     const employees = await this._getEmployees();
     const { normalizePhone } = require('./mango');
     const normalized = normalizePhone(callerNumber);
+
+    // Проверяем, не звонит ли наш сотрудник
+    let internalCaller = null;
+    for (const emp of employees) {
+      if (emp.fallback_mobile) {
+        const empPhone = emp.fallback_mobile.replace(/[^0-9]/g, '');
+        if (empPhone.length >= 10 && normalized.slice(-10) === empPhone.slice(-10)) {
+          internalCaller = emp;
+          break;
+        }
+      }
+    }
 
     let clientName = null;
     let clientCompany = null;
@@ -333,7 +446,7 @@ class VoiceAgent {
 
         // Ищем ответственного PM
         const tender = await this.db.query(
-          `SELECT t.id, t.name, t.pm_id, u.name as pm_name, ucs.fallback_mobile
+          `SELECT t.id, t.customer_name, t.pm_id, u.name as pm_name, ucs.fallback_mobile
            FROM tenders t
            LEFT JOIN users u ON u.id = t.pm_id
            LEFT JOIN user_call_status ucs ON ucs.user_id = t.pm_id
@@ -345,7 +458,7 @@ class VoiceAgent {
         if (tender.rows.length) {
           responsibleManager = tender.rows[0].pm_name;
           managerPhone = tender.rows[0].fallback_mobile;
-          lastTender = `${tender.rows[0].name} (ID: ${tender.rows[0].id})`;
+          lastTender = `${tender.rows[0].customer_name} (ID: ${tender.rows[0].id})`;
         }
       }
     } catch (e) {
@@ -428,11 +541,14 @@ class VoiceAgent {
       timeModeDesc = 'РЕЖИМ: Нерабочее время. НЕ переводить. Только запись сообщения.';
     }
 
-    const employeeList = this._formatEmployeeList(employees);
-    const availableEmployees = this._formatAvailableEmployees(employees, timeMode);
+    const employeeList = this._formatEmployeeList(employees, !!internalCaller);
+    const availableEmployees = this._formatAvailableEmployees(employees, timeMode, !!internalCaller);
 
     return {
       callerNumber,
+      internalCaller,
+      isInternal: !!internalCaller,
+      internalFirstName: internalCaller ? this._extractFirstName(internalCaller.name) : null,
       clientName,
       clientCompany,
       clientInn,
@@ -450,6 +566,25 @@ class VoiceAgent {
       availableEmployees,
       employees
     };
+  }
+
+  /**
+   * Поиск телефона клиента/контрагента по названию компании или имени контактного лица
+   */
+  async _findCustomerPhone(query) {
+    try {
+      const res = await this.db.query(
+        `SELECT name, phone, contact_person, inn FROM customers
+         WHERE is_active = true AND phone IS NOT NULL AND phone != ''
+           AND (name ILIKE $1 OR contact_person ILIKE $1 OR inn = $2)
+         ORDER BY updated_at DESC NULLS LAST LIMIT 5`,
+        [`%${query}%`, query]
+      );
+      return res.rows;
+    } catch (e) {
+      console.error('[VoiceAgent] Customer phone lookup error:', e.message);
+      return [];
+    }
   }
 
   /**
@@ -481,15 +616,28 @@ class VoiceAgent {
   }
 
   /**
+   * Извлечь имя из ФИО: "Путков Дмитрий Вадимович" → "Дмитрий"
+   * Формат в БД: "Фамилия Имя Отчество"
+   */
+  _extractFirstName(fullName) {
+    if (!fullName) return 'воин';
+    const parts = fullName.trim().split(/\s+/);
+    // "Фамилия Имя Отчество" → parts[1] = Имя
+    if (parts.length >= 2) return parts[1];
+    // Только одно слово — возвращаем его
+    return parts[0];
+  }
+
+  /**
    * Форматирование списка сотрудников для промпта
    */
-  _formatEmployeeList(employees) {
+  _formatEmployeeList(employees, isInternal) {
     if (!employees || !employees.length) return '(нет данных)';
 
     const lines = [];
     const byRole = {};
     for (const emp of employees) {
-      if (DIRECTOR_ROLES.includes(emp.role)) continue;
+      if (!isInternal && DIRECTOR_ROLES.includes(emp.role)) continue;
       if (!byRole[emp.role]) byRole[emp.role] = [];
       byRole[emp.role].push(emp);
     }
@@ -522,8 +670,20 @@ class VoiceAgent {
       }
     }
 
-    lines.push('');
-    lines.push('ДИРЕКТОРА (Кудряшов О.С., Гажилиев О.В., Сторожев А.А.) — НЕ ПЕРЕВОДИТЬ напрямую!');
+    if (isInternal) {
+      lines.push('');
+      lines.push('ДИРЕКТОРА:');
+      for (const role of DIRECTOR_ROLES) {
+        for (const emp of (byRole[role] || [])) {
+          const phone = emp.fallback_mobile || '';
+          const desc = ROLE_DESCRIPTIONS[emp.role] || emp.role;
+          lines.push(`  • ${emp.display_name || emp.name} — ${desc}, тел: ${phone}`);
+        }
+      }
+    } else {
+      lines.push('');
+      lines.push('ДИРЕКТОРА (Кудряшов О.С., Гажилиев О.В., Сторожев А.А.) — НЕ ПЕРЕВОДИТЬ напрямую!');
+    }
 
     return lines.join('\n');
   }
@@ -531,11 +691,11 @@ class VoiceAgent {
   /**
    * Список доступных сотрудников для текущего перевода
    */
-  _formatAvailableEmployees(employees, timeMode) {
-    if (timeMode === 'off') return 'Нерабочее время — переводы недоступны.';
+  _formatAvailableEmployees(employees, timeMode, isInternal) {
+    if (!isInternal && timeMode === 'off') return 'Нерабочее время — переводы недоступны.';
 
     const available = employees.filter(e =>
-      !DIRECTOR_ROLES.includes(e.role) &&
+      (isInternal || !DIRECTOR_ROLES.includes(e.role)) &&
       e.role !== 'ADMIN' &&
       e.fallback_mobile
     );
@@ -560,10 +720,44 @@ class VoiceAgent {
   }
 
   /**
-   * Парсинг JSON-ответа от AI
+   * Парсинг ответа от AI (text-first формат + fallback на чистый JSON)
+   * Формат: "Текст для озвучки\n---JSON---\n{...метаданные...}"
    */
   _parseResponse(text) {
-    let cleaned = text.trim();
+    const raw = (text || '').trim();
+
+    // Новый формат: text ---JSON--- {...}
+    const sepIdx = raw.indexOf('---JSON---');
+    if (sepIdx !== -1) {
+      const spokenText = raw.slice(0, sepIdx).trim();
+      let jsonStr = raw.slice(sepIdx + 10).trim();
+      if (jsonStr.startsWith('```json')) jsonStr = jsonStr.slice(7);
+      if (jsonStr.startsWith('```')) jsonStr = jsonStr.slice(3);
+      if (jsonStr.endsWith('```')) jsonStr = jsonStr.slice(0, -3);
+      jsonStr = jsonStr.trim();
+
+      try {
+        const data = JSON.parse(jsonStr);
+        let routeTo = data.route_to || null;
+        if (routeTo && typeof routeTo === 'string') {
+          routeTo = routeTo.replace(/[^0-9]/g, '');
+          if (routeTo.startsWith('8') && routeTo.length === 11) routeTo = '7' + routeTo.slice(1);
+          if (routeTo.length !== 11) routeTo = null;
+        }
+        return {
+          text: (spokenText || String(data.text || '')).slice(0, 300),
+          action: ['route', 'record', 'hangup', 'continue'].includes(data.action) ? data.action : 'continue',
+          route_to: routeTo,
+          route_name: data.route_name || null,
+          intent: data.intent || 'unknown',
+          collected_data: data.collected_data || {},
+          reason: data.reason || null
+        };
+      } catch (_) {}
+    }
+
+    // Fallback: старый формат (чистый JSON)
+    let cleaned = raw;
     if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7);
     if (cleaned.startsWith('```')) cleaned = cleaned.slice(3);
     if (cleaned.endsWith('```')) cleaned = cleaned.slice(0, -3);
@@ -571,16 +765,12 @@ class VoiceAgent {
 
     try {
       const data = JSON.parse(cleaned);
-
       let routeTo = data.route_to || null;
       if (routeTo && typeof routeTo === 'string') {
         routeTo = routeTo.replace(/[^0-9]/g, '');
-        if (routeTo.startsWith('8') && routeTo.length === 11) {
-          routeTo = '7' + routeTo.slice(1);
-        }
+        if (routeTo.startsWith('8') && routeTo.length === 11) routeTo = '7' + routeTo.slice(1);
         if (routeTo.length !== 11) routeTo = null;
       }
-
       return {
         text: String(data.text || '').slice(0, 300),
         action: ['route', 'record', 'hangup', 'continue'].includes(data.action) ? data.action : 'continue',
@@ -615,7 +805,74 @@ class VoiceAgent {
   }
 
   /**
-   * Синтез речи и воспроизведение
+   * Прогрев кэша TTS — синтезируем частые фразы заранее
+   * Вызывается при первом звонке, не блокирует
+   */
+  async warmupCache() {
+    if (this._cacheWarmedUp) return;
+    this._cacheWarmedUp = true;
+
+    const phrases = [
+      'Здравствуйте! Компания Асга+рд Се+рвис. Чем могу помочь?',
+      'Алло? Я вас слушаю.',
+      'Простите, не расслышал. Подскажите, чем могу помочь?',
+      'Извините, не слышу вас. Если хотите, перезвоните нам позже. До свидания!',
+      'Секундочку, соединяю вас со специалистом.',
+      'Сейчас соединю вас со специалистом, который поможет подробнее. Одну минутку.',
+      'Сейчас нерабочее время. Наши часы работы — с девяти до восемнадцати, понедельник — пятница. Оставьте сообщение, и мы перезвоним в ближайший рабочий день.',
+      'К сожалению, прямое соединение с руководством не предусмотрено. Подскажите ваш вопрос, я передам информацию.',
+      'Куда вас соединить?',
+    ];
+
+    console.log(`[VoiceAgent] Warming up TTS cache (${phrases.length} phrases)...`);
+
+    const fs = require('fs');
+    const path = require('path');
+    const crypto = require('crypto');
+
+    if (!fs.existsSync(this._cacheDir)) {
+      fs.mkdirSync(this._cacheDir, { recursive: true });
+    }
+
+    const ttsVoice = process.env.TTS_VOICE || 'dasha';
+    const ttsRole = process.env.TTS_ROLE || 'friendly';
+
+    let cached = 0;
+    for (const phrase of phrases) {
+      try {
+        // Для кэша используем plain text без ударений
+        const plainPhrase = phrase.replace(/\+/g, '');
+        const hash = crypto.createHash('md5').update(plainPhrase).digest('hex').slice(0, 12);
+        const filePath = path.join(this._cacheDir, `tts_${hash}.slin`);
+
+        if (fs.existsSync(filePath) && fs.statSync(filePath).size > 100) {
+          this._phraseCache.set(plainPhrase, path.join(this._cacheDir, `tts_${hash}`));
+          cached++;
+          continue;
+        }
+
+        const audioBuffer = await this.speechKit.synthesizeSmart(phrase, {
+          voice: ttsVoice,
+          role: ttsRole,
+          emotion: 'good',
+          speed: '1.0',
+          telephony: true,
+          ssml: false
+        });
+
+        fs.writeFileSync(filePath, audioBuffer);
+        this._phraseCache.set(plainPhrase, path.join(this._cacheDir, `tts_${hash}`));
+        cached++;
+      } catch (e) {
+        console.warn(`[VoiceAgent] Cache warmup failed for: "${phrase.slice(0, 40)}..."`, e.message);
+      }
+    }
+
+    console.log(`[VoiceAgent] TTS cache ready: ${cached}/${phrases.length} phrases`);
+  }
+
+  /**
+   * Синтез речи и воспроизведение (с кэшем)
    */
   async _speak(channel, text) {
     if (!this.speechKit || !this.speechKit.isConfigured()) {
@@ -624,25 +881,44 @@ class VoiceAgent {
     }
 
     try {
-      const ssmlText = this._textToSsml(text);
-
-      const audioBuffer = await this.speechKit.synthesize(ssmlText, {
-        voice: 'madirus',
-        emotion: 'friendly',
-        speed: '0.95',
-        format: 'oggopus',
-        sampleRate: 48000,
-        ssml: true
-      });
-
       const crypto = require('crypto');
       const fs = require('fs');
       const path = require('path');
       const hash = crypto.createHash('md5').update(text).digest('hex').slice(0, 12);
-      const dir = '/var/lib/asterisk/sounds/asgard';
+      const dir = this._cacheDir || '/var/lib/asterisk/sounds/asgard';
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       const filePath = path.join(dir, `tts_${hash}`);
-      fs.writeFileSync(filePath + '.opus', audioBuffer);
+
+      // Проверяем кэш — мгновенное воспроизведение
+      if (this._phraseCache && this._phraseCache.has(text)) {
+        const cachedPath = this._phraseCache.get(text);
+        if (channel && typeof channel.streamFile === 'function') {
+          await channel.streamFile(cachedPath);
+        }
+        return;
+      }
+
+      // Проверяем файл на диске (.slin — нативный формат Asterisk 8kHz)
+      if (fs.existsSync(filePath + '.slin') && fs.statSync(filePath + '.slin').size > 100) {
+        if (channel && typeof channel.streamFile === 'function') {
+          await channel.streamFile(filePath);
+        }
+        return;
+      }
+
+      // Синтезируем: LINEAR16_PCM 8kHz — без конвертации в Asterisk
+      const ttsVoice = process.env.TTS_VOICE || 'dasha';
+      const ttsRole = process.env.TTS_ROLE || 'friendly';
+      const audioBuffer = await this.speechKit.synthesizeSmart(text, {
+        voice: ttsVoice,
+        role: ttsRole,
+        emotion: 'good',
+        speed: '1.0',
+        telephony: true,
+        ssml: false
+      });
+
+      fs.writeFileSync(filePath + '.slin', audioBuffer);
 
       if (channel && typeof channel.streamFile === 'function') {
         await channel.streamFile(filePath);
@@ -661,7 +937,7 @@ class VoiceAgent {
 
     try {
       const tmpFile = `/tmp/agi_rec_${Date.now()}`;
-      const recorded = await channel.recordFile(tmpFile, "wav", "#", 15000, 0, false, 3);
+      const recorded = await channel.recordFile(tmpFile, "wav", "#", 12000, 0, false, 1.5);
       if (!recorded) return null;
 
       const fs = require('fs');

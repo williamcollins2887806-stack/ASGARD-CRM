@@ -59,69 +59,208 @@ window.AsgardUI = (function(){
     if (all.length > 5) all[0].remove();
   }
 
-  // ===== Modal =====
+  // ===== Modal (CR-MODAL v1.0) =====
   let modalBack = null;
   function ensureModal(){
     if(modalBack) return;
     modalBack = document.createElement("div");
-    modalBack.className = "modalback";
-    modalBack.innerHTML = `
-      <div class="modal">
-        <div class="mh">
-          <div class="h" id="modalTitle">Окно</div>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <button class="btn ghost" id="modalFull" title="На весь экран">⛨</button>
-            <button class="btn ghost" id="modalClose">Закрыть</button>
-          </div>
-        </div>
-        <div class="mc" id="modalBody"></div>
-      </div>`;
+    modalBack.className = "cr-m-overlay";
+    // Also keep legacy class for any external selectors
+    modalBack.classList.add("modalback");
+
+    const modal = document.createElement("div");
+    modal.className = "cr-m modal";
+
+    // Top accent line
+    const topline = document.createElement("div");
+    topline.className = "cr-m__topline";
+    modal.appendChild(topline);
+
+    // Drag handle (mobile)
+    const dragHandle = document.createElement("div");
+    dragHandle.className = "cr-m__drag-handle";
+    modal.appendChild(dragHandle);
+
+    // Header
+    const header = document.createElement("div");
+    header.className = "cr-m__header mh";
+
+    const icon = document.createElement("div");
+    icon.className = "cr-m__icon";
+    icon.id = "modalIcon";
+    icon.textContent = "⚡";
+    header.appendChild(icon);
+
+    const titles = document.createElement("div");
+    titles.className = "cr-m__titles";
+    const titleEl = document.createElement("div");
+    titleEl.className = "cr-m__title";
+    titleEl.id = "modalTitle";
+    titleEl.textContent = "Окно";
+    titles.appendChild(titleEl);
+    const subtitleEl = document.createElement("div");
+    subtitleEl.className = "cr-m__subtitle";
+    subtitleEl.id = "modalSubtitle";
+    subtitleEl.style.display = "none";
+    titles.appendChild(subtitleEl);
+    header.appendChild(titles);
+
+    const actions = document.createElement("div");
+    actions.className = "cr-m__header-actions";
+
+    const fullBtn = document.createElement("button");
+    fullBtn.className = "cr-m__fullscreen-btn";
+    fullBtn.id = "modalFull";
+    fullBtn.title = "На весь экран";
+    fullBtn.type = "button";
+    fullBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+    actions.appendChild(fullBtn);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "cr-m__close";
+    closeBtn.id = "modalClose";
+    closeBtn.title = "Закрыть";
+    closeBtn.type = "button";
+    closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    actions.appendChild(closeBtn);
+
+    header.appendChild(actions);
+    modal.appendChild(header);
+
+    // Body
+    const body = document.createElement("div");
+    body.className = "cr-m__body mc";
+    body.id = "modalBody";
+    modal.appendChild(body);
+
+    modalBack.appendChild(modal);
     document.body.appendChild(modalBack);
 
-    $("#modalClose", modalBack).addEventListener("click", hideModal);
-    $("#modalFull", modalBack).addEventListener("click", ()=>{
-      const m = $(".modal", modalBack);
-      m.classList.toggle("fullscreen");
+    closeBtn.addEventListener("click", hideModal);
+    fullBtn.addEventListener("click", ()=>{
+      modal.classList.toggle("cr-m--fullscreen");
+      modal.classList.toggle("fullscreen");
     });
     modalBack.addEventListener("click", (e)=>{
-      if(e.target === modalBack) hideModal();
+      if(e.target === modalBack) _showOopsBubble(e.clientX, e.clientY);
     });
+    // ESC to close
+    document.addEventListener("keydown", (e)=>{
+      if(e.key === "Escape" && modalBack && modalBack.classList.contains("cr-m-overlay--visible")){
+        hideModal();
+      }
+    });
+  }
+
+  // Icon map based on common title keywords
+  const _modalIconMap = [
+    [/тендер|tender/i,      '📋'],
+    [/ткп|tkp|предложен/i,  '💰'],
+    [/работ|work|объект/i,   '🏗'],
+    [/сотрудник|employee|персонал/i, '👤'],
+    [/оборудован|equipment/i,'🔧'],
+    [/расход|expense|оплат|payment/i,'💳'],
+    [/договор|contract/i,    '📄'],
+    [/пропуск|pass/i,        '🪪'],
+    [/допуск|permit/i,       '📜'],
+    [/календар|calendar|встреч|meeting/i, '📅'],
+    [/напоминан|reminder/i,  '🔔'],
+    [/почт|mail|email|письм/i,'✉️'],
+    [/чат|chat|сообщен/i,    '💬'],
+    [/загрузк|upload|файл|file/i,'📎'],
+    [/настрой|setting/i,     '⚙️'],
+    [/удали|delet/i,         '🗑'],
+    [/подтвер|confirm/i,     '✅'],
+    [/печат|print|qr/i,      '🖨'],
+    [/отчёт|report|аналитик/i,'📊'],
+    [/зарплат|salary|payroll/i,'💵'],
+    [/смет|estimate|просчёт/i,'🧮'],
+    [/корреспонд|correspond/i,'📨'],
+    [/довереннос|proxy/i,    '📝'],
+    [/склад|warehouse/i,     '📦'],
+    [/карт|map|объект/i,     '🗺'],
+    [/звонок|call|телефон/i, '📞'],
+    [/задач|task/i,          '☑️'],
+  ];
+
+  function _pickModalIcon(title){
+    if(!title) return '⚡';
+    for(const [rx, icon] of _modalIconMap){
+      if(rx.test(title)) return icon;
+    }
+    return '⚡';
   }
 
   /**
    * showModal(title, html)
-   * showModal({ title, html, fullscreen, onMount })
+   * showModal({ title, html, fullscreen, onMount, wide, icon, subtitle })
    */
+  const _modalStack = [];
+
   function showModal(a, b){
     ensureModal();
+    const overlay = modalBack;
+    const modal = $(".cr-m", overlay);
+    // Stack: if modal is already visible, save current state
+    if(overlay.classList.contains("cr-m-overlay--visible")){
+      _modalStack.push({
+        title: $("#modalTitle", overlay).textContent,
+        html: $("#modalBody", overlay).innerHTML,
+        fullscreen: modal.classList.contains("cr-m--fullscreen"),
+        wide: modal.classList.contains("cr-m--wide"),
+        icon: $("#modalIcon", overlay).textContent,
+        subtitle: $("#modalSubtitle", overlay).textContent
+      });
+    }
     let title = "Окно";
     let html = "";
     let fullscreen = false;
+    let wide = false;
     let onMount = null;
+    let icon = null;
+    let subtitle = "";
 
     if(a && typeof a === "object"){
       title = a.title || title;
       html = a.html || "";
       fullscreen = !!a.fullscreen;
-      var wide = !!a.wide;
+      wide = !!a.wide;
       onMount = (typeof a.onMount === "function") ? a.onMount : null;
+      icon = a.icon || null;
+      subtitle = a.subtitle || "";
     } else {
       title = a || title;
       html = b || "";
     }
 
-    $("#modalTitle", modalBack).textContent = title || "Окно";
-    $("#modalBody", modalBack).innerHTML = html || "";
-    const m = $(".modal", modalBack);
-    if(fullscreen) m.classList.add("fullscreen");
-    if(wide) m.classList.add("wide");
-    modalBack.style.display = "flex";
+    $("#modalTitle", overlay).textContent = title || "Окно";
+    $("#modalIcon", overlay).textContent = icon || _pickModalIcon(title);
+    const subEl = $("#modalSubtitle", overlay);
+    if(subtitle){
+      subEl.textContent = subtitle;
+      subEl.style.display = "";
+    } else {
+      subEl.textContent = "";
+      subEl.style.display = "none";
+    }
+    $("#modalBody", overlay).innerHTML = html || "";
+
+    modal.classList.toggle("cr-m--fullscreen", fullscreen);
+    modal.classList.toggle("fullscreen", fullscreen);
+    modal.classList.toggle("cr-m--wide", wide);
+    modal.classList.toggle("wide", wide);
+
+    // Show with animation
+    overlay.style.display = "flex";
+    // Force reflow for animation
+    void overlay.offsetHeight;
+    overlay.classList.remove("cr-m-overlay--leaving");
+    overlay.classList.add("cr-m-overlay--visible");
     document.body.style.overflow = "hidden";
 
     if(onMount){
-      // Run after DOM is painted
       setTimeout(()=>{
-        try{ onMount({back: modalBack, modal: m, body: $("#modalBody", modalBack)}); }
+        try{ onMount({back: overlay, modal: modal, body: $("#modalBody", overlay)}); }
         catch(e){ toast("Ошибка", e, "err"); }
       }, 0);
     }
@@ -129,32 +268,49 @@ window.AsgardUI = (function(){
 
   function hideModal(){
     if(!modalBack) return;
-    // Animate close on mobile
-    const m = $(".modal", modalBack);
-    if(m && window.innerWidth <= 768) {
-      m.style.transition = 'transform 0.25s ease-in';
-      m.style.transform = 'translateY(100%)';
-      setTimeout(function() {
-        modalBack.style.display = "none";
-        document.body.style.overflow = "";
-        $("#modalBody", modalBack).innerHTML = "";
-        if(m) {
-          m.classList.remove("fullscreen");
-          m.classList.remove("wide");
-          m.style.transform = '';
-          m.style.transition = '';
-        }
-      }, 250);
-    } else {
-      modalBack.style.display = "none";
-      document.body.style.overflow = "";
-      $("#modalBody", modalBack).innerHTML = "";
-      if(m) { m.classList.remove("fullscreen"); m.classList.remove("wide"); }
+    const overlay = modalBack;
+    const modal = $(".cr-m", overlay);
+
+    // Stack: if there's a previous modal, restore it instead of hiding
+    if(_modalStack.length > 0){
+      const prev = _modalStack.pop();
+      $("#modalTitle", overlay).textContent = prev.title;
+      $("#modalBody", overlay).innerHTML = prev.html;
+      $("#modalIcon", overlay).textContent = prev.icon || '⚡';
+      const subEl = $("#modalSubtitle", overlay);
+      if(prev.subtitle){
+        subEl.textContent = prev.subtitle;
+        subEl.style.display = "";
+      } else {
+        subEl.textContent = "";
+        subEl.style.display = "none";
+      }
+      if(modal){
+        modal.classList.toggle("cr-m--fullscreen", prev.fullscreen);
+        modal.classList.toggle("fullscreen", prev.fullscreen);
+        modal.classList.toggle("cr-m--wide", prev.wide);
+        modal.classList.toggle("wide", prev.wide);
+      }
+      return;
     }
+
+    // Animate close
+    overlay.classList.add("cr-m-overlay--leaving");
+    overlay.classList.remove("cr-m-overlay--visible");
+
+    setTimeout(function() {
+      overlay.style.display = "none";
+      overlay.classList.remove("cr-m-overlay--leaving");
+      document.body.style.overflow = "";
+      $("#modalBody", overlay).innerHTML = "";
+      if(modal) {
+        modal.classList.remove("cr-m--fullscreen", "fullscreen", "cr-m--wide", "wide");
+      }
+    }, 300);
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // MOBILE BOTTOM SHEET SWIPE-TO-DISMISS
+  // MOBILE BOTTOM SHEET SWIPE-TO-DISMISS (cr-modal v1.0)
   // ═══════════════════════════════════════════════════════════════
   function initModalSwipeDismiss() {
     if (window.innerWidth > 768) return;
@@ -165,8 +321,8 @@ window.AsgardUI = (function(){
     var modal = null;
 
     document.addEventListener('touchstart', function(e) {
-      if (!modalBack || modalBack.style.display === 'none') return;
-      modal = modalBack.querySelector('.modal');
+      if (!modalBack || !modalBack.classList.contains('cr-m-overlay--visible')) return;
+      modal = modalBack.querySelector('.cr-m');
       if (!modal) return;
 
       // Only start swipe from the top area of modal (drag handle zone)
@@ -188,10 +344,7 @@ window.AsgardUI = (function(){
 
       modal.style.transform = 'translateY(' + delta + 'px)';
       modal.style.transition = 'none';
-
-      // Dim the backdrop based on swipe distance
-      var opacity = Math.max(0, 1 - (delta / 300));
-      modalBack.style.background = 'rgba(0,0,0,' + (opacity * 0.6) + ')';
+      modal.style.opacity = String(Math.max(0.3, 1 - (delta / 400)));
     }, { passive: true });
 
     document.addEventListener('touchend', function() {
@@ -204,14 +357,14 @@ window.AsgardUI = (function(){
         hideModal();
       } else {
         // Snap back
-        modal.style.transition = 'transform 0.2s ease-out';
-        modal.style.transform = 'translateY(0)';
-        modalBack.style.background = '';
+        modal.style.transition = 'transform 0.25s cubic-bezier(0.16,1,0.3,1), opacity 0.25s ease';
+        modal.style.transform = '';
+        modal.style.opacity = '';
         setTimeout(function() {
           if (modal) {
             modal.style.transition = '';
           }
-        }, 200);
+        }, 250);
       }
     }, { passive: true });
   }
@@ -224,7 +377,7 @@ window.AsgardUI = (function(){
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // SLIDE-OVER DRAWER
+  // SLIDE-OVER DRAWER (cr-modal v1.0)
   // ═══════════════════════════════════════════════════════════════
   let drawerEl = null;
   let drawerOverlay = null;
@@ -233,28 +386,57 @@ window.AsgardUI = (function(){
     if (drawerEl) return;
 
     drawerOverlay = document.createElement('div');
-    drawerOverlay.className = 'drawer-overlay';
+    drawerOverlay.className = 'cr-d-overlay drawer-overlay';
     drawerOverlay.id = 'drawerOverlay';
     document.body.appendChild(drawerOverlay);
 
     drawerEl = document.createElement('div');
-    drawerEl.className = 'drawer';
+    drawerEl.className = 'cr-d drawer';
     drawerEl.id = 'drawer';
-    drawerEl.innerHTML = `
-      <div class="drawer-header" id="drawerHeader">
-        <button class="drawer-close" id="drawerClose" type="button" aria-label="Закрыть">✕</button>
-        <div class="drawer-title" id="drawerTitle"></div>
-        <div class="drawer-actions" id="drawerActions"></div>
-      </div>
-      <div class="drawer-body" id="drawerBody"></div>
-    `;
+
+    // Top accent line
+    const topline = document.createElement('div');
+    topline.className = 'cr-d__topline';
+    drawerEl.appendChild(topline);
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'cr-d__header drawer-header';
+    header.id = 'drawerHeader';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'cr-d__close drawer-close';
+    closeBtn.id = 'drawerClose';
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Закрыть');
+    closeBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    header.appendChild(closeBtn);
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'cr-d__title drawer-title';
+    titleEl.id = 'drawerTitle';
+    header.appendChild(titleEl);
+
+    const actionsEl = document.createElement('div');
+    actionsEl.className = 'cr-d__actions drawer-actions';
+    actionsEl.id = 'drawerActions';
+    header.appendChild(actionsEl);
+
+    drawerEl.appendChild(header);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'cr-d__body drawer-body';
+    body.id = 'drawerBody';
+    drawerEl.appendChild(body);
+
     document.body.appendChild(drawerEl);
 
-    $('#drawerClose').addEventListener('click', hideDrawer);
+    closeBtn.addEventListener('click', hideDrawer);
     drawerOverlay.addEventListener('click', hideDrawer);
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && drawerEl.classList.contains('open')) {
+      if (e.key === 'Escape' && drawerEl.classList.contains('cr-d--open')) {
         hideDrawer();
       }
     });
@@ -291,11 +473,14 @@ window.AsgardUI = (function(){
     $('#drawerBody').innerHTML = html;
     $('#drawerActions').innerHTML = actions;
 
-    drawerEl.className = `drawer drawer-${width}`;
+    drawerEl.className = 'cr-d drawer';
+    if (width === 'wide') drawerEl.classList.add('cr-d--wide', 'drawer-wide');
+    else if (width === 'full') drawerEl.classList.add('cr-d--full', 'drawer-full');
+    else drawerEl.classList.add('drawer-normal');
 
     requestAnimationFrame(() => {
-      drawerOverlay.classList.add('open');
-      drawerEl.classList.add('open');
+      drawerOverlay.classList.add('cr-d-overlay--visible', 'open');
+      drawerEl.classList.add('cr-d--open', 'open');
       document.body.style.overflow = 'hidden';
     });
 
@@ -312,13 +497,13 @@ window.AsgardUI = (function(){
 
   function hideDrawer() {
     if (!drawerEl) return;
-    drawerEl.classList.remove('open');
-    drawerOverlay.classList.remove('open');
+    drawerEl.classList.remove('cr-d--open', 'open');
+    drawerOverlay.classList.remove('cr-d-overlay--visible', 'open');
     document.body.style.overflow = '';
 
     setTimeout(() => {
       if (drawerEl) $('#drawerBody').innerHTML = '';
-    }, 300);
+    }, 350);
   }
 
   // Status CSS class mapper
@@ -326,19 +511,19 @@ window.AsgardUI = (function(){
     if (!statusText) return 'status-gray';
     const s = statusText.toLowerCase().trim();
 
-    if (/^(новый|новая|получен|черновик|draft|отменён|архив)/.test(s)) return 'status-gray';
-    if (/^(в просчёте|на просчёте|в работе|in.progress|выполняется|обработка)/.test(s)) return 'status-blue';
-    if (/^(кп отправлено|ткп отправлено|на согласовании|на проверке|review|ожидание)/.test(s)) return 'status-purple';
-    if (/^(переговоры|отложен|истекает|pending|вопрос|приостановлен)/.test(s)) return 'status-yellow';
-    if (/^(выиграли|контракт|оплачен|завершён|done|готов|выполнен|одобрен|согласован|подписан)/.test(s)) return 'status-green';
-    if (/^(проиграли|отказ|отклонён|просрочен|expired|rejected|ошибка)/.test(s)) return 'status-red';
+    if (/^(новый|новая|черновик|draft|отменён|архив)/.test(s)) return 'status-gray';
+    if (/^(отпра��лено на просчёт|в работе|in.progress|выполняется|обработка|подготовка|мобилизация)/.test(s)) return 'status-blue';
+    if (/^(кп отправлено|согласование ткп|на проверке|review|ожидание)/.test(s)) return 'status-purple';
+    if (/^(на паузе|отложен|истекает|pending|вопрос|приостановлен)/.test(s)) return 'status-yellow';
+    if (/^(выиграли|ткп согласовано|оплачен|завершён|done|готов|выполнен|одобрен|работы сдали|подписание акта)/.test(s)) return 'status-green';
+    if (/^(проиграли|отклонён|просрочен|expired|rejected|ошибка)/.test(s)) return 'status-red';
     if (/^(vip|премиум|срочный|важный)/.test(s)) return 'status-gold';
 
     return 'status-blue';
   }
 
   // ===== Date Formatting =====
-  function normalizeDateValue(value) {
+  function normalizeDateValue(value, dateOnly) {
     if (value instanceof Date) return new Date(value.getTime());
     if (value === null || value === undefined || value === '') return null;
     if (typeof value === 'number') {
@@ -349,9 +534,24 @@ window.AsgardUI = (function(){
     const raw = String(value).trim();
     if (!raw) return null;
 
-    const ymd = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?!\d)/);
-    if (ymd && !/[T\s]\d{2}:\d{2}/.test(raw)) {
-      return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+    // Extract YYYY-MM-DD from any ISO string
+    const ymd = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (ymd) {
+      const hasRealTime = /[T\s](\d{2}):(\d{2})/.test(raw);
+      const isMidnight = /T00:00:00/.test(raw);
+      // Use local Date constructor when: no time, midnight, or dateOnly mode
+      if (!hasRealTime || isMidnight || dateOnly) {
+        return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+      }
+      // Non-midnight time — parse with timezone
+      const d = new Date(raw);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // DD.MM.YYYY format
+    const dmy = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+    if (dmy) {
+      return new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
     }
 
     const d = new Date(raw);
@@ -364,7 +564,7 @@ window.AsgardUI = (function(){
 
   function formatDate(value, mode = 'dd.mm.yyyy') {
     if (!value) return '—';
-    const d = normalizeDateValue(value);
+    const d = normalizeDateValue(value, true);
     if (!d) return String(value);
 
     const year = d.getFullYear();
@@ -524,7 +724,55 @@ window.AsgardUI = (function(){
     </div>`;
   }
 
-  return { renderMarkdown, $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton };
+  /**
+   * money(x) — Canonical currency formatter. All files MUST use this.
+   * null/undefined/'' → '0', NaN → '0', valid → ru-RU formatted (e.g. '123 456,78')
+   * Does NOT add ₽ suffix — each template adds it where needed.
+   */
+  function money(x) {
+    if (x === null || x === undefined || x === '') return '0';
+    const n = Number(x);
+    return (isNaN(n) || !isFinite(n)) ? '0' : n.toLocaleString('ru-RU');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // OOPS BUBBLE — всплывающая подсказка при клике за пределами модалки
+  // ═══════════════════════════════════════════════════════════════
+  const OOPS_PHRASES = [
+    'Закрыть можно крестиком',
+    'Модалка не кусается!',
+    'Нажми крестик для закрытия',
+    'Так не закроешь :)',
+    'Крестик наверху справа',
+    'Попробуй кнопку «Закрыть»',
+    'Мимо! Жми крестик',
+    'Почти попал, но нет',
+    'Тут ничего нет, а крестик — наверху',
+    'Ещё чуть-чуть... шучу, жми крестик',
+    'Эй, я тут! Закрой через крестик',
+    'Не туда! Крестик правее',
+    'Упс, промахнулся',
+    'Клик в пустоту...',
+    'А вот и нет!',
+    'Сюда нажимать бесполезно',
+    'Модалку так не закроешь',
+    'Крестик ждёт тебя наверху',
+    'Не-а, попробуй крестик',
+    'Окно закрывается кнопкой «Закрыть»'
+  ];
+
+  function _showOopsBubble(x, y) {
+    const phrase = OOPS_PHRASES[Math.floor(Math.random() * OOPS_PHRASES.length)];
+    const bubble = document.createElement('div');
+    bubble.className = 'oops-bubble';
+    bubble.textContent = phrase;
+    bubble.style.left = x + 'px';
+    bubble.style.top = y + 'px';
+    document.body.appendChild(bubble);
+    setTimeout(() => bubble.remove(), 1800);
+  }
+
+  return { renderMarkdown, $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money, oopsBubble: _showOopsBubble };
 
   /**
    * renderMarkdown(md) — Renders Markdown text as styled HTML

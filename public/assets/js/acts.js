@@ -48,20 +48,14 @@ window.AsgardActsPage = (function(){
       'paid': { label: 'Оплачен', color: 'var(--ok)' }
     };
     
-    const formatMoney = n => (n||0).toLocaleString('ru-RU') + ' ₽';
-    const formatDate = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
+    const formatMoney = n => AsgardUI.money(n) + ' ₽';
+    const formatDate = AsgardUI.formatDate;
     
     const html = `
       <div class="acts-page">
         <div class="toolbar" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
           <input type="text" class="inp" id="searchActs" placeholder="🔍 Поиск..." style="flex:1;min-width:200px"/>
-          <select class="inp" id="filterStatus" style="width:150px">
-            <option value="">Все статусы</option>
-            <option value="draft">Черновик</option>
-            <option value="sent">Отправлен</option>
-            <option value="signed">Подписан</option>
-            <option value="paid">Оплачен</option>
-          </select>
+          <div id="crw_filterStatus" style="width:150px"></div>
           <button class="btn primary" id="btnAddAct">➕ Новый акт</button>
         </div>
         
@@ -101,6 +95,17 @@ window.AsgardActsPage = (function(){
     `;
     
     await layout(html, { title: title || 'Акты выполненных работ' });
+
+    $('#crw_filterStatus')?.appendChild(CRSelect.create({
+      id: 'filterStatus', fullWidth: true, placeholder: 'Все статусы', clearable: true,
+      options: [
+        { value: 'draft', label: 'Черновик' },
+        { value: 'sent', label: 'Отправлен' },
+        { value: 'signed', label: 'Подписан' },
+        { value: 'paid', label: 'Оплачен' }
+      ]
+    }));
+
     bindEvents();
   }
 
@@ -119,13 +124,8 @@ window.AsgardActsPage = (function(){
   async function openActForm(actId = null) {
     const act = actId ? acts.find(a => a.id === actId) : {};
     
-    const customerOptions = customers.map(c => 
-      `<option value="${c.id}" ${act.customer_id == c.id ? 'selected' : ''}>${esc(c.name)}</option>`
-    ).join('');
-    
-    const workOptions = works.map(w => 
-      `<option value="${w.id}" ${act.work_id == w.id ? 'selected' : ''}>${esc(w.work_number || '')} ${esc(w.work_title || w.customer_name || '')}</option>`
-    ).join('');
+    const customerOpts = customers.map(c => ({ value: String(c.id), label: c.name }));
+    const workOpts = works.map(w => ({ value: String(w.id), label: (w.work_number || '') + ' ' + (w.work_title || w.customer_name || '') }));
     
     const html = `
       <div class="stack" style="gap:16px">
@@ -142,12 +142,12 @@ window.AsgardActsPage = (function(){
         
         <div>
           <label>Контрагент</label>
-          <select class="inp" id="act_customer"><option value="">— Выберите —</option>${customerOptions}</select>
+          <div id="crw_act_customer"></div>
         </div>
         
         <div>
           <label>Привязка к работе</label>
-          <select class="inp" id="act_work"><option value="">— Без привязки —</option>${workOptions}</select>
+          <div id="crw_act_work"></div>
         </div>
         
         <div class="formrow">
@@ -174,19 +174,30 @@ window.AsgardActsPage = (function(){
     `;
     
     showModal(actId ? '✏️ Редактирование акта' : '➕ Новый акт', html);
-    
+
+    $('#crw_act_customer')?.appendChild(CRSelect.create({
+      id: 'act_customer', fullWidth: true, placeholder: '— Выберите —',
+      options: customerOpts, value: act.customer_id ? String(act.customer_id) : '',
+      searchable: true, dropdownClass: 'z-modal'
+    }));
+    $('#crw_act_work')?.appendChild(CRSelect.create({
+      id: 'act_work', fullWidth: true, placeholder: '— Без привязки —',
+      options: workOpts, value: act.work_id ? String(act.work_id) : '',
+      searchable: true, dropdownClass: 'z-modal'
+    }));
+
     $('#btnSaveAct')?.addEventListener('click', async () => {
       const amount = parseFloat($('#act_amount').value) || 0;
-      const vatPct = parseFloat($('#act_vat').value) || 20;
+      const vatPct = parseFloat($('#act_vat').value) || 22;
       const totalAmount = amount * (1 + vatPct / 100);
       
       const data = {
         id: actId || undefined,
         act_number: $('#act_number').value,
         act_date: $('#act_date').value,
-        customer_id: $('#act_customer').value || null,
-        customer_name: customers.find(c => c.id == $('#act_customer').value)?.name || '',
-        work_id: $('#act_work').value || null,
+        customer_id: CRSelect.getValue('act_customer') || null,
+        customer_name: customers.find(c => String(c.id) === CRSelect.getValue('act_customer'))?.name || '',
+        work_id: CRSelect.getValue('act_work') || null,
         amount,
         vat_pct: vatPct,
         total_amount: totalAmount,

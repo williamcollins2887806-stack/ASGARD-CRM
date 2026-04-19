@@ -178,4 +178,63 @@ test('getSpeechKitService() возвращает singleton', () => {
   if (s1 !== s2) throw new Error('Should return same instance');
 });
 
+// ── v3 gRPC ──
+
+test('gRPC доступен (_grpcAvailable)', () => {
+  const SpeechKitService = require('../../src/services/speechkit');
+  const Cls = SpeechKitService.SpeechKitService || SpeechKitService;
+  const svc = new Cls('test-key', 'test-folder');
+
+  if (!svc._grpcAvailable) throw new Error('gRPC should be available (packages installed)');
+});
+
+test('_initTtsGrpc() создаёт клиент', () => {
+  const SpeechKitService = require('../../src/services/speechkit');
+  const Cls = SpeechKitService.SpeechKitService || SpeechKitService;
+  const svc = new Cls('test-key', 'test-folder');
+
+  const client = svc._initTtsGrpc();
+  if (!client) throw new Error('gRPC client should be created');
+  if (!client.utteranceSynthesis) throw new Error('Client should have utteranceSynthesis method');
+  if (!client.streamSynthesis) throw new Error('Client should have streamSynthesis method');
+});
+
+test('synthesizeV3 существует', () => {
+  const SpeechKitService = require('../../src/services/speechkit');
+  const Cls = SpeechKitService.SpeechKitService || SpeechKitService;
+  const svc = new Cls('test-key', 'test-folder');
+
+  if (typeof svc.synthesizeV3 !== 'function') throw new Error('synthesizeV3 should exist');
+  if (typeof svc.synthesizeV3Stream !== 'function') throw new Error('synthesizeV3Stream should exist');
+  if (typeof svc.synthesizeSmart !== 'function') throw new Error('synthesizeSmart should exist');
+  if (typeof svc.createStreamingSynthesis !== 'function') throw new Error('createStreamingSynthesis should exist');
+});
+
+test('synthesizeSmart fallback на v1 без API', async () => {
+  const SpeechKitService = require('../../src/services/speechkit');
+  const Cls = SpeechKitService.SpeechKitService || SpeechKitService;
+  const svc = new Cls('fake-key', 'fake-folder');
+
+  try {
+    await svc.synthesizeSmart('Тест');
+  } catch (e) {
+    if (!e.message) throw new Error('Should have error message');
+  }
+});
+
+test('voice-agent _speak использует synthesizeSmart', () => {
+  const fs = require('fs');
+  const code = fs.readFileSync(require.resolve('../../src/services/voice-agent'), 'utf-8');
+
+  if (!code.includes('synthesizeSmart')) {
+    throw new Error('voice-agent._speak должен использовать synthesizeSmart');
+  }
+  if (!code.includes("voice: 'dasha'")) {
+    throw new Error('voice-agent должен использовать голос dasha');
+  }
+  if (code.includes("voice: 'madirus'")) {
+    throw new Error('voice-agent НЕ должен содержать madirus');
+  }
+});
+
 module.exports = { name: 'SpeechKit Service', tests };

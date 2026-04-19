@@ -30,19 +30,19 @@ async function routes(fastify, options) {
     let idx = 1;
 
     if (role) {
-      sql += ` AND role = $${idx}`;
+      sql += ` AND u.role = $${idx}`;
       params.push(role);
       idx++;
     }
 
     if (is_active !== undefined) {
-      sql += ` AND is_active = $${idx}`;
+      sql += ` AND u.is_active = $${idx}`;
       params.push(is_active === 'true');
       idx++;
     }
 
     if (search) {
-      sql += ` AND (LOWER(name) LIKE $${idx} OR LOWER(login) LIKE $${idx} OR LOWER(email) LIKE $${idx})`;
+      sql += ` AND (LOWER(u.name) LIKE $${idx} OR LOWER(u.login) LIKE $${idx} OR LOWER(u.email) LIKE $${idx})`;
       params.push(`%${search.toLowerCase()}%`);
       idx++;
     }
@@ -57,6 +57,21 @@ async function routes(fastify, options) {
       users: result.rows,
       total: parseInt(countResult.rows[0].count, 10)
     };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/users/me - Get current authenticated user
+  // IMPORTANT: must be before /:id to avoid matching 'me' as numeric id
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/me', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const result = await db.query(
+      'SELECT id, login, name, patronymic, email, role, is_active, created_at, last_login_at, birth_date, employment_date, phone, telegram_chat_id, is_blocked, block_reason, must_change_password FROM users WHERE id = $1',
+      [request.user.id]
+    );
+    if (!result.rows[0]) return reply.code(404).send({ error: 'Пользователь не найден' });
+    return { user: result.rows[0] };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

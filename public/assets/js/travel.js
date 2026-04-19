@@ -21,7 +21,7 @@ window.AsgardTravelPage = (function(){
   }
 
   function fmtMoney(n){
-    return new Intl.NumberFormat('ru-RU', {style:'currency', currency:'RUB', maximumFractionDigits:0}).format(n||0);
+    return AsgardUI.money(n) + ' ₽';
   }
 
   async function render({layout, title}){
@@ -213,28 +213,15 @@ window.AsgardTravelPage = (function(){
           <div class="travel-filters">
             <div class="travel-filter">
               <label>Год</label>
-              <select id="f_year">
-                <option value="" ${!filters.year ? 'selected' : ''}>Все</option>
-                ${[currentYear, currentYear-1, currentYear-2].map(y => 
-                  `<option value="${y}" ${filters.year == y ? 'selected' : ''}>${y}</option>`
-                ).join('')}
-              </select>
+              <div id="f_year_w" style="min-width:90px"></div>
             </div>
             <div class="travel-filter">
               <label>Месяц</label>
-              <select id="f_month">
-                <option value="">Select employee</option>
-                ${['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'].map((m,i) => 
-                  `<option value="${i}">${m}</option>`
-                ).join('')}
-              </select>
+              <div id="f_month_w" style="min-width:90px"></div>
             </div>
             <div class="travel-filter">
               <label>Тип</label>
-              <select id="f_type">
-                <option value="">Все</option>
-                ${EXPENSE_TYPES.map(t => `<option value="${t.key}">${t.icon} ${t.label}</option>`).join('')}
-              </select>
+              <div id="f_type_w" style="min-width:140px"></div>
             </div>
             <div class="travel-filter" style="flex:1; min-width:180px">
               <label>Поиск</label>
@@ -307,9 +294,13 @@ window.AsgardTravelPage = (function(){
 
     function bindEvents(){
       // Фильтры
-      $('#f_year')?.addEventListener('change', e => { filters.year = e.target.value; renderPage(); });
-      $('#f_month')?.addEventListener('change', e => { filters.month = e.target.value; renderPage(); });
-      $('#f_type')?.addEventListener('change', e => { filters.type = e.target.value; renderPage(); });
+      // CRSelect init — filters
+      const _yrOpts = [{ value: '', label: 'Все' }, ...[currentYear, currentYear-1, currentYear-2].map(y => ({ value: String(y), label: String(y) }))];
+      const _moOpts = [{ value: '', label: 'Все' }, ...['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'].map((m,i) => ({ value: String(i), label: m }))];
+      const _tyOpts = [{ value: '', label: 'Все' }, ...EXPENSE_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label }))];
+      $('#f_year_w')?.appendChild(CRSelect.create({ id: 'f_year', options: _yrOpts, value: filters.year ? String(filters.year) : '', onChange: v => { filters.year = v; renderPage(); } }));
+      $('#f_month_w')?.appendChild(CRSelect.create({ id: 'f_month', options: _moOpts, value: filters.month !== '' ? String(filters.month) : '', onChange: v => { filters.month = v; renderPage(); } }));
+      $('#f_type_w')?.appendChild(CRSelect.create({ id: 'f_type', options: _tyOpts, value: filters.type || '', onChange: v => { filters.type = v; renderPage(); } }));
       $('#f_search')?.addEventListener('input', e => { filters.search = e.target.value; renderPage(); });
 
       // Добавить
@@ -344,31 +335,17 @@ window.AsgardTravelPage = (function(){
       const html = `
         <div class="formrow">
           <div><label>Тип расхода</label>
-            <select id="te_type">
-              ${EXPENSE_TYPES.map(t => 
-                `<option value="${t.key}" ${item?.expense_type === t.key ? 'selected' : ''}>${t.icon} ${t.label}</option>`
-              ).join('')}
-            </select>
+            <div id="te_type_w"></div>
           </div>
           <div><label>Дата</label><input type="date" id="te_date" value="${(item?.date || today()).slice(0,10)}"/></div>
           <div><label>Сумма, ₽</label><input type="number" id="te_amount" value="${item?.amount || ''}" placeholder="0"/></div>
         </div>
         <div class="formrow">
           <div><label>Проект (работа)</label>
-            <select id="te_work">
-              <option value="">— Не привязано —</option>
-              ${works.filter(w => w.work_status !== 'Работы сдали').map(w => 
-                `<option value="${w.id}" ${item?.work_id === w.id ? 'selected' : ''}>${esc(w.work_title || 'Проект #'+w.id)}</option>`
-              ).join('')}
-            </select>
+            <div id="te_work_w"></div>
           </div>
           <div><label>Сотрудник</label>
-            <select id="te_emp" data-employee-picker>
-              <option value="">Select employee</option>
-              ${employees.map(e => 
-                `<option value="${e.id}" ${item?.employee_id === e.id ? 'selected' : ''}>${esc(e.fio || 'Employee #'+e.id)}</option>`
-              ).join('')}
-            </select>
+            <div id="te_emp_w"></div>
           </div>
         </div>
         <div class="formrow">
@@ -392,30 +369,23 @@ window.AsgardTravelPage = (function(){
       `;
 
       showModal(modalTitle, html);
-
-      try {
-        if (window.AsgardEmployeePicker) {
-          const empSelect = document.getElementById('te_emp');
-          if (empSelect) {
-            window.AsgardEmployeePicker.enhance(empSelect, {
-              title: 'Select employee'
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('[travel] employee picker init failed:', e);
-      }
+      const _teTypeOpts = EXPENSE_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label }));
+      const _teWorkOpts = [{ value: '', label: '— Не привязано —' }, ...works.filter(w => w.work_status !== 'Работы сдали').map(w => ({ value: String(w.id), label: w.work_title || 'Проект #' + w.id }))];
+      const _teEmpOpts = [{ value: '', label: '— Не выбран —' }, ...employees.map(e => ({ value: String(e.id), label: e.fio || 'Employee #' + e.id }))];
+      $('#te_type_w')?.appendChild(CRSelect.create({ id: 'te_type', options: _teTypeOpts, value: item?.expense_type || '', dropdownClass: 'z-modal' }));
+      $('#te_work_w')?.appendChild(CRSelect.create({ id: 'te_work', options: _teWorkOpts, value: item?.work_id ? String(item.work_id) : '', searchable: true, dropdownClass: 'z-modal' }));
+      $('#te_emp_w')?.appendChild(CRSelect.create({ id: 'te_emp', options: _teEmpOpts, value: item?.employee_id ? String(item.employee_id) : '', searchable: true, dropdownClass: 'z-modal' }));
 
       $('#btnSaveTravel')?.addEventListener('click', async () => {
         const amount = Number($('#te_amount')?.value) || 0;
         if(amount <= 0){ toast('Ошибка', 'Укажите сумму', 'err'); return; }
 
         const data = {
-          expense_type: $('#te_type')?.value || 'housing',
+          expense_type: CRSelect.getValue('te_type') || 'housing',
           date: $('#te_date')?.value || today(),
           amount,
-          work_id: Number($('#te_work')?.value) || null,
-          employee_id: Number($('#te_emp')?.value) || null,
+          work_id: Number(CRSelect.getValue('te_work')) || null,
+          employee_id: Number(CRSelect.getValue('te_emp')) || null,
           description: $('#te_desc')?.value?.trim() || '',
           supplier: $('#te_supplier')?.value?.trim() || '',
           doc_number: $('#te_doc')?.value?.trim() || '',

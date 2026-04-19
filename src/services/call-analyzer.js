@@ -21,7 +21,8 @@ class CallAnalyzer {
       clientCompany: callData.client_company,
     });
     try {
-      const response = await this.aiProvider.complete({ system: systemPrompt, messages: [{ role: 'user', content: transcript }], maxTokens: 3000, temperature: 0.1 });
+      const completeFn = this.aiProvider.completeAnalytics || this.aiProvider.complete || this.aiProvider;
+      const response = await completeFn({ system: systemPrompt, messages: [{ role: 'user', content: transcript }], maxTokens: 3000, temperature: 0.1 });
       const text = typeof response === 'string' ? response : (response.text || response.content || '');
       return this._parseResponse(text);
     } catch (err) {

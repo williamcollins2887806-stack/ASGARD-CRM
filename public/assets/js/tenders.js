@@ -1,5 +1,5 @@
 window.AsgardTendersPage = (function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, hideModal, money } = AsgardUI;
   const V = AsgardValidate;
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(r==="DIRECTOR"||String(r||"").startsWith("DIRECTOR_"));
 
@@ -67,7 +67,43 @@ window.AsgardTendersPage = (function(){
     return `<a ${attrs}>${label}</a>`;
   }
 
+  function getFileExtension(doc){
+    const name = doc.original_name || doc.name || doc.filename || '';
+    const m = name.match(/\.(\w+)$/);
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  function isPreviewableExt(ext){
+    return /^(pdf|jpg|jpeg|png|gif|bmp|webp|svg)$/i.test(ext);
+  }
+
+  async function previewDocument(doc){
+    const url = buildDocumentLink(doc);
+    if(!url){ toast("Просмотр","Файл недоступен","err"); return; }
+    const ext = getFileExtension(doc);
+    const name = doc.name || doc.original_name || doc.filename || 'Документ';
+    if(!isPreviewableExt(ext)){
+      openDocumentLink(doc);
+      return;
+    }
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch(url, { headers:{ 'Authorization':'Bearer '+auth.token } });
+      if(!resp.ok) throw new Error('Не удалось загрузить');
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      if(/^pdf$/i.test(ext)){
+        showModal({ title:esc(name), html:`<iframe src="${blobUrl}" class="cr-file-preview-frame"></iframe>`, fullscreen:true });
+      } else {
+        showModal(esc(name), `<div class="cr-file-preview-img-wrap"><img src="${blobUrl}" class="cr-file-preview-img" alt="${esc(name)}"/></div>`);
+      }
+    } catch(e){
+      toast("Просмотр", e.message||"Ошибка","err");
+    }
+  }
+
   const TENDER_TYPES = ["Тендер","Запрос предложений","Оценка рынка","Прямой запрос","Доп. объём"];
+  let _typeChipsEl = null; // CrField.chips element for tender type (set in openTenderEditor)
 
   // === ЧЕРНОВИКИ ТЕНДЕРОВ ===
   const DRAFT_KEY = 'asgard_tender_draft';
@@ -107,42 +143,51 @@ window.AsgardTendersPage = (function(){
   }
 
   function getDraftFormData() {
+    const _pm = (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_period_month')) || '';
+    const _py = (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_period_year')) || '';
     return {
-      period: document.getElementById("e_period")?.value || '',
-      customer_inn: document.getElementById("e_inn")?.value || '',
-      customer_name: document.getElementById("e_customer")?.value || '',
+      period: (_py && _pm) ? `${_py}-${_pm}` : '',
+      customer_inn: CRAutocomplete.getValue("e_inn") || '',
+      customer_name: CRAutocomplete.getValue("e_customer") || '',
       tender_title: document.getElementById("e_title")?.value || '',
-      tender_type: document.getElementById("e_type")?.value || '',
+      tender_type: (typeof _typeChipsEl !== 'undefined' && _typeChipsEl && _typeChipsEl._crGetValue) ? (_typeChipsEl._crGetValue() || '') : (CRSelect.getValue('e_type') || ''),
       tender_price: document.getElementById("e_price")?.value || '',
-      group_tag: document.getElementById("e_tag")?.value || '',
-      work_start_plan: document.getElementById("e_ws")?.value || '',
-      work_end_plan: document.getElementById("e_we")?.value || '',
+      tag_id: (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_tag')) || '',
+      work_start_plan: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_ws')) || '',
+      work_end_plan: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_we')) || '',
       purchase_url: document.getElementById("e_url")?.value || '',
-      docs_deadline: document.getElementById("e_docs_deadline")?.value || '',
-      tender_comment_to: document.getElementById("e_c_to")?.value || ''
+      docs_deadline: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_docs_deadline')) || '',
+      tender_comment_to: '' // deprecated — comments are now in tender_comments table
     };
   }
 
   function restoreDraftToForm(draft) {
     if (!draft) return;
     const fields = {
-      'e_period': draft.period,
-      'e_inn': draft.customer_inn,
-      'e_customer': draft.customer_name,
       'e_title': draft.tender_title,
-      'e_type': draft.tender_type,
       'e_price': draft.tender_price,
-      'e_tag': draft.group_tag,
-      'e_ws': draft.work_start_plan,
-      'e_we': draft.work_end_plan,
       'e_url': draft.purchase_url,
-      'e_docs_deadline': draft.docs_deadline,
-      'e_c_to': draft.tender_comment_to
+      // e_c_to removed — comments now in feed
     };
     for (const [id, value] of Object.entries(fields)) {
       const el = document.getElementById(id);
       if (el && value) el.value = value;
     }
+    if (draft.period) {
+      const [y, m] = draft.period.split('-');
+      if (y) CRSelect.setValue('e_period_year', y);
+      if (m) CRSelect.setValue('e_period_month', m);
+    }
+    if (draft.work_start_plan && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_ws', draft.work_start_plan);
+    if (draft.work_end_plan && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_we', draft.work_end_plan);
+    if (draft.docs_deadline && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_docs_deadline', draft.docs_deadline);
+    if (draft.customer_inn) CRAutocomplete.setValue('e_inn', draft.customer_inn);
+    if (draft.customer_name) CRAutocomplete.setValue('e_customer', draft.customer_name);
+    if (draft.tender_type) {
+      if (_typeChipsEl && _typeChipsEl._crSetValue) _typeChipsEl._crSetValue(draft.tender_type);
+      else CRSelect.setValue('e_type', draft.tender_type);
+    }
+    if (draft.tag_id) CRSelect.setValue('e_tag', draft.tag_id);
   }
 
   // === ПРОВЕРКА ДУБЛИКАТОВ (Этап 34) ===
@@ -300,21 +345,50 @@ window.AsgardTendersPage = (function(){
     // Limits defaults
     if(!Number.isFinite(obj.limits.pm_active_calcs_limit)) obj.limits.pm_active_calcs_limit = 6;
     if(typeof obj.limits.pm_active_calcs_done_statuses !== 'string')
-      obj.limits.pm_active_calcs_done_statuses = 'Согласование ТКП, ТКП согласовано, Клиент отказался, Клиент согласился';
+      obj.limits.pm_active_calcs_done_statuses = 'Согласование ТКП, ТКП согласовано, Выиграли, Проиграли';
 
     return obj;
   }
 
-async function getRefs(){
+// State machine тендеров — допустимые переходы (зеркало бэкенда)
+  const TENDER_TRANSITIONS = {
+    'Черновик':              ['Новый'],
+    'Новый':                 ['Отправлено на просчёт', 'Проиграли'],
+    'Отправлено на просчёт': ['Согласование ТКП', 'Проиграли'],
+    'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли'],
+    'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли'],
+    'КП отправлено':         ['Выиграли', 'Проиграли'],
+    'Выиграли':              [],
+    'Проиграли':             ['Новый']
+  };
+
+  const TENDER_STATUS_COLORS = {
+    'Черновик': '#6c757d', 'Новый': '#5b8def', 'Отправлено на просчёт': '#f39c12',
+    'Согласование ТКП': '#e67e22', 'ТКП согласовано': '#27ae60', 'КП отправлено': '#17a2b8',
+    'Выиграли': '#2ecc71', 'Проиграли': '#e74c3c', 'Не подходит': '#95a5a6'
+  };
+
+  function tenderStatusBadge(status) {
+    const bg = TENDER_STATUS_COLORS[status] || '#6c757d';
+    return `<span class="cr-status-badge" style="background:${bg}">${esc(status || '')}</span>`;
+  }
+
+  async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
-    const defaultStatuses = ['Черновик','Новый','В работе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Выиграли','Проиграли','Контракт','Клиент отказался','Клиент согласился','Отказ'];
+    const defaultStatuses = ['Черновик','Новый','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','КП отправлено','Выиграли','Проиграли'];
     if(refs && refs.tender_statuses && refs.tender_statuses.length) return refs;
     return { tender_statuses: defaultStatuses, reject_reasons: (refs && refs.reject_reasons) || [] };
   }
 
   async function getUsers(){
     const users = await AsgardDB.all("users");
-    return users.filter(u=>u.is_active && u.name && u.name.trim());
+    return users.filter(u =>
+      u.is_active &&
+      u.name && u.name.trim() &&
+      u.role !== 'BOT' &&
+      !String(u.login||'').startsWith('test_') &&
+      u.login !== 'mimir_bot'
+    );
   }
 
   function canEditTender(user, tender){
@@ -326,14 +400,6 @@ async function getRefs(){
     }
     return {full:false, limited:false};
   }
-
-  function money(x){
-    if(x===null || x===undefined || x==="") return "";
-    const n=Number(x);
-    if(Number.isNaN(n)) return esc(x);
-    return n.toLocaleString("ru-RU");
-  }
-
   async function audit(actorId, entityType, entityId, action, payload){
     await AsgardDB.add("audit_log", {
       actor_user_id: actorId,
@@ -360,23 +426,34 @@ async function getRefs(){
 
   function norm(s){ return String(s||"").toLowerCase().trim(); }
 
+  const _monthNamesShort = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  function fmtPeriod(p){
+    if(!p) return '—';
+    const m = String(p).match(/^(\d{4})-(\d{2})$/);
+    if(!m) return esc(p);
+    const mi = Number(m[2])-1;
+    return `${_monthNamesShort[mi]||m[2]} ${m[1]}`;
+  }
+
   function tenderRow(t, pmName, createdByName){
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const ds = fmtDate(t.work_start_plan);
     const de = fmtDate(t.work_end_plan);
     const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Ссылка</a>` : "—";
     const ddl = fmtDate(t.docs_deadline);
+    const archiveInfo = t.tender_status === 'Не подходит' ? `<div class="help" style="color:var(--t3);margin-top:4px">📁 ${esc(t.archive_reason||'—')} · ${esc((t.archive_comment||'').substring(0,60))}${(t.archive_comment||'').length>60?'...':''}</div>` : '';
     return `<tr data-id="${t.id}">
       <td><input type="checkbox" class="tender-check" value="${t.id}" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>
-      <td>${esc(t.period||"")}</td>
+      <td>${fmtPeriod(t.period)}</td>
       <td>
         <b>${esc(t.customer_name||"")}</b>
         <div class="help">${esc(t.customer_inn||"")}</div>
         <div class="help">${esc(t.tender_title||"")}</div>
+        ${archiveInfo}
       </td>
       <td>${esc(pmName||"—")}</td>
       <td>${esc(t.tender_type||"—")}</td>
-      <td>${t.tender_status==='Черновик'?'<span class="badge draft">Черновик</span>':esc(t.tender_status||"")}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
+      <td>${tenderStatusBadge(t.tender_status)}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
       <td>${ddl}</td>
       <td>${esc(createdByName||"—")}</td>
       <td>${t.tender_price?money(t.tender_price):"—"}</td>
@@ -397,10 +474,14 @@ async function getRefs(){
     // Status badge color
     let statusCls = '';
     const st = t.tender_status || '';
-    if (['Контракт','Выиграли','Клиент согласился'].includes(st)) statusCls = 'ok';
-    else if (['Проиграли','Отказ','Клиент отказался'].includes(st)) statusCls = 'err';
-    else if (st === 'Черновик') statusCls = 'draft';
+    if (st === 'Выиграли') statusCls = 'ok';
+    else if (st === 'Проиграли') statusCls = 'err';
+    else if (st === 'Черновик' || st === 'Не подходит') statusCls = 'draft';
     else statusCls = 'info';
+
+    const archiveInfo = t.tender_status === 'Не подходит'
+      ? '<div style="font-size:12px;color:var(--t3);margin-top:6px;padding:6px 8px;background:rgba(149,165,166,.1);border-radius:6px">📁 ' + esc(t.archive_reason||'—') + ' · ' + esc((t.archive_comment||'').substring(0,50)) + ((t.archive_comment||'').length>50?'...':'') + '</div>'
+      : '';
 
     return '<div class="m-tender-card" data-id="' + t.id + '">' +
       '<div class="m-tc-header">' +
@@ -408,6 +489,7 @@ async function getRefs(){
         '<span class="m-tc-badge m-tc-' + statusCls + '">' + esc(st || '—') + '</span>' +
       '</div>' +
       '<div class="m-tc-title">' + esc(t.tender_title || '') + '</div>' +
+      archiveInfo +
       '<div class="m-tc-meta">' +
         '<div class="m-tc-field"><span class="m-tc-label">РП</span><span>' + esc(pmName || '—') + '</span></div>' +
         '<div class="m-tc-field"><span class="m-tc-label">Тип</span><span>' + esc(t.tender_type || '—') + '</span></div>' +
@@ -415,7 +497,7 @@ async function getRefs(){
         '<div class="m-tc-field"><span class="m-tc-label">Сумма</span><span class="m-tc-price">' + price + '</span></div>' +
       '</div>' +
       '<div class="m-tc-footer">' +
-        '<span class="m-tc-period">' + esc(t.period || '') + '</span>' +
+        '<span class="m-tc-period">' + fmtPeriod(t.period) + '</span>' +
         '<button class="btn mini" data-act="open">Открыть</button>' +
       '</div>' +
     '</div>';
@@ -477,33 +559,33 @@ async function getRefs(){
 
     let sortKey="id", sortDir=-1;
 
+    let archiveMode = false; // true = показываем архив (Не подходит)
+
     const body = `
       ${tableCSS()}
+      <style>
+        .tender-tabs { display:flex; gap:0; border-bottom:2px solid var(--brd); margin-bottom:16px; }
+        .tender-tab { padding:10px 20px; cursor:pointer; font-weight:600; font-size:14px; border-bottom:3px solid transparent; margin-bottom:-2px; color:var(--t3); transition:all .2s; user-select:none; }
+        .tender-tab:hover { color:var(--t1); }
+        .tender-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+        .tender-tab .tab-badge { display:inline-block; background:var(--err-t); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:99px; margin-left:6px; vertical-align:middle; }
+        .archive-info-row { display:flex; gap:16px; align-items:center; padding:10px 14px; background:rgba(149,165,166,.1); border-radius:8px; margin-bottom:8px; font-size:13px; color:var(--t2); }
+        .archive-info-row b { color:var(--t1); }
+      </style>
       <div class="panel">
         <div class="help">
           Реестр тендеров и передача в просчёт. После передачи ТО ограничен: документы/ссылка/тег/комментарий ТО.
           Переназначение РП — только директор/админ, с причиной и записью в журнал.
         </div>
         <hr class="hr"/>
+        <div class="tender-tabs">
+          <div class="tender-tab active" id="tabActive">Активные</div>
+          <div class="tender-tab" id="tabArchive">📁 Архив <span class="tab-badge" id="archiveBadge" style="display:none">0</span></div>
+        </div>
         <div class="tools m-tender-tools">
           <div class="field">
             <label>Период</label>
-            <select id="f_period">
-              <option value="">Все тендеры</option>
-              <option value="year:${new Date().getFullYear()}" selected>За ${new Date().getFullYear()} год</option>
-              <option value="year:${new Date().getFullYear()-1}">За ${new Date().getFullYear()-1} год</option>
-              ${(() => {
-                const opts = [];
-                const now = new Date();
-                for(let i = 0; i < 12; i++) {
-                  const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                  const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-                  const label = d.toLocaleDateString('ru-RU', {month:'long', year:'numeric'});
-                  opts.push('<option value="'+ym+'">'+label+'</option>');
-                }
-                return opts.join('');
-              })()}
-            </select>
+            <div id="f_period_w"></div>
           </div>
           <div class="field">
             <label>Поиск</label>
@@ -511,24 +593,15 @@ async function getRefs(){
           </div>
           <div class="field">
             <label>Тип</label>
-            <select id="f_type">
-              <option value="">Все</option>
-              ${TENDER_TYPES.map(tp=>`<option value="${esc(tp)}">${esc(tp)}</option>`).join("")}
-            </select>
+            <div id="f_type_w"></div>
           </div>
           <div class="field">
             <label>Статус</label>
-            <select id="f_status">
-              <option value="">Все</option>
-              ${refs.tender_statuses.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}
-            </select>
+            <div id="f_status_w"></div>
           </div>
           <div class="field">
             <label>Ответственный РП</label>
-            <select id="f_pm">
-              <option value="">Все</option>
-              ${pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}
-            </select>
+            <div id="f_pm_w"></div>
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap">
             <button class="btn" id="btnNew">+ Внести тендер</button>
@@ -570,6 +643,18 @@ async function getRefs(){
 
     await layout(body, {title: title||"Сага Тендеров"});
 
+    /* --- CRSelect: filter bar --- */
+    const _periodOpts = (() => {
+      const o = [{ value: '', label: 'Все тендеры' }, { value: 'year:' + new Date().getFullYear(), label: 'За ' + new Date().getFullYear() + ' год' }, { value: 'year:' + (new Date().getFullYear()-1), label: 'За ' + (new Date().getFullYear()-1) + ' год' }];
+      const now = new Date();
+      for(let i = 0; i < 12; i++) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); o.push({ value: ym, label: d.toLocaleDateString('ru-RU', {month:'long', year:'numeric'}) }); }
+      return o;
+    })();
+    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _periodOpts, value: 'year:' + new Date().getFullYear(), onChange: () => applyAndRender() }));
+    $('#f_type_w')?.appendChild(CRSelect.create({ id: 'f_type', options: [{ value: '', label: 'Все' }, ...TENDER_TYPES.map(tp => ({ value: tp, label: tp }))], onChange: () => applyAndRender() }));
+    $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...refs.tender_statuses.map(s => ({ value: s, label: s }))], onChange: () => applyAndRender() }));
+    $('#f_pm_w')?.appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...pms.map(p => ({ value: String(p.id), label: p.name }))], searchable: true, onChange: () => applyAndRender() }));
+
     const tb=$("#tb");
     const cnt=$("#cnt");
     const distPanel = $("#dist_panel");
@@ -588,7 +673,7 @@ async function getRefs(){
       const doneRaw = String(appS?.limits?.pm_active_calcs_done_statuses||"");
       const done = new Set(doneRaw.split(",").map(s=>s.trim()).filter(Boolean));
       if(done.size===0){
-        ["Согласование ТКП","ТКП согласовано","Клиент отказался","Клиент согласился"].forEach(x=>done.add(x));
+        ["Согласование ТКП","ТКП согласовано","Выиграли","Проиграли"].forEach(x=>done.add(x));
       }
       const activeByPm = new Map();
       for(const t of tenders){
@@ -615,7 +700,7 @@ async function getRefs(){
             <td>${esc(ddl)}</td>
             <td>${esc(createdBy)}</td>
             <td style="white-space:nowrap">
-              <select id="dist_pm_${t.id}" style="min-width:220px">${opts}</select>
+              <div id="dist_pm_${t.id}_w" style="display:inline-block;min-width:220px;vertical-align:middle"></div>
               <button class="btn red" style="padding:6px 10px; margin-left:8px" data-assign="${t.id}">Назначить</button>
             </td>
           </tr>
@@ -641,11 +726,22 @@ async function getRefs(){
         <hr class="hr"/>
       `;
 
+      /* Mount CRSelect for each distribution row */
+      pending.forEach(t => {
+        const w = distPanel.querySelector(`#dist_pm_${t.id}_w`);
+        if (!w) return;
+        const distOpts = pms.map(p => {
+          const a = activeByPm.get(p.id)||0;
+          const dis = (lim>0 && a>=lim);
+          return { value: String(p.id), label: `${p.name} (${a}/${lim||'∞'})`, disabled: dis };
+        });
+        w.appendChild(CRSelect.create({ id: 'dist_pm_' + t.id, options: distOpts, placeholder: 'Выберите РП', searchable: true }));
+      });
+
       distPanel.querySelectorAll("button[data-assign]").forEach(btn=>{
         btn.addEventListener("click", async ()=>{
           const tid = Number(btn.getAttribute("data-assign"));
-          const sel = distPanel.querySelector(`#dist_pm_${tid}`);
-          const pmId = Number(sel && sel.value || 0);
+          const pmId = Number(CRSelect.getValue('dist_pm_' + tid) || 0);
           if(!pmId){ toast("Распределение","Выберите РП","err"); return; }
 
           // актуализируем и проверяем, что уже не назначено
@@ -658,7 +754,7 @@ async function getRefs(){
           const doneRaw2 = String(appS2?.limits?.pm_active_calcs_done_statuses||"");
           const done2 = new Set(doneRaw2.split(",").map(s=>s.trim()).filter(Boolean));
           if(done2.size===0){
-            ["Согласование ТКП","ТКП согласовано","Клиент отказался","Клиент согласился"].forEach(x=>done2.add(x));
+            ["Согласование ТКП","ТКП согласовано","Выиграли","Проиграли"].forEach(x=>done2.add(x));
           }
           const all = await AsgardDB.all("tenders");
           const active = all.filter(t=>t.handoff_at && Number(t.responsible_pm_id||0)===pmId && !done2.has(String(t.tender_status||""))).length;
@@ -682,7 +778,7 @@ async function getRefs(){
       });
     })();
 
-    // ===== Stage 7: Назначение РП на работу после статуса «Клиент согласился» =====
+    // ===== Stage 7: Назначение РП на работу после статуса «Выиграли» =====
     await (async function renderWinAssignPanel(){
       if(!winPanel) return;
       const canWin = (isDirRole(user.role) || user.role==="ADMIN");
@@ -734,6 +830,7 @@ async function getRefs(){
         await render({layout, title});
       }
 
+      const _winOptsMap = new Map();
       const rows = await Promise.all(reqs.map(async r=>{
         const t = await AsgardDB.get("tenders", r.tender_id);
         if(!t) return "";
@@ -742,6 +839,7 @@ async function getRefs(){
         const srcPm = (byId.get(r.source_pm_id)||{}).name || "—";
 
         const opts = [];
+        const crOpts = [];
         for(const p of pms){
           // overlap calc with existing works of PM
           const pmWorks = worksAll.filter(w=>Number(w.pm_id||0)===Number(p.id));
@@ -756,7 +854,9 @@ async function getRefs(){
           const warn = (maxOv>0 && maxOv<=7) ? ` ⚠${maxOv}д` : (maxOv>7 ? ` ⛔${maxOv}д` : "");
           const ovr = okOverride ? " ✅согл" : "";
           opts.push(`<option value="${p.id}" ${disabled}>${esc(p.name)}${warn}${ovr}</option>`);
+          crOpts.push({ value: String(p.id), label: p.name + warn + ovr, disabled: !!(maxOv>7 && !okOverride) });
         }
+        _winOptsMap.set(r.id, crOpts);
 
         return `
           <tr>
@@ -766,7 +866,7 @@ async function getRefs(){
             <td>${r.price_tkp!=null?money(r.price_tkp):"—"} / ${r.cost_plan!=null?money(r.cost_plan):"—"}</td>
             <td>${esc(srcPm)}</td>
             <td style="white-space:nowrap">
-              <select id="win_pm_${r.id}" style="min-width:240px">${opts.join("")}</select>
+              <div id="win_pm_${r.id}_w" style="display:inline-block;min-width:240px;vertical-align:middle"></div>
               <button class="btn red" style="padding:6px 10px; margin-left:8px" data-win-assign="${r.id}">Назначить</button>
               <button class="btn ghost" style="padding:6px 10px; margin-left:8px" data-win-consent="${r.id}">Запросить согласие</button>
             </td>
@@ -780,7 +880,7 @@ async function getRefs(){
             <h3 style="margin:0">Назначение РП на работу (победы)</h3>
             <span class="badge">${reqs.length}</span>
           </div>
-          <div class="help">Запрос создаётся после статуса «Клиент согласился» у РП в просчёте. Пересечение плановых сроков: ≤7 дней — предупреждение, >7 дней — блок (override только после согласия РП).</div>
+          <div class="help">Запрос создаётся после статуса «Выиграли» у РП в просчёте. Пересечение плановых сроков: ≤7 дней — предупреждение, >7 дней — блок (override только после согласия РП).</div>
           <div style="overflow:auto; margin-top:10px">
             <table class="t" style="min-width:1050px">
               <thead>
@@ -793,6 +893,12 @@ async function getRefs(){
         <hr class="hr"/>
       `;
 
+      /* Mount CRSelect for each win-assign row */
+      _winOptsMap.forEach((crOpts, reqId) => {
+        const w = winPanel.querySelector(`#win_pm_${reqId}_w`);
+        if (w) w.appendChild(CRSelect.create({ id: 'win_pm_' + reqId, options: crOpts, placeholder: 'Выберите РП', searchable: true }));
+      });
+
       winPanel.querySelectorAll("button[data-win-assign]").forEach(btn=>{
         btn.addEventListener("click", async ()=>{
           const reqId = Number(btn.getAttribute("data-win-assign"));
@@ -800,8 +906,7 @@ async function getRefs(){
           if(!req || req.status!=="pending"){ toast("Назначение","Уже обработано","warn"); await render({layout,title}); return; }
           const tender = await AsgardDB.get("tenders", req.tender_id);
           if(!tender){ toast("Назначение","Тендер не найден","err"); return; }
-          const sel = winPanel.querySelector(`#win_pm_${reqId}`);
-          const pmId = Number(sel && sel.value || 0);
+          const pmId = Number(CRSelect.getValue('win_pm_' + reqId) || 0);
           if(!pmId){ toast("Назначение","Выберите РП","err"); return; }
 
           // Check overlap again
@@ -868,8 +973,7 @@ async function getRefs(){
           const req = await AsgardDB.get("work_assign_requests", reqId);
           if(!req || req.status!=="pending"){ toast("Согласие","Запрос неактуален","warn"); return; }
           const tender = await AsgardDB.get("tenders", req.tender_id);
-          const sel = winPanel.querySelector(`#win_pm_${reqId}`);
-          const pmId = Number(sel && sel.value || 0);
+          const pmId = Number(CRSelect.getValue('win_pm_' + reqId) || 0);
           if(!pmId){ toast("Согласие","Выберите РП в списке","err"); return; }
           await requestOverride({reqId, pmId, tender});
         });
@@ -878,13 +982,20 @@ async function getRefs(){
 
     function applyAndRender(){
 
-      const periodVal = $("#f_period")?.value||"";
+      const periodVal = CRSelect.getValue('f_period')||"";
       const q = norm($("#f_q")?.value||"");
-      const tp = $("#f_type")?.value||"";
-      const st = $("#f_status")?.value||"";
-      const pm = $("#f_pm")?.value||"";
+      const tp = CRSelect.getValue('f_type')||"";
+      const st = CRSelect.getValue('f_status')||"";
+      const pm = CRSelect.getValue('f_pm')||"";
 
       let list = tenders.filter(t=>{
+        // Режим архива: только "Не подходит"
+        if(archiveMode) {
+          if(t.tender_status !== 'Не подходит') return false;
+        } else {
+          // Активные: исключаем "Не подходит"
+          if(t.tender_status === 'Не подходит') return false;
+        }
         // Фильтр по периоду
         if(periodVal) {
           if(periodVal.startsWith("year:")) {
@@ -897,10 +1008,10 @@ async function getRefs(){
           }
         }
         if(tp && String(t.tender_type||"")!==String(tp)) return false;
-        if(st && t.tender_status!==st) return false;
+        if(!archiveMode && st && t.tender_status!==st) return false;
         if(pm && String(t.responsible_pm_id||"")!==String(pm)) return false;
         if(q){
-          const hay = `${t.customer_inn||""} ${t.customer_name||""} ${t.tender_title||""} ${t.purchase_url||""} ${t.group_tag||""} ${t.tender_type||""}`.toLowerCase();
+          const hay = `${t.customer_inn||""} ${t.customer_name||""} ${t.tender_title||""} ${t.purchase_url||""} ${t.group_tag||""} ${t.tender_type||""} ${t.archive_reason||""} ${t.archive_comment||""}`.toLowerCase();
           if(!hay.includes(q)) return false;
         }
         return true;
@@ -951,27 +1062,49 @@ async function getRefs(){
         );
       }
       cnt.textContent = `Показано: ${list.length} из ${tenders.length}.`;
+      // Обновляем бейдж архива
+      const archiveCount = tenders.filter(t => t.tender_status === 'Не подходит').length;
+      const archiveBadge = document.getElementById('archiveBadge');
+      if(archiveBadge) {
+        archiveBadge.textContent = archiveCount;
+        archiveBadge.style.display = archiveCount > 0 ? '' : 'none';
+      }
     }
 
     applyAndRender();
+
+    // Табы "Активные" / "Архив"
+    const tabActive = document.getElementById('tabActive');
+    const tabArchive = document.getElementById('tabArchive');
+    if(tabActive) tabActive.addEventListener('click', () => {
+      archiveMode = false;
+      tabActive.classList.add('active');
+      tabArchive.classList.remove('active');
+      currentPage = 1;
+      applyAndRender();
+    });
+    if(tabArchive) tabArchive.addEventListener('click', () => {
+      archiveMode = true;
+      tabArchive.classList.add('active');
+      tabActive.classList.remove('active');
+      currentPage = 1;
+      applyAndRender();
+    });
 
     // Мобильные карточки
     if (window.AsgardUI?.makeResponsiveTable) {
       AsgardUI.makeResponsiveTable('.asg');
     }
 
-    $("#f_period").addEventListener("change", applyAndRender);
+    // CRSelect onChange уже вызывает applyAndRender()
     $("#f_q").addEventListener("input", applyAndRender);
-    $("#f_type").addEventListener("change", applyAndRender);
-    $("#f_status").addEventListener("change", applyAndRender);
-    $("#f_pm").addEventListener("change", applyAndRender);
 
     $("#btnReset").addEventListener("click", ()=>{
-      $("#f_period").value = "year:" + new Date().getFullYear();
+      CRSelect.setValue('f_period', 'year:' + new Date().getFullYear());
       $("#f_q").value="";
-      $("#f_type").value="";
-      $("#f_status").value="";
-      $("#f_pm").value="";
+      CRSelect.setValue('f_type', '');
+      CRSelect.setValue('f_status', '');
+      CRSelect.setValue('f_pm', '');
       applyAndRender();
     });
 
@@ -1014,15 +1147,16 @@ async function getRefs(){
         const html = `
           <div style="margin-bottom:16px">Выбрано тендеров: <b>${ids.length}</b></div>
           <div class="formrow">
-            <div><label>Новый ответственный РП</label><select id="bulk_sel_pm"><option value="">— выбрать —</option>${pmOpts}</select></div>
+            <div><label>Новый ответственный РП</label><div id="bulk_sel_pm_w"></div></div>
             <div><label>Причина</label><input id="bulk_sel_reason" value="Переназначение"/></div>
           </div>
           <hr class="hr"/>
           <button class="btn" id="bulk_sel_do">Переназначить</button>
         `;
         showModal("Переназначение выбранных тендеров", html);
+        $('#bulk_sel_pm_w')?.appendChild(CRSelect.create({ id: 'bulk_sel_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), searchable: true, dropdownClass: 'z-modal' }));
         $("#bulk_sel_do").addEventListener("click", async ()=>{
-          const newPmId = Number($("#bulk_sel_pm").value||0);
+          const newPmId = Number(CRSelect.getValue('bulk_sel_pm')||0);
           const reason = ($("#bulk_sel_reason").value||"").trim();
           if(!newPmId){ toast("Ошибка","Выберите РП","err"); return; }
           if(!reason){ toast("Ошибка","Укажите причину","err"); return; }
@@ -1088,17 +1222,11 @@ async function getRefs(){
           <div class="formrow">
             <div>
               <label>Статус тендеров для переноса</label>
-              <select id="bulk_status">
-                <option value="__ALL__">— Все статусы —</option>
-                ${statusOpts}
-              </select>
+              <div id="bulk_status_w"></div>
             </div>
             <div>
               <label>Новый ответственный РП</label>
-              <select id="bulk_pm">
-                <option value="">— выбрать —</option>
-                ${pmOpts}
-              </select>
+              <div id="bulk_pm_w"></div>
             </div>
           </div>
           <div class="formrow">
@@ -1115,10 +1243,12 @@ async function getRefs(){
         `;
         
         showModal("Массовое переназначение тендеров", html);
-        
+        $('#bulk_status_w')?.appendChild(CRSelect.create({ id: 'bulk_status', options: [{ value: '__ALL__', label: '— Все статусы —' }, ...Object.keys(byStatus).map(s => ({ value: s, label: s + ' (' + byStatus[s].length + ')' }))], value: '__ALL__', dropdownClass: 'z-modal' }));
+        $('#bulk_pm_w')?.appendChild(CRSelect.create({ id: 'bulk_pm', placeholder: '— выбрать —', options: pms.filter(p => p.login !== 'archive').map(p => ({ value: String(p.id), label: p.name })), searchable: true, dropdownClass: 'z-modal' }));
+
         $("#bulk_do").addEventListener("click", async ()=>{
-          const newPmId = Number($("#bulk_pm").value || 0);
-          const statusFilter = $("#bulk_status").value;
+          const newPmId = Number(CRSelect.getValue('bulk_pm') || 0);
+          const statusFilter = CRSelect.getValue('bulk_status') || '__ALL__';
           const reason = $("#bulk_reason").value.trim();
           
           if(!newPmId){ toast("Ошибка", "Выберите РП", "err"); return; }
@@ -1166,6 +1296,17 @@ async function getRefs(){
       const rights = canEditTender(user, t||{handoff_at:null});
       const isNew = !t;
 
+      // Load tender tags from API
+      let tenderTags = [];
+      try {
+        const auth = await AsgardAuth.getAuth();
+        const tagResp = await fetch('/api/tenders/tags', { headers: { 'Authorization': 'Bearer ' + auth.token } });
+        if (tagResp.ok) {
+          const tagData = await tagResp.json();
+          tenderTags = tagData.tags || [];
+        }
+      } catch(e) { /* fallback: empty list */ }
+
       const pmOptions = pms.map(p=>{
         const sel = (t && t.responsible_pm_id===p.id) ? "selected" : "";
         return `<option value="${p.id}" ${sel}>${esc(p.name)}</option>`;
@@ -1182,137 +1323,479 @@ async function getRefs(){
       }).join("");
 
       const docList = (await AsgardDB.byIndex("documents","tender_id", tenderId||-1)) || [];
-      const docsHtml = docList.length ? docList.map(d=>`
-        <div class="pill" style="gap:10px">
-          <div class="who"><b>${esc(d.type||"Документ")}</b> — ${renderDocumentAnchor(d)}</div>
-          <button class="btn ghost" style="padding:6px 10px" data-del-doc="${d.id}">Удалить</button>
-        </div>
-      `).join("") : `<div class="help">Пока нет документов. Добавляйте ссылки на Я.Диск/площадку.</div>`;
+      const docsHtml = docList.length ? docList.map(d=>{
+        const ext = getFileExtension(d);
+        const canPreview = isPreviewableExt(ext);
+        return `<div class="cr-doc-item">
+          <div class="cr-doc-info"><b>${esc(d.type||"Документ")}</b> — ${renderDocumentAnchor(d)}</div>
+          <div class="cr-doc-actions">
+            ${canPreview ? `<button class="btn ghost mini" data-preview-doc="${d.id}" title="Предпросмотр">👁</button>` : ''}
+            <button class="btn ghost mini" data-del-doc="${d.id}">Удалить</button>
+          </div>
+        </div>`;
+      }).join("") : AsgardUI.emptyState({ icon:'📄', title:'Нет прикреплённых документов', desc:'Загрузите файл или добавьте ссылку' });
 
-      const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>🔒</b> Передано в ТО: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
+      const lockedMsg = t && t.handoff_at ? `<div class="tag"><b>🔒</b> Передано в просчёт: ${esc(formatDateTime(t.handoff_at))}</div>` : "";
       const canReassign = (isDirRole(user.role) || user.role==="ADMIN");
+      const canArchive = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_TO'].includes(user.role);
 
       const full = rights.full || isNew;
       const limited = rights.limited;
 
+      // ═══════════════════════════════════════════════════════════════
+      // WIZARD HTML — 3 steps: Основное / Условия / Документы
+      // ═══════════════════════════════════════════════════════════════
+      const _stepperHtml = isNew ? `<div id="e_stepper"></div>` : '';
+
       const html = `
-        <div class="help">
-          ${lockedMsg}
-          ${t && t.handoff_at ? `После передачи ТО меняет только: «Ссылка», «Тег», «Комментарий ТО», «Документы».` : `До передачи запись редактируется свободно.`}
-        </div>
-        <hr class="hr"/>
-        <div class="formrow">
-          <div>
-            <label>Период (YYYY-MM)</label>
-            <input id="e_period" value="${esc((t&&t.period)||ymNow())}" ${full?"":"disabled"} />
+        ${lockedMsg ? `<div class="help" style="margin-bottom:8px">${lockedMsg} ${t && t.handoff_at ? 'После передачи ТО меняет только: «Ссылка», «Тег», «Комментарий ТО», «Документы».' : ''}</div>` : ''}
+        ${_stepperHtml}
+
+        <!-- ═══ STEP 1: Основное ═══ -->
+        <div data-step="0">
+          <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2"/></svg></span><span>Заказчик и предмет</span></div>
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Заказчик <span class="cr-f-label__req">*</span></div>
+            <div id="cr-customer-wrap"></div>
+            <div class="cr-f-help">Начните вводить название или ИНН — выбирайте из списка.</div>
+            <div class="cr-f-help" id="innWarn" style="display:none; color:var(--err-t)">ИНН не найден в базе. Создайте карточку контрагента.</div>
+            <div id="innCreateRow" style="display:none; margin-top:6px"><a class="btn ghost mini" id="btnCreateCustomer" href="#/customers">Создать карточку</a></div>
+            <div id="customerScoreBlock" style="margin-top:8px;display:none"></div>
           </div>
-          <div>
-            <label>ИНН заказчика</label>
-            <input id="e_inn" value="${esc((t&&t.customer_inn)||"")}" ${full?"":"disabled"} list="innList" placeholder="10/12 цифр" />
-            <datalist id="innList"></datalist>
-            <div class="help">Вводите ИНН — название подставится из справочника (Настройки → Справочник заказчиков).</div>
-          </div>
-          <div>
-            <label>Заказчик</label>
-            <input id="e_customer" value="${esc((t&&t.customer_name)||"")}" ${full?"":"disabled"} placeholder="Название организации / ИНН" list="custNameList" />
-            <datalist id="custNameList"></datalist>
-            <div class="help">Начните вводить название или ИНН — выбирайте из списка. Если ИНН нет в базе, создайте карточку в «Карта Контрагентов».</div>
-            <div class="help" id="innWarn" style="display:none; margin-top:6px; color:var(--err-t)">ИНН не найден в базе. Создайте карточку контрагента.</div>
-            <div class="row" id="innCreateRow" style="display:none; justify-content:flex-start; gap:8px; margin-top:8px">
-              <a class="btn ghost" id="btnCreateCustomer" href="#/customers" style="padding:6px 10px">Создать карточку</a>
+
+          <div class="cr-f-row--2">
+            <div class="cr-f-field">
+              <div class="cr-f-label">ИНН <span class="cr-f-label__req">*</span></div>
+              <div id="cr-inn-wrap"></div>
             </div>
-            <!-- Светофор клиента -->
-            <div id="customerScoreBlock" style="margin-top:10px;display:none"></div>
+            <div class="cr-f-field">
+              <div class="cr-f-label">Период</div>
+              <div class="cr-period-row" id="e_period_w"></div>
+            </div>
           </div>
-          <div style="grid-column: 1 / -1">
-            <label>Тендер / закупка</label>
-            <input id="e_title" value="${esc((t&&t.tender_title)||"")}" ${full?"":"disabled"} />
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Наименование работ <span class="cr-f-label__req">*</span></div>
+            <input id="e_title" value="${esc((t&&t.tender_title)||"")}" ${full?"":"disabled"} placeholder="Что нужно сделать?"/>
           </div>
-          <div>
-            <label>Тип заявки</label>
-            <select id="e_type" ${full?"":"disabled"}>
-              ${typeOptions}
-            </select>
+
+          <div class="cr-f-row--2">
+            <div class="cr-f-field">
+              <div class="cr-f-label">Сумма, ₽</div>
+              <input id="e_price" class="cr-f-mono" value="${esc((t&&t.tender_price)!=null?String(t.tender_price):"")}" ${full?"":"disabled"} placeholder="0"/>
+            </div>
+            <div class="cr-f-field">
+              <div class="cr-f-label">Тип заявки</div>
+              <div id="e_type_w"></div>
+            </div>
           </div>
-          <div>
-            <label>Ответственный РП</label>
-            <select id="e_pm" ${(user.role==="TO")?"disabled":(full?"":"disabled")}>
-              <option value="">— выбрать —</option>
-              ${pmOptions}
-            </select>
-            ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="help">Назначение РП выполняет директор после кнопки «На распределение».</div>` : ``}
-            ${(t && t.distribution_requested_at && !t.handoff_at) ? `<div class="help"><b>На распределении.</b> Ожидает назначения директором.</div>` : ``}
-            ${(t && t.handoff_at && !canReassign) ? `<div class="help">Переназначение — только директор.</div>` : ``}
-            ${(t && t.handoff_at && canReassign) ? `<button class="btn ghost" style="margin-top:8px" id="btnReassign">Переназначить (директор)</button>` : ``}
+
+          <div class="cr-f-row--2">
+            <div class="cr-f-field">
+              <div class="cr-f-label">Ответственный РП <span class="cr-f-label__req">*</span></div>
+              <div id="e_pm_w"></div>
+              ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="cr-f-help">Назначение РП — директор после «На распределение».</div>` : ``}
+              ${(t && t.distribution_requested_at && !t.handoff_at) ? `<div class="cr-f-help" style="color:var(--gold)"><b>На распределении.</b> Ожидает назначения.</div>` : ``}
+              ${(t && t.handoff_at && canReassign) ? `<button class="btn ghost mini" style="margin-top:6px" id="btnReassign">Переназначить</button>` : ``}
+            </div>
+            <div class="cr-f-field">
+              <div class="cr-f-label">Статус</div>
+              <div id="e_status_w"></div>
+            </div>
           </div>
-          <div>
-            <label>Статус</label>
-            <select id="e_status" ${(!full||isNew)?"disabled":""}>
-              ${statusOptions}
-            </select>
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Тег/группа</div>
+            <div id="e_tag_w"></div>
           </div>
-          <div>
-            <label>Сумма (если есть)</label>
-            <input id="e_price" value="${esc((t&&t.tender_price)!=null?String(t.tender_price):"")}" ${full?"":"disabled"} placeholder="например: 268400"/>
-          </div>
-          <div>
-            <label>Тег/группа</label>
-            <input id="e_tag" value="${esc((t&&t.group_tag)||"")}" ${(full||limited)?"":"disabled"} placeholder="Промывка / Монтаж / Химия..."/>
-          </div>
-          <div>
-            <label>План: начало работ</label>
-            <input id="e_ws" value="${esc((t&&t.work_start_plan)||"")}" ${full?"":"disabled"} placeholder="ДД.ММ.ГГГГ"/>
-          </div>
-          <div>
-            <label>План: окончание работ</label>
-            <input id="e_we" value="${esc((t&&t.work_end_plan)||"")}" ${full?"":"disabled"} placeholder="ДД.ММ.ГГГГ"/>
-          </div>
-          <div style="grid-column: 1 / -1">
-            <label>Ссылка на комплект документов (Я.Диск/площадка)</label>
+        </div>
+
+        <!-- ═══ STEP 2: Условия ═══ -->
+        <div data-step="1">
+          <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><span>Сроки и условия</span></div>
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Ссылка на документы (Я.Диск / площадка)</div>
             <input id="e_url" value="${esc((t&&t.purchase_url)||"")}" ${(full||limited)?"":"disabled"} placeholder="https://..."/>
           </div>
-          <div>
-            <label>Дедлайн (окончание приема заявок)</label>
-            <input id="e_docs_deadline" value="${esc((t&&t.docs_deadline)||"")}" ${(full||limited)?"":"disabled"} placeholder="ДД.ММ.ГГГГ или ГГГГ-ММ-ДД"/>
-            <div class="help">Формат: ДД.ММ.ГГГГ или ГГГГ-ММ-ДД. Напоминания формируются ежедневно за N дней до дедлайна.</div>
+
+          <div class="cr-f-row--2">
+            <div class="cr-f-field">
+              <div class="cr-f-label">План: начало работ</div>
+              <div id="e_ws_w"></div>
+            </div>
+            <div class="cr-f-field">
+              <div class="cr-f-label">План: окончание работ</div>
+              <div id="e_we_w"></div>
+            </div>
           </div>
-          <div style="grid-column: 1 / -1">
-            <label>Комментарий ТО</label>
-            <input id="e_c_to" value="${esc((t&&t.tender_comment_to)||"")}" ${(full||limited)?"":"disabled"} placeholder="важные детали/контакты/сроки"/>
+
+          <div class="cr-f-field" id="e_deadline_row">
+            <div class="cr-f-label">Дедлайн (окончание приёма заявок)</div>
+            <div id="e_deadline_w"></div>
           </div>
+
           ${(t && t.reject_reason) ? `
-          <div style="grid-column: 1 / -1">
-            <label>Причина отказа</label>
+          <div class="cr-f-field">
+            <div class="cr-f-label">Причина отказа</div>
             <input autocomplete="off" value="${esc(t.reject_reason)}" disabled />
           </div>` : ``}
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Комментарии</div>
+            <div id="tc_feed" class="tc-feed"><div class="tc-empty">Загрузка...</div></div>
+            ${(full||limited) ? `<div class="tc-input-row">
+              <textarea id="tc_input" rows="1" placeholder="Комментарий..."></textarea>
+              <button class="btn mini" id="tc_send">Отправить</button>
+            </div>` : ''}
+          </div>
         </div>
 
-        <hr class="hr"/>
-        <div class="help"><b>Документы</b></div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0">
-          <button class="btn ghost" id="btnAddDoc">📎 Загрузить файл</button>
-          <button class="btn ghost" id="btnAddLink">🔗 Добавить ссылку</button>
-          ${(t && (isDirRole(user.role)||user.role==="ADMIN")) ? `<button class="btn ghost" id="btnHistory">История</button>` : ``}
+        <!-- ═══ STEP 3: Документы ═══ -->
+        <div data-step="2">
+          <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span>Документы</span></div>
+
+          <div class="cr-f-field">
+            <div class="cr-f-label">Загрузить файл</div>
+            <div id="e_dropzone_w"></div>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin:12px 0">
+            <button class="btn ghost mini" id="btnAddDoc">📎 Файл</button>
+            <button class="btn ghost mini" id="btnAddLink">🔗 Ссылку</button>
+            ${(t && (isDirRole(user.role)||user.role==="ADMIN")) ? `<button class="btn ghost mini" id="btnHistory">📜 История</button>` : ``}
+          </div>
+          <div id="docsBox" style="display:flex; flex-direction:column; gap:8px">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px">
+              <button class="btn primary mini" id="downloadAllDocs">📥 Скачать все</button>
+              <button class="btn ghost mini" id="copyAllDocs">📋 Копировать ссылки</button>
+            </div>
+            ${docsHtml}
+          </div>
+
+          ${(t && t.tender_status === 'Не подходит') ? `
+          <div class="archive-info-row" style="margin-top:16px">
+            <b>📁 Архив</b>
+            <span>Причина: <b>${esc(t.archive_reason||'—')}</b></span>
+            <span>Комментарий: ${esc(t.archive_comment||'—')}</span>
+            <span>Кто: ${esc((byId.get(t.archived_by_user_id)||{}).name||'—')}</span>
+            <span>Когда: ${esc(formatDateTime(t.archived_at))}</span>
+          </div>` : ''}
         </div>
-        <div id="docsBox" style="display:flex; flex-direction:column; gap:10px"><div class="row" style="gap:8px; flex-wrap:wrap; margin:8px 0 10px 0">
-  <button class="btn primary" id="downloadAllDocs">📥 Скачать все</button>
-  <button class="btn" id="copyAllDocs">📋 Копировать ссылки</button>
-</div>
-${docsHtml}</div>
 
-
-
-        <hr class="hr"/>
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-          <button class="btn" id="btnSave">${isNew?"Создать":"Сохранить"}</button>
-          ${!isNew ? '<button class="btn ghost" id="btnTenderActions">⚡ Действия</button>' : ''}
+        <!-- ═══ FOOTER: actions ═══ -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid var(--brd)">
           ${isNew ? `<button class="btn ghost" id="btnSaveDraft">💾 Черновик</button>` : ``}
+          <div style="flex:1"></div>
+          ${isNew ? `<button class="btn ghost" id="btnStepPrev" style="display:none">← Назад</button>` : ''}
+          <button class="${isNew?'btn ghost':'btn primary'}" id="btnSave">${isNew?"Создать тендер":"Сохранить"}</button>
+          ${isNew ? `<button class="btn gold" id="btnStepNext">Далее →</button>` : ''}
+          ${!isNew ? '<button class="btn ghost" id="btnTenderActions">⚡ Действия</button>' : ''}
           ${(t && !t.handoff_at && !t.distribution_requested_at && user.role==="TO") ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
           ${(t && !t.handoff_at && (user.role==="ADMIN"||isDirRole(user.role))) ? `<button class="btn red" id="btnHandoff">Передать в просчёт</button>` : ``}
+          ${(t && t.tender_status==='ТКП согласовано') ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено</button>` : ``}
+          ${(t && t.tender_status !== 'Не подходит' && canArchive) ? `<button class="btn ghost mini" id="btnArchiveTender" style="color:var(--err-t)">🗑 Отсеять</button>` : ``}
+          ${(t && t.tender_status === 'Не подходит' && canArchive) ? `<button class="btn ghost mini" id="btnUnarchiveTender" style="color:var(--ok-t)">♻️ Вернуть</button>` : ``}
         </div>
       `;
 
-      showModal(isNew ? "Новый тендер" : `Тендер #${t.id}`, html);
+      showModal({ title: isNew ? "Новый тендер" : `Тендер #${t.id}`, html, icon: '📋', subtitle: isNew ? 'Шаг 1 из 3 · Основная информация' : `${esc((t&&t.customer_name)||'')} · ${esc((t&&t.tender_type)||'')}` });
+
+      // ═══ STEPPER + STEP NAVIGATION ═══
+      // BUG2 FIX: scope to modal body, not entire document
+      const _modalBody = document.getElementById('modalBody');
+      let _currentStep = 0;
+      const _stepPanels = _modalBody ? Array.from(_modalBody.querySelectorAll('[data-step]')) : [];
+
+      // BUG5 FIX: all steps start visible so CRSelect/CRDatePicker mount correctly.
+      // We hide steps AFTER all mounts are done (see _initSteps() call below).
+
+      function _showStep(n) {
+        _currentStep = n;
+        _stepPanels.forEach(p => { p.style.display = (Number(p.dataset.step) === n) ? '' : 'none'; });
+        if (_stepperEl) _stepperEl._crSetStep(n);
+        const subtitleEl = document.getElementById('modalSubtitle');
+        const stepNames = ['Основная информация', 'Сроки и условия', 'Документы'];
+        if (subtitleEl && isNew) subtitleEl.textContent = `Шаг ${n+1} из 3 · ${stepNames[n]}`;
+        // Nav buttons
+        const prevBtn = document.getElementById('btnStepPrev');
+        const nextBtn = document.getElementById('btnStepNext');
+        if (prevBtn) prevBtn.style.display = n > 0 ? '' : 'none';
+        if (nextBtn) nextBtn.style.display = n < 2 ? '' : 'none';
+        // BUG4 FIX: Save always visible. On step 3 it becomes primary, on 1-2 secondary.
+        const saveBtn = document.getElementById('btnSave');
+        if (saveBtn && isNew) {
+          saveBtn.className = n === 2 ? 'btn primary' : 'btn ghost';
+        }
+      }
+
+      // Mount stepper (new tenders only) — but DON'T hide steps yet
+      let _stepperEl = null;
+      const stepperW = document.getElementById('e_stepper');
+      if (stepperW && typeof CrField !== 'undefined') {
+        _stepperEl = CrField.stepper({
+          steps: [{ label: 'Основное', id: 'main' }, { label: 'Условия', id: 'conditions' }, { label: 'Документы', id: 'docs' }],
+          current: 0,
+          onChange: (n) => _showStep(n)
+        });
+        stepperW.appendChild(_stepperEl);
+      }
+
+      // Step navigation buttons
+      const _btnNext = document.getElementById('btnStepNext');
+      const _btnPrev = document.getElementById('btnStepPrev');
+      if (_btnNext) _btnNext.addEventListener('click', () => { if (_currentStep < 2) _showStep(_currentStep + 1); });
+      if (_btnPrev) _btnPrev.addEventListener('click', () => { if (_currentStep > 0) _showStep(_currentStep - 1); });
+
+      // BUG1 FIX: DropZone uploads files immediately via the same API as btnAddDoc
+      const dzW = document.getElementById('e_dropzone_w');
+      if (dzW && typeof CrField !== 'undefined') {
+        const dz = CrField.dropZone({
+          accept: '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar',
+          text: 'Перетащите файл или нажмите для выбора',
+          onUpload: async (files) => {
+            // Upload the last added file immediately
+            const file = files[files.length - 1];
+            if (!file) return;
+            let uploadId = tenderId;
+            if (!uploadId) {
+              uploadId = await saveTender(true);
+              if (!uploadId) return;
+            }
+            if (file.size > 50 * 1024 * 1024) { toast("Ошибка", file.name + " > 50 МБ", "err"); return; }
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+              formData.append('tender_id', uploadId);
+              formData.append('type', 'Документ');
+              const _auth = await AsgardAuth.getAuth();
+              await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/files/upload');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + _auth.token);
+                xhr.timeout = 60000;
+                xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Ошибка ' + xhr.status));
+                xhr.onerror = () => reject(new Error('Сеть'));
+                xhr.ontimeout = () => reject(new Error('Таймаут'));
+                xhr.send(formData);
+              });
+              toast("Документ", file.name + " загружен", "ok");
+            } catch (err) {
+              toast("Ошибка", file.name + ": " + err.message, "err");
+            }
+          }
+        });
+        dzW.appendChild(dz);
+        if (dz._crList && !dz._crList.parentElement) dzW.appendChild(dz._crList);
+      }
+
+      /* Mount CRSelect for editor fields */
+      const _eTypeDis = !full;
+      const _ePmDis = (user.role==="TO") || !full;
+      const _eStatusDis = !full || isNew;
+      // Tender type as CrField.chips (WOW visual) instead of CRSelect
+      _typeChipsEl = null;
+      if (typeof CrField !== 'undefined' && !_eTypeDis) {
+        _typeChipsEl = CrField.chips({ options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), selected: (t&&t.tender_type)||(isNew?'Тендер':''), onChange: (v) => applyTypeRules(v) });
+        $('#e_type_w')?.appendChild(_typeChipsEl);
+      } else {
+        $('#e_type_w')?.appendChild(CRSelect.create({ id: 'e_type', options: TENDER_TYPES.map(tp => ({ value: tp, label: tp })), value: (t&&t.tender_type)||(isNew?'Тендер':''), disabled: _eTypeDis, dropdownClass: 'z-modal', onChange: (v) => applyTypeRules(v) }));
+      }
+      // PM: PersonPicker card with CRSelect dropdown behind it
+      // BUG3+6 FIX: use CRSelect onChange callback instead of setInterval
+      const _pmWrap = $('#e_pm_w');
+      let _pmPicker = null;
+      if (_pmWrap) {
+        const _selPm = pms.find(p => t && p.id === t.responsible_pm_id);
+
+        // onChange handler: update PersonPicker when CRSelect value changes
+        const _onPmChange = (val) => {
+          const pm = pms.find(p => String(p.id) === val);
+          if (pm && _pmPicker) {
+            _pmPicker._crUpdate({ name: pm.name, role: 'Руководитель проекта' });
+            _pmPicker.style.display = '';
+            _pmSelectWrap.style.display = 'none';
+          }
+        };
+
+        const _pmSelectWrap = CRSelect.create({ id: 'e_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), value: String((t&&t.responsible_pm_id)||''), disabled: _ePmDis, searchable: true, dropdownClass: 'z-modal', onChange: _onPmChange });
+
+        if (typeof CrField !== 'undefined' && _selPm && !_ePmDis) {
+          _pmPicker = CrField.personPicker({
+            name: _selPm.name,
+            role: 'Руководитель проекта',
+            color: 'linear-gradient(135deg, var(--gold), var(--gold-h))',
+            onChange: () => {
+              _pmSelectWrap.style.display = '';
+              _pmPicker.style.display = 'none';
+            }
+          });
+          _pmWrap.appendChild(_pmPicker);
+          _pmSelectWrap.style.display = 'none';
+          _pmWrap.appendChild(_pmSelectWrap);
+        } else {
+          _pmWrap.appendChild(_pmSelectWrap);
+        }
+      }
+      const _curStatus = (t&&t.tender_status)||(isNew?'Черновик':'');
+      const _isAdmin = user.role === 'ADMIN';
+      const _statusOpts = _isAdmin ? refs.tender_statuses : (TENDER_TRANSITIONS[_curStatus] || []).concat([_curStatus]);
+      $('#e_status_w')?.appendChild(CRSelect.create({ id: 'e_status', options: [...new Set(_statusOpts)].map(s => ({ value: s, label: s })), value: _curStatus, disabled: _eStatusDis, dropdownClass: 'z-modal' }));
+
+      /* Mount CRSelect for tag */
+      const _tagOpts = tenderTags.map(tg => ({ value: String(tg.id), label: tg.name }));
+      const _curTagId = (t && t.tag_id) ? String(t.tag_id) : '';
+      $('#e_tag_w')?.appendChild(CRSelect.create({ id: 'e_tag', placeholder: '— выбрать —', options: _tagOpts, value: _curTagId, disabled: !(full||limited), searchable: true, dropdownClass: 'z-modal' }));
+
+      /* Mount Period: month + year CRSelect */
+      const _curPeriod = (t&&t.period) || ymNow();
+      const _pYear = Number(_curPeriod.slice(0,4));
+      const _pMonth = _curPeriod.slice(5,7);
+      const _monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+      const _monthOpts = _monthNames.map((n,i) => ({ value: String(i+1).padStart(2,'0'), label: n }));
+      const _yearOpts = [];
+      for(let y = 2024; y <= new Date().getFullYear()+2; y++) _yearOpts.push({ value: String(y), label: String(y) });
+      const periodW = document.getElementById('e_period_w');
+      if(periodW){
+        periodW.appendChild(CRSelect.create({ id:'e_period_month', options:_monthOpts, value:_pMonth, disabled:!full, dropdownClass:'z-modal' }));
+        periodW.appendChild(CRSelect.create({ id:'e_period_year', options:_yearOpts, value:String(_pYear), disabled:!full, dropdownClass:'z-modal' }));
+      }
+
+      /* Mount CRDatePicker for date fields */
+      $('#e_ws_w')?.appendChild(CRDatePicker.create({ id:'e_ws', value:(t&&t.work_start_plan)||'', placeholder:'Выберите дату', disabled:!full, clearable:true, dropdownClass:'z-modal' }));
+      $('#e_we_w')?.appendChild(CRDatePicker.create({ id:'e_we', value:(t&&t.work_end_plan)||'', placeholder:'Выберите дату', disabled:!full, clearable:true, dropdownClass:'z-modal' }));
+      $('#e_deadline_w')?.appendChild(CRDatePicker.create({ id:'e_docs_deadline', value:(t&&t.docs_deadline)||'', placeholder:'Выберите дату', disabled:!(full||limited), clearable:true, dropdownClass:'z-modal' }));
+
+      // BUG5 FIX: ALL mounts done. Now hide steps for wizard mode.
+      // Components mounted while visible → no layout bugs.
+      if (isNew) {
+        _showStep(0);
+      } else {
+        _stepPanels.forEach(p => { p.style.display = ''; });
+      }
+
+      /* ── 3.2: Dynamic required fields by procedure type ── */
+      function applyTypeRules(tType) {
+        const deadlineRow = document.getElementById('e_deadline_row');
+        const urlLabel = document.getElementById('e_url')?.closest('.cr-f-field')?.querySelector('.cr-f-label') || document.querySelector('label[for="e_url"]') || document.getElementById('e_url')?.closest('div')?.querySelector('label');
+        const deadlineLabel = deadlineRow?.querySelector('.cr-f-label') || deadlineRow?.querySelector('label');
+        // Reset required markers
+        if(urlLabel) urlLabel.classList.remove('cr-required');
+        if(deadlineLabel) deadlineLabel.classList.remove('cr-required');
+
+        if (tType === 'Доп. объём') {
+          // No deadline
+          if(deadlineRow) deadlineRow.classList.add('cr-field-hidden');
+          CRDatePicker.setValue('e_docs_deadline', '');
+        } else if (tType === 'Прямой запрос') {
+          // Show deadline, auto-fill +5 days, disable
+          if(deadlineRow) deadlineRow.classList.remove('cr-field-hidden');
+          if (!CRDatePicker.getValue('e_docs_deadline')) {
+            CRDatePicker.setValue('e_docs_deadline', addDaysISO(new Date(), 5));
+          }
+          CRDatePicker.setDisabled('e_docs_deadline', true);
+        } else {
+          // Тендер, Запрос предложений, Оценка рынка — deadline required, manual
+          if(deadlineRow) deadlineRow.classList.remove('cr-field-hidden');
+          if(deadlineLabel) deadlineLabel.classList.add('cr-required');
+          CRDatePicker.setDisabled('e_docs_deadline', !(full||limited));
+        }
+      }
+      applyTypeRules((t&&t.tender_type) || (isNew ? 'Тендер' : ''));
+
+      /* ── 4.1: Comment feed ── */
+      if (t && t.id) {
+        const tcFeed = document.getElementById('tc_feed');
+        const tcInput = document.getElementById('tc_input');
+        const tcSend = document.getElementById('tc_send');
+
+        function renderCommentFeed(comments) {
+          if (!tcFeed) return;
+          if (!comments.length) {
+            tcFeed.innerHTML = '<div class="tc-empty">Комментариев нет</div>';
+            return;
+          }
+          tcFeed.innerHTML = comments.map(c => {
+            const initials = (c.user_name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+            const dt = c.created_at ? new Date(c.created_at).toLocaleString('ru-RU') : '';
+            const canDel = c.user_id === auth.user.id || auth.user.role === 'ADMIN';
+            return `<div class="tc-comment" data-cid="${c.id}">
+              <div class="tc-avatar">${esc(initials)}</div>
+              <div class="tc-body">
+                <div class="tc-header">
+                  <span class="tc-author">${esc(c.user_name || 'Пользователь')}</span>
+                  <span class="tc-time">${esc(dt)}</span>
+                  ${canDel ? `<span class="tc-delete" data-del="${c.id}">удалить</span>` : ''}
+                </div>
+                <div class="tc-text">${esc(c.text)}</div>
+              </div>
+            </div>`;
+          }).join('');
+          tcFeed.scrollTop = tcFeed.scrollHeight;
+        }
+
+        async function loadComments() {
+          try {
+            const resp = await fetch('/api/tenders/' + t.id + '/comments', {
+              headers: { 'Authorization': 'Bearer ' + auth.token }
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              renderCommentFeed(data.comments || []);
+            }
+          } catch (_) {
+            if (tcFeed) tcFeed.innerHTML = '<div class="tc-empty">Ошибка загрузки</div>';
+          }
+        }
+
+        loadComments();
+
+        if (tcSend && tcInput) {
+          tcSend.addEventListener('click', async () => {
+            const text = tcInput.value.trim();
+            if (!text) return;
+            tcSend.disabled = true;
+            try {
+              const resp = await fetch('/api/tenders/' + t.id + '/comments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + auth.token },
+                body: JSON.stringify({ text })
+              });
+              if (resp.ok) {
+                tcInput.value = '';
+                await loadComments();
+              } else {
+                toast('Ошибка', 'Не удалось отправить', 'err');
+              }
+            } catch (_) {
+              toast('Ошибка', 'Сеть недоступна', 'err');
+            } finally {
+              tcSend.disabled = false;
+            }
+          });
+          tcInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tcSend.click(); }
+          });
+        }
+
+        if (tcFeed) {
+          tcFeed.addEventListener('click', async (e) => {
+            const del = e.target.closest('[data-del]');
+            if (!del) return;
+            if (!confirm('Удалить комментарий?')) return;
+            try {
+              await fetch('/api/tenders/' + t.id + '/comments/' + del.dataset.del, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + auth.token }
+              });
+              await loadComments();
+            } catch (_) {}
+          });
+        }
+      } else if (document.getElementById('tc_feed')) {
+        document.getElementById('tc_feed').innerHTML = '<div class="tc-empty">Сохраните тендер, чтобы оставлять комментарии</div>';
+      }
 
       // Restore draft for new tenders
       if (isNew) {
@@ -1376,23 +1859,19 @@ ${docsHtml}</div>
         document.addEventListener('visibilitychange', _onVisChange);
       }
 
-      // Customers directory (INN -> name)
+      // Customers directory (INN -> name) via CRAutocomplete
       const normInn = (v)=>String(v||"").replace(/\D/g, "");
       const custList = await AsgardDB.all("customers");
-      const dl = document.getElementById("innList");
-      const dlName = document.getElementById("custNameList");
-      if(dl){
-        dl.innerHTML = (custList||[]).slice(0, 300).map(c=>
-          `<option value="${esc(c.inn||"")}">${esc(c.name||"")}</option>`
-        ).join("");
+      const innWrap = document.getElementById("cr-inn-wrap");
+      const custWrap = document.getElementById("cr-customer-wrap");
+      if(innWrap){
+        innWrap.appendChild(CRAutocomplete.create({ id: 'e_inn', value: (t&&t.customer_inn)||"", placeholder: '10/12 цифр', minChars: 1, fullWidth: true, inputClass: 'inp', disabled: !full, fetchOptions: async (q) => { const nq = q.replace(/\D/g, ""); if(!nq) return []; return (custList||[]).filter(c => String(c.inn||"").includes(nq)).slice(0,20).map(c => ({ value: c.inn||"", label: c.inn||"", sublabel: c.name||c.full_name||"", name: c.name||c.full_name||"" })); }, onSelect: (item) => { if(!item) return; const nameInp = CRAutocomplete.getInput('e_customer'); if(nameInp && (!nameInp.value || nameInp.value.trim().length<2)){ CRAutocomplete.setValue('e_customer', item.name||""); updateCustomerScore(item.name||""); } updateInnUi(); } }));
       }
-      if(dlName){
-        dlName.innerHTML = (custList||[]).slice(0, 300).map(c=>
-          `<option value="${esc(c.name||c.full_name||"")}" data-inn="${esc(c.inn||"")}"></option>`
-        ).join("");
+      if(custWrap){
+        custWrap.appendChild(CRAutocomplete.create({ id: 'e_customer', value: (t&&t.customer_name)||"", placeholder: 'Название организации / ИНН', minChars: 2, fullWidth: true, inputClass: 'inp', disabled: !full, fetchOptions: async (q) => { const ql = q.toLowerCase().trim(); return (custList||[]).filter(c => { const n = String(c.name||c.full_name||"").toLowerCase(); const inn = String(c.inn||""); return n.includes(ql) || inn.includes(ql); }).slice(0,20).map(c => ({ value: c.name||c.full_name||"", label: c.name||c.full_name||"", sublabel: 'ИНН ' + (c.inn||"—"), inn: c.inn||"" })); }, onSelect: (item) => { if(!item) return; const innInp = CRAutocomplete.getInput('e_inn'); if(innInp && !innInp.value) CRAutocomplete.setValue('e_inn', item.inn||""); updateInnUi(); updateCustomerScore(item.label||""); } }));
       }
-      const innInput = document.getElementById("e_inn");
-      const nameInput = document.getElementById("e_customer");
+      const innInput = CRAutocomplete.getInput("e_inn");
+      const nameInput = CRAutocomplete.getInput("e_customer");
       const innWarn = document.getElementById("innWarn");
       const innCreateRow = document.getElementById("innCreateRow");
       const btnCreateCustomer = document.getElementById("btnCreateCustomer");
@@ -1484,6 +1963,14 @@ ${docsHtml}</div>
         });
       });
 
+      $$("[data-preview-doc]").forEach(b=>{
+        b.addEventListener("click", async ()=>{
+          const did=Number(b.getAttribute("data-preview-doc"));
+          const doc = docList.find(d=>d.id===did);
+          if(doc) previewDocument(doc);
+        });
+      });
+
       $("#btnAddDoc").addEventListener("click", async ()=>{
         const html2=`
           <div class="formrow">
@@ -1503,30 +1990,103 @@ ${docsHtml}</div>
           const fileInput = document.getElementById("d_file");
           const file = fileInput.files[0];
           if(!file){ toast("Документ","Выберите файл","err"); return; }
-          if(!tenderId){ toast("Документ","Сначала сохраните тендер","err"); return; }
-          
+
+          let uploadId = tenderId;
+          if(!uploadId){
+            uploadId = await saveTender(true);
+            if(!uploadId) return;
+          }
+
           try {
+            if (file.size > 50 * 1024 * 1024) { toast("Ошибка", "Файл больше 50 МБ", "err"); return; }
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('tender_id', tenderId);
+            formData.append('tender_id', uploadId);
             formData.append('type', document.getElementById("d_type").value.trim() || "Документ");
-            
             const auth = await AsgardAuth.getAuth();
-            const response = await fetch('/api/files/upload', {
-              method: 'POST',
-              headers: { 'Authorization': 'Bearer ' + auth.token },
-              body: formData
+
+            // XHR с progress bar
+            const btn = document.getElementById('btnUploadFile');
+            const origText = btn ? btn.textContent : '';
+            await new Promise((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.open('POST', '/api/files/upload');
+              xhr.setRequestHeader('Authorization', 'Bearer ' + auth.token);
+              xhr.timeout = 60000;
+              xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable && btn) {
+                  const pct = Math.round(e.loaded / e.total * 100);
+                  btn.textContent = pct + '%';
+                }
+              };
+              xhr.onload = () => { if (btn) btn.textContent = origText; xhr.status < 300 ? resolve() : reject(new Error('Ошибка ' + xhr.status)); };
+              xhr.onerror = () => { if (btn) btn.textContent = origText; reject(new Error('Сеть недоступна')); };
+              xhr.ontimeout = () => { if (btn) btn.textContent = origText; reject(new Error('Таймаут (60 сек)')); };
+              xhr.send(formData);
             });
-            
-            if (!response.ok) throw new Error('Ошибка загрузки');
+
             toast("Документ","Файл загружен");
-            closeModal();
-            openTenderEditor(tenderId);
+            hideModal();
+            openTenderEditor(uploadId);
           } catch (e) {
             toast("Ошибка", e.message, "err");
           }
         });
       });
+
+      // Drag-n-drop загрузка файлов на зону документов
+      const docsBox = document.getElementById('docsBox');
+      if (docsBox) {
+        docsBox.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          docsBox.classList.add('cr-drop-active');
+        });
+        docsBox.addEventListener('dragleave', (e) => {
+          e.preventDefault();
+          docsBox.classList.remove('cr-drop-active');
+        });
+        docsBox.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          docsBox.classList.remove('cr-drop-active');
+          const files = e.dataTransfer.files;
+          if (!files.length) return;
+
+          let uploadId = tenderId;
+          if (!uploadId) {
+            uploadId = await saveTender(true);
+            if (!uploadId) return;
+          }
+
+          const auth = await AsgardAuth.getAuth();
+          let uploaded = 0;
+          for (const file of files) {
+            if (file.size > 50 * 1024 * 1024) { toast("Ошибка", file.name + " > 50 МБ", "err"); continue; }
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+              formData.append('tender_id', uploadId);
+              formData.append('type', 'Документ');
+              docsBox.textContent = 'Загрузка ' + file.name + '...';
+              await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/files/upload');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + auth.token);
+                xhr.timeout = 60000;
+                xhr.upload.onprogress = (e) => { if (e.lengthComputable) docsBox.textContent = file.name + ' ' + Math.round(e.loaded/e.total*100) + '%'; };
+                xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Ошибка ' + xhr.status));
+                xhr.onerror = () => reject(new Error('Сеть'));
+                xhr.ontimeout = () => reject(new Error('Таймаут'));
+                xhr.send(formData);
+              });
+              uploaded++;
+            } catch (err) {
+              toast("Ошибка", file.name + ": " + err.message, "err");
+            }
+          }
+          if (uploaded) toast("Документы", uploaded + " файл(ов) загружено");
+          openTenderEditor(uploadId);
+        });
+      }
 
       // Добавление ссылки
       $("#btnAddLink")?.addEventListener("click", async ()=>{
@@ -1544,15 +2104,21 @@ ${docsHtml}</div>
         $("#d_save").addEventListener("click", async ()=>{
           const url=document.getElementById("d_url").value.trim();
           if(!url){ toast("Документ","Укажите ссылку","err"); return; }
-          if(!tenderId){ toast("Документ","Сначала сохраните тендер","err"); return; }
+
+          let uploadId = tenderId;
+          if(!uploadId){
+            uploadId = await saveTender(true);
+            if(!uploadId) return;
+          }
+
           await AsgardDB.add("documents",{
-            tender_id:tenderId, work_id:null, type:document.getElementById("d_type").value.trim()||"Документ",
+            tender_id:uploadId, work_id:null, type:document.getElementById("d_type").value.trim()||"Документ",
             name:document.getElementById("d_name").value.trim()||url,
             file_url:url, download_url:url, uploaded_by_user_id:user.id, created_at:isoNow()
           });
-          await audit(user.id,"tender",tenderId,"doc_add",{url});
+          await audit(user.id,"tender",uploadId,"doc_add",{url});
           toast("Документ","Добавлено");
-          openTenderEditor(tenderId);
+          openTenderEditor(uploadId);
         });
       });
 
@@ -1658,15 +2224,16 @@ ${docsHtml}</div>
             <hr class="hr"/>
             <div class="formrow">
               <div><label>Новый РП</label>
-                <select id="r_pm"><option value="">— выбрать —</option>${pmOptions}</select>
+                <div id="r_pm_w"></div>
               </div>
               <div><label>Причина</label><input id="r_reason" placeholder="почему меняем ответственного"/></div>
             </div>
             <div style="margin-top:12px"><button class="btn" id="r_do">Переназначить</button></div>
           `;
           showModal("Переназначить РП", html3);
+          $('#r_pm_w')?.appendChild(CRSelect.create({ id: 'r_pm', placeholder: '— выбрать —', options: pms.map(p => ({ value: String(p.id), label: p.name })), searchable: true, dropdownClass: 'z-modal' }));
           document.getElementById("r_do").addEventListener("click", async ()=>{
-            const newPm = Number(document.getElementById("r_pm").value||0);
+            const newPm = Number(CRSelect.getValue('r_pm')||0);
             const reason = document.getElementById("r_reason").value.trim();
             if(!newPm){ toast("Переназначение","Выберите РП","err"); return; }
             if(!reason){ toast("Переназначение","Укажите причину","err"); return; }
@@ -1780,8 +2347,34 @@ ${docsHtml}</div>
           });
 
           // ─── Управление ───
-          if(isDirRole(user.role) || user.role === "ADMIN"){
+          if(isDirRole(user.role) || user.role === "ADMIN" || user.role === "HEAD_TO"){
             actions.push({ section: 'Управление' });
+
+            // Отсеять (только если не архив)
+            if(t.tender_status !== 'Не подходит'){
+              actions.push({
+                icon: '🗑', label: 'Отсеять',
+                desc: 'Перевести тендер в архив с указанием причины',
+                onClick: () => openArchiveModal(tenderId)
+              });
+            }
+
+            // Вернуть из архива
+            if(t.tender_status === 'Не подходит'){
+              actions.push({
+                icon: '♻️', label: 'Вернуть из архива',
+                desc: 'Вернуть тендер в статус «Новый»',
+                onClick: () => openUnarchiveModal(tenderId)
+              });
+            }
+
+            // Сменить автора
+            actions.push({
+              icon: '👤', label: 'Сменить автора',
+              desc: 'Сменить автора (создателя) тендера',
+              onClick: () => openChangeAuthorModal(tenderId)
+            });
+
             actions.push({
               icon: '📋', label: 'История',
               desc: 'Аудит-лог изменений по тендеру',
@@ -1821,22 +2414,25 @@ ${docsHtml}</div>
 
       async function saveTender(forceDraft){
         const appS = await getAppSettings();
-        const period=document.getElementById("e_period").value.trim();
-        const innRaw = document.getElementById("e_inn")?.value || "";
+        const _pm = CRSelect.getValue('e_period_month') || String(new Date().getMonth()+1).padStart(2,'0');
+        const _py = CRSelect.getValue('e_period_year') || String(new Date().getFullYear());
+        const period = `${_py}-${_pm}`;
+        const innRaw = CRAutocomplete.getValue("e_inn") || "";
         const customer_inn = String(innRaw).replace(/\D/g, "");
-        let customer=document.getElementById("e_customer").value.trim();
+        let customer=(CRAutocomplete.getValue("e_customer") || "").trim();
         const title=document.getElementById("e_title").value.trim();
-        const tenderType = (document.getElementById("e_type")?.value || "Тендер").trim();
-        const pmId = Number(document.getElementById("e_pm").value||0) || null;
-        const status=document.getElementById("e_status").value;
+        const tenderType = ((_typeChipsEl && _typeChipsEl._crGetValue) ? (_typeChipsEl._crGetValue() || 'Тендер') : (CRSelect.getValue('e_type') || "Тендер")).trim();
+        const pmId = Number(CRSelect.getValue('e_pm')||0) || null;
+        const status = CRSelect.getValue('e_status') || '';
         const priceRaw=document.getElementById("e_price").value.trim();
         const price = priceRaw ? Number(priceRaw.replace(/\s/g,"").replace(",", ".")) : null;
-        const ws=document.getElementById("e_ws").value.trim()||null;
-        const we=document.getElementById("e_we").value.trim()||null;
+        const ws = CRDatePicker.getValue('e_ws') || null;
+        const we = CRDatePicker.getValue('e_we') || null;
         const url=document.getElementById("e_url").value.trim()||null;
-        let docsDeadline=document.getElementById("e_docs_deadline").value.trim()||null;
-        const tag=document.getElementById("e_tag").value.trim()||null;
-        const cto=document.getElementById("e_c_to").value.trim()||"";
+        let docsDeadline = CRDatePicker.getValue('e_docs_deadline') || null;
+        const tagId = Number(CRSelect.getValue('e_tag')) || null;
+        const tag = tagId ? (tenderTags.find(tg => tg.id === tagId)?.name || null) : null;
+        const cto=""; // deprecated — comments in tender_comments table
         const rejectEl=document.getElementById("e_reject"); const reject=rejectEl ? rejectEl.value||null : null;
 
         // Draft mode: skip strict validation, save with 'Черновик' status
@@ -1848,7 +2444,7 @@ ${docsHtml}</div>
             responsible_pm_id:pmId, tender_status:'Черновик',
             tender_price: price, work_start_plan: ws, work_end_plan: we,
             purchase_url: url, docs_deadline: docsDeadline,
-            reject_reason: reject, group_tag: tag, tender_comment_to: cto,
+            reject_reason: reject, group_tag: tag, tag_id: tagId, tender_comment_to: cto,
             created_by_user_id: user.id,
             handoff_at: null, handoff_by_user_id: null,
             distribution_requested_at: null, distribution_requested_by_user_id: null,
@@ -1874,29 +2470,15 @@ ${docsHtml}</div>
         // Deadline rules
         if(!docsDeadline && tenderType==="Прямой запрос"){
           docsDeadline = addDaysISO(new Date(), (appS?.sla?.direct_request_deadline_days ?? 5));
-          const inp = document.getElementById("e_docs_deadline");
-          if(inp) inp.value = docsDeadline;
+          CRDatePicker.setValue('e_docs_deadline', docsDeadline);
         }
-        if(!docsDeadline && tenderType!=="Прямой запрос"){
+        if(!docsDeadline && tenderType!=="Прямой запрос" && tenderType!=="Доп. объём"){
           toast("Проверка","Укажите дедлайн (окончание приема заявок)","err");
           return null;
         }
 
         if(!pmId && status!=="Новый"){ toast("Проверка","Назначьте ответственного РП","err"); return null; }
-        if(status==="Клиент отказался" && !reject){ toast("Проверка","Для отказа нужна причина","err"); return null; }
-        // Accept both DD.MM.YYYY and YYYY-MM-DD formats, convert to ISO
-        if(docsDeadline){
-          // Try to parse and normalize to YYYY-MM-DD
-          const isoDate = V.dateISO ? V.dateISO(docsDeadline) : null;
-          if(isoDate){
-            docsDeadline = isoDate;
-            const inp = document.getElementById("e_docs_deadline");
-            if(inp) inp.value = isoDate;
-          } else if(!/^\d{4}-\d{2}-\d{2}$/.test(docsDeadline)){
-            toast("Проверка","Дата должна быть в формате ДД.ММ.ГГГГ или ГГГГ-ММ-ДД","err");
-            return null;
-          }
-        }
+        if(status==="Проиграли" && !reject){ toast("Проверка","Для отказа нужна причина","err"); return null; }
 
         if(isNew){
           const obj={
@@ -1909,7 +2491,7 @@ ${docsHtml}</div>
             purchase_url: url,
             docs_deadline: docsDeadline,
             reject_reason: reject,
-            group_tag: tag,
+            group_tag: tag, tag_id: tagId,
             tender_comment_to: cto,
             created_by_user_id: user.id,
             handoff_at: null, handoff_by_user_id: null,
@@ -1951,11 +2533,11 @@ ${docsHtml}</div>
             cur.tender_price=price;
             cur.work_start_plan=ws; cur.work_end_plan=we;
             cur.reject_reason=reject;
-            cur.purchase_url=url; cur.docs_deadline=docsDeadline; cur.group_tag=tag; cur.tender_comment_to=cto;
+            cur.purchase_url=url; cur.docs_deadline=docsDeadline; cur.group_tag=tag; cur.tag_id=tagId; cur.tender_comment_to=cto;
           }else if(rights2.limited){
             cur.purchase_url=url;
             cur.docs_deadline=docsDeadline;
-            cur.group_tag=tag;
+            cur.group_tag=tag; cur.tag_id=tagId;
             cur.tender_comment_to=cto;
           }else{
             toast("Права","Недостаточно прав для редактирования","err");
@@ -1963,8 +2545,8 @@ ${docsHtml}</div>
           }
           await AsgardDB.put("tenders", cur);
           
-          // TKP Follow-up: активируем если "Прямой запрос" + "ТКП отправлено"
-          if(status === "ТКП отправлено" && window.AsgardTkpFollowup){
+          // TKP Follow-up: активируем если "Прямой запрос" + "КП отправлено"
+          if(status === "КП отправлено" && window.AsgardTkpFollowup){
             try { await AsgardTkpFollowup.activateFollowup(cur); } catch(e){ console.warn('TKP Followup error:', e); }
           }
           
@@ -1982,10 +2564,12 @@ ${docsHtml}</div>
       document.getElementById("btnSave").addEventListener("click", async ()=>{
         if (isNew) {
           // Check required fields — offer draft save if missing
-          const chkCustomer = document.getElementById("e_customer")?.value?.trim() || '';
+          const chkCustomer = (CRAutocomplete.getValue("e_customer") || '').trim();
           const chkTitle = document.getElementById("e_title")?.value?.trim() || '';
-          const chkPeriod = document.getElementById("e_period")?.value?.trim() || '';
-          const chkDeadline = document.getElementById("e_docs_deadline")?.value?.trim() || '';
+          const _cpm = CRSelect.getValue('e_period_month') || '';
+          const _cpy = CRSelect.getValue('e_period_year') || '';
+          const chkPeriod = (_cpy && _cpm) ? `${_cpy}-${_cpm}` : '';
+          const chkDeadline = CRDatePicker.getValue('e_docs_deadline') || '';
           const missingFields = [];
           if (!chkCustomer) missingFields.push('Заказчик');
           if (!chkTitle) missingFields.push('Название тендера');
@@ -2006,18 +2590,18 @@ ${docsHtml}</div>
                 </div>
               </div>`;
             document.body.appendChild(_overlay);
-            _overlay.addEventListener('click', (e) => { if (e.target === _overlay) _overlay.remove(); });
+            _overlay.addEventListener('click', (e) => { if (e.target === _overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
             document.getElementById('btnFillMissing').addEventListener('click', () => {
               _overlay.remove();
               const ids = missingFields.map(f => _fieldIdMap[f]).filter(Boolean);
               ids.forEach(fid => {
-                const el = document.getElementById(fid);
+                const el = CRAutocomplete.getInput(fid) || document.getElementById(fid);
                 if (el) {
                   el.style.border = '2px solid var(--err-t)';
                   el.addEventListener('input', () => { el.style.border = ''; }, { once: true });
                 }
               });
-              if (ids.length) { const first = document.getElementById(ids[0]); if (first) first.focus(); }
+              if (ids.length) { const first = CRAutocomplete.getInput(ids[0]) || document.getElementById(ids[0]); if (first) first.focus(); }
             });
             document.getElementById('btnDraftMissing').addEventListener('click', async () => {
               _overlay.remove();
@@ -2028,7 +2612,7 @@ ${docsHtml}</div>
           }
 
           // Проверка дубликатов для новых тендеров (Этап 34)
-          const customerInn = document.getElementById("e_inn")?.value?.trim() || '';
+          const customerInn = (CRAutocomplete.getValue("e_inn") || '').trim();
           const customerName = chkCustomer;
           const tenderTitle = chkTitle;
 
@@ -2131,7 +2715,7 @@ ${docsHtml}</div>
               const allT = await AsgardDB.all("tenders");
               const doneRaw = String(appS?.limits?.pm_active_calcs_done_statuses||"");
               const done = new Set(doneRaw.split(",").map(x=>String(x).trim()).filter(Boolean));
-              if(done.size===0){ ["Согласование ТКП","ТКП согласовано","Клиент отказался","Клиент согласился"].forEach(x=>done.add(x)); }
+              if(done.size===0){ ["Согласование ТКП","ТКП согласовано","Выиграли","Проиграли"].forEach(x=>done.add(x)); }
               const active = (allT||[]).filter(t=>
                 t && t.handoff_at && Number(t.responsible_pm_id)===Number(cur.responsible_pm_id) && Number(t.id)!==Number(cur.id) &&
                 !done.has(String(t.tender_status||""))
@@ -2154,6 +2738,250 @@ ${docsHtml}</div>
           openTenderEditor(id);
         });
       }
+
+      // «КП отправлено клиенту» — quick-action button
+      if(document.getElementById("btnSentToClient")){
+        document.getElementById("btnSentToClient").addEventListener("click", async ()=>{
+          const id = tenderId;
+          const cur = await AsgardDB.get("tenders", id);
+          if(!cur || cur.tender_status !== 'ТКП согласовано'){ toast("Статус","Кнопка доступна только при статусе «ТКП согласовано»","err"); return; }
+          cur.tender_status = "КП отправлено";
+          await AsgardDB.put("tenders", cur);
+          await audit(user.id,"tender",id,"sent_to_client",{});
+          toast("Тендер","Статус изменён на «КП отправлено»");
+          if(window.AsgardTkpFollowup){ try { await AsgardTkpFollowup.activateFollowup(cur); } catch(e){} }
+          await render({layout, title});
+          openTenderEditor(id);
+        });
+      }
+
+      // Кнопка "Отсеять" в карточке
+      if(document.getElementById("btnArchiveTender")){
+        document.getElementById("btnArchiveTender").addEventListener("click", () => openArchiveModal(tenderId));
+      }
+
+      // Кнопка "Вернуть" из архива в карточке
+      if(document.getElementById("btnUnarchiveTender")){
+        document.getElementById("btnUnarchiveTender").addEventListener("click", () => openUnarchiveModal(tenderId));
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Модалка "Отсеять тендер" (архивация)
+    // ═══════════════════════════════════════════════════════════════
+    async function openArchiveModal(tid){
+      let archiveReasons = [];
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/tenders/archive-reasons', { headers: { 'Authorization': 'Bearer ' + token } });
+        if(resp.ok){
+          const data = await resp.json();
+          archiveReasons = data.reasons || data || [];
+        }
+      } catch(e){}
+      // Fallback reasons if API not available
+      if(!archiveReasons.length){
+        archiveReasons = [
+          'Не наш профиль','Слишком маленький объём','Слишком большой объём',
+          'Невыгодные условия','Далеко от базы','Короткие сроки',
+          'Нет ресурсов','Сложный доступ','Плохая репутация заказчика',
+          'Конкурент уже выиграл','Торги отменены','Дубликат',
+          'Тестовая закупка','Ошибочно внесён','Другое'
+        ];
+      }
+      const reasonOpts = archiveReasons.map(r => {
+        const val = typeof r === 'object' ? (r.value || r.name || r.label) : r;
+        const lbl = typeof r === 'object' ? (r.label || r.name || r.value) : r;
+        return { value: val, label: lbl };
+      });
+
+      const html = `
+        <div class="help" style="margin-bottom:12px">Тендер будет переведён в статус «Не подходит» и перемещён в архив.</div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label class="cr-required">Причина</label>
+            <div id="archive_reason_w"></div>
+          </div>
+        </div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label class="cr-required">Комментарий</label>
+            <textarea id="archive_comment" rows="3" placeholder="Опишите причину отсева..."></textarea>
+          </div>
+        </div>
+        <hr class="hr"/>
+        <div style="display:flex;gap:10px">
+          <button class="btn red" id="archive_confirm">Подтвердить</button>
+          <button class="btn ghost" id="archive_cancel">Отмена</button>
+        </div>
+      `;
+      showModal('Отсеять тендер', html);
+      $('#archive_reason_w')?.appendChild(CRSelect.create({ id: 'archive_reason', placeholder: '— выберите причину —', options: reasonOpts, dropdownClass: 'z-modal' }));
+
+      $('#archive_cancel')?.addEventListener('click', () => hideModal());
+      $('#archive_confirm')?.addEventListener('click', async () => {
+        const reason = CRSelect.getValue('archive_reason') || '';
+        const comment = ($('#archive_comment')?.value || '').trim();
+        if(!reason){ toast('Отсев','Выберите причину','err'); return; }
+        if(!comment){ toast('Отсев','Укажите комментарий','err'); return; }
+
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/tenders/' + tid + '/archive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ reason, comment })
+          });
+          if(resp.ok){
+            toast('Архив','Тендер отсеян','ok');
+            hideModal();
+            await render({layout, title});
+          } else {
+            const err = await resp.json().catch(()=>({}));
+            toast('Ошибка', err.error || 'Не удалось отсеять','err');
+          }
+        } catch(e){
+          toast('Ошибка', e.message || 'Сеть недоступна','err');
+        }
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Модалка "Вернуть из архива"
+    // ═══════════════════════════════════════════════════════════════
+    async function openUnarchiveModal(tid){
+      const html = `
+        <div class="help" style="margin-bottom:12px">Тендер будет возвращён в статус «Новый».</div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label>Комментарий</label>
+            <textarea id="unarchive_comment" rows="3" placeholder="Причина возврата (необязательно)"></textarea>
+          </div>
+        </div>
+        <hr class="hr"/>
+        <div style="display:flex;gap:10px">
+          <button class="btn" id="unarchive_confirm" style="background:var(--ok);color:#fff">Вернуть</button>
+          <button class="btn ghost" id="unarchive_cancel">Отмена</button>
+        </div>
+      `;
+      showModal('Вернуть из архива', html);
+
+      $('#unarchive_cancel')?.addEventListener('click', () => hideModal());
+      $('#unarchive_confirm')?.addEventListener('click', async () => {
+        const comment = ($('#unarchive_comment')?.value || '').trim();
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/tenders/' + tid + '/unarchive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ comment })
+          });
+          if(resp.ok){
+            toast('Архив','Тендер возвращён','ok');
+            hideModal();
+            await render({layout, title});
+          } else {
+            const err = await resp.json().catch(()=>({}));
+            toast('Ошибка', err.error || 'Не удалось вернуть','err');
+          }
+        } catch(e){
+          toast('Ошибка', e.message || 'Сеть недоступна','err');
+        }
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Модалка "Сменить автора тендера"
+    // ═══════════════════════════════════════════════════════════════
+    async function openChangeAuthorModal(tid){
+      const toUsers = users.filter(u => u.role === 'TO' || u.role === 'HEAD_TO');
+      const toOpts = toUsers.map(u => ({ value: String(u.id), label: u.name + ' (' + u.role + ')' }));
+
+      const html = `
+        <div class="help" style="margin-bottom:12px">Сменить автора (создателя) тендера. Изменение фиксируется в журнале.</div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label class="cr-required">Новый автор</label>
+            <div id="change_author_w"></div>
+          </div>
+        </div>
+        <div class="formrow">
+          <div style="grid-column:1/-1">
+            <label>Комментарий</label>
+            <textarea id="change_author_comment" rows="2" placeholder="Причина смены (необязательно)"></textarea>
+          </div>
+        </div>
+        <hr class="hr"/>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" id="change_author_confirm">Сменить</button>
+          <button class="btn ghost" id="change_author_history">История</button>
+          <button class="btn ghost" id="change_author_cancel">Отмена</button>
+        </div>
+        <div id="change_author_history_box" style="margin-top:12px;display:none"></div>
+      `;
+      showModal('Сменить автора тендера', html);
+      $('#change_author_w')?.appendChild(CRSelect.create({ id: 'change_author', placeholder: '— выберите —', options: toOpts, searchable: true, dropdownClass: 'z-modal' }));
+
+      $('#change_author_cancel')?.addEventListener('click', () => hideModal());
+
+      // История авторов
+      $('#change_author_history')?.addEventListener('click', async () => {
+        const box = $('#change_author_history_box');
+        if(!box) return;
+        box.style.display = 'block';
+        box.innerHTML = '<div class="help">Загрузка...</div>';
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/tenders/' + tid + '/author-history', { headers: { 'Authorization': 'Bearer ' + token } });
+          if(resp.ok){
+            const data = await resp.json();
+            const history = data.history || [];
+            if(!history.length){
+              box.innerHTML = '<div class="help">Автор не менялся.</div>';
+            } else {
+              box.innerHTML = '<table class="t" style="font-size:13px"><thead><tr><th>Дата</th><th>Старый автор</th><th>Новый автор</th><th>Кто сменил</th><th>Комментарий</th></tr></thead><tbody>' +
+                history.map(h => '<tr>' +
+                  '<td>' + esc(formatDateTime(h.changed_at)) + '</td>' +
+                  '<td>' + esc(h.old_author_name||'—') + '</td>' +
+                  '<td>' + esc(h.new_author_name||'—') + '</td>' +
+                  '<td>' + esc(h.changed_by_name||'—') + '</td>' +
+                  '<td>' + esc(h.comment||'—') + '</td>' +
+                '</tr>').join('') +
+              '</tbody></table>';
+            }
+          } else {
+            box.innerHTML = '<div class="help">Не удалось загрузить.</div>';
+          }
+        } catch(e){
+          box.innerHTML = '<div class="help">Ошибка: ' + esc(e.message) + '</div>';
+        }
+      });
+
+      // Подтверждение смены автора
+      $('#change_author_confirm')?.addEventListener('click', async () => {
+        const newAuthorId = Number(CRSelect.getValue('change_author') || 0);
+        const comment = ($('#change_author_comment')?.value || '').trim();
+        if(!newAuthorId){ toast('Смена автора','Выберите нового автора','err'); return; }
+
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/tenders/' + tid + '/change-author', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ new_author_id: newAuthorId, comment })
+          });
+          if(resp.ok){
+            toast('Автор','Автор тендера сменён','ok');
+            hideModal();
+            await render({layout, title});
+          } else {
+            const err = await resp.json().catch(()=>({}));
+            toast('Ошибка', err.error || 'Не удалось сменить автора','err');
+          }
+        } catch(e){
+          toast('Ошибка', e.message || 'Сеть недоступна','err');
+        }
+      });
     }
   }
 
@@ -2350,12 +3178,7 @@ ${docsHtml}</div>
       </div></div>
       <div class="formrow">
         <div><label>Приоритет</label>
-          <select id="tmcPriority">
-            <option value="low">Низкий</option>
-            <option value="normal" selected>Обычный</option>
-            <option value="high">Высокий</option>
-            <option value="urgent">Срочный</option>
-          </select>
+          <div id="tmcPriority_w"></div>
         </div>
         <div><label>Нужно к дате</label><input id="tmcNeeded" type="date" value="${(tender.work_start_plan || '').slice(0,10)}" /></div>
       </div>
@@ -2376,6 +3199,7 @@ ${docsHtml}</div>
       </div>`;
 
     showModal('Заявка на ввоз/вывоз ТМЦ', html);
+    $('#tmcPriority_w')?.appendChild(CRSelect.create({ id: 'tmcPriority', options: [{ value: 'low', label: 'Низкий' },{ value: 'normal', label: 'Обычный' },{ value: 'high', label: 'Высокий' },{ value: 'urgent', label: 'Срочный' }], value: 'normal', dropdownClass: 'z-modal' }));
 
     $('#btnCreateTmcReq')?.addEventListener('click', async () => {
       const lines = ($('#tmcItems')?.value || '').split('\n').filter(s => s.trim());
@@ -2390,7 +3214,7 @@ ${docsHtml}</div>
       const body = {
         work_id: tender.work_id || null,
         title: $('#tmcTitle')?.value || '',
-        priority: $('#tmcPriority')?.value || 'normal',
+        priority: CRSelect.getValue('tmcPriority') || 'normal',
         needed_by: $('#tmcNeeded')?.value || null,
         supplier: $('#tmcSupplier')?.value || '',
         delivery_address: $('#tmcAddr')?.value || '',

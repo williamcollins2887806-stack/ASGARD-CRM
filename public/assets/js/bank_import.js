@@ -375,50 +375,51 @@ window.AsgardBankImport = (function(){
                     <div class="muted small" style="overflow:hidden;text-overflow:ellipsis">${esc((row.description || '').slice(0,40))}</div>
                   </td>
                   <td>
-                    <select class="inp sel-article" data-id="${row.id}" style="min-width:120px" ${row.isDuplicate ? 'disabled' : ''}>
-                      <option value="">— выбрать —</option>
-                      ${opts}
-                    </select>
+                    <div class="crselect-article-wrap" data-id="${row.id}" data-disabled="${row.isDuplicate ? '1' : ''}"></div>
                   </td>
                   <td>
-                    <select class="inp sel-work" data-id="${row.id}" style="min-width:100px" ${row.isDuplicate ? 'disabled' : ''}>
-                      <option value="">—</option>
-                      ${workOpts}
-                    </select>
+                    <div class="crselect-work-wrap" data-id="${row.id}" data-disabled="${row.isDuplicate ? '1' : ''}"></div>
                   </td>
                 </tr>
               `;
             }).join('');
             
-            // Устанавливаем значения
-            filtered.slice(0, 100).forEach(row => {
-              const artSel = $(`.sel-article[data-id="${row.id}"]`);
-              const workSel = $(`.sel-work[data-id="${row.id}"]`);
-              if (artSel && row.article) artSel.value = row.article;
-              if (workSel && row.work_id) workSel.value = row.work_id;
+            // CRSelect init — per-row article & work selects
+            const _expenseOptsCR = [{value:'', label:'— выбрать —'}].concat(EXPENSE_ARTICLES.map(a=>({value:a.code, label:esc(a.label)})));
+            const _incomeOptsCR = [{value:'', label:'— выбрать —'}].concat(INCOME_ARTICLES.map(a=>({value:a.code, label:esc(a.label)})));
+            const _workOptsCR = [{value:'', label:'—'}].concat(works.map(w=>({value:String(w.id), label:esc(w.work_number||w.contract_number||'#'+w.id)})));
+
+            document.querySelectorAll('.crselect-article-wrap').forEach(wrap => {
+              const rowId = parseInt(wrap.dataset.id, 10);
+              const row = parsedData.find(r => r.id === rowId);
+              const isIncome = row && row.type === 'income';
+              const isDis = wrap.dataset.disabled === '1';
+              wrap.appendChild(CRSelect.create({
+                id: 'bank-art-' + rowId, options: isIncome ? _incomeOptsCR : _expenseOptsCR,
+                value: row?.article || '', placeholder: '— выбрать —', disabled: isDis,
+                onChange: (v) => {
+                  if (row && !row.isDuplicate) {
+                    row.article = v;
+                    row.status = v ? 'manual' : 'pending';
+                    const chk = $(`.row-check[data-id="${rowId}"]`);
+                    if (chk) chk.checked = !!v;
+                    updateStats();
+                  }
+                },
+              }));
             });
-            
-            // Слушатели
-            $$('.sel-article').forEach(sel => {
-              sel.addEventListener('change', () => {
-                const id = parseInt(sel.dataset.id, 10);
-                const row = parsedData.find(r => r.id === id);
-                if (row && !row.isDuplicate) {
-                  row.article = sel.value;
-                  row.status = sel.value ? 'manual' : 'pending';
-                  const chk = $(`.row-check[data-id="${id}"]`);
-                  if (chk) chk.checked = !!sel.value;
-                  updateStats();
-                }
-              });
-            });
-            
-            $$('.sel-work').forEach(sel => {
-              sel.addEventListener('change', () => {
-                const id = parseInt(sel.dataset.id, 10);
-                const row = parsedData.find(r => r.id === id);
-                if (row) row.work_id = sel.value ? parseInt(sel.value, 10) : null;
-              });
+
+            document.querySelectorAll('.crselect-work-wrap').forEach(wrap => {
+              const rowId = parseInt(wrap.dataset.id, 10);
+              const row = parsedData.find(r => r.id === rowId);
+              const isDis = wrap.dataset.disabled === '1';
+              wrap.appendChild(CRSelect.create({
+                id: 'bank-work-' + rowId, options: _workOptsCR,
+                value: row?.work_id ? String(row.work_id) : '', placeholder: '—', disabled: isDis,
+                onChange: (v) => {
+                  if (row) row.work_id = v ? parseInt(v, 10) : null;
+                },
+              }));
             });
           }
           
@@ -495,11 +496,8 @@ window.AsgardBankImport = (function(){
                 const chk = $(`.row-check[data-id="${row.id}"]`);
                 if (!chk?.checked) return;
                 
-                const artSel = $(`.sel-article[data-id="${row.id}"]`);
-                const workSel = $(`.sel-work[data-id="${row.id}"]`);
-                
-                const article = artSel?.value || row.article || '';
-                const workId = workSel?.value ? parseInt(workSel.value, 10) : row.work_id;
+                const article = CRSelect.getValue('bank-art-' + row.id) || row.article || '';
+                const workId = (() => { const v = CRSelect.getValue('bank-work-' + row.id); return v ? parseInt(v, 10) : row.work_id; })();
                 
                 if (!article) return;
                 

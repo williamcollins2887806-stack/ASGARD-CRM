@@ -71,6 +71,91 @@ async function routes(fastify, options) {
     return { employees: result.rows.map(formatDates) };
   });
 
+  // GET /api/staff/employees/available?work_id=X
+  // Возвращает список employees с пометкой занятости относительно дат указанной работы
+  // Каждый сотрудник: { ...employee, is_busy, busy_with: [{work_id, work_title, end_date}] }
+  fastify.get('/employees/available', { preHandler: [fastify.authenticate] }, async (request) => {
+    const { work_id, role_tag, search } = request.query;
+    if (!work_id) return reply.code(400).send({ error: 'work_id обязателен' });
+
+    // Берём даты целевой работы
+    const { rows: [targetWork] } = await db.query(
+      'SELECT id, work_title, start_in_work_date, start_plan, end_plan, end_fact FROM works WHERE id = $1',
+      [work_id]
+    );
+    if (!targetWork) return reply.code(404).send({ error: 'Работа не найдена' });
+
+    // Effective range целевой работы: используем максимум планов и факта
+    const targetStart = targetWork.start_in_work_date || targetWork.start_plan || new Date().toISOString().slice(0,10);
+    const targetEnd = targetWork.end_plan || targetWork.end_fact || targetStart;
+
+    // Список employees с фильтрами
+    let sql = 'SELECT * FROM employees WHERE 1=1';
+    const params = [];
+    let idx = 1;
+    if (role_tag) { sql += ` AND role_tag = $${idx}`; params.push(role_tag); idx++; }
+    if (search) { sql += ` AND LOWER(fio) LIKE $${idx}`; params.push('%' + search.toLowerCase() + '%'); idx++; }
+    // Без LIMIT: иначе фамилии на Щ/Э/Ю/Я отсекаются (всего 500-1000 employees)
+    sql += ' ORDER BY fio ASC';
+    const { rows: employees } = await db.query(sql, params);
+
+    if (!employees.length) return { employees: [], target_work: targetWork };
+
+    // Конфликты: все assignments этих employees на ДРУГИХ активных работах
+    // с пересечением по датам (используем effective_end = max(end_plan, end_fact, NOW для активных))
+    const empIds = employees.map(e => e.id);
+    const { rows: conflicts } = await db.query(`
+      SELECT
+        ea.employee_id,
+        w.id as work_id,
+        w.work_title,
+        COALESCE(w.start_in_work_date, w.start_plan) as start_date,
+        CASE
+          WHEN w.work_status IN ('Завершена', 'Закрыт') THEN COALESCE(w.end_fact, w.end_plan)
+          ELSE GREATEST(COALESCE(w.end_plan, CURRENT_DATE), COALESCE(w.end_fact, CURRENT_DATE), CURRENT_DATE)
+        END as end_date,
+        w.work_status
+      FROM employee_assignments ea
+      JOIN works w ON w.id = ea.work_id
+      WHERE ea.employee_id = ANY($1::int[])
+        AND ea.work_id != $2
+        AND COALESCE(ea.is_active, true) = true
+        AND w.work_status NOT IN ('Завершена', 'Закрыт')
+        AND COALESCE(w.start_in_work_date, w.start_plan) <= $4
+        AND CASE
+              WHEN w.work_status IN ('Завершена', 'Закрыт') THEN COALESCE(w.end_fact, w.end_plan)
+              ELSE GREATEST(COALESCE(w.end_plan, CURRENT_DATE), COALESCE(w.end_fact, CURRENT_DATE), CURRENT_DATE)
+            END >= $3
+    `, [empIds, parseInt(work_id), targetStart, targetEnd]);
+
+    // Группируем конфликты по employee_id
+    const conflictMap = {};
+    for (const c of conflicts) {
+      if (!conflictMap[c.employee_id]) conflictMap[c.employee_id] = [];
+      conflictMap[c.employee_id].push({
+        work_id: c.work_id,
+        work_title: c.work_title,
+        start_date: c.start_date,
+        end_date: c.end_date,
+        status: c.work_status
+      });
+    }
+
+    const result = employees.map(e => ({
+      ...formatDates(e),
+      is_busy: !!conflictMap[e.id],
+      busy_with: conflictMap[e.id] || []
+    }));
+
+    return {
+      employees: result,
+      target_work: { id: targetWork.id, title: targetWork.work_title, start: targetStart, end: targetEnd },
+      total: result.length,
+      free: result.filter(e => !e.is_busy).length,
+      busy: result.filter(e => e.is_busy).length
+    };
+  });
+
   fastify.get('/employees/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const result = await db.query('SELECT * FROM employees WHERE id = $1', [request.params.id]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Сотрудник не найден' });

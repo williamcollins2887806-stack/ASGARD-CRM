@@ -11,7 +11,7 @@ async function equipmentRoutes(fastify, options) {
 
   // Роли с полным доступом к складу (M15: добавлен CHIEF_ENGINEER)
   const WAREHOUSE_ADMINS = ['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-  const PM_ROLES = ['PM', 'HEAD_PM', 'MANAGER', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER', 'HR'];
+  const PM_ROLES = ['PM', 'HEAD_PM', 'MANAGER', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER'];
 
   function canManageEquipment(role) {
     return WAREHOUSE_ADMINS.includes(role) || PM_ROLES.includes(role);
@@ -409,6 +409,70 @@ async function equipmentRoutes(fastify, options) {
       stats: statsResult.rows[0]
     };
   });
+
+  // ============================================
+  // 12a. POST /from-procurement — Создание из закупки
+  // ============================================
+  fastify.post('/from-procurement', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const { procurement_item_id, warehouse_id } = req.body;
+    if (!procurement_item_id) return reply.code(400).send({ success: false, error: 'procurement_item_id required' });
+
+    // Найти позицию закупки
+    const pic = await db.query(
+      `SELECT pi.*, pi.equipment_id, pr.work_id, pr.pm_id, pr.id as proc_id
+       FROM procurement_items pi
+       JOIN procurement_requests pr ON pr.id = pi.procurement_id
+       WHERE pi.id = $1`, [procurement_item_id]);
+    if (!pic.rows.length) return reply.code(404).send({ success: false, error: 'Позиция не найдена' });
+    const item = pic.rows[0];
+
+    // Дубль — уже привязано оборудование
+    if (item.equipment_id) return reply.code(409).send({ success: false, error: 'Оборудование уже создано', equipment_id: item.equipment_id });
+
+    const whId = warehouse_id || (await db.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1")).rows[0]?.id || null;
+    const qrUuid = randomUUID();
+    const user = req.user;
+    const client = await db.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      const invNum = 'INV-' + Date.now().toString(36).toUpperCase();
+      const eq = await client.query(
+        `INSERT INTO equipment(name, inventory_number, quantity, unit, purchase_price, status, warehouse_id, qr_uuid, qr_code, condition, notes, created_by)
+         VALUES($1,$2,$3,$4,$5,'on_warehouse',$6,$7,$8,'new',$9,$10) RETURNING *`,
+        [item.name, invNum, item.quantity || 1, item.unit || 'шт', item.unit_price, whId, qrUuid, qrUuid, 'Из закупки #' + item.proc_id, user.id]);
+      const eqId = eq.rows[0].id;
+
+      // Линк обратно в procurement_items
+      await client.query('UPDATE procurement_items SET equipment_id=$1,updated_at=NOW() WHERE id=$2', [eqId, procurement_item_id]);
+
+      // Movement
+      await client.query(
+        `INSERT INTO equipment_movements(equipment_id, movement_type, to_warehouse_id, notes, created_by)
+         VALUES($1,'procurement_receipt',$2,$3,$4)`,
+        [eqId, whId, 'Приёмка из закупки #' + item.proc_id, user.id]);
+
+      // Авто-бронирование если есть work_id
+      if (item.work_id) {
+        await client.query(
+          `INSERT INTO equipment_reservations(equipment_id,work_id,reserved_by,reserved_from,reserved_to,status,notes)
+           VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE+INTERVAL '30 days','active',$4)`,
+          [eqId, item.work_id, item.pm_id || user.id, 'Автобронь из закупки #' + item.proc_id]);
+      }
+
+      await client.query('COMMIT');
+      return { success: true, equipment: eq.rows[0] };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  });
+
+  // 12b. GET /available — дубликат удалён (см. секцию 9 выше)
+
+  // 12c. POST /reserve — дубликат удалён (см. секцию 24 ниже)
 
   // ============================================
   // 13. GET /:id — Детальная информация
@@ -2017,7 +2081,7 @@ async function equipmentRoutes(fastify, options) {
   });
 
   // ── Раздача фото оборудования ──
-  fastify.get('/photo/:filename', async (request, reply) => {
+  fastify.get('/photo/:filename', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { filename } = request.params;
     const safeName = path.basename(filename);
     const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -2175,6 +2239,34 @@ async function equipmentRoutes(fastify, options) {
     }
 
     return result;
+  });
+
+  // ============================================
+  // POST /:id/return — Возврат на склад
+  // ============================================
+  fastify.post('/:id/return', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const { id } = req.params;
+    const { work_id, notes } = req.body || {};
+    const eq = await db.query('SELECT * FROM equipment WHERE id=$1', [id]);
+    if (!eq.rows.length) return reply.code(404).send({ error: 'Не найдено' });
+    const wh = (await db.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1")).rows[0]?.id;
+    await db.query("UPDATE equipment SET status='on_warehouse', warehouse_id=$2 WHERE id=$1", [id, wh]);
+    await db.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,created_by,notes)
+       VALUES($1,'return',$2,$3,$4)`, [id, wh, req.user.id, notes || `Возврат${work_id ? ' с работы #'+work_id : ''}`]);
+    reply.send({ ok: true });
+  });
+
+  // ============================================
+  // POST /:id/write-off — Списание
+  // ============================================
+  fastify.post('/:id/write-off', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+    if (!reason) return reply.code(400).send({ error: 'reason required' });
+    await db.query("UPDATE equipment SET status='written_off' WHERE id=$1", [id]);
+    await db.query(`INSERT INTO equipment_movements(equipment_id,movement_type,created_by,notes)
+       VALUES($1,'write_off',$2,$3)`, [id, req.user.id, reason]);
+    reply.send({ ok: true });
   });
 
 }

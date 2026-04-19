@@ -58,7 +58,7 @@ window.AsgardEmployeePage=(function(){
     const auth=await AsgardAuth.requireUser();
     if(!auth){ location.hash="#/login"; return; }
     const user=auth.user;
-    if(!(user.role==="ADMIN" || user.role==="HR" || user.role==="PM" || user.role==="TO" || isDirRole(user.role))){
+    if(!(user.role==="ADMIN" || user.role==="HR" || user.role==="PM" || user.role==="TO" || user.role==="OFFICE_MANAGER" || user.role==="HR_MANAGER" || user.role==="HEAD_PM" || user.role==="HEAD_TO" || isDirRole(user.role))){
       toast("Доступ","Недостаточно прав","err"); location.hash="#/home"; return;
     }
 
@@ -104,7 +104,7 @@ window.AsgardEmployeePage=(function(){
       return `<tr${isCurrent?' style="background:rgba(34,197,94,.08)"':''}>
         <td style="white-space:nowrap">${a.date_from ? new Date(a.date_from).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'}</td>
         <td style="white-space:nowrap">${a.date_to ? new Date(a.date_to).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'}</td>
-        <td><b>${w?esc(w.work_title||w.work_name||""):"—"}</b></td>
+        <td><b>${w?esc(w.work_title||""):"—"}</b></td>
         <td>${esc(customer)}</td>
         <td>${esc(city)}</td>
         <td>${esc(a.role||a.role_on_work||"")}</td>
@@ -141,10 +141,24 @@ window.AsgardEmployeePage=(function(){
             <div class="help">Роль: <b>${esc(emp.role_tag||"—")}</b> · Разряд: <b>${esc(emp.grade||"—")}</b> · Рейтинг: <b>${emp.rating_avg!=null?esc(Number(emp.rating_avg).toFixed(1)):"—"}</b></div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
+            <button class="btn ghost" id="btnAiSummary" title="Мимир сгенерирует краткую характеристику">\uD83E\uDDD9 Характеристика</button>
             <button class="btn ghost" id="btnSchedule">График</button>
+            <button class="btn ghost" id="btnProfile">\uD83D\uDCCB Анкета</button>
             ${canEdit ? `<button class="btn" id="btnSave">Сохранить</button>` : ``}
             ${(user.role==="PM" || user.role==="ADMIN" || isDirRole(user.role)) ? `<button class="btn red" id="btnReview">Оценить</button>` : ``}
           </div>
+        </div>
+
+        <div id="aiSummaryBlock" style="display:none;margin:12px 0;padding:16px;background:rgba(59,130,246,0.06);border-left:3px solid var(--blue-l);border-radius:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-weight:700;color:var(--blue-l);font-size:13px">\uD83E\uDDD9 Характеристика от Мимира</span>
+            <div style="display:flex;gap:6px">
+              <button id="btnRefreshSummary" class="btn ghost mini" title="Обновить">\uD83D\uDD04</button>
+              <button id="btnCloseSummary" class="btn ghost mini" title="Скрыть">\u00D7</button>
+            </div>
+          </div>
+          <div id="aiSummaryText" style="font-size:13px;line-height:1.6;color:var(--t1)"></div>
+          <div id="aiSummaryMeta" style="margin-top:8px;font-size:11px;color:var(--t3)"></div>
         </div>
 
         <!-- Основная информация -->
@@ -161,11 +175,7 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Пол</label>
-              <select id="gender" ${canEdit?"":"disabled"}>
-                <option value="">—</option>
-                <option value="male" ${emp.gender==="male"?"selected":""}>Мужской</option>
-                <option value="female" ${emp.gender==="female"?"selected":""}>Женский</option>
-              </select>
+              <div id="gender_w"></div>
             </div>
             <div>
               <label>Должность</label>
@@ -196,15 +206,15 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Кем выдан</label>
-              <input id="pass_issued_by" value="${esc(emp.pass_issued_by||"")}" ${canEdit?"":"disabled"}/>
+              <input id="passport_issued" value="${esc(emp.passport_issued||"")}" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>Дата выдачи</label>
-              <input id="pass_issued_date" type="date" value="${esc(normalizeDateInput(emp.pass_issued_date))}" ${canEdit?"":"disabled"}/>
+              <input id="passport_date" type="date" value="${esc(normalizeDateInput(emp.passport_date))}" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>Код подразделения</label>
-              <input id="pass_code" value="${esc(emp.pass_code||"")}" placeholder="123-456" ${canEdit?"":"disabled"}/>
+              <input id="passport_code" value="${esc(emp.passport_code||"")}" placeholder="123-456" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>ИНН</label>
@@ -231,11 +241,11 @@ window.AsgardEmployeePage=(function(){
           <div class="formrow" style="margin-top:12px">
             <div style="grid-column:1/-1">
               <label>Адрес регистрации (прописка)</label>
-              <input id="address_reg" value="${esc(emp.address_reg||"")}" ${canEdit?"":"disabled"}/>
+              <input id="registration_address" value="${esc(emp.registration_address||"")}" ${canEdit?"":"disabled"}/>
             </div>
             <div style="grid-column:1/-1">
               <label>Фактический адрес проживания</label>
-              <input id="address_fact" value="${esc(emp.address_fact||"")}" ${canEdit?"":"disabled"}/>
+              <input id="address_fact" value="${esc(emp.address||"")}" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>Телефон основной</label>
@@ -297,12 +307,7 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Семейное положение</label>
-              <select id="marital_status" ${canEdit?"":"disabled"}>
-                <option value="">—</option>
-                <option value="single" ${emp.marital_status==="single"?"selected":""}>Не женат/не замужем</option>
-                <option value="married" ${emp.marital_status==="married"?"selected":""}>Женат/замужем</option>
-                <option value="divorced" ${emp.marital_status==="divorced"?"selected":""}>Разведён(а)</option>
-              </select>
+              <div id="marital_status_w"></div>
             </div>
             <div>
               <label>Количество детей</label>
@@ -322,17 +327,7 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Группа крови</label>
-              <select id="blood_type" ${canEdit?"":"disabled"}>
-                <option value="">—</option>
-                <option value="O+" ${emp.blood_type==="O+"?"selected":""}>O(I)+</option>
-                <option value="O-" ${emp.blood_type==="O-"?"selected":""}>O(I)−</option>
-                <option value="A+" ${emp.blood_type==="A+"?"selected":""}>A(II)+</option>
-                <option value="A-" ${emp.blood_type==="A-"?"selected":""}>A(II)−</option>
-                <option value="B+" ${emp.blood_type==="B+"?"selected":""}>B(III)+</option>
-                <option value="B-" ${emp.blood_type==="B-"?"selected":""}>B(III)−</option>
-                <option value="AB+" ${emp.blood_type==="AB+"?"selected":""}>AB(IV)+</option>
-                <option value="AB-" ${emp.blood_type==="AB-"?"selected":""}>AB(IV)−</option>
-              </select>
+              <div id="blood_type_w"></div>
             </div>
             <div style="grid-column:1/-1">
               <label>Аллергии / мед. ограничения</label>
@@ -445,6 +440,12 @@ window.AsgardEmployeePage=(function(){
 
     await layout(html, {title: title || "Личное дело", motto: "Сильна дружина, где помнят имена и дела."});
 
+    // ─── CRSelect: employee form fields ───
+    $('#gender_w')?.appendChild(CRSelect.create({ id: 'gender', options: [{ value: '', label: '—' }, { value: 'male', label: 'Мужской' }, { value: 'female', label: 'Женский' }], value: emp.gender || '', disabled: !canEdit }));
+    $('#marital_status_w')?.appendChild(CRSelect.create({ id: 'marital_status', options: [{ value: '', label: '—' }, { value: 'single', label: 'Не женат/не замужем' }, { value: 'married', label: 'Женат/замужем' }, { value: 'divorced', label: 'Разведён(а)' }], value: emp.marital_status || '', disabled: !canEdit }));
+    const _bloodOpts = [{ value: '', label: '—' }, { value: 'O+', label: 'O(I)+' }, { value: 'O-', label: 'O(I)−' }, { value: 'A+', label: 'A(II)+' }, { value: 'A-', label: 'A(II)−' }, { value: 'B+', label: 'B(III)+' }, { value: 'B-', label: 'B(III)−' }, { value: 'AB+', label: 'AB(IV)+' }, { value: 'AB-', label: 'AB(IV)−' }];
+    $('#blood_type_w')?.appendChild(CRSelect.create({ id: 'blood_type', options: _bloodOpts, value: emp.blood_type || '', disabled: !canEdit }));
+
     // ── Timeline / Gantt ──
     (function renderTimeline(){
       var container = document.getElementById('empTimeline');
@@ -492,7 +493,7 @@ window.AsgardEmployeePage=(function(){
         var t2 = w2 ? tenderMap.get(w2?.tender_id) : null;
         var isCurr = !a2.date_to || a2.date_to.slice(0,10) >= todayStr;
         var bgColor = isCurr ? 'linear-gradient(135deg,#d4a825,#c9952a)' : 'linear-gradient(135deg,#22c55e,#1a8a4a)';
-        var label = w2 ? (w2.work_title||w2.work_name||'').substring(0,25) : '';
+        var label = w2 ? (w2.work_title||'').substring(0,25) : '';
         var customer = w2?.customer_name || t2?.customer_name || '';
         var pmName = w2?.pm_id ? (userMap.get(w2.pm_id)||'') : '';
         var role = a2.role || a2.role_on_work || '';
@@ -519,7 +520,7 @@ window.AsgardEmployeePage=(function(){
         '</div>' +
         '<div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--t3)">' +
           '<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#d4a825,#c9952a);margin-right:4px;vertical-align:middle"></span>Активна</span>' +
-          '<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#22c55e,#1a8a4a);margin-right:4px;vertical-align:middle"></span>Завершена</span>' +
+          '<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#22c55e,#1a8a4a);margin-right:4px;vertical-align:middle"></span>Работы сдали</span>' +
           '<span style="margin-left:auto"><span style="display:inline-block;width:10px;height:2px;background:var(--red);margin-right:4px;vertical-align:middle"></span>Сегодня</span>' +
         '</div>' +
       '</div>';
@@ -570,6 +571,14 @@ window.AsgardEmployeePage=(function(){
 
     $("#btnSchedule").onclick=()=>{ location.hash=`#/workers-schedule?emp=${id}`; };
 
+    const btnProfile = document.getElementById("btnProfile");
+    if(btnProfile){
+      btnProfile.onclick=()=>{
+        if(!window.WorkerProfileDesktop){ toast("Ошибка","Модуль анкет не загружен","err"); return; }
+        WorkerProfileDesktop.open({ user_id: emp.user_id, employee_id: id, fio: emp.fio });
+      };
+    }
+
     // Добавление комментария
     const btnAddComment = document.getElementById("btnAddComment");
     if(btnAddComment){
@@ -596,7 +605,7 @@ window.AsgardEmployeePage=(function(){
         const birth=$("#birth")?.value?.trim();
         if(!birth){ toast("Проверка","Дата рождения обязательна","err"); return; }
         emp.birth_date=birth;
-        emp.gender=$("#gender")?.value || "";
+        emp.gender=CRSelect.getValue('gender') || "";
         emp.role_tag=$("#role")?.value?.trim() || "";
         emp.grade=$("#grade")?.value?.trim() || "";
         emp.hire_date=$("#hire_date")?.value || "";
@@ -604,17 +613,17 @@ window.AsgardEmployeePage=(function(){
         // Документы
         emp.pass_series=$("#pass_series")?.value?.trim() || "";
         emp.pass_number=$("#pass_number")?.value?.trim() || "";
-        emp.pass_issued_by=$("#pass_issued_by")?.value?.trim() || "";
-        emp.pass_issued_date=$("#pass_issued_date")?.value || "";
-        emp.pass_code=$("#pass_code")?.value?.trim() || "";
+        emp.passport_issued=$("#passport_issued")?.value?.trim() || "";
+        emp.passport_date=$("#passport_date")?.value || "";
+        emp.passport_code=$("#passport_code")?.value?.trim() || "";
         emp.inn=$("#inn")?.value?.trim() || "";
         emp.snils=$("#snils")?.value?.trim() || "";
         emp.military_id=$("#military_id")?.value?.trim() || "";
         emp.driver_license=$("#driver_license")?.value?.trim() || "";
 
         // Адреса и контакты
-        emp.address_reg=$("#address_reg")?.value?.trim() || "";
-        emp.address_fact=$("#address_fact")?.value?.trim() || "";
+        emp.registration_address=$("#registration_address")?.value?.trim() || "";
+        emp.address=$("#address_fact")?.value?.trim() || "";
         emp.phone=$("#phone")?.value?.trim() || "";
         emp.phone2=$("#phone2")?.value?.trim() || "";
         emp.email=$("#email")?.value?.trim() || "";
@@ -630,12 +639,12 @@ window.AsgardEmployeePage=(function(){
         // Дополнительно
         emp.education=$("#education")?.value?.trim() || "";
         emp.specialty=$("#specialty")?.value?.trim() || "";
-        emp.marital_status=$("#marital_status")?.value || "";
+        emp.marital_status=CRSelect.getValue('marital_status') || "";
         emp.children_count=$("#children_count")?.value ? Number($("#children_count").value) : null;
         emp.clothing_size=$("#clothing_size")?.value?.trim() || "";
         emp.shoe_size=$("#shoe_size")?.value?.trim() || "";
         emp.height=$("#height")?.value ? Number($("#height").value) : null;
-        emp.blood_type=$("#blood_type")?.value || "";
+        emp.blood_type=CRSelect.getValue('blood_type') || "";
         emp.medical_notes=$("#medical_notes")?.value?.trim() || "";
 
         // Допуски
@@ -657,10 +666,7 @@ window.AsgardEmployeePage=(function(){
           <div class="formrow">
             <div style="grid-column:1/-1">
               <label for="w">Контракт</label>
-              <select id="w">
-                <option value="">—</option>
-                ${(works||[]).map(w=>`<option value="${w.id}">${esc(w.work_title||"")}</option>`).join("")}
-              </select>
+              <div id="w_w"></div>
             </div>
             <div>
               <label for="score">Оценка (1..10)</label>
@@ -675,9 +681,10 @@ window.AsgardEmployeePage=(function(){
             <button class="btn" id="btnSend">Сохранить отзыв</button>
           </div>
         `;
-        showModal("Оценка сотрудника", body);
+        showModal({ title: "Оценка сотрудника", html: body, icon: '👤', subtitle: 'Карточка сотрудника' });
+        $('#w_w')?.appendChild(CRSelect.create({ id: 'w_sel', options: [{ value: '', label: '—' }, ...(works||[]).map(w => ({ value: String(w.id), label: w.work_title || '' }))], searchable: true, dropdownClass: 'z-modal' }));
         $("#btnSend").onclick = async ()=>{
-          const work_id = Number($("#w").value||0) || null;
+          const work_id = Number(CRSelect.getValue('w_sel')||0) || null;
           const score = Number($("#score").value||0);
           if(!(score>=1 && score<=10)){ toast("Проверка","Оценка 1..10","err"); return; }
           const comm = $("#comm").value.trim();
@@ -688,6 +695,61 @@ window.AsgardEmployeePage=(function(){
         };
       };
     }
+
+    // 🧙 AI-характеристика
+    async function loadAiSummary() {
+      const block = document.getElementById('aiSummaryBlock');
+      const textEl = document.getElementById('aiSummaryText');
+      const metaEl = document.getElementById('aiSummaryMeta');
+      if (!block || !textEl) return;
+
+      block.style.display = 'block';
+      textEl.innerHTML = '<span style="color:var(--t3)">\u23F3 Мимир анализирует данные...</span>';
+      metaEl.textContent = '';
+
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/mimir/employee-summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ employee_id: id })
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          textEl.innerHTML = '<span style="color:var(--err-t)">Ошибка: ' + esc(err.message || 'HTTP ' + resp.status) + '</span>';
+          return;
+        }
+
+        const data = await resp.json();
+        if (data.success && data.summary) {
+          textEl.textContent = data.summary;
+          const sources = data.data_sources || {};
+          const parts = [];
+          if (sources.has_profile) parts.push('анкета');
+          if (sources.reviews_count > 0) parts.push(sources.reviews_count + ' отзывов');
+          if (sources.assignments_count > 0) parts.push(sources.assignments_count + ' назначений');
+          if (sources.has_payroll) parts.push('зарплата');
+          metaEl.textContent = 'Источники: ' + (parts.length ? parts.join(', ') : 'основные данные');
+        } else {
+          textEl.innerHTML = '<span style="color:var(--err-t)">' + esc(data.message || 'Не удалось') + '</span>';
+        }
+      } catch (e) {
+        textEl.innerHTML = '<span style="color:var(--err-t)">Ошибка: ' + esc(e.message) + '</span>';
+      }
+    }
+
+    const btnAiSummary = document.getElementById('btnAiSummary');
+    if (btnAiSummary) btnAiSummary.addEventListener('click', loadAiSummary);
+
+    const btnRefreshSummary = document.getElementById('btnRefreshSummary');
+    if (btnRefreshSummary) btnRefreshSummary.addEventListener('click', loadAiSummary);
+
+    const btnCloseSummary = document.getElementById('btnCloseSummary');
+    if (btnCloseSummary) btnCloseSummary.addEventListener('click', () => {
+      const block = document.getElementById('aiSummaryBlock');
+      if (block) block.style.display = 'none';
+    });
   }
 
   return {render};

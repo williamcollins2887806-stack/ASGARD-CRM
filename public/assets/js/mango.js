@@ -857,7 +857,7 @@ window.AsgardMango = (function(){
   }
 
   // Helpers
-  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function formatDuration(seconds) {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;

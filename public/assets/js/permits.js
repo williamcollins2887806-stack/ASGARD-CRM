@@ -51,7 +51,7 @@ window.AsgardPermitsPage = (function(){
   // ═══════════════════════════════════════════════════════════════
   // HELPERS
   // ═══════════════════════════════════════════════════════════════
-  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function formatDate(d) { return d ? new Date(d).toLocaleDateString('ru-RU') : ''; }
 
   function getToken() {
@@ -285,16 +285,7 @@ window.AsgardPermitsPage = (function(){
 
             <div class="field">
               <label>Тип разрешения *</label>
-              <select id="permitType" class="inp">
-                <option value="">— Выберите —</option>
-                ${Object.entries(CATEGORIES).map(([catId, cat]) => `
-                  <optgroup label="${cat.name}">
-                    ${types.filter(t => t.category === catId).map(t => `
-                      <option value="${t.id}" ${permit?.type_id === t.id ? 'selected' : ''}>${esc(t.name)}</option>
-                    `).join('')}
-                  </optgroup>
-                `).join('')}
-              </select>
+              <div id="permitType_w"></div>
             </div>
 
             <div class="formrow" style="margin-top:12px">
@@ -340,12 +331,15 @@ window.AsgardPermitsPage = (function(){
 
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('permitModal');
+    /* CRSelect: permitType (grouped) */
+    const _ptOpts = Object.entries(CATEGORIES).map(([catId, cat]) => ({ group: cat.name, items: types.filter(t => t.category === catId).map(t => ({ value: t.id, label: t.name })) })).filter(g => g.items.length);
+    document.getElementById('permitType_w')?.appendChild(CRSelect.create({ id: 'permitType', placeholder: '— Выберите —', options: _ptOpts, value: permit?.type_id || '', searchable: true, dropdownClass: 'z-modal' }));
 
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnSavePermit').onclick = async () => {
-      const typeId = document.getElementById('permitType').value;
+      const typeId = CRSelect.getValue('permitType');
       if (!typeId) { AsgardUI.toast('Ошибка', 'Выберите тип', 'err'); return; }
 
       const scanInput = document.getElementById('permitScanFile');
@@ -456,7 +450,7 @@ window.AsgardPermitsPage = (function(){
     const modal = document.getElementById('renewModal');
 
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnDoRenew').onclick = async () => {
       const expiry = document.getElementById('renewExpiry').value;
@@ -517,7 +511,7 @@ window.AsgardPermitsPage = (function(){
     const modal = document.getElementById('bulkRenewModal');
 
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnDoBulkRenew').onclick = async () => {
       const expiry = document.getElementById('bulkExpiry').value;
@@ -557,27 +551,15 @@ window.AsgardPermitsPage = (function(){
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
         <div class="field" style="margin:0">
           <label>Статус</label>
-          <select id="filterStatus" class="inp" style="min-width:150px">
-            <option value="">Все</option>
-            <option value="expired">Истёкшие</option>
-            <option value="expiring_14">Истекают (&le;14 дн.)</option>
-            <option value="expiring_30">Истекают (&le;30 дн.)</option>
-            <option value="active">Действующие</option>
-          </select>
+          <div id="filterStatus_w" style="min-width:150px"></div>
         </div>
         <div class="field" style="margin:0">
           <label>Категория</label>
-          <select id="filterCategory" class="inp" style="min-width:150px">
-            <option value="">Все</option>
-            ${Object.entries(CATEGORIES).map(([id, c]) => `<option value="${id}">${c.name}</option>`).join('')}
-          </select>
+          <div id="filterCategory_w" style="min-width:150px"></div>
         </div>
         <div class="field" style="margin:0">
           <label>Сотрудник</label>
-          <select id="filterEmployee" class="inp" style="min-width:200px">
-            <option value="">Все</option>
-            ${employees.filter(e => e.is_active).map(e => `<option value="${e.id}">${esc(e.fio)}</option>`).join('')}
-          </select>
+          <div id="filterEmployee_w" style="min-width:200px"></div>
         </div>
         <button class="btn" id="btnApplyFilters">Применить</button>
         ${canWrite ? `<button class="btn primary" id="btnAddNewPermit" style="margin-left:auto">+ Добавить</button>` : ''}
@@ -594,24 +576,27 @@ window.AsgardPermitsPage = (function(){
       </div>
     `;
 
+    /* CRSelect: filter selects */
+    const _fStatusOpts = [{ value: '', label: 'Все' }, { value: 'expired', label: 'Истёкшие' }, { value: 'expiring_14', label: 'Истекают (≤14 дн.)' }, { value: 'expiring_30', label: 'Истекают (≤30 дн.)' }, { value: 'active', label: 'Действующие' }];
+    document.getElementById('filterStatus_w')?.appendChild(CRSelect.create({ id: 'filterStatus', placeholder: 'Все', options: _fStatusOpts, value: '' }));
+    const _fCatOpts = [{ value: '', label: 'Все' }].concat(Object.entries(CATEGORIES).map(([id, c]) => ({ value: id, label: c.name })));
+    document.getElementById('filterCategory_w')?.appendChild(CRSelect.create({ id: 'filterCategory', placeholder: 'Все', options: _fCatOpts, value: '' }));
+    document.getElementById('filterEmployee_w')?.appendChild(CRSelect.create({ id: 'filterEmployee', placeholder: 'Все', options: [{ value: '', label: 'Все' }], value: '', searchable: true }));
     // Lazy load employees for filter dropdown
     (async () => {
       try {
         employees = await getEmployeesFromAPI();
-        const sel = document.getElementById('filterEmployee');
-        if (sel && employees.length > 0) {
-          sel.innerHTML = '<option value="">Все</option>' +
-            employees.filter(e => e.is_active !== false).map(e =>
-              '<option value="' + e.id + '">' + esc(e.fio || '') + '</option>'
-            ).join('');
+        if (employees.length > 0) {
+          const opts = [{ value: '', label: 'Все' }].concat(employees.filter(e => e.is_active !== false).map(e => ({ value: String(e.id), label: e.fio || '' })));
+          CRSelect.setOptions('filterEmployee', opts);
         }
       } catch(e) { console.warn('Employee filter load failed:', e.message); }
     })();
 
     const loadList = async () => {
-      const status = document.getElementById('filterStatus').value;
-      const category = document.getElementById('filterCategory').value;
-      const employee_id = document.getElementById('filterEmployee').value;
+      const status = CRSelect.getValue('filterStatus');
+      const category = CRSelect.getValue('filterCategory');
+      const employee_id = CRSelect.getValue('filterEmployee');
 
       let url = '/?';
       if (status) url += `status=${status}&`;
@@ -622,7 +607,8 @@ window.AsgardPermitsPage = (function(){
         const { permits } = await api(url);
         renderPermitsList(permits, types, canWrite, canDelete);
       } catch(e) {
-        document.getElementById('permitsListContent').innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`;
+        const _plc = document.getElementById('permitsListContent');
+        if (_plc) _plc.innerHTML = `<div class="alert alert-danger">${esc(e.message)}</div>`;
       }
     };
 
@@ -770,10 +756,7 @@ window.AsgardPermitsPage = (function(){
                 <button class="btn ghost btnClose">&times;</button>
               </div>
               <div class="modal-body">
-                <select id="empSelect" class="inp">
-                  <option value="">— Выберите —</option>
-                  ${active.map(e => `<option value="${e.id}">${esc(e.fio || e.name || "")}</option>`).join("")}
-                </select>
+                <div id="empSelect_w"></div>
               </div>
               <div class="modal-footer">
                 <button class="btn ghost btnClose">Отмена</button>
@@ -784,11 +767,13 @@ window.AsgardPermitsPage = (function(){
         `;
         document.body.insertAdjacentHTML('beforeend', selectHtml);
         const modal = document.getElementById('selectEmployeeModal');
+        const _empOpts = active.map(e => ({ value: String(e.id), label: e.fio || e.name || '' }));
+        document.getElementById('empSelect_w')?.appendChild(CRSelect.create({ id: 'empSelect', placeholder: '— Выберите —', options: _empOpts, searchable: true, dropdownClass: 'z-modal' }));
         modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-        modal.onclick = e => { if (e.target === modal) modal.remove(); };
+        modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
         document.getElementById('btnConfirmEmp').onclick = () => {
-          const empId = parseInt(document.getElementById('empSelect').value);
+          const empId = parseInt(CRSelect.getValue('empSelect') || '0', 10);
           if (!empId) { AsgardUI.toast('Ошибка', 'Выберите сотрудника', 'err'); return; }
           modal.remove();
           openPermitModal(empId, null, loadList);
@@ -811,17 +796,11 @@ window.AsgardPermitsPage = (function(){
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
         <div class="field" style="margin:0">
           <label>Категория</label>
-          <select id="matrixCategory" class="inp" style="min-width:150px">
-            <option value="">Все</option>
-            ${Object.entries(CATEGORIES).map(([id, c]) => `<option value="${id}">${c.name}</option>`).join('')}
-          </select>
+          <div id="matrixCategory_w" style="min-width:150px"></div>
         </div>
         <div class="field" style="margin:0">
           <label>Проект (для требований)</label>
-          <select id="matrixWork" class="inp" style="min-width:250px">
-            <option value="">Все типы</option>
-            ${works.filter(w => w.work_status !== 'Завершён').map(w => `<option value="${w.id}">${esc(w.work_title || w.work_name || 'ID:' + w.id)}</option>`).join('')}
-          </select>
+          <div id="matrixWork_w" style="min-width:250px"></div>
         </div>
         <button class="btn" id="btnLoadMatrix">Показать</button>
       </div>
@@ -831,9 +810,15 @@ window.AsgardPermitsPage = (function(){
       </div>
     `;
 
+    /* CRSelect: matrix filters */
+    const _mCatOpts = [{ value: '', label: 'Все' }].concat(Object.entries(CATEGORIES).map(([id, c]) => ({ value: id, label: c.name })));
+    document.getElementById('matrixCategory_w')?.appendChild(CRSelect.create({ id: 'matrixCategory', placeholder: 'Все', options: _mCatOpts, value: '' }));
+    const _mWorkOpts = [{ value: '', label: 'Все типы' }].concat(works.filter(w => w.work_status !== 'Завершён').map(w => ({ value: String(w.id), label: w.work_title || 'Проект #' + w.id })));
+    document.getElementById('matrixWork_w')?.appendChild(CRSelect.create({ id: 'matrixWork', placeholder: 'Все типы', options: _mWorkOpts, value: '', searchable: true }));
+
     document.getElementById('btnLoadMatrix').onclick = async () => {
-      const category = document.getElementById('matrixCategory').value;
-      const work_id = document.getElementById('matrixWork').value;
+      const category = CRSelect.getValue('matrixCategory');
+      const work_id = CRSelect.getValue('matrixWork');
 
       let url = '/matrix?';
       if (category) url += `category=${category}&`;
@@ -902,10 +887,7 @@ window.AsgardPermitsPage = (function(){
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
         <div class="field" style="margin:0;flex:1;min-width:300px">
           <label>Выберите проект</label>
-          <select id="projectSelect" class="inp">
-            <option value="">— Выберите —</option>
-            ${works.filter(w => w.work_status !== 'Завершён').map(w => `<option value="${w.id}">${esc(w.work_title || w.work_name || 'Проект #' + w.id)}</option>`).join('')}
-          </select>
+          <div id="projectSelect_w"></div>
         </div>
       </div>
 
@@ -914,8 +896,11 @@ window.AsgardPermitsPage = (function(){
       </div>
     `;
 
-    document.getElementById('projectSelect').onchange = async function() {
-      const workId = this.value;
+    /* CRSelect: projectSelect */
+    const _pWorkOpts = works.filter(w => w.work_status !== 'Завершён').map(w => ({ value: String(w.id), label: w.work_title || 'Проект #' + w.id }));
+    document.getElementById('projectSelect_w')?.appendChild(CRSelect.create({ id: 'projectSelect', placeholder: '— Выберите —', options: _pWorkOpts, value: '', searchable: true, onChange: onProjectChange }));
+
+    async function onProjectChange(workId) {
       if (!workId) {
         document.getElementById('projectContent').innerHTML = '<div class="help">Выберите проект</div>';
         return;
@@ -936,14 +921,7 @@ window.AsgardPermitsPage = (function(){
           <h4>Требуемые допуски</h4>
           ${canWrite ? `
             <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-              <select id="addReqType" class="inp" style="flex:1;min-width:200px">
-                <option value="">— Добавить тип —</option>
-                ${Object.entries(CATEGORIES).map(([catId, cat]) => `
-                  <optgroup label="${cat.name}">
-                    ${types.filter(t => t.category === catId).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
-                  </optgroup>
-                `).join('')}
-              </select>
+              <div id="addReqType_w" style="flex:1;min-width:200px"></div>
               <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="addReqMandatory" checked/> Обязательный</label>
               <button class="btn mini" id="btnAddReq">Добавить</button>
             </div>
@@ -998,8 +976,12 @@ window.AsgardPermitsPage = (function(){
 
         // Bind events
         if (canWrite) {
+          /* CRSelect: addReqType (grouped) */
+          const _arOpts = Object.entries(CATEGORIES).map(([catId, cat]) => ({ group: cat.name, items: types.filter(t => t.category === catId).map(t => ({ value: t.id, label: t.name })) })).filter(g => g.items.length);
+          document.getElementById('addReqType_w')?.appendChild(CRSelect.create({ id: 'addReqType', placeholder: '— Добавить тип —', options: _arOpts, searchable: true }));
+
           document.getElementById('btnAddReq')?.addEventListener('click', async () => {
-            const typeId = document.getElementById('addReqType').value;
+            const typeId = CRSelect.getValue('addReqType');
             if (!typeId) { AsgardUI.toast('Ошибка', 'Выберите тип', 'err'); return; }
             const mandatory = document.getElementById('addReqMandatory').checked;
             try {
@@ -1008,7 +990,7 @@ window.AsgardPermitsPage = (function(){
                 body: { permit_type_id: typeId, is_mandatory: mandatory }
               });
               AsgardUI.toast('Добавлено', '', 'ok');
-              document.getElementById('projectSelect').dispatchEvent(new Event('change'));
+              onProjectChange(CRSelect.getValue('projectSelect'));
             } catch(e) {
               AsgardUI.toast('Ошибка', e.message, 'err');
             }
@@ -1020,7 +1002,7 @@ window.AsgardPermitsPage = (function(){
               try {
                 await api(`/work/${workId}/requirements/${b.dataset.id}`, { method: 'DELETE' });
                 AsgardUI.toast('Удалено', '', 'ok');
-                document.getElementById('projectSelect').dispatchEvent(new Event('change'));
+                onProjectChange(CRSelect.getValue('projectSelect'));
               } catch(e) {
                 AsgardUI.toast('Ошибка', e.message, 'err');
               }
@@ -1183,10 +1165,6 @@ window.AsgardPermitsPage = (function(){
       `).join('');
     }
 
-    const catOptions = Object.entries(CATEGORIES).map(([k,v]) =>
-      `<option value="${k}">${v.name}</option>`
-    ).join('');
-
     const html = `
       <div class="modal-overlay show" id="manageTypesModal">
         <div class="modal-content" style="max-width:700px">
@@ -1197,7 +1175,7 @@ window.AsgardPermitsPage = (function(){
           <div class="modal-body" style="max-height:60vh;overflow-y:auto">
             <div style="display:flex;gap:8px;margin-bottom:16px">
               <input id="newTypeName" class="inp" placeholder="Название нового типа..." style="flex:1"/>
-              <select id="newTypeCat" class="inp" style="width:180px">${catOptions}</select>
+              <div id="newTypeCat_w" style="width:180px"></div>
               <button class="btn primary" id="btnAddType">+ Добавить</button>
             </div>
             <div id="typesList">${renderTypesList()}</div>
@@ -1210,12 +1188,15 @@ window.AsgardPermitsPage = (function(){
     `;
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('manageTypesModal');
+    /* CRSelect: newTypeCat */
+    const _ntcOpts = Object.entries(CATEGORIES).map(([k,v]) => ({ value: k, label: v.name }));
+    document.getElementById('newTypeCat_w')?.appendChild(CRSelect.create({ id: 'newTypeCat', options: _ntcOpts, value: _ntcOpts[0]?.value || '', dropdownClass: 'z-modal' }));
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnAddType').onclick = async () => {
       const name = document.getElementById('newTypeName').value.trim();
-      const category = document.getElementById('newTypeCat').value;
+      const category = CRSelect.getValue('newTypeCat');
       if (!name || name.length < 3) { AsgardUI.toast('Ошибка','Название мин. 3 символа','err'); return; }
       try {
         const auth = await AsgardAuth.getAuth();

@@ -1,5 +1,6 @@
 /**
- * АСГАРД CRM — Мимир: Хранитель Мудрости v3.0
+ * АСГАРД CRM — Мимир: Хранитель Мудрости v4.0
+ * iPhone-дизайн модалка (FAB десктоп only)
  *
  * Функции:
  * - Чат с ИИ (Claude API) со стримингом
@@ -25,7 +26,8 @@ window.AsgardMimir = (function(){
   let userName = '';
   let currentConversationId = null;
   let conversations = [];
-  let useStreaming = false;  // Отключаем стриминг — RouterAI не поддерживает SSE корректно
+  let useStreaming = false;
+  let unreadDigestCount = 0;
 
   const VIKING_WISDOM = [
     "Мудрость дороже золота, ибо золото можно потерять, а мудрость — никогда.",
@@ -38,317 +40,416 @@ window.AsgardMimir = (function(){
     "Терпение — добродетель воина, знание — его сила."
   ];
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CSS — iPhone-дизайн
+  // ═══════════════════════════════════════════════════════════════════════════
+
   const styles = `
     <style id="mimir-styles">
-      .mimir-widget { position:fixed; bottom:24px; right:24px; z-index:500; font-family:var(--font-main, -apple-system, sans-serif); }
+      /* ── FAB кнопка ── */
+      .mimir-widget { position:fixed; bottom:24px; right:24px; z-index:500; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
 
-      .mimir-toggle {
-        width:56px; height:56px; border-radius:50%;
+      .mimir-fab {
+        width:60px; height:60px; border-radius:50%;
         background:linear-gradient(135deg, #c0392b 0%, #2a3b66 100%);
-        border:2px solid var(--gold-l); cursor:pointer;
+        border:none; cursor:pointer;
         display:flex; align-items:center; justify-content:center;
-        box-shadow:0 4px 20px rgba(192,57,43,0.4), 0 0 0 0 rgba(245,215,142,0.3);
-        transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1); position:relative;
-        animation:mimirPulse 4s infinite;
+        box-shadow:0 6px 24px rgba(192,57,43,0.45), 0 0 0 0 rgba(245,215,142,0.3);
+        transition:all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+        position:relative;
+      }
+      .mimir-fab:hover {
+        transform:scale(1.12);
+        box-shadow:0 8px 32px rgba(192,57,43,0.5), 0 0 0 4px rgba(245,215,142,0.25);
+      }
+      .mimir-fab.has-unread { animation:iphoneFabPulse 4s infinite; }
+      .mimir-fab.is-open { transform:rotate(180deg) scale(0.88); }
+      .mimir-fab-emoji { font-size:28px; transition:opacity 0.2s; pointer-events:none; }
+      .mimir-fab.is-open .mimir-fab-emoji { opacity:0; }
+      .mimir-fab.is-open::after {
+        content:'\\2715'; position:absolute; font-size:22px; color:#fff; font-weight:300;
       }
 
-      @keyframes mimirPulse {
-        0%,100% { box-shadow:0 4px 20px rgba(192,57,43,0.4), 0 0 0 0 rgba(245,215,142,0.3); }
-        50% { box-shadow:0 4px 20px rgba(192,57,43,0.4), 0 0 0 10px rgba(245,215,142,0); }
-      }
-
-      .mimir-toggle:hover { transform:scale(1.08); }
-      .mimir-toggle-icon { font-size:26px; }
-
-      .mimir-toggle::before {
-        content:'ᛗ'; position:absolute; top:-4px; left:-4px;
-        width:20px; height:20px; background:var(--gold-l); border-radius:50%;
+      /* Руна ᛗ badge */
+      .mimir-fab-rune {
+        position:absolute; top:-2px; left:-2px;
+        width:22px; height:22px; background:#f5d78e; border-radius:50%;
         display:flex; align-items:center; justify-content:center;
-        font-size:11px; color:#2a3b66; font-weight:bold; font-family:serif;
-        box-shadow:0 2px 6px rgba(0,0,0,0.3);
+        font-size:12px; color:#2a3b66; font-weight:bold; font-family:serif;
+        box-shadow:0 2px 6px rgba(0,0,0,0.35);
       }
 
-      .mimir-panel {
-        position:absolute; bottom:72px; right:0;
-        width:480px; max-width:calc(100vw - 48px);
-        height:620px; max-height:calc(100vh - 140px);
-        background:linear-gradient(180deg, var(--bg2, #151922) 0%, #0d1428 100%);
-        border-radius:16px; border:1px solid rgba(245,215,142,0.2);
-        box-shadow:0 16px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
-        display:none; flex-direction:row; overflow:hidden;
-        backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+      /* Notification count badge */
+      .mimir-fab-count {
+        position:absolute; top:-6px; right:-6px;
+        min-width:20px; height:20px; padding:0 5px;
+        background:linear-gradient(135deg, #e74c3c, #c0392b); border-radius:10px;
+        display:none; align-items:center; justify-content:center;
+        font-size:11px; color:#fff; font-weight:700;
+        box-shadow:0 2px 8px rgba(231,76,60,0.5);
+        animation:iphoneBadge 0.4s cubic-bezier(0.34,1.56,0.64,1);
+      }
+      .mimir-fab-count.visible { display:flex; }
+
+      /* Tooltip */
+      .mimir-fab-tooltip {
+        position:absolute; right:72px; top:50%; transform:translateY(-50%) translateX(8px);
+        background:rgba(26,26,26,0.95); color:#f5d78e; padding:8px 14px;
+        border-radius:10px; font-size:13px; font-weight:500;
+        white-space:nowrap; pointer-events:none;
+        opacity:0; transition:all 0.25s ease;
+        box-shadow:0 4px 16px rgba(0,0,0,0.4);
+      }
+      .mimir-fab:hover .mimir-fab-tooltip {
+        opacity:1; transform:translateY(-50%) translateX(0);
       }
 
-      .mimir-panel.open { display:flex; animation:mimirOpen 0.35s cubic-bezier(0.34,1.56,0.64,1); }
-      .mimir-panel.minimized { height:64px; }
-
-      @keyframes mimirOpen {
-        from { opacity:0; transform:translateY(20px) scale(0.95); }
-        to { opacity:1; transform:translateY(0) scale(1); }
+      /* ── iPhone модалка ── */
+      .mimir-iphone {
+        position:fixed; bottom:96px; right:24px;
+        width:380px; height:740px;
+        max-height:calc(100vh - 120px);
+        display:none; flex-direction:column;
+        z-index:501;
+      }
+      .mimir-iphone.open {
+        display:flex;
+        animation:iphoneOpen 0.5s cubic-bezier(0.34,1.56,0.64,1);
       }
 
-      /* Сайдбар с диалогами */
-      .mimir-sidebar {
-        width:0; overflow:hidden; transition:width 0.3s ease;
-        background:rgba(0,0,0,0.3); border-right:1px solid rgba(245,215,142,0.15);
-        display:flex; flex-direction:column;
+      /* Корпус iPhone */
+      .mimir-iphone-body {
+        flex:1; display:flex; flex-direction:column;
+        background:#1a1a1a; border-radius:44px; padding:4px;
+        box-shadow:
+          inset 0 0 0 1px rgba(255,255,255,0.08),
+          0 25px 80px rgba(0,0,0,0.6),
+          0 0 0 2px rgba(60,60,60,0.5);
+        position:relative; overflow:hidden;
+        min-height:0;
       }
-      .mimir-sidebar.open { width:200px; }
 
-      .mimir-sidebar-header {
-        padding:12px; border-bottom:1px solid rgba(245,215,142,0.1);
+      /* Боковые кнопки (декор) */
+      .mimir-iphone-btn-power {
+        position:absolute; right:-3px; top:140px;
+        width:3px; height:44px; background:#333; border-radius:0 2px 2px 0;
       }
-      .mimir-new-chat-btn {
-        width:100%; padding:10px; border-radius:10px;
-        background:linear-gradient(135deg, #c0392b, #8e2c22);
-        border:1px solid rgba(245,215,142,0.2); color:var(--gold-l);
-        cursor:pointer; font-weight:600; font-size:13px;
-        transition:all 0.2s;
+      .mimir-iphone-btn-vol1 {
+        position:absolute; left:-3px; top:120px;
+        width:3px; height:28px; background:#333; border-radius:2px 0 0 2px;
       }
-      .mimir-new-chat-btn:hover { transform:scale(1.02); box-shadow:0 2px 10px rgba(192,57,43,0.4); }
+      .mimir-iphone-btn-vol2 {
+        position:absolute; left:-3px; top:156px;
+        width:3px; height:28px; background:#333; border-radius:2px 0 0 2px;
+      }
 
-      .mimir-conversations {
-        flex:1; overflow-y:auto; padding:8px;
+      /* Экран */
+      .mimir-iphone-screen {
+        flex:1; display:flex; flex-direction:column;
+        background:linear-gradient(180deg, #0d1428 0%, #0a0e1a 100%);
+        border-radius:40px; overflow:hidden; min-height:0;
       }
-      .mimir-conv-item {
-        padding:10px 12px; margin-bottom:4px; border-radius:10px;
-        background:rgba(255,255,255,0.03); cursor:pointer;
-        transition:all 0.2s; font-size:13px; color:rgba(255,255,255,0.7);
+
+      /* Dynamic Island */
+      .mimir-dynamic-island {
+        width:120px; height:32px; background:#000;
+        border-radius:16px; margin:8px auto 0;
+        position:relative; z-index:2;
+      }
+
+      /* Status bar */
+      .mimir-status-bar {
+        display:flex; align-items:center; justify-content:space-between;
+        padding:4px 24px 8px; font-size:14px; font-weight:600; color:#fff;
+      }
+      .mimir-status-bar-time { min-width:40px; }
+      .mimir-status-bar-icons { display:flex; align-items:center; gap:6px; }
+      .mimir-status-bar-icons svg { width:16px; height:16px; }
+
+      /* Header чата */
+      .mimir-chat-header {
+        display:flex; align-items:center; gap:10px;
+        padding:10px 16px;
+        background:linear-gradient(135deg, rgba(192,57,43,0.15) 0%, rgba(42,59,102,0.15) 100%);
+        border-bottom:1px solid rgba(245,215,142,0.08);
+      }
+      .mimir-back-btn {
+        background:none; border:none; color:#f5d78e; font-size:22px;
+        cursor:pointer; padding:4px; line-height:1;
+      }
+      .mimir-chat-avatar {
+        width:32px; height:32px; border-radius:50%;
+        background:linear-gradient(135deg, #c0392b, #2a3b66);
+        display:flex; align-items:center; justify-content:center;
+        font-size:18px; flex-shrink:0;
+      }
+      .mimir-chat-info { flex:1; min-width:0; }
+      .mimir-chat-name {
+        font-size:16px; font-weight:700; color:#f5d78e; letter-spacing:0.5px;
+      }
+      .mimir-chat-subtitle {
+        font-size:11px; color:rgba(255,255,255,0.5); margin-top:1px;
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       }
-      .mimir-conv-item:hover { background:rgba(255,255,255,0.06); }
-      .mimir-conv-item.active { background:rgba(245,215,142,0.12); color:var(--gold-l); }
-      .mimir-conv-item.pinned::before { content:'📌 '; }
 
-      /* Основная область */
-      .mimir-main { flex:1; display:flex; flex-direction:column; min-width:0; }
-
-      .mimir-header {
-        padding:14px 16px;
-        background:linear-gradient(135deg, rgba(192,57,43,0.3) 0%, rgba(42,59,102,0.3) 100%);
-        border-bottom:1px solid rgba(245,215,142,0.2);
-        display:flex; align-items:center; gap:12px;
+      /* Sidebar */
+      .mimir-sidebar {
+        position:absolute; top:0; left:0; bottom:0;
+        width:220px; background:rgba(10,14,26,0.97);
+        border-right:1px solid rgba(245,215,142,0.1);
+        transform:translateX(-100%); transition:transform 0.3s ease;
+        z-index:10; display:flex; flex-direction:column;
+        border-radius:40px 0 0 40px; padding-top:60px;
       }
-
-      .mimir-menu-btn {
-        width:32px; height:32px; border-radius:8px;
-        background:rgba(255,255,255,0.08); border:none; color:#fff;
-        cursor:pointer; font-size:16px; transition:all 0.2s;
-        display:flex; align-items:center; justify-content:center;
-      }
-      .mimir-menu-btn:hover { background:rgba(255,255,255,0.15); }
-
-      .mimir-avatar { font-size:32px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
-      .mimir-header-info { flex:1; min-width:0; }
-      .mimir-header-title { font-size:16px; font-weight:700; color:var(--gold-l); letter-spacing:1px; }
-      .mimir-header-status { font-size:11px; color:rgba(255,255,255,0.6); margin-top:2px;
-        white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      .mimir-header-actions { display:flex; gap:6px; }
-      .mimir-header-btn {
-        width:28px; height:28px; border-radius:8px;
-        background:rgba(255,255,255,0.08); border:none; color:#fff;
-        cursor:pointer; font-size:14px; transition:all 0.2s;
-      }
-      .mimir-header-btn:hover { background:rgba(255,255,255,0.15); }
-
-      .mimir-messages {
-        flex:1; overflow-y:auto; padding:16px;
-        display:flex; flex-direction:column; gap:12px;
-      }
-
-      .mimir-messages::-webkit-scrollbar { width:6px; }
-      .mimir-messages::-webkit-scrollbar-track { background:transparent; }
-      .mimir-messages::-webkit-scrollbar-thumb { background:rgba(245,215,142,0.3); border-radius:3px; }
-
-      .mimir-message {
-        max-width:88%; padding:12px 16px;
-        border-radius:14px; font-size:14px; line-height:1.6;
-        animation:msgFade 0.3s ease; position:relative;
-      }
-
-      @keyframes msgFade {
-        from { opacity:0; transform:translateY(8px); }
-        to { opacity:1; transform:translateY(0); }
-      }
-
-      .mimir-message.user {
-        align-self:flex-end;
+      .mimir-sidebar.open { transform:translateX(0); }
+      .mimir-sidebar-header { padding:12px; border-bottom:1px solid rgba(245,215,142,0.08); }
+      .mimir-sidebar-new {
+        width:100%; padding:10px; border-radius:10px;
         background:linear-gradient(135deg, #c0392b, #8e2c22);
-        color:#fff; border-bottom-right-radius:4px;
+        border:1px solid rgba(245,215,142,0.15); color:#f5d78e;
+        cursor:pointer; font-weight:600; font-size:13px; transition:all 0.2s;
+      }
+      .mimir-sidebar-new:hover { transform:scale(1.02); }
+      .mimir-sidebar-list { flex:1; overflow-y:auto; padding:8px; }
+      .mimir-sidebar-item {
+        padding:10px 12px; margin-bottom:4px; border-radius:10px;
+        background:rgba(255,255,255,0.03); cursor:pointer;
+        transition:all 0.2s; font-size:13px; color:rgba(255,255,255,0.65);
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      }
+      .mimir-sidebar-item:hover { background:rgba(255,255,255,0.06); }
+      .mimir-sidebar-item.active { background:rgba(245,215,142,0.12); color:#f5d78e; }
+      .mimir-sidebar-item.pinned::before { content:'\\1F4CC '; }
+
+      /* Сообщения */
+      .mimir-messages {
+        flex:1; overflow-y:auto; padding:12px 14px;
+        display:flex; flex-direction:column; gap:6px;
+        min-height:0;
+      }
+      .mimir-messages::-webkit-scrollbar { width:0; }
+
+      .mimir-msg {
+        max-width:85%; padding:10px 14px; font-size:14px; line-height:1.55;
+        position:relative; animation:iphoneBubble 0.3s ease;
       }
 
-      .mimir-message.assistant {
+      .mimir-msg.user {
+        align-self:flex-end;
+        background:linear-gradient(135deg, #c0392b, #2a3b66);
+        color:#fff; border-radius:18px 18px 4px 18px;
+      }
+      .mimir-msg.assistant {
         align-self:flex-start;
-        background:rgba(42,59,102,0.5);
-        color:rgba(255,255,255,0.9); border-bottom-left-radius:4px;
-        border:1px solid rgba(245,215,142,0.1);
+        background:rgba(255,255,255,0.05);
+        color:rgba(255,255,255,0.9); border-radius:18px 18px 18px 4px;
+        margin-left:38px; position:relative;
+      }
+      .mimir-msg-bot-avatar {
+        position:absolute; left:-38px; bottom:0;
+        width:30px; height:30px; border-radius:50%;
+        background:linear-gradient(135deg, #c0392b, #2a3b66);
+        display:flex; align-items:center; justify-content:center;
+        font-size:16px;
+      }
+      .mimir-msg-meta {
+        display:flex; align-items:center; justify-content:flex-end;
+        gap:4px; margin-top:4px;
+        font-size:9.5px; color:rgba(255,255,255,0.35);
+      }
+      .mimir-msg.user .mimir-msg-meta::after {
+        content:'\\2713\\2713'; font-size:10px; color:rgba(100,180,255,0.6); margin-left:2px;
       }
 
-      .mimir-msg-content { word-wrap:break-word; }
-
-      /* Кнопка копирования */
-      .mimir-copy-btn {
-        position:absolute; top:8px; right:8px;
-        width:26px; height:26px; border-radius:8px;
-        background:rgba(0,0,0,0.3); border:none; color:rgba(255,255,255,0.5);
-        cursor:pointer; font-size:12px; opacity:0; transition:all 0.2s;
+      /* Copy button */
+      .mimir-msg-copy {
+        position:absolute; top:6px; right:6px;
+        width:24px; height:24px; border-radius:6px;
+        background:rgba(0,0,0,0.3); border:none; color:rgba(255,255,255,0.45);
+        cursor:pointer; font-size:11px; opacity:0; transition:opacity 0.2s;
         display:flex; align-items:center; justify-content:center;
       }
-      .mimir-message:hover .mimir-copy-btn { opacity:1; }
-      .mimir-copy-btn:hover { background:rgba(0,0,0,0.5); color:#fff; }
+      .mimir-msg:hover .mimir-msg-copy { opacity:1; }
 
-      /* Markdown стили */
+      /* Typing dots */
+      .mimir-typing-dots {
+        display:flex; gap:5px; padding:10px 14px; align-self:flex-start;
+        margin-left:38px; position:relative;
+      }
+      .mimir-typing-dots::before {
+        content:'\\1F9D9'; position:absolute; left:-38px; bottom:0;
+        width:30px; height:30px; border-radius:50%;
+        background:linear-gradient(135deg, #c0392b, #2a3b66);
+        display:flex; align-items:center; justify-content:center; font-size:16px;
+      }
+      .mimir-typing-dot {
+        width:8px; height:8px; border-radius:50%;
+        background:rgba(245,215,142,0.55);
+        animation:iphoneDot 1.4s infinite ease-in-out;
+      }
+      .mimir-typing-dot:nth-child(2) { animation-delay:0.15s; }
+      .mimir-typing-dot:nth-child(3) { animation-delay:0.3s; }
+
+      /* Welcome */
+      .mimir-welcome { text-align:center; padding:40px 20px; }
+      .mimir-welcome-icon { font-size:48px; margin-bottom:12px; }
+      .mimir-welcome h3 { color:#f5d78e; font-size:17px; margin:0 0 8px; font-weight:600; }
+      .mimir-welcome p { color:rgba(255,255,255,0.55); font-size:13px; margin:0 0 18px; line-height:1.5; }
+      .mimir-welcome-chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+      .mimir-welcome-chip {
+        padding:7px 16px; border-radius:100px;
+        background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+        color:#f5d78e; font-size:12px; cursor:pointer; transition:all 0.2s;
+      }
+      .mimir-welcome-chip:hover {
+        background:rgba(245,215,142,0.12); border-color:rgba(245,215,142,0.25);
+      }
+
+      /* Markdown */
       .mimir-code { background:rgba(0,0,0,0.4); border-radius:10px; padding:12px; margin:8px 0;
         font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px; overflow-x:auto; white-space:pre; }
       .mimir-inline-code { background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:4px; font-size:13px; font-family:monospace; }
-      .mimir-h2 { font-size:16px; font-weight:700; color:var(--gold-l); margin:14px 0 8px; }
+      .mimir-h2 { font-size:16px; font-weight:700; color:#f5d78e; margin:14px 0 8px; }
       .mimir-h3 { font-size:14px; font-weight:600; color:#cbd5e1; margin:12px 0 6px; }
       .mimir-li { padding-left:16px; margin:3px 0; position:relative; }
-      .mimir-li::before { content:'•'; position:absolute; left:0; color:var(--gold-l); }
+      .mimir-li::before { content:'\\2022'; position:absolute; left:0; color:#f5d78e; }
       .mimir-li-num { padding-left:20px; margin:3px 0; }
       .mimir-table { width:100%; border-collapse:collapse; margin:10px 0; font-size:13px; }
-      .mimir-table th { background:rgba(245,215,142,0.15); color:var(--gold-l); font-weight:600;
+      .mimir-table th { background:rgba(245,215,142,0.15); color:#f5d78e; font-weight:600;
         padding:8px 10px; text-align:left; border-bottom:1px solid rgba(245,215,142,0.3); }
-      .mimir-table td { padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.08); }
-      .mimir-message strong { color:var(--gold-l); }
+      .mimir-table td { padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06); }
+      .mimir-msg strong { color:#f5d78e; }
 
-      /* Стриминг индикатор */
-      .mimir-streaming { display:inline; }
+      /* Streaming cursor */
       .mimir-streaming-cursor {
-        display:inline-block; width:8px; height:16px;
-        background:var(--gold-l); margin-left:2px;
-        animation:blink 1s infinite;
+        display:inline-block; width:7px; height:15px;
+        background:#f5d78e; margin-left:2px;
+        animation:mimirBlink 1s infinite;
       }
-      @keyframes blink { 0%,50% { opacity:1; } 51%,100% { opacity:0; } }
+      @keyframes mimirBlink { 0%,50%{opacity:1;} 51%,100%{opacity:0;} }
 
-      .mimir-typing { display:flex; gap:4px; padding:12px 16px; align-self:flex-start; }
-      .mimir-typing span {
-        width:8px; height:8px; background:var(--gold-l); border-radius:50%;
-        animation:typingDot 1.4s infinite ease-in-out;
-      }
-      .mimir-typing span:nth-child(2) { animation-delay:0.2s; }
-      .mimir-typing span:nth-child(3) { animation-delay:0.4s; }
-      @keyframes typingDot { 0%,80%,100%{ transform:scale(0.6); opacity:0.5; } 40%{ transform:scale(1); opacity:1; } }
-
-      .mimir-welcome { text-align:center; padding:30px 20px; }
-      .mimir-welcome-icon { font-size:56px; margin-bottom:14px; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.3)); }
-      .mimir-welcome h3 { color:var(--gold-l); font-size:18px; margin:0 0 8px; }
-      .mimir-welcome p { color:rgba(255,255,255,0.7); font-size:13px; margin:0 0 20px; }
-
-      .mimir-suggestions { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
-      .mimir-suggestion {
-        padding:8px 18px; border-radius:100px;
-        background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1);
-        color:var(--gold-l); font-size:12px; cursor:pointer; transition:all 0.2s;
-      }
-      .mimir-suggestion:hover { background:rgba(245,215,142,0.15); border-color:rgba(245,215,142,0.3); transform:translateY(-1px); }
-
-      .mimir-input-area {
-        padding:12px 16px;
-        background:rgba(0,0,0,0.2);
-        border-top:1px solid rgba(245,215,142,0.1);
-      }
-
-      .mimir-attachments {
-        display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;
-      }
-
-      .mimir-attachment {
-        display:flex; align-items:center; gap:6px;
-        padding:6px 12px; border-radius:10px;
-        background:rgba(245,215,142,0.1); font-size:12px; color:var(--gold-l);
-      }
-      .mimir-attachment-size { font-size:10px; opacity:0.7; }
-
-      .mimir-attachment-remove {
-        background:none; border:none; color:var(--err-t); cursor:pointer;
-        font-size:14px; padding:0; line-height:1;
-      }
-
-      .mimir-input-row { display:flex; gap:8px; align-items:flex-end; }
-
-      .mimir-file-btn {
-        width:44px; height:44px; border-radius:50%;
-        background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.15);
-        color:var(--gold-l); cursor:pointer; font-size:16px;
-        display:flex; align-items:center; justify-content:center;
-        transition:all 0.2s;
-      }
-      .mimir-file-btn:hover { background:rgba(255,255,255,0.15); }
-
-      .mimir-input {
-        flex:1; padding:12px 20px;
-        background:var(--m-bg-input, #1A1A1F); border:1px solid rgba(255,255,255,0.1);
-        border-radius:100px; color:#fff; font-size:14px;
-        resize:none; min-height:40px; max-height:100px;
-      }
-      .mimir-input:focus { outline:none; border-color:rgba(245,215,142,0.5); box-shadow:0 0 15px rgba(245,215,142,0.1); }
-      .mimir-input::placeholder { color:rgba(255,255,255,0.4); font-style:italic; }
-
-      .mimir-send-btn {
-        width:44px; height:44px; border-radius:50%;
-        background:var(--m-accent-gold, #D4A843);
-        border:none; color:#000;
-        cursor:pointer; display:flex; align-items:center; justify-content:center;
-        font-size:16px; transition:all 0.2s;
-      }
-      .mimir-send-btn:hover { transform:scale(1.05); box-shadow:0 4px 15px rgba(192,57,43,0.4); }
-      .mimir-send-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
-
-      .mimir-quick-bar {
-        display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;
-      }
-
-      .mimir-quick-btn {
-        padding:6px 16px; border-radius:100px;
-        background:transparent; border:1px solid rgba(255,255,255,0.15);
-        color:rgba(255,255,255,0.7); font-size:11px; cursor:pointer;
-        transition:all 0.2s;
-      }
-      .mimir-quick-btn:hover { background:rgba(255,255,255,0.1); color:var(--gold-l); }
-
-      .mimir-wisdom {
-        font-style:italic; font-size:10px; color:rgba(245,215,142,0.5);
-        text-align:center; padding:6px 16px;
-        border-top:1px solid rgba(245,215,142,0.1);
-      }
-
+      /* Result cards */
       .mimir-result-card {
         background:rgba(0,0,0,0.2); border-radius:12px;
         padding:12px; margin-top:8px; font-size:13px;
       }
-
       .mimir-result-card table { width:100%; border-collapse:collapse; }
       .mimir-result-card th, .mimir-result-card td {
-        padding:4px 8px; text-align:left;
-        border-bottom:1px solid rgba(255,255,255,0.1);
+        padding:4px 8px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.08);
       }
-      .mimir-result-card th { color:var(--gold-l); font-weight:600; }
+      .mimir-result-card th { color:#f5d78e; font-weight:600; }
 
-      /* Drag & Drop */
-      .mimir-panel.drag-over {
-        border-color:var(--gold-l);
-        box-shadow:0 0 20px rgba(245,215,142,0.3);
+      /* Attachments */
+      .mimir-attachments { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+      .mimir-attachment {
+        display:flex; align-items:center; gap:5px;
+        padding:5px 10px; border-radius:8px;
+        background:rgba(245,215,142,0.08); font-size:11px; color:#f5d78e;
       }
+      .mimir-attachment-remove {
+        background:none; border:none; color:#e74c3c; cursor:pointer;
+        font-size:13px; padding:0; line-height:1;
+      }
+
+      /* Input area — iMessage style */
+      .mimir-input-area {
+        padding:8px 12px 4px;
+        background:rgba(0,0,0,0.15);
+        border-top:1px solid rgba(255,255,255,0.05);
+      }
+      .mimir-input-row { display:flex; gap:8px; align-items:flex-end; }
+
+      .mimir-plus-btn {
+        width:34px; height:34px; border-radius:50%;
+        background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12);
+        color:#f5d78e; cursor:pointer; font-size:20px; font-weight:300;
+        display:flex; align-items:center; justify-content:center;
+        transition:all 0.2s; flex-shrink:0;
+      }
+      .mimir-plus-btn:hover { background:rgba(255,255,255,0.12); }
+
+      .mimir-input {
+        flex:1; padding:8px 14px;
+        background:transparent; border:1px solid rgba(245,215,142,0.08);
+        border-radius:20px; color:#fff; font-size:14px;
+        resize:none; min-height:34px; max-height:100px;
+        line-height:1.4; font-family:inherit;
+      }
+      .mimir-input:focus {
+        outline:none; border-color:rgba(245,215,142,0.25);
+      }
+      .mimir-input::placeholder { color:rgba(245,215,142,0.18); }
+
+      .mimir-send-btn {
+        width:34px; height:34px; border-radius:50%;
+        border:none; cursor:pointer;
+        display:flex; align-items:center; justify-content:center;
+        font-size:16px; transition:all 0.2s; flex-shrink:0;
+      }
+      .mimir-send-btn.mic-mode {
+        background:transparent; color:rgba(255,255,255,0.4);
+      }
+      .mimir-send-btn.send-mode {
+        background:linear-gradient(135deg, #c0392b, #2a3b66);
+        color:#fff;
+        animation:iphoneSendPop 0.2s cubic-bezier(0.34,1.56,0.64,1);
+      }
+      .mimir-send-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+      /* Wisdom bar */
+      .mimir-wisdom {
+        font-style:italic; font-size:9px; color:rgba(245,215,142,0.35);
+        text-align:center; padding:4px 14px 2px;
+      }
+
+      /* Home indicator */
+      .mimir-home-indicator {
+        width:134px; height:5px; background:rgba(255,255,255,0.15);
+        border-radius:3px; margin:6px auto 8px;
+      }
+
+      /* Drag & drop */
+      .mimir-iphone-screen.drag-over { border:2px dashed #f5d78e; }
       .mimir-drop-overlay {
-        position:absolute; inset:0; background:rgba(26,26,46,0.95);
+        position:absolute; inset:0; background:rgba(10,14,26,0.93);
         display:none; align-items:center; justify-content:center;
-        flex-direction:column; gap:16px; z-index:10;
-        border-radius:16px; backdrop-filter:blur(10px);
+        flex-direction:column; gap:14px; z-index:20;
+        border-radius:40px; backdrop-filter:blur(8px);
       }
-      .mimir-panel.drag-over .mimir-drop-overlay { display:flex; }
-      .mimir-drop-icon { font-size:48px; }
-      .mimir-drop-text { color:var(--gold-l); font-size:16px; font-weight:600; }
+      .mimir-iphone-screen.drag-over .mimir-drop-overlay { display:flex; }
+      .mimir-drop-icon { font-size:40px; }
+      .mimir-drop-text { color:#f5d78e; font-size:15px; font-weight:600; }
 
-      /* Desktop only — полностью скрыт на мобилке */
-      @media (max-width:768px) {
-        .mimir-widget { display:none !important; }
+      /* Desktop only */
+      @media (max-width:768px) { .mimir-widget { display:none !important; } }
+
+      /* ── Animations ── */
+      @keyframes iphoneOpen {
+        0% { opacity:0; transform:translateY(40px) scale(0.85) rotateX(8deg); }
+        70% { opacity:1; transform:translateY(-8px) scale(1.02) rotateX(0); }
+        100% { opacity:1; transform:translateY(0) scale(1) rotateX(0); }
       }
-
-      .mimir-back-arrow { display:none; }
-      .mimir-close-x { display:inline; }
-      .mimir-desktop-only { display:inline-flex; }
-      body.mimir-body-lock { overflow:hidden !important; position:fixed !important; width:100% !important; }
+      @keyframes iphoneBubble {
+        from { opacity:0; transform:translateY(6px) scale(0.97); }
+        to { opacity:1; transform:translateY(0) scale(1); }
+      }
+      @keyframes iphoneDot {
+        0%,80%,100% { transform:scale(0.5); opacity:0.3; }
+        40% { transform:scale(1.1); opacity:1; }
+      }
+      @keyframes iphoneFabPulse {
+        0%,100% { box-shadow:0 6px 24px rgba(192,57,43,0.45), 0 0 0 0 rgba(245,215,142,0.3); }
+        50% { box-shadow:0 6px 24px rgba(192,57,43,0.45), 0 0 0 12px rgba(245,215,142,0); }
+      }
+      @keyframes iphoneSendPop {
+        from { transform:scale(0.5); }
+        to { transform:scale(1); }
+      }
+      @keyframes iphoneBadge {
+        0% { transform:scale(0); }
+        60% { transform:scale(1.3); }
+        100% { transform:scale(1); }
+      }
     </style>
   `;
 
@@ -363,7 +464,6 @@ window.AsgardMimir = (function(){
   }
 
   function init() {
-    // Desktop only — никогда не показываем на мобилке
     if (isMobileDevice()) return;
 
     const hash = window.location.hash || '';
@@ -374,7 +474,6 @@ window.AsgardMimir = (function(){
     }
 
     if (!localStorage.getItem('asgard_token')) return;
-
     if (document.getElementById('mimirWidget')) return;
 
     if (!document.getElementById('mimir-styles')) {
@@ -395,69 +494,98 @@ window.AsgardMimir = (function(){
     renderMessages();
     showWisdom();
     loadConversations();
+    startStatusBarClock();
   }
 
-  // hashchange reinit disabled — Мимир через меню
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HTML — iPhone модалка
+  // ═══════════════════════════════════════════════════════════════════════════
 
   function buildWidgetHTML() {
     return `
-      <button class="mimir-toggle" id="mimirToggle" title="Мимир — Хранитель Мудрости">
-        <span class="mimir-toggle-icon">🧙</span>
+      <button class="mimir-fab" id="mimirFab">
+        <span class="mimir-fab-emoji">\uD83E\uDDD9</span>
+        <span class="mimir-fab-rune">\u16D7</span>
+        <span class="mimir-fab-count" id="mimirFabCount"></span>
+        <span class="mimir-fab-tooltip">\uD83E\uDDD9 Мимир \u2014 Хранитель Мудрости</span>
       </button>
 
-      <div class="mimir-panel" id="mimirPanel">
-        <div class="mimir-drop-overlay">
-          <span class="mimir-drop-icon">📎</span>
-          <span class="mimir-drop-text">Отпусти файлы здесь</span>
-        </div>
+      <div class="mimir-iphone" id="mimirIphone">
+        <div class="mimir-iphone-body">
+          <div class="mimir-iphone-btn-power"></div>
+          <div class="mimir-iphone-btn-vol1"></div>
+          <div class="mimir-iphone-btn-vol2"></div>
 
-        <div class="mimir-sidebar" id="mimirSidebar">
-          <div class="mimir-sidebar-header">
-            <button class="mimir-new-chat-btn" id="mimirNewChat">+ Новый диалог</button>
+          <div class="mimir-iphone-screen" id="mimirScreen">
+            <div class="mimir-drop-overlay">
+              <span class="mimir-drop-icon">\uD83D\uDCCE</span>
+              <span class="mimir-drop-text">Отпусти файлы здесь</span>
+            </div>
+
+            <div class="mimir-sidebar" id="mimirSidebar">
+              <div class="mimir-sidebar-header">
+                <button class="mimir-sidebar-new" id="mimirNewChat">+ Новый диалог</button>
+              </div>
+              <div class="mimir-sidebar-list" id="mimirConversations"></div>
+            </div>
+
+            <div class="mimir-dynamic-island"></div>
+
+            <div class="mimir-status-bar">
+              <span class="mimir-status-bar-time" id="mimirClock">--:--</span>
+              <span class="mimir-status-bar-icons">
+                <svg viewBox="0 0 16 16" fill="white"><path d="M1 10h2v4H1zm4-3h2v7H5zm4-3h2v10H9zm4-3h2v13h-2z"/></svg>
+                <svg viewBox="0 0 16 16" fill="white"><path d="M8 3C5.5 3 3.3 4 1.7 5.7l1.4 1.4C4.5 5.7 6.1 5 8 5s3.5.7 4.9 2.1l1.4-1.4C12.7 4 10.5 3 8 3zm0 4c-1.4 0-2.6.5-3.5 1.4l1.4 1.4C6.5 9.3 7.2 9 8 9s1.5.3 2.1.8l1.4-1.4C10.6 7.5 9.4 7 8 7zm0 4c-.6 0-1 .4-1 1s.4 1 1 1 1-.4 1-1-.4-1-1-1z"/></svg>
+                <svg viewBox="0 0 24 16" fill="none"><rect x="0" y="2" width="20" height="12" rx="2" stroke="white" stroke-width="1.5"/><rect x="2" y="4" width="14" height="8" rx="1" fill="#4CD964"/><rect x="21" y="5" width="2" height="6" rx="1" fill="white" opacity="0.4"/></svg>
+              </span>
+            </div>
+
+            <div class="mimir-chat-header">
+              <button class="mimir-back-btn" id="mimirBack">\u2039</button>
+              <div class="mimir-chat-avatar">\uD83E\uDDD9</div>
+              <div class="mimir-chat-info">
+                <div class="mimir-chat-name">Мимир</div>
+                <div class="mimir-chat-subtitle" id="mimirStatus">Хранитель Мудрости</div>
+              </div>
+            </div>
+
+            <div class="mimir-messages" id="mimirMessages"></div>
+
+            <div class="mimir-input-area">
+              <div class="mimir-attachments" id="mimirAttachments"></div>
+              <div class="mimir-input-row">
+                <button class="mimir-plus-btn" id="mimirFileBtn" title="Прикрепить">+</button>
+                <input type="file" id="mimirFileInput" style="display:none"
+                  accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.gif,.webp,.txt" multiple/>
+                <textarea class="mimir-input" id="mimirInput" placeholder="Сообщение Мимиру..." rows="1"></textarea>
+                <button class="mimir-send-btn mic-mode" id="mimirSend" title="Отправить">\uD83C\uDF99</button>
+              </div>
+            </div>
+
+            <div class="mimir-wisdom" id="mimirWisdom"></div>
+            <div class="mimir-home-indicator"></div>
           </div>
-          <div class="mimir-conversations" id="mimirConversations"></div>
-        </div>
-
-        <div class="mimir-main">
-          <div class="mimir-header" id="mimirHeader">
-            <button class="mimir-menu-btn" id="mimirMenuBtn" title="Диалоги">☰</button>
-            <div class="mimir-avatar">🧙</div>
-            <div class="mimir-header-info">
-              <div class="mimir-header-title">Мимир</div>
-              <div class="mimir-header-status" id="mimirStatus">Хранитель Мудрости</div>
-            </div>
-            <div class="mimir-header-actions">
-              <button class="mimir-header-btn" id="mimirClear" title="Очистить">🗑️</button>
-              <button class="mimir-header-btn mimir-desktop-only" id="mimirMinimize" title="Свернуть">—</button>
-              <button class="mimir-header-btn mimir-close-btn" id="mimirClose" title="Закрыть"><span class="mimir-close-x">✕</span><span class="mimir-back-arrow">←</span></button>
-            </div>
-          </div>
-
-          <div class="mimir-messages" id="mimirMessages"></div>
-
-          <div class="mimir-input-area">
-            <div class="mimir-quick-bar" id="mimirQuickBar">
-              <button class="mimir-quick-btn" data-q="Покажи статистику">📊 Статистика</button>
-              <button class="mimir-quick-btn" data-q="Какие счета просрочены?">⚠️ Просрочки</button>
-              <button class="mimir-quick-btn" data-q="Ближайшие дедлайны работ">⏰ Дедлайны</button>
-              <button class="mimir-quick-btn" data-action="tkp">📝 Создать ТКП</button>
-            </div>
-
-            <div class="mimir-attachments" id="mimirAttachments"></div>
-
-            <div class="mimir-input-row">
-              <button class="mimir-file-btn" id="mimirFileBtn" title="Прикрепить файл">📎</button>
-              <input type="file" id="mimirFileInput" style="display:none"
-                accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.gif,.webp,.txt" multiple/>
-              <textarea class="mimir-input" id="mimirInput" placeholder="Спроси у Мимира..." rows="1"></textarea>
-              <button class="mimir-send-btn" id="mimirSend" title="Отправить">➤</button>
-            </div>
-          </div>
-
-          <div class="mimir-wisdom" id="mimirWisdom"></div>
         </div>
       </div>
     `;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STATUS BAR CLOCK
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  let _clockInterval = null;
+
+  function startStatusBarClock() {
+    updateClock();
+    _clockInterval = setInterval(updateClock, 30000);
+  }
+
+  function updateClock() {
+    const el = document.getElementById('mimirClock');
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -465,37 +593,27 @@ window.AsgardMimir = (function(){
   // ═══════════════════════════════════════════════════════════════════════════
 
   function bindEvents() {
-    const toggle = document.getElementById('mimirToggle');
-    const panel = document.getElementById('mimirPanel');
-    const closeBtn = document.getElementById('mimirClose');
-    const minimizeBtn = document.getElementById('mimirMinimize');
-    const clearBtn = document.getElementById('mimirClear');
+    const fab = document.getElementById('mimirFab');
+    const back = document.getElementById('mimirBack');
     const sendBtn = document.getElementById('mimirSend');
     const input = document.getElementById('mimirInput');
     const fileBtn = document.getElementById('mimirFileBtn');
     const fileInput = document.getElementById('mimirFileInput');
-    const menuBtn = document.getElementById('mimirMenuBtn');
-    const sidebar = document.getElementById('mimirSidebar');
+    const screen = document.getElementById('mimirScreen');
     const newChatBtn = document.getElementById('mimirNewChat');
 
-    toggle?.addEventListener('click', () => {
+    fab?.addEventListener('click', () => {
       if (isOpen) close(); else open();
     });
 
-    closeBtn?.addEventListener('click', (e) => {
+    back?.addEventListener('click', (e) => {
       e.stopPropagation();
-      close();
-    });
-
-    minimizeBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      isMinimized = !isMinimized;
-      panel?.classList.toggle('minimized', isMinimized);
-    });
-
-    clearBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      startNewChat();
+      if (isSidebarOpen) {
+        isSidebarOpen = false;
+        document.getElementById('mimirSidebar')?.classList.remove('open');
+      } else {
+        close();
+      }
     });
 
     sendBtn?.addEventListener('click', sendMessage);
@@ -510,19 +628,11 @@ window.AsgardMimir = (function(){
     input?.addEventListener('input', () => {
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+      updateSendButton();
     });
 
-    // Сайдбар
-    menuBtn?.addEventListener('click', () => {
-      isSidebarOpen = !isSidebarOpen;
-      sidebar?.classList.toggle('open', isSidebarOpen);
-    });
-
-    newChatBtn?.addEventListener('click', startNewChat);
-
-    // Файлы
+    // File
     fileBtn?.addEventListener('click', () => fileInput?.click());
-
     fileInput?.addEventListener('change', (e) => {
       const files = Array.from(e.target.files || []);
       addFiles(files);
@@ -530,38 +640,49 @@ window.AsgardMimir = (function(){
     });
 
     // Drag & Drop
-    panel?.addEventListener('dragover', (e) => {
+    screen?.addEventListener('dragover', (e) => {
       e.preventDefault();
-      panel.classList.add('drag-over');
+      screen.classList.add('drag-over');
+    });
+    screen?.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      screen.classList.remove('drag-over');
+    });
+    screen?.addEventListener('drop', (e) => {
+      e.preventDefault();
+      screen.classList.remove('drag-over');
+      addFiles(Array.from(e.dataTransfer?.files || []));
     });
 
-    panel?.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      panel.classList.remove('drag-over');
-    });
+    newChatBtn?.addEventListener('click', startNewChat);
+  }
 
-    panel?.addEventListener('drop', (e) => {
-      e.preventDefault();
-      panel.classList.remove('drag-over');
-      const files = Array.from(e.dataTransfer?.files || []);
-      addFiles(files);
-    });
+  function updateSendButton() {
+    const input = document.getElementById('mimirInput');
+    const btn = document.getElementById('mimirSend');
+    if (!input || !btn) return;
+    const hasText = (input.value || '').trim().length > 0;
+    if (hasText) {
+      btn.className = 'mimir-send-btn send-mode';
+      btn.innerHTML = '\u25B2';
+    } else {
+      btn.className = 'mimir-send-btn mic-mode';
+      btn.innerHTML = '\uD83C\uDF99';
+    }
+  }
 
-    // Быстрые команды
-    document.querySelectorAll('.mimir-quick-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const action = btn.dataset.action;
-        if (action === 'tkp') {
-          openTkpGenerator();
-          return;
-        }
-        const q = btn.dataset.q;
-        if (input && q) {
-          input.value = q;
-          sendMessage();
-        }
-      });
-    });
+  function updateFabBadge() {
+    const el = document.getElementById('mimirFabCount');
+    const fab = document.getElementById('mimirFab');
+    if (!el || !fab) return;
+    if (unreadDigestCount > 0) {
+      el.textContent = String(unreadDigestCount);
+      el.classList.add('visible');
+      fab.classList.add('has-unread');
+    } else {
+      el.classList.remove('visible');
+      fab.classList.remove('has-unread');
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -593,10 +714,10 @@ window.AsgardMimir = (function(){
       const active = conv.id === currentConversationId ? 'active' : '';
       const pinned = conv.is_pinned ? 'pinned' : '';
       const title = esc(conv.title || 'Без названия');
-      return `<div class="mimir-conv-item ${active} ${pinned}" data-conv-id="${conv.id}">${title}</div>`;
+      return '<div class="mimir-sidebar-item ' + active + ' ' + pinned + '" data-conv-id="' + conv.id + '">' + title + '</div>';
     }).join('');
 
-    container.querySelectorAll('.mimir-conv-item').forEach(item => {
+    container.querySelectorAll('.mimir-sidebar-item').forEach(item => {
       item.addEventListener('click', () => {
         const convId = parseInt(item.dataset.convId);
         loadConversation(convId);
@@ -625,6 +746,8 @@ window.AsgardMimir = (function(){
         renderMessages();
         renderConversations();
         updateStatus(data.conversation?.title || 'Диалог');
+        isSidebarOpen = false;
+        document.getElementById('mimirSidebar')?.classList.remove('open');
       }
     } catch (e) {
       toast?.('Ошибка', 'Не удалось загрузить диалог', 'err');
@@ -639,6 +762,8 @@ window.AsgardMimir = (function(){
     renderAttachments();
     renderConversations();
     updateStatus('Хранитель Мудрости');
+    isSidebarOpen = false;
+    document.getElementById('mimirSidebar')?.classList.remove('open');
   }
 
   function updateStatus(text) {
@@ -673,13 +798,11 @@ window.AsgardMimir = (function(){
       const icon = getFileIcon(file.name);
       const name = file.name.length > 20 ? file.name.slice(0, 17) + '...' : file.name;
       const size = (file.size / 1024).toFixed(0) + ' КБ';
-      return `
-        <div class="mimir-attachment">
-          ${icon} ${esc(name)}
-          <span class="mimir-attachment-size">(${size})</span>
-          <button class="mimir-attachment-remove" data-idx="${idx}">✕</button>
-        </div>
-      `;
+      return '<div class="mimir-attachment">' +
+        icon + ' ' + esc(name) +
+        ' <span style="font-size:10px;opacity:0.6">(' + size + ')</span>' +
+        ' <button class="mimir-attachment-remove" data-idx="' + idx + '">\u2715</button>' +
+        '</div>';
     }).join('');
 
     container.querySelectorAll('.mimir-attachment-remove').forEach(btn => {
@@ -692,11 +815,11 @@ window.AsgardMimir = (function(){
 
   function getFileIcon(filename) {
     const ext = (filename || '').split('.').pop().toLowerCase();
-    if (['pdf'].includes(ext)) return '📕';
-    if (['xlsx', 'xls', 'csv'].includes(ext)) return '📊';
-    if (['doc', 'docx', 'txt'].includes(ext)) return '📄';
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return '🖼️';
-    return '📁';
+    if (['pdf'].includes(ext)) return '\uD83D\uDCD5';
+    if (['xlsx', 'xls', 'csv'].includes(ext)) return '\uD83D\uDCCA';
+    if (['doc', 'docx', 'txt'].includes(ext)) return '\uD83D\uDCC4';
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return '\uD83D\uDDBC\uFE0F';
+    return '\uD83D\uDCC1';
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -707,8 +830,51 @@ window.AsgardMimir = (function(){
     const el = document.getElementById('mimirWisdom');
     if (el) {
       const wisdom = VIKING_WISDOM[Math.floor(Math.random() * VIKING_WISDOM.length)];
-      el.textContent = '« ' + wisdom + ' »';
+      el.textContent = '\u00AB ' + wisdom + ' \u00BB';
     }
+  }
+
+  function _loadSuggestionChips(container) {
+    const token = localStorage.getItem('asgard_token');
+    if (!token) return;
+    fetch('/api/mimir/suggestions', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(r => r.json())
+    .then(data => {
+      const chips = document.getElementById('mimir-suggestion-chips');
+      if (!chips) return;
+      const items = data.suggestions || [
+        { icon: '\uD83D\uDCCA', label: '\u0422\u0435\u043D\u0434\u0435\u0440\u044B', query: '\u0421\u043A\u043E\u043B\u044C\u043A\u043E \u0443 \u043D\u0430\u0441 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0442\u0435\u043D\u0434\u0435\u0440\u043E\u0432?' },
+        { icon: '\uD83D\uDD0D', label: '\u041F\u043E\u0438\u0441\u043A', query: '\u041D\u0430\u0439\u0434\u0438 \u0440\u0430\u0431\u043E\u0442\u044B \u043F\u043E \u0413\u0430\u0437\u043F\u0440\u043E\u043C' },
+        { icon: '\u2753', label: '\u041F\u043E\u043C\u043E\u0449\u044C', query: '\u041A\u0430\u043A \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043D\u043E\u0432\u044B\u0439 \u0440\u0430\u0441\u0445\u043E\u0434?' }
+      ];
+      chips.innerHTML = items.map(s =>
+        '<button class="mimir-welcome-chip" data-q="' + esc(s.query) + '">' + s.icon + ' ' + esc(s.label) + '</button>'
+      ).join('');
+      chips.querySelectorAll('.mimir-welcome-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const input = document.getElementById('mimirInput');
+          if (input) input.value = btn.dataset.q;
+          sendMessage();
+        });
+      });
+    })
+    .catch(() => {
+      const chips = document.getElementById('mimir-suggestion-chips');
+      if (!chips) return;
+      chips.innerHTML =
+        '<button class="mimir-welcome-chip" data-q="\u0421\u043A\u043E\u043B\u044C\u043A\u043E \u0443 \u043D\u0430\u0441 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0442\u0435\u043D\u0434\u0435\u0440\u043E\u0432?">\uD83D\uDCCA \u0422\u0435\u043D\u0434\u0435\u0440\u044B</button>' +
+        '<button class="mimir-welcome-chip" data-q="\u041D\u0430\u0439\u0434\u0438 \u0440\u0430\u0431\u043E\u0442\u044B \u043F\u043E \u0413\u0430\u0437\u043F\u0440\u043E\u043C">\uD83D\uDD0D \u041F\u043E\u0438\u0441\u043A</button>' +
+        '<button class="mimir-welcome-chip" data-q="\u041A\u0430\u043A \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043D\u043E\u0432\u044B\u0439 \u0440\u0430\u0441\u0445\u043E\u0434?">\u2753 \u041F\u043E\u043C\u043E\u0449\u044C</button>';
+      chips.querySelectorAll('.mimir-welcome-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const input = document.getElementById('mimirInput');
+          if (input) input.value = btn.dataset.q;
+          sendMessage();
+        });
+      });
+    });
   }
 
   function renderMessages() {
@@ -716,36 +882,29 @@ window.AsgardMimir = (function(){
     if (!container) return;
 
     if (messages.length === 0) {
-      container.innerHTML = `
-        <div class="mimir-welcome">
-          <div class="mimir-welcome-icon">🧙</div>
-          <h3>Приветствую тебя, ${esc(userName)}!</h3>
-          <p>Я — Мимир, хранитель мудрости. Спрашивай о тендерах, работах, финансах или прикрепи файл для анализа.</p>
-          <div class="mimir-suggestions">
-            <button class="mimir-suggestion" data-q="Сколько у нас активных тендеров?">📊 Тендеры</button>
-            <button class="mimir-suggestion" data-q="Найди работы по Газпром">🔍 Поиск</button>
-            <button class="mimir-suggestion" data-q="Как добавить новый расход?">❓ Помощь</button>
-          </div>
-        </div>
-      `;
+      container.innerHTML =
+        '<div class="mimir-welcome">' +
+          '<div class="mimir-welcome-icon">\uD83E\uDDD9</div>' +
+          '<h3>Приветствую тебя, ' + esc(userName) + '!</h3>' +
+          '<p>Я \u2014 Мимир, хранитель мудрости. Спрашивай о тендерах, работах, финансах или прикрепи файл для анализа.</p>' +
+          '<div class="mimir-welcome-chips" id="mimir-suggestion-chips">' +
+            '<span style="opacity:0.5;font-size:12px">Загрузка подсказок\u2026</span>' +
+          '</div>' +
+        '</div>';
 
-      container.querySelectorAll('.mimir-suggestion').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const input = document.getElementById('mimirInput');
-          if (input) input.value = btn.dataset.q;
-          sendMessage();
-        });
-      });
+      // Загружаем персональные подсказки с сервера
+      _loadSuggestionChips(container);
       return;
     }
 
+    const now = new Date();
     container.innerHTML = messages.map((msg, idx) => {
       let content = renderMarkdown(msg.content);
 
       if (msg.files && msg.files.length) {
-        content += '<div style="margin-top:8px;font-size:12px;opacity:0.8">';
+        content += '<div style="margin-top:6px;font-size:11px;opacity:0.7">';
         msg.files.forEach(f => {
-          content += '<span style="margin-right:8px">' + getFileIcon(f) + ' ' + esc(f) + '</span>';
+          content += '<span style="margin-right:6px">' + getFileIcon(f) + ' ' + esc(f) + '</span>';
         });
         content += '</div>';
       }
@@ -755,33 +914,43 @@ window.AsgardMimir = (function(){
       }
 
       const copyBtn = msg.role === 'assistant'
-        ? `<button class="mimir-copy-btn" data-msg-idx="${idx}" title="Копировать">📋</button>`
+        ? '<button class="mimir-msg-copy" data-msg-idx="' + idx + '" title="Копировать">\uD83D\uDCCB</button>'
         : '';
 
-      const streamingCursor = msg.isStreaming ? '<span class="mimir-streaming-cursor"></span>' : '';
+      const streamCursor = msg.isStreaming ? '<span class="mimir-streaming-cursor"></span>' : '';
 
-      return `
-        <div class="mimir-message ${msg.role}">
-          ${copyBtn}
-          <div class="mimir-msg-content">${content}${streamingCursor}</div>
-        </div>
-      `;
+      const timeStr = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+      const botAvatar = msg.role === 'assistant'
+        ? '<div class="mimir-msg-bot-avatar">\uD83E\uDDD9</div>'
+        : '';
+
+      return '<div class="mimir-msg ' + msg.role + '">' +
+        botAvatar + copyBtn +
+        '<div class="mimir-msg-content">' + content + streamCursor + '</div>' +
+        '<div class="mimir-msg-meta">' + timeStr + '</div>' +
+        '</div>';
     }).join('');
 
     if (isLoading && !messages[messages.length - 1]?.isStreaming) {
-      container.innerHTML += '<div class="mimir-typing"><span></span><span></span><span></span></div>';
+      container.innerHTML +=
+        '<div class="mimir-typing-dots">' +
+          '<span class="mimir-typing-dot"></span>' +
+          '<span class="mimir-typing-dot"></span>' +
+          '<span class="mimir-typing-dot"></span>' +
+        '</div>';
     }
 
     container.scrollTop = container.scrollHeight;
 
-    // Копирование
-    container.querySelectorAll('.mimir-copy-btn').forEach(btn => {
+    // Copy
+    container.querySelectorAll('.mimir-msg-copy').forEach(btn => {
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.dataset.msgIdx);
         const text = messages[idx]?.content || '';
         navigator.clipboard?.writeText(text).then(() => {
-          btn.textContent = '✓';
-          setTimeout(() => { btn.textContent = '📋'; }, 1500);
+          btn.textContent = '\u2713';
+          setTimeout(() => { btn.textContent = '\uD83D\uDCCB'; }, 1500);
         });
       });
     });
@@ -789,7 +958,7 @@ window.AsgardMimir = (function(){
 
   function updateLastMessage(text) {
     const container = document.getElementById('mimirMessages');
-    const lastMsg = container?.querySelector('.mimir-message.assistant:last-child .mimir-msg-content');
+    const lastMsg = container?.querySelector('.mimir-msg.assistant:last-child .mimir-msg-content');
     if (lastMsg) {
       lastMsg.innerHTML = renderMarkdown(text) + '<span class="mimir-streaming-cursor"></span>';
       container.scrollTop = container.scrollHeight;
@@ -811,7 +980,7 @@ window.AsgardMimir = (function(){
     });
 
     if (results.length > 5) {
-      html += '<tr><td colspan="' + keys.length + '" style="text-align:center;color:var(--gold-l)">... ещё ' + (results.length - 5) + '</td></tr>';
+      html += '<tr><td colspan="' + keys.length + '" style="text-align:center;color:#f5d78e">... ещё ' + (results.length - 5) + '</td></tr>';
     }
 
     html += '</tbody></table></div>';
@@ -825,32 +994,37 @@ window.AsgardMimir = (function(){
   function renderMarkdown(text) {
     if (!text) return '';
 
-    // Экранируем HTML
     let html = esc(text);
 
-    // Блоки кода (```lang\n...\n```)
+    // Code blocks
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
       return '<pre class="mimir-code"><code>' + code.trim() + '</code></pre>';
     });
 
-    // Инлайн код
+    // Inline code
     html = html.replace(/`([^`\n]+)`/g, '<code class="mimir-inline-code">$1</code>');
 
-    // Заголовки
+    // Headers
     html = html.replace(/^### (.+)$/gm, '<div class="mimir-h3">$1</div>');
     html = html.replace(/^## (.+)$/gm, '<div class="mimir-h2">$1</div>');
 
-    // Жирный и курсив
+    // Links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, text, url) {
+      if (url.startsWith('#/')) {
+        return '<a href="' + url + '" style="color:#f5d78e;text-decoration:underline;cursor:pointer" onclick="if(window.AsgardMimir)window.AsgardMimir.close();window.location.hash=\'' + url.replace('#', '') + '\';return false;">' + text + '</a>';
+      }
+      return '<a href="' + url + '" target="_blank" style="color:#f5d78e;text-decoration:underline">' + text + '</a>';
+    });
+
+    // Bold & italic
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
 
-    // Маркированные списки
+    // Lists
     html = html.replace(/^- (.+)$/gm, '<div class="mimir-li">$1</div>');
-
-    // Нумерованные списки
     html = html.replace(/^(\d+)\. (.+)$/gm, '<div class="mimir-li-num">$1. $2</div>');
 
-    // Таблицы (простые: | col | col |)
+    // Tables
     html = html.replace(/(\|.+\|[\r\n])+/g, (match) => {
       const rows = match.trim().split('\n').filter(r => r.trim());
       if (rows.length < 2) return match;
@@ -859,13 +1033,10 @@ window.AsgardMimir = (function(){
       let isHeader = true;
 
       for (const row of rows) {
-        if (row.match(/^\|[\s\-:|]+\|$/)) {
-          isHeader = false;
-          continue;
-        }
+        if (row.match(/^\|[\s\-:|]+\|$/)) { isHeader = false; continue; }
         const cells = row.split('|').filter(c => c.trim());
         const tag = isHeader ? 'th' : 'td';
-        table += '<tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+        table += '<tr>' + cells.map(c => '<' + tag + '>' + c.trim() + '</' + tag + '>').join('') + '</tr>';
         if (isHeader) isHeader = false;
       }
 
@@ -873,14 +1044,61 @@ window.AsgardMimir = (function(){
       return table;
     });
 
-    // Горизонтальные линии
-    html = html.replace(/^---$/gm, '<hr style="border:none;border-top:1px solid rgba(245,215,142,0.2);margin:12px 0">');
+    // HR
+    html = html.replace(/^---$/gm, '<hr style="border:none;border-top:1px solid rgba(245,215,142,0.15);margin:10px 0">');
 
-    // Абзацы и переносы
+    // Paragraphs
     html = html.replace(/\n\n/g, '</p><p>');
     html = html.replace(/\n/g, '<br>');
 
     return '<p>' + html + '</p>';
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // СОЗДАНИЕ ТКП ЧЕРЕЗ ЧАТ
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async function handleCreateTkpAction(action, userMessage) {
+    var lastMsg = messages[messages.length - 1];
+    if (!lastMsg) return;
+
+    var savedContent = lastMsg.content || '';
+    lastMsg.content = savedContent + '\n\n\u23F3 *Генерирую черновик ТКП...*';
+    renderMessages();
+
+    try {
+      var auth = AsgardAuth?.getAuth?.();
+      var token = auth?.token;
+      var resp = await fetch('/api/mimir/suggest-tkp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({
+          tender_id: action.tender_id || null,
+          work_id: action.work_id || null,
+          description: userMessage,
+          mode: 'full'
+        })
+      });
+
+      if (resp.ok) {
+        var result = await resp.json();
+        if (result.success) {
+          lastMsg.content = savedContent +
+            '\n\n\u2705 **' + result.tkp_number + '** создано!\n' +
+            '\uD83D\uDCCB "' + result.subject + '"\n' +
+            '\uD83D\uDCB0 ' + Number(result.total_sum).toLocaleString('ru-RU') + ' \u20BD (' + result.items_count + ' позиций)\n\n' +
+            '[\uD83D\uDD17 Открыть для редактирования \u2192](#/tkp?edit=' + result.tkp_id + ')';
+        } else {
+          lastMsg.content = savedContent + '\n\n\u274C Не удалось создать ТКП: ' + (result.message || 'Ошибка');
+        }
+      } else {
+        var errData = await resp.json().catch(function() { return {}; });
+        lastMsg.content = savedContent + '\n\n\u274C Не удалось создать ТКП: ' + (errData.message || 'HTTP ' + resp.status);
+      }
+    } catch (e) {
+      lastMsg.content = savedContent + '\n\n\u274C Ошибка создания ТКП: ' + e.message;
+    }
+    renderMessages();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -910,14 +1128,15 @@ window.AsgardMimir = (function(){
       input.style.height = 'auto';
     }
     renderAttachments();
+    updateSendButton();
 
     isLoading = true;
     if (sendBtn) sendBtn.disabled = true;
+    updateStatus('\u2728 печатает...');
     renderMessages();
 
     try {
       if (filesToSend.length > 0) {
-        // С файлами — обычный запрос
         const response = await callMimirWithFiles(text, filesToSend);
         messages.push({
           role: 'assistant',
@@ -925,16 +1144,18 @@ window.AsgardMimir = (function(){
           results: response.results
         });
       } else if (useStreaming) {
-        // Стриминг
         await callMimirStream(text);
       } else {
-        // Обычный запрос
         const response = await callMimir(text);
         messages.push({
           role: 'assistant',
           content: response.text || response,
           results: response.results
         });
+        if (response.action && response.action.type === 'CREATE_TKP') {
+          renderMessages();
+          await handleCreateTkpAction(response.action, text);
+        }
       }
     } catch (err) {
       console.error('Mimir error:', err);
@@ -946,6 +1167,7 @@ window.AsgardMimir = (function(){
 
     isLoading = false;
     if (sendBtn) sendBtn.disabled = false;
+    updateStatus('Хранитель Мудрости');
     renderMessages();
     showWisdom();
     loadConversations();
@@ -954,21 +1176,19 @@ window.AsgardMimir = (function(){
   async function callMimirStream(text) {
     const lowerText = (text || '').toLowerCase();
 
-    // Быстрые ответы
     if (lowerText.match(/^(спасибо|спс|благодарю)$/)) {
-      messages.push({ role: 'assistant', content: 'Рад был помочь, воин! Да прибудет мудрость Одина. ⚔️' });
+      messages.push({ role: 'assistant', content: 'Рад был помочь, воин! Да прибудет мудрость Одина. \u2694\uFE0F' });
       return;
     }
     if (lowerText.match(/^(пока|бывай|до свидания)$/)) {
-      messages.push({ role: 'assistant', content: 'До встречи, воин! Пусть путь будет ясен. 🛡️' });
+      messages.push({ role: 'assistant', content: 'До встречи, воин! Пусть путь будет ясен. \uD83D\uDEE1\uFE0F' });
       return;
     }
     if (lowerText.match(/^(привет|здравствуй|хай|салют)$/)) {
-      messages.push({ role: 'assistant', content: 'Приветствую тебя, ' + userName + '! Чем могу помочь? 🧙' });
+      messages.push({ role: 'assistant', content: 'Приветствую тебя, ' + userName + '! Чем могу помочь? \uD83E\uDDD9' });
       return;
     }
 
-    // Контекст по разделу
     let context = '';
     const hash = window.location.hash || '';
     if (hash.includes('tender')) context = 'Тендеры';
@@ -979,7 +1199,6 @@ window.AsgardMimir = (function(){
     const auth = AsgardAuth?.getAuth?.();
     const token = auth?.token;
 
-    // Добавляем пустое сообщение для стриминга
     messages.push({ role: 'assistant', content: '', isStreaming: true });
     renderMessages();
 
@@ -996,9 +1215,7 @@ window.AsgardMimir = (function(){
       })
     });
 
-    if (!response.ok) {
-      throw new Error('API error');
-    }
+    if (!response.ok) throw new Error('API error');
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -1015,10 +1232,8 @@ window.AsgardMimir = (function(){
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
-
         try {
           const event = JSON.parse(line.slice(6));
-
           if (event.type === 'text') {
             fullText += event.content;
             messages[messages.length - 1].content = fullText;
@@ -1027,21 +1242,28 @@ window.AsgardMimir = (function(){
             currentConversationId = event.conversation_id;
           } else if (event.type === 'results') {
             messages[messages.length - 1].results = event.data;
+          } else if (event.type === 'action') {
+            messages[messages.length - 1]._action = event.data;
           } else if (event.type === 'done') {
             messages[messages.length - 1].isStreaming = false;
           } else if (event.type === 'error') {
             messages[messages.length - 1].content = 'Ошибка: ' + event.message;
             messages[messages.length - 1].isStreaming = false;
           }
-        } catch (e) { /* skip malformed */ }
+        } catch (e) { /* skip */ }
       }
     }
 
     messages[messages.length - 1].isStreaming = false;
 
-    // Если стриминг не вернул текст — пробуем обычный запрос
+    var streamAction = messages[messages.length - 1]._action;
+    if (streamAction && streamAction.type === 'CREATE_TKP') {
+      renderMessages();
+      await handleCreateTkpAction(streamAction, text);
+    }
+
     if (!fullText && messages.length > 0) {
-      messages.pop(); // убираем пустое сообщение
+      messages.pop();
       const response = await callMimir(text);
       messages.push({
         role: 'assistant',
@@ -1054,18 +1276,16 @@ window.AsgardMimir = (function(){
   async function callMimir(text) {
     const lowerText = (text || '').toLowerCase();
 
-    // Быстрые ответы
     if (lowerText.match(/^(спасибо|спс|благодарю)$/)) {
-      return { text: 'Рад был помочь, воин! Да прибудет мудрость Одина. ⚔️' };
+      return { text: 'Рад был помочь, воин! Да прибудет мудрость Одина. \u2694\uFE0F' };
     }
     if (lowerText.match(/^(пока|бывай|до свидания)$/)) {
-      return { text: 'До встречи, воин! Пусть путь будет ясен. 🛡️' };
+      return { text: 'До встречи, воин! Пусть путь будет ясен. \uD83D\uDEE1\uFE0F' };
     }
     if (lowerText.match(/^(привет|здравствуй|хай|салют)$/)) {
-      return { text: 'Приветствую тебя, ' + userName + '! Чем могу помочь? 🧙' };
+      return { text: 'Приветствую тебя, ' + userName + '! Чем могу помочь? \uD83E\uDDD9' };
     }
 
-    // Контекст
     let context = '';
     const hash = window.location.hash || '';
     if (hash.includes('tender')) context = 'Тендеры';
@@ -1098,7 +1318,8 @@ window.AsgardMimir = (function(){
 
     return {
       text: data.response || 'Руны молчат...',
-      results: data.results
+      results: data.results,
+      action: data.action || null
     };
   }
 
@@ -1135,42 +1356,32 @@ window.AsgardMimir = (function(){
   // ═══════════════════════════════════════════════════════════════════════════
 
   async function openTkpGenerator() {
-    const html = `
-      <div style="padding:16px">
-        <h3 style="color:var(--gold-l);margin:0 0 16px">📝 Генератор ТКП</h3>
-
-        <div style="margin-bottom:12px">
-          <label style="display:block;color:var(--t2);font-size:12px;margin-bottom:4px">Заказчик</label>
-          <input id="tkp_customer" class="inp" style="width:100%;background:var(--bg2);border:1px solid rgba(30,77,140,0.25);color:#fff;padding:8px;border-radius:6px" placeholder="ООО Газпром"/>
-        </div>
-
-        <div style="margin-bottom:12px">
-          <label style="display:block;color:var(--t2);font-size:12px;margin-bottom:4px">Название работ</label>
-          <input id="tkp_title" class="inp" style="width:100%;background:var(--bg2);border:1px solid rgba(30,77,140,0.25);color:#fff;padding:8px;border-radius:6px" placeholder="Техническое обслуживание..."/>
-        </div>
-
-        <div style="margin-bottom:12px">
-          <label style="display:block;color:var(--t2);font-size:12px;margin-bottom:4px">Перечень услуг</label>
-          <textarea id="tkp_services" style="width:100%;background:var(--bg2);border:1px solid rgba(30,77,140,0.25);color:#fff;padding:8px;border-radius:6px;resize:vertical" rows="3" placeholder="Диагностика, ремонт, замена..."></textarea>
-        </div>
-
-        <div style="display:flex;gap:12px;margin-bottom:12px">
-          <div style="flex:1">
-            <label style="display:block;color:var(--t2);font-size:12px;margin-bottom:4px">Сумма (руб)</label>
-            <input id="tkp_sum" type="number" class="inp" style="width:100%;background:var(--bg2);border:1px solid rgba(30,77,140,0.25);color:#fff;padding:8px;border-radius:6px" placeholder="500000"/>
-          </div>
-          <div style="flex:1">
-            <label style="display:block;color:var(--t2);font-size:12px;margin-bottom:4px">Срок</label>
-            <input id="tkp_deadline" class="inp" style="width:100%;background:var(--bg2);border:1px solid rgba(30,77,140,0.25);color:#fff;padding:8px;border-radius:6px" placeholder="14 дней"/>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button class="btn ghost" id="tkp_cancel">Отмена</button>
-          <button class="btn primary" id="tkp_generate">Сгенерировать</button>
-        </div>
-      </div>
-    `;
+    const html =
+      '<div style="padding:14px">' +
+        '<h3 style="color:#f5d78e;margin:0 0 14px;font-size:15px">\uD83D\uDCDD Генератор ТКП</h3>' +
+        '<div style="margin-bottom:10px">' +
+          '<label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Заказчик</label>' +
+          '<input id="tkp_customer" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;font-size:13px" placeholder="ООО Газпром"/>' +
+        '</div>' +
+        '<div style="margin-bottom:10px">' +
+          '<label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Название работ</label>' +
+          '<input id="tkp_title" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;font-size:13px" placeholder="Техническое обслуживание..."/>' +
+        '</div>' +
+        '<div style="margin-bottom:10px">' +
+          '<label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Перечень услуг</label>' +
+          '<textarea id="tkp_services" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;resize:vertical;font-size:13px" rows="3" placeholder="Диагностика, ремонт..."></textarea>' +
+        '</div>' +
+        '<div style="display:flex;gap:10px;margin-bottom:12px">' +
+          '<div style="flex:1"><label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Сумма (руб)</label>' +
+            '<input id="tkp_sum" type="number" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;font-size:13px" placeholder="500000"/></div>' +
+          '<div style="flex:1"><label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Срок</label>' +
+            '<input id="tkp_deadline" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;font-size:13px" placeholder="14 дней"/></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button id="tkp_cancel" style="padding:8px 16px;border-radius:8px;background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.6);cursor:pointer;font-size:13px">Отмена</button>' +
+          '<button id="tkp_generate" style="padding:8px 16px;border-radius:8px;background:linear-gradient(135deg,#c0392b,#2a3b66);border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Сгенерировать</button>' +
+        '</div>' +
+      '</div>';
 
     const messagesEl = document.getElementById('mimirMessages');
     if (messagesEl) {
@@ -1183,7 +1394,7 @@ window.AsgardMimir = (function(){
       document.getElementById('tkp_generate')?.addEventListener('click', async () => {
         const btn = document.getElementById('tkp_generate');
         btn.disabled = true;
-        btn.textContent = '⏳ Генерация...';
+        btn.textContent = '\u23F3 Генерация...';
 
         const auth = AsgardAuth?.getAuth?.();
         const token = auth?.token;
@@ -1207,18 +1418,18 @@ window.AsgardMimir = (function(){
           const data = await resp.json();
 
           if (data.success && data.tkp) {
-            messages.push({ role: 'user', content: '📝 Сгенерировать ТКП' });
+            messages.push({ role: 'user', content: '\uD83D\uDCDD Сгенерировать ТКП' });
             messages.push({ role: 'assistant', content: data.tkp });
             renderMessages();
           } else {
             toast?.('Ошибка', 'Не удалось сгенерировать ТКП', 'err');
             btn.disabled = false;
-            btn.textContent = '✨ Сгенерировать';
+            btn.textContent = 'Сгенерировать';
           }
         } catch (e) {
           toast?.('Ошибка', e.message, 'err');
           btn.disabled = false;
-          btn.textContent = '✨ Сгенерировать';
+          btn.textContent = 'Сгенерировать';
         }
       });
     }
@@ -1231,76 +1442,66 @@ window.AsgardMimir = (function(){
   async function getTenderRecommendation(tenderId) {
     const auth = AsgardAuth?.getAuth?.();
     const token = auth?.token;
-
     try {
       const resp = await fetch('/api/mimir/tender-recommendation/' + tenderId, {
         headers: token ? { 'Authorization': 'Bearer ' + token } : {}
       });
       if (!resp.ok) return null;
       return await resp.json();
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
   }
 
   async function getFinanceStats() {
     const auth = AsgardAuth?.getAuth?.();
     const token = auth?.token;
-
     try {
       const resp = await fetch('/api/mimir/finance-stats', {
         headers: token ? { 'Authorization': 'Bearer ' + token } : {}
       });
       if (!resp.ok) return null;
       return await resp.json();
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
   }
 
   async function getWorksAnalytics() {
     const auth = AsgardAuth?.getAuth?.();
     const token = auth?.token;
-
     try {
       const resp = await fetch('/api/mimir/works-analytics', {
         headers: token ? { 'Authorization': 'Bearer ' + token } : {}
       });
       if (!resp.ok) return null;
       return await resp.json();
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
   }
 
   function open() {
-    const isMobile = window.innerWidth <= 768;
-    const widget = document.getElementById("mimirWidget");
-    if (isMobile && widget) {
-      widget.classList.add("mimir-mobile-open");
-      document.body.classList.add("mimir-body-lock");
-    }
+    if (isMobileDevice()) return;
     isOpen = true;
     isMinimized = false;
-    const panel = document.getElementById('mimirPanel');
-    panel?.classList.remove('minimized');
-    panel?.classList.add('open');
+    const iphone = document.getElementById('mimirIphone');
+    const fab = document.getElementById('mimirFab');
+    iphone?.classList.add('open');
+    fab?.classList.add('is-open');
+    unreadDigestCount = 0;
+    updateFabBadge();
     setTimeout(() => {
       document.getElementById('mimirInput')?.focus();
       const msgs = document.getElementById('mimirMessages');
       if (msgs) msgs.scrollTop = msgs.scrollHeight;
+      updateClock();
     }, 100);
   }
 
   function close() {
-    const widget = document.getElementById("mimirWidget");
-    if (widget) widget.classList.remove("mimir-mobile-open");
-    document.body.classList.remove("mimir-body-lock");
     isOpen = false;
     isSidebarOpen = false;
+    const iphone = document.getElementById('mimirIphone');
+    const fab = document.getElementById('mimirFab');
     const sidebar = document.getElementById('mimirSidebar');
-    if (sidebar) sidebar.classList.remove('open');
-    document.getElementById('mimirPanel')?.classList.remove('open');
+    iphone?.classList.remove('open');
+    fab?.classList.remove('is-open');
+    sidebar?.classList.remove('open');
   }
 
   function ask(question) {
@@ -1314,7 +1515,7 @@ window.AsgardMimir = (function(){
     }, 300);
   }
 
-  // Auto-init: показываем FAB на десктопе после авторизации
+  // Auto-init
   document.addEventListener('DOMContentLoaded', function() { init(); });
   window.addEventListener('hashchange', function() { init(); });
 

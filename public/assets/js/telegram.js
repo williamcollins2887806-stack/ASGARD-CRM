@@ -395,7 +395,7 @@ window.AsgardTelegram = (function(){
   }
 
   // Helpers
-  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
   return {
     getSettings,

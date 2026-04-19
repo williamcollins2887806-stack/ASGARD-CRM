@@ -829,7 +829,7 @@ window.AsgardUserRequestsPage = (function(){
         </div>
         <div class="formrow">
           <div><label>Роль *</label>
-            <select id="cu_role">${ROLES_LIST.map(r => `<option value="${r.key}">${r.label}</option>`).join('')}</select>
+            <div id="crw_cu_role"></div>
           </div>
           <div><label>Телефон</label><input id="cu_phone" placeholder="+7..."/></div>
         </div>
@@ -852,10 +852,16 @@ window.AsgardUserRequestsPage = (function(){
 
       showModal('Новый пользователь', html);
 
+      $('#crw_cu_role')?.appendChild(CRSelect.create({
+        id: 'cu_role', fullWidth: true, dropdownClass: 'z-modal',
+        options: ROLES_LIST.map(r => ({ value: r.key, label: r.label })),
+        value: ROLES_LIST[0]?.key || ''
+      }));
+
       $('#btnConfirmCreate')?.addEventListener('click', async () => {
         const login = $('#cu_login')?.value?.trim();
         const name = $('#cu_name')?.value?.trim();
-        const role = $('#cu_role')?.value;
+        const role = CRSelect.getValue('cu_role');
         const phone = $('#cu_phone')?.value?.trim() || '';
         const birth = $('#cu_birth')?.value;
         const emp = $('#cu_emp')?.value;
@@ -902,15 +908,11 @@ window.AsgardUserRequestsPage = (function(){
     async function openEditUserModal(u){
       const bdate = u.birth_date ? String(u.birth_date).slice(0,10) : "";
       const edate = u.employment_date ? String(u.employment_date).slice(0,10) : "";
-      const roleOpts = ROLES_LIST.map(r =>
-        '<option value="' + r.key + '"' + (r.key === u.role ? ' selected' : '') + '>' + r.label + '</option>'
-      ).join("");
-
       let h = '<div style="margin-bottom:16px;color:var(--muted);font-size:13px">Изменения автоматически обновляются во всех модулях.</div>';
       h += '<div class="formrow"><div><label>Логин</label><input id="eu_login" value="' + esc(u.login) + '" disabled style="opacity:.6"/></div>';
       h += '<div><label>Имя</label><input id="eu_name" value="' + esc(u.name || "") + '"/></div></div>';
       h += '<div class="formrow"><div><label>Отчество</label><input id="eu_patronymic" value="' + esc(u.patronymic || "") + '" placeholder="Александрович"/></div><div></div></div>';
-      h += '<div class="formrow"><div><label>Роль</label><select id="eu_role" ' + (isAdmin ? "" : "disabled") + '>' + roleOpts + '</select></div>';
+      h += '<div class="formrow"><div><label>Роль</label><div id="crw_eu_role"></div></div>';
       h += '<div><label>Телефон</label><input id="eu_phone" value="' + esc(u.phone || "") + '" placeholder="+7..."/></div></div>';
       h += '<div class="formrow"><div><label>Дата рождения</label><input type="date" id="eu_birth" value="' + bdate + '"/></div>';
       h += '<div><label>Дата трудоустройства</label><input type="date" id="eu_emp" value="' + edate + '"/></div></div>';
@@ -921,6 +923,12 @@ window.AsgardUserRequestsPage = (function(){
       h += '</div>';
 
       showModal("Редактирование: " + esc(u.name || u.login), h);
+
+      $('#crw_eu_role')?.appendChild(CRSelect.create({
+        id: 'eu_role', fullWidth: true, dropdownClass: 'z-modal',
+        options: ROLES_LIST.map(r => ({ value: r.key, label: r.label })),
+        value: u.role || '', disabled: !isAdmin
+      }));
 
       $("#btnCancelEdit")?.addEventListener("click", () => AsgardUI.hideModal());
 
@@ -962,7 +970,7 @@ window.AsgardUserRequestsPage = (function(){
           telegram_chat_id: $("#eu_telegram")?.value?.trim() || null,
           patronymic: $("#eu_patronymic")?.value?.trim() || null
         };
-        if (isAdmin) body.role = $("#eu_role")?.value;
+        if (isAdmin) body.role = CRSelect.getValue("eu_role");
         if (!body.name) { toast("Ошибка", "Укажите имя", "err"); return; }
 
         const btn = $("#btnSaveUser");

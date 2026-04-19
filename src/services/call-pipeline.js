@@ -195,24 +195,28 @@ class CallPipeline {
       });
 
       // Сохраняем результат анализа
+      const qualityScore = analysis.quality_score != null ? analysis.quality_score : null;
+
       await this.db.query(
         `UPDATE call_history SET
           ai_summary = $1,
           ai_is_target = $2,
           ai_lead_data = $3,
           ai_sentiment = $4,
+          ai_quality_score = $5,
           updated_at = NOW()
-        WHERE id = $5`,
+        WHERE id = $6`,
         [
           analysis.summary,
           analysis.is_target,
           JSON.stringify(analysis),
           analysis.sentiment,
+          qualityScore,
           call.id
         ]
       );
 
-      console.log(`[CallPipeline] AI analysis done: target=${analysis.is_target}, sentiment=${analysis.sentiment}`);
+      console.log(`[CallPipeline] AI analysis done: target=${analysis.is_target}, sentiment=${analysis.sentiment}, quality=${qualityScore}`);
 
       // Создаём черновик заявки если целевой
       if (analysis.is_target && !call.lead_id) {
@@ -232,6 +236,48 @@ class CallPipeline {
       }
     } catch (err) {
       console.error(`[CallPipeline] AI analysis failed for call #${call.id}:`, err.message);
+    }
+  }
+
+  /**
+   * Обработка локальной записи (MixMonitor).
+   * Пропускает download — файл уже на диске.
+   */
+  async processLocalRecording(callHistoryId) {
+    const { rows } = await this.db.query('SELECT * FROM call_history WHERE id = $1', [callHistoryId]);
+    if (!rows.length) return;
+    const call = rows[0];
+
+    if (!call.record_path) {
+      console.log(`[CallPipeline] processLocalRecording: no record_path for call #${callHistoryId}`);
+      return;
+    }
+
+    if (!fs.existsSync(call.record_path)) {
+      console.log(`[CallPipeline] processLocalRecording: file not found ${call.record_path}`);
+      return;
+    }
+
+    console.log(`[CallPipeline] Processing local recording for call #${callHistoryId}: ${call.record_path}`);
+
+    // If jobQueue is available, enqueue transcription step
+    if (this.jobQueue) {
+      if (call.transcript_status === 'none' || !call.transcript_status) {
+        await this.jobQueue.enqueue('transcribe', callHistoryId);
+      }
+      return;
+    }
+
+    // Fallback: direct processing
+    // Шаг 1: Транскрипция
+    if (call.transcript_status === 'none' || !call.transcript_status) {
+      await this._transcribe(call);
+    }
+
+    // Шаг 2: AI-анализ
+    const updated = (await this.db.query('SELECT * FROM call_history WHERE id = $1', [callHistoryId])).rows[0];
+    if (updated && updated.transcript && updated.transcript_status === 'done' && !updated.ai_summary) {
+      await this._aiAnalyze(updated);
     }
   }
 
@@ -332,6 +378,29 @@ class CallPipeline {
     } catch (err) {
       console.error('[CallPipeline] Escalation error:', err.message);
     }
+  }
+
+  /**
+   * Оценка качества по метаданным (без транскрипции)
+   * Шкала 1-10 на основе длительности и типа звонка
+   */
+  _metadataQualityScore(call) {
+    const dur = call.duration_seconds || call.duration || 0;
+    const type = call.call_type || call.direction;
+
+    // Пропущенные — нет оценки
+    if (type === 'missed' || dur === 0) return null;
+
+    // Базовая оценка по длительности
+    let score;
+    if (dur < 15) score = 3;       // Очень короткий
+    else if (dur < 30) score = 4;   // Короткий
+    else if (dur < 60) score = 5;   // Нормальный
+    else if (dur < 180) score = 6;  // Хороший разговор
+    else if (dur < 300) score = 7;  // Длительный
+    else score = 7;                 // Очень длительный
+
+    return score;
   }
 
   _formatTranscript(result) {

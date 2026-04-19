@@ -868,7 +868,7 @@ window.AsgardMyMailPage = (function(){
     // Close on backdrop click
     const overlay = $('#mymail-compose-overlay');
     if (overlay) overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeCompose();
+      if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY);
     });
 
     // Fullscreen toggle

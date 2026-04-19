@@ -236,7 +236,7 @@ window.AsgardMailSettingsPage = (function(){
     document.body.appendChild(overlay);
 
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     // Test IMAP
     overlay.querySelector('#acc-test-imap')?.addEventListener('click', async () => {
@@ -392,35 +392,16 @@ window.AsgardMailSettingsPage = (function(){
       <div style="padding:20px;display:flex;flex-direction:column;gap:10px;">
         <div>
           <label style="font-size:12px;color:var(--text-muted);">Тип правила</label>
-          <select id="rule-type" style="${inputStyle()}">
-            <option value="domain">Домен</option>
-            <option value="keyword_subject">Ключевое слово (тема)</option>
-            <option value="keyword_body">Ключевое слово (тело)</option>
-            <option value="header">Заголовок</option>
-            <option value="from_pattern">От кого</option>
-            <option value="combined">Комбинированное</option>
-          </select>
+          <div id="crselect-rule-type"></div>
         </div>
         <div><label style="font-size:12px;color:var(--text-muted);">Паттерн *</label><input id="rule-pattern" style="${inputStyle()}"></div>
         <div>
           <label style="font-size:12px;color:var(--text-muted);">Режим</label>
-          <select id="rule-match" style="${inputStyle()}">
-            <option value="contains">Содержит</option>
-            <option value="exact">Точное совпадение</option>
-            <option value="starts_with">Начинается с</option>
-            <option value="ends_with">Заканчивается на</option>
-            <option value="regex">Regex</option>
-          </select>
+          <div id="crselect-rule-match"></div>
         </div>
         <div>
           <label style="font-size:12px;color:var(--text-muted);">Классификация *</label>
-          <select id="rule-class" style="${inputStyle()}">
-            <option value="direct_request">Прямой запрос</option>
-            <option value="platform_tender">Тендерная площадка</option>
-            <option value="newsletter">Рассылка</option>
-            <option value="internal">Внутренняя</option>
-            <option value="spam">Спам</option>
-          </select>
+          <div id="crselect-rule-class"></div>
         </div>
         <div style="display:flex;gap:8px;">
           <div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);">Уверенность (%)</label><input id="rule-conf" type="number" value="80" min="0" max="100" style="${inputStyle()}"></div>
@@ -435,8 +416,42 @@ window.AsgardMailSettingsPage = (function(){
     </div>`;
 
     document.body.appendChild(overlay);
-    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    // CRSelect init for rule modal (z-modal for z-index above overlay)
+    overlay.querySelector('#crselect-rule-type').appendChild(CRSelect.create({
+      id: 'rule-type', fullWidth: true, value: 'domain', dropdownClass: 'z-modal',
+      options: [
+        { value: 'domain', label: 'Домен' },
+        { value: 'keyword_subject', label: 'Ключевое слово (тема)' },
+        { value: 'keyword_body', label: 'Ключевое слово (тело)' },
+        { value: 'header', label: 'Заголовок' },
+        { value: 'from_pattern', label: 'От кого' },
+        { value: 'combined', label: 'Комбинированное' },
+      ],
+    }));
+    overlay.querySelector('#crselect-rule-match').appendChild(CRSelect.create({
+      id: 'rule-match', fullWidth: true, value: 'contains', dropdownClass: 'z-modal',
+      options: [
+        { value: 'contains', label: 'Содержит' },
+        { value: 'exact', label: 'Точное совпадение' },
+        { value: 'starts_with', label: 'Начинается с' },
+        { value: 'ends_with', label: 'Заканчивается на' },
+        { value: 'regex', label: 'Regex' },
+      ],
+    }));
+    overlay.querySelector('#crselect-rule-class').appendChild(CRSelect.create({
+      id: 'rule-class', fullWidth: true, value: 'direct_request', dropdownClass: 'z-modal',
+      options: [
+        { value: 'direct_request', label: 'Прямой запрос' },
+        { value: 'platform_tender', label: 'Тендерная площадка' },
+        { value: 'newsletter', label: 'Рассылка' },
+        { value: 'internal', label: 'Внутренняя' },
+        { value: 'spam', label: 'Спам' },
+      ],
+    }));
+
+    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => { CRSelect.destroy('rule-type'); CRSelect.destroy('rule-match'); CRSelect.destroy('rule-class'); overlay.remove(); }));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     overlay.querySelector('#rule-save')?.addEventListener('click', async () => {
       const pattern = $('#rule-pattern')?.value;
@@ -445,10 +460,10 @@ window.AsgardMailSettingsPage = (function(){
         await apiFetch('/api/mailbox/classification-rules', {
           method: 'POST',
           body: {
-            rule_type: $('#rule-type')?.value,
+            rule_type: CRSelect.getValue('rule-type'),
             pattern,
-            match_mode: $('#rule-match')?.value,
-            classification: $('#rule-class')?.value,
+            match_mode: CRSelect.getValue('rule-match'),
+            classification: CRSelect.getValue('rule-class'),
             confidence: parseInt($('#rule-conf')?.value || '80'),
             priority: parseInt($('#rule-prio')?.value || '50'),
             description: $('#rule-desc')?.value || ''
@@ -484,7 +499,7 @@ window.AsgardMailSettingsPage = (function(){
 
     document.body.appendChild(overlay);
     overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     overlay.querySelector('#tc-run')?.addEventListener('click', async () => {
       try {

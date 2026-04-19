@@ -75,6 +75,9 @@ async function routes(fastify, options) {
     let file = null;
     let tenderId = null;
     let workId = null;
+    let estimateId = null;
+    let correspondenceId = null;
+    let tripId = null;
     let docType = 'Документ';
 
     for await (const part of parts) {
@@ -87,6 +90,9 @@ async function routes(fastify, options) {
       } else {
         if (part.fieldname === 'tender_id') tenderId = part.value;
         if (part.fieldname === 'work_id') workId = part.value;
+        if (part.fieldname === 'estimate_id') estimateId = part.value;
+        if (part.fieldname === 'correspondence_id') correspondenceId = part.value;
+        if (part.fieldname === 'trip_id') tripId = part.value;
         if (part.fieldname === 'type') docType = part.value || 'Документ';
       }
     }
@@ -105,10 +111,12 @@ async function routes(fastify, options) {
     await fs.writeFile(filepath, file.buffer);
 
     const result = await db.query(`
-      INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, work_id, uploaded_by, download_url, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, work_id, estimate_id, correspondence_id, trip_id, uploaded_by, download_url, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
       RETURNING *
-    `, [filename, file.filename, file.mimetype, file.buffer.length, docType, tenderId || null, workId || null, request.user.id, `/api/files/download/${filename}`]);
+    `, [filename, file.filename, file.mimetype, file.buffer.length, docType,
+        tenderId || null, workId || null, estimateId || null, correspondenceId || null, tripId || null,
+        request.user.id, `/api/files/download/${filename}`]);
 
     return { success: true, file: result.rows[0], download_url: `/api/files/download/${filename}` };
   });
@@ -147,12 +155,72 @@ async function routes(fastify, options) {
 
     reply
       .header('Content-Type', doc.mime_type || 'application/octet-stream')
+      .header('Content-Length', buffer.length)
       .header('Content-Disposition', buildContentDisposition(doc.original_name || doc.filename))
       .send(buffer);
   });
 
+  // Предпросмотр файла (inline, без скачивания — для директора)
+  fastify.get('/preview/:filename', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const requestedFilename = getSafeFilenameParam(request.params.filename);
+    if (!requestedFilename) {
+      return reply.code(400).send({ error: 'Некорректный идентификатор файла' });
+    }
+
+    const result = await db.query(
+      'SELECT filename, original_name, mime_type FROM documents WHERE filename = $1 LIMIT 1',
+      [requestedFilename]
+    );
+    const doc = result.rows[0];
+
+    if (!doc || !doc.filename) {
+      return reply.code(404).send({ error: 'Файл не найден' });
+    }
+
+    const filePath = resolveStoredFilePath(doc.filename);
+    if (!filePath) {
+      return reply.code(404).send({ error: 'Файл не найден' });
+    }
+
+    try {
+      await fs.access(filePath);
+    } catch (e) {
+      return reply.code(404).send({ error: 'Файл не найден' });
+    }
+
+    const buffer = await fs.readFile(filePath);
+    const mime = doc.mime_type || 'application/octet-stream';
+
+    // Для PDF, изображений и текста — inline (предпросмотр в браузере)
+    // Для остальных — скачивание
+    const inlineTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain'];
+    const disposition = inlineTypes.some(t => mime.startsWith(t.split('/')[0]) || mime === t)
+      ? `inline; filename="${encodeURIComponent(doc.original_name || doc.filename)}"`
+      : buildContentDisposition(doc.original_name || doc.filename);
+
+    reply
+      .header('Content-Type', mime)
+      .header('Content-Length', buffer.length)
+      .header('Content-Disposition', disposition)
+      .header('Cache-Control', 'private, max-age=3600')
+      .send(buffer);
+  });
+
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { tender_id, work_id, type, limit = 50, cascade = 'true' } = request.query;
+    const { tender_id, work_id, estimate_id, type, limit = 50, cascade = 'true' } = request.query;
+
+    // Simple estimate_id query
+    if (estimate_id) {
+      const params = [estimate_id];
+      let sql = 'SELECT * FROM documents WHERE estimate_id = $1';
+      if (type) { sql += ' AND type = $2'; params.push(type); }
+      sql += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1);
+      params.push(parseInt(limit));
+      const result = await db.query(sql, params);
+      return { files: result.rows };
+    }
     const params = [];
     let idx = 1;
 

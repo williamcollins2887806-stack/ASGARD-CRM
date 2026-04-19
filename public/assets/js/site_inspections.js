@@ -5,7 +5,7 @@
  *
  * Интеграция:
  *   - Вызывается из popup-grid меню работы (pm_works.js)
- *   - Использует AsgardEmployeePicker для выбора сотрудников
+ *   - Использует CREmployeePicker для выбора сотрудников
  *   - Использует AsgardEmail для предпросмотра/отправки email
  *   - Создаёт cash_request при необходимости аванса
  *   - Уведомляет OFFICE_MANAGER при необходимости билетов/карты
@@ -83,7 +83,7 @@ window.AsgardSiteInspection = (function () {
     function renderDates() {
       return dates.map((d, i) => `
         <div class="formrow" style="grid-template-columns:1fr 1fr 1fr auto; align-items:end">
-          <div><label>Дата ${i + 1}</label><input class="si-date" data-i="${i}" type="date" value="${esc(d.date || '')}"/></div>
+          <div><label>Дата ${i + 1}</label><input class="si-date" data-i="${i}" type="date" value="${esc(String(d.date || '').slice(0,10))}"/></div>
           <div><label>С</label><input class="si-tf" data-i="${i}" type="time" value="${esc(d.time_from || '09:00')}"/></div>
           <div><label>До</label><input class="si-tt" data-i="${i}" type="time" value="${esc(d.time_to || '18:00')}"/></div>
           <div><button class="btn ghost" data-del-date="${i}" style="padding:8px" title="Удалить">✕</button></div>
@@ -257,15 +257,15 @@ window.AsgardSiteInspection = (function () {
     // Add employee via picker
     const btnAddEmp = document.getElementById('btnAddEmp');
     if (btnAddEmp) btnAddEmp.addEventListener('click', async () => {
-      if (!window.AsgardEmployeePicker) { toast('Ошибка', 'Модуль выбора сотрудников не загружен', 'err'); return; }
-      const picked = await AsgardEmployeePicker.pickOne({
+      if (!window.CREmployeePicker) { toast('Ошибка', 'Модуль выбора сотрудников не загружен', 'err'); return; }
+      const picked = await CREmployeePicker.pickOne({
         filter: e => !employees.some(ex => ex.employee_id === e.id)
       });
       if (picked) {
         employees.push({
           employee_id: picked.id,
-          fio: picked.fio || '',
-          position: picked.position || picked.role_tag || '',
+          fio: picked.fio || picked.name || '',
+          position: picked.position || picked.role || '',
           passport_series: picked.passport_series || '',
           passport_number: picked.passport_number || '',
           phone: picked.phone || ''
@@ -654,12 +654,12 @@ window.AsgardSiteInspection = (function () {
 
     // Add employee
     document.getElementById('btnTrAddEmp')?.addEventListener('click', async () => {
-      if (!window.AsgardEmployeePicker) { toast('Ошибка', 'Модуль выбора сотрудников не загружен', 'err'); return; }
-      const picked = await AsgardEmployeePicker.pickOne({
+      if (!window.CREmployeePicker) { toast('Ошибка', 'Модуль выбора сотрудников не загружен', 'err'); return; }
+      const picked = await CREmployeePicker.pickOne({
         filter: e => !empList.some(ex => ex.employee_id === e.id)
       });
       if (picked) {
-        empList.push({ employee_id: picked.id, fio: picked.fio || '', position: picked.position || '' });
+        empList.push({ employee_id: picked.id, fio: picked.fio || picked.name || '', position: picked.position || '' });
         const wrap = document.getElementById('tr_emp_wrap');
         const idx = empList.length - 1;
         wrap.insertAdjacentHTML('beforeend', `

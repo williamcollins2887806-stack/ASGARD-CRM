@@ -232,7 +232,7 @@ async function phase3_fillPrices(client) {
   // Get works without contract sums
   const { rows: works } = await client.query(`
     SELECT w.id, w.work_title, w.tender_id, w.customer_name, w.customer_inn,
-           w.contract_sum, w.cost_plan, t.customer_name as tender_customer, t.tender_title
+           w.contract_value, w.cost_plan, t.customer_name as tender_customer, t.tender_title
     FROM works w
     LEFT JOIN tenders t ON w.tender_id = t.id
     WHERE w.work_title NOT LIKE '%TEST%'
@@ -264,7 +264,7 @@ async function phase3_fillPrices(client) {
 
     if (contractSum > 0) {
       const costPlan = Math.round(contractSum / 2);
-      const currentContract = parseFloat(work.contract_sum) || 0;
+      const currentContract = parseFloat(work.contract_value) || 0;
       const currentCost = parseFloat(work.cost_plan) || 0;
 
       if (currentContract > 0 && currentCost > 0) {
@@ -275,7 +275,7 @@ async function phase3_fillPrices(client) {
       if (!DRY_RUN) {
         await client.query(
           `UPDATE works SET
-            contract_sum = COALESCE(NULLIF(contract_sum, 0), $1),
+            contract_value = COALESCE(NULLIF(contract_value, 0), $1),
             cost_plan = COALESCE(NULLIF(cost_plan, 0), $2)
           WHERE id = $3`,
           [contractSum, costPlan, work.id]

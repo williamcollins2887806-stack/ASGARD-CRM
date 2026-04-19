@@ -1,5 +1,5 @@
 // Stage 25: TKP Follow-up — контроль обратной связи
-// Только для "Прямой запрос" + "ТКП отправлено"
+// Только для "Прямой запрос" + "КП отправлено"
 // Ежедневные напоминания PM до закрытия
 
 window.AsgardTkpFollowup = (function(){
@@ -42,15 +42,15 @@ window.AsgardTkpFollowup = (function(){
     }
   }
 
-  // Активировать follow-up при переходе в "ТКП отправлено"
+  // Активировать follow-up при переходе в "КП отправлено"
   async function activateFollowup(tender){
     if(!tender) return;
     
     // Только для "Прямой запрос"
     if(tender.request_type !== 'direct' && tender.type_request !== 'Прямой запрос') return;
     
-    // Только при статусе "ТКП отправлено"
-    if(tender.tender_status !== 'ТКП отправлено') return;
+    // Только при статусе "КП отправлено"
+    if(tender.tender_status !== 'КП отправлено') return;
     
     // Уже активен или закрыт?
     if(tender.tkp_followup_state === 'active' || tender.tkp_followup_state === 'closed') return;
@@ -195,15 +195,14 @@ window.AsgardTkpFollowup = (function(){
   function openResultModal(tender, onSave){
     const { $, esc, showModal, toast } = AsgardUI;
     
-    const statusOptions = Object.entries(FOLLOWUP_STATUSES)
-      .map(([key, info]) => `<option value="${key}">${info.label}</option>`)
-      .join('');
+    const statusOpts = Object.entries(FOLLOWUP_STATUSES)
+      .map(([key, info]) => ({ value: key, label: info.label }));
     
     const html = `
       <div class="help" style="margin-bottom:15px">
         <b>${esc(tender.customer_name)}</b> — ${esc(tender.tender_title || '')}
         <div style="color:var(--muted); font-size:12px; margin-top:5px">
-          ТКП отправлено: ${tender.tkp_sent_at ? new Date(tender.tkp_sent_at).toLocaleDateString('ru-RU') : '—'}
+          КП отправлено: ${tender.tkp_sent_at ? new Date(tender.tkp_sent_at).toLocaleDateString('ru-RU') : '—'}
         </div>
       </div>
       
@@ -217,9 +216,7 @@ window.AsgardTkpFollowup = (function(){
       <div class="formrow">
         <div>
           <label>Решение клиента</label>
-          <select id="tkp_status">
-            ${statusOptions}
-          </select>
+          <div id="crw_tkp_status"></div>
         </div>
       </div>
       
@@ -229,10 +226,16 @@ window.AsgardTkpFollowup = (function(){
     `;
     
     showModal('Контроль ТКП', html);
-    
+
+    $('#crw_tkp_status')?.appendChild(CRSelect.create({
+      id: 'tkp_status', fullWidth: true,
+      options: statusOpts, value: statusOpts[0]?.value || '',
+      dropdownClass: 'z-modal'
+    }));
+
     $('#btnSendResult')?.addEventListener('click', async () => {
       const result = $('#tkp_result')?.value?.trim();
-      const status = $('#tkp_status')?.value;
+      const status = CRSelect.getValue('tkp_status');
       
       if(!result){
         toast('Ошибка', 'Опишите результат разговора', 'err');

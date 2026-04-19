@@ -155,10 +155,10 @@ async function routes(fastify, options) {
       db.query(`
         SELECT 
           COUNT(*) as total,
-          COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-          COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
+          COUNT(*) FILTER (WHERE tender_status = 'Выиграли') as won,
+          COUNT(*) FILTER (WHERE tender_status = 'Проиграли') as lost,
           COALESCE(SUM(tender_price), 0) as total_sum,
-          COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+          COALESCE(SUM(tender_price) FILTER (WHERE tender_status = 'Выиграли'), 0) as won_sum
         FROM tenders
         WHERE EXTRACT(YEAR FROM created_at) = $1
       `, [currentYear]),
@@ -166,8 +166,8 @@ async function routes(fastify, options) {
       db.query(`
         SELECT 
           COUNT(*) as total,
-          COUNT(*) FILTER (WHERE work_status = 'Завершена') as completed,
-          COALESCE(SUM(contract_sum), 0) as total_sum
+          COUNT(*) FILTER (WHERE work_status IN ('Работы сдали','Закрыт')) as completed,
+          COALESCE(SUM(contract_value), 0) as total_sum
         FROM works
         WHERE EXTRACT(YEAR FROM created_at) = $1
       `, [currentYear]),
@@ -244,9 +244,9 @@ async function routes(fastify, options) {
         u.id,
         u.name,
         COUNT(DISTINCT t.id) as tenders_count,
-        COUNT(DISTINCT t.id) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won_count,
+        COUNT(DISTINCT t.id) FILTER (WHERE t.tender_status = 'Выиграли') as won_count,
         COUNT(DISTINCT w.id) as works_count,
-        COALESCE(SUM(w.contract_sum), 0) as total_sum
+        COALESCE(SUM(w.contract_value), 0) as total_sum
       FROM users u
       LEFT JOIN tenders t ON t.responsible_pm_id = u.id AND EXTRACT(YEAR FROM t.created_at) = $1
       LEFT JOIN works w ON w.pm_id = u.id AND EXTRACT(YEAR FROM w.created_at) = $1
@@ -330,15 +330,15 @@ async function routes(fastify, options) {
       // If PM - own stats only, if admin - all PMs
       const needFilter = isPM && !isAdmin;
       const params = needFilter ? [user.id] : [];
-      const pmFilter = needFilter ? 'AND w.responsible_pm_id = $1' : '';
-      
+      const pmFilter = needFilter ? 'AND w.pm_id = $1' : '';
+
       const stats = await db.query(`
-        SELECT 
+        SELECT
           COUNT(*) as total_works,
-          COUNT(*) FILTER (WHERE w.status = 'completed') as completed,
-          COUNT(*) FILTER (WHERE w.status = 'in_progress') as in_progress,
-          COUNT(*) FILTER (WHERE w.status = 'overdue' OR (w.end_date_plan IS NOT NULL AND w.end_date_plan < CURRENT_DATE AND w.status != 'completed')) as overdue,
-          COALESCE(SUM(CASE WHEN w.status = 'completed' THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) * 100, 0) as completion_rate
+          COUNT(*) FILTER (WHERE w.work_status IN ('Работы сдали','Закрыт')) as completed,
+          COUNT(*) FILTER (WHERE w.work_status NOT IN ('Работы сдали', 'Закрыт')) as in_progress,
+          COUNT(*) FILTER (WHERE w.end_plan IS NOT NULL AND w.end_plan < CURRENT_DATE AND w.work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
+          COALESCE(SUM(CASE WHEN w.work_status IN ('Работы сдали','Закрыт') THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0) * 100, 0) as completion_rate
         FROM works w
         WHERE 1=1 ${pmFilter}
       `, params);
@@ -348,10 +348,10 @@ async function routes(fastify, options) {
         SELECT 
           u.id, u.name, u.login,
           COUNT(w.id) as total_works,
-          COUNT(w.id) FILTER (WHERE w.status = 'completed') as completed,
-          COUNT(w.id) FILTER (WHERE w.status = 'in_progress') as active
+          COUNT(w.id) FILTER (WHERE w.work_status IN ('Работы сдали','Закрыт')) as completed,
+          COUNT(w.id) FILTER (WHERE w.work_status NOT IN ('Работы сдали', 'Закрыт')) as active
         FROM users u
-        LEFT JOIN works w ON w.responsible_pm_id = u.id
+        LEFT JOIN works w ON w.pm_id = u.id
         WHERE u.is_active = true AND (u.role IN ('PM', 'HEAD_PM', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER', 'HR') OR EXISTS (SELECT 1 FROM works w2 WHERE w2.pm_id = u.id))
         ${userFilter}
         GROUP BY u.id, u.name, u.login
@@ -455,10 +455,10 @@ async function generateMonthlyReport(db, year, month) {
       COUNT(*) as total,
       COUNT(*) FILTER (WHERE tender_status = 'Новый') as new,
       COUNT(*) FILTER (WHERE tender_status = 'В работе') as in_work,
-      COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-      COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
+      COUNT(*) FILTER (WHERE tender_status = 'Выиграли') as won,
+      COUNT(*) FILTER (WHERE tender_status = 'Проиграли') as lost,
       COALESCE(SUM(tender_price), 0) as total_sum,
-      COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+      COALESCE(SUM(tender_price) FILTER (WHERE tender_status = 'Выиграли'), 0) as won_sum
     FROM tenders
     WHERE created_at >= $1 AND created_at < $2
   `, [startDate, endDate]);
@@ -468,9 +468,9 @@ async function generateMonthlyReport(db, year, month) {
   const works = await db.query(`
     SELECT 
       COUNT(*) as total,
-      COUNT(*) FILTER (WHERE work_status = 'В работе') as active,
-      COUNT(*) FILTER (WHERE work_status = 'Завершена') as completed,
-      COALESCE(SUM(contract_sum), 0) as total_sum
+      COUNT(*) FILTER (WHERE work_status IN ('В работе','Мобилизация','Подготовка','На паузе','Подписание акта')) as active,
+      COUNT(*) FILTER (WHERE work_status IN ('Работы сдали','Закрыт')) as completed,
+      COALESCE(SUM(contract_value), 0) as total_sum
     FROM works
     WHERE created_at >= $1 AND created_at < $2
   `, [startDate, endDate]);

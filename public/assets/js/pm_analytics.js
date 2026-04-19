@@ -5,11 +5,7 @@
 window.AsgardPMAnalytics = (function(){
   const { $, $$, esc, toast } = AsgardUI;
 
-  function money(x){
-    if(x===null||x===undefined||x==="") return "—";
-    const n=Number(x); if(isNaN(n)) return esc(String(x));
-    return n.toLocaleString("ru-RU")+" ₽";
-  }
+  function money(x) { return AsgardUI.money(x) + ' ₽'; }
   function shortMoney(x){
     const n=Number(x)||0;
     if(n>=1000000) return (n/1000000).toFixed(1)+'М';
@@ -42,10 +38,7 @@ window.AsgardPMAnalytics = (function(){
         <hr class="hr"/>
         <div class="tools">
           <div class="field"><label>Год</label>
-            <select id="f_year">
-              <option value="">Все</option>
-              ${[yNow, yNow-1, yNow-2].map(y=>`<option value="${y}" ${y===yNow?"selected":""}>${y}</option>`).join("")}
-            </select>
+            <div id="crw_f_year"></div>
           </div>
           <button class="btn ghost" id="btnRefresh">Обновить</button>
         </div>
@@ -68,16 +61,21 @@ window.AsgardPMAnalytics = (function(){
     `;
 
     await layout(body, {title, motto:"Кто ведёт корабль — тот отвечает за путь"});
+
+    $("#crw_f_year")?.appendChild(CRSelect.create({
+      id:'f_year', fullWidth:true, placeholder:'Все', clearable:true,
+      options: [yNow, yNow-1, yNow-2].map(y=>({value:String(y), label:String(y)})),
+      value: String(yNow), onChange: loadData
+    }));
+
     await loadData();
 
-    const yearSel = $("#f_year");
-    if(yearSel) yearSel.onchange = loadData;
     const btnRef = $("#btnRefresh");
     if(btnRef) btnRef.onclick = loadData;
   }
 
   async function loadData(){
-    const year = ($("#f_year")||{}).value || "";
+    const year = CRSelect.getValue("f_year") || "";
     const qs = year ? `?year=${year}` : "";
 
     try {
@@ -138,11 +136,11 @@ window.AsgardPMAnalytics = (function(){
   function renderMonthBars(byMonth){
     const el = $("#monthBars");
     if(!el || !byMonth) return;
-    const max = Math.max(...byMonth.map(m=>Number(m.contract_sum)||0), 1);
+    const max = Math.max(...byMonth.map(m=>Number(m.total_contract)||0), 1);
     el.innerHTML = byMonth.map(m=>{
       const total = Number(m.total)||0;
       const completed = Number(m.completed)||0;
-      const contractSum = Number(m.contract_sum)||0;
+      const contractSum = Number(m.total_contract)||0;
       const w = Math.round((contractSum/max)*100);
       return `<div class="barrow">
         <div>${esc(m.month)}</div>

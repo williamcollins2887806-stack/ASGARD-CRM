@@ -5,12 +5,7 @@ window.AsgardDashboardPage = (function(){
   const { $, $$, esc, toast } = AsgardUI;
   const { stackedBar, divergent } = AsgardCharts || {};
 
-  function money(x){ 
-    if(x === null || x === undefined || x === "") return "—"; 
-    const n = Number(x); 
-    if(isNaN(n)) return esc(String(x)); 
-    return n.toLocaleString("ru-RU") + " ₽"; 
-  }
+  function money(x) { return AsgardUI.money(x) + ' ₽'; }
 
   function shortMoney(x){
     const n = Number(x) || 0;
@@ -19,7 +14,7 @@ window.AsgardDashboardPage = (function(){
     if(abs >= 1000000000) return sign + (abs/1000000000).toFixed(1) + ' млрд ₽';
     if(abs >= 1000000) return sign + (abs/1000000).toFixed(1) + ' млн ₽';
     if(abs >= 1000) return sign + (abs/1000).toFixed(0) + ' тыс ₽';
-    return n.toLocaleString('ru-RU') + ' ₽';
+    return AsgardUI.money(n) + ' ₽';
   }
 
   function pct(a, b){
@@ -41,14 +36,15 @@ window.AsgardDashboardPage = (function(){
     }
 
     // Загружаем все данные
-    const [tenders, estimates, works, users, workExpenses, officeExpenses, travelExpenses] = await Promise.all([
+    const [tenders, estimates, works, users, workExpenses, officeExpenses, travelExpenses, callDashData] = await Promise.all([
       AsgardDB.all('tenders'),
       AsgardDB.all('estimates'),
       AsgardDB.all('works'),
       AsgardDB.all('users'),
       AsgardDB.all('work_expenses').catch(() => []),
       AsgardDB.all('office_expenses').catch(() => []),
-      AsgardDB.all('travel_expenses').catch(() => [])
+      AsgardDB.all('travel_expenses').catch(() => []),
+      fetch('/api/call-reports/dashboard', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') } }).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
 
     const now = new Date();
@@ -57,9 +53,9 @@ window.AsgardDashboardPage = (function(){
 
     // Фильтрация по текущему году
     // === Статусы ===
-    const WON_STATUSES = ['Контракт', 'Выиграли', 'Клиент согласился'];
-    const LOST_STATUSES = ['Проиграли', 'Отказ', 'Клиент отказался'];
-    const DONE_STATUSES = ['Работы сдали', 'Завершена', 'Закрыт'];
+    const WON_STATUSES = ['Выиграли'];
+    const LOST_STATUSES = ['Проиграли'];
+    const DONE_STATUSES = ['Работы сдали', 'Закрыт'];
 
     const tenderMatchesYear = (t) => {
       if (Number(t.year) === currentYear) return true;
@@ -94,7 +90,7 @@ window.AsgardDashboardPage = (function(){
       worksProblems: thisYearWorks.filter(w => w.work_status === 'Проблема').length,
 
       // Деньги
-      contractSum: thisYearWorks.reduce((s, w) => s + (Number(w.contract_sum) || Number(w.contract_value) || 0), 0),
+      contractSum: thisYearWorks.reduce((s, w) => s + (Number(w.contract_value) || 0), 0),
       planSum: thisYearWorks.reduce((s, w) => s + (Number(w.cost_plan) || 0), 0),
       factSum: thisYearWorks.reduce((s, w) => s + (Number(w.cost_fact) || 0), 0),
       
@@ -171,7 +167,7 @@ window.AsgardDashboardPage = (function(){
         works: monthWorks.length,
         tenders: monthTenders.length,
         won: monthTenders.filter(t => WON_STATUSES.includes(t.tender_status)).length,
-        revenue: monthWorks.reduce((s, w) => s + (Number(w.contract_sum) || 0), 0)
+        revenue: monthWorks.reduce((s, w) => s + (Number(w.contract_value) || 0), 0)
       });
     }
 
@@ -446,6 +442,20 @@ window.AsgardDashboardPage = (function(){
               <div class="dash-card-sub">активных сотрудников</div>
               <div class="dash-card-icon">👥</div>
             </div>
+
+            ${callDashData && callDashData.stats ? `
+            <!-- Звонки -->
+            <div class="dash-card${callDashData.unviewedReport ? ' cr-wow-glow' : ''}" style="cursor:pointer;--card-gradient:linear-gradient(90deg, var(--cyan), var(--info))" onclick="location.hash='#/telephony?tab=analytics'">
+              <div class="dash-card-title">Звонки</div>
+              <div class="dash-card-value blue">${callDashData.stats.totalCalls || 0}</div>
+              <div class="dash-card-sub">за последний отчёт</div>
+              <div class="dash-card-icon">📞</div>
+              <div class="dash-card-row">
+                <div class="mini"><div class="mini-label">Целевых</div><div class="mini-value green">${callDashData.stats.targetCalls || 0}</div></div>
+                <div class="mini"><div class="mini-label">Пропущено</div><div class="mini-value red">${callDashData.stats.missedCalls || 0}</div></div>
+              </div>
+              ${callDashData.unviewedReport ? `<div style="font-size:11px;color:var(--gold);margin-top:6px">📊 Новый отчёт: ${callDashData.unviewedReport.title || 'готов'}</div>` : ''}
+            </div>` : ''}
           </div>
 
           <div class="dash-chart-row">

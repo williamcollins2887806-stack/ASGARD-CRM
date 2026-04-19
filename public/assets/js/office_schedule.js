@@ -92,7 +92,7 @@ window.AsgardOfficeSchedulePage=(function(){
 
     // Добавляем всех активных пользователей, которых нет в staff
     for(const u of users){
-      if(!u.is_active) continue;
+      if(!u.is_active || u.role === 'BOT' || u.role === 'ADMIN' || String(u.login||'').startsWith('test_') || u.login === 'mimir_bot') continue;
       if(existingUserIds.has(u.id)) continue;
       await AsgardDB.add("staff", {
         user_id: u.id,
@@ -130,14 +130,14 @@ window.AsgardOfficeSchedulePage=(function(){
 
   async function openPicker({staffId, staffName, dateIso, currentCode, colors}){
     return new Promise(resolve=>{
-      const opts = STATUS.map(s=>`<option value="${esc(s.code)}"${s.code===currentCode?' selected':''}>${esc(s.label)}</option>`).join("");
+      const schedOpts = STATUS.map(s=>({ value: s.code, label: s.label }));
       const html = `
         <div class="stack" style="gap:12px">
           <div class="muted">Сотрудник: <b>${esc(staffName||"")}</b></div>
           <div class="muted">Дата: <b>${AsgardUI.formatDate(dateIso)}</b></div>
           <div>
             <label for="schedPick">Статус</label>
-            <select id="schedPick">${opts}</select>
+            <div id="crw_schedPick"></div>
           </div>
           <div class="row" style="gap:10px;justify-content:flex-end;margin-top:10px">
             <button class="btn ghost" data-act="clear">Очистить</button>
@@ -146,12 +146,15 @@ window.AsgardOfficeSchedulePage=(function(){
           </div>
         </div>`;
       showModal({title:"Статус дня", html, wide:false, onMount:()=>{
-        $("#schedPick")?.focus();
+        $("#crw_schedPick")?.appendChild(CRSelect.create({
+          id:'schedPick', fullWidth:true, value:currentCode||'',
+          options: schedOpts, dropdownClass:'z-modal'
+        }));
         $$("[data-act]").forEach(b=>b.addEventListener("click", async ()=>{
           const act=b.dataset.act;
           if(act==="cancel"){ closeModal(); resolve(null); return; }
           if(act==="clear"){ closeModal(); resolve(""); return; }
-          const code=$("#schedPick")?.value||"";
+          const code=CRSelect.getValue("schedPick")||"";
           closeModal();
           resolve(code);
         }));
@@ -226,7 +229,7 @@ window.AsgardOfficeSchedulePage=(function(){
 
       // Строки сотрудников
       const bodyRows = staffSorted.map(s=>{
-        const editable = (s.user_id===user.id) || (!officeStrictOwn && (user.role==="ADMIN" || isDirRole(user.role)));
+        const editable = (s.user_id===user.id) || (!officeStrictOwn && (user.role==="ADMIN" || user.role==="OFFICE_MANAGER" || isDirRole(user.role)));
         const cells=[];
         for(let d=1; d<=numDays; d++){
           const dt = new Date(viewYear, viewMonth, d);
@@ -307,12 +310,14 @@ window.AsgardOfficeSchedulePage=(function(){
     });
 
     async function updateGrid(){
+      try {
       $("#schedPeriod").textContent = `${MONTHS_RU[viewMonth]} ${viewYear}`;
       const grid = await renderGrid();
       $("#schedDays").innerHTML = grid.days.join("");
       $("#schedBody").innerHTML = grid.bodyRows;
       planMap = grid.planMap;
       bindCellClicks();
+      } catch(e) { console.error('[office_schedule] updateGrid error:', e); }
     }
 
     function bindCellClicks(){

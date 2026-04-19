@@ -27,15 +27,8 @@ window.AsgardAlertsPage=(function(){
         <div class="row" style="gap:10px; flex-wrap:wrap">
           <input id="q" placeholder="Поиск по тексту" style="max-width:360px"/>
           ${ (role==="ADMIN"||isDirRole(role)) ? `
-            <select id="scope" style="max-width:260px">
-              <option value="me">Только мои</option>
-              <option value="all">Все (директор/админ)</option>
-            </select>` : `<input type="hidden" id="scope" value="me"/>` }
-          <select id="flt" style="max-width:220px">
-            <option value="all">Все</option>
-            <option value="unread" selected>Непрочитанные</option>
-            <option value="read">Прочитанные</option>
-          </select>
+            <div id="crw_scope" style="max-width:260px"></div>` : `<input type="hidden" id="scope" value="me"/>` }
+          <div id="crw_flt" style="max-width:220px"></div>
         </div>
         <div id="list" style="margin-top:12px"></div>
         <div class="help" id="cnt" style="margin-top:10px"></div>
@@ -44,11 +37,24 @@ window.AsgardAlertsPage=(function(){
 
     await layout(body, {title: title||"Уведомления", motto:"Слова слышны. Следы видны. Решения фиксируются."});
 
+    if($("#crw_scope")){
+      $("#crw_scope").appendChild(CRSelect.create({
+        id:'scope', fullWidth:true,
+        options:[{value:'me',label:'Только мои'},{value:'all',label:'Все (директор/админ)'}],
+        value:'me', onChange:()=>renderList()
+      }));
+    }
+    $("#crw_flt")?.appendChild(CRSelect.create({
+      id:'flt', fullWidth:true,
+      options:[{value:'all',label:'Все'},{value:'unread',label:'Непрочитанные'},{value:'read',label:'Прочитанные'}],
+      value:'unread', onChange:()=>renderList()
+    }));
+
     const list=$("#list"), cnt=$("#cnt");
 
     async function fetchAll(){
-      const scope=$("#scope")?.value||"me";
-      const flt=$("#flt")?.value||"unread";
+      const scope=CRSelect.getValue("scope")||"me";
+      const flt=CRSelect.getValue("flt")||"unread";
       const q=norm($("#q")?.value||"");
       let items=[];
       if(scope==="all" && (role==="ADMIN"||isDirRole(role))){
@@ -119,11 +125,9 @@ window.AsgardAlertsPage=(function(){
     }
 
     $("#q").addEventListener("input", ()=>renderList());
-    $("#flt").addEventListener("change", ()=>renderList());
-    if($("#scope")) $("#scope").addEventListener("change", ()=>renderList());
 
     $("#markAll").addEventListener("click", async ()=>{
-      const scope=$("#scope")?.value||"me";
+      const scope=CRSelect.getValue("scope")||"me";
       let items=[];
       if(scope==="all" && (role==="ADMIN"||isDirRole(role))){
         items = await AsgardDB.all("notifications");
@@ -139,7 +143,7 @@ window.AsgardAlertsPage=(function(){
     });
 
     $("#clearRead").addEventListener("click", async ()=>{
-      const scope=$("#scope")?.value||"me";
+      const scope=CRSelect.getValue("scope")||"me";
       let items=[];
       if(scope==="all" && (role==="ADMIN"||isDirRole(role))){
         items = await AsgardDB.all("notifications");

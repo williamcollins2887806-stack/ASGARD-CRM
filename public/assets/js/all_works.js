@@ -1,9 +1,6 @@
 window.AsgardAllWorksPage=(function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
-
-  function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
-  function money(x){ if(x===null||x===undefined||x==="") return "\u2014"; const n=Number(x); if(isNaN(n)) return esc(String(x)); return n.toLocaleString("ru-RU"); }
-
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
+  const { ymNow, sortBy } = window.AsgardWorksShared || {};
   function getApiBase(){
     return (window.AsgardApp && AsgardApp.API_BASE) || localStorage.getItem('asgard_api_base') || '/api';
   }
@@ -21,7 +18,7 @@ window.AsgardAllWorksPage=(function(){
     return res.json();
   }
 
-  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim()); }
+  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim() && u.role !== 'BOT' && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot'); }
   async function getSettings(){
     const s = await AsgardDB.get("settings","app");
     return s ? JSON.parse(s.value_json||"{}") : { gantt_start_iso:"2026-01-01T00:00:00.000Z", status_colors:{work:{}} };
@@ -53,14 +50,10 @@ window.AsgardAllWorksPage=(function(){
         <div class="help">\u00abСвод Контрактов\u00bb \u2014 все работы по компании. Девиз: \u201cДело идёт по плану \u2014 пока цифры честны.\u201d</div>
         <hr class="hr"/>
         <div class="tools">
-          <div class="field"><label>Период</label><select id="f_period">${generatePeriodOptions(ymNow())}</select></div>
+          <div class="field"><label>Период</label><div id="f_period_w"></div></div>
           <div class="field"><label>Поиск</label><input id="f_q" placeholder="заказчик / работа"/></div>
-          <div class="field"><label>РП</label>
-            <select id="f_pm"><option value="">Все</option>${users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
-          </div>
-          <div class="field"><label>Статус</label>
-            <select id="f_status"><option value="">Все</option>${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select>
-          </div>
+          <div class="field"><label>РП</label><div id="f_pm_w"></div></div>
+          <div class="field"><label>Статус</label><div id="f_status_w"></div></div>
           <div style="display:flex; gap:10px; flex-wrap:wrap">
             <button class="btn ghost" id="btnGantt">Гантт по всем работам</button>
           </div>
@@ -88,14 +81,23 @@ window.AsgardAllWorksPage=(function(){
 
     const tb=$("#tb"), cnt=$("#cnt");
 
-    function norm(s){ return String(s||"").toLowerCase().trim(); }
-    function sortBy(key,dir){
-      return (a,b)=>{
-        const av=(a[key]??""); const bv=(b[key]??"");
-        if(typeof av==="number" && typeof bv==="number") return dir*(av-bv);
-        return dir*String(av).localeCompare(String(bv),"ru",{sensitivity:"base"});
-      };
+    // ─── CRSelect filters ───
+    { const periodOpts = [{ value: '', label: 'Все' }];
+      const now2 = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
+      }
+      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => apply() }));
     }
+    { const pmIds = new Set(works.map(w => w.pm_id).filter(Boolean));
+      const pmUsers = users.filter(u => pmIds.has(u.id));
+      $('#f_pm_w').appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...pmUsers.map(p => ({ value: String(p.id), label: p.name }))], onChange: () => apply() }));
+    }
+    $('#f_status_w').appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...(refs.work_statuses||[]).map(s => ({ value: s, label: s }))], onChange: () => apply() }));
+
+    function norm(s){ return String(s||"").toLowerCase().trim(); }
 
     function row(w){
       const t = tenders.find(x=>x.id===w.tender_id);
@@ -104,7 +106,7 @@ window.AsgardAllWorksPage=(function(){
       const color=(settings.status_colors?.work||{})[st]||"#2a6cf1";
       const got = (Number(w.advance_received||0)+Number(w.balance_received||0))||0;
       const left = (w.contract_value||0) ? Math.max(0, Number(w.contract_value||0)-got) : 0;
-      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '\u2014');
+      const fmtDate = AsgardUI.formatDate;
       const start = fmtDate(w.start_in_work_date || t?.work_start_plan);
       const end = fmtDate(w.end_fact || w.end_plan || t?.work_end_plan);
       return `<tr data-id="${w.id}" data-tender-id="${w.tender_id||""}">
@@ -128,7 +130,7 @@ window.AsgardAllWorksPage=(function(){
       const got = (Number(w.advance_received||0) + Number(w.balance_received||0)) || 0;
       const contractVal = Number(w.contract_value||0);
       const pct = contractVal > 0 ? Math.min(100, Math.round((got / contractVal) * 100)) : 0;
-      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+      const fmtDate = AsgardUI.formatDate;
       const start = fmtDate(w.start_in_work_date || t?.work_start_plan);
       const end = fmtDate(w.end_fact || w.end_plan || t?.work_end_plan);
 
@@ -163,14 +165,18 @@ window.AsgardAllWorksPage=(function(){
     }
 
     function apply(){
-      const per = norm($("#f_period").value);
+      const per = norm(CRSelect.getValue('f_period') || '');
       const q = norm($("#f_q").value);
-      const pm = $("#f_pm").value;
-      const st = $("#f_status").value;
+      const pm = CRSelect.getValue('f_pm') || '';
+      const st = CRSelect.getValue('f_status') || '';
 
       let list = works.filter(w=>{
         const t = tenders.find(x=>x.id===w.tender_id);
-        if(per && norm(t?.period||"")!==per) return false;
+        if(per) {
+          const period = t?.period || '';
+          if (!period) return false;
+          if (norm(period) !== per) return false;
+        }
         if(pm && String(w.pm_id)!==String(pm)) return false;
         if(st && w.work_status!==st) return false;
         if(q){
@@ -201,6 +207,10 @@ window.AsgardAllWorksPage=(function(){
             });
             var _ob = card.querySelector('[data-act="open"]');
             if (_ob) _ob.addEventListener('click', () => { location.hash = '#/pm-works?open=' + card.dataset.id; });
+            var _ae = card.querySelector('[data-act="auto_estimate"]');
+            if (_ae) _ae.addEventListener('click', (ev) => { ev.stopPropagation(); openMimirAutoEstimate(Number(card.dataset.id)); });
+            var _tk = card.querySelector('[data-act="create_tkp"]');
+            if (_tk) _tk.addEventListener('click', (ev) => { ev.stopPropagation(); createTkpFromWork(Number(card.dataset.id)); });
           });
         }
       } else {
@@ -223,10 +233,7 @@ window.AsgardAllWorksPage=(function(){
     }
 
     apply();
-    $("#f_period").addEventListener("input", apply);
     $("#f_q").addEventListener("input", apply);
-    $("#f_pm").addEventListener("change", apply);
-    $("#f_status").addEventListener("change", apply);
 
     $$("[data-sort]").forEach(b=>{
       b.addEventListener("click", ()=>{
@@ -241,6 +248,7 @@ window.AsgardAllWorksPage=(function(){
       if(!tr) return;
       const act = ev.target.getAttribute("data-act");
       if(act==="create_tkp") createTkpFromWork(Number(tr.getAttribute("data-id")));
+      if(act==="auto_estimate") openMimirAutoEstimate(Number(tr.getAttribute("data-id")));
     });
 
     async function createTkpFromWork(workId){
@@ -277,15 +285,26 @@ window.AsgardAllWorksPage=(function(){
     }
 
     $("#btnGantt").addEventListener("click", ()=>{
-      const startIso=(settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
+      const defaultStart=(settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
       const rows = works.map(w=>{
         const t=tenders.find(x=>x.id===w.tender_id);
         const start = w.start_in_work_date || t?.work_start_plan || w.end_plan || "2026-01-01";
         const end = w.end_fact || w.end_plan || t?.work_end_plan || start;
         return {start,end,label:(w.customer_name||t?.customer_name||""),sub:(w.work_title||t?.tender_title||""),barText:w.work_status||"",status:w.work_status||""};
       });
-      const html = AsgardGantt.renderBoard({startIso, weeks: 60, rows, getColor:(r)=>(settings.status_colors?.work||{})[r.status]||"#2a6cf1"});
-      showModal("Гантт \u2022 Все работы", '<div style="max-height:80vh; overflow:auto">' + html + '</div>');
+      const colors=settings.status_colors?.work||{};
+      showModal("Гантт \u2022 Все работы", AsgardGantt.navHtml()+'<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" class="cr-gantt-modal-body"></div>');
+      setTimeout(()=>{
+        const fi=document.getElementById('g-from'), ti=document.getElementById('g-to');
+        if(!fi) return;
+        function render(){
+          const f=fi.value, t=ti.value;
+          let startIso=f||defaultStart, weeks=60;
+          if(f&&t){ const ms=7*864e5; weeks=Math.max(4,Math.ceil((new Date(t)-new Date(f))/ms)+1); }
+          document.getElementById('gModal').innerHTML=AsgardGantt.renderBoard({startIso,weeks,rows,getColor:r=>colors[r.status]||"#2a6cf1"});
+        }
+        AsgardGantt.initNav(fi,ti,render);
+      },0);
     });
   }
 

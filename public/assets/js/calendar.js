@@ -79,18 +79,11 @@ window.AsgardCalendarPage = (function(){
         created_at: new Date().toISOString()
       };
       
-      const typeOptions = EVENT_TYPES.map(t => 
-        `<option value="${t.code}" ${ev.type === t.code ? 'selected' : ''}>${esc(t.label)}</option>`
-      ).join('');
-      
-      const reminderOptions = [
-        {v: 0, l: 'Без напоминания'},
-        {v: 5, l: 'За 5 минут'},
-        {v: 15, l: 'За 15 минут'},
-        {v: 30, l: 'За 30 минут'},
-        {v: 60, l: 'За 1 час'},
-        {v: 1440, l: 'За 1 день'}
-      ].map(r => `<option value="${r.v}" ${ev.reminder_minutes === r.v ? 'selected' : ''}>${r.l}</option>`).join('');
+      const _typeOpts = EVENT_TYPES.map(t => ({ value: t.code, label: t.label }));
+      const _reminderOpts = [
+        {v: '0', l: 'Без напоминания'}, {v: '5', l: 'За 5 минут'}, {v: '15', l: 'За 15 минут'},
+        {v: '30', l: 'За 30 минут'}, {v: '60', l: 'За 1 час'}, {v: '1440', l: 'За 1 день'}
+      ].map(r => ({ value: r.v, label: r.l }));
       
       const html = `
         <div class="stack" style="gap:16px">
@@ -103,7 +96,7 @@ window.AsgardCalendarPage = (function(){
           <div class="formrow" style="grid-template-columns:1fr 1fr">
             <div class="field">
               <label for="ev_date">Дата</label>
-              <input id="ev_date" type="date" class="inp" value="${esc(ev.date || date)}"/>
+              <input id="ev_date" type="date" class="inp" value="${esc((ev.date || date || '').slice(0,10))}"/>
             </div>
             <div class="field">
               <label for="ev_time">Время</label>
@@ -113,11 +106,11 @@ window.AsgardCalendarPage = (function(){
           <div class="formrow" style="grid-template-columns:1fr 1fr">
             <div class="field">
               <label for="ev_type">Тип события</label>
-              <select id="ev_type" class="inp">${typeOptions}</select>
+              <div id="ev_type_w"></div>
             </div>
             <div class="field">
               <label for="ev_reminder">Напоминание</label>
-              <select id="ev_reminder" class="inp">${reminderOptions}</select>
+              <div id="ev_reminder_w"></div>
             </div>
           </div>
           <div class="formrow">
@@ -145,6 +138,8 @@ window.AsgardCalendarPage = (function(){
         html,
         wide: false,
         onMount: () => {
+          $('#ev_type_w')?.appendChild(CRSelect.create({ id: 'ev_type', options: _typeOpts, value: ev.type || 'meeting', dropdownClass: 'z-modal' }));
+          $('#ev_reminder_w')?.appendChild(CRSelect.create({ id: 'ev_reminder', options: _reminderOpts, value: String(ev.reminder_minutes ?? 30), dropdownClass: 'z-modal' }));
           $('#ev_title')?.focus();
           
           $$('[data-act]').forEach(btn => {
@@ -178,11 +173,11 @@ window.AsgardCalendarPage = (function(){
                   id: ev.id || undefined,
                   date: $('#ev_date')?.value || date,
                   time: $('#ev_time')?.value || '10:00',
-                  type: $('#ev_type')?.value || 'meeting',
+                  type: CRSelect.getValue('ev_type') || 'meeting',
                   title,
                   description: $('#ev_desc')?.value || '',
                   participants: $('#ev_participants')?.value || '',
-                  reminder_minutes: parseInt($('#ev_reminder')?.value || '30', 10),
+                  reminder_minutes: parseInt(CRSelect.getValue('ev_reminder') || '30', 10),
                   created_at: ev.created_at || new Date().toISOString(),
                   updated_at: new Date().toISOString()
                 }
@@ -373,10 +368,7 @@ window.AsgardCalendarPage = (function(){
               <button class="btn ghost" id="btnNextMonth">→</button>
               <button class="btn ghost" id="btnToday">Сегодня</button>
               <div class="cal-filter">
-                <select id="filterParticipant" class="inp" style="min-width:150px">
-                  <option value="">Все участники</option>
-                  ${userOptions}
-                </select>
+                <div id="filterParticipant_w" style="min-width:150px"></div>
               </div>
               <button class="btn primary" id="btnAddEvent">+ Событие</button>
             </div>
@@ -413,7 +405,13 @@ window.AsgardCalendarPage = (function(){
     `;
     
     await layout(html, {title: title || 'Календарь встреч', motto: 'Время — главный ресурс.'});
-    
+
+    // ─── CRSelect: participant filter ───
+    $('#filterParticipant_w')?.appendChild(CRSelect.create({ id: 'filterParticipant', options: [
+      { value: '', label: 'Все участники' },
+      ...activeUsers.map(u => ({ value: u.name || u.login, label: u.name || u.login }))
+    ], searchable: true, onChange: async (v) => { filterParticipant = v; await refresh(); } }));
+
     // Event handlers
     async function refresh() {
       $('#calTitle').textContent = `${MONTHS_RU[viewMonth]} ${viewYear}`;
@@ -508,10 +506,7 @@ window.AsgardCalendarPage = (function(){
     });
 
     // Participant filter handler
-    $('#filterParticipant')?.addEventListener('change', async (e) => {
-      filterParticipant = e.target.value;
-      await refresh();
-    });
+    // filterParticipant handled by CRSelect onChange
 
     bindDayClicks();
   }

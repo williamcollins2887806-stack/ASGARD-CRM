@@ -530,8 +530,7 @@ window.AsgardPermitApplications = (function(){
         <div class="formrow" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div>
             <label>Компания-подрядчик *</label>
-            <input id="fContractorName" class="inp" placeholder="ООО Центр Безопасности" list="contractorList" autocomplete="off" value="${esc(formState.contractor_name)}"/>
-            <datalist id="contractorList"></datalist>
+            <div id="cr-contractor-wrap"></div>
           </div>
           <div>
             <label>Email подрядчика *</label>
@@ -578,32 +577,11 @@ window.AsgardPermitApplications = (function(){
     await layout(body, { title: title || 'Заявка на оформление' });
     attachTableHandlers();
 
-    // Contractor autocomplete
-    const nameInput = $('#fContractorName');
+    // Contractor autocomplete (CRAutocomplete)
     const emailInput = $('#fContractorEmail');
-    if (nameInput) {
-      nameInput.oninput = debounce(async () => {
-        const val = nameInput.value.trim();
-        if (val.length < 2) return;
-        try {
-          const data = await apiFetch('/api/permit-applications/contractors?search=' + encodeURIComponent(val));
-          const dl = $('#contractorList');
-          if (dl) {
-            dl.innerHTML = (data.contractors || []).map(c =>
-              `<option value="${esc(c.name)}" data-email="${esc(c.email||'')}">`
-            ).join('');
-          }
-        } catch(e) { /* ignore */ }
-      }, 300);
-
-      nameInput.addEventListener('change', () => {
-        const dl = $('#contractorList');
-        if (!dl) return;
-        const opt = dl.querySelector('option[value="' + CSS.escape(nameInput.value) + '"]');
-        if (opt && opt.dataset.email && emailInput) {
-          emailInput.value = opt.dataset.email;
-        }
-      });
+    const contractorWrap = $('#cr-contractor-wrap');
+    if (contractorWrap) {
+      contractorWrap.appendChild(CRAutocomplete.create({ id: 'fContractorName', value: formState.contractor_name || '', placeholder: 'ООО Центр Безопасности', minChars: 2, fullWidth: true, inputClass: 'inp', fetchOptions: async (q) => { try { const data = await apiFetch('/api/permit-applications/contractors?search=' + encodeURIComponent(q)); return (data.contractors || []).map(c => ({ value: c.name, label: c.name, sublabel: c.email || '', email: c.email || '' })); } catch(e) { return []; } }, onSelect: (item) => { if (!item) return; if (item.email && emailInput) emailInput.value = item.email; } }));
     }
 
     // Reset letter
@@ -636,7 +614,7 @@ window.AsgardPermitApplications = (function(){
     // Save draft
     const btnSave = $('#btnSaveDraft');
     if (btnSave) btnSave.onclick = async () => {
-      const cn = ($('#fContractorName') || {}).value || '';
+      const cn = CRAutocomplete.getValue('fContractorName') || '';
       const ce = ($('#fContractorEmail') || {}).value || '';
       const tt = ($('#fTitle') || {}).value || '';
       const cl = ($('#fCoverLetter') || {}).value || '';
@@ -734,7 +712,7 @@ window.AsgardPermitApplications = (function(){
       }).join('');
     }
 
-    const filterOpts = roleTags.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('');
+    const filterSelectOpts = roleTags.map(r => ({ value: r, label: r }));
 
     const html = `
     <div class="modal-overlay show" id="empSelectModal">
@@ -746,10 +724,7 @@ window.AsgardPermitApplications = (function(){
         <div class="modal-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:16px 20px">
           <div class="emp-selector-search">
             <input id="empSearch" class="inp" placeholder="Поиск по ФИО..." style="flex:1"/>
-            <select id="empFilter" class="inp" style="max-width:200px">
-              <option value="">Все должности</option>
-              ${filterOpts}
-            </select>
+            <div id="crw_empFilter" style="max-width:200px"></div>
           </div>
           <div class="emp-selector-actions">
             <button class="btn mini ghost" id="empSelectAll">Выбрать всех</button>
@@ -770,8 +745,15 @@ window.AsgardPermitApplications = (function(){
 
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('empSelectModal');
+
+    document.getElementById('crw_empFilter')?.appendChild(CRSelect.create({
+      id: 'empFilter', fullWidth: true, placeholder: 'Все должности', clearable: true,
+      options: filterSelectOpts, dropdownClass: 'z-modal',
+      onChange: () => refreshList()
+    }));
+
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     function updateCount() {
       const el = document.getElementById('empSelectedCount');
@@ -780,7 +762,7 @@ window.AsgardPermitApplications = (function(){
 
     function refreshList() {
       const search = (document.getElementById('empSearch') || {}).value || '';
-      const filter = (document.getElementById('empFilter') || {}).value || '';
+      const filter = CRSelect.getValue('empFilter') || '';
       const listEl = document.getElementById('empList');
       if (listEl) listEl.innerHTML = renderEmpList(filter, search);
       attachCheckboxes();
@@ -799,8 +781,7 @@ window.AsgardPermitApplications = (function(){
 
     const empSearch = document.getElementById('empSearch');
     if (empSearch) empSearch.oninput = debounce(refreshList, 300);
-    const empFilter = document.getElementById('empFilter');
-    if (empFilter) empFilter.onchange = refreshList;
+    // empFilter onChange handled by CRSelect
 
     document.getElementById('empSelectAll').onclick = () => {
       document.querySelectorAll('#empSelectModal .empCheck').forEach(cb => {
@@ -1040,7 +1021,7 @@ window.AsgardPermitApplications = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('permitSelectModal');
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     function refreshContent() {
       const contentEl = document.getElementById('permitModalContent');
@@ -1184,7 +1165,7 @@ window.AsgardPermitApplications = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('sendConfirmModal');
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnConfirmSend').onclick = async () => {
       const copyToSelf = document.getElementById('sendCopyToSelf')?.checked || false;
@@ -1290,7 +1271,7 @@ window.AsgardPermitApplications = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('viewAppModal');
     modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
   }
 
   return { render, renderForm };

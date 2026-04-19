@@ -1819,37 +1819,21 @@ html, body {
     font-size: 12px !important;
   }
 
-  /* ─── 11. MODALS — Bottom sheet style on mobile ─── */
-  .modalback, .modal-overlay {
+  /* ─── 11. MODALS — cr-m mobile handled by cr-modal.css ─── */
+  /* .modal-content for non-AsgardUI modals */
+  .modal-overlay {
     align-items: flex-end !important;
     padding: 0 !important;
   }
 
-  .modal, .modal-content {
+  .modal-content {
     width: 100% !important;
     max-width: 100% !important;
     max-height: 92vh !important;
     margin: 0 !important;
-    border-radius: 20px 20px 0 0 !important;
-    animation: m-slide-up 0.3s ease-out !important;
+    border-radius: var(--r-xl) var(--r-xl) 0 0 !important;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-  }
-
-  .modal::before, .modal-content::before {
-    content: '';
-    display: block;
-    width: 40px;
-    height: 4px;
-    background: var(--t3, rgba(255,255,255,0.2));
-    border-radius: 2px;
-    margin: 10px auto 6px;
-    flex-shrink: 0;
-  }
-
-  @keyframes m-slide-up {
-    from { transform: translateY(100%); opacity: 0.5; }
-    to { transform: translateY(0); opacity: 1; }
   }
 
   .modal-header, .modal-footer {

@@ -585,3 +585,104 @@ responsive.css   (120KB)  — Адаптив
 - `DS.setTheme()` — исправлен баг: теперь устанавливает `root.dataset.theme = name`
 - GitHub-токен: используется текущий (Nick предоставляет при пуше)
 - Сервер: SSH ключ `C:\Users\Nikita-ASGARD\.ssh\asgard_crm_migrate`
+
+---
+
+## Модули Закупки + Склад + Сбор (feature/procurement-warehouse-assembly)
+- V052: procurement_requests (ex tmc_requests) + items + payments + history
+- V053: assembly_orders + pallets (capacity_items, capacity_kg) + items
+- Backend: src/routes/procurement.js (~800 строк), src/routes/assembly.js (~700 строк)
+- Frontend: procurement-page.js (~450 строк), assembly-page.js (~300 строк), assembly-dnd.js (~500 строк VPB)
+- CSS: procurement.css (prefix proc-*), assembly.css (prefix asm-* page-level, vpb__* BEM for Visual Pallet Builder)
+- Visual Pallet Builder (VPB): drag-and-drop сборка паллетов, деревянная текстура CSS, FLIP-анимации,
+  Web Audio thud, stretch-film wrap, capacity limits (warning 80% / full 100% / overfill), touch/pointer
+- Роли: ASSEMBLY_MANAGERS (PM+WH+DIR) управляют сборкой, WH_ROLES — только receive-all (приёмка)
+- Демобилизация: return_status (returning/damaged/lost/consumed) popup на бейдже
+- Интеграция: pm_works.js (3 модалки в "Действия" + closeout проверки + возврат оборудования)
+- Удалено: purchase_requests, proc_requests.js, tmc_requests.js, upsertPurchaseRequest, notifyPurchaseRequest
+- approvalService.js: procurement_requests вместо tmc_requests
+- equipment.js: новые статусы + reserve/return/write-off/available/from-procurement
+- Мобильные заглушки: procurement.js, assembly.js (мини-статистика + ролевой доступ)
+- Тесты: tests/e2e/flow-procurement-warehouse-assembly.test.js (~50 тестов)
+
+## Техдолг после console-audit session (2026-04-19)
+
+- **pm_works.js subtitle `&quot;`** — `esc()` экранирует кавычки в имени заказчика, subtitle показывает `&quot;` вместо `"`. Решение: отделить HTML-рендер от textContent-вывода (рефакторинг esc → textContent для subtitle). Не убирать esc() — это XSS-защита.
+- **loginAs flaky в e2e-тестах** — Playwright loginAs() через UI нестабилен (SW update banner перехватывает, PIN keypad race, session timeout). Нужен retry + увеличенный timeout или API-based login fallback.
+- **Клик по строке таблицы /pm-works** — не открывает модалку, работает только через кнопку «Открыть». Причина не подтверждена, гипотезы: sticky header z-index / event delegation на tbody vs tr / отсутствующий onclick handler. Нужен отдельный debug-сеанс.
+- **Pre-commit hook**: `.githooks/pre-commit` блокирует Unicode smart quotes (U+201C/U+201D) в .js/.css/.html/.json. Активируется через `git config core.hooksPath .githooks` (автоматически при `npm install` через postinstall скрипт).
+- **DIRECTOR_DEV и HEAD_TO** не покрыты в 99-console-audit.spec.js — добавить в следующей итерации аудита после Фазы 3.
+- **Правило ветки**: перед любой новой задачей в той же ветке — `git pull --rebase origin <branch>` first. Нарушение этого правила привело к amend чужого коммита (2026-04-19).
+
+## Console-audit cleanup session 2026-04-19 — ИТОГИ
+
+Коммиты:
+- f6668f4 — Фаза 1: pm_works.js smart quotes fix + pre-commit hook
+- a40476e — Фаза 1: shell cache bump + postinstall hook enforcement
+- 0786285 — Фаза 2: V082 admin password + OFFICE_MANAGER login sync
+- ea5c5c8 — Фаза 3: refactor todo/tasks_admin → tasks permission
+- 02e3368 — Фаза 3: V083 grant chat_groups/cash + cleanup dead todo
+- 293dc50 — Фаза 3+: V084 final missing permissions (BUH/DIR_COMM/TO/OM)
+- 945981e — Audit: add /cash-admin to PAGES list
+- (V085)  — BUH chat_groups fix (missed in V083/V084)
+
+Исходный аудит: 10/12 ролей с failed страницами (174+ ошибок)
+Финальный: 11/12 passed (🎉 0 ошибок), 1 failed (BUH /messenger — fixed V085)
+После V085: 12/12 ожидается clean
+
+Что устранено:
+- pm_works.js: 438 Unicode smart quotes → ASCII, страница работает
+- role_presets: V082 (admin pwd), V083 (+6 permissions, -2 dead todo), V084 (+6), V085 (+1 BUH chat_groups)
+- Dead module_key 'todo' удалён, 10 endpoints переведены с todo/tasks_admin на tasks
+- Скрытые дыры: BUH полностью не имел cash/cash_admin/chat_groups, /cash-admin не тестировался
+- Тест: ADMIN/OFFICE_MANAGER логины синхронизированы с БД, /cash-admin добавлен в PAGES
+
+Инфраструктурные улучшения:
+- Pre-commit hook блокирует Unicode smart quotes (U+201C/U+201D)
+- Postinstall скрипт автоматически активирует git hooks
+- PAGES в аудите: 67 → 68 страниц (+/cash-admin)
+
+Техдолг (не устранено в этой сессии):
+- DIRECTOR_DEV / HEAD_TO не покрыты в аудите → отдельная задача по расширению PAGES+ACCOUNTS
+- loginAs flaky в Playwright → ~1-3 ложных пропуска per full run
+- pm_works.js subtitle &quot; в именах заказчиков (XSS-защита корректна, нужен textContent рефактор)
+- Клик по строке таблицы /pm-works не срабатывает, работает только через «Открыть»
+
+---
+
+## Worker Finances SSoT (контракт v1.2, апрель 2026)
+
+### Где смотреть
+- Контракт: `src/lib/worker-finances.contract.md`
+- Реализация: `src/lib/worker-finances.js`
+- Тесты: `tests/api/worker-finances.test.js` (16 кейсов)
+- Endpoints: `/api/field/worker/finances`, `/api/worker-payments/my/balance`
+
+### Ключевые решения
+- Зачётная модель аванса (Вариант A): salary = к выдаче, не полная начисленная
+- penalty уменьшает total_earned, не total_paid
+- per_diem ставка: NULL → 422, 0 → легитимно
+- SSoT-инвариант защищён тестом 14: оба endpoint возвращают идентичный JSON
+
+### Переименования полей API (для следующих сессий!)
+- `salary` → `salary_paid` (было неоднозначно)
+- `per_diem` → `per_diem_accrued` + `per_diem_paid` (разделено)
+- `balance.X` → корневые поля без префикса (структура плоская)
+
+### TODO (отдельные PR)
+1. **Bugfix `assignment_id` NULL**: код create-checkin никогда не заполнял
+   assignment_id. 273/273 чекинов в проде с NULL. Fallback в SSoT работает,
+   но надо: bugfix create + backfill V086 + NOT NULL + удалить fallback.
+2. **Active work detection**: profile.js показывает "Нет активной работы" если
+   все assignments деактивированы. Различать assignment.is_active vs works.work_status.
+3. **Унификация остальных endpoints на SSoT**: `field-worker.js`/`/me`,
+   `/projects/:work_id`, `/finances/:work_id`, `/timesheet/:work_id` +
+   `worker-payments.js`/`/project/:work_id/summary` — переписать на
+   `getWorkerFinances({ workId })`.
+4. **Anti-cache шаг B**: после 24ч стабильности 3.3.0 удалить kill-switch,
+   setInterval reg.update(), updateViaCache.
+5. **Deploy инфра**: `scripts/deploy.py`, `scripts/check_field.py`, `npm run deploy`.
+6. **`worker_achievements`**: миграция + cron + push (отдельная архитектура).
+7. **Косметика после смержа**: PR `fix/active-work-detection` —
+   "Текущий проект" = АРХБУМ вместо КАО, "0518 смен" склейка, переплата
+   суточных как negative pending.

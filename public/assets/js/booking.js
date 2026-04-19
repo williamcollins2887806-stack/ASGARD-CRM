@@ -45,8 +45,8 @@ window.AsgardBooking = (function(){
     return { start:start?String(start).slice(0,10):null, end:end?String(end).slice(0,10):null };
   }
 
-  async function findConflictsForEmployees(employeeIds, dates, workId){
-    const all = await AsgardDB.all('employee_plan');
+  async function findConflictsForEmployees(employeeIds, dates, workId, preloadedPlans){
+    const all = preloadedPlans || await AsgardDB.all('employee_plan');
     const byEmp = new Map();
     for(const id of employeeIds){ byEmp.set(id, []); }
 
@@ -81,16 +81,17 @@ window.AsgardBooking = (function(){
     if(!work || !work.id) return { ok:false, error:'NO_WORK' };
     if(!Array.isArray(dates) || !dates.length) return { ok:false, error:'NO_DATES' };
 
+    const allPlans = await AsgardDB.all('employee_plan');
+
     const app = await getAppSettings();
     const blockOnConflict = (app.schedules && app.schedules.block_on_conflict!==false);
-    const conflicts = await findConflictsForEmployees(employeeIds, dates, work.id);
+    const conflicts = await findConflictsForEmployees(employeeIds, dates, work.id, allPlans);
     if(blockOnConflict && conflicts.length){
       return { ok:false, error:'CONFLICT', conflicts };
     }
 
-    const existing = await AsgardDB.all('employee_plan');
     const existingByKey = new Map();
-    (existing||[]).forEach(r=>{ if(r && r.employee_id && r.date){ existingByKey.set(`${r.employee_id}|${r.date}`, r); } });
+    (allPlans||[]).forEach(r=>{ if(r && r.employee_id && r.date){ existingByKey.set(`${r.employee_id}|${r.date}`, r); } });
 
     let written=0;
     for(const empId of employeeIds){
@@ -143,18 +144,19 @@ window.AsgardBooking = (function(){
     const dates = listDates(start, end);
     if(!dates.length) return { ok:false, error:'NO_DATES', start, end };
 
+    const allPlans = await AsgardDB.all('employee_plan');
+
     const app = await getAppSettings();
     const blockOnConflict = (app.schedules && app.schedules.block_on_conflict!==false);
 
-    const conflicts = await findConflictsForEmployees(employeeIds, dates, work.id);
+    const conflicts = await findConflictsForEmployees(employeeIds, dates, work.id, allPlans);
     if(blockOnConflict && conflicts.length){
       return { ok:false, error:'CONFLICT', start, end, conflicts };
     }
 
     // Upsert plans per day (replace any existing record for that day)
-    const existing = await AsgardDB.all('employee_plan');
     const existingByKey = new Map();
-    (existing||[]).forEach(r=>{
+    (allPlans||[]).forEach(r=>{
       if(r && r.employee_id && r.date){ existingByKey.set(`${r.employee_id}|${r.date}`, r); }
     });
 
@@ -247,40 +249,53 @@ window.AsgardBooking = (function(){
       return { ok: false, error: 'INVALID_DATES', message: 'Некорректный период' };
     }
 
+    // Загружаем все планы один раз
+    const allPlans = await AsgardDB.all('employee_plan');
+
     // Проверяем конфликты на новый период
     const app = await getAppSettings();
     const blockOnConflict = (app.schedules && app.schedules.block_on_conflict !== false);
-    const conflicts = await findConflictsForEmployees(employeeIds, newDates, work.id);
+    const conflicts = await findConflictsForEmployees(employeeIds, newDates, work.id, allPlans);
 
     if (blockOnConflict && conflicts.length) {
       return { ok: false, error: 'CONFLICT', conflicts, message: 'Конфликт брони на новый период' };
     }
-
-    // Удаляем старые записи для этой работы
-    const allPlans = await AsgardDB.all('employee_plan');
+    // Определяем старые записи для удаления (но пока не удаляем)
     const toDelete = (allPlans || []).filter(p =>
       p.work_id === work.id && employeeIds.includes(p.employee_id)
     );
-    for (const p of toDelete) {
-      await AsgardDB.del('employee_plan', p.id);
+
+    // Сначала создаём новые записи, отслеживая ID для возможного отката
+    const createdIds = [];
+    let written = 0;
+    try {
+      for (const empId of employeeIds) {
+        for (const d of newDates) {
+          const rec = await AsgardDB.add('employee_plan', {
+            employee_id: empId,
+            date: d,
+            kind: 'work',
+            work_id: work.id,
+            note: 'rebook',
+            source: 'date_change',
+            locked: true,
+            updated_at: new Date().toISOString()
+          });
+          if (rec && rec.id) createdIds.push(rec.id);
+          written++;
+        }
+      }
+    } catch (createErr) {
+      // Откат: удаляем уже созданные записи
+      for (const cid of createdIds) {
+        try { await AsgardDB.del('employee_plan', cid); } catch (_) { }
+      }
+      return { ok: false, error: 'CREATE_FAILED', message: 'Ошибка создания записей, откат выполнен' };
     }
 
-    // Создаём новые записи
-    let written = 0;
-    for (const empId of employeeIds) {
-      for (const d of newDates) {
-        await AsgardDB.add('employee_plan', {
-          employee_id: empId,
-          date: d,
-          kind: 'work',
-          work_id: work.id,
-          note: 'rebook',
-          source: 'date_change',
-          locked: true,
-          updated_at: new Date().toISOString()
-        });
-        written++;
-      }
+    // Все новые записи созданы — теперь безопасно удаляем старые
+    for (const p of toDelete) {
+      try { await AsgardDB.del('employee_plan', p.id); } catch (_) { }
     }
 
     // Аудит

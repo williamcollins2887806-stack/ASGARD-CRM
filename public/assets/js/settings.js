@@ -156,7 +156,7 @@ window.AsgardSettingsPage = (function(){
             <div class="formrow" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
               <div>
                 <label for="s_vat">НДС, %</label>
-                <input id="s_vat" type="number" min="0" max="30" step="0.01" value="${esc(String(app.vat_pct ?? 20))}"/>
+                <input id="s_vat" type="number" min="0" max="30" step="0.01" value="${esc(String(app.vat_pct ?? 22))}"/>
               </div>
               <div>
                 <label for="s_gantt">Старт общего Ганта</label>
@@ -242,7 +242,7 @@ window.AsgardSettingsPage = (function(){
               </div>
               <div style="grid-column:1/-1">
                 <label for="lim_pm_done">Просчёт НЕ считается активным при статусах (через запятую)</label>
-                <input id="lim_pm_done" type="text" value="${esc(String(limits.pm_active_calcs_done_statuses ?? "Согласование ТКП, ТКП согласовано, Клиент согласился, Клиент отказался"))}"/>
+                <input id="lim_pm_done" type="text" value="${esc(String(limits.pm_active_calcs_done_statuses ?? "Согласование ТКП, ТКП согласовано, Выиграли, Проиграли"))}"/>
                 <div class="help">Используется для лимита активных просчётов (этап 6).</div>
               </div>
               <div class="help" style="grid-column:1/-1">
@@ -264,9 +264,7 @@ window.AsgardSettingsPage = (function(){
 
                 <div style="margin-top:12px">
                   <label for="app_close_trigger">Контракты: статус, при котором доступна кнопка «Работы завершены»</label>
-                  <select id="app_close_trigger">
-                    ${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}" ${app.work_close_trigger_status===s?"selected":""}>${esc(s)}</option>`).join("")}
-                  </select>
+                  <div id="crw_app_close_trigger"></div>
                   <div class="help">РП сможет закрывать контракт через мастер «Работы завершены» только при этом статусе.</div>
                 </div>
               </div>
@@ -486,7 +484,7 @@ window.AsgardSettingsPage = (function(){
             <div class="formrow" style="grid-template-columns:repeat(2,1fr)">
               <div>
                 <label for="d_vat">НДС, %</label>
-                <input id="d_vat" type="number" min="0" step="0.1" value="${esc(String(docsTpl.vat_pct ?? 20))}"/>
+                <input id="d_vat" type="number" min="0" step="0.1" value="${esc(String(docsTpl.vat_pct ?? 22))}"/>
               </div>
               <div>
                 <label for="d_contacts">Контакты</label>
@@ -530,6 +528,12 @@ window.AsgardSettingsPage = (function(){
     `;
 
     await layout(html, { title: title || "Кузница Настроек" });
+
+    $("#crw_app_close_trigger")?.appendChild(CRSelect.create({
+      id: 'app_close_trigger', fullWidth: true,
+      options: (refs.work_statuses||[]).map(s => ({ value: s, label: s })),
+      value: app.work_close_trigger_status || ''
+    }));
 
     // Init push notification settings and WebAuthn device management
     try { if (window.AsgardPush) AsgardPush.bindSettingsEvents(); } catch(e) {}
@@ -605,7 +609,7 @@ window.AsgardSettingsPage = (function(){
     $("#btnSave").onclick = async ()=>{
       // --- docs/templates (separate settings key: docs) ---
       const nextDocsTpl = Object.assign({}, docsTpl, {
-        vat_pct: num($("#d_vat")?.value, docsTpl.vat_pct ?? 20),
+        vat_pct: num($("#d_vat")?.value, docsTpl.vat_pct ?? 22),
         contacts: ($("#d_contacts")?.value || "").trim(),
         payment_terms: ($("#d_pay")?.value || "").trim(),
         request_extra: ($("#d_req")?.value || "").trim(),
@@ -617,7 +621,7 @@ window.AsgardSettingsPage = (function(){
       // --- app ---
       const nextApp = Object.assign({}, app);
 
-      nextApp.vat_pct = num($("#s_vat").value, 20);
+      nextApp.vat_pct = num($("#s_vat").value, 22);
       nextApp.gantt_start_iso = isoFromDateInput($("#s_gantt").value) || nextApp.gantt_start_iso || "2026-01-01T00:00:00.000Z";
       nextApp.docs_folder_hint = ($("#s_docs_hint").value || "").trim();
       nextApp.require_docs_on_handoff = !!$("#s_req_docs").checked;

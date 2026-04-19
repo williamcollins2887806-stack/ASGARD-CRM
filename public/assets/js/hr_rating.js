@@ -105,10 +105,7 @@ window.AsgardHrRatingPage=(function(){
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap">
             <input id="q" class="input" placeholder="Поиск: ФИО, роль, город..." value="${esc(q)}"/>
-            <select id="perm" class="input" style="min-width:220px">
-              <option value="">Допуск: любой</option>
-              ${(permits||[]).map(p=>`<option value="${esc(p)}" ${p===permit?"selected":""}>${esc(p)}</option>`).join("")}
-            </select>
+            <div id="crw_perm" style="min-width:220px"></div>
             <button class="btn" id="btnFind">Найти</button>
             <button class="btn ghost" id="btnPersonnel">Персонал</button>
           </div>
@@ -157,6 +154,11 @@ window.AsgardHrRatingPage=(function(){
 
     await layout(html, {title: title||"Рейтинг дружины", motto});
 
+    $("#crw_perm")?.appendChild(CRSelect.create({
+      id: 'perm', fullWidth: true, placeholder: 'Допуск: любой', clearable: true,
+      options: (permits||[]).map(p => ({ value: p, label: p })),
+      value: permit || ''
+    }));
 
     // Пагинация hr_rating
     if (window.AsgardPagination && rows.length > 0) {
@@ -178,7 +180,7 @@ window.AsgardHrRatingPage=(function(){
     }
     $("#btnFind").onclick=()=>{
       const qv = ($("#q").value||"").trim();
-      const pv = ($("#perm").value||"").trim();
+      const pv = (CRSelect.getValue("perm")||"").trim();
       const parts=[];
       if(qv) parts.push(`q=${encodeURIComponent(qv)}`);
       if(pv) parts.push(`permit=${encodeURIComponent(pv)}`);

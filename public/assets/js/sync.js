@@ -43,8 +43,7 @@ window.AsgardSync = (function(){
     'one_time_payments',
     'staff_requests',
     'staff_request_messages',
-    'staff_replacements',
-    'purchase_requests'
+    'staff_replacements'
   ];
 
   // Статусы синхронизации
@@ -615,7 +614,7 @@ window.AsgardSync = (function(){
   }
 
   // Helpers
-  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function formatDateTime(d) { return d ? new Date(d).toLocaleString('ru-RU') : ''; }
 
   // Инициализация автосинхронизации

@@ -149,11 +149,13 @@ class MangoService {
     });
   }
 
-  async sendSms(fromExtension, toNumber, text) {
+  async sendSms(fromExtension, toNumber, text, senderName) {
     return this.request('commands/sms', {
+      command_id: `sms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       from_extension: String(fromExtension),
       to_number: String(toNumber),
-      text
+      text,
+      sms_sender: senderName || process.env.MANGO_SMS_SENDER || 'ASGARD'
     });
   }
   async getRecordingLink(recordingId, expires = 3600) {
@@ -253,8 +255,23 @@ class MangoService {
     return this.request('stats/request', data);
   }
 
-  async getStatsResult(requestId) {
-    return this.request('stats/result', { request_id: requestId });
+  async getStatsResult(key) {
+    return this.request('stats/result', { key });
+  }
+
+  // Extended Stats API (JSON, includes recording_id in context_calls)
+  async requestCallStats(startDate, endDate, options = {}) {
+    const data = {
+      start_date: startDate,   // format: "DD.MM.YYYY HH:MM:SS"
+      end_date: endDate,
+      limit: String(options.limit || 1000),
+      offset: String(options.offset || 0)
+    };
+    return this.request('stats/calls/request', data);
+  }
+
+  async getCallStatsResult(key) {
+    return this.request('stats/calls/result/', { key });
   }
 
   async getGroups() {

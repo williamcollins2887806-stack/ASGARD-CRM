@@ -326,9 +326,9 @@ window.AsgardCustomDashboard = (function(){
   }
 
   async function renderMyWorks(el, user) {
-    const w = (await AsgardDB.getAll('works')||[]).filter(x=>x.pm_id===user.id&&x.work_status!=='Завершена'&&x.work_status!=='Работы сдали'&&x.work_status!=='Закрыт').slice(0,5);
+    const w = (await AsgardDB.getAll('works')||[]).filter(x=>x.pm_id===user.id&&!['Работы сдали','Закрыт'].includes(x.work_status)).slice(0,5);
     if (!w.length) { el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет активных работ</div>'; return; }
-    el.innerHTML = w.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--red)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.work_name||x.work_title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(x.customer_name)+' \u00B7 '+esc(x.work_status)+'</div></div>').join('');
+    el.innerHTML = w.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--red)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.work_title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(x.customer_name)+' \u00B7 '+esc(x.work_status)+'</div></div>').join('');
   }
 
   async function renderFunnel(el, user) {
@@ -407,7 +407,7 @@ window.AsgardCustomDashboard = (function(){
       return false;
     });
 
-    const sum = yWorks.reduce((s,x) => s + (Number(x.contract_sum) || Number(x.contract_value) || 0), 0);
+    const sum = yWorks.reduce((s,x) => s + (Number(x.contract_value) || 0), 0);
     el.innerHTML = '<div style="text-align:center;padding:8px 0"><div style="font-size:26px;font-weight:900;color:var(--gold)">'+formatMoney(sum)+'</div><div style="font-size:12px;color:var(--t3);margin-top:6px">Сумма договоров за '+y+' г.</div></div>';
   }
 
@@ -589,7 +589,7 @@ window.AsgardCustomDashboard = (function(){
     const now = new Date();
     const overdue = works.filter(w => {
       if (!w.end_plan) return false;
-      if (['Работы сдали','Завершена','Закрыт'].includes(w.work_status)) return false;
+      if (['Работы сдали','Закрыт'].includes(w.work_status)) return false;
       return new Date(w.end_plan) < now;
     }).sort((a,b) => new Date(a.end_plan) - new Date(b.end_plan)).slice(0, 8);
 
@@ -601,7 +601,7 @@ window.AsgardCustomDashboard = (function(){
       overdue.map(w => {
         const days = Math.round((now - new Date(w.end_plan)) / 86400000);
         return '<div style="padding:10px 0;display:flex;justify-content:space-between;gap:8px">' +
-          '<div style="font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || w.work_name || ('ID ' + w.id)) + '</div>' +
+          '<div style="font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || ('ID ' + w.id)) + '</div>' +
           '<div style="font-size:11px;color:var(--red);white-space:nowrap">+' + days + ' дн.</div>' +
         '</div>';
       }).join('') +
@@ -766,7 +766,7 @@ window.AsgardCustomDashboard = (function(){
       const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
       const label = d.toLocaleDateString('ru-RU', { month: 'short' });
       const mTenders = tenders.filter(t => (t.period || '').startsWith(key) || (t.created_at || '').startsWith(key));
-      const won = mTenders.filter(t => ['Выиграли','Контракт','Клиент согласился'].includes(t.tender_status)).length;
+      const won = mTenders.filter(t => t.tender_status === 'Выиграли').length;
       months.push({ label, total: mTenders.length, won });
     }
     const max = Math.max(...months.map(m => m.total), 1);
@@ -798,13 +798,13 @@ window.AsgardCustomDashboard = (function(){
     const y = new Date().getFullYear();
     const yTenders = tenders.filter(t => String(t.year) === String(y) || (t.period || '').startsWith(y));
     const yWorks = works.filter(w => {
-      const d = w.start_fact || w.work_start_plan || w.created_at;
+      const d = w.start_fact || w.start_plan || w.created_at;
       return d && new Date(d).getFullYear() === y;
     });
-    const won = yTenders.filter(t => ['Выиграли','Контракт','Клиент согласился'].includes(t.tender_status)).length;
+    const won = yTenders.filter(t => t.tender_status === 'Выиграли').length;
     const conv = yTenders.length > 0 ? Math.round((won / yTenders.length) * 100) : 0;
-    const revenue = yWorks.reduce((s, w) => s + (Number(w.contract_sum) || Number(w.contract_value) || 0), 0);
-    const done = yWorks.filter(w => ['Работы сдали','Завершена','Закрыт'].includes(w.work_status)).length;
+    const revenue = yWorks.reduce((s, w) => s + (Number(w.contract_value) || 0), 0);
+    const done = yWorks.filter(w => ['Работы сдали','Закрыт'].includes(w.work_status)).length;
 
     el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
       '<div style="text-align:center;padding:14px 18px;background:var(--bg3);border-radius:var(--r-md);border:1px solid var(--brd)"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;font-weight:800;letter-spacing:0.05em">Тендеров</div><div style="font-size:24px;font-weight:900;color:var(--red)">' + yTenders.length + '</div></div>' +
@@ -819,7 +819,7 @@ window.AsgardCustomDashboard = (function(){
     const now = new Date();
     const soon = works.filter(w => {
       if (!w.end_plan) return false;
-      if (['Работы сдали','Завершена','Закрыт'].includes(w.work_status)) return false;
+      if (['Работы сдали','Закрыт'].includes(w.work_status)) return false;
       const d = new Date(w.end_plan);
       const days = Math.round((d - now) / 86400000);
       return days >= 0 && days <= 30;
@@ -833,7 +833,7 @@ window.AsgardCustomDashboard = (function(){
       const days = Math.round((new Date(w.end_plan) - now) / 86400000);
       const color = days <= 3 ? 'var(--red)' : days <= 7 ? 'var(--amber)' : 'var(--text-muted)';
       return '<div style="padding:10px 0;display:flex;justify-content:space-between;gap:8px">' +
-        '<div style="font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || w.work_name || '') + '</div>' +
+        '<div style="font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || '') + '</div>' +
         '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap">' + days + ' дн.</div>' +
       '</div>';
     }).join('') +
@@ -1082,8 +1082,8 @@ window.AsgardCustomDashboard = (function(){
     }
   }
 
-  function esc(s){return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-  function formatMoney(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(n||0);}
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function formatMoney(n){ return AsgardUI.money(n) + ' ₽'; }
 
 
   // ========== Widget: My Mail ==========
@@ -1119,8 +1119,10 @@ window.AsgardCustomDashboard = (function(){
         }
       } catch(e) { console.warn('[Dashboard] Personal mail check failed:', e.message); }
 
-      // Fallback to company mailbox
-      if (!stats || stats.total === 0) {
+      // Fallback to company mailbox — только для ADMIN/DIRECTOR и только если личная почта НЕ подключена
+      // PM, TO и др. без личной почты видят "Почта не подключена" (не все письма компании)
+      const _MAILBOX_ROLES = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'];
+      if ((!stats || stats.configured === false) && _MAILBOX_ROLES.includes(user && user.role)) {
         try {
           const resp = await fetch('/api/mailbox/stats', {
             headers: { 'Authorization': 'Bearer ' + token }

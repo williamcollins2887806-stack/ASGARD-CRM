@@ -1,0 +1,1079 @@
+/* ============================================================
+   ASGARD CRM — Unified Select & Employee Picker Components
+   CSS Variables: --bg2, --bg3, --bg4, --t1, --t2, --t3
+   Prefix: cr-
+   ============================================================ */
+
+/* ─── CRSelect ─────────────────────────────────────────────── */
+
+.cr-select {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 140px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cr-select--fullwidth {
+  width: 100%;
+}
+
+.cr-select--disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Trigger (the "button" that opens dropdown) */
+.cr-select__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--bg4);
+  border-radius: 6px;
+  color: var(--t1);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  user-select: none;
+  min-height: 34px;
+}
+
+.cr-select__trigger:hover {
+  border-color: var(--t3);
+}
+
+.cr-select--open .cr-select__trigger {
+  border-color: #5b8def;
+  box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.15);
+}
+
+.cr-select--invalid .cr-select__trigger {
+  border-color: #e74c3c;
+}
+
+.cr-select__value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cr-select__placeholder {
+  color: var(--t3);
+}
+
+.cr-select__arrow {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  fill: var(--t3);
+  transition: transform 0.15s;
+}
+
+.cr-select--open .cr-select__arrow {
+  transform: rotate(180deg);
+}
+
+/* Dropdown panel */
+.cr-select__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  background: var(--bg2);
+  border: 1px solid var(--bg4);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.12s, transform 0.12s;
+  pointer-events: none;
+}
+
+.cr-select--open .cr-select__dropdown {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Drop upward when near bottom */
+.cr-select--dropup .cr-select__dropdown {
+  top: auto;
+  bottom: calc(100% + 4px);
+  transform: translateY(4px);
+}
+
+.cr-select--dropup.cr-select--open .cr-select__dropdown {
+  transform: translateY(0);
+}
+
+/* Search inside dropdown */
+.cr-select__search {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--bg4);
+}
+
+.cr-select__search-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg3);
+  border: 1px solid var(--bg4);
+  border-radius: 4px;
+  color: var(--t1);
+  font-size: 12px;
+  outline: none;
+}
+
+.cr-select__search-input:focus {
+  border-color: #5b8def;
+}
+
+.cr-select__search-input::placeholder {
+  color: var(--t3);
+}
+
+/* Options list */
+.cr-select__options {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg4) transparent;
+}
+
+.cr-select__option {
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  color: var(--t1);
+  cursor: pointer;
+  transition: background 0.08s;
+  font-size: 13px;
+}
+
+.cr-select__option:hover,
+.cr-select__option--focused {
+  background: var(--bg3);
+}
+
+.cr-select__option--selected {
+  background: var(--bg4);
+  font-weight: 500;
+}
+
+.cr-select__option--selected::after {
+  content: '';
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%235b8def'%3E%3Cpath d='M6.5 12.5l-4-4 1.4-1.4 2.6 2.6 5.6-5.6 1.4 1.4z'/%3E%3C/svg%3E") center/contain no-repeat;
+  flex-shrink: 0;
+}
+
+.cr-select__option--disabled {
+  color: var(--t3);
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Group headers (optgroup equivalent) */
+.cr-select__group-label {
+  padding: 6px 10px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--t3);
+  pointer-events: none;
+}
+
+/* Empty state */
+.cr-select__empty {
+  padding: 16px 10px;
+  text-align: center;
+  color: var(--t3);
+  font-size: 12px;
+}
+
+/* Clear button (optional) */
+.cr-select__clear {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg4);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.cr-select:hover .cr-select__clear,
+.cr-select--open .cr-select__clear {
+  opacity: 1;
+}
+
+.cr-select__clear:hover {
+  background: var(--t3);
+}
+
+.cr-select__clear svg {
+  width: 10px;
+  height: 10px;
+  fill: var(--t1);
+}
+
+
+/* ─── CREmployeePicker ─────────────────────────────────────── */
+
+/* Trigger button */
+.cr-emp-picker {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 180px;
+  font-size: 13px;
+}
+
+.cr-emp-picker--fullwidth {
+  width: 100%;
+}
+
+.cr-emp-picker__trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--bg4);
+  border-radius: 6px;
+  color: var(--t1);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  min-height: 34px;
+  flex-wrap: wrap;
+}
+
+.cr-emp-picker__trigger:hover {
+  border-color: var(--t3);
+}
+
+/* Chips for selected employees */
+.cr-emp-picker__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cr-emp-picker__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 4px;
+  background: var(--bg4);
+  border-radius: 12px;
+  font-size: 12px;
+  max-width: 160px;
+}
+
+.cr-emp-picker__chip-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg4);
+}
+
+.cr-emp-picker__chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cr-emp-picker__chip-remove {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.1s;
+}
+
+.cr-emp-picker__chip-remove:hover {
+  opacity: 1;
+  background: rgba(231, 76, 60, 0.2);
+}
+
+.cr-emp-picker__placeholder {
+  color: var(--t3);
+}
+
+.cr-emp-picker__count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--t2);
+  background: var(--bg4);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+/* Modal overlay */
+.cr-emp-picker__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.cr-emp-picker__overlay--visible {
+  opacity: 1;
+}
+
+/* Modal */
+.cr-emp-picker__modal {
+  width: 700px;
+  max-width: 95vw;
+  max-height: 90vh;
+  background: var(--bg2);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: scale(0.95);
+  transition: transform 0.15s;
+}
+
+.cr-emp-picker__overlay--visible .cr-emp-picker__modal {
+  transform: scale(1);
+}
+
+/* Modal header */
+.cr-emp-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--bg4);
+}
+
+.cr-emp-picker__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t1);
+}
+
+.cr-emp-picker__close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--t2);
+  transition: background 0.1s;
+}
+
+.cr-emp-picker__close:hover {
+  background: var(--bg3);
+}
+
+/* Search + role filter */
+.cr-emp-picker__filters {
+  padding: 10px 16px;
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--bg4);
+}
+
+.cr-emp-picker__search {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--bg4);
+  border-radius: 6px;
+  color: var(--t1);
+  font-size: 12px;
+  outline: none;
+}
+
+.cr-emp-picker__search:focus {
+  border-color: #5b8def;
+}
+
+.cr-emp-picker__search::placeholder {
+  color: var(--t3);
+}
+
+.cr-emp-picker__role-filter {
+  padding: 6px 8px;
+  background: var(--bg3);
+  border: 1px solid var(--bg4);
+  border-radius: 6px;
+  color: var(--t1);
+  font-size: 12px;
+  min-width: 100px;
+}
+
+/* Employee list */
+.cr-emp-picker__list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg4) transparent;
+}
+
+/* ── Table layout ── */
+.cr-emp-picker__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+@media (max-width: 700px) {
+  .cr-emp-picker__table .cr-emp-picker__col-city,
+  .cr-emp-picker__table .cr-emp-picker__col-ph,
+  .cr-emp-picker__table th:nth-child(5),
+  .cr-emp-picker__table td:nth-child(5),
+  .cr-emp-picker__table th:nth-child(7),
+  .cr-emp-picker__table td:nth-child(7) { display: none; }
+}
+
+.cr-emp-picker__table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg2);
+}
+
+.cr-emp-picker__table th {
+  padding: 5px 8px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--t3);
+  border-bottom: 1px solid var(--bg4);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.cr-emp-picker__th-chk { width: 32px; }
+
+.cr-emp-picker__row {
+  height: 36px;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+
+.cr-emp-picker__row:hover {
+  background: var(--bg3);
+}
+
+.cr-emp-picker__row--sel {
+  background: rgba(91, 141, 239, 0.12);
+}
+
+.cr-emp-picker__row--sel:hover {
+  background: rgba(91, 141, 239, 0.18);
+}
+
+.cr-emp-picker__row td {
+  padding: 4px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  vertical-align: middle;
+  color: var(--t1);
+  font-size: 12px;
+}
+
+.cr-emp-picker__col-chk { width: 32px; text-align: center; }
+.cr-emp-picker__col-av { width: 36px; }
+.cr-emp-picker__col-name { font-weight: 500; }
+.cr-emp-picker__col-pos { color: var(--t2) !important; font-size: 11px; }
+.cr-emp-picker__col-city { color: var(--t2) !important; font-size: 11px; }
+.cr-emp-picker__col-rat { width: 44px; text-align: center; font-size: 11px; }
+.cr-emp-picker__col-ph { color: var(--t3) !important; font-size: 11px; }
+
+.cr-emp-picker__av {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.cr-emp-picker__av--img { object-fit: cover; }
+
+/* Avatar palette (10 colors, hash-based) */
+.cr-emp-picker__av--c0 { background: #5b8def; }
+.cr-emp-picker__av--c1 { background: #e74c3c; }
+.cr-emp-picker__av--c2 { background: #27ae60; }
+.cr-emp-picker__av--c3 { background: #f39c12; }
+.cr-emp-picker__av--c4 { background: #8e44ad; }
+.cr-emp-picker__av--c5 { background: #1abc9c; }
+.cr-emp-picker__av--c6 { background: #e67e22; }
+.cr-emp-picker__av--c7 { background: #2980b9; }
+.cr-emp-picker__av--c8 { background: #c0392b; }
+.cr-emp-picker__av--c9 { background: #16a085; }
+
+/* Rating colors */
+.cr-emp-picker__rat--high { color: #27ae60 !important; }
+.cr-emp-picker__rat--mid  { color: #f39c12 !important; }
+
+.cr-emp-picker__group-hdr td {
+  padding: 8px 12px 4px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--t2) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--bg4);
+}
+
+/* Checkbox */
+.cr-emp-picker__checkbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--t3);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, border-color 0.1s;
+  margin: 0 auto;
+}
+
+.cr-emp-picker__row--sel .cr-emp-picker__checkbox {
+  background: #5b8def;
+  border-color: #5b8def;
+}
+
+.cr-emp-picker__checkbox-icon {
+  width: 10px;
+  height: 10px;
+  fill: #fff;
+  opacity: 0;
+}
+
+.cr-emp-picker__row--sel .cr-emp-picker__checkbox-icon {
+  opacity: 1;
+}
+
+/* Single-select: hide checkboxes */
+.cr-emp-picker--single .cr-emp-picker__col-chk,
+.cr-emp-picker--single .cr-emp-picker__th-chk {
+  width: 0;
+  padding: 0 !important;
+  overflow: hidden;
+}
+.cr-emp-picker--single .cr-emp-picker__checkbox {
+  display: none;
+}
+
+/* Modal footer */
+.cr-emp-picker__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid var(--bg4);
+}
+
+.cr-emp-picker__selected-count {
+  font-size: 12px;
+  color: var(--t2);
+}
+
+.cr-emp-picker__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cr-emp-picker__btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.cr-emp-picker__btn--secondary {
+  background: var(--bg3);
+  color: var(--t1);
+  border: 1px solid var(--bg4);
+}
+
+.cr-emp-picker__btn--secondary:hover {
+  background: var(--bg4);
+}
+
+.cr-emp-picker__btn--primary {
+  background: #5b8def;
+  color: #fff;
+  border: none;
+}
+
+.cr-emp-picker__btn--primary:hover {
+  background: #4a7de0;
+}
+
+/* Empty state */
+.cr-emp-picker__empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--t3);
+  font-size: 13px;
+}
+
+/* Single-select mode — no checkboxes, no footer */
+.cr-emp-picker--single .cr-emp-picker__checkbox {
+  display: none;
+}
+
+.cr-emp-picker--single .cr-emp-picker__footer {
+  display: none;
+}
+
+
+/* ─── CRAutocomplete ──────────────────────────────────── */
+
+.cr-ac {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 140px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cr-ac--fullwidth {
+  width: 100%;
+}
+
+.cr-ac--disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Input wrapper */
+.cr-ac__input-wrap {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.cr-ac__input {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--bg4);
+  border-radius: 6px;
+  color: var(--t1);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  min-height: 34px;
+}
+
+.cr-ac__input:hover {
+  border-color: var(--t3);
+}
+
+.cr-ac__input:focus {
+  border-color: #5b8def;
+  box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.15);
+}
+
+.cr-ac__input::placeholder {
+  color: var(--t3);
+}
+
+/* Clear button */
+.cr-ac__clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg4);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 1;
+}
+
+.cr-ac:hover .cr-ac__clear,
+.cr-ac--open .cr-ac__clear {
+  opacity: 1;
+}
+
+.cr-ac__clear:hover {
+  background: var(--t3);
+}
+
+.cr-ac__clear svg {
+  width: 10px;
+  height: 10px;
+  fill: var(--t1);
+}
+
+/* Dropdown panel */
+.cr-ac__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  background: var(--bg2);
+  border: 1px solid var(--bg4);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.12s, transform 0.12s;
+  pointer-events: none;
+}
+
+.cr-ac--open .cr-ac__dropdown {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Dropup */
+.cr-ac--dropup .cr-ac__dropdown {
+  top: auto;
+  bottom: calc(100% + 4px);
+  transform: translateY(4px);
+}
+
+.cr-ac--dropup.cr-ac--open .cr-ac__dropdown {
+  transform: translateY(0);
+}
+
+/* Options list */
+.cr-ac__options {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg4) transparent;
+}
+
+/* Individual option */
+.cr-ac__option {
+  padding: 7px 10px;
+  color: var(--t1);
+  cursor: pointer;
+  transition: background 0.08s;
+  font-size: 13px;
+}
+
+.cr-ac__option:hover,
+.cr-ac__option--focused {
+  background: var(--bg3);
+}
+
+.cr-ac__option-label {
+  font-weight: 500;
+}
+
+.cr-ac__option-sublabel {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 1px;
+}
+
+/* Empty state */
+.cr-ac__empty {
+  padding: 16px 10px;
+  text-align: center;
+  color: var(--t3);
+  font-size: 12px;
+}
+
+/* Loading spinner */
+.cr-ac__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 10px;
+  color: var(--t3);
+  font-size: 12px;
+}
+
+@keyframes crAcSpin {
+  to { transform: rotate(360deg); }
+}
+
+.cr-ac__spinner-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--t3);
+  animation: crAcSpin 0.8s linear infinite;
+}
+
+/* ─── CRDatePicker ────────────────────────────────────────── */
+
+.cr-datepicker {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 160px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cr-datepicker__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: var(--t1);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.cr-datepicker__trigger:hover {
+  border-color: rgba(255,255,255,0.25);
+}
+
+.cr-datepicker--open .cr-datepicker__trigger {
+  border-color: #5b8def;
+  box-shadow: 0 0 0 2px rgba(91,141,239,0.18);
+}
+
+.cr-datepicker--disabled .cr-datepicker__trigger {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cr-datepicker__label {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cr-datepicker__placeholder {
+  color: var(--t3);
+}
+
+.cr-datepicker__icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.cr-datepicker__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1100;
+  min-width: 280px;
+  padding: 8px;
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  animation: cr-dp-fade-in .15s ease;
+}
+
+.cr-datepicker__dropdown--up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+@keyframes cr-dp-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Header: nav arrows + month/year */
+.cr-dp__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 8px;
+}
+
+.cr-dp__title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--t1);
+}
+
+.cr-dp__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t2);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.cr-dp__nav:hover {
+  background: var(--bg4);
+  color: var(--t1);
+}
+
+/* Calendar grid */
+.cr-dp__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.cr-dp__day-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t3);
+  text-transform: uppercase;
+}
+
+.cr-dp__day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--t1);
+  cursor: pointer;
+  transition: background .12s;
+}
+
+.cr-dp__day:hover {
+  background: var(--bg4);
+}
+
+.cr-dp__day--other {
+  color: var(--t3);
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cr-dp__day--other:hover {
+  background: transparent;
+}
+
+.cr-dp__day--today {
+  border: 1px solid var(--blue-l, #4A90D9);
+  font-weight: 600;
+}
+
+.cr-dp__day--sel {
+  background: var(--blue, #1E4D8C);
+  color: #fff;
+  font-weight: 600;
+}
+
+.cr-dp__day--sel:hover {
+  background: var(--blue-l, #4A90D9);
+}
+
+/* Footer */
+.cr-dp__footer {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  margin-top: 6px;
+}
+
+.cr-dp__today-btn,
+.cr-dp__clear-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--blue-l, #4A90D9);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .12s;
+}
+
+.cr-dp__today-btn:hover,
+.cr-dp__clear-btn:hover {
+  background: var(--bg3);
+}
+
+.cr-dp__clear-btn {
+  color: var(--t3);
+}
+
+/* Period row: month + year side by side */
+.cr-period-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cr-period-row .cr-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* z-index overrides for modals */
+.z-modal .cr-select__dropdown,
+.z-modal .cr-ac__dropdown { z-index: 1300; }
+.cr-ac__dropdown.z-modal-ac { z-index: 1300; }
+.z-modal.cr-datepicker__dropdown,
+.cr-datepicker__dropdown.z-modal { z-index: 1300; }

@@ -1,51 +1,34 @@
 window.AsgardCustomersPage = (function(){
     let currentPage = 1, pageSize = window.AsgardPagination ? AsgardPagination.getPageSize() : 20;
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
-  // DaData autocomplete helper
+  // DaData autocomplete helper — replaced by CRAutocomplete
+  // Usage: wrap a container with CRAutocomplete.create({ fetchOptions via /api/customers/suggest })
   function dadataAutocomplete(inputEl, type, onSelect) {
-    let timer = null;
-    const dropdown = document.createElement('div');
-    dropdown.className = 'dadata-suggest-dropdown';
-    dropdown.style.cssText = 'position:absolute;z-index:9999;background:var(--bg2,#1e1e2e);border:1px solid var(--line,#333);border-radius:8px;max-height:220px;overflow-y:auto;display:none;width:100%;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
-    inputEl.parentElement.style.position = 'relative';
-    inputEl.parentElement.appendChild(dropdown);
-
-    inputEl.addEventListener('input', () => {
-      clearTimeout(timer);
-      const q = inputEl.value.trim();
-      if (q.length < 3) { dropdown.style.display = 'none'; return; }
-      timer = setTimeout(async () => {
+    const id = 'dadata-' + (inputEl.id || Date.now());
+    const wrap = document.createElement('div');
+    wrap.style.width = '100%';
+    inputEl.parentElement.insertBefore(wrap, inputEl);
+    inputEl.style.display = 'none';
+    wrap.appendChild(CRAutocomplete.create({
+      id, value: inputEl.value || '', placeholder: inputEl.placeholder || '',
+      minChars: 3, fullWidth: true,
+      fetchOptions: async (q) => {
         try {
           const auth = await AsgardAuth.getAuth();
           const r = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q) + '&type=' + type, {
             headers: { 'Authorization': 'Bearer ' + auth.token }
           });
           const data = await r.json();
-          if (!data.suggestions?.length) { dropdown.style.display = 'none'; return; }
-          dropdown.innerHTML = data.suggestions.map((s, i) =>
-            '<div class="dadata-suggest-item" data-idx="' + i + '" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--line,#333);font-size:13px">' +
-            '<div style="font-weight:600">' + (s.name||'') + '</div>' +
-            '<div style="color:var(--text-muted,#888);font-size:11px">\u0418\u041d\u041d ' + (s.inn||'') + (s.address ? ' \u2022 ' + s.address.slice(0,60) : '') + '</div>' +
-            '</div>'
-          ).join('');
-          dropdown.style.display = 'block';
-          dropdown.querySelectorAll('.dadata-suggest-item').forEach(el => {
-            el.addEventListener('mouseenter', () => el.style.background = 'var(--bg-hover,#2a2a3e)');
-            el.addEventListener('mouseleave', () => el.style.background = '');
-            el.addEventListener('click', () => {
-              const idx = parseInt(el.dataset.idx);
-              onSelect(data.suggestions[idx]);
-              dropdown.style.display = 'none';
-            });
-          });
-        } catch(e) { dropdown.style.display = 'none'; }
-      }, 300);
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!inputEl.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none';
-    });
+          return (data.suggestions || []).map(s => ({
+            value: s.inn || '', label: s.name || '',
+            sublabel: '\u0418\u041d\u041d ' + (s.inn||'') + (s.address ? ' \u2022 ' + s.address.slice(0,60) : ''),
+            _raw: s
+          }));
+        } catch(e) { return []; }
+      },
+      onSelect: (item) => { if(item && item._raw) onSelect(item._raw); }
+    }));
   }
 
 
@@ -53,13 +36,6 @@ window.AsgardCustomersPage = (function(){
 
   function isoNow(){ return new Date().toISOString(); }
   function normInn(v){ return String(v||"").replace(/\D/g,""); }
-
-  function money(n){
-    const x = Number(n||0);
-    if(!isFinite(x)) return "0";
-    return x.toLocaleString("ru-RU");
-  }
-
   async function getCustomerByInn(inn){
     inn = normInn(inn);
     if(!inn) return null;
@@ -214,7 +190,7 @@ window.AsgardCustomersPage = (function(){
             <label>ИНН</label>
             <input id="inn" placeholder="10/12 цифр" value="${esc(c?.inn||'')}" ${c?.inn && !isNew ? 'disabled' : ''}/>
           </div>
-          ${!c?.inn || isNew ? '<button class="btn ghost" id="btnLookup" style="height:38px" title="Найти по ИНН">🔍</button>' : ''}
+          <button class="btn ghost" id="btnLookup" style="height:38px" title="Обновить данные из ЕГРЮЛ">${c?.inn && !isNew ? '🔄 ЕГРЮЛ' : '🔍'}</button>
         </div>
         <div style="grid-column:1/-1"><label>Название (краткое)</label><input id="name" value="${esc(c?.name||'')}"/></div>
         <div style="grid-column:1/-1"><label>Наименование полное</label><input id="full" value="${esc(c?.full_name||'')}"/></div>
@@ -260,38 +236,37 @@ window.AsgardCustomersPage = (function(){
       });
     });
 
-    // INN lookup button
+    // INN lookup button (works for both new and existing customers)
     const btnLookup = $("#btnLookup");
-    if(btnLookup){
-      btnLookup.addEventListener("click", async ()=>{
-        const inn = normInn($("#inn").value);
-        if(inn.length !== 10 && inn.length !== 12){
-          toast("Поиск","ИНН должен быть 10 или 12 цифр","err");
-          return;
+    const btnLookupLabel = btnLookup.textContent;
+    btnLookup.addEventListener("click", async ()=>{
+      const inn = normInn($("#inn").value);
+      if(inn.length !== 10 && inn.length !== 12){
+        toast("Поиск","ИНН должен быть 10 или 12 цифр","err");
+        return;
+      }
+      btnLookup.disabled = true;
+      btnLookup.textContent = "⏳";
+      try{
+        const result = await lookupByInn(inn);
+        if(result.found && result.suggestion){
+          const s = result.suggestion;
+          if(s.name) $("#name").value = s.name;
+          if(s.full_name) $("#full").value = s.full_name;
+          if(s.kpp) $("#kpp").value = s.kpp;
+          if(s.ogrn) $("#ogrn").value = s.ogrn;
+          if(s.address) $("#addr").value = s.address;
+          toast("ЕГРЮЛ","Данные обновлены из реестра","ok");
+        } else {
+          toast("ЕГРЮЛ", result.message || "Организация не найдена","warn");
         }
-        btnLookup.disabled = true;
-        btnLookup.textContent = "⏳";
-        try{
-          const result = await lookupByInn(inn);
-          if(result.found && result.suggestion){
-            const s = result.suggestion;
-            if(s.name) $("#name").value = s.name;
-            if(s.full_name) $("#full").value = s.full_name;
-            if(s.kpp) $("#kpp").value = s.kpp;
-            if(s.ogrn) $("#ogrn").value = s.ogrn;
-            if(s.address) $("#addr").value = s.address;
-            toast("Поиск","Данные заполнены из реестра","ok");
-          } else {
-            toast("Поиск", result.message || "Организация не найдена","warn");
-          }
-        }catch(e){
-          toast("Поиск", e.message||"Ошибка","err");
-        }finally{
-          btnLookup.disabled = false;
-          btnLookup.textContent = "🔍";
-        }
-      });
-    }
+      }catch(e){
+        toast("ЕГРЮЛ", e.message||"Ошибка","err");
+      }finally{
+        btnLookup.disabled = false;
+        btnLookup.textContent = btnLookupLabel;
+      }
+    });
 
     $("#btnSave").addEventListener("click", async ()=>{
       try{

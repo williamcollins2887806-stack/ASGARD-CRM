@@ -20,7 +20,7 @@
  * СУЩНОСТИ (12 с requires_payment):
  *   cash_requests, pre_tender_requests, bonus_requests,
  *   work_expenses, office_expenses, expenses,
- *   one_time_payments, tmc_requests, payroll_sheets,
+ *   one_time_payments, procurement_requests, payroll_sheets,
  *   business_trips, travel_expenses, training_applications
  * 
  * СУЩНОСТИ (7 без requires_payment — только директор):
@@ -40,12 +40,12 @@ function getTelegram() {
  * Для директора: 4 кнопки (Согласовать/Доработка/Вопрос/Отклонить)
  * Для бухгалтерии: 4 кнопки (ПП/Наличные/Доработка/Вопрос)
  */
-async function sendApprovalTelegram(userId, label, message, approvalData) {
+function sendApprovalTelegram(userId, label, message, approvalData) {
   const tg = getTelegram();
   if (!tg || !tg.sendApprovalRequest) return;
-  try {
-    await tg.sendApprovalRequest(userId, `🔔 *${label}*\n\n${message}`, approvalData);
-  } catch (e) { /* telegram optional */ }
+  // Fire-and-forget: don't await Telegram (can timeout 30s+ and block API response)
+  tg.sendApprovalRequest(userId, `🔔 *${label}*\n\n${message}`, approvalData)
+    .catch(() => { /* telegram optional */ });
 }
 
 /**
@@ -91,8 +91,45 @@ async function notifyBuhForPayment(db, { entityType, entityId, actorName, title,
 // Константы
 // ─────────────────────────────────────────────────────────────────
 
+// SQL injection protection: таблицы, разрешённые для операций через approvalService
+// Должен совпадать с ALLOWED_ENTITIES из approval.js (belt + suspenders)
+const SAFE_TABLES = new Set([
+  'cash_requests', 'pre_tender_requests', 'bonus_requests',
+  'work_expenses', 'office_expenses', 'expenses',
+  'one_time_payments', 'procurement_requests', 'payroll_sheets',
+  'business_trips', 'travel_expenses', 'training_applications',
+  'estimates', 'tkp', 'staff_requests', 'pass_requests',
+  'permit_applications', 'site_inspections', 'seal_transfers'
+]);
+
 const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const BUH_ROLES = ['BUH', 'ADMIN'];
+
+// ─── Матрица допустимых переходов статусов для estimates ───
+const ESTIMATE_TRANSITIONS = {
+  draft:     ['sent'],
+  sent:      ['approved', 'rework', 'question', 'rejected'],
+  rework:    ['sent'],
+  question:  ['sent'],
+  rejected:  [],       // терминальный
+  approved:  [],       // терминальный
+  cancelled: []        // терминальный
+};
+
+/**
+ * Проверяет допустимость перехода статуса для estimates.
+ * Бросает ошибку 409 если переход недопустим.
+ */
+function validateEstimateTransition(currentStatus, newStatus) {
+  const from = String(currentStatus || 'draft').toLowerCase();
+  const allowed = ESTIMATE_TRANSITIONS[from];
+  if (!allowed || !allowed.includes(newStatus)) {
+    throw Object.assign(
+      new Error(`Недопустимый переход статуса: ${from} → ${newStatus}`),
+      { statusCode: 409 }
+    );
+  }
+}
 
 const PAYMENT_STATUSES = {
   PENDING: 'pending_payment',    // ждёт бухгалтерию
@@ -113,7 +150,7 @@ const ENTITY_LABELS = {
   office_expenses: 'Офисный расход',
   expenses: 'Расход',
   one_time_payments: 'Разовая выплата',
-  tmc_requests: 'Заявка на ТМЦ',
+  procurement_requests: 'Заявка на закупку',
   payroll_sheets: 'Ведомость ЗП',
   business_trips: 'Командировка',
   travel_expenses: 'Командировочный расход',
@@ -145,7 +182,7 @@ const COLUMN_MAP = {
   office_expenses:        { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
   expenses:               { approved_by: null,              approved_at: 'approved_at',   comment_field: null },
   one_time_payments:      { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: 'director_comment' },
-  tmc_requests:           { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
+  procurement_requests:   { approved_by: 'dir_approved_by', approved_at: 'dir_approved_at', comment_field: null },
   payroll_sheets:         { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: 'director_comment' },
   business_trips:         { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
   travel_expenses:        { approved_by: 'approved_by',     approved_at: 'approved_at',   comment_field: null },
@@ -174,6 +211,11 @@ function getColumns(entityType) {
  * Возвращает { sql, values }.
  */
 function buildUpdate(entityType, entityId, fields) {
+  // SQL injection hardening: проверка entityType по белому списку
+  if (!SAFE_TABLES.has(entityType)) {
+    throw new Error(`Invalid entity type: ${entityType}`);
+  }
+
   const setParts = [];
   const values = [];
   let idx = 1;
@@ -221,53 +263,109 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'approved');
+  }
+
   const requiresPayment = !!record.requires_payment;
   const label = `${getLabel(entityType)} #${entityId}`;
 
-  // Собираем поля для UPDATE динамически
-  const fields = {};
-  fields[statusField] = 'approved';
-  if (cols.approved_by) fields[cols.approved_by] = actor.id;
-  if (cols.approved_at) fields[cols.approved_at] = '__NOW__';
-  if (comment && cols.comment_field) fields[cols.comment_field] = comment;
-  if (requiresPayment) fields.payment_status = PAYMENT_STATUSES.PENDING;
+  // Оборачиваем в транзакцию: UPDATE + уведомления
+  const useTransaction = typeof db.connect === 'function';
+  const client = useTransaction ? await db.connect() : db;
+  try {
+    if (useTransaction) await client.query('BEGIN');
 
-  const { sql, values } = buildUpdate(entityType, entityId, fields);
-  await db.query(sql, values);
+    // Собираем поля для UPDATE динамически
+    const fields = {};
+    fields[statusField] = 'approved';
+    if (entityType === 'estimates') fields.is_approved = true;
+    if (cols.approved_by) fields[cols.approved_by] = actor.id;
+    if (cols.approved_at) fields[cols.approved_at] = '__NOW__';
+    if (comment && cols.comment_field) fields[cols.comment_field] = comment;
+    if (requiresPayment) fields.payment_status = PAYMENT_STATUSES.PENDING;
 
-  if (requiresPayment) {
-    // Уведомляем бухгалтерию С КНОПКАМИ
-    await notifyBuhForPayment(db, {
-      entityType, entityId,
-      actorName: actor.name,
-      title: `💰 ${label} — ожидает оплаты`,
-      message: `${actor.name || 'Директор'} согласовал. Требуется оплата.${comment ? ' Комментарий: ' + comment : ''}`
+    const { sql, values } = buildUpdate(entityType, entityId, fields);
+    await client.query(sql, values);
+
+    // Audit log
+    await writeAuditLog(client, actor.id, entityType, entityId, 'approval_approve', {
+      from_status: record[statusField],
+      to_status: 'approved',
+      comment: comment || null,
+      requires_payment: requiresPayment
     });
 
-    // Уведомляем инициатора (простой текст)
-    const initiatorId = getInitiatorId(record, entityType);
-    if (initiatorId && initiatorId !== actor.id) {
-      createNotification(db, {
-        user_id: initiatorId,
-        title: `✅ ${label} — согласовано, передано в бухгалтерию`,
-        message: `${actor.name || 'Директор'} согласовал. Ожидает оплаты.`,
-        type: 'approval',
-        link: `#/${entityType}?id=${entityId}`
-      });
+    // Потоковый комментарий
+    if (comment) {
+      await writeApprovalComment(client, entityType, entityId, actor.id, 'approve', comment);
     }
-    return { status: 'approved', payment_status: PAYMENT_STATUSES.PENDING };
-  } else {
-    const initiatorId = getInitiatorId(record, entityType);
-    if (initiatorId && initiatorId !== actor.id) {
-      createNotification(db, {
-        user_id: initiatorId,
-        title: `✅ ${label} — согласовано`,
-        message: `${actor.name || 'Директор'} согласовал.${comment ? ' ' + comment : ''}`,
-        type: 'approval',
-        link: `#/${entityType}?id=${entityId}`
-      });
+
+    // Обновить director_id и last_director_comment для estimates
+    if (entityType === 'estimates') {
+      const dirFields = { director_id: actor.id };
+      if (comment) dirFields.last_director_comment = comment;
+      const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
+      await client.query(dirSql, dirVals);
     }
-    return { status: 'approved' };
+
+    if (requiresPayment) {
+      // Уведомляем бухгалтерию С КНОПКАМИ
+      await notifyBuhForPayment(client, {
+        entityType, entityId,
+        actorName: actor.name,
+        title: `💰 ${label} — ожидает оплаты`,
+        message: `${actor.name || 'Директор'} согласовал. Требуется оплата.${comment ? ' Комментарий: ' + comment : ''}`
+      });
+
+      // Уведомляем инициатора (простой текст)
+      const initiatorId = getInitiatorId(record, entityType);
+      if (initiatorId && initiatorId !== actor.id) {
+        createNotification(client, {
+          user_id: initiatorId,
+          title: `✅ ${label} — согласовано, передано в бухгалтерию`,
+          message: `${actor.name || 'Директор'} согласовал. Ожидает оплаты.`,
+          type: 'approval',
+          link: `#/${entityType}?id=${entityId}`
+        });
+      }
+
+      if (useTransaction) await client.query('COMMIT');
+      return { status: 'approved', payment_status: PAYMENT_STATUSES.PENDING };
+    } else {
+      const initiatorId = getInitiatorId(record, entityType);
+      if (initiatorId && initiatorId !== actor.id) {
+        createNotification(client, {
+          user_id: initiatorId,
+          title: `✅ ${label} — согласовано`,
+          message: `${actor.name || 'Директор'} согласовал.${comment ? ' ' + comment : ''}`,
+          type: 'approval',
+          link: `#/${entityType}?id=${entityId}`
+        });
+      }
+
+      if (useTransaction) await client.query('COMMIT');
+
+      // H2: Дублировать approve в чат (без Мимира)
+      if (entityType === 'estimates' && comment) {
+        setImmediate(async () => {
+          try {
+            const estimateChat = require('./estimateChat');
+            await estimateChat.syncCommentToChat(db, {
+              entityId, action: 'approve', comment, actor
+            });
+          } catch (err) { console.error('[H2] approve chat sync error:', err.message); }
+        });
+      }
+
+      return { status: 'approved' };
+    }
+  } catch (err) {
+    if (useTransaction) await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    if (useTransaction) client.release();
   }
 }
 
@@ -287,6 +385,11 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'rework');
+  }
+
   const isBuhAction = isBuh(actor.role) && record.payment_status === PAYMENT_STATUSES.PENDING;
   const label = `${getLabel(entityType)} #${entityId}`;
 
@@ -304,6 +407,25 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
 
+  // Audit log
+  const newStatus = isBuhAction ? 'rework_buh' : 'rework';
+  await writeAuditLog(db, actor.id, entityType, entityId, 'approval_rework', {
+    from_status: record[statusField],
+    to_status: newStatus,
+    comment: comment.trim(),
+    requires_payment: !!record.requires_payment
+  });
+
+  // Потоковый комментарий
+  await writeApprovalComment(db, entityType, entityId, actor.id, 'rework', comment.trim());
+
+  // Обновить director_id и last_director_comment для estimates
+  if (entityType === 'estimates' && !isBuhAction) {
+    const dirFields = { director_id: actor.id, last_director_comment: comment.trim() };
+    const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
+    await db.query(dirSql, dirVals);
+  }
+
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
     const who = isBuhAction ? 'Бухгалтерия' : 'Директор';
@@ -316,7 +438,25 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
     });
   }
 
-  return { status: isBuhAction ? 'rework_buh' : 'rework' };
+  // H2: Дублировать комментарий в чат + Мимир автоответ
+  if (entityType === 'estimates' && !isBuhAction) {
+    setImmediate(async () => {
+      try {
+        const estimateChat = require('./estimateChat');
+        const result = await estimateChat.syncCommentToChat(db, {
+          entityId, action: 'rework', comment: comment.trim(), actor
+        });
+        if (result) {
+          await estimateChat.triggerMimirAutoRespond(db, {
+            entityId, chatId: result.chatId, action: 'rework',
+            comment: comment.trim(), actorName: actor.name
+          });
+        }
+      } catch (err) { console.error('[H2] rework chat sync error:', err.message); }
+    });
+  }
+
+  return { status: newStatus };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -335,6 +475,11 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'question');
+  }
+
   const isBuhAction = isBuh(actor.role) && record.payment_status === PAYMENT_STATUSES.PENDING;
   const label = `${getLabel(entityType)} #${entityId}`;
 
@@ -352,6 +497,25 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
 
+  // Audit log
+  const newStatus = isBuhAction ? 'question_buh' : 'question';
+  await writeAuditLog(db, actor.id, entityType, entityId, 'approval_question', {
+    from_status: record[statusField],
+    to_status: newStatus,
+    comment: comment.trim(),
+    requires_payment: !!record.requires_payment
+  });
+
+  // Потоковый комментарий
+  await writeApprovalComment(db, entityType, entityId, actor.id, 'question', comment.trim());
+
+  // Обновить director_id и last_director_comment для estimates
+  if (entityType === 'estimates' && !isBuhAction) {
+    const dirFields = { director_id: actor.id, last_director_comment: comment.trim() };
+    const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
+    await db.query(dirSql, dirVals);
+  }
+
   const initiatorId = getInitiatorId(record, entityType);
   if (initiatorId && initiatorId !== actor.id) {
     const who = isBuhAction ? 'Бухгалтерия' : 'Директор';
@@ -364,7 +528,25 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
     });
   }
 
-  return { status: isBuhAction ? 'question_buh' : 'question' };
+  // H2: Дублировать комментарий в чат + Мимир автоответ
+  if (entityType === 'estimates' && !isBuhAction) {
+    setImmediate(async () => {
+      try {
+        const estimateChat = require('./estimateChat');
+        const result = await estimateChat.syncCommentToChat(db, {
+          entityId, action: 'question', comment: comment.trim(), actor
+        });
+        if (result) {
+          await estimateChat.triggerMimirAutoRespond(db, {
+            entityId, chatId: result.chatId, action: 'question',
+            comment: comment.trim(), actorName: actor.name
+          });
+        }
+      } catch (err) { console.error('[H2] question chat sync error:', err.message); }
+    });
+  }
+
+  return { status: newStatus };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -383,12 +565,35 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
 
+  // Проверка допустимости перехода для estimates
+  if (entityType === 'estimates') {
+    validateEstimateTransition(record[statusField], 'rejected');
+  }
+
   const fields = {};
   fields[statusField] = 'rejected';
   if (cols.comment_field) fields[cols.comment_field] = comment.trim();
 
   const { sql, values } = buildUpdate(entityType, entityId, fields);
   await db.query(sql, values);
+
+  // Audit log
+  await writeAuditLog(db, actor.id, entityType, entityId, 'approval_reject', {
+    from_status: record[statusField],
+    to_status: 'rejected',
+    comment: comment.trim(),
+    requires_payment: !!record.requires_payment
+  });
+
+  // Потоковый комментарий
+  await writeApprovalComment(db, entityType, entityId, actor.id, 'reject', comment.trim());
+
+  // Обновить director_id и last_director_comment для estimates
+  if (entityType === 'estimates') {
+    const dirFields = { director_id: actor.id, last_director_comment: comment.trim() };
+    const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
+    await db.query(dirSql, dirVals);
+  }
 
   const label = `${getLabel(entityType)} #${entityId}`;
   const initiatorId = getInitiatorId(record, entityType);
@@ -402,7 +607,88 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
     });
   }
 
+  // H2: Дублировать комментарий в чат + Мимир автоответ
+  if (entityType === 'estimates') {
+    setImmediate(async () => {
+      try {
+        const estimateChat = require('./estimateChat');
+        const result = await estimateChat.syncCommentToChat(db, {
+          entityId, action: 'reject', comment: comment.trim(), actor
+        });
+        if (result) {
+          await estimateChat.triggerMimirAutoRespond(db, {
+            entityId, chatId: result.chatId, action: 'reject',
+            comment: comment.trim(), actorName: actor.name
+          });
+        }
+      } catch (err) { console.error('[H2] reject chat sync error:', err.message); }
+    });
+  }
+
   return { status: 'rejected' };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Действие 4.5: PM переотправляет после доработки/вопроса
+// ─────────────────────────────────────────────────────────────────
+async function resubmit(db, { entityType, entityId, actor }) {
+  const statusField = getStatusField(entityType);
+  const record = await getRecord(db, entityType, entityId);
+  if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+
+  // Проверяем что actor = инициатор (pm_id или created_by) или ADMIN
+  const initiatorId = getInitiatorId(record, entityType);
+  if (Number(actor.id) !== Number(initiatorId) && actor.role !== 'ADMIN') {
+    throw Object.assign(new Error('Только инициатор может переотправить'), { statusCode: 403 });
+  }
+
+  // Текущий статус должен быть rework или question
+  const currentStatus = String(record[statusField] || '').toLowerCase();
+  if (!['rework', 'question'].includes(currentStatus)) {
+    throw Object.assign(
+      new Error(`Переотправка доступна только из статуса "rework" или "question", текущий: ${currentStatus}`),
+      { statusCode: 409 }
+    );
+  }
+
+  // Проверка по матрице переходов
+  if (entityType === 'estimates') {
+    validateEstimateTransition(currentStatus, 'sent');
+  }
+
+  const fields = {};
+  fields[statusField] = 'sent';
+  fields.sent_for_approval_at = '__NOW__';
+
+  const { sql, values } = buildUpdate(entityType, entityId, fields);
+  await db.query(sql, values);
+
+  // Потоковый комментарий
+  await writeApprovalComment(db, entityType, entityId, actor.id, 'resubmit', 'Переотправлено после доработки');
+
+  // Уведомляем директоров
+  const label = `${getLabel(entityType)} #${entityId}`;
+  await notifyDirectorsForApproval(db, {
+    entityType, entityId,
+    actorName: actor.name,
+    title: `📋 ${label} — повторная отправка`,
+    message: `${actor.name || 'РП'} переотправил ${getLabel(entityType)} #${entityId} после доработки`,
+    requiresPayment: false
+  });
+
+  // H1: Обновить карточку просчёта в чате + системное сообщение
+  if (entityType === 'estimates') {
+    setImmediate(async () => {
+      try {
+        const estimateChat = require('./estimateChat');
+        await estimateChat.updateEstimateCard(db, entityId, actor);
+      } catch (err) {
+        console.error('[H1] Chat card update error:', err.message);
+      }
+    });
+  }
+
+  return { status: 'sent' };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -678,8 +964,44 @@ async function returnCash(db, { entityType, entityId, actor, amount, comment }) 
 // ─────────────────────────────────────────────────────────────────
 
 async function getRecord(db, entityType, entityId) {
+  // SQL injection hardening: проверка entityType по белому списку
+  if (!SAFE_TABLES.has(entityType)) {
+    throw new Error(`Invalid entity type: ${entityType}`);
+  }
   const result = await db.query(`SELECT * FROM ${entityType} WHERE id = $1`, [entityId]);
   return result.rows[0] || null;
+}
+
+/**
+ * Записать в audit_log действие согласования.
+ * Используется в approve/rework/question/reject.
+ */
+async function writeAuditLog(db, actorUserId, entityType, entityId, action, payload) {
+  try {
+    await db.query(
+      `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [actorUserId, entityType, entityId, action, JSON.stringify(payload)]
+    );
+  } catch (err) {
+    // audit_log не должен ломать основной flow — логируем и продолжаем
+    console.error('[approvalService] audit_log write failed:', err.message);
+  }
+}
+
+/**
+ * Записать потоковый комментарий в approval_comments.
+ */
+async function writeApprovalComment(db, entityType, entityId, userId, action, comment) {
+  try {
+    await db.query(
+      `INSERT INTO approval_comments (entity_type, entity_id, user_id, action, comment)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [entityType, entityId, userId, action, comment]
+    );
+  } catch (err) {
+    console.error('[approvalService] approval_comments write failed:', err.message);
+  }
 }
 
 function getInitiatorId(record, entityType) {
@@ -720,7 +1042,7 @@ async function getPendingForBuh(db) {
   const tables = [
     'pre_tender_requests', 'bonus_requests', 'work_expenses',
     'office_expenses', 'expenses', 'one_time_payments',
-    'tmc_requests', 'payroll_sheets', 'business_trips',
+    'procurement_requests', 'payroll_sheets', 'business_trips',
     'travel_expenses', 'training_applications'
   ];
 
@@ -753,6 +1075,7 @@ module.exports = {
   requestRework,
   askQuestion,
   directorReject,
+  resubmit,
   payByBankTransfer,
   issueCash,
   confirmCashReceived,
@@ -770,10 +1093,15 @@ module.exports = {
   notifyDirectorsForApproval,
   notifyBuhForPayment,
   sendApprovalTelegram,
+  validateEstimateTransition,
+  writeAuditLog,
+  writeApprovalComment,
 
   // Константы
   DIRECTOR_ROLES,
   BUH_ROLES,
   PAYMENT_STATUSES,
-  ENTITY_LABELS
+  ENTITY_LABELS,
+  ESTIMATE_TRANSITIONS,
+  SAFE_TABLES
 };

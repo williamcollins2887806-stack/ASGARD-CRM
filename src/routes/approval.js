@@ -8,6 +8,7 @@
  * POST /api/approval/:entityType/:id/rework       — доработка (директор/бух)
  * POST /api/approval/:entityType/:id/question      — вопрос (директор/бух)
  * POST /api/approval/:entityType/:id/reject        — директор отклоняет
+ * POST /api/approval/:entityType/:id/resubmit     — PM переотправляет после доработки
  * POST /api/approval/:entityType/:id/pay-bank      — бух оплачивает через ПП
  * POST /api/approval/:entityType/:id/issue-cash    — бух выдаёт наличные
  * POST /api/approval/:entityType/:id/confirm-cash  — инициатор подтверждает получение
@@ -110,6 +111,83 @@ async function routes(fastify) {
     });
   });
 
+  // ─── PM: отправить черновик на согласование ───
+  fastify.post('/:entityType/:id/send', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    return handleAction(reply, async () => {
+      validateEntity(request.params.entityType);
+      const entityType = request.params.entityType;
+      const entityId = parseInt(request.params.id);
+      const actor = request.user;
+
+      // Verify entity exists and is draft
+      const result = await db.query(`SELECT * FROM ${entityType} WHERE id = $1`, [entityId]);
+      const entity = result.rows[0];
+      if (!entity) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+      if (entity.approval_status !== 'draft') {
+        throw Object.assign(new Error('Отправить можно только черновик'), { statusCode: 400 });
+      }
+
+      // Update status to sent
+      await db.query(
+        `UPDATE ${entityType} SET approval_status = 'sent', sent_for_approval_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [entityId]
+      );
+
+      // Log
+      await db.query(
+        `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+         VALUES ($1, $2, $3, 'send', $4, NOW())`,
+        [actor.id, entityType, entityId, JSON.stringify({ actor_name: actor.name })]
+      );
+
+      // Record in approval_comments
+      await db.query(
+        `INSERT INTO approval_comments (entity_type, entity_id, user_id, action, comment)
+         VALUES ($1, $2, $3, 'resubmit', $4)`,
+        [entityType, entityId, actor.id, 'Отправлено на согласование']
+      );
+
+      // Notify directors
+      await approvalService.notifyDirectorsForApproval(db, {
+        entityType, entityId,
+        actorName: actor.name,
+        title: 'На согласование',
+        message: `${actor.name || 'РП'} отправил на согласование #${entityId}`,
+        requiresPayment: false
+      });
+
+      // H1: Создать чат в Хугинне для просчётов
+      if (entityType === 'estimates') {
+        const estimateChat = require('../services/estimateChat');
+        setImmediate(async () => {
+          try {
+            await estimateChat.createEstimateChat(db, entityId, actor);
+          } catch (err) {
+            console.error('[H1] Chat creation error:', err.message);
+          }
+        });
+      }
+
+      return { success: true, status: 'sent' };
+    });
+  });
+
+  // ─── PM: переотправить после доработки/вопроса ───
+  fastify.post('/:entityType/:id/resubmit', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    return handleAction(reply, async () => {
+      validateEntity(request.params.entityType);
+      return approvalService.resubmit(db, {
+        entityType: request.params.entityType,
+        entityId: parseInt(request.params.id),
+        actor: request.user
+      });
+    });
+  });
+
   // ─── Бухгалтерия: оплатить через ПП ───
   fastify.post('/:entityType/:id/pay-bank', {
     preHandler: [fastify.authenticate]
@@ -194,6 +272,61 @@ async function routes(fastify) {
         comment: request.body?.comment || ''
       });
     });
+  });
+
+  // ─── История комментариев согласования ───
+  fastify.get('/:entityType/:id/comments', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { entityType, id } = request.params;
+    validateEntity(entityType);
+    const role = request.user.role;
+    const allowed = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'HEAD_PM'];
+    if (!allowed.includes(role)) {
+      return reply.code(403).send({ error: 'Нет доступа к комментариям' });
+    }
+    const result = await db.query(
+      `SELECT ac.*, u.name as user_name, u.role as user_role
+       FROM approval_comments ac
+       JOIN users u ON ac.user_id = u.id
+       WHERE ac.entity_type = $1 AND ac.entity_id = $2
+       ORDER BY ac.created_at ASC`,
+      [entityType, parseInt(id)]
+    );
+    return { comments: result.rows };
+  });
+
+  // ─── Добавить комментарий ───
+  fastify.post('/:entityType/:id/comments', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { entityType, id } = request.params;
+    validateEntity(entityType);
+    const { comment, parent_id } = request.body || {};
+    if (!comment || !comment.trim()) {
+      return reply.code(400).send({ error: 'Укажите комментарий' });
+    }
+    const result = await db.query(
+      `INSERT INTO approval_comments (entity_type, entity_id, user_id, action, comment, parent_id)
+       VALUES ($1, $2, $3, 'comment', $4, $5) RETURNING *`,
+      [entityType, parseInt(id), request.user.id, comment.trim(), parent_id || null]
+    );
+    // SSE notify участников потока
+    if (fastify.sseManager) {
+      const participants = await db.query(
+        `SELECT DISTINCT user_id FROM approval_comments WHERE entity_type = $1 AND entity_id = $2 AND user_id != $3`,
+        [entityType, parseInt(id), request.user.id]
+      );
+      for (const p of participants.rows) {
+        fastify.sseManager.send(p.user_id, {
+          type: 'approval_comment',
+          entity_type: entityType,
+          entity_id: parseInt(id),
+          comment: result.rows[0]
+        });
+      }
+    }
+    return { comment: result.rows[0] };
   });
 
   // ─── Очередь бухгалтерии ───

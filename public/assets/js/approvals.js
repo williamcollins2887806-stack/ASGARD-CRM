@@ -1,5 +1,5 @@
 window.AsgardApprovalsPage = (function(){
-  const { $, esc, toast, showModal } = AsgardUI;
+  const { $, esc, toast, showModal, money } = AsgardUI;
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(r==="DIRECTOR"||String(r||"").startsWith("DIRECTOR_"));
   function isoNow(){ return new Date().toISOString(); }
 
@@ -17,8 +17,6 @@ window.AsgardApprovalsPage = (function(){
   function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
   function norm(s){ return String(s||"").toLowerCase().trim(); }
   function num(x){ if(x===null||x===undefined||x==="") return null; const n=Number(String(x).replace(/\s/g,"").replace(",", ".")); return Number.isFinite(n)?n:null; }
-  function money(n){ if(n===null||n===undefined) return "—"; return Number(n).toLocaleString("ru-RU"); }
-
   // Цветные pill-стили для статусов
   const STATUS_COLORS = {
     draft:    { color:'#6b7280', bg:'rgba(107,114,128,.12)' },
@@ -73,7 +71,7 @@ window.AsgardApprovalsPage = (function(){
 
   async function getCore(){
     const core = await AsgardDB.get("settings","app");
-    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:20, status_colors:{tender:{}, work:{}}};
+    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:22, status_colors:{tender:{}, work:{}}};
   }
 
   async function getSLA(){
@@ -251,7 +249,7 @@ window.AsgardApprovalsPage = (function(){
         <div class="tools">
           <div class="field">
             <label>Период</label>
-            <select id="f_period">${generatePeriodOptions(ymNow())}</select>
+            <div id="f_period_w"></div>
           </div>
           <div class="field">
             <label>Поиск</label>
@@ -259,10 +257,7 @@ window.AsgardApprovalsPage = (function(){
           </div>
           <div class="field">
             <label>Показывать</label>
-            <select id="f_mode">
-              <option value="sent">Только на согласовании</option>
-              <option value="all">Все решения</option>
-            </select>
+            <div id="f_mode_w"></div>
           </div>
           <div style="display:flex; gap:10px">
             <button class="btn ghost" id="btnReset">Сброс</button>
@@ -295,10 +290,25 @@ window.AsgardApprovalsPage = (function(){
 
     const tb=$("#tb"), cnt=$("#cnt");
 
+    // ─── CRSelect filters ───
+    { const periodOpts = [{ value: '', label: 'Все' }];
+      const now2 = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
+      }
+      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => listEstimates() }));
+    }
+    $('#f_mode_w').appendChild(CRSelect.create({ id: 'f_mode', options: [
+      { value: 'sent', label: 'Только на согласовании' },
+      { value: 'all', label: 'Все решения' }
+    ], value: 'sent', onChange: () => listEstimates() }));
+
     async function listEstimates(){
-      const mode=$("#f_mode")?.value||"sent";
+      const mode=CRSelect.getValue('f_mode')||"sent";
       const q=norm($("#f_q")?.value||"");
-      const period=norm($("#f_period")?.value||"");
+      const period=norm(CRSelect.getValue('f_period')||"");
 
       let all = await AsgardDB.all("estimates");
       // QA flags (open questions)
@@ -338,10 +348,10 @@ window.AsgardApprovalsPage = (function(){
         const t = tendById.get(e.tender_id)||{};
         const pm = byId.get(e.pm_id)||{};
         const d = calcDerived({price_tkp:e.price_tkp, cost_plan:e.cost_plan});
-        const sent = e.sent_for_approval_at ? new Date(e.sent_for_approval_at).toLocaleString("ru-RU") : "—";
+        const sent = e.sent_for_approval_at ? AsgardUI.formatDateTime(e.sent_for_approval_at) : "—";
         const due = (e.approval_status==="sent") ? addWorkdays(e.sent_for_approval_at||e.created_at||new Date().toISOString(), sla.director_approval_due_workdays) : null;
         const overdue = (e.approval_status==="sent" && due && (Date.now() > due.getTime()));
-        const dueLine = overdue ? `<div class="help">Просрочено: до ${due.toLocaleDateString("ru-RU")}</div>` : ``;
+        const dueLine = overdue ? `<div class="help">Просрочено: до ${AsgardUI.formatDate(due)}</div>` : ``;
         return `<tr data-id="${e.id}"${overdue?` class="overdue"`:``}>
           <td><b>${esc(t.customer_name||"")}</b><div class="help">${esc(t.tender_title||"")}</div></td>
           <td>${esc(pm.name||"")}</td>
@@ -371,13 +381,11 @@ window.AsgardApprovalsPage = (function(){
     await listEstimates();
 
     $("#f_q").addEventListener("input", listEstimates);
-    $("#f_period").addEventListener("input", listEstimates);
-    $("#f_mode").addEventListener("change", listEstimates);
 
     $("#btnReset").addEventListener("click", ()=>{
-      if($("#f_period")) $("#f_period").value=ymNow();
+      CRSelect.setValue('f_period', ymNow());
       if($("#f_q")) $("#f_q").value="";
-      if($("#f_mode")) $("#f_mode").value="sent";
+      CRSelect.setValue('f_mode', 'sent');
       listEstimates();
     });
 
@@ -396,7 +404,7 @@ window.AsgardApprovalsPage = (function(){
       const pm = byId.get(est.pm_id)||{};
       const calcRaw = safeParseJSON(est.calc_summary_json, {});
       const calc = calcView(calcRaw);
-      const sent = est.sent_for_approval_at ? new Date(est.sent_for_approval_at).toLocaleString("ru-RU") : "—";
+      const sent = est.sent_for_approval_at ? AsgardUI.formatDateTime(est.sent_for_approval_at) : "—";
       
       // Проверяем есть ли данные калькулятора v2
       const calcV2 = est.calc_v2_json ? safeParseJSON(est.calc_v2_json, null) : null;

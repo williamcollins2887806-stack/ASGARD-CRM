@@ -279,7 +279,7 @@ window.AsgardGeoScore = (function(){
     }
     
     // Считаем выигранные
-    const wonStatuses = ['Выиграли', 'Контракт', 'В работе', 'Завершена', 'Клиент согласился'];
+    const wonStatuses = ['Выиграли', 'В работе', 'Работы сдали', 'Закрыт'];
     const won = customerTenders.filter(t => wonStatuses.includes(t.tender_status)).length;
     const total = customerTenders.length;
     const rate = Math.round((won / total) * 100);
@@ -332,7 +332,7 @@ window.AsgardGeoScore = (function(){
     const convScore = Math.min(conv.rate, 100) * 0.4;
     
     // 2. Объём контрактов (25%) — до 100 баллов за 10+ млн
-    const totalSum = customerWorks.reduce((s, w) => s + (parseFloat(w.contract_sum) || 0), 0);
+    const totalSum = customerWorks.reduce((s, w) => s + (parseFloat(w.contract_value) || 0), 0);
     const sumScore = Math.min(totalSum / 10000000 * 100, 100) * 0.25;
     
     // 3. Частота (20%) — до 100 баллов за 10+ тендеров в год

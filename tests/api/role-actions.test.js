@@ -353,13 +353,13 @@ module.exports = {
       run: async () => {
         const c = await api('POST', '/api/estimates', {
           role: 'PM',
-          body: { title: 'DG approval test', approval_status: 'pending', amount: 100000 }
+          body: { title: 'DG approval test', approval_status: 'sent', amount: 100000 }
         });
         assertOk(c, 'create');
         const id = (c.data?.estimate || c.data).id;
-        const resp = await api('PUT', `/api/estimates/${id}`, {
+        const resp = await api('POST', `/api/approval/estimates/${id}/approve`, {
           role: 'DIRECTOR_GEN',
-          body: { approval_status: 'approved' }
+          body: { comment: 'Approved by DG' }
         });
         assertOk(resp, 'DG approves estimate');
       }

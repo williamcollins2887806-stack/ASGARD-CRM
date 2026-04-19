@@ -104,14 +104,7 @@ window.AsgardTasksPage = (function() {
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px">
               <h3 style="margin:0">📋 Задачи от руководства</h3>
               <div style="display:flex; gap:10px; align-items:center">
-                <select id="taskFilter" class="inp" style="width:auto" onchange="AsgardTasksPage.filterTasks(this.value)">
-                  <option value="">Все задачи</option>
-                  <option value="new">Новые</option>
-                  <option value="accepted">Принятые</option>
-                  <option value="in_progress">В работе</option>
-                  <option value="done">Выполненные</option>
-                  <option value="overdue">Просроченные</option>
-                </select>
+                <div id="crselect-taskFilter"></div>
                 ${isDirector ? '<button class="btn" onclick="AsgardTasksPage.showCreateModal()">📋 Создать задачу</button>' : ''}
               </div>
             </div>
@@ -157,9 +150,7 @@ window.AsgardTasksPage = (function() {
             <form id="createTaskForm">
               <div class="field" style="margin-bottom:12px">
                 <label>Исполнитель *</label>
-                <select id="taskAssignee" class="inp" required>
-                  <option value="">Выберите...</option>
-                </select>
+                <div id="crselect-taskAssignee"></div>
               </div>
               <div class="field" style="margin-bottom:12px">
                 <label>Название *</label>
@@ -176,12 +167,7 @@ window.AsgardTasksPage = (function() {
                 </div>
                 <div class="field">
                   <label>Приоритет</label>
-                  <select id="taskPriority" class="inp">
-                    <option value="low">Низкий</option>
-                    <option value="normal" selected>Обычный</option>
-                    <option value="high">Высокий</option>
-                    <option value="urgent">Срочный</option>
-                  </select>
+                  <div id="crselect-taskPriority"></div>
                 </div>
               </div>
               <div class="field" style="margin-bottom:12px">
@@ -217,6 +203,35 @@ window.AsgardTasksPage = (function() {
         </div>
       </div>
     `;
+
+    // CRSelect init — task filter
+    document.getElementById('crselect-taskFilter')?.appendChild(CRSelect.create({
+      id: 'taskFilter', options: [
+        { value: '', label: 'Все задачи' },
+        { value: 'new', label: 'Новые' },
+        { value: 'accepted', label: 'Принятые' },
+        { value: 'in_progress', label: 'В работе' },
+        { value: 'done', label: 'Выполненные' },
+        { value: 'overdue', label: 'Просроченные' },
+      ],
+      placeholder: 'Все задачи',
+      onChange: (v) => filterTasks(v),
+    }));
+    // CRSelect init — assignee (populated later by populateAssigneeSelect)
+    document.getElementById('crselect-taskAssignee')?.appendChild(CRSelect.create({
+      id: 'taskAssignee', options: [{ value: '', label: 'Выберите...' }],
+      placeholder: 'Выберите исполнителя', required: true, fullWidth: true,
+    }));
+    // CRSelect init — priority
+    document.getElementById('crselect-taskPriority')?.appendChild(CRSelect.create({
+      id: 'taskPriority', value: 'normal', fullWidth: true,
+      options: [
+        { value: 'low', label: 'Низкий' },
+        { value: 'normal', label: 'Обычный' },
+        { value: 'high', label: 'Высокий' },
+        { value: 'urgent', label: 'Срочный' },
+      ],
+    }));
 
     // Загружаем данные
     await Promise.all([loadTasks(), loadTodo(), loadUsers()]);
@@ -436,14 +451,15 @@ window.AsgardTasksPage = (function() {
   }
 
   function populateAssigneeSelect() {
-    const select = document.getElementById('taskAssignee');
-    if (!select) return;
-    select.innerHTML = '<option value="">Выберите исполнителя...</option>' +
-      users.map(u => `<option value="${u.id}">${escapeHtml(u.name)} (${u.role})</option>`).join('');
+    const opts = [{ value: '', label: 'Выберите исполнителя...' }];
+    users.forEach(u => opts.push({ value: String(u.id), label: escapeHtml(u.name) + ' (' + u.role + ')' }));
+    CRSelect.setOptions('taskAssignee', opts);
   }
 
   function showCreateModal() {
     document.getElementById('createTaskForm').reset();
+    CRSelect.setValue('taskAssignee', '');
+    CRSelect.setValue('taskPriority', 'normal');
     document.getElementById('createTaskModal').style.display = 'flex';
   }
 
@@ -452,11 +468,11 @@ window.AsgardTasksPage = (function() {
   }
 
   async function submitCreateTask() {
-    const assignee_id = document.getElementById('taskAssignee').value;
+    const assignee_id = CRSelect.getValue('taskAssignee');
     const title = document.getElementById('taskTitle').value.trim();
     const description = document.getElementById('taskDescription').value.trim();
     const deadline = document.getElementById('taskDeadline').value;
-    const priority = document.getElementById('taskPriority').value;
+    const priority = CRSelect.getValue('taskPriority');
     const creator_comment = document.getElementById('taskComment').value.trim();
 
     if (!assignee_id) {

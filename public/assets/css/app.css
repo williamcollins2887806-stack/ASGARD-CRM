@@ -1197,8 +1197,8 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 }
 
 .sched-name {
-  width: 180px;
-  min-width: 180px;
+  width: 150px;
+  min-width: 150px;
   padding: 10px 12px;
   font-size: 13px;
   color: var(--t1);
@@ -1215,9 +1215,9 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 }
 
 .sched-day {
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1260,8 +1260,8 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 }
 
 .sched-cell {
-  width: 36px;
-  min-width: 36px;
+  width: 32px;
+  min-width: 32px;
   height: 36px;
   border: none;
   border-right: 1px solid var(--brd);
@@ -2613,13 +2613,13 @@ html[data-theme="light"] .funnel-card-meta {
 
 /* Все инпуты */
 .inp,
-.modal input,
+.modal input:not([type="checkbox"]):not([type="radio"]),
 .modal select,
 .modal textarea,
-.modal-content input,
+.modal-content input:not([type="checkbox"]):not([type="radio"]),
 .modal-content select,
 .modal-content textarea,
-.formrow input,
+.formrow input:not([type="checkbox"]):not([type="radio"]),
 .formrow select,
 .formrow textarea {
   width: 100%;
@@ -2635,13 +2635,13 @@ html[data-theme="light"] .funnel-card-meta {
 }
 
 .inp:focus,
-.modal input:focus,
+.modal input:not([type="checkbox"]):not([type="radio"]):focus,
 .modal select:focus,
 .modal textarea:focus,
-.modal-content input:focus,
+.modal-content input:not([type="checkbox"]):not([type="radio"]):focus,
 .modal-content select:focus,
 .modal-content textarea:focus,
-.formrow input:focus,
+.formrow input:not([type="checkbox"]):not([type="radio"]):focus,
 .formrow select:focus,
 .formrow textarea:focus {
   border-color: var(--blue);
@@ -4728,51 +4728,10 @@ table.asg tr:hover td:first-child {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   MODERN MODAL STYLING (modalback handled by components.css)
+   MODERN MODAL STYLING — moved to cr-modal.css (v1.0)
+   Legacy .modal class kept on cr-m element for backward compat.
+   Animation and shadow now handled by .cr-m in cr-modal.css.
    ───────────────────────────────────────────────────────────────────────────── */
-
-.modal {
-  background: var(--bg2);
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
-  border: 1px solid var(--brd);
-  border-radius: var(--r-xl);
-  box-shadow:
-    0 25px 80px rgba(0, 0, 0, 0.5),
-    var(--blue-glow),
-    0 1px 0 rgba(255, 255, 255, 0.05) inset;
-  animation: modalEnter var(--base);
-}
-
-@keyframes modalEnter {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.modal .mh {
-  background: linear-gradient(
-    90deg,
-    rgba(220, 38, 38, 0.05) 0%,
-    rgba(37, 99, 235, 0.05) 100%
-  );
-  border-bottom: none;
-  padding: 20px 24px;
-}
-
-.modal .mh .h {
-  font-size: 18px;
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--t1), var(--gold-l));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    KPI CARDS ENHANCEMENT
@@ -5268,30 +5227,16 @@ td, th { word-break: break-word; }
    BUG-8: Mobile modal adaptation
    ───────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .modalback, .modal-overlay { padding: 0; align-items: flex-end; }
-  .modal, .modal-content {
+  /* cr-m mobile styles handled by cr-modal.css */
+  /* modal-content (non-AsgardUI modals) keeps bottom-sheet behavior */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal-content {
     width: 100% !important; max-width: 100% !important;
     max-height: 92vh !important;
-    border-radius: 20px 20px 0 0 !important;
+    border-radius: var(--r-xl) var(--r-xl) 0 0 !important;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     margin: 0 !important;
-    animation: m-slide-up 0.3s ease-out !important;
-  }
-  @keyframes m-slide-up {
-    from { transform: translateY(100%); opacity: 0.5; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-  .modal::before, .modal-content::before {
-    content: '' !important;
-    display: block !important;
-    width: 40px !important;
-    height: 4px !important;
-    background: rgba(255,255,255,0.2) !important;
-    border-radius: 2px !important;
-    margin: 10px auto 6px !important;
-    position: static !important;
-    flex-shrink: 0;
   }
   .tasks-page { grid-template-columns: 1fr !important; }
 }
@@ -5344,13 +5289,13 @@ html[data-theme="light"] .modal-footer {
 
 /* Form inputs */
 html[data-theme="light"] .inp,
-html[data-theme="light"] .modal input,
+html[data-theme="light"] .modal input:not([type="checkbox"]):not([type="radio"]),
 html[data-theme="light"] .modal select,
 html[data-theme="light"] .modal textarea,
-html[data-theme="light"] .modal-content input,
+html[data-theme="light"] .modal-content input:not([type="checkbox"]):not([type="radio"]),
 html[data-theme="light"] .modal-content select,
 html[data-theme="light"] .modal-content textarea,
-html[data-theme="light"] .formrow input,
+html[data-theme="light"] .formrow input:not([type="checkbox"]):not([type="radio"]),
 html[data-theme="light"] .formrow select,
 html[data-theme="light"] .formrow textarea {
   background: var(--bg3);
@@ -5359,9 +5304,9 @@ html[data-theme="light"] .formrow textarea {
 }
 
 html[data-theme="light"] .inp:focus,
-html[data-theme="light"] .modal input:focus,
+html[data-theme="light"] .modal input:not([type="checkbox"]):not([type="radio"]):focus,
 html[data-theme="light"] .modal select:focus,
-html[data-theme="light"] .modal-content input:focus,
+html[data-theme="light"] .modal-content input:not([type="checkbox"]):not([type="radio"]):focus,
 html[data-theme="light"] .modal-content select:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
@@ -5386,17 +5331,21 @@ html[data-theme="light"] .badge[style*="background"] {
 /* ═══════════════════════════════════════════════════════════════════════════════
    COMMAND PALETTE (Ctrl+K) — Spotlight-style search
    ═══════════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════════
+   COMMAND PALETTE (Ctrl+K) — cr-modal v1.0 design
+   ═══════════════════════════════════════════════════════════════════════════════ */
 .search-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: var(--z-modal);
+  background: var(--overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: var(--z-palette);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 15vh;
-  animation: cp-fade-in 150ms ease;
+  padding-top: 12vh;
+  animation: cp-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes cp-fade-in {
@@ -5405,17 +5354,29 @@ html[data-theme="light"] .badge[style*="background"] {
 }
 
 .search-modal {
-  width: min(600px, 90vw);
+  position: relative;
+  width: min(620px, 92vw);
   background: var(--bg2);
-  border: 1px solid var(--brd);
-  border-radius: 6px;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-xl), 0 0 80px rgba(0,0,0,0.3);
   overflow: hidden;
-  animation: search-slide-in 200ms ease;
+  animation: search-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Gold top accent line */
+.search-modal::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--grad-gold);
+  z-index: 2;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
 }
 
 @keyframes search-slide-in {
-  from { opacity: 0; transform: translateY(-20px) scale(0.97); }
+  from { opacity: 0; transform: translateY(-16px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
@@ -5423,7 +5384,8 @@ html[data-theme="light"] .badge[style*="background"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 14px 16px;
+  padding-top: 16px; /* space for topline */
   border-bottom: 1px solid var(--brd);
 }
 
@@ -5431,13 +5393,14 @@ html[data-theme="light"] .badge[style*="background"] {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .search-icon {
   font-size: 18px;
-  color: var(--t3);
+  color: var(--gold);
   flex-shrink: 0;
+  opacity: 0.8;
 }
 
 .search-input {
@@ -5457,7 +5420,7 @@ html[data-theme="light"] .badge[style*="background"] {
 
 .search-type {
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--brd);
   background: var(--bg3);
   color: var(--t2);
@@ -5469,6 +5432,8 @@ html[data-theme="light"] .badge[style*="background"] {
   max-height: 50vh;
   overflow-y: auto;
   padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--brd) transparent;
 }
 
 .search-section {
@@ -5491,22 +5456,29 @@ html[data-theme="light"] .badge[style*="background"] {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 9px 12px;
+  border-radius: var(--r-md);
   cursor: pointer;
-  transition: background var(--fast);
+  transition: all 0.15s ease;
 }
 
 .search-result-item:hover,
 .search-result-item.selected {
-  background: var(--gold-glow);
+  background: var(--gold-bg);
+  transform: translateX(2px);
 }
 
 .search-result-icon {
   font-size: 16px;
   flex-shrink: 0;
-  width: 24px;
-  text-align: center;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd);
 }
 
 .search-result-content { flex: 1; min-width: 0; }
@@ -5521,10 +5493,10 @@ html[data-theme="light"] .badge[style*="background"] {
 }
 
 .search-result-title mark {
-  background: var(--gold-glow);
+  background: var(--gold-bg);
   color: var(--gold);
-  border-radius: 2px;
-  padding: 0 2px;
+  border-radius: 3px;
+  padding: 1px 3px;
 }
 
 .search-result-subtitle {
@@ -5538,7 +5510,7 @@ html[data-theme="light"] .badge[style*="background"] {
 
 .search-empty {
   text-align: center;
-  padding: 32px 16px;
+  padding: 40px 16px;
   color: var(--t3);
   font-size: 13px;
 }
@@ -5547,39 +5519,49 @@ html[data-theme="light"] .badge[style*="background"] {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 8px 16px;
+  padding: 10px 16px;
   border-top: 1px solid var(--brd);
   font-size: 11px;
   color: var(--t3);
+  background: var(--bg2);
 }
 
 .search-footer kbd {
   display: inline-block;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   border: 1px solid var(--brd);
   background: var(--bg3);
   font-size: 10px;
   font-family: var(--ff-mono);
   color: var(--t2);
+  min-width: 20px;
+  text-align: center;
 }
 
 .search-more {
   text-align: center;
-  padding: 4px;
+  padding: 6px;
   font-size: 11px;
   color: var(--gold);
   cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: background 0.15s ease;
+}
+
+.search-more:hover {
+  background: var(--gold-bg);
 }
 
 /* Light theme — Command Palette */
 html[data-theme="light"] .search-overlay {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.35);
 }
 
 html[data-theme="light"] .search-modal {
   background: var(--bg2);
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
+  border-color: var(--brd);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.18);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -7717,35 +7699,31 @@ table.asg tbody tr:hover td {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   11. МОДАЛКИ — Viking modal style
+   11. МОДАЛКИ — cr-modal.css handles .cr-m styling
+   Legacy .modal-content for non-AsgardUI modals
    ───────────────────────────────────────────────────────────────────────────── */
-.modal,
 .modal-content {
-  border: 1px solid rgba(212, 168, 67, 0.15) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
   border-radius: var(--r-xl) !important;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(30, 77, 140, 0.1) !important;
+  box-shadow: var(--shadow-xl) !important;
   overflow: hidden !important;
 }
 
-.modal::before,
 .modal-content::before {
   content: '' !important;
   position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: 3px !important;
-  background: var(--grad-corp) !important;
-  z-index: 10 !important;
+  top: 0 !important; left: 0 !important; right: 0 !important;
+  height: 2px !important;
+  background: linear-gradient(90deg, var(--red), var(--gold) 50%, var(--blue)) !important;
+  z-index: 2 !important;
+  border-radius: var(--r-xl) var(--r-xl) 0 0 !important;
 }
 
-.mh,
 .modal-header {
-  background: transparent !important;
-  border-bottom: 1px solid rgba(212, 168, 67, 0.12) !important;
+  background: var(--bg2) !important;
+  border-bottom: 1px solid var(--brd) !important;
 }
 
-.mh .ttl,
 .modal-header h2,
 .modal-header .title {
   font-family: var(--ff-head) !important;
@@ -8631,55 +8609,41 @@ table.asg tbody tr:hover td:first-child,
 
 
 /* ══════════════════════════════════════
-   10. MODALS — premium glass, above sidebar
+   10. MODALS — now styled by cr-modal.css (v1.0)
+   Legacy .modal-content keeps separate styles for non-AsgardUI modals
    ══════════════════════════════════════ */
 
-.modalback,
-.modal-overlay {
-  z-index: 1000 !important;
-  background: rgba(6,8,16,0.8) !important;
-  backdrop-filter: blur(6px) !important;
-}
-
-.modal,
 .modal-content {
-  z-index: 1001 !important;
-  background: #131929 !important;
-  border: 1px solid rgba(30,77,140,0.25) !important;
-  border-radius: 16px !important;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.4) !important;
+  background: var(--bg2) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  border-radius: var(--r-xl) !important;
+  box-shadow: var(--shadow-xl) !important;
 }
 
-.modal::before,
 .modal-content::before {
   content: '' !important;
   position: absolute !important;
   top: 0 !important; left: 0 !important; right: 0 !important;
-  height: 3px !important;
-  background: linear-gradient(90deg, var(--red, #C8293B), var(--gold, #D4A843) 50%, var(--blue, #1E4D8C)) !important;
-  z-index: 1 !important;
-  border-radius: 16px 16px 0 0 !important;
+  height: 2px !important;
+  background: linear-gradient(90deg, var(--red), var(--gold) 50%, var(--blue)) !important;
+  z-index: 2 !important;
+  border-radius: var(--r-xl) var(--r-xl) 0 0 !important;
 }
 
-.mh,
 .modal-header {
-  background: rgba(30,77,140,0.05) !important;
-  border-bottom: 1px solid rgba(30,77,140,0.1) !important;
+  background: var(--bg2) !important;
+  border-bottom: 1px solid var(--brd) !important;
 }
 
-.mh .ttl,
 .modal-header h2,
 .modal-header .title {
-  color: rgba(255,255,255,0.95) !important;
+  color: var(--t1) !important;
   font-weight: 700 !important;
-  letter-spacing: 0.03em !important;
-  text-transform: uppercase !important;
 }
 
-.mf,
 .modal-footer {
-  background: rgba(30,77,140,0.03) !important;
-  border-top: 1px solid rgba(30,77,140,0.08) !important;
+  background: var(--bg2) !important;
+  border-top: 1px solid var(--brd) !important;
 }
 
 
@@ -9116,14 +9080,8 @@ label {
 
 
 /* ══════════════════════════════════════
-   24. SEARCH / COMMAND PALETTE
+   24. SEARCH / COMMAND PALETTE — styled in main block above
    ══════════════════════════════════════ */
-
-.search-modal {
-  background: #131929 !important;
-  border: 1px solid rgba(30,77,140,0.25) !important;
-  border-radius: 12px !important;
-}
 
 
 /* ══════════════════════════════════════
@@ -10978,4 +10936,43 @@ html[data-theme="light"] .chat-header {
   .transcript-speaker { align-self: flex-start; }
   .routing-drag-handle { display: none; }
   .telephony-pagination { flex-wrap: wrap; }
+}
+
+/* ─── Audit v2: Missing CSS classes ─── */
+
+/* responsive-cards — mobile card view for tables (ui.js makeResponsiveTable) */
+@media (max-width: 768px) {
+  table.responsive-cards thead { display: none; }
+  table.responsive-cards tbody tr {
+    display: block; margin-bottom: 12px; padding: 12px;
+    border: 1px solid var(--brd); border-radius: var(--r-md); background: var(--bg2);
+  }
+  table.responsive-cards tbody td {
+    display: flex; justify-content: space-between; padding: 4px 0;
+    border: none; font-size: 13px;
+  }
+  table.responsive-cards tbody td::before {
+    content: attr(data-label); font-weight: 700; color: var(--t2); margin-right: 8px;
+  }
+}
+
+/* shake — PIN error animation (session-guard.js) */
+.shake { animation: shake-x 0.4s ease-in-out; }
+@keyframes shake-x {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+/* hiding — overlay fade-out (offline-guard.js) */
+.hiding {
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+  pointer-events: none;
+}
+
+/* is-open — Mimir FAB active state (mimir.js) */
+#mimirFab.is-open {
+  transform: rotate(45deg);
+  background: var(--bg3);
 }

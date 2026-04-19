@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASGARD CRM — CRSelect & CREmployeePicker Test</title>
+  <style>
+    /* Minimal design tokens for standalone testing */
+    :root {
+      --bg1: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --bg4: #30363d;
+      --t1: #e6edf3;
+      --t2: #8b949e;
+      --t3: #484f58;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg1);
+      color: var(--t1);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      padding: 24px;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--t1);
+    }
+    .subtitle {
+      color: var(--t2);
+      font-size: 13px;
+      margin-bottom: 32px;
+    }
+    h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 32px 0 16px;
+      color: #D4A843;
+      border-bottom: 1px solid var(--bg4);
+      padding-bottom: 8px;
+    }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+    .demo-card {
+      background: var(--bg2);
+      border: 1px solid var(--bg4);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .demo-card__title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--t2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .demo-card__desc {
+      font-size: 11px;
+      color: var(--t3);
+      margin-top: 8px;
+    }
+    .demo-card__value {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--t2);
+      font-family: 'Courier New', monospace;
+      background: var(--bg3);
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .native-select-demo {
+      padding: 6px 10px;
+      background: var(--bg3);
+      border: 1px solid var(--bg4);
+      color: var(--t1);
+      border-radius: 4px;
+      font-size: 13px;
+      width: 100%;
+    }
+    .z-modal { z-index: 1300 !important; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .badge--ok { background: rgba(46, 160, 67, 0.2); color: #3fb950; }
+    .badge--info { background: rgba(91, 141, 239, 0.2); color: #5b8def; }
+  </style>
+  <link rel="stylesheet" href="assets/css/cr-components.css?v=1.0.0">
+</head>
+<body>
+
+  <h1>CRSelect & CREmployeePicker <span class="badge badge--info">v1.0.0</span></h1>
+  <p class="subtitle">Тестовая страница компонентов. Проверь каждый вариант: клик, клавиатура (стрелки/Enter/Escape), поиск, dropup.</p>
+
+  <!-- ─── CRSelect Demos ─────────────────────────────────── -->
+  <h2>CRSelect</h2>
+
+  <div class="demo-grid">
+    <!-- 1. Basic (3 options, no search) -->
+    <div class="demo-card">
+      <div class="demo-card__title">Basic (3 options)</div>
+      <div id="demo-basic"></div>
+      <div class="demo-card__value" id="val-basic">value: ''</div>
+      <div class="demo-card__desc">Без поиска (менее 7 вариантов)</div>
+    </div>
+
+    <!-- 2. Searchable (20+ options) -->
+    <div class="demo-card">
+      <div class="demo-card__title">Searchable (25 cities)</div>
+      <div id="demo-searchable"></div>
+      <div class="demo-card__value" id="val-searchable">value: ''</div>
+      <div class="demo-card__desc">Авто-поиск при 7+ вариантах</div>
+    </div>
+
+    <!-- 3. Grouped options -->
+    <div class="demo-card">
+      <div class="demo-card__title">Grouped</div>
+      <div id="demo-grouped"></div>
+      <div class="demo-card__value" id="val-grouped">value: ''</div>
+      <div class="demo-card__desc">Группировка как optgroup</div>
+    </div>
+
+    <!-- 4. Disabled -->
+    <div class="demo-card">
+      <div class="demo-card__title">Disabled</div>
+      <div id="demo-disabled"></div>
+      <div class="demo-card__desc">Некликабельный, opacity 0.5</div>
+    </div>
+
+    <!-- 5. Clearable -->
+    <div class="demo-card">
+      <div class="demo-card__title">Clearable</div>
+      <div id="demo-clearable"></div>
+      <div class="demo-card__value" id="val-clearable">value: 'pm'</div>
+      <div class="demo-card__desc">Крестик появляется при hover</div>
+    </div>
+
+    <!-- 6. Full width -->
+    <div class="demo-card">
+      <div class="demo-card__title">Full Width</div>
+      <div id="demo-fullwidth"></div>
+      <div class="demo-card__value" id="val-fullwidth">value: ''</div>
+      <div class="demo-card__desc">fullWidth: true — растягивается на ширину контейнера</div>
+    </div>
+
+    <!-- 7. fromNative() -->
+    <div class="demo-card">
+      <div class="demo-card__title">fromNative() <span class="badge badge--ok">Migration</span></div>
+      <select id="native-select-demo" class="native-select-demo">
+        <option value="">-- Выберите тип --</option>
+        <option value="contract">Договор</option>
+        <option value="act">Акт</option>
+        <option value="invoice">Счёт</option>
+        <option value="ks2">КС-2</option>
+        <option value="ks3">КС-3</option>
+      </select>
+      <div style="margin-top:8px">
+        <button id="btn-migrate" style="padding:6px 12px;background:#5b8def;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">
+          Запустить CRSelect.fromNative()
+        </button>
+      </div>
+      <div class="demo-card__value" id="val-native">value: (native select)</div>
+      <div class="demo-card__desc">Демо миграции: заменяет нативный &lt;select&gt; на CRSelect</div>
+    </div>
+
+    <!-- 8. With preselected value -->
+    <div class="demo-card">
+      <div class="demo-card__title">Preselected value</div>
+      <div id="demo-preselected"></div>
+      <div class="demo-card__value" id="val-preselected">value: 'in_progress'</div>
+      <div class="demo-card__desc">Инициализация с value: 'in_progress'</div>
+    </div>
+  </div>
+
+  <!-- ─── CREmployeePicker Demos ─────────────────────────── -->
+  <h2>CREmployeePicker</h2>
+
+  <div class="demo-grid">
+    <!-- Multi select -->
+    <div class="demo-card">
+      <div class="demo-card__title">Multi Select (chips)</div>
+      <div id="demo-picker-multi"></div>
+      <div class="demo-card__value" id="val-picker-multi">selected: []</div>
+      <div class="demo-card__desc">Множественный выбор с чипами, модалка, поиск, фильтр по роли</div>
+    </div>
+
+    <!-- Single select (pickOne) -->
+    <div class="demo-card">
+      <div class="demo-card__title">Single Select (pickOne)</div>
+      <div id="demo-picker-single"></div>
+      <div class="demo-card__value" id="val-picker-single">selected: []</div>
+      <div class="demo-card__desc">maxSelect: 1 — выбрал и закрылось, без чекбоксов</div>
+    </div>
+
+    <!-- Multi with preselected -->
+    <div class="demo-card">
+      <div class="demo-card__title">Pre-selected (3 чипа)</div>
+      <div id="demo-picker-presel"></div>
+      <div class="demo-card__value" id="val-picker-presel">selected: [1, 3, 5]</div>
+      <div class="demo-card__desc">Инициализация с selected: [1, 3, 5], maxChips: 2</div>
+    </div>
+
+    <!-- Full width -->
+    <div class="demo-card">
+      <div class="demo-card__title">Full Width</div>
+      <div id="demo-picker-fw"></div>
+      <div class="demo-card__value" id="val-picker-fw">selected: []</div>
+      <div class="demo-card__desc">fullWidth: true</div>
+    </div>
+  </div>
+
+  <!-- ─── API Controls ──────────────────────────────────── -->
+  <h2>API Methods</h2>
+  <div class="demo-card" style="max-width:600px">
+    <div class="demo-card__title">Programmatic control</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+      <button onclick="CRSelect.setValue('demo-basic-sel','active');document.getElementById('val-basic').textContent='value: active'" style="padding:6px 12px;background:var(--bg3);color:var(--t1);border:1px solid var(--bg4);border-radius:4px;cursor:pointer;font-size:12px;">
+        setValue('basic', 'active')
+      </button>
+      <button onclick="alert('getValue: ' + CRSelect.getValue('demo-basic-sel'))" style="padding:6px 12px;background:var(--bg3);color:var(--t1);border:1px solid var(--bg4);border-radius:4px;cursor:pointer;font-size:12px;">
+        getValue('basic')
+      </button>
+      <button onclick="alert('getLabel: ' + CRSelect.getLabel('demo-basic-sel'))" style="padding:6px 12px;background:var(--bg3);color:var(--t1);border:1px solid var(--bg4);border-radius:4px;cursor:pointer;font-size:12px;">
+        getLabel('basic')
+      </button>
+      <button onclick="CRSelect.setOptions('demo-basic-sel',[{value:'x',label:'Заменённый 1'},{value:'y',label:'Заменённый 2'},{value:'z',label:'Заменённый 3'},{value:'a',label:'Добавленный 4'},{value:'b',label:'Добавленный 5'},{value:'c',label:'Добавленный 6'},{value:'d',label:'Добавленный 7'},{value:'e',label:'Добавленный 8'}])" style="padding:6px 12px;background:var(--bg3);color:var(--t1);border:1px solid var(--bg4);border-radius:4px;cursor:pointer;font-size:12px;">
+        setOptions(8 items — triggers search)
+      </button>
+      <button onclick="CRSelect.setDisabled('demo-basic-sel',true)" style="padding:6px 12px;background:var(--bg3);color:var(--t1);border:1px solid var(--bg4);border-radius:4px;cursor:pointer;font-size:12px;">
+        setDisabled(true)
+      </button>
+      <button onclick="CRSelect.setDisabled('demo-basic-sel',false)" style="padding:6px 12px;background:var(--bg3);color:var(--t1);border:1px solid var(--bg4);border-radius:4px;cursor:pointer;font-size:12px;">
+        setDisabled(false)
+      </button>
+      <button onclick="alert('Picker selected: ' + JSON.stringify(CREmployeePicker.getSelected('demo-picker-multi-sel')))" style="padding:6px 12px;background:var(--bg3);color:var(--t1);border:1px solid var(--bg4);border-radius:4px;cursor:pointer;font-size:12px;">
+        Picker.getSelected('multi')
+      </button>
+      <button onclick="CREmployeePicker.clear('demo-picker-multi-sel')" style="padding:6px 12px;background:var(--bg3);color:var(--t1);border:1px solid var(--bg4);border-radius:4px;cursor:pointer;font-size:12px;">
+        Picker.clear('multi')
+      </button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="assets/js/components/cr-select.js?v=1.0.0"></script>
+  <script src="assets/js/components/cr-employee-picker.js?v=1.0.0"></script>
+  <script>
+    // ── Test data ──────────────────────────────────────────
+    const CITIES = [
+      'Москва','Санкт-Петербург','Новосибирск','Екатеринбург','Казань',
+      'Нижний Новгород','Челябинск','Самара','Омск','Ростов-на-Дону',
+      'Уфа','Красноярск','Воронеж','Пермь','Волгоград',
+      'Краснодар','Саратов','Тюмень','Тольятти','Ижевск',
+      'Барнаул','Ульяновск','Иркутск','Хабаровск','Ярославль'
+    ];
+
+    const TEST_EMPLOYEES = [
+      { id: 1, name: 'Иванов Иван Петрович', position: 'Руководитель проекта', role: 'PM', avatar: null },
+      { id: 2, name: 'Петров Алексей Сергеевич', position: 'Инженер ПТО', role: 'TO', avatar: null },
+      { id: 3, name: 'Сидорова Анна Владимировна', position: 'Бухгалтер', role: 'BUH', avatar: null },
+      { id: 4, name: 'Козлов Дмитрий Александрович', position: 'Слесарь 5 разряда', role: 'TO', avatar: null },
+      { id: 5, name: 'Морозова Елена Игоревна', position: 'HR менеджер', role: 'HR', avatar: null },
+      { id: 6, name: 'Волков Сергей Николаевич', position: 'Мастер участка', role: 'TO', avatar: null },
+      { id: 7, name: 'Новикова Ольга Дмитриевна', position: 'Офис-менеджер', role: 'OFFICE_MANAGER', avatar: null },
+      { id: 8, name: 'Соколов Артём Владимирович', position: 'Прораб', role: 'TO', avatar: null },
+      { id: 9, name: 'Кузнецова Мария Павловна', position: 'Директор по развитию', role: 'DIRECTOR_DEV', avatar: null },
+      { id: 10, name: 'Лебедев Андрей Юрьевич', position: 'Кладовщик', role: 'WAREHOUSE', avatar: null },
+    ];
+
+    // ── CRSelect demos ────────────────────────────────────
+    // 1. Basic
+    document.getElementById('demo-basic').appendChild(
+      CRSelect.create({
+        id: 'demo-basic-sel',
+        options: [
+          { value: 'new', label: 'Новый' },
+          { value: 'active', label: 'Активный' },
+          { value: 'closed', label: 'Закрыт' },
+        ],
+        placeholder: 'Выберите статус',
+        onChange: (v) => { document.getElementById('val-basic').textContent = 'value: ' + v; },
+      })
+    );
+
+    // 2. Searchable (25 cities)
+    document.getElementById('demo-searchable').appendChild(
+      CRSelect.create({
+        id: 'demo-search-sel',
+        options: CITIES.map(c => ({ value: c, label: c })),
+        placeholder: 'Выберите город',
+        fullWidth: true,
+        onChange: (v) => { document.getElementById('val-searchable').textContent = 'value: ' + v; },
+      })
+    );
+
+    // 3. Grouped
+    document.getElementById('demo-grouped').appendChild(
+      CRSelect.create({
+        id: 'demo-grouped-sel',
+        options: [
+          { group: 'Руководство', items: [
+            { value: 'director', label: 'Директор' },
+            { value: 'head_pm', label: 'Начальник ПМ' },
+          ]},
+          { group: 'Исполнители', items: [
+            { value: 'pm', label: 'Руководитель проекта' },
+            { value: 'to', label: 'Инженер ПТО' },
+            { value: 'worker', label: 'Рабочий' },
+          ]},
+          { group: 'Поддержка', items: [
+            { value: 'buh', label: 'Бухгалтер' },
+            { value: 'hr', label: 'HR' },
+            { value: 'office', label: 'Офис-менеджер' },
+          ]},
+        ],
+        placeholder: 'Выберите роль',
+        fullWidth: true,
+        onChange: (v) => { document.getElementById('val-grouped').textContent = 'value: ' + v; },
+      })
+    );
+
+    // 4. Disabled
+    document.getElementById('demo-disabled').appendChild(
+      CRSelect.create({
+        id: 'demo-disabled-sel',
+        options: [
+          { value: 'a', label: 'Вариант A' },
+          { value: 'b', label: 'Вариант B' },
+        ],
+        value: 'a',
+        disabled: true,
+      })
+    );
+
+    // 5. Clearable
+    document.getElementById('demo-clearable').appendChild(
+      CRSelect.create({
+        id: 'demo-clearable-sel',
+        options: [
+          { value: 'pm', label: 'Руководитель проекта' },
+          { value: 'to', label: 'Инженер ПТО' },
+          { value: 'buh', label: 'Бухгалтер' },
+        ],
+        value: 'pm',
+        clearable: true,
+        fullWidth: true,
+        onChange: (v) => { document.getElementById('val-clearable').textContent = 'value: ' + (v || '(empty)'); },
+      })
+    );
+
+    // 6. Full width
+    document.getElementById('demo-fullwidth').appendChild(
+      CRSelect.create({
+        id: 'demo-fw-sel',
+        options: [
+          { value: 'draft', label: 'Черновик' },
+          { value: 'sent', label: 'Отправлен' },
+          { value: 'approved', label: 'Согласован' },
+          { value: 'rejected', label: 'Отклонён' },
+        ],
+        placeholder: 'Статус документа',
+        fullWidth: true,
+        onChange: (v) => { document.getElementById('val-fullwidth').textContent = 'value: ' + v; },
+      })
+    );
+
+    // 7. fromNative() migration demo
+    document.getElementById('btn-migrate').addEventListener('click', function() {
+      const nativeSel = document.getElementById('native-select-demo');
+      if (!nativeSel) return;
+      const crEl = CRSelect.fromNative(nativeSel, {
+        id: 'demo-native-sel',
+        fullWidth: true,
+        onChange: (v) => { document.getElementById('val-native').textContent = 'value: ' + v; },
+      });
+      nativeSel.replaceWith(crEl);
+      this.disabled = true;
+      this.textContent = 'Migrated!';
+      this.style.background = '#3fb950';
+    });
+
+    // 8. Preselected
+    document.getElementById('demo-preselected').appendChild(
+      CRSelect.create({
+        id: 'demo-presel-sel',
+        options: [
+          { value: 'new', label: 'Новый' },
+          { value: 'in_progress', label: 'В работе' },
+          { value: 'done', label: 'Выполнен' },
+          { value: 'cancelled', label: 'Отменён' },
+        ],
+        value: 'in_progress',
+        fullWidth: true,
+        onChange: (v) => { document.getElementById('val-preselected').textContent = 'value: ' + v; },
+      })
+    );
+
+    // ── CREmployeePicker demos ────────────────────────────
+    // Multi
+    document.getElementById('demo-picker-multi').appendChild(
+      CREmployeePicker.create({
+        id: 'demo-picker-multi-sel',
+        employees: TEST_EMPLOYEES,
+        placeholder: 'Выберите сотрудников',
+        title: 'Бригада',
+        showChips: true,
+        maxChips: 3,
+        fullWidth: true,
+        onChange: (ids) => { document.getElementById('val-picker-multi').textContent = 'selected: [' + ids.join(', ') + ']'; },
+      })
+    );
+
+    // Single
+    document.getElementById('demo-picker-single').appendChild(
+      CREmployeePicker.create({
+        id: 'demo-picker-single-sel',
+        employees: TEST_EMPLOYEES,
+        maxSelect: 1,
+        placeholder: 'Выберите ответственного',
+        title: 'Ответственный',
+        fullWidth: true,
+        onChange: (ids) => { document.getElementById('val-picker-single').textContent = 'selected: [' + ids.join(', ') + ']'; },
+      })
+    );
+
+    // Pre-selected
+    document.getElementById('demo-picker-presel').appendChild(
+      CREmployeePicker.create({
+        id: 'demo-picker-presel-sel',
+        employees: TEST_EMPLOYEES,
+        selected: [1, 3, 5],
+        maxChips: 2,
+        placeholder: 'Выберите сотрудников',
+        title: 'Команда проекта',
+        fullWidth: true,
+        onChange: (ids) => { document.getElementById('val-picker-presel').textContent = 'selected: [' + ids.join(', ') + ']'; },
+      })
+    );
+
+    // Full width
+    document.getElementById('demo-picker-fw').appendChild(
+      CREmployeePicker.create({
+        id: 'demo-picker-fw-sel',
+        employees: TEST_EMPLOYEES,
+        placeholder: 'Все сотрудники',
+        title: 'Выбор сотрудников',
+        fullWidth: true,
+        onChange: (ids) => { document.getElementById('val-picker-fw').textContent = 'selected: [' + ids.join(', ') + ']'; },
+      })
+    );
+
+    console.log('CRSelect instances:', CRSelect.getAll());
+    console.log('CREmployeePicker instances:', CREmployeePicker.getAll());
+  </script>
+</body>
+</html>

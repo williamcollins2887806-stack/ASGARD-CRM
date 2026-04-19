@@ -1,3 +1,14 @@
+const WORK_STATUS_TRANSITIONS = {
+    'Новая':            ['Подготовка'],
+    'Подготовка':       ['Мобилизация', 'Новая'],
+    'Мобилизация':      ['В работе', 'Подготовка'],
+    'В работе':         ['Подписание акта', 'На паузе'],
+    'На паузе':         ['В работе'],
+    'Подписание акта':  ['Работы сдали'],
+    'Работы сдали':     ['Закрыт'],
+    'Закрыт':           []
+  };
+
   function normalizeLinkValue(value){
     const raw = String(value || '').trim();
     if(!raw) return '';
@@ -136,23 +147,10 @@
   }
 
 window.AsgardPmWorksPage=(function(){
-  const { $, $$, esc, toast, showModal, formatDate } = AsgardUI;
+  const { $, $$, esc, toast, showModal, formatDate, money } = AsgardUI;
   const { dial } = AsgardCharts;
+  const { isoNow, ymNow, num, safeJson, toDate, diffDays, daysBetween, sortBy, audit, notify, notifyDirectors, calcProfit } = window.AsgardWorksShared || {};
 
-  function isoNow(){ return new Date().toISOString(); }
-  function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
-  function num(x){ if(x===null||x===undefined||x==="") return null; const n=Number(String(x).replace(/\s/g,"").replace(",", ".")); return isNaN(n)?null:n; }
-  function daysBetween(a,b){
-    const da=new Date(a); const db=new Date(b);
-    if(isNaN(da.getTime())||isNaN(db.getTime())) return null;
-    da.setHours(0,0,0,0); db.setHours(0,0,0,0);
-    return Math.round((db-da)/(24*60*60*1000))+1;
-  }
-  function money(x){
-    if(x===null||x===undefined||x==="") return "?";
-    const n=Number(x); if(isNaN(n)) return esc(String(x));
-    return n.toLocaleString("ru-RU");
-  }
   function workDate(value){ return value ? formatDate(value) : "\u2014"; }
   const V = AsgardValidate;
 
@@ -315,7 +313,26 @@ window.AsgardPmWorksPage=(function(){
 
     const w = Object.assign({}, work);
 
+    // Проверка незакрытых закупок и ведомостей
+    const _token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    const _hdrs = { 'Authorization': 'Bearer ' + _token, 'Content-Type': 'application/json' };
+    let warnings = [];
+    try {
+      const procResp = await fetch(`/api/procurement?work_id=${w.id}&limit=100`, { headers: _hdrs });
+      const procData = await procResp.json();
+      const activeProc = (procData.items || []).filter(p => !['delivered', 'closed', 'dir_rejected'].includes(p.status));
+      if (activeProc.length > 0) warnings.push(`⚠️ ${activeProc.length} незакрытых заявок на закупку`);
+    } catch(e) {}
+    try {
+      const asmResp = await fetch(`/api/assembly?work_id=${w.id}`, { headers: _hdrs });
+      const asmData = await asmResp.json();
+      const activeAsm = (asmData.items || []).filter(a => !['returned', 'closed'].includes(a.status));
+      if (activeAsm.length > 0) warnings.push(`⚠️ ${activeAsm.length} незакрытых ведомостей сборки`);
+    } catch(e) {}
+    const warningHtml = warnings.length ? `<div style="background:var(--warn-bg);color:var(--warn-t);padding:12px;border-radius:var(--r-sm);margin-bottom:12px">${warnings.join('<br>')}</div>` : '';
+
     const html = `
+      ${warningHtml}
       <div class="help">Фиксируем <b>фактические данные</b>. После подтверждения директору уйдёт уведомление с актуальными значениями. Затем потребуется оценить сотрудников и заказчика.</div>
       <div class="formrow" style="margin-top:10px">
         <div><label>Старт работ (факт/вход в работу)</label><input id="c_start" type="date" value="${esc((w.start_in_work_date||'').slice(0,10))}"/></div>
@@ -365,18 +382,9 @@ window.AsgardPmWorksPage=(function(){
             w.advance_date_fact = advDate;
             w.payment_date_fact = payDate;
             w.act_signed_date_fact = actDate || w.act_signed_date_fact || null;
-            w.closeout_submitted_at = isoNow();
-            w.closeout_submitted_by = pmUser.id;
 
+            // Save fact data WITHOUT closeout_submitted_at (F7 fix: avoid hang if ratings cancelled)
             await AsgardDB.put('works', w);
-            await audit(pmUser.id, 'work', w.id, 'closeout_submit', {
-              work_id:w.id,
-              end_fact:w.end_fact,
-              cost_fact:w.cost_fact,
-              contract_value:w.contract_value,
-              paid:(Number(w.advance_received||0)+Number(w.balance_received||0)),
-              left:(Number(w.contract_value||0)-Number(w.advance_received||0)-Number(w.balance_received||0)),
-            });
 
             const paid = (Number(w.advance_received||0)+Number(w.balance_received||0));
             const left = (Number(w.contract_value||0)-paid);
@@ -389,13 +397,51 @@ window.AsgardPmWorksPage=(function(){
 
             // Mandatory ratings: employees + customer
             const okRatings = await collectCloseoutRatings({work:w, pmUser});
-            if(!okRatings) return;
+            if(!okRatings) return;   // user cancelled — no closeout_submitted_at, work stays editable
 
-            // Finalize
+            // Finalize: set closeout timestamp + status ONLY after successful ratings
+            w.closeout_submitted_at = isoNow();
+            w.closeout_submitted_by = pmUser.id;
             w.work_status = 'Работы сдали';
             w.closed_at = isoNow();
             await AsgardDB.put('works', w);
+            await audit(pmUser.id, 'work', w.id, 'closeout_submit', {
+              work_id:w.id,
+              end_fact:w.end_fact,
+              cost_fact:w.cost_fact,
+              contract_value:w.contract_value,
+              paid:paid,
+              left:left,
+            });
             await audit(pmUser.id, 'work', w.id, 'close', {work_status:w.work_status});
+
+            // Автоматический фин. отчёт в Huginn чат
+            try {
+              const finSummary = await fetch('/api/works/' + w.id + '/financial-summary', {
+                headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '')}
+              }).then(r => r.ok ? r.json() : null);
+              if (finSummary && w.estimate_id) {
+                // Find chat by estimate
+                const chatResp = await fetch('/api/chat-groups/by-entity?type=estimate&id=' + w.estimate_id, {
+                  headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '')}
+                }).then(r => r.ok ? r.json() : null);
+                const chatId = chatResp?.chat?.id;
+                if (chatId) {
+                  const profitEmoji = finSummary.profit.net >= 0 ? '\uD83D\uDCC8' : '\uD83D\uDCC9';
+                  const msg = `${profitEmoji} **Работы завершены — Финансовый итог**\n\n` +
+                    `Выручка: ${money(finSummary.revenue.ex_vat)} \u20BD\n` +
+                    `Расходы + налоги: ${money(finSummary.expenses.total_with_tax)} \u20BD\n` +
+                    `Чистая прибыль: **${money(finSummary.profit.net)} \u20BD** (маржа ${finSummary.profit.margin}%)\n\n` +
+                    `[Открыть полный отчёт](#/work-report?id=${w.id})`;
+                  await fetch('/api/chat-groups/' + chatId + '/messages', {
+                    method: 'POST',
+                    headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || ''), 'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: msg })
+                  });
+                }
+              }
+            } catch (_) { /* non-critical */ }
+
             toast('Закрытие','Контракт завершён');
             if(typeof onDone==='function') onDone();
           }catch(e){
@@ -514,8 +560,6 @@ window.AsgardPmWorksPage=(function(){
   }
 
 
-  function safeJson(s,def){ try{return JSON.parse(s||"");}catch(_){return def;} }
-
   async function upsertStaffRequest({work, pmUser, requestObj, comment}){
     const reqs = await AsgardDB.all("staff_requests");
     let cur = reqs.find(r=>r.work_id===work.id);
@@ -544,67 +588,14 @@ window.AsgardPmWorksPage=(function(){
     }
   }
 
-  async function upsertPurchaseRequest({work, itemsObj}){
-    const reqs = await AsgardDB.all("purchase_requests");
-    let cur = reqs.find(r=>r.work_id===work.id);
-    const payload = {
-      work_id: work.id,
-      pm_id: work.pm_id,
-      status: "sent",
-      items_json: JSON.stringify(itemsObj||{}),
-      proc_comment: "",
-      created_at: cur?cur.created_at: isoNow(),
-      updated_at: isoNow(),
-    };
-    if(cur){
-      payload.id = cur.id;
-      await AsgardDB.put("purchase_requests", Object.assign(cur, payload));
-      return cur.id;
-    }else{
-      const id = await AsgardDB.add("purchase_requests", payload);
-      return id;
-    }
-  }
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
     return refs ? JSON.parse(refs.value_json||"{}") : { work_statuses:[], tender_statuses:[], reject_reasons:[] };
   }
   async function getSettings(){
     const s = await AsgardDB.get("settings","app");
-    return s ? JSON.parse(s.value_json||"{}") : { vat_pct:20, gantt_start_iso:"2026-01-01T00:00:00.000Z", status_colors:{work:{},tender:{}} };
+    return s ? JSON.parse(s.value_json||"{}") : { vat_pct:22, gantt_start_iso:"2026-01-01T00:00:00.000Z", status_colors:{work:{},tender:{}} };
   }
-  async function audit(actorId, entityType, entityId, action, payload){
-    await AsgardDB.add("audit_log",{actor_user_id:actorId,entity_type:entityType,entity_id:entityId,action,payload_json:JSON.stringify(payload||{}),created_at:isoNow()});
-  }
-
-  async function notify(userId, title, body, linkHash){
-    if(!userId) return;
-    await AsgardDB.add("notifications",{
-      user_id:userId,
-      title:String(title||""),
-      // unified field name across app: notifications.message
-      message:String(body||""),
-      link_hash: String(linkHash||""),
-      is_read:false,
-      created_at:isoNow()
-    });
-  }
-
-  async function notifyDirectors(title, message, linkHash){
-    const users = await AsgardDB.all("users");
-    const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(String(r||"")==="DIRECTOR"||String(r||"").startsWith("DIRECTOR_"));
-    const directors = (users||[]).filter(u=>u && u.is_active && isDirRole(u.role));
-    for(const d of directors){
-      await notify(d.id, title, message, linkHash);
-    }
-  }
-
-  async function userIdByLogin(login){
-    const users = await AsgardDB.all("users");
-    const u = (users||[]).find(x=>String(x.login||"").toLowerCase()===String(login||"").toLowerCase());
-    return u ? u.id : null;
-  }
-
   async function render({layout,title}){
     let currentPage = 1, pageSize = window.AsgardPagination ? AsgardPagination.getPageSize() : 20;
     const auth=await AsgardAuth.requireUser();
@@ -627,7 +618,7 @@ window.AsgardPmWorksPage=(function(){
       <div class="panel">
         <div class="help">
           Раздел «Работы» — это контрактная стадия. Здесь фиксируются статусы выполнения, финансы, план/факт и сроки.
-          Девиз: “Клятва дана — доведи дело до конца.”
+          Девиз: "Клятва дана — доведи дело до конца."
         </div>
         <hr class="hr"/>
         <div class="chart">
@@ -649,7 +640,7 @@ window.AsgardPmWorksPage=(function(){
         <div class="tools">
           <div class="field">
             <label>Период</label>
-            <select id="f_period">${generatePeriodOptions(ymNow())}</select>
+            <div id="f_period_w"></div>
           </div>
           <div class="field">
             <label>Поиск</label>
@@ -657,10 +648,7 @@ window.AsgardPmWorksPage=(function(){
           </div>
           <div class="field">
             <label>Статус работ</label>
-            <select id="f_status">
-              <option value="">Все</option>
-              ${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}
-            </select>
+            <div id="f_status_w"></div>
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap">
             <button class="btn ghost" id="btnGantt">Гантт по работам</button>
@@ -691,19 +679,6 @@ window.AsgardPmWorksPage=(function(){
     const cCost = $("#kpi_cost");
     const cTime = $("#kpi_time");
 
-    function toDate(d){
-      if(!d) return null;
-      const s=String(d).trim();
-      if(!s) return null;
-      const m=s.match(/^\d{4}-\d{2}-\d{2}/);
-      if(m){ const y=+m[0].slice(0,4), mo=+m[0].slice(5,7), da=+m[0].slice(8,10); return new Date(Date.UTC(y,mo-1,da,0,0,0)); }
-      const dt=new Date(s); return isFinite(dt.getTime())?dt:null;
-    }
-    function diffDays(a,b){
-      const da=toDate(a); const db=toDate(b);
-      if(!da||!db) return null;
-      return Math.round((db.getTime()-da.getTime())/(24*3600*1000));
-    }
     function pctDelta(fact, plan){
       const p=Number(plan||0); const f=Number(fact||0);
       if(!isFinite(p) || p<=0) return null;
@@ -722,20 +697,12 @@ window.AsgardPmWorksPage=(function(){
       }
       const costPct = pctDelta(factCost, planCost);
       const timePct = pctDelta(factDays, planDays);
-      try{ if(cCost) dial(cCost, costPct, { title:'Δ себестоимость', valueFmt:(v)=>v==null?'—':(Math.round(v*10)/10)+'%' }); }catch(e){}
-      try{ if(cTime) dial(cTime, timePct, { title:'Δ срок', valueFmt:(v)=>v==null?'—':(Math.round(v*10)/10)+'%' }); }catch(e){}
+      try{ if(cCost) dial(cCost, costPct, { title:'Δ себестоимость', valueFmt:(v)=>{if(v==null)return '—'; const r=Math.round(Math.abs(v)*10)/10; return v<0?r+'%':'+'+ r+'%';}, subFmt:(v)=>v==null?'':'факт '+(v<=0?'лучше':'хуже')+' плана' }); }catch(e){}
+      try{ if(cTime) dial(cTime, timePct, { title:'Δ срок', valueFmt:(v)=>{if(v==null)return '—'; const r=Math.round(Math.abs(v)*10)/10; return v<0?r+'%':'+'+r+'%';}, subFmt:(v)=>v==null?'':'факт '+(v<=0?'лучше':'хуже')+' плана' }); }catch(e){}
     }
 
 
     function norm(s){ return String(s||"").toLowerCase().trim(); }
-
-    function sortBy(key,dir){
-      return (a,b)=>{
-        const av=(a[key]??""); const bv=(b[key]??"");
-        if(typeof av==="number" && typeof bv==="number") return dir*(av-bv);
-        return dir*String(av).localeCompare(String(bv), "ru", {sensitivity:"base"});
-      };
-    }
 
     function row(w){
       const st=w.work_status||"";
@@ -753,7 +720,10 @@ window.AsgardPmWorksPage=(function(){
           <div><b>${money(w.contract_value)}</b> ₽</div>
           <div class="help">получено: ${money(got)} ₽ • должны: ${money(left)} ₽</div>
         </td>
-        <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn" style="padding:6px 10px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px" data-act="auto_estimate" title="Авто-просчёт Мимиром">⚡ Просчитать</button>
+          <button class="btn" style="padding:6px 10px" data-act="open">Открыть</button>
+        </td>
       </tr>`;
     }
 
@@ -797,15 +767,16 @@ window.AsgardPmWorksPage=(function(){
         '</div>' +
         '<div class="m-wc-footer">' +
           '<span class="m-wc-left">Осталось: ' + money(left) + ' ₽</span>' +
-          '<button class="btn mini" data-act="open">Открыть</button>' +
+          '<button class="btn mini" data-act="auto_estimate" style="border-radius:8px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px">⚡ Просчитать</button>' +
+        '<button class="btn mini" data-act="open">Открыть</button>' +
         '</div>' +
       '</div>';
     }
 
     function apply(){
-      const per = norm($("#f_period").value);
+      const per = norm(CRSelect.getValue('f_period') || '');
       const q = norm($("#f_q").value);
-      const st = $("#f_status").value;
+      const st = CRSelect.getValue('f_status') || '';
 
       let list = works.filter(w=>{
         const t = allTenders.find(x=>x.id===w.tender_id);
@@ -840,6 +811,8 @@ window.AsgardPmWorksPage=(function(){
             });
             var _ob = card.querySelector('[data-act="open"]');
             if (_ob) _ob.addEventListener('click', () => openWork(card.dataset.id));
+            var _ae = card.querySelector('[data-act="auto_estimate"]');
+            if (_ae) _ae.addEventListener('click', (ev) => { ev.stopPropagation(); window.openMimirAutoEstimate(Number(card.dataset.id)); });
           });
         }
       } else {
@@ -863,10 +836,15 @@ window.AsgardPmWorksPage=(function(){
 
     drawKpi();
 
+    // CRSelect init — filters
+    const _pOpts = [{ value: '', label: 'Все' }];
+    { const _now = new Date(); for(let i=0;i<24;i++){ const d=new Date(_now.getFullYear(),_now.getMonth()-i,1); const val=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; _pOpts.push({ value: val, label: d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'}) }); } }
+    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _pOpts, value: ymNow(), onChange: apply }));
+    $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...(refs.work_statuses||[]).map(s=>({ value: s, label: s }))], onChange: apply }));
+
     apply();
-    $("#f_period").addEventListener("input", apply);
-    $("#f_q").addEventListener("input", apply);
-    $("#f_status").addEventListener("change", apply);
+    let _fqTimer = null;
+    $("#f_q").addEventListener("input", () => { clearTimeout(_fqTimer); _fqTimer = setTimeout(apply, 250); });
 
     $$("[data-sort]").forEach(b=>{
       b.addEventListener("click", ()=>{
@@ -879,13 +857,15 @@ window.AsgardPmWorksPage=(function(){
     tb.addEventListener("click",(e)=>{
       const tr=e.target.closest("tr[data-id]");
       if(!tr) return;
-      if(e.target.getAttribute("data-act")==="open") openWork(Number(tr.getAttribute("data-id")));
+      const act = e.target.getAttribute("data-act");
+      if(act==="open") openWork(Number(tr.getAttribute("data-id")));
+      if(act==="auto_estimate") window.openMimirAutoEstimate(Number(tr.getAttribute("data-id")));
     });
 
     $("#btnGantt").addEventListener("click", ()=>openGantt());
 
     async function openGantt(){
-      const startIso = (settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
+      const defaultStart = (settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
       const rows = works.map(w=>{
         const t = allTenders.find(x=>x.id===w.tender_id);
         const start = w.start_in_work_date || t?.work_start_plan || w.end_plan || "2026-01-01";
@@ -894,26 +874,38 @@ window.AsgardPmWorksPage=(function(){
         const sub = `${w.work_title||t?.tender_title||""}`;
         return { id:w.id, start, end, label, sub, barText:w.work_status||"" , status:w.work_status||"" };
       });
-      const html = AsgardGantt.renderBoard({
-        startIso, weeks: 60,
-        rows,
-        getColor:(r)=>(settings.status_colors?.work||{})[r.status]||"#2a6cf1"
-      });
-      showModal("Гантт • Работы (недели)", `<div style="max-height:80vh; overflow:auto">${html}</div>`);
+      const colors = settings.status_colors?.work||{};
+      showModal("Гантт • Работы", `${AsgardGantt.navHtml()}<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" class="cr-gantt-modal-body"></div>`);
+      setTimeout(()=>{
+        const fi=document.getElementById('g-from'), ti=document.getElementById('g-to');
+        if(!fi) return;
+        function render(){
+          const f=fi.value, t=ti.value;
+          let startIso=f||defaultStart, weeks=60;
+          if(f&&t){ const ms=7*864e5; weeks=Math.max(4,Math.ceil((new Date(t)-new Date(f))/ms)+1); }
+          document.getElementById('gModal').innerHTML=AsgardGantt.renderBoard({startIso,weeks,rows,getColor:r=>colors[r.status]||"#2a6cf1"});
+        }
+        AsgardGantt.initNav(fi,ti,render);
+      },0);
     }
 
     async function openWork(id){
-      const w = await AsgardDB.get("works", id);
+      const [w, finData, tRaw] = await Promise.all([
+        AsgardDB.get("works", id),
+        fetch('/api/works/' + id + '/financial-summary', {headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || localStorage.getItem('auth_token'))}}).then(r => r.ok ? r.json() : null).catch(() => null),
+        AsgardDB.get("tenders", null).then(() => null).catch(() => null) // prefetch cache
+      ]);
       const triggerStatus = String((settings&&settings.work_close_trigger_status)||"Подписание акта");
-      const t = await AsgardDB.get("tenders", w.tender_id);
+      const t = w.tender_id ? (await AsgardDB.get("tenders", w.tender_id)) : null;
       const got = (Number(w.advance_received||0)+Number(w.balance_received||0))||0;
       const left = (w.contract_value||0) ? Math.max(0, Number(w.contract_value||0)-got) : 0;
-      const cost = (w.cost_fact!=null?Number(w.cost_fact): (w.cost_plan!=null?Number(w.cost_plan):null));
-      const profit = (w.contract_value!=null && cost!=null) ? (Number(w.contract_value)-cost) : null;
+      // Чистая прибыль из financial-summary (единый источник), fallback на валовую
+      const profit = finData?.profit?.net != null ? Math.round(finData.profit.net) : ((w.contract_value!=null && w.cost_fact!=null) ? (Number(w.contract_value)-Number(w.cost_fact)) : null);
+      const margin = finData?.profit?.margin;
       const start = w.start_in_work_date || t?.work_start_plan;
       const end = w.end_fact || w.end_plan || t?.work_end_plan || start;
       const duration = (start && end) ? daysBetween(start,end) : null;
-      const crew = Number(w.crew_size||0)||0;
+      const crew = (finData?.crew?.length) || Number(w.crew_size||0) || 0;
       const profitPerDay = (profit!=null && duration) ? profit/Math.max(1,duration) : null;
       const profitPerManDay = (profit!=null && duration) ? profit/Math.max(1,(crew||1)*duration) : null;
 
@@ -928,99 +920,98 @@ window.AsgardPmWorksPage=(function(){
       });
 
       const html = `
-        <div class="help"><b>${esc(w.customer_name||t?.customer_name||"")}</b> — ${esc(w.work_title||t?.tender_title||"")}</div>
-        <div class="help">Девиз: “Клятва дана — доведи дело до конца.” • tender #${w.tender_id}</div>
-        <hr class="hr"/>
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><span>${esc(w.customer_name||t?.customer_name||"")} · ${esc(w.work_title||t?.tender_title||"")}</span></div>
         ${ganttMini}
         <hr class="hr"/>
 
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><span>Статус и сроки</span></div>
         <div class="formrow">
-          <div><label>Статус работ</label>
-            <select id="w_status">
-              ${(refs.work_statuses||[]).map(s=>`<option value="${esc(s)}" ${(w.work_status===s)?"selected":""}>${esc(s)}</option>`).join("")}
-            </select>
-          </div>
-          <div><label>Начало работ (факт/старт)</label><input id="w_start" value="${esc(w.start_in_work_date||t?.work_start_plan||"")}" placeholder="YYYY-MM-DD"/></div>
-          <div><label>Окончание план</label><input id="w_end_plan" value="${esc(w.end_plan||t?.work_end_plan||"")}" placeholder="YYYY-MM-DD"/></div>
-          <div><label>Окончание факт</label><input id="w_end_fact" value="${esc(w.end_fact||"")}" placeholder="YYYY-MM-DD"/></div>
+          <div><label>Статус работ</label><div id="w_status_w"></div></div>
+          <div><label>Начало работ</label><input type="date" id="w_start" value="${esc(String(w.start_in_work_date||t?.work_start_plan||"").slice(0,10))}"/></div>
+          <div><label>Окончание план</label><input type="date" id="w_end_plan" value="${esc(String(w.end_plan||t?.work_end_plan||"").slice(0,10))}"/></div>
+          <div><label>Окончание факт</label><input type="date" id="w_end_fact" value="${esc(String(w.end_fact||"").slice(0,10))}"/></div>
+        </div>
 
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span>Финансы</span></div>
+        <div class="formrow">
           <div><label>Стоимость договора</label><input id="w_value" value="${esc(w.contract_value!=null?String(w.contract_value):"")}" placeholder="руб."/></div>
           <div><label>Аванс %</label><input id="w_adv_pct" value="${esc(w.advance_pct!=null?String(w.advance_pct):"30")}" placeholder="30"/></div>
           <div><label>Аванс получено</label><input id="w_adv_got" value="${esc(w.advance_received!=null?String(w.advance_received):"0")}" placeholder="руб."/></div>
-          <div><label>Дата аванса факт</label><input id="w_adv_date" value="${esc(w.advance_date_fact||"")}" placeholder="YYYY-MM-DD"/></div>
-
+          <div><label>Дата аванса факт</label><input type="date" id="w_adv_date" value="${esc(String(w.advance_date_fact||"").slice(0,10))}"/></div>
           <div><label>Остаток получено</label><input id="w_bal_got" value="${esc(w.balance_received!=null?String(w.balance_received):"0")}" placeholder="руб."/></div>
-          <div><label>Дата оплаты остатка факт</label><input id="w_pay_date" value="${esc(w.payment_date_fact||"")}" placeholder="YYYY-MM-DD"/></div>
-          <div><label>Дата акта факт</label><input id="w_act_date" value="${esc(w.act_signed_date_fact||"")}" placeholder="YYYY-MM-DD"/></div>
+          <div><label>Дата оплаты остатка</label><input type="date" id="w_pay_date" value="${esc(String(w.payment_date_fact||"").slice(0,10))}"/></div>
+          <div><label>Дата акта факт</label><input type="date" id="w_act_date" value="${esc(String(w.act_signed_date_fact||"").slice(0,10))}"/></div>
           <div><label>Отсрочка, раб.дни</label><input id="w_delay" value="${esc(w.delay_workdays!=null?String(w.delay_workdays):"5")}" placeholder="5"/></div>
+        </div>
 
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--ok-t)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span><span>Себестоимость</span></div>
+        <div class="formrow">
           <div><label>План себестоимость</label><input id="w_cost_plan" value="${esc(w.cost_plan!=null?String(w.cost_plan):"")}" placeholder="руб."/></div>
-          <div><label>Факт себестоимость</label><input id="w_cost_fact" value="${esc(w.cost_fact!=null?String(w.cost_fact):"")}" placeholder="руб."/></div>
-          <div><label>Численность (для чел-дней)</label><input id="w_crew" value="${esc(w.crew_size!=null?String(w.crew_size):"")}" placeholder="например: 10"/></div>
-
+          <div><label>Факт себестоимость</label><div style="display:flex;gap:4px"><input id="w_cost_fact" value="${esc(w.cost_fact!=null?String(w.cost_fact):"")}" placeholder="руб." style="flex:1"/><button type="button" class="btn ghost" id="btnAutoCalcCost" title="Авторасчёт: расходы + налоги" style="font-size:11px;padding:4px 8px;white-space:nowrap">⚡ Авто</button></div></div>
+          <div><label>Численность (чел-дни)</label><input id="w_crew" value="${esc(w.crew_size!=null?String(w.crew_size):"")}" placeholder="10"/></div>
           <div style="grid-column:1/-1"><label>Комментарий</label><input id="w_comment" value="${esc(w.comment||"")}" placeholder="важные заметки"/></div>
         </div>
 
-        
         <hr class="hr"/>
-        <div class="help"><b>Персонал (заявка HR)</b></div>
-        <div class="formrow" style="grid-template-columns:repeat(2,minmax(220px,1fr))">
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--purple-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span>Персонал (заявка HR)</span></div>
+        <div class="formrow">
           <div style="display:flex; align-items:flex-end; gap:10px">
-            <label style="display:flex; gap:10px; align-items:center">
+            <label style="display:flex; gap:10px; align-items:center; text-transform:none !important; font-size:13px !important">
               <input type="checkbox" id="sr_is_vachta" />
               <span>Вахта</span>
             </label>
           </div>
-          <div>
-            <label>Срок ротации, дней</label>
-            <input id="sr_rotation_days" placeholder="0" />
-          </div>
+          <div><label>Срок ротации, дней</label><input id="sr_rotation_days" placeholder="0" /></div>
         </div>
         <div class="formrow">
           <div><label>Мастера</label><input id="sr_Мастера" placeholder="0" /></div>
           <div><label>Слесари</label><input id="sr_Слесари" placeholder="0" /></div>
           <div><label>ПТО</label><input id="sr_ПТО" placeholder="0" /></div>
           <div><label>Промывщики</label><input id="sr_Промывщики" placeholder="0" /></div>
-          <div style="grid-column:1/-1"><label>Комментарий к запросу (PM)</label><input id="sr_comment" placeholder="условия, сменность, требования" /></div>
+          <div style="grid-column:1/-1"><label>Комментарий к запросу</label><input id="sr_comment" placeholder="условия, сменность, требования" /></div>
         </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap">
-          <button class="btn" id="btnReqStaff">Запросить рабочих</button>
-          <button class="btn ghost" id="btnViewStaff">Открыть статус/ответ</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px">
+          <button class="btn primary" id="btnReqStaff">Запросить рабочих</button>
+          <button class="btn ghost" id="btnViewStaff">Статус/ответ</button>
           <button class="btn ghost" id="btnApproveStaff">Принять</button>
           <button class="btn ghost" id="btnAskStaff">Вопрос</button>
         </div>
 
         <hr class="hr"/>
-        <div class="help"><b>Закупки (заявка)</b></div>
-        <div class="formrow">
-          <div style="grid-column:1/-1"><label>Химия</label><input id="pr_chem" placeholder="перечень/объёмы" /></div>
-          <div style="grid-column:1/-1"><label>Оборудование</label><input id="pr_eq" placeholder="НВД/шланги/головки/прочее" /></div>
-          <div style="grid-column:1/-1"><label>Логистика</label><input id="pr_log" placeholder="транспорт/доставки/маршрут" /></div>
-        </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap">
-          <button class="btn" id="btnReqProc">Отправить в закупки</button>
-          <button class="btn ghost" id="btnViewProc">Открыть статус/ответ</button>
-          <button class="btn ghost" id="btnApproveProc">Согласовать</button>
-          <button class="btn ghost" id="btnReworkProc">На доработку</button>
-        </div>
-<hr class="hr"/>
-        <div class="kpi" style="grid-template-columns:repeat(5,minmax(140px,1fr))">
+        <div class="kpi" style="grid-template-columns:repeat(5,minmax(130px,1fr))">
           <div class="k"><div class="t">Получено</div><div class="v">${money(got)} ₽</div><div class="s">Аванс + остаток</div></div>
           <div class="k"><div class="t">Должны</div><div class="v">${money(left)} ₽</div><div class="s">Остаток к оплате</div></div>
-          <div class="k"><div class="t">Прибыль</div><div class="v">${profit==null?"—":money(Math.round(profit))+" ₽"}</div><div class="s">стоимость − себест.</div></div>
-          <div class="k"><div class="t">Прибыль/день</div><div class="v">${profitPerDay==null?"—":money(Math.round(profitPerDay))+" ₽"}</div><div class="s">по длительности</div></div>
-          <div class="k"><div class="t">Прибыль/чел‑день</div><div class="v">${profitPerManDay==null?"—":money(Math.round(profitPerManDay))+" ₽"}</div><div class="s">по людям×дни</div></div>
+          <div class="k"><div class="t">Прибыль</div><div class="v" style="color:${profit!=null?(profit>=0?'var(--ok-t)':'var(--err-t)'):''}">${profit==null?"—":money(Math.round(profit))+" ₽"}</div><div class="s">${margin!=null?'чистая · маржа '+margin+'%':'чистая прибыль'}</div></div>
+          <div class="k"><div class="t">₽/день</div><div class="v">${profitPerDay==null?"—":money(Math.round(profitPerDay))+" ₽"}</div><div class="s">по длительности</div></div>
+          <div class="k"><div class="t">₽/чел‑день</div><div class="v">${profitPerManDay==null?"—":money(Math.round(profitPerManDay))+" ₽"}</div><div class="s">по людям×дни</div></div>
         </div>
 
         <hr class="hr"/>
-        <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
           ${(user.role==="PM" && String(w.work_status||"")===triggerStatus) ? `<button class="btn danger" id="btnCloseout">Работы завершены</button>` : ``}
-          <button class="btn" id="btnSaveWork">Сохранить</button>
+          <button class="btn primary" id="btnSaveWork">Сохранить</button>
           <button class="btn ghost" id="btnActions">⚡ Действия</button>
         </div>
       `;
 
-      showModal(`Работа #${w.id}`, html);
+      showModal({ title: `Работа #${w.id}`, html, icon: '🏗', subtitle: `${esc(w.customer_name||'')} · ${esc(w.work_status||'')}` });
+      const _curWorkStatus = w.work_status || '';
+      const _isAdminOrDir = user.role === 'ADMIN' || user.role === 'DIRECTOR_GEN';
+      const _workStatusOpts = _isAdminOrDir ? (refs.work_statuses||[]) : [...new Set((WORK_STATUS_TRANSITIONS[_curWorkStatus] || []).concat([_curWorkStatus]))];
+      $('#w_status_w')?.appendChild(CRSelect.create({ id: 'w_status', options: _workStatusOpts.map(s=>({ value: s, label: s })), value: _curWorkStatus, dropdownClass: 'z-modal' }));
+
+      // Авторасчёт себестоимости из financial-summary
+      const _btnAutoCalc = document.getElementById('btnAutoCalcCost');
+      if (_btnAutoCalc && finData?.expenses) {
+        _btnAutoCalc.addEventListener('click', () => {
+          const val = Math.round(finData.expenses.total_with_tax);
+          document.getElementById('w_cost_fact').value = val;
+          toast('Себестоимость', 'Расходы ' + money(finData.expenses.total) + ' + налоги ' + money(finData.taxes.burden) + ' = ' + money(val) + ' ₽', 'ok');
+        });
+      } else if (_btnAutoCalc) {
+        _btnAutoCalc.disabled = true;
+        _btnAutoCalc.title = 'Нет данных расходов';
+      }
 
       // вахта (UI)
       try{
@@ -1064,6 +1055,11 @@ window.AsgardPmWorksPage=(function(){
           // ─── Финансы ───
           actions.push({ section: 'Финансы' });
           actions.push({
+            icon: '📈', label: 'Фин. отчёт',
+            desc: 'Полная финансовая картина: НДС, налоги, прибыль',
+            onClick: () => { location.hash = '#/work-report?id=' + w.id; }
+          });
+          actions.push({
             icon: '💰', label: 'Расходы',
             desc: 'Управление расходами по работе',
             onClick: () => {
@@ -1074,12 +1070,41 @@ window.AsgardPmWorksPage=(function(){
               }
             }
           });
+          if (window.openExpenseChat && (user.role === 'PM' || user.role === 'HEAD_PM')) {
+            actions.push({
+              icon: '🧾', label: 'Кошелёк проекта',
+              desc: 'Чеки, фото, AI-распознавание → расходы',
+              onClick: () => { AsgardUI.hideModal(); window.openExpenseChat(w.id); }
+            });
+          }
           actions.push({
             icon: '📊', label: 'Ведомость',
             desc: 'Расчётная ведомость работников',
             onClick: () => {
               hideModal();
               location.hash = '#/payroll-sheet?work_id=' + w.id;
+            }
+          });
+          actions.push({
+            icon: '💰', label: 'Выставить счёт',
+            desc: 'Счёт на оплату по работе',
+            onClick: () => {
+              if(window.AsgardWorkDocuments && AsgardWorkDocuments.openInvoiceModal){
+                AsgardWorkDocuments.openInvoiceModal(w, user);
+              } else {
+                toast("Счёт", "Модуль документов не загружен", "err");
+              }
+            }
+          });
+          actions.push({
+            icon: '📋', label: 'Оформить акт',
+            desc: 'Акт выполненных работ',
+            onClick: () => {
+              if(window.AsgardWorkDocuments && AsgardWorkDocuments.openActModal){
+                AsgardWorkDocuments.openActModal(w, user);
+              } else {
+                toast("Акт", "Модуль документов не загружен", "err");
+              }
             }
           });
 
@@ -1098,7 +1123,7 @@ window.AsgardPmWorksPage=(function(){
                 .filter(l=>l.entity_type==="work" && l.entity_id===w.id)
                 .sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
               const rows = logs.map(l=>`
-                <div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(new Date(l.created_at).toLocaleString("ru-RU"))}</div><div class="role">${esc(l.actor_user_id)}</div></div>
+                <div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(AsgardUI.formatDateTime(l.created_at))}</div><div class="role">${esc(l.actor_user_id)}</div></div>
                 <div class="help" style="margin:6px 0 10px">${esc(l.payload_json||"")}</div>
               `).join("");
               showModal("История (work)", rows || `<div class="help">Пусто.</div>`);
@@ -1106,14 +1131,28 @@ window.AsgardPmWorksPage=(function(){
           });
 
 
+          // ─── Полевой модуль ───
+          actions.push({ section: 'Полевой модуль' });
+          actions.push({
+            icon: '⚔️', label: 'Полевой модуль',
+            desc: 'Бригада, логистика, дашборд, табель',
+            onClick: () => {
+              if(window.AsgardFieldTab && AsgardFieldTab.openFieldModal){
+                AsgardFieldTab.openFieldModal(w, user);
+              } else {
+                toast("Field", "Модуль не загружен", "err");
+              }
+            }
+          });
+
           // ─── Оборудование (FaceKit Premium) ───
           actions.push({ section: 'Оборудование' });
           actions.push({
             icon: '🧰', label: 'Оборудование на работу',
             desc: 'Назначить/просмотреть оборудование',
             onClick: () => {
-              if(window.AsgardWarehouse && AsgardWarehouse.openWorkEquipmentModal){
-                AsgardWarehouse.openWorkEquipmentModal(w, user);
+              if(window.AsgardEquipment && AsgardEquipment.openWorkEquipmentModal){
+                AsgardEquipment.openWorkEquipmentModal(w, user);
               } else {
                 toast("Оборудование", "Модуль склада не загружен", "err");
               }
@@ -1123,6 +1162,9 @@ window.AsgardPmWorksPage=(function(){
           // ─── Завершение ───
           if(user.role==="PM" && String(w.work_status||"")===triggerStatus){
             actions.push('---');
+            actions.push({ icon: '🛒', label: 'Закупки', desc: 'Заявки на закупку по работе', onClick: () => openProcurementForWork(w, user) });
+            actions.push({ icon: '📦', label: 'Склад', desc: 'Бронирование оборудования', onClick: () => openEquipmentForWork(w, user) });
+            actions.push({ icon: '🏗️', label: 'Сбор', desc: 'Мобилизация / демобилизация', onClick: () => openAssemblyForWork(w, user) });
             actions.push({
               icon: '✅', label: 'Работы завершены',
               desc: 'Завершить и закрыть работу',
@@ -1169,12 +1211,15 @@ window.AsgardPmWorksPage=(function(){
         const emps = await AsgardDB.all("employees");
         const byId = new Map((emps||[]).map(e=>[e.id,e]));
         const isVachta = !!req.is_vachta;
-        const idsA = safeJson(req.proposed_staff_ids_a_json, []);
-        const idsB = safeJson(req.proposed_staff_ids_b_json, []);
-        const ids = safeJson(req.proposed_staff_ids_json, []);
-        const listA = (idsA||[]).map(id=>byId.get(id)).filter(Boolean);
-        const listB = (idsB||[]).map(id=>byId.get(id)).filter(Boolean);
-        const list = (ids||[]).map(id=>byId.get(id)).filter(Boolean);
+        let idsA = safeJson(req.proposed_staff_ids_a_json, []);
+        let idsB = safeJson(req.proposed_staff_ids_b_json, []);
+        let ids = safeJson(req.proposed_staff_ids_json, []);
+        if (!Array.isArray(idsA)) idsA = [];
+        if (!Array.isArray(idsB)) idsB = [];
+        if (!Array.isArray(ids)) ids = [];
+        const listA = idsA.map(id=>byId.get(id)).filter(Boolean);
+        const listB = idsB.map(id=>byId.get(id)).filter(Boolean);
+        const list = ids.map(id=>byId.get(id)).filter(Boolean);
 
         // replacements
         let reps = [];
@@ -1246,11 +1291,14 @@ window.AsgardPmWorksPage=(function(){
             await AsgardDB.add("employee_plan", { employee_id:newId, date:dt, kind:"work", work_id:w.id, staff_request_id:req.id, created_by:user.id, created_at: isoNow(), note: rp.crew ? ("вахта "+rp.crew) : ("замена") });
           }
           // обновить списки в staff_request
-          const a = safeJson(req.approved_staff_ids_a_json, []);
-          const b = safeJson(req.approved_staff_ids_b_json, []);
-          const all = safeJson(req.approved_staff_ids_json, []);
+          let a = safeJson(req.approved_staff_ids_a_json, []);
+          let b = safeJson(req.approved_staff_ids_b_json, []);
+          let all = safeJson(req.approved_staff_ids_json, []);
+          if (!Array.isArray(a)) a = [];
+          if (!Array.isArray(b)) b = [];
+          if (!Array.isArray(all)) all = [];
           function repl(arr){
-            return (arr||[]).map(x=>Number(x)).filter(x=>x!==oldId);
+            return arr.map(x=>Number(x)).filter(x=>x!==oldId);
           }
           let a2=repl(a), b2=repl(b), all2=repl(all);
           if(!!req.is_vachta){
@@ -1298,7 +1346,7 @@ window.AsgardPmWorksPage=(function(){
           box.innerHTML = msgs.map(m=>{
             const u = uById.get(m.author_user_id)||{};
             const who = esc(u.name||("user#"+m.author_user_id));
-            const dt = m.created_at ? new Date(m.created_at).toLocaleString("ru-RU") : "";
+            const dt = m.created_at ? AsgardUI.formatDateTime(m.created_at) : "";
             return `<div class="pill"><div class="who"><b>${who}</b> • ${esc(dt)}</div><div class="role">${esc(m.text||"")}</div></div>`;
           }).join("");
         }
@@ -1326,9 +1374,7 @@ window.AsgardPmWorksPage=(function(){
         }
       }
 
-      async function hrUserId(){
-        return await userIdByLogin("trukhin");
-      }
+      const hrUserId = AsgardWorksShared.findHrUserId;
 
       const btnReqStaff = document.getElementById("btnReqStaff");
       const btnViewStaff = document.getElementById("btnViewStaff");
@@ -1370,10 +1416,13 @@ window.AsgardPmWorksPage=(function(){
           return;
         }
         const isVachta = !!req.is_vachta;
-        const idsA = safeJson(req.proposed_staff_ids_a_json, []);
-        const idsB = safeJson(req.proposed_staff_ids_b_json, []);
-        const ids = safeJson(req.proposed_staff_ids_json, []);
-        const roster = isVachta ? Array.from(new Set([...(idsA||[]),...(idsB||[])])) : ids;
+        let idsA2 = safeJson(req.proposed_staff_ids_a_json, []);
+        let idsB2 = safeJson(req.proposed_staff_ids_b_json, []);
+        let ids2 = safeJson(req.proposed_staff_ids_json, []);
+        if (!Array.isArray(idsA2)) idsA2 = [];
+        if (!Array.isArray(idsB2)) idsB2 = [];
+        if (!Array.isArray(ids2)) ids2 = [];
+        const roster = isVachta ? Array.from(new Set([...idsA2,...idsB2])) : ids2;
         if(!Array.isArray(roster) || !roster.length){ toast("Персонал","HR не выбрал людей","err"); return; }
 
         // Auto-booking to workers schedule (обычная/вахта)
@@ -1465,7 +1514,7 @@ window.AsgardPmWorksPage=(function(){
         const oldStart = w.start_in_work_date || null;
         const oldEnd = w.end_plan || null;
 
-        w.work_status = $("#w_status").value;
+        w.work_status = CRSelect.getValue('w_status');
         w.start_in_work_date = $("#w_start").value.trim()||null;
         w.end_plan = $("#w_end_plan").value.trim()||null;
         w.end_fact = $("#w_end_fact").value.trim()||null;
@@ -1489,6 +1538,16 @@ window.AsgardPmWorksPage=(function(){
           w.is_vachta = !!(document.getElementById("sr_is_vachta") && document.getElementById("sr_is_vachta").checked);
           w.rotation_days = Math.max(0, Math.round(num((document.getElementById("sr_rotation_days")||{}).value,0)));
         }catch(_){ }
+        // Validation: проверить формат дат YYYY-MM-DD
+        const _dateFields = ['start_in_work_date','end_plan','end_fact','advance_date_fact','payment_date_fact','act_signed_date_fact'];
+        for(const f of _dateFields){
+          const v = w[f];
+          if(!v) continue;
+          const p = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if(!p || +p[1]<1900 || +p[1]>2100 || +p[2]<1 || +p[2]>12 || +p[3]<1 || +p[3]>31){
+            toast("Валидация",`Некорректная дата в поле "${f}": ${v}`,"err"); return;
+          }
+        }
         // Validation layer (dates/money/required by key status)
         if(!V.dateOrder(w.start_in_work_date, w.end_plan)){ toast("Валидация","Плановый финиш не может быть раньше старта","err"); return; }
         if(w.end_fact && !V.dateOrder(w.start_in_work_date, w.end_fact)){ toast("Валидация","Факт. финиш не может быть раньше старта","err"); return; }
@@ -1539,8 +1598,17 @@ window.AsgardPmWorksPage=(function(){
               showModal("Конфликт при перебронировании", `
                 <div class="help">При смене дат обнаружен конфликт брони персонала на новый период ${esc(newStart)} — ${esc(newEnd)}.</div>
                 <div style="margin-top:10px">${rows || ""}</div>
-                <div class="help" style="margin-top:10px">Работа будет сохранена, но бронь персонала НЕ обновлена. Обратитесь к HR для ручной корректировки графика.</div>
+                <div class="help" style="margin-top:10px">Работа будет сохранена, но бронь персонала НЕ обновлена. HR уведомлён.</div>
               `);
+              // BK3: Уведомить HR о конфликте перебронирования
+              const hrId = await AsgardWorksShared.findHrUserId();
+              if (hrId) {
+                await notify(hrId,
+                  'Конфликт перебронирования',
+                  `Работа "${esc(w.work_title||'')}" (${esc(w.customer_name||'')}): даты изменены ${newStart}—${newEnd}, бронь НЕ обновлена. Требуется ручная корректировка.`,
+                  '#/workers-schedule'
+                );
+              }
             }
             // Продолжаем сохранение даже при ошибке (работа важнее)
           } else if (rebookResult.written > 0) {
@@ -1555,6 +1623,149 @@ window.AsgardPmWorksPage=(function(){
         openWork(id);
       });
     }
+  }
+
+  // ═══ ЗАКУПКИ ДЛЯ РАБОТЫ ═══
+  async function openProcurementForWork(work, user) {
+    const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    const hdrs = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    const resp = await fetch(`/api/procurement?work_id=${work.id}&limit=100`, { headers: hdrs });
+    const data = await resp.json();
+    const items = data.items || [];
+
+    let html = '<div style="padding:16px">';
+    if (items.length) {
+      html += '<table class="proc-items-table"><thead><tr><th>№</th><th>Дата</th><th>Заявка</th><th>Сумма</th><th>Статус</th></tr></thead><tbody>';
+      items.forEach(r => {
+        const st = { draft: 'Черновик', sent_to_proc: 'У закупщика', proc_responded: 'Ответ', pm_approved: 'РП ✓',
+          dir_approved: 'Дир ✓', paid: 'Оплачено', partially_delivered: 'Частично', delivered: 'Доставлено', closed: 'Закрыта' };
+        html += `<tr style="cursor:pointer" onclick="AsgardProcurementPage.openDetail(${r.id})">
+          <td>${r.id}</td><td>${r.created_at ? AsgardUI.formatDate(r.created_at) : '—'}</td>
+          <td>${AsgardUI.esc(r.title || '')}</td><td>${r.items_total ? Number(r.items_total).toLocaleString('ru-RU') + ' ₽' : '—'}</td>
+          <td>${st[r.status] || r.status}</td></tr>`;
+      });
+      html += '</tbody></table>';
+    } else {
+      html += '<div style="text-align:center;color:var(--t2);padding:20px">Заявок нет</div>';
+    }
+    html += `<div style="margin-top:12px"><button class="btn primary" id="pw-new-proc">+ Новая заявка</button></div></div>`;
+
+    AsgardUI.showModal(html, { title: `Закупки — ${AsgardUI.esc(work.work_title || '#' + work.id)}`, width: '700px' });
+    document.getElementById('pw-new-proc').onclick = () => { AsgardUI.closeModal(); location.hash = '#/procurement'; };
+  }
+
+  // ═══ ОБОРУДОВАНИЕ ДЛЯ РАБОТЫ ═══
+  async function openEquipmentForWork(work, user) {
+    const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    const hdrs = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+    let reserved = [], available = [];
+    try { const r = await fetch(`/api/equipment/work/${work.id}/equipment`, { headers: hdrs }); const d = await r.json(); reserved = d.items || d.rows || d || []; } catch(e) {}
+    try { const r = await fetch('/api/equipment/available', { headers: hdrs }); const d = await r.json(); available = d.items || d.rows || d || []; } catch(e) {}
+
+    const reserveFrom = (work.start_plan || work.start_fact || '').toString().slice(0, 10);
+    const reserveTo = (work.end_plan || work.end_fact || '').toString().slice(0, 10);
+
+    let html = `<div style="padding:16px">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn primary eq-tab" data-tab="reserved">Забронировано (${Array.isArray(reserved)?reserved.length:0})</button>
+        <button class="btn ghost eq-tab" data-tab="available">Доступное</button>
+      </div>
+      <div id="eq-tab-reserved">`;
+
+    if (Array.isArray(reserved) && reserved.length) {
+      reserved.forEach(eq => {
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--brd);font-size:13px">
+          <span>${AsgardUI.esc(eq.name || eq.equipment_name || '')} — ${eq.quantity || 1} ${AsgardUI.esc(eq.unit || 'шт')}</span>
+          <span style="color:var(--t2)">${eq.status || ''}</span>
+        </div>`;
+      });
+    } else { html += '<div style="color:var(--t2);padding:12px">Нет забронированного оборудования</div>'; }
+    html += `</div><div id="eq-tab-available" style="display:none">`;
+
+    if (Array.isArray(available) && available.length) {
+      available.forEach(eq => {
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--brd);font-size:13px">
+          <input type="checkbox" class="eq-avail-check" data-id="${eq.id}">
+          <span>${AsgardUI.esc(eq.name || '')} — ${eq.quantity || 1} ${AsgardUI.esc(eq.unit || 'шт')}</span>
+        </div>`;
+      });
+      html += `<div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+        <label>С: <input type="date" id="eq-from" value="${reserveFrom}"></label>
+        <label>По: <input type="date" id="eq-to" value="${reserveTo}"></label>
+        <button class="btn primary" id="eq-book">Забронировать</button>
+      </div>`;
+    } else { html += '<div style="color:var(--t2);padding:12px">Нет доступного оборудования</div>'; }
+    html += '</div></div>';
+
+    AsgardUI.showModal(html, { title: `Оборудование — ${AsgardUI.esc(work.work_title || '')}`, width: '700px' });
+
+    document.querySelectorAll('.eq-tab').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.eq-tab').forEach(b => b.className = 'btn ghost eq-tab');
+        btn.className = 'btn primary eq-tab';
+        document.getElementById('eq-tab-reserved').style.display = btn.dataset.tab === 'reserved' ? '' : 'none';
+        document.getElementById('eq-tab-available').style.display = btn.dataset.tab === 'available' ? '' : 'none';
+      };
+    });
+
+    const bookBtn = document.getElementById('eq-book');
+    if (bookBtn) bookBtn.onclick = async () => {
+      const checks = document.querySelectorAll('.eq-avail-check:checked');
+      const from = document.getElementById('eq-from').value;
+      const to = document.getElementById('eq-to').value;
+      for (const ch of checks) {
+        await fetch('/api/equipment/reserve', { method: 'POST', headers: hdrs,
+          body: JSON.stringify({ equipment_id: +ch.dataset.id, work_id: work.id, reserved_from: from, reserved_to: to }) });
+      }
+      AsgardUI.toast('Забронировано', `${checks.length} ед.`, 'ok');
+      AsgardUI.closeModal();
+    };
+  }
+
+  // ═══ СБОРКА ДЛЯ РАБОТЫ ═══
+  async function openAssemblyForWork(work, user) {
+    const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    const hdrs = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    const resp = await fetch(`/api/assembly?work_id=${work.id}`, { headers: hdrs });
+    const data = await resp.json();
+    const items = data.items || [];
+
+    let html = '<div style="padding:16px">';
+    if (items.length) {
+      html += '<div class="asm-cards">';
+      items.forEach(a => {
+        const pct = a.items_count > 0 ? Math.round((a.packed_count / a.items_count) * 100) : 0;
+        const typeLabel = a.type === 'mobilization' ? '🚛 Мобилизация' : a.type === 'demobilization' ? '🏠 Демобилизация' : '↔️ Перемещение';
+        html += `<div class="asm-card" onclick="location.hash='#/assembly?id=${a.id}';AsgardUI.closeModal()">
+          <div class="asm-card__header"><span class="asm-card__title">${AsgardUI.esc(a.title || typeLabel)}</span>
+            <span class="asm-status asm-status--${(a.status||'').replace(/_/g,'-')}">${a.status}</span></div>
+          <div class="asm-card__meta">${typeLabel} • ${a.items_count||0} поз. • ${a.pallets_count||0} мест</div>
+          <div class="asm-card__progress"><div class="asm-progress"><div class="asm-progress__bar" style="width:${pct}%"></div></div>
+            <span style="font-size:11px;color:var(--t2)">${pct}% собрано</span></div>
+        </div>`;
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="text-align:center;color:var(--t2);padding:20px">Ведомостей нет</div>';
+    }
+    html += `<div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn primary" id="aw-mob">🚛 Мобилизация</button>
+      <button class="btn ghost" id="aw-demob">🏠 Демобилизация</button>
+    </div></div>`;
+
+    AsgardUI.showModal(html, { title: `Сбор — ${AsgardUI.esc(work.work_title || '')}`, width: '750px' });
+
+    const createAsm = async (type) => {
+      const r = await fetch('/api/assembly', { method: 'POST', headers: hdrs,
+        body: JSON.stringify({ work_id: work.id, type, destination: work.object_name || '' }) });
+      const d = await r.json();
+      if (d.error) { AsgardUI.toast('Ошибка', d.error, 'err'); return; }
+      AsgardUI.toast('Создано', '', 'ok'); AsgardUI.closeModal();
+      location.hash = '#/assembly?id=' + d.item.id;
+    };
+    document.getElementById('aw-mob').onclick = () => createAsm('mobilization');
+    document.getElementById('aw-demob').onclick = () => createAsm('demobilization');
   }
 
   return { render };

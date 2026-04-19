@@ -5,6 +5,68 @@ window.AsgardHrRequestsPage=(function(){
   function isoNow(){ return new Date().toISOString(); }
   function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
 
+  // Role tag → human-readable Russian label
+  const ROLE_LABELS = {
+    'Мастер':'Мастер','Мастера':'Мастера','master':'Мастер',
+    'Слесарь':'Слесарь','Слесари':'Слесари','worker':'Слесарь',
+    'ПТО':'ПТО','pto':'ПТО',
+    'Промывщик':'Промывщик','Промывщики':'Промывщики','washer':'Промывщик',
+    'Химик':'Химик','chemist':'Химик',
+    'Сварщик':'Сварщик','welder':'Сварщик',
+    'Разнорабочий':'Разнорабочий','laborer':'Разнорабочий',
+    'ИТР':'ИТР','itr':'ИТР',
+    'pm':'Руководитель проекта','PM':'Руководитель проекта',
+    'office':'Офис','OFFICE':'Офис',
+    'driver':'Водитель',
+    'Другое':'Другое',
+  };
+  function roleLabel(tag){ return ROLE_LABELS[tag] || tag; }
+
+  // Маппинг role_tag/position сотрудника → ключ из request_json заявки
+  // Данные из БД: role_tag = "Слесарь"(477), "Сварщик"(36), "РП"(8)
+  // position = NULL(203), "Изолировщик"(83), "Слесарь-монтажник"(57), "Сварщик 6 р"(32), etc.
+  const TAG_TO_REQUEST = {
+    // === role_tag маппинг ===
+    'Слесарь':'Слесари', 'Сварщик':'Сварщики',
+    // РП — офисные, не маппим
+
+    // === position маппинг ===
+    'Мастер':'Мастера', 'Мастер-наставник':'Мастера', 'Мастер сменный':'Мастера', 'Мастер ответственный':'Мастера',
+    'Слесарь-монтажник':'Слесари', 'Слесарь-ремонтник':'Слесари',
+    'Монтажник':'Слесари', 'Монтажник ТТ':'Слесари', 'Монтажник ТТ 5р':'Слесари', 'Монтажник ТТ 6р':'Слесари',
+    'ПТО':'ПТО', 'Инженер ПТО':'ПТО', 'Мастер ПТО':'ПТО',
+    'Сварщик 6 р':'Сварщики', 'Сварщик 5 р':'Сварщики',
+    'Изолировщик':'Изолировщики',
+    'Слесарь-монтажник, Изолировщик':'Слесари',
+    'Жестянщик':'Жестянщики',
+    'Водитель':'Водители',
+    'Промывщик':'Промывщики', 'Оператор АВД':'Промывщики',
+    'Химик':'Химики',
+    'ИТР':'ИТР',
+    'Разнорабочий':'Разнорабочие', 'Лесовик':'Разнорабочие',
+  };
+  // Системные/офисные теги — исключать из подбора полевого персонала
+  const OFFICE_TAGS = new Set([
+    'pm','PM','РП','рп',
+    'office','OFFICE','ADMIN','admin','HR','hr','BUH','buh','PROC','proc',
+    'Руководитель проектов','Менеджер тендерного отдела','Главный инженер',
+  ]);
+
+  function empRequestRole(emp) {
+    // position приоритетнее — там точнее специальность
+    const pos = String(emp.position||'').trim();
+    const tag = String(emp.role_tag||'').trim();
+    return TAG_TO_REQUEST[pos] || TAG_TO_REQUEST[tag] || null;
+  }
+  function isFieldWorker(emp) {
+    const tag = String(emp.role_tag||'').trim();
+    const pos = String(emp.position||'').trim();
+    if (OFFICE_TAGS.has(tag)) return false;
+    if (OFFICE_TAGS.has(pos)) return false;
+    if (!tag && !pos) return false;
+    return true;
+  }
+
   async function audit(actorId, entityType, entityId, action, payload){
     await AsgardDB.add("audit_log",{actor_user_id:actorId,entity_type:entityType,entity_id:entityId,action,payload_json:JSON.stringify(payload||{}),created_at:isoNow()});
   }
@@ -34,11 +96,14 @@ window.AsgardHrRequestsPage=(function(){
     } catch(e) {}
   }
 
-  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim()); }
+  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim() && u.role !== 'BOT' && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot'); }
   // HR works with "employees" (рабочие), not office "staff"
-  async function getStaff(){ return await AsgardDB.all("employees"); }
+  async function getStaff(){
+    const all = await AsgardDB.all("employees");
+    return all.filter(e => e.is_active !== false && isFieldWorker(e));
+  }
 
-  function safeJson(s,def){ try{return JSON.parse(s||"");}catch(_){return def;} }
+  function safeJson(s,def){ if(Array.isArray(s)||(typeof s==='object'&&s!==null))return s; try{return JSON.parse(s||"");}catch(_){return def;} }
 
   async function render({layout,title}){
     const auth=await AsgardAuth.requireUser();
@@ -61,30 +126,20 @@ window.AsgardHrRequestsPage=(function(){
         <div class="help">«Казарма Дружины • Персонал» — запросы на людей по работам. Девиз: “Дружина сильна, когда строем управляют руны.”</div>
         <hr class="hr"/>
         <div class="tools">
-          <div class="field"><label>Период</label><select id="f_period">${generatePeriodOptions(ymNow())}</select></div>
-          <div class="field"><label>Статус</label>
-            <select id="f_status">
-              <option value="">Все</option>
-              <option value="sent">sent</option>
-              <option value="answered">answered</option>
-              <option value="approved">approved</option>
-              <option value="rework">rework</option>
-            </select>
-          </div>
-          <div class="field"><label>РП</label>
-            <select id="f_pm"><option value="">Все</option>${users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
-          </div>
+          <div class="field"><label>Период</label><div id="f_period_w"></div></div>
+          <div class="field"><label>Статус</label><div id="f_status_w"></div></div>
+          <div class="field"><label>РП</label><div id="f_pm_w"></div></div>
           <div class="field"><label>Поиск</label><input id="f_q" placeholder="заказчик / работа"/></div>
         </div>
         <hr class="hr"/>
-        <div style="overflow:auto">
+        <div class="table-wrap">
           <table class="asg">
             <thead>
               <tr>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="created_at">Запрос</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="pm_id">РП</button></th>
+                <th><button class="btn ghost mini" data-sort="created_at">Запрос</button></th>
+                <th><button class="btn ghost mini" data-sort="pm_id">РП</button></th>
                 <th>Состав</th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="status">Статус</button></th>
+                <th><button class="btn ghost mini" data-sort="status">Статус</button></th>
                 <th></th>
               </tr>
             </thead>
@@ -95,6 +150,19 @@ window.AsgardHrRequestsPage=(function(){
       </div>
     `;
     await layout(body,{title:title||"Казарма Дружины • Персонал"});
+
+    // ─── CRSelect filters ───
+    { const periodOpts = [{ value: '', label: 'Все' }];
+      const now2 = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
+      }
+      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => { currentPage=1; load(); } }));
+    }
+    $('#f_status_w').appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, { value: 'sent', label: 'Отправлен' }, { value: 'answered', label: 'Ответ HR' }, { value: 'approved', label: 'Согласован' }, { value: 'rework', label: 'Доработка' }], onChange: () => { currentPage=1; load(); } }));
+    $('#f_pm_w').appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...users.filter(u => u.role==='PM' || (Array.isArray(u.roles) && u.roles.includes('PM'))).map(p => ({ value: String(p.id), label: p.name }))], onChange: () => { currentPage=1; load(); } }));
 
     const tb=$("#tb"), cnt=$("#cnt");
 
@@ -117,9 +185,10 @@ window.AsgardHrRequestsPage=(function(){
       const works = await AsgardDB.all("works");
       const tenders = await AsgardDB.all("tenders");
 
-      const per = norm($("#f_period").value);
-      const st = $("#f_status").value;
-      const pm = $("#f_pm").value;
+      if (!$('#f_period_w')) return; // page navigated away during async fetch
+      const per = norm(CRSelect.getValue('f_period') || '');
+      const st = CRSelect.getValue('f_status') || '';
+      const pm = CRSelect.getValue('f_pm') || '';
       const q  = norm($("#f_q").value);
 
       let list = reqs.filter(r=>{
@@ -145,8 +214,8 @@ window.AsgardHrRequestsPage=(function(){
           <td><b>#${r.id}</b><div class="help">${esc(w?.customer_name||t?.customer_name||"")} — ${esc(w?.work_title||t?.tender_title||"")}</div><div class="help">${r.created_at?esc(new Date(r.created_at).toLocaleString("ru-RU")):""}</div></td>
           <td>${esc(pmU?pmU.name:"—")}</td>
           <td>${esc(compo(r))}</td>
-          <td><span class="pill" style="background:${{sent:'var(--info)',answered:'var(--amber)',approved:'var(--ok-t)',rework:'var(--err-t)'}[r.status]||'var(--t2)'};color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">${{sent:'Отправлен',answered:'Ответ HR',approved:'Согласован',rework:'Доработка'}[r.status]||r.status}</span></td>
-          <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button></td>
+          <td><span class="sr-status-pill sr-badge--${r.status||''}">${{sent:'Отправлен',answered:'Ответ HR',approved:'Согласован',rework:'Доработка'}[r.status]||r.status}</span></td>
+          <td><button class="btn mini" data-act="open">Открыть</button></td>
         </tr>`;
       }).join("");
       cnt.textContent = `Показано: ${paged_hr.length} из ${list.length}`;
@@ -162,8 +231,7 @@ window.AsgardHrRequestsPage=(function(){
     }
 
     await load();
-    ["f_period","f_q"].forEach(id=>$("#"+id).addEventListener("input", ()=>{ currentPage=1; load(); }));
-    ["f_status","f_pm"].forEach(id=>$("#"+id).addEventListener("change", ()=>{ currentPage=1; load(); }));
+    $("#f_q").addEventListener("input", ()=>{ currentPage=1; load(); });
     $$("[data-sort]").forEach(b=>{
       b.addEventListener("click", ()=>{
         const k=b.getAttribute("data-sort");
@@ -190,48 +258,105 @@ window.AsgardHrRequestsPage=(function(){
       const chosen = new Set(safeJson(req.proposed_staff_ids_json, []));
       const comment = req.hr_comment||"";
 
-      const rosterByRole = {};
-      staff.forEach(s=>{
-        const role = s.role_tag||"Другое";
-        rosterByRole[role] = rosterByRole[role]||[];
-        rosterByRole[role].push(s);
+      // Группировка по запрошенным ролям из request_json
+      const requestedRoles = Object.entries(r).filter(([k,v])=>Number(v||0)>0).map(([k])=>k);
+      const rosterByRequestRole = {};
+      const unmatchedStaff = [];
+      requestedRoles.forEach(role => { rosterByRequestRole[role] = []; });
+
+      staff.forEach(s => {
+        const mappedRole = empRequestRole(s);
+        if (mappedRole && rosterByRequestRole[mappedRole]) {
+          rosterByRequestRole[mappedRole].push(s);
+        } else if (mappedRole && requestedRoles.length === 0) {
+          // Нет конкретного запроса — все в общий пул
+          unmatchedStaff.push(s);
+        } else {
+          unmatchedStaff.push(s);
+        }
       });
 
-      const rolesHtml = Object.keys(rosterByRole).sort().map(role=>{
-        const list = rosterByRole[role];
+      // Сортировка внутри групп: по рейтингу (desc), потом ФИО
+      const sortByRating = (a,b) => (Number(b.rating_avg||0) - Number(a.rating_avg||0)) || String(a.full_name||a.fio||'').localeCompare(String(b.full_name||b.fio||''),'ru');
+      Object.values(rosterByRequestRole).forEach(arr => arr.sort(sortByRating));
+      unmatchedStaff.sort(sortByRating);
+
+      function empName(s) {
+        return s.full_name || s.fio || `Сотрудник #${s.id}`;
+      }
+      function empAvatar(s) {
+        const name = empName(s);
+        const parts = name.split(' ');
+        const initials = parts.length >= 2
+          ? (parts[0][0] + parts[1][0]).toUpperCase()
+          : (name[0] || '?').toUpperCase();
+        const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+        return `<div class="sr-avatar sr-avatar--c${hash % 10}">${initials}</div>`;
+      }
+
+      function renderEmpRow(s, role) {
+        const name = empName(s);
+        const pos = s.position || roleLabel(s.role_tag||'');
+        const rat = s.rating_avg && Number(s.rating_avg) > 0 ? Number(s.rating_avg).toFixed(1) : '';
+        const ratCls = Number(s.rating_avg||0) >= 4 ? 'sr-rat--high' : Number(s.rating_avg||0) >= 3 ? 'sr-rat--mid' : '';
+        const phone = s.phone || '';
+        const avatar = empAvatar(s);
+        const searchData = `data-emp-id="${s.id}" data-emp-name="${esc(name)}" data-emp-role="${esc(role)}" data-emp-city="${esc(s.city||'')}"`;
+
+        if (isVachta) {
+          const isSel = chosenA.has(s.id)||chosenB.has(s.id);
+          return `<tr class="sr-emp-row ${isSel?'selected':''}" ${searchData}>
+            <td class="sr-td-vachta">
+              <label><input type="checkbox" class="stchkA" data-id="${s.id}" data-role="${esc(role)}" ${chosenA.has(s.id)?"checked":""}/>A</label>
+              <label><input type="checkbox" class="stchkB" data-id="${s.id}" data-role="${esc(role)}" ${chosenB.has(s.id)?"checked":""}/>B</label>
+            </td>
+            <td class="sr-td-av">${avatar}</td>
+            <td class="sr-td-name">${esc(name)}</td>
+            <td class="sr-td-pos">${esc(pos)}</td>
+            <td class="sr-td-city">${esc(s.city||'')}</td>
+            <td class="sr-td-rat ${ratCls}">${rat}</td>
+            <td class="sr-td-ph">${esc(phone)}</td>
+          </tr>`;
+        }
+        return `<tr class="sr-emp-row ${chosen.has(s.id)?'selected':''}" ${searchData}>
+          <td class="sr-td-chk"><input type="checkbox" class="stchk" value="${s.id}" data-role="${esc(role)}" ${chosen.has(s.id)?"checked":""}></td>
+          <td class="sr-td-av">${avatar}</td>
+          <td class="sr-td-name">${esc(name)}</td>
+          <td class="sr-td-pos">${esc(pos)}</td>
+          <td class="sr-td-city">${esc(s.city||'')}</td>
+          <td class="sr-td-rat ${ratCls}">${rat}</td>
+          <td class="sr-td-ph">${esc(phone)}</td>
+        </tr>`;
+      }
+
+      function buildEmpTable(list, role) {
+        if (!list.length) return '<div class="help sr-empty-hint">Нет сотрудников с подходящей специальностью</div>';
+        return `<div class="sr-emp-table-wrap"><table class="sr-emp-table">
+          <thead><tr><th class="sr-th-chk"></th><th></th><th>ФИО</th><th>Должность</th><th>Город</th><th>★</th><th>Телефон</th></tr></thead>
+          <tbody>${list.map(s => renderEmpRow(s, role)).join("")}</tbody>
+        </table></div>`;
+      }
+
+      const rolesHtml = requestedRoles.map(role => {
+        const list = rosterByRequestRole[role] || [];
         const needed = Number(r[role]||0);
         return `<div class="sr-role-group" data-role="${esc(role)}">
           <div class="sr-role-header">
             <div>
-              <span class="sr-role-name">${esc(role)}</span>
-              ${needed>0?`<span style="margin-left:8px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:rgba(74,144,217,0.15);color:var(--info)">нужно: ${needed}</span>`:''}
+              <span class="sr-role-name">${esc(roleLabel(role))}</span>
+              <span class="sr-role-need">нужно: ${needed}</span>
+              <span class="sr-role-picked" data-counter="${esc(role)}">выбрано: 0 / ${needed}</span>
             </div>
-            <button class="btn ghost" style="padding:5px 12px;font-size:12px" data-act="pickRole" data-role="${esc(role)}">Авто-подбор</button>
+            <button class="btn ghost mini" data-act="pickRole" data-role="${esc(role)}">Авто-подбор</button>
           </div>
-          <div class="sr-emp-grid">
-            ${list.map(s=> isVachta ? `
-              <div class="sr-emp-card ${chosenA.has(s.id)||chosenB.has(s.id)?'selected':''}" data-emp-id="${s.id}" data-emp-name="${esc(s.fio||s.name||'')}" data-emp-role="${esc(s.role_tag||'')}" data-emp-city="${esc(s.city||'')}">
-                <div style="display:flex;gap:6px;align-items:center;min-width:60px">
-                  <label style="display:flex;gap:4px;align-items:center;font-size:11px;cursor:pointer"><input type="checkbox" class="stchkA" data-id="${s.id}" ${chosenA.has(s.id)?"checked":""}/>A</label>
-                  <label style="display:flex;gap:4px;align-items:center;font-size:11px;cursor:pointer"><input type="checkbox" class="stchkB" data-id="${s.id}" ${chosenB.has(s.id)?"checked":""}/>B</label>
-                </div>
-                <div>
-                  <div class="sr-emp-name">${esc(s.fio||s.name||"")}${s.rating_avg ? " ★"+Number(s.rating_avg).toFixed(1) : ""}</div>
-                  <div class="sr-emp-info">${esc(s.role_tag||"")}${s.city?" · "+esc(s.city):""}${s.phone?" · "+esc(s.phone):""}</div>
-                </div>
-              </div>
-            ` : `
-              <label class="sr-emp-card ${chosen.has(s.id)?'selected':''}" data-emp-id="${s.id}" data-emp-name="${esc(s.fio||s.name||'')}" data-emp-role="${esc(s.role_tag||'')}" data-emp-city="${esc(s.city||'')}">
-                <input type="checkbox" class="stchk" value="${s.id}" ${chosen.has(s.id)?"checked":""} style="accent-color:var(--info)"/>
-                <div>
-                  <div class="sr-emp-name">${esc(s.fio||s.name||"")}${s.rating_avg ? " ★"+Number(s.rating_avg).toFixed(1) : ""}</div>
-                  <div class="sr-emp-info">${esc(s.role_tag||"")}${s.city?" · "+esc(s.city):""}${s.phone?" · "+esc(s.phone):""}</div>
-                </div>
-              </label>
-            `).join("")}
-          </div>
+          ${buildEmpTable(list, role)}
         </div>`;
-      }).join("");
+      }).join("") + (unmatchedStaff.length ? `<div class="sr-role-group" data-role="__other">
+        <div class="sr-role-header">
+          <div><span class="sr-role-name">Остальные сотрудники</span></div>
+        </div>
+        ${buildEmpTable(unmatchedStaff, '__other')}
+      </div>` : '');
 
       // ===== Замены (HR инициирует, PM согласует) =====
       const approvedIds = safeJson(req.approved_staff_ids_json, []);
@@ -241,80 +366,63 @@ window.AsgardHrRequestsPage=(function(){
       const replaceHtml = (String(req.status||"")==="approved" && user.role==="HR") ? `
         <hr class="hr"/>
         <div class="sr-section-title">Замены сотрудников</div>
-        ${replaceList.length? `<div style="margin-top:8px">${replaceList.map(s=>{
+        ${replaceList.length? `<div class="sr-section">${replaceList.map(s=>{
             const crew = approvedA.has(s.id) ? "A" : (approvedB.has(s.id) ? "B" : "");
-            return `<div class="pill" style="justify-content:space-between; gap:10px">
-              <div><div class="who"><b>${esc(s.fio||s.name||"")}</b> ${crew?`<span class=\"tag\">вахта ${crew}</span>`:""}</div>
-              <div class="role">${esc(s.role_tag||"")}${s.city?" • "+esc(s.city):""}</div></div>
-              <button class="btn ghost" style="padding:6px 10px" data-act="replace" data-emp="${s.id}">Заменить</button>
+            return `<div class="pill between">
+              <div><div class="who"><b>${esc(empName(s))}</b> ${crew?`<span class="tag">вахта ${crew}</span>`:""}</div>
+              <div class="role">${esc(roleLabel(s.role_tag||""))}${s.city?" • "+esc(s.city):""}</div></div>
+              <button class="btn ghost mini" data-act="replace" data-emp="${s.id}">Заменить</button>
             </div>`;
           }).join("")}</div>` : `<div class="help">Нет согласованных сотрудников для замены.</div>`}
       ` : ``;
 
-      // --- Build composition cards ---
+      // --- Build composition table with live counters ---
       const composParts = Object.entries(r).filter(([k,v])=>Number(v||0)>0);
-      const composHtml = composParts.length ? composParts.map(([k,v])=>`<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(74,144,217,0.1);border:1px solid rgba(74,144,217,0.2);border-radius:8px;padding:6px 12px;font-size:13px"><b>${esc(k)}</b><span style="background:var(--info);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${v}</span></div>`).join(' ') : '<span style="color:var(--t2)">Не указан</span>';
+      const totalNeeded = composParts.reduce((s,[,v])=>s+Number(v||0),0);
+      const composHtml = composParts.length ? `
+        <table class="sr-compos-table">
+          <thead><tr><th>Должность</th><th>Запрошено</th><th>Выбрано</th></tr></thead>
+          <tbody>
+            ${composParts.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v}</td><td class="sr-compos-picked" data-role="${esc(k)}">0 / ${v}</td></tr>`).join('')}
+            <tr class="sr-compos-total"><td><b>ИТОГО</b></td><td><b>${totalNeeded}</b></td><td id="sr_total_counter"><b>0 / ${totalNeeded}</b></td></tr>
+          </tbody>
+        </table>
+        ${req.pm_comment ? `<div class="sr-pm-comment">Комментарий РП: «${esc(req.pm_comment)}»</div>` : ''}
+      ` : '<span class="sr-compos-empty">Состав на усмотрение HR</span>';
 
-      const statusColors = {sent:'var(--info)',answered:'var(--amber)',approved:'var(--ok-t)',rework:'var(--err-t)'};
       const statusLabels = {sent:'Отправлен',answered:'Ответ HR',approved:'Согласован',rework:'На доработке'};
-      const stColor = statusColors[req.status]||'var(--t2)';
       const stLabel = statusLabels[req.status]||req.status;
 
       const html = `
-        <style>
-          .sr-header{display:grid;grid-template-columns:1fr auto;gap:16px;padding:16px 20px;background:linear-gradient(135deg,rgba(13,20,40,0.7),rgba(30,61,114,0.2));border-radius:10px;border:1px solid rgba(255,255,255,0.06)}
-          .sr-header .title{font-size:16px;font-weight:700;color:var(--t1)}
-          .sr-header .sub{font-size:13px;color:var(--t2);margin-top:4px}
-          .sr-badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;color:#fff}
-          .sr-section{margin-top:16px}
-          .sr-section-title{font-size:13px;font-weight:700;color:var(--gold-l,#d4af37);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;display:flex;align-items:center;gap:8px}
-          .sr-role-group{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:14px;margin-bottom:10px}
-          .sr-role-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-          .sr-role-name{font-weight:700;font-size:14px;color:var(--t1)}
-          .sr-emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px;max-height:250px;overflow-y:auto;padding-right:4px}
-          .sr-emp-card{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all 0.15s}
-          .sr-emp-card:hover{background:rgba(74,144,217,0.08);border-color:rgba(74,144,217,0.2)}
-          .sr-emp-card.selected{background:rgba(74,144,217,0.12);border-color:rgba(74,144,217,0.4)}
-          .sr-emp-name{font-size:13px;font-weight:600;color:var(--t1)}
-          .sr-emp-info{font-size:11px;color:var(--t2)}
-          .sr-chat-msg{padding:10px 14px;border-radius:8px;margin-bottom:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)}
-          .sr-chat-msg .who{font-size:11px;color:var(--gold-l);font-weight:600}
-          .sr-chat-msg .when{font-size:10px;color:var(--t3)}
-          .sr-chat-msg .text{font-size:13px;color:var(--t1);margin-top:4px}
-          .sr-search{width:100%;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--t1);font-size:13px;margin-bottom:10px}
-          .sr-search::placeholder{color:var(--t3)}
-          .sr-actions{display:flex;gap:10px;flex-wrap:wrap;padding:16px 0 0;position:sticky;bottom:0;background:var(--bg-card);z-index:2}
-          .sr-section-title::after{content:'';flex:1;height:1px;background:rgba(212,168,67,0.2)}
-        </style>
-
         <div class="sr-header">
           <div>
             <div class="title">${esc(w?.customer_name||t?.customer_name||"Заказчик не указан")}</div>
             <div class="sub">${esc(w?.work_title||t?.tender_title||"Работа не указана")}</div>
-            <div class="sub" style="margin-top:6px">РП: <b style="color:var(--t1)">${esc(pmU?pmU.name:"Не назначен")}</b></div>
+            <div class="sub">РП: <b>${esc(pmU?pmU.name:"Не назначен")}</b>${req.date_from ? ` · ${esc(req.date_from)}` : ''}${req.date_to ? ` — ${esc(req.date_to)}` : ''}</div>
           </div>
-          <div style="text-align:right">
-            <div class="sr-badge" style="background:${stColor}">${esc(stLabel)}</div>
-            <div style="font-size:11px;color:var(--t3);margin-top:6px">${req.created_at?new Date(req.created_at).toLocaleDateString("ru-RU"):""}</div>
+          <div class="sr-header__right">
+            <div class="sr-badge sr-badge--${esc(req.status||'')}">${esc(stLabel)}</div>
+            <div class="sr-header__date">${req.created_at?new Date(req.created_at).toLocaleDateString("ru-RU"):""}</div>
           </div>
         </div>
 
         <div class="sr-section">
           <div class="sr-section-title">Запрошенный состав</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px">${composHtml}</div>
-          ${isVachta ? '<div style="margin-top:8px;padding:8px 12px;background:rgba(212,168,67,0.08);border-radius:8px;font-size:12px;color:var(--gold-l)"><b>Вахтовый метод</b>: ротация ' + esc(String(req.rotation_days||"")) + ' дн. (бригады A/B)</div>' : ''}
+          ${composHtml}
+          ${isVachta ? '<div class="sr-vachta-note"><b>Вахтовый метод</b>: ротация ' + esc(String(req.rotation_days||"")) + ' дн. (бригады A/B)</div>' : ''}
         </div>
 
         <div class="sr-section">
           <div class="sr-section-title">Комментарий HR</div>
-          <input id="hr_comment" value="${esc(comment)}" placeholder="Условия, доступность, ограничения..." style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--t1);font-size:13px"/>
+          <input id="hr_comment" class="sr-input" value="${esc(comment)}" placeholder="Условия, доступность, ограничения..."/>
         </div>
 
         <div class="sr-section">
           <div class="sr-section-title">Подбор сотрудников</div>
-          <div style="display:flex;gap:8px;margin-bottom:10px">
-            <input class="sr-search" id="sr_emp_search" placeholder="Поиск по ФИО, должности, городу..." style="flex:1;margin-bottom:0"/>
-            <button class="btn ghost" id="btnFromCollection" style="white-space:nowrap;border:1px solid var(--gold);color:var(--gold)">Из подборки</button>
+          <button class="btn ghost mini" id="btnAutoPickAll" style="margin-bottom:8px">Авто-подбор всех</button>
+          <div class="sr-msg-row">
+            <div><input class="sr-search" id="sr_emp_search" placeholder="Поиск по ФИО, должности, городу..."/></div>
+            <button class="btn ghost" id="btnFromCollection">Из подборки</button>
           </div>
           <div id="sr_roles_container">${rolesHtml}</div>
         </div>
@@ -323,21 +431,19 @@ window.AsgardHrRequestsPage=(function(){
 
         <div class="sr-section">
           <div class="sr-section-title">Переписка с РП</div>
-          <div id="sr_chat" style="max-height:200px;overflow-y:auto"></div>
-          <div style="display:flex;gap:10px;align-items:flex-end;margin-top:10px">
-            <div style="flex:1">
-              <textarea id="sr_msg" rows="2" placeholder="Сообщение для РП..." style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--t1);font-size:13px;resize:vertical"></textarea>
-            </div>
-            <button class="btn" id="btnSendSrMsg" style="padding:10px 16px;white-space:nowrap">Отправить</button>
+          <div id="sr_chat" class="sr-chat-area"></div>
+          <div class="sr-msg-row">
+            <div><textarea id="sr_msg" class="sr-input" rows="2" placeholder="Сообщение для РП..."></textarea></div>
+            <button class="btn" id="btnSendSrMsg">Отправить</button>
           </div>
         </div>
 
         <div class="sr-actions">
-          <button class="btn primary" id="btnSend" style="flex:1;padding:12px 20px;font-size:14px;font-weight:700">Отправить ответ РП</button>
-          <button class="btn ghost" id="btnHistory" style="padding:12px 16px">История</button>
+          <button class="btn primary" id="btnSend">Отправить ответ РП</button>
+          <button class="btn ghost" id="btnHistory">История</button>
         </div>
       `;
-      showModal(`Запрос персонала #${id}`, `<div style="max-height:85vh; overflow-y:auto; padding:4px">${html}</div>`);
+      showModal(`Запрос персонала #${id}`, `<div class="sr-modal-scroll">${html}</div>`);
 
       // Collection picker button
       var btnCol = document.getElementById('btnFromCollection');
@@ -347,9 +453,9 @@ window.AsgardHrRequestsPage=(function(){
             var cols = await AsgardEmployeeCollections.getCollectionsList();
             if (!cols.length) { toast('Подборки', 'Нет подборок. Создайте в меню Подборки Дружины', 'err'); return; }
             var colHtml = cols.map(function(c2) {
-              return '<div class="col-pick" data-col-id="' + c2.id + '" style="padding:14px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;margin-bottom:6px"><div style="font-weight:700;color:var(--gold)">' + esc(c2.name) + '</div><div style="font-size:12px;color:var(--t3)">' + (c2.employee_count||0) + ' сотр.</div></div>';
+              return '<div class="col-pick sr-col-card" data-col-id="' + c2.id + '"><div class="sr-col-name">' + esc(c2.name) + '</div><div class="sr-col-count">' + (c2.employee_count||0) + ' сотр.</div></div>';
             }).join('');
-            showModal('Выберите подборку', '<div style="max-height:60vh;overflow-y:auto">' + colHtml + '</div>');
+            showModal('Выберите подборку', '<div class="sr-modal-scroll">' + colHtml + '</div>');
             document.querySelectorAll('.col-pick').forEach(function(el) {
               el.addEventListener('click', async function() {
                 var cid = Number(el.dataset.colId);
@@ -357,10 +463,11 @@ window.AsgardHrRequestsPage=(function(){
                 var empIds = new Set(emps.map(function(e2){ return e2.id; }));
                 document.querySelectorAll('.stchk').forEach(function(cb) {
                   if (empIds.has(Number(cb.value))) { cb.checked = true; }
-                  var card2 = cb.closest('.sr-emp-card');
-                  if (card2) card2.classList.toggle('selected', cb.checked);
+                  var row2 = cb.closest('.sr-emp-row');
+                  if (row2) row2.classList.toggle('selected', cb.checked);
                 });
                 AsgardUI.hideModal();
+                updateCounters();
                 toast('Подборки', 'Сотрудники из подборки отмечены');
               });
             });
@@ -373,34 +480,83 @@ window.AsgardHrRequestsPage=(function(){
       if (searchInput) {
         searchInput.addEventListener('input', () => {
           const q = searchInput.value.toLowerCase().trim();
-          document.querySelectorAll('.sr-emp-card').forEach(card => {
-            const name = (card.getAttribute('data-emp-name')||'').toLowerCase();
-            const role = (card.getAttribute('data-emp-role')||'').toLowerCase();
-            const city = (card.getAttribute('data-emp-city')||'').toLowerCase();
-            card.style.display = (!q || name.includes(q) || role.includes(q) || city.includes(q)) ? '' : 'none';
+          document.querySelectorAll('.sr-emp-row').forEach(row => {
+            const name = (row.getAttribute('data-emp-name')||'').toLowerCase();
+            const role = (row.getAttribute('data-emp-role')||'').toLowerCase();
+            const city = (row.getAttribute('data-emp-city')||'').toLowerCase();
+            row.classList.toggle('cr-field-hidden', !(!q || name.includes(q) || role.includes(q) || city.includes(q)));
           });
           document.querySelectorAll('.sr-role-group').forEach(g => {
-            const visible = g.querySelectorAll('.sr-emp-card:not([style*="display: none"])').length;
-            g.style.display = visible > 0 ? '' : 'none';
+            const visible = g.querySelectorAll('.sr-emp-row:not(.cr-field-hidden)').length;
+            g.classList.toggle('cr-field-hidden', visible === 0);
           });
         });
       }
 
+      // Live counter update function
+      function updateCounters() {
+        let totalPicked = 0;
+        requestedRoles.forEach(role => {
+          const needed = Number(r[role]||0);
+          let picked = 0;
+          if (!isVachta) {
+            picked = document.querySelectorAll(`.stchk[data-role="${CSS.escape(role)}"]:checked`).length;
+          } else {
+            const aSet = new Set(), bSet = new Set();
+            document.querySelectorAll(`.stchkA[data-role="${CSS.escape(role)}"]:checked`).forEach(c => aSet.add(c.dataset.id));
+            document.querySelectorAll(`.stchkB[data-role="${CSS.escape(role)}"]:checked`).forEach(c => bSet.add(c.dataset.id));
+            picked = new Set([...aSet, ...bSet]).size;
+          }
+          totalPicked += picked;
+          // Update counter in role header
+          const counter = document.querySelector(`.sr-role-picked[data-counter="${CSS.escape(role)}"]`);
+          if (counter) {
+            counter.textContent = `выбрано: ${picked} / ${needed}`;
+            counter.classList.toggle('sr-counter-ok', picked >= needed);
+            counter.classList.toggle('sr-counter-warn', picked > 0 && picked < needed);
+          }
+          // Update counter in composition table
+          const cell = document.querySelector(`.sr-compos-picked[data-role="${CSS.escape(role)}"]`);
+          if (cell) {
+            cell.textContent = `${picked} / ${needed}`;
+            cell.classList.toggle('sr-counter-ok', picked >= needed);
+            cell.classList.toggle('sr-counter-warn', picked > 0 && picked < needed);
+          }
+        });
+        const totalEl = document.getElementById('sr_total_counter');
+        if (totalEl) {
+          totalEl.innerHTML = `<b>${totalPicked} / ${totalNeeded}</b>`;
+          totalEl.classList.toggle('sr-counter-ok', totalPicked >= totalNeeded);
+        }
+      }
+
+      // Click on table row = toggle checkbox
+      document.querySelectorAll('.sr-emp-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          if (e.target.tagName === 'INPUT') return; // let native checkbox handle
+          const cb = row.querySelector('.stchk, .stchkA');
+          if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', {bubbles:true})); }
+        });
+      });
       document.querySelectorAll('.stchk').forEach(cb => {
         cb.addEventListener('change', () => {
-          const card = cb.closest('.sr-emp-card');
-          if (card) card.classList.toggle('selected', cb.checked);
+          const row = cb.closest('.sr-emp-row');
+          if (row) row.classList.toggle('selected', cb.checked);
+          updateCounters();
         });
       });
       document.querySelectorAll('.stchkA, .stchkB').forEach(cb => {
         cb.addEventListener('change', () => {
-          const card = cb.closest('.sr-emp-card');
-          if (card) {
-            const anyChecked = card.querySelector('.stchkA:checked') || card.querySelector('.stchkB:checked');
-            card.classList.toggle('selected', !!anyChecked);
+          const row = cb.closest('.sr-emp-row');
+          if (row) {
+            const anyChecked = row.querySelector('.stchkA:checked') || row.querySelector('.stchkB:checked');
+            row.classList.toggle('selected', !!anyChecked);
           }
+          updateCounters();
         });
       });
+      // Initial counter update
+      updateCounters();
 
       // helpers
       const toDateStr = (d)=>{
@@ -454,21 +610,21 @@ window.AsgardHrRequestsPage=(function(){
         };
         const okIds=[];
         for(const c of candidatesAll){ if(await isFree(c.id)) okIds.push(c.id); }
-        const opts = okIds.map(id2=>{ const s=staff.find(x=>x.id===id2); return `<option value="${id2}">${esc(s.fio||s.name||"")} (${esc(s.city||"")})</option>`; }).join("");
+        const opts = okIds.map(id2=>{ const s=staff.find(x=>x.id===id2); return `<option value="${id2}">${esc(empName(s))} (${esc(s.city||"")})</option>`; }).join("");
         const body = `
-          <div class="help"><b>Замена</b>: ${esc(old.fio||old.name||"")} (${esc(old.role_tag||"")}) ${crew?`<span class=\"tag\">вахта ${crew}</span>`:""}</div>
-          <div class="help" style="margin-top:6px">Период: ${esc(start||"")} — ${esc(end||"")}</div>
-          <div class="formrow" style="margin-top:10px">
+          <div class="help"><b>Замена</b>: ${esc(empName(old))} (${esc(roleLabel(old.role_tag||""))}) ${crew?`<span class=\"tag\">вахта ${crew}</span>`:""}</div>
+          <div class="help">Период: ${esc(start||"")} — ${esc(end||"")}</div>
+          <div class="formrow">
           <div id="repNewPicker"></div>
-            <div style="grid-column:1/-1"><label>Комментарий (HR)</label><input id="rep_comment" placeholder="причина замены/контакт"/></div>
+            <div><label>Комментарий (HR)</label><input id="rep_comment" placeholder="причина замены/контакт"/></div>
           </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
+          <div class="sr-replace-btns">
             <button class="btn" id="rep_send">Отправить РП</button>
             <button class="btn ghost" id="rep_cancel">Закрыть</button>
           </div>
         `;
-        showModal("Замена сотрудника", `<div style="max-height:70vh; overflow:auto">${body}</div>`);
-        if(window.AsgardEmployeePicker && typeof okIds !== 'undefined'){const _okSet=new Set(okIds);AsgardEmployeePicker.renderButton('repNewPicker',{placeholder:'Выберите замену...',title:'Замена сотрудника',filter:e=>_okSet.has(e.id)});}
+        showModal("Замена сотрудника", `<div class="sr-replace-scroll">${body}</div>`);
+        if(window.CREmployeePicker && typeof okIds !== 'undefined'){const _okSet=new Set(okIds);CREmployeePicker.renderButton('repNewPicker',{placeholder:'Выберите замену...',title:'Замена сотрудника',filter:e=>_okSet.has(e.id)});}
         const btnSend = document.getElementById("rep_send");
         const btnCancel = document.getElementById("rep_cancel");
         if(btnCancel) btnCancel.onclick = ()=>closeModal();
@@ -514,7 +670,7 @@ window.AsgardHrRequestsPage=(function(){
           const u = uById.get(m.author_user_id)||{};
           const who = esc(u.name||("user#"+m.author_user_id));
           const dt = m.created_at ? new Date(m.created_at).toLocaleString("ru-RU") : "";
-          return `<div class="sr-chat-msg"><div style="display:flex;justify-content:space-between"><span class="who">${who}</span><span class="when">${esc(dt)}</span></div><div class="text">${esc(m.text||"")}</div></div>`;
+          return `<div class="sr-chat-msg"><div class="sr-chat-msg-head"><span class="who">${who}</span><span class="when">${esc(dt)}</span></div><div class="text">${esc(m.text||"")}</div></div>`;
         }).join("");
       }
       await renderChat();
@@ -555,44 +711,51 @@ window.AsgardHrRequestsPage=(function(){
         });
       }
 
-      // quick pick: select first N in role
-      $$("[data-act='pickRole']").forEach(btn=>{
-        btn.addEventListener("click", ()=>{
-          const role=btn.getAttribute("data-role");
-          const need = Number(r[role]||0);
-          if(!need) return;
-          if(!isVachta){
-            let picked=0;
-            $$(".stchk").forEach(c=>{
-              const stId=Number(c.value);
-              const st=staff.find(x=>x.id===stId);
-              if(st?.role_tag===role){
-                if(picked<need){ c.checked=true; picked++; }
-                else c.checked=false;
-              }
-            });
-          }else{
-            // для вахты: отдельно набираем A и B одинаковой численности
-            const roleStaff = staff.filter(s=>String(s.role_tag||"")===String(role));
-            // очистим выделение по роли
-            $$(".stchkA").forEach(c=>{ const st=staff.find(x=>x.id===Number(c.getAttribute('data-id'))); if(st?.role_tag===role) c.checked=false; });
-            $$(".stchkB").forEach(c=>{ const st=staff.find(x=>x.id===Number(c.getAttribute('data-id'))); if(st?.role_tag===role) c.checked=false; });
-            let a=0, b=0;
-            for(const s of roleStaff){
-              if(a<need){
-                const el = $$(".stchkA").find(x=>Number(x.getAttribute('data-id'))===s.id);
-                if(el){ el.checked=true; a++; }
-                continue;
-              }
-              if(b<need){
-                const el = $$(".stchkB").find(x=>Number(x.getAttribute('data-id'))===s.id);
-                if(el){ el.checked=true; b++; }
-              }
-              if(a>=need && b>=need) break;
+      // Авто-подбор по роли: выбрать top-N по рейтингу (DOM-порядок уже отсортирован)
+      function autoPickRole(role) {
+        const need = Number(r[role]||0);
+        if (!need) return;
+        if (!isVachta) {
+          $$(".stchk").forEach(c => { if (c.dataset.role === role) { c.checked = false; c.closest('.sr-emp-row')?.classList.remove('selected'); } });
+          let picked = 0;
+          $$(".stchk").forEach(c => {
+            if (c.dataset.role === role && picked < need) {
+              c.checked = true; c.closest('.sr-emp-row')?.classList.add('selected'); picked++;
             }
+          });
+          if (picked < need) toast("Авто-подбор", `${role}: найдено ${picked} из ${need}`, "warn");
+        } else {
+          $$(".stchkA").forEach(c => { if (c.dataset.role === role) c.checked = false; });
+          $$(".stchkB").forEach(c => { if (c.dataset.role === role) c.checked = false; });
+          let a = 0, b = 0;
+          const allA = $$(".stchkA").filter(c => c.dataset.role === role);
+          const allB = $$(".stchkB").filter(c => c.dataset.role === role);
+          for (let i = 0; i < allA.length && a < need; i++) { allA[i].checked = true; a++; }
+          for (let i = 0; i < allB.length && b < need; i++) {
+            if (!allA[i]?.checked) { allB[i].checked = true; b++; }
+            else if (allB.length > allA.length && b < need) { allB[allA.length + b - need]&&(allB[allA.length + b - need].checked = true); b++; }
           }
-        });
+          // Fallback: just pick first N for B that aren't in A
+          if (b < need) {
+            const aIds = new Set(allA.filter(c=>c.checked).map(c=>c.dataset.id));
+            allB.forEach(c => { if (!aIds.has(c.dataset.id) && b < need && !c.checked) { c.checked = true; b++; } });
+          }
+          document.querySelectorAll('.sr-emp-row').forEach(card => {
+            const any = card.querySelector('.stchkA:checked') || card.querySelector('.stchkB:checked');
+            card.classList.toggle('selected', !!any);
+          });
+        }
+        updateCounters();
+      }
+
+      $$("[data-act='pickRole']").forEach(btn => {
+        btn.addEventListener("click", () => autoPickRole(btn.getAttribute("data-role")));
       });
+      // Кнопка "Авто-подбор всех"
+      const btnAutoAll = document.getElementById('btnAutoPickAll');
+      if (btnAutoAll) {
+        btnAutoAll.addEventListener('click', () => { requestedRoles.forEach(role => autoPickRole(role)); });
+      }
 
       $("#btnHistory").addEventListener("click", async ()=>{
         const logs = (await AsgardDB.all("audit_log"))
@@ -600,7 +763,7 @@ window.AsgardHrRequestsPage=(function(){
           .sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
         const rows = logs.map(l=>`
           <div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(new Date(l.created_at).toLocaleString("ru-RU"))}</div><div class="role">${esc(l.actor_user_id)}</div></div>
-          <div class="help" style="margin:6px 0 10px">${esc(l.payload_json||"")}</div>
+          <div class="help sr-history-detail">${esc(l.payload_json||"")}</div>
         `).join("");
         showModal("История (staff_request)", rows || `<div class="help">Пусто.</div>`);
       });
@@ -611,20 +774,21 @@ window.AsgardHrRequestsPage=(function(){
         let idsB = [];
         if(!isVachta){
           ids = $$(".stchk").filter(c=>c.checked).map(c=>Number(c.value));
+          req.proposed_staff_ids_a_json = null;
+          req.proposed_staff_ids_b_json = null;
         }else{
           idsA = $$(".stchkA").filter(c=>c.checked).map(c=>Number(c.getAttribute('data-id')));
           idsB = $$(".stchkB").filter(c=>c.checked).map(c=>Number(c.getAttribute('data-id')));
           ids = Array.from(new Set([...(idsA||[]),...(idsB||[])]));
-          // валидация: состав по каждой роли должен совпадать с запросом для A и для B
-          const staffById = new Map((staff||[]).map(s=>[s.id,s]));
+          // валидация по data-role атрибуту (маппинг запрошенных ролей)
           const bad = [];
-          Object.keys(r||{}).forEach(role=>{
+          requestedRoles.forEach(role => {
             const need = Number(r[role]||0);
-            if(!need) return;
-            const cntA = (idsA||[]).map(id3=>staffById.get(id3)).filter(s=>s&&String(s.role_tag||'')===String(role)).length;
-            const cntB = (idsB||[]).map(id3=>staffById.get(id3)).filter(s=>s&&String(s.role_tag||'')===String(role)).length;
-            if(cntA!==need) bad.push(`${role}: A=${cntA}/${need}`);
-            if(cntB!==need) bad.push(`${role}: B=${cntB}/${need}`);
+            if (!need) return;
+            const cntA = $$(".stchkA:checked").filter(c => c.dataset.role === role).length;
+            const cntB = $$(".stchkB:checked").filter(c => c.dataset.role === role).length;
+            if (cntA !== need) bad.push(`${role}: A=${cntA}/${need}`);
+            if (cntB !== need) bad.push(`${role}: B=${cntB}/${need}`);
           });
           if(bad.length){
             toast("Вахта","Нужно подобрать состав для A/B строго по заявке: " + bad.join('; '),"err", 8000);
@@ -632,6 +796,10 @@ window.AsgardHrRequestsPage=(function(){
           }
           req.proposed_staff_ids_a_json = JSON.stringify(idsA);
           req.proposed_staff_ids_b_json = JSON.stringify(idsB);
+        }
+        if (!ids.length) {
+          toast("HR", "Выберите хотя бы одного сотрудника", "err");
+          return;
         }
         req.proposed_staff_ids_json = JSON.stringify(ids);
         req.hr_comment = $("#hr_comment").value.trim()||"";

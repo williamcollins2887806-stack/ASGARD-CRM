@@ -98,7 +98,7 @@ window.AsgardWarehouse = (function(){
     const stats = data.stats || {};
     
     // Форматирование денег
-    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₽';
+    const formatMoney = (v) => AsgardUI.money(v) + ' ₽';
     
     // Опции фильтров
     const categoryOptions = categories.map(c => 
@@ -148,20 +148,9 @@ window.AsgardWarehouse = (function(){
         <div class="toolbar" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:center">
           <input type="text" class="inp" id="searchEquip" placeholder="🔍 Поиск по названию, инв.номеру..." style="flex:1;min-width:200px" value="${esc(currentFilters.search || '')}"/>
           
-          <select class="inp" id="filterCategory" style="width:160px">
-            <option value="">Все категории</option>
-            ${categoryOptions}
-          </select>
-          
-          <select class="inp" id="filterStatus" style="width:140px">
-            <option value="">Все статусы</option>
-            ${statusOptions}
-          </select>
-          
-          <select class="inp" id="filterObject" style="width:160px">
-            <option value="">Все объекты</option>
-            ${objectOptions}
-          </select>
+          <div id="filterCategory_w" style="width:160px"></div>
+          <div id="filterStatus_w" style="width:140px"></div>
+          <div id="filterObject_w" style="width:160px"></div>
           
           ${canEdit ? `
             <button class="btn primary" id="btnAddEquip">➕ Добавить</button>
@@ -206,13 +195,22 @@ window.AsgardWarehouse = (function(){
     `;
     
     await layout(html, { title: title || 'Склад ТМЦ', motto: 'Учёт оборудования и инструментов' });
+
+    /* CRSelect: фильтры */
+    const _catOpts = categories.map(c => ({ value: String(c.id), label: (c.icon||'') + ' ' + c.name }));
+    const _statusOpts = Object.entries(STATUSES).map(([k,v]) => ({ value: k, label: v.icon + ' ' + v.label }));
+    const _objOpts = objects.map(o => ({ value: String(o.id), label: o.name }));
+    $('#filterCategory_w')?.appendChild(CRSelect.create({ id: 'filterCategory', placeholder: 'Все категории', options: _catOpts, value: currentFilters.category_id || '', onChange: v => { currentFilters.category_id = v; refreshTable(isDirector); } }));
+    $('#filterStatus_w')?.appendChild(CRSelect.create({ id: 'filterStatus', placeholder: 'Все статусы', options: _statusOpts, value: currentFilters.status || '', onChange: v => { currentFilters.status = v; refreshTable(isDirector); } }));
+    $('#filterObject_w')?.appendChild(CRSelect.create({ id: 'filterObject', placeholder: 'Все объекты', options: _objOpts, value: currentFilters.object_id || '', onChange: v => { currentFilters.object_id = v; refreshTable(isDirector); } }));
+
     bindEvents(canEdit, role, isDirector);
   }
   
   function renderEquipmentRows(items, canEdit, isDirector = false) {
     if (!items.length) return '';
     
-    const formatMoney = (v) => (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const formatMoney = (v) => AsgardUI.money(v);
     
     return items.map(eq => {
       const status = STATUSES[eq.status] || STATUSES.on_warehouse;
@@ -267,22 +265,8 @@ window.AsgardWarehouse = (function(){
       }, 300);
     });
     
-    // Фильтры
-    $('#filterCategory')?.addEventListener('change', (e) => {
-      currentFilters.category_id = e.target.value;
-      refreshTable(isDirector);
-    });
-    
-    $('#filterStatus')?.addEventListener('change', (e) => {
-      currentFilters.status = e.target.value;
-      refreshTable(isDirector);
-    });
-    
-    $('#filterObject')?.addEventListener('change', (e) => {
-      currentFilters.object_id = e.target.value;
-      refreshTable(isDirector);
-    });
-    
+    // CRSelect onChange уже подключены при создании
+
     // Добавить оборудование
     $('#btnAddEquip')?.addEventListener('click', () => openEquipmentForm());
     
@@ -584,7 +568,7 @@ window.AsgardWarehouse = (function(){
         <div class="formrow">
           <div style="grid-column:1/-1">
             <label>Категория *</label>
-            <select class="inp" id="bulk_category">${categoryOptions}</select>
+            <div id="bulk_category_w"></div>
           </div>
         </div>
         
@@ -632,9 +616,11 @@ window.AsgardWarehouse = (function(){
     `;
     
     showModal('📋 Массовое добавление ТМЦ', html, { width: '600px' });
-    
+    const _bulkCatOpts = categories.map(c => ({ value: String(c.id), label: (c.icon||'') + ' ' + c.name }));
+    $('#bulk_category_w')?.appendChild(CRSelect.create({ id: 'bulk_category', placeholder: 'Выберите категорию', options: _bulkCatOpts, dropdownClass: 'z-modal' }));
+
     $('#btnBulkCreate')?.addEventListener('click', async () => {
-      const category_id = $('#bulk_category').value;
+      const category_id = CRSelect.getValue('bulk_category');
       const brand = $('#bulk_brand').value;
       const model = $('#bulk_model').value;
       const price = parseFloat($('#bulk_price').value) || null;
@@ -724,23 +710,6 @@ window.AsgardWarehouse = (function(){
       eq = data.equipment || {};
     }
     
-    const categoryOptions = categories.map(c => 
-      `<option value="${c.id}" ${eq.category_id == c.id ? 'selected' : ''}>${c.icon || ''} ${esc(c.name)}</option>`
-    ).join('');
-    
-    // Загружаем счета для выбора
-    let invoiceOptions = '<option value="">— Без привязки —</option>';
-    try {
-      const auth = await AsgardAuth.getAuth();
-      const resp = await fetch('/api/invoices?limit=50', {
-        headers: { 'Authorization': 'Bearer ' + auth.token }
-      });
-      const data = await resp.json();
-      (data.invoices || []).forEach(inv => {
-        invoiceOptions += `<option value="${inv.id}" ${eq.invoice_id == inv.id ? 'selected' : ''}>${esc(inv.invoice_number)} — ${esc(inv.customer_name || '')}</option>`;
-      });
-    } catch(e) {}
-    
     const html = `
       <div class="stack" style="gap:16px;max-height:70vh;overflow-y:auto">
         <div class="formrow">
@@ -753,7 +722,7 @@ window.AsgardWarehouse = (function(){
         <div class="formrow">
           <div>
             <label>Категория *</label>
-            <select class="inp" id="eq_category">${categoryOptions}</select>
+            <div id="eq_category_w"></div>
           </div>
           <div>
             <label>Заводской номер</label>
@@ -779,13 +748,7 @@ window.AsgardWarehouse = (function(){
           </div>
           <div>
             <label>Ед. изм.</label>
-            <select class="inp" id="eq_unit">
-              <option value="шт" ${eq.unit === 'шт' ? 'selected' : ''}>шт</option>
-              <option value="м" ${eq.unit === 'м' ? 'selected' : ''}>м</option>
-              <option value="кг" ${eq.unit === 'кг' ? 'selected' : ''}>кг</option>
-              <option value="л" ${eq.unit === 'л' ? 'selected' : ''}>л</option>
-              <option value="компл" ${eq.unit === 'компл' ? 'selected' : ''}>компл</option>
-            </select>
+            <div id="eq_unit_w"></div>
           </div>
         </div>
         
@@ -806,7 +769,7 @@ window.AsgardWarehouse = (function(){
         <div class="formrow">
           <div style="grid-column:1/-1">
             <label>Счёт закупки (авто-постановка на баланс)</label>
-            <select class="inp" id="eq_invoice">${invoiceOptions}</select>
+            <div id="eq_invoice_w"></div>
           </div>
         </div>
         
@@ -857,7 +820,15 @@ window.AsgardWarehouse = (function(){
     `;
     
     showModal(equipId ? '✏️ Редактирование ТМЦ' : '➕ Новое оборудование', html, { width: '600px' });
-    
+    /* CRSelect: eq_category, eq_unit, eq_invoice */
+    const _eqCatOpts = categories.map(c => ({ value: String(c.id), label: (c.icon||'') + ' ' + c.name }));
+    $('#eq_category_w')?.appendChild(CRSelect.create({ id: 'eq_category', placeholder: 'Категория', options: _eqCatOpts, value: eq.category_id ? String(eq.category_id) : '', dropdownClass: 'z-modal' }));
+    const _unitOpts = ['шт','м','кг','л','компл'].map(u => ({ value: u, label: u }));
+    $('#eq_unit_w')?.appendChild(CRSelect.create({ id: 'eq_unit', options: _unitOpts, value: eq.unit || 'шт', dropdownClass: 'z-modal' }));
+    const _invOpts = [{ value: '', label: '— Без привязки —' }];
+    try { const auth2 = await AsgardAuth.getAuth(); const r2 = await fetch('/api/invoices?limit=50', { headers: { 'Authorization': 'Bearer ' + auth2.token } }); const d2 = await r2.json(); (d2.invoices||[]).forEach(inv => _invOpts.push({ value: String(inv.id), label: (inv.invoice_number||'') + ' — ' + (inv.customer_name||'') })); } catch(e){}
+    $('#eq_invoice_w')?.appendChild(CRSelect.create({ id: 'eq_invoice', placeholder: 'Счёт', options: _invOpts, value: eq.invoice_id ? String(eq.invoice_id) : '', searchable: true, dropdownClass: 'z-modal' }));
+
     $('#btnSaveEquip')?.addEventListener('click', async () => {
       const name = $('#eq_name').value.trim();
       if (!name) {
@@ -867,15 +838,15 @@ window.AsgardWarehouse = (function(){
       
       const payload = {
         name,
-        category_id: $('#eq_category').value || null,
+        category_id: CRSelect.getValue('eq_category') || null,
         serial_number: $('#eq_serial').value || null,
         brand: $('#eq_brand').value || null,
         model: $('#eq_model').value || null,
         quantity: parseFloat($('#eq_qty').value) || 1,
-        unit: $('#eq_unit').value,
+        unit: CRSelect.getValue('eq_unit') || 'шт',
         purchase_price: parseFloat($('#eq_price').value) || null,
         purchase_date: $('#eq_date').value || null,
-        invoice_id: $('#eq_invoice').value || null,
+        invoice_id: CRSelect.getValue('eq_invoice') || null,
         useful_life_months: parseInt($('#eq_useful_life').value) || 60,
         salvage_value: parseFloat($('#eq_salvage').value) || 0,
         auto_write_off: $('#eq_auto_writeoff').checked,
@@ -937,37 +908,6 @@ window.AsgardWarehouse = (function(){
       return;
     }
     
-    // Загружаем РП
-    let pmOptions = '';
-    try {
-      const resp = await fetch('/api/users?role=PM', {
-        headers: { 'Authorization': 'Bearer ' + auth.token }
-      });
-      const data = await resp.json();
-      (data.users || []).forEach(u => {
-        pmOptions += `<option value="${u.id}">${esc(u.name)}</option>`;
-      });
-    } catch(e) {}
-    
-    // Загружаем работы
-    let workOptions = '<option value="">— Выберите работу —</option>';
-    try {
-      const resp = await fetch('/api/works?status=active&limit=50', {
-        headers: { 'Authorization': 'Bearer ' + auth.token }
-      });
-      const data = await resp.json();
-      (data.works || []).forEach(w => {
-        workOptions += `<option value="${w.id}">${esc(w.work_number || '')} — ${esc(w.work_title || w.customer_name || '')}</option>`;
-      });
-    } catch(e) {}
-    
-    const objectOptions = objects.map(o => 
-      `<option value="${o.id}">${esc(o.name)}</option>`
-    ).join('');
-    
-    const conditionOptions = Object.entries(CONDITIONS).map(([k, v]) => 
-      `<option value="${k}" ${k === eq.condition ? 'selected' : ''}>${v.label}</option>`
-    ).join('');
     
     const html = `
       <div class="stack" style="gap:16px">
@@ -979,17 +919,17 @@ window.AsgardWarehouse = (function(){
         <div class="formrow">
           <div>
             <label>Кому выдать (РП) *</label>
-            <select class="inp" id="issue_holder" required>${pmOptions}</select>
+            <div id="issue_holder_w"></div>
           </div>
           <div>
             <label>Объект *</label>
-            <select class="inp" id="issue_object" required>${objectOptions}</select>
+            <div id="issue_object_w"></div>
           </div>
         </div>
         
         <div>
           <label>Привязка к работе *</label>
-          <select class="inp" id="issue_work" required>${workOptions}</select>
+          <div id="issue_work_w"></div>
         </div>
         
         ${eq.is_consumable ? `
@@ -1001,7 +941,7 @@ window.AsgardWarehouse = (function(){
         
         <div>
           <label>Состояние при выдаче</label>
-          <select class="inp" id="issue_condition">${conditionOptions}</select>
+          <div id="issue_condition_w"></div>
         </div>
         
         <div>
@@ -1017,11 +957,20 @@ window.AsgardWarehouse = (function(){
     `;
     
     showModal('📤 Выдача оборудования', html);
-    
+    /* CRSelect: issue selects */
+    const _pmArr = []; try { const r3 = await fetch('/api/users?role=PM', { headers: { 'Authorization': 'Bearer ' + auth.token } }); const d3 = await r3.json(); (d3.users||[]).forEach(u => _pmArr.push({ value: String(u.id), label: u.name })); } catch(e){}
+    $('#issue_holder_w')?.appendChild(CRSelect.create({ id: 'issue_holder', placeholder: 'Выберите РП', options: _pmArr, searchable: true, dropdownClass: 'z-modal' }));
+    const _issObjOpts = objects.map(o => ({ value: String(o.id), label: o.name }));
+    $('#issue_object_w')?.appendChild(CRSelect.create({ id: 'issue_object', placeholder: 'Выберите объект', options: _issObjOpts, searchable: true, dropdownClass: 'z-modal' }));
+    const _workArr = [{ value: '', label: '— Выберите работу —' }]; try { const r4 = await fetch('/api/works?status=active&limit=50', { headers: { 'Authorization': 'Bearer ' + auth.token } }); const d4 = await r4.json(); (d4.works||[]).forEach(w => _workArr.push({ value: String(w.id), label: (w.work_number||'') + ' — ' + (w.work_title||w.customer_name||'') })); } catch(e){}
+    $('#issue_work_w')?.appendChild(CRSelect.create({ id: 'issue_work', placeholder: 'Выберите работу', options: _workArr, searchable: true, dropdownClass: 'z-modal' }));
+    const _condOpts = Object.entries(CONDITIONS).map(([k,v]) => ({ value: k, label: v.label }));
+    $('#issue_condition_w')?.appendChild(CRSelect.create({ id: 'issue_condition', options: _condOpts, value: eq.condition || 'good', dropdownClass: 'z-modal' }));
+
     $('#btnConfirmIssue')?.addEventListener('click', async () => {
-      const holder_id = $('#issue_holder').value;
-      const object_id = $('#issue_object').value;
-      const work_id = $('#issue_work').value;
+      const holder_id = CRSelect.getValue('issue_holder');
+      const object_id = CRSelect.getValue('issue_object');
+      const work_id = CRSelect.getValue('issue_work');
       
       if (!holder_id || !work_id) {
         toast('Ошибка', 'Заполните обязательные поля', 'err');
@@ -1034,7 +983,7 @@ window.AsgardWarehouse = (function(){
         object_id,
         work_id,
         quantity: $('#issue_qty')?.value || eq.quantity,
-        condition_after: $('#issue_condition').value,
+        condition_after: CRSelect.getValue('issue_condition'),
         notes: $('#issue_notes').value
       };
       
@@ -1075,10 +1024,6 @@ window.AsgardWarehouse = (function(){
     const eqData = await eqResp.json();
     const eq = eqData.equipment;
     
-    const conditionOptions = Object.entries(CONDITIONS).map(([k, v]) => 
-      `<option value="${k}" ${k === eq.condition ? 'selected' : ''}>${v.label}</option>`
-    ).join('');
-    
     const html = `
       <div class="stack" style="gap:16px">
         <div style="padding:12px;background:var(--bg);border-radius:6px">
@@ -1087,10 +1032,10 @@ window.AsgardWarehouse = (function(){
             Инв. № ${esc(eq.inventory_number)} • У: ${esc(eq.holder_name || '—')}
           </div>
         </div>
-        
+
         <div>
           <label>Состояние при возврате</label>
-          <select class="inp" id="return_condition">${conditionOptions}</select>
+          <div id="return_condition_w"></div>
         </div>
         
         <div>
@@ -1106,11 +1051,13 @@ window.AsgardWarehouse = (function(){
     `;
     
     showModal('📥 Возврат на склад', html);
-    
+    const _retCondOpts = Object.entries(CONDITIONS).map(([k,v]) => ({ value: k, label: v.label }));
+    $('#return_condition_w')?.appendChild(CRSelect.create({ id: 'return_condition', options: _retCondOpts, value: eq.condition || 'good', dropdownClass: 'z-modal' }));
+
     $('#btnConfirmReturn')?.addEventListener('click', async () => {
       const payload = {
         equipment_id: equipId,
-        condition_after: $('#return_condition').value,
+        condition_after: CRSelect.getValue('return_condition'),
         notes: $('#return_notes').value
       };
       

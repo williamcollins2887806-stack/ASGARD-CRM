@@ -147,9 +147,7 @@ window.AsgardPreTendersPage = (function(){
     return html;
   }
 
-  function money(n) {
-    return Math.round(Number(n||0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' ₽';
-  }
+  function money(x) { return AsgardUI.money(Math.round(Number(x || 0))) + ' ₽'; }
 
   // ── Beautiful cost estimate report renderer ──
   function renderCostReport(raw) {
@@ -406,20 +404,8 @@ window.AsgardPreTendersPage = (function(){
         <div id="ptStats" class="pt-stats-row"></div>
 
         <div class="pt-filters" style="display:flex;gap:10px;flex-wrap:wrap;margin:16px 0;align-items:center">
-          <select id="fPtStatus" class="inp" style="width:170px">
-            <option value="">Все статусы</option>
-            <option value="new" selected>Новые</option>
-            <option value="in_review">На рассмотрении</option>
-            <option value="need_docs">Нужны документы</option>
-            <option value="accepted">Принятые</option>
-            <option value="rejected">Отклонённые</option>
-          </select>
-          <select id="fPtColor" class="inp" style="width:160px">
-            <option value="">Все цвета</option>
-            <option value="green">🟢 Зелёные</option>
-            <option value="yellow">🟡 Жёлтые</option>
-            <option value="red">🔴 Красные</option>
-          </select>
+          <div id="fPtStatus_w" style="width:170px;display:inline-block"></div>
+          <div id="fPtColor_w" style="width:160px;display:inline-block"></div>
           <input id="fPtSearch" class="inp" placeholder="Поиск по заказчику, описанию..." style="flex:1;min-width:150px"/>
           <div style="display:flex;gap:4px;border:1px solid var(--line);border-radius:6px;overflow:hidden">
             <button class="btn ghost" id="btnViewList" style="border:none;border-radius:0;padding:6px 10px;font-size:16px" title="Список">☰</button>
@@ -529,8 +515,9 @@ window.AsgardPreTendersPage = (function(){
     loadStats();
     switchView(viewMode);
 
-    $('#fPtStatus').addEventListener('change', e => { filter.status = e.target.value; refreshView(); });
-    $('#fPtColor').addEventListener('change', e => { filter.ai_color = e.target.value; refreshView(); });
+    // CRSelect init — filters
+    $('#fPtStatus_w')?.appendChild(CRSelect.create({ id: 'fPtStatus', options: [{ value: '', label: 'Все статусы' }, { value: 'new', label: 'Новые' }, { value: 'in_review', label: 'На рассмотрении' }, { value: 'need_docs', label: 'Нужны документы' }, { value: 'accepted', label: 'Принятые' }, { value: 'rejected', label: 'Отклонённые' }], value: 'new', onChange: v => { filter.status = v; refreshView(); } }));
+    $('#fPtColor_w')?.appendChild(CRSelect.create({ id: 'fPtColor', options: [{ value: '', label: 'Все цвета' }, { value: 'green', label: '🟢 Зелёные' }, { value: 'yellow', label: '🟡 Жёлтые' }, { value: 'red', label: '🔴 Красные' }], onChange: v => { filter.ai_color = v; refreshView(); } }));
     let st;
     $('#fPtSearch').addEventListener('input', e => { clearTimeout(st); st = setTimeout(() => { filter.search = e.target.value; refreshView(); }, 300); });
     $('#btnPtRefresh').addEventListener('click', () => { loadStats(); refreshView(); });
@@ -1255,13 +1242,13 @@ window.AsgardPreTendersPage = (function(){
 
   async function openAcceptModal(id, pt) {
     // Получаем список РП
-    let pmOptions = '<option value="">— Не назначать —</option>';
+    let accPmOpts = [{ value: '', label: '— Не назначать —' }];
     try {
       const auth = await AsgardAuth.getAuth();
       const usersRes = await fetch('/api/users', { headers: { 'Authorization': 'Bearer ' + auth.token } });
       const usersData = await usersRes.json();
       const pms = (usersData.users || usersData.items || usersData || []).filter(u => u.is_active && ['PM', 'HEAD_PM', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER', 'HR'].includes(u.role) && (u.name||u.fio||'').trim());
-      pmOptions += pms.map(u => `<option value="${u.id}">${esc(u.name || u.fio || '')}</option>`).join('');
+      accPmOpts.push(...pms.map(u => ({ value: String(u.id), label: u.name || u.fio || '' })));
     } catch(e) {}
 
     const emailSubject = 'Re: ' + esc(pt.email_subject || pt.work_description?.slice(0, 50) || 'заявка');
@@ -1276,7 +1263,7 @@ window.AsgardPreTendersPage = (function(){
         <div style="display:grid;gap:12px">
           <div>
             <label style="font-size:12px;font-weight:600">Назначить РП</label>
-            <select id="accPM" class="inp">${pmOptions}</select>
+            <div id="accPM_w"></div>
           </div>
           <div>
             <label style="font-size:12px;font-weight:600">Контактное лицо</label>
@@ -1320,6 +1307,7 @@ window.AsgardPreTendersPage = (function(){
     `;
 
     showModal({ title: '🟢 Принять заявку #' + id, html: mHtml, onMount: () => {
+      document.getElementById('accPM_w')?.appendChild(CRSelect.create({ id: 'accPM', options: accPmOpts, searchable: true, dropdownClass: 'z-modal' }));
       // Обновление превью при изменении контакта/телефона
       const contactInp = document.getElementById('accContact');
       const phoneInp = document.getElementById('accPhone');
@@ -1338,7 +1326,7 @@ window.AsgardPreTendersPage = (function(){
         btn.disabled = true; btn.textContent = '⏳ Обработка...';
 
         const body = {
-          assigned_pm_id: document.getElementById('accPM').value || null,
+          assigned_pm_id: CRSelect.getValue('accPM') || null,
           contact_person: document.getElementById('accContact').value,
           contact_phone: document.getElementById('accPhone').value,
           comment: document.getElementById('accComment').value,
@@ -1363,13 +1351,13 @@ window.AsgardPreTendersPage = (function(){
 
   async function openFastTrackModal(id, pt) {
     // Получаем список РП (обязательный выбор)
-    let pmOptions = '<option value="">-- Выберите руководителя проекта --</option>';
+    let ftPmOpts = [{ value: '', label: '-- Выберите руководителя проекта --' }];
     try {
       const auth = await AsgardAuth.getAuth();
       const usersRes = await fetch('/api/users', { headers: { 'Authorization': 'Bearer ' + auth.token } });
       const usersData = await usersRes.json();
       const pms = (usersData.users || usersData.items || usersData || []).filter(u => u.is_active && ['PM', 'HEAD_PM', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER', 'HR'].includes(u.role) && (u.name||u.fio||'').trim());
-      pmOptions += pms.map(u => `<option value="${u.id}">${esc(u.name || u.fio || '')}</option>`).join('');
+      ftPmOpts.push(...pms.map(u => ({ value: String(u.id), label: u.name || u.fio || '' })));
     } catch(e) {}
 
     const aiRec = pt.ai_recommendation ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">AI: ${esc(pt.ai_recommendation.slice(0, 100))}</div>` : '';
@@ -1390,7 +1378,7 @@ window.AsgardPreTendersPage = (function(){
         <div style="display:grid;gap:14px">
           <div>
             <label style="font-size:12px;font-weight:700;color:var(--text-primary)">Назначить РП <span style="color:var(--err-t)">*</span></label>
-            <select id="ftPM" class="inp" style="margin-top:4px">${pmOptions}</select>
+            <div id="ftPM_w" style="margin-top:4px"></div>
             <div id="ftPmError" style="font-size:11px;color:var(--err-t);margin-top:2px;display:none">Необходимо выбрать РП</div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -1436,28 +1424,25 @@ window.AsgardPreTendersPage = (function(){
     `;
 
     showModal({ title: '⚡ Быстрый путь — сразу на просчёт', html: mHtml, onMount: () => {
-      const pmSelect = document.getElementById('ftPM');
-      const previewPM = document.getElementById('ftPreviewPM');
+      document.getElementById('ftPM_w')?.appendChild(CRSelect.create({ id: 'ftPM', options: ftPmOpts, searchable: true, dropdownClass: 'z-modal', onChange: v => {
+        const previewPM = document.getElementById('ftPreviewPM');
+        if (previewPM) previewPM.textContent = CRSelect.getLabel('ftPM') || '—';
+        if (v) document.getElementById('ftPmError').style.display = 'none';
+      } }));
       const phoneInp = document.getElementById('ftPhone');
       const previewPhone = document.getElementById('ftPreviewPhone');
       const previewDiv = document.getElementById('ftEmailPreview');
       const sendCb = document.getElementById('ftSendEmail');
       const pmError = document.getElementById('ftPmError');
 
-      // Обновление превью
-      if (pmSelect && previewPM) pmSelect.addEventListener('change', () => {
-        previewPM.textContent = pmSelect.selectedOptions[0]?.text || '—';
-        if (pmSelect.value) pmError.style.display = 'none';
-      });
       if (phoneInp && previewPhone) phoneInp.addEventListener('input', () => { previewPhone.textContent = phoneInp.value || ''; });
       if (sendCb && previewDiv) sendCb.addEventListener('change', () => { previewDiv.style.display = sendCb.checked ? '' : 'none'; });
 
       document.getElementById('ftCancelBtn').addEventListener('click', () => { hideModal(); openDetail(id); });
       document.getElementById('ftConfirmBtn').addEventListener('click', async () => {
-        const pm_id = document.getElementById('ftPM').value;
+        const pm_id = CRSelect.getValue('ftPM');
         if (!pm_id) {
           pmError.style.display = '';
-          pmSelect.focus();
           return;
         }
 
@@ -1489,7 +1474,7 @@ window.AsgardPreTendersPage = (function(){
   // ═══════════════════════════════════════════════════════════════════
 
   function openRejectModal(id, pt) {
-    const reasonOpts = REJECT_REASONS.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('');
+    const rejReasonOpts = REJECT_REASONS.map(r => ({ value: r, label: r }));
     const emailSubject = 'Re: ' + esc(pt.email_subject || 'заявка');
 
     const mHtml = `
@@ -1501,7 +1486,7 @@ window.AsgardPreTendersPage = (function(){
         <div style="display:grid;gap:12px">
           <div>
             <label style="font-size:12px;font-weight:600">Причина отказа</label>
-            <select id="rejReason" class="inp">${reasonOpts}</select>
+            <div id="rejReason_w"></div>
           </div>
           <div>
             <label style="font-size:12px;font-weight:600">Дополнительный комментарий</label>
@@ -1535,8 +1520,6 @@ window.AsgardPreTendersPage = (function(){
     `;
 
     showModal({ title: '🔴 Отклонить заявку #' + id, html: mHtml, onMount: () => {
-      // Обновление превью при смене причины
-      const reasonSel = document.getElementById('rejReason');
       const commentInp = document.getElementById('rejComment');
       const prevReason = document.getElementById('rejPreviewReason');
       const previewDiv = document.getElementById('rejEmailPreview');
@@ -1544,12 +1527,12 @@ window.AsgardPreTendersPage = (function(){
 
       function updateRejectPreview() {
         if (!prevReason) return;
-        const reason = reasonSel.value;
+        const reason = CRSelect.getValue('rejReason') || '';
         const comment = commentInp.value;
         const full = comment ? reason + '. ' + comment : reason;
         prevReason.textContent = ', в связи с: ' + full;
       }
-      if (reasonSel) reasonSel.addEventListener('change', updateRejectPreview);
+      document.getElementById('rejReason_w')?.appendChild(CRSelect.create({ id: 'rejReason', options: rejReasonOpts, dropdownClass: 'z-modal', onChange: updateRejectPreview }));
       if (commentInp) commentInp.addEventListener('input', updateRejectPreview);
       if (sendCb && previewDiv) sendCb.addEventListener('change', () => { previewDiv.style.display = sendCb.checked ? '' : 'none'; });
 
@@ -1558,7 +1541,7 @@ window.AsgardPreTendersPage = (function(){
         const btn = document.getElementById('rejConfirmBtn');
         btn.disabled = true; btn.textContent = '⏳...';
 
-        const reason = document.getElementById('rejReason').value;
+        const reason = CRSelect.getValue('rejReason') || '';
         const comment = document.getElementById('rejComment').value;
         const fullReason = comment ? reason + '. ' + comment : reason;
 

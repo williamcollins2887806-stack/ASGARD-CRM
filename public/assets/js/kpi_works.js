@@ -4,22 +4,12 @@
  */
 
 window.AsgardKpiWorksPage=(function(){
-  const { $, esc, showModal } = AsgardUI;
+  const { $, esc, showModal, money } = AsgardUI;
   const { stackedBar, divergent, dial, scoreRing } = AsgardCharts;
+  const { toDate, diffDays, generatePeriodOptions } = window.AsgardWorksShared || {};
 
   function isSafe(){ try{return AsgardSafeMode.isOn();}catch(e){return false;} }
-  function money(x){ if(x===null||x===undefined||x==="") return "\u2014"; const n=Number(x); if(isNaN(n)) return esc(String(x)); return n.toLocaleString("ru-RU"); }
-
   function safeNumber(value){ const n = Number(value); return Number.isFinite(n) ? n : 0; }
-
-  function toDate(d){
-    if(!d) return null;
-    const s=String(d).trim();
-    if(!s) return null;
-    const m=s.match(/^\d{4}-\d{2}-\d{2}/);
-    if(m){ const [y,mo,da]=m[0].split('-').map(Number); return new Date(Date.UTC(y,mo-1,da,0,0,0)); }
-    const dt=new Date(s); return isFinite(dt.getTime())?dt:null;
-  }
 
   function startOfMonth(d){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0,0,0)); }
   function addMonths(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+n, 1, 0,0,0)); }
@@ -55,13 +45,7 @@ window.AsgardKpiWorksPage=(function(){
     return true;
   }
 
-  function diffDays(a,b){
-    const da=toDate(a); const db=toDate(b);
-    if(!da||!db) return null;
-    return Math.round((db.getTime()-da.getTime())/(24*3600*1000));
-  }
-
-  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim()); }
+  async function getUsers(){ return (await AsgardDB.all("users")).filter(u=>u.is_active && u.name && u.name.trim() && u.role !== 'BOT' && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot'); }
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
     return refs ? JSON.parse(refs.value_json||"{}") : { work_statuses:[] };
@@ -75,18 +59,6 @@ window.AsgardKpiWorksPage=(function(){
     let html = '';
     for (let y = currentYear; y >= currentYear - 5; y--) {
       html += `<option value="${y}"${y === currentYear ? ' selected' : ''}>${y}</option>`;
-    }
-    return html;
-  }
-
-  function generatePeriodOptions(currentYm) {
-    const now = new Date();
-    let html = '';
-    for (let i = 0; i < 24; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-      html += `<option value="${val}"${val === currentYm ? ' selected' : ''}>${label}</option>`;
     }
     return html;
   }
@@ -215,17 +187,12 @@ window.AsgardKpiWorksPage=(function(){
         <div class="panel" style="margin-bottom:var(--sp-6);">
           <div class="tools">
             <div class="field"><label>\u041f\u0435\u0440\u0438\u043e\u0434</label>
-              <select id="f_mode">
-                <option value="all">\u0412\u0441\u0451 \u0432\u0440\u0435\u043c\u044f</option>
-                <option value="year">\u0413\u043e\u0434</option>
-                <option value="month" selected>\u041c\u0435\u0441\u044f\u0446</option>
-                <option value="last12">\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 12 \u043c\u0435\u0441\u044f\u0446\u0435\u0432</option>
-              </select>
+              <div id="crw_f_mode"></div>
             </div>
-            <div class="field" id="box_year" style="display:none"><label>\u0413\u043e\u0434</label><select id="f_year">${generateYearOptions(yNow)}</select></div>
-            <div class="field" id="box_month"><label>\u041c\u0435\u0441\u044f\u0446</label><select id="f_month">${generatePeriodOptions(ymNow)}</select></div>
+            <div class="field" id="box_year" style="display:none"><label>\u0413\u043e\u0434</label><div id="crw_f_year"></div></div>
+            <div class="field" id="box_month"><label>\u041c\u0435\u0441\u044f\u0446</label><div id="crw_f_month"></div></div>
             <div class="field"><label>\u0420\u041f</label>
-              <select id="f_pm"><option value="">\u0412\u0441\u0435</option>${pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
+              <div id="crw_f_pm"></div>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end">
               <button class="btn ghost mini" id="btnGantt">\u0413\u0430\u043d\u0442\u0442</button>
@@ -262,14 +229,14 @@ window.AsgardKpiWorksPage=(function(){
     const cDiv=$("#c_div");
 
     function pickMode(){
-      const mode=$("#f_mode").value;
+      const mode=CRSelect.getValue("f_mode")||"month";
       $("#box_year").style.display = (mode==="year") ? "block" : "none";
       $("#box_month").style.display = (mode==="month") ? "block" : "none";
     }
 
     function getRange(){
-      const mode=$("#f_mode").value;
-      return mkRange(mode, $("#f_year").value, $("#f_month").value);
+      const mode=CRSelect.getValue("f_mode")||"month";
+      return mkRange(mode, CRSelect.getValue("f_year")||"", CRSelect.getValue("f_month")||"");
     }
 
     function workDateForFilter(w){
@@ -396,7 +363,7 @@ window.AsgardKpiWorksPage=(function(){
     }
 
     function apply(){
-      const pmId = $("#f_pm").value;
+      const pmId = CRSelect.getValue("f_pm")||"";
       const range = getRange();
 
       const wList = works.filter(w=>{
@@ -548,25 +515,59 @@ window.AsgardKpiWorksPage=(function(){
       });
     }
 
+    // Монтируем CRSelect фильтры
+    const yearOpts = [];
+    for(let y=yNow; y>=yNow-5; y--) yearOpts.push({value:String(y), label:String(y)});
+
+    const periodOpts = [{value:'', label:'Все'}];
+    for(let i=0; i<24; i++){
+      const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const val=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      periodOpts.push({value:val, label:d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'})});
+    }
+
+    const pmOpts = [{value:'', label:'Все'}, ...pms.map(p=>({value:String(p.id), label:p.name}))];
+
+    $("#crw_f_mode")?.appendChild(CRSelect.create({
+      id:'f_mode', fullWidth:true, value:'month',
+      options:[{value:'all',label:'Всё время'},{value:'year',label:'Год'},{value:'month',label:'Месяц'},{value:'last12',label:'Последние 12 месяцев'}],
+      onChange:()=>{ pickMode(); apply(); }
+    }));
+    $("#crw_f_year")?.appendChild(CRSelect.create({
+      id:'f_year', fullWidth:true, options:yearOpts, value:String(yNow), onChange:apply
+    }));
+    $("#crw_f_month")?.appendChild(CRSelect.create({
+      id:'f_month', fullWidth:true, options:periodOpts, value:ymNow, onChange:apply
+    }));
+    $("#crw_f_pm")?.appendChild(CRSelect.create({
+      id:'f_pm', fullWidth:true, clearable:true, placeholder:'Все', options:pmOpts, value:'', onChange:apply
+    }));
+
     pickMode();
     apply();
 
-    $("#f_mode").addEventListener("change", ()=>{ pickMode(); apply(); });
-    $("#f_year").addEventListener("input", apply);
-    $("#f_month").addEventListener("input", apply);
-    $("#f_pm").addEventListener("change", apply);
-
     $("#btnGantt").addEventListener("click", async ()=>{
-      const settings = await (async()=>{ const s=await AsgardDB.get("settings","app"); return s?JSON.parse(s.value_json||"{}"):{}; })();
-      const startIso=(settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
+      const st = await (async()=>{ const s=await AsgardDB.get("settings","app"); return s?JSON.parse(s.value_json||"{}"):{}; })();
+      const defaultStart=(st.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
       const rows = works.map(w=>{
         const t=tenders.find(x=>x.id===w.tender_id);
         const start = w.start_in_work_date || t?.work_start_plan || w.end_plan || "2026-01-01";
         const end = w.end_fact || w.end_plan || t?.work_end_plan || start;
         return {start,end,label:(w.customer_name||t?.customer_name||""),sub:(w.work_title||t?.tender_title||""),barText:w.work_status||"",status:w.work_status||""};
       });
-      const html = AsgardGantt.renderBoard({startIso, weeks: 60, rows, getColor:(r)=>(settings.status_colors?.work||{})[r.status]||"#2a6cf1"});
-      showModal("\u0413\u0430\u043d\u0442\u0442 \u2022 \u0412\u0441\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", `<div style="max-height:80vh; overflow:auto">${html}</div>`);
+      const colors=st.status_colors?.work||{};
+      showModal("\u0413\u0430\u043d\u0442\u0442 \u2022 \u0412\u0441\u0435 \u0440\u0430\u0431\u043e\u0442\u044b", `${AsgardGantt.navHtml()}<input id="g-from" type="hidden"/><input id="g-to" type="hidden"/><div id="gModal" class="cr-gantt-modal-body"></div>`);
+      setTimeout(()=>{
+        const fi=document.getElementById('g-from'), ti=document.getElementById('g-to');
+        if(!fi) return;
+        function render(){
+          const f=fi.value, t=ti.value;
+          let startIso=f||defaultStart, weeks=60;
+          if(f&&t){ const ms=7*864e5; weeks=Math.max(4,Math.ceil((new Date(t)-new Date(f))/ms)+1); }
+          document.getElementById('gModal').innerHTML=AsgardGantt.renderBoard({startIso,weeks,rows,getColor:r=>colors[r.status]||"#2a6cf1"});
+        }
+        AsgardGantt.initNav(fi,ti,render);
+      },0);
     });
   }
 

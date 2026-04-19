@@ -60,7 +60,7 @@ window.AsgardAuth = (function(){
   // ПОЛУЧЕНИЕ ТОКЕНА И ПОЛЬЗОВАТЕЛЯ
   // ============================================
   function getToken(){
-    return localStorage.getItem('asgard_token');
+    return localStorage.getItem('asgard_token') || '';
   }
 
   function getAuth(){

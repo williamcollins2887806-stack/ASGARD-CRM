@@ -72,11 +72,12 @@ window.AsgardTasksCrudPage = (function(){
     function renderTaskForm(task) {
       const isEdit = !!task;
       const t = task || {};
-      const userOpts = users.filter(u => u.is_active !== false && u.name && u.name.trim()).map(u =>
-        `<option value="${u.id}" ${u.id === t.assigned_to ? 'selected' : ''}>${esc(u.name || u.login)}</option>`
-      ).join('');
+      const _userOpts = [{ value: '', label: '— Не назначен —' }, ...users.filter(u => u.is_active !== false && u.name && u.name.trim()).map(u => ({ value: String(u.id), label: u.name || u.login }))];
+      const _prioOpts = [{ value: 'low', label: '🟢 Низкий' }, { value: 'medium', label: '🟡 Средний' }, { value: 'high', label: '🔴 Высокий' }];
+      const _assignVal = t.assigned_to ? String(t.assigned_to) : '';
+      const _prioVal = t.priority === 'low' ? 'low' : t.priority === 'high' ? 'high' : 'medium';
 
-      return `
+      return { html: `
         <div style="display:flex; flex-direction:column; gap:14px;">
           <div>
             <label>Название задачи</label>
@@ -89,15 +90,11 @@ window.AsgardTasksCrudPage = (function(){
           <div class="row" style="gap:12px">
             <div style="flex:1">
               <label>Исполнитель</label>
-              <select id="tf_assignee" class="inp"><option value="">— Не назначен —</option>${userOpts}</select>
+              <div id="tf_assignee_w"></div>
             </div>
             <div style="flex:1">
               <label>Приоритет</label>
-              <select id="tf_priority" class="inp">
-                <option value="low" ${t.priority === 'low' ? 'selected' : ''}>🟢 Низкий</option>
-                <option value="medium" ${t.priority !== 'low' && t.priority !== 'high' ? 'selected' : ''}>🟡 Средний</option>
-                <option value="high" ${t.priority === 'high' ? 'selected' : ''}>🔴 Высокий</option>
-              </select>
+              <div id="tf_priority_w"></div>
             </div>
             <div style="flex:1">
               <label>Дедлайн</label>
@@ -109,7 +106,7 @@ window.AsgardTasksCrudPage = (function(){
             <button class="btn primary" id="tf_save">${isEdit ? 'Сохранить' : 'Создать задачу'}</button>
           </div>
         </div>
-      `;
+      `, userOpts: _userOpts, prioOpts: _prioOpts, assignVal: _assignVal, prioVal: _prioVal };
     }
 
     async function openTaskModal(taskId) {
@@ -118,10 +115,13 @@ window.AsgardTasksCrudPage = (function(){
         task = tasks.find(t => t.id === taskId);
       }
 
+      const formData = renderTaskForm(task);
       showModal({
         title: task ? 'Редактировать задачу' : 'Новая задача',
-        html: renderTaskForm(task),
+        html: formData.html,
         onMount: function() {
+          $('#tf_assignee_w')?.appendChild(CRSelect.create({ id: 'tf_assignee', options: formData.userOpts, value: formData.assignVal, searchable: true, dropdownClass: 'z-modal' }));
+          $('#tf_priority_w')?.appendChild(CRSelect.create({ id: 'tf_priority', options: formData.prioOpts, value: formData.prioVal, dropdownClass: 'z-modal' }));
           $('#tf_cancel').addEventListener('click', hideModal);
           $('#tf_save').addEventListener('click', async () => {
             const ttl = $('#tf_title').value.trim();
@@ -130,8 +130,8 @@ window.AsgardTasksCrudPage = (function(){
             const body = {
               title: ttl,
               description: $('#tf_desc').value.trim(),
-              assigned_to: $('#tf_assignee').value ? parseInt($('#tf_assignee').value) : null,
-              priority: $('#tf_priority').value,
+              assigned_to: CRSelect.getValue('tf_assignee') ? parseInt(CRSelect.getValue('tf_assignee')) : null,
+              priority: CRSelect.getValue('tf_priority') || 'medium',
               due_date: $('#tf_due').value || null
             };
 

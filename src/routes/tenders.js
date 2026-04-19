@@ -3,6 +3,60 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+// State machine тендеров — допустимые переходы для обычных ролей
+const TENDER_TRANSITIONS = {
+  'Черновик':              ['Новый', 'Не подходит'],
+  'Новый':                 ['Отправлено на просчёт', 'Проиграли', 'Не подходит'],
+  'Отправлено на просчёт': ['Согласование ТКП', 'Проиграли', 'Не подходит', 'Новый'],
+  'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли', 'Не подходит'],
+  'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли', 'Не подходит'],
+  'КП отправлено':         ['Выиграли', 'Проиграли', 'Не подходит'],
+  'Выиграли':              [],
+  'Проиграли':             ['Новый'],
+  'Не подходит':           ['Новый']
+};
+
+// Расширенные переходы для HEAD_TO (рук. тендерного отдела)
+// HEAD_TO может двигать в воронке, но НЕ может делать handoff (Новый→На просчёте = директор)
+const HEAD_TO_TRANSITIONS = {
+  'Черновик':              ['Новый', 'Не подходит', 'Проиграли'],
+  'Новый':                 ['Проиграли', 'Не подходит'],
+  'Отправлено на просчёт': ['Новый', 'Проиграли', 'Не подходит'],
+  'Согласование ТКП':      ['Отправлено на просчёт', 'Проиграли', 'Не подходит'],
+  'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли', 'Не подходит'],
+  'КП отправлено':         ['Выиграли', 'Проиграли', 'Не подходит'],
+  'Выиграли':              [],
+  'Проиграли':             ['Новый'],
+  'Не подходит':           ['Новый']
+};
+
+const VALID_TENDER_STATUSES = [...Object.keys(TENDER_TRANSITIONS)];
+
+// Роли которые могут двигать статусы в воронке
+const FUNNEL_MOVE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
+
+function isValidTenderTransition(fromStatus, toStatus, userRole) {
+  if (userRole === 'ADMIN') return true;
+  if (['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(userRole)) return true;
+  if (!fromStatus) return true;
+  // HEAD_TO использует расширенную матрицу
+  if (userRole === 'HEAD_TO') {
+    const allowed = HEAD_TO_TRANSITIONS[fromStatus];
+    return allowed ? allowed.includes(toStatus) : false;
+  }
+  const allowed = TENDER_TRANSITIONS[fromStatus];
+  if (!allowed) return true;
+  return allowed.includes(toStatus);
+}
+
+// Категории отсева (для статуса "Не подходит")
+const ARCHIVE_REASONS = [
+  'Не наш профиль', 'Нет ресурсов', 'Срок истёк', 'Нерентабельно', 'Далеко',
+  'Мало информации', 'Заказчик ненадёжный', 'Высокая конкуренция', 'Не прошли квалификацию',
+  'Заказчик отменил', 'Дублирует другой тендер', 'Слишком малый объём',
+  'Требуются допуски', 'Невыгодные условия', 'Другое'
+];
+
 async function routes(fastify, options) {
   const db = fastify.db;
   const { createNotification } = require('../services/notify');
@@ -125,6 +179,18 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/tenders/tags - List all tender tags
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/tags', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const result = await db.query(
+      'SELECT id, name FROM tender_tags ORDER BY sort_order, name'
+    );
+    return { tags: result.rows };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders/:id - Get single tender
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.get('/:id', {
@@ -213,8 +279,7 @@ async function routes(fastify, options) {
       delete raw.tender_number;
       if (raw.deadline && !raw.docs_deadline) { raw.docs_deadline = raw.deadline; }
       delete raw.deadline;
-      if (raw.tender_price !== undefined && raw.tender_price === undefined) { raw.tender_price = raw.tender_price; }
-      delete raw.tender_price;
+      // tender_price is a direct DB column, no mapping needed
       if (raw.tag && !raw.group_tag) { raw.group_tag = raw.tag; }
       delete raw.tag;
       if (raw.docs_link && !raw.purchase_url) { raw.purchase_url = raw.docs_link; }
@@ -232,7 +297,7 @@ async function routes(fastify, options) {
       const allowedCols = [
         'customer_name', 'customer_inn', 'tender_title', 'tender_type',
         'tender_status', 'period', 'docs_deadline', 'tender_price', 'responsible_pm_id',
-        'group_tag', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
+        'group_tag', 'tag_id', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
         'created_by', 'created_at'
       ];
       const data = {};
@@ -318,6 +383,25 @@ async function routes(fastify, options) {
       }
     }
 
+    // State machine — проверка перехода статуса
+    if (data.tender_status && data.tender_status !== oldTender.tender_status) {
+      // Валидация что статус из допустимого списка
+      if (!VALID_TENDER_STATUSES.includes(data.tender_status) && request.user.role !== 'ADMIN') {
+        return reply.code(400).send({ error: `Недопустимый статус: "${data.tender_status}"` });
+      }
+      // Валидация перехода
+      if (!isValidTenderTransition(oldTender.tender_status, data.tender_status, request.user.role)) {
+        return reply.code(400).send({
+          error: `Недопустимый переход статуса: "${oldTender.tender_status}" → "${data.tender_status}"`,
+          allowed: TENDER_TRANSITIONS[oldTender.tender_status] || []
+        });
+      }
+      // «Проиграли» требует причину
+      if (data.tender_status === 'Проиграли' && !data.reject_reason && !oldTender.reject_reason) {
+        return reply.code(400).send({ error: 'Для статуса «Проиграли» обязательна причина отказа' });
+      }
+    }
+
     // Build update query — map API field names to DB columns
     const FIELD_MAP = {
       'customer': 'customer_name',
@@ -331,7 +415,7 @@ async function routes(fastify, options) {
     const allowedFields = [
       'customer', 'customer_name', 'customer_inn', 'tender_number', 'tender_title',
       'tender_type', 'tender_status', 'period', 'deadline', 'docs_deadline',
-      'tender_price', 'tender_price', 'responsible_pm_id', 'tag', 'group_tag',
+      'tender_price', 'responsible_pm_id', 'tag', 'group_tag', 'tag_id',
       'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason'
     ];
 
@@ -463,16 +547,17 @@ async function routes(fastify, options) {
       if (year) {
         whereClause += ` AND EXTRACT(YEAR FROM created_at) = $${idx}`;
         params.push(year);
+        idx++;
       }
 
       const stats = await db.query(`
         SELECT
           COUNT(*) as total,
-          COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')) as won,
-          COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ')) as lost,
-          COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Контракт', 'Проиграли', 'Отказ')) as active,
+          COUNT(*) FILTER (WHERE tender_status = 'Выиграли') as won,
+          COUNT(*) FILTER (WHERE tender_status = 'Проиграли') as lost,
+          COUNT(*) FILTER (WHERE tender_status NOT IN ('Выиграли', 'Проиграли')) as active,
           COALESCE(SUM(tender_price), 0) as total_sum,
-          COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт')), 0) as won_sum
+          COALESCE(SUM(tender_price) FILTER (WHERE tender_status = 'Выиграли'), 0) as won_sum
         FROM tenders
         WHERE ${whereClause}
       `, params);
@@ -527,10 +612,10 @@ async function routes(fastify, options) {
         u.name,
         u.role,
         COUNT(t.id) as total_tenders,
-        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COUNT(t.id) FILTER (WHERE t.tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
-        COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Контракт', 'Клиент согласился', 'Проиграли', 'Отказ', 'Клиент отказался', 'Отменён', 'Другое')) as active,
-        COALESCE(SUM(t.tender_price) FILTER (WHERE t.tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COUNT(t.id) FILTER (WHERE t.tender_status = 'Выиграли') as won,
+        COUNT(t.id) FILTER (WHERE t.tender_status = 'Проиграли') as lost,
+        COUNT(t.id) FILTER (WHERE t.tender_status NOT IN ('Выиграли', 'Проиграли')) as active,
+        COALESCE(SUM(t.tender_price) FILTER (WHERE t.tender_status = 'Выиграли'), 0) as won_sum,
         COALESCE(SUM(t.tender_price), 0) as total_sum,
         COUNT(DISTINCT t.customer_inn) as unique_customers,
         MAX(t.created_at) as last_tender_at
@@ -545,18 +630,18 @@ async function routes(fastify, options) {
     const deptTotal = await db.query(`
       SELECT
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COUNT(*) FILTER (WHERE tender_status IN ('Проиграли', 'Отказ', 'Клиент отказался')) as lost,
-        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum,
+        COUNT(*) FILTER (WHERE tender_status = 'Выиграли') as won,
+        COUNT(*) FILTER (WHERE tender_status = 'Проиграли') as lost,
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status = 'Выиграли'), 0) as won_sum,
         COALESCE(SUM(tender_price), 0) as total_sum
-      FROM tenders
-      WHERE ${whereClause.replace(/t\./g, '')}
+      FROM tenders t
+      WHERE ${whereClause}
     `, params);
 
     // По статусам
     const byStatus = await db.query(`
       SELECT tender_status, COUNT(*) as count, COALESCE(SUM(tender_price), 0) as sum
-      FROM tenders WHERE ${whereClause.replace(/t\./g, '')}
+      FROM tenders t WHERE ${whereClause}
       GROUP BY tender_status ORDER BY count DESC
     `, params);
 
@@ -565,8 +650,8 @@ async function routes(fastify, options) {
       SELECT
         TO_CHAR(created_at, 'YYYY-MM') as month,
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')) as won,
-        COALESCE(SUM(tender_price) FILTER (WHERE tender_status IN ('Выиграли', 'Контракт', 'Клиент согласился')), 0) as won_sum
+        COUNT(*) FILTER (WHERE tender_status = 'Выиграли') as won,
+        COALESCE(SUM(tender_price) FILTER (WHERE tender_status = 'Выиграли'), 0) as won_sum
       FROM tenders
       WHERE created_at >= NOW() - INTERVAL '12 months' AND tender_status != 'Черновик'
       GROUP BY TO_CHAR(created_at, 'YYYY-MM')
@@ -705,9 +790,235 @@ async function routes(fastify, options) {
       return reply.code(500).send({ error: err.message });
     }
   });
-}
-
 
   // ─────────────────────────────────────────────────────────────────────────────
-  
+  // GET /api/tenders/:id/comments - Лента комментариев тендера
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/:id/comments', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const { id } = request.params;
+    const result = await db.query(`
+      SELECT tc.id, tc.text, tc.created_at,
+             tc.user_id, u.name as user_name, u.role as user_role
+      FROM tender_comments tc
+      LEFT JOIN users u ON tc.user_id = u.id
+      WHERE tc.tender_id = $1
+      ORDER BY tc.created_at ASC
+    `, [id]);
+    return { comments: result.rows };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tenders/:id/comments - Добавить комментарий
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:id/comments', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { text } = request.body || {};
+    const user = request.user;
+
+    if (!text || !text.trim()) {
+      return reply.code(400).send({ error: 'Пустой комментарий' });
+    }
+
+    // Проверяем что тендер существует
+    const tender = (await db.query('SELECT id, responsible_pm_id FROM tenders WHERE id = $1 AND deleted_at IS NULL', [id])).rows[0];
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+
+    const result = await db.query(`
+      INSERT INTO tender_comments (tender_id, user_id, text)
+      VALUES ($1, $2, $3)
+      RETURNING id, created_at
+    `, [id, user.id, text.trim()]);
+
+    const comment = result.rows[0];
+
+    // SSE уведомление участникам
+    try {
+      if (tender.responsible_pm_id && tender.responsible_pm_id !== user.id) {
+        sendToUser(tender.responsible_pm_id, 'tender_comment', {
+          tender_id: Number(id), comment_id: comment.id,
+          user_name: user.name, text: text.trim().slice(0, 100)
+        });
+      }
+    } catch (_) {}
+
+    return {
+      id: comment.id,
+      text: text.trim(),
+      created_at: comment.created_at,
+      user_id: user.id,
+      user_name: user.name,
+      user_role: user.role
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DELETE /api/tenders/:id/comments/:commentId - Удалить свой комментарий (до 5 мин)
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.delete('/:id/comments/:commentId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { commentId } = request.params;
+    const user = request.user;
+
+    const comment = (await db.query('SELECT * FROM tender_comments WHERE id = $1', [commentId])).rows[0];
+    if (!comment) return reply.code(404).send({ error: 'Комментарий не найден' });
+
+    // Можно удалить свой в течение 5 минут или если ADMIN
+    const isOwn = comment.user_id === user.id;
+    const age = Date.now() - new Date(comment.created_at).getTime();
+    const withinLimit = age < 5 * 60 * 1000;
+
+    if (!isOwn && user.role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Нельзя удалить чужой комментарий' });
+    }
+    if (isOwn && !withinLimit && user.role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Удаление доступно только в течение 5 минут' });
+    }
+
+    await db.query('DELETE FROM tender_comments WHERE id = $1', [commentId]);
+    return { success: true };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // АРХИВ: POST /:id/archive — отсеять тендер (статус "Не подходит")
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ARCHIVE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'];
+
+  fastify.post('/:id/archive', {
+    preHandler: [fastify.requireRoles(ARCHIVE_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { reason, comment } = request.body || {};
+
+    if (!reason) return reply.code(400).send({ error: 'Укажите категорию отсева' });
+    if (!comment || !comment.trim()) return reply.code(400).send({ error: 'Комментарий обязателен' });
+    if (!ARCHIVE_REASONS.includes(reason)) return reply.code(400).send({ error: 'Недопустимая категория' });
+
+    const { rows } = await db.query('SELECT id, tender_status FROM tenders WHERE id = $1', [id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (rows[0].tender_status === 'Выиграли') return reply.code(400).send({ error: 'Нельзя отсеять выигранный тендер' });
+
+    const oldStatus = rows[0].tender_status;
+    await db.query(`
+      UPDATE tenders SET
+        tender_status = 'Не подходит', archived_at = NOW(), archived_by = $1,
+        archive_reason = $2, archive_comment = $3, updated_at = NOW()
+      WHERE id = $4
+    `, [user.id, reason, comment.trim(), id]);
+
+    await db.query(`
+      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+      VALUES ($1, 'tender', $2, 'archive', $3, NOW())
+    `, [user.id, id, JSON.stringify({ from_status: oldStatus, to_status: 'Не подходит', reason, comment: comment.trim() })]);
+
+    broadcast('tender:archived', { id, reason });
+    return { success: true, status: 'Не подходит' };
+  });
+
+  // POST /:id/unarchive — вернуть из архива (Не подходит → Новый)
+  fastify.post('/:id/unarchive', {
+    preHandler: [fastify.requireRoles(ARCHIVE_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { comment } = request.body || {};
+
+    if (!comment || !comment.trim()) return reply.code(400).send({ error: 'Укажите причину возврата' });
+
+    const { rows } = await db.query('SELECT id, tender_status FROM tenders WHERE id = $1', [id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (rows[0].tender_status !== 'Не подходит') return reply.code(400).send({ error: 'Тендер не в архиве' });
+
+    await db.query(`
+      UPDATE tenders SET tender_status = 'Новый', archived_at = NULL, archived_by = NULL,
+        archive_reason = NULL, archive_comment = NULL, updated_at = NOW()
+      WHERE id = $1
+    `, [id]);
+
+    await db.query(`
+      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+      VALUES ($1, 'tender', $2, 'unarchive', $3, NOW())
+    `, [user.id, id, JSON.stringify({ comment: comment.trim() })]);
+
+    broadcast('tender:unarchived', { id });
+    return { success: true, status: 'Новый' };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // СМЕНА АВТОРА: PUT /:id/change-author
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.put('/:id/change-author', {
+    preHandler: [fastify.requireRoles(ARCHIVE_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { new_author_id, comment } = request.body || {};
+
+    if (!new_author_id) return reply.code(400).send({ error: 'Укажите нового автора' });
+
+    const { rows: [tender] } = await db.query('SELECT id, created_by_user_id, created_by FROM tenders WHERE id = $1', [id]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+
+    const { rows: [newAuthor] } = await db.query('SELECT id, name, role FROM users WHERE id = $1', [new_author_id]);
+    if (!newAuthor) return reply.code(400).send({ error: 'Пользователь не найден' });
+
+    const oldAuthorId = tender.created_by_user_id || tender.created_by;
+
+    await db.query(`UPDATE tenders SET created_by_user_id = $1, created_by = $1, updated_at = NOW() WHERE id = $2`, [new_author_id, id]);
+
+    // История смены автора
+    await db.query(`
+      INSERT INTO tender_author_history (tender_id, old_author_id, new_author_id, changed_by, comment, created_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+    `, [id, oldAuthorId, new_author_id, user.id, comment || null]);
+
+    await db.query(`
+      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+      VALUES ($1, 'tender', $2, 'change_author', $3, NOW())
+    `, [user.id, id, JSON.stringify({ old_author_id: oldAuthorId, new_author_id, new_author_name: newAuthor.name, comment })]);
+
+    return { success: true, new_author: newAuthor.name };
+  });
+
+  // GET /:id/author-history — история смены авторов
+  fastify.get('/:id/author-history', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { rows } = await db.query(`
+      SELECT h.*,
+        ou.name as old_author_name, ou.login as old_author_login,
+        nu.name as new_author_name, nu.login as new_author_login,
+        cu.name as changed_by_name
+      FROM tender_author_history h
+      LEFT JOIN users ou ON ou.id = h.old_author_id
+      LEFT JOIN users nu ON nu.id = h.new_author_id
+      LEFT JOIN users cu ON cu.id = h.changed_by
+      WHERE h.tender_id = $1 ORDER BY h.created_at DESC
+    `, [request.params.id]);
+    return { history: rows };
+  });
+
+  // GET /archive-reasons — список категорий для фронтенда
+  fastify.get('/archive-reasons', { preHandler: [fastify.authenticate] }, async () => {
+    return { reasons: ARCHIVE_REASONS };
+  });
+
+  // GET /transition-map — разрешённые переходы для роли пользователя
+  fastify.get('/transition-map', { preHandler: [fastify.authenticate] }, async (request) => {
+    const role = request.user.role;
+    if (role === 'ADMIN' || ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role)) {
+      return { transitions: TENDER_TRANSITIONS, can_move: true };
+    }
+    if (role === 'HEAD_TO') {
+      return { transitions: HEAD_TO_TRANSITIONS, can_move: true };
+    }
+    return { transitions: {}, can_move: false };
+  });
+}
+
 module.exports = routes;

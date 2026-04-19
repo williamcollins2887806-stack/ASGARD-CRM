@@ -2,118 +2,22 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '17.0.1';
+const SHELL_VERSION = '19.8.0';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
-const API_CACHE_NAME = 'asgard-crm-api-v1';
+const API_CACHE_NAME = 'asgard-crm-api-v2';
 
 // ═══════════════════════════════════════════════════════════════
 // SHELL ASSETS — all files needed for offline shell
 // ═══════════════════════════════════════════════════════════════
 const SHELL_ASSETS = [
-  // index.html НЕ кэшируем при установке — сервер отдаёт разный HTML для mobile/desktop
-  // При навигации он кэшируется автоматически через networkFirstWithOffline
+  // index.html НЕ кэшируем — сервер отдаёт разный HTML для mobile/desktop
   './offline.html',
-  './manifest.json?v=17.0.1',
-  // ── CSS ──
-  './assets/css/design-tokens.css?v=17.0.1',
-  './assets/css/components.css?v=17.0.1',
-  './assets/css/layout.css?v=17.0.1',
-  './assets/css/app.css?v=17.0.1',
-  './assets/css/responsive.css?v=17.0.1',
-  // ── Core JS ──
-  './assets/js/ui.js?v=17.0.1',
-  './assets/js/sla.js?v=17.0.1',
-  './assets/js/funnel.js?v=17.0.1',
-  './assets/js/diag.js?v=17.0.1',
-  './assets/js/push-notifications.js?v=17.0.1',
-  './assets/js/webauthn.js?v=17.0.1',
   // ── Images ──
   './assets/img/logo.png',
   './assets/img/asgard_logo.png',
-  './assets/img/asgard_emblem.png',
-  // ── Mobile v3: Core ──
-  './assets/js/mobile_v3/approval.js?v=17.0.1',
-  './assets/js/mobile_v3/auth.js?v=17.0.1',
-  './assets/js/mobile_v3/components.js?v=17.0.1',
-  './assets/js/mobile_v3/core.js?v=17.0.1',
-  './assets/js/mobile_v3/ds.js?v=17.0.1',
-  './assets/js/mobile_v3/test.js?v=17.0.1',
-  './assets/js/mobile_v3/router.js?v=17.0.1',
-  // ── Mobile v3: Pages (51 files) ──
-  './assets/js/mobile_v3/pages/acts.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/alerts.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/all_estimates.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/all_works.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/approval_payment.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/approvals.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/backup.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/cash.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/cash_admin.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/contracts.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/correspondence.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/customers.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/dashboard.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/diag.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/finances.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/funnel.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/gantt.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/hr_requests.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/integrations.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/invoices.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/meetings.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/messenger.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/my_equipment.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/my_mail.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/office_expenses.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/pass_requests.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/payroll.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/permits.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/personnel.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/pm_calcs.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/pm_works.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/pre_tenders.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/proc_requests.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/profile.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/proxies.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/seals.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/settings.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/tasks.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/tasks_admin.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/telegram.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/tenders.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/tmc_requests.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/training.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/travel.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/warehouse.js?v=17.0.1',
-  './assets/js/mobile_v3/pages/workers_schedule.js?v=17.0.1',
-  // ── Mobile v3: Widgets (27 files) ──
-  './assets/js/mobile_v3/widgets/approvals.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/bank_summary.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/birthdays.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/calendar.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/cash_balance.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/equipment_alerts.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/equipment_value.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/gantt_mini.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/kpi_summary.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/money_summary.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/my_cash_balance.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/my_mail.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/my_works.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/notifications.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/overdue_works.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/payroll_pending.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/permits_expiry.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/platform_alerts.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/pre_tenders.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/quick_actions.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/receipt_scanner.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/team_workload.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/telephony.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/tender_dynamics.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/tenders_funnel.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/todo.js?v=17.0.1',
-  './assets/js/mobile_v3/widgets/welcome.js?v=17.0.1'
+  './assets/img/asgard_emblem.png'
+  // CSS и JS НЕ кэшируем в SW — управляются через ?v= в index.html
+  // При смене ?v= браузер загружает новый файл автоматически
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -121,10 +25,21 @@ const SHELL_ASSETS = [
 // ═══════════════════════════════════════════════════════════════
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing', CACHE_NAME);
+  self.skipWaiting(); // активируем новый SW сразу, не ждём закрытия вкладок
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(SHELL_ASSETS))
-      .then(() => console.log('[SW] Shell cached'))
+      .then((cache) => {
+        // Fetch with cache:'reload' to bypass browser HTTP cache
+        var requests = SHELL_ASSETS.map(function(url) {
+          return fetch(new Request(url, { cache: 'reload' }))
+            .then(function(resp) {
+              if (resp && resp.ok) return cache.put(url, resp);
+            })
+            .catch(function(err) { console.warn('[SW] Failed to cache:', url, err); });
+        });
+        return Promise.all(requests);
+      })
+      .then(() => console.log('[SW] Shell cached (bypass HTTP cache)'))
       .catch((err) => console.error('[SW] Install failed:', err))
   );
 });
@@ -135,20 +50,21 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activating', CACHE_NAME);
   event.waitUntil(
+    // АГРЕССИВНАЯ ОЧИСТКА: удаляем ВСЕ кеши при каждом обновлении SW.
+    // Это гарантирует что после деплоя пользователь получит свежие JS/CSS
+    // без необходимости ручного Ctrl+Shift+R. Первая загрузка после деплоя
+    // чуть медленнее (всё качается заново), зато 100% свежий контент.
     caches.keys()
       .then((names) => Promise.all(
-        names
-          .filter((name) => {
-            if (name.startsWith('asgard-crm-shell-') && name !== CACHE_NAME) return true;
-            if (name.startsWith('asgard-crm-api-') && name !== API_CACHE_NAME) return true;
-            return false;
-          })
-          .map((name) => {
-            console.log('[SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
+        names.map((name) => {
+          console.log('[SW] Clearing cache:', name);
+          return caches.delete(name);
+        })
       ))
-      .then(() => self.clients.claim())
+      .then(() => {
+        console.log('[SW] All caches cleared, claiming clients');
+        return self.clients.claim();
+      })
   );
 });
 
@@ -160,6 +76,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (url.origin !== location.origin) return;
+
+  // Field PWA has its own SW — do not intercept
+  if (url.pathname === '/field' || url.pathname.startsWith('/field/')) return;
 
   // ── API routing ──
   if (url.pathname.startsWith('/api/')) {
@@ -176,6 +95,16 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
+    // GET /api/telephony/* → bypass SW (response.clone() causes empty body)
+    if (url.pathname.startsWith('/api/telephony/')) {
+      return;
+    }
+
+    // GET /api/files/download/* → bypass SW (binary file download)
+    if (url.pathname.startsWith('/api/files/download/')) {
+      return;
+    }
+
     // Other GET API → Network First with API cache
     event.respondWith(networkFirstAPI(request));
     return;
@@ -188,6 +117,13 @@ self.addEventListener('fetch', (event) => {
   var isNavigation = request.mode === 'navigate';
 
   if (isNavigation || acceptHeader.includes('text/html') || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    event.respondWith(networkFirstWithOffline(request));
+    return;
+  }
+
+  // JS/CSS с ?v= параметром: network-first (гарантирует свежесть после деплоя).
+  // Остальное (картинки, шрифты): stale-while-revalidate (быстро).
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
     event.respondWith(networkFirstWithOffline(request));
     return;
   }
@@ -212,7 +148,7 @@ async function networkFirstAPI(request) {
     var response = await fetch(request);
     if (response && response.ok) {
       var cache = await caches.open(API_CACHE_NAME);
-      cache.put(request, response.clone());
+      cache.put(request, response.clone()).catch(function() {});
     }
     return response;
   } catch (err) {
@@ -230,7 +166,7 @@ async function networkFirstWithOffline(request) {
     var response = await fetch(request);
     if (response && response.ok) {
       var cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
+      cache.put(request, response.clone()).catch(function() {});
     }
     return response;
   } catch (err) {
@@ -250,7 +186,7 @@ async function staleWhileRevalidate(request) {
   var cached = await cache.match(request);
   var fetchPromise = fetch(request)
     .then(function(response) {
-      if (response && response.ok) cache.put(request, response.clone());
+      if (response && response.ok) cache.put(request, response.clone()).catch(function() {});
       return response;
     })
     .catch(function() { return null; });

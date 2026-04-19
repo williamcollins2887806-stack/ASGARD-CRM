@@ -862,7 +862,7 @@ async function routes(fastify, options) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const account = await getUserAccount(request);
-    if (!account) return { unread: 0, total: 0, folders: [] };
+    if (!account) return { unread: 0, total: 0, folders: [], configured: false };
 
     const [unreadRes, totalRes, foldersRes] = await Promise.all([
       db.query('SELECT COUNT(*) FROM emails WHERE user_account_id = $1 AND is_read = false AND is_deleted = false AND is_draft = false', [account.id]),
@@ -873,7 +873,8 @@ async function routes(fastify, options) {
     return {
       unread: parseInt(unreadRes.rows[0].count),
       total: parseInt(totalRes.rows[0].count),
-      folders: foldersRes.rows
+      folders: foldersRes.rows,
+      configured: true
     };
   });
 

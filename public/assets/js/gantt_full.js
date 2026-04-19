@@ -8,6 +8,13 @@ window.AsgardGanttFullPage=(function(){
 
   function parseDate(v){
     if(!v) return null;
+    if(typeof v === 'string'){
+      // СТРОГО YYYY-MM-DD → парсим как ЛОКАЛЬНУЮ дату (иначе new Date('2026-03-28') = UTC midnight,
+      // и в браузере вне Moscow TZ getDate() возвращает предыдущий день).
+      // ISO с временем (TIMESTAMPs) парсим стандартно — там важен инстант, не календарный день.
+      const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+    }
     const d = new Date(v);
     return isNaN(d.getTime()) ? null : d;
   }
@@ -40,21 +47,23 @@ window.AsgardGanttFullPage=(function(){
     if(!f||!t) return null;
     const ms = 7*24*60*60*1000;
     const f0=startOfWeek(f);
-    const t0=startOfWeek(addDays(t,1)); // include end date
+    // Включаем целиком ту неделю, в которой находится конец диапазона
+    // (startOfWeek(t) + 7 даёт понедельник следующей недели)
+    const t0=addDays(startOfWeek(t), 7);
     return Math.ceil((t0-f0)/ms);
   }
 
   async function getCoreSettings(){
     const s = await AsgardDB.get("settings","app");
-    return s ? JSON.parse(s.value_json||"{}") : {vat_pct:20, gantt_start_iso:"2026-01-01T00:00:00Z", status_colors:{tender:{}, work:{}}};
+    return s ? JSON.parse(s.value_json||"{}") : {vat_pct:22, gantt_start_iso:"2026-01-01T00:00:00Z", status_colors:{tender:{}, work:{}}};
   }
   function renderSafeList(items, title){
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const rows = (items||[]).map(it=>{
       const name = it.title || it.work_title || it.tender_title || ("ID "+it.id);
-      const start = fmtDate(it.start || it.start_in_work_date || it.work_start_plan);
+      const start = fmtDate(it.start || it.start_in_work_date || it.start_plan || it.work_start_plan);
       const end = fmtDate(it.end || it.end_plan || it.work_end_plan);
-      const st = it.status || it.work_status || it.tender_status || "";
+      const st = it.work_status || it.status || it.tender_status || "";
       return `<tr><td>${esc(name)}</td><td class="mono">${start}</td><td class="mono">${end}</td><td>${esc(st)}</td></tr>`;
     }).join("");
     return `
@@ -73,6 +82,9 @@ window.AsgardGanttFullPage=(function(){
     `;
   }
 
+  /* S9: use shared AsgardGantt.navHtml / .initNav */
+  const ganttNavHtml = AsgardGantt.navHtml;
+  const initGanttNav = AsgardGantt.initNav;
 
   async function renderCalcs({layout}={}){
     const auth=await AsgardAuth.requireUser();
@@ -81,7 +93,7 @@ window.AsgardGanttFullPage=(function(){
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
-    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
+    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
 
     // Load tenders visible
     let tenders = (await AsgardDB.all("tenders")).filter(t => t.handoff_at);
@@ -101,42 +113,21 @@ window.AsgardGanttFullPage=(function(){
           </div>
         </div>
         <hr class="hr"/>
+        ${ganttNavHtml()}
         <div class="row" style="gap:10px; flex-wrap:wrap; align-items:end">
           <input id="q" placeholder="Поиск: заказчик / работа" style="max-width:360px"/>
-          <select id="flt" style="max-width:240px">
-            <option value="active" selected>Активные</option>
-            <option value="all">Все</option>
-            <option value="lost">Только отказ/проигрыш</option>
-          </select>
-          <select id="pm" style="max-width:240px" ${isDir?"":"disabled"}></select>
-          <select id="st" style="max-width:260px"></select>
-          <select id="per" style="max-width:220px">
-            <option value="custom" selected>Период: вручную</option>
-            <option value="month">Текущий месяц</option>
-            <option value="year">Текущий год</option>
-            <option value="last12">Последние 12 месяцев</option>
-            <option value="all">Всё время</option>
-          </select>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">c</div>
-            <input id="from" type="date"/>
-          </div>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">по</div>
-            <input id="to" type="date"/>
-          </div>
-          <select id="zoom" style="max-width:190px">
-            <option value="12">Масштаб: 12 нед</option>
-            <option value="26">26 нед</option>
-            <option value="52" selected>52 нед</option>
-            <option value="104">104 нед</option>
-          </select>
-          <button class="btn ghost" id="btnApply">Применить</button>
+          <div id="cr-flt-wrap" style="max-width:240px;min-width:180px"></div>
+          <div id="cr-pm-wrap" style="max-width:240px;min-width:180px"></div>
+          <div id="cr-st-wrap" style="max-width:260px;min-width:180px"></div>
+          <div id="cr-per-wrap" style="max-width:220px;min-width:180px"></div>
+          <input id="from" type="hidden"/>
+          <input id="to" type="hidden"/>
+          <div id="cr-zoom-wrap" style="max-width:190px;min-width:150px"></div>
         </div>
         <div id="g" style="margin-top:12px"></div>
       </div>
     `;
-    
+
     if(safeOn()){
       const body = renderSafeList(tenders, "renderCalcs");
       await layout(body, {title: "Гантт • Просчёты", motto: "Путь виден. Но сейчас — безопасный режим."});
@@ -147,40 +138,86 @@ window.AsgardGanttFullPage=(function(){
 
 await layout(body,{title:"Гантт • Просчёты", motto:"Сроки видны. Силы рассчитаны. Риск под контролем."});
 
-    // Populate filters
-    const pmSel = $("#pm");
-    if(isDir){
-      pmSel.innerHTML = `<option value="all" selected>РП: все</option>` + pmUsers.map(u=>`<option value="${esc(String(u.id))}">${esc(u.name||u.login)}</option>`).join("");
-    }else{
-      pmSel.innerHTML = `<option value="${esc(String(user.id))}" selected>РП: ${esc(user.name||user.login)}</option>`;
-    }
+    // Create CRSelect filters
+    const crFltWrap = document.getElementById('cr-flt-wrap');
+    if(crFltWrap) crFltWrap.appendChild(CRSelect.create({
+      id: 'g-flt',
+      options: [
+        { value: 'active', label: 'Активные' },
+        { value: 'all', label: 'Все' },
+        { value: 'lost', label: 'Только отказ/проигрыш' }
+      ],
+      value: 'active',
+      onChange: () => apply()
+    }));
 
-    const stSel = $("#st");
+    const pmOpts = isDir
+      ? [{value:'all',label:'РП: все'}, ...pmUsers.map(u=>({value:String(u.id),label:u.name||u.login}))]
+      : [{value:String(user.id),label:'РП: '+(user.name||user.login)}];
+    const crPmWrap = document.getElementById('cr-pm-wrap');
+    if(crPmWrap) crPmWrap.appendChild(CRSelect.create({
+      id: 'g-pm',
+      options: pmOpts,
+      value: isDir ? 'all' : String(user.id),
+      onChange: () => apply()
+    }));
+
     const tenderStatuses = Array.isArray(refs.tender_statuses) ? refs.tender_statuses : [...new Set(tenders.map(t=>t.tender_status).filter(Boolean))];
-    stSel.innerHTML = `<option value="all" selected>Статус: все</option>` + tenderStatuses.map(s=>`<option value="${esc(String(s))}">${esc(String(s))}</option>`).join("");
+    const crStWrap = document.getElementById('cr-st-wrap');
+    if(crStWrap) crStWrap.appendChild(CRSelect.create({
+      id: 'g-st',
+      options: [{value:'all',label:'Статус: все'}, ...tenderStatuses.map(s=>({value:String(s),label:String(s)}))],
+      value: 'all',
+      onChange: () => apply()
+    }));
+
+    const crPerWrap = document.getElementById('cr-per-wrap');
+    if(crPerWrap) crPerWrap.appendChild(CRSelect.create({
+      id: 'g-per',
+      options: [
+        { value: 'custom', label: 'Период: вручную' },
+        { value: 'month', label: 'Текущий месяц' },
+        { value: 'year', label: 'Текущий год' },
+        { value: 'last12', label: 'Последние 12 месяцев' },
+        { value: 'all', label: 'Всё время' }
+      ],
+      value: 'custom',
+      onChange: (v) => { setPreset(v); apply(); }
+    }));
+
+    const crZoomWrap = document.getElementById('cr-zoom-wrap');
+    if(crZoomWrap) crZoomWrap.appendChild(CRSelect.create({
+      id: 'g-zoom',
+      options: [
+        { value: '12', label: 'Масштаб: 12 нед' },
+        { value: '26', label: '26 нед' },
+        { value: '52', label: '52 нед' },
+        { value: '104', label: '104 нед' }
+      ],
+      value: '52',
+      onChange: () => apply()
+    }));
 
     // Defaults
-    const zoomSel = $("#zoom");
     const fromInp = $("#from");
     const toInp = $("#to");
-    // If settings has gantt_start_iso, keep it as implicit start; explicit dates remain empty.
 
     function apply(){
       const q=norm($("#q").value);
-      const flt=$("#flt").value;
-      const pmV=$("#pm").value;
-      const stV=$("#st").value;
-      const perV=$("#per").value;
+      const flt=CRSelect.getValue('g-flt')||'active';
+      const pmV=CRSelect.getValue('g-pm')||'all';
+      const stV=CRSelect.getValue('g-st')||'all';
+      const perV=CRSelect.getValue('g-per')||'custom';
       const fromV=fromInp.value;
       const toV=toInp.value;
-      const zoomW=Number(zoomSel.value||"52")||52;
+      const zoomW=Number(CRSelect.getValue('g-zoom')||'52')||52;
 
       let items=[...tenders];
       if(q) items=items.filter(t=> norm(t.customer_name).includes(q) || norm(t.tender_title).includes(q));
       if(pmV && pmV!=="all") items = items.filter(t=> String(t.responsible_pm_id||"") === String(pmV));
       if(stV && stV!=="all") items = items.filter(t=> String(t.tender_status||"") === String(stV));
 
-      const lostSet=new Set(["Клиент отказался","Проиграли","Не участвуем","Отказ"]);
+      const lostSet=new Set(["Проиграли","Не участвуем"]);
       if(flt==="active") items=items.filter(t=> !lostSet.has(t.tender_status));
       if(flt==="lost") items=items.filter(t=> lostSet.has(t.tender_status));
 
@@ -263,18 +300,10 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
     }
 
     $("#q").addEventListener("input", apply);
-    $("#flt").addEventListener("change", apply);
-    $("#pm").addEventListener("change", apply);
-    $("#st").addEventListener("change", apply);
-    $("#zoom").addEventListener("change", apply);
-    fromInp.addEventListener("change", ()=>{ $("#per").value="custom"; apply(); });
-    toInp.addEventListener("change", ()=>{ $("#per").value="custom"; apply(); });
-    $("#per").addEventListener("change", (e)=>{ setPreset(e.target.value); apply(); });
-    $("#btnApply").addEventListener("click", apply);
+    // CRSelect onChange handlers already set above
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт • Просчёты (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
-      document.querySelector(".modal")?.classList.add("fullscreen");
-      // restore click handlers in cloned DOM
+      { const _m = document.querySelector(".cr-m"); if(_m){ _m.classList.add("fullscreen","cr-m--fullscreen"); } }
       setTimeout(()=>{
         document.querySelectorAll("#gfs [data-gitem]").forEach(el=>{
           el.addEventListener("click", ()=>{
@@ -285,7 +314,7 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
       }, 0);
     });
 
-    apply();
+    initGanttNav(fromInp, toInp, apply);
   }
 
   async function renderWorks({layout}={}){
@@ -295,7 +324,7 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
-    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
+    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
 
     let works = await AsgardDB.all("works");
     if(!isDir){ works = works.filter(w=>w.pm_id===user.id); }
@@ -313,42 +342,21 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
           </div>
         </div>
         <hr class="hr"/>
+        ${ganttNavHtml()}
         <div class="row" style="gap:10px; flex-wrap:wrap; align-items:end">
           <input id="q" placeholder="Поиск: компания / работа" style="max-width:360px"/>
-          <select id="flt" style="max-width:240px">
-            <option value="active" selected>Активные</option>
-            <option value="all">Все</option>
-            <option value="done">Только завершённые</option>
-          </select>
-          <select id="pm" style="max-width:240px" ${isDir?"":"disabled"}></select>
-          <select id="st" style="max-width:260px"></select>
-          <select id="per" style="max-width:220px">
-            <option value="custom" selected>Период: вручную</option>
-            <option value="month">Текущий месяц</option>
-            <option value="year">Текущий год</option>
-            <option value="last12">Последние 12 месяцев</option>
-            <option value="all">Всё время</option>
-          </select>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">с</div>
-            <input id="from" type="date"/>
-          </div>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">по</div>
-            <input id="to" type="date"/>
-          </div>
-          <select id="zoom" style="max-width:190px">
-            <option value="12">Масштаб: 12 нед</option>
-            <option value="26">26 нед</option>
-            <option value="52" selected>52 нед</option>
-            <option value="104">104 нед</option>
-          </select>
-          <button class="btn ghost" id="btnApply">Применить</button>
+          <div id="cr-flt-wrap" style="max-width:240px;min-width:180px"></div>
+          <div id="cr-pm-wrap" style="max-width:240px;min-width:180px"></div>
+          <div id="cr-st-wrap" style="max-width:260px;min-width:180px"></div>
+          <div id="cr-per-wrap" style="max-width:220px;min-width:180px"></div>
+          <input id="from" type="hidden"/>
+          <input id="to" type="hidden"/>
+          <div id="cr-zoom-wrap" style="max-width:190px;min-width:150px"></div>
         </div>
         <div id="g" style="margin-top:12px"></div>
       </div>
     `;
-    
+
     if(safeOn()){
       const body = renderSafeList(works, "renderWorks");
       await layout(body, {title: "Гантт • Работы", motto: "Путь виден. Но сейчас — безопасный режим."});
@@ -359,31 +367,78 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
 
 await layout(body,{title:"Гантт • Работы", motto:"Клятва дана — доведи дело до конца."});
 
-    // Populate filters
-    const pmSel = $("#pm");
-    if(isDir){
-      pmSel.innerHTML = `<option value="all" selected>РП: все</option>` + pmUsers.map(u=>`<option value="${esc(String(u.id))}">${esc(u.name||u.login)}</option>`).join("");
-    }else{
-      pmSel.innerHTML = `<option value="${esc(String(user.id))}" selected>РП: ${esc(user.name||user.login)}</option>`;
-    }
+    // Create CRSelect filters
+    const crFltWrap = document.getElementById('cr-flt-wrap');
+    if(crFltWrap) crFltWrap.appendChild(CRSelect.create({
+      id: 'g-flt',
+      options: [
+        { value: 'active', label: 'Активные' },
+        { value: 'all', label: 'Все' },
+        { value: 'done', label: 'Только завершённые' }
+      ],
+      value: 'active',
+      onChange: () => apply()
+    }));
 
-    const stSel = $("#st");
+    const pmOpts = isDir
+      ? [{value:'all',label:'РП: все'}, ...pmUsers.map(u=>({value:String(u.id),label:u.name||u.login}))]
+      : [{value:String(user.id),label:'РП: '+(user.name||user.login)}];
+    const crPmWrap = document.getElementById('cr-pm-wrap');
+    if(crPmWrap) crPmWrap.appendChild(CRSelect.create({
+      id: 'g-pm',
+      options: pmOpts,
+      value: isDir ? 'all' : String(user.id),
+      onChange: () => apply()
+    }));
+
     const workStatuses = Array.isArray(refs.work_statuses) ? refs.work_statuses : [...new Set(works.map(w=>w.work_status).filter(Boolean))];
-    stSel.innerHTML = `<option value="all" selected>Статус: все</option>` + workStatuses.map(s=>`<option value="${esc(String(s))}">${esc(String(s))}</option>`).join("");
+    const crStWrap = document.getElementById('cr-st-wrap');
+    if(crStWrap) crStWrap.appendChild(CRSelect.create({
+      id: 'g-st',
+      options: [{value:'all',label:'Статус: все'}, ...workStatuses.map(s=>({value:String(s),label:String(s)}))],
+      value: 'all',
+      onChange: () => apply()
+    }));
 
-    const zoomSel = $("#zoom");
+    const crPerWrap = document.getElementById('cr-per-wrap');
+    if(crPerWrap) crPerWrap.appendChild(CRSelect.create({
+      id: 'g-per',
+      options: [
+        { value: 'custom', label: 'Период: вручную' },
+        { value: 'month', label: 'Текущий месяц' },
+        { value: 'year', label: 'Текущий год' },
+        { value: 'last12', label: 'Последние 12 месяцев' },
+        { value: 'all', label: 'Всё время' }
+      ],
+      value: 'custom',
+      onChange: (v) => { setPreset(v); apply(); }
+    }));
+
+    const crZoomWrap = document.getElementById('cr-zoom-wrap');
+    if(crZoomWrap) crZoomWrap.appendChild(CRSelect.create({
+      id: 'g-zoom',
+      options: [
+        { value: '12', label: 'Масштаб: 12 нед' },
+        { value: '26', label: '26 нед' },
+        { value: '52', label: '52 нед' },
+        { value: '104', label: '104 нед' }
+      ],
+      value: '52',
+      onChange: () => apply()
+    }));
+
     const fromInp = $("#from");
     const toInp = $("#to");
 
     function apply(){
       const q=norm($("#q").value);
-      const flt=$("#flt").value;
-      const pmV=$("#pm").value;
-      const stV=$("#st").value;
-      const perV=$("#per").value;
+      const flt=CRSelect.getValue('g-flt')||'active';
+      const pmV=CRSelect.getValue('g-pm')||'all';
+      const stV=CRSelect.getValue('g-st')||'all';
+      const perV=CRSelect.getValue('g-per')||'custom';
       const fromV=fromInp.value;
       const toV=toInp.value;
-      const zoomW=Number(zoomSel.value||"52")||52;
+      const zoomW=Number(CRSelect.getValue('g-zoom')||'52')||52;
 
       let items=[...works];
       if(q) items=items.filter(w=> norm(w.customer_name).includes(q) || norm(w.work_title).includes(q));
@@ -475,18 +530,11 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
     }
 
     $("#q").addEventListener("input", apply);
-    $("#flt").addEventListener("change", apply);
-    $("#pm").addEventListener("change", apply);
-    $("#st").addEventListener("change", apply);
-    $("#zoom").addEventListener("change", apply);
-    fromInp.addEventListener("change", ()=>{ $("#per").value="custom"; apply(); });
-    toInp.addEventListener("change", ()=>{ $("#per").value="custom"; apply(); });
-    $("#per").addEventListener("change", (e)=>{ setPreset(e.target.value); apply(); });
-    $("#btnApply").addEventListener("click", apply);
+    // CRSelect onChange handlers already set above
 
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт • Работы (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
-      document.querySelector(".modal")?.classList.add("fullscreen");
+      { const _m = document.querySelector(".cr-m"); if(_m){ _m.classList.add("fullscreen","cr-m--fullscreen"); } }
       setTimeout(()=>{
         document.querySelectorAll("#gfs [data-gitem]").forEach(el=>{
           el.addEventListener("click", ()=>{
@@ -497,7 +545,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       }, 0);
     });
 
-    apply();
+    initGanttNav(fromInp, toInp, apply);
   }
 
   /**
@@ -510,7 +558,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
-    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
+    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
 
     // Загружаем ОБА типа данных
     let tenders = (await AsgardDB.all("tenders")).filter(t => t.handoff_at);
@@ -540,41 +588,16 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
           </div>
         </div>
         <hr class="hr"/>
+        ${ganttNavHtml()}
         <div class="row" style="gap:10px; flex-wrap:wrap; align-items:end">
           <input id="q" placeholder="Поиск: заказчик / объект" style="max-width:360px"/>
-          <select id="typeFilter" style="max-width:200px">
-            <option value="all" selected>Тип: все</option>
-            <option value="tender">Только просчёты</option>
-            <option value="work">Только работы</option>
-          </select>
-          <select id="flt" style="max-width:240px">
-            <option value="active" selected>Активные</option>
-            <option value="all">Все</option>
-            <option value="done">Завершённые</option>
-          </select>
-          <select id="pm" style="max-width:240px" ${isDir?"":"disabled"}></select>
-          <select id="per" style="max-width:220px">
-            <option value="custom" selected>Период: вручную</option>
-            <option value="month">Текущий месяц</option>
-            <option value="year">Текущий год</option>
-            <option value="last12">Последние 12 месяцев</option>
-            <option value="all">Всё время</option>
-          </select>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">с</div>
-            <input id="from" type="date"/>
-          </div>
-          <div>
-            <div class="help" style="margin:0 0 6px 0">по</div>
-            <input id="to" type="date"/>
-          </div>
-          <select id="zoom" style="max-width:190px">
-            <option value="12">Масштаб: 12 нед</option>
-            <option value="26">26 нед</option>
-            <option value="52" selected>52 нед</option>
-            <option value="104">104 нед</option>
-          </select>
-          <button class="btn ghost" id="btnApply">Применить</button>
+          <div id="cr-typeFilter-wrap" style="max-width:200px;min-width:160px"></div>
+          <div id="cr-flt-wrap" style="max-width:240px;min-width:180px"></div>
+          <div id="cr-pm-wrap" style="max-width:240px;min-width:180px"></div>
+          <div id="cr-per-wrap" style="max-width:220px;min-width:180px"></div>
+          <input id="from" type="hidden"/>
+          <input id="to" type="hidden"/>
+          <div id="cr-zoom-wrap" style="max-width:190px;min-width:150px"></div>
         </div>
         <div id="g" style="margin-top:12px"></div>
       </div>
@@ -591,27 +614,81 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
 
     await layout(body,{title:"Гантт — Единая шкала", motto:"Просчёты и работы на одной карте. Путь ясен."});
 
-    // Populate PM filter
-    const pmSel = $("#pm");
-    if(isDir){
-      pmSel.innerHTML = `<option value="all" selected>РП: все</option>` + pmUsers.map(u=>`<option value="${esc(String(u.id))}">${esc(u.name||u.login)}</option>`).join("");
-    }else{
-      pmSel.innerHTML = `<option value="${esc(String(user.id))}" selected>РП: ${esc(user.name||user.login)}</option>`;
-    }
+    // Create CRSelect filters
+    const crTypeWrap = document.getElementById('cr-typeFilter-wrap');
+    if(crTypeWrap) crTypeWrap.appendChild(CRSelect.create({
+      id: 'g-typeFilter',
+      options: [
+        { value: 'all', label: 'Тип: все' },
+        { value: 'tender', label: 'Только просчёты' },
+        { value: 'work', label: 'Только работы' }
+      ],
+      value: 'all',
+      onChange: () => apply()
+    }));
 
-    const zoomSel = $("#zoom");
+    const crFltWrap = document.getElementById('cr-flt-wrap');
+    if(crFltWrap) crFltWrap.appendChild(CRSelect.create({
+      id: 'g-flt',
+      options: [
+        { value: 'active', label: 'Активные' },
+        { value: 'all', label: 'Все' },
+        { value: 'done', label: 'Завершённые' }
+      ],
+      value: 'active',
+      onChange: () => apply()
+    }));
+
+    const pmOpts = isDir
+      ? [{value:'all',label:'РП: все'}, ...pmUsers.map(u=>({value:String(u.id),label:u.name||u.login}))]
+      : [{value:String(user.id),label:'РП: '+(user.name||user.login)}];
+    const crPmWrap = document.getElementById('cr-pm-wrap');
+    if(crPmWrap) crPmWrap.appendChild(CRSelect.create({
+      id: 'g-pm',
+      options: pmOpts,
+      value: isDir ? 'all' : String(user.id),
+      onChange: () => apply()
+    }));
+
+    const crPerWrap = document.getElementById('cr-per-wrap');
+    if(crPerWrap) crPerWrap.appendChild(CRSelect.create({
+      id: 'g-per',
+      options: [
+        { value: 'custom', label: 'Период: вручную' },
+        { value: 'month', label: 'Текущий месяц' },
+        { value: 'year', label: 'Текущий год' },
+        { value: 'last12', label: 'Последние 12 месяцев' },
+        { value: 'all', label: 'Всё время' }
+      ],
+      value: 'custom',
+      onChange: (v) => { setPreset(v); apply(); }
+    }));
+
+    const crZoomWrap = document.getElementById('cr-zoom-wrap');
+    if(crZoomWrap) crZoomWrap.appendChild(CRSelect.create({
+      id: 'g-zoom',
+      options: [
+        { value: '12', label: 'Масштаб: 12 нед' },
+        { value: '26', label: '26 нед' },
+        { value: '52', label: '52 нед' },
+        { value: '104', label: '104 нед' }
+      ],
+      value: '52',
+      onChange: () => apply()
+    }));
+
     const fromInp = $("#from");
     const toInp = $("#to");
 
     function apply(){
       const q=norm($("#q").value);
-      const typeF=$("#typeFilter").value;
-      const flt=$("#flt").value;
-      const pmV=$("#pm").value;
-      const perV=$("#per").value;
+      const typeF=CRSelect.getValue('g-typeFilter')||'all';
+      const flt=CRSelect.getValue('g-flt')||'active';
+      const pmV=CRSelect.getValue('g-pm')||'all';
+      const perV=CRSelect.getValue('g-per')||'custom';
       const fromV=fromInp.value;
       const toV=toInp.value;
-      const zoomW=Number(zoomSel.value||"52")||52;
+      const zoomW=Number(CRSelect.getValue('g-zoom')||'52')||52;
 
       // Объединяем данные с пометкой типа
       let items = [];
@@ -650,7 +727,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       if(q) items=items.filter(it=> norm(it._label).includes(q));
       if(pmV && pmV!=="all") items = items.filter(it=> String(it._pmId||"") === String(pmV));
 
-      const doneSetTender = new Set(["Клиент отказался", "Проиграли", "Не подходит"]);
+      const doneSetTender = new Set(["Проиграли", "Не подходит"]);
       const doneSetWork = new Set(["Работы сдали", "Подписание акта"]);
       if(flt==="active"){
         items=items.filter(it=>{
@@ -660,7 +737,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       }
       if(flt==="done"){
         items=items.filter(it=>{
-          if(it._type==='tender') return doneSetTender.has(it._status) || it._status==='Клиент согласился';
+          if(it._type==='tender') return doneSetTender.has(it._status) || it._status==='Выиграли';
           return doneSetWork.has(it._status);
         });
       }
@@ -774,18 +851,11 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
     }
 
     $("#q").addEventListener("input", apply);
-    $("#typeFilter").addEventListener("change", apply);
-    $("#flt").addEventListener("change", apply);
-    $("#pm").addEventListener("change", apply);
-    $("#zoom").addEventListener("change", apply);
-    fromInp.addEventListener("change", ()=>{ $("#per").value="custom"; apply(); });
-    toInp.addEventListener("change", ()=>{ $("#per").value="custom"; apply(); });
-    $("#per").addEventListener("change", (e)=>{ setPreset(e.target.value); apply(); });
-    $("#btnApply").addEventListener("click", apply);
-
+    // CRSelect onChange handlers already set above
+    fromInp.addEventListener("change", ()=>{ CRSelect.setValue('g-per','custom'); apply(); });
     $("#fs").addEventListener("click", ()=>{
       AsgardUI.showModal("Гантт — Единая шкала (полный экран)", `<div id="gfs" style="height:76vh; overflow:auto">${$("#g").innerHTML}</div>`);
-      document.querySelector(".modal")?.classList.add("fullscreen");
+      { const _m = document.querySelector(".cr-m"); if(_m){ _m.classList.add("fullscreen","cr-m--fullscreen"); } }
       setTimeout(()=>{
         document.querySelectorAll("#gfs [data-gitem]").forEach(el=>{
           el.addEventListener("click", ()=>{
@@ -801,7 +871,7 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       }, 0);
     });
 
-    apply();
+    initGanttNav(fromInp, toInp, apply);
   }
 
   return {renderCalcs, renderWorks, renderCombined};

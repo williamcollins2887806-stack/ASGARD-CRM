@@ -698,7 +698,8 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
       messageContent = userMessage;
     }
 
-    const response = await aiProvider.complete({
+    const completeFn = aiProvider.completeAnalytics || aiProvider.complete;
+    const response = await completeFn({
       system: ANALYSIS_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: messageContent }],
       maxTokens: 1024,
@@ -861,8 +862,8 @@ function fallbackClassification({ subject, bodyText, fromEmail }) {
 async function getWorkloadData() {
   try {
     const [worksRes, tendersRes, employeesRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) as cnt FROM works WHERE work_status IN ('В работе','Мобилизация','На объекте')`),
-      db.query(`SELECT COUNT(*) as cnt FROM tenders WHERE tender_status IN ('Новый','В работе','Готовим КП')`),
+      db.query(`SELECT COUNT(*) as cnt FROM works WHERE work_status IN ('В работе','Мобилизация','Подготовка','На паузе','Подписание акта')`),
+      db.query(`SELECT COUNT(*) as cnt FROM tenders WHERE tender_status IN ('Новый','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','КП отправлено')`),
       db.query(`SELECT COUNT(*) as cnt FROM employees WHERE is_active = true`)
     ]);
 
@@ -954,7 +955,8 @@ async function generateReport({ emailId, subject, bodyText, fromEmail, fromName,
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         console.log(`[AI-Analyzer] Report generation attempt ${attempt}/3`);
-        const response = await aiProvider.complete({
+        const reportCompleteFn = aiProvider.completeAnalytics || aiProvider.complete;
+        const response = await reportCompleteFn({
           system: REPORT_SYSTEM_PROMPT,
           messages: [{ role: 'user', content: messageContent }],
           maxTokens: 4096,

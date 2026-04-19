@@ -942,7 +942,7 @@ async function routes(fastify, options) {
       RETURNING id
     `, [
       b.code || (b.name ? b.name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now() : 'tpl_' + Date.now()), b.name, b.category || 'custom',
-      b.subject_template || b.subject, b.body_template || b.body_html,
+      b.subject_template || b.subject, b.body_template || b.body_html || b.body,
       JSON.stringify(b.variables_schema || []),
       b.use_letterhead || false, b.default_cc || null,
       JSON.stringify(b.auto_attach_files || []),

@@ -112,7 +112,7 @@ module.exports = async function(fastify) {
   // GET /api/tasks/created — Задачи которые я создал (для директоров)
   // ───────────────────────────────────────────────────────────────
   fastify.get('/created', {
-    preHandler: [fastify.requirePermission('tasks_admin', 'read')]
+    preHandler: [fastify.requirePermission('tasks', 'read')]
   }, async (request) => {
     const { status, assignee_id, limit = 100, offset = 0 } = request.query;
     let sql = `
@@ -288,7 +288,7 @@ module.exports = async function(fastify) {
   // POST /api/tasks/:id/files — Загрузить файлы к задаче
   // ───────────────────────────────────────────────────────────────
   fastify.post('/:id/files', {
-    preHandler: [fastify.requirePermission('tasks_admin', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
@@ -376,6 +376,56 @@ module.exports = async function(fastify) {
     } catch (e) {
       return reply.code(404).send({ error: 'Файл не найден' });
     }
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/tasks/:id/status — Диспетчер смены статуса
+  // Маппит русские названия статусов на существующие роуты
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/status', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const { status } = request.body || {};
+    if (!status) return reply.code(400).send({ error: 'Не указан статус' });
+
+    const STATUS_MAP = {
+      'Новая': 'new', 'В работе': 'in_progress',
+      'Выполнена': 'done', 'Закрыта': 'cancelled',
+      'new': 'new', 'in_progress': 'in_progress',
+      'done': 'done', 'cancelled': 'cancelled'
+    };
+    const mapped = STATUS_MAP[status];
+    if (!mapped) return reply.code(400).send({ error: 'Неизвестный статус: ' + status });
+
+    const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+
+    const userId = request.user.id;
+    const isDirector = DIRECTOR_ROLES.includes(request.user.role);
+
+    if (mapped === 'in_progress') {
+      const canStart = task.assignee_id === userId || task.assignee_id === null || isDirector;
+      if (!canStart) return reply.code(403).send({ error: 'Нет прав' });
+      const updates = ['status = $1', 'accepted_at = COALESCE(accepted_at, NOW())', 'updated_at = NOW()'];
+      const vals = ['in_progress'];
+      if (!task.assignee_id) { updates.push('assignee_id = $2'); vals.push(userId); }
+      vals.push(id);
+      await db.query(`UPDATE tasks SET ${updates.join(', ')} WHERE id = $${vals.length}`, vals);
+    } else if (mapped === 'done') {
+      const canComplete = task.assignee_id === userId || isDirector;
+      if (!canComplete) return reply.code(403).send({ error: 'Нет прав' });
+      await db.query('UPDATE tasks SET status = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2', ['done', id]);
+    } else if (mapped === 'cancelled') {
+      const canClose = task.creator_id === userId || isDirector;
+      if (!canClose) return reply.code(403).send({ error: 'Нет прав' });
+      await db.query('UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2', ['cancelled', id]);
+    } else if (mapped === 'new') {
+      if (!isDirector) return reply.code(403).send({ error: 'Нет прав' });
+      await db.query('UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2', ['new', id]);
+    }
+
+    return { success: true, status: mapped };
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -484,7 +534,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/:id — Редактирование задачи (создателем)
   // ───────────────────────────────────────────────────────────────
   fastify.put('/:id', {
-    preHandler: [fastify.requirePermission('tasks_admin', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
     if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
@@ -525,7 +575,7 @@ module.exports = async function(fastify) {
   // DELETE /api/tasks/:id — Удаление задачи (создателем или ADMIN)
   // ───────────────────────────────────────────────────────────────
   fastify.delete('/:id', {
-    preHandler: [fastify.requirePermission('tasks_admin', 'delete')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
@@ -591,7 +641,7 @@ module.exports = async function(fastify) {
   // GET /api/tasks/todo — Мой todo-список
   // ───────────────────────────────────────────────────────────────
   fastify.get('/todo', {
-    preHandler: [fastify.requirePermission('todo', 'read')]
+    preHandler: [fastify.requirePermission('tasks', 'read')]
   }, async (request) => {
     // Сначала удалить протухшие (done + время прошло)
     await db.query(`
@@ -612,7 +662,7 @@ module.exports = async function(fastify) {
   // POST /api/tasks/todo — Добавить пункт
   // ───────────────────────────────────────────────────────────────
   fastify.post('/todo', {
-    preHandler: [fastify.requirePermission('todo', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const { text } = request.body;
     if (!text || !text.trim()) return reply.code(400).send({ error: 'Текст обязателен' });
@@ -635,7 +685,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/todo/:id/toggle — Отметить выполненным / снять отметку
   // ───────────────────────────────────────────────────────────────
   fastify.put('/todo/:id/toggle', {
-    preHandler: [fastify.requirePermission('todo', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
@@ -657,7 +707,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/todo/:id — Редактировать текст
   // ───────────────────────────────────────────────────────────────
   fastify.put('/todo/:id', {
-    preHandler: [fastify.requirePermission('todo', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const { text } = request.body;
@@ -676,7 +726,7 @@ module.exports = async function(fastify) {
   // PUT /api/tasks/todo/reorder — Пересортировать список
   // ───────────────────────────────────────────────────────────────
   fastify.put('/todo/reorder', {
-    preHandler: [fastify.requirePermission('todo', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const { order } = request.body; // [{id: 5, sort_order: 0}, ...]
     if (!Array.isArray(order)) return reply.code(400).send({ error: 'order array required' });
@@ -695,7 +745,7 @@ module.exports = async function(fastify) {
   // DELETE /api/tasks/todo/:id — Удалить пункт
   // ───────────────────────────────────────────────────────────────
   fastify.delete('/todo/:id', {
-    preHandler: [fastify.requirePermission('todo', 'delete')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
     const result = await db.query(
       'DELETE FROM todo_items WHERE id = $1 AND user_id = $2 RETURNING id',

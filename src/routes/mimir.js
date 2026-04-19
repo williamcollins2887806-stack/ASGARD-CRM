@@ -20,6 +20,7 @@ const { Readable } = require('stream');
 // Сервисы
 const aiProvider = require('../services/ai-provider');
 const mimirData = require('../services/mimir-data');
+const mimirSchema = require('../services/mimir-schema');
 
 async function mimirRoutes(fastify, options) {
   const db = fastify.db;
@@ -213,22 +214,31 @@ async function mimirRoutes(fastify, options) {
         convId = newConv.rows[0].id;
       }
 
-      // Загружаем историю (последние 20 сообщений)
+      // Загружаем ВСЮ историю (270K контекст позволяет)
       const history = await db.query(`
         SELECT role, content FROM mimir_messages
         WHERE conversation_id = $1
-        ORDER BY created_at DESC
-        LIMIT 20
+        ORDER BY created_at ASC
       `, [convId]);
 
-      const historyMessages = history.rows.reverse();
+      const historyMessages = history.rows;
 
-      // Обработка запроса — поиск данных
-      const { additionalData, results } = await mimirData.processQuery(db, message, user);
+      // Обработка запроса — поиск данных (regex)
+      const { additionalData, results, action } = await mimirData.processQuery(db, message, user);
+
+      // Text-to-SQL: AI генерирует SQL → сервер выполняет → данные в контекст
+      let sqlContext = '';
+      try {
+        const { dataContext, sql, rowCount } = await mimirSchema.textToSQL(aiProvider, db, message, user);
+        if (dataContext) {
+          sqlContext = '\n\n[ДАННЫЕ ИЗ БД]\n' + dataContext;
+        }
+      } catch (e) { /* Text-to-SQL не критичен, продолжаем без данных */ }
 
       let userMessage = message;
       if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
       if (additionalData) userMessage += additionalData;
+      if (sqlContext) userMessage += sqlContext;
 
       // Строим системный промпт
       const systemPrompt = await mimirData.buildSystemPrompt(db, user);
@@ -243,8 +253,8 @@ async function mimirRoutes(fastify, options) {
       const aiResult = await aiProvider.complete({
         system: systemPrompt,
         messages: aiMessages,
-        maxTokens: 4096,
-        temperature: 0.6
+        maxTokens: 8000,
+        temperature: 0.5
       });
 
       const durationMs = Date.now() - startTime;
@@ -287,6 +297,7 @@ async function mimirRoutes(fastify, options) {
         success: true,
         response: aiResponse,
         results: results,
+        action: action || null,
         conversation_id: convId,
         userRole: user?.role,
         tokens: aiResult.usage
@@ -354,26 +365,39 @@ async function mimirRoutes(fastify, options) {
 
       sendEvent({ type: 'start', conversation_id: convId });
 
-      // Загружаем историю
+      // Загружаем ВСЮ историю (270K контекст позволяет)
       const history = await db.query(`
         SELECT role, content FROM mimir_messages
         WHERE conversation_id = $1
-        ORDER BY created_at DESC
-        LIMIT 20
+        ORDER BY created_at ASC
       `, [convId]);
 
-      const historyMessages = history.rows.reverse();
+      const historyMessages = history.rows;
 
       // Обработка запроса
-      const { additionalData, results } = await mimirData.processQuery(db, message, user);
+      const { additionalData, results, action: streamAction } = await mimirData.processQuery(db, message, user);
 
       if (results) {
         sendEvent({ type: 'results', data: results });
       }
+      if (streamAction) {
+        sendEvent({ type: 'action', data: streamAction });
+      }
+
+      // Text-to-SQL: AI генерирует SQL → сервер выполняет → данные в контекст
+      let sqlContext = '';
+      try {
+        const { dataContext } = await mimirSchema.textToSQL(aiProvider, db, message, user);
+        if (dataContext) {
+          sqlContext = '\n\n[ДАННЫЕ ИЗ БД]\n' + dataContext;
+          sendEvent({ type: 'status', message: 'Данные из БД получены' });
+        }
+      } catch (e) { /* Text-to-SQL не критичен */ }
 
       let userMessage = message;
       if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
       if (additionalData) userMessage += additionalData;
+      if (sqlContext) userMessage += sqlContext;
 
       const systemPrompt = await mimirData.buildSystemPrompt(db, user);
 
@@ -386,8 +410,8 @@ async function mimirRoutes(fastify, options) {
       const streamResponse = await aiProvider.stream({
         system: systemPrompt,
         messages: aiMessages,
-        maxTokens: 4096,
-        temperature: 0.6
+        maxTokens: 8000,
+        temperature: 0.5
       });
 
       // Парсим поток
@@ -678,6 +702,119 @@ async function mimirRoutes(fastify, options) {
     return { success: true, count: results.length, results };
   });
 
+  // Персональные подсказки для чипов Мимира
+  fastify.get('/suggestions', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const user = request.user;
+    const role = user?.role || 'USER';
+    const suggestions = [];
+
+    try {
+      // Общие подсказки — непрочитанные уведомления
+      const unreadRes = await db.query(
+        'SELECT COUNT(*) as cnt FROM notifications WHERE user_id = $1 AND is_read = false',
+        [user.id]
+      );
+      const unread = parseInt(unreadRes.rows[0]?.cnt || 0);
+      if (unread > 0) {
+        suggestions.push({ icon: '🔔', label: `Уведомления (${unread})`, query: `У меня ${unread} непрочитанных уведомлений. Что важного?` });
+      }
+
+      // Директора и админы — расширенные подсказки
+      if (mimirData.hasFullAccess(role)) {
+        // Пропущенные звонки
+        const missedRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM call_history
+           WHERE call_type = 'inbound' AND duration_seconds < 5
+           AND created_at > NOW() - INTERVAL '24 hours'`
+        );
+        const missed = parseInt(missedRes.rows[0]?.cnt || 0);
+        if (missed > 0) {
+          suggestions.push({ icon: '📞', label: `Пропущено: ${missed}`, query: `Покажи пропущенные звонки за сегодня` });
+        }
+
+        // Срочные тендеры (дедлайн < 3 дней)
+        const urgentRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM tenders
+           WHERE deleted_at IS NULL AND tender_status NOT IN ('Закрыт', 'Отменён', 'Выиграли', 'Проиграли')
+           AND docs_deadline IS NOT NULL AND docs_deadline < CURRENT_DATE + INTERVAL '3 days' AND docs_deadline >= CURRENT_DATE`
+        );
+        const urgent = parseInt(urgentRes.rows[0]?.cnt || 0);
+        if (urgent > 0) {
+          suggestions.push({ icon: '⚡', label: `Срочные тендеры: ${urgent}`, query: `Покажи тендеры с дедлайном в ближайшие 3 дня` });
+        }
+
+        // Неоплаченные счета
+        const overdueRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM invoices
+           WHERE status NOT IN ('paid','cancelled') AND due_date < CURRENT_DATE`
+        );
+        const overdue = parseInt(overdueRes.rows[0]?.cnt || 0);
+        if (overdue > 0) {
+          suggestions.push({ icon: '💰', label: `Просрочено: ${overdue}`, query: `Покажи просроченные счета` });
+        }
+      }
+
+      // PM — активные тендеры и работы
+      if (mimirData.isPM(role)) {
+        const myTendersRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM tenders WHERE deleted_at IS NULL AND responsible_pm_id = $1 AND tender_status NOT IN ('Закрыт', 'Отменён', 'Выиграли', 'Проиграли')`,
+          [user.id]
+        );
+        const myTenders = parseInt(myTendersRes.rows[0]?.cnt || 0);
+        if (myTenders > 0) {
+          suggestions.push({ icon: '📋', label: `Мои тендеры: ${myTenders}`, query: `Покажи мои активные тендеры` });
+        }
+
+        const staleRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM works
+           WHERE deleted_at IS NULL AND pm_id = $1 AND work_status NOT IN ('Работы сдали', 'Отменено') AND updated_at < NOW() - INTERVAL '14 days'`,
+          [user.id]
+        );
+        const stale = parseInt(staleRes.rows[0]?.cnt || 0);
+        if (stale > 0) {
+          suggestions.push({ icon: '⏳', label: `Застой: ${stale} работ`, query: `Покажи работы без обновлений более 2 недель` });
+        }
+      }
+
+      // BUH — ожидающие оплаты
+      if (mimirData.isBUH(role)) {
+        const pendingRes = await db.query(
+          `SELECT COUNT(*) as cnt FROM invoices WHERE status = 'pending'`
+        );
+        const pending = parseInt(pendingRes.rows[0]?.cnt || 0);
+        if (pending > 0) {
+          suggestions.push({ icon: '💳', label: `К оплате: ${pending}`, query: `Покажи счета ожидающие оплаты` });
+        }
+      }
+
+      // TO — тендерный отдел
+      if (mimirData.isTO(role)) {
+        suggestions.push({ icon: '📊', label: 'Статистика тендеров', query: 'Покажи статистику по тендерам за этот месяц' });
+      }
+
+      // Дефолтные подсказки по роли (если мало персональных)
+      if (suggestions.length < 2) {
+        suggestions.push({ icon: '📊', label: 'Тендеры', query: 'Сколько у нас активных тендеров?' });
+        suggestions.push({ icon: '🔍', label: 'Поиск', query: 'Найди работы по Газпром' });
+        suggestions.push({ icon: '❓', label: 'Помощь', query: 'Как добавить новый расход?' });
+      }
+
+      return { success: true, suggestions: suggestions.slice(0, 6) };
+    } catch (err) {
+      fastify.log.error('[Mimir Suggestions] Error:', err.message);
+      return {
+        success: true,
+        suggestions: [
+          { icon: '📊', label: 'Тендеры', query: 'Сколько у нас активных тендеров?' },
+          { icon: '🔍', label: 'Поиск', query: 'Найди работы по Газпром' },
+          { icon: '❓', label: 'Помощь', query: 'Как добавить новый расход?' }
+        ]
+      };
+    }
+  });
+
   // Финансовая статистика
   fastify.get('/finance-stats', {
     preHandler: [fastify.authenticate]
@@ -758,12 +895,12 @@ async function mimirRoutes(fastify, options) {
       `, params);
 
       const deadlines = await db.query(`
-        SELECT id, work_number, work_title, customer_name, work_end_plan
+        SELECT id, work_number, work_title, customer_name, end_plan
         FROM works
         ${whereClause || 'WHERE 1=1'}
-          AND work_end_plan IS NOT NULL
+          AND end_plan IS NOT NULL
           AND work_status NOT IN ('Работы сдали', 'Отменено')
-        ORDER BY work_end_plan ASC
+        ORDER BY end_plan ASC
         LIMIT 5
       `, params);
 
@@ -800,7 +937,7 @@ async function mimirRoutes(fastify, options) {
         GROUP BY tender_status
       `, [t.customer_name]);
 
-      const wonCount = parseInt(history.rows.find(r => r.tender_status === 'Клиент согласился')?.cnt || 0);
+      const wonCount = parseInt(history.rows.find(r => r.tender_status === 'Выиграли')?.cnt || 0);
       const totalCount = history.rows.reduce((s, r) => s + parseInt(r.cnt), 0);
       const winRate = totalCount > 0 ? Math.round((wonCount / totalCount) * 100) : 0;
 
@@ -811,13 +948,13 @@ async function mimirRoutes(fastify, options) {
         recommendation = 'Новый клиент. Требуется качественное КП.';
         score = 50;
       } else if (winRate >= 60) {
-        recommendation = 'Высокие шансы! Клиент лоялен, конверсия ' + winRate + '%';
+        recommendation = 'Высокие шансы! Клиент лоялен, % выигранных ' + winRate + '%';
         score = 85;
       } else if (winRate >= 30) {
-        recommendation = 'Средние шансы. Конверсия ' + winRate + '%. Подготовь конкурентное КП.';
+        recommendation = 'Средние шансы. % выигранных ' + winRate + '%. Подготовь конкурентное КП.';
         score = 60;
       } else {
-        recommendation = 'Низкие шансы. Конверсия ' + winRate + '%. Оцени целесообразность участия.';
+        recommendation = 'Низкие шансы. % выигранных ' + winRate + '%. Оцени целесообразность участия.';
         score = 30;
       }
 
@@ -878,6 +1015,385 @@ async function mimirRoutes(fastify, options) {
     } catch (error) {
       fastify.log.error('TKP generation error:', error.message);
       return reply.code(500).send({ success: false, message: 'Ошибка генерации ТКП' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // БЛОК 4.5: ГЕНЕРАЦИЯ И СОЗДАНИЕ ТКП ЧЕРЕЗ МИМИР
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  fastify.post('/suggest-tkp', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { tender_id, work_id, customer_name, description, mode } = request.body;
+    const user = request.user;
+
+    try {
+      // 1. Собрать контекст из БД
+      let context = '';
+      let customerData = {};
+      let tenderData = {};
+
+      if (tender_id) {
+        const t = await db.query(`
+          SELECT t.*, c.address, c.phone, c.email, c.contact_person, c.kpp
+          FROM tenders t
+          LEFT JOIN customers c ON c.inn = t.customer_inn
+          WHERE t.id = $1
+        `, [tender_id]);
+        if (t.rows[0]) {
+          tenderData = t.rows[0];
+          context += 'Тендер: ' + tenderData.tender_title + '\n';
+          context += 'Заказчик: ' + tenderData.customer_name + ' (ИНН: ' + tenderData.customer_inn + ')\n';
+          if (tenderData.tender_description) context += 'Описание: ' + tenderData.tender_description + '\n';
+          if (tenderData.tender_sum) context += 'Бюджет: ' + tenderData.tender_sum + ' руб.\n';
+          customerData = {
+            name: tenderData.customer_name,
+            inn: tenderData.customer_inn,
+            address: tenderData.address || '',
+            phone: tenderData.phone || '',
+            email: tenderData.email || '',
+            contact_person: tenderData.contact_person || '',
+            kpp: tenderData.kpp || ''
+          };
+        }
+      }
+
+      if (work_id) {
+        const w = await db.query('SELECT * FROM works WHERE id = $1', [work_id]);
+        if (w.rows[0]) {
+          const work = w.rows[0];
+          context += 'Работа: ' + work.work_title + ' (' + work.work_number + ')\n';
+          context += 'Заказчик: ' + work.customer_name + '\n';
+          if (work.work_description) context += 'Описание: ' + work.work_description + '\n';
+          if (!customerData.name) {
+            customerData.name = work.customer_name;
+            customerData.inn = work.customer_inn || '';
+          }
+        }
+      }
+
+      if (customer_name && !customerData.name) {
+        customerData.name = customer_name;
+        const c = await db.query(
+          'SELECT * FROM customers WHERE LOWER(name) LIKE $1 LIMIT 1',
+          ['%' + customer_name.toLowerCase() + '%']
+        );
+        if (c.rows[0]) {
+          customerData = {
+            name: c.rows[0].name,
+            inn: c.rows[0].inn || '',
+            address: c.rows[0].address || c.rows[0].legal_address || '',
+            phone: c.rows[0].phone || '',
+            email: c.rows[0].email || '',
+            contact_person: c.rows[0].contact_person || '',
+            kpp: c.rows[0].kpp || ''
+          };
+        }
+      }
+
+      if (description) context += 'Дополнительно: ' + description + '\n';
+
+      // 2. Загрузить настройки НДС
+      const settingsRow = await db.query("SELECT value_json FROM settings WHERE key = 'app'");
+      const vatPct = settingsRow.rows[0]
+        ? (JSON.parse(settingsRow.rows[0].value_json || '{}').vat_pct || 22)
+        : 22;
+
+      // 3. Сгенерировать через AI
+      const prompt = 'На основе данных создай структурированное коммерческое предложение (ТКП).\n\n' +
+        'ДАННЫЕ:\n' + (context || 'Описание: ' + (description || 'Сервисные работы')) + '\n\n' +
+        'ПРАВИЛА:\n' +
+        '- Компания: ООО «Асгард Сервис» — промышленный сервис (химическая очистка, гидродинамическая очистка, HVAC)\n' +
+        '- НДС: ' + vatPct + '%\n' +
+        '- Разбей работы на 3-8 логичных позиций (не меньше 3)\n' +
+        '- Цены должны быть реалистичными для промышленного сервиса (от 50 000 до 2 000 000 руб. за позицию)\n' +
+        '- Единицы: усл., компл., шт., м², п.м., т., час, смена\n' +
+        '- Сроки: обычно 5-15 рабочих дней\n' +
+        '- Условия оплаты: обычно "Аванс 50% по договору, остаток 50% по акту выполненных работ"\n\n' +
+        'ОТВЕТ СТРОГО В JSON (без markdown, без ```, только чистый JSON):\n' +
+        '{\n' +
+        '  "subject": "Название ТКП",\n' +
+        '  "work_description": "Подробное описание работ (2-3 предложения)",\n' +
+        '  "items": [\n' +
+        '    {"name": "Название работы", "unit": "усл.", "qty": 1, "price": 280000, "total": 280000}\n' +
+        '  ],\n' +
+        '  "deadline": "10 рабочих дней с момента допуска на объект",\n' +
+        '  "payment_terms": "Аванс 50% по договору, остаток 50% по акту выполненных работ",\n' +
+        '  "notes": "Дополнительные условия (1-2 предложения)"\n' +
+        '}';
+
+      const aiResult = await aiProvider.complete({
+        system: 'Ты — менеджер по продажам ООО «Асгард Сервис». Генерируешь коммерческие предложения. Отвечай ТОЛЬКО валидным JSON без обёрток.',
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 2000,
+        temperature: 0.5
+      });
+
+      // 4. Парсинг ответа (агрессивный)
+      let tkpData;
+      try {
+        let text = (aiResult.text || '').trim();
+        text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+          text = text.substring(firstBrace, lastBrace + 1);
+        }
+        tkpData = JSON.parse(text);
+      } catch (e) {
+        return reply.code(500).send({ success: false, message: 'AI вернул невалидный JSON' });
+      }
+
+      // mode='items' — вернуть только строки работ
+      if (mode === 'items') {
+        return { success: true, items: tkpData.items || [], description: tkpData.work_description || '' };
+      }
+      if (mode === 'description') {
+        return { success: true, description: tkpData.work_description || '' };
+      }
+
+      // 5. Создать черновик ТКП в БД
+      const items = tkpData.items || [];
+      let subtotal = 0;
+      items.forEach(function(i) { subtotal += (i.total || i.qty * i.price || 0); });
+      const vatSum = Math.round(subtotal * vatPct / 100);
+      const totalWithVat = subtotal + vatSum;
+
+      const itemsJson = JSON.stringify({
+        vat_pct: vatPct,
+        items: items,
+        subtotal: subtotal,
+        vat_sum: vatSum,
+        total_with_vat: totalWithVat,
+        payment_terms: tkpData.payment_terms || '',
+        author_name: 'Кудряшов О.С.',
+        author_position: 'Генеральный директор',
+        notes: tkpData.notes || ''
+      });
+
+      const result = await db.query(`
+        INSERT INTO tkp (subject, tender_id, work_id, customer_name, customer_inn,
+                          contact_person, contact_phone, contact_email,
+                          customer_address, work_description,
+                          items, total_sum, deadline, validity_days,
+                          author_id, source)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'mimir')
+        RETURNING *
+      `, [
+        tkpData.subject || 'ТКП',
+        tender_id || null, work_id || null,
+        customerData.name || null, customerData.inn || null,
+        customerData.contact_person || null, customerData.phone || null,
+        customerData.email || null, customerData.address || null,
+        tkpData.work_description || null,
+        itemsJson, totalWithVat,
+        tkpData.deadline || null, 30,
+        user.id
+      ]);
+
+      const tkp = result.rows[0];
+
+      await logUsage(db, user.id, null, aiResult);
+
+      return {
+        success: true,
+        tkp_id: tkp.id,
+        tkp_number: tkp.tkp_number,
+        subject: tkp.subject,
+        total_sum: totalWithVat,
+        customer_name: customerData.name,
+        items_count: items.length,
+        message: 'Создано ' + tkp.tkp_number + ': "' + tkp.subject + '". ' + items.length + ' позиций, итого ' + totalWithVat.toLocaleString('ru-RU') + ' \u20BD (с НДС ' + vatPct + '%)'
+      };
+
+    } catch (error) {
+      fastify.log.error('Mimir suggest-tkp error:', error.message);
+      return reply.code(500).send({ success: false, message: 'Ошибка генерации ТКП: ' + error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AI-ХАРАКТЕРИСТИКА СОТРУДНИКА
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  fastify.post('/employee-summary', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { employee_id } = request.body;
+    if (!employee_id) return reply.code(400).send({ success: false, message: 'employee_id обязателен' });
+
+    try {
+      // 1. Основные данные сотрудника
+      const empResult = await db.query('SELECT * FROM employees WHERE id = $1', [employee_id]);
+      const emp = empResult.rows[0];
+      if (!emp) return reply.code(404).send({ success: false, message: 'Сотрудник не найден' });
+
+      // 2. Анкета-характеристика (worker_profiles)
+      let profile = null;
+      try {
+        const profResult = await db.query(
+          'SELECT * FROM worker_profiles WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1',
+          [emp.user_id || employee_id]
+        );
+        profile = profResult.rows[0] || null;
+      } catch (_) {
+        // Таблица может не существовать — не критично
+      }
+
+      // 3. Отзывы РП
+      const reviews = await db.query(`
+        SELECT r.rating, r.comment, r.created_at,
+               w.work_title, u.name as reviewer_name
+        FROM employee_reviews r
+        LEFT JOIN works w ON w.id = r.work_id
+        LEFT JOIN users u ON u.id = r.pm_id
+        WHERE r.employee_id = $1
+        ORDER BY r.created_at DESC LIMIT 10
+      `, [employee_id]);
+
+      // 4. История работ (назначения)
+      const assigns = await db.query(`
+        SELECT ea.date_from, ea.date_to, ea.role,
+               w.work_title, w.work_number, w.customer_name, w.work_status, w.city
+        FROM employee_assignments ea
+        JOIN works w ON w.id = ea.work_id
+        WHERE ea.employee_id = $1
+        ORDER BY ea.date_from DESC LIMIT 15
+      `, [employee_id]);
+
+      // 5. Допуски и квалификация
+      const permits = Array.isArray(emp.permits) ? emp.permits : [];
+
+      // 6. Зарплатные данные (средний доход)
+      let avgPay = null;
+      try {
+        const payResult = await db.query(`
+          SELECT AVG(pi.base_amount + COALESCE(pi.bonus,0)) as avg_total,
+                 SUM(pi.days_worked) as total_days
+          FROM payroll_items pi
+          WHERE pi.employee_id = $1
+            AND pi.base_amount > 0
+        `, [employee_id]);
+        if (payResult.rows[0]?.avg_total) {
+          avgPay = {
+            avg_total: Math.round(parseFloat(payResult.rows[0].avg_total)),
+            total_days: parseInt(payResult.rows[0].total_days) || 0
+          };
+        }
+      } catch (_) {}
+
+      // ─── Собрать контекст для AI ───
+      let context = 'ДАННЫЕ О СОТРУДНИКЕ:\n';
+      context += 'ФИО: ' + (emp.fio || emp.full_name || '—') + '\n';
+      context += 'Должность: ' + (emp.position || emp.role_tag || '—') + '\n';
+      context += 'Разряд: ' + (emp.grade || '—') + '\n';
+      context += 'Бригада: ' + (emp.brigade || '—') + '\n';
+      context += 'Квалификация: ' + (emp.qualification_name || '—') + ' ' + (emp.qualification_grade || '') + '\n';
+      context += 'Город: ' + (emp.city || '—') + '\n';
+      context += 'В компании с: ' + (emp.hire_date || emp.employment_date || '—') + '\n';
+      context += 'Активен: ' + (emp.is_active ? 'Да' : 'Уволен') + '\n';
+      context += 'Контракт: ' + (emp.contract_type || 'labor') + '\n';
+      context += 'Дневная ставка: ' + (emp.day_rate || '—') + ' ₽\n';
+      context += 'Рейтинг: ' + (emp.rating_avg || '—') + '/10 (' + (emp.rating_count || 0) + ' отзывов)\n';
+
+      // Допуски
+      context += '\nДОПУСКИ:\n';
+      if (emp.naks) context += 'НАКС: ' + emp.naks + ' (удостоверение ' + (emp.naks_number || '—') + ', до ' + (emp.naks_expiry || '—') + ')\n';
+      if (emp.imt_number) context += 'ИМТ: ' + emp.imt_number + ' (до ' + (emp.imt_expires || '—') + ')\n';
+      if (emp.fsb_pass) context += 'ФСБ-допуск: ' + emp.fsb_pass + '\n';
+      if (permits.length > 0) context += 'Допуски: ' + permits.join(', ') + '\n';
+      if (emp.skills && emp.skills.length) context += 'Навыки: ' + emp.skills.join(', ') + '\n';
+
+      // Анкета-характеристика
+      if (profile && profile.data) {
+        context += '\nАНКЕТА-ХАРАКТЕРИСТИКА (от РП):\n';
+        try {
+          const pData = typeof profile.data === 'string' ? JSON.parse(profile.data) : profile.data;
+          for (const [key, val] of Object.entries(pData)) {
+            if (val && typeof val === 'object' && val.value) {
+              context += key + ': ' + val.value;
+              if (val.comment) context += ' (комментарий: ' + val.comment + ')';
+              context += '\n';
+            } else if (val && typeof val !== 'object') {
+              context += key + ': ' + val + '\n';
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Отзывы
+      if (reviews.rows.length > 0) {
+        context += '\nОТЗЫВЫ РП (' + reviews.rows.length + ' шт.):\n';
+        reviews.rows.forEach((r, i) => {
+          const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU') : '';
+          context += (i + 1) + '. Оценка ' + r.rating + '/10';
+          if (r.work_title) context += ' (работа: ' + r.work_title + ')';
+          if (r.reviewer_name) context += ' от ' + r.reviewer_name;
+          if (date) context += ' [' + date + ']';
+          if (r.comment) context += ': ' + r.comment;
+          context += '\n';
+        });
+      }
+
+      // История работ
+      if (assigns.rows.length > 0) {
+        context += '\nИСТОРИЯ РАБОТ (' + assigns.rows.length + ' назначений):\n';
+        assigns.rows.forEach(a => {
+          const from = a.date_from ? new Date(a.date_from).toLocaleDateString('ru-RU') : '?';
+          const to = a.date_to ? new Date(a.date_to).toLocaleDateString('ru-RU') : 'по н.в.';
+          context += '• ' + from + '–' + to + ': ' + (a.work_title || '—') + ' (' + (a.customer_name || '—') + ', ' + (a.city || '—') + ') роль: ' + (a.role || '—') + '\n';
+        });
+      }
+
+      // Зарплата
+      if (avgPay) {
+        context += '\nЗАРПЛАТА:\n';
+        context += 'Средний доход: ~' + avgPay.avg_total.toLocaleString('ru-RU') + ' ₽/месяц\n';
+        context += 'Всего отработано: ' + avgPay.total_days + ' дней\n';
+      }
+
+      // ─── Генерация через AI ───
+      const aiResult = await aiProvider.complete({
+        system: `Ты — HR-аналитик ООО «Асгард Сервис» (промышленный сервис: химическая очистка, гидрочистка, HVAC на НПЗ и нефтегазовых объектах).
+
+Составь КРАТКУЮ (5-8 предложений) деловую характеристику сотрудника.
+
+Структура:
+1. Кто: ФИО, должность, стаж в компании (1 предложение)
+2. Опыт: на каких объектах/заказчиках работал, основные роли (1-2 предложения)
+3. Качества: на основе анкеты и отзывов РП — сильные стороны и зоны роста (2-3 предложения)
+4. Рекомендация: на какие задачи/проекты рекомендуется (1 предложение)
+
+Правила:
+- Пиши по-деловому, без воды, конкретно
+- Если данных мало — пиши что есть, не додумывай
+- Если рейтинг низкий или есть проблемы — упомяни корректно
+- Используй факты из данных, не общие фразы
+- НЕ используй маркдаун, только текст`,
+        messages: [{ role: 'user', content: context }],
+        maxTokens: 800,
+        temperature: 0.4
+      });
+
+      const summary = (aiResult.text || '').trim();
+
+      return {
+        success: true,
+        employee_id: employee_id,
+        fio: emp.fio || emp.full_name,
+        summary: summary,
+        data_sources: {
+          has_profile: !!profile,
+          reviews_count: reviews.rows.length,
+          assignments_count: assigns.rows.length,
+          has_payroll: !!avgPay
+        }
+      };
+
+    } catch (error) {
+      fastify.log.error({ err: error }, 'Employee summary error');
+      return reply.code(500).send({ success: false, message: 'Ошибка генерации: ' + error.message });
     }
   });
 
@@ -1098,6 +1614,1137 @@ async function mimirRoutes(fastify, options) {
       // Ignore logging errors
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // УНИВЕРСАЛЬНОЕ АВТОЗАПОЛНЕНИЕ ФОРМ — POST /mimir/suggest-form
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  fastify.post('/suggest-form', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { form_type, context = {} } = request.body || {};
+    if (!form_type) return reply.code(400).send({ error: 'form_type обязателен' });
+
+    try {
+      let systemPrompt = '';
+      let userPrompt = '';
+      let dbContext = '';
+
+      // ── Контекст из БД по типу формы ──
+      switch (form_type) {
+
+        case 'contract': {
+          // Договор: подтянуть данные контрагента и тендера
+          const { counterparty_id, tender_id, existing_fields = {} } = context;
+          if (counterparty_id) {
+            const c = await db.query('SELECT * FROM customers WHERE inn = $1', [counterparty_id]);
+            if (c.rows[0]) dbContext += 'Контрагент: ' + JSON.stringify(c.rows[0]) + '\n';
+          }
+          if (tender_id) {
+            const t = await db.query('SELECT tender_title, tender_description, tender_sum, customer_name, deadline FROM tenders WHERE id = $1', [tender_id]);
+            if (t.rows[0]) dbContext += 'Тендер: ' + JSON.stringify(t.rows[0]) + '\n';
+          }
+          systemPrompt = 'Ты AI-ассистент CRM-системы АСГАРД. Помоги заполнить форму договора. Верни JSON с полями: number, subject, start_date (YYYY-MM-DD), end_date, amount, responsible, comment. Только те поля, которые можешь уверенно заполнить на основе контекста. Не выдумывай данные.';
+          userPrompt = 'Контекст:\n' + dbContext + '\nУже заполнено: ' + JSON.stringify(existing_fields) + '\nЗаполни оставшиеся поля формы договора.';
+          break;
+        }
+
+        case 'customer': {
+          // Контрагент: поиск по ИНН/названию — возвращаем только безопасные поля
+          const SAFE_CUSTOMER_FIELDS = ['inn', 'kpp', 'name', 'full_name', 'address', 'contact_person', 'phone', 'email'];
+          const pickSafe = (row) => {
+            const safe = {};
+            SAFE_CUSTOMER_FIELDS.forEach(k => { if (row[k]) safe[k] = row[k]; });
+            return safe;
+          };
+          const { inn, name, search_query, existing_fields = {} } = context;
+          if (inn) {
+            const c = await db.query('SELECT inn, kpp, name, full_name, address, contact_person, phone, email FROM customers WHERE inn = $1', [inn]);
+            if (c.rows[0]) {
+              return reply.send({ fields: pickSafe(c.rows[0]), source: 'database' });
+            }
+          }
+          if (name || search_query) {
+            const q = name || search_query;
+            const c = await db.query('SELECT inn, kpp, name, full_name, address, contact_person, phone, email FROM customers WHERE LOWER(name) LIKE $1 LIMIT 3', ['%' + q.toLowerCase() + '%']);
+            if (c.rows[0]) {
+              return reply.send({ fields: pickSafe(c.rows[0]), source: 'database' });
+            }
+          }
+          systemPrompt = 'Ты AI-ассистент. Помоги заполнить форму контрагента. Верни JSON с полями: name, full_name, inn, kpp, address, contact_person, phone, email. Только те что можешь уверенно определить.';
+          userPrompt = 'Запрос: ' + (search_query || name || inn || '') + '\nУже заполнено: ' + JSON.stringify(existing_fields);
+          break;
+        }
+
+        case 'correspondence': {
+          // Корреспонденция — поля согласованы с фронтендом (subject, note, counterparty)
+          const { direction, existing_fields = {} } = context;
+          systemPrompt = 'Ты AI-ассистент CRM АСГАРД. Помоги заполнить форму корреспонденции (' + (direction === 'outgoing' ? 'исходящий' : 'входящий') + ' документ). Верни JSON с полями: subject (тема документа), note (примечание/содержание), counterparty (организация-отправитель/получатель), contact_person (контактное лицо). Основывайся на контексте. Только те поля что можешь уверенно заполнить.';
+          userPrompt = 'Направление: ' + (direction || 'unknown') + '\nУже заполнено: ' + JSON.stringify(existing_fields) + '\nПредложи значения для оставшихся полей.';
+          break;
+        }
+
+        case 'proxy': {
+          // Доверенность
+          const { employee_id, existing_fields = {} } = context;
+          if (employee_id) {
+            const e = await db.query('SELECT name, position, department FROM employees WHERE id = $1', [employee_id]);
+            if (e.rows[0]) dbContext += 'Сотрудник: ' + JSON.stringify(e.rows[0]) + '\n';
+          }
+          systemPrompt = 'Ты AI-ассистент CRM АСГАРД. Помоги заполнить форму доверенности. Верни JSON с полями которые можешь уверенно заполнить: subject, valid_from (YYYY-MM-DD), valid_to, powers_text.';
+          userPrompt = dbContext + '\nУже заполнено: ' + JSON.stringify(existing_fields);
+          break;
+        }
+
+        case 'pass_request': {
+          // Заявка на пропуск
+          const { employee_id, work_id, existing_fields = {} } = context;
+          if (employee_id) {
+            const e = await db.query('SELECT name, position, phone FROM employees WHERE id = $1', [employee_id]);
+            if (e.rows[0]) dbContext += 'Сотрудник: ' + JSON.stringify(e.rows[0]) + '\n';
+          }
+          if (work_id) {
+            const w = await db.query('SELECT work_title, customer_name, city, address FROM works WHERE id = $1', [work_id]);
+            if (w.rows[0]) dbContext += 'Работа: ' + JSON.stringify(w.rows[0]) + '\n';
+          }
+          systemPrompt = 'Ты AI-ассистент CRM АСГАРД. Помоги заполнить заявку на пропуск. Верни JSON с полями: object_name, object_address, date_from (YYYY-MM-DD), date_to, purpose.';
+          userPrompt = dbContext + '\nУже заполнено: ' + JSON.stringify(existing_fields);
+          break;
+        }
+
+        default:
+          return reply.code(400).send({ error: 'Неизвестный form_type: ' + form_type });
+      }
+
+      // Если нет промпта — нечего делать
+      if (!systemPrompt) {
+        return reply.send({ fields: {}, message: 'Недостаточно контекста' });
+      }
+
+      // ── Вызов AI ──
+      const aiResult = await aiProvider.complete({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        maxTokens: 1000,
+        temperature: 0.3
+      });
+
+      // Парсим JSON из ответа
+      let fields = {};
+      try {
+        const text = aiResult.text || aiResult.content || '';
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          fields = JSON.parse(jsonMatch[0]);
+        }
+      } catch (_) {
+        // Не удалось распарсить — вернём пустое
+      }
+
+      // Фильтруем пустые значения
+      Object.keys(fields).forEach(k => {
+        if (fields[k] === null || fields[k] === undefined || fields[k] === '') {
+          delete fields[k];
+        }
+      });
+
+      return reply.send({ fields, source: 'ai' });
+
+    } catch (error) {
+      fastify.log.error('Mimir suggest-form error:', error.message);
+      return reply.code(500).send({ error: 'Ошибка AI: ' + error.message });
+    }
+  });
+  // ═══ H1: Мимир-автоответчик для просчётов ═══
+
+  /**
+   * POST /api/mimir/auto-respond
+   * Внутренний эндпоинт: Мимир анализирует комментарий директора и отвечает в чат.
+   * Body: { estimate_id, chat_id, trigger_action, director_comment, director_name }
+   */
+  fastify.post('/auto-respond', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { estimate_id, chat_id, trigger_action, director_comment, director_name } = request.body || {};
+    if (!estimate_id || !chat_id || !trigger_action || !director_comment) {
+      return reply.code(400).send({ error: 'estimate_id, chat_id, trigger_action, director_comment required' });
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // 1. Проверить mimir_auto_config
+      const configResult = await db.query(
+        "SELECT * FROM mimir_auto_config WHERE entity_type = 'estimate' AND trigger_action = $1 AND enabled = true",
+        [trigger_action]
+      );
+      if (!configResult.rows[0]) {
+        return reply.send({ skipped: true, reason: 'auto-respond disabled for this action' });
+      }
+      const config = configResult.rows[0];
+
+      // 2. Получить mimir_bot user id
+      const botResult = await db.query("SELECT id FROM users WHERE login = 'mimir_bot' LIMIT 1");
+      const botUserId = botResult.rows[0]?.id;
+      if (!botUserId) {
+        return reply.code(500).send({ error: 'mimir_bot user not found' });
+      }
+
+      // 3. Получить контекст: estimate + calculation + аналоги
+      const estResult = await db.query('SELECT * FROM estimates WHERE id = $1', [estimate_id]);
+      const estimate = estResult.rows[0];
+      if (!estimate) return reply.code(404).send({ error: 'Просчёт не найден' });
+
+      let calcData = null;
+      try {
+        const calcResult = await db.query(
+          'SELECT * FROM estimate_calculation_data WHERE estimate_id = $1 ORDER BY version_no DESC LIMIT 1',
+          [estimate_id]
+        );
+        calcData = calcResult.rows[0] || null;
+      } catch (e) { /* ok */ }
+
+      let analogs = [];
+      try {
+        const analogsResult = await db.query(
+          "SELECT title, total_cost, total_with_margin, margin_pct, crew_count, work_days FROM estimates WHERE id != $1 AND work_type = $2 AND approval_status = 'approved' ORDER BY created_at DESC LIMIT 3",
+          [estimate_id, estimate.work_type]
+        );
+        analogs = analogsResult.rows;
+      } catch (e) { /* ok */ }
+
+      // PM name
+      let pmName = 'РП';
+      if (estimate.pm_id) {
+        const pmResult = await db.query('SELECT name FROM users WHERE id = $1', [estimate.pm_id]);
+        pmName = pmResult.rows[0]?.name || 'РП';
+      }
+
+      // 4. Собрать расчёт summary
+      let calcSummary = 'Расчёт пока не создан.';
+      if (calcData) {
+        const blocks = [];
+        if (calcData.personnel_json) blocks.push(`Персонал: ${JSON.stringify(calcData.personnel_json).length > 10 ? 'есть данные' : 'пусто'}`);
+        blocks.push(`Итого себестоимость: ${calcData.total_cost || '?'} ₽`);
+        blocks.push(`Клиенту: ${calcData.total_with_margin || '?'} ₽`);
+        blocks.push(`Маржа: ${calcData.margin_pct || '?'}%`);
+        blocks.push(`Непредвиденные: ${calcData.contingency_pct || 5}%`);
+        calcSummary = blocks.join('\n');
+      }
+
+      let analogsSummary = 'Аналогов нет.';
+      if (analogs.length > 0) {
+        analogsSummary = analogs.map(a =>
+          `- ${a.title}: себес ${a.total_cost}₽, клиенту ${a.total_with_margin}₽, маржа ${a.margin_pct}%, бригада ${a.crew_count} чел, ${a.work_days} дней`
+        ).join('\n');
+      }
+
+      // 5. System prompt
+      const systemPrompt = `Ты Мимир — ИИ-ассистент ООО «Асгард-Сервис». Директор ${director_name || 'директор'} оставил комментарий к просчёту.
+
+ПРОСЧЁТ: ${estimate.title || estimate.object_name || 'Без названия'}
+Заказчик: ${estimate.customer || '—'}
+Объект: ${estimate.object_city || '—'}, ${estimate.object_distance_km || '?'} км
+Тип работ: ${estimate.work_type || '—'}
+Бригада: ${estimate.crew_count || '?'} чел, ${estimate.work_days || '?'} раб. дней
+
+РАСЧЁТ (себестоимость):
+${calcSummary}
+
+КОММЕНТАРИЙ ДИРЕКТОРА (${trigger_action}):
+"${director_comment}"
+
+АНАЛОГИЧНЫЕ ПРОЕКТЫ:
+${analogsSummary}
+
+ТВОЯ ЗАДАЧА:
+1. Начни с фразы "Пока ждём ответа от ${pmName}, я посмотрел информацию и вот что могу сказать:"
+2. Проанализируй комментарий директора
+3. Если можешь помочь — дай конкретные цифры, сравнения с аналогами, пересчитай если нужно
+4. Если не можешь — напиши: "Я хотел помочь, но не смог найти достаточно информации по этому вопросу. Ждём, что скажет ${pmName}."
+5. Если видишь риск (маржа падает ниже 15%, себестоимость превышает аналоги на >30%) — предупреди
+
+ПРАВИЛА:
+- Отвечай по-русски
+- Будь конкретным — цифры, проценты, суммы
+- Ссылайся на аналоги если есть
+- Не принимай решение за директора или РП — только рекомендуй
+- Максимум 200 слов
+- Используй тарифы и формулы из расчётного движка (ФОТ 55%, накладные 15%, расходные 3%, непредвиденные 5%)`;
+
+      // 6. Вызвать AI
+      const aiResult = await aiProvider.complete({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: director_comment }],
+        maxTokens: config.max_tokens || 8000,
+        temperature: 0.4
+      });
+
+      const responseText = aiResult.text || '';
+      const durationMs = Date.now() - startTime;
+
+      // 7. Определить сценарий
+      let scenario = 'can_help';
+      if (responseText.includes('не смог найти достаточно информации') || responseText.includes('Ждём, что скажет')) {
+        scenario = 'cannot_help';
+      }
+      if (responseText.includes('предупред') || responseText.includes('риск') || responseText.includes('ниже 15%')) {
+        scenario = 'warning';
+      }
+
+      // 8. Записать сообщение в чат от mimir_bot
+      const msgMetadata = {
+        confidence: scenario === 'can_help' ? 'high' : scenario === 'warning' ? 'medium' : 'low',
+        trigger_action,
+        scenario,
+        tokens_input: aiResult.usage?.inputTokens || 0,
+        tokens_output: aiResult.usage?.outputTokens || 0
+      };
+      const { rows: [mimirMsg] } = await db.query(`
+        INSERT INTO chat_messages (chat_id, user_id, message, message_type, metadata, is_system, created_at)
+        VALUES ($1, $2, $3, 'mimir_response', $4, false, NOW()) RETURNING *
+      `, [chat_id, botUserId, responseText, JSON.stringify(msgMetadata)]);
+
+      // Update chat counters
+      await db.query(
+        'UPDATE chats SET message_count = COALESCE(message_count,0)+1, last_message_at = NOW(), updated_at = NOW() WHERE id = $1',
+        [chat_id]
+      );
+
+      // 9. SSE notify members
+      const { sendToUser: sse } = require('./sse');
+      const members = await db.query('SELECT user_id FROM chat_group_members WHERE chat_id = $1', [chat_id]);
+      for (const m of members.rows) {
+        sse(m.user_id, 'chat:new_message', {
+          chat_id,
+          message: { ...mimirMsg, user_name: 'Мимир', is_mimir_bot: true }
+        });
+      }
+
+      // 10. Записать в mimir_auto_log
+      await db.query(`
+        INSERT INTO mimir_auto_log (chat_id, estimate_id, trigger_action, trigger_comment, response, tokens_input, tokens_output, duration_ms, scenario)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, [chat_id, estimate_id, trigger_action, director_comment, responseText,
+          aiResult.usage?.inputTokens || 0, aiResult.usage?.outputTokens || 0, durationMs, scenario]);
+
+      return reply.send({
+        message_id: mimirMsg.id,
+        scenario,
+        duration_ms: durationMs
+      });
+
+    } catch (error) {
+      fastify.log.error('[Mimir auto-respond error]:', error.message);
+      return reply.code(500).send({ error: 'Ошибка автоответа Мимира: ' + error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AP1: POST /api/mimir/auto-estimate — Авто-просчёт работы (SSE прогресс)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Принимает { work_id }, открывает SSE, эмитит progress events для каждого
+  // шага сбора контекста (documents, analogs, customer_history, warehouse,
+  // workers, tariffs). В AP1 — без AI вызова, отдаёт мок result в конце с
+  // полным собранным контекстом для проверки.
+  //
+  // AP2 добавит: вызов Claude Sonnet 4.6 → парсинг JSON → создание estimate
+  // → диалог с Мимиром (через отдельные эндпоинты или extension этого).
+  //
+  // Клиент: fetch streaming (POST с body, читает чанки как SSE).
+  fastify.post('/auto-estimate', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id } = request.body || {};
+    const user = request.user;
+
+    if (!work_id || isNaN(parseInt(work_id))) {
+      return reply.code(400).send({ success: false, message: 'work_id обязателен' });
+    }
+    const workId = parseInt(work_id);
+
+    // SSE headers
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+
+    const sendEvent = (data) => {
+      try {
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (e) { /* client disconnected */ }
+    };
+
+    const startTime = Date.now();
+
+    try {
+      const collector = require('../services/mimir-collector');
+      const { getSystemPrompt, serializeContext } = require('../services/mimir-prompt');
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+
+      sendEvent({ type: 'start', work_id: workId, message: '🧠 Мимир приступает к анализу' });
+
+      // ── Фаза 1: Сервер собирает ВСЕ данные (15 типов, ~200мс) ──
+      const ctx = await collector.collectAll(db, workId, (event) => sendEvent(event));
+
+      // ── Фаза 2: Claude анализирует и считает ──
+      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧮 Claude Sonnet анализирует данные...' });
+
+      const dataText = serializeContext(ctx);
+      const systemPrompt = getSystemPrompt();
+
+      // Heartbeat каждые 5 сек пока Claude думает
+      let thinkingSec = 0;
+      const heartbeat = setInterval(() => {
+        thinkingSec += 5;
+        try {
+          sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: `🧮 Мимир анализируе��... ${thinkingSec} сек` });
+        } catch {}
+      }, 5000);
+
+      let aiResult;
+      try {
+        aiResult = await aiProvider.complete({
+          system: systemPrompt,
+          messages: [{ role: 'user', content: `Составь просчёт для работы #${workId}.\n\n${dataText}` }],
+          maxTokens: 16000,
+          temperature: 0.2
+        });
+      } finally {
+        clearInterval(heartbeat);
+      }
+
+      if (!aiResult || !aiResult.text) {
+        throw new Error('AI не вернул ответ');
+      }
+
+      console.log(`[AP5] Claude responded: ${aiResult.text.length} chars, model=${aiResult.model}, ${aiResult.durationMs}ms`);
+      console.log(`[AP5] First 200 chars: ${aiResult.text.substring(0, 200)}`);
+
+      // ── Парсим ответ (может быть questions или estimate) ──
+      let parsed;
+      try { parsed = mimirAutoEstimate.parseAIResponse(aiResult.text); }
+      catch (e) {
+        // Не JSON — текстовый ответ
+        sendEvent({ type: 'text_response', text: aiResult.text, model: aiResult.model });
+        sendEvent({ type: 'done' });
+        reply.raw.end();
+        return;
+      }
+
+      // Фаза вопросов — сохраняем контекст для /auto-estimate-answer
+      if (parsed.phase === 'questions' && parsed.questions) {
+        // Кэшируем контекст (5 мин TTL)
+        const sessionId = `ae_${workId}_${Date.now()}`;
+        if (!fastify._aeQuestionCache) fastify._aeQuestionCache = new Map();
+        fastify._aeQuestionCache.set(sessionId, {
+          workId, dataText, systemPrompt, ctx, user,
+          questions: parsed.questions,
+          expires: Date.now() + 300000
+        });
+        // Чистим старые
+        for (const [k, v] of fastify._aeQuestionCache) {
+          if (v.expires < Date.now()) fastify._aeQuestionCache.delete(k);
+        }
+
+        sendEvent({
+          type: 'questions',
+          session_id: sessionId,
+          questions: parsed.questions,
+          model: aiResult.model,
+          elapsed_ms: Date.now() - startTime
+        });
+        sendEvent({ type: 'done' });
+        reply.raw.end();
+        return;
+      }
+
+      // Фаза расчёта
+      sendEvent({ type: 'progress', step: 'creating_estimate', message: '📝 Создаю просчёт в системе...' });
+
+      const ai = parsed;
+      ai._meta = { model: aiResult.model, provider: aiResult.provider };
+
+      // Серверная валидация математики
+      const settings = ctx.settings;
+      const recomputed = mimirAutoEstimate.validateAndRecomputeMath(ai, settings,
+        { work: ctx.work, tender: ctx.tender, warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+      mimirAutoEstimate.normalizeCalcRows(recomputed.calculation);
+      mimirAutoEstimate.resolveEquipmentFromWarehouse(ai, { warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+
+      // Создание estimate в БД
+      const created = await mimirAutoEstimate.createDraftEstimate(db, ctx, ai, recomputed, user);
+
+      const totals = recomputed.totals || {};
+
+      sendEvent({
+        type: 'result',
+        success: true,
+        ap_phase: 'AP5',
+        estimate_id: created.estimate_id,
+        version_no: created.version_no,
+        card: {
+          title: ai.estimate?.title || ctx.work.work_title,
+          customer: ctx.work.customer_name || ctx.tender?.customer_name,
+          object: ctx.work.object_name,
+          city: ai.estimate?.object_city || ctx.work.city,
+          crew_count: ai.estimate?.crew_count,
+          work_days: ai.estimate?.work_days,
+          road_days: ai.estimate?.road_days,
+          markup_multiplier: totals.markup_multiplier,
+          total_cost: totals.total_cost,
+          total_with_margin: totals.total_with_margin,
+          total_with_vat: totals.total_with_vat,
+          margin_pct: totals.margin_pct,
+          fot_subtotal: totals.personnel_with_tax,
+          travel_subtotal: totals.travel_subtotal,
+          transport_subtotal: totals.transport_subtotal,
+          chemistry_subtotal: totals.chemistry_subtotal,
+          current_subtotal: totals.current_subtotal,
+          drift_pct: recomputed.drift,
+          time_overflow_fix: recomputed.timeOverflowFix
+        },
+        analysis: {
+          markup_reasoning: ai.analysis?.markup_reasoning || null,
+          warnings: ai.analysis?.warnings || [],
+          purchases_needed: ai.analysis?.purchases_needed || []
+        },
+        equipment_status: ai.equipment_status || null,
+        permits_status: ai.permits_status || null,
+        route_plan: ai.route_plan || null,
+        recommended_crew: ai.recommended_crew || null,
+        comment: ai.estimate?.comment || null,
+        ai_meta: {
+          model: aiResult.model,
+          provider: aiResult.provider,
+          tokens: aiResult.usage,
+          duration_ms: aiResult.durationMs
+        },
+        elapsed_ms: Date.now() - startTime
+      });
+
+      sendEvent({ type: 'done' });
+
+    } catch (error) {
+      console.error('[Mimir auto-estimate ERROR]:', error.message);
+      console.error(error.stack);
+      sendEvent({
+        type: 'error',
+        message: String(error.message || 'Неизвестная ошибка').substring(0, 500),
+        elapsed_ms: Date.now() - startTime
+      });
+    }
+
+    reply.raw.end();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AP5.1: POST /api/mimir/auto-estimate-answer — ответ на вопросы Claude
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Body: { session_id, answers: ["ответ1","ответ2",...] }
+  // Загружает кэшированный контекст, отправляет Claude с ответами → возвращает result
+  fastify.post('/auto-estimate-answer', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { session_id, answers } = request.body || {};
+    const user = request.user;
+
+    if (!session_id || !answers) {
+      return reply.code(400).send({ success: false, message: 'session_id и answers обязательны' });
+    }
+
+    const cache = fastify._aeQuestionCache?.get(session_id);
+    if (!cache) {
+      return reply.code(404).send({ success: false, message: 'Сессия не найдена или истекла (5 мин)' });
+    }
+
+    // SSE ответ
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+    const sendEvent = (data) => {
+      try { reply.raw.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+    };
+
+    const startTime = Date.now();
+
+    try {
+      const collector = require('../services/mimir-collector');
+      const { getSystemPrompt, serializeContext } = require('../services/mimir-prompt');
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+
+      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧮 Claude считает с учётом ваших ответов...' });
+
+      // Формируем ответы как текст
+      const answersText = cache.questions.map((q, i) =>
+        `Вопрос: ${q}\nОтвет: ${answers[i] || 'Без ответа'}`
+      ).join('\n\n');
+
+      let thinkingSec = 0;
+      const heartbeat = setInterval(() => {
+        thinkingSec += 5;
+        try { sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: `🧮 Мимир считает... ${thinkingSec} сек` }); } catch {}
+      }, 5000);
+
+      let aiResult;
+      try {
+        aiResult = await aiProvider.complete({
+          system: cache.systemPrompt,
+          messages: [
+            { role: 'user', content: `Составь просчёт для работы #${cache.workId}.\n\n${cache.dataText}` },
+            { role: 'assistant', content: JSON.stringify({ phase: 'questions', questions: cache.questions }) },
+            { role: 'user', content: `Вот ответы на твои вопросы:\n\n${answersText}\n\nТеперь составь полный просчёт. Верни ТОЛЬКО JSON.` }
+          ],
+          maxTokens: 16000,
+          temperature: 0.2
+        });
+      } finally {
+        clearInterval(heartbeat);
+      }
+
+      // Удаляем сессию
+      fastify._aeQuestionCache.delete(session_id);
+
+      if (!aiResult?.text) throw new Error('AI не вернул ответ');
+
+      console.log(`[AP5-answer] Claude: ${aiResult.text.length} chars, ${aiResult.durationMs}ms`);
+
+      const parsed = mimirAutoEstimate.parseAIResponse(aiResult.text);
+
+      sendEvent({ type: 'progress', step: 'creating_estimate', message: '📝 Создаю просчёт...' });
+
+      const ai = parsed;
+      ai._meta = { model: aiResult.model, provider: aiResult.provider };
+      const ctx = cache.ctx;
+      const recomputed = mimirAutoEstimate.validateAndRecomputeMath(ai, ctx.settings,
+        { work: ctx.work, tender: ctx.tender, warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+      mimirAutoEstimate.normalizeCalcRows(recomputed.calculation);
+      mimirAutoEstimate.resolveEquipmentFromWarehouse(ai, { warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+      const created = await mimirAutoEstimate.createDraftEstimate(db, ctx, ai, recomputed, user);
+
+      const totals = recomputed.totals || {};
+      sendEvent({
+        type: 'result',
+        success: true,
+        estimate_id: created.estimate_id,
+        card: {
+          title: ai.estimate?.title || ctx.work.work_title,
+          customer: ctx.work.customer_name,
+          crew_count: ai.estimate?.crew_count,
+          work_days: ai.estimate?.work_days,
+          road_days: ai.estimate?.road_days,
+          markup_multiplier: totals.markup_multiplier,
+          total_cost: totals.total_cost,
+          total_with_margin: totals.total_with_margin,
+          total_with_vat: totals.total_with_vat,
+          margin_pct: totals.margin_pct
+        },
+        analysis: ai.analysis || {},
+        equipment_status: ai.equipment_status || null,
+        permits_status: ai.permits_status || null,
+        route_plan: ai.route_plan || null,
+        recommended_crew: ai.recommended_crew || null,
+        comment: ai.estimate?.comment || null,
+        ai_meta: { model: aiResult.model, tokens: aiResult.usage, duration_ms: aiResult.durationMs },
+        elapsed_ms: Date.now() - startTime
+      });
+      sendEvent({ type: 'done' });
+    } catch (err) {
+      console.error('[auto-estimate-answer ERROR]:', err.message, err.stack);
+      sendEvent({ type: 'error', message: err.message, elapsed_ms: Date.now() - startTime });
+    }
+    reply.raw.end();
+  });
+
+  // AP2: POST /api/mimir/auto-estimate-chat — диалог с пересчётом
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Body: { work_id, estimate_id, message, history? }
+  // Возвращает JSON: { success, response (текст ответа Мимира),
+  //                    updated_card?, updated_analysis?, recomputed? }
+  //
+  // Логика:
+  //   1. Загружаем контекст работы (тот же что использовался для создания)
+  //   2. Вызываем Claude с сообщением РП → AI возвращает обновлённый JSON расчёта
+  //   3. Пересчитываем математику на сервере
+  //   4. UPDATE estimate_calculation_data
+  //   5. Возвращаем новые цифры + текстовый ответ
+  fastify.post('/auto-estimate-chat', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id, estimate_id, message, history } = request.body || {};
+    const user = request.user;
+
+    if (!work_id || !estimate_id || !message?.trim()) {
+      return reply.code(400).send({ success: false, message: 'work_id, estimate_id и message обязательны' });
+    }
+    const workId = parseInt(work_id);
+    const estimateId = parseInt(estimate_id);
+
+    try {
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+      const collector = require('../services/mimir-collector');
+      const { getSystemPrompt, serializeContext } = require('../services/mimir-prompt');
+
+      // 1. Полный контекст (15 типов данных, realtime)
+      const ctx = await collector.collectAll(db, workId, null);
+      const dataText = serializeContext(ctx);
+
+      // 2. AI вызов через Claude с по��ным контекстом + сообщение РП
+      const userTurn = `Данные просчёта:\n${dataText}\n\n---\nРУКОВОДИТЕЛЬ ПРОЕКТА (${user.name || user.login}) ПИШЕТ:
+"${message.trim()}"
+
+${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history.slice(-6).map(h => `${h.role === 'user' ? 'РП' : 'Мимир'}: ${h.text}`).join('\n')}` : ''}
+
+ЗАДАЧА: Учти просьбу РП и верни ОБНОВЛЁННЫЙ JSON с пересчитанным просчётом.
+Пиши в estimate.comment объяснение что изменилось (1-2 предложения).
+В analysis.markup_reasoning — обновлённое обоснование.
+ВЕРНИ ТОЛЬКО JSON, без пояснений.`;
+
+      const aiResult = await aiProvider.complete({
+        system: getSystemPrompt(),
+        messages: [{ role: 'user', content: userTurn }],
+        maxTokens: 16000,
+        temperature: 0.2
+      });
+
+      if (!aiResult?.text) throw new Error('AI не ответил');
+      const ai = mimirAutoEstimate.parseAIResponse(aiResult.text);
+      ai._meta = { model: aiResult.model, provider: aiResult.provider };
+      const recomputed = mimirAutoEstimate.validateAndRecomputeMath(ai, ctx.settings,
+        { work: ctx.work, tender: ctx.tender, warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+      mimirAutoEstimate.normalizeCalcRows(recomputed.calculation);
+      mimirAutoEstimate.resolveEquipmentFromWarehouse(ai, { warehouse: ctx.warehouse, workType: ai.estimate?.work_type });
+
+      // 3. UPDATE в БД
+      await mimirAutoEstimate.updateDraftEstimate(db, estimateId, ai, recomputed, user, {
+        user_message: message.trim(),
+        mimir_response: ai.estimate?.comment || ai.analysis?.markup_reasoning || ''
+      });
+
+      const totals = recomputed.totals;
+
+      return reply.send({
+        success: true,
+        response: ai.estimate?.comment || ai.analysis?.markup_reasoning || 'Готово, пересчитал.',
+        updated_card: {
+          crew_count: ai.estimate?.crew_count,
+          work_days: ai.estimate?.work_days,
+          markup_multiplier: totals.markup_multiplier,
+          total_cost: totals.total_cost,
+          total_with_margin: totals.total_with_margin,
+          total_with_vat: totals.total_with_vat,
+          margin_pct: totals.margin_pct,
+          fot_subtotal: totals.personnel_with_tax,
+          travel_subtotal: totals.travel_subtotal,
+          transport_subtotal: totals.transport_subtotal,
+          chemistry_subtotal: totals.chemistry_subtotal,
+          current_subtotal: totals.current_subtotal
+        },
+        updated_analysis: {
+          markup_reasoning: ai.analysis?.markup_reasoning || null,
+          warnings: ai.analysis?.warnings || [],
+          warehouse_status: ai.analysis?.warehouse_status || null,
+          workers_status: ai.analysis?.workers_status || null,
+          purchases_needed: ai.analysis?.purchases_needed || []
+        },
+        ai_meta: {
+          model: aiBundle.model,
+          provider: aiBundle.provider,
+          tokens: aiBundle.tokens,
+          duration_ms: aiBundle.duration_ms
+        }
+      });
+    } catch (err) {
+      fastify.log.error('[Mimir auto-estimate-chat]:', err.message, err.stack);
+      return reply.code(500).send({ success: false, message: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AP1: POST /api/mimir/auto-estimate-context — JSON версия (без SSE)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Тот же сбор контекста но без стриминга — для быстрой отладки и тестов.
+  // Возвращает только summary + ключевые метрики (без сырых данных).
+  fastify.post('/auto-estimate-context', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id } = request.body || {};
+    if (!work_id || isNaN(parseInt(work_id))) {
+      return reply.code(400).send({ success: false, message: 'work_id обязателен' });
+    }
+    try {
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+      const context = await mimirAutoEstimate.buildAutoEstimateContext(
+        db, parseInt(work_id), request.user, null
+      );
+      return reply.send({
+        success: true,
+        summary: context.summary,
+        documents_preview: context.documents.map(d => ({
+          name: d.original_name,
+          size_kb: d.size_kb,
+          content_chars: d.content_chars,
+          content_head: (d.content || '').substring(0, 200)
+        })),
+        analogs_preview: context.analogs.map(a => ({
+          id: a.id, title: a.title,
+          total_cost: a.total_cost, total_with_margin: a.total_with_margin,
+          markup_multiplier: a.markup_multiplier,
+          approval_status: a.approval_status
+        })),
+        customer_history_preview: context.customer_history.map(t => ({
+          id: t.id, title: t.tender_title,
+          status: t.status || t.tender_status,
+          markup: t.markup_multiplier
+        })),
+        warehouse_categories: [...new Set(context.warehouse.map(w => w.category_name))],
+        warehouse_count: context.warehouse.length,
+        workers_available: (context.workers.itr_available?.length || 0) + (context.workers.field_available?.length || 0),
+        itr_available: context.workers.itr_available?.length || 0,
+        field_available: context.workers.field_available?.length || 0,
+        permits_total: context.permits?.total_active || 0,
+        tariff_categories: Object.keys(context.tariffs.grouped || {}),
+        settings: context.settings
+      });
+    } catch (error) {
+      fastify.log.error('[Mimir auto-estimate-context]:', error.message);
+      return reply.code(500).send({ success: false, message: error.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AP3: GET /api/mimir/auto-estimate/check?work_id=N
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Проверяет существует ли уже draft estimate для work. Используется
+  // фронтом перед запуском SSE pipeline чтобы предложить пользователю выбор:
+  // "У вас уже есть просчёт #N — открыть или пересчитать новый?"
+  fastify.get('/auto-estimate/check', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const workId = parseInt(request.query.work_id);
+    if (!workId) return reply.code(400).send({ success: false, message: 'work_id обязателен' });
+    try {
+      const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+      const existing = await mimirAutoEstimate.loadExistingDraftForWork(db, workId);
+      if (!existing) return reply.send({ exists: false });
+
+      // Парсим mimir_suggestions для UI
+      let suggestions = null;
+      if (existing.calc?.mimir_suggestions) {
+        try {
+          suggestions = typeof existing.calc.mimir_suggestions === 'string'
+            ? JSON.parse(existing.calc.mimir_suggestions)
+            : existing.calc.mimir_suggestions;
+        } catch (e) { /* ok */ }
+      }
+
+      return reply.send({
+        exists: true,
+        estimate: {
+          id: existing.estimate.id,
+          title: existing.estimate.title,
+          crew_count: existing.estimate.crew_count,
+          work_days: existing.estimate.work_days,
+          markup_multiplier: existing.estimate.markup_multiplier,
+          cost_plan: existing.estimate.cost_plan,
+          price_tkp: existing.estimate.price_tkp,
+          margin_pct: existing.estimate.margin_pct,
+          created_at: existing.estimate.created_at,
+          updated_at: existing.estimate.updated_at
+        },
+        calc: existing.calc ? {
+          total_cost: existing.calc.total_cost,
+          total_with_margin: existing.calc.total_with_margin,
+          margin_pct: existing.calc.margin_pct
+        } : null,
+        chat_history: existing.chat_history || [],
+        suggestions
+      });
+    } catch (err) {
+      fastify.log.error('[Mimir auto-estimate/check]:', err.message);
+      return reply.code(500).send({ success: false, message: err.message });
+    }
+  });
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXPENSE WALLET: Мимир распознаёт расходы (QR/фото/файл/текст)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * POST /api/mimir/expense-recognize
+   * Body: { work_id, type: "qr"|"image"|"text", data: "..." }
+   *   - qr: data = содержимое QR-кода
+   *   - image: data = base64, mime_type = "image/jpeg"
+   *   - text: data = "заплатил за такси 3500"
+   *
+   * Ответ: { success, preview: { amount, date, category, supplier, ... }, financials }
+   */
+  const EXPENSE_ROLES = ['PM', 'HEAD_PM'];
+
+  fastify.post('/expense-recognize', {
+    preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
+  }, async (request, reply) => {
+    const { work_id, type, data, mime_type } = request.body || {};
+
+    if (!work_id) return reply.code(400).send({ error: 'work_id обязателен' });
+    if (!type || !data) return reply.code(400).send({ error: 'type и data обязательны' });
+
+    const expRecognize = require('../services/expense-recognize');
+    const startTime = Date.now();
+
+    try {
+      // Данные работы
+      const wRes = await db.query('SELECT * FROM works WHERE id = $1', [work_id]);
+      const work = wRes.rows[0];
+      if (!work) return reply.code(404).send({ error: 'Работа не найдена' });
+
+      let recognized;
+
+      if (type === 'qr') {
+        // QR фискального чека → ФНС API
+        const fiscal = expRecognize.parseFiscalQR(data);
+        if (!fiscal) {
+          return reply.send({
+            success: false,
+            error: 'Не удалось распознать QR-код фискального чека. Формат: t=...&s=...&fn=...&i=...&fp=...'
+          });
+        }
+        recognized = await expRecognize.fetchFromFNS(fiscal);
+        // Автоопределение категории по позициям
+        if (recognized.items && recognized.items.length > 0 && !recognized.category) {
+          recognized.category = guessCategory(recognized);
+        }
+        if (!recognized.description && recognized.items && recognized.items.length > 0) {
+          recognized.description = recognized.items.slice(0, 3).map(i => i.name).join(', ');
+          if (recognized.items.length > 3) recognized.description += ` и ещё ${recognized.items.length - 3}`;
+        }
+      } else if (type === 'image') {
+        // Фото → Claude Vision
+        recognized = await expRecognize.recognizeImage(aiProvider, data, mime_type || 'image/jpeg');
+      } else if (type === 'text') {
+        // Текст → Claude
+        recognized = await expRecognize.recognizeText(aiProvider, data);
+      } else {
+        return reply.code(400).send({ error: 'Неизвестный type. Допустимо: qr, image, text' });
+      }
+
+      if (recognized.error) {
+        return reply.send({ success: false, error: recognized.error });
+      }
+
+      // Строим карточку-превью
+      const preview = expRecognize.buildPreviewCard(recognized, work);
+      // Текущая финансовая сводка
+      const financials = await expRecognize.getWorkFinancials(db, work_id);
+
+      return reply.send({
+        success: true,
+        preview,
+        financials,
+        elapsed_ms: Date.now() - startTime
+      });
+    } catch (err) {
+      console.error('[expense-recognize ERROR]:', err.message, err.stack);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  /**
+   * POST /api/mimir/expense-confirm
+   * Body: { work_id, amount, date, category, supplier, description, document_id?,
+   *         doc_number?, vat_rate?, vat_amount?, amount_ex_vat?, inn?, items?[] }
+   *
+   * Вносит расход + позиции items → триггер пересчитывает cost_fact → возвращает новую сводку.
+   */
+  fastify.post('/expense-confirm', {
+    preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
+  }, async (request, reply) => {
+    const {
+      work_id, amount, date, category, supplier, description, notes, document_id,
+      doc_number, vat_rate, vat_amount, amount_ex_vat, inn, items, receipt_url
+    } = request.body || {};
+    const user = request.user;
+
+    if (!work_id || !amount) {
+      return reply.code(400).send({ error: 'work_id и amount обязательны' });
+    }
+
+    const expRecognize = require('../services/expense-recognize');
+
+    try {
+      // Сводка ДО
+      const before = await expRecognize.getWorkFinancials(db, work_id);
+      if (!before) return reply.code(404).send({ error: 'Работа не найдена' });
+
+      // INSERT в work_expenses (с НДС и doc_number)
+      const today = new Date().toISOString().slice(0, 10);
+      const result = await db.query(
+        `INSERT INTO work_expenses (work_id, category, description, amount, date, supplier, notes,
+         doc_number, vat_rate, vat_amount, amount_ex_vat, receipt_url,
+         status, source_table, created_by, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+         'confirmed', 'mimir_expense', $13, NOW())
+         RETURNING *`,
+        [
+          work_id,
+          category || 'other',
+          String(description || '').substring(0, 500),
+          Number(amount),
+          date || today,
+          String(supplier || '').substring(0, 500),
+          String(notes || '').substring(0, 1000),
+          doc_number || null,
+          vat_rate != null ? Number(vat_rate) : null,
+          vat_amount != null ? Number(vat_amount) : null,
+          amount_ex_vat != null ? Number(amount_ex_vat) : null,
+          receipt_url || null,
+          user.id
+        ]
+      );
+      const expense = result.rows[0];
+
+      // Сохранить позиции (items) в work_expense_items
+      if (Array.isArray(items) && items.length > 0) {
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          await db.query(
+            `INSERT INTO work_expense_items (expense_id, position, name, unit, quantity, price, amount, vat_rate, vat_amount, note)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [
+              expense.id, i + 1,
+              String(it.name || it.description || '').substring(0, 500),
+              it.unit || 'шт',
+              it.quantity || 1,
+              it.price != null ? Number(it.price) : null,
+              it.sum != null ? Number(it.sum) : (it.amount != null ? Number(it.amount) : null),
+              it.vat_rate != null ? Number(it.vat_rate) : null,
+              it.vat_amount != null ? Number(it.vat_amount) : null,
+              it.note || null
+            ]
+          );
+        }
+      }
+
+      // Привязка документа (если загружен)
+      if (document_id) {
+        await db.query(
+          'UPDATE documents SET work_id = $1 WHERE id = $2',
+          [work_id, document_id]
+        ).catch(() => {});
+        // Привязать preview к расходу
+        const { rows: [doc] } = await db.query('SELECT filename FROM documents WHERE id = $1', [document_id]).catch(() => ({ rows: [] }));
+        if (doc && !receipt_url) {
+          await db.query('UPDATE work_expenses SET receipt_url = $1 WHERE id = $2',
+            [`/api/files/preview/${doc.filename}`, expense.id]).catch(() => {});
+        }
+      }
+
+      // Сводка ПОСЛЕ (триггер уже обновил cost_fact)
+      const after = await expRecognize.getWorkFinancials(db, work_id);
+
+      return reply.send({
+        success: true,
+        expense,
+        items_count: Array.isArray(items) ? items.length : 0,
+        before,
+        after,
+        delta: {
+          cost_fact: after.cost_fact - before.cost_fact,
+          profit: after.profit - before.profit,
+          margin_pct: Math.round((after.margin_pct - before.margin_pct) * 10) / 10
+        }
+      });
+    } catch (err) {
+      console.error('[expense-confirm ERROR]:', err.message, err.stack);
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  /**
+   * GET /api/mimir/expense-works — список работ РП для выбора в Кошельке
+   * Возвращает работы с финансовой сводкой.
+   */
+  fastify.get('/expense-works', {
+    preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
+  }, async (request, reply) => {
+    const user = request.user;
+    const isAdmin = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM'].includes(user.role);
+
+    let sql = `SELECT id, work_title, work_number, contract_value, cost_fact, cost_plan, work_status, customer_name, city
+               FROM works WHERE deleted_at IS NULL`;
+    const params = [];
+
+    if (!isAdmin) {
+      sql += ' AND pm_id = $1';
+      params.push(user.id);
+    }
+    sql += ` ORDER BY
+      CASE WHEN work_status IN ('в работе', 'мобилизация') THEN 0 ELSE 1 END,
+      updated_at DESC NULLS LAST
+      LIMIT 50`;
+
+    const result = await db.query(sql, params);
+
+    const works = result.rows.map(w => {
+      const costFact = Number(w.cost_fact) || 0;
+      const contractValue = Number(w.contract_value) || 0;
+      const profit = contractValue - costFact;
+      return {
+        ...w,
+        cost_fact: costFact,
+        contract_value: contractValue,
+        profit: Math.round(profit),
+        margin_pct: contractValue > 0 ? Math.round(((profit / contractValue) * 100) * 10) / 10 : 0
+      };
+    });
+
+    return { works };
+  });
+
+  /**
+   * GET /api/mimir/expense-history?work_id=N — последние расходы работы
+   */
+  fastify.get('/expense-history', {
+    preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
+  }, async (request, reply) => {
+    const { work_id, limit = 20 } = request.query;
+    if (!work_id) return reply.code(400).send({ error: 'work_id обязателен' });
+
+    const result = await db.query(
+      `SELECT e.*, u.name as created_by_name
+       FROM work_expenses e
+       LEFT JOIN users u ON e.created_by = u.id
+       WHERE e.work_id = $1
+       ORDER BY e.created_at DESC
+       LIMIT $2`,
+      [work_id, limit]
+    );
+
+    const expRecognize = require('../services/expense-recognize');
+    const financials = await expRecognize.getWorkFinancials(db, work_id);
+
+    return { expenses: result.rows, financials };
+  });
+}
+
+/**
+ * Автоопределение категории по позициям чека.
+ */
+function guessCategory(recognized) {
+  const text = (recognized.items || []).map(i => (i.name || '').toLowerCase()).join(' ')
+    + ' ' + ((recognized.seller || '') + ' ' + (recognized.address || '')).toLowerCase();
+
+  if (/такси|uber|яндекс.такси|ситимобил/i.test(text)) return 'tickets';
+  if (/отел|гостиниц|booking|hostel|квартир|аренда жил/i.test(text)) return 'accommodation';
+  if (/кафе|ресторан|столов|буфет|обед|ужин|завтрак|продукт|магнит|пятёрочк|перекрёсто/i.test(text)) return 'per_diem';
+  if (/билет|ржд|аэрофлот|s7|победа|авиа|жд|поезд|электричк/i.test(text)) return 'tickets';
+  if (/леруа|строй|крепёж|гермети|инструмент|болт|гайк|труб|кабел|провод/i.test(text)) return 'materials';
+  if (/бензин|азс|топлив|лукойл|газпром|роснефт|shell/i.test(text)) return 'other';
+
+  return 'other';
 }
 
 module.exports = mimirRoutes;

@@ -13,10 +13,7 @@
     const n = Number(String(v??"").replace(/\s/g, "").replace(",","."));
     return Number.isFinite(n) ? n : d;
   }
-  function money(n){
-    const x = Math.round(Number(n||0));
-    return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
-  }
+  function money(x) { return AsgardUI.money(Math.round(Number(x || 0))) + ' ₽'; }
   function clamp(n,min,max){ return Math.min(max, Math.max(min, n)); }
 
   async function getAppSettings(){
@@ -45,7 +42,7 @@
       equipment: [],
       transport_id: "AUTO",
       margin_pct: 20,
-      vat_pct: num(app.vat_pct, 20)
+      vat_pct: num(app.vat_pct, 22)
     };
   }
 
@@ -166,7 +163,7 @@
     const priceNoVat = denom>0 ? (costTotal*(1-pt))/denom : (costTotal*1.5);
     const profitBeforeTax = priceNoVat - costTotal;
     const netProfit = profitBeforeTax*(1-pt);
-    const vatPct = clamp(num(state.vat_pct, num(app.vat_pct,20)),0,30);
+    const vatPct = clamp(num(state.vat_pct, num(app.vat_pct,22)),0,30);
     const priceWithVat = priceNoVat * (1 + vatPct/100);
 
     const ppd = (peopleWork>0 && workDays>0) ? (netProfit/(peopleWork*workDays)) : 0;
@@ -251,13 +248,7 @@
       return `
         <tr>
           <td><input class="inp" data-eq-idx="${idx}" data-k="name" value="${esc(e.name||"")}" placeholder="Насос, НВД, ..."/></td>
-          <td>
-            <select class="inp" data-eq-idx="${idx}" data-k="kind">
-              <option value="own" ${kind==="own"?"selected":""}>Наше</option>
-              <option value="rent" ${kind==="rent"?"selected":""}>Аренда</option>
-              <option value="buy" ${kind==="buy"?"selected":""}>Покупка</option>
-            </select>
-          </td>
+          <td><div id="cr-eq-kind-${idx}" class="cr-eq-kind-wrap"></div></td>
           <td>
             <div class="help" style="margin:0 0 4px">${esc(costLabel)}</div>
             ${costCell}
@@ -279,23 +270,16 @@
   }
 
   function renderChem(app, state){
-    const list = app.calc?.chemicals || [];
-    const opts = list.map(c=>`<option value="${esc(c.id)}" ${String(state.chemical_id)===String(c.id)?"selected":""}>${esc(c.name)} · ${esc(String(c.price_per_kg))}₽/кг · ${esc(String(c.kg_per_m3))}кг/м³</option>`).join("");
     return `
       <div class="formrow">
         <div><label>Объём системы, м³</label><input class="inp" id="c_sysvol" type="number" min="0" step="0.1" value="${esc(String(state.system_volume_m3??0))}"/></div>
-        <div><label>Состав</label><select class="inp" id="c_chem">${opts}</select></div>
+        <div><label>Состав</label><div id="cr-chem-wrap"></div></div>
       </div>
       <div class="help" style="margin-top:8px">Расход химии считается по норме кг/м³. Вес химии и примерный объём автоматически попадают в логистику.</div>
     `;
   }
 
   function renderLogistics(app, state, summary){
-    // Backward compatibility: older seeds used `transport`, newer settings use `transport_options`
-    const list = app.calc?.transport_options || app.calc?.transport || [];
-    const opts = [`<option value="AUTO" ${String(state.transport_id)==="AUTO"?"selected":""}>Авто‑подбор</option>`]
-      .concat(list.map(t=>`<option value="${esc(t.id)}" ${String(state.transport_id)===String(t.id)?"selected":""}>${esc(t.name)} · до ${esc(String(t.max_weight_t))}т / ${esc(String(t.max_volume_m3))}м³ · ${esc(String(t.rate_per_km))}₽/км</option>`))
-      .join("");
     return `
       <div class="formrow">
         <div><label>Город</label>
@@ -305,7 +289,7 @@
           </div>
         </div>
         <div><label>Расстояние, км (в одну сторону)</label><input class="inp" id="c_km" type="number" min="0" value="${esc(String(state.distance_km??0))}"/></div>
-        <div><label>Транспорт</label><select class="inp" id="c_trans">${opts}</select></div>
+        <div><label>Транспорт</label><div id="cr-trans-wrap"></div></div>
       </div>
       <div class="kpi" style="grid-template-columns:repeat(4,minmax(160px,1fr)); margin-top:10px">
         <div class="k"><div class="t">Вес</div><div class="v">${esc(String(Math.round(summary.totalWeightKg||0)))} кг</div><div class="s">Химия + оборудование</div></div>
@@ -477,8 +461,17 @@
         // chemistry
         const sysvol = $("#c_sysvol");
         if(sysvol) sysvol.addEventListener("input", e=>{state.system_volume_m3=num(e.target.value,0); repaint();});
-        const chemSel = $("#c_chem");
-        if(chemSel) chemSel.addEventListener("change", e=>{state.chemical_id=String(e.target.value||""); repaint();});
+        const chemWrap = document.getElementById("cr-chem-wrap");
+        if(chemWrap){
+          const chemList = app.calc?.chemicals || [];
+          chemWrap.appendChild(CRSelect.create({
+            id: 'c_chem',
+            options: chemList.map(c=>({value:String(c.id), label: c.name+' · '+c.price_per_kg+'₽/кг · '+c.kg_per_m3+'кг/м³'})),
+            value: String(state.chemical_id||""),
+            searchable: false,
+            onChange: v=>{state.chemical_id=String(v||""); repaint();}
+          }));
+        }
 
         // equipment
         const addEq = $("#btnAddEq");
@@ -496,14 +489,29 @@
             const i=Number(e.target.dataset.eqIdx);
             const k=e.target.dataset.k;
             if(!state.equipment[i]) return;
-            if(k==="name" || k==="kind") state.equipment[i][k] = String(e.target.value||"");
+            if(k==="name") state.equipment[i][k] = String(e.target.value||"");
             else state.equipment[i][k] = num(e.target.value,0);
-            // When kind changes, we need rerender to swap cost input
-            if(k==="kind") rerender("eq");
             repaint();
           };
           inp.addEventListener("input", handler);
           inp.addEventListener("change", handler);
+        });
+        // CRSelect: equipment kind per row
+        (state.equipment||[]).forEach((e,idx)=>{
+          const wrap = document.getElementById("cr-eq-kind-"+idx);
+          if(!wrap) return;
+          wrap.appendChild(CRSelect.create({
+            id: 'c-eq-kind-'+idx,
+            options: [{value:'own',label:'Наше'},{value:'rent',label:'Аренда'},{value:'buy',label:'Покупка'}],
+            value: String(e.kind||'own'),
+            searchable: false,
+            onChange: v=>{
+              if(!state.equipment[idx]) return;
+              state.equipment[idx].kind = String(v||'own');
+              rerender("eq");
+              repaint();
+            }
+          }));
         });
 
         // logistics
@@ -511,8 +519,18 @@
         if(city) city.addEventListener("input", e=>{state.city=String(e.target.value||"");});
         const km = $("#c_km");
         if(km) km.addEventListener("input", e=>{state.distance_km=num(e.target.value,0); repaint();});
-        const trans = $("#c_trans");
-        if(trans) trans.addEventListener("change", e=>{state.transport_id=String(e.target.value||"AUTO"); repaint();});
+        const transWrap = document.getElementById("cr-trans-wrap");
+        if(transWrap){
+          const tList = app.calc?.transport_options || app.calc?.transport || [];
+          const tOpts = [{value:'AUTO',label:'Авто‑подбор'}].concat(tList.map(t=>({value:String(t.id), label: t.name+' · до '+t.max_weight_t+'т / '+t.max_volume_m3+'м³ · '+t.rate_per_km+'₽/км'})));
+          transWrap.appendChild(CRSelect.create({
+            id: 'c_trans',
+            options: tOpts,
+            value: String(state.transport_id||"AUTO"),
+            searchable: false,
+            onChange: v=>{state.transport_id=String(v||"AUTO"); repaint();}
+          }));
+        }
         
         // Кнопка расчёта расстояния через Яндекс.Карты
         const btnCalcDist = $("#btnCalcDist");

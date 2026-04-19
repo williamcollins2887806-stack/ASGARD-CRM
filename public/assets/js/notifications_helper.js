@@ -143,30 +143,6 @@ window.AsgardNotify = (function(){
     }
   }
   
-  // Заявки на закупку
-  async function notifyPurchaseRequest(request, action) {
-    const admins = await getAdmins();
-    const pm = await AsgardDB.get('users', request.pm_id);
-    
-    if (action === 'created') {
-      for (const admin of admins) {
-        await notifyUser(
-          admin.id,
-          '🛒 Заявка на закупку',
-          `РП ${pm?.name || '?'} создал заявку на закупку.\n${request.description || ''}`,
-          '#/proc-requests'
-        );
-      }
-    } else if (action === 'approved') {
-      await notifyUser(
-        request.pm_id,
-        '✅ Закупка одобрена',
-        `Заявка на закупку одобрена.`,
-        '#/proc-requests?id=' + request.id
-      );
-    }
-  }
-  
   // Передача тендера в просчёт
   async function notifyTenderHandoff(tender, pmId) {
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : 'Не указан');
@@ -371,6 +347,10 @@ window.AsgardNotify = (function(){
   // Проверка и запуск авто-отчётов (вызывается при загрузке)
   async function checkAutoReports() {
     try {
+      // Только роли с доступом к settings (ADMIN и DIRECTOR_*)
+      const auth = window.AsgardAuth && await AsgardAuth.getAuth();
+      const role = auth?.user?.role || '';
+      if (role !== 'ADMIN' && !role.startsWith('DIRECTOR_') && role !== 'DIRECTOR') return;
       const settings = await AsgardDB.get('settings', 'auto_reports');
       if (!settings?.value_json) return;
       
@@ -423,7 +403,6 @@ window.AsgardNotify = (function(){
     notifyUser,
     notifyBonusRequest,
     notifyStaffRequest,
-    notifyPurchaseRequest,
     notifyTenderHandoff,
     notifyChatMessage,
     generateMonthlyReport,

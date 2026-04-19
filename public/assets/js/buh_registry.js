@@ -3,7 +3,7 @@
 // Фильтры: заказчик, кто внёс, статус счёт-фактуры, год/месяц
 
 window.AsgardBuhRegistryPage = (function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
   // Категории расходов
   const EXPENSE_CATEGORIES = [
@@ -16,14 +16,6 @@ window.AsgardBuhRegistryPage = (function(){
     { key: 'subcontract', label: 'Субподряд', color: '#ec4899', icon: '🤝' },
     { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
-
-  function money(x){ 
-    if(x===null||x===undefined||x==="") return "0"; 
-    const n=Number(x); 
-    if(isNaN(n)) return "0"; 
-    return n.toLocaleString("ru-RU"); 
-  }
-
   function moneyShort(x){
     if(x===null||x===undefined||x==="") return "0";
     const n=Math.abs(Number(x));
@@ -133,50 +125,12 @@ window.AsgardBuhRegistryPage = (function(){
         <hr class="hr"/>
 
         <div class="buh-filters">
-          <div class="buh-filter">
-            <label>Год</label>
-            <select id="f_year">
-              <option value="">Все</option>
-              ${years.map(y => `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`).join('')}
-            </select>
-          </div>
-          <div class="buh-filter">
-            <label>Месяц</label>
-            <select id="f_month">
-              <option value="">Все</option>
-              ${[...Array(12)].map((_, i) => `<option value="${i+1}" ${i+1 === currentMonth ? 'selected' : ''}>${['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][i]}</option>`).join('')}
-            </select>
-          </div>
-          <div class="buh-filter">
-            <label>Заказчик</label>
-            <select id="f_customer">
-              <option value="">Все</option>
-              ${customers.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="buh-filter">
-            <label>Кто внёс</label>
-            <select id="f_creator">
-              <option value="">Все</option>
-              ${creators.map(u => `<option value="${u.id}">${esc(u.name || u.login)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="buh-filter">
-            <label>Категория</label>
-            <select id="f_category">
-              <option value="">Все</option>
-              ${EXPENSE_CATEGORIES.map(c => `<option value="${c.key}">${c.icon} ${c.label}</option>`).join('')}
-            </select>
-          </div>
-          <div class="buh-filter">
-            <label>Статус СФ</label>
-            <select id="f_invoice">
-              <option value="">Все</option>
-              <option value="need">Нужна СФ</option>
-              <option value="got">СФ получена</option>
-              <option value="none">СФ не нужна</option>
-            </select>
-          </div>
+          <div class="buh-filter"><label>Год</label><div id="f_year_w"></div></div>
+          <div class="buh-filter"><label>Месяц</label><div id="f_month_w"></div></div>
+          <div class="buh-filter"><label>Заказчик</label><div id="f_customer_w"></div></div>
+          <div class="buh-filter"><label>Кто внёс</label><div id="f_creator_w"></div></div>
+          <div class="buh-filter"><label>Категория</label><div id="f_category_w"></div></div>
+          <div class="buh-filter"><label>Статус СФ</label><div id="f_invoice_w"></div></div>
           <div class="buh-filter">
             <label>&nbsp;</label>
             <button class="btn" id="btnApplyFilter">Применить</button>
@@ -195,16 +149,25 @@ window.AsgardBuhRegistryPage = (function(){
 
     await layout(body, { title: title || "Реестр расходов • BUH" });
 
+    // ─── CRSelect filters ───
+    const _moAbbr = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+    $('#f_year_w').appendChild(CRSelect.create({ id: 'f_year', options: [{ value: '', label: 'Все' }, ...years.map(y => ({ value: String(y), label: String(y) }))], value: String(currentYear), onChange: () => applyFilters() }));
+    $('#f_month_w').appendChild(CRSelect.create({ id: 'f_month', options: [{ value: '', label: 'Все' }, ..._moAbbr.map((m,i) => ({ value: String(i+1), label: m }))], value: String(currentMonth), onChange: () => applyFilters() }));
+    $('#f_customer_w').appendChild(CRSelect.create({ id: 'f_customer', options: [{ value: '', label: 'Все' }, ...customers.map(c => ({ value: c, label: c }))], searchable: true, onChange: () => applyFilters() }));
+    $('#f_creator_w').appendChild(CRSelect.create({ id: 'f_creator', options: [{ value: '', label: 'Все' }, ...creators.map(u => ({ value: String(u.id), label: u.name || u.login }))], onChange: () => applyFilters() }));
+    $('#f_category_w').appendChild(CRSelect.create({ id: 'f_category', options: [{ value: '', label: 'Все' }, ...EXPENSE_CATEGORIES.map(c => ({ value: c.key, label: c.icon + ' ' + c.label }))], onChange: () => applyFilters() }));
+    $('#f_invoice_w').appendChild(CRSelect.create({ id: 'f_invoice', options: [{ value: '', label: 'Все' }, { value: 'need', label: 'Нужна СФ' }, { value: 'got', label: 'СФ получена' }, { value: 'none', label: 'СФ не нужна' }], onChange: () => applyFilters() }));
+
     let buhCurrentPage = 1, buhPageSize = window.AsgardPagination ? AsgardPagination.getPageSize() : 20;
 
     // Функция применения фильтров
     function applyFilters(){
-      const fYear = $('#f_year').value;
-      const fMonth = $('#f_month').value;
-      const fCustomer = $('#f_customer').value;
-      const fCreator = $('#f_creator').value;
-      const fCategory = $('#f_category').value;
-      const fInvoice = $('#f_invoice').value;
+      const fYear = CRSelect.getValue('f_year') || '';
+      const fMonth = CRSelect.getValue('f_month') || '';
+      const fCustomer = CRSelect.getValue('f_customer') || '';
+      const fCreator = CRSelect.getValue('f_creator') || '';
+      const fCategory = CRSelect.getValue('f_category') || '';
+      const fInvoice = CRSelect.getValue('f_invoice') || '';
 
       let filtered = allExpenses.slice();
 
@@ -562,18 +525,14 @@ window.AsgardBuhRegistryPage = (function(){
     $('#btnApplyFilter')?.addEventListener('click', applyFilters);
     
     // Фильтры при изменении
-    ['f_year', 'f_month', 'f_customer', 'f_creator', 'f_category', 'f_invoice'].forEach(id => {
-      $('#' + id)?.addEventListener('change', applyFilters);
-    });
-
     $('#btnExportCSV')?.addEventListener('click', () => {
       // Применяем текущие фильтры для экспорта
-      const fYear = $('#f_year').value;
-      const fMonth = $('#f_month').value;
-      const fCustomer = $('#f_customer').value;
-      const fCreator = $('#f_creator').value;
-      const fCategory = $('#f_category').value;
-      const fInvoice = $('#f_invoice').value;
+      const fYear = CRSelect.getValue('f_year') || '';
+      const fMonth = CRSelect.getValue('f_month') || '';
+      const fCustomer = CRSelect.getValue('f_customer') || '';
+      const fCreator = CRSelect.getValue('f_creator') || '';
+      const fCategory = CRSelect.getValue('f_category') || '';
+      const fInvoice = CRSelect.getValue('f_invoice') || '';
 
       let filtered = allExpenses.slice();
       if(fYear) filtered = filtered.filter(e => e.date && new Date(e.date).getFullYear() === Number(fYear));

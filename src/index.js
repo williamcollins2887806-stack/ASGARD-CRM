@@ -19,8 +19,10 @@ const fs = require('fs');
 // Кэшируем 2 версии index.html при старте (как Сбер/Яндекс)
 // ─────────────────────────────────────────────────────────────────────────────
 const indexHtmlPath = path.join(__dirname, '../public/index.html');
+const reactMobileHtmlPath = path.join(__dirname, '../public/m/index.html');
 let indexDesktop = '';
 let indexMobile = '';
+let reactMobileHtml = '';
 
 function buildIndexVersions() {
   const raw = fs.readFileSync(indexHtmlPath, 'utf8');
@@ -30,6 +32,12 @@ function buildIndexVersions() {
   // Мобильная: убираем десктопные скрипты
   indexMobile = raw
     .replace(/<!-- ASGARD_DESKTOP_START -->[\s\S]*?<!-- ASGARD_DESKTOP_END -->/g, '<!-- desktop scripts excluded by server -->');
+  // React mobile app (если собран)
+  try {
+    reactMobileHtml = fs.readFileSync(reactMobileHtmlPath, 'utf8');
+  } catch (_) {
+    reactMobileHtml = '';
+  }
 }
 
 buildIndexVersions();
@@ -114,6 +122,29 @@ fastify.addHook('onRequest', async (request, reply) => {
     return;
   }
 
+  // Allow React mobile app paths (/m/ and its assets)
+  if (url === '/m' || url === '/m/' || url.startsWith('/m/')) {
+    return;
+  }
+
+  // Field SW — всегда без кэша (иначе браузер не увидит обновления)
+  if (url === '/field/sw.js') {
+    reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    reply.header('Pragma', 'no-cache');
+    return;
+  }
+
+  // Allow Field PWA paths (/field/ and its assets)
+  if (url === '/field' || url === '/field/' || url.startsWith('/field/')) {
+    return;
+  }
+
+  // Block /mobile-app/ source directory from web access
+  if (url === '/mobile-app' || url.startsWith('/mobile-app/')) {
+    reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
+    return;
+  }
+
   // Block path traversal and sensitive paths
   if (url.includes('..') ||
       /\/\.env/i.test(url) ||
@@ -131,19 +162,63 @@ fastify.addHook('onRequest', async (request, reply) => {
   }
 });
 
-// Gzip/Brotli compression for faster mobile loading (v8.1)
-fastify.register(require('@fastify/compress'), {
-  global: true,
-  encodings: ['gzip', 'deflate'],
-  threshold: 1024 // Only compress responses > 1KB
-});
+// Gzip/Brotli compression — DISABLED (nginx handles gzip at proxy level)
+// @fastify/compress v7 produces empty response bodies for some routes.
+// nginx gzip on + gzip_types already covers compression for all responses.
+// fastify.register(require('@fastify/compress'), {
+//   global: true,
+//   encodings: ['gzip', 'deflate'],
+//   threshold: 1024
+// });
+
+// Field PWA: read index.html at startup (like React mobile)
+const fieldIndexPath = path.join(__dirname, '../public/field/index.html');
+let fieldHtml = '';
+try { fieldHtml = fs.readFileSync(fieldIndexPath, 'utf8'); } catch (_) {}
 
 // Перехватываем / и /index.html ДО @fastify/static
+// + React mobile app SPA routing для /m/*
+// + Field PWA SPA routing для /field/*
 fastify.addHook('onRequest', (request, reply, done) => {
   const url = request.url.split('?')[0];
+
+  // React mobile app: /m → /m/ redirect
+  if (url === '/m') {
+    reply.redirect(301, '/m/');
+    return;
+  }
+
+  // React mobile app: SPA fallback для всех /m/* путей
+  if (url === '/m/' || (url.startsWith('/m/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
+    if (reactMobileHtml) {
+      reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
+      return;
+    }
+  }
+
+  // Field PWA: /field → /field/ redirect
+  if (url === '/field') {
+    reply.redirect(301, '/field/');
+    return;
+  }
+
+  // Field PWA: SPA fallback for all /field/* paths (except static assets and help.html)
+  if (url === '/field/' || (url.startsWith('/field/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map|html)$/i) && url !== '/field/help')) {
+    if (fieldHtml) {
+      reply.type('text/html').header('Cache-Control', 'no-cache').send(fieldHtml);
+      return;
+    }
+  }
+
+  // Root: мобильный UA → redirect на React app
   if (url === '/' || url === '/index.html') {
+    const ua = request.headers['user-agent'] || '';
+    if (isMobileUA(ua) && reactMobileHtml) {
+      reply.redirect(302, '/m/');
+      return;
+    }
     sendIndexHtml(request, reply);
-    return; // Не вызываем done() — ответ уже отправлен
+    return;
   }
   done();
 });
@@ -160,7 +235,12 @@ fastify.register(require('@fastify/static'), {
     }
     // SW: must not be cached aggressively
     if (filePath.endsWith('sw.js')) {
-      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return;
+    }
+    // Field PWA JS/CSS: immutable (?v=SHELL_VERSION гарантирует свежесть при bump)
+    if (filePath.includes('/field/') && /\.(js|css)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
       return;
     }
     // JS, CSS, images, fonts: cache 30 days (?v= in URL guarantees freshness)
@@ -298,8 +378,78 @@ fastify.decorate('requirePermission', function(moduleKey, operation = 'read') {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Field Authentication Decorator (separate from CRM JWT)
+// ─────────────────────────────────────────────────────────────────────────────
+const fieldJwt = require('jsonwebtoken');
+const fieldCrypto = require('crypto');
+const FIELD_JWT_SECRET = process.env.FIELD_JWT_SECRET || process.env.JWT_SECRET;
+
+fastify.decorate('fieldAuthenticate', async function(request, reply) {
+  try {
+    const authHeader = request.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return reply.code(401).send({ error: 'Требуется авторизация Field' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    let payload;
+    try {
+      payload = fieldJwt.verify(token, FIELD_JWT_SECRET);
+    } catch (jwtErr) {
+      return reply.code(401).send({ error: 'Токен недействителен или истёк' });
+    }
+
+    if (payload.type !== 'field') {
+      return reply.code(401).send({ error: 'Неверный тип токена' });
+    }
+
+    // Check session exists
+    const tokenHash = fieldCrypto.createHash('sha256').update(token).digest('hex');
+    const { rows: sessions } = await db.query(
+      `SELECT id FROM field_sessions WHERE token_hash = $1 AND expires_at > NOW()`,
+      [tokenHash]
+    );
+
+    if (sessions.length === 0) {
+      return reply.code(401).send({ error: 'Сессия не найдена или истекла' });
+    }
+
+    // Load employee
+    const { rows: employees } = await db.query(
+      `SELECT id, fio, phone, city, position, role_tag, is_active, is_self_employed,
+              naks, naks_expiry, imt_number, imt_expires, permits, clothing_size, shoe_size,
+              phone_verified, field_last_login, day_rate
+       FROM employees WHERE id = $1`,
+      [payload.employee_id]
+    );
+
+    if (employees.length === 0 || !employees[0].is_active) {
+      return reply.code(403).send({ error: 'Сотрудник не активен' });
+    }
+
+    request.fieldEmployee = employees[0];
+
+    // Update last_active_at (fire-and-forget)
+    db.query(`UPDATE field_sessions SET last_active_at = NOW() WHERE id = $1`, [sessions[0].id])
+      .catch(() => {});
+  } catch (err) {
+    return reply.code(401).send({ error: 'Ошибка авторизации Field' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Routes
 // ─────────────────────────────────────────────────────────────────────────────
+fastify.register(require('./routes/field-auth'), { prefix: '/api/field/auth' });
+fastify.register(require('./routes/field-worker'), { prefix: '/api/field/worker' });
+fastify.register(require('./routes/field-checkin'), { prefix: '/api/field/checkin' });
+fastify.register(require('./routes/field-reports'), { prefix: '/api/field/reports' });
+fastify.register(require('./routes/field-photos'), { prefix: '/api/field/photos' });
+fastify.register(require('./routes/field-manage'), { prefix: '/api/field/manage' });
+fastify.register(require('./routes/field-logistics'), { prefix: '/api/field/logistics' });
+fastify.register(require('./routes/field-funds'), { prefix: '/api/field/funds' });
+fastify.register(require('./routes/field-packing'), { prefix: '/api/field/packing' });
+fastify.register(require('./routes/field-stages'), { prefix: '/api/field/stages' });
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
 fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });
@@ -317,6 +467,7 @@ fastify.register(require('./routes/files'), { prefix: '/api/files' });
 fastify.register(require('./routes/settings'), { prefix: '/api/settings' });
 fastify.register(require('./routes/reports'), { prefix: '/api/reports' });
 fastify.register(require('./routes/mimir'), { prefix: '/api/mimir' });
+fastify.register(require('./routes/hints'), { prefix: '/api' });
 fastify.register(require('./routes/geo'), { prefix: '/api/geo' });
 fastify.register(require('./routes/email'), { prefix: '/api/email' });
 fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
@@ -339,6 +490,8 @@ fastify.register(require('./routes/integrations'), { prefix: '/api/integrations'
 fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
 fastify.register(require('./routes/tkp'), { prefix: '/api/tkp' });
 fastify.register(require('./routes/pass_requests'), { prefix: '/api/pass-requests' });
+fastify.register(require('./routes/procurement'), { prefix: '/api/procurement' });
+fastify.register(require('./routes/assembly'), { prefix: '/api/assembly' });
 fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
 fastify.register(require('./routes/sse'), { prefix: '/api/sse' });
 fastify.register(require('./routes/push'), { prefix: '/api/push' });
@@ -349,13 +502,16 @@ fastify.register(require("./routes/site_inspections"), { prefix: "/api/site-insp
 fastify.register(require("./routes/telephony"), { prefix: "/api/telephony" });
 fastify.register(require("./routes/approval"), { prefix: "/api/approval" });
 fastify.register(require('./routes/stories'), { prefix: '/api/stories' });
+fastify.register(require('./routes/worker_profiles'), { prefix: '/api/worker-profiles' });
+fastify.register(require('./routes/worker-payments'), { prefix: '/api/worker-payments' });
+fastify.register(require('./routes/call-reports'), { prefix: '/api/call-reports' });
 
 // ── Telephony Job Queue & Escalation ──
 try {
   const TelephonyJobQueue = require('./services/job-queue');
   const EscalationChecker = require('./services/escalation-checker');
   const CallPipeline = require('./services/call-pipeline');
-  const createNotification = require('./services/notify');
+  const { createNotification } = require('./services/notify');
 
   const jobQueue = new TelephonyJobQueue(db, fastify.log);
   const escalationChecker = new EscalationChecker(db, createNotification, fastify.log);
@@ -371,6 +527,11 @@ try {
   pipeline.registerHandlers(jobQueue);
   pipeline.setEscalationChecker(escalationChecker);
 
+  // Recording Fetcher — забирает recording_id через Mango Stats API
+  const RecordingFetcher = require('./services/recording-fetcher');
+  const recordingFetcher = new RecordingFetcher(db, fastify.log);
+  recordingFetcher.setJobQueue(jobQueue);
+
   // Make queue and escalation available to routes
   fastify.decorate('telephonyQueue', jobQueue);
   fastify.decorate('escalationChecker', escalationChecker);
@@ -379,15 +540,63 @@ try {
   fastify.addHook('onReady', async () => {
     jobQueue.start();
     escalationChecker.start();
-    fastify.log.info('[Telephony] Job queue and escalation checker started');
+    recordingFetcher.start();
+    fastify.log.info('[Telephony] Job queue, escalation checker and recording fetcher started');
   });
 
   fastify.addHook('onClose', async () => {
     jobQueue.stop();
     escalationChecker.stop();
+    recordingFetcher.stop();
   });
 } catch (telErr) {
   fastify.log.warn('[Telephony] Job queue/escalation init skipped: ' + telErr.message);
+}
+
+// ── Mimir Cron: Daily Digests ──
+try {
+  const mimirCron = require('./services/mimir-cron');
+  fastify.addHook('onReady', async () => {
+    mimirCron.start();
+    fastify.log.info('[MimirCron] Daily digest cron started');
+  });
+  fastify.addHook('onClose', async () => {
+    mimirCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[MimirCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Per-Diem Cron: daily check unpaid per-diem ──
+try {
+  const perDiemCron = require('./services/per-diem-cron');
+  fastify.addHook('onReady', async () => {
+    perDiemCron.start(fastify.db, fastify.log);
+    fastify.log.info('[PerDiemCron] Daily per-diem check started (09:30 MSK)');
+  });
+  fastify.addHook('onClose', async () => {
+    perDiemCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[PerDiemCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Call Report Scheduler ──
+try {
+  const ReportScheduler = require('./services/report-scheduler');
+  const { createNotification } = require('./services/notify');
+  let aiProv = null;
+  try { aiProv = require('./services/ai-provider'); } catch (_) {}
+  const reportScheduler = new ReportScheduler(db, aiProv, createNotification, fastify.log);
+  fastify.addHook('onReady', async () => {
+    await reportScheduler.start();
+    fastify.log.info('[ReportScheduler] Call report scheduler started');
+  });
+  fastify.addHook('onClose', async () => {
+    reportScheduler.stop();
+  });
+} catch (schedErr) {
+  fastify.log.warn('[ReportScheduler] Init skipped: ' + schedErr.message);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,6 +662,13 @@ fastify.setNotFoundHandler((request, reply) => {
       /\/migrations\//i.test(decodedUrl) ||
       /\/tests\//i.test(decodedUrl)) {
     reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
+    return;
+  }
+
+  // React mobile app SPA fallback (/m/* routes)
+  const cleanUrl = request.url.split('?')[0];
+  if (cleanUrl.startsWith('/m/') && reactMobileHtml) {
+    reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
     return;
   }
 
@@ -922,6 +1138,32 @@ const start = async () => {
       }
     }, 30 * 60 * 1000); // каждые 30 мин
     console.log('[Cron] Cash receipt deadline checker scheduled (every 30 min)');
+
+    // ─── Procurement overdue monitor (every hour) ───
+    setInterval(async()=>{
+      try{
+        const {createNotification}=require('./services/notify');
+        const lock=await db.query('SELECT pg_try_advisory_lock(42001)');
+        if(!lock.rows[0].pg_try_advisory_lock)return;
+        try{
+          const ov=await db.query(`SELECT pr.id,pr.pm_id,pr.proc_id,pr.delivery_deadline,w.work_title,
+            CURRENT_DATE-pr.delivery_deadline as days_overdue FROM procurement_requests pr LEFT JOIN works w ON pr.work_id=w.id
+            WHERE pr.status IN('paid','partially_delivered') AND pr.delivery_deadline IS NOT NULL
+            AND pr.delivery_deadline<CURRENT_DATE AND pr.delivered_at IS NULL`);
+          for(const pr of ov.rows){
+            const dl=new Date(pr.delivery_deadline).toLocaleDateString('ru-RU');
+            const msg=`#${pr.id} «${pr.work_title||''}» — дедлайн ${dl} просрочен на ${pr.days_overdue} дн.`;
+            const ex=await db.query(`SELECT id FROM notifications WHERE user_id=$1 AND type='procurement_overdue' AND link=$2 AND created_at>CURRENT_DATE LIMIT 1`,
+              [pr.pm_id,`#/procurement?id=${pr.id}`]);
+            if(!ex.rows.length){
+              if(pr.pm_id) createNotification(db,{user_id:pr.pm_id,title:'⚠️ Просрочка',message:msg,type:'procurement_overdue',link:`#/procurement?id=${pr.id}`});
+              if(pr.proc_id) createNotification(db,{user_id:pr.proc_id,title:'⚠️ Просрочка',message:msg,type:'procurement_overdue',link:`#/procurement?id=${pr.id}`});
+            }
+          }
+        }finally{await db.query('SELECT pg_advisory_unlock(42001)');}
+      }catch(e){console.error('[overdue]',e.message);}
+    },3600000);
+    console.log('[Cron] Procurement overdue monitor scheduled (every hour)');
 
   } catch (err) {
     fastify.log.error(err);

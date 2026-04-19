@@ -195,6 +195,7 @@
   /* --- Text aliases --- */
   --text-primary:   var(--t1);
   --text-secondary: var(--t2);
+  --text-sec:       var(--t2);
   --text-muted:     var(--t3);
   --text:           var(--t1);
   --muted:          var(--t3);
@@ -259,6 +260,19 @@
   --glass:     var(--bg3);
   --glass-blur: blur(12px);
   --card:      var(--bg2);
+
+  /* --- Surface aliases (используются в JS/mobile_v3) --- */
+  --surface:      var(--bg2);
+  --surface-alt:  var(--bg3);
+
+  /* --- Shadow aliases --- */
+  --shadow:       var(--shadow-md);
+  --shadow-hover: var(--shadow-lg);
+
+  /* --- Error alias (--err уже есть, --error отсутствовал) --- */
+  --error:     var(--err);
+  --error-t:   var(--err-t);
+  --error-bg:  var(--err-bg);
 
   /* --- Semantic status aliases (for existing status pills) --- */
   --green-glow: var(--ok-bg);

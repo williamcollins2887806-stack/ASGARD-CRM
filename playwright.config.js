@@ -1,5 +1,5 @@
 // @ts-check
-const { defineConfig } = require('@playwright/test');
+const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests/browser',
@@ -25,6 +25,34 @@ module.exports = defineConfig({
     {
       name: 'chromium',
       use: { browserName: 'chromium' },
+    },
+    {
+      name: 'e2e-browser',
+      testDir: './tests/browser/e2e',
+      use: {
+        channel: 'chrome',
+        screenshot: 'only-on-failure',
+        trace: 'retain-on-failure',
+        video: 'retain-on-failure',
+      },
+      timeout: 120000,
+    },
+    {
+      name: 'mobile',
+      testDir: './tests/mobile',
+      use: {
+        browserName: 'chromium',
+        viewport: devices['iPhone 14'].viewport,
+        userAgent: devices['iPhone 14'].userAgent,
+        deviceScaleFactor: devices['iPhone 14'].deviceScaleFactor,
+        isMobile: true,
+        hasTouch: true,
+        screenshot: 'only-on-failure',
+        video: 'retain-on-failure',
+        trace: 'retain-on-failure',
+        navigationTimeout: 30000,
+        actionTimeout: 15000,
+      },
     },
   ],
   timeout: 60000,

@@ -240,6 +240,15 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         [callId]
       );
 
+      // Запускаем запись звонка через Mango API
+      if (mango.isConfigured()) {
+        mango.startRecording(callId, fromNumber).then(() => {
+          console.log('[Telephony] Recording started for call ' + callId);
+        }).catch(e => {
+          console.warn('[Telephony] startRecording failed:', e.message);
+        });
+      }
+
       const ac = await db.query('SELECT assigned_user_id FROM active_calls WHERE mango_call_id = $1', [callId]);
       if (sseSendToUser && ac.rows.length && ac.rows[0].assigned_user_id) {
         sseSendToUser(ac.rows[0].assigned_user_id, 'call:connected', { callId });
@@ -313,7 +322,21 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       }
     }
 
-    // Fallback 2: check AGI log for matching call
+    // Fallback 2: поиск по users.phone (если fallback_mobile не сработал)
+    if (!userId) {
+      const mgNum = direction === 'inbound' ? toNum : fromNum;
+      if (mgNum && !mgNum.startsWith('sip:')) {
+        const normMg = normalizePhone(mgNum);
+        const u2 = await db.query(
+          `SELECT id FROM users WHERE is_active = true
+           AND replace(replace(COALESCE(phone,''), '+', ''), '-', '') LIKE $1 LIMIT 1`,
+          ['%' + normMg.slice(-10)]
+        );
+        if (u2.rows.length) userId = u2.rows[0].id;
+      }
+    }
+
+    // Fallback 3: check AGI log for matching call
     if (!userId) {
       try {
         const agiLog = await db.query(
@@ -328,13 +351,24 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           const agiPayload = typeof agiLog.rows[0].payload === 'string' ? JSON.parse(agiLog.rows[0].payload) : agiLog.rows[0].payload;
           if (agiPayload.route_to) {
             const routeNorm = normalizePhone(agiPayload.route_to);
-            const u2 = await db.query(
+            const u3 = await db.query(
               `SELECT user_id FROM user_call_status WHERE replace(replace(fallback_mobile, '+', ''), '-', '') LIKE $1 LIMIT 1`,
               ['%' + routeNorm.slice(-10)]
             );
-            if (u2.rows.length) userId = u2.rows[0].user_id;
+            if (u3.rows.length) userId = u3.rows[0].user_id;
           }
         }
+      } catch (e) { /* non-critical */ }
+    }
+
+    // Fallback 4: для inbound на SIP-транк ищем из active_calls (кто принял)
+    if (!userId && direction === 'inbound' && toNum && toNum.startsWith('sip:')) {
+      try {
+        const ac = await db.query(
+          `SELECT assigned_user_id FROM active_calls WHERE mango_entry_id = $1 AND assigned_user_id IS NOT NULL LIMIT 1`,
+          [entryId]
+        );
+        if (ac.rows.length) userId = ac.rows[0].assigned_user_id;
       } catch (e) { /* non-critical */ }
     }
 
@@ -390,6 +424,20 @@ module.exports = async function telephonyRoutes(fastify, opts) {
          JSON.stringify(event)]
       );
       callHistoryId = res.rows[0].id;
+    }
+
+    // Metadata-based quality score (до транскрипции)
+    if (callType !== 'missed' && talkTime > 0) {
+      let metaScore;
+      if (talkTime < 15) metaScore = 3;
+      else if (talkTime < 30) metaScore = 4;
+      else if (talkTime < 60) metaScore = 5;
+      else if (talkTime < 180) metaScore = 6;
+      else metaScore = 7;
+      await db.query(
+        'UPDATE call_history SET ai_quality_score = COALESCE(ai_quality_score, $1) WHERE id = $2',
+        [metaScore, callHistoryId]
+      ).catch(() => {});
     }
 
     // Удаляем из active_calls
@@ -482,6 +530,13 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   // ========================================
   //  PROTECTED API ENDPOINTS
   // ========================================
+
+  // --- DIAGNOSTIC: test endpoint ---
+  fastify.get('/ping', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    reply.send({ ok: true, ts: Date.now(), user: request.user.id });
+  });
 
   // --- Журнал звонков ---
   fastify.get('/calls', {
@@ -1180,12 +1235,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     console.log('[Telephony] AGI event:', event.type, 'caller=' + (event.caller || 'unknown'));
     await logEvent('agi_live', event);
 
-    // Отправляем AGI события только диспетчеру + push-подписчикам (кэш 30с)
+    // Отправляем AGI события ТОЛЬКО диспетчеру (кэш 30с)
     try {
       if (!_agiSseCache || Date.now() - _agiSseCacheTime > 30000) {
         const d = await db.query('SELECT user_id FROM user_call_status WHERE is_call_dispatcher = true');
-        const p = await db.query('SELECT user_id FROM user_call_status WHERE receive_call_push = true AND is_call_dispatcher = false');
-        _agiSseCache = [...d.rows.map(r => r.user_id), ...p.rows.map(r => r.user_id)];
+        _agiSseCache = [...new Set(d.rows.map(r => r.user_id))];
         _agiSseCacheTime = Date.now();
       }
       const sse = require('./sse');
@@ -1199,9 +1253,63 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     if (event.type === 'call_end' && event.caller) {
       try {
         const normCaller = normalizePhone(event.caller);
+
+        // 1. Найти начало этого звонка (call_start)
+        const callStartRes = await db.query(
+          `SELECT created_at FROM telephony_events_log
+           WHERE event_type = 'agi_live' AND payload->>'caller' = $1 AND payload->>'type' = 'call_start'
+           ORDER BY created_at DESC LIMIT 1`,
+          [event.caller]
+        );
+        const sinceTime = callStartRes.rows.length
+          ? callStartRes.rows[0].created_at
+          : new Date(Date.now() - 15 * 60 * 1000);
+
+        // 2. Собрать все речевые события для этого звонка
+        const agiEvents = await db.query(
+          `SELECT payload, created_at FROM telephony_events_log
+           WHERE event_type = 'agi_live' AND payload->>'caller' = $1
+             AND payload->>'type' IN ('greeting', 'client_speech', 'ai_response')
+             AND created_at >= $2
+           ORDER BY created_at ASC`,
+          [event.caller, sinceTime]
+        );
+
+        // 3. Собрать транскрипт и сегменты
+        const segments = [];
+        const transcriptLines = [];
+        let routeTo = null;
+        let routeName = null;
+
+        for (const row of agiEvents.rows) {
+          const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+          let speaker, speakerLabel, text;
+
+          if (p.type === 'greeting') {
+            speaker = 1; speakerLabel = 'ИИ';
+            text = p.greeting || p.text || '';
+          } else if (p.type === 'client_speech') {
+            speaker = 0; speakerLabel = 'Клиент';
+            text = p.text || '';
+          } else if (p.type === 'ai_response') {
+            speaker = 1; speakerLabel = 'ИИ';
+            text = p.text || '';
+            if (p.route_to) { routeTo = p.route_to; routeName = p.route_name || ''; }
+          }
+
+          if (!text) continue;
+          segments.push({
+            speaker, speakerLabel, text,
+            startTime: new Date(row.created_at).getTime() / 1000
+          });
+          transcriptLines.push('[' + speakerLabel + ']: ' + text);
+        }
+
+        // 4. Найти user_id по route_to (из call_end или из ai_response)
         let routeUserId = null;
-        if (event.route_to) {
-          const normRoute = normalizePhone(event.route_to);
+        const rt = event.route_to || routeTo;
+        if (rt) {
+          const normRoute = normalizePhone(rt);
           const u = await db.query(
             `SELECT user_id FROM user_call_status WHERE replace(replace(fallback_mobile,'+',''),'-','') LIKE $1 LIMIT 1`,
             ['%' + normRoute.slice(-10)]
@@ -1209,22 +1317,72 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           if (u.rows.length) routeUserId = u.rows[0].user_id;
         }
 
+        // 5. Собрать UPDATE
         const sets = [];
         const params = [];
         let pi = 1;
+
         if (routeUserId) { sets.push('user_id = $' + pi++); params.push(routeUserId); }
         if (event.ai_summary) { sets.push('ai_summary = $' + pi++); params.push(event.ai_summary); }
         if (event.intent) { sets.push('ai_is_target = $' + pi++); params.push(!['spam','unknown','silence'].includes(event.intent)); }
         if (event.collected_data) { sets.push('ai_lead_data = $' + pi++); params.push(JSON.stringify(event.collected_data)); }
         if (event.sentiment) { sets.push('ai_sentiment = $' + pi++); params.push(event.sentiment); }
+
+        // MixMonitor recording path
+        if (event.recordingPath) {
+          sets.push('record_path = $' + pi++); params.push(event.recordingPath);
+          sets.push('record_url = $' + pi++); params.push('/api/telephony/calls/{id}/record');
+        }
+
+        // Транскрипт из AGI-событий
+        if (transcriptLines.length > 0) {
+          sets.push('transcript = $' + pi++); params.push(transcriptLines.join('\n'));
+          sets.push('transcript_segments = $' + pi++); params.push(JSON.stringify(segments));
+          sets.push("transcript_status = 'done'");
+        }
+
         if (sets.length > 0) {
           sets.push('updated_at = NOW()');
           params.push('%' + normCaller.slice(-10));
-          await db.query(
+          const updateRes = await db.query(
             'UPDATE call_history SET ' + sets.join(', ') +
-            ' WHERE id = (SELECT id FROM call_history WHERE from_number LIKE $' + pi + ' ORDER BY created_at DESC LIMIT 1)',
+            ' WHERE id = (SELECT id FROM call_history WHERE from_number LIKE $' + pi + ' ORDER BY created_at DESC LIMIT 1) RETURNING id',
             params
           );
+
+          if (updateRes.rows.length) {
+            const callHistoryId = updateRes.rows[0].id;
+
+            // Обновить record_url с реальным id
+            if (event.recordingPath) {
+              await db.query(
+                'UPDATE call_history SET record_url = $1 WHERE id = $2',
+                ['/api/telephony/calls/' + callHistoryId + '/record', callHistoryId]
+              );
+            }
+
+            // Запустить AI-анализ по сохранённому транскрипту
+            if (transcriptLines.length > 0) {
+              console.log('[Telephony] AGI transcript saved: call #' + callHistoryId + ' (' + segments.length + ' segments, ' + transcriptLines.length + ' lines)');
+              const pipeline = getPipeline();
+              if (pipeline) {
+                setImmediate(() => pipeline.processCall(callHistoryId).catch(e =>
+                  console.error('[Telephony] AGI pipeline error:', e.message)
+                ));
+              }
+            }
+
+            // Запустить транскрипцию + AI-анализ по MixMonitor записи
+            if (event.recordingPath && transcriptLines.length === 0) {
+              console.log('[Telephony] MixMonitor recording: call #' + callHistoryId + ', path=' + event.recordingPath);
+              const pipeline = getPipeline();
+              if (pipeline) {
+                setImmediate(() => pipeline.processLocalRecording(callHistoryId).catch(e =>
+                  console.error('[Telephony] MixMonitor pipeline error:', e.message)
+                ));
+              }
+            }
+          }
         }
       } catch (e) {
         console.error('[Telephony] AGI call_end update error:', e.message);

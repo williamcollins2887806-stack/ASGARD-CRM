@@ -14,7 +14,10 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { randomUUID } = require('crypto');
-const { sendToUser } = require('./sse');
+const { sendToUser, isUserOnline } = require('./sse');
+const aiProvider = require('../services/ai-provider');
+const mimirData = require('../services/mimir-data');
+const estimateChat = require('../services/estimateChat');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
@@ -25,6 +28,22 @@ module.exports = async function(fastify) {
   // ── In-memory typing state (chatId → Map(userId → {name, ts})) ──
   const _typingState = new Map();
   const TYPING_TTL = 4000; // 4 сек
+
+  // ── Members cache (chatId → { members[], expires }) ──
+  const _membersCache = new Map();
+  const MEMBERS_CACHE_TTL = 60000; // 60 сек
+
+  async function getChatMembers(chatId) {
+    const cached = _membersCache.get(chatId);
+    if (cached && cached.expires > Date.now()) return cached.members;
+    const { rows } = await db.query('SELECT user_id FROM chat_group_members WHERE chat_id = $1', [chatId]);
+    _membersCache.set(chatId, { members: rows, expires: Date.now() + MEMBERS_CACHE_TTL });
+    return rows;
+  }
+
+  function invalidateMembersCache(chatId) {
+    _membersCache.delete(chatId);
+  }
 
   function parsePositiveInt(value) {
     const rawValue = String(value || '').trim();
@@ -78,6 +97,7 @@ module.exports = async function(fastify) {
     return {
       id: row.id,
       file_name: typeof row.file_name === 'string' ? row.file_name.trim() : '',
+      original_name: typeof row.original_name === 'string' ? row.original_name.trim() : '',
       file_path: typeof row.file_path === 'string' ? row.file_path.trim() : '',
       file_size: Number.isFinite(Number(row.file_size)) ? Number(row.file_size) : 0,
       mime_type: row.mime_type || 'application/octet-stream'
@@ -160,11 +180,10 @@ module.exports = async function(fastify) {
   // ═══════════════════════════════════════════════════════════════
   async function sseToMembers(chatId, senderUserId, event, data) {
     try {
-      const { rows } = await db.query(
-        'SELECT user_id FROM chat_group_members WHERE chat_id = $1 AND user_id != $2',
-        [chatId, senderUserId]
-      );
-      for (const m of rows) sendToUser(m.user_id, event, data);
+      const members = await getChatMembers(chatId);
+      for (const m of members) {
+        if (m.user_id !== senderUserId) sendToUser(m.user_id, event, data);
+      }
     } catch (e) {
       fastify.log.warn('SSE broadcast error:', e.message);
     }
@@ -246,7 +265,22 @@ module.exports = async function(fastify) {
         m.last_read_at,
         (SELECT COUNT(*) FROM chat_group_members WHERE chat_id = c.id) as member_count,
         (SELECT COUNT(*) FROM chat_messages
-         WHERE chat_id = c.id AND created_at > COALESCE(m.last_read_at, '1970-01-01')) as unread_count,
+         WHERE chat_id = c.id AND created_at > COALESCE(m.last_read_at, '1970-01-01')
+         AND deleted_at IS NULL AND user_id != $1) as unread_count,
+        -- Last message preview
+        (SELECT lm.message FROM chat_messages lm
+         WHERE lm.chat_id = c.id AND lm.deleted_at IS NULL
+         ORDER BY lm.created_at DESC LIMIT 1) as last_message_text,
+        (SELECT u2.name FROM chat_messages lm2
+         JOIN users u2 ON u2.id = lm2.user_id
+         WHERE lm2.chat_id = c.id AND lm2.deleted_at IS NULL
+         ORDER BY lm2.created_at DESC LIMIT 1) as last_message_sender,
+        (SELECT lm3.message_type FROM chat_messages lm3
+         WHERE lm3.chat_id = c.id AND lm3.deleted_at IS NULL
+         ORDER BY lm3.created_at DESC LIMIT 1) as last_message_type,
+        (SELECT lm4.user_id FROM chat_messages lm4
+         WHERE lm4.chat_id = c.id AND lm4.deleted_at IS NULL
+         ORDER BY lm4.created_at DESC LIMIT 1) as last_message_user_id,
         -- For direct chats, get the OTHER user's name
         CASE WHEN c.is_group = false THEN (
           SELECT u.name FROM chat_group_members cm
@@ -278,6 +312,9 @@ module.exports = async function(fastify) {
       sql += ` AND c.archived_at IS NULL`;
     }
 
+    // Мимир-чаты показываются отдельно (специальная строка)
+    sql += ` AND COALESCE(c.is_mimir, false) = false`;
+
     if (search) {
       sql += ` AND c.name ILIKE $${idx}`;
       params.push(`%${search}%`);
@@ -287,6 +324,12 @@ module.exports = async function(fastify) {
     sql += ` ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`;
 
     const { rows } = await db.query(sql, params);
+    // BUG-8: Add is_online for direct chats
+    for (const chat of rows) {
+      if (!chat.is_group && chat.direct_user_id) {
+        chat.is_online = isUserOnline(chat.direct_user_id);
+      }
+    }
     return { chats: rows };
   });
 
@@ -322,6 +365,10 @@ module.exports = async function(fastify) {
         u.name
     `, [chatId]);
 
+    // BUG-8: Add is_online to each member
+    for (const m of members) {
+      m.is_online = isUserOnline(m.user_id);
+    }
     return { chat, members, myRole: member.role };
   });
 
@@ -466,6 +513,7 @@ module.exports = async function(fastify) {
       VALUES ($1, $2, $3, NOW())
       ON CONFLICT (chat_id, user_id) DO UPDATE SET role = $3
     `, [chatId, parseInt(user_id), role === 'admin' ? 'admin' : 'member']);
+    invalidateMembersCache(chatId);
 
     // Уведомить
     const { rows: [chat] } = await db.query('SELECT name FROM chats WHERE id = $1', [chatId]);
@@ -516,6 +564,7 @@ module.exports = async function(fastify) {
       'DELETE FROM chat_group_members WHERE chat_id = $1 AND user_id = $2',
       [chatId, targetUserId]
     );
+    invalidateMembersCache(chatId);
 
     return { success: true };
   });
@@ -610,10 +659,10 @@ module.exports = async function(fastify) {
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
 
     let sql = `
-      SELECT m.*, u.name as user_name, u.role as user_role,
+      SELECT m.*, COALESCE(u.name, 'Мимир') as user_name, u.role as user_role,
         rm.id as reply_id, rm.message as reply_text, ru.name as reply_user_name
       FROM chat_messages m
-      JOIN users u ON m.user_id = u.id
+      LEFT JOIN users u ON m.user_id = u.id
       LEFT JOIN chat_messages rm ON m.reply_to = rm.id
       LEFT JOIN users ru ON rm.user_id = ru.id
       WHERE m.chat_id = $1 AND m.deleted_at IS NULL
@@ -649,7 +698,7 @@ module.exports = async function(fastify) {
     if (orderedMessages.length > 0) {
       const messageIds = orderedMessages.map((row) => row.id);
       const attachmentResult = await db.query(`
-        SELECT id, message_id, file_name, file_path, file_size, mime_type, created_at
+        SELECT id, message_id, file_name, original_name, file_path, file_size, mime_type, created_at
         FROM chat_attachments
         WHERE message_id = ANY($1::int[])
         ORDER BY id ASC
@@ -687,7 +736,7 @@ module.exports = async function(fastify) {
     const chatId = parseInt(request.params.id);
     if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
-    const { text, reply_to_id, message_type, file_url, file_duration } = request.body;
+    const { text, reply_to_id, message_type, file_url, file_duration, waveform } = request.body;
 
     const member = await getChatMembership(chatId, userId);
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
@@ -699,10 +748,10 @@ module.exports = async function(fastify) {
       return reply.code(400).send({ error: 'Текст сообщения обязателен' });
     }
 
-    // Создать сообщение
+    // Создать сообщение (includes waveform for voice messages)
     const { rows: [message] } = await db.query(`
-      INSERT INTO chat_messages (chat_id, user_id, message, is_read, reply_to, message_type, file_url, file_duration, created_at)
-      VALUES ($1, $2, $3, false, $4, $5, $6, $7, NOW())
+      INSERT INTO chat_messages (chat_id, user_id, message, is_read, reply_to, message_type, file_url, file_duration, waveform, created_at)
+      VALUES ($1, $2, $3, false, $4, $5, $6, $7, $8, NOW())
       RETURNING *
     `, [
       chatId,
@@ -711,12 +760,13 @@ module.exports = async function(fastify) {
       reply_to_id ? parseInt(reply_to_id) : null,
       message_type || 'text',
       file_url || null,
-      file_duration ? parseInt(file_duration) : null
+      file_duration ? parseInt(file_duration) : null,
+      waveform ? JSON.stringify(waveform) : null
     ]);
 
-    // Обновить метаданные чата
+    // Обновить метаданные чата (message_count + last_message_at)
     await db.query(`
-      UPDATE chats SET last_message_at = NOW(), updated_at = NOW()
+      UPDATE chats SET message_count = COALESCE(message_count, 0) + 1, last_message_at = NOW(), updated_at = NOW()
       WHERE id = $1
     `, [chatId]);
 
@@ -728,20 +778,44 @@ module.exports = async function(fastify) {
     `, [chatId, userId]);
 
     const senderName = request.user.name || request.user.login;
-    for (const m of members) {
-      await notify(
-        m.user_id,
-        `💬 ${chat.name}`,
-        `${senderName}: ${text.trim().substring(0, 100)}${text.length > 100 ? '...' : ''}`,
-        `#/messenger?id=${chatId}`
-      );
-    }
+    // Batch notifications (non-blocking)
+    Promise.allSettled(members.map(m =>
+      notify(m.user_id, `💬 ${chat.name}`, `${senderName}: ${text.trim().substring(0, 100)}${text.length > 100 ? '...' : ''}`, `#/messenger?id=${chatId}`)
+    )).catch(() => {});
 
     // SSE broadcast new message
     sseToMembers(chatId, userId, 'chat:new_message', {
       chat_id: chatId,
       message: { ...message, user_name: senderName }
     });
+
+    // ── BF2b: Перехват @Мимир в чатах просчётов ──
+    // Если это чат просчёта (entity_type='estimate'), сообщение текстовое и
+    // содержит упоминание Мимира — асинхронно вызвать ответ Мимира.
+    if (text && (message_type || 'text') === 'text' && estimateChat.detectMimirMention(text)) {
+      try {
+        const { rows: [chatMeta] } = await db.query(
+          "SELECT entity_type, entity_id FROM chats WHERE id = $1 AND entity_type = 'estimate'",
+          [chatId]
+        );
+        if (chatMeta?.entity_id) {
+          const estimateId = chatMeta.entity_id;
+          const askerName = senderName;
+          const askerId = userId;
+          const question = text.trim();
+          // Fire-and-forget — клиент не ждёт ответ Мимира
+          setImmediate(() => {
+            estimateChat.mimirRespondToQuestion(db, {
+              chatId, estimateId, question, askerName, askerId
+            }).catch(err => {
+              console.error('[BF2b] mimir mention handler error:', err.message);
+            });
+          });
+        }
+      } catch (err) {
+        console.error('[BF2b] mimir mention detect error:', err.message);
+      }
+    }
 
     return { message };
   });
@@ -962,10 +1036,10 @@ module.exports = async function(fastify) {
 
     if (fileName) {
       const attachmentResult = await db.query(`
-        INSERT INTO chat_attachments (message_id, file_name, file_path, file_size, mime_type, created_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
-        RETURNING id, message_id, file_name, file_path, file_size, mime_type, created_at
-      `, [msg.id, fileName, filePath, fileSize, mimeType]);
+        INSERT INTO chat_attachments (message_id, file_name, original_name, file_path, file_size, mime_type, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        RETURNING id, message_id, file_name, original_name, file_path, file_size, mime_type, created_at
+      `, [msg.id, fileName, fileName, filePath, fileSize, mimeType]);
       attachment = serializeAttachment(attachmentResult.rows[0]);
     }
 
@@ -1026,6 +1100,9 @@ module.exports = async function(fastify) {
         chunks.push(chunk);
       }
       const buffer = Buffer.concat(chunks);
+      if (buffer.length > 50 * 1024 * 1024) {
+        return reply.code(413).send({ error: 'Файл слишком большой (макс. 50 МБ)' });
+      }
       await fs.writeFile(filePath, buffer);
 
       const msgResult = await db.query(`
@@ -1036,10 +1113,10 @@ module.exports = async function(fastify) {
 
       const msg = msgResult.rows[0];
       const attachmentResult = await db.query(`
-        INSERT INTO chat_attachments (message_id, file_name, file_path, file_size, mime_type, created_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
-        RETURNING id, message_id, file_name, file_path, file_size, mime_type, created_at
-      `, [msg.id, originalName, storedFilePath, buffer.length, data.mimetype || 'application/octet-stream']);
+        INSERT INTO chat_attachments (message_id, file_name, original_name, file_path, file_size, mime_type, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        RETURNING id, message_id, file_name, original_name, file_path, file_size, mime_type, created_at
+      `, [msg.id, safeName, originalName, storedFilePath, buffer.length, data.mimetype || 'application/octet-stream']);
 
       await db.query('UPDATE chats SET last_message_at = NOW() WHERE id = $1', [chatId]);
 
@@ -1142,6 +1219,148 @@ module.exports = async function(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/read — Mark messages as read
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/read', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID' });
+
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const { last_message_id } = request.body || {};
+    if (!last_message_id) return reply.code(400).send({ error: 'last_message_id required' });
+
+    // Update last_read_at and mark individual messages
+    await db.query(
+      'UPDATE chat_group_members SET last_read_at = NOW() WHERE chat_id = $1 AND user_id = $2',
+      [chatId, request.user.id]
+    );
+
+    // Mark messages as read
+    await db.query(
+      'UPDATE chat_messages SET is_read = true WHERE chat_id = $1 AND id <= $2 AND user_id != $3 AND is_read = false',
+      [chatId, last_message_id, request.user.id]
+    );
+
+    // Broadcast read receipt via SSE to message senders
+    sseToMembers(chatId, request.user.id, 'chat:read', {
+      chat_id: chatId,
+      user_id: request.user.id,
+      message_id: last_message_id
+    });
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/chat-groups/:id/files-list — Список файлов чата
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/:id/files-list', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const { rows } = await db.query(`
+      SELECT a.id, a.file_name, a.original_name, a.file_path, a.file_size, a.mime_type, a.created_at,
+        u.name as user_name
+      FROM chat_attachments a
+      JOIN chat_messages m ON m.id = a.message_id
+      JOIN users u ON u.id = m.user_id
+      WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+      ORDER BY a.created_at DESC
+    `, [chatId]);
+
+    return { files: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // Pinned messages — CRUD
+  // ───────────────────────────────────────────────────────────────
+  // Ensure table exists
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS pinned_messages (
+      chat_id INT NOT NULL,
+      message_id INT NOT NULL,
+      pinned_by INT,
+      pinned_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (chat_id, message_id)
+    )
+  `);
+
+  // GET /api/chat-groups/:id/pins
+  fastify.get('/:id/pins', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const { rows } = await db.query(`
+      SELECT p.message_id, p.pinned_at, p.pinned_by,
+        m.message, m.user_id, u.name as user_name, m.created_at as message_created_at
+      FROM pinned_messages p
+      JOIN chat_messages m ON m.id = p.message_id
+      JOIN users u ON u.id = m.user_id
+      WHERE p.chat_id = $1 AND m.deleted_at IS NULL
+      ORDER BY p.pinned_at DESC
+    `, [chatId]);
+
+    return { pins: rows };
+  });
+
+  // POST /api/chat-groups/:id/pin/:messageId
+  fastify.post('/:id/pin/:messageId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    const messageId = parseInt(request.params.messageId);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
+
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    // Verify message belongs to chat
+    const msgCheck = await db.query('SELECT id FROM chat_messages WHERE id = $1 AND chat_id = $2 AND deleted_at IS NULL', [messageId, chatId]);
+    if (!msgCheck.rows.length) return reply.code(404).send({ error: 'Сообщение не найдено' });
+
+    await db.query(`
+      INSERT INTO pinned_messages (chat_id, message_id, pinned_by)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (chat_id, message_id) DO NOTHING
+    `, [chatId, messageId, request.user.id]);
+
+    // Broadcast pin event via SSE
+    sseToMembers(chatId, request.user.id, 'pin', { chat_id: chatId, message_id: messageId, pinned_by: request.user.id });
+
+    return { success: true };
+  });
+
+  // DELETE /api/chat-groups/:id/pin/:messageId
+  fastify.delete('/:id/pin/:messageId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    const messageId = parseInt(request.params.messageId);
+    if (isNaN(chatId) || isNaN(messageId)) return reply.code(400).send({ error: 'Некорректный ID' });
+
+    const member = await getChatMembership(chatId, request.user.id);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    await db.query('DELETE FROM pinned_messages WHERE chat_id = $1 AND message_id = $2', [chatId, messageId]);
+
+    sseToMembers(chatId, request.user.id, 'unpin', { chat_id: chatId, message_id: messageId });
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
   // DELETE /api/chat-groups/:id — Удалить чат (только owner)
   // ───────────────────────────────────────────────────────────────
   fastify.delete('/:id', {
@@ -1156,6 +1375,12 @@ module.exports = async function(fastify) {
       return reply.code(403).send({ error: 'Только владелец может удалить чат' });
     }
 
+    // Мимир-чаты нельзя удалять
+    const { rows: [chatInfo] } = await db.query('SELECT is_mimir FROM chats WHERE id = $1', [chatId]);
+    if (chatInfo && chatInfo.is_mimir) {
+      return reply.code(403).send({ error: 'Чат с Мимиром нельзя удалить' });
+    }
+
     // Удалить все связанные данные
     await db.query('DELETE FROM chat_attachments WHERE message_id IN (SELECT id FROM chat_messages WHERE chat_id = $1)', [chatId]);
     await db.query('DELETE FROM chat_messages WHERE chat_id = $1', [chatId]);
@@ -1163,5 +1388,660 @@ module.exports = async function(fastify) {
     await db.query('DELETE FROM chats WHERE id = $1', [chatId]);
 
     return { success: true };
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // МИМИР AI-БОТ В ХУГИННЕ (С9)
+  // ═══════════════════════════════════════════════════════════════
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/chat-groups/mimir — Получить или создать Мимир-чат
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/mimir', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    // Найти существующий Мимир-чат пользователя
+    const { rows: [existing] } = await db.query(`
+      SELECT c.id, c.name FROM chats c
+      JOIN chat_group_members m ON m.chat_id = c.id
+      WHERE c.is_mimir = true AND m.user_id = $1
+      LIMIT 1
+    `, [userId]);
+
+    if (existing) {
+      return { chat_id: existing.id };
+    }
+
+    // Создать Мимир-чат
+    const { rows: [newChat] } = await db.query(`
+      INSERT INTO chats (name, type, is_group, is_mimir, created_at, updated_at, last_message_at)
+      VALUES ('Мимир', 'mimir', false, true, NOW(), NOW(), NOW())
+      RETURNING id
+    `);
+
+    await db.query(`
+      INSERT INTO chat_group_members (chat_id, user_id, role, joined_at)
+      VALUES ($1, $2, 'owner', NOW())
+    `, [newChat.id, userId]);
+
+    // Добавить приветственное сообщение от Мимира
+    await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, is_system, created_at)
+      VALUES ($1, 0, $2, 'text', true, NOW())
+    `, [newChat.id, '⚡ Привет! Я **Мимир** — AI-помощник ASGARD CRM.\n\nСпрашивай о тендерах, проектах, задачах, финансах и сотрудниках. Я знаю всё о вашей CRM.\n\nНабери `/help` чтобы увидеть быстрые команды.']);
+
+    return { chat_id: newChat.id };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/mimir — Отправить сообщение Мимиру
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/mimir', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+    const user = request.user;
+    const { message } = request.body;
+
+    if (!message || !message.trim()) {
+      return reply.code(400).send({ error: 'Пустое сообщение' });
+    }
+
+    // Проверить что это Мимир-чат и пользователь имеет доступ
+    const { rows: [chat] } = await db.query('SELECT id, is_mimir FROM chats WHERE id = $1', [chatId]);
+    if (!chat || !chat.is_mimir) {
+      return reply.code(400).send({ error: 'Это не Мимир-чат' });
+    }
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const text = message.trim();
+    const senderName = user.name || user.login;
+    const startTime = Date.now();
+
+    // 1. Сохранить сообщение пользователя в chat_messages
+    const { rows: [userMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, created_at)
+      VALUES ($1, $2, $3, 'text', NOW())
+      RETURNING *
+    `, [chatId, userId, text]);
+
+    // SSE: пользовательское сообщение (для синхронизации между вкладками)
+    sseToMembers(chatId, userId, 'chat:new_message', {
+      chat_id: chatId,
+      message: { ...userMsg, user_name: senderName }
+    });
+
+    // 2. Собрать контекст (последние 50 сообщений) + вложения
+    const { rows: history } = await db.query(`
+      SELECT m.id, m.user_id, m.message, m.created_at FROM chat_messages m
+      WHERE m.chat_id = $1 AND m.deleted_at IS NULL
+      ORDER BY m.created_at DESC LIMIT 50
+    `, [chatId]);
+    history.reverse();
+
+    // Подтянуть вложения для сообщений из истории
+    const histMsgIds = history.map(m => m.id);
+    let attachMap = new Map();
+    if (histMsgIds.length > 0) {
+      const { rows: atts } = await db.query(`
+        SELECT message_id, file_name, original_name, file_path, mime_type FROM chat_attachments
+        WHERE message_id = ANY($1::int[])
+      `, [histMsgIds]);
+      for (const a of atts) {
+        if (!attachMap.has(a.message_id)) attachMap.set(a.message_id, []);
+        attachMap.get(a.message_id).push(a);
+      }
+    }
+
+    // Извлечь содержимое файлов для AI контекста
+    const fileContents = [];
+    for (const [msgId, atts] of attachMap) {
+      for (const att of atts) {
+        try {
+          const ext = path.extname(att.file_name || '').toLowerCase();
+          const safeName = path.basename(att.file_path || att.file_name || '');
+          const filePath = path.resolve(chatUploadDir, safeName);
+          const buf = await fs.readFile(filePath);
+
+          let content = '';
+          if (ext === '.pdf') {
+            const pdfParse = require('pdf-parse');
+            const data = await pdfParse(buf);
+            content = data.text.substring(0, 50000);
+          } else if (ext === '.docx') {
+            const mammoth = require('mammoth');
+            const result = await mammoth.extractRawText({ buffer: buf });
+            content = result.value.substring(0, 50000);
+          } else if (['.xlsx', '.xls'].includes(ext)) {
+            const ExcelJS = require('exceljs');
+            const wb = new ExcelJS.Workbook();
+            await wb.xlsx.load(buf);
+            let txt = '';
+            wb.eachSheet((sheet) => {
+              txt += `\n=== Лист: ${sheet.name} ===\n`;
+              sheet.eachRow((row) => {
+                const vals = [];
+                row.eachCell((cell) => vals.push(String(cell.value ?? '')));
+                txt += vals.join(' | ') + '\n';
+              });
+            });
+            content = txt.substring(0, 50000);
+          } else if (['.csv', '.txt', '.json', '.xml', '.md'].includes(ext)) {
+            content = buf.toString('utf8').substring(0, 50000);
+          }
+
+          if (content) {
+            fileContents.push(`\n📎 Файл «${att.original_name || att.file_name}»:\n${content}`);
+          }
+        } catch (e) {
+          // Файл не найден или не читается — пропускаем
+        }
+      }
+    }
+
+    const aiMessages = history
+      .filter(m => m.message && m.message.trim())
+      .map(m => ({
+        role: m.user_id === 0 ? 'assistant' : 'user',
+        content: m.message
+      }));
+
+    // Добавить содержимое файлов к контексту (перед последним сообщением)
+    if (fileContents.length > 0) {
+      const filesContext = fileContents.join('\n');
+      // Вставить как системное сообщение с файлами перед user-сообщениями
+      aiMessages.unshift({ role: 'user', content: `[Вложенные файлы в чате]${filesContext}` });
+      aiMessages.splice(1, 0, { role: 'assistant', content: 'Понял, я вижу загруженные файлы. Готов ответить на вопросы по ним.' });
+    }
+
+    // 3. Построить system prompt через mimir-data
+    let systemPrompt;
+    try {
+      systemPrompt = await mimirData.buildSystemPrompt(db, user);
+    } catch (e) {
+      systemPrompt = `Ты — Мимир, AI-помощник ASGARD CRM. Помогаешь с проектами, тендерами, CRM. Отвечай развёрнуто, используй markdown.\nПользователь: ${senderName} (${user.role})`;
+    }
+
+    // Дополнить системный промпт для Хугинна
+    systemPrompt += `\n\nПРАВИЛА ОТВЕТА В ХУГИННЕ:
+- Отвечай РАЗВЁРНУТО и ПОДРОБНО, минимум 3-5 предложений
+- Используй markdown: **bold**, _italic_, списки (-), заголовки (##)
+- Будь дружелюбным и профессиональным
+- Приводи конкретные цифры, даты, суммы из данных CRM
+- При анализе файлов — перечисляй ключевые пункты ДЕТАЛЬНО
+- НИКОГДА не отвечай одним словом или одним предложением
+- Помни ВЕСЬ контекст переписки, ссылайся на предыдущие сообщения
+- При вопросах о просчётах — используй тарифную сетку, считай конкретные суммы`;
+
+    // 4. Обработка быстрых команд
+    let processedMessage = text;
+    const cmdMatch = text.match(/^\/(help|tasks|tender|project|who)\s*(.*)?$/i);
+    if (cmdMatch) {
+      const cmd = cmdMatch[1].toLowerCase();
+      const arg = (cmdMatch[2] || '').trim();
+      switch (cmd) {
+        case 'help':
+          processedMessage = 'Покажи список доступных команд: /help, /tasks, /tender [номер], /project [название], /who [имя]. Объясни каждую кратко.';
+          break;
+        case 'tasks':
+          processedMessage = 'Покажи мои текущие задачи: активные, просроченные, ближайшие дедлайны.';
+          break;
+        case 'tender':
+          processedMessage = arg ? `Найди информацию о тендере ${arg}: статус, заказчик, сумма, сроки.` : 'Покажи активные тендеры: статус, суммы, дедлайны.';
+          break;
+        case 'project':
+          processedMessage = arg ? `Найди информацию о проекте "${arg}": статус, бюджет, участники.` : 'Покажи активные проекты: статус, прогресс, бюджет.';
+          break;
+        case 'who':
+          processedMessage = arg ? `Найди сотрудника "${arg}": должность, контакты, текущие задачи.` : 'Покажи список сотрудников с должностями.';
+          break;
+      }
+    }
+
+    // Заменить последнее сообщение в aiMessages обработанной версией
+    if (aiMessages.length > 0) {
+      aiMessages[aiMessages.length - 1].content = processedMessage;
+    }
+
+    // 5. SSE typing indicator для клиента
+    sendToUser(userId, 'chat:typing', {
+      chat_id: chatId,
+      user_id: 0,
+      user_name: 'Мимир'
+    });
+
+    // 6. Вызвать AI
+    let aiResponse;
+    try {
+      const aiResult = await aiProvider.complete({
+        system: systemPrompt,
+        messages: aiMessages,
+        maxTokens: 8000,
+        temperature: 0.6
+      });
+      aiResponse = aiResult.content || aiResult.text || 'Не удалось получить ответ';
+    } catch (aiErr) {
+      fastify.log.error(aiErr, 'Mimir AI error in Huginn');
+      aiResponse = '⚠️ Один из воронов заблудился... Попробуйте ещё раз через минуту.';
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    // 7. Сохранить ответ Мимира в chat_messages (user_id = 0 для бота)
+    const { rows: [mimirMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, created_at)
+      VALUES ($1, 0, $2, 'text', NOW())
+      RETURNING *
+    `, [chatId, aiResponse]);
+
+    // 8. Обновить метаданные чата
+    await db.query(`
+      UPDATE chats SET message_count = COALESCE(message_count, 0) + 2, last_message_at = NOW(), updated_at = NOW()
+      WHERE id = $1
+    `, [chatId]);
+
+    // 9. SSE: ответ Мимира
+    sendToUser(userId, 'chat:new_message', {
+      chat_id: chatId,
+      message: { ...mimirMsg, user_name: 'Мимир', is_mimir_bot: true }
+    });
+
+    return {
+      success: true,
+      user_message: userMsg,
+      mimir_message: mimirMsg,
+      duration_ms: durationMs
+    };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/chat-groups/:id/mimir-stream — Стриминг ответа Мимира
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/mimir-stream', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const chatId = parseInt(request.params.id);
+    if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
+    const userId = request.user.id;
+    const user = request.user;
+    const { message } = request.body;
+
+    if (!message || !message.trim()) {
+      return reply.code(400).send({ error: 'Пустое сообщение' });
+    }
+
+    const { rows: [chat] } = await db.query('SELECT id, is_mimir FROM chats WHERE id = $1', [chatId]);
+    if (!chat || !chat.is_mimir) return reply.code(400).send({ error: 'Это не Мимир-чат' });
+
+    const member = await getChatMembership(chatId, userId);
+    if (!member) return reply.code(403).send({ error: 'Нет доступа' });
+
+    const text = message.trim();
+    const senderName = user.name || user.login;
+
+    // Сохранить сообщение пользователя
+    const { rows: [userMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, created_at)
+      VALUES ($1, $2, $3, 'text', NOW())
+      RETURNING *
+    `, [chatId, userId, text]);
+
+    // Контекст
+    const { rows: history } = await db.query(`
+      SELECT user_id, message, created_at FROM chat_messages
+      WHERE chat_id = $1 AND deleted_at IS NULL
+      ORDER BY created_at DESC LIMIT 20
+    `, [chatId]);
+
+    const aiMessages = history.reverse().filter(m => m.message && m.message.trim()).map(m => ({
+      role: m.user_id === 0 ? 'assistant' : 'user',
+      content: m.message
+    }));
+
+    let systemPrompt;
+    try {
+      systemPrompt = await mimirData.buildSystemPrompt(db, user);
+    } catch (e) {
+      systemPrompt = `Ты — Мимир, AI-помощник ASGARD CRM.\nПользователь: ${senderName} (${user.role})`;
+    }
+    systemPrompt += '\n\nТы отвечаешь в мессенджере Хугинн. Будь разговорным и дружелюбным. Используй markdown.';
+
+    // Обработка быстрых команд
+    const cmdMatch = text.match(/^\/(help|tasks|tender|project|who)\s*(.*)?$/i);
+    if (cmdMatch) {
+      const cmd = cmdMatch[1].toLowerCase();
+      const arg = (cmdMatch[2] || '').trim();
+      const cmdMap = {
+        help: 'Покажи список доступных команд: /help, /tasks, /tender [номер], /project [название], /who [имя]. Объясни каждую кратко.',
+        tasks: 'Покажи мои текущие задачи: активные, просроченные, ближайшие дедлайны.',
+        tender: arg ? `Найди информацию о тендере ${arg}` : 'Покажи активные тендеры.',
+        project: arg ? `Найди информацию о проекте "${arg}"` : 'Покажи активные проекты.',
+        who: arg ? `Найди сотрудника "${arg}"` : 'Покажи список сотрудников.',
+      };
+      if (aiMessages.length > 0) aiMessages[aiMessages.length - 1].content = cmdMap[cmd];
+    }
+
+    // SSE streaming
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+
+    reply.raw.write(`data: ${JSON.stringify({ type: 'start', user_message: userMsg })}\n\n`);
+
+    let fullResponse = '';
+    try {
+      const streamResponse = await aiProvider.stream({
+        system: systemPrompt,
+        messages: aiMessages,
+        maxTokens: 8000,
+        temperature: 0.6
+      });
+
+      const streamParser = aiProvider.parseStream(streamResponse, aiProvider.getProvider());
+      for await (const event of streamParser) {
+        if (event.type === 'text' && event.content) {
+          fullResponse += event.content;
+          reply.raw.write(`data: ${JSON.stringify({ type: 'text', text: event.content })}\n\n`);
+        }
+      }
+    } catch (streamErr) {
+      fastify.log.error(streamErr, 'Mimir stream error');
+      fullResponse = '⚠️ Один из воронов заблудился...';
+      reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: fullResponse })}\n\n`);
+    }
+
+    // Сохранить ответ Мимира
+    const { rows: [mimirMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, created_at)
+      VALUES ($1, 0, $2, 'text', NOW())
+      RETURNING *
+    `, [chatId, fullResponse]);
+
+    await db.query(`
+      UPDATE chats SET message_count = COALESCE(message_count, 0) + 2, last_message_at = NOW(), updated_at = NOW()
+      WHERE id = $1
+    `, [chatId]);
+
+    // SSE notify для других вкладок
+    sendToUser(userId, 'chat:new_message', {
+      chat_id: chatId,
+      message: { ...mimirMsg, user_name: 'Мимир', is_mimir_bot: true }
+    });
+
+    reply.raw.write(`data: ${JSON.stringify({ type: 'done', mimir_message: mimirMsg })}\n\n`);
+    reply.raw.end();
+  });
+
+  // ═══ H1: Estimate Chat Integration ═══
+
+  /**
+   * POST /api/chat-groups/from-estimate
+   * Создать чат при отправке просчёта на согласование.
+   * Body: { estimate_id }
+   */
+  fastify.post('/from-estimate', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { estimate_id } = request.body || {};
+    if (!estimate_id) return reply.code(400).send({ error: 'estimate_id required' });
+
+    // 1. Проверить что чат для этого estimate ещё не существует
+    const existing = await db.query(
+      "SELECT id FROM chats WHERE entity_type = 'estimate' AND entity_id = $1", [estimate_id]
+    );
+    if (existing.rows[0]) {
+      return reply.send({ chat: existing.rows[0], already_existed: true });
+    }
+
+    // 2. Получить estimate + tender
+    const estResult = await db.query('SELECT * FROM estimates WHERE id = $1', [estimate_id]);
+    const estimate = estResult.rows[0];
+    if (!estimate) return reply.code(404).send({ error: 'Просчёт не найден' });
+
+    // 3. Собрать участников: PM + ТО (из тендера) + директоры + mimir_bot
+    const pmId = estimate.pm_id || estimate.created_by || request.user.id;
+    const participantIds = new Set([pmId]);
+
+    // ТО из тендера
+    if (estimate.tender_id) {
+      const tenderResult = await db.query('SELECT created_by FROM tenders WHERE id = $1', [estimate.tender_id]);
+      if (tenderResult.rows[0]?.created_by) participantIds.add(tenderResult.rows[0].created_by);
+    }
+
+    // Директоры
+    const directors = await db.query(
+      "SELECT id FROM users WHERE role IN ('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active = true"
+    );
+    for (const d of directors.rows) participantIds.add(d.id);
+
+    // Мимир-бот
+    const mimirBot = await db.query("SELECT id FROM users WHERE login = 'mimir_bot' LIMIT 1");
+    const mimirBotId = mimirBot.rows[0]?.id;
+    if (mimirBotId) participantIds.add(mimirBotId);
+
+    // 4. Создать чат
+    const chatName = `📊 Просчёт #${estimate_id} — ${estimate.title || estimate.object_name || 'Без названия'}`;
+    const { rows: [chat] } = await db.query(`
+      INSERT INTO chats (name, type, is_group, entity_type, entity_id, auto_created, created_at, updated_at)
+      VALUES ($1, 'group', true, 'estimate', $2, true, NOW(), NOW())
+      RETURNING *
+    `, [chatName, estimate_id]);
+
+    // 5. Добавить участников
+    const memberArr = [...participantIds];
+    for (let i = 0; i < memberArr.length; i++) {
+      const role = memberArr[i] === pmId ? 'owner' : 'member';
+      await db.query(
+        'INSERT INTO chat_group_members (chat_id, user_id, role, joined_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING',
+        [chat.id, memberArr[i], role]
+      );
+    }
+
+    // 6. Получить расчёт для pinned card
+    let calcData = null;
+    try {
+      const calcResult = await db.query(
+        'SELECT * FROM estimate_calculation_data WHERE estimate_id = $1 ORDER BY version_no DESC LIMIT 1',
+        [estimate_id]
+      );
+      calcData = calcResult.rows[0] || null;
+    } catch (e) { /* no calculation yet */ }
+
+    // 7. Pinned estimate_card сообщение
+    const cardMetadata = {
+      estimate_id,
+      status: estimate.approval_status || 'sent',
+      title: estimate.title || estimate.object_name,
+      customer: estimate.customer,
+      total_cost: calcData?.total_cost || null,
+      total_with_margin: calcData?.total_with_margin || null,
+      margin_pct: calcData?.margin_pct || null,
+      version_no: calcData?.version_no || 1
+    };
+    const { rows: [cardMsg] } = await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, metadata, is_system, created_at)
+      VALUES ($1, $2, $3, 'estimate_card', $4, false, NOW()) RETURNING *
+    `, [chat.id, pmId, `📊 Просчёт #${estimate_id}`, JSON.stringify(cardMetadata)]);
+
+    // Pin the card
+    await db.query(
+      'INSERT INTO pinned_messages (chat_id, message_id, pinned_by, pinned_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING',
+      [chat.id, cardMsg.id, pmId]
+    );
+
+    // 8. Системное сообщение
+    const actorName = request.user.name || 'РП';
+    await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, is_system, created_at)
+      VALUES ($1, $2, $3, 'system', true, NOW())
+    `, [chat.id, pmId, `${actorName} отправил просчёт на согласование`]);
+
+    // Update message_count
+    await db.query('UPDATE chats SET message_count = 2, last_message_at = NOW() WHERE id = $1', [chat.id]);
+
+    // 9. SSE notify
+    for (const uid of memberArr) {
+      if (uid !== pmId) {
+        sendToUser(uid, 'chat:new_chat', { chat_id: chat.id, chat_name: chatName, entity_type: 'estimate', entity_id: estimate_id });
+      }
+    }
+
+    return reply.send({ chat, participants: memberArr, card_message_id: cardMsg.id });
+  });
+
+  /**
+   * GET /api/chat-groups/by-entity?type=estimate&id=123
+   * Найти чат по привязанной сущности.
+   */
+  fastify.get('/by-entity', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { type, id } = request.query;
+    if (!type || !id) return reply.code(400).send({ error: 'type and id required' });
+
+    const result = await db.query(
+      'SELECT * FROM chats WHERE entity_type = $1 AND entity_id = $2 LIMIT 1',
+      [type, parseInt(id)]
+    );
+    return reply.send({ chat: result.rows[0] || null });
+  });
+
+  /**
+   * PUT /api/chat-groups/:chatId/update-estimate-card
+   * Обновить pinned-карточку просчёта в чате.
+   * Body: { estimate_id }
+   */
+  fastify.put('/:chatId/update-estimate-card', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const chatId = parseInt(request.params.chatId);
+    const { estimate_id } = request.body || {};
+    if (!estimate_id) return reply.code(400).send({ error: 'estimate_id required' });
+
+    // 1. Найти pinned message с message_type='estimate_card'
+    const pinnedResult = await db.query(`
+      SELECT cm.* FROM chat_messages cm
+      JOIN pinned_messages pm ON pm.message_id = cm.id AND pm.chat_id = cm.chat_id
+      WHERE cm.chat_id = $1 AND cm.message_type = 'estimate_card'
+      ORDER BY cm.id DESC LIMIT 1
+    `, [chatId]);
+
+    // 2. Получить актуальные данные
+    const estResult = await db.query('SELECT * FROM estimates WHERE id = $1', [estimate_id]);
+    const estimate = estResult.rows[0];
+    if (!estimate) return reply.code(404).send({ error: 'Просчёт не найден' });
+
+    let calcData = null;
+    try {
+      const calcResult = await db.query(
+        'SELECT * FROM estimate_calculation_data WHERE estimate_id = $1 ORDER BY version_no DESC LIMIT 1',
+        [estimate_id]
+      );
+      calcData = calcResult.rows[0] || null;
+    } catch (e) { /* ok */ }
+
+    const newMetadata = {
+      estimate_id,
+      status: estimate.approval_status || 'draft',
+      title: estimate.title || estimate.object_name,
+      customer: estimate.customer,
+      total_cost: calcData?.total_cost || null,
+      total_with_margin: calcData?.total_with_margin || null,
+      margin_pct: calcData?.margin_pct || null,
+      version_no: calcData?.version_no || 1
+    };
+
+    // 3. Обновить metadata pinned card
+    if (pinnedResult.rows[0]) {
+      await db.query(
+        'UPDATE chat_messages SET metadata = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(newMetadata), pinnedResult.rows[0].id]
+      );
+    }
+
+    // 4. Системное сообщение об обновлении
+    const versionNo = calcData?.version_no || 1;
+    const actorName = request.user.name || 'Пользователь';
+    await db.query(`
+      INSERT INTO chat_messages (chat_id, user_id, message, message_type, metadata, is_system, created_at)
+      VALUES ($1, $2, $3, 'estimate_update', $4, true, NOW())
+    `, [chatId, request.user.id, `${actorName} обновил расчёт (v.${versionNo})`, JSON.stringify(newMetadata)]);
+
+    await db.query('UPDATE chats SET message_count = COALESCE(message_count,0)+1, last_message_at = NOW(), updated_at = NOW() WHERE id = $1', [chatId]);
+
+    // SSE notify
+    await sseToMembers(chatId, request.user.id, 'chat:estimate_updated', {
+      chat_id: chatId, estimate_id, metadata: newMetadata
+    });
+
+    return reply.send({ success: true, metadata: newMetadata });
+  });
+
+  // ═══ S12: Link Preview (Open Graph) ═══
+  const _linkPreviewCache = new Map();
+  const LINK_CACHE_TTL = 3600000; // 1 hour
+
+  fastify.get('/link-preview', { preValidation: [fastify.authenticate] }, async (request, reply) => {
+    const { url } = request.query;
+    if (!url) return reply.code(400).send({ error: 'url required' });
+
+    // Validate URL
+    let parsed;
+    try { parsed = new URL(url); } catch (_) { return reply.code(400).send({ error: 'invalid url' }); }
+    if (!['http:', 'https:'].includes(parsed.protocol)) return reply.code(400).send({ error: 'invalid protocol' });
+
+    // Check cache
+    const cached = _linkPreviewCache.get(url);
+    if (cached && Date.now() - cached.ts < LINK_CACHE_TTL) {
+      return reply.send(cached.data);
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const resp = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'AsgardBot/1.0 (Link Preview)' },
+        redirect: 'follow',
+      });
+      clearTimeout(timeout);
+
+      if (!resp.ok) return reply.send({ title: parsed.hostname, domain: parsed.hostname });
+
+      const contentType = resp.headers.get('content-type') || '';
+      if (!contentType.includes('text/html')) {
+        return reply.send({ title: parsed.hostname, domain: parsed.hostname });
+      }
+
+      const html = await resp.text();
+      const ogTitle = (html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
+                       html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i) || [])[1];
+      const ogDesc = (html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) ||
+                      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i) || [])[1];
+      const ogImage = (html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+                       html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) || [])[1];
+      const htmlTitle = (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1];
+
+      const data = {
+        title: ogTitle || htmlTitle || parsed.hostname,
+        description: ogDesc || '',
+        image: ogImage || '',
+        domain: parsed.hostname,
+      };
+
+      _linkPreviewCache.set(url, { data, ts: Date.now() });
+      // Cleanup old entries
+      if (_linkPreviewCache.size > 500) {
+        const oldest = [..._linkPreviewCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 100);
+        oldest.forEach(([k]) => _linkPreviewCache.delete(k));
+      }
+
+      return reply.send(data);
+    } catch (e) {
+      return reply.send({ title: parsed.hostname, domain: parsed.hostname });
+    }
   });
 };

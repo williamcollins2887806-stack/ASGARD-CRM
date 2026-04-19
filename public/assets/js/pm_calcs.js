@@ -1,21 +1,27 @@
 window.AsgardPmCalcsPage = (function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
   const V = AsgardValidate;
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(r==="DIRECTOR"||String(r||"").startsWith("DIRECTOR_"));
 
   function isoNow(){ return new Date().toISOString(); }
   function ymNow(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
   function num(x){ if(x===null||x===undefined||x==="") return null; const n=Number(String(x).replace(/\s/g,"").replace(",", ".")); return Number.isFinite(n)?n:null; }
-  function money(n){ if(n===null||n===undefined) return "—"; return Number(n).toLocaleString("ru-RU"); }
   function norm(s){ return String(s||"").toLowerCase().trim(); }
+  function getHeaders(){
+    const auth = typeof AsgardAuth !== 'undefined' ? AsgardAuth.getAuth() : null;
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + (auth?.token || localStorage.getItem('asgard_token') || '')
+    };
+  }
   function approvalStatusLabel(status){
-    const map = { draft:"Черновик", sent:"На согласовании", approved:"Согласовано", approved_final:"Согласовано", rework:"На доработке", question:"Вопрос", rejected:"Отклонено", cancelled:"Отменено" };
+    const map = { draft:"Черновик", sent:"На согласовании", approved:"Согласовано", rework:"На доработке", question:"Вопрос", rejected:"Отклонено", cancelled:"Отменено" };
     return map[String(status||"draft")] || String(status||"Черновик");
   }
 
   async function getCore(){
     const core = await AsgardDB.get("settings","app");
-    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:20, status_colors:{tender:{}, work:{}}};
+    return core ? JSON.parse(core.value_json||"{}") : {vat_pct:22, status_colors:{tender:{}, work:{}}};
   }
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
@@ -60,6 +66,13 @@ window.AsgardPmCalcsPage = (function(){
   async function ensureWorkFromTender(tender){
     const exist = (await AsgardDB.byIndex("works","tender_id", tender.id))[0];
     if(exist) return exist;
+
+    // Найти последний согласованный estimate для тендера
+    const estimates = await AsgardDB.byIndex("estimates","tender_id", tender.id);
+    const approved = estimates
+      .filter(e => e.approval_status === 'approved')
+      .sort((a,b) => (b.version_no||0) - (a.version_no||0))[0];
+
     const work = {
       tender_id: tender.id,
       pm_id: tender.responsible_pm_id,
@@ -69,15 +82,15 @@ window.AsgardPmCalcsPage = (function(){
       start_in_work_date: tender.work_start_plan || null,
       end_plan: tender.work_end_plan || null,
       end_fact: null,
-      contract_value: tender.tender_price || null,
-      advance_pct: 30,
+      contract_value: approved?.price_tkp || tender.tender_price || null,
+      advance_pct: null,
       advance_received: 0,
       advance_date_fact: null,
       act_signed_date_fact: null,
       delay_workdays: 5,
       balance_received: 0,
       payment_date_fact: null,
-      cost_plan: null,
+      cost_plan: approved?.cost_plan || null,
       cost_fact: null,
       comment: ""
     };
@@ -86,9 +99,11 @@ window.AsgardPmCalcsPage = (function(){
   }
 
   // === БЫСТРЫЙ ПРОСЧЁТ (ручная форма без калькулятора) ===
+  function safeParse(v){ if(!v) return {}; if(typeof v==='object') return v; try{return JSON.parse(v);}catch(_){return {};} }
+
   async function openQuickCalcForm(tenderId, tender, est, core, user){
-    const calc = est?.calc_summary_json ? JSON.parse(est.calc_summary_json) : {};
-    const quick = est?.quick_calc_json ? JSON.parse(est.quick_calc_json) : calc;
+    const calc = safeParse(est?.calc_summary_json);
+    const quick = est?.quick_calc_json ? safeParse(est.quick_calc_json) : calc;
     
     const html = `
       <style>
@@ -115,8 +130,7 @@ window.AsgardPmCalcsPage = (function(){
         <div class="qc-form">
           <div>
             <label>Город</label>
-            <input class="inp" id="qc_city" value="${esc(quick.city||"")}" placeholder="Москва, Сургут..." list="qc_citylist">
-            <datalist id="qc_citylist"></datalist>
+            <div id="cr-qc-city-wrap"></div>
           </div>
           <div>
             <label>Расстояние от Москвы, км</label>
@@ -248,21 +262,10 @@ window.AsgardPmCalcsPage = (function(){
       if(el) el.addEventListener("input", updateKPI);
     });
     
-    // Автоподсказка города
-    const cityInp = $("#qc_city");
-    if(cityInp){
-      cityInp.addEventListener("input", ()=>{
-        if(window.findCity){
-          const dl = $("#qc_citylist");
-          if(dl) dl.innerHTML = window.findCity(cityInp.value).map(c => `<option value="${c.name}">${c.name} (${c.km} км)</option>`).join("");
-        }
-      });
-      cityInp.addEventListener("change", ()=>{
-        if(window.getCityDistance){
-          const km = window.getCityDistance(cityInp.value);
-          if(km !== null) $("#qc_distance").value = km;
-        }
-      });
+    // Автоподсказка города (CRAutocomplete)
+    const cityWrap = $("#cr-qc-city-wrap");
+    if(cityWrap){
+      cityWrap.appendChild(CRAutocomplete.create({ id: 'qc_city', value: quick.city||"", placeholder: 'Москва, Сургут...', minChars: 2, fullWidth: true, inputClass: 'inp', fetchOptions: async (q) => { if(!window.findCity) return []; return window.findCity(q).map(c => ({ value: c.name, label: c.name, sublabel: c.km + ' км от Москвы', km: c.km })); }, onSelect: (item) => { if(!item) return; if(window.getCityDistance){ const km = window.getCityDistance(item.label); if(km !== null) $("#qc_distance").value = km; } } }));
     }
     
     updateKPI();
@@ -270,7 +273,9 @@ window.AsgardPmCalcsPage = (function(){
     // Сохранить черновик
     $("#qc_save").addEventListener("click", async ()=>{
       const data = collectQuickData();
-      await saveQuickEstimate(data, false);
+      try {
+        await saveQuickEstimate(data, false);
+      } catch(e) { return; }
       toast("Сохранено", "Черновик сохранён");
       AsgardUI.hideModal();
     });
@@ -286,18 +291,16 @@ window.AsgardPmCalcsPage = (function(){
         toast("Проверка", "Укажите цену ТКП", "err");
         return;
       }
-      await saveQuickEstimate(data, true);
-      
-      // Меняем статус тендера
+      try {
+        await saveQuickEstimate(data, true);
+      } catch(e) { return; }
+
+      // Меняем статус тендера на «Согласование ТКП»
       const cur = await AsgardDB.get("tenders", tenderId);
       cur.tender_status = "Согласование ТКП";
       await AsgardDB.put("tenders", cur);
-      
+
       toast("Отправлено", "Просчёт отправлен на согласование");
-
-
-
-
 
 
 
@@ -316,7 +319,7 @@ window.AsgardPmCalcsPage = (function(){
         cover_letter: $("#qc_cover").value.trim(),
         assumptions: $("#qc_assumptions").value.trim(),
         quick_calc_json: JSON.stringify({
-          city: $("#qc_city").value.trim(),
+          city: (CRAutocomplete.getValue('qc_city') || "").trim(),
           distance_km: num($("#qc_distance").value),
           work_type: $("#qc_work_type").value.trim(),
           people_count: num($("#qc_people").value),
@@ -324,7 +327,7 @@ window.AsgardPmCalcsPage = (function(){
           assumptions: $("#qc_assumptions").value.trim()
         }),
         calc_summary_json: JSON.stringify({
-          city: $("#qc_city").value.trim(),
+          city: (CRAutocomplete.getValue('qc_city') || "").trim(),
           distance_km: num($("#qc_distance").value),
           people_count: num($("#qc_people").value),
           work_days: num($("#qc_days").value)
@@ -334,19 +337,26 @@ window.AsgardPmCalcsPage = (function(){
     }
     
     async function saveQuickEstimate(data, sendForApproval){
-      const v = await nextVersionNo(tenderId, tender.responsible_pm_id);
-      const obj = {
+      const body = {
         ...data,
-        version_no: v,
         approval_status: sendForApproval ? "sent" : "draft",
-        approval_comment: "",
-        sent_for_approval_at: sendForApproval ? isoNow() : null,
-        created_at: isoNow(),
         requires_payment: !!data.requires_payment
       };
-      const id = await AsgardDB.add("estimates", obj);
-      await audit(user.id, "estimate", id, sendForApproval ? "quick_send" : "quick_draft", { tender_id: tenderId, version_no: v });
-      return id;
+      try {
+        const resp = await fetch('/api/estimates', {
+          method: 'POST', headers: getHeaders(),
+          body: JSON.stringify(body)
+        });
+        if(!resp.ok){ const err = await resp.json(); throw new Error(err.error || 'Ошибка создания просчёта'); }
+        const result = await resp.json();
+        const estimate = result.estimate;
+        // Сохраняем в локальный кэш для немедленного отображения
+        await AsgardDB.put("estimates", estimate);
+        return estimate.id;
+      } catch(err) {
+        toast("Ошибка", err.message, "err");
+        throw err;
+      }
     }
   }
 
@@ -363,8 +373,8 @@ window.AsgardPmCalcsPage = (function(){
       source_pm_id: tender.responsible_pm_id,
       price_tkp: last ? (last.price_tkp??null) : null,
       cost_plan: last ? (last.cost_plan??null) : null,
-      work_start_plan: tender.work_start_plan||null,
-      work_end_plan: tender.work_end_plan||null,
+      start_plan: tender.work_start_plan||null,
+      end_plan: tender.work_end_plan||null,
       status: "pending",
       requested_at: isoNow(),
       requested_by_user_id: actor.id,
@@ -404,10 +414,10 @@ window.AsgardPmCalcsPage = (function(){
   function calcDerived({price_tkp, cost_plan, vat_pct, people_count, work_days}){
     const price = num(price_tkp);
     const cost = num(cost_plan);
-    const vat = Number(vat_pct||0);
+    const vat = Number(vat_pct) || 22;
     const noVat = (price!=null) ? (price/(1+vat/100)) : null;
-    const margin = (price!=null && cost!=null && price>0) ? ((price-cost)/price) : null;
-    const profit = (price!=null && cost!=null) ? (price-cost) : null;
+    const margin = (noVat!=null && cost!=null && noVat>0) ? ((noVat-cost)/noVat) : null;
+    const profit = (noVat!=null && cost!=null) ? (noVat-cost) : null;
     const denom = Math.max(1, (num(people_count)||0) * (num(work_days)||0));
     const profitPer = (profit!=null && denom>0) ? (profit/denom) : null;
     return { noVat, margin, profit, profitPer };
@@ -424,14 +434,14 @@ window.AsgardPmCalcsPage = (function(){
     const byId = new Map(users.map(u=>[u.id,u]));
     const tendersAll = await AsgardDB.all("tenders");
 
-    const isPM = user.role==="PM" || user.role==="ADMIN";
     const isDir = isDirRole(user.role) || user.role==="ADMIN";
+    const isPM = user.role==="PM" || user.role==="HEAD_PM";
 
     // PM sees only own; Director/Admin can see all handed-off
     let tenders = tendersAll.filter(t=>t.handoff_at);
-    if(isPM) tenders = tenders.filter(t=>t.responsible_pm_id===user.id);
+    if(user.role==="PM") tenders = tenders.filter(t=>t.responsible_pm_id===user.id);
 
-    const pms = users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
+    const pms = users.filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
 
     const body = `
       ${window.__ASG_SHARED_TABLE_CSS__||""}
@@ -450,7 +460,7 @@ window.AsgardPmCalcsPage = (function(){
         <div class="tools">
           <div class="field">
             <label>Период</label>
-            <select id="f_period">${generatePeriodOptions(ymNow())}</select>
+            <div id="f_period_w"></div>
           </div>
           <div class="field">
             <label>Поиск</label>
@@ -458,19 +468,13 @@ window.AsgardPmCalcsPage = (function(){
           </div>
           <div class="field">
             <label>Статус</label>
-            <select id="f_status">
-              <option value="">Все</option>
-              ${refs.tender_statuses.filter(s=>s!=="Новый").map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")}
-            </select>
+            <div id="f_status_w"></div>
           </div>
 
           ${isDir ? `
           <div class="field">
             <label>РП</label>
-            <select id="f_pm">
-              <option value="">Все</option>
-              ${pms.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("")}
-            </select>
+            <div id="f_pm_w"></div>
           </div>` : ``}
 
           <div class="field" style="min-width:280px">
@@ -543,12 +547,12 @@ window.AsgardPmCalcsPage = (function(){
 
     function apply(){
       const q = norm($("#f_q").value);
-      const period = norm($("#f_period").value);
-      const st = $("#f_status").value;
+      const period = norm(CRSelect.getValue('f_period') || '');
+      const st = CRSelect.getValue('f_status') || '';
       const showRef = $("#f_refused").checked;
       const allPeriod = $("#f_allperiod").checked;
       const showWon = $("#f_won").checked;
-      const pmFilter = isDir ? $("#f_pm").value : "";
+      const pmFilter = isDir ? (CRSelect.getValue('f_pm') || '') : "";
 
       let list = tenders.slice();
 
@@ -556,10 +560,10 @@ window.AsgardPmCalcsPage = (function(){
         list = list.filter(t=>norm(t.period)===period);
       }
       if(!showRef){
-        list = list.filter(t=>t.tender_status!=="Клиент отказался");
+        list = list.filter(t=>t.tender_status!=="Проиграли");
       }
       if(!showWon){
-        list = list.filter(t=>t.tender_status!=="Клиент согласился");
+        list = list.filter(t=>t.tender_status!=="Выиграли");
       }
       if(st){
         list = list.filter(t=>t.tender_status===st);
@@ -581,24 +585,29 @@ window.AsgardPmCalcsPage = (function(){
       cnt.textContent = `Показано: ${list.length} из ${tenders.length}.`;
     }
 
+    // CRSelect init — filters
+    const _periodOpts = [{ value: '', label: 'Все' }];
+    { const _now = new Date(); for(let i=0;i<24;i++){ const d=new Date(_now.getFullYear(),_now.getMonth()-i,1); const val=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; _periodOpts.push({ value: val, label: d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'}) }); } }
+    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _periodOpts, value: ymNow(), onChange: apply }));
+    $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...refs.tender_statuses.filter(s=>s!=="Новый").map(s=>({ value: s, label: s }))], onChange: apply }));
+    if(isDir) $('#f_pm_w')?.appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...pms.map(p=>({ value: String(p.id), label: p.name }))], searchable: true, onChange: apply }));
+
     apply();
 
-    $("#f_q").addEventListener("input", apply);
-    $("#f_period").addEventListener("input", apply);
-    $("#f_status").addEventListener("change", apply);
+    let _fqTimer2 = null;
+    $("#f_q").addEventListener("input", () => { clearTimeout(_fqTimer2); _fqTimer2 = setTimeout(apply, 250); });
     $("#f_refused").addEventListener("change", apply);
     $("#f_allperiod").addEventListener("change", apply);
     $("#f_won").addEventListener("change", apply);
-    if(isDir) $("#f_pm").addEventListener("change", apply);
 
     $("#btnReset").addEventListener("click", ()=>{
       $("#f_q").value="";
-      $("#f_period").value=ymNow();
-      $("#f_status").value="";
+      CRSelect.setValue('f_period', ymNow());
+      CRSelect.setValue('f_status', '');
       $("#f_refused").checked=false;
       $("#f_allperiod").checked=false;
       $("#f_won").checked=false;
-      if(isDir) $("#f_pm").value="";
+      if(isDir) CRSelect.setValue('f_pm', '');
       apply();
     });
 
@@ -671,7 +680,7 @@ window.AsgardPmCalcsPage = (function(){
       const est = await latestEstimate(tenderId, tender.responsible_pm_id);
       const estStatus = est ? approvalStatusLabel(est.approval_status||"draft") : "Черновик";
 
-      const calc = est ? (JSON.parse(est.calc_summary_json||"{}")||{}) : {};
+      const calc = est ? safeParse(est.calc_summary_json) : {};
 
       const derived = calcDerived({
         price_tkp: est?est.price_tkp:null,
@@ -727,17 +736,12 @@ window.AsgardPmCalcsPage = (function(){
           <div class="formrow">
             <div>
               <label>Статус</label>
-              <select id="s_status" ${canEditStatus?"":"disabled"}>
-                ${statusSelect(refs.tender_statuses, tender.tender_status)}
-              </select>
+              <div id="s_status_w"></div>
               <div class="help">«Отправлено на просчёт» ставит ТО кнопкой передачи.</div>
             </div>
             <div>
-              <label>Причина отказа (если «Клиент отказался»)</label>
-              <select id="s_reject" ${canEditStatus?"":"disabled"}>
-                <option value="">—</option>
-                ${refs.reject_reasons.map(r=>`<option value="${esc(r)}" ${(tender.reject_reason===r)?"selected":""}>${esc(r)}</option>`).join("")}
-              </select>
+              <label>Причина отказа (если «Проиграли»)</label>
+              <div id="s_reject_w"></div>
             </div>
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
@@ -853,6 +857,14 @@ window.AsgardPmCalcsPage = (function(){
       `;
 
       showModal(`Просчёт — тендер #${tender.id}`, html);
+      const _TENDER_TR = {'Черновик':['Новый'],'Новый':['Отправлено на просчёт','Проиграли'],'Отправлено на просчёт':['Согласование ТКП','Проиграли'],'Согласование ТКП':['ТКП согласовано','Отправлено на просчёт','Проиграли'],'ТКП согласовано':['КП отправлено','Согласование ТКП','Проиграли'],'КП отправлено':['Выиграли','Проиграли'],'Выиграли':[],'Проиграли':['Новый']};
+      const _isAdm = user.role === 'ADMIN';
+      const _curSt = tender.tender_status || '';
+      const _allowedSt = _isAdm ? refs.tender_statuses : [...new Set((_TENDER_TR[_curSt]||[]).concat([_curSt]))];
+      const _statusOpts = _allowedSt.map(s=>({ value: s, label: s }));
+      const _rejectOpts = [{ value: '', label: '—' }, ...refs.reject_reasons.map(r=>({ value: r, label: r }))];
+      $('#s_status_w')?.appendChild(CRSelect.create({ id: 's_status', options: _statusOpts, value: tender.tender_status || '', disabled: !canEditStatus, dropdownClass: 'z-modal' }));
+      $('#s_reject_w')?.appendChild(CRSelect.create({ id: 's_reject', options: _rejectOpts, value: tender.reject_reason || '', disabled: !canEditStatus, dropdownClass: 'z-modal' }));
 
       // History for tender
       if($("#btnHistory")){
@@ -868,9 +880,9 @@ window.AsgardPmCalcsPage = (function(){
 
       $("#btnSaveStatus").addEventListener("click", async ()=>{
         if(!canEditStatus){ toast("Права","Недоступно","err"); return; }
-        const st = $("#s_status").value;
-        const rej = $("#s_reject").value || null;
-        if(st==="Клиент отказался" && !rej){
+        const st = CRSelect.getValue('s_status') || '';
+        const rej = CRSelect.getValue('s_reject') || null;
+        if(st==="Проиграли" && !rej){
           toast("Проверка","Для отказа требуется причина","err"); return;
         }
         const cur = await AsgardDB.get("tenders", tenderId);
@@ -882,11 +894,11 @@ window.AsgardPmCalcsPage = (function(){
 
         const before = {status:cur.tender_status, reject_reason:cur.reject_reason};
         cur.tender_status = st;
-        cur.reject_reason = (st==="Клиент отказался") ? rej : null;
+        cur.reject_reason = (st==="Проиграли") ? rej : null;
         await AsgardDB.put("tenders", cur);
         await audit(user.id,"tender",tenderId,"status_change",{before, after:{status:st, reject_reason:cur.reject_reason}});
 
-        if(st==="Клиент согласился"){
+        if(st==="Выиграли"){
           const w = await ensureWorkFromTender(cur);
           await audit(user.id,"work",w.id,"auto_create_from_tender",{tender_id:tenderId});
           await notify(cur.responsible_pm_id, "Тендер согласован", "Создана работа в разделе «Работы».", "#/pm-works");
@@ -944,52 +956,57 @@ window.AsgardPmCalcsPage = (function(){
         }
 
         if(!createNewVersion && est && (est.approval_status==="draft" || !est.approval_status)){
-          const upd = Object.assign({}, est, data, { updated_at: isoNow() });
-
-      if(est.probability_pct!==null && est.probability_pct!==undefined){
-        const p = Number(est.probability_pct);
-        if(!Number.isFinite(p) || p<0 || p>100){ toast("Валидация","Вероятность должна быть 0..100","err"); return; }
-      }
-      const mf=["cost_plan","price_tkp"];
-      for(const f of mf){ if(est[f]!==null && est[f]!==undefined && !V.moneyGE0(est[f])){ toast("Валидация",`Поле ${f}: число >= 0`,"err"); return; } }
-          await AsgardDB.put("estimates", upd);
-          await audit(user.id,"estimate",upd.id,"update_draft",{tender_id:tenderId, version_no:upd.version_no});
-          toast("Просчёт","Сохранено (черновик)");
-          return upd;
+          // Обновляем существующий черновик через PUT /api/estimates/:id
+          try {
+            const resp = await fetch(`/api/estimates/${est.id}`, {
+              method: 'PUT', headers: getHeaders(),
+              body: JSON.stringify(data)
+            });
+            if(!resp.ok){ const err = await resp.json(); throw new Error(err.error || 'Ошибка сохранения'); }
+            const result = await resp.json();
+            const updated = result.estimate;
+            await AsgardDB.put("estimates", updated);
+            toast("Просчёт","Сохранено (черновик)");
+            return updated;
+          } catch(err) {
+            toast("Ошибка", err.message, "err");
+            return;
+          }
         }else{
-          const v = await nextVersionNo(tenderId, tender.responsible_pm_id);
-          const obj = Object.assign({}, data, {
-            version_no: v,
-            approval_status: "draft",
-            approval_comment: "",
-            sent_for_approval_at: null,
-            created_at: isoNow()
-          });
-          const id = await AsgardDB.add("estimates", obj);
-          await audit(user.id,"estimate",id,"create_version",{tender_id:tenderId, version_no:v});
-          toast("Просчёт",`Сохранено (версия ${v})`);
-          return await AsgardDB.get("estimates", id);
+          // Создаём новую версию через POST /api/estimates (сервер генерирует version_no)
+          const body = Object.assign({}, data, { approval_status: "draft" });
+          try {
+            const resp = await fetch('/api/estimates', {
+              method: 'POST', headers: getHeaders(),
+              body: JSON.stringify(body)
+            });
+            if(!resp.ok){ const err = await resp.json(); throw new Error(err.error || 'Ошибка создания версии'); }
+            const result = await resp.json();
+            const estimate = result.estimate;
+            await AsgardDB.put("estimates", estimate);
+            toast("Просчёт",`Сохранено (версия ${estimate.version_no || '?'})`);
+            return estimate;
+          } catch(err) {
+            toast("Ошибка", err.message, "err");
+            return;
+          }
         }
       }
 
       $("#btnSaveDraft").addEventListener("click", async ()=>{ await saveDraft(false); openTender(tenderId); });
       $("#btnNewVersion").addEventListener("click", async ()=>{ await saveDraft(true); openTender(tenderId); });
 
-      // Calculator
+      // Calculator (только v2)
       const btnCalc = $("#btnCalc");
       if(btnCalc){
         btnCalc.addEventListener("click", async ()=>{
           if(!(isPM || user.role==="ADMIN")) { toast("Права","Только РП/админ","err"); return; }
           const tcur = await AsgardDB.get("tenders", tenderId);
-          const estCur = await loadLatestEstimate(tenderId, tcur.responsible_pm_id);
-          // Используем калькулятор v2 если доступен
+          const estCur = await latestEstimate(tenderId, tcur.responsible_pm_id);
           if(window.AsgardCalcV2 && AsgardCalcV2.open){
             await AsgardCalcV2.open({ tender: tcur, estimate: estCur, user: user });
-          } else if(window.AsgardCalc && AsgardCalc.open){
-            const ok = await AsgardCalc.open({ tender: tcur, estimate: estCur, actor_user: user });
-            if(ok){ openTender(tenderId); }
           }else{
-            toast("Калькулятор","Модуль калькулятора не подключён","err");
+            toast("Калькулятор","Калькулятор v2 не подключён","err");
           }
         });
       }
@@ -1007,13 +1024,11 @@ window.AsgardPmCalcsPage = (function(){
       if(btnCalcView){
         btnCalcView.addEventListener("click", async ()=>{
           const tcur = await AsgardDB.get("tenders", tenderId);
-          const estCur = await loadLatestEstimate(tenderId, tcur.responsible_pm_id);
-          // Показываем калькулятор v2 для просмотра итогов
+          const estCur = await latestEstimate(tenderId, tcur.responsible_pm_id);
           if(window.AsgardCalcV2 && AsgardCalcV2.open && estCur?.calc_v2_json){
             await AsgardCalcV2.open({ tender: tcur, estimate: estCur, user: user });
           } else {
-            const calc = safeParse(estCur && estCur.calc_summary_json, {});
-            if(window.AsgardCalc && AsgardCalc.view) AsgardCalc.view(calc);
+            toast("Калькулятор","Нет данных калькулятора v2 для просмотра","err");
           }
         });
       }
@@ -1042,30 +1057,40 @@ window.AsgardPmCalcsPage = (function(){
           toast("Проверка","Добавьте сопроводительное письмо (хотя бы 2–3 строки)","err");
           return;
         }
+        if(!data.price_tkp || data.price_tkp <= 0){
+          toast("Проверка","Укажите цену ТКП (должна быть > 0)","err");
+          return;
+        }
 
-        // snapshot as new version, status=sent
-        const v = await nextVersionNo(tenderId, tender.responsible_pm_id);
-        const obj = Object.assign({}, data, {
-          version_no: v,
-          approval_status: "sent",
-          approval_comment: "",
-          sent_for_approval_at: isoNow(),
-          created_at: isoNow()
-        });
-        const id = await AsgardDB.add("estimates", obj);
-        await audit(user.id,"estimate",id,"send_for_approval",{tender_id:tenderId, version_no:v});
+        // Создаём estimate через POST /api/estimates с approval_status='sent'
+        // Сервер сам генерирует version_no и отправляет уведомления директорам
+        const body = Object.assign({}, data, { approval_status: "sent" });
+        try {
+          const resp = await fetch('/api/estimates', {
+            method: 'POST', headers: getHeaders(),
+            body: JSON.stringify(body)
+          });
+          if(!resp.ok){ const err = await resp.json(); throw new Error(err.error || 'Ошибка отправки'); }
+          const result = await resp.json();
+          const estimate = result.estimate;
+          // Сохраняем в локальный кэш
+          await AsgardDB.put("estimates", estimate);
+        } catch(err) {
+          toast("Ошибка", err.message, "err");
+          return;
+        }
 
-        // set tender status to "Согласование ТКП"
+        // Обновляем статус тендера на «Согласование ТКП»
         const cur = await AsgardDB.get("tenders", tenderId);
-        const before = cur.tender_status;
         cur.tender_status = "Согласование ТКП";
         await AsgardDB.put("tenders", cur);
-        await audit(user.id,"tender",tenderId,"status_change_auto",{before, after:"Согласование ТКП"});
 
         toast("Согласование","Просчёт отправлен на согласование");
-        // refresh list
-        tendersAll.splice(tendersAll.findIndex(x=>x.id===tenderId),1,cur);
-        tenders = tenders.map(x=>x.id===tenderId?cur:x);
+        // Перезагружаем данные из локального кэша
+        const refreshedTenders = await AsgardDB.all("tenders");
+        tenders.length = 0;
+        refreshedTenders.filter(t=>t.handoff_at).forEach(t=>tenders.push(t));
+        if(isPM) { const filtered = tenders.filter(t=>t.responsible_pm_id===user.id); tenders.length = 0; filtered.forEach(t=>tenders.push(t)); }
         apply();
         openTender(tenderId);
       });

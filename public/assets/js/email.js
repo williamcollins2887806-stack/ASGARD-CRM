@@ -26,7 +26,7 @@ window.AsgardEmail = (function(){
 
 С уважением,
 ООО «Асгард Сервис»
-Тел: +7 (XXX) XXX-XX-XX
+Тел: +7 (499) 322-30-62
 Email: info@asgard-service.ru`
     },
     tkp_to: {
@@ -48,7 +48,7 @@ Email: info@asgard-service.ru`
 
 С уважением,
 ООО «Асгард Сервис»
-Тел: +7 (XXX) XXX-XX-XX
+Тел: +7 (499) 322-30-62
 Email: info@asgard-service.ru`
     },
     tkp_rp: {
@@ -70,7 +70,7 @@ Email: info@asgard-service.ru`
 
 С уважением,
 ООО «Асгард Сервис»
-Тел: +7 (XXX) XXX-XX-XX
+Тел: +7 (499) 322-30-62
 Email: info@asgard-service.ru`
     },
     invoice: {
@@ -195,9 +195,9 @@ Email: info@asgard-service.ru`
     const template = EMAIL_TEMPLATES[templateType] || EMAIL_TEMPLATES.custom;
     const filled = fillTemplate(template, data);
     
-    const templateOptions = Object.entries(EMAIL_TEMPLATES).map(([k, v]) =>
-      `<option value="${k}" ${k === templateType ? 'selected' : ''}>${v.name}</option>`
-    ).join('');
+    const templateOpts = Object.entries(EMAIL_TEMPLATES).map(([k, v]) =>
+      ({ value: k, label: v.name })
+    );
     
     const html = `
       <div class="stack" style="gap:16px">
@@ -211,7 +211,7 @@ Email: info@asgard-service.ru`
         <div class="formrow">
           <div>
             <label>Шаблон</label>
-            <select class="inp" id="email_template">${templateOptions}</select>
+            <div id="crw_email_template"></div>
           </div>
         </div>
         
@@ -246,15 +246,18 @@ Email: info@asgard-service.ru`
     `;
     
     showModal('📧 Отправить email', html);
-    
-    // Смена шаблона
-    $('#email_template')?.addEventListener('change', () => {
-      const type = $('#email_template').value;
-      const tpl = EMAIL_TEMPLATES[type];
-      const filled = fillTemplate(tpl, data);
-      $('#email_subject').value = filled.subject;
-      $('#email_body').value = filled.body;
-    });
+
+    // Монтируем CRSelect шаблона
+    $('#crw_email_template')?.appendChild(CRSelect.create({
+      id: 'email_template', fullWidth: true, dropdownClass: 'z-modal',
+      options: templateOpts, value: templateType,
+      onChange: (type) => {
+        const tpl = EMAIL_TEMPLATES[type];
+        const filled = fillTemplate(tpl, data);
+        $('#email_subject').value = filled.subject;
+        $('#email_body').value = filled.body;
+      }
+    }));
     
     $('#emailCancel')?.addEventListener('click', closeModal);
     

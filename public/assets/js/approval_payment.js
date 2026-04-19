@@ -7,7 +7,7 @@
 window.AsgardApprovalPaymentPage = (function() {
   'use strict';
 
-  const { showModal, hideModal, toast, esc } = AsgardUI;
+  const { showModal, hideModal, toast, esc, money } = AsgardUI;
 
   const PAYMENT_STATUS_MAP = {
     pending_payment:   { label: 'Ожидает оплаты',  color: '#f59e0b', bg: 'rgba(245,158,11,.12)' },
@@ -23,16 +23,11 @@ window.AsgardApprovalPaymentPage = (function() {
     const s = PAYMENT_STATUS_MAP[status] || { label: status || '—', color: '#6b7280', bg: 'rgba(107,114,128,.12)' };
     return `<span style="display:inline-block;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;color:${s.color};background:${s.bg};border:1px solid ${s.color}30">${s.label}</span>`;
   }
-
-  function money(x) {
-    if (x === null || x === undefined || x === '') return '—';
-    return Number(x).toLocaleString('ru-RU');
-  }
-
   function getHeaders() {
+    const auth = typeof AsgardAuth !== 'undefined' ? AsgardAuth.getAuth() : null;
     return {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '')
+      'Authorization': 'Bearer ' + (auth?.token || localStorage.getItem('asgard_token') || '')
     };
   }
 

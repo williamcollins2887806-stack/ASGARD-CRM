@@ -87,4 +87,17 @@ module.exports = async function correspondenceRoutes(fastify) {
       return reply.code(500).send({ error: 'Не удалось обновить корреспонденцию' });
     }
   });
+
+  // POST /:id/link-doc — привязать загруженный документ к корреспонденции
+  fastify.post('/:id/link-doc', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const corrId = parseInt(request.params.id);
+    const { document_id } = request.body || {};
+    if (!document_id) return reply.code(400).send({ error: 'document_id обязателен' });
+
+    await db.query(
+      'UPDATE documents SET correspondence_id = $1 WHERE id = $2',
+      [corrId, parseInt(document_id)]
+    );
+    return { success: true };
+  });
 };

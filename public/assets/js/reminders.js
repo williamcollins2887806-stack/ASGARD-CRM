@@ -109,7 +109,7 @@ window.AsgardReminders = (function(){
     const newReminders = [];
     
     // Роли, у которых есть доступ к тендерам/работам/счетам
-    const dataRoles = ['ADMIN','PM','TO','HEAD_PM','HEAD_TO','BUH','CHIEF_ENGINEER','HR_MANAGER'];
+    const dataRoles = ['ADMIN','PM','TO','HEAD_PM','HEAD_TO','BUH','HR_MANAGER'];
     const dirRole = user.role?.startsWith('DIRECTOR');
     const hasDataAccess = dataRoles.includes(user.role) || dirRole;
     
@@ -186,7 +186,7 @@ window.AsgardReminders = (function(){
       const tenders = await AsgardDB.all('tenders') || [];
       for (const t of tenders) {
         if (!t.deadline_date) continue;
-        if (t.tender_status === 'Клиент согласился' || t.tender_status === 'Клиент отказался') continue;
+        if (t.tender_status === 'Выиграли' || t.tender_status === 'Проиграли') continue;
         
         // Только для ответственного РП или админа
         if (t.responsible_pm_id !== user.id && user.role !== 'ADMIN') continue;
@@ -234,12 +234,12 @@ window.AsgardReminders = (function(){
     if (hasDataAccess) try {
       const works = await AsgardDB.all('works') || [];
       for (const w of works) {
-        if (!w.work_end_plan) continue;
+        if (!w.end_plan) continue;
         if (w.work_status === 'Работы сдали') continue;
-        
+
         if (w.pm_id !== user.id && user.role !== 'ADMIN') continue;
-        
-        const endDate = new Date(w.work_end_plan);
+
+        const endDate = new Date(w.end_plan);
         const diffDays = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
         
         if (diffDays === 3) {
@@ -252,7 +252,7 @@ window.AsgardReminders = (function(){
               message: `${w.work_title || w.customer_name} — план. окончание через 3 дня`,
               entity_type: 'work',
               entity_id: w.id,
-              due_date: w.work_end_plan,
+              due_date: w.end_plan,
               user_id: user.id,
               auto_key: key
             });
@@ -324,24 +324,23 @@ window.AsgardReminders = (function(){
     const auth = await AsgardAuth.getAuth();
     if (!auth?.user) return;
     
-    const typeOptions = Object.entries(REMINDER_TYPES).map(([k, v]) =>
-      `<option value="${k}" ${options.type === k ? 'selected' : ''}>${v.icon} ${v.label}</option>`
-    ).join('');
-    
-    const priorityOptions = Object.entries(REMINDER_PRIORITIES).map(([k, v]) =>
-      `<option value="${k}" ${(options.priority || 'normal') === k ? 'selected' : ''}>${v.label}</option>`
-    ).join('');
+    const typeOpts = Object.entries(REMINDER_TYPES).map(([k, v]) =>
+      ({ value: k, label: v.icon + ' ' + v.label })
+    );
+    const priorityOpts = Object.entries(REMINDER_PRIORITIES).map(([k, v]) =>
+      ({ value: k, label: v.label })
+    );
     
     const html = `
       <div class="stack" style="gap:16px">
         <div class="formrow">
           <div>
             <label>Тип</label>
-            <select class="inp" id="rem_type">${typeOptions}</select>
+            <div id="crw_rem_type"></div>
           </div>
           <div>
             <label>Приоритет</label>
-            <select class="inp" id="rem_priority">${priorityOptions}</select>
+            <div id="crw_rem_priority"></div>
           </div>
         </div>
         
@@ -358,7 +357,7 @@ window.AsgardReminders = (function(){
         <div class="formrow">
           <div>
             <label>Дата напоминания</label>
-            <input class="inp" id="rem_date" type="date" value="${options.due_date || ''}"/>
+            <input class="inp" id="rem_date" type="date" value="${(options.due_date || '').slice(0,10)}"/>
           </div>
           <div>
             <label>Время</label>
@@ -374,7 +373,18 @@ window.AsgardReminders = (function(){
     `;
     
     showModal('🔔 Новое напоминание', html);
-    
+
+    $('#crw_rem_type')?.appendChild(CRSelect.create({
+      id: 'rem_type', fullWidth: true,
+      options: typeOpts, value: options.type || typeOpts[0]?.value || '',
+      dropdownClass: 'z-modal'
+    }));
+    $('#crw_rem_priority')?.appendChild(CRSelect.create({
+      id: 'rem_priority', fullWidth: true,
+      options: priorityOpts, value: options.priority || 'normal',
+      dropdownClass: 'z-modal'
+    }));
+
     $('#remCancel')?.addEventListener('click', closeModal);
     
     $('#remSave')?.addEventListener('click', async () => {
@@ -385,8 +395,8 @@ window.AsgardReminders = (function(){
       }
       
       const reminder = {
-        type: $('#rem_type').value,
-        priority: $('#rem_priority').value,
+        type: CRSelect.getValue('rem_type'),
+        priority: CRSelect.getValue('rem_priority'),
         title: title,
         message: $('#rem_message').value.trim(),
         due_date: $('#rem_date').value || null,

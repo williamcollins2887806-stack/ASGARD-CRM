@@ -121,11 +121,10 @@ window.AsgardStaffSchedulePage=(function(){
 
   async function openPicker({emp, dateIso, current, worksMap, colors}){
     return new Promise(resolve=>{
-      const opts = STATUS.map(s=>`<option value="${esc(s.code)}"${s.code===current.kind?' selected':''}>${esc(s.label)}</option>`).join("");
-      const workOptions = Array.from(worksMap.entries())
+      const kindOpts = STATUS.map(s=>({ value: s.code, label: s.label }));
+      const workOpts = [{ value: '', label: '—' }, ...Array.from(worksMap.entries())
         .sort((a,b)=>String(a[1]).localeCompare(String(b[1]), 'ru'))
-        .map(([id,name])=>`<option value="${id}"${Number(current.work_id||0)===id?' selected':''}>${esc(name)}</option>`)
-        .join("");
+        .map(([id,name])=>({ value: String(id), label: name }))];
 
       const html = `
         <div class="stack" style="gap:12px">
@@ -134,11 +133,11 @@ window.AsgardStaffSchedulePage=(function(){
           <div class="formrow" style="grid-template-columns:1fr">
             <div>
               <label for="wk_kind">Статус</label>
-              <select id="wk_kind">${opts}</select>
+              <div id="wk_kind_w"></div>
             </div>
             <div id="wk_workBox" class="hide">
               <label for="wk_work">Контракт</label>
-              <select id="wk_work"><option value="">—</option>${workOptions}</select>
+              <div id="wk_work_w"></div>
             </div>
             <div id="wk_noteBox" class="hide">
               <label for="wk_note">Заметка</label>
@@ -152,25 +151,25 @@ window.AsgardStaffSchedulePage=(function(){
           </div>
         </div>`;
       showModal({title:"Статус дня", html, wide:false, onMount:()=>{
-        const kindEl = $("#wk_kind");
         const workBox = $("#wk_workBox");
         const noteBox = $("#wk_noteBox");
         function refresh(){
-          const k = kindEl.value;
+          const k = CRSelect.getValue('wk_kind') || '';
           workBox.classList.toggle("hide", k!=="work");
           noteBox.classList.toggle("hide", k!=="note");
         }
-        kindEl.addEventListener("change", refresh);
+        $('#wk_kind_w')?.appendChild(CRSelect.create({ id: 'wk_kind', options: kindOpts, value: current.kind || '', dropdownClass: 'z-modal', onChange: refresh }));
+        $('#wk_work_w')?.appendChild(CRSelect.create({ id: 'wk_work', options: workOpts, value: current.work_id ? String(current.work_id) : '', searchable: true, dropdownClass: 'z-modal' }));
         refresh();
 
         $$('[data-act]').forEach(b=>b.addEventListener('click', async ()=>{
           const act=b.dataset.act;
           if(act==="cancel"){ closeModal(); resolve(null); return; }
           if(act==="clear"){ closeModal(); resolve({clear:true}); return; }
-          const kind = kindEl.value;
+          const kind = CRSelect.getValue('wk_kind') || '';
           const out = { kind, work_id:null, note:"" };
           if(kind==="work"){
-            const wid = Number($("#wk_work").value||0) || null;
+            const wid = Number(CRSelect.getValue('wk_work')||0) || null;
             if(!wid){ toast("Проверка","Выберите контракт","err"); return; }
             out.work_id = wid;
           }
@@ -742,7 +741,7 @@ window.AsgardStaffSchedulePage=(function(){
             var w = fullWorkMap.get(a.work_id);
             var isCurr = !a.date_to || a.date_to.slice(0,10)>=todayS;
             var bgC = isCurr ? 'linear-gradient(135deg,#d4a825,#c9952a)' : 'linear-gradient(135deg,#22c55e,#1a8a4a)';
-            var lbl = w ? (w.work_title||w.work_name||w.customer_name||'').substring(0,28) : '';
+            var lbl = w ? (w.work_title||w.customer_name||'').substring(0,28) : '';
             var cust = w ? (w.customer_name||'') : '';
             var city = w ? (w.city||'') : '';
             var pm = w&&w.pm_id ? (userMap.get(w.pm_id)||'') : '';

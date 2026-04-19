@@ -114,17 +114,15 @@ window.AsgardMyEquipment = (function(){
         return;
       }
       
-      const conditionOptions = Object.entries(CONDITIONS).map(([k, v]) => 
-        `<option value="${k}">${v.label}</option>`
-      ).join('');
-      
+      const conditionOpts = Object.entries(CONDITIONS).map(([k, v]) => ({ value: k, label: v.label }));
+
       showModal('📥 Возврат на склад', `
         <div class="stack" style="gap:16px">
           <p>Выбрано оборудования: <b>${selected.length}</b></p>
-          
+
           <div>
             <label>Состояние при возврате</label>
-            <select class="inp" id="returnCondition">${conditionOptions}</select>
+            <div id="returnCondition_w"></div>
           </div>
           
           <div>
@@ -138,9 +136,10 @@ window.AsgardMyEquipment = (function(){
           </div>
         </div>
       `);
-      
+      $('#returnCondition_w')?.appendChild(CRSelect.create({ id: 'returnCondition', options: conditionOpts, value: 'good', dropdownClass: 'z-modal' }));
+
       $('#btnConfirmReturn')?.addEventListener('click', async () => {
-        const condition = $('#returnCondition').value;
+        const condition = CRSelect.getValue('returnCondition');
         const notes = $('#returnNotes').value;
         
         let success = 0;
@@ -177,30 +176,28 @@ window.AsgardMyEquipment = (function(){
       }
       
       // Загружаем список РП
-      let pmOptions = '';
+      let pmOpts = [];
       try {
         const resp = await fetch('/api/users?role=PM', {
           headers: { 'Authorization': 'Bearer ' + auth.token }
         });
         const data = await resp.json();
-        (data.users || []).filter(u => u.id !== userId).forEach(u => {
-          pmOptions += `<option value="${u.id}">${esc(u.name)}</option>`;
-        });
+        pmOpts = (data.users || []).filter(u => u.id !== userId).map(u => ({ value: String(u.id), label: u.name }));
       } catch(e) {}
-      
+
       // Загружаем работы
-      let workOptions = '<option value="">— Выберите работу —</option>';
+      let workOpts = [{ value: '', label: '— Выберите работу —' }];
       try {
         const resp = await fetch('/api/works?status=active&limit=50', {
           headers: { 'Authorization': 'Bearer ' + auth.token }
         });
         const data = await resp.json();
         (data.works || []).forEach(w => {
-          workOptions += `<option value="${w.id}">${esc(w.work_number || '')} — ${esc(w.work_title || '')}</option>`;
+          workOpts.push({ value: String(w.id), label: (w.work_number || '') + ' — ' + (w.work_title || '') });
         });
       } catch(e) {}
-      
-      const objectOptions = objects.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('');
+
+      const objectOpts = objects.map(o => ({ value: String(o.id), label: o.name }));
       
       showModal('📤 Запрос на передачу', `
         <div class="stack" style="gap:16px">
@@ -208,17 +205,17 @@ window.AsgardMyEquipment = (function(){
           
           <div>
             <label>Кому передать (РП) *</label>
-            <select class="inp" id="transferTo">${pmOptions}</select>
+            <div id="transferTo_w"></div>
           </div>
-          
+
           <div>
             <label>Для какой работы *</label>
-            <select class="inp" id="transferWork">${workOptions}</select>
+            <div id="transferWork_w"></div>
           </div>
-          
+
           <div>
             <label>Объект</label>
-            <select class="inp" id="transferObject">${objectOptions}</select>
+            <div id="transferObject_w"></div>
           </div>
           
           <div>
@@ -232,11 +229,14 @@ window.AsgardMyEquipment = (function(){
           </div>
         </div>
       `);
-      
+      $('#transferTo_w')?.appendChild(CRSelect.create({ id: 'transferTo', options: pmOpts, searchable: true, dropdownClass: 'z-modal', placeholder: 'Выберите РП' }));
+      $('#transferWork_w')?.appendChild(CRSelect.create({ id: 'transferWork', options: workOpts, searchable: true, dropdownClass: 'z-modal' }));
+      $('#transferObject_w')?.appendChild(CRSelect.create({ id: 'transferObject', options: objectOpts, searchable: true, dropdownClass: 'z-modal', placeholder: 'Выберите объект' }));
+
       $('#btnConfirmTransfer')?.addEventListener('click', async () => {
-        const targetId = $('#transferTo').value;
-        const workId = $('#transferWork').value;
-        const objectId = $('#transferObject').value;
+        const targetId = CRSelect.getValue('transferTo');
+        const workId = CRSelect.getValue('transferWork');
+        const objectId = CRSelect.getValue('transferObject');
         const notes = $('#transferNotes').value;
         
         if (!targetId || !workId) {

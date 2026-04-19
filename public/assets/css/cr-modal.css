@@ -1,0 +1,1673 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ASGARD CRM — CR-MODAL v1.0
+   Новая модальная система: Nordic Dark + Gold accent
+   Prefix: cr-m (modal), cr-d (drawer), cr-cf (confirm)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   OVERLAY
+   ───────────────────────────────────────────────────────────────────────────── */
+.cr-m-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 20px;
+  /* СНЯТ backdrop-filter blur — он создаёт новый stacking context на overflow:auto
+     контейнере и заставляет браузер пересчитывать композицию слоёв на каждом
+     кадре скролла (forced synchronous layout). Используем плотную заливку. */
+  background: rgba(0, 0, 0, 0.65);
+  overflow-y: auto;
+  z-index: var(--z-modal);
+  opacity: 0;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cr-m-overlay--visible {
+  display: flex;
+  opacity: 1;
+}
+
+.cr-m-overlay--entering {
+  display: flex;
+}
+
+.cr-m-overlay--leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MODAL CONTAINER
+   ───────────────────────────────────────────────────────────────────────────── */
+.cr-m {
+  position: relative;
+  width: min(900px, 95vw);
+  max-height: 90vh;
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-xl), 0 0 80px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateY(16px) scale(0.97);
+  opacity: 0;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cr-m-overlay--visible .cr-m {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.cr-m-overlay--leaving .cr-m {
+  transform: translateY(12px) scale(0.98);
+  opacity: 0;
+  transition-duration: 0.25s;
+}
+
+/* Size variants */
+.cr-m--wide {
+  width: min(1200px, 96vw);
+  max-height: 92vh;
+}
+
+.cr-m--fullscreen {
+  width: min(1600px, 98vw);
+  height: 95vh;
+  max-height: 95vh;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   TOP ACCENT LINE (gradient)
+   ───────────────────────────────────────────────────────────────────────────── */
+.cr-m__topline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 2;
+  background: linear-gradient(90deg, var(--red), var(--gold) 50%, var(--blue));
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+}
+
+/* Accent color variants */
+.cr-m--gold .cr-m__topline { background: var(--grad-gold); }
+.cr-m--red .cr-m__topline { background: var(--grad-red); }
+.cr-m--blue .cr-m__topline { background: var(--grad-blue); }
+.cr-m--green .cr-m__topline { background: linear-gradient(90deg, #2D8659, #4ADE80); }
+.cr-m--purple .cr-m__topline { background: linear-gradient(90deg, #8B5CF6, #A78BFA); }
+.cr-m--orange .cr-m__topline { background: linear-gradient(90deg, #F97316, #FB923C); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   HEADER
+   ───────────────────────────────────────────────────────────────────────────── */
+.cr-m__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-6);
+  padding-top: calc(var(--sp-4) + 2px); /* space for topline */
+  border-bottom: 1px solid var(--brd);
+  background: var(--bg2);
+  position: relative;
+  min-height: 56px;
+}
+
+.cr-m__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  background: var(--gold-bg);
+  color: var(--gold);
+  border: 1px solid rgba(212,168,67,0.15);
+}
+
+/* Icon color variants matching topline */
+.cr-m--red .cr-m__icon { background: var(--red-bg); color: var(--red-l); border-color: rgba(200,41,59,0.15); }
+.cr-m--blue .cr-m__icon { background: var(--blue-bg); color: var(--blue-l); border-color: rgba(30,77,140,0.15); }
+.cr-m--green .cr-m__icon { background: var(--ok-bg); color: var(--ok-t); border-color: rgba(45,134,89,0.15); }
+.cr-m--purple .cr-m__icon { background: var(--purple-bg); color: var(--purple-l); border-color: rgba(139,92,246,0.15); }
+.cr-m--orange .cr-m__icon { background: var(--orange-bg); color: var(--orange-l); border-color: rgba(249,115,22,0.15); }
+
+.cr-m__titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.cr-m__title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--t1);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cr-m__subtitle {
+  font-size: var(--text-sm);
+  color: var(--t2);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cr-m__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Close button */
+.cr-m__close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd);
+  background: transparent;
+  color: var(--t3);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.cr-m__close:hover {
+  border-color: var(--red);
+  color: var(--red-l);
+  background: var(--err-bg);
+  transform: scale(1.05);
+}
+
+.cr-m__close:active {
+  transform: scale(0.95);
+}
+
+/* Fullscreen toggle */
+.cr-m__fullscreen-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd);
+  background: transparent;
+  color: var(--t3);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.cr-m__fullscreen-btn:hover {
+  border-color: var(--t3);
+  color: var(--t2);
+  background: var(--bg3);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   BODY
+   ───────────────────────────────────────────────────────────────────────────── */
+.cr-m__body {
+  flex: 1;
+  padding: var(--sp-6);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.cr-m__body::-webkit-scrollbar {
+  width: 5px;
+}
+
+.cr-m__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cr-m__body::-webkit-scrollbar-thumb {
+  background: var(--brd);
+  border-radius: 3px;
+}
+
+.cr-m__body::-webkit-scrollbar-thumb:hover {
+  background: var(--t3);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   FOOTER (optional)
+   ───────────────────────────────────────────────────────────────────────────── */
+.cr-m__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-6);
+  border-top: 1px solid var(--brd);
+  background: var(--bg2);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   OOPS BUBBLE (click outside hint)
+   ───────────────────────────────────────────────────────────────────────────── */
+.oops-bubble {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  padding: 8px 16px;
+  background: var(--bg3);
+  border: 1px solid var(--gold-border);
+  border-radius: var(--r-full);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: calc(var(--z-modal) + 10);
+  animation: cr-oops 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3), var(--gold-glow);
+}
+
+@keyframes cr-oops {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8) translateY(8px); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1) translateY(0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95) translateY(-12px); }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   CONFIRM DIALOG
+   ───────────────────────────────────────────────────────────────────────────── */
+.cr-cf-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: var(--z-confirm);
+  opacity: 0;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cr-cf-overlay--visible {
+  opacity: 1;
+}
+
+.cr-cf {
+  position: relative;
+  width: min(420px, 92vw);
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  transform: translateY(16px) scale(0.95);
+  opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cr-cf-overlay--visible .cr-cf {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.cr-cf__topline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--grad-gold);
+  z-index: 2;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+}
+
+.cr-cf--danger .cr-cf__topline {
+  background: var(--grad-red);
+}
+
+.cr-cf__body {
+  padding: var(--sp-8) var(--sp-6) var(--sp-6);
+  text-align: center;
+}
+
+.cr-cf__icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto var(--sp-4);
+  border-radius: var(--r-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: var(--gold-bg);
+  color: var(--gold);
+  border: 1px solid rgba(212,168,67,0.15);
+  animation: cr-cf-icon-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+}
+
+.cr-cf--danger .cr-cf__icon {
+  background: var(--err-bg);
+  color: var(--err-t);
+  border-color: rgba(200,41,59,0.15);
+}
+
+@keyframes cr-cf-icon-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.cr-cf__title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--t1);
+  margin-bottom: var(--sp-2);
+}
+
+.cr-cf__message {
+  font-size: var(--text-base);
+  color: var(--t2);
+  line-height: 1.5;
+}
+
+.cr-cf__actions {
+  display: flex;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-6) var(--sp-6);
+  justify-content: center;
+}
+
+.cr-cf__actions .btn {
+  flex: 1;
+  min-width: 100px;
+  justify-content: center;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DRAWER (side panel) — NEW DESIGN
+   ───────────────────────────────────────────────────────────────────────────── */
+.cr-d-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8,9,12,0.6);
+  z-index: var(--z-overlay);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.cr-d-overlay--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cr-d {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(480px, 90vw);
+  background: var(--bg2);
+  border-left: 1px solid rgba(255,255,255,0.08);
+  box-shadow: -12px 0 48px rgba(0,0,0,0.4);
+  z-index: calc(var(--z-overlay) + 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(100%);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cr-d--open {
+  transform: translateX(0);
+}
+
+.cr-d--wide { width: min(640px, 90vw); }
+.cr-d--full { width: 90vw; }
+
+/* Drawer top accent */
+.cr-d__topline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--grad-gold);
+  z-index: 2;
+}
+
+.cr-d__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  padding-top: calc(var(--sp-4) + 2px);
+  border-bottom: 1px solid var(--brd);
+  background: var(--bg2);
+  min-height: 52px;
+}
+
+.cr-d__close {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd);
+  background: transparent;
+  color: var(--t3);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 13px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.cr-d__close:hover {
+  border-color: var(--red);
+  color: var(--red-l);
+  background: var(--err-bg);
+}
+
+.cr-d__title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--t1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cr-d__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cr-d__body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--sp-5);
+}
+
+.cr-d__body::-webkit-scrollbar { width: 5px; }
+.cr-d__body::-webkit-scrollbar-track { background: transparent; }
+.cr-d__body::-webkit-scrollbar-thumb { background: var(--brd); border-radius: 3px; }
+.cr-d__body::-webkit-scrollbar-thumb:hover { background: var(--t3); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MOBILE RESPONSIVE
+   ───────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .cr-m-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .cr-m {
+    width: 100vw;
+    max-height: 92vh;
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    transform: translateY(100%);
+    opacity: 1;
+  }
+
+  .cr-m-overlay--visible .cr-m {
+    transform: translateY(0);
+  }
+
+  .cr-m-overlay--leaving .cr-m {
+    transform: translateY(100%);
+  }
+
+  .cr-m--wide,
+  .cr-m--fullscreen {
+    width: 100vw;
+  }
+
+  .cr-m__header {
+    padding: var(--sp-3) var(--sp-4);
+    padding-top: calc(var(--sp-3) + 2px);
+  }
+
+  /* Drag handle for mobile bottom sheet */
+  .cr-m__drag-handle {
+    display: block;
+  }
+
+  .cr-m__body {
+    padding: var(--sp-4);
+  }
+
+  .cr-m__footer {
+    padding: var(--sp-3) var(--sp-4);
+    padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Confirm on mobile */
+  .cr-cf {
+    width: 92vw;
+  }
+
+  /* Drawer full width on mobile */
+  .cr-d,
+  .cr-d--wide,
+  .cr-d--full {
+    width: 100vw;
+  }
+}
+
+/* Drag handle (mobile bottom sheet) */
+.cr-m__drag-handle {
+  display: none;
+  width: 36px;
+  height: 4px;
+  background: var(--t3);
+  border-radius: 2px;
+  margin: 8px auto 0;
+  opacity: 0.5;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   UNIVERSAL MODAL FORM STYLES
+   Auto-transform old HTML patterns (.formrow, label, .help, hr)
+   into WOW design — zero JS changes needed
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── INPUTS — enhanced with 9px radius, focus glow ───────────── */
+.cr-m__body input[type="text"],
+.cr-m__body input[type="number"],
+.cr-m__body input[type="email"],
+.cr-m__body input[type="tel"],
+.cr-m__body input[type="url"],
+.cr-m__body input[type="password"],
+.cr-m__body input[type="date"],
+.cr-m__body input[type="datetime-local"],
+.cr-m__body input[type="time"],
+.cr-m__body textarea,
+.cr-m__body select {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 9px !important;
+  color: var(--t1) !important;
+  padding: 10px 12px !important;
+  font-size: 13px !important;
+  font-family: inherit !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease !important;
+  outline: none !important;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.cr-m__body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover,
+.cr-m__body textarea:hover,
+.cr-m__body select:hover {
+  border-color: rgba(255,255,255,0.15) !important;
+  background: rgba(21,25,34,0.9) !important;
+}
+
+.cr-m__body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.cr-m__body textarea:focus,
+.cr-m__body select:focus {
+  border-color: rgba(200,166,78,0.45) !important;
+  box-shadow: 0 0 0 3px rgba(200,166,78,0.07) !important;
+  background: rgba(20,20,42,0.9) !important;
+  outline: none !important;
+}
+
+.cr-m__body input::placeholder,
+.cr-m__body textarea::placeholder {
+  color: var(--t3) !important;
+}
+
+.cr-m__body textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.cr-m__body input:disabled,
+.cr-m__body select:disabled,
+.cr-m__body textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Monospace for numbers */
+.cr-m__body input[type="number"] {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
+
+/* ─── LABELS — uppercase with gold required star ──────────────── */
+.cr-m__body label {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.4px !important;
+  color: var(--t2) !important;
+  margin-bottom: 6px !important;
+  display: block !important;
+}
+
+.cr-m__body label .req,
+.cr-m__body label .required,
+.cr-m__body label span[style*="color"]:first-child {
+  color: var(--gold) !important;
+}
+
+/* ─── FORMROW — grid 2-col layout ─────────────────────────────── */
+.cr-m__body .formrow {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 14px 12px !important;
+  margin-bottom: 0 !important;
+}
+
+/* Full-width fields inside formrow */
+.cr-m__body .formrow > div[style*="grid-column"],
+.cr-m__body .formrow > .cr-field-full {
+  grid-column: 1 / -1;
+}
+
+/* Each cell in formrow gets proper spacing */
+.cr-m__body .formrow > div {
+  margin-bottom: 14px;
+}
+
+/* ─── HR DIVIDER — subtle line ────────────────────────────────── */
+.cr-m__body hr,
+.cr-m__body .hr {
+  border: none !important;
+  border-top: 1px solid rgba(255,255,255,0.04) !important;
+  margin: 18px 0 !important;
+  background: none !important;
+  height: 0 !important;
+}
+
+/* ─── HELP TEXT — subtle muted ────────────────────────────────── */
+.cr-m__body .help {
+  font-size: 11px;
+  color: var(--t3);
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+/* ─── SECTION HEADERS — .help > b becomes styled section ─────── */
+.cr-m__body .help > b:first-child:only-child,
+.cr-m__body .help > b:first-child:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* Make section-style .help blocks look like dividers */
+.cr-m__body > .help:has(> b:first-child:only-child) {
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  margin-top: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+/* ─── TAGS / BADGES inside modals ─────────────────────────────── */
+.cr-m__body .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  font-size: 12px;
+  color: var(--t2);
+  margin-bottom: 10px;
+}
+
+/* ─── PILL badges inside modals ───────────────────────────────── */
+.cr-m__body .pill {
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  margin-bottom: 8px;
+}
+
+/* ─── BUTTONS inside modal body — enhanced ────────────────────── */
+.cr-m__body .btn {
+  border-radius: 9px;
+  font-weight: 500;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cr-m__body .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.cr-m__body .btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.cr-m__body .btn.primary,
+.cr-m__body .btn.gold {
+  background: linear-gradient(135deg, var(--gold), var(--gold-h));
+  color: var(--bg1);
+  border: none;
+  font-weight: 600;
+}
+
+.cr-m__body .btn.primary:hover,
+.cr-m__body .btn.gold:hover {
+  filter: brightness(1.12);
+}
+
+.cr-m__body .btn.red,
+.cr-m__body .btn.danger {
+  background: linear-gradient(135deg, var(--red), var(--red-h));
+  color: #fff;
+  border: none;
+}
+
+.cr-m__body .btn.ghost {
+  border: 1px solid var(--brd);
+  background: transparent;
+  color: var(--t2);
+}
+
+.cr-m__body .btn.ghost:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--gold);
+  border-color: rgba(212,168,67,0.2);
+}
+
+/* ─── FILE INPUT — styled ─────────────────────────────────────── */
+.cr-m__body input[type="file"] {
+  padding: 10px 12px !important;
+  border: 1.5px dashed var(--brd) !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  cursor: pointer;
+  transition: border-color 0.2s ease !important;
+}
+
+.cr-m__body input[type="file"]:hover {
+  border-color: rgba(212,168,67,0.2) !important;
+}
+
+/* ─── CONFIRM DIALOG body — centered ──────────────────────────── */
+.cr-m__body .confirm-body {
+  font-size: var(--text-base);
+  color: var(--t2);
+  line-height: 1.6;
+  margin-bottom: var(--sp-5);
+  text-align: center;
+  padding: var(--sp-4) 0;
+}
+
+.cr-m__body .confirm-actions {
+  display: flex;
+  gap: var(--sp-3);
+  justify-content: center;
+  padding-top: var(--sp-3);
+}
+
+/* ─── TABLE inside modals — dark styled ───────────────────────── */
+.cr-m__body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cr-m__body table th {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--t3);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--brd);
+  text-align: left;
+}
+
+.cr-m__body table td {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--t1);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.cr-m__body table tr:hover td {
+  background: rgba(255,255,255,0.02);
+}
+
+/* ─── TEXTAREA rows (comment feeds, etc.) ─────────────────────── */
+.cr-m__body .tc-feed {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: var(--bg3);
+}
+
+.cr-m__body .tc-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.cr-m__body .tc-input-row textarea {
+  flex: 1;
+  min-height: 36px !important;
+}
+
+/* ─── DOCUMENT items ──────────────────────────────────────────── */
+.cr-m__body .cr-doc-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  margin-bottom: 6px;
+  transition: background 0.15s ease;
+}
+
+.cr-m__body .cr-doc-item:hover {
+  background: var(--bg4);
+}
+
+/* ─── ARCHIVE info row ────────────────────────────────────────── */
+.cr-m__body .archive-info-row {
+  padding: 12px 14px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--t2);
+}
+
+/* ─── FORM FIELD spacing ──────────────────────────────────────── */
+.cr-m__body .form-field {
+  margin-bottom: 14px;
+}
+
+/* ─── EMPTY STATE inside modals ───────────────────────────────── */
+.cr-m__body .empty-state {
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.cr-m__body .empty-state-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.cr-m__body .empty-state-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t1);
+  margin-bottom: 6px;
+}
+
+.cr-m__body .empty-state-desc {
+  font-size: 13px;
+  color: var(--t3);
+}
+
+/* ─── ROW helpers (flex, gap) ─────────────────────────────────── */
+.cr-m__body > .row,
+.cr-m__body .row {
+  gap: 8px;
+}
+
+/* ─── APPROVAL CARDS inside modals ────────────────────────────── */
+.cr-m__body .asg-pay-card {
+  border-radius: 9px;
+}
+
+/* ─── PERIOD ROW (month + year selects) ───────────────────────── */
+.cr-m__body .cr-period-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cr-m__body .cr-period-row .cr-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ─── FOOTER buttons at bottom of modal body ──────────────────── */
+.cr-m__body > div:last-child > .btn,
+.cr-m__body > div[style*="display:flex"][style*="gap"] > .btn {
+  border-radius: 9px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DRAWER FIELD STYLING (preserve existing classes)
+   ───────────────────────────────────────────────────────────────────────────── */
+.cr-d__body .drawer-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--brd-m);
+}
+
+.cr-d__body .drawer-field:last-child {
+  border-bottom: none;
+}
+
+.cr-d__body .drawer-field-label {
+  font-size: 12px;
+  color: var(--t2);
+  font-weight: 500;
+  flex-shrink: 0;
+  width: 40%;
+}
+
+.cr-d__body .drawer-field-value {
+  font-size: 13px;
+  color: var(--t1);
+  text-align: right;
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.cr-d__body .drawer-section {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--brd);
+}
+
+.cr-d__body .drawer-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   CONFIRM BODY & ACTIONS — compatibility with existing AsgardConfirm HTML
+   ───────────────────────────────────────────────────────────────────────────── */
+.confirm-body {
+  font-size: var(--text-base);
+  color: var(--t2);
+  line-height: 1.6;
+  margin-bottom: var(--sp-5);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: var(--sp-3);
+  justify-content: flex-end;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   LIGHT THEME OVERRIDES
+   ───────────────────────────────────────────────────────────────────────────── */
+html[data-theme="light"] .cr-m {
+  border-color: var(--brd);
+  box-shadow: var(--shadow-xl);
+}
+
+html[data-theme="light"] .cr-m__close,
+html[data-theme="light"] .cr-m__fullscreen-btn {
+  border-color: var(--brd);
+}
+
+html[data-theme="light"] .cr-cf {
+  border-color: var(--brd);
+}
+
+html[data-theme="light"] .cr-d {
+  border-left-color: var(--brd);
+  box-shadow: -8px 0 32px rgba(0,0,0,0.15);
+}
+
+html[data-theme="light"] .oops-bubble {
+  background: var(--bg2);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   REDUCED MOTION
+   ───────────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .cr-m,
+  .cr-m-overlay,
+  .cr-cf,
+  .cr-cf-overlay,
+  .cr-d,
+  .cr-d-overlay,
+  .oops-bubble {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   CR-FIELD COMPONENTS v1.0
+   Внутренние WOW-компоненты для модалок
+   Prefix: cr-f-
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. PERSON PICKER ────────────────────────────────────────── */
+.cr-f-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.cr-f-person:hover {
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cr-f-person__av {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--gold), var(--gold-h));
+  color: var(--bg1);
+}
+
+.cr-f-person__av-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.cr-f-person__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cr-f-person__name {
+  font-size: 13px;
+  color: var(--t1);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cr-f-person__role {
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.cr-f-person__change {
+  font-size: 11px;
+  color: var(--gold);
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.cr-f-person:hover .cr-f-person__change {
+  opacity: 1;
+}
+
+/* ─── 2. CHIPS ─────────────────────────────────────────────────── */
+.cr-f-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cr-f-chip {
+  padding: 6px 14px;
+  border-radius: 18px;
+  font-size: 12px;
+  color: var(--t2);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--brd);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.cr-f-chip:hover {
+  border-color: rgba(212,168,67,0.2);
+  color: var(--gold);
+}
+
+.cr-f-chip--active {
+  background: rgba(212,168,67,0.10);
+  border-color: rgba(212,168,67,0.25);
+  color: var(--gold);
+  font-weight: 500;
+}
+
+/* ─── 3. TOGGLE GROUP ──────────────────────────────────────────── */
+.cr-f-toggle {
+  display: flex;
+  background: var(--bg3);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid var(--brd);
+  overflow: hidden;
+}
+
+.cr-f-toggle__btn {
+  all: unset;
+  flex: 1;
+  padding: 8px 0;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--t3);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: inherit;
+  text-align: center;
+  display: block;
+  box-sizing: border-box;
+}
+
+.cr-f-toggle__btn--active {
+  background: rgba(74,190,123,0.12);
+  color: #4abe7b;
+}
+
+.cr-f-toggle__btn:hover:not(.cr-f-toggle__btn--active) {
+  color: var(--t2);
+}
+
+/* Color variants */
+.cr-f-toggle[data-color="gold"] .cr-f-toggle__btn--active { background: var(--gold-bg); color: var(--gold); }
+.cr-f-toggle[data-color="blue"] .cr-f-toggle__btn--active { background: var(--blue-bg); color: var(--blue-l); }
+.cr-f-toggle[data-color="red"] .cr-f-toggle__btn--active { background: var(--red-bg); color: var(--red-l); }
+.cr-f-toggle[data-color="orange"] .cr-f-toggle__btn--active { background: var(--orange-bg); color: var(--orange-l); }
+
+/* ─── 4. SEARCH INPUT ──────────────────────────────────────────── */
+.cr-f-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  overflow: visible;
+}
+
+.cr-f-search:hover {
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cr-f-search:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(30,77,140,0.15);
+}
+
+.cr-f-search__icon {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  color: var(--t3);
+  flex-shrink: 0;
+}
+
+.cr-f-search__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--t1);
+  min-width: 0;
+}
+
+.cr-f-search__input::placeholder {
+  color: var(--t3);
+}
+
+.cr-f-search__hint {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  font-size: 10px;
+  color: var(--t3);
+  margin-right: 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Dropdown */
+.cr-f-search__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 1200;
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  max-height: 260px;
+  overflow-y: auto;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+  padding: 4px;
+}
+
+.cr-f-search__dropdown--open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.cr-f-search__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.cr-f-search__item:hover {
+  background: var(--gold-bg);
+}
+
+.cr-f-search__item-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.cr-f-search__item-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 7px;
+}
+
+.cr-f-search__item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.cr-f-search__item-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cr-f-search__item-label mark {
+  background: var(--gold-bg);
+  color: var(--gold);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.cr-f-search__item-sub {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 1px;
+}
+
+.cr-f-search__empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--t3);
+  font-size: 13px;
+}
+
+/* ─── 5. STEPPER ───────────────────────────────────────────────── */
+.cr-f-stepper {
+  margin-bottom: var(--sp-4);
+}
+
+.cr-f-stepper__bar {
+  height: 2px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 1px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.cr-f-stepper__fill {
+  height: 100%;
+  border-radius: 0 1px 1px 0;
+  transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  background: var(--grad-gold);
+}
+
+.cr-f-stepper__dots {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cr-f-stepper__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  flex: 1;
+}
+
+.cr-f-stepper__step:hover {
+  opacity: 0.8;
+}
+
+.cr-f-stepper__circle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  color: var(--t3);
+  transition: all 0.3s ease;
+}
+
+.cr-f-stepper__step--active .cr-f-stepper__circle {
+  background: var(--gold-bg);
+  border-color: var(--gold-border);
+  color: var(--gold);
+}
+
+.cr-f-stepper__step--done .cr-f-stepper__circle {
+  background: var(--ok-bg);
+  border-color: rgba(45,134,89,0.25);
+  color: var(--ok-t);
+}
+
+.cr-f-stepper__label {
+  font-size: 12px;
+  color: var(--t3);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cr-f-stepper__step--active .cr-f-stepper__label {
+  color: var(--gold);
+}
+
+.cr-f-stepper__step--done .cr-f-stepper__label {
+  color: var(--t2);
+}
+
+/* ─── 6. DROP ZONE ─────────────────────────────────────────────── */
+.cr-f-dropzone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1.5px dashed var(--brd);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--t3);
+}
+
+.cr-f-dropzone:hover {
+  border-color: rgba(212,168,67,0.2);
+  color: var(--gold);
+}
+
+.cr-f-dropzone--dragover {
+  border-color: var(--gold);
+  background: var(--gold-bg);
+  color: var(--gold);
+}
+
+.cr-f-dropzone__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.cr-f-dropzone__text {
+  font-size: 13px;
+}
+
+.cr-f-dropzone__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.cr-f-dropzone__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.cr-f-dropzone__file:hover {
+  background: var(--bg4);
+}
+
+.cr-f-dropzone__file-icon {
+  width: 32px;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--blue-bg);
+  color: var(--blue-l);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
+
+.cr-f-dropzone__file-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.cr-f-dropzone__file-size {
+  font-size: 11px;
+  color: var(--t3);
+  flex-shrink: 0;
+}
+
+.cr-f-dropzone__file-del {
+  all: unset;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--t3);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.cr-f-dropzone__file-del:hover {
+  background: var(--red-bg);
+  color: var(--red-l);
+}
+
+/* ─── 7. SECTION LABEL ─────────────────────────────────────────── */
+.cr-f-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.cr-f-section__icon {
+  display: flex;
+  align-items: center;
+}
+
+/* ─── 8. LABEL ─────────────────────────────────────────────────── */
+.cr-f-label {
+  font-size: 11px;
+  color: var(--t2);
+  margin-bottom: 6px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.cr-f-label__req {
+  color: var(--gold);
+}
+
+/* ─── 9. ROW & FIELD ──────────────────────────────────────────── */
+.cr-f-row {
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.cr-f-row--2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.cr-f-field {
+  margin-bottom: 14px;
+}
+
+.cr-f-help {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* ─── ENHANCED INPUT STYLE (inside cr-f context) ──────────────── */
+.cr-f-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.cr-f-field textarea,
+.cr-f-field select {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  color: var(--t1);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.cr-f-field input:hover,
+.cr-f-field textarea:hover,
+.cr-f-field select:hover {
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cr-f-field input:focus,
+.cr-f-field textarea:focus,
+.cr-f-field select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(30,77,140,0.15);
+}
+
+.cr-f-field input::placeholder,
+.cr-f-field textarea::placeholder {
+  color: var(--t3);
+}
+
+/* Monospace numbers */
+.cr-f-field input.cr-f-mono {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}

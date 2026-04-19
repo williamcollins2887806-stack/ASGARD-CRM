@@ -35,6 +35,14 @@ async function invoicesRoutes(fastify, options) {
     return `${prefix}${String(next).padStart(3, '0')}`;
   }
 
+  // Auto-generate next invoice number (for frontend pre-fill)
+  fastify.get('/next-number', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
+    const number = await generateInvoiceNumber();
+    return { success: true, number };
+  });
+
   // Get all invoices
   fastify.get('/', {
     preHandler: [fastify.authenticate]
@@ -452,7 +460,7 @@ async function generateInvoicePdfKit(inv, db) {
   y += 10;
 
   const amount = Number(inv.amount || 0);
-  const vatPct = inv.vat_pct != null ? Number(inv.vat_pct) : 20;
+  const vatPct = inv.vat_pct != null ? Number(inv.vat_pct) : 22;
   const vatAmount = inv.vat_amount != null ? Number(inv.vat_amount) : (amount * vatPct / 100);
   const totalAmount = inv.total_amount != null ? Number(inv.total_amount) : (amount + vatAmount);
 

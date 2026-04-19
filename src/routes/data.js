@@ -31,7 +31,7 @@ async function dataRoutes(fastify, options) {
     'contracts', 'seals', 'seal_transfers', 'employee_permits', 'bonus_requests',
     'sync_meta', 'chats', 'chat_messages', 'call_history', 'user_call_status',
     'user_dashboard', 'bank_rules', 'customers', 'staff', 'staff_plan',
-    'employees', 'employee_reviews', 'customer_reviews', 'employee_assignments',
+    'employees', 'employee_reviews', 'customer_reviews', 'employee_assignments', 'field_project_settings', 'field_project_settings',
     'employee_plan', 'staff_requests', 'staff_request_messages', 'staff_replacements',
     'purchase_requests', 'qa_messages', 'doc_sets', 'documents', 'audit_log',
     'notifications', 'acts', 'invoices', 'invoice_payments', 'email_history',
@@ -47,7 +47,8 @@ async function dataRoutes(fastify, options) {
     'pre_tender_requests', 'saved_reports', 'tasks',
     'proxies',
     'hr_requests', 'meetings', 'meeting_participants', 'meeting_minutes',
-    'inbox_applications', 'user_requests', 'training_applications', 'call_history'
+    'inbox_applications', 'user_requests', 'training_applications', 'call_history',
+    'worker_payments'
   ];
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -60,17 +61,18 @@ async function dataRoutes(fastify, options) {
     DIRECTOR_DEV: { tables: 'all', ops: ['read', 'create', 'update'] },
     PM: {
       tables: [
-        'users', 'employees', 'staff', 'staff_plan', 'user_call_status',
+        'users', 'employees', 'employee_reviews', 'staff', 'staff_plan', 'user_call_status',
         'tenders', 'estimates', 'works', 'work_expenses', 'work_assign_requests',
         'pm_consents', 'correspondence', 'travel_expenses', 'contracts',
         'calendar_events', 'customers', 'documents', 'chats', 'chat_messages',
         'equipment', 'equipment_movements', 'equipment_requests',
         'equipment_reservations', 'acts', 'invoices', 'notifications',
-        'sync_meta', 'employee_assignments', 'employee_plan', 'reminders',
+        'sync_meta', 'employee_assignments', 'field_project_settings', 'employee_plan', 'reminders',
         'bonus_requests', 'doc_sets', 'qa_messages', 'user_dashboard',
         'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
         'permits', 'tasks',
-        'staff_requests', 'staff_request_messages', 'staff_replacements'
+        'staff_requests', 'staff_request_messages', 'staff_replacements',
+        'worker_payments'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -87,19 +89,20 @@ async function dataRoutes(fastify, options) {
     BUH: {
       tables: [
         'users', 'employees', 'staff', 'staff_plan', 'cash_requests', 'cash_expenses', 'cash_returns', 'cash_messages', 'user_call_status',
-        'tenders', 'works', 'work_expenses', 'office_expenses', 'incomes',
+        'tenders', 'estimates', 'works', 'work_expenses', 'office_expenses', 'incomes',
         'invoices', 'invoice_payments', 'acts', 'contracts', 'customers',
         'bank_rules', 'calendar_events', 'chats', 'chat_messages',
         'notifications', 'sync_meta', 'reminders', 'user_dashboard',
         'employee_rates', 'payroll_sheets', 'payroll_items',
-        'payment_registry', 'self_employed', 'one_time_payments'
+        'payment_registry', 'self_employed', 'one_time_payments',
+        'worker_payments'
       ],
       ops: ['read', 'create', 'update']
     },
     HR: {
       tables: [
         'users', 'tenders', 'works', 'user_call_status',
-        'employees', 'employee_reviews', 'employee_assignments', 'employee_plan',
+        'employees', 'employee_reviews', 'employee_assignments', 'field_project_settings', 'employee_plan',
         'staff', 'staff_plan', 'staff_requests', 'staff_request_messages',
         'staff_replacements', 'employee_permits', 'calendar_events',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
@@ -148,11 +151,12 @@ async function dataRoutes(fastify, options) {
         'work_expenses', 'work_assign_requests', 'pm_consents',
         'contracts', 'customers', 'calendar_events', 'documents',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
-        'acts', 'invoices', 'user_dashboard', 'employee_assignments',
+        'acts', 'invoices', 'user_dashboard', 'employee_assignments', 'field_project_settings',
         'employee_plan', 'bonus_requests', 'doc_sets', 'qa_messages',
         'employee_rates', 'payroll_sheets', 'payroll_items', 'one_time_payments',
-        'permits',
-        'staff_requests', 'staff_request_messages', 'staff_replacements'
+        'permits', 'permit_types',
+        'staff_requests', 'staff_request_messages', 'staff_replacements',
+        'worker_payments'
       ],
       ops: ['read', 'create', 'update']
     },
@@ -170,7 +174,7 @@ async function dataRoutes(fastify, options) {
     HR_MANAGER: {
       tables: [
         'users', 'tenders', 'works', 'user_call_status',
-        'employees', 'employee_reviews', 'employee_assignments', 'employee_plan',
+        'employees', 'employee_reviews', 'employee_assignments', 'field_project_settings', 'employee_plan',
         'staff', 'staff_plan', 'staff_requests', 'staff_request_messages',
         'staff_replacements', 'employee_permits', 'calendar_events',
         'chats', 'chat_messages', 'notifications', 'sync_meta', 'reminders',
@@ -301,14 +305,19 @@ async function dataRoutes(fastify, options) {
 
   // Кэш колонок таблиц — защита от INSERT в несуществующие колонки
   const _columnCache = {};
+  const _columnTypeCache = {};
+
   async function getTableColumns(table) {
     if (_columnCache[table]) return _columnCache[table];
     const result = await db.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = $1`,
+      `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1`,
       [table]
     );
     const cols = new Set(result.rows.map(r => r.column_name));
+    const types = {};
+    result.rows.forEach(r => { types[r.column_name] = r.data_type; });
     _columnCache[table] = cols;
+    _columnTypeCache[table] = types;
     return cols;
   }
 
@@ -482,6 +491,15 @@ async function dataRoutes(fastify, options) {
         ? String(data.approval_status || '').trim().toLowerCase()
         : '';
 
+      // Просчёт: стрипаем все approval-поля, кроме тех что контролируем сами
+      if (table === 'estimates') {
+        // Удаляем поля, которые управляются только через /api/approval
+        delete data.reject_reason;
+        delete data.decided_at;
+        delete data.decided_by_user_id;
+        delete data.approval_comment;
+      }
+
       // Просчёт: если отправляют на согласование — ставим 'sent'
       if (table === 'estimates' && ['sent', 'pending'].includes(requestedEstimateApprovalStatus)) {
         data.approval_status = 'sent';
@@ -491,6 +509,11 @@ async function dataRoutes(fastify, options) {
         data.approved_at = null;
       } else if (table === 'estimates') {
         data.approval_status = requestedEstimateApprovalStatus || 'draft';
+        // Стрипаем оставшиеся approval-поля для неотправленных просчётов
+        delete data.is_approved;
+        delete data.approved_by;
+        delete data.approved_at;
+        delete data.sent_for_approval_at;
       }
 
       const TEXT_FIELDS = ['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'];
@@ -512,6 +535,44 @@ async function dataRoutes(fastify, options) {
 
       if (pk === 'id') {
         delete data.id;
+      }
+
+      // Санитизация: пустые строки → null для date/numeric/integer/boolean полей
+      // + конвертация DD.MM.YYYY → YYYY-MM-DD для date полей
+      const colTypesPost = _columnTypeCache[dbTable] || {};
+      for (const key of Object.keys(data)) {
+        const dt = colTypesPost[key];
+        if (!dt) continue;
+        if (data[key] === '') {
+          if (dt === 'date' || dt.startsWith('timestamp') || dt === 'integer' || dt === 'bigint'
+            || dt === 'smallint' || dt === 'numeric' || dt === 'real' || dt === 'double precision'
+            || dt === 'boolean' || dt === 'jsonb' || dt === 'json') {
+            data[key] = null;
+          }
+        } else if (data[key] != null && (dt === 'jsonb' || dt === 'json')) {
+          if (typeof data[key] === 'object') {
+            data[key] = JSON.stringify(data[key]);
+          } else if (typeof data[key] === 'string') {
+            try { JSON.parse(data[key]); } catch (_) { data[key] = null; }
+          }
+        } else if (data[key] && (dt === 'date' || dt.startsWith('timestamp')) && typeof data[key] === 'string') {
+          // DD.MM.YYYY → YYYY-MM-DD
+          const m = data[key].match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+          if (m) data[key] = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+          // Валидация YYYY-MM-DD части (работает и для date, и для timestamp)
+          const dateStr = data[key].substring(0, 10);
+          const parts = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!parts) {
+            console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
+            data[key] = null;
+          } else {
+            const y = parseInt(parts[1], 10), mo = parseInt(parts[2], 10), dd = parseInt(parts[3], 10);
+            if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || dd < 1 || dd > 31) {
+              console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
+              data[key] = null;
+            }
+          }
+        }
       }
 
       const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k) && tableCols.has(k));
@@ -560,6 +621,9 @@ async function dataRoutes(fastify, options) {
       }
       if (err.code === '23505') {
         return reply.code(409).send({ error: `Запись уже существует: ${err.detail || err.message}` });
+      }
+      if (err.code === '22008' || err.code === '22007') {
+        return reply.code(400).send({ error: `Некорректное значение даты: ${err.message}` });
       }
       return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }
@@ -621,6 +685,44 @@ async function dataRoutes(fastify, options) {
         }
       }
 
+      // Санитизация: пустые строки → null для date/numeric/integer/boolean полей
+      // + конвертация DD.MM.YYYY → YYYY-MM-DD для date полей
+      const colTypes = _columnTypeCache[dbTable] || {};
+      for (const key of Object.keys(data)) {
+        const dt = colTypes[key];
+        if (!dt) continue;
+        if (data[key] === '') {
+          if (dt === 'date' || dt.startsWith('timestamp') || dt === 'integer' || dt === 'bigint'
+            || dt === 'smallint' || dt === 'numeric' || dt === 'real' || dt === 'double precision'
+            || dt === 'boolean' || dt === 'jsonb' || dt === 'json') {
+            data[key] = null;
+          }
+        } else if (data[key] != null && (dt === 'jsonb' || dt === 'json')) {
+          if (typeof data[key] === 'object') {
+            data[key] = JSON.stringify(data[key]);
+          } else if (typeof data[key] === 'string') {
+            try { JSON.parse(data[key]); } catch (_) { data[key] = null; }
+          }
+        } else if (data[key] && (dt === 'date' || dt.startsWith('timestamp')) && typeof data[key] === 'string') {
+          // DD.MM.YYYY → YYYY-MM-DD
+          const m = data[key].match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+          if (m) data[key] = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+          // Валидация YYYY-MM-DD части (работает и для date, и для timestamp)
+          const dateStr = data[key].substring(0, 10);
+          const parts = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!parts) {
+            console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
+            data[key] = null;
+          } else {
+            const y = parseInt(parts[1], 10), mo = parseInt(parts[2], 10), dd = parseInt(parts[3], 10);
+            if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || dd < 1 || dd > 31) {
+              console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
+              data[key] = null;
+            }
+          }
+        }
+      }
+
       const keys = Object.keys(data).filter(k => /^[a-z_]+$/i.test(k) && tableCols.has(k));
       if (keys.length === 0) {
         return reply.code(400).send({ error: 'Нет валидных полей для обновления' });
@@ -661,6 +763,9 @@ async function dataRoutes(fastify, options) {
       }
       if (err.code === '23505') {
         return reply.code(409).send({ error: `Запись уже существует: ${err.detail || err.message}` });
+      }
+      if (err.code === '22008' || err.code === '22007') {
+        return reply.code(400).send({ error: `Некорректное значение даты: ${err.message}` });
       }
       return reply.code(500).send({ error: 'Ошибка обработки запроса' });
     }

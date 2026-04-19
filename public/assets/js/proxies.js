@@ -195,19 +195,8 @@ window.AsgardProxiesPage = (function(){
     h += '<div class="prx-toolbar">';
     h += '<input type="text" id="prx-search" class="prx-input" placeholder="Поиск по ФИО / номеру..." value="'+esc(state.search)+'">';
     // Type filter
-    h += '<select id="prx-ftype" class="prx-select">';
-    h += '<option value="">Все типы</option>';
-    ['Генеральная','Общая','Получение ТМЦ','Представительство','Строительная площадка','Транспорт/Грузы'].forEach(function(t){
-      h += '<option value="'+esc(t)+'"'+(state.filterType===t?' selected':'')+'>'+esc(t)+'</option>';
-    });
-    h += '</select>';
-    // Status filter
-    h += '<select id="prx-fstatus" class="prx-select">';
-    h += '<option value="">Все статусы</option>';
-    [{v:'active',l:'Действует'},{v:'expiring',l:'Истекает'},{v:'expired',l:'Истекла'},{v:'revoked',l:'Отозвана'}].forEach(function(s){
-      h += '<option value="'+s.v+'"'+(state.filterStatus===s.v?' selected':'')+'>'+esc(s.l)+'</option>';
-    });
-    h += '</select>';
+    h += '<div id="crw_prx-ftype" style="min-width:180px"></div>';
+    h += '<div id="crw_prx-fstatus" style="min-width:160px"></div>';
     h += '<div class="prx-toolbar-right">';
     h += '<button id="prx-btn-csv" class="prx-btn prx-btn-sec" title="Экспорт CSV">📃 CSV</button>';
     h += '<button id="prx-btn-create" class="prx-btn prx-btn-prim">+ Создать доверенность</button>';
@@ -283,14 +272,20 @@ window.AsgardProxiesPage = (function(){
       }
     }
 
-    var ftEl = document.getElementById('prx-ftype');
-    if (ftEl) ftEl.addEventListener('change', function(){
-      state.filterType = ftEl.value; state.page = 1; loadAndRender();
-    });
-    var fsEl = document.getElementById('prx-fstatus');
-    if (fsEl) fsEl.addEventListener('change', function(){
-      state.filterStatus = fsEl.value; state.page = 1; loadAndRender();
-    });
+    var ftWrap = document.getElementById('crw_prx-ftype');
+    if (ftWrap) ftWrap.appendChild(CRSelect.create({
+      id:'prx-ftype', fullWidth:true, placeholder:'Все типы', clearable:true,
+      value: state.filterType||'',
+      options: ['Генеральная','Общая','Получение ТМЦ','Представительство','Строительная площадка','Транспорт/Грузы'].map(function(t){ return {value:t,label:t}; }),
+      onChange: function(v){ state.filterType=v||''; state.page=1; loadAndRender(); }
+    }));
+    var fsWrap = document.getElementById('crw_prx-fstatus');
+    if (fsWrap) fsWrap.appendChild(CRSelect.create({
+      id:'prx-fstatus', fullWidth:true, placeholder:'Все статусы', clearable:true,
+      value: state.filterStatus||'',
+      options: [{value:'active',label:'Действует'},{value:'expiring',label:'Истекает'},{value:'expired',label:'Истекла'},{value:'revoked',label:'Отозвана'}],
+      onChange: function(v){ state.filterStatus=v||''; state.page=1; loadAndRender(); }
+    }));
 
     // Sort - need to re-fetch from server for proper ordering
     var ths = document.querySelectorAll('.prx-th[data-sort]');
@@ -477,15 +472,92 @@ window.AsgardProxiesPage = (function(){
       h += '</div>';
     });
 
-    h += '<div class="prx-form-actions">';
-    h += '<button class="prx-btn prx-btn-sec" id="prx-f-preview">👁 Предпросмотр</button>';
-    h += '<button class="prx-btn prx-btn-prim" id="prx-f-save">💾 Сохранить</button>';
-    h += '<button class="prx-btn prx-btn-prim" id="prx-f-download">📄 Скачать .doc</button>';
+    h += '<div class="prx-form-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+    h += '<span id="prxMimirSlot"></span>';
+    h += '<button class="prx-btn prx-btn-sec" id="prx-f-preview">Предпросмотр</button>';
+    h += '<button class="prx-btn prx-btn-prim" id="prx-f-save">Сохранить</button>';
+    h += '<button class="prx-btn prx-btn-prim" id="prx-f-download">Скачать .doc</button>';
     h += '</div></div>';
 
     showModal(tpl.icon + ' ' + tpl.label, h, {width:640});
 
     setTimeout(function(){
+      // ── WOW: Мимир автозаполнение для доверенностей ──
+      // Доверенности используют id="prx-f-{field}", маппинг через tpl.fields
+      if (window.MimirForms) {
+        MimirForms.ensureStyles();
+        var mimirSlot = document.getElementById('prxMimirSlot');
+        if (mimirSlot) {
+          var btn = MimirForms.createButton('Мимир');
+          btn.classList.add('pulsing');
+          mimirSlot.appendChild(btn);
+          btn.addEventListener('click', function() {
+            btn.disabled = true;
+            btn.classList.remove('pulsing');
+            btn.innerHTML = '<span class="mimir-form-spinner"></span> Мимир думает\u2026';
+
+            // Skeleton на пустых полях
+            tpl.fields.forEach(function(fld) {
+              var el = document.getElementById('prx-f-' + fld);
+              if (el && !el.value) el.classList.add('mimir-field-skeleton');
+            });
+
+            var token = localStorage.getItem('asgard_token');
+            fetch('/api/mimir/suggest-form', {
+              method: 'POST',
+              headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
+              body: JSON.stringify({
+                form_type: 'proxy',
+                context: {
+                  proxy_type: tpl.label,
+                  existing_fields: collectFormData(tpl)
+                }
+              })
+            }).then(function(r) { return r.json(); })
+            .then(function(data) {
+              // Убираем skeleton
+              tpl.fields.forEach(function(fld) {
+                var el = document.getElementById('prx-f-' + fld);
+                if (el) el.classList.remove('mimir-field-skeleton');
+              });
+
+              if (data.fields) {
+                var filled = 0;
+                tpl.fields.forEach(function(fld, i) {
+                  var el = document.getElementById('prx-f-' + fld);
+                  var val = data.fields[fld];
+                  if (!el || !val || el.value) return;
+                  // Cascade с задержкой
+                  setTimeout(function() {
+                    if (el.tagName === 'TEXTAREA') {
+                      MimirForms.typewriterFill(el, val);
+                    } else {
+                      el.value = val;
+                    }
+                    el.classList.add('mimir-field-filled');
+                    setTimeout(function() { el.classList.remove('mimir-field-filled'); }, 1200);
+                    filled++;
+                  }, i * 130);
+                });
+                toast('Мимир', 'Заполнил ' + (filled || Object.keys(data.fields).length) + ' полей', 'ok');
+              } else {
+                MimirForms.showBubble(btn, 'Воин, мало информации! Заполни хотя бы пару полей — и я помогу дальше.');
+              }
+            }).catch(function(e) {
+              tpl.fields.forEach(function(fld) {
+                var el = document.getElementById('prx-f-' + fld);
+                if (el) el.classList.remove('mimir-field-skeleton');
+              });
+              MimirForms.showBubble(btn, (e.message || 'Ошибка') + ' Попробуй заполнить пару полей и нажми снова.', true);
+            }).finally(function() {
+              btn.disabled = false;
+              btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир';
+              btn.classList.add('pulsing');
+            });
+          });
+        }
+      }
+
       var previewBtn = document.getElementById('prx-f-preview');
       var saveBtn = document.getElementById('prx-f-save');
       var dlBtn = document.getElementById('prx-f-download');

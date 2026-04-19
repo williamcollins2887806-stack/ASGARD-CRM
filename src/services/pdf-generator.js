@@ -143,63 +143,69 @@ function numberToWords(num) {
   return numberToWordsRu(num);
 }
 
-// ── Logo as base64 ─────────────────────────────────────────
-let logoBase64Cache = null;
-function getLogoBase64() {
-  if (logoBase64Cache) return logoBase64Cache;
+// ── Images as base64 ──────────────────────────────────────
+const imgCache = {};
+function getImgBase64(name) {
+  if (imgCache[name] !== undefined) return imgCache[name];
   try {
-    const logoPath = path.join(__dirname, '..', '..', 'public', 'assets', 'img', 'asgard_logo.png');
-    const buf = fs.readFileSync(logoPath);
-    logoBase64Cache = 'data:image/png;base64,' + buf.toString('base64');
+    const imgPath = path.join(__dirname, '..', '..', 'public', 'assets', 'img', name);
+    const buf = fs.readFileSync(imgPath);
+    imgCache[name] = 'data:image/png;base64,' + buf.toString('base64');
   } catch (e) {
-    logoBase64Cache = '';
+    imgCache[name] = '';
   }
-  return logoBase64Cache;
+  return imgCache[name];
 }
+function getLogoBase64() { return getImgBase64('asgard_logo.png'); }
+function getSignatureBase64() { return getImgBase64('signature.png'); }
+function getStampBase64() { return getImgBase64('stamp.png'); }
 
 // ── Common CSS ─────────────────────────────────────────────
 const BASE_CSS = `
-  @page { margin: 15mm 20mm; size: A4; }
+  @page { size: A4; margin: 0; }
   * { box-sizing: border-box; }
-  body { font-family: 'Times New Roman', 'DejaVu Serif', serif; font-size: 12pt; color: #000; line-height: 1.35; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', 'DejaVu Sans', Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; line-height: 1.45; margin: 0; padding: 0; }
   table { width: 100%; border-collapse: collapse; }
-  .mono { font-family: 'Courier New', monospace; }
   .right { text-align: right; }
   .center { text-align: center; }
-  .bold { font-weight: bold; }
+  .bold { font-weight: 600; }
   .small { font-size: 9pt; }
-  .muted { color: #666; }
+  .muted { color: #6B7280; }
 `;
 
 // ══════════════════════════════════════════════════════════════
 //  GENERATE TKP PDF
 // ══════════════════════════════════════════════════════════════
-async function generateTkpPdf(tkpId) {
+async function generateTkpPdf(tkpId, opts) {
+  opts = opts || {};
   const { rows: [tkp] } = await db.query('SELECT * FROM tkp WHERE id = $1', [tkpId]);
   if (!tkp) throw new Error('TKP not found');
 
   const company = await getCompanyProfile();
   const logo = getLogoBase64();
-  const vatRate = parseFloat(company.vat_rate || 22) / 100;
+  const signatureImg = opts.signature ? getSignatureBase64() : '';
+  const stampImg = opts.stamp ? getStampBase64() : '';
 
-  // Get TKP items
-  let items = [];
+  // Parse items from JSONB
+  let cj;
   try {
-    const { rows } = await db.query('SELECT * FROM tkp_items WHERE tkp_id = $1 ORDER BY position', [tkpId]);
-    items = rows;
-  } catch (e) {
-    items = [{
-      position: 1,
-      name: tkp.title || tkp.work_description || 'Выполнение работ',
-      unit: 'усл.', quantity: 1,
-      price: tkp.amount || 0, total: tkp.amount || 0,
-    }];
-  }
+    cj = typeof tkp.items === 'string' ? JSON.parse(tkp.items || '{}') : (tkp.items || {});
+  } catch (_) { cj = {}; }
+  const items = Array.isArray(cj.items) ? cj.items : [];
+  const vatPct = cj.vat_pct || 22;
+  const subtotal = cj.subtotal || items.reduce((s, r) => s + (r.total || (r.qty || r.quantity || 1) * (r.price || 0)), 0);
+  const vatSum = cj.vat_sum || Math.round(subtotal * vatPct / 100);
+  const totalWithVat = cj.total_with_vat || (subtotal + vatSum);
 
-  const subtotal = items.reduce((s, i) => s + (i.total || i.price * (i.quantity || 1)), 0);
-  const vat = subtotal * vatRate;
-  const total = subtotal + vat;
-  const vatPct = Math.round(vatRate * 100);
+  // Payment info
+  const paymentType = cj.payment_type || '';
+  const advancePct = cj.advance_pct || 0;
+  const deferredDays = cj.deferred_days || 0;
+  const paymentTerms = cj.payment_terms || '';
+
+  // Author
+  const authorName = cj.author_name || company.director_name || '';
+  const authorPos = cj.author_position || company.director_title || 'Генеральный директор';
 
   // Validity date
   let validityDate = '';
@@ -209,113 +215,188 @@ async function generateTkpPdf(tkpId) {
     validityDate = formatDate(d);
   }
 
+  // Customer card lines
+  const cardLines = [];
+  if (tkp.customer_name) cardLines.push({ label: 'Заказчик', value: tkp.customer_name });
+  if (tkp.customer_inn) cardLines.push({ label: 'ИНН', value: tkp.customer_inn + (cj.customer_kpp ? ' / КПП: ' + cj.customer_kpp : '') });
+  if (tkp.customer_address) cardLines.push({ label: 'Адрес', value: tkp.customer_address });
+  if (tkp.contact_person) cardLines.push({ label: 'Контактное лицо', value: tkp.contact_person });
+  const contacts = [tkp.contact_phone, tkp.contact_email].filter(Boolean).join(' | ');
+  if (contacts) cardLines.push({ label: 'Контакты', value: contacts });
+
+  // Conditions
+  const conditions = [];
+  if (tkp.deadline) conditions.push(`Сроки выполнения: ${tkp.deadline}`);
+  conditions.push(`Срок действия предложения: ${tkp.validity_days || 30} календарных дней${validityDate ? ' (до ' + validityDate + ')' : ''}`);
+  if (paymentTerms) conditions.push(`Условия оплаты: ${paymentTerms}`);
+  if (cj.notes || tkp.notes) conditions.push(`Примечание: ${cj.notes || tkp.notes}`);
+
   const html = `<!DOCTYPE html>
 <html lang="ru">
 <head><meta charset="UTF-8">
 <style>
 ${BASE_CSS}
-.header-table td { vertical-align: top; padding: 0; border: none; }
-.logo-cell { width: 140px; padding-right: 15px; }
-.logo-cell img { width: 130px; }
-.company-cell { font-size: 10pt; line-height: 1.5; }
-.company-name { font-size: 14pt; font-weight: bold; }
-.header-line { border-bottom: 2px solid #333; margin: 8px 0 20px; }
-.items-table th, .items-table td { border: 1px solid #333; padding: 5px 8px; font-size: 10.5pt; }
-.items-table th { background: #e8e8e8; font-weight: bold; text-align: center; font-size: 10pt; }
-.totals-row td { border: 1px solid #333; padding: 5px 8px; font-size: 11pt; font-weight: bold; }
-.grand-row td { border: 2px solid #333; padding: 6px 8px; font-size: 12pt; font-weight: bold; background: #f5f5f5; }
-.sign-line { display: inline-block; width: 200px; border-bottom: 1px solid #000; margin: 0 10px; }
+/* ── Header ── */
+.hdr { display: flex; align-items: flex-start; gap: 16px; margin-top: -10mm; }
+.hdr-logo { width: 165px; flex-shrink: 0; }
+.hdr-logo img { width: 100%; }
+.hdr-info { flex: 1; font-size: 9pt; color: #4B5563; line-height: 1.6; }
+.hdr-name { font-size: 13pt; font-weight: 700; color: #1E4D8C; margin-bottom: 2px; }
+.accent { height: 3px; display: flex; margin: 10px 0 18px; }
+.accent-blue { flex: 1; background: #1E4D8C; }
+.accent-red { flex: 1; background: #C8293B; }
+
+/* ── Title ── */
+.kp-title { text-align: center; font-size: 15pt; font-weight: 700; color: #1E4D8C; margin: 0 0 4px; }
+.kp-number { text-align: center; font-size: 10pt; color: #6B7280; margin-bottom: 16px; }
+
+/* ── Customer card ── */
+.card { background: #F8F9FA; border: 1px solid #E5E7EB; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; }
+.card-row { display: flex; gap: 8px; padding: 3px 0; font-size: 10pt; line-height: 1.4; }
+.card-label { font-weight: 600; color: #6B7280; min-width: 120px; flex-shrink: 0; }
+.card-value { color: #1a1a1a; word-wrap: break-word; overflow-wrap: break-word; }
+
+/* ── Section titles ── */
+.sec-title { font-size: 11pt; font-weight: 700; color: #1E4D8C; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #E5E7EB; }
+
+/* ── Items table ── */
+.items-table { margin: 8px 0 4px; border: 1px solid #D1D5DB; }
+.items-table th { background: #1E4D8C; color: #fff; font-weight: 600; font-size: 9pt; padding: 7px 6px; border: 1px solid #1E4D8C; text-align: center; white-space: nowrap; }
+.items-table td { border: 1px solid #D1D5DB; padding: 6px 8px; font-size: 9.5pt; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }
+.items-table tr:nth-child(even) td { background: #F8F9FA; }
+
+/* ── Totals ── */
+.totals-block { text-align: right; margin: 10px 0 16px; font-size: 10pt; line-height: 1.8; }
+.totals-block .grand { font-size: 12pt; font-weight: 700; color: #1E4D8C; border-top: 2px solid #1E4D8C; display: inline-block; padding-top: 4px; margin-top: 2px; }
+
+/* ── Conditions ── */
+.cond-list { margin: 6px 0 0; padding: 0; list-style: none; }
+.cond-list li { padding: 3px 0 3px 16px; position: relative; font-size: 10pt; line-height: 1.4; }
+.cond-list li::before { content: '•'; position: absolute; left: 0; color: #1E4D8C; font-weight: 700; }
+
+/* ── Signature ── */
+.sign-block { margin-top: 8px; border-top: 1px solid #E5E7EB; padding-top: 8px; position: relative; }
+.sign-row { display: flex; align-items: flex-end; gap: 20px; }
+.sign-pos { font-size: 10pt; font-weight: 600; width: 180px; }
+.sign-line { flex: 1; border-bottom: 1px solid #000; height: 1px; margin-bottom: 4px; position: relative; }
+.sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; }
+.sign-images { position: relative; height: 120px; overflow: hidden; margin: -50px 0 0; }
+.sign-signature { position: absolute; left: 180px; top: 0; height: 140px; }
+.sign-stamp { position: absolute; left: 136px; top: 0; height: 176px; opacity: 0.85; }
+
+/* ── Sum in words ── */
+.sum-words { font-size: 11pt; font-style: italic; color: #374151; margin: 18px 0 12px; }
+
+/* ── Footer ── */
+.footer { margin-top: 10px; text-align: center; font-size: 7.5pt; color: #9CA3AF; border-top: 1px solid #E5E7EB; padding-top: 4px; }
+
+/* ── Print / page control ── */
+html, body { height: auto !important; }
+tr { page-break-inside: avoid; }
+.card { page-break-inside: avoid; }
+.sign-block { page-break-inside: avoid; }
+.footer { page-break-inside: avoid; page-break-before: avoid; margin-top: 4px; }
+/* Предотвращаем пустые страницы от overflow */
+body { overflow: hidden; }
 </style>
 </head>
 <body>
 
-<!-- ═══ ШАПКА С ЛОГОТИПОМ ═══ -->
-<table class="header-table">
-  <tr>
-    ${logo ? `<td class="logo-cell"><img src="${logo}" alt="Logo"></td>` : ''}
-    <td class="company-cell">
-      <div class="company-name">${company.name || 'ООО «Асгард-Сервис»'}</div>
-      <div>${company.legal_address || ''}</div>
-      <div>ИНН / КПП: ${company.inn || ''} / ${company.kpp || ''}</div>
-      <div>${company.bank_name || ''}</div>
-      <div>р/с ${company.bank_rs || ''}, к/с ${company.bank_ks || ''}, БИК ${company.bank_bik || ''}</div>
-      <div>e-mail: ${company.email || ''}, тел: ${company.phone || ''}</div>
-    </td>
-  </tr>
-</table>
-<div class="header-line"></div>
-
-<!-- ═══ НОМЕР И ДАТА ═══ -->
-<div style="text-align:center;font-size:14pt;font-weight:bold;margin:15px 0 5px;">
-  №${tkp.tkp_number || 'АС-' + tkp.id} от ${formatDate(tkp.created_at)}
+<!-- HEADER -->
+<div class="hdr">
+  ${logo ? `<div class="hdr-logo"><img src="${logo}" alt="Logo"></div>` : ''}
+  <div class="hdr-info">
+    <div class="hdr-name">${company.name || 'ООО «Асгард-Сервис»'}</div>
+    <div>ИНН ${company.inn || ''} / КПП ${company.kpp || ''} / ОГРН ${company.ogrn || ''}</div>
+    <div>${company.legal_address || ''}</div>
+    <div>Тел: ${company.phone || ''} | E-mail: ${company.email || ''}</div>
+  </div>
 </div>
+<div class="accent"><div class="accent-blue"></div><div class="accent-red"></div></div>
 
-<!-- ═══ ПРИВЕТСТВИЕ ═══ -->
-<div style="margin:15px 0">
-  <p>Уважаемые коллеги!</p>
-  <p>Направляем Вам коммерческое предложение${tkp.work_description ? ' на ' + tkp.work_description : ''}.</p>
-</div>
+<!-- TITLE -->
+<div class="kp-title">КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ</div>
+<div class="kp-number">№ ${tkp.tkp_number || 'АС-' + tkp.id} от ${formatDate(tkp.created_at)}</div>
 
-${tkp.customer_name ? `
-<div style="margin:10px 0">
-  <b>Заказчик:</b> ${tkp.customer_name}${tkp.customer_inn ? ' (ИНН: ' + tkp.customer_inn + ')' : ''}
+${cardLines.length > 0 ? `
+<!-- CUSTOMER CARD -->
+<div class="card">
+  ${cardLines.map(l => `<div class="card-row"><span class="card-label">${l.label}:</span><span class="card-value">${l.value}</span></div>`).join('')}
 </div>` : ''}
 
-<!-- ═══ ТАБЛИЦА ПОЗИЦИЙ ═══ -->
-<table class="items-table" style="margin:15px 0">
+${tkp.subject ? `
+<!-- SUBJECT -->
+<div class="sec-title">Предмет предложения</div>
+<div style="font-weight:600;font-size:10.5pt;margin-bottom:4px">${tkp.subject}</div>` : ''}
+
+${tkp.work_description ? `<div style="font-size:10pt;color:#374151;margin-bottom:8px;white-space:pre-line">${tkp.work_description}</div>` : ''}
+
+${items.length > 0 ? `
+<!-- ITEMS TABLE -->
+<div class="sec-title">Состав работ и стоимость</div>
+<table class="items-table">
   <thead>
     <tr>
-      <th style="width:35px">№<br>п/п</th>
-      <th>Наименование работ</th>
-      <th style="width:55px">Ед.<br>изм.</th>
-      <th style="width:55px">Кол-во</th>
-      <th style="width:90px">Цена, руб.<br>без НДС</th>
-      <th style="width:100px">Сумма, руб.<br>без НДС</th>
+      <th style="width:28px">№</th>
+      <th>Наименование работ / услуг</th>
+      <th style="width:40px">Ед.</th>
+      <th style="width:40px">Кол.</th>
+      <th style="width:80px">Цена, ₽</th>
+      <th style="width:90px">Сумма, ₽</th>
     </tr>
   </thead>
   <tbody>
     ${items.map((item, i) => {
-      const lineTotal = item.total || item.price * (item.quantity || 1);
+      const qty = item.qty || item.quantity || 1;
+      const price = item.price || 0;
+      const lineTotal = item.total || qty * price;
       return `<tr>
-        <td class="center">${item.position || i + 1}</td>
-        <td>${item.name || item.title || '—'}</td>
+        <td class="center">${i + 1}</td>
+        <td>${item.name || '—'}</td>
         <td class="center">${item.unit || 'усл.'}</td>
-        <td class="center">${item.quantity || 1}</td>
-        <td class="right">${formatMoney(item.price)}</td>
+        <td class="center">${qty}</td>
+        <td class="right">${formatMoney(price)}</td>
         <td class="right">${formatMoney(lineTotal)}</td>
       </tr>`;
     }).join('')}
   </tbody>
-  <tfoot>
-    <tr class="totals-row">
-      <td colspan="5" class="right">Итого без НДС:</td>
-      <td class="right">${formatMoney(subtotal)}</td>
-    </tr>
-    <tr class="totals-row">
-      <td colspan="5" class="right">НДС (${vatPct}%):</td>
-      <td class="right">${formatMoney(vat)}</td>
-    </tr>
-    <tr class="grand-row">
-      <td colspan="5" class="right">Итого с НДС:</td>
-      <td class="right">${formatMoney(total)}</td>
-    </tr>
-  </tfoot>
 </table>
 
-<!-- ═══ ПРИМЕЧАНИЯ ═══ -->
-<div style="margin:15px 0;font-size:11pt">
-  ${tkp.notes ? `<p><b>Примечание:</b> ${tkp.notes}</p>` : ''}
-  <p>Срок действия ТКП${validityDate ? ' до ' + validityDate : ': 30 календарных дней'}.</p>
-  ${tkp.execution_days ? `<p>Срок выполнения работ: ${tkp.execution_days} дней.</p>` : ''}
+<!-- TOTALS -->
+<div class="totals-block">
+  <div>Итого без НДС: <b>${formatMoney(subtotal)} ₽</b></div>
+  <div>НДС ${vatPct}%: <b>${formatMoney(vatSum)} ₽</b></div>
+  <div class="grand">ИТОГО с НДС: ${formatMoney(totalWithVat)} ₽</div>
+</div>
+<div class="sum-words">Всего ${items.length} ${items.length === 1 ? 'позиция' : (items.length < 5 ? 'позиции' : 'позиций')} на сумму: <b>${numberToWordsRu(totalWithVat)}</b></div>
+` : (tkp.total_sum ? `
+<div class="totals-block">
+  <div class="grand">Итого: ${formatMoney(tkp.total_sum)} ₽</div>
+</div>
+<div class="sum-words">Сумма: <b>${numberToWordsRu(parseFloat(tkp.total_sum))}</b></div>
+` : '')}
+
+<!-- CONDITIONS -->
+<div class="sec-title">Условия</div>
+<ul class="cond-list">
+  ${conditions.map(c => `<li>${c}</li>`).join('')}
+</ul>
+
+<!-- SIGNATURE -->
+<div class="sign-block">
+  <div class="sign-row">
+    <div class="sign-pos">${authorPos}</div>
+    <div class="sign-line"></div>
+    <div class="sign-name">${authorName}</div>
+  </div>
+${(signatureImg || stampImg) ? `  <div class="sign-images">
+    ${signatureImg ? `<img class="sign-signature" src="${signatureImg}" alt="">` : ''}
+    ${stampImg ? `<img class="sign-stamp" src="${stampImg}" alt="">` : ''}
+  </div>` : `  <div style="text-align:center;font-size:8pt;color:#9CA3AF;margin-top:12px">М.П.</div>`}
 </div>
 
-<!-- ═══ ПОДПИСЬ ═══ -->
-<div style="margin:50px 0 0">
-  <div>${company.director_title || 'Генеральный директор'}</div>
-  <div style="margin:25px 0">
-    ${company.name} <span class="sign-line"></span> ${company.director_name || ''}
-  </div>
-</div>
+<!-- FOOTER -->
+<div class="footer">${company.name || 'ООО «Асгард-Сервис»'} — ${company.phone || ''} — ${company.email || ''}</div>
 
 </body></html>`;
 
@@ -325,7 +406,8 @@ ${tkp.customer_name ? `
   const pdfBuffer = await page.pdf({
     format: 'A4',
     printBackground: true,
-    margin: { top: '15mm', bottom: '15mm', left: '20mm', right: '20mm' }
+    margin: { top: '10mm', bottom: '10mm', left: '18mm', right: '18mm' },
+    displayHeaderFooter: false
   });
   await page.close();
   return pdfBuffer;

@@ -218,8 +218,8 @@ window.AsgardSearch = (function(){
     
     await loadHistory();
     
-    const typeOptions = Object.entries(SEARCH_TYPES).map(([k, v]) =>
-      `<option value="${k}">${v.icon} ${v.label}</option>`
+    const typeOpts = Object.entries(SEARCH_TYPES).map(([k, v]) =>
+      ({ value: k, label: v.icon + ' ' + v.label })
     ).join('');
     
     const overlay = document.createElement('div');
@@ -231,7 +231,7 @@ window.AsgardSearch = (function(){
           <div class="search-input-wrap">
             <span class="search-icon">🔍</span>
             <input type="text" id="searchInput" class="search-input" placeholder="Поиск по CRM..." autofocus/>
-            <select id="searchType" class="search-type">${typeOptions}</select>
+            <div id="crw_searchType" style="min-width:140px"></div>
           </div>
           <button class="btn ghost" id="closeSearch">✕</button>
         </div>
@@ -247,7 +247,13 @@ window.AsgardSearch = (function(){
     `;
     
     document.body.appendChild(overlay);
-    
+
+    $('#crw_searchType')?.appendChild(CRSelect.create({
+      id: 'searchType', fullWidth: true, value: 'all',
+      options: typeOpts, dropdownClass: 'z-modal',
+      onChange: () => doSearch()
+    }));
+
     const input = $('#searchInput');
     const resultsEl = $('#searchResults');
     let currentResults = [];
@@ -256,7 +262,7 @@ window.AsgardSearch = (function(){
     
     async function doSearch() {
       const query = input.value.trim();
-      const type = $('#searchType')?.value || 'all';
+      const type = CRSelect.getValue('searchType') || 'all';
       
       currentResults = await search(query, type);
       resultsEl.innerHTML = renderResults(currentResults, query);
@@ -302,7 +308,7 @@ window.AsgardSearch = (function(){
       debounceTimer = setTimeout(doSearch, 200);
     });
     
-    $('#searchType').addEventListener('change', doSearch);
+    // searchType onChange handled by CRSelect
     
     input.addEventListener('keydown', (e) => {
       const items = $$('.search-result-item');
@@ -324,7 +330,7 @@ window.AsgardSearch = (function(){
     });
     
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeSearchModal();
+      if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY);
     });
     
     $('#closeSearch').addEventListener('click', closeSearchModal);
@@ -333,11 +339,20 @@ window.AsgardSearch = (function(){
     input.focus();
   }
   
-  // Закрыть модалку
+  // Закрыть модалку с анимацией
   function closeSearchModal() {
+    CRSelect.destroy('searchType');
     const overlay = $('#searchOverlay');
     if (overlay) {
-      overlay.remove();
+      overlay.style.transition = 'opacity 0.25s ease';
+      overlay.style.opacity = '0';
+      const modal = $('.search-modal', overlay);
+      if (modal) {
+        modal.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
+        modal.style.transform = 'translateY(-12px) scale(0.97)';
+        modal.style.opacity = '0';
+      }
+      setTimeout(() => overlay.remove(), 260);
     }
     isOpen = false;
   }

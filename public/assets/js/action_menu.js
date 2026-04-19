@@ -222,6 +222,7 @@ window.AsgardActionMenu = (function () {
   function hide() {
     const el = document.getElementById(MENU_ID);
     if (!el) return;
+    el.style.pointerEvents = 'none';
     el.classList.remove('aam-visible');
     setTimeout(() => el.remove(), 220);
     document.removeEventListener('keydown', _onKey);
@@ -322,7 +323,7 @@ window.AsgardActionMenu = (function () {
 
     // Click outside panel
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) hide();
+      if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY);
     });
 
     // Escape key

@@ -5,10 +5,9 @@
  * Без бухгалтерии, без оплаты. Просчёт — это калькуляция.
  */
 window.AsgardAllEstimatesPage = (function() {
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
   function ymNow() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
-  function money(x) { if (x === null || x === undefined || x === '') return '—'; const n = Number(x); return isNaN(n) ? esc(String(x)) : n.toLocaleString('ru-RU'); }
   function norm(s) { return String(s || '').toLowerCase().trim(); }
   function isDirectorRole(role) { return role === 'ADMIN' || String(role || '').startsWith('DIRECTOR'); }
 
@@ -33,9 +32,10 @@ window.AsgardAllEstimatesPage = (function() {
   }
 
   function getHeaders() {
+    const auth = typeof AsgardAuth !== 'undefined' ? AsgardAuth.getAuth() : null;
     return {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '')
+      'Authorization': 'Bearer ' + (auth?.token || localStorage.getItem('asgard_token') || '')
     };
   }
 
@@ -48,7 +48,7 @@ window.AsgardAllEstimatesPage = (function() {
     const users = await AsgardDB.all('users');
     const byId = new Map(users.filter(u => u.is_active).map(u => [u.id, u]));
     const settings = await AsgardDB.get('settings', 'app');
-    const vatPct = settings ? (JSON.parse(settings.value_json || '{}').vat_pct || 20) : 20;
+    const vatPct = settings ? (JSON.parse(settings.value_json || '{}').vat_pct || 22) : 22;
     const tenders = await AsgardDB.all('tenders');
     let estimates = await AsgardDB.all('estimates');
     let sortKey = 'sent_for_approval_at';
@@ -68,15 +68,10 @@ window.AsgardAllEstimatesPage = (function() {
 
     const filterHtml = `
       <div class="tools">
-        <div class="field"><label>Период</label><select id="f_period">${generatePeriodOptions(ymNow())}</select></div>
+        <div class="field"><label>Период</label><div id="f_period_w"></div></div>
         <div class="field"><label>Поиск</label><input id="f_q" placeholder="заказчик / тендер"/></div>
-        <div class="field"><label>РП</label><select id="f_pm"><option value="">Все</option>${
-          users.filter(u => u.is_active && (u.role === 'PM' || u.role === 'HEAD_PM'))
-            .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')
-        }</select></div>
-        <div class="field"><label>Статус</label><select id="f_a"><option value="">Все</option>${
-          Object.entries(STATUS_MAP).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')
-        }</select></div>
+        <div class="field"><label>РП</label><div id="f_pm_w"></div></div>
+        <div class="field"><label>Статус</label><div id="f_a_w"></div></div>
       </div>`;
 
     const body = `<div class="panel">
@@ -100,6 +95,19 @@ window.AsgardAllEstimatesPage = (function() {
     const tb = $('#tb');
     const cnt = $('#cnt');
 
+    // ─── CRSelect filters ───
+    const periodOpts = [{ value: '', label: 'Все' }];
+    { const now2 = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+        const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
+      }
+    }
+    $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => apply() }));
+    $('#f_pm_w').appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...users.filter(u => u.is_active && (u.role === 'PM' || u.role === 'HEAD_PM')).map(p => ({ value: String(p.id), label: p.name }))], onChange: () => apply() }));
+    $('#f_a_w').appendChild(CRSelect.create({ id: 'f_a', options: [{ value: '', label: 'Все' }, ...Object.entries(STATUS_MAP).map(([k, v]) => ({ value: k, label: v.label }))], onChange: () => apply() }));
+
     function sortBy(key, dir) {
       return (a, b) => {
         const av = a[key] ?? '';
@@ -113,7 +121,7 @@ window.AsgardAllEstimatesPage = (function() {
       const t = tenders.find(x => x.id === e.tender_id);
       const pm = byId.get(e.pm_id);
       const priceNoVat = e.price_tkp != null ? Math.round(Number(e.price_tkp) / (1 + vatPct / 100)) : null;
-      const sent = e.sent_for_approval_at ? new Date(e.sent_for_approval_at).toLocaleDateString('ru-RU') : '';
+      const sent = e.sent_for_approval_at ? AsgardUI.formatDate(e.sent_for_approval_at) : '';
       return `<tr data-id="${e.id}">
         <td><b>${esc(t?.customer_name || '—')}</b><div class="help">${esc(t?.tender_title || '—')}</div></td>
         <td>${esc(pm ? pm.name : '—')}</td>
@@ -121,15 +129,16 @@ window.AsgardAllEstimatesPage = (function() {
         <td>${statusPill(e.approval_status || 'draft')}${sent ? `<div class="help" style="margin-top:4px">${sent}</div>` : ''}</td>
         <td><b>${money(e.price_tkp)}</b>${priceNoVat != null ? `<div class="help">б/НДС: ${money(priceNoVat)}</div>` : ''}</td>
         <td>${money(e.cost_plan)}</td>
-        <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button></td>
+        <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button> <a href="#/estimate-report?id=${e.id}" class="btn" style="padding:6px 10px;background:var(--blue);color:#fff;text-decoration:none" data-act="report">Отчёт</a></td>
       </tr>`;
     }
 
     function apply() {
-      const per = norm($('#f_period').value);
+      if (!$('#f_period_w')) return; // DOM not ready
+      const per = norm(CRSelect.getValue('f_period') || '');
       const q = norm($('#f_q').value);
-      const pm = $('#f_pm').value;
-      const a = $('#f_a').value;
+      const pm = CRSelect.getValue('f_pm') || '';
+      const a = CRSelect.getValue('f_a') || '';
       let list = estimates.filter(e => {
         const t = tenders.find(x => x.id === e.tender_id);
         if (per && norm(t?.period || '') !== per) return false;
@@ -156,8 +165,8 @@ window.AsgardAllEstimatesPage = (function() {
       if (!e) { toast('Ошибка', 'Просчёт не найден', 'err'); return; }
       const t = tenders.find(x => x.id === e.tender_id);
       const pm = byId.get(e.pm_id);
-      const sent = e.sent_for_approval_at ? new Date(e.sent_for_approval_at).toLocaleString('ru-RU') : '—';
-      const decided = e.decided_at ? new Date(e.decided_at).toLocaleString('ru-RU') : null;
+      const sent = e.sent_for_approval_at ? AsgardUI.formatDateTime(e.sent_for_approval_at) : '—';
+      const decided = e.decided_at ? AsgardUI.formatDateTime(e.decided_at) : null;
       const decidedBy = e.decided_by_user_id ? byId.get(e.decided_by_user_id) : null;
 
       const canAct = isDirectorRole(user.role) && e.approval_status === 'sent';
@@ -215,18 +224,38 @@ window.AsgardAllEstimatesPage = (function() {
       showModal(`Просчёт #${id}`, html);
 
       // ─── Обработчики кнопок директора ───
+      // Все действия через /api/approval/estimates/:id/<action>
+      const actionMap = { approved: 'approve', rework: 'rework', question: 'question', rejected: 'reject' };
+
       async function doAction(newStatus, requireComment) {
         const comm = (document.getElementById('a_comm')?.value || '').trim();
         if (requireComment && !comm) { toast('Ошибка', 'Нужен комментарий', 'err'); return; }
         try {
-          const resp = await fetch(`/api/data/estimates/${id}`, {
-            method: 'PUT', headers: getHeaders(),
-            body: JSON.stringify({ approval_status: newStatus, approval_comment: comm || null })
+          const action = actionMap[newStatus];
+          if (!action) throw new Error('Неизвестное действие');
+          const resp = await fetch(`/api/approval/estimates/${id}/${action}`, {
+            method: 'POST', headers: getHeaders(),
+            body: JSON.stringify({ comment: comm || null })
           });
           if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Ошибка'); }
           await AsgardDB.put('estimates', { ...(await AsgardDB.get('estimates', id)), approval_status: newStatus, approval_comment: comm });
           estimates = await AsgardDB.all('estimates');
           toast('Готово', statusLabel(newStatus), 'ok');
+          apply();
+          AsgardUI.hideModal();
+        } catch (err) { toast('Ошибка', err.message, 'err'); }
+      }
+
+      async function doResubmit() {
+        try {
+          const resp = await fetch(`/api/approval/estimates/${id}/resubmit`, {
+            method: 'POST', headers: getHeaders(),
+            body: JSON.stringify({})
+          });
+          if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Ошибка'); }
+          await AsgardDB.put('estimates', { ...(await AsgardDB.get('estimates', id)), approval_status: 'sent' });
+          estimates = await AsgardDB.all('estimates');
+          toast('Готово', 'Отправлено повторно', 'ok');
           apply();
           AsgardUI.hideModal();
         } catch (err) { toast('Ошибка', err.message, 'err'); }
@@ -242,16 +271,13 @@ window.AsgardAllEstimatesPage = (function() {
       if (btnRework) btnRework.addEventListener('click', () => doAction('rework', true));
       if (btnQuestion) btnQuestion.addEventListener('click', () => doAction('question', true));
       if (btnReject) btnReject.addEventListener('click', () => doAction('rejected', true));
-      if (btnResend) btnResend.addEventListener('click', () => doAction('sent', false));
+      if (btnResend) btnResend.addEventListener('click', () => doResubmit());
     }
 
     // ─── Events ───
     estimates = await AsgardDB.all('estimates');
     apply();
-    $('#f_period').addEventListener('input', apply);
     $('#f_q').addEventListener('input', apply);
-    $('#f_pm').addEventListener('change', apply);
-    $('#f_a').addEventListener('change', apply);
     $$('[data-sort]').forEach(th => {
       th.addEventListener('click', () => {
         const k = th.getAttribute('data-sort');

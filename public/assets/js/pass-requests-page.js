@@ -99,8 +99,8 @@ window.AsgardPassRequestsPage = (function() {
         <div><label>Объект</label><input id="prObj" value="${esc(item.object_name || '')}" placeholder="Название объекта" /></div>
       </div>
       <div class="formrow">
-        <div><label>Дата с</label><input id="prFrom" type="date" value="${item.pass_date_from || ''}" /></div>
-        <div><label>Дата по</label><input id="prTo" type="date" value="${item.pass_date_to || ''}" /></div>
+        <div><label>Дата с</label><input id="prFrom" type="date" value="${(item.pass_date_from || '').slice(0,10)}" /></div>
+        <div><label>Дата по</label><input id="prTo" type="date" value="${(item.pass_date_to || '').slice(0,10)}" /></div>
       </div>
       <div class="formrow">
         <div><label>Контактное лицо</label><input id="prContact" value="${esc(item.contact_person || '')}" /></div>
@@ -130,7 +130,7 @@ window.AsgardPassRequestsPage = (function() {
         ${id && ['draft','submitted'].includes(item.status) ? '<button class="btn" id="btnSubmitPass">📨 Подать</button>' : ''}
       </div>`;
 
-    showModal(id ? `Заявка #${id}` : 'Новая заявка на пропуск', html);
+    showModal({ title: id ? `Заявка #${id}` : 'Новая заявка на пропуск', html, icon: '🪪', subtitle: 'Заявка на пропуск' });
 
     $('#btnSavePass')?.addEventListener('click', async () => {
       const employees = (window.__passReqSelectedEmps || []).map(e => ({ fio: e.fio, employee_id: e.id }));

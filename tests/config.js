@@ -7,7 +7,7 @@ const https = require('https');
 const _sharedAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true, maxSockets: 10 });
 const http = require('http');
 
-const BASE_URL = 'https://127.0.0.1';
+const BASE_URL = process.env.TEST_BASE_URL || 'https://92.242.61.184';
 const API_URL = `${BASE_URL}/api`;
 
 const TEST_PASSWORD = 'Test123!';
@@ -100,11 +100,23 @@ async function rawFetch(method, urlPath, opts = {}) {
     delete fetchOpts.headers['Content-Type'];
   }
 
-  const resp = await fetch(fullUrl, fetchOpts);
-  const text = await resp.text();
-  let data;
-  try { data = JSON.parse(text); } catch { data = text; }
-  return { status: resp.status, ok: resp.ok, data, text, headers: resp.headers };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  fetchOpts.signal = controller.signal;
+  try {
+    const resp = await fetch(fullUrl, fetchOpts);
+    clearTimeout(timer);
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = text; }
+    return { status: resp.status, ok: resp.ok, data, text, headers: resp.headers };
+  } catch (e) {
+    clearTimeout(timer);
+    // Retry once on network error
+    if (opts._retried) throw e;
+    await new Promise(r => setTimeout(r, 500));
+    return rawFetch(method, urlPath, { ...opts, _retried: true });
+  }
 }
 
 async function getToken(role) {
@@ -115,17 +127,19 @@ async function getToken(role) {
   const agent = _sharedAgent;
 
   // Step 1: Login
+  const ac1 = new AbortController(); setTimeout(() => ac1.abort(), 15000);
   const loginResp = await fetch(`${API_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ login: account.login, password: account.password }),
-    agent,
+    agent, signal: ac1.signal,
   });
   const loginData = await loginResp.json();
   if (!loginData.token) throw new Error(`Login failed for ${role}: ${JSON.stringify(loginData)}`);
 
   // Step 2: Verify PIN if needed
   if (loginData.status === 'need_pin') {
+    const ac2 = new AbortController(); setTimeout(() => ac2.abort(), 15000);
     const pinResp = await fetch(`${API_URL}/auth/verify-pin`, {
       method: 'POST',
       headers: {
@@ -133,7 +147,7 @@ async function getToken(role) {
         'Authorization': `Bearer ${loginData.token}`,
       },
       body: JSON.stringify({ pin: account.pin }),
-      agent,
+      agent, signal: ac2.signal,
     });
     const pinData = await pinResp.json();
     if (pinData.token) {
@@ -181,12 +195,22 @@ async function api(method, urlPath, opts = {}) {
     fetchOpts.body = JSON.stringify(body);
   }
 
-  const resp = await fetch(fullUrl, fetchOpts);
-  const text = await resp.text();
-  let data;
-  try { data = JSON.parse(text); } catch { data = { raw: text }; }
-
-  return { status: resp.status, ok: resp.ok, data };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  fetchOpts.signal = controller.signal;
+  try {
+    const resp = await fetch(fullUrl, fetchOpts);
+    clearTimeout(timer);
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    return { status: resp.status, ok: resp.ok, data };
+  } catch (e) {
+    clearTimeout(timer);
+    if (opts._retried) throw e;
+    await new Promise(r => setTimeout(r, 500));
+    return api(method, urlPath, { ...opts, _retried: true });
+  }
 }
 
 // ── Assert helpers ───────────────────────────────

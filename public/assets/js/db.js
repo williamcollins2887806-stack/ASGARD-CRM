@@ -35,6 +35,7 @@ window.AsgardDB = (function(){
     options = options || {};
     const isIdempotentRead = !options.method || options.method === 'GET' || (options.method === 'POST' && url.indexOf('/by-index') !== -1);
     const maxRetries = isIdempotentRead ? 2 : 0;
+    const requestToken = getToken(); // capture token at request start
     let lastError;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -44,9 +45,15 @@ window.AsgardDB = (function(){
           headers: Object.assign({}, headers(), options.headers || {}),
           body: options.body
         });
-      
-      // При 401 - сессия истекла, перенаправляем на вход
+
+      // При 401 - проверяем не устарел ли запрос (race condition при логине)
       if (resp.status === 401) {
+        const currentToken = getToken();
+        if (currentToken && currentToken !== requestToken) {
+          // Token changed since request started — stale 401, ignore
+          console.warn('[AsgardDB] Stale 401 (token refreshed), ignoring:', url);
+          return null;
+        }
         console.warn('[AsgardDB] Unauthorized:', url);
         localStorage.removeItem('asgard_token');
         localStorage.removeItem('asgard_user');
@@ -305,7 +312,7 @@ window.AsgardDB = (function(){
       
       return items;
     } catch(e) {
-      console.error('[AsgardDB] all() error:', store, e);
+      console.warn('[AsgardDB] all() error:', store, e.message || e);
       return [];
     }
   }
@@ -340,7 +347,7 @@ window.AsgardDB = (function(){
       
       return data.id || (data.item && data.item.id);
     } catch(e) {
-      console.error('[AsgardDB] add() error:', store, e);
+      console.warn('[AsgardDB] add() error:', store, e.message || e);
       throw e;
     }
   }
@@ -383,7 +390,7 @@ window.AsgardDB = (function(){
       
       return data.id || (data.item && data.item.id) || val.id;
     } catch(e) {
-      console.error('[AsgardDB] put() error:', store, e);
+      console.warn('[AsgardDB] put() error:', store, e.message || e);
       throw e;
     }
   }
@@ -402,7 +409,7 @@ window.AsgardDB = (function(){
       
       return true;
     } catch(e) {
-      console.error('[AsgardDB] del() error:', store, key, e);
+      console.warn('[AsgardDB] del() error:', store, key, e.message || e);
       return false;
     }
   }
@@ -560,7 +567,6 @@ window.AsgardDB = (function(){
     employees: { keyPath: "id" },
     employee_reviews: { keyPath: "id" },
     staff_requests: { keyPath: "id" },
-    purchase_requests: { keyPath: "id" },
     staff_request_messages: { keyPath: "id", indices: [{ name: "staff_request_id", keyPath: "staff_request_id" }] },
     staff_replacements: { keyPath: "id", indices: [{ name: "staff_request_id", keyPath: "staff_request_id" }] },
     documents: { keyPath: "id" },

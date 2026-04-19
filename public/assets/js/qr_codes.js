@@ -66,7 +66,7 @@ window.AsgardQR = (function(){
     
     // Закрытие
     modal.querySelector('.btnClose').onclick = () => modal.remove();
-    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
     
     // Копировать ссылку
     document.getElementById('btnCopyUrl').onclick = () => {
@@ -157,7 +157,7 @@ window.AsgardQR = (function(){
     };
     
     modal.querySelector('.btnClose').onclick = closeScanner;
-    modal.onclick = e => { if (e.target === modal) closeScanner(); };
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
     
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -264,7 +264,7 @@ window.AsgardQR = (function(){
   }
 
   // Helper
-  function esc(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
   return {
     generateQR,

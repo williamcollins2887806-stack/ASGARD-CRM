@@ -30,8 +30,8 @@ module.exports = async function (fastify) {
     if (isAdmin) {
       query = `
         SELECT bt.*,
-               u.fio AS author_name,
-               w.name AS work_name,
+               u.name AS author_name,
+               w.work_title AS work_name,
                si.object_name
         FROM business_trips bt
         LEFT JOIN users u ON u.id = bt.author_id
@@ -44,8 +44,8 @@ module.exports = async function (fastify) {
     } else {
       query = `
         SELECT bt.*,
-               u.fio AS author_name,
-               w.name AS work_name,
+               u.name AS author_name,
+               w.work_title AS work_name,
                si.object_name
         FROM business_trips bt
         LEFT JOIN users u ON u.id = bt.author_id
@@ -135,11 +135,11 @@ module.exports = async function (fastify) {
     await fs.writeFile(filepath, await data.toBuffer());
 
     await db.query(`
-      INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+      INSERT INTO documents (filename, original_name, mime_type, size, type, trip_id, uploaded_by, download_url, created_at)
       VALUES ($1, $2, $3, $4, 'travel', $5, $6, $7, NOW())
     `, [
       filename, data.filename, data.mimetype, data.file.bytesRead || 0,
-      id, request.user.id, `/api/travel/${id}/files/${filename}`,
+      id, request.user.id, `/api/files/download/${filename}`,
     ]);
 
     return reply.send({ ok: true, filename });

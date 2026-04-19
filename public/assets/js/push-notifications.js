@@ -440,8 +440,37 @@ window.AsgardPush = (function() {
         return;
       }
 
-      if (!window.AsgardUI || !AsgardUI.toast) return;
-      AsgardUI.toast('Уведомления', 'Включите push-уведомления в настройках браузера', 'ok');
+      // Desktop fallback — use AsgardUI modal
+      if (window.AsgardUI && AsgardUI.showModal) {
+        var modalHtml = '<div class="cr-push-prompt">'
+          + '<p>Включите push-уведомления, чтобы получать важные события CRM даже когда вкладка закрыта.</p>'
+          + '<div class="cr-push-prompt__actions">'
+          + '<button class="btn primary" id="pushPromptYes">Включить уведомления</button>'
+          + '<button class="btn ghost" id="pushPromptNo">Позже</button>'
+          + '</div></div>';
+        AsgardUI.showModal('Push-уведомления', modalHtml);
+        var yesD = document.getElementById('pushPromptYes');
+        var noD = document.getElementById('pushPromptNo');
+        if (yesD) yesD.addEventListener('click', async function() {
+          yesD.disabled = true;
+          yesD.textContent = 'Подключаем...';
+          var result = await subscribe();
+          AsgardUI.hideModal();
+          if (result.success) {
+            AsgardUI.toast('Уведомления', 'Push-уведомления включены');
+          } else if (result.reason === 'denied') {
+            AsgardUI.toast('Уведомления', 'Доступ к уведомлениям отклонен браузером', 'err');
+          } else {
+            AsgardUI.toast('Уведомления', 'Не удалось включить: ' + (result.reason || 'ошибка'), 'err');
+          }
+        });
+        if (noD) noD.addEventListener('click', function() {
+          var c = parseInt(localStorage.getItem('asgard_push_dismissed') || '0', 10);
+          localStorage.setItem('asgard_push_dismissed', String(c + 1));
+          AsgardUI.hideModal();
+        });
+        return;
+      }
     }, 5000);
   }
 

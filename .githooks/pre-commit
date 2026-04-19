@@ -1,0 +1,10 @@
+#!/bin/sh
+FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(js|jsx|ts|tsx|css|html|json)$')
+if [ -z "$FILES" ]; then exit 0; fi
+BAD=$(echo "$FILES" | xargs -r grep -lP '[\x{201c}\x{201d}\x{2018}\x{2019}]' 2>/dev/null)
+if [ -n "$BAD" ]; then
+  echo "ERROR: Unicode smart quotes detected in:"
+  echo "$BAD"
+  echo "Fix with: perl -CSD -i -pe 's/[\\x{201c}\\x{201d}]/\"/g' <file>"
+  exit 1
+fi

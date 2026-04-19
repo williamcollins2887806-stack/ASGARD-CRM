@@ -272,7 +272,7 @@ window.AsgardObjectMap = (function() {
         const n = Number(v || 0);
         if (n >= 1000000) return (n / 1000000).toFixed(1) + ' млн ₽';
         if (n >= 1000) return (n / 1000).toFixed(0) + ' тыс ₽';
-        return n.toLocaleString('ru-RU') + ' ₽';
+        return AsgardUI.money(n) + ' ₽';
       };
 
       const workStatusIcon = (s) => {
@@ -499,15 +499,7 @@ window.AsgardObjectMap = (function() {
           </div>
           <div class="form-field">
             <label>Тип объекта</label>
-            <select class="inp" id="siteTypeInput">
-              <option value="platform">Морская платформа</option>
-              <option value="terminal">Терминал</option>
-              <option value="refinery">НПЗ</option>
-              <option value="port">Порт</option>
-              <option value="plant">Завод</option>
-              <option value="office">Офис</option>
-              <option value="object" selected>Объект</option>
-            </select>
+            <div id="crw_siteTypeInput"></div>
           </div>
           <div class="form-field full-width">
             <label>Адрес / местоположение</label>
@@ -521,12 +513,24 @@ window.AsgardObjectMap = (function() {
         </div>
       `,
       onMount: () => {
+        document.getElementById('crw_siteTypeInput')?.appendChild(CRSelect.create({
+          id: 'siteTypeInput', fullWidth: true, value: 'object', dropdownClass: 'z-modal',
+          options: [
+            { value: 'platform', label: 'Морская платформа' },
+            { value: 'terminal', label: 'Терминал' },
+            { value: 'refinery', label: 'НПЗ' },
+            { value: 'port', label: 'Порт' },
+            { value: 'plant', label: 'Завод' },
+            { value: 'office', label: 'Офис' },
+            { value: 'object', label: 'Объект' }
+          ]
+        }));
         document.getElementById('btnSaveSite').addEventListener('click', async () => {
           const name = document.getElementById('siteNameInput').value.trim();
           if (!name) { toast('Ошибка', 'Укажите название', 'err'); return; }
 
           const customer = document.getElementById('siteCustomerInput').value.trim();
-          const siteType = document.getElementById('siteTypeInput').value;
+          const siteType = CRSelect.getValue('siteTypeInput');
           const address = document.getElementById('siteAddressInput').value.trim();
 
           let lat = null, lng = null, region = '', geoStatus = 'pending';

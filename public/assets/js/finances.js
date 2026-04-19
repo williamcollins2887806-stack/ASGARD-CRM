@@ -1,20 +1,23 @@
 // Stage 12: Финансовая аналитика (Расходы/Поступления) — как в Сбере/МТС
 window.AsgardFinancesPage = (function(){
-  const { $, $$, esc, toast, showModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, money } = AsgardUI;
 
   const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
   const MONTHS_FULL = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
-  // Категории расходов по работам
+  // Категории расходов по работам — 1:1 с категориями в БД
   const EXPENSE_CATEGORIES = [
-    { key: 'fot', label: 'ФОТ', color: 'var(--err-t)', icon: '👷' },
-    { key: 'logistics', label: 'Логистика', color: 'var(--amber)', icon: '🚚' },
-    { key: 'accommodation', label: 'Проживание', color: 'var(--purple)', icon: '🏨' },
-    { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗' },
-    { key: 'chemicals', label: 'Химия', color: 'var(--ok-t)', icon: '🧪' },
-    { key: 'equipment', label: 'Оборудование', color: 'var(--info)', icon: '🔧' },
-    { key: 'subcontract', label: 'Субподряд', color: '#ec4899', icon: '🤝' },
-    { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
+    { key: 'fot', label: 'ФОТ', color: '#e74c3c', icon: '👷' },
+    { key: 'per_diem', label: 'Суточные', color: '#f39c12', icon: '🍽' },
+    { key: 'cash', label: 'Наличные', color: '#e67e22', icon: '💵' },
+    { key: 'materials', label: 'Материалы', color: '#16a085', icon: '📦' },
+    { key: 'tickets', label: 'Билеты', color: '#2ecc71', icon: '✈' },
+    { key: 'accommodation', label: 'Проживание', color: '#2980b9', icon: '🏨' },
+    { key: 'chemicals', label: 'Химия', color: '#9b59b6', icon: '🧪' },
+    { key: 'equipment', label: 'Оборудование', color: '#8e44ad', icon: '🔧' },
+    { key: 'subcontract', label: 'Субподряд', color: '#d35400', icon: '🤝' },
+    { key: 'transfer', label: 'Трансфер', color: '#1abc9c', icon: '🚗' },
+    { key: 'other', label: 'Прочее', color: '#7f8c8d', icon: '📋' }
   ];
 
   // Категории офисных расходов
@@ -30,14 +33,6 @@ window.AsgardFinancesPage = (function(){
     { key: 'representation', label: 'Представительские', color: '#14b8a6', icon: '🎁' },
     { key: 'other_office', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
   ];
-
-  function money(x){ 
-    if(x===null||x===undefined||x==="") return "0"; 
-    const n=Number(x); 
-    if(isNaN(n)) return "0"; 
-    return n.toLocaleString("ru-RU"); 
-  }
-
   function moneyShort(x){
     if(x===null||x===undefined||x==="") return "0";
     const n=Math.abs(Number(x));
@@ -72,10 +67,19 @@ window.AsgardFinancesPage = (function(){
     const workExpenses = await AsgardDB.all("work_expenses").catch(()=>[]);
     const officeExpenses = await AsgardDB.all("office_expenses").catch(()=>[]);
 
-    // Маппинг алиасов категорий
-    const CAT_ALIASES = { 'chemistry': 'chemicals', 'transport': 'transfer', 'Материалы': 'chemicals' };
-    function normCat(c) { return CAT_ALIASES[c] || c || 'other'; }
-    function catExists(c) { return EXPENSE_CATEGORIES.some(x => x.key === c); }
+    // Маппинг алиасов — только реальные синонимы, не натяжки
+    const CAT_ALIASES = {
+      'payroll': 'fot',         // payroll и fot — одно и то же
+      'fot_tax': 'fot',         // налоговая нагрузка → ФОТ
+      'chemistry': 'chemicals', // легаси алиас
+      'transport': 'transfer',  // легаси алиас
+      'Материалы': 'materials'  // русский алиас
+    };
+    function normCat(c) {
+      const mapped = CAT_ALIASES[c] || c || 'other';
+      // Если категории нет в списке → other
+      return EXPENSE_CATEGORIES.some(x => x.key === mapped) ? mapped : 'other';
+    }
 
     // Собираем данные по расходам и доходам
     function collectData(year){

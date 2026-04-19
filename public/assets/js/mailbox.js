@@ -95,9 +95,7 @@ window.AsgardMailboxPage = (function(){
     archived:      { label: 'Архив',          color: 'var(--t2)' }
   };
 
-  function money(n) {
-    return Math.round(Number(n || 0)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' &#8381;';
-  }
+  function money(x) { return AsgardUI.money(Math.round(Number(x || 0))) + ' ₽'; }
 
   // ═══════════════════════════════════════════════════════════════════
   // RENDER — Main Layout
@@ -148,13 +146,7 @@ window.AsgardMailboxPage = (function(){
       <div id="mail-list-panel" style="width:380px; min-width:300px; border-right:1px solid var(--border); display:flex; flex-direction:column; background:var(--bg-main);">
         <div style="padding:8px 12px; border-bottom:1px solid var(--border); display:flex; gap:6px; align-items:center;">
           <input id="mail-search" type="text" placeholder="Поиск..." style="flex:1; padding:6px 10px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:13px;">
-          <select id="mail-type-filter" style="padding:6px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:12px;">
-            <option value="">Все типы</option>
-            <option value="direct_request">Прямые запросы</option>
-            <option value="platform_tender">Тендерные</option>
-            <option value="newsletter">Рассылки</option>
-            <option value="internal">Внутренние</option>
-          </select>
+          <div id="crselect-mail-type-filter"></div>
           <button id="btn-refresh-mail" title="Обновить" style="padding:6px 10px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; cursor:pointer; color:var(--text-primary);">&#x21bb;</button>
         </div>
         <!-- Bulk actions -->
@@ -178,6 +170,21 @@ window.AsgardMailboxPage = (function(){
     </div>`;
 
     await layout(html, { title: title || 'Почта' });
+
+    // CRSelect init — mail type filter
+    const _mtfWrap = document.getElementById('crselect-mail-type-filter');
+    if (_mtfWrap) _mtfWrap.appendChild(CRSelect.create({
+      id: 'mail-type-filter',
+      options: [
+        { value: '', label: 'Все типы' },
+        { value: 'direct_request', label: 'Прямые запросы' },
+        { value: 'platform_tender', label: 'Тендерные' },
+        { value: 'newsletter', label: 'Рассылки' },
+        { value: 'internal', label: 'Внутренние' },
+      ],
+      placeholder: 'Все типы',
+      onChange: (val) => { state.typeFilter = val; state.page = 0; loadEmails(); },
+    }));
 
     bindEvents();
     await loadStats();
@@ -237,8 +244,7 @@ window.AsgardMailboxPage = (function(){
       el.addEventListener('click', () => {
         state.folder = 'inbox';
         state.typeFilter = el.dataset.type;
-        const sel = $('#mail-type-filter');
-        if (sel) sel.value = state.typeFilter;
+        CRSelect.setValue('mail-type-filter', state.typeFilter);
         state.page = 0;
         loadEmails();
         renderFolders();
@@ -863,15 +869,7 @@ window.AsgardMailboxPage = (function(){
       });
     }
 
-    // Type filter
-    const typeFilter = $('#mail-type-filter');
-    if (typeFilter) {
-      typeFilter.addEventListener('change', () => {
-        state.typeFilter = typeFilter.value;
-        state.page = 0;
-        loadEmails();
-      });
-    }
+    // Type filter — handled by CRSelect onChange
 
     // Refresh
     const btnRefresh = $('#btn-refresh-mail');

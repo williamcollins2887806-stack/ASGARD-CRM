@@ -1,26 +1,25 @@
 // Stage 13: Расходы по работам
 window.AsgardWorkExpenses = (function(){
-  const { $, $$, esc, toast, showModal, hideModal } = AsgardUI;
+  const { $, $$, esc, toast, showModal, hideModal, money } = AsgardUI;
+  const { isoNow } = window.AsgardWorksShared || {};
 
-  // 8 категорий расходов по работам
+  // Категории расходов по работам
   const EXPENSE_CATEGORIES = [
-    { key: 'fot', label: 'ФОТ', color: 'var(--err-t)', icon: '👷' },
-    { key: 'logistics', label: 'Логистика', color: 'var(--amber)', icon: '🚚' },
+    { key: 'payroll', label: 'ФОТ (начислено)', color: 'var(--err-t)', icon: '👷' },
+    { key: 'cash', label: 'Наличные', color: '#f59e0b', icon: '💵' },
+    { key: 'per_diem', label: 'Суточные', color: '#8b5cf6', icon: '🍽' },
+    { key: 'tickets', label: 'Билеты', color: 'var(--amber)', icon: '✈' },
     { key: 'accommodation', label: 'Проживание', color: 'var(--purple)', icon: '🏨' },
-    { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗' },
-    { key: 'chemicals', label: 'Химия', color: 'var(--ok-t)', icon: '🧪' },
-    { key: 'equipment', label: 'Оборудование', color: 'var(--info)', icon: '🔧' },
-    { key: 'subcontract', label: 'Субподряд', color: '#ec4899', icon: '🤝' },
-    { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📦' }
+    { key: 'materials', label: 'Материалы', color: 'var(--ok-t)', icon: '📦' },
+    { key: 'subcontract', label: 'Субподряд/агентское', color: '#ec4899', icon: '🤝' },
+    { key: 'other', label: 'Прочее', color: 'var(--t2)', icon: '📋' },
+    // Legacy categories (backward compatibility)
+    { key: 'fot', label: 'ФОТ (legacy)', color: 'var(--err-t)', icon: '👷', hidden: true },
+    { key: 'logistics', label: 'Логистика', color: 'var(--amber)', icon: '🚚', hidden: true },
+    { key: 'chemicals', label: 'Химия', color: 'var(--ok-t)', icon: '🧪', hidden: true },
+    { key: 'equipment', label: 'Оборудование', color: 'var(--info)', icon: '🔧', hidden: true },
+    { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗', hidden: true },
   ];
-
-  function isoNow(){ return new Date().toISOString(); }
-  function money(x){ 
-    if(x===null||x===undefined||x==="") return "0"; 
-    const n=Number(x); 
-    if(isNaN(n)) return "0"; 
-    return n.toLocaleString("ru-RU"); 
-  }
 
   // Получить все расходы по работе
   async function getExpensesByWork(workId){
@@ -37,6 +36,18 @@ window.AsgardWorkExpenses = (function(){
     return expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
   }
 
+  // F6: Авто-синхронизация cost_fact на работе
+  async function syncCostFact(workId) {
+    if (!workId) return;
+    const total = await getTotalByWork(workId);
+    const work = await AsgardDB.get('works', Number(workId));
+    if (work) {
+      work.cost_fact = total;
+      work.updated_at = isoNow();
+      await AsgardDB.put('works', work);
+    }
+  }
+
   // Сумма расходов по категориям
   async function getTotalsByCategory(workId){
     const expenses = await getExpensesByWork(workId);
@@ -51,7 +62,7 @@ window.AsgardWorkExpenses = (function(){
   }
 
   // Добавить расход
-  async function addExpense({work_id, category, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, created_by}){
+  async function addExpense({work_id, category, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, vat_rate, vat_amount, amount_ex_vat, payment_method, created_by}){
     const expense = {
       work_id: Number(work_id),
       category: String(category || 'other'),
@@ -62,11 +73,17 @@ window.AsgardWorkExpenses = (function(){
       doc_number: String(doc_number || ''),
       invoice_needed: !!invoice_needed,
       invoice_received: !!invoice_received,
+      vat_rate: vat_rate || null,
+      vat_amount: vat_amount || null,
+      amount_ex_vat: amount_ex_vat || null,
+      payment_method: payment_method || 'cash',
       created_by: Number(created_by || 0),
       created_at: isoNow(),
       updated_at: isoNow()
     };
-    return await AsgardDB.add("work_expenses", expense);
+    const result = await AsgardDB.add("work_expenses", expense);
+    await syncCostFact(work_id);
+    return result;
   }
 
   // Обновить расход
@@ -75,12 +92,16 @@ window.AsgardWorkExpenses = (function(){
     if(!expense) throw new Error("Расход не найден");
     Object.assign(expense, updates, { updated_at: isoNow() });
     await AsgardDB.put("work_expenses", expense);
+    await syncCostFact(expense.work_id);
     return expense;
   }
 
   // Удалить расход
   async function deleteExpense(id){
+    const expense = await AsgardDB.get("work_expenses", Number(id));
+    const workId = expense?.work_id;
     await AsgardDB.del("work_expenses", Number(id));
+    if (workId) await syncCostFact(workId);
   }
 
   // ФОТ: добавить строку по сотруднику
@@ -108,7 +129,9 @@ window.AsgardWorkExpenses = (function(){
       fot_date_from: String(date_from || ''),
       fot_date_to: String(date_to || '')
     };
-    return await AsgardDB.add("work_expenses", expense);
+    const result = await AsgardDB.add("work_expenses", expense);
+    await syncCostFact(work_id);
+    return result;
   }
 
   // Модальное окно расходов для карточки работы
@@ -124,7 +147,7 @@ window.AsgardWorkExpenses = (function(){
       if(byCategory[e.category]) byCategory[e.category].push(e);
     });
 
-    const categoryRows = EXPENSE_CATEGORIES.map(c => {
+    const categoryRows = EXPENSE_CATEGORIES.filter(c => !c.hidden || (byCategory[c.key] && byCategory[c.key].length > 0)).map(c => {
       const items = byCategory[c.key] || [];
       const total = totals[c.key] || 0;
       const itemsHtml = items.length ? items.map(e => `
@@ -135,16 +158,20 @@ window.AsgardWorkExpenses = (function(){
             ${e.fot_employee_name ? `<span class="exp-emp">${esc(e.fot_employee_name)}</span>` : ''}
             ${e.supplier ? `<span class="exp-supplier">${esc(e.supplier)}</span>` : ''}
             ${e.comment ? `<span class="exp-comment">${esc(e.comment)}</span>` : ''}
+            ${e.vat_rate ? `<span class="exp-vat" style="color:var(--t2);font-size:11px">НДС ${e.vat_rate}%</span>` : ''}
           </div>
           <div class="exp-item-flags">
             ${e.invoice_needed ? (e.invoice_received ? '<span class="badge ok">✓ СФ</span>' : '<span class="badge warn">⏳ СФ</span>') : ''}
             ${e.doc_number ? `<span class="badge">#${esc(e.doc_number)}</span>` : ''}
+            ${e.receipt_url ? `<span class="badge ok" style="cursor:pointer" data-preview="${esc(e.receipt_url)}" title="Предпросмотр">📎</span>` : ''}
           </div>
           <div class="exp-item-actions">
+            <button class="btn ghost mini" data-items="${e.id}" title="Позиции">📋</button>
             <button class="btn ghost mini" data-edit="${e.id}">✎</button>
             <button class="btn ghost mini red" data-del="${e.id}">✕</button>
           </div>
         </div>
+        <div class="exp-items-panel" id="exp-items-${e.id}" style="display:none;padding:4px 0 8px 24px;font-size:12px"></div>
       `).join('') : '<div class="help" style="padding:8px 0">Нет записей</div>';
 
       return `
@@ -154,7 +181,7 @@ window.AsgardWorkExpenses = (function(){
             <span class="exp-cat-label">${c.label}</span>
             <span class="exp-cat-total">${money(total)} ₽</span>
             <button class="btn ghost mini" data-add-cat="${c.key}">+ Добавить</button>
-            ${c.key === 'fot' ? `<button class="btn ghost mini" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
+            ${(c.key === 'fot' || c.key === 'payroll') ? `<button class="btn ghost mini" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
           </div>
           <div class="exp-cat-items">${itemsHtml}</div>
         </div>
@@ -218,7 +245,7 @@ window.AsgardWorkExpenses = (function(){
       </div>
     `;
 
-    showModal(`Расходы: ${esc(work.work_title || 'Работа #'+work.id)}`, html);
+    showModal({ title: `Расходы: ${esc(work.work_title || 'Работа #'+work.id)}`, html, icon: '💳', subtitle: 'Управление расходами' });
 
     // Обработчики
     bindExpenseHandlers(work, user);
@@ -277,6 +304,53 @@ window.AsgardWorkExpenses = (function(){
       });
     });
 
+    // Позиции расхода (📋)
+    $$('[data-items]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const expId = btn.dataset.items;
+        const panel = document.getElementById('exp-items-' + expId);
+        if (!panel) return;
+        if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+        panel.innerHTML = '<span style="color:var(--t2)">Загрузка...</span>';
+        panel.style.display = 'block';
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/expenses/items/' + expId, { headers: { 'Authorization': 'Bearer ' + token } });
+          const data = await resp.json();
+          const rows = data.items || [];
+          if (!rows.length) {
+            panel.innerHTML = '<span style="color:var(--t2)">Нет позиций</span>';
+            return;
+          }
+          let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+          html += '<tr style="color:var(--t2);border-bottom:1px solid var(--brd)"><th style="text-align:left;padding:4px">Наименование</th><th style="text-align:center;padding:4px">Кол</th><th style="text-align:right;padding:4px">Цена</th><th style="text-align:right;padding:4px">Сумма</th></tr>';
+          rows.forEach(r => {
+            html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
+              <td style="padding:3px 4px">${esc(r.name || '—')}</td>
+              <td style="text-align:center;padding:3px 4px;color:var(--t2)">${r.quantity || ''} ${esc(r.unit || '')}</td>
+              <td style="text-align:right;padding:3px 4px;color:var(--t2)">${r.price ? money(r.price) : ''}</td>
+              <td style="text-align:right;padding:3px 4px;font-weight:500">${r.amount ? money(r.amount) + ' ₽' : ''}</td>
+            </tr>`;
+          });
+          html += '</table>';
+          panel.innerHTML = html;
+        } catch (e) {
+          panel.innerHTML = '<span style="color:#ef4444">Ошибка загрузки</span>';
+        }
+      });
+    });
+
+    // Предпросмотр файла (📎)
+    $$('[data-preview]').forEach(badge => {
+      badge.addEventListener('click', () => {
+        const url = badge.dataset.preview;
+        if (!url) return;
+        const token = localStorage.getItem('asgard_token');
+        // Открыть в новой вкладке с авторизацией
+        window.open(url, '_blank');
+      });
+    });
+
     // Синхронизировать себестоимость
     const syncBtn = $('#btnSyncCost');
     if(syncBtn) syncBtn.addEventListener('click', async () => {
@@ -291,7 +365,7 @@ window.AsgardWorkExpenses = (function(){
   // Модальное окно добавления расхода
   function openAddExpenseModal(work, user, category){
     const cat = EXPENSE_CATEGORIES.find(c => c.key === category) || EXPENSE_CATEGORIES[7];
-    const isFot = category === 'fot';
+    const isFot = category === 'fot' || category === 'payroll';
 
     const html = isFot ? `
       <div class="help">ФОТ: расходы на оплату труда сотрудника</div>
@@ -318,13 +392,68 @@ window.AsgardWorkExpenses = (function(){
         <div><label><input type="checkbox" id="exp_inv_need" style="width:auto"/> Нужна счёт-фактура</label></div>
         <div><label><input type="checkbox" id="exp_inv_got" style="width:auto"/> СФ получена</label></div>
       </div>
+      <div class="formrow" style="margin-top:8px">
+        <div><label>Способ оплаты</label>
+          <select id="exp_pay_method" style="padding:8px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)">
+            <option value="cash">💵 Наличные (55%)</option>
+            <option value="card">💳 Карта на месте (55%)</option>
+            <option value="bank">🏦 Безнал по счёту</option>
+            <option value="self">👤 Самозанятый</option>
+          </select>
+        </div>
+        <div><label>Ставка НДС</label>
+          <select id="exp_vat_rate" style="padding:8px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)">
+            <option value="">Без НДС</option>
+            <option value="20">20%</option>
+            <option value="22">22%</option>
+            <option value="10">10%</option>
+          </select>
+        </div>
+        <div><label>Сумма НДС ₽</label><input id="exp_vat_amount" type="number" placeholder="авто" /></div>
+      </div>
+      <div style="margin-top:8px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border:1px dashed var(--brd);border-radius:8px;font-size:13px;color:var(--t2)">
+          📎 <span id="exp_file_label">Прикрепить счёт (PDF/фото)</span>
+          <input type="file" id="exp_file" accept=".pdf,.png,.jpg,.jpeg" style="display:none"/>
+        </label>
+      </div>
+      <div id="exp_file_preview" style="margin-top:8px;display:none;border-radius:8px;overflow:hidden;border:1px solid var(--brd);max-height:200px"></div>
       <div style="margin-top:12px">
         <button class="btn" id="btnSaveExp">Сохранить</button>
-        <button class="btn ghost disabled" style="opacity:.5" title="Будет доступно позже">+ Документ</button>
       </div>
     `;
 
-    showModal(`Добавить: ${cat.label}`, html);
+    showModal({ title: `Добавить: ${cat.label}`, html, icon: cat.icon || '💳', subtitle: esc(work.work_title || '') });
+
+    // Авто-расчёт НДС при изменении суммы или ставки
+    let _expFile = null;
+    if (!isFot) {
+      const vatCalc = () => {
+        const amt = Number($('#exp_amount')?.value) || 0;
+        const rate = Number($('#exp_vat_rate')?.value) || 0;
+        if (rate > 0 && amt > 0) {
+          const vatAmt = Math.round(amt * rate / (100 + rate) * 100) / 100;
+          $('#exp_vat_amount').value = vatAmt;
+        }
+      };
+      $('#exp_amount')?.addEventListener('change', vatCalc);
+      $('#exp_vat_rate')?.addEventListener('change', vatCalc);
+
+      // Предпросмотр файла
+      $('#exp_file')?.addEventListener('change', (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        _expFile = f;
+        $('#exp_file_label').textContent = '📎 ' + f.name;
+        const preview = $('#exp_file_preview');
+        preview.style.display = 'block';
+        if (f.type === 'application/pdf') {
+          preview.innerHTML = '<iframe src="' + URL.createObjectURL(f) + '" style="width:100%;height:200px;border:none"></iframe>';
+        } else if (f.type.startsWith('image/')) {
+          preview.innerHTML = '<img src="' + URL.createObjectURL(f) + '" style="width:100%;max-height:200px;object-fit:contain"/>';
+        }
+      });
+    }
 
     $('#btnSaveExp').addEventListener('click', async () => {
       try {
@@ -349,7 +478,12 @@ window.AsgardWorkExpenses = (function(){
         } else {
           const amount = Number($('#exp_amount').value) || 0;
           if(amount <= 0){ toast('Расход', 'Укажите сумму', 'err'); return; }
-          await addExpense({
+          const vatRate = Number($('#exp_vat_rate')?.value) || null;
+          const vatAmount = Number($('#exp_vat_amount')?.value) || null;
+          const amountExVat = (vatRate && vatAmount) ? (amount - vatAmount) : null;
+          const payMethod = $('#exp_pay_method')?.value || 'cash';
+
+          const expResult = await addExpense({
             work_id: work.id,
             category: category,
             amount: amount,
@@ -357,10 +491,29 @@ window.AsgardWorkExpenses = (function(){
             comment: $('#exp_comment').value,
             supplier: $('#exp_supplier').value,
             doc_number: $('#exp_doc').value,
-            invoice_needed: $('#exp_inv_need').checked,
-            invoice_received: $('#exp_inv_got').checked,
+            invoice_needed: $('#exp_inv_need')?.checked,
+            invoice_received: $('#exp_inv_got')?.checked,
+            vat_rate: vatRate,
+            vat_amount: vatAmount,
+            amount_ex_vat: amountExVat,
+            payment_method: payMethod,
             created_by: user.id
           });
+
+          // Загрузить файл и привязать к расходу
+          if (_expFile && expResult?.id) {
+            try {
+              const fd = new FormData();
+              fd.append('file', _expFile);
+              const token = localStorage.getItem('asgard_token');
+              const upResp = await fetch(`/api/expenses/attach/${expResult.id}`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token },
+                body: fd
+              });
+              if (upResp.ok) toast('Файл', 'Счёт прикреплён', 'ok');
+            } catch(fe) { console.warn('File upload failed', fe); }
+          }
         }
         toast('Расход', 'Добавлено');
         openExpensesModal(work, user);
@@ -373,7 +526,7 @@ window.AsgardWorkExpenses = (function(){
   // Модальное окно редактирования
   function openEditExpenseModal(work, user, expense){
     const cat = EXPENSE_CATEGORIES.find(c => c.key === expense.category) || EXPENSE_CATEGORIES[7];
-    const isFot = expense.category === 'fot';
+    const isFot = expense.category === 'fot' || expense.category === 'payroll';
 
     const html = isFot ? `
       <div class="help">ФОТ: редактирование</div>
@@ -383,8 +536,8 @@ window.AsgardWorkExpenses = (function(){
         <div><label>Оклад/тариф</label><input id="exp_base" type="number" value="${expense.fot_base_pay || 0}"/></div>
         <div><label>Суточные</label><input id="exp_per_diem" type="number" value="${expense.fot_per_diem || 0}"/></div>
         <div><label>Премия</label><input id="exp_bonus" type="number" value="${expense.fot_bonus || 0}"/></div>
-        <div><label>Период с</label><input id="exp_date_from" type="date" value="${expense.fot_date_from || ''}"/></div>
-        <div><label>Период по</label><input id="exp_date_to" type="date" value="${expense.fot_date_to || ''}"/></div>
+        <div><label>Период с</label><input id="exp_date_from" type="date" value="${(expense.fot_date_from || '').slice(0,10)}"/></div>
+        <div><label>Период по</label><input id="exp_date_to" type="date" value="${(expense.fot_date_to || '').slice(0,10)}"/></div>
         <div style="grid-column:1/-1"><label>Комментарий</label><input id="exp_comment" value="${esc(expense.comment || '')}"/></div>
       </div>
       <div style="margin-top:12px"><button class="btn" id="btnSaveExp">Сохранить</button></div>
@@ -392,7 +545,7 @@ window.AsgardWorkExpenses = (function(){
       <div class="help">${cat.icon} ${cat.label}: редактирование</div>
       <hr class="hr"/>
       <div class="formrow">
-        <div><label>Дата</label><input id="exp_date" type="date" value="${expense.date || ''}"/></div>
+        <div><label>Дата</label><input id="exp_date" type="date" value="${(expense.date || '').slice(0,10)}"/></div>
         <div><label>Сумма, ₽</label><input id="exp_amount" type="number" value="${expense.amount || 0}"/></div>
         <div><label>Поставщик</label><input id="exp_supplier" value="${esc(expense.supplier || '')}"/></div>
         <div><label>№ документа</label><input id="exp_doc" value="${esc(expense.doc_number || '')}"/></div>
@@ -403,7 +556,7 @@ window.AsgardWorkExpenses = (function(){
       <div style="margin-top:12px"><button class="btn" id="btnSaveExp">Сохранить</button></div>
     `;
 
-    showModal(`Редактировать: ${cat.label}`, html);
+    showModal({ title: `Редактировать: ${cat.label}`, html, icon: cat.icon || '✏️', subtitle: esc(work.work_title || '') });
 
     $('#btnSaveExp').addEventListener('click', async () => {
       try {
