@@ -62,7 +62,7 @@ window.AsgardWorkExpenses = (function(){
   }
 
   // Добавить расход
-  async function addExpense({work_id, category, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, vat_rate, vat_amount, amount_ex_vat, created_by}){
+  async function addExpense({work_id, category, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, vat_rate, vat_amount, amount_ex_vat, payment_method, created_by}){
     const expense = {
       work_id: Number(work_id),
       category: String(category || 'other'),
@@ -76,6 +76,7 @@ window.AsgardWorkExpenses = (function(){
       vat_rate: vat_rate || null,
       vat_amount: vat_amount || null,
       amount_ex_vat: amount_ex_vat || null,
+      payment_method: payment_method || 'cash',
       created_by: Number(created_by || 0),
       created_at: isoNow(),
       updated_at: isoNow()
@@ -392,6 +393,14 @@ window.AsgardWorkExpenses = (function(){
         <div><label><input type="checkbox" id="exp_inv_got" style="width:auto"/> СФ получена</label></div>
       </div>
       <div class="formrow" style="margin-top:8px">
+        <div><label>Способ оплаты</label>
+          <select id="exp_pay_method" style="padding:8px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)">
+            <option value="cash">💵 Наличные (55%)</option>
+            <option value="card">💳 Карта на месте (55%)</option>
+            <option value="bank">🏦 Безнал по счёту</option>
+            <option value="self">👤 Самозанятый</option>
+          </select>
+        </div>
         <div><label>Ставка НДС</label>
           <select id="exp_vat_rate" style="padding:8px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)">
             <option value="">Без НДС</option>
@@ -472,6 +481,7 @@ window.AsgardWorkExpenses = (function(){
           const vatRate = Number($('#exp_vat_rate')?.value) || null;
           const vatAmount = Number($('#exp_vat_amount')?.value) || null;
           const amountExVat = (vatRate && vatAmount) ? (amount - vatAmount) : null;
+          const payMethod = $('#exp_pay_method')?.value || 'cash';
 
           const expResult = await addExpense({
             work_id: work.id,
@@ -486,6 +496,7 @@ window.AsgardWorkExpenses = (function(){
             vat_rate: vatRate,
             vat_amount: vatAmount,
             amount_ex_vat: amountExVat,
+            payment_method: payMethod,
             created_by: user.id
           });
 
