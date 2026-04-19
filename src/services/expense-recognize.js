@@ -301,12 +301,19 @@ async function getWorkFinancials(db, workId) {
   const vatCharged = Math.round(contractValue * vatPct / (100 + vatPct) * 100) / 100;
   const revenueExVat = Math.round((contractValue - vatCharged) * 100) / 100;
 
-  // Расходы по категориям → налоговая нагрузка + входной НДС
-  const TAX_CATEGORIES = ['payroll', 'fot', 'cash', 'per_diem', 'subcontract'];
-  const VAT_CATEGORIES = ['materials', 'chemicals', 'equipment', 'tickets', 'logistics', 'accommodation', 'transfer', 'other'];
+  // Расходы: 55% по payment_method (cash/card/auto для fot/per_diem), НДС из vat_amount
+  // payment_method: 'cash'/'card' → 55% нагрузка (обнал)
+  //                 'auto' + category fot/per_diem → 55% (ФОТ/суточные)
+  //                 'bank'/'self' → без 55%, но может быть НДС к вычету
+  const TAX_METHODS = ['cash', 'card']; // Всегда 55%
+  const TAX_AUTO_CATS = ['fot', 'per_diem', 'payroll']; // 55% только для auto+эти категории
 
   const { rows: expenses } = await db.query(
-    'SELECT category, SUM(amount) as total FROM work_expenses WHERE work_id = $1 GROUP BY category',
+    `SELECT category, payment_method,
+            SUM(amount) as total,
+            SUM(COALESCE(vat_amount, 0)) as vat_total
+     FROM work_expenses WHERE work_id = $1
+     GROUP BY category, payment_method`,
     [workId]
   );
 
@@ -316,13 +323,21 @@ async function getWorkFinancials(db, workId) {
 
   for (const row of expenses) {
     const cat = row.category || 'other';
+    const method = row.payment_method || '';
     const amount = parseFloat(row.total) || 0;
+    const vatFromDb = parseFloat(row.vat_total) || 0;
     totalExpenses += amount;
 
-    if (TAX_CATEGORIES.includes(cat)) {
+    // 55% налоговая нагрузка: наличные/карта ИЛИ авто-ФОТ/суточные
+    if (TAX_METHODS.includes(method) || (method === 'auto' && TAX_AUTO_CATS.includes(cat))) {
       totalTaxBurden += Math.round(amount * taxRate / 100 * 100) / 100;
     }
-    if (VAT_CATEGORIES.includes(cat)) {
+
+    // НДС к вычету: из реального vat_amount (если заполнен), иначе формула для безнала
+    if (vatFromDb > 0) {
+      totalVatDeductible += vatFromDb;
+    } else if (method === 'bank' && !vatFromDb) {
+      // Fallback: если vat_amount не заполнен но оплачен безналом — формула
       totalVatDeductible += Math.round(amount * vatPct / (100 + vatPct) * 100) / 100;
     }
   }
