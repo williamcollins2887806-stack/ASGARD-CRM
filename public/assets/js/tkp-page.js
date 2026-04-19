@@ -205,9 +205,9 @@ window.AsgardTkpPage = (function() {
     return 'custom';
   }
 
-  function sectionHdr(title) {
-    return '<h4 style="color:var(--blue-l);margin:16px 0 8px;border-bottom:1px solid var(--brd);padding-bottom:6px">' +
-      esc(title) + '</h4>';
+  function sectionHdr(title, iconSvg) {
+    const icon = iconSvg || '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>';
+    return '<div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)">' + icon + '</span><span>' + esc(title) + '</span></div>';
   }
 
   function ensureDocClick() {
@@ -469,8 +469,8 @@ window.AsgardTkpPage = (function() {
       '</div></div>' +
 
       // --- Секция 3: Таблица работ ---
-      '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--brd);margin:16px 0 8px;padding-bottom:6px">' +
-        '<h4 style="color:var(--blue-l);margin:0">Работы и услуги</h4>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.04);margin:16px 0 8px;padding-bottom:10px">' +
+        '<div class="cr-f-section" style="border:none;margin:0;padding:0"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span><span>Работы и услуги</span></div>' +
         '<button class="mimir-tkp-btn" id="btnMimirItems" type="button" title="Мимир предложит состав работ и цены">🧙 Мимир предложит работы</button>' +
       '</div>' +
       '<table class="data-table" id="tkpItemsTable"><thead><tr>' +
@@ -647,6 +647,8 @@ window.AsgardTkpPage = (function() {
 
     showModal({
       title: currentId ? 'Редактирование ТКП #' + currentId : 'Новое ТКП',
+      icon: '💰',
+      subtitle: 'Коммерческое предложение',
       html: html,
       wide: true,
       onMount: function() {
