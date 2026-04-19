@@ -32,7 +32,8 @@
     "lint:fix": "eslint src/ --ext .js --fix && eslint public/assets/js/ --ext .js --config .eslintrc.frontend.json --fix",
     "release": "node scripts/bump-version.js",
     "generate-vapid-keys": "node scripts/generate-vapid-keys.js",
-    "test:smoke:jest": "jest --selectProjects smoke"
+    "test:smoke:jest": "jest --selectProjects smoke",
+    "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "dependencies": {
     "@fastify/compress": "^7.0.3",
