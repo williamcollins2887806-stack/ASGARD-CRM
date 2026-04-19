@@ -225,8 +225,9 @@ window.AsgardFunnelPage = (function(){
       const est = estimates.find(e => e.tender_id === t.id);
       const work = works.find(w => w.tender_id === t.id);
 
-      // Сумма: estimate → works.contract_value → tenders.tender_price → 0
-      t._sum = parseFloat(est?.total_sum || work?.contract_value || t.tender_price || t.estimated_sum || 0) || 0;
+      // Сумма: tender_price — основной источник (заполняется при создании тендера)
+      // Fallback: contract_value работы → estimate total_sum → estimated_sum
+      t._sum = parseFloat(t.tender_price || work?.contract_value || est?.total_sum || t.estimated_sum || 0) || 0;
 
       // Если работа завершена (акт подписан) — показывать в колонке «Завершено»
       let stage;
