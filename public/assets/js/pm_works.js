@@ -618,7 +618,7 @@ window.AsgardPmWorksPage=(function(){
       <div class="panel">
         <div class="help">
           Раздел «Работы» — это контрактная стадия. Здесь фиксируются статусы выполнения, финансы, план/факт и сроки.
-          Девиз: “Клятва дана — доведи дело до конца.”
+          Девиз: "Клятва дана — доведи дело до конца."
         </div>
         <hr class="hr"/>
         <div class="chart">
@@ -920,77 +920,77 @@ window.AsgardPmWorksPage=(function(){
       });
 
       const html = `
-        <div class=”cr-f-section”><span class=”cr-f-section__icon” style=”color:var(--gold)”><svg width=”14” height=”14” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><path d=”M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2”/><circle cx=”12” cy=”7” r=”4”/></svg></span><span>${esc(w.customer_name||t?.customer_name||””)} · ${esc(w.work_title||t?.tender_title||””)}</span></div>
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><span>${esc(w.customer_name||t?.customer_name||"")} · ${esc(w.work_title||t?.tender_title||"")}</span></div>
         ${ganttMini}
-        <hr class=”hr”/>
+        <hr class="hr"/>
 
-        <div class=”cr-f-section”><span class=”cr-f-section__icon” style=”color:var(--blue-l)”><svg width=”14” height=”14” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><rect x=”3” y=”4” width=”18” height=”18” rx=”2”/><line x1=”16” y1=”2” x2=”16” y2=”6”/><line x1=”8” y1=”2” x2=”8” y2=”6”/><line x1=”3” y1=”10” x2=”21” y2=”10”/></svg></span><span>Статус и сроки</span></div>
-        <div class=”formrow”>
-          <div><label>Статус работ</label><div id=”w_status_w”></div></div>
-          <div><label>Начало работ</label><input type=”date” id=”w_start” value=”${esc(String(w.start_in_work_date||t?.work_start_plan||””).slice(0,10))}”/></div>
-          <div><label>Окончание план</label><input type=”date” id=”w_end_plan” value=”${esc(String(w.end_plan||t?.work_end_plan||””).slice(0,10))}”/></div>
-          <div><label>Окончание факт</label><input type=”date” id=”w_end_fact” value=”${esc(String(w.end_fact||””).slice(0,10))}”/></div>
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><span>Статус и сроки</span></div>
+        <div class="formrow">
+          <div><label>Статус работ</label><div id="w_status_w"></div></div>
+          <div><label>Начало работ</label><input type="date" id="w_start" value="${esc(String(w.start_in_work_date||t?.work_start_plan||"").slice(0,10))}"/></div>
+          <div><label>Окончание план</label><input type="date" id="w_end_plan" value="${esc(String(w.end_plan||t?.work_end_plan||"").slice(0,10))}"/></div>
+          <div><label>Окончание факт</label><input type="date" id="w_end_fact" value="${esc(String(w.end_fact||"").slice(0,10))}"/></div>
         </div>
 
-        <div class=”cr-f-section”><span class=”cr-f-section__icon” style=”color:var(--gold)”><svg width=”14” height=”14” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><path d=”M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6”/></svg></span><span>Финансы</span></div>
-        <div class=”formrow”>
-          <div><label>Стоимость договора</label><input id=”w_value” value=”${esc(w.contract_value!=null?String(w.contract_value):””)}” placeholder=”руб.”/></div>
-          <div><label>Аванс %</label><input id=”w_adv_pct” value=”${esc(w.advance_pct!=null?String(w.advance_pct):”30”)}” placeholder=”30”/></div>
-          <div><label>Аванс получено</label><input id=”w_adv_got” value=”${esc(w.advance_received!=null?String(w.advance_received):”0”)}” placeholder=”руб.”/></div>
-          <div><label>Дата аванса факт</label><input type=”date” id=”w_adv_date” value=”${esc(String(w.advance_date_fact||””).slice(0,10))}”/></div>
-          <div><label>Остаток получено</label><input id=”w_bal_got” value=”${esc(w.balance_received!=null?String(w.balance_received):”0”)}” placeholder=”руб.”/></div>
-          <div><label>Дата оплаты остатка</label><input type=”date” id=”w_pay_date” value=”${esc(String(w.payment_date_fact||””).slice(0,10))}”/></div>
-          <div><label>Дата акта факт</label><input type=”date” id=”w_act_date” value=”${esc(String(w.act_signed_date_fact||””).slice(0,10))}”/></div>
-          <div><label>Отсрочка, раб.дни</label><input id=”w_delay” value=”${esc(w.delay_workdays!=null?String(w.delay_workdays):”5”)}” placeholder=”5”/></div>
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span>Финансы</span></div>
+        <div class="formrow">
+          <div><label>Стоимость договора</label><input id="w_value" value="${esc(w.contract_value!=null?String(w.contract_value):"")}" placeholder="руб."/></div>
+          <div><label>Аванс %</label><input id="w_adv_pct" value="${esc(w.advance_pct!=null?String(w.advance_pct):"30")}" placeholder="30"/></div>
+          <div><label>Аванс получено</label><input id="w_adv_got" value="${esc(w.advance_received!=null?String(w.advance_received):"0")}" placeholder="руб."/></div>
+          <div><label>Дата аванса факт</label><input type="date" id="w_adv_date" value="${esc(String(w.advance_date_fact||"").slice(0,10))}"/></div>
+          <div><label>Остаток получено</label><input id="w_bal_got" value="${esc(w.balance_received!=null?String(w.balance_received):"0")}" placeholder="руб."/></div>
+          <div><label>Дата оплаты остатка</label><input type="date" id="w_pay_date" value="${esc(String(w.payment_date_fact||"").slice(0,10))}"/></div>
+          <div><label>Дата акта факт</label><input type="date" id="w_act_date" value="${esc(String(w.act_signed_date_fact||"").slice(0,10))}"/></div>
+          <div><label>Отсрочка, раб.дни</label><input id="w_delay" value="${esc(w.delay_workdays!=null?String(w.delay_workdays):"5")}" placeholder="5"/></div>
         </div>
 
-        <div class=”cr-f-section”><span class=”cr-f-section__icon” style=”color:var(--ok-t)”><svg width=”14” height=”14” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><polyline points=”22 12 18 12 15 21 9 3 6 12 2 12”/></svg></span><span>Себестоимость</span></div>
-        <div class=”formrow”>
-          <div><label>План себестоимость</label><input id=”w_cost_plan” value=”${esc(w.cost_plan!=null?String(w.cost_plan):””)}” placeholder=”руб.”/></div>
-          <div><label>Факт себестоимость</label><div style=”display:flex;gap:4px”><input id=”w_cost_fact” value=”${esc(w.cost_fact!=null?String(w.cost_fact):””)}” placeholder=”руб.” style=”flex:1”/><button type=”button” class=”btn ghost” id=”btnAutoCalcCost” title=”Авторасчёт: расходы + налоги” style=”font-size:11px;padding:4px 8px;white-space:nowrap”>⚡ Авто</button></div></div>
-          <div><label>Численность (чел-дни)</label><input id=”w_crew” value=”${esc(w.crew_size!=null?String(w.crew_size):””)}” placeholder=”10”/></div>
-          <div style=”grid-column:1/-1”><label>Комментарий</label><input id=”w_comment” value=”${esc(w.comment||””)}” placeholder=”важные заметки”/></div>
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--ok-t)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span><span>Себестоимость</span></div>
+        <div class="formrow">
+          <div><label>План себестоимость</label><input id="w_cost_plan" value="${esc(w.cost_plan!=null?String(w.cost_plan):"")}" placeholder="руб."/></div>
+          <div><label>Факт себестоимость</label><div style="display:flex;gap:4px"><input id="w_cost_fact" value="${esc(w.cost_fact!=null?String(w.cost_fact):"")}" placeholder="руб." style="flex:1"/><button type="button" class="btn ghost" id="btnAutoCalcCost" title="Авторасчёт: расходы + налоги" style="font-size:11px;padding:4px 8px;white-space:nowrap">⚡ Авто</button></div></div>
+          <div><label>Численность (чел-дни)</label><input id="w_crew" value="${esc(w.crew_size!=null?String(w.crew_size):"")}" placeholder="10"/></div>
+          <div style="grid-column:1/-1"><label>Комментарий</label><input id="w_comment" value="${esc(w.comment||"")}" placeholder="важные заметки"/></div>
         </div>
 
-        <hr class=”hr”/>
-        <div class=”cr-f-section”><span class=”cr-f-section__icon” style=”color:var(--purple-l)”><svg width=”14” height=”14” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><path d=”M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2”/><circle cx=”9” cy=”7” r=”4”/><path d=”M23 21v-2a4 4 0 0 0-3-3.87”/><path d=”M16 3.13a4 4 0 0 1 0 7.75”/></svg></span><span>Персонал (заявка HR)</span></div>
-        <div class=”formrow”>
-          <div style=”display:flex; align-items:flex-end; gap:10px”>
-            <label style=”display:flex; gap:10px; align-items:center; text-transform:none !important; font-size:13px !important”>
-              <input type=”checkbox” id=”sr_is_vachta” />
+        <hr class="hr"/>
+        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--purple-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span>Персонал (заявка HR)</span></div>
+        <div class="formrow">
+          <div style="display:flex; align-items:flex-end; gap:10px">
+            <label style="display:flex; gap:10px; align-items:center; text-transform:none !important; font-size:13px !important">
+              <input type="checkbox" id="sr_is_vachta" />
               <span>Вахта</span>
             </label>
           </div>
-          <div><label>Срок ротации, дней</label><input id=”sr_rotation_days” placeholder=”0” /></div>
+          <div><label>Срок ротации, дней</label><input id="sr_rotation_days" placeholder="0" /></div>
         </div>
-        <div class=”formrow”>
-          <div><label>Мастера</label><input id=”sr_Мастера” placeholder=”0” /></div>
-          <div><label>Слесари</label><input id=”sr_Слесари” placeholder=”0” /></div>
-          <div><label>ПТО</label><input id=”sr_ПТО” placeholder=”0” /></div>
-          <div><label>Промывщики</label><input id=”sr_Промывщики” placeholder=”0” /></div>
-          <div style=”grid-column:1/-1”><label>Комментарий к запросу</label><input id=”sr_comment” placeholder=”условия, сменность, требования” /></div>
+        <div class="formrow">
+          <div><label>Мастера</label><input id="sr_Мастера" placeholder="0" /></div>
+          <div><label>Слесари</label><input id="sr_Слесари" placeholder="0" /></div>
+          <div><label>ПТО</label><input id="sr_ПТО" placeholder="0" /></div>
+          <div><label>Промывщики</label><input id="sr_Промывщики" placeholder="0" /></div>
+          <div style="grid-column:1/-1"><label>Комментарий к запросу</label><input id="sr_comment" placeholder="условия, сменность, требования" /></div>
         </div>
-        <div style=”display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px”>
-          <button class=”btn primary” id=”btnReqStaff”>Запросить рабочих</button>
-          <button class=”btn ghost” id=”btnViewStaff”>Статус/ответ</button>
-          <button class=”btn ghost” id=”btnApproveStaff”>Принять</button>
-          <button class=”btn ghost” id=”btnAskStaff”>Вопрос</button>
-        </div>
-
-        <hr class=”hr”/>
-        <div class=”kpi” style=”grid-template-columns:repeat(5,minmax(130px,1fr))”>
-          <div class=”k”><div class=”t”>Получено</div><div class=”v”>${money(got)} ₽</div><div class=”s”>Аванс + остаток</div></div>
-          <div class=”k”><div class=”t”>Должны</div><div class=”v”>${money(left)} ₽</div><div class=”s”>Остаток к оплате</div></div>
-          <div class=”k”><div class=”t”>Прибыль</div><div class=”v” style=”color:${profit!=null?(profit>=0?'var(--ok-t)':'var(--err-t)'):''}”>${profit==null?”—“:money(Math.round(profit))+” ₽”}</div><div class=”s”>${margin!=null?'чистая · маржа '+margin+'%':'чистая прибыль'}</div></div>
-          <div class=”k”><div class=”t”>₽/день</div><div class=”v”>${profitPerDay==null?”—“:money(Math.round(profitPerDay))+” ₽”}</div><div class=”s”>по длительности</div></div>
-          <div class=”k”><div class=”t”>₽/чел‑день</div><div class=”v”>${profitPerManDay==null?”—“:money(Math.round(profitPerManDay))+” ₽”}</div><div class=”s”>по людям×дни</div></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px">
+          <button class="btn primary" id="btnReqStaff">Запросить рабочих</button>
+          <button class="btn ghost" id="btnViewStaff">Статус/ответ</button>
+          <button class="btn ghost" id="btnApproveStaff">Принять</button>
+          <button class="btn ghost" id="btnAskStaff">Вопрос</button>
         </div>
 
-        <hr class=”hr”/>
-        <div style=”display:flex; gap:10px; flex-wrap:wrap; align-items:center”>
-          ${(user.role===”PM” && String(w.work_status||””)===triggerStatus) ? `<button class=”btn danger” id=”btnCloseout”>Работы завершены</button>` : ``}
-          <button class=”btn primary” id=”btnSaveWork”>Сохранить</button>
-          <button class=”btn ghost” id=”btnActions”>⚡ Действия</button>
+        <hr class="hr"/>
+        <div class="kpi" style="grid-template-columns:repeat(5,minmax(130px,1fr))">
+          <div class="k"><div class="t">Получено</div><div class="v">${money(got)} ₽</div><div class="s">Аванс + остаток</div></div>
+          <div class="k"><div class="t">Должны</div><div class="v">${money(left)} ₽</div><div class="s">Остаток к оплате</div></div>
+          <div class="k"><div class="t">Прибыль</div><div class="v" style="color:${profit!=null?(profit>=0?'var(--ok-t)':'var(--err-t)'):''}">${profit==null?"—":money(Math.round(profit))+" ₽"}</div><div class="s">${margin!=null?'чистая · маржа '+margin+'%':'чистая прибыль'}</div></div>
+          <div class="k"><div class="t">₽/день</div><div class="v">${profitPerDay==null?"—":money(Math.round(profitPerDay))+" ₽"}</div><div class="s">по длительности</div></div>
+          <div class="k"><div class="t">₽/чел‑день</div><div class="v">${profitPerManDay==null?"—":money(Math.round(profitPerManDay))+" ₽"}</div><div class="s">по людям×дни</div></div>
+        </div>
+
+        <hr class="hr"/>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+          ${(user.role==="PM" && String(w.work_status||"")===triggerStatus) ? `<button class="btn danger" id="btnCloseout">Работы завершены</button>` : ``}
+          <button class="btn primary" id="btnSaveWork">Сохранить</button>
+          <button class="btn ghost" id="btnActions">⚡ Действия</button>
         </div>
       `;
 
