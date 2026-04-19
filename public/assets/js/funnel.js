@@ -10,6 +10,7 @@ window.AsgardFunnelPage = (function(){
     {id: 'approved', label: 'Согласовано',          color: '#27ae60', statuses: ['ТКП согласовано']},
     {id: 'sent',     label: 'КП отправлено',       color: '#17a2b8', statuses: ['КП отправлено']},
     {id: 'won',      label: 'Выиграли',            color: '#2ecc71', statuses: ['Выиграли']},
+    {id: 'completed',label: 'Завершено',             color: '#1abc9c', statuses: ['Завершена']},
     {id: 'lost',     label: 'Проиграли',           color: '#e74c3c', statuses: ['Проиграли']},
     {id: 'rejected', label: 'Не подходит',          color: '#95a5a6', statuses: ['Не подходит']}
   ];
@@ -212,6 +213,7 @@ window.AsgardFunnelPage = (function(){
 
     const tenders = await AsgardDB.all('tenders') || [];
     const estimates = await AsgardDB.all('estimates') || [];
+    const works = await AsgardDB.all('works') || [];
     const users = await AsgardDB.all('users') || [];
     const usersById = new Map(users.map(u => [u.id, u]));
 
@@ -220,9 +222,19 @@ window.AsgardFunnelPage = (function(){
     STAGES.forEach(s => byStage[s.id] = []);
 
     tenders.forEach(t => {
-      const stage = getStageForStatus(t.tender_status);
       const est = estimates.find(e => e.tender_id === t.id);
-      t._sum = parseFloat(est?.total_sum || t.estimated_sum || 0) || 0;
+      const work = works.find(w => w.tender_id === t.id);
+
+      // Сумма: estimate → works.contract_value → tenders.tender_price → 0
+      t._sum = parseFloat(est?.total_sum || work?.contract_value || t.tender_price || t.estimated_sum || 0) || 0;
+
+      // Если работа завершена (акт подписан) — показывать в колонке «Завершено»
+      let stage;
+      if (work && work.work_status === 'Завершена') {
+        stage = 'completed';
+      } else {
+        stage = getStageForStatus(t.tender_status);
+      }
       t._pm = usersById.get(t.responsible_pm_id)?.name || '—';
       if (byStage[stage]) byStage[stage].push(t);
       else byStage.new.push(t);
