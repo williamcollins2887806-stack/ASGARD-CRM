@@ -189,6 +189,7 @@ const Router = {
     if (path !== window.location.hash.slice(1)) {
       if (opts.replace) {
         window.history.replaceState(null, '', '#' + path);
+        Router._render(path);
       } else {
         window.location.hash = path;
       }

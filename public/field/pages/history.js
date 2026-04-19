@@ -75,7 +75,10 @@ async function loadHistory(content) {
 
     for (const p of byYear[year]) {
       delay += 0.06;
-      const isActive = p.is_active || (!p.date_to || new Date(p.date_to) > new Date());
+      const isActive = p.is_active === true;
+      const isCompleted = p.work_status === '\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430' || (!isActive && !p.is_active);
+      const badgeText = isActive ? '\u25B6 \u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0439' : '\u0417\u0430\u0432\u0435\u0440\u0448\u0451\u043D';
+      const badgeClr = isActive ? t.green : t.textSec;
       const roleLabel = p.field_role === 'senior_master' ? '\u041C\u0430\u0441\u0442\u0435\u0440 \u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0439' :
                         p.field_role === 'shift_master' ? '\u041C\u0430\u0441\u0442\u0435\u0440 \u0441\u043C\u0435\u043D\u043D\u044B\u0439' :
                         p.role || '\u0420\u0430\u0431\u043E\u0447\u0438\u0439';
@@ -88,8 +91,8 @@ async function loadHistory(content) {
           roleLabel,
           p.pm_name ? '\u0420\u041F: ' + p.pm_name : null,
         ].filter(Boolean).join(' \u00B7 '),
-        badge: isActive ? '\u25B6 \u0442\u0435\u043A\u0443\u0449\u0438\u0439' : (p.shifts_count || 0) + ' \u0441\u043C\u0435\u043D',
-        badgeColor: isActive ? t.green : t.textSec,
+        badge: badgeText,
+        badgeColor: badgeClr,
         fields: [
           { label: '\u0421\u043C\u0435\u043D\u044B', value: String(p.shifts_count || 0) },
           { label: '\u0417\u0430\u0440\u0430\u0431\u043E\u0442\u043E\u043A', value: Utils.formatMoney(p.total_earned || 0) + '\u20BD' },
