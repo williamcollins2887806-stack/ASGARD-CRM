@@ -195,8 +195,8 @@ fastify.addHook('onRequest', (request, reply, done) => {
     return;
   }
 
-  // Field PWA: SPA fallback for all /field/* paths (except static assets)
-  if (url === '/field/' || (url.startsWith('/field/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
+  // Field PWA: SPA fallback for all /field/* paths (except static assets and help.html)
+  if (url === '/field/' || (url.startsWith('/field/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map|html)$/i) && url !== '/field/help')) {
     if (fieldHtml) {
       reply.type('text/html').header('Cache-Control', 'no-cache').send(fieldHtml);
       return;
