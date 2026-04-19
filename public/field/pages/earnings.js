@@ -42,17 +42,25 @@ const EarningsPage = {
 
 async function loadEarnings(content) {
   const t = DS.t;
-  const [balance, payments] = await Promise.all([
-    API.fetch('/worker-payments/my/balance'),
+  const [data, payments] = await Promise.all([
+    API.fetch('/worker/finances'),
     API.fetch('/worker-payments/my'),
   ]);
 
   content.replaceChildren();
 
-  if (!balance) {
+  if (!data) {
     content.appendChild(F.Empty({ text: '\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C', icon: '\uD83D\uDCB3' }));
     return;
   }
+
+  if (data.error === 'per_diem_not_set') {
+    content.appendChild(F.Empty({ text: data.message || '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435 \u043D\u0435 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u044B', icon: '\u26A0\uFE0F' }));
+    return;
+  }
+
+  const yearLabel = (data.scope && data.scope.year === 'all') ? '\u0437\u0430 \u0432\u0441\u0451 \u0432\u0440\u0435\u043C\u044F' : ('\u0437\u0430 ' + (data.scope ? data.scope.year : '') + ' \u0433\u043E\u0434');
+  const perDiemPending = (data.per_diem_accrued || 0) - (data.per_diem_paid || 0);
 
   let delay = 0;
   const nd = () => { delay += 0.08; return delay; };
@@ -75,18 +83,18 @@ async function loadEarnings(content) {
 
   const amountEl = el('div', { style: { color: t.gold, fontWeight: '700', fontSize: '2.5rem', lineHeight: '1.1' } });
   heroContent.appendChild(amountEl);
-  setTimeout(() => Utils.countUp(amountEl, balance.total_pending || 0, 1000), 200);
+  setTimeout(() => Utils.countUp(amountEl, data.total_pending || 0, 1000), 200);
   amountEl.appendChild(el('span', { style: { fontSize: '1.5rem', fontWeight: '600', marginLeft: '4px' } }, ' \u20BD'));
 
   heroContent.appendChild(el('div', {
     style: { color: t.textSec, fontSize: '0.8125rem', marginTop: '8px' },
-  }, '\u0417\u0430\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E \u0437\u0430 ' + balance.year + ': ' + Utils.formatMoney(balance.total_earned) + '\u20BD'));
+  }, '\u0417\u0430\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E ' + yearLabel + ': ' + Utils.formatMoney(data.total_earned) + '\u20BD'));
 
   heroCard.appendChild(heroContent);
   content.appendChild(heroCard);
 
   // ─── Per-diem card ──────────────────────────────────────────
-  if (balance.per_diem > 0) {
+  if (data.per_diem_accrued > 0) {
     const pdCard = el('div', {
       style: {
         background: t.surface, borderRadius: '16px', padding: '16px',
@@ -99,9 +107,9 @@ async function loadEarnings(content) {
     }, '\uD83C\uDF19 \u0421\u0423\u0422\u041E\u0427\u041D\u042B\u0415'));
 
     const pdRows = [
-      { label: '\u041D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', value: Utils.formatMoney(balance.per_diem) + '\u20BD' },
-      { label: '\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u043E', value: Utils.formatMoney(balance.per_diem_paid) + '\u20BD', color: t.green },
-      { label: '\u041E\u0436\u0438\u0434\u0430\u0435\u0442', value: Utils.formatMoney(balance.per_diem_pending) + '\u20BD', color: t.orange },
+      { label: '\u041D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', value: Utils.formatMoney(data.per_diem_accrued) + '\u20BD' },
+      { label: '\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u043E', value: Utils.formatMoney(data.per_diem_paid) + '\u20BD', color: t.green },
+      { label: '\u041E\u0436\u0438\u0434\u0430\u0435\u0442', value: Utils.formatMoney(perDiemPending) + '\u20BD', color: t.orange },
     ];
 
     for (const row of pdRows) {
@@ -112,8 +120,8 @@ async function loadEarnings(content) {
     }
 
     // Progress bar
-    const pdTotal = balance.per_diem || 1;
-    const pdPct = Math.min(100, (balance.per_diem_paid / pdTotal) * 100);
+    const pdTotal = data.per_diem_accrued || 1;
+    const pdPct = Math.min(100, ((data.per_diem_paid || 0) / pdTotal) * 100);
     const bar = el('div', { style: { marginTop: '10px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', height: '6px', overflow: 'hidden' } });
     bar.appendChild(el('div', { style: { height: '100%', width: pdPct + '%', borderRadius: '4px', background: t.goldGrad, transition: 'width 0.8s ease' } }));
     pdCard.appendChild(bar);
@@ -121,7 +129,7 @@ async function loadEarnings(content) {
     content.appendChild(pdCard);
   }
 
-  // ─── Year totals card ───────────────────────────────────────
+  // ─── Totals card ────────────────────────────────────────────
   const yearCard = el('div', {
     style: {
       background: t.surface, borderRadius: '16px', padding: '16px',
@@ -131,16 +139,16 @@ async function loadEarnings(content) {
   });
   yearCard.appendChild(el('div', {
     style: { color: t.textTer, fontSize: '0.6875rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' },
-  }, '\u0418\u0422\u041E\u0413\u041E \u0417\u0410 ' + balance.year));
+  }, '\u0418\u0422\u041E\u0413\u041E ' + yearLabel.toUpperCase()));
 
   const yearRows = [
-    { label: '\u0417\u0430\u0440\u043F\u043B\u0430\u0442\u0430', value: Utils.formatMoney(balance.salary) + '\u20BD' },
-    { label: '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435', value: Utils.formatMoney(balance.per_diem) + '\u20BD' },
-    { label: '\u041F\u0440\u0435\u043C\u0438\u0438', value: '+' + Utils.formatMoney(balance.bonus) + '\u20BD', color: t.green },
-    { label: '\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F', value: '\u2212' + Utils.formatMoney(balance.penalty) + '\u20BD', color: t.red },
-    { label: '\u0410\u0432\u0430\u043D\u0441\u044B', value: '\u2212' + Utils.formatMoney(balance.advance) + '\u20BD', color: t.red },
-    { label: '\u0412\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E', value: Utils.formatMoney(balance.total_paid) + '\u20BD', bold: true, color: t.green },
-    { label: '\u041A \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u044E', value: Utils.formatMoney(balance.total_pending) + '\u20BD', bold: true, color: t.gold },
+    { label: '\u0417\u0430\u0440\u043F\u043B\u0430\u0442\u0430', value: Utils.formatMoney(data.salary_paid) + '\u20BD' },
+    { label: '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435', value: Utils.formatMoney(data.per_diem_accrued) + '\u20BD' },
+    { label: '\u041F\u0440\u0435\u043C\u0438\u0438', value: '+' + Utils.formatMoney(data.bonus_paid) + '\u20BD', color: t.green },
+    { label: '\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F', value: '\u2212' + Utils.formatMoney(data.penalty) + '\u20BD', color: t.red },
+    { label: '\u0410\u0432\u0430\u043D\u0441\u044B', value: '\u2212' + Utils.formatMoney(data.advance_paid) + '\u20BD', color: t.red },
+    { label: '\u0412\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E', value: Utils.formatMoney(data.total_paid) + '\u20BD', bold: true, color: t.green },
+    { label: '\u041A \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u044E', value: Utils.formatMoney(data.total_pending) + '\u20BD', bold: true, color: t.gold },
   ];
 
   for (const row of yearRows) {

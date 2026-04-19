@@ -238,9 +238,9 @@ fastify.register(require('@fastify/static'), {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       return;
     }
-    // Field PWA JS/CSS: short cache (SW управляет кэшем, не браузер)
+    // Field PWA JS/CSS: immutable (?v=SHELL_VERSION гарантирует свежесть при bump)
     if (filePath.includes('/field/') && /\.(js|css)$/.test(filePath)) {
-      res.setHeader('Cache-Control', 'public, max-age=60');
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
       return;
     }
     // JS, CSS, images, fonts: cache 30 days (?v= in URL guarantees freshness)

@@ -30,6 +30,8 @@
  *   GET    /reports/payroll-grid/:year/:month/export  — Excel экспорт сетки
  */
 
+const { getWorkerFinances } = require('../lib/worker-finances');
+
 const MANAGE_ROLES = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
 const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
 
@@ -466,91 +468,16 @@ async function routes(fastify, options) {
     }
   });
 
-  // ─── GET /my/balance — мой баланс ──────────────────────────────────
+  // ─── GET /my/balance — мой баланс (SSoT: lib/worker-finances.js) ───
   fastify.get('/my/balance', fieldAuth, async (req, reply) => {
     try {
       const empId = req.fieldEmployee.id;
-      const year = parseInt(req.query.year) || new Date().getFullYear();
-
-      const { rows } = await db.query(`
-        SELECT
-          SUM(CASE WHEN type = 'salary' THEN amount ELSE 0 END) as salary_total,
-          SUM(CASE WHEN type = 'per_diem' THEN amount ELSE 0 END) as per_diem_total,
-          SUM(CASE WHEN type = 'advance' THEN amount ELSE 0 END) as advance_total,
-          SUM(CASE WHEN type = 'bonus' THEN amount ELSE 0 END) as bonus_total,
-          SUM(CASE WHEN type = 'penalty' THEN amount ELSE 0 END) as penalty_total,
-          SUM(CASE WHEN status = 'paid' OR status = 'confirmed' THEN
-            CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
-                 WHEN type IN ('advance','penalty') THEN -amount ELSE 0 END
-          ELSE 0 END) as total_paid,
-          SUM(CASE WHEN status = 'pending' THEN
-            CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
-                 WHEN type IN ('advance','penalty') THEN -amount ELSE 0 END
-          ELSE 0 END) as total_pending
-        FROM worker_payments
-        WHERE employee_id = $1 AND status != 'cancelled'
-          AND EXTRACT(YEAR FROM created_at) = $2
-      `, [empId, year]);
-
-      const b = rows[0];
-
-      // Per-diem breakdown
-      const { rows: perDiemRows } = await db.query(`
-        SELECT
-          SUM(CASE WHEN status IN ('paid','confirmed') THEN amount ELSE 0 END) as pd_paid,
-          SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) as pd_pending,
-          SUM(amount) as pd_total
-        FROM worker_payments
-        WHERE employee_id = $1 AND type = 'per_diem' AND status != 'cancelled'
-          AND EXTRACT(YEAR FROM created_at) = $2
-      `, [empId, year]);
-
-      const pd = perDiemRows[0];
-
-      // ФОТ из checkins (начислено по баллам) — не из worker_payments
-      const { rows: fotRows } = await db.query(`
-        SELECT COALESCE(SUM(amount_earned), 0) as fot_total
-        FROM field_checkins
-        WHERE employee_id = $1 AND status = 'completed'
-          AND EXTRACT(YEAR FROM date) = $2
-      `, [empId, year]);
-      const fotTotal = parseFloat(fotRows[0]?.fot_total) || 0;
-
-      // Суточные начислены (дни × ставка)
-      const { rows: perDiemDue } = await db.query(`
-        SELECT COALESCE(SUM(sub.days * sub.rate), 0) as pd_due
-        FROM (
-          SELECT ea.work_id, COUNT(DISTINCT fc.date) as days, COALESCE(ea.per_diem, 1000) as rate
-          FROM employee_assignments ea
-          JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id
-          WHERE ea.employee_id = $1 AND fc.status = 'completed' AND COALESCE(fc.amount_earned, 0) > 0
-            AND EXTRACT(YEAR FROM fc.date) = $2
-          GROUP BY ea.work_id, ea.per_diem
-        ) sub
-      `, [empId, year]);
-      const perDiemDueTotal = parseFloat(perDiemDue[0]?.pd_due) || 0;
-
-      // Начислено = ФОТ (checkins) + суточные (по дням)
-      const totalEarned = fotTotal + perDiemDueTotal;
-      // Выплачено = salary + per_diem + bonus + advance из worker_payments
-      const totalPaid = (parseFloat(b.salary_total) || 0) + (parseFloat(b.per_diem_total) || 0) +
-                        (parseFloat(b.bonus_total) || 0) + (parseFloat(b.advance_total) || 0);
-
-      return {
-        year,
-        fot: fotTotal,
-        salary_paid: parseFloat(b.salary_total) || 0,
-        per_diem: perDiemDueTotal,
-        per_diem_paid: parseFloat(pd.pd_paid) || 0,
-        per_diem_pending: parseFloat(pd.pd_pending) || 0,
-        per_diem_balance: parseFloat(pd.pd_total) || 0,
-        advance: parseFloat(b.advance_total) || 0,
-        bonus: parseFloat(b.bonus_total) || 0,
-        penalty: parseFloat(b.penalty_total) || 0,
-        total_earned: totalEarned,
-        total_paid: totalPaid,
-        total_pending: totalEarned - totalPaid,
-      };
+      const year = req.query.year ? parseInt(req.query.year) : undefined;
+      const result = await getWorkerFinances(db, empId, { year, logger: fastify.log });
+      if (result.error === 'per_diem_not_set') return reply.code(422).send(result);
+      if (result.error === 'invalid_year') return reply.code(400).send(result);
+      if (result.error) return reply.code(500).send(result);
+      return result;
     } catch (err) {
       fastify.log.error('[worker-payments] GET /my/balance error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });

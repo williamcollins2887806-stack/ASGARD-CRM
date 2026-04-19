@@ -38,8 +38,15 @@ async function loadMoney(content) {
     return;
   }
 
-  const cur = finances.current_project || {};
-  const all = finances.all_time || {};
+  if (finances.error === 'per_diem_not_set') {
+    content.appendChild(F.Empty({ text: finances.message || '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435 \u043D\u0435 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u044B', icon: '\u26A0\uFE0F' }));
+    return;
+  }
+
+  // SSoT v1.2: activeWork из by_work[], all из корневых полей
+  const activeWork = (finances.by_work || []).find(w => w.is_active) || (finances.by_work || [])[0] || null;
+  const cur = activeWork || {};
+  const all = finances;
   const proj = project?.project || project || {};
   const tariff = proj.tariff || {};
   const assignment = project?.assignment || proj;
@@ -66,11 +73,11 @@ async function loadMoney(content) {
 
   const amountEl = el('div', { style: { color: t.gold, fontWeight: '700', fontSize: '2.5rem', lineHeight: '1.1' } });
   heroContent.appendChild(amountEl);
-  setTimeout(() => Utils.countUp(amountEl, cur.earned_total || cur.earned || 0, 1000), 200);
+  setTimeout(() => Utils.countUp(amountEl, cur.total_earned || 0, 1000), 200);
   const suffix = el('span', { style: { fontSize: '1.5rem', fontWeight: '600', marginLeft: '4px' } }, ' \u20BD');
   amountEl.appendChild(suffix);
 
-  const curShifts = cur.shifts_count || cur.days_worked || 0;
+  const curShifts = cur.days_worked || 0;
   if (curShifts) {
     heroContent.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.8125rem', marginTop: '8px' } },
       '\u041E\u0442\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E ' + curShifts + ' \u0441\u043C\u0435\u043D'));
@@ -173,25 +180,18 @@ async function loadMoney(content) {
     style: { color: t.textTer, fontSize: '0.6875rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' },
   }, '\u041D\u0410 \u041E\u0411\u042A\u0415\u041A\u0422\u0415'));
 
-  const totalRate = ratePerShift + (tariff.combination_rate || assignment.combo_rate || 0);
-  const shifts = cur.shifts_count || 0;
-  const perDiem = assignment.per_diem || 0;
-  const perDiemDays = cur.per_diem_days || shifts;
-  const advances = cur.advances_paid || 0;
-
   const rows = [
-    { label: '\u0421\u0442\u0430\u0432\u043A\u0430: ' + shifts + ' \u0441\u043C\u0435\u043D \u00D7 ' + Utils.formatMoney(totalRate) + '\u20BD', value: Utils.formatMoney(shifts * totalRate) + '\u20BD' },
+    { label: '\u0424\u041E\u0422: ' + (cur.days_worked || 0) + ' \u0441\u043C\u0435\u043D', value: Utils.formatMoney(cur.fot || 0) + '\u20BD' },
   ];
-  if (perDiem) {
-    rows.push({ label: '\u041F\u0430\u0439\u043A\u043E\u0432\u044B\u0435: ' + perDiemDays + ' \u0434\u043D. \u00D7 ' + Utils.formatMoney(perDiem) + '\u20BD', value: Utils.formatMoney(perDiemDays * perDiem) + '\u20BD' });
+  if (cur.per_diem_accrued) {
+    rows.push({ label: '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435: ' + (cur.days_worked || 0) + ' \u0434\u043D. \u00D7 ' + Utils.formatMoney(cur.per_diem_rate || 0) + '\u20BD', value: Utils.formatMoney(cur.per_diem_accrued) + '\u20BD' });
   }
-  if (cur.bonuses) rows.push({ label: '\u0411\u043E\u043D\u0443\u0441\u044B', value: '+' + Utils.formatMoney(cur.bonuses) + '\u20BD', color: t.green });
-  if (advances) rows.push({ label: '\u0410\u0432\u0430\u043D\u0441\u044B', value: '\u2212' + Utils.formatMoney(advances) + '\u20BD', color: t.red });
+  if (cur.bonus_paid) rows.push({ label: '\u0411\u043E\u043D\u0443\u0441\u044B', value: '+' + Utils.formatMoney(cur.bonus_paid) + '\u20BD', color: t.green });
+  if (cur.penalty) rows.push({ label: '\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F', value: '\u2212' + Utils.formatMoney(cur.penalty) + '\u20BD', color: t.red });
+  if (cur.advance_paid) rows.push({ label: '\u0410\u0432\u0430\u043D\u0441\u044B', value: '\u2212' + Utils.formatMoney(cur.advance_paid) + '\u20BD', color: t.red });
 
-  const totalEarned = (shifts * totalRate) + (perDiemDays * perDiem) + (cur.bonuses || 0);
-  const toPay = totalEarned - advances;
-  rows.push({ label: '\u0418\u0422\u041E\u0413\u041E \u043D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', value: Utils.formatMoney(totalEarned) + '\u20BD', bold: true });
-  rows.push({ label: '\u041A \u0412\u042B\u041F\u041B\u0410\u0422\u0415', value: Utils.formatMoney(toPay) + '\u20BD', bold: true, color: t.gold });
+  rows.push({ label: '\u0418\u0422\u041E\u0413\u041E \u043D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', value: Utils.formatMoney(cur.total_earned || 0) + '\u20BD', bold: true });
+  rows.push({ label: '\u041A \u0412\u042B\u041F\u041B\u0410\u0422\u0415', value: Utils.formatMoney(cur.total_pending || 0) + '\u20BD', bold: true, color: t.gold });
 
   for (const row of rows) {
     const r = el('div', {
@@ -208,7 +208,7 @@ async function loadMoney(content) {
   content.appendChild(breakCard);
 
   // All time summary
-  if (all.total_earned) {
+  if (all.total_earned && (finances.by_work || []).length > 0) {
     const allCard = el('div', {
       style: { background: t.surface, borderRadius: '16px', padding: '16px', border: '1px solid ' + t.border, animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both' },
     });

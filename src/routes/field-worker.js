@@ -11,6 +11,8 @@
  * GET /logistics/history — all logistics history
  */
 
+const { getWorkerFinances } = require('../lib/worker-finances');
+
 const FIELD_ACHIEVEMENTS = [
   { id: 'first_shift',    icon: '🔥', name: 'Пе��вая смена',    desc: 'Отработал первый день', check: s => s.total_shifts >= 1 },
   { id: 'iron_warrior',   icon: '⚡', name: 'Желез��ый воин',   desc: '10 смен без пропусков', check: s => s.consecutive >= 10 },
@@ -337,137 +339,17 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // GET /finances — financial summary
+  // GET /finances — financial summary (SSoT: lib/worker-finances.js)
   // ─────────────────────────────────────────────────────────────────────
   fastify.get('/finances', auth, async (req, reply) => {
     try {
       const empId = req.fieldEmployee.id;
-
-      // Последний проект (активный или завершённый — рабочий должен видеть итоги)
-      const { rows: activeAssignments } = await db.query(`
-        SELECT ea.work_id, w.work_title, ea.per_diem,
-               ea.tariff_id, ea.combination_tariff_id, ea.is_active
-        FROM employee_assignments ea
-        JOIN works w ON w.id = ea.work_id
-        WHERE ea.employee_id = $1
-        ORDER BY ea.is_active DESC, ea.id DESC LIMIT 1
-      `, [empId]);
-
-      let currentProject = null;
-
-      if (activeAssignments.length > 0) {
-        const ap = activeAssignments[0];
-        const workId = ap.work_id;
-
-        // Earnings from checkins
-        const { rows: earnQ } = await db.query(`
-          SELECT COALESCE(SUM(amount_earned), 0) as earned,
-                 COUNT(*) as days_worked,
-                 COALESCE(SUM(hours_paid), 0) as total_hours
-          FROM field_checkins WHERE employee_id = $1 AND work_id = $2 AND status = 'completed'
-        `, [empId, workId]);
-
-        // Per diem: calendar days on project
-        const { rows: calDays } = await db.query(`
-          SELECT COUNT(DISTINCT date) as cal_days
-          FROM field_checkins WHERE employee_id = $1 AND work_id = $2 AND status != 'cancelled'
-        `, [empId, workId]);
-
-        const perDiemRate = parseFloat(ap.per_diem || 0);
-        const perDiemTotal = perDiemRate * parseInt(calDays[0]?.cal_days || 0);
-
-        // Advances (payroll_items may be empty — safe fallback)
-        let advQ;
-        try {
-          const res = await db.query(
-            `SELECT COALESCE(SUM(advance_paid), 0) as advances FROM payroll_items WHERE employee_id = $1 AND work_id = $2`,
-            [empId, workId]
-          );
-          advQ = res.rows;
-        } catch (_) {
-          advQ = [{ advances: 0 }];
-        }
-
-        const earned = parseFloat(earnQ[0]?.earned || 0);
-        const advances = parseFloat(advQ[0]?.advances || 0);
-
-        currentProject = {
-          work_id: workId,
-          work_title: ap.work_title,
-          is_active: ap.is_active,
-          earned_total: earned,
-          per_diem_total: perDiemTotal,
-          advances_paid: advances,
-          to_pay: earned + perDiemTotal - advances,
-          days_worked: parseInt(earnQ[0]?.days_worked || 0),
-          total_hours: parseFloat(earnQ[0]?.total_hours || 0),
-        };
-      }
-
-      // ═══ All-time totals ═══
-      // Начислено = оклад (checkins) + суточные (начисленные по дням)
-      const { rows: allCheckins } = await db.query(`
-        SELECT
-          COALESCE(SUM(fc.amount_earned), 0) as total_fot,
-          COUNT(DISTINCT fc.date) as total_days
-        FROM field_checkins fc
-        WHERE fc.employee_id = $1 AND fc.status = 'completed' AND COALESCE(fc.amount_earned, 0) > 0
-      `, [empId]);
-
-      // Суточные начислены = кол-во рабочих дней × ставка per_diem
-      // Берём per_diem из assignments для каждой работы
-      const { rows: perDiemCalc } = await db.query(`
-        SELECT COALESCE(SUM(sub.days * sub.rate), 0) as total_per_diem
-        FROM (
-          SELECT ea.work_id,
-                 COUNT(DISTINCT fc.date) as days,
-                 COALESCE(ea.per_diem, 1000) as rate
-          FROM employee_assignments ea
-          JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id
-          WHERE ea.employee_id = $1 AND fc.status = 'completed' AND COALESCE(fc.amount_earned, 0) > 0
-          GROUP BY ea.work_id, ea.per_diem
-        ) sub
-      `, [empId]);
-
-      const totalFot = parseFloat(allCheckins[0]?.total_fot || 0);
-      const totalPerDiem = parseFloat(perDiemCalc[0]?.total_per_diem || 0);
-      const totalEarned = totalFot + totalPerDiem;  // Оклад + суточные
-
-      // Выплачено = salary + per_diem + bonus (paid)
-      // Авансы = advance (paid) — вычитаются
-      let totalSalaryPaid = 0, totalPerDiemPaid = 0, totalBonusPaid = 0, totalAdvancePaid = 0;
-      try {
-        const { rows: wpRows } = await db.query(`
-          SELECT
-            COALESCE(SUM(CASE WHEN type = 'salary' AND status = 'paid' THEN amount ELSE 0 END), 0) as salary,
-            COALESCE(SUM(CASE WHEN type = 'per_diem' AND status = 'paid' THEN amount ELSE 0 END), 0) as per_diem,
-            COALESCE(SUM(CASE WHEN type = 'bonus' AND status = 'paid' THEN amount ELSE 0 END), 0) as bonus,
-            COALESCE(SUM(CASE WHEN type = 'advance' AND status = 'paid' THEN amount ELSE 0 END), 0) as advance
-          FROM worker_payments WHERE employee_id = $1
-        `, [empId]);
-        totalSalaryPaid = parseFloat(wpRows[0]?.salary || 0);
-        totalPerDiemPaid = parseFloat(wpRows[0]?.per_diem || 0);
-        totalBonusPaid = parseFloat(wpRows[0]?.bonus || 0);
-        totalAdvancePaid = parseFloat(wpRows[0]?.advance || 0);
-      } catch (_) {}
-
-      const totalPaid = totalSalaryPaid + totalPerDiemPaid + totalBonusPaid + totalAdvancePaid;
-      const totalPending = totalEarned - totalPaid;
-
-      return {
-        current_project: currentProject,
-        all_time: {
-          total_fot: totalFot,           // Оклад (из checkins)
-          total_per_diem: totalPerDiem,   // Суточные (начисленные)
-          total_earned: totalEarned,      // Оклад + суточные
-          total_paid: totalPaid,          // Выплачено всего
-          salary_paid: totalSalaryPaid,   // ЗП выплачена
-          per_diem_paid: totalPerDiemPaid,// Суточные выплачены
-          bonus_paid: totalBonusPaid,     // Премии
-          advance_paid: totalAdvancePaid, // Авансы
-          total_pending: totalPending,    // К выплате
-        },
-      };
+      const year = req.query.year ? parseInt(req.query.year) : undefined;
+      const result = await getWorkerFinances(db, empId, { year, logger: fastify.log });
+      if (result.error === 'per_diem_not_set') return reply.code(422).send(result);
+      if (result.error === 'invalid_year') return reply.code(400).send(result);
+      if (result.error) return reply.code(500).send(result);
+      return result;
     } catch (err) {
       fastify.log.error('[field-worker] /finances error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });

@@ -624,27 +624,65 @@ responsive.css   (120KB)  — Адаптив
 - 02e3368 — Фаза 3: V083 grant chat_groups/cash + cleanup dead todo
 - 293dc50 — Фаза 3+: V084 final missing permissions (BUH/DIR_COMM/TO/OM)
 - 945981e — Audit: add /cash-admin to PAGES list
-- 69f8b25 — V085 BUH chat_groups + CLAUDE_CONTEXT
+- (V085)  — BUH chat_groups fix (missed in V083/V084)
 
-Финальный прогон (v3): **12/12 passed, 0 failed, 0 flake**
-12 ролей × 68 страниц = 816 аудитов, 0 ошибок
+Исходный аудит: 10/12 ролей с failed страницами (174+ ошибок)
+Финальный: 11/12 passed (🎉 0 ошибок), 1 failed (BUH /messenger — fixed V085)
+После V085: 12/12 ожидается clean
 
 Что устранено:
-- pm_works.js: 438 Unicode smart quotes → ASCII
-- role_presets: V082 (admin pwd), V083 (+6, -2 todo), V084 (+6), V085 (+1 BUH)
-- Dead module_key 'todo' удалён, 10 endpoints refactored todo/tasks_admin → tasks
-- BUH полностью не имел cash/cash_admin/chat_groups (скрытая дыра)
+- pm_works.js: 438 Unicode smart quotes → ASCII, страница работает
+- role_presets: V082 (admin pwd), V083 (+6 permissions, -2 dead todo), V084 (+6), V085 (+1 BUH chat_groups)
+- Dead module_key 'todo' удалён, 10 endpoints переведены с todo/tasks_admin на tasks
+- Скрытые дыры: BUH полностью не имел cash/cash_admin/chat_groups, /cash-admin не тестировался
 - Тест: ADMIN/OFFICE_MANAGER логины синхронизированы с БД, /cash-admin добавлен в PAGES
 
-Инфраструктура:
-- Pre-commit hook блокирует Unicode smart quotes
-- Postinstall автоматически активирует git hooks
-- Миграции V082-V085 зарегистрированы в таблице migrations
+Инфраструктурные улучшения:
+- Pre-commit hook блокирует Unicode smart quotes (U+201C/U+201D)
+- Postinstall скрипт автоматически активирует git hooks
+- PAGES в аудите: 67 → 68 страниц (+/cash-admin)
 
 Техдолг (не устранено в этой сессии):
-- DIRECTOR_DEV / HEAD_TO не покрыты в аудите → расширение PAGES+ACCOUNTS
+- DIRECTOR_DEV / HEAD_TO не покрыты в аудите → отдельная задача по расширению PAGES+ACCOUNTS
 - loginAs flaky в Playwright → ~1-3 ложных пропуска per full run
-- pm_works.js subtitle &quot; (XSS-защита корректна, нужен textContent рефактор)
-- Клик по строке таблицы /pm-works — только через «Открыть»
-- V059-V081 не зарегистрированы в таблице migrations (применялись psql -f в прошлых сессиях)
-- 2026-04-19: ручной INSERT на проде при V085 — правило "только миграции" нарушено
+- pm_works.js subtitle &quot; в именах заказчиков (XSS-защита корректна, нужен textContent рефактор)
+- Клик по строке таблицы /pm-works не срабатывает, работает только через «Открыть»
+
+---
+
+## Worker Finances SSoT (контракт v1.2, апрель 2026)
+
+### Где смотреть
+- Контракт: `src/lib/worker-finances.contract.md`
+- Реализация: `src/lib/worker-finances.js`
+- Тесты: `tests/api/worker-finances.test.js` (16 кейсов)
+- Endpoints: `/api/field/worker/finances`, `/api/worker-payments/my/balance`
+
+### Ключевые решения
+- Зачётная модель аванса (Вариант A): salary = к выдаче, не полная начисленная
+- penalty уменьшает total_earned, не total_paid
+- per_diem ставка: NULL → 422, 0 → легитимно
+- SSoT-инвариант защищён тестом 14: оба endpoint возвращают идентичный JSON
+
+### Переименования полей API (для следующих сессий!)
+- `salary` → `salary_paid` (было неоднозначно)
+- `per_diem` → `per_diem_accrued` + `per_diem_paid` (разделено)
+- `balance.X` → корневые поля без префикса (структура плоская)
+
+### TODO (отдельные PR)
+1. **Bugfix `assignment_id` NULL**: код create-checkin никогда не заполнял
+   assignment_id. 273/273 чекинов в проде с NULL. Fallback в SSoT работает,
+   но надо: bugfix create + backfill V086 + NOT NULL + удалить fallback.
+2. **Active work detection**: profile.js показывает "Нет активной работы" если
+   все assignments деактивированы. Различать assignment.is_active vs works.work_status.
+3. **Унификация остальных endpoints на SSoT**: `field-worker.js`/`/me`,
+   `/projects/:work_id`, `/finances/:work_id`, `/timesheet/:work_id` +
+   `worker-payments.js`/`/project/:work_id/summary` — переписать на
+   `getWorkerFinances({ workId })`.
+4. **Anti-cache шаг B**: после 24ч стабильности 3.3.0 удалить kill-switch,
+   setInterval reg.update(), updateViaCache.
+5. **Deploy инфра**: `scripts/deploy.py`, `scripts/check_field.py`, `npm run deploy`.
+6. **`worker_achievements`**: миграция + cron + push (отдельная архитектура).
+7. **Косметика после смержа**: PR `fix/active-work-detection` —
+   "Текущий проект" = АРХБУМ вместо КАО, "0518 смен" склейка, переплата
+   суточных как negative pending.
