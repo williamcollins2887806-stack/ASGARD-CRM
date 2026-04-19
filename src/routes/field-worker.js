@@ -404,71 +404,69 @@ async function routes(fastify, options) {
         };
       }
 
-      // All-time totals
-      const { rows: allTime } = await db.query(`
-        SELECT COALESCE(SUM(amount_earned), 0) as total_earned
-        FROM field_checkins WHERE employee_id = $1 AND status = 'completed'
+      // ═══ All-time totals ═══
+      // Начислено = оклад (checkins) + суточные (начисленные по дням)
+      const { rows: allCheckins } = await db.query(`
+        SELECT
+          COALESCE(SUM(fc.amount_earned), 0) as total_fot,
+          COUNT(DISTINCT fc.date) as total_days
+        FROM field_checkins fc
+        WHERE fc.employee_id = $1 AND fc.status = 'completed' AND COALESCE(fc.amount_earned, 0) > 0
       `, [empId]);
 
-      // Only count ACTUAL payments from worker_payments (not payroll accruals)
-      let allPaid = [{ total_paid: 0 }];
-      try {
-        const res = await db.query(
-          `SELECT COALESCE(SUM(CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
-                                     WHEN type IN ('advance') THEN -amount ELSE 0 END), 0) as total_paid
-           FROM worker_payments WHERE employee_id = $1 AND status = 'paid'`,
-          [empId]
-        );
-        allPaid = res.rows;
-      } catch (_) {}
+      // Суточные начислены = кол-во рабочих дней × ставка per_diem
+      // Берём per_diem из assignments для каждой работы
+      const { rows: perDiemCalc } = await db.query(`
+        SELECT COALESCE(SUM(sub.days * sub.rate), 0) as total_per_diem
+        FROM (
+          SELECT ea.work_id,
+                 COUNT(DISTINCT fc.date) as days,
+                 COALESCE(ea.per_diem, 1000) as rate
+          FROM employee_assignments ea
+          JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id
+          WHERE ea.employee_id = $1 AND fc.status = 'completed' AND COALESCE(fc.amount_earned, 0) > 0
+          GROUP BY ea.work_id, ea.per_diem
+        ) sub
+      `, [empId]);
 
-      let allOTP = [{ total_otp: 0 }];
-      try {
-        const res = await db.query(
-          `SELECT COALESCE(SUM(amount), 0) as total_otp FROM one_time_payments WHERE employee_id = $1 AND status = 'paid'`,
-          [empId]
-        );
-        allOTP = res.rows;
-      } catch (_) {}
+      const totalFot = parseFloat(allCheckins[0]?.total_fot || 0);
+      const totalPerDiem = parseFloat(perDiemCalc[0]?.total_per_diem || 0);
+      const totalEarned = totalFot + totalPerDiem;  // Оклад + суточные
 
-      const totalEarned = parseFloat(allTime[0]?.total_earned || 0);
-      const totalPaid = parseFloat(allPaid[0]?.total_paid || 0) + parseFloat(allOTP[0]?.total_otp || 0);
-
-      // Worker payments summary (from worker_payments table)
-      let wpSummary = null;
+      // Выплачено = salary + per_diem + bonus (paid)
+      // Авансы = advance (paid) — вычитаются
+      let totalSalaryPaid = 0, totalPerDiemPaid = 0, totalBonusPaid = 0, totalAdvancePaid = 0;
       try {
         const { rows: wpRows } = await db.query(`
           SELECT
-            SUM(CASE WHEN type IN ('salary','per_diem','bonus') THEN amount ELSE 0 END) as total_earned,
-            SUM(CASE WHEN type IN ('advance','penalty') THEN amount ELSE 0 END) as total_deductions,
-            SUM(CASE WHEN status IN ('paid','confirmed') THEN
-              CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
-                   WHEN type IN ('advance','penalty') THEN -amount ELSE 0 END
-            ELSE 0 END) as total_paid,
-            SUM(CASE WHEN status = 'pending' THEN
-              CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
-                   WHEN type IN ('advance','penalty') THEN -amount ELSE 0 END
-            ELSE 0 END) as total_pending
-          FROM worker_payments WHERE employee_id = $1 AND status != 'cancelled'
+            COALESCE(SUM(CASE WHEN type = 'salary' AND status = 'paid' THEN amount ELSE 0 END), 0) as salary,
+            COALESCE(SUM(CASE WHEN type = 'per_diem' AND status = 'paid' THEN amount ELSE 0 END), 0) as per_diem,
+            COALESCE(SUM(CASE WHEN type = 'bonus' AND status = 'paid' THEN amount ELSE 0 END), 0) as bonus,
+            COALESCE(SUM(CASE WHEN type = 'advance' AND status = 'paid' THEN amount ELSE 0 END), 0) as advance
+          FROM worker_payments WHERE employee_id = $1
         `, [empId]);
-        if (wpRows[0] && parseFloat(wpRows[0].total_earned || 0) > 0) {
-          wpSummary = {
-            earned: parseFloat(wpRows[0].total_earned || 0),
-            deductions: parseFloat(wpRows[0].total_deductions || 0),
-            paid: parseFloat(wpRows[0].total_paid || 0),
-            pending: parseFloat(wpRows[0].total_pending || 0),
-          };
-        }
+        totalSalaryPaid = parseFloat(wpRows[0]?.salary || 0);
+        totalPerDiemPaid = parseFloat(wpRows[0]?.per_diem || 0);
+        totalBonusPaid = parseFloat(wpRows[0]?.bonus || 0);
+        totalAdvancePaid = parseFloat(wpRows[0]?.advance || 0);
       } catch (_) {}
+
+      const totalPaid = totalSalaryPaid + totalPerDiemPaid + totalBonusPaid + totalAdvancePaid;
+      const totalPending = totalEarned - totalPaid;
 
       return {
         current_project: currentProject,
         all_time: {
-          total_earned: totalEarned,
-          total_paid: totalPaid,
-          total_pending: totalEarned - totalPaid,
+          total_fot: totalFot,           // Оклад (из checkins)
+          total_per_diem: totalPerDiem,   // Суточные (начисленные)
+          total_earned: totalEarned,      // Оклад + суточные
+          total_paid: totalPaid,          // Выплачено всего
+          salary_paid: totalSalaryPaid,   // ЗП выплачена
+          per_diem_paid: totalPerDiemPaid,// Суточные выплачены
+          bonus_paid: totalBonusPaid,     // Премии
+          advance_paid: totalAdvancePaid, // Авансы
+          total_pending: totalPending,    // К выплате
         },
-        worker_payments_summary: wpSummary,
       };
     } catch (err) {
       fastify.log.error('[field-worker] /finances error:', err);
