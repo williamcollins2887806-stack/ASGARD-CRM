@@ -160,6 +160,54 @@ async function routes(fastify, options) {
       .send(buffer);
   });
 
+  // Предпросмотр файла (inline, без скачивания — для директора)
+  fastify.get('/preview/:filename', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const requestedFilename = getSafeFilenameParam(request.params.filename);
+    if (!requestedFilename) {
+      return reply.code(400).send({ error: 'Некорректный идентификатор файла' });
+    }
+
+    const result = await db.query(
+      'SELECT filename, original_name, mime_type FROM documents WHERE filename = $1 LIMIT 1',
+      [requestedFilename]
+    );
+    const doc = result.rows[0];
+
+    if (!doc || !doc.filename) {
+      return reply.code(404).send({ error: 'Файл не найден' });
+    }
+
+    const filePath = resolveStoredFilePath(doc.filename);
+    if (!filePath) {
+      return reply.code(404).send({ error: 'Файл не найден' });
+    }
+
+    try {
+      await fs.access(filePath);
+    } catch (e) {
+      return reply.code(404).send({ error: 'Файл не найден' });
+    }
+
+    const buffer = await fs.readFile(filePath);
+    const mime = doc.mime_type || 'application/octet-stream';
+
+    // Для PDF, изображений и текста — inline (предпросмотр в браузере)
+    // Для остальных — скачивание
+    const inlineTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain'];
+    const disposition = inlineTypes.some(t => mime.startsWith(t.split('/')[0]) || mime === t)
+      ? `inline; filename="${encodeURIComponent(doc.original_name || doc.filename)}"`
+      : buildContentDisposition(doc.original_name || doc.filename);
+
+    reply
+      .header('Content-Type', mime)
+      .header('Content-Length', buffer.length)
+      .header('Content-Disposition', disposition)
+      .header('Cache-Control', 'private, max-age=3600')
+      .send(buffer);
+  });
+
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { tender_id, work_id, estimate_id, type, limit = 50, cascade = 'true' } = request.query;
 
