@@ -33,9 +33,10 @@ async function checkPerDiem(db, log) {
   try {
     log.info('[per-diem-cron] Checking per-diem payments...');
 
-    // Находим работы с невыплаченными суточными:
-    // Рабочие, у которых есть checkins за последние 3 дня,
-    // но нет worker_payment per_diem со status='paid' за эти даты
+    // Находим рабочих у которых запас суточных <= 2 дня
+    // запас = оплаченные_дни - отработанные_дни
+    const WARN_DAYS = 2; // предупреждать когда запас <= 2 дней
+
     const { rows } = await db.query(`
       WITH active_works AS (
         SELECT DISTINCT w.id AS work_id, w.work_title, w.pm_id
@@ -43,65 +44,71 @@ async function checkPerDiem(db, log) {
         WHERE w.work_status NOT IN ('Завершена', 'Закрыт')
           AND w.pm_id IS NOT NULL
       ),
-      recent_checkins AS (
-        SELECT
-          fc.work_id,
-          fc.employee_id,
-          e.fio,
-          COUNT(DISTINCT fc.date) AS shift_days,
-          MIN(fc.date) AS first_date,
-          MAX(fc.date) AS last_date
+      checkin_days AS (
+        SELECT fc.work_id, fc.employee_id, COUNT(DISTINCT fc.date) AS worked_days
         FROM field_checkins fc
-        JOIN employees e ON e.id = fc.employee_id
         JOIN active_works aw ON aw.work_id = fc.work_id
         WHERE fc.status IN ('completed', 'closed', 'confirmed')
           AND COALESCE(fc.amount_earned, 0) > 0
-        GROUP BY fc.work_id, fc.employee_id, e.fio
+        GROUP BY fc.work_id, fc.employee_id
       ),
-      paid_per_diem AS (
-        SELECT
-          wp.work_id,
-          wp.employee_id,
-          SUM(wp.days) AS paid_days
+      paid AS (
+        SELECT wp.work_id, wp.employee_id,
+               FLOOR(SUM(wp.amount) / GREATEST(COALESCE(
+                 (SELECT ea2.per_diem FROM employee_assignments ea2
+                  WHERE ea2.work_id = wp.work_id AND ea2.employee_id = wp.employee_id
+                    AND ea2.is_active = TRUE LIMIT 1), 1000), 1))::int AS paid_days
         FROM worker_payments wp
-        WHERE wp.type = 'per_diem'
-          AND wp.status IN ('paid', 'confirmed')
+        WHERE wp.type = 'per_diem' AND wp.status IN ('paid', 'confirmed')
         GROUP BY wp.work_id, wp.employee_id
       )
       SELECT
-        rc.work_id,
+        cd.work_id,
         aw.work_title,
         aw.pm_id,
-        COUNT(*) AS unpaid_workers,
-        SUM(rc.shift_days - COALESCE(ppd.paid_days, 0)) AS unpaid_days,
-        SUM((rc.shift_days - COALESCE(ppd.paid_days, 0)) * COALESCE(ea.per_diem, fps.per_diem, 1000)) AS unpaid_amount
-      FROM recent_checkins rc
-      JOIN active_works aw ON aw.work_id = rc.work_id
-      LEFT JOIN paid_per_diem ppd ON ppd.work_id = rc.work_id AND ppd.employee_id = rc.employee_id
-      LEFT JOIN employee_assignments ea ON ea.work_id = rc.work_id AND ea.employee_id = rc.employee_id AND ea.is_active = TRUE
-      LEFT JOIN field_project_settings fps ON fps.work_id = rc.work_id
-      WHERE rc.shift_days > COALESCE(ppd.paid_days, 0)
-      GROUP BY rc.work_id, aw.work_title, aw.pm_id
-      HAVING SUM(rc.shift_days - COALESCE(ppd.paid_days, 0)) > 0
-      ORDER BY unpaid_amount DESC
-    `);
+        e.fio,
+        cd.worked_days,
+        COALESCE(p.paid_days, 0) AS paid_days,
+        (COALESCE(p.paid_days, 0) - cd.worked_days) AS days_left
+      FROM checkin_days cd
+      JOIN active_works aw ON aw.work_id = cd.work_id
+      JOIN employees e ON e.id = cd.employee_id
+      LEFT JOIN paid p ON p.work_id = cd.work_id AND p.employee_id = cd.employee_id
+      WHERE (COALESCE(p.paid_days, 0) - cd.worked_days) <= $1
+      ORDER BY (COALESCE(p.paid_days, 0) - cd.worked_days) ASC, e.fio
+    `, [WARN_DAYS]);
 
     if (!rows.length) {
-      log.info('[per-diem-cron] No unpaid per-diem found');
+      log.info('[per-diem-cron] No per-diem warnings');
       return;
     }
 
-    log.info(`[per-diem-cron] Found ${rows.length} works with unpaid per-diem`);
+    // Группируем по work_id + pm_id
+    const byWork = {};
+    for (const r of rows) {
+      const key = r.work_id + ':' + r.pm_id;
+      if (!byWork[key]) byWork[key] = { work_id: r.work_id, work_title: r.work_title, pm_id: r.pm_id, people: [] };
+      byWork[key].people.push({ fio: r.fio, days_left: parseInt(r.days_left), worked: parseInt(r.worked_days), paid: parseInt(r.paid_days) });
+    }
 
-    for (const row of rows) {
+    log.info(`[per-diem-cron] Found ${rows.length} workers with per-diem running low`);
+
+    for (const row of Object.values(byWork)) {
       if (!row.pm_id) continue;
 
-      const amount = Math.round(parseFloat(row.unpaid_amount) || 0);
-      const days = parseInt(row.unpaid_days) || 0;
-      const workers = parseInt(row.unpaid_workers) || 0;
+      // Формируем список поимённо
+      const urgent = row.people.filter(p => p.days_left <= 0);
+      const warning = row.people.filter(p => p.days_left > 0 && p.days_left <= WARN_DAYS);
 
-      const title = '💰 Суточные — не выплачены';
-      const message = `${row.work_title}: ${workers} чел., ${days} дн., ${amount.toLocaleString('ru-RU')} ₽ к выплате`;
+      let message = `${row.work_title}:\n`;
+      if (urgent.length) {
+        message += `🔴 Закончились: ${urgent.map(p => p.fio + ' (' + p.days_left + ' дн.)').join(', ')}\n`;
+      }
+      if (warning.length) {
+        message += `🟡 Скоро: ${warning.map(p => p.fio + ' (осталось ' + p.days_left + ' дн.)').join(', ')}`;
+      }
+
+      const title = urgent.length ? '🔴 Суточные закончились!' : '🟡 Суточные заканчиваются';
       const link = `#/pm-works?highlight=${row.work_id}`;
 
       // Не спамить — проверяем что уведомление за сегодня ещё не отправлялось
