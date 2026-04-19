@@ -71,6 +71,7 @@ const PAGES = [
   { path: 'travel',             name: 'Жильё и билеты' },
   // Финансы
   { path: 'cash',               name: 'Касса' },
+  { path: 'cash-admin',          name: 'Касса (управление)' },
   { path: 'finances',           name: 'Финансы' },
   { path: 'payroll',            name: 'Зарплата' },
   { path: 'acts',               name: 'Акты' },
