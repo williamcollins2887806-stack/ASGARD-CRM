@@ -10,6 +10,27 @@
   <meta name="format-detection" content="telephone=no">
   <title>ASGARD Field</title>
 
+  <!-- Kill-switch: при смене версии — сбросить все кэши и перерегистрировать SW -->
+  <script>
+  (function(){
+    var TARGET_VER = '3.1.0';
+    var curVer = localStorage.getItem('field_sw_ver');
+    if (curVer !== TARGET_VER && 'serviceWorker' in navigator && 'caches' in window) {
+      // Удалить все кэши
+      caches.keys().then(function(keys) {
+        keys.forEach(function(k) { caches.delete(k); });
+      });
+      // Unregister все SW
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(r) { r.unregister(); });
+      });
+      localStorage.setItem('field_sw_ver', TARGET_VER);
+      // Перезагрузить через 500ms чтобы дать время на unregister
+      setTimeout(function() { location.reload(true); }, 500);
+    }
+  })();
+  </script>
+
   <link rel="manifest" href="/field/manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/img/icon-192.png">
   <link rel="apple-touch-icon" href="/assets/img/icon-192.png">
