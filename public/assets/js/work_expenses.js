@@ -245,7 +245,7 @@ window.AsgardWorkExpenses = (function(){
       </div>
     `;
 
-    showModal(`Расходы: ${esc(work.work_title || 'Работа #'+work.id)}`, html);
+    showModal({ title: `Расходы: ${esc(work.work_title || 'Работа #'+work.id)}`, html, icon: '💳', subtitle: 'Управление расходами' });
 
     // Обработчики
     bindExpenseHandlers(work, user);
@@ -423,7 +423,7 @@ window.AsgardWorkExpenses = (function(){
       </div>
     `;
 
-    showModal(`Добавить: ${cat.label}`, html);
+    showModal({ title: `Добавить: ${cat.label}`, html, icon: cat.icon || '💳', subtitle: esc(work.work_title || '') });
 
     // Авто-расчёт НДС при изменении суммы или ставки
     let _expFile = null;
@@ -556,7 +556,7 @@ window.AsgardWorkExpenses = (function(){
       <div style="margin-top:12px"><button class="btn" id="btnSaveExp">Сохранить</button></div>
     `;
 
-    showModal(`Редактировать: ${cat.label}`, html);
+    showModal({ title: `Редактировать: ${cat.label}`, html, icon: cat.icon || '✏️', subtitle: esc(work.work_title || '') });
 
     $('#btnSaveExp').addEventListener('click', async () => {
       try {
