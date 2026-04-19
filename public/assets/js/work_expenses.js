@@ -157,16 +157,20 @@ window.AsgardWorkExpenses = (function(){
             ${e.fot_employee_name ? `<span class="exp-emp">${esc(e.fot_employee_name)}</span>` : ''}
             ${e.supplier ? `<span class="exp-supplier">${esc(e.supplier)}</span>` : ''}
             ${e.comment ? `<span class="exp-comment">${esc(e.comment)}</span>` : ''}
+            ${e.vat_rate ? `<span class="exp-vat" style="color:var(--t2);font-size:11px">НДС ${e.vat_rate}%</span>` : ''}
           </div>
           <div class="exp-item-flags">
             ${e.invoice_needed ? (e.invoice_received ? '<span class="badge ok">✓ СФ</span>' : '<span class="badge warn">⏳ СФ</span>') : ''}
             ${e.doc_number ? `<span class="badge">#${esc(e.doc_number)}</span>` : ''}
+            ${e.receipt_url ? `<span class="badge ok" style="cursor:pointer" data-preview="${esc(e.receipt_url)}" title="Предпросмотр">📎</span>` : ''}
           </div>
           <div class="exp-item-actions">
+            <button class="btn ghost mini" data-items="${e.id}" title="Позиции">📋</button>
             <button class="btn ghost mini" data-edit="${e.id}">✎</button>
             <button class="btn ghost mini red" data-del="${e.id}">✕</button>
           </div>
         </div>
+        <div class="exp-items-panel" id="exp-items-${e.id}" style="display:none;padding:4px 0 8px 24px;font-size:12px"></div>
       `).join('') : '<div class="help" style="padding:8px 0">Нет записей</div>';
 
       return `
@@ -296,6 +300,53 @@ window.AsgardWorkExpenses = (function(){
         await deleteExpense(id);
         toast('Расход', 'Удалено');
         openExpensesModal(work, user);
+      });
+    });
+
+    // Позиции расхода (📋)
+    $$('[data-items]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const expId = btn.dataset.items;
+        const panel = document.getElementById('exp-items-' + expId);
+        if (!panel) return;
+        if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+        panel.innerHTML = '<span style="color:var(--t2)">Загрузка...</span>';
+        panel.style.display = 'block';
+        try {
+          const token = localStorage.getItem('asgard_token');
+          const resp = await fetch('/api/expenses/items/' + expId, { headers: { 'Authorization': 'Bearer ' + token } });
+          const data = await resp.json();
+          const rows = data.items || [];
+          if (!rows.length) {
+            panel.innerHTML = '<span style="color:var(--t2)">Нет позиций</span>';
+            return;
+          }
+          let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+          html += '<tr style="color:var(--t2);border-bottom:1px solid var(--brd)"><th style="text-align:left;padding:4px">Наименование</th><th style="text-align:center;padding:4px">Кол</th><th style="text-align:right;padding:4px">Цена</th><th style="text-align:right;padding:4px">Сумма</th></tr>';
+          rows.forEach(r => {
+            html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
+              <td style="padding:3px 4px">${esc(r.name || '—')}</td>
+              <td style="text-align:center;padding:3px 4px;color:var(--t2)">${r.quantity || ''} ${esc(r.unit || '')}</td>
+              <td style="text-align:right;padding:3px 4px;color:var(--t2)">${r.price ? money(r.price) : ''}</td>
+              <td style="text-align:right;padding:3px 4px;font-weight:500">${r.amount ? money(r.amount) + ' ₽' : ''}</td>
+            </tr>`;
+          });
+          html += '</table>';
+          panel.innerHTML = html;
+        } catch (e) {
+          panel.innerHTML = '<span style="color:#ef4444">Ошибка загрузки</span>';
+        }
+      });
+    });
+
+    // Предпросмотр файла (📎)
+    $$('[data-preview]').forEach(badge => {
+      badge.addEventListener('click', () => {
+        const url = badge.dataset.preview;
+        if (!url) return;
+        const token = localStorage.getItem('asgard_token');
+        // Открыть в новой вкладке с авторизацией
+        window.open(url, '_blank');
       });
     });
 
