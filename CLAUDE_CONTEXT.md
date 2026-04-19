@@ -609,5 +609,5 @@ responsive.css   (120KB)  — Адаптив
 
 - **pm_works.js subtitle `&quot;`** — `esc()` экранирует кавычки в имени заказчика, subtitle показывает `&quot;` вместо `"`. Решение: отделить HTML-рендер от textContent-вывода (рефакторинг esc → textContent для subtitle). Не убирать esc() — это XSS-защита.
 - **loginAs flaky в e2e-тестах** — Playwright loginAs() через UI нестабилен (SW update banner перехватывает, PIN keypad race, session timeout). Нужен retry + увеличенный timeout или API-based login fallback.
-- **Клик по строке таблицы /pm-works** — sticky header `<div>Дедлайн</div>` перекрывает pointer events. Нужен z-index audit для sticky th в таблицах.
+- **Клик по строке таблицы /pm-works** — не открывает модалку, работает только через кнопку «Открыть». Причина не подтверждена, гипотезы: sticky header z-index / event delegation на tbody vs tr / отсутствующий onclick handler. Нужен отдельный debug-сеанс.
 - **Pre-commit hook**: `.githooks/pre-commit` блокирует Unicode smart quotes (U+201C/U+201D) в .js/.css/.html/.json. Активируется через `git config core.hooksPath .githooks` (автоматически при `npm install` через postinstall скрипт).
