@@ -624,26 +624,27 @@ responsive.css   (120KB)  — Адаптив
 - 02e3368 — Фаза 3: V083 grant chat_groups/cash + cleanup dead todo
 - 293dc50 — Фаза 3+: V084 final missing permissions (BUH/DIR_COMM/TO/OM)
 - 945981e — Audit: add /cash-admin to PAGES list
-- (V085)  — BUH chat_groups fix (missed in V083/V084)
+- 69f8b25 — V085 BUH chat_groups + CLAUDE_CONTEXT
 
-Исходный аудит: 10/12 ролей с failed страницами (174+ ошибок)
-Финальный: 11/12 passed (🎉 0 ошибок), 1 failed (BUH /messenger — fixed V085)
-После V085: 12/12 ожидается clean
+Финальный прогон (v3): **12/12 passed, 0 failed, 0 flake**
+12 ролей × 68 страниц = 816 аудитов, 0 ошибок
 
 Что устранено:
-- pm_works.js: 438 Unicode smart quotes → ASCII, страница работает
-- role_presets: V082 (admin pwd), V083 (+6 permissions, -2 dead todo), V084 (+6), V085 (+1 BUH chat_groups)
-- Dead module_key 'todo' удалён, 10 endpoints переведены с todo/tasks_admin на tasks
-- Скрытые дыры: BUH полностью не имел cash/cash_admin/chat_groups, /cash-admin не тестировался
+- pm_works.js: 438 Unicode smart quotes → ASCII
+- role_presets: V082 (admin pwd), V083 (+6, -2 todo), V084 (+6), V085 (+1 BUH)
+- Dead module_key 'todo' удалён, 10 endpoints refactored todo/tasks_admin → tasks
+- BUH полностью не имел cash/cash_admin/chat_groups (скрытая дыра)
 - Тест: ADMIN/OFFICE_MANAGER логины синхронизированы с БД, /cash-admin добавлен в PAGES
 
-Инфраструктурные улучшения:
-- Pre-commit hook блокирует Unicode smart quotes (U+201C/U+201D)
-- Postinstall скрипт автоматически активирует git hooks
-- PAGES в аудите: 67 → 68 страниц (+/cash-admin)
+Инфраструктура:
+- Pre-commit hook блокирует Unicode smart quotes
+- Postinstall автоматически активирует git hooks
+- Миграции V082-V085 зарегистрированы в таблице migrations
 
 Техдолг (не устранено в этой сессии):
-- DIRECTOR_DEV / HEAD_TO не покрыты в аудите → отдельная задача по расширению PAGES+ACCOUNTS
+- DIRECTOR_DEV / HEAD_TO не покрыты в аудите → расширение PAGES+ACCOUNTS
 - loginAs flaky в Playwright → ~1-3 ложных пропуска per full run
-- pm_works.js subtitle &quot; в именах заказчиков (XSS-защита корректна, нужен textContent рефактор)
-- Клик по строке таблицы /pm-works не срабатывает, работает только через «Открыть»
+- pm_works.js subtitle &quot; (XSS-защита корректна, нужен textContent рефактор)
+- Клик по строке таблицы /pm-works — только через «Открыть»
+- V059-V081 не зарегистрированы в таблице migrations (применялись psql -f в прошлых сессиях)
+- 2026-04-19: ручной INSERT на проде при V085 — правило "только миграции" нарушено
