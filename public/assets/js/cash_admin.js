@@ -261,6 +261,8 @@ window.AsgardCashAdminPage = (function() {
   function showBalanceAdjustModal() {
     showModal({
       title: 'Корректировка баланса кассы',
+      icon: '💰',
+      subtitle: 'Администрирование кассы',
       html: `
         <form id="cashBalanceAdjustForm">
           <div class="cash-alert info" style="margin-bottom:16px">Текущий баланс: <strong>${fmtMoney(cashBalance?.balance || 0)}</strong></div>
@@ -763,6 +765,8 @@ window.AsgardCashAdminPage = (function() {
   async function showDetail(id) {
     showModal({
       title: 'Заявка #' + id,
+      icon: '💰',
+      subtitle: 'Администрирование кассы',
       html: '<div style="text-align:center; padding:24px; color:var(--text-muted)">Загрузка...</div>'
     });
 
@@ -955,6 +959,8 @@ window.AsgardCashAdminPage = (function() {
     setTimeout(() => {
       showModal({
         title: 'Отклонить заявку',
+        icon: '💰',
+        subtitle: 'Администрирование кассы',
         html: `
           <form id="cashRejectForm">
             <input type="hidden" name="request_id" value="${id}">
@@ -1001,6 +1007,8 @@ window.AsgardCashAdminPage = (function() {
     setTimeout(() => {
       showModal({
         title: 'Задать вопрос',
+        icon: '💰',
+        subtitle: 'Администрирование кассы',
         html: `
           <form id="cashQuestionForm">
             <input type="hidden" name="request_id" value="${id}">
@@ -1047,6 +1055,8 @@ window.AsgardCashAdminPage = (function() {
     setTimeout(() => {
       showModal({
         title: 'Закрыть заявку',
+        icon: '💰',
+        subtitle: 'Администрирование кассы',
         html: `
           <form id="cashCloseForm">
             <input type="hidden" name="request_id" value="${id}">

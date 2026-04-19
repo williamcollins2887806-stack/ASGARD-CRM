@@ -130,7 +130,7 @@ window.AsgardPassRequestsPage = (function() {
         ${id && ['draft','submitted'].includes(item.status) ? '<button class="btn" id="btnSubmitPass">📨 Подать</button>' : ''}
       </div>`;
 
-    showModal(id ? `Заявка #${id}` : 'Новая заявка на пропуск', html);
+    showModal({ title: id ? `Заявка #${id}` : 'Новая заявка на пропуск', html, icon: '🪪', subtitle: 'Заявка на пропуск' });
 
     $('#btnSavePass')?.addEventListener('click', async () => {
       const employees = (window.__passReqSelectedEmps || []).map(e => ({ fio: e.fio, employee_id: e.id }));

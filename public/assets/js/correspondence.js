@@ -510,7 +510,7 @@ window.AsgardCorrespondencePage = (function(){
         </div>
       `;
 
-      showModal(`Новый документ`, html);
+      showModal({ title: `Новый документ`, html, icon: '📨', subtitle: isOutgoing ? 'Исходящая корреспонденция' : 'Входящая корреспонденция' });
       $('#corr_type_w')?.appendChild(CRSelect.create({ id: 'corr_type', options: DOC_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label })), dropdownClass: 'z-modal' }));
 
       // ── WOW: Мимир автозаполнение для корреспонденции ──
@@ -729,7 +729,7 @@ window.AsgardCorrespondencePage = (function(){
         </div>
       `;
 
-      showModal(`Редактировать документ`, html);
+      showModal({ title: `Редактировать документ`, html, icon: '📨', subtitle: isOutgoing ? 'Исходящая корреспонденция' : 'Входящая корреспонденция' });
       $('#corr_type_w')?.appendChild(CRSelect.create({ id: 'corr_type', options: DOC_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label })), value: item.doc_type || 'letter', dropdownClass: 'z-modal' }));
 
       $('#btnUpdateCorr')?.addEventListener('click', async () => {
@@ -847,7 +847,7 @@ window.AsgardCorrespondencePage = (function(){
         </div>
       `;
 
-      showModal(`Документ #${item.id}`, html);
+      showModal({ title: `Документ #${item.id}`, html, icon: '📨', subtitle: item.direction === 'outgoing' ? 'Исходящая корреспонденция' : 'Входящая корреспонденция' });
     }
 
     renderPage();

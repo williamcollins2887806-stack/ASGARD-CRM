@@ -681,7 +681,7 @@ window.AsgardEmployeePage=(function(){
             <button class="btn" id="btnSend">Сохранить отзыв</button>
           </div>
         `;
-        showModal("Оценка сотрудника", body);
+        showModal({ title: "Оценка сотрудника", html: body, icon: '👤', subtitle: 'Карточка сотрудника' });
         $('#w_w')?.appendChild(CRSelect.create({ id: 'w_sel', options: [{ value: '', label: '—' }, ...(works||[]).map(w => ({ value: String(w.id), label: w.work_title || '' }))], searchable: true, dropdownClass: 'z-modal' }));
         $("#btnSend").onclick = async ()=>{
           const work_id = Number(CRSelect.getValue('w_sel')||0) || null;

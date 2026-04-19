@@ -111,7 +111,7 @@ window.AsgardEquipment = (function () {
   /* --- A4: Custom modals instead of prompt/confirm --- */
   function askConfirm(title, message) {
     return new Promise(resolve => {
-      showModal({ title: title, html: '<p style="font-size:14px;margin:0 0 16px">' + esc(message) + '</p>' +
+      showModal({ title: title, icon: '🔧', subtitle: 'Оборудование', html: '<p style="font-size:14px;margin:0 0 16px">' + esc(message) + '</p>' +
         '<div style="display:flex;gap:8px;justify-content:flex-end">' +
         '<button class="btn ghost" id="fkConfirmNo">Отмена</button>' +
         '<button class="btn" id="fkConfirmYes">Подтвердить</button></div>',
@@ -125,7 +125,7 @@ window.AsgardEquipment = (function () {
 
   function askInput(title, placeholder) {
     return new Promise(resolve => {
-      showModal({ title: title, html: '<textarea id="fkAskInput" class="inp" rows="3" placeholder="' + esc(placeholder||'') + '" style="width:100%;margin-bottom:16px"></textarea>' +
+      showModal({ title: title, icon: '🔧', subtitle: 'Оборудование', html: '<textarea id="fkAskInput" class="inp" rows="3" placeholder="' + esc(placeholder||'') + '" style="width:100%;margin-bottom:16px"></textarea>' +
         '<div style="display:flex;gap:8px;justify-content:flex-end">' +
         '<button class="btn ghost" id="fkAskCancel">Отмена</button>' +
         '<button class="btn" id="fkAskOk">OK</button></div>',
@@ -198,7 +198,7 @@ window.AsgardEquipment = (function () {
         (selected ? '<button class="btn ghost" id="fkIconClear">🗑️ Убрать</button>' : '') +
         '<button class="btn ghost" onclick="AsgardUI.closeModal()">Отмена</button>' +
       '</div></div>';
-    showModal('Выберите иконку', html);
+    showModal({ title: 'Выберите иконку', html, icon: '🔧', subtitle: 'Оборудование' });
     document.querySelectorAll('.fk-icon-item').forEach(function(el) {
       el.addEventListener('click', function() { onSelect(el.dataset.icon); closeModal(); });
     });
@@ -1007,10 +1007,10 @@ window.AsgardEquipment = (function () {
 
   /* --- EQUIPMENT DETAIL MODAL (A2: skeleton loading) --- */
   async function openEquipmentCard(id) {
-    showModal('Загрузка...', '<div style="padding:20px">' +
+    showModal({ title: 'Загрузка...', html: '<div style="padding:20px">' +
       '<div class="fk-skeleton" style="height:80px;margin-bottom:16px"></div>' +
       '<div class="fk-skeleton" style="height:40px;margin-bottom:12px"></div>' +
-      '<div class="fk-skeleton" style="height:200px"></div></div>');
+      '<div class="fk-skeleton" style="height:200px"></div></div>', icon: '🔧', subtitle: 'Оборудование' });
     try {
       var data = await api('/api/equipment/' + id);
       if (!data.success) { toast('Ошибка', 'Не удалось загрузить', 'err'); closeModal(); return; }
@@ -1046,7 +1046,7 @@ window.AsgardEquipment = (function () {
         '</div></div>';
 
       closeModal();
-      showModal((eq.category_icon||'📦') + ' ' + esc(eq.name), html);
+      showModal({ title: (eq.category_icon||'📦') + ' ' + esc(eq.name), html, icon: '🔧', subtitle: 'Оборудование' });
 
       document.querySelectorAll('.fk-detail-tab').forEach(function(tab) {
         tab.addEventListener('click', async function() {
@@ -1208,7 +1208,7 @@ window.AsgardEquipment = (function () {
         '<button type="button" class="btn ghost" onclick="AsgardUI.closeModal()">Отмена</button>' +
         '<button type="submit" class="btn" id="fkAddSubmit">💾 Сохранить</button>' +
       '</div></form>';
-    showModal('+ Добавить ТМЦ', html);
+    showModal({ title: '+ Добавить ТМЦ', html, icon: '🔧', subtitle: 'Оборудование' });
     _mountCR('#fkAdd_cat_w', 'fkAdd_cat', { id: 'fkAdd_cat', placeholder: 'Выберите...', options: _catArr(), required: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="category_id"]').value = v; } });
     _mountCR('#fkAdd_unit_w', 'fkAdd_unit', { id: 'fkAdd_unit', options: _unitArr(), value: 'шт', dropdownClass: 'z-modal', onChange: v => { $('input[name="unit"]').value = v; } });
     initPhotoZone();
@@ -1237,7 +1237,7 @@ window.AsgardEquipment = (function () {
 
   /* A11: Full edit form with ALL fields */
   async function openEditForm(id) {
-    showModal('Загрузка...', '<div class="fk-skeleton" style="height:300px"></div>');
+    showModal({ title: 'Загрузка...', html: '<div class="fk-skeleton" style="height:300px"></div>', icon: '🔧', subtitle: 'Оборудование' });
     try {
       var data = await api('/api/equipment/'+id);
       if (!data.success) { closeModal(); return; }
@@ -1270,7 +1270,7 @@ window.AsgardEquipment = (function () {
           '<button type="button" class="btn ghost" onclick="AsgardUI.closeModal()">Отмена</button>' +
           '<button type="submit" class="btn" id="fkEditSubmit">💾 Сохранить</button>' +
         '</div></form>';
-      showModal('✏️ Редактирование: ' + esc(eq.name), html);
+      showModal({ title: '✏️ Редактирование: ' + esc(eq.name), html, icon: '🔧', subtitle: 'Оборудование' });
       _mountCR('#fkEdit_cat_w', 'fkEdit_cat', { id: 'fkEdit_cat', placeholder: 'Выберите...', options: _catArr(), value: String(eq.category_id||''), required: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="category_id"]').value = v; } });
       _mountCR('#fkEdit_unit_w', 'fkEdit_unit', { id: 'fkEdit_unit', options: _unitArr(), value: eq.unit||'шт', dropdownClass: 'z-modal', onChange: v => { $('input[name="unit"]').value = v; } });
       _mountCR('#fkEdit_cond_w', 'fkEdit_cond', { id: 'fkEdit_cond', options: _condArr(), value: eq.condition||'', dropdownClass: 'z-modal', onChange: v => { $('input[name="condition"]').value = v; } });
@@ -1310,7 +1310,7 @@ window.AsgardEquipment = (function () {
         '<button type="button" class="btn ghost" onclick="AsgardUI.closeModal()">Отмена</button>' +
         '<button type="submit" class="btn" id="fkIssueSubmit">📤 Выдать</button>' +
       '</div></form>';
-    showModal('📤 Выдача оборудования', html);
+    showModal({ title: '📤 Выдача оборудования', html, icon: '🔧', subtitle: 'Оборудование' });
     _mountCR('#fkIssue_pm_w', 'fkIssue_pm', { id: 'fkIssue_pm', placeholder: 'Выберите...', options: _pmArr(), required: true, searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="holder_id"]').value = v; } });
     _mountCR('#fkIssue_work_w', 'fkIssue_work', { id: 'fkIssue_work', placeholder: 'Выберите...', options: _workArr(), required: true, searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="work_id"]').value = v; } });
     _mountCR('#fkIssue_obj_w', 'fkIssue_obj', { id: 'fkIssue_obj', placeholder: 'Выберите...', options: _objArr(), searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="object_id"]').value = v; } });
@@ -1359,7 +1359,7 @@ window.AsgardEquipment = (function () {
         '<button type="button" class="btn ghost" onclick="AsgardUI.closeModal()">Отмена</button>' +
         '<button type="submit" class="btn" id="fkTransferSubmit">🔄 Запросить передачу</button>' +
       '</div></form>';
-    showModal('🔄 Передача оборудования', html);
+    showModal({ title: '🔄 Передача оборудования', html, icon: '🔧', subtitle: 'Оборудование' });
     _mountCR('#fkTr_pm_w', 'fkTr_pm', { id: 'fkTr_pm', placeholder: 'Выберите...', options: _pmArr(), required: true, searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="target_holder_id"]').value = v; } });
     _mountCR('#fkTr_work_w', 'fkTr_work', { id: 'fkTr_work', placeholder: 'Выберите...', options: _workArr(), required: true, searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="work_id"]').value = v; } });
     _mountCR('#fkTr_obj_w', 'fkTr_obj', { id: 'fkTr_obj', placeholder: 'Выберите...', options: _objArr(), searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="object_id"]').value = v; } });
@@ -1393,7 +1393,7 @@ window.AsgardEquipment = (function () {
         '<textarea name="notes" class="inp" rows="3" required placeholder="Что именно нужно..."></textarea></div>' +
       '<button type="submit" class="btn" id="fkReqSubmit">📝 Отправить заявку</button>' +
     '</form>';
-    showModal('📋 Запрос оборудования', html);
+    showModal({ title: '📋 Запрос оборудования', html, icon: '🔧', subtitle: 'Оборудование' });
     _mountCR('#fkReq_cat_w', 'fkReq_cat', { id: 'fkReq_cat', placeholder: 'Любая', options: _catArr(), dropdownClass: 'z-modal', onChange: v => { $('input[name="category_id"]').value = v; } });
     _mountCR('#fkReq_work_w', 'fkReq_work', { id: 'fkReq_work', placeholder: 'Выберите...', options: _workArr(), required: true, searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="work_id"]').value = v; } });
     _mountCR('#fkReq_obj_w', 'fkReq_obj', { id: 'fkReq_obj', placeholder: 'Выберите...', options: _objArr(), searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="object_id"]').value = v; } });
@@ -1458,7 +1458,7 @@ window.AsgardEquipment = (function () {
         '<button type="button" class="btn ghost" onclick="AsgardUI.closeModal()">Отмена</button>' +
         '<button type="submit" class="btn" id="fkMaintSubmit">💾 Сохранить</button>' +
       '</div></form>';
-    showModal('🔧 Добавить запись ТО', html);
+    showModal({ title: '🔧 Добавить запись ТО', html, icon: '🔧', subtitle: 'Оборудование' });
     _mountCR('#fkMaint_type_w', 'fkMaint_type', { id: 'fkMaint_type', options: [{ value:'scheduled_to', label:'Плановое ТО' },{ value:'repair', label:'Ремонт' },{ value:'calibration', label:'Поверка' },{ value:'inspection', label:'Осмотр' }], value: 'scheduled_to', dropdownClass: 'z-modal', onChange: v => { $('input[name="type"]').value = v; } });
     var form = $('#fkMaintForm');
     if (form) form.addEventListener('submit', async function(e) {
@@ -1492,7 +1492,7 @@ window.AsgardEquipment = (function () {
           '<button class="btn mini" onclick="AsgardEquipment.doReturn(' + eq.id + ');AsgardUI.closeModal()">📥 Вернуть</button>' +
         '</div>';
       }).join('') + '</div>';
-      showModal('👤 Моё оборудование (' + data.equipment.length + ')', html);
+      showModal({ title: '👤 Моё оборудование (' + data.equipment.length + ')', html, icon: '🔧', subtitle: 'Оборудование' });
     } catch(e) { toast('Ошибка', e.message || 'Не удалось загрузить', 'err'); }
   }
 
@@ -1553,7 +1553,7 @@ window.AsgardEquipment = (function () {
             (item.category_icon?'<span>' + item.category_icon + '</span>':'') +
           '</div>';
         }).join('') + '</div></div>';
-      showModal((kit.icon||'🧰') + ' ' + esc(kit.name), html);
+      showModal({ title: (kit.icon||'🧰') + ' ' + esc(kit.name), html, icon: '🔧', subtitle: 'Оборудование' });
     } catch(e) { toast('Ошибка', e.message || 'Не удалось загрузить комплект', 'err'); }
   }
 
@@ -1604,7 +1604,7 @@ window.AsgardEquipment = (function () {
                 (i.is_required?'●':'○') + ' ' + esc(i.item_name||'') + ' x' + (i.quantity||1) + '</div>'; }).join('');
           }).join('') + '</div>' : '') +
       '</div>';
-      showModal('🧰 Оборудование: ' + esc(work.work_title||'Работа #'+workId), html);
+      showModal({ title: '🧰 Оборудование: ' + esc(work.work_title||'Работа #'+workId), html, icon: '🔧', subtitle: 'Оборудование' });
       _availableCache = available;
     } catch(e) { toast('Ошибка', e.message || 'Не удалось загрузить', 'err'); }
   }
@@ -1660,7 +1660,7 @@ window.AsgardEquipment = (function () {
       var html = '<div style="max-width:400px">' +
         renderPhotoZone(eq.photo_url, eq.custom_icon, eqId) +
         '<p style="margin-top:12px;font-size:12px;color:var(--text-muted)">Загрузите фото (перетащите или выберите файл) или выберите иконку из библиотеки.</p></div>';
-      showModal('📷 Фото / Иконка', html);
+      showModal({ title: '📷 Фото / Иконка', html, icon: '🔧', subtitle: 'Оборудование' });
       initPhotoZone();
     } catch(e) { toast('Ошибка', e.message || 'Не удалось загрузить', 'err'); }
   }

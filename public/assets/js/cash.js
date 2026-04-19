@@ -289,6 +289,8 @@ window.AsgardCashPage = (function() {
 
     showModal({
       title: 'Новая заявка',
+      icon: '💵',
+      subtitle: 'Касса',
       html: `
         <form id="cashCreateForm">
           <div class="asg-form-group">
@@ -390,6 +392,8 @@ window.AsgardCashPage = (function() {
   async function showDetail(id) {
     showModal({
       title: 'Заявка #' + id,
+      icon: '💵',
+      subtitle: 'Касса',
       html: '<div style="text-align:center;padding:24px;color:var(--text-muted)">Загрузка...</div>'
     });
 
@@ -597,6 +601,8 @@ window.AsgardCashPage = (function() {
 
       showModal({
         title: 'Добавить расход',
+        icon: '💵',
+        subtitle: 'Касса',
         html: `
           <form id="cashExpenseForm">
             <input type="hidden" name="request_id" value="${requestId}">
@@ -681,6 +687,8 @@ window.AsgardCashPage = (function() {
     setTimeout(() => {
       showModal({
         title: 'Вернуть остаток',
+        icon: '💵',
+        subtitle: 'Касса',
         html: `
           <form id="cashReturnForm">
             <input type="hidden" name="request_id" value="${requestId}">
@@ -727,6 +735,8 @@ window.AsgardCashPage = (function() {
     setTimeout(() => {
       showModal({
         title: 'Ответить на вопрос',
+        icon: '💵',
+        subtitle: 'Касса',
         html: `
           <form id="cashReplyForm">
             <input type="hidden" name="request_id" value="${requestId}">
