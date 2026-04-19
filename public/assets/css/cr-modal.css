@@ -592,11 +592,13 @@
   opacity: 0.5;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   FORM ELEMENTS INSIDE MODALS
-   ───────────────────────────────────────────────────────────────────────────── */
+/* ═════════════════════════════════════════════════════════════════════════════
+   UNIVERSAL MODAL FORM STYLES
+   Auto-transform old HTML patterns (.formrow, label, .help, hr)
+   into WOW design — zero JS changes needed
+   ═════════════════════════════════════════════════════════════════════════════ */
 
-/* Enhanced inputs inside cr-m modals */
+/* ─── INPUTS — enhanced with 9px radius, focus glow ───────────── */
 .cr-m__body input[type="text"],
 .cr-m__body input[type="number"],
 .cr-m__body input[type="email"],
@@ -608,57 +610,372 @@
 .cr-m__body input[type="time"],
 .cr-m__body textarea,
 .cr-m__body select {
-  background: var(--bg3);
-  border: 1px solid var(--brd);
-  border-radius: var(--r-md);
-  color: var(--t1);
-  padding: 10px 12px;
-  font-size: 13px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  outline: none;
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 9px !important;
+  color: var(--t1) !important;
+  padding: 10px 12px !important;
+  font-size: 13px !important;
+  font-family: inherit !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease !important;
+  outline: none !important;
   width: 100%;
   box-sizing: border-box;
   min-width: 0;
 }
 
-.cr-m__body input:hover,
+.cr-m__body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover,
 .cr-m__body textarea:hover,
 .cr-m__body select:hover {
-  border-color: var(--t3);
+  border-color: rgba(255,255,255,0.15) !important;
+  background: rgba(21,25,34,0.9) !important;
 }
 
-.cr-m__body input:focus,
+.cr-m__body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
 .cr-m__body textarea:focus,
 .cr-m__body select:focus {
-  border-color: var(--blue) !important;
-  box-shadow: 0 0 0 3px rgba(30,77,140,0.15) !important;
-  outline: none;
+  border-color: rgba(200,166,78,0.45) !important;
+  box-shadow: 0 0 0 3px rgba(200,166,78,0.07) !important;
+  background: rgba(20,20,42,0.9) !important;
+  outline: none !important;
 }
 
 .cr-m__body input::placeholder,
 .cr-m__body textarea::placeholder {
-  color: var(--t3);
+  color: var(--t3) !important;
 }
 
-/* Labels */
+.cr-m__body textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.cr-m__body input:disabled,
+.cr-m__body select:disabled,
+.cr-m__body textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Monospace for numbers */
+.cr-m__body input[type="number"] {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
+
+/* ─── LABELS — uppercase with gold required star ──────────────── */
 .cr-m__body label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--t2);
-  margin-bottom: 6px;
-  display: block;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.4px !important;
+  color: var(--t2) !important;
+  margin-bottom: 6px !important;
+  display: block !important;
 }
 
 .cr-m__body label .req,
-.cr-m__body label .required {
-  color: var(--gold);
+.cr-m__body label .required,
+.cr-m__body label span[style*="color"]:first-child {
+  color: var(--gold) !important;
 }
 
-/* Form field */
+/* ─── FORMROW — grid 2-col layout ─────────────────────────────── */
+.cr-m__body .formrow {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 14px 12px !important;
+  margin-bottom: 0 !important;
+}
+
+/* Full-width fields inside formrow */
+.cr-m__body .formrow > div[style*="grid-column"],
+.cr-m__body .formrow > .cr-field-full {
+  grid-column: 1 / -1;
+}
+
+/* Each cell in formrow gets proper spacing */
+.cr-m__body .formrow > div {
+  margin-bottom: 14px;
+}
+
+/* ─── HR DIVIDER — subtle line ────────────────────────────────── */
+.cr-m__body hr,
+.cr-m__body .hr {
+  border: none !important;
+  border-top: 1px solid rgba(255,255,255,0.04) !important;
+  margin: 18px 0 !important;
+  background: none !important;
+  height: 0 !important;
+}
+
+/* ─── HELP TEXT — subtle muted ────────────────────────────────── */
+.cr-m__body .help {
+  font-size: 11px;
+  color: var(--t3);
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+/* ─── SECTION HEADERS — .help > b becomes styled section ─────── */
+.cr-m__body .help > b:first-child:only-child,
+.cr-m__body .help > b:first-child:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* Make section-style .help blocks look like dividers */
+.cr-m__body > .help:has(> b:first-child:only-child) {
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  margin-top: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+/* ─── TAGS / BADGES inside modals ─────────────────────────────── */
+.cr-m__body .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  font-size: 12px;
+  color: var(--t2);
+  margin-bottom: 10px;
+}
+
+/* ─── PILL badges inside modals ───────────────────────────────── */
+.cr-m__body .pill {
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  margin-bottom: 8px;
+}
+
+/* ─── BUTTONS inside modal body — enhanced ────────────────────── */
+.cr-m__body .btn {
+  border-radius: 9px;
+  font-weight: 500;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cr-m__body .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.cr-m__body .btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.cr-m__body .btn.primary,
+.cr-m__body .btn.gold {
+  background: linear-gradient(135deg, var(--gold), var(--gold-h));
+  color: var(--bg1);
+  border: none;
+  font-weight: 600;
+}
+
+.cr-m__body .btn.primary:hover,
+.cr-m__body .btn.gold:hover {
+  filter: brightness(1.12);
+}
+
+.cr-m__body .btn.red,
+.cr-m__body .btn.danger {
+  background: linear-gradient(135deg, var(--red), var(--red-h));
+  color: #fff;
+  border: none;
+}
+
+.cr-m__body .btn.ghost {
+  border: 1px solid var(--brd);
+  background: transparent;
+  color: var(--t2);
+}
+
+.cr-m__body .btn.ghost:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--gold);
+  border-color: rgba(212,168,67,0.2);
+}
+
+/* ─── FILE INPUT — styled ─────────────────────────────────────── */
+.cr-m__body input[type="file"] {
+  padding: 10px 12px !important;
+  border: 1.5px dashed var(--brd) !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  cursor: pointer;
+  transition: border-color 0.2s ease !important;
+}
+
+.cr-m__body input[type="file"]:hover {
+  border-color: rgba(212,168,67,0.2) !important;
+}
+
+/* ─── CONFIRM DIALOG body — centered ──────────────────────────── */
+.cr-m__body .confirm-body {
+  font-size: var(--text-base);
+  color: var(--t2);
+  line-height: 1.6;
+  margin-bottom: var(--sp-5);
+  text-align: center;
+  padding: var(--sp-4) 0;
+}
+
+.cr-m__body .confirm-actions {
+  display: flex;
+  gap: var(--sp-3);
+  justify-content: center;
+  padding-top: var(--sp-3);
+}
+
+/* ─── TABLE inside modals — dark styled ───────────────────────── */
+.cr-m__body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cr-m__body table th {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--t3);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--brd);
+  text-align: left;
+}
+
+.cr-m__body table td {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--t1);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.cr-m__body table tr:hover td {
+  background: rgba(255,255,255,0.02);
+}
+
+/* ─── TEXTAREA rows (comment feeds, etc.) ─────────────────────── */
+.cr-m__body .tc-feed {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: var(--bg3);
+}
+
+.cr-m__body .tc-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.cr-m__body .tc-input-row textarea {
+  flex: 1;
+  min-height: 36px !important;
+}
+
+/* ─── DOCUMENT items ──────────────────────────────────────────── */
+.cr-m__body .cr-doc-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  margin-bottom: 6px;
+  transition: background 0.15s ease;
+}
+
+.cr-m__body .cr-doc-item:hover {
+  background: var(--bg4);
+}
+
+/* ─── ARCHIVE info row ────────────────────────────────────────── */
+.cr-m__body .archive-info-row {
+  padding: 12px 14px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: 9px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--t2);
+}
+
+/* ─── FORM FIELD spacing ──────────────────────────────────────── */
 .cr-m__body .form-field {
-  margin-bottom: var(--sp-4);
+  margin-bottom: 14px;
+}
+
+/* ─── EMPTY STATE inside modals ───────────────────────────────── */
+.cr-m__body .empty-state {
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.cr-m__body .empty-state-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.cr-m__body .empty-state-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t1);
+  margin-bottom: 6px;
+}
+
+.cr-m__body .empty-state-desc {
+  font-size: 13px;
+  color: var(--t3);
+}
+
+/* ─── ROW helpers (flex, gap) ─────────────────────────────────── */
+.cr-m__body > .row,
+.cr-m__body .row {
+  gap: 8px;
+}
+
+/* ─── APPROVAL CARDS inside modals ────────────────────────────── */
+.cr-m__body .asg-pay-card {
+  border-radius: 9px;
+}
+
+/* ─── PERIOD ROW (month + year selects) ───────────────────────── */
+.cr-m__body .cr-period-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cr-m__body .cr-period-row .cr-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ─── FOOTER buttons at bottom of modal body ──────────────────── */
+.cr-m__body > div:last-child > .btn,
+.cr-m__body > div[style*="display:flex"][style*="gap"] > .btn {
+  border-radius: 9px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
