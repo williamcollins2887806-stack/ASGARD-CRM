@@ -2214,21 +2214,26 @@ window.AsgardFieldTab = (function () {
 
     container.innerHTML = '';
 
-    // ─── KPI cards ───────────────────────────────────────────────
-    const kpiData = summary?.totals || {};
+    // ─── KPI cards (SSoT) ───────────────────────────────────────
+    const t = summary?.totals || {};
+    const pdBal = t.per_diem_balance || 0;
+    const pdBalColor = pdBal > 0 ? '#10b981' : pdBal < 0 ? '#ef4444' : '#6b7280';
+    const pdBalLabel = pdBal > 0 ? '(должны)' : pdBal < 0 ? '(переплата)' : '';
     const kpiItems = [
-      { label: 'ФОТ начислено', value: kpiData.salary || 0, color: '#3b82f6' },
-      { label: 'Суточные', value: kpiData.per_diem || 0, color: '#f59e0b' },
-      { label: 'Авансы', value: kpiData.advance || 0, color: '#8b5cf6' },
-      { label: 'К выплате', value: kpiData.net || 0, color: 'var(--gold, #D4A843)' },
+      { label: 'ФОТ начислено', value: t.fot_accrued || 0, color: '#3b82f6' },
+      { label: 'Суточные начисл.', value: t.per_diem_accrued || 0, color: '#f59e0b' },
+      { label: 'Суточные выплач.', value: t.per_diem_paid || 0, color: '#10b981' },
+      { label: 'Остаток суточных', value: Math.abs(pdBal), color: pdBalColor, suffix: pdBalLabel },
+      { label: 'Авансы выплачено', value: t.advance_paid || 0, color: '#8b5cf6' },
+      { label: 'К выплате ИТОГО', value: t.net_to_pay || 0, color: 'var(--gold, #D4A843)' },
     ];
     const kpiRow = document.createElement('div');
-    kpiRow.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px';
+    kpiRow.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px';
     for (const k of kpiItems) {
       const card = document.createElement('div');
       card.style.cssText = 'background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center';
       card.innerHTML = `<div style="font-size:11px;opacity:.6">${k.label}</div>
-        <div style="font-size:18px;font-weight:700;color:${k.color};margin-top:4px">${money(k.value)} ₽</div>`;
+        <div style="font-size:18px;font-weight:700;color:${k.color};margin-top:4px">${money(k.value)} ₽${k.suffix ? ' <span style="font-size:11px;opacity:.7">' + k.suffix + '</span>' : ''}</div>`;
       kpiRow.appendChild(card);
     }
     container.appendChild(kpiRow);
@@ -2254,32 +2259,42 @@ window.AsgardFieldTab = (function () {
     container.appendChild(actBar);
 
     // ─── Employees summary table ─────────────────────────────────
-    const emps = summary?.employees || [];
+    const emps = summary?.workers || [];
     if (emps.length > 0) {
       const tbl = document.createElement('table');
       tbl.className = 'fk-table fk-table-small';
       tbl.style.cssText = 'width:100%;font-size:12px;margin-bottom:12px';
       tbl.innerHTML = `<thead><tr>
-        <th>ФИО</th><th style="text-align:right">Баллы</th><th style="text-align:right">ЗП</th>
-        <th style="text-align:right">Суточные</th><th style="text-align:right">Авансы</th>
-        <th style="text-align:right">Премии</th><th style="text-align:right">Удержания</th>
-        <th style="text-align:right;color:var(--gold)">К выплате</th><th>Статус</th>
+        <th>ФИО</th><th style="text-align:right">Дней</th><th style="text-align:right">ФОТ</th>
+        <th style="text-align:right">Суточн. начисл.</th><th style="text-align:right">Суточн. выплач.</th>
+        <th style="text-align:right">Остаток</th><th style="text-align:right">Авансы</th>
+        <th style="text-align:right">Премии</th><th style="text-align:right">Удерж.</th>
+        <th style="text-align:right;color:var(--gold)">К выплате</th>
       </tr></thead>`;
       const tbody = document.createElement('tbody');
       for (const e of emps) {
-        const net = parseFloat(e.salary_total) + parseFloat(e.bonus_total)
-          - parseFloat(e.penalty_total) - parseFloat(e.advance_total);
+        if (e.error === 'per_diem_not_set') {
+          const tr = document.createElement('tr');
+          tr.style.background = 'rgba(245,158,11,0.08)';
+          tr.innerHTML = `<td>${esc(e.employee_name)}</td><td colspan="9" style="color:#f59e0b;font-size:11px">⚠️ суточные не установлены</td>`;
+          tbody.appendChild(tr);
+          continue;
+        }
+        const bal = e.per_diem_balance || 0;
+        const balColor = bal > 0 ? '#10b981' : bal < 0 ? '#ef4444' : '';
+        const balSign = bal > 0 ? '+' : bal < 0 ? '' : '';
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${esc(e.employee_name)}</td>
-          <td style="text-align:right">${e.total_points || 0}</td>
-          <td style="text-align:right">${money(e.salary_total)} ₽</td>
-          <td style="text-align:right">${money(e.per_diem_total)} ₽</td>
-          <td style="text-align:right">${money(e.advance_total)} ₽</td>
-          <td style="text-align:right">${money(e.bonus_total)} ₽</td>
-          <td style="text-align:right">${money(e.penalty_total)} ₽</td>
-          <td style="text-align:right;font-weight:600;color:var(--gold)">${money(net)} ₽</td>
-          <td><span style="font-size:11px">${PAY_STATUS_LABELS[e.salary_status] || '—'}</span></td>
+          <td style="text-align:right">${e.days_worked || 0}</td>
+          <td style="text-align:right">${money(e.fot_accrued)} ₽</td>
+          <td style="text-align:right">${money(e.per_diem_accrued)} ₽</td>
+          <td style="text-align:right">${money(e.per_diem_paid)} ₽</td>
+          <td style="text-align:right;color:${balColor}">${balSign}${money(bal)} ₽</td>
+          <td style="text-align:right">${money(e.advance_paid)} ₽</td>
+          <td style="text-align:right">${money(e.bonus_paid)} ₽</td>
+          <td style="text-align:right">${money(e.penalty)} ₽</td>
+          <td style="text-align:right;font-weight:600;color:var(--gold)">${money(e.net_to_pay)} ₽</td>
         `;
         tbody.appendChild(tr);
       }
