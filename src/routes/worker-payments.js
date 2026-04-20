@@ -1122,11 +1122,12 @@ async function routes(fastify, options) {
             ? ''
             : `AND work_id IN (SELECT id FROM works WHERE pm_id = ${parseInt(req.user.id)})`;
 
-          // Try UPDATE existing checkin
+          // Try UPDATE existing checkin (strict: work_id + non-cancelled + PM scope)
           const result = await db.query(`
             UPDATE field_checkins
             SET day_rate = $1, amount_earned = $2, updated_at = NOW()
             WHERE employee_id = $3 AND date = $4::date
+              AND status != 'cancelled'
               ${worksSubquery}
               ${day.work_id ? 'AND work_id = ' + parseInt(day.work_id) : ''}
           `, [dayAmount, dayAmount, empId, dayDate]);
@@ -1136,9 +1137,9 @@ async function routes(fastify, options) {
           } else if (day.work_id) {
             // INSERT new checkin if work_id is provided and no existing record
             await db.query(`
-              INSERT INTO field_checkins (employee_id, work_id, date, day_rate, amount_earned, status, created_at, updated_at)
-              VALUES ($1, $2, $3::date, $4, $5, 'completed', NOW(), NOW())
-              ON CONFLICT DO NOTHING
+              INSERT INTO field_checkins (employee_id, work_id, date, day_rate, amount_earned, status, checkin_at, created_at, updated_at)
+              VALUES ($1, $2, $3::date, $4, $5, 'completed', $3::date + TIME '08:00', NOW(), NOW())
+              ON CONFLICT (employee_id, date, work_id) WHERE status != 'cancelled' DO NOTHING
             `, [empId, parseInt(day.work_id), dayDate, dayAmount, dayAmount]);
             updated += 1;
           }

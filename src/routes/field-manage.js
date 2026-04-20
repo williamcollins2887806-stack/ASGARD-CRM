@@ -734,6 +734,18 @@ async function routes(fastify, options) {
           checkin_at, hours_worked, hours_paid, day_rate, amount_earned, status,
           checkin_source, note)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'manual', $11)
+        ON CONFLICT (employee_id, date, work_id) WHERE status != 'cancelled'
+          DO UPDATE SET
+            shift = EXCLUDED.shift,
+            checkin_at = EXCLUDED.checkin_at,
+            hours_worked = EXCLUDED.hours_worked,
+            hours_paid = EXCLUDED.hours_paid,
+            day_rate = EXCLUDED.day_rate,
+            amount_earned = EXCLUDED.amount_earned,
+            status = EXCLUDED.status,
+            checkin_source = EXCLUDED.checkin_source,
+            note = COALESCE(EXCLUDED.note, field_checkins.note),
+            updated_at = NOW()
         RETURNING *
       `, [workId, employee_id, date, shift || 'day', checkinAt,
           hours_worked || 11, hours_paid || 11, pts, amt,
