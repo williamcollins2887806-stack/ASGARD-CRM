@@ -382,52 +382,67 @@ async function routes(fastify, options) {
     }
   });
 
-  // ─── GET /project/:work_id/summary — сводка по объекту ────────────
+  // ─── GET /project/:work_id/summary — сводка по объекту (SSoT) ─────
   fastify.get('/project/:work_id/summary', crmAuth, async (req, reply) => {
     try {
-      const workId = parseInt(req.params.work_id);
+      const workId = parseInt(req.params.work_id, 10);
 
-      const { rows } = await db.query(`
-        SELECT
-          wp.employee_id,
-          e.fio as employee_name,
-          SUM(CASE WHEN wp.type = 'salary' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as salary_total,
-          SUM(CASE WHEN wp.type = 'per_diem' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as per_diem_total,
-          SUM(CASE WHEN wp.type = 'advance' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as advance_total,
-          SUM(CASE WHEN wp.type = 'bonus' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as bonus_total,
-          SUM(CASE WHEN wp.type = 'penalty' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as penalty_total,
-          SUM(CASE WHEN wp.type = 'salary' AND wp.status != 'cancelled' THEN COALESCE(wp.total_points, 0) ELSE 0 END) as total_points,
-          COUNT(DISTINCT CASE WHEN wp.type = 'per_diem' AND wp.status != 'cancelled' THEN wp.id END) as per_diem_count,
-          MAX(CASE WHEN wp.type = 'salary' THEN wp.status END) as salary_status
-        FROM worker_payments wp
-        JOIN employees e ON e.id = wp.employee_id
-        WHERE wp.work_id = $1 AND wp.status != 'cancelled'
-        GROUP BY wp.employee_id, e.fio
+      // Все рабочие с assignment или чекином на эту работу
+      const { rows: empRows } = await db.query(`
+        SELECT DISTINCT e.id, e.fio, e.position
+        FROM employees e
+        LEFT JOIN employee_assignments ea ON ea.employee_id = e.id AND ea.work_id = $1
+        LEFT JOIN field_checkins fc ON fc.employee_id = e.id AND fc.work_id = $1
+        WHERE ea.work_id = $1 OR fc.work_id = $1
         ORDER BY e.fio
       `, [workId]);
 
-      // Totals
-      let salarySum = 0, perDiemSum = 0, advanceSum = 0, bonusSum = 0, penaltySum = 0;
-      for (const r of rows) {
-        salarySum += parseFloat(r.salary_total);
-        perDiemSum += parseFloat(r.per_diem_total);
-        advanceSum += parseFloat(r.advance_total);
-        bonusSum += parseFloat(r.bonus_total);
-        penaltySum += parseFloat(r.penalty_total);
-      }
-
-      return {
-        employees: rows,
-        totals: {
-          salary: salarySum,
-          per_diem: perDiemSum,
-          advance: advanceSum,
-          bonus: bonusSum,
-          penalty: penaltySum,
-          net: salarySum + bonusSum - penaltySum - advanceSum,
-          grand_total: salarySum + perDiemSum + bonusSum - penaltySum
+      // Параллельно считаем финансы каждого через SSoT
+      const workers = await Promise.all(empRows.map(async (e) => {
+        const fin = await getWorkerFinances(db, e.id, { workId, logger: fastify.log });
+        if (fin.error === 'per_diem_not_set') {
+          return { employee_id: e.id, employee_name: e.fio, position: e.position,
+                   error: 'per_diem_not_set', message: fin.message };
         }
-      };
+        const w = (fin.by_work || [])[0] || {};
+        const pdBalance = (w.per_diem_accrued || 0) - (w.per_diem_paid || 0);
+        return {
+          employee_id: e.id,
+          employee_name: e.fio,
+          position: e.position,
+          is_active: w.is_active || false,
+          days_worked: w.days_worked || 0,
+          fot_accrued: w.fot || 0,
+          per_diem_rate: w.per_diem_rate || 0,
+          per_diem_accrued: w.per_diem_accrued || 0,
+          per_diem_paid: w.per_diem_paid || 0,
+          per_diem_balance: pdBalance,
+          salary_paid: w.salary_paid || 0,
+          advance_paid: w.advance_paid || 0,
+          bonus_paid: w.bonus_paid || 0,
+          penalty: w.penalty || 0,
+          net_to_pay: (w.fot || 0) + pdBalance + (w.bonus_paid || 0)
+                    - (w.penalty || 0) - (w.advance_paid || 0) - (w.salary_paid || 0),
+        };
+      }));
+
+      // Агрегаты для шапки
+      const totals = workers.reduce((acc, w) => {
+        if (w.error) return acc;
+        acc.fot_accrued += w.fot_accrued;
+        acc.per_diem_accrued += w.per_diem_accrued;
+        acc.per_diem_paid += w.per_diem_paid;
+        acc.per_diem_balance += w.per_diem_balance;
+        acc.salary_paid += w.salary_paid;
+        acc.advance_paid += w.advance_paid;
+        acc.bonus_paid += w.bonus_paid;
+        acc.penalty += w.penalty;
+        acc.net_to_pay += w.net_to_pay;
+        return acc;
+      }, { fot_accrued: 0, per_diem_accrued: 0, per_diem_paid: 0, per_diem_balance: 0,
+           salary_paid: 0, advance_paid: 0, bonus_paid: 0, penalty: 0, net_to_pay: 0 });
+
+      return { workers, totals };
     } catch (err) {
       fastify.log.error('[worker-payments] GET /project/:id/summary error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
