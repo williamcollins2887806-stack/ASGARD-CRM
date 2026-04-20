@@ -4,6 +4,26 @@ import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { TabBar } from '@/components/layout/TabBar';
+import { features } from '@/config/features';
+import FieldLayout from '@/layouts/FieldLayout';
+import FieldLogin from '@/pages/field/FieldLogin';
+import FieldPinSetup from '@/pages/field/FieldPinSetup';
+import FieldPinEntry from '@/pages/field/FieldPinEntry';
+import FieldHome from '@/pages/field/FieldHome';
+import FieldShift from '@/pages/field/FieldShift';
+import FieldHistory from '@/pages/field/FieldHistory';
+import FieldProfile from '@/pages/field/FieldProfile';
+import FieldMyWorks from '@/pages/field/FieldMyWorks';
+import FieldMoney from '@/pages/field/FieldMoney';
+import FieldEarnings from '@/pages/field/FieldEarnings';
+import FieldFunds from '@/pages/field/FieldFunds';
+import FieldLogistics from '@/pages/field/FieldLogistics';
+import FieldCrew from '@/pages/field/FieldCrew';
+import FieldReport from '@/pages/field/FieldReport';
+import FieldIncidents from '@/pages/field/FieldIncidents';
+import FieldPhotos from '@/pages/field/FieldPhotos';
+import FieldPacking from '@/pages/field/FieldPacking';
+import FieldStages from '@/pages/field/FieldStages';
 import Welcome from '@/pages/Welcome';
 import Login from '@/pages/Login';
 import PinEntry from '@/pages/PinEntry';
@@ -82,7 +102,8 @@ function AppLayout() {
     location.pathname === '/mimir' ||
     location.pathname.startsWith('/estimate-report/') ||
     location.pathname.startsWith('/mimir-estimate/') ||
-    location.pathname.startsWith('/huginn-chat/');
+    location.pathname.startsWith('/huginn-chat/') ||
+    location.pathname.startsWith('/field');
 
   return (
     <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -147,6 +168,34 @@ function AppLayout() {
           <Route path="/huginn-chat/:chatId" element={<ProtectedRoute section="chat"><PinGuard><HuginnEstimateChat /></PinGuard></ProtectedRoute>} />
           <Route path="/expense-chat/:workId" element={<ProtectedRoute section="finances"><PinGuard><ExpenseChat /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
+
+          {/* ═══ Field Worker routes (feature-flagged) ═══ */}
+          {features.FIELD_REACT_MIGRATION && (
+            <>
+              <Route path="/field-login" element={<FieldLogin />} />
+              <Route path="/field/pin-setup" element={<FieldPinSetup />} />
+              <Route path="/field/pin-entry" element={<FieldPinEntry />} />
+              <Route path="/field" element={<FieldLayout />}>
+                <Route path="home" element={<FieldHome />} />
+                <Route path="shift" element={<FieldShift />} />
+                <Route path="money" element={<FieldMoney />} />
+                <Route path="earnings" element={<FieldEarnings />} />
+                <Route path="funds" element={<FieldFunds />} />
+                <Route path="history" element={<FieldHistory />} />
+                <Route path="my-works" element={<FieldMyWorks />} />
+                <Route path="profile" element={<FieldProfile />} />
+                <Route path="crew" element={<FieldCrew />} />
+                <Route path="logistics" element={<FieldLogistics />} />
+                <Route path="report" element={<FieldReport />} />
+                <Route path="incidents" element={<FieldIncidents />} />
+                <Route path="photos" element={<FieldPhotos />} />
+                <Route path="packing" element={<FieldPacking />} />
+                <Route path="stages" element={<FieldStages />} />
+                <Route index element={<Navigate to="home" replace />} />
+              </Route>
+            </>
+          )}
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
