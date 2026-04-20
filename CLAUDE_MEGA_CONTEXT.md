@@ -98,3 +98,60 @@
 
 ### Migration
 - None (no DB schema changes — uses existing `users.pin_hash` column)
+
+---
+
+## Wave 1.2 (2026-04-20)
+- Done: Ported home + shift + history + profile + my-works (5 pages with live API data)
+- Created: fieldClient.js (separate API client using field_token)
+- Changed: FieldHome, FieldShift, FieldHistory, FieldProfile, FieldMyWorks
+- Commit: 544db14
+
+## Wave 1.3 (2026-04-20)
+- Done: Ported money + earnings + funds + logistics + crew (5 pages)
+- Changed: FieldMoney, FieldEarnings, FieldFunds, FieldLogistics, FieldCrew
+- Commit: 73f089d
+
+## Wave 1.4 (2026-04-20)
+- Done: Ported report + incidents + photos + packing + stages (5 pages)
+- Changed: FieldReport, FieldIncidents, FieldPhotos, FieldPacking, FieldStages
+- Commit: 991ef04
+
+## Wave 2.1+2.2 (2026-04-20)
+- Done: V089 migration (47 achievements), achievementChecker service, API endpoints, frontend
+- Migration: V089__achievements.sql (worker_achievements, employee_achievements, achievement_points_balance, field_app_visits)
+- Created: achievementChecker.js, field-achievements.js, FieldAchievements.jsx, FieldLeaderboard.jsx
+- Commit: a15dad5
+
+## Wave 2.3 (2026-04-20)
+- Done: Inline achievement check in checkout + daily cron (03:00 MSK)
+- Created: achievements-cron.js
+- Modified: field-checkin.js (fire-and-forget check after checkout)
+- Commit: 442f6df
+
+## Wave 3.1 (2026-04-20)
+- Done: Gamification migrations V090-V093
+- V090: wallets + ledger + settings
+- V091: prizes (30 seed) + spins + pity counters
+- V092: shop (15 items) + inventory + fulfillment
+- V093: quests (8 templates) + streaks + seasons + audit log
+- Commit: 243ed11
+
+## Wave 3.2+3.3 (2026-04-20)
+- Done: Full gamification backend (10 API endpoints)
+- Created: field-gamification.js (spin, wallet, shop, inventory, quests)
+- Key: crypto.randomBytes RNG, double-entry ledger, pity system, multipliers
+- Commit: d3d6d4a
+
+### Status Summary (end of session)
+- **Фаза 1**: W1.1-W1.4 complete (16 pages ported). W1.5 (SW/offline/redirect) deferred to deploy.
+- **Фаза 2**: Complete (V089 + checker + cron + frontend)
+- **Фаза 3**: W3.1-W3.3 complete (migrations + backend). W3.4 (frontend wheel+shop) and W3.5 (PM/Director views) remaining.
+- **Build**: passes cleanly (494ms)
+- **Branch**: feature/gamification, 8 commits ahead of mobile-v3
+
+### Next session
+- W3.4: Frontend for Wheel of Norns (WheelOfNorns.jsx with spring physics, Web Audio), Shop, Inventory, Quests pages
+- W3.5: PM/Director admin dashboard, seasonal event skeleton
+- W4: Audit (4 parallel auditors)
+- W1.5: SW update + push + offline (at deploy time)
