@@ -230,6 +230,12 @@ async function routes(fastify, options) {
       const quote = randomQuote(FIELD_QUOTES_SHIFT_END)
         .replace('{hours}', Math.floor(hoursWorked));
 
+      // Achievement check (fire-and-forget, don't block checkout response)
+      try {
+        const achievementChecker = require('../services/achievementChecker');
+        achievementChecker.checkAndGrant(db, req.fieldEmployee.id).catch(() => {});
+      } catch { /* achievementChecker not available yet */ }
+
       return {
         hours_worked: Math.round(hoursWorked * 100) / 100,
         hours_paid: hoursPaid,

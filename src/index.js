@@ -582,6 +582,14 @@ try {
   fastify.log.warn('[PerDiemCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Achievements Cron: daily check ──
+try {
+  const achievementsCron = require('./services/achievements-cron');
+  achievementsCron.init(fastify);
+} catch (cronErr) {
+  fastify.log.warn('[AchievementsCron] Init skipped: ' + cronErr.message);
+}
+
 // ── Call Report Scheduler ──
 try {
   const ReportScheduler = require('./services/report-scheduler');
