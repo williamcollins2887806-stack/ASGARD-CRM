@@ -5,6 +5,7 @@
  *   GET    /                              — список выплат (фильтры)
  *   POST   /                              — создать выплату
  *   PUT    /:id                           — обновить (если pending)
+ *   PUT    /:id/pay                       — отметить выплату (pending→paid)
  *   DELETE /:id                           — отменить (status=cancelled)
  *   POST   /bulk-per-diem                 — массовые суточные
  *   POST   /generate-salary/:year/:month  — ведомость из field_checkins
@@ -202,6 +203,119 @@ async function routes(fastify, options) {
       return { payment: rows[0] };
     } catch (err) {
       fastify.log.error('[worker-payments] PUT /:id error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── PUT /:id/pay — отметить выплату рабочему ──────────────────────
+  fastify.put('/:id/pay', crmAuth, async (req, reply) => {
+    try {
+      const paymentId = parseInt(req.params.id);
+      const { payment_method, note } = req.body || {};
+
+      const validMethods = ['cash', 'card', 'transfer'];
+      if (!validMethods.includes(payment_method)) {
+        return reply.code(400).send({ error: 'payment_method обязателен: cash, card или transfer' });
+      }
+
+      const { rows: pRows } = await db.query(`
+        SELECT wp.*, w.pm_id, w.head_pm_id, w.work_title,
+               e.fio AS employee_fio, e.user_id AS employee_user_id
+        FROM worker_payments wp
+        LEFT JOIN works w ON w.id = wp.work_id
+        LEFT JOIN employees e ON e.id = wp.employee_id
+        WHERE wp.id = $1
+      `, [paymentId]);
+
+      if (pRows.length === 0) {
+        return reply.code(404).send({ error: 'Выплата не найдена' });
+      }
+      const p = pRows[0];
+
+      if (p.status !== 'pending') {
+        return reply.code(400).send({
+          error: 'Нельзя выплатить',
+          details: `Текущий статус: ${p.status}. Выплата возможна только для pending.`
+        });
+      }
+
+      // Проверка прав: admin-роли или PM/HEAD_PM этого объекта
+      const role = req.user.role;
+      const userId = req.user.id;
+      const adminRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+      const pmRoles = ['HEAD_PM', 'PM'];
+
+      let hasAccess = false;
+      if (adminRoles.includes(role)) {
+        hasAccess = true;
+      } else if (pmRoles.includes(role)) {
+        hasAccess = p.pm_id === userId || p.head_pm_id === userId;
+      }
+
+      if (!hasAccess) {
+        return reply.code(403).send({
+          error: 'Недостаточно прав',
+          details: 'Выплата доступна только руководителю проекта, бухгалтерии или администратору'
+        });
+      }
+
+      // UPDATE — отметить как оплачено
+      const newComment = note
+        ? (p.comment ? p.comment + '\n—\n' : '') + `[Выплачено ${payment_method}] ${note}`
+        : p.comment;
+
+      const { rows: updated } = await db.query(`
+        UPDATE worker_payments SET
+          status = 'paid',
+          paid_by = $1,
+          paid_at = NOW(),
+          payment_method = $2,
+          comment = $3,
+          updated_at = NOW()
+        WHERE id = $4 AND status = 'pending'
+        RETURNING *
+      `, [userId, payment_method, newComment, paymentId]);
+
+      if (updated.length === 0) {
+        return reply.code(409).send({ error: 'Статус изменился, обновите страницу' });
+      }
+
+      // Audit log
+      await db.query(`
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+        VALUES ($1, 'worker_payments', $2, $3, $4::jsonb, NOW())
+      `, [userId, paymentId, 'payment_paid', JSON.stringify({
+        amount: p.amount,
+        type: p.type,
+        employee_id: p.employee_id,
+        employee_fio: p.employee_fio,
+        work_id: p.work_id,
+        work_title: p.work_title,
+        payment_method,
+        note: note || null
+      })]);
+
+      // Уведомление рабочему
+      if (p.employee_user_id) {
+        const typeLabels = { salary: 'Зарплата', per_diem: 'Суточные', advance: 'Аванс', bonus: 'Премия', penalty: 'Удержание' };
+        const methodLabels = { cash: 'наличные', card: 'на карту', transfer: 'переводом' };
+        try {
+          const notify = require('../services/notify');
+          await notify.createNotification(db, {
+            user_id: p.employee_user_id,
+            title: `💰 Выплачено ${Math.round(p.amount)}₽`,
+            message: `${typeLabels[p.type] || p.type}: ${p.amount}₽ ${methodLabels[payment_method]}`,
+            type: 'payment_received',
+            link: '/field/earnings'
+          });
+        } catch (e) {
+          fastify.log.warn(`[worker-payments] notification failed: ${e.message}`);
+        }
+      }
+
+      return { ok: true, payment: updated[0] };
+    } catch (err) {
+      fastify.log.error(`[worker-payments] PUT /:id/pay error: ${err.message}`);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
