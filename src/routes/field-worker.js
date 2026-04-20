@@ -546,6 +546,103 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // GET /crew?work_id=X — brigade list (3 groups)
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.get('/crew', auth, async (req, reply) => {
+    try {
+      const empId = req.fieldEmployee.id;
+      const workId = parseInt(req.query.work_id);
+
+      if (!workId) {
+        return reply.code(400).send({ error: 'work_id обязателен' });
+      }
+
+      // Check requester has (or had) assignment on this work
+      const { rows: myAssign } = await db.query(
+        `SELECT id FROM employee_assignments WHERE employee_id = $1 AND work_id = $2 LIMIT 1`,
+        [empId, workId]
+      );
+      if (myAssign.length === 0) {
+        return reply.code(403).send({ error: 'Нет доступа к этому проекту' });
+      }
+
+      // All assignments on this work
+      const { rows: allCrew } = await db.query(`
+        SELECT ea.employee_id, e.fio, e.phone, ea.field_role, ea.is_active,
+               ea.date_from, ea.date_to
+        FROM employee_assignments ea
+        JOIN employees e ON e.id = ea.employee_id
+        WHERE ea.work_id = $1
+        ORDER BY CASE ea.field_role
+          WHEN 'senior_master' THEN 1
+          WHEN 'shift_master' THEN 2
+          ELSE 3
+        END, e.fio
+      `, [workId]);
+
+      // Today's checkins for this work
+      const { rows: todayCheckins } = await db.query(`
+        SELECT employee_id, status, shift, checkin_at, checkout_at, amount_earned
+        FROM field_checkins
+        WHERE work_id = $1 AND date = CURRENT_DATE AND status != 'cancelled'
+      `, [workId]);
+
+      const checkinMap = {};
+      for (const c of todayCheckins) {
+        checkinMap[c.employee_id] = c;
+      }
+
+      // Split into 3 groups
+      const onSite = [];
+      const notCheckedIn = [];
+      const leftSite = [];
+
+      for (const m of allCrew) {
+        const c = checkinMap[m.employee_id];
+        const row = {
+          employee_id: m.employee_id,
+          fio: m.fio,
+          phone: (m.phone || '').replace(/_.*$/, ''),
+          field_role: m.field_role,
+          is_active: m.is_active,
+          date_from: m.date_from,
+          date_to: m.date_to,
+          checkin_status: c ? c.status : null,
+          checkin_shift: c ? c.shift : null,
+          checkin_at: c ? c.checkin_at : null,
+          amount_earned: c ? c.amount_earned : null,
+        };
+
+        if (!m.is_active) {
+          leftSite.push(row);
+        } else if (c) {
+          onSite.push(row);
+        } else {
+          notCheckedIn.push(row);
+        }
+      }
+
+      // Роль текущего пользователя на этом объекте (для будущих master-actions)
+      const myRole = allCrew.find(r => r.employee_id === empId)?.field_role || null;
+
+      return {
+        work_id: workId,
+        your_role: myRole,
+        on_site: onSite,
+        not_checked_in: notCheckedIn,
+        left_site: leftSite,
+        total: allCrew.length,
+        on_site_count: onSite.length,
+        not_checked_in_count: notCheckedIn.length,
+        left_site_count: leftSite.length,
+      };
+    } catch (err) {
+      fastify.log.error('[field-worker] /crew error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // GET /logistics — current logistics (tickets, hotels)
   // ─────────────────────────────────────────────────────────────────────
   fastify.get('/logistics', auth, async (req, reply) => {
