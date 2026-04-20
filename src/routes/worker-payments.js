@@ -1135,12 +1135,27 @@ async function routes(fastify, options) {
           if (result.rowCount > 0) {
             updated += result.rowCount;
           } else if (day.work_id) {
+            // Lookup assignment_id для empId + day.work_id
+            const { rows: assignRows } = await db.query(`
+              SELECT id FROM employee_assignments
+              WHERE employee_id = $1 AND work_id = $2
+              ORDER BY is_active DESC, id DESC
+              LIMIT 1
+            `, [empId, parseInt(day.work_id)]);
+
+            if (assignRows.length === 0) {
+              fastify.log.warn(`[payroll-grid] no assignment for emp=${empId} work=${day.work_id}, skipping`);
+              continue;
+            }
+
+            const assignmentId = assignRows[0].id;
+
             // INSERT new checkin if work_id is provided and no existing record
             await db.query(`
-              INSERT INTO field_checkins (employee_id, work_id, date, day_rate, amount_earned, status, checkin_at, created_at, updated_at)
-              VALUES ($1, $2, $3::date, $4, $5, 'completed', $3::date + TIME '08:00', NOW(), NOW())
+              INSERT INTO field_checkins (employee_id, work_id, assignment_id, date, day_rate, amount_earned, status, checkin_at, created_at, updated_at)
+              VALUES ($1, $2, $3, $4::date, $5, $6, 'completed', $4::date + TIME '08:00', NOW(), NOW())
               ON CONFLICT (employee_id, date, work_id) WHERE status != 'cancelled' DO NOTHING
-            `, [empId, parseInt(day.work_id), dayDate, dayAmount, dayAmount]);
+            `, [empId, parseInt(day.work_id), assignmentId, dayDate, dayAmount, dayAmount]);
             updated += 1;
           }
         }
