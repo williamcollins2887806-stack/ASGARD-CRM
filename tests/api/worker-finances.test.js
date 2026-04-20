@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Worker Finances SSoT — 14 тестов по контракту v1.2
+ * Worker Finances SSoT — 14 тестов по контракту v1.3
  *
  * Тестирует getWorkerFinances() напрямую через db (unit)
  * + SSoT-инвариант через HTTP endpoints (integration).
@@ -73,16 +73,16 @@ async function setup() {
   }
 
   // ── EMP.ONE_WORK: 3 checkins on work A, per_diem=1500, no payments ───
-  await createAssignment(EMP.ONE_WORK, WORK_ID_A, 1500);
-  await createCheckins(EMP.ONE_WORK, WORK_ID_A, [
+  const aOneWork = await createAssignment(EMP.ONE_WORK, WORK_ID_A, 1500);
+  await createCheckins(EMP.ONE_WORK, WORK_ID_A, aOneWork, [
     { date: '2026-03-01', amount: 5000 },
     { date: '2026-03-02', amount: 5000 },
     { date: '2026-03-03', amount: 5000 },
   ]);
 
   // ── EMP.FULLY_PAID: 2 checkins, fully paid ───
-  await createAssignment(EMP.FULLY_PAID, WORK_ID_A, 1000);
-  await createCheckins(EMP.FULLY_PAID, WORK_ID_A, [
+  const aFullyPaid = await createAssignment(EMP.FULLY_PAID, WORK_ID_A, 1000);
+  await createCheckins(EMP.FULLY_PAID, WORK_ID_A, aFullyPaid, [
     { date: '2026-03-01', amount: 10000 },
     { date: '2026-03-02', amount: 10000 },
   ]);
@@ -91,44 +91,44 @@ async function setup() {
   await createPayment(EMP.FULLY_PAID, WORK_ID_A, 'per_diem', 2000, 'paid', 2026);
 
   // ── EMP.ADVANCE: advance paid, salary not yet ───
-  await createAssignment(EMP.ADVANCE, WORK_ID_A, 1000);
-  await createCheckins(EMP.ADVANCE, WORK_ID_A, [
+  const aAdvance = await createAssignment(EMP.ADVANCE, WORK_ID_A, 1000);
+  await createCheckins(EMP.ADVANCE, WORK_ID_A, aAdvance, [
     { date: '2026-04-01', amount: 30000 },
   ]);
   // earned = 30000 + 1*1000 = 31000. advance=10000 paid.
   await createPayment(EMP.ADVANCE, WORK_ID_A, 'advance', 10000, 'paid', 2026);
 
   // ── EMP.PENALTY: penalty reduces earned ───
-  await createAssignment(EMP.PENALTY, WORK_ID_A, 1000);
-  await createCheckins(EMP.PENALTY, WORK_ID_A, [
+  const aPenalty = await createAssignment(EMP.PENALTY, WORK_ID_A, 1000);
+  await createCheckins(EMP.PENALTY, WORK_ID_A, aPenalty, [
     { date: '2026-04-01', amount: 20000 },
   ]);
   // earned before penalty = 20000 + 1000 = 21000, penalty = 3000 → earned = 18000
   await createPayment(EMP.PENALTY, WORK_ID_A, 'penalty', 3000, 'paid', 2026);
 
   // ── EMP.NULL_PD: per_diem IS NULL → 422 ───
-  await createAssignment(EMP.NULL_PD, WORK_ID_A, null);
-  await createCheckins(EMP.NULL_PD, WORK_ID_A, [
+  const aNullPd = await createAssignment(EMP.NULL_PD, WORK_ID_A, null);
+  await createCheckins(EMP.NULL_PD, WORK_ID_A, aNullPd, [
     { date: '2026-04-01', amount: 5000 },
   ]);
 
   // ── EMP.ZERO_PD: per_diem = 0 → legit, not error ───
-  await createAssignment(EMP.ZERO_PD, WORK_ID_A, 0);
-  await createCheckins(EMP.ZERO_PD, WORK_ID_A, [
+  const aZeroPd = await createAssignment(EMP.ZERO_PD, WORK_ID_A, 0);
+  await createCheckins(EMP.ZERO_PD, WORK_ID_A, aZeroPd, [
     { date: '2026-04-01', amount: 8000 },
   ]);
 
   // ── EMP.PENDING: pending payment should not count ───
-  await createAssignment(EMP.PENDING, WORK_ID_A, 1000);
-  await createCheckins(EMP.PENDING, WORK_ID_A, [
+  const aPending = await createAssignment(EMP.PENDING, WORK_ID_A, 1000);
+  await createCheckins(EMP.PENDING, WORK_ID_A, aPending, [
     { date: '2026-04-01', amount: 15000 },
   ]);
   await createPayment(EMP.PENDING, WORK_ID_A, 'salary', 5000, 'paid', 2026);
   await createPayment(EMP.PENDING, WORK_ID_A, 'salary', 3000, 'pending', 2026);  // should NOT count
 
   // ── EMP.YEAR_FILTER: checkins in 2025 and 2026 ───
-  await createAssignment(EMP.YEAR_FILTER, WORK_ID_A, 1000);
-  await createCheckins(EMP.YEAR_FILTER, WORK_ID_A, [
+  const aYearFilter = await createAssignment(EMP.YEAR_FILTER, WORK_ID_A, 1000);
+  await createCheckins(EMP.YEAR_FILTER, WORK_ID_A, aYearFilter, [
     { date: '2025-12-15', amount: 7000 },
     { date: '2025-12-16', amount: 7000 },
     { date: '2026-01-10', amount: 9000 },
@@ -138,8 +138,8 @@ async function setup() {
 
   // ── EMP.REASSIGN: two assignments, per_diem 1000 then 1500 ───
   await createAssignment(EMP.REASSIGN, WORK_ID_A, 1000, false); // old, inactive
-  await createAssignment(EMP.REASSIGN, WORK_ID_A, 1500, true);  // new, active
-  await createCheckins(EMP.REASSIGN, WORK_ID_A, [
+  const aReassignActive = await createAssignment(EMP.REASSIGN, WORK_ID_A, 1500, true);  // new, active
+  await createCheckins(EMP.REASSIGN, WORK_ID_A, aReassignActive, [
     { date: '2026-04-01', amount: 6000 },
     { date: '2026-04-02', amount: 6000 },
   ]);
@@ -160,18 +160,20 @@ async function teardown() {
 // ── Fixture helpers ────────────────────────────────────────────────────────
 
 async function createAssignment(empId, workId, perDiem, isActive = true) {
-  await db.query(`
+  const { rows } = await db.query(`
     INSERT INTO employee_assignments (employee_id, work_id, per_diem, is_active)
     VALUES ($1, $2, $3, $4)
+    RETURNING id
   `, [empId, workId, perDiem, isActive]);
+  return rows[0].id;
 }
 
-async function createCheckins(empId, workId, days) {
+async function createCheckins(empId, workId, assignmentId, days) {
   for (const d of days) {
     await db.query(`
-      INSERT INTO field_checkins (employee_id, work_id, date, amount_earned, status, checkin_at)
-      VALUES ($1, $2, $3, $4, 'completed', $3::date + TIME '08:00')
-    `, [empId, workId, d.date, d.amount]);
+      INSERT INTO field_checkins (employee_id, work_id, assignment_id, date, amount_earned, status, checkin_at)
+      VALUES ($1, $2, $3, $4, $5, 'completed', $4::date + TIME '08:00')
+    `, [empId, workId, assignmentId, d.date, d.amount]);
   }
 }
 
@@ -185,7 +187,7 @@ async function createPayment(empId, workId, type, amount, status, payYear) {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 module.exports = {
-  name: 'WORKER FINANCES SSoT (contract v1.2)',
+  name: 'WORKER FINANCES SSoT (contract v1.3)',
   tests: [
     // ── 0. Setup fixtures ───────────────────────────────────────────────
     {
@@ -342,15 +344,15 @@ module.exports = {
       },
     },
 
-    // ── 11. NULL assignment_id fallback ─────────────────────────────────
+    // ── 11. assignment_id FK → per_diem via INNER JOIN ──────────────────
     {
-      name: '11. NULL assignment_id + fallback assignment → per_diem counted correctly',
+      name: '11. assignment_id FK → per_diem counted via INNER JOIN',
       run: async () => {
-        // All test checkins have assignment_id=NULL (we don't set it in createCheckins)
-        // This mirrors production where 273/273 are NULL.
-        // Test 2 (ONE_WORK) already validates this — if fallback failed, per_diem_accrued would be 0.
+        // assignment_id is NOT NULL (V088). INNER JOIN on ea.id = fc.assignment_id.
+        // ONE_WORK: 3 days × 1500 per_diem = 4500
         const r = await getWorkerFinances(db, EMP.ONE_WORK, { logger: silentLogger });
-        assert(r.per_diem_accrued === 4500, `fallback per_diem should be 4500, got ${r.per_diem_accrued}`);
+        assert(r.per_diem_accrued === 4500, `per_diem via FK should be 4500, got ${r.per_diem_accrued}`);
+        assert(r.by_work[0].per_diem_rate === 1500, `rate should be 1500, got ${r.by_work[0].per_diem_rate}`);
       },
     },
 

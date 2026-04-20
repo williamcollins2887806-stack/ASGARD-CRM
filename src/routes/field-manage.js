@@ -725,17 +725,35 @@ async function routes(fastify, options) {
       if (!employee_id || !date) {
         return reply.code(400).send({ error: 'employee_id и date обязательны' });
       }
+
+      // Lookup assignment_id для employee_id + work_id
+      const { rows: assignRows } = await db.query(`
+        SELECT id FROM employee_assignments
+        WHERE employee_id = $1 AND work_id = $2
+        ORDER BY is_active DESC, id DESC
+        LIMIT 1
+      `, [employee_id, workId]);
+
+      if (assignRows.length === 0) {
+        return reply.code(400).send({
+          error: 'Сотрудник не назначен на этот объект',
+          details: `employee_id=${employee_id}, work_id=${workId} → assignment not found`
+        });
+      }
+
+      const assignmentId = assignRows[0].id;
       const pts = day_rate != null ? day_rate : 0;
       const amt = amount_earned != null ? amount_earned : pts;
       // checkin_at is NOT NULL — default to start of the date
       const checkinAt = date + 'T08:00:00';
       const { rows } = await db.query(`
-        INSERT INTO field_checkins (work_id, employee_id, date, shift,
+        INSERT INTO field_checkins (work_id, employee_id, assignment_id, date, shift,
           checkin_at, hours_worked, hours_paid, day_rate, amount_earned, status,
           checkin_source, note)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'manual', $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'manual', $12)
         ON CONFLICT (employee_id, date, work_id) WHERE status != 'cancelled'
           DO UPDATE SET
+            assignment_id = EXCLUDED.assignment_id,
             shift = EXCLUDED.shift,
             checkin_at = EXCLUDED.checkin_at,
             hours_worked = EXCLUDED.hours_worked,
@@ -747,7 +765,7 @@ async function routes(fastify, options) {
             note = COALESCE(EXCLUDED.note, field_checkins.note),
             updated_at = NOW()
         RETURNING *
-      `, [workId, employee_id, date, shift || 'day', checkinAt,
+      `, [workId, employee_id, assignmentId, date, shift || 'day', checkinAt,
           hours_worked || 11, hours_paid || 11, pts, amt,
           status || 'completed', note || null]);
       return { ok: true, checkin: rows[0] };
