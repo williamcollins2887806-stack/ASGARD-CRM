@@ -56,8 +56,8 @@ async function loadHistory(content) {
       display: 'flex', gap: '12px', animation: 'fieldSlideUp 0.4s ease both',
     },
   });
-  statsRow.appendChild(buildStatPill('\uD83D\uDCC5 ' + projects.length + ' \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u0432', t));
-  statsRow.appendChild(buildStatPill('\u2694\uFE0F ' + totalShifts + ' \u0441\u043C\u0435\u043D', t));
+  statsRow.appendChild(buildStatPill('\uD83D\uDCC5 ' + projects.length + ' ' + histPluralRu(projects.length, '\u043F\u0440\u043E\u0435\u043A\u0442', '\u043F\u0440\u043E\u0435\u043A\u0442\u0430', '\u043F\u0440\u043E\u0435\u043A\u0442\u043E\u0432'), t));
+  statsRow.appendChild(buildStatPill('\u2694\uFE0F ' + totalShifts + ' ' + histPluralRu(totalShifts, '\u0441\u043C\u0435\u043D\u0430', '\u0441\u043C\u0435\u043D\u044B', '\u0441\u043C\u0435\u043D'), t));
   statsRow.appendChild(buildStatPill('\uD83D\uDCB0 ' + Utils.formatMoney(totalEarned) + '\u20BD', t));
   content.appendChild(statsRow);
 
@@ -75,22 +75,33 @@ async function loadHistory(content) {
 
     for (const p of byYear[year]) {
       delay += 0.06;
+      // Badge: 3 statuses
+      const workDone = p.work_status === '\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430';
       const isActive = p.is_active === true;
-      const isCompleted = p.work_status === '\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430' || (!isActive && !p.is_active);
-      const badgeText = isActive ? '\u25B6 \u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0439' : '\u0417\u0430\u0432\u0435\u0440\u0448\u0451\u043D';
-      const badgeClr = isActive ? t.green : t.textSec;
+      const badgeText = isActive ? '\u25B6 \u0410\u043A\u0442\u0438\u0432\u043D\u0430\u044F'
+                      : workDone ? '\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430'
+                      : '\u041D\u0435 \u043D\u0430 \u043E\u0431\u044A\u0435\u043A\u0442\u0435';
+      const badgeClr = isActive ? t.green : workDone ? t.textSec : t.orange;
       const roleLabel = p.field_role === 'senior_master' ? '\u041C\u0430\u0441\u0442\u0435\u0440 \u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0439' :
                         p.field_role === 'shift_master' ? '\u041C\u0430\u0441\u0442\u0435\u0440 \u0441\u043C\u0435\u043D\u043D\u044B\u0439' :
                         p.role || '\u0420\u0430\u0431\u043E\u0447\u0438\u0439';
 
+      // Subtitle: collect parts, skip empty
+      const subtitleParts = [];
+      if (p.city) subtitleParts.push(p.city);
+      if (p.date_from && p.date_to) {
+        subtitleParts.push(Utils.formatDate(p.date_from) + ' \u2013 ' + Utils.formatDate(p.date_to));
+      } else if (p.date_from) {
+        subtitleParts.push('\u0441 ' + Utils.formatDate(p.date_from));
+      } else if (p.last_checkin_date) {
+        subtitleParts.push('\u0434\u043E ' + Utils.formatDate(p.last_checkin_date));
+      }
+      subtitleParts.push(roleLabel);
+      if (p.pm_name) subtitleParts.push('\u0420\u041F: ' + p.pm_name);
+
       content.appendChild(F.Card({
         title: p.work_title || p.title,
-        subtitle: [
-          p.city,
-          Utils.formatDate(p.date_from) + (p.date_to ? ' \u2013 ' + Utils.formatDate(p.date_to) : ' \u2013 ...'),
-          roleLabel,
-          p.pm_name ? '\u0420\u041F: ' + p.pm_name : null,
-        ].filter(Boolean).join(' \u00B7 '),
+        subtitle: subtitleParts.join(' \u00B7 '),
         badge: badgeText,
         badgeColor: badgeClr,
         fields: [
@@ -248,6 +259,15 @@ function buildLinkBtn(text, onClick, t) {
     },
     onClick,
   }, text);
+}
+
+function histPluralRu(n, one, few, many) {
+  const abs = Math.abs(n) % 100;
+  const last = abs % 10;
+  if (abs > 10 && abs < 20) return many;
+  if (last > 1 && last < 5) return few;
+  if (last === 1) return one;
+  return many;
 }
 
 Router.register('/field/history', HistoryPage);
