@@ -107,14 +107,20 @@ async function routes(fastify, options) {
 
       const assignmentId = assignments[0].id;
 
-      // Check no active checkin today
+      // Check no existing checkin today (any non-cancelled status)
       const { rows: existing } = await db.query(
-        `SELECT id FROM field_checkins WHERE employee_id = $1 AND work_id = $2 AND date = CURRENT_DATE AND status = 'active' LIMIT 1`,
+        `SELECT id, checkin_at, checkout_at, status FROM field_checkins
+         WHERE employee_id = $1 AND work_id = $2 AND date = CURRENT_DATE AND status != 'cancelled'
+         LIMIT 1`,
         [empId, work_id]
       );
 
       if (existing.length > 0) {
-        return reply.code(409).send({ error: 'Вы уже отметились сегодня' });
+        if (existing[0].checkout_at) {
+          return reply.code(409).send({ error: 'Смена за сегодня уже завершена' });
+        }
+        // Active shift exists — return it (double-tap protection)
+        return { checkin_id: existing[0].id, checkin_at: existing[0].checkin_at, resumed: true };
       }
 
       // Auto-close active trip stages (Session 12)
@@ -297,6 +303,23 @@ async function routes(fastify, options) {
           hours_worked, hours_paid, day_rate, amount_earned,
           date, status, edit_reason, note)
         VALUES ($1, $2, $3, $4, 'master', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        ON CONFLICT (employee_id, date, work_id) WHERE status != 'cancelled'
+          DO UPDATE SET
+            assignment_id = EXCLUDED.assignment_id,
+            checkin_at = EXCLUDED.checkin_at,
+            checkin_source = EXCLUDED.checkin_source,
+            checkin_by = EXCLUDED.checkin_by,
+            checkout_at = EXCLUDED.checkout_at,
+            checkout_source = EXCLUDED.checkout_source,
+            checkout_by = EXCLUDED.checkout_by,
+            hours_worked = EXCLUDED.hours_worked,
+            hours_paid = EXCLUDED.hours_paid,
+            day_rate = EXCLUDED.day_rate,
+            amount_earned = EXCLUDED.amount_earned,
+            status = EXCLUDED.status,
+            edit_reason = COALESCE(EXCLUDED.edit_reason, field_checkins.edit_reason),
+            note = COALESCE(EXCLUDED.note, field_checkins.note),
+            updated_at = NOW()
         RETURNING id, checkin_at, checkout_at
       `, [
         employee_id, work_id, workerAssign[0].id,
