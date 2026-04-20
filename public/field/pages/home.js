@@ -134,12 +134,16 @@ async function loadData(content, me) {
       icon: '\uD83D\uDCDE',
     }));
   }
-  if (project.master && project.master.fio) {
-    callRow.appendChild(F.CallButton({
-      name: '\u041C\u0430\u0441\u0442\u0435\u0440: ' + project.master.fio,
-      phone: (project.master.phone || '').replace(/_.*$/, ''),
-      icon: '\uD83D\uDCDE',
-    }));
+  if (project.masters && project.masters.length > 0) {
+    project.masters.forEach(m => {
+      if (!m || !m.fio) return;
+      const label = m.role === 'senior_master' ? '\u0421\u0442. \u043C\u0430\u0441\u0442\u0435\u0440' : '\u041C\u0430\u0441\u0442\u0435\u0440';
+      callRow.appendChild(F.CallButton({
+        name: label + ': ' + homeShortFio(m.fio),
+        phone: (m.phone || '').replace(/_.*$/, ''),
+        icon: '\uD83D\uDCDE',
+      }));
+    });
   }
   if (callRow.children.length) projectCard.appendChild(callRow);
   content.appendChild(projectCard);
@@ -436,6 +440,14 @@ async function doCheckout(checkin, project, btnWrap, content) {
     // Reload page after 2 sec for fresh data
     setTimeout(() => Router.navigate('/field/home'), 2000);
   }
+}
+
+function homeShortFio(fio) {
+  if (!fio) return '';
+  const parts = fio.trim().split(/\s+/);
+  if (parts.length >= 3) return parts[0] + ' ' + parts[1][0] + '.' + parts[2][0] + '.';
+  if (parts.length === 2) return parts[0] + ' ' + parts[1][0] + '.';
+  return parts[0];
 }
 
 Router.register('/field/home', HomePage);

@@ -183,18 +183,20 @@ async function routes(fastify, options) {
         }
       }
 
-      // Get master info
-      let master = null;
+      // Get masters (all active shift_master + senior_master)
       const { rows: masterRows } = await db.query(`
-        SELECT e.fio, e.phone FROM employee_assignments ea
+        SELECT e.fio, e.phone, ea.field_role AS role
+        FROM employee_assignments ea
         JOIN employees e ON e.id = ea.employee_id
-        WHERE ea.work_id = $1 AND ea.field_role IN ('shift_master','senior_master')
-          AND ea.is_active = true AND ea.employee_id != $2
-        LIMIT 1
-      `, [a.work_id, empId]);
-      if (masterRows.length > 0) {
-        master = { fio: masterRows[0].fio, phone: masterRows[0].phone };
-      }
+        WHERE ea.work_id = $1
+          AND ea.field_role IN ('shift_master','senior_master')
+          AND ea.is_active = true
+        ORDER BY CASE ea.field_role
+          WHEN 'senior_master' THEN 1
+          WHEN 'shift_master' THEN 2
+        END, e.fio
+      `, [a.work_id]);
+      const masters = masterRows;
 
       // Today's checkin
       let todayCheckin = null;
@@ -252,7 +254,8 @@ async function routes(fastify, options) {
             total_rate: dayRate,
           } : null,
           pm,
-          master,
+          masters,
+          master: masters[0] || null,
           today_checkin: todayCheckin,
           today_earnings: todayEarnings,
         },
