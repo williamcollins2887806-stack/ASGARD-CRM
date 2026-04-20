@@ -24,6 +24,8 @@ import FieldIncidents from '@/pages/field/FieldIncidents';
 import FieldPhotos from '@/pages/field/FieldPhotos';
 import FieldPacking from '@/pages/field/FieldPacking';
 import FieldStages from '@/pages/field/FieldStages';
+import FieldAchievements from '@/pages/field/FieldAchievements';
+import FieldLeaderboard from '@/pages/field/FieldLeaderboard';
 import Welcome from '@/pages/Welcome';
 import Login from '@/pages/Login';
 import PinEntry from '@/pages/PinEntry';
@@ -191,6 +193,8 @@ function AppLayout() {
                 <Route path="photos" element={<FieldPhotos />} />
                 <Route path="packing" element={<FieldPacking />} />
                 <Route path="stages" element={<FieldStages />} />
+                <Route path="achievements" element={<FieldAchievements />} />
+                <Route path="leaderboard" element={<FieldLeaderboard />} />
                 <Route index element={<Navigate to="home" replace />} />
               </Route>
             </>

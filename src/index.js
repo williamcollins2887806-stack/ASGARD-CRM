@@ -450,6 +450,7 @@ fastify.register(require('./routes/field-logistics'), { prefix: '/api/field/logi
 fastify.register(require('./routes/field-funds'), { prefix: '/api/field/funds' });
 fastify.register(require('./routes/field-packing'), { prefix: '/api/field/packing' });
 fastify.register(require('./routes/field-stages'), { prefix: '/api/field/stages' });
+fastify.register(require('./routes/field-achievements'), { prefix: '/api/field/achievements' });
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
 fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });
