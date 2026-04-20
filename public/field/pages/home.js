@@ -127,17 +127,17 @@ async function loadData(content, me) {
   // Call buttons row
   const callRow = el('div', { style: { display:'flex', gap:'8px', marginTop:'12px', flexWrap:'wrap' } });
 
-  if (project.pm_fio || project.pm_name) {
+  if (project.pm && project.pm.fio) {
     callRow.appendChild(F.CallButton({
-      name: '\u0420\u041F: ' + (project.pm_fio || project.pm_name),
-      phone: project.pm_phone,
+      name: '\u0420\u041F: ' + project.pm.fio,
+      phone: (project.pm.phone || '').replace(/_.*$/, ''),
       icon: '\uD83D\uDCDE',
     }));
   }
-  if (project.master_fio) {
+  if (project.master && project.master.fio) {
     callRow.appendChild(F.CallButton({
-      name: '\u041C\u0430\u0441\u0442\u0435\u0440: ' + project.master_fio,
-      phone: project.master_phone,
+      name: '\u041C\u0430\u0441\u0442\u0435\u0440: ' + project.master.fio,
+      phone: (project.master.phone || '').replace(/_.*$/, ''),
       icon: '\uD83D\uDCDE',
     }));
   }

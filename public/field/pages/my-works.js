@@ -201,7 +201,9 @@ function sectionHeader(text, t, animDelay) {
 }
 
 function cleanPhone(p) {
-  return (p || '').replace(/_.*$/, '').replace(/[^\d+]/g, '');
+  // Убрать _bak и подобные суффиксы. Остальное (пробелы, дефисы) оставить —
+  // F.CallButton сам делает .replace(/[^\d+]/g, '') для tel: ссылки.
+  return (p || '').replace(/_.*$/, '');
 }
 
 function shortFio(fio) {
