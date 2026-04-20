@@ -194,12 +194,17 @@ async function loadMoney(content) {
   if (cur.penalty) rows.push({ label: '\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F', value: '\u2212' + Utils.formatMoney(cur.penalty) + '\u20BD', color: t.red });
   if (cur.advance_paid) rows.push({ label: '\u0410\u0432\u0430\u043D\u0441\u044B', value: '\u2212' + Utils.formatMoney(cur.advance_paid) + '\u20BD', color: t.red });
 
-  rows.push({ label: '\u0418\u0422\u041E\u0413\u041E \u043D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', value: Utils.formatMoney(cur.total_earned || 0) + '\u20BD', bold: true });
+  rows.push({ label: '\u0418\u0422\u041E\u0413\u041E \u043D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E (\u044D\u0442\u043E\u0442 \u043F\u0440\u043E\u0435\u043A\u0442)', value: Utils.formatMoney(cur.total_earned || 0) + '\u20BD', bold: true });
   const pending = cur.total_pending || 0;
   if (pending < 0) {
-    rows.push({ label: '\u041F\u0415\u0420\u0415\u041F\u041B\u0410\u0422\u0410', value: Utils.formatMoney(Math.abs(pending)) + '\u20BD', bold: true, color: t.green });
+    rows.push({ label: '\u041F\u0415\u0420\u0415\u041F\u041B\u0410\u0422\u0410 \u043F\u043E \u043F\u0440\u043E\u0435\u043A\u0442\u0443', value: Utils.formatMoney(Math.abs(pending)) + '\u20BD', bold: true, color: t.green });
   } else {
-    rows.push({ label: '\u041A \u0412\u042B\u041F\u041B\u0410\u0422\u0415', value: Utils.formatMoney(pending) + '\u20BD', bold: true, color: t.gold });
+    rows.push({ label: '\u041A \u0432\u044B\u043F\u043B\u0430\u0442\u0435 \u043F\u043E \u043F\u0440\u043E\u0435\u043A\u0442\u0443', value: Utils.formatMoney(pending) + '\u20BD', bold: true, color: t.gold });
+  }
+  // Добавить "К выплате всего" если отличается от pending по этому проекту
+  const totalPending = all.total_pending || 0;
+  if (Math.abs(totalPending - pending) > 1) {
+    rows.push({ label: '\u041A \u0432\u044B\u043F\u043B\u0430\u0442\u0435 \u0432\u0441\u0435\u0433\u043E (\u0432\u0441\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u044B)', value: Utils.formatMoney(totalPending) + '\u20BD', bold: true, color: t.gold });
   }
 
   for (const row of rows) {

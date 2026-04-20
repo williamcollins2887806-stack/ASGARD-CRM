@@ -188,13 +188,19 @@ async function loadData(content, me) {
   }
   content.appendChild(btnWrap);
 
-  // Earnings today
-  const todayEarned = checkin?.amount_earned || data.today_earnings || 0;
-  const dayRate = assignment.day_rate || assignment.total_rate || project.day_rate || 0;
-  const perDiem = assignment.per_diem || project.per_diem || 0;
+  // Earnings today = amount_earned + per_diem (если чекин есть и completed)
+  const perDiem = Number(assignment.per_diem || project.per_diem || 0);
+  const checkinAmount = checkin && checkin.status === 'completed' ? (Number(checkin.amount_earned) || 0) : 0;
+  const todayEarned = checkinAmount > 0 ? checkinAmount + perDiem : 0;
+
+  // Подпись с разбивкой по типу смены
   const details = [];
-  if (dayRate) details.push(Utils.formatMoney(dayRate) + '\u20BD/\u0441\u043C\u0435\u043D\u0430');
-  if (perDiem) details.push('\u043F\u0430\u0439\u043A\u043E\u0432\u044B\u0435 ' + Utils.formatMoney(perDiem) + '\u20BD/\u0441\u0443\u0442');
+  if (checkinAmount > 0) {
+    const shift = checkin.shift || 'day';
+    const shiftLabels = { day: '\u0441\u043C\u0435\u043D\u0430', night: '\u0441\u043C\u0435\u043D\u0430', road: '\u0434\u043E\u0440\u043E\u0433\u0430', standby: '\u043E\u0436\u0438\u0434\u0430\u043D\u0438\u0435' };
+    details.push(Utils.formatMoney(checkinAmount) + '\u20BD ' + (shiftLabels[shift] || '\u0441\u043C\u0435\u043D\u0430'));
+    if (perDiem) details.push(Utils.formatMoney(perDiem) + '\u20BD \u043F\u0430\u0439\u043A\u043E\u0432\u044B\u0435');
+  }
 
   content.appendChild(F.MoneyCard({
     amount: todayEarned,
