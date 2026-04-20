@@ -127,19 +127,23 @@ async function loadData(content, me) {
   // Call buttons row
   const callRow = el('div', { style: { display:'flex', gap:'8px', marginTop:'12px', flexWrap:'wrap' } });
 
-  if (project.pm_fio || project.pm_name) {
+  if (project.pm && project.pm.fio) {
     callRow.appendChild(F.CallButton({
-      name: '\u0420\u041F: ' + (project.pm_fio || project.pm_name),
-      phone: project.pm_phone,
+      name: '\u0420\u041F: ' + project.pm.fio,
+      phone: (project.pm.phone || '').replace(/_.*$/, ''),
       icon: '\uD83D\uDCDE',
     }));
   }
-  if (project.master_fio) {
-    callRow.appendChild(F.CallButton({
-      name: '\u041C\u0430\u0441\u0442\u0435\u0440: ' + project.master_fio,
-      phone: project.master_phone,
-      icon: '\uD83D\uDCDE',
-    }));
+  if (project.masters && project.masters.length > 0) {
+    project.masters.forEach(m => {
+      if (!m || !m.fio) return;
+      const label = m.role === 'senior_master' ? '\u0421\u0442. \u043C\u0430\u0441\u0442\u0435\u0440' : '\u041C\u0430\u0441\u0442\u0435\u0440';
+      callRow.appendChild(F.CallButton({
+        name: label + ': ' + homeShortFio(m.fio),
+        phone: (m.phone || '').replace(/_.*$/, ''),
+        icon: '\uD83D\uDCDE',
+      }));
+    });
   }
   if (callRow.children.length) projectCard.appendChild(callRow);
   content.appendChild(projectCard);
@@ -188,13 +192,19 @@ async function loadData(content, me) {
   }
   content.appendChild(btnWrap);
 
-  // Earnings today
-  const todayEarned = checkin?.amount_earned || data.today_earnings || 0;
-  const dayRate = assignment.day_rate || assignment.total_rate || project.day_rate || 0;
-  const perDiem = assignment.per_diem || project.per_diem || 0;
+  // Earnings today = amount_earned + per_diem (если чекин есть и completed)
+  const perDiem = Number(assignment.per_diem || project.per_diem || 0);
+  const checkinAmount = checkin && checkin.status === 'completed' ? (Number(checkin.amount_earned) || 0) : 0;
+  const todayEarned = checkinAmount > 0 ? checkinAmount + perDiem : 0;
+
+  // Подпись с разбивкой по типу смены
   const details = [];
-  if (dayRate) details.push(Utils.formatMoney(dayRate) + '\u20BD/\u0441\u043C\u0435\u043D\u0430');
-  if (perDiem) details.push('\u043F\u0430\u0439\u043A\u043E\u0432\u044B\u0435 ' + Utils.formatMoney(perDiem) + '\u20BD/\u0441\u0443\u0442');
+  if (checkinAmount > 0) {
+    const shift = checkin.shift || 'day';
+    const shiftLabels = { day: '\u0441\u043C\u0435\u043D\u0430', night: '\u0441\u043C\u0435\u043D\u0430', road: '\u0434\u043E\u0440\u043E\u0433\u0430', standby: '\u043E\u0436\u0438\u0434\u0430\u043D\u0438\u0435' };
+    details.push(Utils.formatMoney(checkinAmount) + '\u20BD ' + (shiftLabels[shift] || '\u0441\u043C\u0435\u043D\u0430'));
+    if (perDiem) details.push(Utils.formatMoney(perDiem) + '\u20BD \u043F\u0430\u0439\u043A\u043E\u0432\u044B\u0435');
+  }
 
   content.appendChild(F.MoneyCard({
     amount: todayEarned,
@@ -244,6 +254,7 @@ function buildQuickActions(project, me) {
   });
 
   const actions = [
+    { icon: '\uD83D\uDCBC', label: '\u041C\u043E\u0438 \u0440\u0430\u0431\u043E\u0442\u044B', href: '/field/my-works' },
     { icon: '\uD83D\uDCB0', label: '\u0414\u0435\u043D\u044C\u0433\u0438', href: '/field/money' },
     { icon: '\uD83D\uDDFA\uFE0F', label: '\u041C\u0430\u0440\u0448\u0440\u0443\u0442', href: '/field/stages' },
     { icon: '\u2708\uFE0F', label: '\u0411\u0438\u043B\u0435\u0442\u044B', href: '/field/logistics' },
@@ -429,6 +440,14 @@ async function doCheckout(checkin, project, btnWrap, content) {
     // Reload page after 2 sec for fresh data
     setTimeout(() => Router.navigate('/field/home'), 2000);
   }
+}
+
+function homeShortFio(fio) {
+  if (!fio) return '';
+  const parts = fio.trim().split(/\s+/);
+  if (parts.length >= 3) return parts[0] + ' ' + parts[1][0] + '.' + parts[2][0] + '.';
+  if (parts.length === 2) return parts[0] + ' ' + parts[1][0] + '.';
+  return parts[0];
 }
 
 Router.register('/field/home', HomePage);

@@ -183,18 +183,20 @@ async function routes(fastify, options) {
         }
       }
 
-      // Get master info
-      let master = null;
+      // Get masters (all active shift_master + senior_master)
       const { rows: masterRows } = await db.query(`
-        SELECT e.fio, e.phone FROM employee_assignments ea
+        SELECT e.fio, e.phone, ea.field_role AS role
+        FROM employee_assignments ea
         JOIN employees e ON e.id = ea.employee_id
-        WHERE ea.work_id = $1 AND ea.field_role IN ('shift_master','senior_master')
-          AND ea.is_active = true AND ea.employee_id != $2
-        LIMIT 1
-      `, [a.work_id, empId]);
-      if (masterRows.length > 0) {
-        master = { fio: masterRows[0].fio, phone: masterRows[0].phone };
-      }
+        WHERE ea.work_id = $1
+          AND ea.field_role IN ('shift_master','senior_master')
+          AND ea.is_active = true
+        ORDER BY CASE ea.field_role
+          WHEN 'senior_master' THEN 1
+          WHEN 'shift_master' THEN 2
+        END, e.fio
+      `, [a.work_id]);
+      const masters = masterRows;
 
       // Today's checkin
       let todayCheckin = null;
@@ -252,7 +254,8 @@ async function routes(fastify, options) {
             total_rate: dayRate,
           } : null,
           pm,
-          master,
+          masters,
+          master: masters[0] || null,
           today_checkin: todayCheckin,
           today_earnings: todayEarnings,
         },
@@ -272,16 +275,58 @@ async function routes(fastify, options) {
       const { rows } = await db.query(`
         SELECT ea.work_id, ea.field_role, ea.date_from, ea.date_to, ea.is_active,
                ea.tariff_id, ea.per_diem,
-               w.work_title, w.city, w.object_name, w.work_status,
+               w.work_title, w.city, w.object_name, w.work_status, w.customer_name,
+
+               -- PM как объект { fio, phone } или null
+               (SELECT row_to_json(pm_row) FROM (
+                  SELECT COALESCE(e_pm.fio, u_pm.name) AS fio,
+                         COALESCE(e_pm.phone, u_pm.phone) AS phone
+                  FROM users u_pm
+                  LEFT JOIN employees e_pm ON e_pm.user_id = u_pm.id
+                  WHERE u_pm.id = w.pm_id
+                  LIMIT 1
+               ) pm_row) AS pm,
+
+               -- Masters как массив [{ fio, phone, role }] — senior_master первым
+               COALESCE((SELECT json_agg(row_to_json(m_clean)) FROM (
+                  SELECT e_m.fio, e_m.phone, ea_m.field_role AS role
+                  FROM employee_assignments ea_m
+                  JOIN employees e_m ON e_m.id = ea_m.employee_id
+                  WHERE ea_m.work_id = ea.work_id
+                    AND ea_m.field_role IN ('shift_master','senior_master')
+                    AND ea_m.is_active = true
+                  ORDER BY CASE ea_m.field_role
+                    WHEN 'senior_master' THEN 1
+                    WHEN 'shift_master' THEN 2
+                    ELSE 3
+                  END, e_m.fio
+               ) m_clean), '[]'::json) AS masters,
+
+               -- Обратная совместимость
                (SELECT e2.fio FROM employees e2 WHERE e2.user_id = w.pm_id LIMIT 1) as pm_name,
+
+               -- Агрегаты по чекинам
                (SELECT COUNT(*) FROM field_checkins fc
-                WHERE fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id AND fc.status = 'completed') as shifts_count,
+                 WHERE fc.employee_id = ea.employee_id
+                   AND fc.work_id = ea.work_id
+                   AND fc.status = 'completed') as shifts_count,
                (SELECT COALESCE(SUM(fc.amount_earned), 0) FROM field_checkins fc
-                WHERE fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id AND fc.status = 'completed') as total_earned
+                 WHERE fc.employee_id = ea.employee_id
+                   AND fc.work_id = ea.work_id
+                   AND fc.status = 'completed') as total_earned,
+
+               -- Последний чекин для сортировки
+               (SELECT MAX(fc.date) FROM field_checkins fc
+                 WHERE fc.employee_id = ea.employee_id
+                   AND fc.work_id = ea.work_id
+                   AND fc.status = 'completed') as last_checkin_date
+
         FROM employee_assignments ea
         JOIN works w ON w.id = ea.work_id
         WHERE ea.employee_id = $1
-        ORDER BY ea.is_active DESC, ea.date_from DESC NULLS LAST
+        ORDER BY ea.is_active DESC,
+                 last_checkin_date DESC NULLS LAST,
+                 ea.date_from DESC NULLS LAST
       `, [empId]);
 
       // Add badge: completed > active > inactive (left but work continues)

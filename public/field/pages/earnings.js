@@ -108,10 +108,16 @@ async function loadEarnings(content) {
       style: { color: t.textTer, fontSize: '0.6875rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' },
     }, '\uD83C\uDF19 \u0421\u0423\u0422\u041E\u0427\u041D\u042B\u0415'));
 
+    const pdDiff = perDiemPending;
+    const pdDiffRow = pdDiff > 0
+      ? { label: '\u041E\u0436\u0438\u0434\u0430\u0435\u0442', value: Utils.formatMoney(pdDiff) + '\u20BD', color: t.orange }
+      : pdDiff < 0
+        ? { label: '\u041F\u0435\u0440\u0435\u043F\u043B\u0430\u0442\u0430', value: Utils.formatMoney(Math.abs(pdDiff)) + '\u20BD', color: t.blue }
+        : { label: '\u041F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E \u0432\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E', value: '\u2714', color: t.green };
     const pdRows = [
       { label: '\u041D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', value: Utils.formatMoney(data.per_diem_accrued) + '\u20BD' },
       { label: '\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u043E', value: Utils.formatMoney(data.per_diem_paid) + '\u20BD', color: t.green },
-      { label: '\u041E\u0436\u0438\u0434\u0430\u0435\u0442', value: Utils.formatMoney(perDiemPending) + '\u20BD', color: t.orange },
+      pdDiffRow,
     ];
 
     for (const row of pdRows) {
@@ -131,43 +137,69 @@ async function loadEarnings(content) {
     content.appendChild(pdCard);
   }
 
-  // ─── Totals card ────────────────────────────────────────────
-  const yearCard = el('div', {
-    style: {
-      background: t.surface, borderRadius: '16px', padding: '16px',
-      border: '1px solid ' + t.border,
-      animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both',
-    },
+  // ─── НАЧИСЛЕНО ──────────────────────────────────────────────
+  const accruedCard = el('div', {
+    style: { background: t.surface, borderRadius: '16px', padding: '16px', border: '1px solid ' + t.border, animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both' },
   });
-  yearCard.appendChild(el('div', {
+  accruedCard.appendChild(el('div', {
     style: { color: t.textTer, fontSize: '0.6875rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' },
-  }, '\u0418\u0422\u041E\u0413\u041E ' + yearLabel.toUpperCase()));
+  }, '\u041D\u0410\u0427\u0418\u0421\u041B\u0415\u041D\u041E ' + yearLabel.toUpperCase()));
 
-  const yearRows = [
-    { label: '\u0417\u0430\u0440\u043F\u043B\u0430\u0442\u0430', value: Utils.formatMoney(data.salary_paid) + '\u20BD' },
+  const accruedRows = [
+    { label: '\u0424\u041E\u0422 (\u0437\u0430\u0440\u043F\u043B\u0430\u0442\u0430)', value: Utils.formatMoney(data.fot) + '\u20BD' },
     { label: '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435', value: Utils.formatMoney(data.per_diem_accrued) + '\u20BD' },
-    { label: '\u041F\u0440\u0435\u043C\u0438\u0438', value: '+' + Utils.formatMoney(data.bonus_paid) + '\u20BD', color: t.green },
-    { label: '\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F', value: '\u2212' + Utils.formatMoney(data.penalty) + '\u20BD', color: t.red },
-    { label: '\u0410\u0432\u0430\u043D\u0441\u044B', value: '\u2212' + Utils.formatMoney(data.advance_paid) + '\u20BD', color: t.red },
-    { label: '\u0412\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E', value: Utils.formatMoney(data.total_paid) + '\u20BD', bold: true, color: t.green },
-    (data.total_pending || 0) < 0
-      ? { label: '\u041F\u0415\u0420\u0415\u041F\u041B\u0410\u0422\u0410', value: Utils.formatMoney(Math.abs(data.total_pending)) + '\u20BD', bold: true, color: t.green }
-      : { label: '\u041A \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u044E', value: Utils.formatMoney(data.total_pending) + '\u20BD', bold: true, color: t.gold },
+    { label: '\u041F\u0440\u0435\u043C\u0438\u0438', value: '+' + Utils.formatMoney(data.bonus_accrued || data.bonus_paid || 0) + '\u20BD', color: t.green },
+    { label: '\u0428\u0442\u0440\u0430\u0444\u044B', value: '\u2212' + Utils.formatMoney(data.penalty || 0) + '\u20BD', color: t.red },
+    { label: '\u0418\u0442\u043E\u0433\u043E \u043D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E', value: Utils.formatMoney(data.total_earned) + '\u20BD', bold: true, color: t.gold },
   ];
 
-  for (const row of yearRows) {
+  for (const row of accruedRows) {
     const r = el('div', {
-      style: {
-        display: 'flex', justifyContent: 'space-between', padding: '5px 0',
-        borderTop: row.bold ? '1px solid ' + t.border : 'none',
-        marginTop: row.bold ? '4px' : '0',
-      },
+      style: { display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: row.bold ? '1px solid ' + t.border : 'none', marginTop: row.bold ? '4px' : '0' },
     });
     r.appendChild(el('span', { style: { color: row.color || t.textSec, fontSize: '0.8125rem', fontWeight: row.bold ? '700' : '400' } }, row.label));
     r.appendChild(el('span', { style: { color: row.color || t.text, fontSize: '0.8125rem', fontWeight: row.bold ? '700' : '600' } }, row.value));
-    yearCard.appendChild(r);
+    accruedCard.appendChild(r);
   }
-  content.appendChild(yearCard);
+  content.appendChild(accruedCard);
+
+  // ─── ВЫПЛАЧЕНО ─────────────────────────────────────────────
+  const paidCard = el('div', {
+    style: { background: t.surface, borderRadius: '16px', padding: '16px', border: '1px solid ' + t.border, animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both' },
+  });
+  paidCard.appendChild(el('div', {
+    style: { color: t.textTer, fontSize: '0.6875rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' },
+  }, '\u0412\u042B\u041F\u041B\u0410\u0427\u0415\u041D\u041E'));
+
+  const paidRows = [
+    { label: '\u0417\u0430\u0440\u043F\u043B\u0430\u0442\u0430', value: Utils.formatMoney(data.salary_paid) + '\u20BD' },
+    { label: '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435', value: Utils.formatMoney(data.per_diem_paid) + '\u20BD' },
+    { label: '\u0410\u0432\u0430\u043D\u0441\u044B', value: Utils.formatMoney(data.advance_paid) + '\u20BD' },
+    { label: '\u0418\u0442\u043E\u0433\u043E \u0432\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E', value: Utils.formatMoney(data.total_paid) + '\u20BD', bold: true, color: t.green },
+  ];
+
+  for (const row of paidRows) {
+    const r = el('div', {
+      style: { display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: row.bold ? '1px solid ' + t.border : 'none', marginTop: row.bold ? '4px' : '0' },
+    });
+    r.appendChild(el('span', { style: { color: row.color || t.textSec, fontSize: '0.8125rem', fontWeight: row.bold ? '700' : '400' } }, row.label));
+    r.appendChild(el('span', { style: { color: row.color || t.text, fontSize: '0.8125rem', fontWeight: row.bold ? '700' : '600' } }, row.value));
+    paidCard.appendChild(r);
+  }
+  content.appendChild(paidCard);
+
+  // ─── К ПОЛУЧЕНИЮ ───────────────────────────────────────────
+  const pendingVal = data.total_pending || 0;
+  const pendingCard = el('div', {
+    style: { background: t.surface, borderRadius: '16px', padding: '16px', border: '1px solid ' + (pendingVal < 0 ? t.green : t.gold) + '30', animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both' },
+  });
+  const pendingLabel = pendingVal < 0 ? '\u041F\u0415\u0420\u0415\u041F\u041B\u0410\u0422\u0410' : '\u041A \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u044E';
+  const pendingColor = pendingVal < 0 ? t.green : t.gold;
+  const pr = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } });
+  pr.appendChild(el('span', { style: { color: pendingColor, fontSize: '0.875rem', fontWeight: '700' } }, pendingLabel));
+  pr.appendChild(el('span', { style: { color: pendingColor, fontSize: '1.25rem', fontWeight: '700' } }, Utils.formatMoney(Math.abs(pendingVal)) + '\u20BD'));
+  pendingCard.appendChild(pr);
+  content.appendChild(pendingCard);
 
   // ─── Payment history ────────────────────────────────────────
   const payList = payments?.payments || [];
