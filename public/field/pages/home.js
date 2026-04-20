@@ -244,6 +244,7 @@ function buildQuickActions(project, me) {
   });
 
   const actions = [
+    { icon: '\uD83D\uDCBC', label: '\u041C\u043E\u0438 \u0440\u0430\u0431\u043E\u0442\u044B', href: '/field/my-works' },
     { icon: '\uD83D\uDCB0', label: '\u0414\u0435\u043D\u044C\u0433\u0438', href: '/field/money' },
     { icon: '\uD83D\uDDFA\uFE0F', label: '\u041C\u0430\u0440\u0448\u0440\u0443\u0442', href: '/field/stages' },
     { icon: '\u2708\uFE0F', label: '\u0411\u0438\u043B\u0435\u0442\u044B', href: '/field/logistics' },
