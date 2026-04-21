@@ -2793,6 +2793,7 @@ window.AsgardFieldTab = (function () {
 
   async function apiAdmin(path, opts) {
     const r = await fetch('/api/gamification/admin' + path, { headers: hdr(), ...opts });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || 'HTTP ' + r.status); }
     return r.json();
   }
 

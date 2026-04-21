@@ -141,7 +141,7 @@ export default function FieldQuests() {
 
   /* ── Live timers ── */
   useEffect(() => {
-    timerRef.current = setInterval(() => setTimerTick(t => t + 1), 1000);
+    timerRef.current = setInterval(() => setTimerTick(t => t + 1), 10000); // Q1: 10s instead of 1s — timers show minutes
     return () => clearInterval(timerRef.current);
   }, []);
 

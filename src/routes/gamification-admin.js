@@ -88,20 +88,15 @@ async function routes(fastify) {
     const fulfillmentId = parseInt(req.params.id, 10);
     const { delivery_note } = req.body || {};
 
-    // Check that fulfillment exists and is ready
+    // R4 fix: atomic UPDATE with status check (prevents double-delivery)
     const { rows: [item] } = await db.query(
-      'SELECT * FROM gamification_fulfillment WHERE id = $1 AND status IN ($2, $3)',
-      [fulfillmentId, 'pending', 'ready']
-    );
-    if (!item) return reply.code(404).send({ error: 'Запись не найдена или уже выдана' });
-
-    // Update status
-    await db.query(
       `UPDATE gamification_fulfillment
        SET status = 'delivered', delivered_at = NOW(), delivered_by = $1, delivery_note = $2, updated_at = NOW()
-       WHERE id = $3`,
+       WHERE id = $3 AND status IN ('pending', 'ready')
+       RETURNING *`,
       [user.id, delivery_note || null, fulfillmentId]
     );
+    if (!item) return reply.code(404).send({ error: 'Запись не найдена или уже выдана' });
 
     // Update inventory
     await db.query(
@@ -142,10 +137,10 @@ async function routes(fastify) {
   });
 
   // ── GET /dashboard — director dashboard KPIs ──
-  fastify.get('/dashboard', { preHandler: [fastify.authenticate] }, async (req) => {
-    const allowedRoles = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HR', 'ADMIN'];
+  fastify.get('/dashboard', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const allowedRoles = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HR', 'HR_MANAGER', 'ADMIN', 'HEAD_PM'];
     if (!allowedRoles.includes(req.user.role)) {
-      return { error: 'Нет доступа' };
+      return reply.code(403).send({ error: 'Нет доступа' });
     }
 
     // KPI cards

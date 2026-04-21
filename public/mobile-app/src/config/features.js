@@ -8,5 +8,5 @@ const isBeta = params.get('beta') === '1';
 
 export const features = {
   /** Field PWA migrated to React — enables /field/* routes */
-  FIELD_REACT_MIGRATION: isBeta || import.meta.env.VITE_FIELD_REACT === 'true',
+  FIELD_REACT_MIGRATION: true, // V1 fix: vanilla removed, React is the only field frontend
 };

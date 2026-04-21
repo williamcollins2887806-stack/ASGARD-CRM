@@ -268,6 +268,7 @@ export default function WheelOfNorns() {
   const pupilLRef = useRef(null);
   const pupilRRef = useRef(null);
   const bubbleRef = useRef(null);
+  const pendingTimers = useRef([]); // Q3: track timeouts for cleanup
 
   const [balance, setBalance] = useState(0);
   const [level, setLevel] = useState(1);
@@ -287,6 +288,11 @@ export default function WheelOfNorns() {
   const animRunning = useRef(false);
   const blinkTimer = useRef(null);
   const bubbleTimer = useRef(null);
+
+  // Q3+Q4: cleanup all pending timeouts on unmount
+  useEffect(() => {
+    return () => { pendingTimers.current.forEach(t => clearTimeout(t)); pendingTimers.current = []; };
+  }, []);
 
   // Load wallet data
   useEffect(() => {

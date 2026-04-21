@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
 import { Phone, Shield, ArrowRight, Loader2 } from 'lucide-react';
@@ -12,6 +12,10 @@ export default function FieldLogin() {
   const [code, setCode] = useState('');
   const [cooldown, setCooldown] = useState(0);
   const codeInputRef = useRef(null);
+  const cooldownTimerRef = useRef(null);
+
+  // Q5: cleanup cooldown interval on unmount
+  useEffect(() => { return () => { if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current); }; }, []);
 
   // Format phone for display
   const formatPhone = (val) => {
@@ -38,9 +42,10 @@ export default function FieldLogin() {
       await requestCode('+' + phone);
       setStep('code');
       setCooldown(60);
-      const timer = setInterval(() => {
+      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+      cooldownTimerRef.current = setInterval(() => {
         setCooldown((c) => {
-          if (c <= 1) { clearInterval(timer); return 0; }
+          if (c <= 1) { clearInterval(cooldownTimerRef.current); cooldownTimerRef.current = null; return 0; }
           return c - 1;
         });
       }, 1000);
@@ -48,10 +53,11 @@ export default function FieldLogin() {
     } catch { /* error in store */ }
   };
 
-  const handleVerifyCode = async () => {
-    if (code.length < 4) return;
+  const handleVerifyCode = async (codeVal) => {
+    const c = codeVal || code;
+    if (c.length < 4) return;
     try {
-      const result = await verifyCode('+' + phone, code);
+      const result = await verifyCode('+' + phone, c);
       if (result.status === 'need_pin_setup') {
         navigate('/field/pin-setup', { replace: true });
       } else if (result.status === 'need_pin') {
@@ -67,7 +73,7 @@ export default function FieldLogin() {
     const val = e.target.value.replace(/\D/g, '').slice(0, 4);
     setCode(val);
     if (val.length === 4) {
-      setTimeout(() => handleVerifyCode(), 50);
+      setTimeout(() => handleVerifyCode(val), 50); // Q2: pass val directly to avoid stale closure
     }
   };
 
